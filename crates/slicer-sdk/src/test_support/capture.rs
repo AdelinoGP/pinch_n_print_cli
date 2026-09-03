@@ -3,7 +3,7 @@
 //! Each capture mirrors the corresponding SDK output builder shape so tests
 //! can inspect categorized outputs without hitting the real host.
 
-use slicer_ir::{ExPolygon, ExtrusionPath3D, Point3, WallLoop};
+use slicer_ir::{ExPolygon, ExtrusionPath3D, OrderedEventCollection, Point3, WallLoop};
 
 // ---------------------------------------------------------------------------
 // InfillOutputCapture
@@ -253,6 +253,7 @@ pub struct SupportOutputCapture {
     support_paths: Vec<ExtrusionPath3D>,
     interface_paths: Vec<(ExtrusionPath3D, bool)>,
     raft_paths: Vec<ExtrusionPath3D>,
+    anchored_proposal: Option<OrderedEventCollection>,
 }
 
 impl SupportOutputCapture {
@@ -332,6 +333,17 @@ impl SupportOutputCapture {
     /// ```
     pub fn push_raft_path(&mut self, path: ExtrusionPath3D) {
         self.raft_paths.push(path);
+    }
+
+    /// Capture an anchored event collection proposal.
+    pub fn set_anchored_event_collection(&mut self, collection: OrderedEventCollection) {
+        self.anchored_proposal = Some(collection);
+    }
+
+    /// Borrow the captured anchored event collection proposal, if any.
+    #[must_use]
+    pub fn anchored_proposal(&self) -> Option<&OrderedEventCollection> {
+        self.anchored_proposal.as_ref()
     }
 
     /// Borrow all captured support paths.

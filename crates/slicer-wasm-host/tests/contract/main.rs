@@ -6,6 +6,7 @@
 #[path = "../common/mod.rs"]
 mod common;
 
+mod anchored_events_both_legs_tdd;
 mod authored_coloring_grant_and_strip_tdd;
 mod effective_perimeter_origin_integration_tdd;
 mod exact_z_support_query;
@@ -26,6 +27,7 @@ mod set_current_origin_routes_to_correct_bucket_tdd;
 mod slice_region_view_contract_tdd;
 mod support_decline_contract;
 mod support_identity_layer_dispatch_tdd;
+mod support_plan_off_grid_view_tdd;
 mod support_plan_structural_contract;
 mod support_plan_validation;
 mod surface_group_resolution_tdd;

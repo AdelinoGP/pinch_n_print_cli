@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use slicer_ir::{
     ExPolygon, ExtrusionPath3D, ExtrusionRole, LayerStageCommit, Point2, Point3WithWidth, Polygon,
-    SupportEntry, SupportIR, SupportPlanDeclineReason, SupportPlanEntry, SupportPlanIR,
-    SupportPlanRole, SupportPlanRoleRegion, SupportRole,
+    SupportAnalysisIR, SupportEntry, SupportGeometryKey, SupportIR, SupportPlanDeclineReason,
+    SupportPlanEntry, SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion, SupportRole,
 };
 use slicer_runtime::{
     layer_executor::{apply_for_test, StageApplyContext},
@@ -397,6 +397,7 @@ fn same_family_union() {
             )]),
         ],
         exact_z: &exact_z,
+        territory: None,
     })
     .expect("structured aggregation");
     assert_eq!(structured.retained.len(), 1);
@@ -468,6 +469,7 @@ fn cross_family_body_overlap() {
             )]),
         ],
         exact_z: &exact_z,
+        territory: None,
     })
     .expect("structured aggregation");
     let cross_family: Vec<_> = structured
@@ -482,6 +484,56 @@ fn cross_family_body_overlap() {
     assert!(cross_family.iter().any(|d| d.family_id == "traditional"
         && d.body_id == "normal-body"
         && d.demand_id == "normal-demand"));
+
+    // Ticket 19: the same overlap with host-published territory for region 1
+    // is arbitrated by clipping, not by rejecting both sides.
+    let analysis = SupportAnalysisIR {
+        family_assignments: std::collections::BTreeMap::from([
+            (("object".to_string(), 0), "tree".to_string()),
+            (("object".to_string(), 1), "traditional".to_string()),
+        ]),
+        support_territory: std::collections::HashMap::from([(
+            SupportGeometryKey {
+                global_support_layer_index: 0,
+                object_id: "object".into(),
+                region_id: 1,
+            },
+            vec![polygon(200, 200, 400, 400)],
+        )]),
+        ..SupportAnalysisIR::default()
+    };
+    let with_territory = try_aggregate_support_plans(SupportAggregationInput {
+        plans: vec![
+            plan(vec![entry(
+                "tree",
+                "tree-body",
+                "tree-demand",
+                "object",
+                0,
+                Some(polygon(100, 100, 300, 300)),
+            )]),
+            plan(vec![entry(
+                "traditional",
+                "normal-body",
+                "normal-demand",
+                "object",
+                1,
+                Some(polygon(200, 200, 400, 400)),
+            )]),
+        ],
+        exact_z: &exact_z,
+        territory: Some(&analysis),
+    })
+    .expect("structured aggregation");
+    assert_eq!(with_territory.retained.len(), 2);
+    assert!(with_territory.unmet.is_empty());
+    assert!(!with_territory.degraded);
+    assert!(!with_territory
+        .diagnostics
+        .iter()
+        .any(|d| d.reason == "body rejected: cross-family positive-area overlap"));
+    assert_eq!(with_territory.clipped.len(), 1);
+    assert_eq!(with_territory.clipped[0].family_id, "tree");
 
     let (touching, diagnostics) = aggregate(vec![
         plan(vec![entry(
@@ -677,6 +729,7 @@ fn invalid_body_degraded() {
     let structured = try_aggregate_support_plans(SupportAggregationInput {
         plans: vec![plan(vec![occupied])],
         exact_z: &exact_z,
+        territory: None,
     })
     .expect("structured aggregation");
     assert!(structured.retained.is_empty());

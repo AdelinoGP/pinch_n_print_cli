@@ -1,6 +1,10 @@
 ---
-status: draft
+status: superseded
 packet: 239-support-independent-layer-z
+superseded_by:
+  - 239a-anchored-host-seams
+  - 239b-anchored-wit-contract
+  - 239c-support-layer-height-producer
 depends_on: 238c-support-renderer-flow-interfaces
 task_ids:
   - TASK-399
@@ -18,6 +22,33 @@ context_cost_estimate: M
 ---
 
 # Packet Contract: 239-support-independent-layer-z
+
+## SUPERSEDED (2026-08-28)
+
+This packet is **superseded** by `239a-anchored-host-seams`, `239b-anchored-wit-contract`, and
+`239c-support-layer-height-producer`. Do not implement it. The plan of record for the split,
+with the nine verified findings that motivated it, is
+`docs/specs/support-independent-layer-z-split-plan.md`.
+
+Why it was split, in one paragraph: a `/swarm` run measured this packet's central premise as
+false and its true scope as XL. The `requirements.md` claim that "the anchored-event substrate
+(packets 219–223) already carries everything needed … but two verified blockers keep it out of
+the production slice path" does not hold. Blocker 1 is **refuted** — `is_same_z_entity`'s two
+consumers are exact complements, so the executor routing partition is already total and off-grid
+entities do reach the anchored collection (recorded here as correction PC-1). Blocker 2 holds,
+but it is not the whole gap: there is also no anchored input seam on `PipelineConfig`, no
+emission representation for an anchored row, **no production producer of `AnchoredEntity`
+anywhere**, and the anchored WIT records in `ir-types.wit` are orphaned — referenced by zero
+interfaces, zero worlds, and zero lift/lower glue. Consequently this packet's Human Validation
+Gate was unsatisfiable in substance, not merely blocked on missing reference files: a real slice
+would have produced zero anchored entities, making the gate artifacts structurally identical to
+today's output.
+
+The content below is retained as history, including correction PC-1 and the `visual_debug.rs`
+scope note added during that run. Its acceptance criteria live on, redistributed: AC-1..AC-4 and
+AC-N1..AC-N3 in `239a-anchored-host-seams` (as integration-level truths), and AC-5's measure-first
+`height_delta` protocol plus this gate in `239c-support-layer-height-producer`, where a producer
+finally makes them checkable. Trap T11 still stands wherever it is quoted.
 
 ## Goal
 

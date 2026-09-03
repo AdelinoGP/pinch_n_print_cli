@@ -236,9 +236,8 @@ Modifier deltas are merged deterministically during planning:
 2. Apply object config.
 3. Apply matching modifiers in priority-ascending order, last writer wins
    (`stamp_modifier_config_deltas` in
-   `crates/slicer-core/src/algos/region_mapping.rs`; a stable sort on
-   `ModifierVolume.priority`). Source order breaks equal-priority ties;
-   there is no separate `load_order` concept.
+   `crates/slicer-core/src/algos/region_mapping.rs`; a stable priority sort
+   with first-loaded tie ownership). There is no separate `load_order` concept.
 4. Apply paint-semantic overlays (`paint_config:`) on top.
 
 For the same key, the last applied value wins. If a later overlay omits a key,
@@ -668,36 +667,41 @@ config via the `stamp_modifier_sub_region_configs` map keyed by `region_id`
 `crates/slicer-core/src/algos/region_mapping.rs`: it overlays the
 modifier volumes' config deltas onto the base `ResolvedConfig`, skipping
 `support_enforcer` / `support_blocker` subtypes, and returns a
-`BTreeMap<region_id, ResolvedConfig>` stamped per sub-region).
+`BTreeMap<region_id, ResolvedConfig>` stamped per sub-region). For a painted
+parent, the modifier delta is overlaid onto that painted chain's resolved
+config; the base and every painted parent remain pure outside their own
+modifier child.
 
-**Sub-region `region_id` namespace.** Sub-region IDs are derived from the base
-region ID with a dedicated coprime stride so they never collide with paint's
-`1_000_000`-stride namespace:
+**Sub-region `region_id` namespace.** Sub-region IDs carry a dedicated high-bit
+namespace marker over a payload derived from the base region ID. This keeps the
+namespace disjoint from both ordinary/base IDs and paint's `1_000_000`-stride
+namespace:
 
 ```
-sub_region_id = base_region_id * MODIFIER_VARIANT_REGION_ID_STRIDE + modifier_hash(mi)
+sub_region_id = MODIFIER_VARIANT_REGION_ID_FLAG |
+                (base_region_id * MODIFIER_VARIANT_REGION_ID_STRIDE + hash)
 ```
 
 where `MODIFIER_VARIANT_REGION_ID_STRIDE = 1_000_003` (the next prime above
-paint's `1_000_000`, hence coprime — see
-`crates/slicer-runtime/src/region_partition.rs`'s `modifier_hash` symbol).
-`modifier_hash(mi)` is a
-**stable hash of the modifier's identity** — `(object_id, modifier_index,
-priority)` in document order within `object.modifier_volumes` — folded into a
-non-zero value `< stride` (so the low-order band is reserved for
-`base_region_id * stride` itself). The hash is derived from identity, never
-from HashMap iteration or footprint geometry, giving a stable sub-region id
-that round-trips through `RegionMapIR` and dispatch. The sub-region carries an
-**empty `variant_chain`** and is identified by its modifier-namespace
-`region_id` alone; the `wall_source_region_id` predicate inverts
-`sub_region_id / MODIFIER_VARIANT_REGION_ID_STRIDE` → `Some(base)`. The infill
-linker reads only `wall_source_region_id` + `tool_index` + the four fill
-polygons (packet 132/133). Modifier meshes are sliced once per layer during
-prepass (`slice_modifier_volumes`, extended to material/config-delta
-subtypes), and the cached cross-sections are consumed at partition-time
-splitting. For overlapping non-support modifier volumes, priority is applied
-first and document order breaks ties: the first winning modifier owns the
-footprint, and subsequent modifiers intersect only the remaining base area.
+paint's `1_000_000`, hence coprime) and
+`MODIFIER_VARIANT_REGION_ID_FLAG = 1 << 63`. The shared
+`slicer_ir::modifier_sub_region_id` helper folds a stable hash of the object ID
+and the modifier footprint's sliced contour points into a non-zero value below
+the stride. Both the RegionMap kernel and the Tier-2 partition use that helper,
+so the same layer cross-section produces the same ID; the hash never depends on
+HashMap iteration. `MODIFIER_FOOTPRINT_REGION_ID = u64::MAX` remains reserved
+for raw host staging and is not a sub-region ID. A child rooted in an
+unpainted parent carries an empty `variant_chain`; a child rooted in a painted
+parent retains that parent's `variant_chain` and uses the painted parent ID in
+the namespace payload. This keeps the full `RegionKey` identity while the base
+and painted parents remain pure outside their own child. The
+`modifier_base_region_id` helper masks the namespace bit before inverting the
+payload to the parent ID. The infill linker reads only
+`wall_source_region_id` + `tool_index` + the four fill polygons (packet
+132/133). Modifier meshes are sliced per layer before partition-time splitting.
+For overlapping non-support modifier volumes, priority is applied first and
+document order breaks ties: the first winning modifier owns the footprint, and
+subsequent modifiers intersect only the remaining base area.
 
 `ExPolygon`, `Polygon`, and `Point2` are shared geometry types defined in
 `crates/slicer-ir/src/slice_ir.rs`; polygon contours are counter-clockwise,
@@ -915,8 +919,13 @@ region)` outline polygons independent of organic branch planning.
 
 `SupportGeometryIR` and `SupportGeometryKey` are defined in
 `crates/slicer-ir/src/slice_ir.rs`. The IR carries support layer-height
-settings and coarse outline polygons keyed by support-layer index, object ID,
-and region ID; `u32::MAX` denotes an intermediate model-resolution layer.
+settings and coarse outline polygons keyed by **model-layer (global) index on
+the support emit schedule**, object ID, and region ID: `execute_support_geometry`
+/ `build_emit_schedule` (`crates/slicer-core/src/algos/support_geometry.rs`) set
+`SupportGeometryKey.global_support_layer_index` from `global_layer.index`,
+emitting only at those model layers where accumulated per-object height crosses
+`support_layer_height_mm`. It is not an index into a separate support-layer
+grid. `u32::MAX` denotes an intermediate model-resolution layer.
 The `support_top_z_distance` and `support_layer_height_mm` fields carry
 resolved region/config values, rather than hardcoded constants or a literal
 `0.0`.
@@ -928,9 +937,12 @@ resolved region/config values, rather than hardcoded constants or a literal
 **Stage:** Output of `PrePass::SupportAnalysis` (host-owned; committed before
 `SupportGeometryIR` / `SupportPlanIR` within the support prepass chain)
 
-**Current schema_version: 1.2.0** (`CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION`
-in `crates/slicer-ir/src/slice_ir.rs`. Minor bump by packet 237 — additive
-`cantilever_surfaces` map (see below), `#[serde(default)]` and host-only. Prior
+**Current schema_version: 1.3.0** (`CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION`
+in `crates/slicer-ir/src/slice_ir.rs`. Minor bump by SchemaBridgeMap ticket 19
+(reopened, 2026-09-02) — additive `support_territory` map (see below),
+`#[serde(default)]`, mirrored on the WIT `support-analysis-view` as
+`support-territory`. Prior version 1.2.0 by packet 237 — additive
+`cantilever_surfaces` map, `#[serde(default)]` and host-only. Prior
 version 1.1.0 by F-19 — the shape was otherwise unchanged, but the
 candidate-population semantics changed: under a *manual* `support_type` only
 enforcer-covered geometry yields candidates, and `enforced` / `blocked` are
@@ -977,6 +989,22 @@ defined in `crates/slicer-ir/src/slice_ir.rs`. The IR carries:
   feasible envelope before any family-specific tightening.
 - `family_assignments: BTreeMap<(ObjectId, RegionId), String>` — the
   deterministic per-region family assignment (region → family id).
+- `support_territory: HashMap<SupportGeometryKey, Vec<ExPolygon>>` — the XY
+  territory owned by each minted modifier sub-region, keyed
+  `(global_layer_index, object_id, modifier_sub_region_id)`. The value is the
+  modifier mesh's full cross-section at the layer Z, sliced per layer exactly
+  as `split_modifier_sub_regions_for_prepass` slices it (so the FNV id from
+  `slicer_ir::modifier_sub_region_id` matches the region map byte-for-byte)
+  and deliberately NOT clipped by the model — support lives in the free air
+  under it. Base regions get no entry. Consumers derive own/foreign through
+  `SupportAnalysisView::territory_partition` and apply one clip rule: a
+  sub-region body keeps `roles ∩ own`; a base-region body keeps
+  `roles − inflate(foreign, clearance)` with the clearance published in
+  `shared_settings["support_territory_clearance_mm"]` (the resolved support
+  line width). The tree planner also folds foreign territory into its
+  collision ladder so avoidance routes around it; the traditional planner
+  clips its carry; host aggregation re-applies the rule and reports the trim
+  as Info diagnostic 1205 instead of rejecting both families (DEV-165).
 
 **Determinism:** `family_assignments` is a `BTreeMap` keyed by
 `(ObjectId, RegionId)`, so per-region family assignment is deterministic and
@@ -1280,7 +1308,9 @@ above; read them from source rather than from a copy here.
 Anchored events are represented by the additive `AnchoredEntity` contract
 beside the ordinary layer collection. Each entity has a stable `local_id`, an
 `anchor_global_layer_index`, planar or Z-spanning geometry, input/output
-capabilities, provenance, and ordered `path_points`. `AnchoredEntityProvenance`
+capabilities, provenance, a mandatory extrusion role, and ordered `path_points`
+carrying the same width and flow-factor metadata as `Point3WithWidth`.
+`AnchoredEntityProvenance`
 records the producing module and source identity needed to retain attribution.
 
 The host groups entities into an `OrderedEventCollection`. The collection is
@@ -1290,6 +1320,13 @@ it, but must not reorder across physical event boundaries. An
 capabilities, and `AnchoredEventRuntimeHooks` covers path optimization,
 cooling accounting, and time accounting. These types are additive beside the
 layer IR; `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` remains `1.2.0`.
+
+#### Anchored-event WIT transport
+
+The anchored-event transport is exposed by the `Layer::AnchoredEvents` stage
+through the `slicer:layer-anchored-events@1.0.0` package. Its lift rule
+preserves anchored coordinates exactly: 1 unit is 100 nm, and `s64` values are
+carried as `i64` with no scaling or intermediate `f32` conversion.
 
 ### Extrusion-role default priority (Normative)
 

@@ -14,7 +14,10 @@ use std::sync::Arc;
 
 use wasmtime::component::Resource;
 
-use slicer_ir::{GCodeCommand, GlobalLayer, LayerCollectionIR, RetractMode, StageId};
+use slicer_ir::{
+    is_modifier_namespace_id as ir_is_modifier_namespace_id, GCodeCommand, GlobalLayer,
+    LayerCollectionIR, RetractMode, StageId,
+};
 use slicer_scheduler::execution_plan::module_claims_match_active_region;
 use slicer_scheduler::validation::{resolve_held_claims, FillHolders};
 use slicer_sdk::native::{NativePostpassInput, NativeStageEntry};
@@ -498,6 +501,7 @@ impl WasmRuntimeDispatcher {
                     surface_classification,
                     layer,
                     module_claims,
+                    false,
                 )
                 .map_err(mk_ctx_err)?;
                 let paint_data = build_paint_layer_data_with_plan(
@@ -660,6 +664,7 @@ impl WasmRuntimeDispatcher {
                     surface_classification,
                     layer,
                     module_claims,
+                    false,
                 )
                 .map_err(mk_ctx_err)?;
                 let paint_data = build_paint_layer_data(None, layer_index);
@@ -740,6 +745,7 @@ impl WasmRuntimeDispatcher {
                     surface_classification,
                     layer,
                     module_claims,
+                    true,
                 )
                 .map_err(mk_ctx_err)?;
                 let paint_data = build_paint_layer_data(None, layer_index);
@@ -881,15 +887,34 @@ impl WasmRuntimeDispatcher {
                 )
                 .map_err(mk_inst_err)?;
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
-                let region_handles = push_slice_regions(
+                let mut region_handles = push_slice_regions(
                     &mut store,
                     slice_ir,
                     layer_z,
                     surface_classification,
                     layer,
                     module_claims,
+                    false,
                 )
                 .map_err(mk_ctx_err)?;
+                // Ticket 19: planned bodies with no slice geometry on this
+                // layer still need a region the renderer can look them up by.
+                for carrier in
+                    support_carrier_regions(module_claims, layer_index, support_plan_ir, slice_ir)
+                {
+                    let data = host::sliced_region_to_data(
+                        &carrier,
+                        layer_z,
+                        Vec::new(),
+                        surface_classification,
+                        layer_index,
+                    );
+                    let handle = store
+                        .data_mut()
+                        .push_slice_region(data)
+                        .map_err(mk_ctx_err)?;
+                    region_handles.push(handle);
+                }
                 let paint_data = build_paint_layer_data_with_plan(
                     None,
                     layer_index,
@@ -904,6 +929,10 @@ impl WasmRuntimeDispatcher {
                     .data_mut()
                     .push_support_output_builder()
                     .map_err(mk_ctx_err)?;
+                let collection = store
+                    .data_mut()
+                    .push_layer_collection_builder(project_ordered_entities_from(layer_collection))
+                    .map_err(mk_ctx_err)?;
                 let call_result = bindings
                     .slicer_layer_support_support()
                     .call_run(
@@ -912,6 +941,83 @@ impl WasmRuntimeDispatcher {
                         &region_handles,
                         own(paint),
                         own(output),
+                        own(collection),
+                        own(config_handle),
+                    )
+                    .map_err(mk_call_err)?;
+                Ok((call_result, store, mem_initial_bytes))
+            }
+            "Layer::AnchoredEvents" => {
+                let component = wasm_component.ok_or_else(|| DispatchError {
+                    module_id: module_id.to_string(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::MissingComponent,
+                    reason: "no compiled WASM component available".to_string(),
+                })?;
+                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                add_wasi_to_linker(&mut linker);
+                host::layer_anchored_events::LayerModule::add_to_linker::<
+                    _,
+                    wasmtime::component::HasSelf<_>,
+                >(&mut linker, |ctx| ctx)
+                .map_err(mk_linker_err)?;
+                let ctx = HostExecutionContextBuilder::new(
+                    module_id.to_string(),
+                    envelope_floor,
+                    envelope_height,
+                )
+                .mesh_ir(Some(mesh_ir))
+                .build();
+                let mut store = self.new_call_store(ctx);
+                store.data_mut().set_held_claims_per_region(held_claims_map);
+                let default_config_fields =
+                    host::config_view_to_data(&effective_config_view).fields;
+                store
+                    .data_mut()
+                    .set_config_fields_per_region(config_fields_per_region);
+                store
+                    .data_mut()
+                    .set_default_config_fields(default_config_fields);
+                let config_handle = store
+                    .data_mut()
+                    .push_config_view(host::config_view_to_data(&effective_config_view))
+                    .map_err(|e| DispatchError {
+                        module_id: module_id.to_string(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::ContextCreation,
+                        reason: format!("failed to push config resource: {e}"),
+                    })?;
+                let bindings = host::layer_anchored_events::LayerModule::instantiate(
+                    &mut store,
+                    component.wasmtime_component(),
+                    &linker,
+                )
+                .map_err(mk_inst_err)?;
+                let mem_initial_bytes = store.data().mem_tracker.current_bytes;
+                let region_handles = push_slice_regions(
+                    &mut store,
+                    slice_ir,
+                    layer_z,
+                    surface_classification,
+                    layer,
+                    module_claims,
+                    false,
+                )
+                .map_err(mk_ctx_err)?;
+                let snapshot = project_ordered_entities_from(layer_collection);
+                let collection = store
+                    .data_mut()
+                    .push_layer_collection_builder(snapshot)
+                    .map_err(mk_ctx_err)?;
+                let call_result = bindings
+                    .slicer_layer_anchored_events_anchored_events()
+                    .call_run(
+                        &mut store,
+                        layer_index as i32,
+                        &region_handles,
+                        own(collection),
                         own(config_handle),
                     )
                     .map_err(mk_call_err)?;
@@ -973,6 +1079,7 @@ impl WasmRuntimeDispatcher {
                     surface_classification,
                     layer,
                     module_claims,
+                    false,
                 )
                 .map_err(mk_ctx_err)?;
                 let output = store
@@ -1419,6 +1526,7 @@ impl WasmRuntimeDispatcher {
                     .unwrap_or_else(|| host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::SupportAnalysisView {
                         candidates: Vec::new(), model_occupancy: Vec::new(), termination_surfaces: Vec::new(),
                         shared_settings: Vec::new(), baseline_feasible_envelope: Vec::new(), family_assignments: Vec::new(),
+                        support_territory: Vec::new(),
                     });
                 let output = store
                     .data_mut()
@@ -1997,7 +2105,7 @@ fn build_paint_layer_data_with_plan(
     };
     if let Some(plan) = support_plan_ir {
         for entry in &plan.entries {
-            if entry.global_layer_index != layer_index as i32 {
+            if entry.anchor_layer_index != layer_index {
                 continue;
             }
             let key = (entry.object_id.clone(), entry.region_id.to_string());
@@ -2037,6 +2145,9 @@ fn build_paint_layer_data_with_plan(
                         slicer_ir::SupportPlanDeclineReason::UnsupportedMode => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewDeclineReason::UnsupportedMode,
                     }),
                 });
+        }
+        for entries in data.support_plan_entries.values_mut() {
+            entries.sort_by_key(|entry| (entry.anchor_z, entry.global_layer_index));
         }
     }
     if let Some(ir) = lightning_tree_ir {
@@ -2078,14 +2189,22 @@ fn push_slice_regions(
     surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
     layer: &GlobalLayer,
     module_claims: &[String],
+    perimeter_sources: bool,
 ) -> Result<Vec<Resource<host::SliceRegionData>>, wasmtime::Error> {
     let slice_ir = match slice_ir {
         Some(ir) => ir,
         None => return Ok(Vec::new()),
     };
 
-    let mut handles = Vec::with_capacity(slice_ir.regions.len());
-    for region in &slice_ir.regions {
+    let projected;
+    let regions = if perimeter_sources {
+        projected = crate::marshal::perimeter_source_regions(slice_ir);
+        projected.as_slice()
+    } else {
+        slice_ir.regions.as_slice()
+    };
+    let mut handles = Vec::with_capacity(regions.len());
+    for region in regions {
         if !module_receives_slice_region(module_claims, layer, region) {
             continue;
         }
@@ -2115,6 +2234,87 @@ fn push_slice_regions(
         handles.push(handle);
     }
     Ok(handles)
+}
+
+/// Support carrier regions (SchemaBridgeMap ticket 19).
+///
+/// Support is planned in the free air under an overhang, so a family may hold
+/// bodies on a layer where its region has NO cross-section at all — a
+/// modifier-minted sub-region below the overhang it modifies, or a floating
+/// part above nothing. Both Tier-2 gates (`module_receives_slice_region` in
+/// this file, and the per-layer scheduler in
+/// `crates/slicer-runtime/src/layer_executor.rs`) key on
+/// `layer.active_regions`, which only lists regions with geometry, so the
+/// family renderer was never invoked there and the planned column vanished
+/// between the plan and the G-code (measured: traditional support planned on
+/// layers 0..=123 of `resources/support_test_modifier_normal_in_tree.3mf`,
+/// renderer dispatched on 125..=149 only).
+///
+/// Returns one empty-geometry `SlicedRegion` per `(object, region)` that the
+/// support plan claims on `layer_index` for a family the module holds and
+/// that the slice does not already carry. The renderer only reads the
+/// identity (and `effective_layer_height`, borrowed from a sibling region of
+/// the same object when one exists) to look up its plan entries.
+pub fn support_carrier_regions(
+    module_claims: &[String],
+    layer_index: u32,
+    support_plan: Option<&slicer_ir::SupportPlanIR>,
+    slice: Option<&slicer_ir::SliceIR>,
+) -> Vec<slicer_ir::SlicedRegion> {
+    let families: Vec<&str> = module_claims
+        .iter()
+        .filter_map(|claim| claim.strip_prefix("support-family:"))
+        .map(|family| slicer_ir::canonical_support_family(Some(family)))
+        .collect();
+    let Some(plan) = support_plan else {
+        return Vec::new();
+    };
+    if families.is_empty() {
+        return Vec::new();
+    }
+    let present = |object_id: &str, region_id: u64| {
+        slice.is_some_and(|slice| {
+            slice
+                .regions
+                .iter()
+                .any(|region| region.object_id == object_id && region.region_id == region_id)
+        })
+    };
+    let mut carriers: Vec<slicer_ir::SlicedRegion> = Vec::new();
+    for entry in &plan.entries {
+        if entry.global_layer_index != layer_index as i32
+            || entry.decline_reason.is_some()
+            || !entry.roles.iter().any(|role| !role.regions.is_empty())
+            || !families.contains(&slicer_ir::canonical_support_family(Some(&entry.family_id)))
+            || present(&entry.object_id, entry.region_id)
+            || carriers.iter().any(|carrier| {
+                carrier.object_id == entry.object_id && carrier.region_id == entry.region_id
+            })
+        {
+            continue;
+        }
+        let effective_layer_height = slice
+            .and_then(|slice| {
+                slice
+                    .regions
+                    .iter()
+                    .find(|region| region.object_id == entry.object_id)
+                    .map(|region| region.effective_layer_height)
+            })
+            .unwrap_or(0.0);
+        carriers.push(slicer_ir::SlicedRegion {
+            object_id: entry.object_id.clone(),
+            region_id: entry.region_id,
+            effective_layer_height,
+            ..slicer_ir::SlicedRegion::default()
+        });
+    }
+    carriers.sort_by(|a, b| {
+        a.object_id
+            .cmp(&b.object_id)
+            .then(a.region_id.cmp(&b.region_id))
+    });
+    carriers
 }
 
 fn module_receives_slice_region(
@@ -2209,20 +2409,15 @@ pub fn perimeter_region_index(
         .collect()
 }
 
-/// Modifier `region_id` namespace stride (packet 132), matching
-/// `slicer_runtime::region_partition::MODIFIER_VARIANT_REGION_ID_STRIDE`.
-const MODIFIER_VARIANT_REGION_ID_STRIDE: u64 = 1_000_003;
-
-/// ADR-0030: identifies ids in the modifier namespace.
-///
-/// Modifier sub-region ids are `base * MODIFIER_VARIANT_REGION_ID_STRIDE + hash`
-/// with `hash != 0` (see `slicer_runtime::region_partition`). This predicate is
-/// disjoint from paint's namespace (`PAINT_VARIANT_REGION_ID_STRIDE = 1_000_000`)
-/// and from base regions (`id == 0`, or a small base id that owns its own walls
-/// via `has_own_perimeter_entry`). The `!is_multiple_of` term enforces
-/// `hash != 0`; `id != 0` excludes the base region itself.
+/// Modifier sub-region id inversion (packet 132): ids carry the dedicated
+/// namespace bit over a `base * MODIFIER_VARIANT_REGION_ID_STRIDE + hash`
+/// payload with `hash != 0` (see `slicer_ir::modifier_sub_region_id`). The same
+/// `slicer-ir` predicate and stride serve the region-map kernel
+/// (`slicer-core::algos::region_mapping`) and the Tier-2 mint
+/// (`slicer-runtime::region_partition`) — one source so every namespace
+/// judgement in the pipeline agrees.
 pub(crate) fn is_modifier_namespace_id(id: u64) -> bool {
-    id != 0 && !id.is_multiple_of(MODIFIER_VARIANT_REGION_ID_STRIDE)
+    ir_is_modifier_namespace_id(id)
 }
 
 /// ADR-0028 §Amendment wall-source predicate.
@@ -2231,10 +2426,9 @@ pub(crate) fn is_modifier_namespace_id(id: u64) -> bool {
 ///   * a paint-variant region (non-empty `variant_chain`) WITHOUT its own
 ///     `PerimeterIR` entry — inverts `paint_segmentation::paint_variant_region_id`
 ///     (`base * STRIDE + hash`) by integer division; or
-///   * a modifier sub-region (packet 132): id in the modifier namespace
-///     (`base * MODIFIER_VARIANT_REGION_ID_STRIDE + hash`, `hash != 0`) with an
-///     empty `variant_chain` and no own `PerimeterIR` entry — inverts by integer
-///     division to the base id.
+///   * a modifier sub-region (packet 132): id in the modifier namespace with an
+///     empty `variant_chain` and no own `PerimeterIR` entry — masks the namespace
+///     bit and inverts the payload to the base id.
 ///
 /// Returns `None` when the region has its own `PerimeterIR` entry (it owns its
 /// walls) or is a base region.
@@ -2245,10 +2439,10 @@ pub fn wall_source_region_id(
     if has_own_perimeter_entry {
         return None;
     }
-    // Modifier sub-region (packet 132): empty variant_chain, id in the modifier
-    // namespace (`base * STRIDE + hash`, `hash != 0`), no own PerimeterIR entry.
-    if region.variant_chain.is_empty() && is_modifier_namespace_id(region.region_id) {
-        return Some(region.region_id / MODIFIER_VARIANT_REGION_ID_STRIDE);
+    // Modifier sub-region (packet 132): the namespace id encodes its parent,
+    // whether that parent is BASE or a painted variant.
+    if is_modifier_namespace_id(region.region_id) {
+        return slicer_ir::modifier_base_region_id(region.region_id);
     }
     // Paint-variant arm (ADR-0028 §Amendment): non-empty variant_chain, no own
     // perimeter entry → shares the base region's walls.
@@ -3482,6 +3676,15 @@ pub fn build_paint_layer_data_for_test(
     build_paint_layer_data_with_plan(None, layer_index, None, Some(lightning_tree_ir))
 }
 
+/// Build support-plan paint-layer data for dispatch contract tests.
+#[doc(hidden)]
+pub fn build_support_plan_layer_data_for_test(
+    layer_index: u32,
+    support_plan_ir: &slicer_ir::SupportPlanIR,
+) -> PaintRegionLayerData {
+    build_paint_layer_data_with_plan(None, layer_index, Some(support_plan_ir), None)
+}
+
 /// Deconstruct a `HostExecutionContext` returned from `dispatch_layer_call` into
 /// the per-stage [`slicer_ir::LayerStageCommit`] the runtime's `apply` consumes
 /// (ADR-0020). Produces only plain IR values — no arena mutations. Returns
@@ -3492,7 +3695,7 @@ pub fn build_paint_layer_data_for_test(
 /// placeholder field to leak (the structural fix for the anchor bug). The
 /// `Layer::Perimeters` seam injection is no longer flagged — it is implied by the
 /// `Perimeters` variant and performed inside `apply`.
-fn deconstruct_layer_ctx(
+pub fn deconstruct_layer_ctx(
     stage_id: &str,
     module_id: &str,
     layer_index: u32,
@@ -3529,11 +3732,24 @@ fn deconstruct_layer_ctx(
         }
         "Layer::Support" | "Layer::SupportPostProcess" => {
             let support = &ctx.support_output;
+            let anchored_events = if let Some(collection) = ctx.anchored_events.collection.as_ref()
+            {
+                for entity in &collection.events {
+                    crate::marshal::validate_anchored_entity_geometry(entity)
+                        .map_err(|reason| mk_fatal("anchored events", reason))?;
+                }
+                Some(vec![collection.clone()])
+            } else {
+                None
+            };
             if support.support_paths.is_empty()
                 && support.interface_paths.is_empty()
                 && support.raft_paths.is_empty()
             {
-                return Ok(None);
+                let Some(collections) = anchored_events else {
+                    return Ok(None);
+                };
+                return Ok(Some(LayerStageCommit::AnchoredEvents(collections)));
             }
             let ir = crate::marshal::convert_support_output_with_plan(
                 support,
@@ -3541,11 +3757,32 @@ fn deconstruct_layer_ctx(
                 support_plan,
             )
             .map_err(|r| mk_fatal("support", r))?;
-            Ok(Some(if stage_id == "Layer::SupportPostProcess" {
-                LayerStageCommit::SupportPostProcess(ir)
-            } else {
-                LayerStageCommit::Support(ir)
+            Ok(Some(match (stage_id, anchored_events) {
+                ("Layer::SupportPostProcess", Some(anchored_events)) => {
+                    LayerStageCommit::SupportPostProcessWithAnchoredEvents {
+                        support: ir,
+                        anchored_events,
+                    }
+                }
+                ("Layer::SupportPostProcess", None) => LayerStageCommit::SupportPostProcess(ir),
+                (_, Some(anchored_events)) => LayerStageCommit::SupportWithAnchoredEvents {
+                    support: ir,
+                    anchored_events,
+                },
+                (_, None) => LayerStageCommit::Support(ir),
             }))
+        }
+        "Layer::AnchoredEvents" => {
+            let Some(collection) = ctx.anchored_events.collection.as_ref() else {
+                return Ok(None);
+            };
+            for entity in &collection.events {
+                crate::marshal::validate_anchored_entity_geometry(entity)
+                    .map_err(|reason| mk_fatal("anchored events", reason))?;
+            }
+            Ok(Some(LayerStageCommit::AnchoredEvents(vec![
+                collection.clone()
+            ])))
         }
         "Layer::Perimeters" => {
             let perimeter = &ctx.perimeter_output;

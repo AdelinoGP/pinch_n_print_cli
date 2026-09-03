@@ -1229,6 +1229,10 @@ pnp_cli module config-schema [--module-dir <PATH>]
   Wire version 1.1.0 added `host` and the per-field `scope`. Before it, a
   consumer that treated the reply as the whole key universe was blind to the
   62 host keys - which is what the OrcaSlicer GUI fork hit.
+  Wire version 1.2.0 made each host entry carry optional display metadata -
+  display/group/unit/description/min/max/values/advanced, null where the
+  declaring channel annotates nothing - so a generated settings page can
+  label host keys without a fork-side mirror (SchemaBridgeMap ticket 10).
 
 pnp_cli slice --model <file.stl> [--config <config.json>] [--output <file.gcode>]
   Slice a model using the loaded module set.

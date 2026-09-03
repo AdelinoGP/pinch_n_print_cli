@@ -12,8 +12,8 @@
 use slicer_ir::{
     validate_travel_anchors, AnchoredEntity, AnchoredEntityProvenance, AnchoredEventRuntimeHooks,
     AnchoredGeometryContract, CapabilityDerivedEventClosure, ExtrusionPath3D, ExtrusionRole,
-    LayerCollectionIR, ObjectId, OrderedEventCollection, Point3, Point3WithWidth, PrintEntity,
-    RegionKey, SemVer, TravelMove,
+    LayerCollectionIR, ObjectId, OrderedEventCollection, Point3WithWidth, PrintEntity, RegionKey,
+    SemVer, TravelMove,
 };
 
 // ============================================================================
@@ -133,11 +133,15 @@ fn anchored_contracts_construct_round_trip_and_order() {
             requesting_feature: "support".into(),
             source_plan_entry: "entry-2".into(),
         },
-        path_points: vec![Point3 {
+        path_points: vec![Point3WithWidth {
             x: 1.0,
             y: 2.0,
             z: 0.2,
+            width: 0.45,
+            flow_factor: 1.0,
+            ..Default::default()
         }],
+        role: ExtrusionRole::SupportMaterial,
     };
     // exhaustive: no Default impl for AnchoredEntity; anchored-contract fixture pins every field
     let spanning = AnchoredEntity {
@@ -154,6 +158,7 @@ fn anchored_contracts_construct_round_trip_and_order() {
             source_plan_entry: "entry-1".into(),
         },
         path_points: Vec::new(),
+        role: ExtrusionRole::SupportMaterial,
     };
     assert!(AnchoredGeometryContract::Planar { z: 2_000 }.contains_z(2_000));
     assert!(!AnchoredGeometryContract::Planar { z: 2_000 }.contains_z(2_001));

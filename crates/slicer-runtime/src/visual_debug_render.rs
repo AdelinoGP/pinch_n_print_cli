@@ -28,6 +28,7 @@
 //! [`palette`] is a fixed, request-independent set of RGB colors keyed by
 //! extrusion role / overlay kind. Never derived from request input (AC-4).
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use png::{BitDepth, ColorType, Encoder};
@@ -114,6 +115,25 @@ pub mod palette {
     /// `SliceIR.regions[].polygons` closed-island outline fill (packet 161,
     /// Step 6) — distinct from `INFILL_AREA` (`infill_areas`).
     pub const SLICE_REGION: [u8; 3] = [140, 140, 140];
+    /// Silhouette class color for `SupportPlanRole::BaseInterface` role
+    /// regions (packet 247). Pairwise distinct from every other silhouette
+    /// class color and from `BACKGROUND`.
+    pub const SUPPORT_BASE_INTERFACE: [u8; 3] = [0, 110, 160];
+    /// Silhouette class color for `SupportPlanRole::BottomInterface` role
+    /// regions (packet 247).
+    pub const SUPPORT_BOTTOM_INTERFACE: [u8; 3] = [70, 180, 235];
+    /// Silhouette class color for `SupportPlanRole::RaftRelated` role regions
+    /// carried by a NON-negative-index plan entry (packet 247). Negative-index
+    /// (raft prefix) entries are skipped entirely with warning W1.
+    pub const SUPPORT_RAFT: [u8; 3] = [150, 60, 200];
+    /// Silhouette color for overhang severity quartile 1.
+    pub const OVERHANG_QUARTILE_1: [u8; 3] = [20, 240, 20];
+    /// Silhouette color for overhang severity quartile 2.
+    pub const OVERHANG_QUARTILE_2: [u8; 3] = [20, 20, 240];
+    /// Silhouette color for overhang severity quartile 3.
+    pub const OVERHANG_QUARTILE_3: [u8; 3] = [240, 20, 20];
+    /// Silhouette color for overhang severity quartile 4.
+    pub const OVERHANG_QUARTILE_4: [u8; 3] = [240, 20, 240];
 }
 
 /// A renderable geometry view, selected by the visual-debug request's
@@ -341,6 +361,15 @@ pub enum RenderError {
         /// The unsupported overlay's stable name.
         overlay: &'static str,
     },
+    /// A surface-classification quartile outside the documented 1..=4 range.
+    InvalidQuartile {
+        /// The tap carrying the invalid band.
+        tap: String,
+        /// The layer carrying the invalid band.
+        layer_index: u32,
+        /// The invalid quartile value.
+        quartile: u8,
+    },
 }
 
 impl fmt::Display for RenderError {
@@ -374,6 +403,14 @@ impl fmt::Display for RenderError {
                 f,
                 "tap '{tap}' layer {layer_index}: overlay '{overlay}' has no source field on this \
                  tap's captured IR"
+            ),
+            Self::InvalidQuartile {
+                tap,
+                layer_index,
+                quartile,
+            } => write!(
+                f,
+                "tap '{tap}' layer {layer_index}: invalid overhang quartile {quartile} (must be 1..=4)"
             ),
         }
     }
@@ -1780,14 +1817,18 @@ pub fn collect_overlay_events(
             .regions
             .iter()
             .filter_map(seam_marker_point)
-            .map(|(x, y)| OverlayEvent::Seam { x, y })
+            .map(|(x, y)| OverlayEvent::Seam { x, y, z: None })
             .collect()),
         CapturedIr::SeamPlan(sp) if kind == OverlayKind::Seams => Ok(sp
             .entries
             .iter()
             .map(|entry| {
                 let p = entry.chosen_candidate.point;
-                OverlayEvent::Seam { x: p.x, y: p.y }
+                OverlayEvent::Seam {
+                    x: p.x,
+                    y: p.y,
+                    z: None,
+                }
             })
             .collect()),
         CapturedIr::GCodeEmit(g) => match kind {
@@ -2131,7 +2172,7 @@ fn draw_overlay_events(canvas: &mut Canvas, events: &[OverlayEvent], glyph_half:
                     );
                 }
             }
-            OverlayEvent::Seam { x, y }
+            OverlayEvent::Seam { x, y, .. }
             | OverlayEvent::Retraction { x, y, .. }
             | OverlayEvent::Unretraction { x, y, .. }
             | OverlayEvent::ZHop { x, y, .. }
@@ -2310,4 +2351,1502 @@ pub fn render_stage_capture_styled(
         },
         events,
     ))
+}
+
+// ============================================================================
+// Silhouette composite renderer (packet 247)
+//
+// One composite X-Z ("front") or Y-Z ("side") image per (tap, view), built by
+// mathematically exact interval projection: the projection of a connected
+// region onto an axis is a single interval, and a hole cannot disconnect a
+// connected contour's projection - so only the CONTOUR is projected.
+//
+// This path NEVER defines its own world->pixel transform. It feeds the shared
+// [`Projector`] `(x_or_y_mm, z_mm)` as its world point; the projector's
+// built-in y-flip makes larger Z render toward the top of the canvas.
+//
+// Z is millimeter floats end-to-end and never round-trips through
+// `mm_to_units`; polygon X/Y is read through `Point2::to_mm` only.
+// ============================================================================
+
+/// The projection plane of a silhouette render (D5).
+///
+/// `Front` projects along Y onto the X-Z plane; `Side` projects along X onto
+/// the Y-Z plane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SilhouetteView {
+    /// X-Z plane (project along Y). The request default.
+    Front,
+    /// Y-Z plane (project along X).
+    Side,
+}
+
+impl SilhouetteView {
+    /// The stable request/manifest spelling of this view.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Front => "front",
+            Self::Side => "side",
+        }
+    }
+
+    /// Parse a request `options.view` value. `None` for anything unknown -
+    /// the caller fails closed with a named error rather than defaulting.
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "front" => Some(Self::Front),
+            "side" => Some(Self::Side),
+            _ => None,
+        }
+    }
+
+    /// The horizontal (in-image) component of an XY millimeter point.
+    fn axis(self, xy: (f32, f32)) -> f32 {
+        match self {
+            Self::Front => xy.0,
+            Self::Side => xy.1,
+        }
+    }
+}
+
+/// One layer's Z slab in the caller-built silhouette schedule.
+///
+/// Caller-built on purpose: the renderer never reads a `Blackboard`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SilhouetteScheduleSlab {
+    /// Global layer index this slab describes.
+    pub index: u32,
+    /// Slab bottom, millimeters.
+    pub z_bottom: f32,
+    /// Slab top (the layer's Z), millimeters.
+    pub z_top: f32,
+}
+
+/// The caller-built per-layer Z slab schedule for one silhouette bundle.
+///
+/// Used for the vertical viewport extent, and as the slab source for taps
+/// whose IR carries no per-region layer height, or whose
+/// `effective_layer_height` is unusable.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SilhouetteSlabSchedule {
+    /// Slabs, one per selected layer.
+    pub slabs: Vec<SilhouetteScheduleSlab>,
+}
+
+impl SilhouetteSlabSchedule {
+    /// The scheduled slab for `layer_index`, if the caller supplied one.
+    fn slab_for(&self, layer_index: u32) -> Option<SilhouetteScheduleSlab> {
+        self.slabs.iter().copied().find(|s| s.index == layer_index)
+    }
+}
+
+/// A silhouette color class. Rectangles are painted class-by-class in
+/// [`SILHOUETTE_PAINT_ORDER`], so a later class fully occludes an earlier one
+/// over an overlapping horizontal range (D2).
+///
+/// The support arm (packet 247, Step 4) maps each `SupportPlanRole` to one
+/// class: body classes paint first, interface classes last, so an interface
+/// band is never hidden under the body it sits on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SilhouetteClass {
+    /// Slice-family body class, sourced from `SliceIR.regions[].polygons`.
+    SliceRegion,
+    /// `SupportPlanRole::SupportBody` role regions.
+    Support,
+    /// `SupportPlanRole::RaftRelated` role regions on a non-negative-index
+    /// plan entry. Negative-index (raft prefix) entries are skipped (W1).
+    SupportRaft,
+    /// `SupportPlanRole::BaseInterface` role regions.
+    SupportBaseInterface,
+    /// `SupportPlanRole::BottomInterface` role regions.
+    SupportBottomInterface,
+    /// `SupportPlanRole::TopInterface` role regions.
+    SupportInterface,
+}
+
+/// The pinned class paint order (D2), back to front. Rectangle emission
+/// follows ascending layer -> this order -> ascending interval start.
+///
+/// Body classes first (`SliceRegion`, `Support`), then `SupportRaft`,
+/// `SupportBaseInterface`, `SupportBottomInterface`, and `SupportInterface`
+/// LAST.
+const SILHOUETTE_PAINT_ORDER: &[SilhouetteClass] = &[
+    SilhouetteClass::SliceRegion,
+    SilhouetteClass::Support,
+    SilhouetteClass::SupportRaft,
+    SilhouetteClass::SupportBaseInterface,
+    SilhouetteClass::SupportBottomInterface,
+    SilhouetteClass::SupportInterface,
+];
+
+impl SilhouetteClass {
+    /// The class a `SupportPlanRole` region belongs to (D9).
+    fn from_support_role(role: slicer_ir::SupportPlanRole) -> Self {
+        match role {
+            slicer_ir::SupportPlanRole::SupportBody => Self::Support,
+            slicer_ir::SupportPlanRole::RaftRelated => Self::SupportRaft,
+            slicer_ir::SupportPlanRole::BaseInterface => Self::SupportBaseInterface,
+            slicer_ir::SupportPlanRole::BottomInterface => Self::SupportBottomInterface,
+            slicer_ir::SupportPlanRole::TopInterface => Self::SupportInterface,
+        }
+    }
+}
+
+impl SilhouetteClass {
+    /// Position in [`SILHOUETTE_PAINT_ORDER`]; lower paints first.
+    fn paint_rank(self) -> usize {
+        SILHOUETTE_PAINT_ORDER
+            .iter()
+            .position(|c| *c == self)
+            .unwrap_or(usize::MAX)
+    }
+
+    fn color(self) -> [u8; 3] {
+        match self {
+            Self::SliceRegion => palette::SLICE_REGION,
+            Self::Support => palette::SUPPORT,
+            Self::SupportRaft => palette::SUPPORT_RAFT,
+            Self::SupportBaseInterface => palette::SUPPORT_BASE_INTERFACE,
+            Self::SupportBottomInterface => palette::SUPPORT_BOTTOM_INTERFACE,
+            Self::SupportInterface => palette::SUPPORT_INTERFACE,
+        }
+    }
+}
+
+/// One projected, not-yet-unioned band: a class' horizontal interval on one
+/// layer, over that region's own Z slab.
+#[derive(Debug, Clone)]
+struct SilhouetteBand {
+    layer_index: u32,
+    group: String,
+    order_key: String,
+    color: [u8; 3],
+    z_bottom: f32,
+    z_top: f32,
+    start: f32,
+    end: f32,
+}
+
+/// Height class and footprint for one model layer in the overhang silhouette.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SilhouetteLayerHeightClass {
+    /// Region effective layer height in millimeters.
+    pub effective_layer_height: f32,
+    /// Concatenated region polygons for this height class.
+    pub footprint: Vec<ExPolygon>,
+}
+
+/// Exact-bit grouped layer heights used to partition overhang bands.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SilhouetteSliceHeightIndex {
+    /// Layer index to exact-height classes, sorted by height.
+    pub layers: BTreeMap<u32, Vec<SilhouetteLayerHeightClass>>,
+}
+
+/// Build the model-source height classes without consulting a slab schedule.
+#[must_use]
+pub fn build_silhouette_slice_height_index(
+    slice_rows: &[slicer_ir::SliceIR],
+) -> SilhouetteSliceHeightIndex {
+    let mut layers = BTreeMap::new();
+    for row in slice_rows {
+        let mut grouped: BTreeMap<u32, (f32, Vec<ExPolygon>)> = BTreeMap::new();
+        for region in &row.regions {
+            let key = region.effective_layer_height.to_bits();
+            let entry = grouped
+                .entry(key)
+                .or_insert_with(|| (region.effective_layer_height, Vec::new()));
+            entry.1.extend(region.polygons.iter().cloned());
+        }
+        let mut classes: Vec<_> = grouped.into_values().collect();
+        classes.sort_by(|a, b| a.0.total_cmp(&b.0));
+        layers.insert(
+            row.global_layer_index,
+            classes
+                .into_iter()
+                .map(
+                    |(effective_layer_height, footprint)| SilhouetteLayerHeightClass {
+                        effective_layer_height,
+                        footprint,
+                    },
+                )
+                .collect(),
+        );
+    }
+    SilhouetteSliceHeightIndex { layers }
+}
+
+/// The extrusion width in mm implied by one move's flow, in closed form.
+///
+/// Inverts the standard authoring relation `Δe = L × w × h / A_filament`
+/// (extruded filament volume equals the deposited bead's volume) for `w`:
+///
+/// ```text
+/// w = Δe × π·(d/2)² / (L × h)
+/// ```
+///
+/// `pub` so the closed form can be pinned directly by a test rather than
+/// only observed through a rendered raster.
+///
+/// Returns `0.0` for a degenerate input (`L` or `h` non-positive, or a
+/// non-finite result) rather than an infinity or NaN that would poison a
+/// downstream polygon offset.
+#[must_use]
+pub fn silhouette_flow_width_mm(
+    e_delta_mm: f64,
+    length_mm: f64,
+    slab_height_mm: f64,
+    filament_diameter_mm: f64,
+) -> f64 {
+    if length_mm <= 0.0 || slab_height_mm <= 0.0 || filament_diameter_mm <= 0.0 {
+        return 0.0;
+    }
+    let filament_area_mm2 = std::f64::consts::PI * (filament_diameter_mm / 2.0).powi(2);
+    let width = e_delta_mm * filament_area_mm2 / (length_mm * slab_height_mm);
+    if width.is_finite() {
+        width
+    } else {
+        0.0
+    }
+}
+
+/// One positive-extrusion move recovered from the final G-code IR.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GcodeEmitSegment {
+    /// Tool active for the move.
+    pub tool: u32,
+    /// Extrusion role carried by the move.
+    pub role: slicer_ir::ExtrusionRole,
+    /// Schedule slab receiving the move.
+    pub slab_index: u32,
+    /// Start coordinate on the view's horizontal axis, in millimeters.
+    pub h0_mm: f32,
+    /// End coordinate on the view's horizontal axis, in millimeters.
+    pub h1_mm: f32,
+    /// Recovered deposited width, in millimeters.
+    pub width_mm: f32,
+}
+
+/// Recover silhouette segments from the emitter's absolute-E position stream.
+#[must_use]
+pub fn gcode_emit_silhouette_segments(
+    g: &slicer_ir::GCodeIR,
+    view: SilhouetteView,
+    schedule: &SilhouetteSlabSchedule,
+    filament_diameter_mm: f32,
+) -> (Vec<GcodeEmitSegment>, Vec<String>) {
+    let mut segments = Vec::new();
+    let mut warnings_z = Vec::new();
+    let mut position = (0.0_f32, 0.0_f32, 0.0_f32);
+    let mut last_e = 0.0_f32;
+    let mut tool = 0_u32;
+
+    for command in &g.commands {
+        match command {
+            slicer_ir::GCodeCommand::ToolChange { to, .. } => tool = *to,
+            slicer_ir::GCodeCommand::Move {
+                x, y, z, e, role, ..
+            } => {
+                let start = position;
+                if let Some(value) = x {
+                    position.0 = *value;
+                }
+                if let Some(value) = y {
+                    position.1 = *value;
+                }
+                if let Some(value) = z {
+                    position.2 = *value;
+                }
+                let delta_e = e.map(|value| {
+                    let delta = value - last_e;
+                    last_e = value;
+                    delta
+                });
+                let dx = position.0 - start.0;
+                let dy = position.1 - start.1;
+                let dz = position.2 - start.2;
+                let length = (dx * dx + dy * dy + dz * dz).sqrt();
+                let Some(delta_e) = delta_e.filter(|delta| *delta > 0.0) else {
+                    continue;
+                };
+                if length <= 0.0 {
+                    continue;
+                }
+
+                let containing = schedule
+                    .slabs
+                    .iter()
+                    .find(|slab| slab.z_bottom < position.2 && position.2 <= slab.z_top)
+                    .copied();
+                let slab = if let Some(slab) = containing {
+                    slab
+                } else {
+                    let nearest = schedule.slabs.iter().copied().min_by(|a, b| {
+                        let distance = |slab: SilhouetteScheduleSlab| {
+                            if position.2 < slab.z_bottom {
+                                slab.z_bottom - position.2
+                            } else if position.2 > slab.z_top {
+                                position.2 - slab.z_top
+                            } else {
+                                0.0
+                            }
+                        };
+                        distance(*a)
+                            .total_cmp(&distance(*b))
+                            .then(a.index.cmp(&b.index))
+                    });
+                    let Some(nearest) = nearest else { continue };
+                    if !warnings_z.contains(&position.2) {
+                        warnings_z.push(position.2);
+                    }
+                    nearest
+                };
+                let height = slab.z_top - slab.z_bottom;
+                let width = silhouette_flow_width_mm(
+                    f64::from(delta_e),
+                    f64::from(length),
+                    f64::from(height),
+                    f64::from(filament_diameter_mm),
+                ) as f32;
+                segments.push(GcodeEmitSegment {
+                    tool,
+                    role: role.clone(),
+                    slab_index: slab.index,
+                    h0_mm: view.axis((start.0, start.1)),
+                    h1_mm: view.axis((position.0, position.1)),
+                    width_mm: width,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    warnings_z.sort_by(|a, b| a.total_cmp(b));
+    let mut warnings = Vec::new();
+    for z in warnings_z.iter().take(8) {
+        let slab = schedule.slabs.iter().copied().min_by(|a, b| {
+            let distance = |s: SilhouetteScheduleSlab| {
+                if *z < s.z_bottom {
+                    s.z_bottom - *z
+                } else if *z > s.z_top {
+                    *z - s.z_top
+                } else {
+                    0.0
+                }
+            };
+            distance(*a)
+                .total_cmp(&distance(*b))
+                .then(a.index.cmp(&b.index))
+        });
+        if let Some(slab) = slab {
+            warnings.push(format!(
+                "gcode emit: extruding move at z={z:.3} outside every schedule slab; drawn at nearest slab [{:.3}, {:.3}]",
+                slab.z_bottom, slab.z_top
+            ));
+        }
+    }
+    if warnings_z.len() > 8 {
+        warnings.push(format!("gcode emit: +{} more", warnings_z.len() - 8));
+    }
+    (segments, warnings)
+}
+
+/// Union a set of horizontal projection intervals: sorted endpoint sweep,
+/// merging when `next.start <= current.end`.
+///
+/// **Touching intervals merge** (`<=`, not `<`): two islands whose
+/// projections abut share a boundary point, and a silhouette must show one
+/// unbroken run there. Comparison is exact `f32` - no epsilon, so the result
+/// is a pure function of the input bits and the render stays deterministic.
+///
+/// Order-independent by construction: the sweep sorts first.
+///
+/// Public because merging is not observable in decoded pixels - two touching
+/// rectangles rasterize identically to one merged rectangle - so the
+/// touch-merge binding check has to assert on this function's output directly.
+#[must_use]
+pub fn union_silhouette_intervals(intervals: &[(f32, f32)]) -> Vec<(f32, f32)> {
+    let mut sorted: Vec<(f32, f32)> = intervals.to_vec();
+    sorted.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
+    let mut merged: Vec<(f32, f32)> = Vec::with_capacity(sorted.len());
+    for (start, end) in sorted {
+        match merged.last_mut() {
+            Some(last) if start <= last.1 => {
+                if end > last.1 {
+                    last.1 = end;
+                }
+            }
+            _ => merged.push((start, end)),
+        }
+    }
+    merged
+}
+
+/// Render the silhouette recovered from final G-code emission.
+/// Containment is judged against the full `schedule`; `selected_slabs` gates
+/// drawing only.
+pub fn render_gcode_emit_silhouette(
+    g: &slicer_ir::GCodeIR,
+    view: SilhouetteView,
+    resolution_scale: u32,
+    viewport: ViewportBoundsMm,
+    schedule: &SilhouetteSlabSchedule,
+    style: &RenderStyle,
+    filament_diameter_mm: f32,
+    selected_slabs: &[u32],
+) -> Result<(RenderedImage, Vec<String>), RenderError> {
+    render_gcode_emit_silhouette_seamed(
+        g,
+        view,
+        resolution_scale,
+        viewport,
+        schedule,
+        style,
+        filament_diameter_mm,
+        selected_slabs,
+        None,
+    )
+    .map(|(image, _events, warnings)| (image, warnings))
+}
+
+/// Render the silhouette recovered from final G-code emission, optionally
+/// compositing seam glyphs onto the same canvas before PNG encoding.
+pub fn render_gcode_emit_silhouette_seamed(
+    g: &slicer_ir::GCodeIR,
+    view: SilhouetteView,
+    resolution_scale: u32,
+    viewport: ViewportBoundsMm,
+    schedule: &SilhouetteSlabSchedule,
+    style: &RenderStyle,
+    filament_diameter_mm: f32,
+    selected_slabs: &[u32],
+    seams: Option<(&slicer_ir::SeamPlanIR, &BTreeSet<u32>)>,
+) -> Result<(RenderedImage, Vec<OverlayEvent>, Vec<String>), RenderError> {
+    if !(1..=3).contains(&resolution_scale) {
+        return Err(RenderError::UnsupportedResolutionScale {
+            scale: resolution_scale,
+        });
+    }
+
+    let (segments, warnings) =
+        gcode_emit_silhouette_segments(g, view, schedule, filament_diameter_mm);
+    // Keep the class key explicit and sorted rather than relying on map
+    // iteration, matching the staged silhouette renderer's deterministic
+    // paint order.
+    let mut bands: Vec<(u32, String, String, [u8; 3], f32, f32)> = segments
+        .into_iter()
+        .filter(|segment| selected_slabs.binary_search(&segment.slab_index).is_ok())
+        .map(|segment| {
+            let (group, order_key, color) = match style.color_by {
+                ColorBy::Tool => (
+                    format!("tool:{}", segment.tool),
+                    format!("tool:{:010}", segment.tool),
+                    style.tool_colors.color(segment.tool),
+                ),
+                ColorBy::Role => {
+                    let order_key = silhouette_class_order_key(&segment.role);
+                    (
+                        format!("role:{:?}", segment.role),
+                        order_key,
+                        role_color(&segment.role),
+                    )
+                }
+            };
+            let start = segment.h0_mm.min(segment.h1_mm) - segment.width_mm / 2.0;
+            let end = segment.h0_mm.max(segment.h1_mm) + segment.width_mm / 2.0;
+            (segment.slab_index, group, order_key, color, start, end)
+        })
+        .filter(|(_, _, _, _, start, end)| start.is_finite() && end.is_finite() && start <= end)
+        .collect();
+    bands.sort_by(|a, b| {
+        a.0.cmp(&b.0)
+            .then(a.2.cmp(&b.2))
+            .then(a.4.total_cmp(&b.4))
+            .then(a.5.total_cmp(&b.5))
+    });
+
+    let mut shapes = Vec::new();
+    let mut i = 0;
+    while i < bands.len() {
+        let head = bands[i].clone();
+        let mut j = i;
+        let mut intervals = Vec::new();
+        while j < bands.len() && bands[j].0 == head.0 && bands[j].1 == head.1 {
+            intervals.push((bands[j].4, bands[j].5));
+            j += 1;
+        }
+        let Some(slab) = schedule.slabs.iter().find(|slab| slab.index == head.0) else {
+            i = j;
+            continue;
+        };
+        for (start, end) in union_silhouette_intervals(&intervals) {
+            shapes.push(Shape::Fill {
+                contour: vec![
+                    (start, slab.z_bottom),
+                    (end, slab.z_bottom),
+                    (end, slab.z_top),
+                    (start, slab.z_top),
+                ],
+                holes: Vec::new(),
+                color: head.3,
+            });
+        }
+        i = j;
+    }
+
+    if shapes.is_empty() {
+        return Err(RenderError::MissingGeometryField {
+            tap: "GCodeEmit".to_string(),
+            layer_index: 0,
+            field: "commands",
+        });
+    }
+    let width = BASE_DIMENSION_PX * resolution_scale;
+    let height = BASE_DIMENSION_PX * resolution_scale;
+    let mut canvas = Canvas::new(width, height, viewport);
+    draw_shapes(&mut canvas, &shapes);
+    let events = seams.map_or_else(Vec::new, |(plan, layers)| {
+        silhouette_seam_events(plan, view, layers)
+    });
+    if seams.is_some() {
+        let glyph_half = style::GLYPH_HALF_PX * i64::from(resolution_scale);
+        draw_silhouette_seam_glyphs(&mut canvas, view, &events, glyph_half);
+    }
+    Ok((
+        RenderedImage {
+            png_bytes: encode_png(width, height, &canvas.buf),
+            width,
+            height,
+        },
+        events,
+        warnings,
+    ))
+}
+
+/// The horizontal interval a closed contour projects onto the view axis.
+/// `None` for a degenerate (<3-point) contour - contributes nothing.
+fn contour_interval(contour: &Polygon, view: SilhouetteView) -> Option<(f32, f32)> {
+    if contour.points.len() < 3 {
+        return None;
+    }
+    let mut min = f32::MAX;
+    let mut max = f32::MIN;
+    for p in &contour.points {
+        let v = view.axis(p.to_mm());
+        min = min.min(v);
+        max = max.max(v);
+    }
+    if min.is_finite() && max.is_finite() {
+        Some((min, max))
+    } else {
+        None
+    }
+}
+
+/// The W1 caveat: negative-index (raft prefix) `SupportPlanIR` entries are
+/// never drawn. Names the count and the dropped `min..max` index range.
+fn silhouette_raft_warning(count: usize, min_index: i32, max_index: i32) -> String {
+    format!(
+        "support plan: {count} raft entry/entries with negative global_layer_index \
+         ({min_index}..{max_index}) skipped - raft prefix layers have no slab in the \
+         caller's layer schedule and are not drawn in the silhouette"
+    )
+}
+
+/// The W2 caveat: coarse `SupportGeometryIR.entries` are never drawn. Wording
+/// is pinned by the packet design; the basis is producer-verified
+/// (`execute_support_geometry` / `build_emit_schedule` key
+/// `SupportGeometryKey.global_support_layer_index` with a MODEL-layer index
+/// and emit only where accumulated height crosses `support_layer_height_mm`,
+/// plus a `u32::MAX` sentinel bucket).
+fn silhouette_coarse_entries_warning(count: usize) -> String {
+    format!(
+        "support geometry: {count} coarse SupportGeometryIR entries skipped - emit-schedule \
+         entries span multiple model layers (u32::MAX sentinel = intermediate layers) and \
+         cannot be honestly drawn on single-layer slabs; inspect them via the top-down view"
+    )
+}
+
+fn silhouette_region_mapping_unjoined_warning(count: usize) -> String {
+    format!("region mapping: {count} entries had no joined SliceIR region and were skipped")
+}
+
+/// Extract every projected band from one capture, in source order.
+fn silhouette_bands(
+    capture: &StageCapture,
+    view: SilhouetteView,
+    schedule: &SilhouetteSlabSchedule,
+    style: &RenderStyle,
+    out: &mut Vec<SilhouetteBand>,
+    unjoined_region_mapping_entries: &mut usize,
+) -> Result<(), RenderError> {
+    if matches!(style.color_by, ColorBy::Tool)
+        && !matches!(capture.ir, CapturedIr::LayerFinalization(_))
+    {
+        return Err(RenderError::ToolColorUnavailable {
+            tap: capture.stage_id.clone(),
+            layer_index: capture.layer_index,
+        });
+    }
+    if let CapturedIr::SupportGeometry { plan, .. } = &capture.ir {
+        // Slab source is the CALLER's schedule, never a per-region height:
+        // support columns span air where no `ActiveRegion` is active, and
+        // per-region heights disagree across objects on a shared layer, so
+        // the schedule z-diff is the only height a plan entry can attest.
+        let Some(slab) = schedule.slab_for(capture.layer_index) else {
+            return Ok(());
+        };
+        // Whole-print, unfiltered-by-layer payload: restrict to this
+        // capture's layer. Negative indices are raft prefix layers - skipped
+        // here and reported by W1. Sorted by (object_id, region_id) exactly
+        // like `support_geometry_shapes`, for determinism.
+        let mut entries: Vec<&slicer_ir::SupportPlanEntry> = plan
+            .entries
+            .iter()
+            .filter(|e| {
+                e.global_layer_index >= 0 && e.global_layer_index as u32 == capture.layer_index
+            })
+            .collect();
+        entries.sort_by(|a, b| (&a.object_id, a.region_id).cmp(&(&b.object_id, b.region_id)));
+        for entry in entries {
+            for role in &entry.roles {
+                let class = SilhouetteClass::from_support_role(role.role);
+                for poly in &role.regions {
+                    // Contour only - a hole cannot disconnect a connected
+                    // contour's projection.
+                    if let Some((start, end)) = contour_interval(&poly.contour, view) {
+                        out.push(SilhouetteBand {
+                            layer_index: capture.layer_index,
+                            group: format!("legacy:{}", class.paint_rank()),
+                            order_key: format!("legacy:{:03}", class.paint_rank()),
+                            color: class.color(),
+                            z_bottom: slab.z_bottom,
+                            z_top: slab.z_top,
+                            start,
+                            end,
+                        });
+                    }
+                }
+            }
+        }
+        return Ok(());
+    }
+    if let CapturedIr::LayerFinalization(layers) = &capture.ir {
+        let mut ordered: Vec<&LayerCollectionIR> = layers.iter().collect();
+        ordered.sort_by_key(|layer| layer.global_layer_index);
+        for layer in ordered {
+            let Some(slab) = schedule.slab_for(layer.global_layer_index) else {
+                continue;
+            };
+            for entity in &layer.ordered_entities {
+                if entity.path.points.len() < 2 {
+                    continue;
+                }
+                let (group, order_key, color) = match style.color_by {
+                    ColorBy::Tool => {
+                        let tool = entity.tool_index;
+                        (
+                            format!("tool:{tool}"),
+                            format!("tool:{tool:010}"),
+                            style.tool_colors.color(tool),
+                        )
+                    }
+                    ColorBy::Role => {
+                        let key = silhouette_class_order_key(&entity.role);
+                        (
+                            format!("role:{:?}", entity.role),
+                            key,
+                            role_color(&entity.role),
+                        )
+                    }
+                };
+                for pair in entity.path.points.windows(2) {
+                    let a = pair[0];
+                    let b = pair[1];
+                    let h0 = view.axis((a.x, a.y));
+                    let h1 = view.axis((b.x, b.y));
+                    let start = (h0 - a.width / 2.0).min(h1 - b.width / 2.0);
+                    let end = (h0 + a.width / 2.0).max(h1 + b.width / 2.0);
+                    if start.is_finite() && end.is_finite() && start <= end {
+                        out.push(SilhouetteBand {
+                            layer_index: layer.global_layer_index,
+                            group: group.clone(),
+                            order_key: order_key.clone(),
+                            color,
+                            z_bottom: slab.z_bottom,
+                            z_top: slab.z_top,
+                            start,
+                            end,
+                        });
+                    }
+                }
+            }
+        }
+        return Ok(());
+    }
+    if let CapturedIr::Slice(s) = &capture.ir {
+        for region in &s.regions {
+            // Slab per region (D1): `[z - effective_layer_height, z]`, exact
+            // for catch-up layers and mixed-height objects. A layer's
+            // rectangles may therefore have differing bottoms.
+            let h = region.effective_layer_height;
+            let (z_bottom, z_top) = if h.is_finite() && h > 0.0 {
+                (capture.layer_z - h, capture.layer_z)
+            } else if let Some(slab) = schedule.slab_for(capture.layer_index) {
+                (slab.z_bottom, slab.z_top)
+            } else {
+                continue;
+            };
+            for poly in &region.polygons {
+                // Contour only: `infill_areas` lies inside the outer contour,
+                // so its interval is a subset - zero extra silhouette
+                // information, plus a false occlusion pairing.
+                if let Some((start, end)) = contour_interval(&poly.contour, view) {
+                    out.push(SilhouetteBand {
+                        layer_index: capture.layer_index,
+                        group: "legacy:0".to_string(),
+                        order_key: "legacy:000".to_string(),
+                        color: SilhouetteClass::SliceRegion.color(),
+                        z_bottom,
+                        z_top,
+                        start,
+                        end,
+                    });
+                }
+            }
+        }
+    }
+    if let CapturedIr::RegionMapping {
+        region_map,
+        slice_ir,
+    } = &capture.ir
+    {
+        let mut entries: Vec<(&slicer_ir::RegionKey, &slicer_ir::RegionPlan)> = region_map
+            .entries
+            .iter()
+            .filter(|(key, _)| key.global_layer_index == capture.layer_index)
+            .collect();
+        entries.sort_by(|a, b| {
+            (&a.0.object_id, a.0.region_id, &a.0.variant_chain).cmp(&(
+                &b.0.object_id,
+                b.0.region_id,
+                &b.0.variant_chain,
+            ))
+        });
+        for (key, _plan) in entries {
+            let Some(slice) = slice_ir
+                .iter()
+                .find(|slice| slice.global_layer_index == key.global_layer_index)
+            else {
+                *unjoined_region_mapping_entries += 1;
+                continue;
+            };
+            let Some(region) = slice.regions.iter().find(|region| {
+                region.object_id == key.object_id
+                    && region.region_id == key.region_id
+                    && region.variant_chain == key.variant_chain
+            }) else {
+                *unjoined_region_mapping_entries += 1;
+                continue;
+            };
+            let height = region.effective_layer_height;
+            let (z_bottom, z_top) = if height.is_finite() && height > 0.0 {
+                (capture.layer_z - height, capture.layer_z)
+            } else {
+                return Err(RenderError::MissingGeometryField {
+                    tap: capture.stage_id.clone(),
+                    layer_index: capture.layer_index,
+                    field: "slice_ir.regions.effective_layer_height",
+                });
+            };
+            let tint = config_tint(region_map.config_for(key));
+            let group = format!(
+                "region-mapping:{:03}:{:03}:{:03}",
+                tint[0], tint[1], tint[2]
+            );
+            for poly in &region.polygons {
+                if let Some((start, end)) = contour_interval(&poly.contour, view) {
+                    out.push(SilhouetteBand {
+                        layer_index: capture.layer_index,
+                        group: group.clone(),
+                        order_key: group.clone(),
+                        color: tint,
+                        z_bottom,
+                        z_top,
+                        start,
+                        end,
+                    });
+                }
+            }
+        }
+        return Ok(());
+    }
+    Ok(())
+}
+
+fn silhouette_role_name(role: &ExtrusionRole) -> String {
+    match role {
+        ExtrusionRole::Custom(name) => name.clone(),
+        _ => format!("{role:?}"),
+    }
+}
+
+fn silhouette_class_order_key(role: &ExtrusionRole) -> String {
+    let name = silhouette_role_name(role);
+    let support_rank = match role {
+        ExtrusionRole::SupportMaterial => Some(0),
+        ExtrusionRole::SupportBaseInterface => Some(1),
+        ExtrusionRole::SupportInterface => Some(2),
+        _ => None,
+    };
+    support_rank.map_or_else(
+        || format!("role:0:{name}"),
+        |rank| format!("role:1:{rank}:{name}"),
+    )
+}
+
+/// Compute the shared silhouette viewport for one bundle.
+///
+/// Horizontal extent = the view's axis over every capture's geometry, unioned
+/// with `model_extent`'s horizontal. Vertical extent = the schedule's Z range,
+/// unioned with `model_extent`'s vertical. `model_extent` carries **plane**
+/// semantics: its `min_x`/`max_x` are the X-or-Y extent and its
+/// `min_y`/`max_y` are the Z extent (`pnp-cli` builds it from
+/// `MeshIR::build_volume`). The result already carries the fixed margin.
+///
+/// Never depends on which layers were selected beyond the schedule the caller
+/// built, so a band bundle and an all-layers bundle frame identically (D3).
+#[must_use]
+pub fn compute_silhouette_viewport_bounds(
+    captures: &[StageCapture],
+    view: SilhouetteView,
+    schedule: &SilhouetteSlabSchedule,
+    model_extent: Option<ViewportBoundsMm>,
+) -> ViewportBoundsMm {
+    let mut min_h = f32::MAX;
+    let mut max_h = f32::MIN;
+    let mut min_z = f32::MAX;
+    let mut max_z = f32::MIN;
+    let mut touched_h = false;
+    let mut touched_z = false;
+
+    for capture in captures {
+        for xy in geometry_points_mm(&capture.ir) {
+            let h = view.axis(xy);
+            touched_h = true;
+            min_h = min_h.min(h);
+            max_h = max_h.max(h);
+        }
+    }
+    for slab in &schedule.slabs {
+        touched_z = true;
+        min_z = min_z.min(slab.z_bottom.min(slab.z_top));
+        max_z = max_z.max(slab.z_bottom.max(slab.z_top));
+    }
+    if let Some(extent) = model_extent {
+        touched_h = true;
+        min_h = min_h.min(extent.min_x);
+        max_h = max_h.max(extent.max_x);
+        touched_z = true;
+        min_z = min_z.min(extent.min_y);
+        max_z = max_z.max(extent.max_y);
+    }
+    if !touched_h {
+        min_h = 0.0;
+        max_h = 1.0;
+    }
+    if !touched_z {
+        min_z = 0.0;
+        max_z = 1.0;
+    }
+    ViewportBoundsMm {
+        min_x: min_h,
+        min_y: min_z,
+        max_x: max_h,
+        max_y: max_z,
+    }
+    .with_margin()
+}
+
+/// The occlusion caveat, emitted once per group when a later-painted class
+/// actually overlaps an earlier one on some layer.
+fn silhouette_occlusion_warning(layer_count: usize) -> String {
+    format!(
+        "silhouette occlusion: on {layer_count} layer(s) a later-painted class overlaps an \
+         earlier one along the view axis; geometry hidden behind the visible band is not drawn"
+    )
+}
+
+/// Render one composite silhouette image for a whole capture group.
+///
+/// `captures` arrive already sorted ascending by layer. Per capture, each
+/// region's contour is projected onto the view axis; intervals are unioned
+/// per (layer, class, slab); each union interval becomes an axis-aligned
+/// rectangle spanning that slab's Z range, drawn through the existing
+/// rasterizer and the shared [`Projector`].
+///
+/// Rectangle emission order is fully specified - ascending layer index, then
+/// [`SILHOUETTE_PAINT_ORDER`], then ascending slab, then ascending interval
+/// start - so the same `(captures, view, scale, viewport, schedule)` always
+/// produces byte-identical PNG bytes and an element-for-element equal warning
+/// list.
+///
+/// Fails closed with [`RenderError::MissingGeometryField`] when the **whole
+/// group** yields zero rectangles - never a blank PNG.
+pub fn render_silhouette_composite(
+    captures: &[StageCapture],
+    view: SilhouetteView,
+    resolution_scale: u32,
+    viewport: ViewportBoundsMm,
+    schedule: &SilhouetteSlabSchedule,
+) -> Result<(RenderedImage, Vec<String>), RenderError> {
+    render_silhouette_composite_styled(
+        captures,
+        view,
+        resolution_scale,
+        viewport,
+        schedule,
+        &RenderStyle::default(),
+    )
+}
+
+fn render_silhouette_band_set(
+    mut bands: Vec<SilhouetteBand>,
+    resolution_scale: u32,
+    viewport: ViewportBoundsMm,
+    tap: &str,
+    layer_index: u32,
+) -> Result<(RenderedImage, Vec<String>), RenderError> {
+    bands.sort_by(|a, b| {
+        a.layer_index
+            .cmp(&b.layer_index)
+            .then(a.order_key.cmp(&b.order_key))
+            .then(a.z_bottom.total_cmp(&b.z_bottom))
+            .then(a.start.total_cmp(&b.start))
+    });
+    let mut shapes = Vec::new();
+    let mut per_layer_class: Vec<(u32, String, Vec<(f32, f32)>)> = Vec::new();
+    let mut i = 0;
+    while i < bands.len() {
+        let head = bands[i].clone();
+        let mut j = i;
+        let mut intervals = Vec::new();
+        while j < bands.len()
+            && bands[j].layer_index == head.layer_index
+            && bands[j].group == head.group
+            && bands[j].z_bottom.to_bits() == head.z_bottom.to_bits()
+            && bands[j].z_top.to_bits() == head.z_top.to_bits()
+        {
+            intervals.push((bands[j].start, bands[j].end));
+            j += 1;
+        }
+        for (start, end) in union_silhouette_intervals(&intervals) {
+            shapes.push(Shape::Fill {
+                contour: vec![
+                    (start, head.z_bottom),
+                    (end, head.z_bottom),
+                    (end, head.z_top),
+                    (start, head.z_top),
+                ],
+                holes: Vec::new(),
+                color: head.color,
+            });
+            if let Some((_, _, acc)) = per_layer_class
+                .iter_mut()
+                .find(|(l, group, _)| *l == head.layer_index && *group == head.group)
+            {
+                acc.push((start, end));
+            } else {
+                per_layer_class.push((head.layer_index, head.group.clone(), vec![(start, end)]));
+            }
+        }
+        i = j;
+    }
+    if shapes.is_empty() {
+        return Err(RenderError::MissingGeometryField {
+            tap: tap.to_string(),
+            layer_index,
+            field: "overhang_quartile_polygons",
+        });
+    }
+    let mut occluded_layers = Vec::new();
+    for (layer, group, intervals) in &per_layer_class {
+        let overlaps = per_layer_class.iter().any(|(l2, group2, other)| {
+            l2 == layer
+                && group2 > group
+                && other
+                    .iter()
+                    .any(|(s2, e2)| intervals.iter().any(|(s, e)| s2 < e && s < e2))
+        });
+        if overlaps && !occluded_layers.contains(layer) {
+            occluded_layers.push(*layer);
+        }
+    }
+    let warnings = if occluded_layers.is_empty() {
+        Vec::new()
+    } else {
+        vec![silhouette_occlusion_warning(occluded_layers.len())]
+    };
+    let width = BASE_DIMENSION_PX * resolution_scale;
+    let height = BASE_DIMENSION_PX * resolution_scale;
+    let mut canvas = Canvas::new(width, height, viewport);
+    draw_shapes(&mut canvas, &shapes);
+    Ok((
+        RenderedImage {
+            png_bytes: encode_png(width, height, &canvas.buf),
+            width,
+            height,
+        },
+        warnings,
+    ))
+}
+
+/// Render model-source overhang quartile bands over their exact layer-height slabs.
+pub fn render_silhouette_overhang_composite(
+    captures: &[StageCapture],
+    view: SilhouetteView,
+    resolution_scale: u32,
+    viewport: ViewportBoundsMm,
+    height_index: &SilhouetteSliceHeightIndex,
+) -> Result<(RenderedImage, Vec<String>), RenderError> {
+    if !(1..=3).contains(&resolution_scale) {
+        return Err(RenderError::UnsupportedResolutionScale {
+            scale: resolution_scale,
+        });
+    }
+    let mut bands = Vec::new();
+    let mut first = None;
+    for capture in captures {
+        let CapturedIr::SurfaceClassification(sc) = &capture.ir else {
+            continue;
+        };
+        let mut objects = sc.overhang_quartile_polygons.iter().collect::<Vec<_>>();
+        objects.sort_by_key(|(object_id, _)| *object_id);
+        let layer_bands = objects
+            .into_iter()
+            .filter_map(|(_, by_layer)| by_layer.get(&capture.layer_index))
+            .flatten()
+            .collect::<Vec<_>>();
+        if layer_bands.is_empty()
+            && !sc
+                .overhang_quartile_polygons
+                .values()
+                .any(|by_layer| by_layer.contains_key(&capture.layer_index))
+        {
+            continue;
+        }
+        if first.is_none() {
+            first = Some((capture.stage_id.clone(), capture.layer_index));
+        }
+        let mut ordered = layer_bands;
+        ordered.sort_by_key(|band| band.quartile);
+        let Some(classes) = height_index.layers.get(&capture.layer_index) else {
+            return Err(RenderError::MissingGeometryField {
+                tap: capture.stage_id.clone(),
+                layer_index: capture.layer_index,
+                field: "silhouette_slice_height_index.layers",
+            });
+        };
+        for band in ordered {
+            let color = match band.quartile {
+                1 => palette::OVERHANG_QUARTILE_1,
+                2 => palette::OVERHANG_QUARTILE_2,
+                3 => palette::OVERHANG_QUARTILE_3,
+                4 => palette::OVERHANG_QUARTILE_4,
+                quartile => {
+                    return Err(RenderError::InvalidQuartile {
+                        tap: capture.stage_id.clone(),
+                        layer_index: capture.layer_index,
+                        quartile,
+                    });
+                }
+            };
+            for poly in &band.polygons {
+                if classes.len() == 1 {
+                    if let Some((start, end)) = contour_interval(&poly.contour, view) {
+                        bands.push(SilhouetteBand {
+                            layer_index: capture.layer_index,
+                            group: format!("overhang:{:03}", band.quartile),
+                            order_key: format!("overhang:{:03}", band.quartile),
+                            color,
+                            z_bottom: capture.layer_z - classes[0].effective_layer_height,
+                            z_top: capture.layer_z,
+                            start,
+                            end,
+                        });
+                    }
+                } else {
+                    for (class_index, class) in classes.iter().enumerate() {
+                        let pieces = slicer_core::polygon_ops::intersection(
+                            std::slice::from_ref(poly),
+                            &class.footprint,
+                        );
+                        for piece in pieces {
+                            if let Some((start, end)) = contour_interval(&piece.contour, view) {
+                                bands.push(SilhouetteBand {
+                                    layer_index: capture.layer_index,
+                                    group: format!(
+                                        "overhang:{:03}:{class_index:03}",
+                                        band.quartile
+                                    ),
+                                    order_key: format!("overhang:{:03}", band.quartile),
+                                    color,
+                                    z_bottom: capture.layer_z - class.effective_layer_height,
+                                    z_top: capture.layer_z,
+                                    start,
+                                    end,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let (tap, layer_index) = first
+        .or_else(|| {
+            captures
+                .first()
+                .map(|capture| (capture.stage_id.clone(), capture.layer_index))
+        })
+        .unwrap_or_else(|| ("<empty capture group>".to_string(), 0));
+    render_silhouette_band_set(bands, resolution_scale, viewport, &tap, layer_index)
+}
+
+/// Render a silhouette composite using the requested role or tool coloring.
+///
+/// Thin wrapper over [`render_silhouette_composite_seamed`] with
+/// `seams: None` — preserves this function's original 6-arg signature and
+/// byte-exact output (packet 251's delegation-equivalence contract).
+pub fn render_silhouette_composite_styled(
+    captures: &[StageCapture],
+    view: SilhouetteView,
+    resolution_scale: u32,
+    viewport: ViewportBoundsMm,
+    schedule: &SilhouetteSlabSchedule,
+    style: &RenderStyle,
+) -> Result<(RenderedImage, Vec<String>), RenderError> {
+    render_silhouette_composite_seamed(
+        captures,
+        view,
+        resolution_scale,
+        viewport,
+        schedule,
+        style,
+        None,
+    )
+    .map(|(image, _events, warnings)| (image, warnings))
+}
+
+/// The silhouette seam events for one render: every `SeamPlanIR` entry whose
+/// `region_key.global_layer_index` is in `rendered_layers`, in `entries`
+/// source order (no map iteration, no re-sorting).
+///
+/// Each event carries BOTH world-space millimeter coordinates of the entry's
+/// `chosen_candidate.point` plus its Z, so the event is self-describing
+/// independent of view: `x: p.x, y: p.y, z: Some(p.z)`. The per-view
+/// projection (`x` for [`SilhouetteView::Front`], `y` for
+/// [`SilhouetteView::Side`], against `z`) is applied by the glyph pass, not
+/// here — hence `view` is part of the signature for call-site clarity but is
+/// not consulted while building the events.
+#[must_use]
+pub fn silhouette_seam_events(
+    seam_plan: &slicer_ir::SeamPlanIR,
+    _view: SilhouetteView,
+    rendered_layers: &BTreeSet<u32>,
+) -> Vec<OverlayEvent> {
+    seam_plan
+        .entries
+        .iter()
+        .filter(|entry| rendered_layers.contains(&entry.region_key.global_layer_index))
+        .map(|entry| {
+            let p = entry.chosen_candidate.point;
+            OverlayEvent::Seam {
+                x: p.x,
+                y: p.y,
+                z: Some(p.z),
+            }
+        })
+        .collect()
+}
+
+/// Draw the seam glyphs of a silhouette render: one filled circle per event,
+/// in event order, after every rectangle. The glyph's in-image anchor is the
+/// event's per-view horizontal coordinate against its Z, projected through
+/// the canvas' shared [`Projector`]; its radius is
+/// [`style::GLYPH_HALF_PX`] scaled by the raster's `resolution_scale`.
+fn draw_silhouette_seam_glyphs(
+    canvas: &mut Canvas,
+    view: SilhouetteView,
+    events: &[OverlayEvent],
+    glyph_half: i64,
+) {
+    for event in events {
+        if let OverlayEvent::Seam { x, y, z: Some(z) } = event {
+            canvas.glyph(
+                GlyphKind::Circle,
+                (view.axis((*x, *y)), *z),
+                glyph_half,
+                style::overlay_palette::SEAM,
+            );
+        }
+    }
+}
+
+/// Render the isolated seam overlay for one silhouette capture group: the
+/// group's role-mode rectangles built by the same packet-247 composite
+/// internals, recolored [`style::overlay_palette::FAINT_BASE`] (the
+/// [`recolor_shapes`] precedent), then the seam glyphs over them.
+///
+/// Returns the image, the exact [`OverlayEvent`]s the glyphs were drawn from
+/// ([`silhouette_seam_events`], in `SeamPlanIR.entries` source order), and
+/// the group's warnings. Fails closed exactly like the composite path when
+/// the whole group yields zero rectangles.
+pub fn render_silhouette_seam_overlay(
+    captures: &[StageCapture],
+    view: SilhouetteView,
+    resolution_scale: u32,
+    viewport: ViewportBoundsMm,
+    schedule: &SilhouetteSlabSchedule,
+    seam_plan: &slicer_ir::SeamPlanIR,
+    rendered_layers: &BTreeSet<u32>,
+) -> Result<(RenderedImage, Vec<OverlayEvent>, Vec<String>), RenderError> {
+    let (mut shapes, warnings) = silhouette_composite_shapes(
+        captures,
+        view,
+        resolution_scale,
+        schedule,
+        &RenderStyle::default(),
+    )?;
+    recolor_shapes(&mut shapes, style::overlay_palette::FAINT_BASE);
+    let events = silhouette_seam_events(seam_plan, view, rendered_layers);
+
+    let width = BASE_DIMENSION_PX * resolution_scale;
+    let height = BASE_DIMENSION_PX * resolution_scale;
+    let mut canvas = Canvas::new(width, height, viewport);
+    draw_shapes(&mut canvas, &shapes);
+    let glyph_half = style::GLYPH_HALF_PX * i64::from(resolution_scale);
+    draw_silhouette_seam_glyphs(&mut canvas, view, &events, glyph_half);
+    let png_bytes = encode_png(width, height, &canvas.buf);
+    Ok((
+        RenderedImage {
+            png_bytes,
+            width,
+            height,
+        },
+        events,
+        warnings,
+    ))
+}
+
+/// Render a silhouette composite using the requested role or tool coloring,
+/// optionally compositing seam glyphs onto the same canvas BEFORE PNG
+/// encoding.
+///
+/// With `seams: Some((seam_plan, rendered_layers))`, the filtered,
+/// source-ordered [`silhouette_seam_events`] are drawn as seam glyphs after
+/// all rectangles and returned alongside the image and warnings. With
+/// `seams: None` the output is byte-equivalent to
+/// [`render_silhouette_composite_styled`] (which delegates here) and the
+/// event list is empty.
+pub fn render_silhouette_composite_seamed(
+    captures: &[StageCapture],
+    view: SilhouetteView,
+    resolution_scale: u32,
+    viewport: ViewportBoundsMm,
+    schedule: &SilhouetteSlabSchedule,
+    style: &RenderStyle,
+    seams: Option<(&slicer_ir::SeamPlanIR, &BTreeSet<u32>)>,
+) -> Result<(RenderedImage, Vec<OverlayEvent>, Vec<String>), RenderError> {
+    let (shapes, warnings) =
+        silhouette_composite_shapes(captures, view, resolution_scale, schedule, style)?;
+
+    let width = BASE_DIMENSION_PX * resolution_scale;
+    let height = BASE_DIMENSION_PX * resolution_scale;
+    let mut canvas = Canvas::new(width, height, viewport);
+    draw_shapes(&mut canvas, &shapes);
+    let events = seams.map_or_else(Vec::new, |(plan, layers)| {
+        silhouette_seam_events(plan, view, layers)
+    });
+    if seams.is_some() {
+        let glyph_half = crate::visual_debug_style::GLYPH_HALF_PX * i64::from(resolution_scale);
+        draw_silhouette_seam_glyphs(&mut canvas, view, &events, glyph_half);
+    }
+    let png_bytes = encode_png(width, height, &canvas.buf);
+    Ok((
+        RenderedImage {
+            png_bytes,
+            width,
+            height,
+        },
+        events,
+        warnings,
+    ))
+}
+
+/// Build the composite's role/tool-colored rectangle shapes and the group's
+/// warnings — the whole packet-247 composite pipeline up to (but excluding)
+/// rasterization, shared by the plain composite, the seamed composite, and
+/// the isolated seam overlay.
+fn silhouette_composite_shapes(
+    captures: &[StageCapture],
+    view: SilhouetteView,
+    resolution_scale: u32,
+    schedule: &SilhouetteSlabSchedule,
+    style: &RenderStyle,
+) -> Result<(Vec<Shape>, Vec<String>), RenderError> {
+    if !(1..=3).contains(&resolution_scale) {
+        return Err(RenderError::UnsupportedResolutionScale {
+            scale: resolution_scale,
+        });
+    }
+
+    let mut bands: Vec<SilhouetteBand> = Vec::new();
+    let mut unjoined_region_mapping_entries = 0;
+    for capture in captures {
+        silhouette_bands(
+            capture,
+            view,
+            schedule,
+            style,
+            &mut bands,
+            &mut unjoined_region_mapping_entries,
+        )?;
+    }
+
+    // Group key: (layer, class paint rank, slab). Sorting by it first makes
+    // both the union grouping and the emission order fall out of one sort.
+    bands.sort_by(|a, b| {
+        a.layer_index
+            .cmp(&b.layer_index)
+            .then(a.order_key.cmp(&b.order_key))
+            .then(a.z_bottom.total_cmp(&b.z_bottom))
+            .then(a.z_top.total_cmp(&b.z_top))
+            .then(a.start.total_cmp(&b.start))
+    });
+
+    let mut shapes: Vec<Shape> = Vec::new();
+    // Per-layer, per-class merged intervals, for the occlusion check.
+    let mut per_layer_class: Vec<(u32, String, String, Vec<(f32, f32)>)> = Vec::new();
+
+    let mut i = 0;
+    while i < bands.len() {
+        let head = bands[i].clone();
+        let mut j = i;
+        let mut intervals: Vec<(f32, f32)> = Vec::new();
+        while j < bands.len()
+            && bands[j].layer_index == head.layer_index
+            && bands[j].group == head.group
+            && bands[j].z_bottom.to_bits() == head.z_bottom.to_bits()
+            && bands[j].z_top.to_bits() == head.z_top.to_bits()
+        {
+            intervals.push((bands[j].start, bands[j].end));
+            j += 1;
+        }
+        for (start, end) in union_silhouette_intervals(&intervals) {
+            shapes.push(Shape::Fill {
+                contour: vec![
+                    (start, head.z_bottom),
+                    (end, head.z_bottom),
+                    (end, head.z_top),
+                    (start, head.z_top),
+                ],
+                holes: Vec::new(),
+                color: head.color,
+            });
+            match per_layer_class
+                .iter_mut()
+                .find(|(l, group, _, _)| *l == head.layer_index && *group == head.group)
+            {
+                Some((_, _, _, acc)) => acc.push((start, end)),
+                None => per_layer_class.push((
+                    head.layer_index,
+                    head.group.clone(),
+                    head.order_key.clone(),
+                    vec![(start, end)],
+                )),
+            }
+        }
+        i = j;
+    }
+
+    if shapes.is_empty() {
+        let (tap, layer_index) = captures.first().map_or_else(
+            || ("<empty capture group>".to_string(), 0),
+            |c| (c.stage_id.clone(), c.layer_index),
+        );
+        // Name the field that was actually empty for THIS group. A group of
+        // only `SupportGeometry` captures has no `regions[].polygons`; the
+        // empty thing is the plan's per-role regions. Mixed or
+        // unrecognised-capture groups fall back to the `Slice` field string.
+        let support_only = captures
+            .iter()
+            .any(|c| matches!(c.ir, CapturedIr::SupportGeometry { .. }))
+            && !captures
+                .iter()
+                .any(|c| matches!(c.ir, CapturedIr::Slice(_)));
+        let field = if support_only {
+            "plan.entries[].roles[].regions"
+        } else {
+            "regions[].polygons"
+        };
+        return Err(RenderError::MissingGeometryField {
+            tap,
+            layer_index,
+            field,
+        });
+    }
+
+    // Occlusion: a later-painted class' union interval ACTUALLY overlapping an
+    // earlier class' on the same layer. One deduped warning for the group.
+    let mut occluded_layers: Vec<u32> = Vec::new();
+    for (layer, _group, order_key, intervals) in &per_layer_class {
+        let overlaps = per_layer_class.iter().any(|(l2, _group2, c2, other)| {
+            l2 == layer
+                && c2 > order_key
+                && other
+                    .iter()
+                    .any(|(s2, e2)| intervals.iter().any(|(s, e)| s2 < e && s < e2))
+        });
+        if overlaps && !occluded_layers.contains(layer) {
+            occluded_layers.push(*layer);
+        }
+    }
+    // Fixed, deduped warning order: W1 (raft), W2 (coarse entries), then
+    // occlusion. The `SupportGeometry` payload is CLONED per layer capture,
+    // so W1/W2 counts are read from ONE capture, never summed across the
+    // group.
+    let mut warnings: Vec<String> = Vec::new();
+    let support_payload = captures.iter().find_map(|c| match &c.ir {
+        CapturedIr::SupportGeometry { geometry, plan } => Some((geometry, plan)),
+        _ => None,
+    });
+    if let Some((geometry, plan)) = support_payload {
+        let raft: Vec<i32> = plan
+            .entries
+            .iter()
+            .map(|e| e.global_layer_index)
+            .filter(|i| *i < 0)
+            .collect();
+        if !raft.is_empty() {
+            let min = raft.iter().copied().min().unwrap_or(0);
+            let max = raft.iter().copied().max().unwrap_or(0);
+            warnings.push(silhouette_raft_warning(raft.len(), min, max));
+        }
+        if !geometry.entries.is_empty() {
+            warnings.push(silhouette_coarse_entries_warning(geometry.entries.len()));
+        }
+    }
+    if !occluded_layers.is_empty() {
+        warnings.push(silhouette_occlusion_warning(occluded_layers.len()));
+    }
+    if unjoined_region_mapping_entries > 0 {
+        warnings.push(silhouette_region_mapping_unjoined_warning(
+            unjoined_region_mapping_entries,
+        ));
+    }
+
+    Ok((shapes, warnings))
 }

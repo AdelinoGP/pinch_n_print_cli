@@ -25,8 +25,8 @@ use slicer_gcode::{
 };
 
 use crate::layer_executor::{
-    execute_per_layer_with_events_and_support_tools,
-    execute_per_layer_with_instrumentation_and_support_tools, promote_global_layers,
+    execute_per_layer_with_committed_anchored_events_and_support_tools,
+    execute_per_layer_with_committed_anchored_events_instrumented, promote_global_layers,
     SupportToolSelection,
 };
 use crate::{
@@ -96,6 +96,11 @@ pub struct PipelineConfig {
             Option<NativeStageEntry>,
         ),
     >,
+    /// Host-side anchored work, lowered into rows at finalization.
+    ///
+    /// Off-grid entities produced outside the per-layer grid that must survive
+    /// into G-code. An empty vec is the behaviour-preserving default.
+    pub anchored_entities: Vec<slicer_ir::AnchoredEntity>,
 }
 
 /// Output produced by a successful pipeline run.
@@ -196,6 +201,7 @@ pub fn run_pipeline_with_events(
         wasm_handles,
         support_tools,
         cancel_flag: _,
+        anchored_entities,
     } = config;
 
     // Step 1: Create blackboard with the loaded mesh. Layer count is not known
@@ -234,14 +240,17 @@ pub fn run_pipeline_with_events(
     promote_global_layers(&mut plan, &blackboard);
 
     // Step 3: Execute per-layer stages in parallel via rayon
-    let (mut layer_irs, layer_audits) = execute_per_layer_with_events_and_support_tools(
-        &plan,
-        &blackboard,
-        runners.layer.as_ref(),
-        sink,
-        &wasm_handles,
-        support_tools,
-    )?;
+    let (committed_events, layer_audits) =
+        execute_per_layer_with_committed_anchored_events_and_support_tools(
+            &plan,
+            &blackboard,
+            runners.layer.as_ref(),
+            sink,
+            &wasm_handles,
+            support_tools,
+            &anchored_entities,
+        )?;
+    let mut layer_irs = crate::anchored_rows::synthesize_anchored_rows(committed_events)?;
 
     // Step 4: Execute layer finalization (if present)
     execute_layer_finalization(
@@ -332,6 +341,7 @@ fn run_pipeline_core(
         wasm_handles,
         support_tools,
         cancel_flag,
+        anchored_entities,
     } = config;
 
     // Plan-freeze: emit one `record_edges` call per stage so the report has
@@ -393,7 +403,7 @@ fn run_pipeline_core(
     }
     instrumentation
         .on_phase_start_with_layer_count(Phase::PerLayer, Some(plan.global_layers.len() as u32));
-    let per_layer_result = execute_per_layer_with_instrumentation_and_support_tools(
+    let per_layer_result = execute_per_layer_with_committed_anchored_events_instrumented(
         &plan,
         &blackboard,
         runners.layer.as_ref(),
@@ -402,9 +412,11 @@ fn run_pipeline_core(
         &wasm_handles,
         support_tools,
         cancel_flag.as_deref(),
+        &anchored_entities,
     );
     instrumentation.on_phase_end(Phase::PerLayer);
-    let (mut layer_irs, layer_audits) = per_layer_result?;
+    let (committed_events, layer_audits) = per_layer_result?;
+    let mut layer_irs = crate::anchored_rows::synthesize_anchored_rows(committed_events)?;
 
     if cancel_flag
         .as_ref()

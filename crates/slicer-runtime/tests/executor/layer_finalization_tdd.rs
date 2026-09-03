@@ -133,7 +133,7 @@ fn finalization_executor_rejects_non_monotonic_layers() {
 }
 
 #[test]
-fn finalization_executor_rejects_duplicate_layer_indices() {
+fn finalization_executor_accepts_duplicate_layer_indices() {
     let mesh = Arc::new(mesh_fixture());
     let blackboard = Blackboard::new(mesh, 0);
     let plan = execution_plan_fixture(Some(compiled_stage(
@@ -164,11 +164,10 @@ fn finalization_executor_rejects_duplicate_layer_indices() {
         &mut layers,
         &Default::default(),
     );
-    assert!(
-        matches!(result, Err(FinalizationError::Validation { .. })),
-        "expected validation error, got {:?}",
-        result
-    );
+    // Packet 197 originally rejected duplicates. Since 2026-08-30, DEV-160
+    // permits them because ADR-0059 requires a solo synthesized row to adopt
+    // its upper model layer's index; the preceding test still rejects reversals.
+    assert_eq!(result, Ok(()));
 }
 
 #[test]

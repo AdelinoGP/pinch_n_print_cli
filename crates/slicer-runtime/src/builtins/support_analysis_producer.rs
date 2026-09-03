@@ -10,15 +10,16 @@ use slicer_core::algos::overhang_annotation::{
 use slicer_core::algos::paint_segmentation::modifier_volumes::slice_modifier_volumes;
 use slicer_core::polygon_ops::{difference_ex, intersection_ex, offset, union_ex, OffsetJoinType};
 use slicer_ir::mm_to_units;
-use slicer_ir::resolved_config::ResolvedFloatOrPercent;
+use slicer_ir::resolved_config::{resolve_support_line_width_mm, ResolvedFloatOrPercent};
 use slicer_ir::slice_ir::{
-    ExPolygon, Point2, Polygon, RegionKey, SupportAnalysisIR, SupportCandidate,
-    SupportCandidateSource, SupportGeometryKey, SupportType,
+    ExPolygon, Point2, Polygon, SupportAnalysisIR, SupportCandidate, SupportCandidateSource,
+    SupportGeometryKey, SupportType,
 };
 use slicer_ir::{ConfigValue, PaintSemantic, ResolvedConfig};
 use slicer_scheduler::execution_plan::{
     select_support_family, SUPPORT_FAMILY_CONFIG_KEY, SUPPORT_GENERATOR_CONFIG_KEY,
 };
+use slicer_wasm_host::support_territory::SUPPORT_TERRITORY_CLEARANCE_KEY;
 
 use crate::blackboard::Blackboard;
 use crate::layer_executor::config_for_region_smallest_chain;
@@ -339,6 +340,14 @@ pub fn commit_support_analysis_builtin(
                         .or_insert_with(|| "traditional".to_string());
                 }
             }
+            // Ticket 19: publish each minted modifier sub-region's own support
+            // territory so families that differ across a modifier boundary can
+            // be clipped to their side instead of annihilating each other.
+            ir.shared_settings.insert(
+                SUPPORT_TERRITORY_CLEARANCE_KEY.to_string(),
+                support_territory_clearance_mm(config).to_string(),
+            );
+            collect_support_territory(&mut ir, blackboard.mesh(), slices);
             // SliceIR has no facet classification, so the highest observed
             // cross-section is the narrowest truthful model-termination
             // approximation. The exact-Z service uses the same fallback.
@@ -366,6 +375,92 @@ pub fn commit_support_analysis_builtin(
         }
     }
     blackboard.commit_support_analysis(Arc::new(ir))
+}
+
+/// Clearance base-family bodies keep from foreign territory: the resolved
+/// support line width, so the two families never share an extrusion path.
+/// Mirrors the resolution in `slicer_runtime::run` (percent of, or auto to,
+/// `nozzle_diameter`).
+fn support_territory_clearance_mm(config: &ResolvedConfig) -> f32 {
+    let nozzle_diameter_mm = match config.extensions.get("nozzle_diameter") {
+        Some(ConfigValue::Float(value)) => *value as f32,
+        Some(ConfigValue::Int(value)) => *value as f32,
+        _ => 0.4,
+    };
+    resolve_support_line_width_mm(config.support_line_width, nozzle_diameter_mm)
+}
+
+/// Fill `SupportAnalysisIR::support_territory` with the full cross-section of
+/// every parameter-modifier volume that minted a family-assigned sub-region.
+///
+/// The footprint is sliced per layer Z exactly as
+/// `crate::region_partition::split_modifier_sub_regions_for_prepass` does, so
+/// the FNV-derived id from `slicer_ir::modifier_sub_region_id` matches the
+/// region map byte-for-byte. Support enforcer / blocker volumes are not
+/// parameter modifiers and mint no sub-region; they are skipped with the same
+/// rule as region partitioning. The footprint is deliberately NOT clipped by
+/// the model: support lives in the free air under it.
+fn collect_support_territory(
+    ir: &mut SupportAnalysisIR,
+    mesh: &slicer_ir::MeshIR,
+    slices: &[slicer_ir::SliceIR],
+) {
+    for object in &mesh.objects {
+        if object.modifier_volumes.is_empty() {
+            continue;
+        }
+        let base_region_ids: Vec<u64> = ir
+            .family_assignments
+            .keys()
+            .filter(|(object_id, region_id)| {
+                object_id == &object.id
+                    && !slicer_ir::is_modifier_namespace_id(*region_id)
+                    && slicer_ir::modifier_sub_region_id_fits(*region_id)
+            })
+            .map(|(_, region_id)| *region_id)
+            .collect();
+        if base_region_ids.is_empty() {
+            continue;
+        }
+        for modifier in &object.modifier_volumes {
+            if matches!(
+                modifier.config_delta.fields.get("subtype"),
+                Some(ConfigValue::String(subtype))
+                    if subtype == "support_enforcer" || subtype == "support_blocker"
+            ) || modifier.mesh.vertices.is_empty()
+                || modifier.mesh.indices.is_empty()
+            {
+                continue;
+            }
+            for slice in slices {
+                let footprint = slicer_core::slice_mesh_ex(&modifier.mesh, &[slice.z])
+                    .into_iter()
+                    .next()
+                    .unwrap_or_default();
+                if footprint.is_empty() {
+                    continue;
+                }
+                for base_region_id in &base_region_ids {
+                    let sub_region_id =
+                        slicer_ir::modifier_sub_region_id(*base_region_id, &object.id, &footprint);
+                    if !ir
+                        .family_assignments
+                        .contains_key(&(object.id.clone(), sub_region_id))
+                    {
+                        continue;
+                    }
+                    ir.support_territory.insert(
+                        SupportGeometryKey {
+                            global_support_layer_index: slice.global_layer_index,
+                            object_id: object.id.clone(),
+                            region_id: sub_region_id,
+                        },
+                        footprint.clone(),
+                    );
+                }
+            }
+        }
+    }
 }
 
 /// Canonical `SUPPORT_SURFACES_OFFSET_PARAMETERS` is `jtSquare, 0.` — every
@@ -570,15 +665,13 @@ fn region_config<'a>(
     region_id: u64,
 ) -> Option<&'a ResolvedConfig> {
     let map = region_map?;
-    let key = RegionKey {
+    crate::layer_executor::config_for_region_smallest_chain(
+        map,
         global_layer_index,
-        object_id: object_id.to_string(),
+        &object_id.to_string(),
         region_id,
-        variant_chain: Vec::new(),
-    };
-    map.entries
-        .get(&key)
-        .map(|plan| map.config_for_raw(plan.config))
+    )
+    .map(|config| map.config_for_raw(config))
 }
 
 /// Resolves the config half of [`SupportContactParams`] once per slice.
@@ -738,8 +831,8 @@ fn rectangle_from_bounds((min_x, max_x, min_y, max_y): (i64, i64, i64, i64)) -> 
 mod tests {
     use super::*;
     use slicer_ir::{
-        ConfigValue, GlobalLayer, LayerPlanIR, MeshIR, RegionMapIR, RegionPlan, ResolvedConfig,
-        SliceIR, SlicedRegion,
+        ConfigValue, GlobalLayer, LayerPlanIR, MeshIR, RegionKey, RegionMapIR, RegionPlan,
+        ResolvedConfig, SliceIR, SlicedRegion,
     };
 
     /// Axis-aligned square in **millimetres**.
@@ -1221,6 +1314,130 @@ mod tests {
             }],
             ..MeshIR::default()
         }
+    }
+
+    /// Ticket 19: a parameter modifier that minted a family-assigned
+    /// sub-region publishes its full cross-section as that sub-region's
+    /// support territory, keyed by the same FNV id the region map carries.
+    /// Enforcer / blocker volumes mint no sub-region and publish nothing.
+    #[test]
+    fn support_territory_publishes_modifier_footprint_under_minted_sub_region_id() {
+        use slicer_ir::{ConfigDelta, ModifierScope, ModifierVolume};
+        let parameter_mesh = modifier_box(0.5, 0.5, 2.5, 2.5);
+        let mut mesh =
+            mesh_with_modifiers(&[("support_enforcer", modifier_box(3.0, 3.0, 4.0, 4.0))]);
+        // exhaustive: ModifierVolume has no Default and every field is load-bearing here
+        mesh.objects[0].modifier_volumes.push(ModifierVolume {
+            id: "normal-half".to_string(),
+            mesh: parameter_mesh.clone(),
+            config_delta: ConfigDelta {
+                fields: [(
+                    "support_type".to_string(),
+                    ConfigValue::String("normal(auto)".to_string()),
+                )]
+                .into_iter()
+                .collect(),
+            },
+            priority: 0,
+            applies_to: ModifierScope::AllFeatures,
+        });
+        let (lower, upper) = overhang_stack();
+        let mut blackboard = blackboard_with_stack_and_mesh(&lower, &upper, mesh);
+
+        // The fixture slices sit at z = 0 (SliceIR default); the region map
+        // must carry the sub-region minted from that same footprint.
+        let footprint = slicer_core::slice_mesh_ex(&parameter_mesh, &[0.0])
+            .into_iter()
+            .next()
+            .expect("modifier box slices at z = 0");
+        assert!(!footprint.is_empty());
+        let sub_region_id = slicer_ir::modifier_sub_region_id(3, "object", &footprint);
+        let mut region_map = RegionMapIR::default();
+        let tree = region_map.intern_config(ResolvedConfig {
+            support_type: slicer_ir::SupportType::TreeAuto,
+            ..ResolvedConfig::default()
+        });
+        let normal = region_map.intern_config(ResolvedConfig {
+            support_type: slicer_ir::SupportType::NormalAuto,
+            ..ResolvedConfig::default()
+        });
+        for (region_id, config) in [(3, tree), (sub_region_id, normal)] {
+            for global_layer_index in 0..=1 {
+                region_map.entries.insert(
+                    RegionKey {
+                        global_layer_index,
+                        object_id: "object".to_string(),
+                        region_id,
+                        variant_chain: Vec::new(),
+                    },
+                    RegionPlan {
+                        config,
+                        ..RegionPlan::default()
+                    },
+                );
+            }
+        }
+        blackboard.commit_region_map(Arc::new(region_map)).unwrap();
+
+        commit_support_analysis_builtin(&mut blackboard, &support_enabled_config()).unwrap();
+        let analysis = blackboard.support_analysis().unwrap();
+        assert_eq!(
+            analysis.family_assignments[&(String::from("object"), sub_region_id)],
+            "traditional"
+        );
+        let mut keys: Vec<_> = analysis.support_territory.keys().cloned().collect();
+        keys.sort_by_key(|key| key.global_support_layer_index);
+        assert_eq!(
+            keys,
+            vec![
+                SupportGeometryKey {
+                    global_support_layer_index: 0,
+                    object_id: "object".to_string(),
+                    region_id: sub_region_id,
+                },
+                SupportGeometryKey {
+                    global_support_layer_index: 1,
+                    object_id: "object".to_string(),
+                    region_id: sub_region_id,
+                },
+            ],
+            "exactly the parameter modifier's sub-region, on every layer; never the base region or the enforcer"
+        );
+        for key in &keys {
+            assert_eq!(
+                analysis.support_territory[key], footprint,
+                "territory must be the unclipped modifier cross-section"
+            );
+        }
+        assert_eq!(
+            analysis
+                .shared_settings
+                .get(SUPPORT_TERRITORY_CLEARANCE_KEY)
+                .map(String::as_str),
+            Some("0.4"),
+            "default support_line_width (auto) resolves to the 0.4 mm nozzle"
+        );
+    }
+
+    /// An object whose modifier minted no family-assigned sub-region (no
+    /// region-map entry for it) publishes no territory at all.
+    #[test]
+    fn support_territory_absent_without_minted_sub_region() {
+        let (lower, upper) = overhang_stack();
+        let mut blackboard = blackboard_with_stack_and_mesh(
+            &lower,
+            &upper,
+            mesh_with_modifiers(&[("support_enforcer", modifier_box(0.0, 1.0, 2.0, 3.0))]),
+        );
+        blackboard
+            .commit_region_map(Arc::new(RegionMapIR::default()))
+            .unwrap();
+        commit_support_analysis_builtin(&mut blackboard, &support_enabled_config()).unwrap();
+        assert!(blackboard
+            .support_analysis()
+            .unwrap()
+            .support_territory
+            .is_empty());
     }
 
     fn config_with_support_type(spelling: &str) -> ResolvedConfig {

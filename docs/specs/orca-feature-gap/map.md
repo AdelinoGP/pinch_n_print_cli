@@ -309,7 +309,7 @@ off-map, after.
   tree** (`num_of` returned `None` for bools); fixing it surfaced 8 bool
   deviations — 6 aligned (`enable_support` ×4 owners → false,
   `detect_thin_wall` → false, `slowdown_for_curled_perimeters` → true), and
-  `precise_outer_wall` held at `false` as **DEV-158** because default-on
+  `precise_outer_wall` held at `false` as **DEV-166** because default-on
   reorders classic-perimeters' walls (a defect, not a spacing difference).
   Map wiring corrected: the queue gate the Notes claimed did not exist, so 67
   packet tickets were re-wired to gate on the rename tickets touching their

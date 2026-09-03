@@ -125,6 +125,7 @@ pub fn support_plan_validation() {
             ..Default::default()
         }],
         exact_z: &service,
+        territory: None,
     });
     assert_eq!(result.retained.len(), 1);
     assert_eq!(result.retained[0].body_ids, vec!["valid"]);
@@ -160,6 +161,7 @@ fn support_plan_aggregation_preserves_distinct_families() {
             },
         ],
         exact_z: &service,
+        territory: None,
     });
 
     assert_eq!(result.retained.len(), 2);
@@ -188,6 +190,7 @@ fn support_plan_aggregation_diagnoses_duplicate_identity() {
             },
         ],
         exact_z: &service,
+        territory: None,
     });
 
     assert_eq!(result.retained.len(), 1);
@@ -219,6 +222,7 @@ fn support_body_straddling_absolute_cell_boundary_is_retained() {
             ..Default::default()
         }],
         exact_z: &service,
+        territory: None,
     });
 
     assert!(
@@ -253,6 +257,7 @@ fn same_family_duplicate_identity_unions_without_a_duplicate_diagnostic() {
             ..Default::default()
         }],
         exact_z: &service,
+        territory: None,
     });
 
     assert!(

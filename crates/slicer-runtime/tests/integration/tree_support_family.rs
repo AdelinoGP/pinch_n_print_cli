@@ -389,8 +389,16 @@ impl LayerStageRunner for CapturingLayerRunner {
                 })
                 .collect::<Vec<_>>();
             let mut output = SupportOutputBuilder::new();
+            let mut collection = slicer_sdk::LayerCollectionBuilder::new();
             native
-                .run_support(layer_index, &regions, &paint, &mut output, &config)
+                .run_support(
+                    layer_index,
+                    &regions,
+                    &paint,
+                    &mut output,
+                    &mut collection,
+                    &config,
+                )
                 .expect("tree-support native renderer must run");
             let support =
                 convert_native_support_output_with_plan(&output, layer_index, self.plan.as_ref())

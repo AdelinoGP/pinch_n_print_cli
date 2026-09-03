@@ -306,6 +306,7 @@ impl LayerModule for SupportTestModule {
         regions: &[SliceRegionView],
         paint: &PaintRegionLayerView,
         output: &mut SupportOutputBuilder,
+        _collection: &mut LayerCollectionBuilder,
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
         let _ = layer_index;
@@ -325,7 +326,14 @@ fn test_11_run_support_signature_matches_wit() {
     let paint = PaintRegionLayerView::new(0);
     let mut output = SupportOutputBuilder::new();
 
-    let result = module.run_support(0, &regions, &paint, &mut output, &config);
+    let result = module.run_support(
+        0,
+        &regions,
+        &paint,
+        &mut output,
+        &mut slicer_sdk::LayerCollectionBuilder::new(),
+        &config,
+    );
     assert!(result.is_ok());
 }
 
@@ -970,6 +978,7 @@ fn test_35_layer_module_defaults_do_not_panic() {
             &slice_regions,
             &paint,
             &mut SupportOutputBuilder::new(),
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
             &config
         )
         .is_ok());

@@ -75,11 +75,11 @@ fn run_slice_with_full_modules(model: &PathBuf, output: &PathBuf) -> std::proces
         .expect("pnp_cli binary should execute")
 }
 
-fn slice_gcode_path() -> PathBuf {
+fn slice_gcode_path(test_name: &str) -> PathBuf {
     let manifest = env!("CARGO_MANIFEST_DIR");
     PathBuf::from(manifest)
         .join("target")
-        .join("modifier_infill_slice.gcode")
+        .join(format!("modifier_infill_{test_name}.gcode"))
 }
 
 fn control_gcode_path() -> PathBuf {
@@ -301,7 +301,7 @@ fn modifier_infill_two_densities() {
     let model = cube_cilindrical_modifier_3mf();
     assert_path_exists(&model, "cube_cilindrical_modifier.3mf");
 
-    let gcode_path = slice_gcode_path();
+    let gcode_path = slice_gcode_path("two_densities");
     let _ = std::fs::remove_file(&gcode_path);
     let proc = run_slice_with_full_modules(&model, &gcode_path);
     let stderr = String::from_utf8_lossy(&proc.stderr);
@@ -436,7 +436,7 @@ fn modifier_infill_boundary_anchoring() {
     let model = cube_cilindrical_modifier_3mf();
     assert_path_exists(&model, "cube_cilindrical_modifier.3mf");
 
-    let gcode_path = slice_gcode_path();
+    let gcode_path = slice_gcode_path("boundary_anchoring");
     let _ = std::fs::remove_file(&gcode_path);
     let proc = run_slice_with_full_modules(&model, &gcode_path);
     let stderr = String::from_utf8_lossy(&proc.stderr);

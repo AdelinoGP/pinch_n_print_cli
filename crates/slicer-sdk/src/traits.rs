@@ -156,14 +156,17 @@ impl PaintRegionLayerView {
         let Some(plan) = self.support_plan.as_ref() else {
             return Vec::new();
         };
-        plan.entries
+        let mut entries: Vec<_> = plan
+            .entries
             .iter()
             .filter(|entry| {
-                entry.global_layer_index == self.layer_index as i32
+                entry.anchor_layer_index == self.layer_index
                     && entry.object_id == object_id
                     && entry.region_id == region_id
             })
-            .collect()
+            .collect();
+        entries.sort_by_key(|entry| (entry.anchor_z, entry.global_layer_index));
+        entries
     }
 
     /// Legacy branch-path view. Structural plans intentionally contain no
@@ -496,6 +499,7 @@ pub trait LayerModule: Sized {
         _regions: &[SliceRegionView],
         _paint: &PaintRegionLayerView,
         _output: &mut SupportOutputBuilder,
+        _collection: &mut LayerCollectionBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         Ok(())
@@ -539,6 +543,20 @@ pub trait LayerModule: Sized {
         _layer_index: u32,
         _regions: &[PerimeterRegionView],
         _output: &mut GcodeOutputBuilder,
+        _collection: &mut LayerCollectionBuilder,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
+    }
+
+    /// Run anchored-event generation for a global layer.
+    ///
+    /// The collection builder carries one atomic ordered-event proposal from
+    /// the guest back to the host.
+    fn run_anchored_events(
+        &self,
+        _layer_index: u32,
+        _regions: &[SliceRegionView],
         _collection: &mut LayerCollectionBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {

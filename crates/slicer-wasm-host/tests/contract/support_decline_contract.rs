@@ -103,7 +103,7 @@ pub fn decline_is_attributed_to_producing_family_not_last_writer() {
 
     let exact_z = ExactZQueryService::new(Arc::new(MeshIR::default()));
     let (_plan, diagnostics) =
-        aggregate_support_plan_irs_degrading_with_attributed_diagnostics(plans, &exact_z);
+        aggregate_support_plan_irs_degrading_with_attributed_diagnostics(plans, &exact_z, None);
 
     let declines: Vec<_> = diagnostics
         .iter()

@@ -544,3 +544,909 @@ fn gcode_entries_record_the_shared_world_bounds() {
         );
     }
 }
+
+// ───────────────────── packet 247: silhouette validation ────────────────────
+
+/// A `Model`-source request carrying an explicit schema version,
+/// visualization list, and tap list. Built from `unreachable_model_request`
+/// so the model/config/module paths stay deliberately nonexistent: every
+/// silhouette rejection below must fire in `validate_request`, before any
+/// filesystem access.
+fn silhouette_model_request(
+    schema_version: &str,
+    visualizations: Vec<VisualizationSpec>,
+    taps: Vec<TapSelector>,
+) -> VisualDebugRequest {
+    let mut req = unreachable_model_request(vec![LayerSelector::Index(0)]);
+    req.schema_version = schema_version.to_string();
+    req.visualizations = visualizations;
+    req.taps = taps;
+    req
+}
+
+fn detail_viz(kind: &str, options: serde_json::Value) -> VisualizationSpec {
+    VisualizationSpec::Detail {
+        kind: kind.to_string(),
+        options,
+    }
+}
+
+/// The default silhouette-capable tap, so a test that is pinning some other
+/// rejection never trips the tap whitelist first.
+fn slice_tap() -> Vec<TapSelector> {
+    vec![TapSelector::Name("Layer::Slice".to_string())]
+}
+
+fn expect_validation_error(req: VisualDebugRequest, output: &Path, why: &str) -> ValidationError {
+    match run_visual_debug(req, output, false).expect_err(why) {
+        VisualDebugError::Validation(e) => {
+            assert_bundle_empty(output);
+            e
+        }
+        other => panic!("expected a validation rejection ({why}), got {other:?}"),
+    }
+}
+
+// ─────────────────────────────── AC-N1 ──────────────────────────────────────
+
+#[test]
+fn silhouette_under_pre_1_2_schema_names_the_required_version() {
+    for schema_version in ["1.0.0", "1.1.0"] {
+        let tmp = TempDir::new().expect("tempdir");
+        let output = tmp.path().join("bundle");
+        let req = silhouette_model_request(
+            schema_version,
+            vec![VisualizationSpec::Name("silhouette".to_string())],
+            slice_tap(),
+        );
+
+        let err = expect_validation_error(
+            req,
+            &output,
+            "a silhouette visualization under a pre-1.2.0 schema must fail closed",
+        );
+        assert!(
+            matches!(err, ValidationError::SilhouetteRequiresSchema12),
+            "expected SilhouetteRequiresSchema12 under {schema_version} (never the generic \
+             UnknownVisualizationKind), got {err:?}"
+        );
+        assert!(
+            !matches!(err, ValidationError::UnknownVisualizationKind { .. }),
+            "silhouette must never be reported as an unknown kind"
+        );
+        let message = err.to_string();
+        assert!(
+            message.contains("1.2.0"),
+            "the rejection must name the fix (schema_version 1.2.0); got: {message}"
+        );
+    }
+}
+
+// ─────────────────────────────── AC-N2 ──────────────────────────────────────
+
+#[test]
+fn silhouette_mixing_with_topdown_kinds_rejected() {
+    let tmp = TempDir::new().expect("tempdir");
+    let output = tmp.path().join("bundle");
+    let req = silhouette_model_request(
+        "1.2.0",
+        vec![
+            VisualizationSpec::Name("silhouette".to_string()),
+            VisualizationSpec::Name("filled_areas".to_string()),
+        ],
+        slice_tap(),
+    );
+
+    let err = expect_validation_error(
+        req,
+        &output,
+        "a silhouette bundle may not also carry a top-down visualization",
+    );
+    assert!(
+        matches!(
+            &err,
+            ValidationError::SilhouetteMixedWithOtherKinds { other_kind }
+                if other_kind == "filled_areas"
+        ),
+        "expected SilhouetteMixedWithOtherKinds{{other_kind: \"filled_areas\"}}, got {err:?}"
+    );
+    assert!(
+        err.to_string().contains("filled_areas"),
+        "the message must name the offending kind; got: {err}"
+    );
+}
+
+// ─────────────────────────────── AC-N3 ──────────────────────────────────────
+
+#[test]
+fn silhouette_plate_frame_rejected() {
+    let tmp = TempDir::new().expect("tempdir");
+    let output = tmp.path().join("bundle");
+    let mut req = silhouette_model_request(
+        "1.2.0",
+        vec![VisualizationSpec::Name("silhouette".to_string())],
+        slice_tap(),
+    );
+    req.frame = FrameMode::Plate;
+
+    let err = expect_validation_error(
+        req,
+        &output,
+        "frame: \"plate\" has no machine-height extent, so it cannot frame a silhouette",
+    );
+    assert!(
+        matches!(err, ValidationError::SilhouettePlateFrameUnsupported),
+        "expected SilhouettePlateFrameUnsupported, got {err:?}"
+    );
+}
+
+// ─────────────────────────────── AC-N4 ──────────────────────────────────────
+
+#[test]
+fn silhouette_view_unknown_value_and_wrong_kind_rejected() {
+    // (a) an unknown `view` value on a silhouette fails closed rather than
+    // silently rendering the default plane.
+    let tmp = TempDir::new().expect("tempdir");
+    let output = tmp.path().join("bundle-a");
+    let req = silhouette_model_request(
+        "1.2.0",
+        vec![detail_viz(
+            "silhouette",
+            serde_json::json!({ "view": "top" }),
+        )],
+        slice_tap(),
+    );
+    let err = expect_validation_error(req, &output, "an unknown view value must be rejected");
+    assert!(
+        matches!(err, ValidationError::InvalidSilhouetteView { .. }),
+        "expected InvalidSilhouetteView for view: \"top\", got {err:?}"
+    );
+
+    // (b) `view` on a non-silhouette kind under 1.2.0 is a kind mismatch,
+    // not a tolerated stray key.
+    let output = tmp.path().join("bundle-b");
+    let req = silhouette_model_request(
+        "1.2.0",
+        vec![detail_viz(
+            "filled_areas",
+            serde_json::json!({ "view": "front" }),
+        )],
+        slice_tap(),
+    );
+    let err = expect_validation_error(
+        req,
+        &output,
+        "view applies to silhouette visualizations only",
+    );
+    assert!(
+        matches!(&err, ValidationError::InvalidSilhouetteView { message }
+            if message.contains("filled_areas")),
+        "expected InvalidSilhouetteView naming the offending kind, got {err:?}"
+    );
+
+    // (c) an explicit `view` key under a pre-1.2.0 schema is hard-rejected
+    // with a message naming 1.2.0 — under BOTH earlier versions, and never
+    // silently tolerated as a stray option key.
+    for (index, schema_version) in ["1.0.0", "1.1.0"].iter().enumerate() {
+        let output = tmp.path().join(format!("bundle-c{index}"));
+        let req = silhouette_model_request(
+            schema_version,
+            vec![detail_viz(
+                "filled_areas",
+                serde_json::json!({ "view": "front" }),
+            )],
+            slice_tap(),
+        );
+        let err = expect_validation_error(
+            req,
+            &output,
+            "an explicit view key under a pre-1.2.0 schema must fail closed",
+        );
+        assert!(
+            matches!(&err, ValidationError::InvalidSilhouetteView { message }
+                if message.contains("1.2.0")),
+            "expected InvalidSilhouetteView naming 1.2.0 under {schema_version}, got {err:?}"
+        );
+    }
+}
+
+// ─────────────────────────────── AC-N5 ──────────────────────────────────────
+
+#[test]
+fn silhouette_unsupported_taps_rejected_with_reasons() {
+    // Every tap outside the Z-attributable whitelist, named individually so
+    // a future packet that widens the whitelist has to update this list
+    // deliberately.
+    const UNSUPPORTED: &[&str] = &[
+        "Layer::Perimeters",
+        "PrePass::MeshAnalysis",
+        "PrePass::SeamPlanning",
+    ];
+
+    let tmp = TempDir::new().expect("tempdir");
+    for (index, unsupported) in UNSUPPORTED.iter().enumerate() {
+        let output = tmp.path().join(format!("bundle-{index}"));
+        let req = silhouette_model_request(
+            "1.2.0",
+            vec![VisualizationSpec::Name("silhouette".to_string())],
+            vec![TapSelector::Name((*unsupported).to_string())],
+        );
+        let err = expect_validation_error(
+            req,
+            &output,
+            "a silhouette for a non-Z-attributable tap must fail closed",
+        );
+        match &err {
+            ValidationError::SilhouetteUnsupportedForTap { tap, reason } => {
+                assert_eq!(
+                    tap, unsupported,
+                    "the rejection must carry the offending tap verbatim"
+                );
+                assert!(
+                    !reason.trim().is_empty(),
+                    "the rejection for '{unsupported}' must state why, never just refuse"
+                );
+            }
+            other => {
+                panic!("expected SilhouetteUnsupportedForTap for '{unsupported}', got {other:?}")
+            }
+        }
+    }
+}
+
+#[test]
+fn silhouette_region_mapping_and_overhang_taps_accepted() {
+    let tmp = TempDir::new().expect("tempdir");
+
+    for tap in ["PrePass::RegionMapping", "PrePass::OverhangAnnotation"] {
+        let req = silhouette_model_request(
+            "1.2.0",
+            vec![VisualizationSpec::Name("silhouette".to_string())],
+            vec![TapSelector::Name(tap.to_string())],
+        );
+        let err = run_visual_debug(req, &tmp.path().join(tap), false)
+            .expect_err("unreachable fixture must fail after validation");
+        assert!(
+            !matches!(err, VisualDebugError::Validation(_)),
+            "{tap} was rejected during validation: {err:?}"
+        );
+    }
+
+    let err = expect_validation_error(
+        silhouette_model_request(
+            "1.2.0",
+            vec![VisualizationSpec::Name("silhouette".to_string())],
+            vec![TapSelector::Name("PrePass::MeshAnalysis".to_string())],
+        ),
+        &tmp.path().join("mesh-analysis"),
+        "MeshAnalysis remains unsupported for silhouette rendering",
+    );
+    assert!(
+        matches!(err, ValidationError::SilhouetteUnsupportedForTap { ref tap, .. }
+            if tap == "PrePass::MeshAnalysis"),
+        "expected MeshAnalysis silhouette rejection, got {err:?}"
+    );
+}
+
+#[test]
+fn gcode_emit_silhouette_accepted() {
+    let tmp = TempDir::new().expect("tempdir");
+    let output = tmp.path().join("bundle");
+    let req = silhouette_model_request(
+        "1.2.0",
+        vec![VisualizationSpec::Name("silhouette".to_string())],
+        vec![TapSelector::Name("PostPass::GCodeEmit".to_string())],
+    );
+
+    let err = run_visual_debug(req, &output, false)
+        .expect_err("unreachable fixture must fail after validation");
+    assert!(
+        !matches!(err, VisualDebugError::Validation(_)),
+        "GCodeEmit was rejected during validation: {err:?}"
+    );
+}
+
+// ───────────────── packet 248: gcode-source silhouette validation ───────────
+
+/// A 1.2.0 `Gcode`-source silhouette request with NO taps: the standalone
+/// final-G-code source has no pipeline, so it has no taps to select from.
+/// The path is deliberately nonexistent so every rejection below must fire
+/// in `validate_request`, before any filesystem access.
+fn gcode_silhouette_request(
+    gcode_path: PathBuf,
+    visualizations: Vec<VisualizationSpec>,
+) -> VisualDebugRequest {
+    let mut req = gcode_request(gcode_path, vec![LayerSelector::Index(0)], visualizations);
+    req.schema_version = "1.2.0".to_string();
+    req.taps = Vec::new();
+    req
+}
+
+// ─────────────────────────── packet 248 AC-N4 ───────────────────────────────
+
+#[test]
+fn silhouette_on_gcode_source_accepted() {
+    // Packet 248 lifts packet 247's interim rejection: a standalone
+    // final-G-code source IS a silhouette source. The request must get past
+    // validation entirely and fail later, on the deliberately nonexistent
+    // gcode path.
+    let tmp = TempDir::new().expect("tempdir");
+    let req = gcode_silhouette_request(
+        tmp.path().join("nonexistent.gcode"),
+        vec![VisualizationSpec::Name("silhouette".to_string())],
+    );
+
+    // Asserted end to end through `run_visual_debug`, not against
+    // `validate_request` alone: the command must get PAST validation and into
+    // the gcode arm's silhouette render, which then fails on the deliberately
+    // nonexistent path. A validation rejection here would mean the acceptance
+    // never actually reached the render path.
+    let output = tmp.path().join("bundle");
+    let err = run_visual_debug(req, &output, false)
+        .expect_err("the fixture's gcode path deliberately does not exist");
+    assert!(
+        !matches!(err, VisualDebugError::Validation(_)),
+        "a 1.2.0 gcode-source silhouette must be accepted by validation, got {err:?}"
+    );
+    assert!(
+        matches!(err, VisualDebugError::CaptureFailed(_)),
+        "the request must fail only on the missing gcode file, got {err:?}"
+    );
+    assert_bundle_empty(&output);
+}
+
+#[test]
+fn tool_color_source_rules_inherited_on_silhouette() {
+    let tmp = TempDir::new().expect("tempdir");
+
+    let req = silhouette_model_request(
+        "1.2.0",
+        vec![detail_viz(
+            "silhouette",
+            serde_json::json!({ "tool_color_source": "filament" }),
+        )],
+        slice_tap(),
+    );
+    let err = expect_validation_error(
+        req,
+        &tmp.path().join("bundle-misuse"),
+        "tool_color_source without tool coloring must be rejected",
+    );
+    assert!(
+        matches!(err, ValidationError::InvalidColorBy { .. }),
+        "expected InvalidColorBy for tool_color_source without color_by tool, got {err:?}"
+    );
+
+    let req = silhouette_model_request(
+        "1.2.0",
+        vec![detail_viz(
+            "silhouette",
+            serde_json::json!({
+                "color_by": "tool",
+                "tool_color_source": "unknown"
+            }),
+        )],
+        slice_tap(),
+    );
+    let err = expect_validation_error(
+        req,
+        &tmp.path().join("bundle-unknown"),
+        "an unknown tool_color_source must be rejected",
+    );
+    assert!(
+        matches!(err, ValidationError::InvalidColorBy { .. }),
+        "expected InvalidColorBy for unknown tool_color_source, got {err:?}"
+    );
+}
+
+// ─────────────────────────── packet 248 AC-N3 ───────────────────────────────
+
+#[test]
+fn gcode_seam_overlay_forms_rejected() {
+    // Packet 251 (R10): final G-code carries no seam marker, so EVERY
+    // gcode-source seam-overlay form is unsourceable and rejected by name —
+    // the legacy `diagnostic_overlay` arm (unchanged from packet 248) plus
+    // both new silhouette forms (isolated `overlays` and composited).
+    let tmp = TempDir::new().expect("tempdir");
+
+    // (a) R10 is unchanged: the standalone parser cannot source seams for a
+    // gcode `diagnostic_overlay`, and still says so by name.
+    let output = tmp.path().join("bundle-overlay");
+    let mut req = gcode_request(
+        tmp.path().join("nonexistent.gcode"),
+        vec![LayerSelector::Index(0)],
+        vec![detail_viz(
+            "diagnostic_overlay",
+            serde_json::json!({ "overlays": ["seams"] }),
+        )],
+    );
+    req.schema_version = "1.2.0".to_string();
+    let err = expect_validation_error(
+        req,
+        &output,
+        "the standalone gcode parser cannot source seam markers",
+    );
+    match &err {
+        ValidationError::OverlayUnsupportedOnGcode { name } => {
+            assert_eq!(
+                name, "seams",
+                "the rejection must name the offending overlay"
+            );
+        }
+        other => panic!("expected OverlayUnsupportedOnGcode for 'seams', got {other:?}"),
+    }
+
+    // (b) A gcode silhouette asking for isolated seam overlay images hits the
+    // same named rejection — the parser cannot source them in either form.
+    let output = tmp.path().join("bundle-silhouette");
+    let req = gcode_silhouette_request(
+        tmp.path().join("nonexistent.gcode"),
+        vec![detail_viz(
+            "silhouette",
+            serde_json::json!({ "overlays": ["seams"] }),
+        )],
+    );
+    let err = expect_validation_error(
+        req,
+        &output,
+        "a gcode silhouette seam overlay must fail closed, not be ignored",
+    );
+    match &err {
+        ValidationError::OverlayUnsupportedOnGcode { name } => {
+            assert_eq!(
+                name, "seams",
+                "the rejection must name the offending overlay"
+            );
+        }
+        other => panic!(
+            "expected OverlayUnsupportedOnGcode for silhouette overlays ['seams'], got {other:?}"
+        ),
+    }
+
+    // (c) The composited form is equally unsourceable on a gcode source.
+    let output = tmp.path().join("bundle-silhouette-composited");
+    let req = gcode_silhouette_request(
+        tmp.path().join("nonexistent.gcode"),
+        vec![detail_viz(
+            "silhouette",
+            serde_json::json!({ "composited_overlays": ["seams"] }),
+        )],
+    );
+    let err = expect_validation_error(
+        req,
+        &output,
+        "a gcode silhouette composited seam overlay must fail closed, not be ignored",
+    );
+    match &err {
+        ValidationError::OverlayUnsupportedOnGcode { name } => {
+            assert_eq!(
+                name, "seams",
+                "the rejection must name the offending overlay"
+            );
+        }
+        other => panic!(
+            "expected OverlayUnsupportedOnGcode for silhouette composited_overlays ['seams'], \
+             got {other:?}"
+        ),
+    }
+}
+
+// ─────────────────────────── packet 248 AC-N5 ───────────────────────────────
+
+#[test]
+fn gcode_silhouette_rejects_named_taps() {
+    // A tap that IS Z-attributable on the model source is still meaningless
+    // here: the standalone gcode source has no pipeline to tap.
+    let tmp = TempDir::new().expect("tempdir");
+    let output = tmp.path().join("bundle");
+    let mut req = gcode_silhouette_request(
+        tmp.path().join("nonexistent.gcode"),
+        vec![VisualizationSpec::Name("silhouette".to_string())],
+    );
+    req.taps = vec![TapSelector::Name("PrePass::SupportGeometry".to_string())];
+
+    let err = expect_validation_error(
+        req,
+        &output,
+        "a gcode-source silhouette cannot honour a named pipeline tap",
+    );
+    match &err {
+        ValidationError::SilhouetteUnsupportedForTap { tap, reason } => {
+            assert_eq!(
+                tap, "PrePass::SupportGeometry",
+                "the rejection must carry the offending tap verbatim"
+            );
+            assert!(
+                reason.contains("no pipeline taps"),
+                "the rejection must state that the standalone gcode source has no pipeline \
+                 taps, got {reason:?}"
+            );
+        }
+        other => panic!("expected SilhouetteUnsupportedForTap, got {other:?}"),
+    }
+}
+
+// ─────────────────────────── packet 248 AC-N6 ───────────────────────────────
+
+// ─────────────────────────── packet 248 AC-N7 ───────────────────────────────
+
+#[test]
+fn gcode_silhouette_plate_frame_rejected() {
+    // R4 is source-INDEPENDENT: the bed is an XY polygon with no
+    // machine-height extent, so it cannot frame a Z-bearing projection on
+    // either source.
+    let tmp = TempDir::new().expect("tempdir");
+    let output = tmp.path().join("bundle");
+    let mut req = gcode_silhouette_request(
+        tmp.path().join("nonexistent.gcode"),
+        vec![VisualizationSpec::Name("silhouette".to_string())],
+    );
+    req.frame = FrameMode::Plate;
+
+    let err = expect_validation_error(
+        req,
+        &output,
+        "frame: \"plate\" cannot frame a silhouette on any source",
+    );
+    assert!(
+        matches!(err, ValidationError::SilhouettePlateFrameUnsupported),
+        "expected SilhouettePlateFrameUnsupported, got {err:?}"
+    );
+}
+
+// ─────────────────────────────── AC-N9 ──────────────────────────────────────
+
+#[test]
+fn one_silhouette_plane_per_bundle() {
+    let tmp = TempDir::new().expect("tempdir");
+    let output = tmp.path().join("bundle");
+    let req = silhouette_model_request(
+        "1.2.0",
+        vec![
+            detail_viz("silhouette", serde_json::json!({ "view": "front" })),
+            detail_viz("silhouette", serde_json::json!({ "view": "side" })),
+        ],
+        slice_tap(),
+    );
+
+    let err = expect_validation_error(
+        req,
+        &output,
+        "two silhouette planes in one bundle would break the shared world_bounds_mm invariant",
+    );
+    match &err {
+        ValidationError::InvalidSilhouetteView { message } => {
+            assert!(
+                message.contains("plane"),
+                "the message must state the one-plane-per-bundle rule; got: {message}"
+            );
+            assert!(
+                message.contains("front") && message.contains("side"),
+                "the message must name both requested planes; got: {message}"
+            );
+        }
+        other => panic!("expected InvalidSilhouetteView for mixed planes, got {other:?}"),
+    }
+}
+
+// ────────────────────────────── AC-N10 ──────────────────────────────────────
+
+#[test]
+fn unknown_kind_still_rejected_under_1_2() {
+    // 1.2.0 adds exactly one kind; it loosens nothing else.
+    let tmp = TempDir::new().expect("tempdir");
+    let output = tmp.path().join("bundle");
+    let req = silhouette_model_request(
+        "1.2.0",
+        vec![VisualizationSpec::Name(
+            "totally_bogus_visualization".to_string(),
+        )],
+        slice_tap(),
+    );
+
+    let err = expect_validation_error(req, &output, "an unknown kind stays rejected under 1.2.0");
+    assert!(
+        matches!(&err, ValidationError::UnknownVisualizationKind { kind }
+            if kind == "totally_bogus_visualization"),
+        "expected UnknownVisualizationKind under 1.2.0, got {err:?}"
+    );
+}
+
+// ───────────── packet 251: silhouette seam overlay validation (R9/R10) ──────
+
+// ─────────────────────────────── AC-N1 ──────────────────────────────────────
+
+#[test]
+fn silhouette_overlays_reject_non_seam_kinds() {
+    // A silhouette's only overlayable event class is seams. BOTH overlay
+    // options accept `"seams"` and nothing else; a non-seam member fails
+    // closed with a message naming `seams` as the only silhouette overlay
+    // kind.
+    for options in [
+        serde_json::json!({ "overlays": ["travel"] }),
+        serde_json::json!({ "composited_overlays": ["travel"] }),
+    ] {
+        let tmp = TempDir::new().expect("tempdir");
+        let output = tmp.path().join("bundle");
+        let req = silhouette_model_request(
+            "1.2.0",
+            vec![detail_viz("silhouette", options.clone())],
+            slice_tap(),
+        );
+
+        let err = expect_validation_error(
+            req,
+            &output,
+            "a non-seam silhouette overlay must fail closed, not be ignored",
+        );
+        match &err {
+            ValidationError::InvalidOverlays { message } => {
+                assert!(
+                    message.contains("seams"),
+                    "the rejection must name 'seams' as the only silhouette overlay kind; \
+                     got: {message}"
+                );
+            }
+            other => panic!("expected InvalidOverlays for options {options}, got {other:?}"),
+        }
+    }
+
+    // The legal form passes validation outright: a model-source silhouette
+    // with seam overlays (either form) must fail only later, on the
+    // deliberately nonexistent model path — never in `validate_request`.
+    for options in [
+        serde_json::json!({ "overlays": ["seams"] }),
+        serde_json::json!({ "composited_overlays": ["seams"] }),
+    ] {
+        let tmp = TempDir::new().expect("tempdir");
+        let output = tmp.path().join("bundle");
+        let req = silhouette_model_request(
+            "1.2.0",
+            vec![detail_viz("silhouette", options.clone())],
+            slice_tap(),
+        );
+
+        let err = run_visual_debug(req, &output, false)
+            .expect_err("the fixture's model path deliberately does not exist");
+        assert!(
+            !matches!(err, VisualDebugError::Validation(_)),
+            "options {options}: a silhouette seam overlay must be accepted by validation, \
+             got {err:?}"
+        );
+    }
+}
+
+// ─────────────────────────────── AC-N2 ──────────────────────────────────────
+
+#[test]
+fn composited_overlays_rejected_on_non_silhouette_kind() {
+    // `composited_overlays` composites seam glyphs onto a silhouette image;
+    // on any other kind it is a named validation error (never a parse or
+    // unknown-key failure).
+    for kind in ["filled_areas", "diagnostic_overlay"] {
+        let tmp = TempDir::new().expect("tempdir");
+        let output = tmp.path().join("bundle");
+        let req = silhouette_model_request(
+            "1.2.0",
+            vec![detail_viz(
+                kind,
+                serde_json::json!({ "composited_overlays": ["seams"] }),
+            )],
+            slice_tap(),
+        );
+
+        let err = expect_validation_error(
+            req,
+            &output,
+            "composited_overlays on a non-silhouette kind must fail closed",
+        );
+        match &err {
+            ValidationError::InvalidOverlays { message } => {
+                assert!(
+                    message.contains("silhouette"),
+                    "the rejection must state the silhouette-only rule; got: {message}"
+                );
+            }
+            other => {
+                panic!(
+                    "expected InvalidOverlays for composited_overlays on '{kind}', got {other:?}"
+                )
+            }
+        }
+    }
+}
+
+// ─────────────────────────────── AC-N4 ──────────────────────────────────────
+
+#[test]
+fn composited_overlays_require_schema_1_2() {
+    // (a) Typed 1.1.0 path: `#[serde(default)]` now lets the key PARSE under
+    // 1.1.0, so validation itself must gate it. `filled_areas` keeps the
+    // silhouette-kind gate (SilhouetteRequiresSchema12) out of the way, so
+    // only the schema gate under test can fire.
+    let tmp = TempDir::new().expect("tempdir");
+    let output = tmp.path().join("bundle-1-1");
+    let req = silhouette_model_request(
+        "1.1.0",
+        vec![detail_viz(
+            "filled_areas",
+            serde_json::json!({ "composited_overlays": ["seams"] }),
+        )],
+        slice_tap(),
+    );
+    let err = expect_validation_error(
+        req,
+        &output,
+        "composited_overlays under a declared 1.1.0 schema must fail closed",
+    );
+    match &err {
+        ValidationError::InvalidOverlays { message } => {
+            assert!(
+                message.contains("1.2.0"),
+                "the rejection must name the required schema version; got: {message}"
+            );
+        }
+        other => {
+            panic!("expected InvalidOverlays for composited_overlays under 1.1.0, got {other:?}")
+        }
+    }
+
+    // (b) Loose 1.0.0 path: the options object is read loosely, so the
+    // stray-key probe (the `view` precedent) must catch `composited_overlays`
+    // and name 1.2.0 — never a generic unknown-option or
+    // OptionRequiresSchema11 error. This is the falsifying arm: a gate that
+    // checks only the typed 1.1.0 parse and forgets the loose 1.0.0 loop
+    // silently accepts this request, and this test must catch that.
+    let tmp = TempDir::new().expect("tempdir");
+    let output = tmp.path().join("bundle-1-0");
+    let req = silhouette_model_request(
+        "1.0.0",
+        vec![detail_viz(
+            "filled_areas",
+            serde_json::json!({ "composited_overlays": ["seams"] }),
+        )],
+        slice_tap(),
+    );
+    let err = expect_validation_error(
+        req,
+        &output,
+        "a composited_overlays key under a declared 1.0.0 schema must fail closed",
+    );
+    match &err {
+        ValidationError::InvalidOverlays { message } => {
+            assert!(
+                message.contains("1.2.0"),
+                "the rejection must name the required schema version; got: {message}"
+            );
+        }
+        other => panic!(
+            "expected InvalidOverlays (never OptionRequiresSchema11 or an unknown-option \
+             error) for a 1.0.0 composited_overlays stray key, got {other:?}"
+        ),
+    }
+}
+
+// ─────────────────────────────── AC-N5 ──────────────────────────────────────
+
+#[test]
+fn composited_overlays_empty_list_rejected() {
+    // Mirrors the existing empty-`overlays` rule: an empty list names no
+    // overlay and would silently render the base image.
+    let tmp = TempDir::new().expect("tempdir");
+    let output = tmp.path().join("bundle");
+    let req = silhouette_model_request(
+        "1.2.0",
+        vec![detail_viz(
+            "silhouette",
+            serde_json::json!({ "composited_overlays": [] }),
+        )],
+        slice_tap(),
+    );
+
+    let err = expect_validation_error(
+        req,
+        &output,
+        "an empty composited_overlays list must fail closed, not render the base image",
+    );
+    assert!(
+        matches!(err, ValidationError::InvalidOverlays { .. }),
+        "expected InvalidOverlays for an empty composited_overlays list, got {err:?}"
+    );
+}
+
+// ─────────────────────────────── AC-N6 ──────────────────────────────────────
+
+#[test]
+fn conflicting_overlay_options_in_one_group_rejected() {
+    // One composite image is rendered per (tap, view, color mode) group, so
+    // two silhouette specs resolving to the same group must agree on BOTH
+    // overlay options (absent = absent; present-with-same-members = agree) —
+    // otherwise whichever spec the grouping happened to keep would silently
+    // win.
+    let tmp = TempDir::new().expect("tempdir");
+    let output = tmp.path().join("bundle");
+    let req = silhouette_model_request(
+        "1.2.0",
+        vec![
+            detail_viz("silhouette", serde_json::json!({ "overlays": ["seams"] })),
+            detail_viz(
+                "silhouette",
+                serde_json::json!({ "composited_overlays": ["seams"] }),
+            ),
+        ],
+        slice_tap(),
+    );
+
+    let err = expect_validation_error(
+        req,
+        &output,
+        "two silhouette specs in one group disagreeing on overlay options must fail closed",
+    );
+    match &err {
+        ValidationError::InvalidOverlays { message } => {
+            assert!(
+                message.contains("group"),
+                "the rejection must state the conflicting-group rule; got: {message}"
+            );
+        }
+        other => panic!("expected InvalidOverlays for a conflicting group, got {other:?}"),
+    }
+
+    // Agreement within a group is fine (two identical specs still collapse
+    // into one image), and disagreement ACROSS groups is fine (distinct
+    // images): both requests must pass validation and fail only on the
+    // deliberately nonexistent model path.
+    for visualizations in [
+        vec![
+            detail_viz("silhouette", serde_json::json!({ "overlays": ["seams"] })),
+            detail_viz("silhouette", serde_json::json!({ "overlays": ["seams"] })),
+        ],
+        vec![
+            detail_viz("silhouette", serde_json::json!({ "overlays": ["seams"] })),
+            detail_viz(
+                "silhouette",
+                serde_json::json!({ "color_by": "tool", "composited_overlays": ["seams"] }),
+            ),
+        ],
+    ] {
+        let tmp = TempDir::new().expect("tempdir");
+        let output = tmp.path().join("bundle");
+        let req = silhouette_model_request("1.2.0", visualizations, slice_tap());
+        let err = run_visual_debug(req, &output, false)
+            .expect_err("the fixture's model path deliberately does not exist");
+        assert!(
+            !matches!(err, VisualDebugError::Validation(_)),
+            "agreeing specs (or specs in distinct groups) must pass validation, got {err:?}"
+        );
+    }
+}
+
+// ─────────────────────────────── AC-N7 ──────────────────────────────────────
+
+#[test]
+fn unknown_option_keys_still_rejected() {
+    // `deny_unknown_fields` loosens for exactly one new field
+    // (`composited_overlays`); a typo'd key still fails closed via the typed
+    // options parse, never silently ignored.
+    let tmp = TempDir::new().expect("tempdir");
+    let output = tmp.path().join("bundle");
+    let req = silhouette_model_request(
+        "1.2.0",
+        vec![detail_viz(
+            "silhouette",
+            serde_json::json!({ "compositedoverlays": ["seams"] }),
+        )],
+        slice_tap(),
+    );
+
+    let err = expect_validation_error(
+        req,
+        &output,
+        "an unknown option key must fail closed, not be silently ignored",
+    );
+    assert!(
+        matches!(&err, ValidationError::InvalidVisualizationOptions { kind, .. }
+            if kind == "silhouette"),
+        "expected InvalidVisualizationOptions for the silhouette spec, got {err:?}"
+    );
+}

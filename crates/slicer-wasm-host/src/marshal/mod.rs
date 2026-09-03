@@ -8,8 +8,8 @@ pub mod origin;
 pub mod out;
 
 pub use accumulators::{
-    GcodeCommandCollected, GcodeOutputCollected, InfillOutputCollected, PerimeterOutputCollected,
-    SlicePostprocessCollected, SupportOutputCollected,
+    AnchoredEventsCollected, GcodeCommandCollected, GcodeOutputCollected, InfillOutputCollected,
+    PerimeterOutputCollected, SlicePostprocessCollected, SupportOutputCollected,
 };
 pub use in_::{
     harvest_seam_plan_ir_from, object_mesh_to_wit_mesh_object_view, perimeter_region_to_data,
@@ -30,10 +30,10 @@ pub use origin::{MarshalError, OriginBucket, OriginId};
 // harvest_*_from functions are pub(crate) in in_.rs and accessed directly by dispatch.rs
 // via `use crate::marshal::in_::harvest_*_from` — not re-exported at the marshal:: level.
 pub use out::{
-    authored_coloring_granted, collect_postpass_output, convert_infill_output,
-    convert_perimeter_output, convert_support_output, convert_support_output_with_plan,
-    infill_ir_to_prior_regions, merge_slice_postprocess_into, AuthoredColoringContext,
-    AUTHORED_COLORING_CLAIM,
+    authored_coloring_granted, collect_postpass_output, convert_anchored_events,
+    convert_infill_output, convert_perimeter_output, convert_support_output,
+    convert_support_output_with_plan, infill_ir_to_prior_regions, merge_slice_postprocess_into,
+    validate_anchored_entity_geometry, AuthoredColoringContext, AUTHORED_COLORING_CLAIM,
 };
 
 /// Return the effective height for a global layer across all participating objects.
@@ -47,6 +47,61 @@ pub fn canonical_effective_layer_height(plan: &slicer_ir::LayerPlanIR, global_in
         })
         .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
         .unwrap_or(0.2)
+}
+
+/// Reconstruct the wall-owning base geometry presented to perimeter modules.
+///
+/// The blackboard slice partitions modifier footprints into wall-less sibling
+/// regions for prepass consumers. Perimeter generators must still see one
+/// unsplit outline on the base region and no modifier sibling, preserving
+/// ADR-0030's "modifier splits fill, not perimeters" contract.
+///
+/// Every fill mask is restored, not just `polygons`: a perimeter guest
+/// running `only_one_wall_top` walls `top_solid_fill` separately from the
+/// rest of the outline, so a `top_solid_fill` carved along the modifier
+/// footprint put a wall seam along the modifier edge on exactly the shell
+/// layers (SchemaBridgeMap ticket 19, R2).
+pub(crate) fn perimeter_source_regions(slice: &slicer_ir::SliceIR) -> Vec<slicer_ir::SlicedRegion> {
+    let mut regions: Vec<_> = slice
+        .regions
+        .iter()
+        .filter(|region| {
+            region.region_id != slicer_ir::MODIFIER_FOOTPRINT_REGION_ID
+                && !slicer_ir::is_modifier_namespace_id(region.region_id)
+        })
+        .cloned()
+        .collect();
+    for sub_region in slice
+        .regions
+        .iter()
+        .filter(|region| slicer_ir::is_modifier_namespace_id(region.region_id))
+    {
+        let base_region_id = slicer_ir::modifier_base_region_id(sub_region.region_id)
+            .expect("filtered to modifier namespace ids");
+        if let Some(base) = regions.iter_mut().find(|region| {
+            region.object_id == sub_region.object_id
+                && region.region_id == base_region_id
+                && region.variant_chain == sub_region.variant_chain
+        }) {
+            macro_rules! restore {
+                ($field:ident) => {
+                    if !sub_region.$field.is_empty() {
+                        base.$field =
+                            slicer_core::polygon_ops::union(&base.$field, &sub_region.$field);
+                    }
+                };
+            }
+            restore!(polygons);
+            restore!(infill_areas);
+            restore!(bridge_areas);
+            restore!(bottom_solid_fill);
+            restore!(top_solid_fill);
+            restore!(sparse_infill_area);
+            restore!(internal_solid_fill);
+            restore!(internal_bridge_areas);
+        }
+    }
+    regions
 }
 
 /// Convert a native SDK support builder through the same host-side join used
@@ -88,4 +143,99 @@ pub fn convert_native_support_output_with_plan(
         raft_path_origins: builder.raft_path_origins().iter().map(origin).collect(),
     };
     convert_support_output_with_plan(&collected, layer_index, Some(plan))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::perimeter_source_regions;
+    use slicer_ir::{ExPolygon, Point2, Polygon, SliceIR, SlicedRegion};
+
+    fn rect(x0: f32, y0: f32, x1: f32, y1: f32) -> ExPolygon {
+        ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(x0, y0),
+                    Point2::from_mm(x1, y0),
+                    Point2::from_mm(x1, y1),
+                    Point2::from_mm(x0, y1),
+                ],
+            },
+            holes: Vec::new(),
+        }
+    }
+
+    fn area(polys: &[ExPolygon]) -> f64 {
+        polys
+            .iter()
+            .map(|poly| {
+                let points = &poly.contour.points;
+                points
+                    .iter()
+                    .enumerate()
+                    .map(|(i, a)| {
+                        let b = &points[(i + 1) % points.len()];
+                        (a.x as f64) * (b.y as f64) - (b.x as f64) * (a.y as f64)
+                    })
+                    .sum::<f64>()
+                    .abs()
+                    * 0.5
+            })
+            .sum()
+    }
+
+    /// Ticket 19 (R2): a perimeter guest running `only_one_wall_top` walls
+    /// `top_solid_fill` on its own, so the base region handed to it must carry
+    /// the modifier child's share of EVERY fill mask, not just `polygons` —
+    /// otherwise a wall seam runs along the modifier edge on shell layers.
+    #[test]
+    fn perimeter_source_regions_restore_all_fill_masks_from_modifier_children() {
+        let left = rect(0.0, 0.0, 5.0, 10.0);
+        let right = rect(5.0, 0.0, 10.0, 10.0);
+        let sub_id = slicer_ir::modifier_sub_region_id(3, "obj", &[right.clone()]);
+        let slice = SliceIR {
+            regions: vec![
+                SlicedRegion {
+                    object_id: "obj".into(),
+                    region_id: 3,
+                    polygons: vec![left.clone()],
+                    infill_areas: vec![left.clone()],
+                    top_solid_fill: vec![left.clone()],
+                    internal_solid_fill: vec![left.clone()],
+                    ..SlicedRegion::default()
+                },
+                SlicedRegion {
+                    object_id: "obj".into(),
+                    region_id: sub_id,
+                    polygons: vec![right.clone()],
+                    infill_areas: vec![right.clone()],
+                    top_solid_fill: vec![right.clone()],
+                    internal_solid_fill: vec![right.clone()],
+                    ..SlicedRegion::default()
+                },
+            ],
+            ..SliceIR::default()
+        };
+        let projected = perimeter_source_regions(&slice);
+        assert_eq!(
+            projected.len(),
+            1,
+            "modifier child must not be a perimeter donor"
+        );
+        let base = &projected[0];
+        assert_eq!(base.region_id, 3);
+        let whole = area(&[rect(0.0, 0.0, 10.0, 10.0)]);
+        for (name, mask) in [
+            ("polygons", &base.polygons),
+            ("infill_areas", &base.infill_areas),
+            ("top_solid_fill", &base.top_solid_fill),
+            ("internal_solid_fill", &base.internal_solid_fill),
+        ] {
+            assert!(
+                (area(mask) - whole).abs() < 1.0,
+                "{name} must be restored to the unsplit outline; area {}",
+                area(mask)
+            );
+        }
+        assert!(base.bridge_areas.is_empty(), "empty masks stay empty");
+    }
 }

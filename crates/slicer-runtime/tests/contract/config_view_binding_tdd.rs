@@ -108,6 +108,40 @@ fn source() -> HashMap<String, ConfigValue> {
 }
 
 #[test]
+fn undeclared_independent_support_layer_height_fails_plan_build() {
+    // Packet 239c AC-N3: a module binding whose ConfigView carries
+    // `independent_support_layer_height` but whose manifest `[config.schema]`
+    // does not declare it must fail plan construction with
+    // `ExecutionPlanError::UndeclaredConfigKey { key ==
+    // "independent_support_layer_height" }` — proving the declared-read guard
+    // in `build_execution_plan` covers this key rather than
+    // `ConfigView::from_declared` dropping it silently.
+    //
+    // Red-first note (Step 1): the guard is generic by design — it rejects ANY
+    // undeclared key (see `build_execution_plan_rejects_configview_with_
+    // undeclared_key`, the "secret" neighbour). This test therefore passed on
+    // first run naming the packet's key explicitly; the red-first observation
+    // was made on the sibling generic-guard test, not this one.
+    let module = module_with_config_keys("com.example.support-planner", &["density"]);
+    let mut leaky = HashMap::new();
+    leaky.insert("density".to_string(), ConfigValue::Float(0.3));
+    leaky.insert(
+        "independent_support_layer_height".to_string(),
+        ConfigValue::Bool(true),
+    );
+    let view = Arc::new(ConfigView::from_map(leaky));
+
+    let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+    match build_execution_plan(&plan_request_for(&module, view), &mut diagnostics).unwrap_err() {
+        ExecutionPlanError::UndeclaredConfigKey { module_id, key } => {
+            assert_eq!(module_id, "com.example.support-planner");
+            assert_eq!(key, "independent_support_layer_height");
+        }
+        other => panic!("expected UndeclaredConfigKey, got {other:?}"),
+    }
+}
+
+#[test]
 fn bind_module_config_view_exposes_only_declared_keys() {
     let module = module_with_config_keys("com.example.infill", &["density", "pattern"]);
     let view = bind_module_config_view(&module, &source());

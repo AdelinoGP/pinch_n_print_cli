@@ -177,6 +177,7 @@ pub use slice_ir::{
     // Region map types
     DEFAULT_REGION_MAP_CAP,
     MODIFIER_FOOTPRINT_REGION_ID,
+    MODIFIER_VARIANT_REGION_ID_STRIDE,
     SUPPORT_FAMILY_TRADITIONAL,
     SUPPORT_FAMILY_TREE,
 };
@@ -184,8 +185,12 @@ pub use slice_ir::{
 pub use slice_ir::{
     // ExtrusionLine -> ExtrusionPath3D conversion helper
     extrusion_line_to_extrusion_path3d,
+    is_modifier_namespace_id,
     // Helper functions for Point2 coordinate conversion
     mm_to_units,
+    modifier_base_region_id,
+    modifier_sub_region_id,
+    modifier_sub_region_id_fits,
     units_to_mm,
     // Variable-width centerline helper
     variable_width,

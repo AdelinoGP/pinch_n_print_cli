@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
 
-use slicer_ir::{PaintSemantic, ResolvedConfig, SemVer};
+use slicer_ir::{is_modifier_namespace_id, ActiveRegion, PaintSemantic, ResolvedConfig, SemVer};
 
 use crate::dag::BuiltinProducer;
 use crate::{Blackboard, BlackboardError, ExecutionPlan};
@@ -122,6 +122,61 @@ pub fn commit_region_mapping_builtin(
         DEFAULT_REGION_MAP_CAP,
     )
     .map_err(RegionMappingBuiltinError::Mapping)?;
+
+    let mut expanded_plan = (*layer_plan).clone();
+    for layer in &mut expanded_plan.global_layers {
+        let mut additions = Vec::new();
+        let mut modifier_keys: Vec<_> = ir
+            .entries
+            .keys()
+            .filter(|key| {
+                key.global_layer_index == layer.index && is_modifier_namespace_id(key.region_id)
+            })
+            .collect();
+        // RegionMapIR uses a HashMap for lookup, but active-region order is
+        // observable by module dispatch and must not depend on hash seeding.
+        modifier_keys.sort_by(|a, b| {
+            a.object_id
+                .cmp(&b.object_id)
+                .then(a.region_id.cmp(&b.region_id))
+                .then(a.variant_chain.cmp(&b.variant_chain))
+        });
+        for key in modifier_keys {
+            if layer.active_regions.iter().any(|active| {
+                active.object_id == key.object_id && active.region_id == key.region_id
+            }) {
+                continue;
+            }
+            let base_region_id = slicer_ir::modifier_base_region_id(key.region_id)
+                .expect("filtered to modifier namespace ids");
+            let parent = if key.variant_chain.is_empty() {
+                layer.active_regions.iter().find(|active| {
+                    active.object_id == key.object_id && active.region_id == base_region_id
+                })
+            } else {
+                layer.active_regions.iter().find(|active| {
+                    active.object_id == key.object_id
+                        && slicer_core::algos::paint_segmentation::paint_variant_region_id(
+                            active.region_id,
+                            &key.variant_chain,
+                        ) == base_region_id
+                })
+            };
+            let mut active = parent.cloned().unwrap_or_else(|| ActiveRegion {
+                object_id: key.object_id.clone(),
+                region_id: key.region_id,
+                ..Default::default()
+            });
+            active.region_id = key.region_id;
+            active.resolved_config = ir.config_for(key).clone();
+            additions.push(active);
+        }
+        layer.active_regions.extend(additions);
+    }
+
+    blackboard
+        .replace_layer_plan(Arc::new(expanded_plan))
+        .map_err(|source| RegionMappingBuiltinError::Blackboard { source })?;
 
     blackboard
         .commit_region_map(Arc::new(ir))

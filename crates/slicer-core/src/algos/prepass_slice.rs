@@ -976,6 +976,13 @@ fn execute_prepass_slice_single_layer_impl(
 ) -> Result<SliceIR, LayerSliceError> {
     let mut regions = Vec::with_capacity(layer.active_regions.len());
     for active in &layer.active_regions {
+        // Region mapping surfaces modifier sub-regions in the authoritative
+        // layer plan before this stage. Their geometry is minted from modifier
+        // footprints after shell/paint refinement, not by re-slicing the whole
+        // object under the modifier id here.
+        if slicer_ir::is_modifier_namespace_id(active.region_id) {
+            continue;
+        }
         let object = mesh
             .objects
             .iter()

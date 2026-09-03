@@ -57,6 +57,7 @@ fn pipeline_config_base(
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(ConfigBoundsIndex::empty()),
         wasm_handles: HashMap::new(),
+        anchored_entities: Vec::new(),
     }
 }
 

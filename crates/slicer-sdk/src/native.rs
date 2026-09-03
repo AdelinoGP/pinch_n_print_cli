@@ -39,11 +39,21 @@ pub struct NativeLayerResponse {
     /// Accumulated perimeter output, if the stage emits one.
     pub perimeters: Option<builders::PerimeterOutputBuilder>,
     /// Accumulated support output, if the stage emits one.
-    pub support: Option<builders::SupportOutputBuilder>,
+    pub support: Option<NativeSupportOutput>,
     /// Accumulated slice-postprocess output, if the stage emits one.
     pub slice_postprocess: Option<builders::SlicePostprocessBuilder>,
     /// Accumulated path-optimization output, if the stage emits one.
     pub path_optimization: Option<NativePathOptimizationOutput>,
+    /// Anchored event collection emitted by the module, if any.
+    pub anchored_events: Option<crate::layer_collection_builder::LayerCollectionBuilder>,
+}
+
+/// Output accumulated by a native `Layer::Support` entry.
+pub struct NativeSupportOutput {
+    /// Support geometry side effects emitted by the module.
+    pub output: builders::SupportOutputBuilder,
+    /// Entity-order proposal emitted by the module.
+    pub collection: crate::layer_collection_builder::LayerCollectionBuilder,
 }
 
 /// Output accumulated by a native `Layer::PathOptimization` entry.

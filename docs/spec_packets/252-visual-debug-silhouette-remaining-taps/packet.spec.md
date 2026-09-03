@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 252-visual-debug-silhouette-remaining-taps
 task_ids:
   - TASK-458

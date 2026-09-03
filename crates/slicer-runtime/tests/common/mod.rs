@@ -52,6 +52,7 @@ pub fn pipeline_config_base(
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(ConfigBoundsIndex::empty()),
         wasm_handles: HashMap::new(),
+        anchored_entities: Vec::new(),
     }
 }
 
@@ -180,6 +181,70 @@ pub fn sloped_triangle_object(id: &str, transform: Transform3d) -> ObjectMesh {
             data: HashMap::new(),
         },
         ..Default::default()
+    }
+}
+
+// ── Payload-capturing G-code emitter (TASK-400) ───────────────────────────
+/// A `GCodeEmitter` that clones and stores every `LayerCollectionIR` row it is
+/// handed before producing a valid `GCodeIR`. Used to record the exact row
+/// sequence a pipeline run hands to emission, so a later executor switch can be
+/// proven equivalent on the empty-anchored-collection path.
+///
+/// The emitter is moved into `PipelineStageRunners.emitter` as a boxed trait
+/// object, so callers must clone the `Arc` handle out via [`Self::handle`]
+/// *before* the move, and read the rows through the handle afterwards.
+pub struct CapturedRowsEmitter {
+    rows: Arc<Mutex<Vec<slicer_ir::LayerCollectionIR>>>,
+}
+
+impl Default for CapturedRowsEmitter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CapturedRowsEmitter {
+    pub fn new() -> Self {
+        Self {
+            rows: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    /// Clone the shared capture handle. Must be called before the emitter is
+    /// boxed into `PipelineStageRunners`.
+    pub fn handle(&self) -> Arc<Mutex<Vec<slicer_ir::LayerCollectionIR>>> {
+        Arc::clone(&self.rows)
+    }
+
+    /// The captured row sequence, in the order the pipeline handed them over.
+    pub fn captured(&self) -> Vec<slicer_ir::LayerCollectionIR> {
+        self.rows.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+}
+
+impl GCodeEmitter for CapturedRowsEmitter {
+    fn emit_gcode(
+        &self,
+        layer_irs: &[slicer_ir::LayerCollectionIR],
+    ) -> Result<slicer_ir::GCodeIR, slicer_runtime::GCodeEmitError> {
+        self.rows
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .extend(layer_irs.iter().cloned());
+
+        // exhaustive: PrintMetadata has no Default-bearing test helper in this module.
+        let mut ir = slicer_ir::GCodeIR {
+            commands: Vec::new(),
+            metadata: slicer_ir::PrintMetadata {
+                slicer_version: "test".into(),
+                estimated_print_time_s: 0,
+                filament_used_mm: Vec::new(),
+                layer_count: 0,
+            },
+            ..Default::default()
+        };
+        ir.metadata.layer_count = layer_irs.len() as u32;
+        Ok(ir)
     }
 }
 

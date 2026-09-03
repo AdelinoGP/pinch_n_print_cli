@@ -13,19 +13,41 @@ G-02 (`docs/specs/support-parity-gap-register.md`, destination
 **239-support-independent-layer-z**): PnP has no support-layer Z independent of
 object-layer Z. The anchored-event substrate (packets 219–223) already carries everything
 needed — planar and Z-spanning entity contracts, deterministic committed event ordering,
-and a dedicated executor entry point — but two verified blockers keep it out of the
-production slice path:
+and a dedicated executor entry point — but the feature is still absent from the production
+slice path. There is exactly ONE blocker, not two:
 
-1. `is_same_z_entity` (`crates/slicer-runtime/src/layer_executor.rs`) routes same-z-support
-   entities by matching the declared planar Z against the anchor layer's Z within
-   `COORDINATE_TOLERANCE_UNITS`; an entity whose plane falls between object layers matches
-   nothing, so it is silently excluded from ordinary merging (verified 2026-08-22 at plan
-   time; re-verify live before implementing).
+1. **CORRECTED (re-verified live 2026-08-28; the 2026-08-22 characterization is REFUTED
+   and is preserved here only as history).** The original claim was that
+   `is_same_z_entity` (`crates/slicer-runtime/src/layer_executor.rs`) "matches nothing, so
+   [an off-grid entity] is silently excluded from ordinary merging" — i.e. that off-grid
+   entities fall through a routing gap. **That is wrong.** Direct read of
+   `crates/slicer-runtime/src/layer_executor.rs` finds exactly three references to
+   `is_same_z_entity`: its definition, a positive filter inside `append_same_z_entities`,
+   and a negated filter (`!is_same_z_entity`) inside
+   `execute_anchored_event_collections`. Those two filters are EXACT COMPLEMENTS over a
+   single predicate, so the routing partition is ALREADY TOTAL: an on-grid same-z-support
+   entity (tolerance match against `mm_to_units(anchor.z)` within
+   `AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS`) takes the ordinary model-layer
+   route, and an off-grid entity fails that match, is rejected by the ordinary route, and
+   is therefore CAUGHT by the negated filter and lands in the anchored collection. It does
+   not vanish at this filter. No routing gap exists to close; what remains here is a
+   behavior-neutral clarity refactor (one shared named helper so the two filters cannot
+   drift apart) — see `design.md` §Approach 1.
 2. `crates/slicer-runtime/src/pipeline.rs` calls only the non-anchored per-layer variants
    (`execute_per_layer_with_events_and_support_tools`,
    `execute_per_layer_with_instrumentation_and_support_tools`);
-   `execute_per_layer_with_anchored_events` is exercised solely by tests (verified
-   2026-08-22; re-verify).
+   `execute_per_layer_with_anchored_events` and
+   `execute_per_layer_with_committed_anchored_events` are exercised solely by tests
+   (verified 2026-08-22; **re-verified live 2026-08-28 — HOLDS**). A third non-anchored
+   call site was found in the same live re-verification:
+   `crates/pnp-cli/src/visual_debug.rs` also calls
+   `execute_per_layer_with_events_and_support_tools`, so visual-debug output shares the
+   same blind spot as the slice path.
+
+   **This is the entire mechanism of the observable defect.** The off-grid same-z support
+   entity does reach the anchored collection; that collection is simply never executed,
+   because no production call site invokes an anchored executor entry point. Blocker 2
+   alone explains "off-grid support never prints"; blocker 1 explains nothing.
 
 A stated-but-unmeasured risk sits in emission: `height_delta`
 (`crates/slicer-gcode/src/emit.rs`) is computed per emitted row from neighbouring row Zs
@@ -44,16 +66,20 @@ fixes produce off-grid entities that are routed but never printed.
 
 ## In Scope
 
-- Exact-Z semantics for same-z-support anchored entities in
+- Behavior-neutral consolidation of the same-z route decision in
   `crates/slicer-runtime/src/layer_executor.rs`: on-tolerance planes merge into the anchor
   layer's ordinary entities (invariant 6 preserved); all other same-z-support entities take
-  the anchored route and emit at their declared Z. Totality: every entity routes exactly
-  once.
+  the anchored route and emit at their declared Z. This is already true today (the two
+  filters are exact complements); the packet only extracts the decision into one named
+  helper consulted by `append_same_z_entities` and `execute_anchored_event_collections` so
+  they cannot drift apart. Totality is asserted, not created.
 - First production enablement of `execute_per_layer_with_anchored_events` /
   `execute_per_layer_with_committed_anchored_events` inside
-  `crates/slicer-runtime/src/pipeline.rs` (both instrumented and non-instrumented paths),
-  including synthesis of support-only intermediate print rows from committed anchored
-  collections so they survive finalization/postpass into G-code.
+  `crates/slicer-runtime/src/pipeline.rs` (both instrumented and non-instrumented paths)
+  and `crates/pnp-cli/src/visual_debug.rs` (the third non-anchored call site, so
+  visual-debug output matches sliced output), including synthesis of support-only
+  intermediate print rows from committed anchored collections so they survive
+  finalization/postpass into G-code.
 - Measure-first protocol for `height_delta` in `crates/slicer-gcode/src/emit.rs`: a
   dispatched measurement with a recorded verdict (MISSCALE_FIXED / CONSISTENT), then a
   conditional fix ONLY if the verdict demands it.

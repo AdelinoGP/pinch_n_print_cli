@@ -133,6 +133,7 @@ mod multi_infill_holder_dispatch_tdd;
 mod narrow_island_smaller_perimeter_tdd;
 mod no_linker_module_degraded_raw_output_tdd;
 mod nonplanar_shell_emission_tdd;
+mod offgrid_rows_tdd;
 mod outer_inner_width_and_spacing_tdd;
 mod overhang_classifier_refactor_regression_tdd;
 mod overhang_pipeline_e2e_tdd;
@@ -165,6 +166,34 @@ mod wasm_instance_pool_tdd;
 #[test]
 fn support_never_intersects_model_at_exact_z() {
     support_family_closure::support_never_intersects_model_at_exact_z().unwrap();
+}
+
+#[test]
+fn independent_support_layer_height_emits_support_row_off_object_grid() {
+    support_family_closure::independent_support_layer_height_emits_support_row_off_object_grid()
+        .unwrap();
+}
+
+#[test]
+fn coarse_support_pitch_emits_free_floating_extruding_rows() {
+    support_family_closure::coarse_support_pitch_emits_free_floating_extruding_rows().unwrap();
+}
+
+#[test]
+fn disabled_coarse_pitch_reproduces_baseline_z_sequence() {
+    support_family_closure::disabled_coarse_pitch_reproduces_baseline_z_sequence().unwrap();
+}
+
+#[test]
+fn disabled_independent_support_layer_height_reproduces_baseline_z_sequence() {
+    support_family_closure::disabled_independent_support_layer_height_reproduces_baseline_z_sequence()
+        .unwrap();
+}
+
+#[test]
+fn support_disabled_emits_no_support_rows_even_with_independent_height() {
+    support_family_closure::support_disabled_emits_no_support_rows_even_with_independent_height()
+        .unwrap();
 }
 
 #[test]

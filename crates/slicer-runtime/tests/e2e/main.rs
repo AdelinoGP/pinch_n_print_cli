@@ -18,6 +18,8 @@ mod infill_overlap_changes_gcode_tdd;
 mod mixed_density_internal_bridge_rejection_e2e_tdd;
 mod mm_real_fixture_gcode_tdd;
 mod modifier_infill_tdd;
+mod modifier_support_territory_e2e_tdd;
+mod modifier_support_type_family_e2e_tdd;
 mod painted_fixture_parity_tdd;
 mod run_slice_api_tdd;
 mod scenario_traces_tdd;

@@ -1,6 +1,8 @@
 #![allow(missing_docs)]
 
-use slicer_ir::{AnchoredEntity, AnchoredEntityProvenance, AnchoredGeometryContract};
+use slicer_ir::{
+    AnchoredEntity, AnchoredEntityProvenance, AnchoredGeometryContract, ExtrusionRole,
+};
 use slicer_scheduler::execution_plan::ExecutionPlan;
 
 pub fn capability_derived_anchor_closure() {
@@ -17,6 +19,7 @@ pub fn capability_derived_anchor_closure() {
             source_plan_entry: String::from("test-plan-entry"),
         },
         path_points: Vec::new(),
+        role: ExtrusionRole::SupportMaterial,
     };
     let unrelated = AnchoredEntity {
         input_capabilities: vec![String::from("ordered-events")],

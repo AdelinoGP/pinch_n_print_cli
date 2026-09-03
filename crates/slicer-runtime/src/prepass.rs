@@ -414,6 +414,7 @@ fn execute_prepass_with_instrumentation_collecting(
                 aggregate_support_plan_irs_degrading_with_attributed_diagnostics(
                     support_plans,
                     &exact_z,
+                    blackboard.support_analysis().map(Arc::as_ref),
                 );
             let aggregation_module = ModuleId::from("host:support_plan_aggregation");
             // The aggregate is a host-owned stage result, but its diagnostics
@@ -888,12 +889,50 @@ fn execute_prepass_with_builtins_configured_instr_collecting(
             let slice_ir = bb.slice_ir().expect("guarded by should_run").clone();
             let region_map = bb.region_map().expect("guarded by should_run").clone();
             let new_slice_ir = slicer_core::algos::paint_segmentation::execute_paint_segmentation(
-                mesh, slice_ir, region_map,
+                Arc::clone(&mesh),
+                slice_ir,
+                region_map,
             )
             .map_err(|e| PrepassExecutionError::PaintSegmentation {
                 message: format!("{e:?}"),
             })?;
-            bb.replace_slice_ir(new_slice_ir)
+            let mut split_slices = new_slice_ir.as_ref().clone();
+            for slice in &mut split_slices {
+                crate::region_partition::split_modifier_sub_regions_for_prepass(
+                    slice,
+                    mesh.as_ref(),
+                )
+                .map_err(|message| PrepassExecutionError::PaintSegmentation { message })?;
+            }
+            // Modifier entries are derived before geometry exists, so the
+            // region-map seam can provision all possible child configs. After
+            // segmentation, retain only children that were actually
+            // materialized with non-empty geometry; this prevents disjoint or
+            // priority-shadowed modifiers from reaching support-family
+            // dispatch as phantom active regions.
+            if let Some(layer_plan) = bb.layer_plan().cloned() {
+                let mut filtered_plan = (*layer_plan).clone();
+                for layer in &mut filtered_plan.global_layers {
+                    layer.active_regions.retain(|active| {
+                        !slicer_ir::is_modifier_namespace_id(active.region_id)
+                            || split_slices.iter().any(|slice| {
+                                slice.global_layer_index == layer.index
+                                    && slice.regions.iter().any(|region| {
+                                        region.object_id == active.object_id
+                                            && region.region_id == active.region_id
+                                            && !region.polygons.is_empty()
+                                    })
+                            })
+                    });
+                }
+                bb.replace_layer_plan(Arc::new(filtered_plan))
+                    .map_err(|source| PrepassExecutionError::Blackboard {
+                        stage_id: "PrePass::PaintSegmentation".to_string(),
+                        module_id: "host:paint_segmentation".to_string(),
+                        source,
+                    })?;
+            }
+            bb.replace_slice_ir(Arc::new(split_slices))
                 .map_err(|source| PrepassExecutionError::Blackboard {
                     stage_id: "PrePass::PaintSegmentation".to_string(),
                     module_id: "host:paint_segmentation".to_string(),

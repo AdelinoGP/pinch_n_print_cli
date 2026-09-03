@@ -52,8 +52,43 @@ fn paint_with_plan_at(family_id: &str, layer_index: u32) -> PaintRegionLayerView
         }],
         demand_ids: vec!["test-demand".into()],
         body_ids: vec!["test-body".into()],
-        anchor_layer_index: 0,
-        anchor_z: 0,
+        anchor_layer_index: layer_index,
+        // Packet 239c: anchor_z is the declared print plane; this fixture
+        // renders on-grid at the region's own 0.3 mm plane (3000 units).
+        // The old 0 silently routed the entry into the anchored branch.
+        anchor_z: 3_000,
+        skeleton: None,
+        capabilities: vec![],
+        provenance: vec!["test".into()],
+        decline_reason: None,
+    };
+    PaintRegionLayerView::new(layer_index).with_support_plan(Arc::new(SupportPlanIR {
+        entries: vec![entry],
+        ..Default::default()
+    }))
+}
+
+/// Packet 239c variant: pins the declared print plane so the entry stays
+/// on-grid with whatever region Z the test renders at.
+fn paint_with_plan_at_anchor_z(
+    family_id: &str,
+    layer_index: u32,
+    anchor_z_mm: f32,
+) -> PaintRegionLayerView {
+    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
+    let entry = slicer_ir::SupportPlanEntry {
+        global_layer_index: layer_index as i32,
+        object_id: "obj1".into(),
+        region_id: 1,
+        family_id: family_id.into(),
+        roles: vec![SupportPlanRoleRegion {
+            role: SupportPlanRole::SupportBody,
+            regions: vec![square_polygon(0.0, 0.0, 10.0)],
+        }],
+        demand_ids: vec!["test-demand".into()],
+        body_ids: vec!["test-body".into()],
+        anchor_layer_index: layer_index,
+        anchor_z: slicer_ir::mm_to_units(anchor_z_mm),
         skeleton: None,
         capabilities: vec![],
         provenance: vec!["test".into()],
@@ -79,7 +114,10 @@ fn paint_with_interface_plan() -> PaintRegionLayerView {
         demand_ids: vec!["test-demand".into()],
         body_ids: vec!["test-body".into()],
         anchor_layer_index: 0,
-        anchor_z: 0,
+        // Packet 239c: anchor_z is the declared print plane; this fixture
+        // renders on-grid at the region's own 0.3 mm plane (3000 units).
+        // The old 0 silently routed the entry into the anchored branch.
+        anchor_z: 3_000,
         skeleton: None,
         capabilities: vec![],
         provenance: vec!["test".into()],
@@ -104,7 +142,14 @@ fn interface_paths(flow: f64) -> Vec<(slicer_ir::ExtrusionPath3D, bool)> {
     let paint = paint_with_interface_plan();
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
     output.interface_paths().to_vec()
 }
@@ -120,7 +165,14 @@ fn support_disabled_no_output() {
     let mut output = SupportOutputBuilder::new();
 
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     assert_eq!(
@@ -141,7 +193,14 @@ fn single_region_generates_support() {
     let mut output = SupportOutputBuilder::new();
 
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     let paths = output.support_paths();
@@ -164,7 +223,14 @@ fn extrusion_role_is_support_material() {
     let mut output = SupportOutputBuilder::new();
 
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     assert!(!output.support_paths().is_empty());
@@ -188,7 +254,14 @@ fn speed_factor_from_config() {
     let mut output = SupportOutputBuilder::new();
 
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     assert!(!output.support_paths().is_empty());
@@ -218,10 +291,24 @@ fn base_spacing_affects_line_count() {
     let mut output_high = SupportOutputBuilder::new();
 
     module_low
-        .run_support(0, &[region_low], &paint, &mut output_low, &config_low)
+        .run_support(
+            0,
+            &[region_low],
+            &paint,
+            &mut output_low,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config_low,
+        )
         .unwrap();
     module_high
-        .run_support(0, &[region_high], &paint, &mut output_high, &config_high)
+        .run_support(
+            0,
+            &[region_high],
+            &paint,
+            &mut output_high,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config_high,
+        )
         .unwrap();
 
     let count_low = output_low.support_paths().len();
@@ -245,15 +332,32 @@ fn alternating_angle() {
     let region1 = make_square_region(10.0, 0.5);
 
     let paint = paint_with_plan("traditional");
-    let paint1 = paint_with_plan_at("traditional", 1);
+    // Packet 239c: the layer-1 fixture must declare an anchor_z on-grid with
+    // its own region (0.5 mm = 5000 units), or the entry routes to the
+    // anchored branch and this test observes no paths.
+    let paint1 = paint_with_plan_at_anchor_z("traditional", 1, 0.5);
     let mut output0 = SupportOutputBuilder::new();
     let mut output1 = SupportOutputBuilder::new();
 
     module
-        .run_support(0, &[region0], &paint, &mut output0, &config)
+        .run_support(
+            0,
+            &[region0],
+            &paint,
+            &mut output0,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
     module
-        .run_support(1, &[region1], &paint1, &mut output1, &config)
+        .run_support(
+            1,
+            &[region1],
+            &paint1,
+            &mut output1,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     let paths0 = output0.support_paths();
@@ -310,7 +414,14 @@ fn empty_regions_no_output() {
     let mut output = SupportOutputBuilder::new();
 
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     assert_eq!(
@@ -331,7 +442,14 @@ fn disabled_support_no_output() {
     let mut output = SupportOutputBuilder::new();
 
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
 
     assert_eq!(
@@ -349,7 +467,14 @@ fn opposite_family_plan_is_rejected() {
     let paint = paint_with_plan("tree");
     let mut output = SupportOutputBuilder::new();
 
-    let result = module.run_support(0, &[region], &paint, &mut output, &config);
+    let result = module.run_support(
+        0,
+        &[region],
+        &paint,
+        &mut output,
+        &mut slicer_sdk::LayerCollectionBuilder::new(),
+        &config,
+    );
 
     assert!(result.is_err(), "non-traditional family must be rejected");
     assert!(output.support_paths().is_empty());
@@ -404,7 +529,14 @@ fn zero_base_and_interface_spacing_clamp_to_solid_pitch() {
     let paint = paint_with_plan("traditional");
     let mut output = SupportOutputBuilder::new();
     module
-        .run_support(0, &[region], &paint, &mut output, &config)
+        .run_support(
+            0,
+            &[region],
+            &paint,
+            &mut output,
+            &mut slicer_sdk::LayerCollectionBuilder::new(),
+            &config,
+        )
         .unwrap();
     let fill_paths: Vec<_> = output
         .support_paths()

@@ -667,10 +667,25 @@ impl LayerModule for ArachnePerimeters {
             // source is `top_solid_fill` (PnP's precomputed top-region polygon);
             // see `D-152-TOP-AREA-SOURCE` for the divergence from Orca's
             // `diff_ex(infill_contour, upper_slices_clipped)`.
-            if only_one_wall_top && !is_topmost_layer && !region.top_solid_fill().is_empty() {
+            // The top sub-area is the EXPOSED seed only. The host's shrinking
+            // shell shadow keeps the covered interior inside `top_solid_fill`
+            // on deeper shell layers and records that part in
+            // `internal_solid_fill`, so `top_solid_fill` alone is the whole
+            // interior there and the second pass walled the entire region as
+            // "top" (one wall, then a sliver remainder that failed
+            // preprocessing and took every wall with it — SchemaBridgeMap
+            // ticket 19, R1). Canonical derives the top area from
+            // `upper_slices`, i.e. exposure, which is exactly this difference.
+            let exposed_top: Vec<ExPolygon> = if only_one_wall_top && !is_topmost_layer {
+                difference_ex(region.top_solid_fill(), region.internal_solid_fill())
+            } else {
+                Vec::new()
+            };
+            if only_one_wall_top && !is_topmost_layer && !exposed_top.is_empty() {
                 self.emit_only_one_wall_top_second_pass(
                     region,
                     polygons,
+                    &exposed_top,
                     z,
                     &params,
                     base_max_bead_count,
@@ -1004,6 +1019,7 @@ impl ArachnePerimeters {
         &self,
         region: &SliceRegionView,
         polygons: &[ExPolygon],
+        exposed_top: &[ExPolygon],
         z: f32,
         params: &ArachneParams,
         base_max_bead_count: u32,
@@ -1022,10 +1038,11 @@ impl ArachnePerimeters {
             } else {
                 params.wall_sequence
             };
-        // Step 1: top-area derivation. PnP uses `top_solid_fill` (see
+        // Step 1: top-area derivation. PnP uses the exposed part of
+        // `top_solid_fill` (`top_solid_fill − internal_solid_fill`, see
         // D-152-TOP-AREA-SOURCE); Orca derives
         // `diff_ex(infill_contour, upper_slices_clipped)`.
-        let mut top_area: Vec<ExPolygon> = region.top_solid_fill().to_vec();
+        let mut top_area: Vec<ExPolygon> = exposed_top.to_vec();
 
         // Step 3: `min_width_top_surface` filter via `get_abs_value` (packet
         // 150 resolution mechanism). Absolute value, NOT raw float.
@@ -1061,7 +1078,7 @@ impl ArachnePerimeters {
         let mut top_params = *params;
         top_params.max_bead_count = 2;
         let (top_lines, _) =
-            match slicer_sdk::host::generate_arachne_walls(region.top_solid_fill(), &top_params) {
+            match slicer_sdk::host::generate_arachne_walls(&top_expolygons, &top_params) {
                 Ok(r) => r,
                 Err(e) => {
                     slicer_sdk::host::log_warn(&format!(
@@ -1077,7 +1094,7 @@ impl ArachnePerimeters {
             &top_lines,
             region,
             z,
-            region.top_solid_fill(),
+            &top_expolygons,
             params,
             contour_should_be_ccw,
             g7_reverse,
@@ -1142,6 +1159,13 @@ impl ArachnePerimeters {
                         region.object_id(),
                         region.region_id()
                     ));
+                    // The remainder is too thin to wall (typically a sliver
+                    // around an almost fully exposed top). Returning here used
+                    // to discard the top wall built above as well, leaving the
+                    // layer with no perimeter at all; keep what was built.
+                    for w in top_walls {
+                        output.push_wall_loop(w)?;
+                    }
                     return Ok(());
                 }
             };

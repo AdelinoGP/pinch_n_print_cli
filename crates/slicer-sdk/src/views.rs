@@ -285,6 +285,12 @@ impl SliceRegionView {
         self.internal_bridge_areas = internal_bridge_areas;
     }
 
+    /// Sets the internal solid fill polygons (the covered part of the shell
+    /// shadow; `top_solid_fill − internal_solid_fill` is the exposed top).
+    pub fn set_internal_solid_fill(&mut self, internal_solid_fill: Vec<ExPolygon>) {
+        self.internal_solid_fill = internal_solid_fill;
+    }
+
     /// Override the bridge orientation (host-only, for testing).
     #[doc(hidden)]
     pub fn set_bridge_orientation_deg(&mut self, bridge_orientation_deg: f32) {

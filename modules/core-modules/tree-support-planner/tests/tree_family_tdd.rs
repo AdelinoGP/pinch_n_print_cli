@@ -9,11 +9,12 @@ use slicer_ir::{
     SupportPlanDeclineReason, SupportPlanEntry, SupportPlanIR, SupportPlanRole,
     SupportPlanRoleRegion, Transform3d,
 };
+use slicer_sdk::host::{self, ClipOperation};
 use slicer_sdk::prepass_builders::SupportGeometryOutput;
 use slicer_sdk::prepass_types::{
     LayerPlanView, LayerPlanViewEntry, MeshObjectView, RegionSegmentationView,
-    RegionSegmentationViewEntry, SupportAnalysisCandidate, SupportAnalysisView,
-    SupportFamilyAssignment, SupportGeometryView, SupportGeometryViewEntry,
+    RegionSegmentationViewEntry, SupportAnalysisCandidate, SupportAnalysisGeometryEntry,
+    SupportAnalysisView, SupportFamilyAssignment, SupportGeometryView, SupportGeometryViewEntry,
 };
 use slicer_sdk::traits::PrepassModule;
 use slicer_wasm_host::exact_z_query::ExactZQueryService;
@@ -924,6 +925,1246 @@ fn anchored_heights_and_termination() {
 }
 
 #[test]
+fn enabled_independent_height_produces_free_floating_anchor_z() {
+    // Packet 239c AC-2: canonical enabled semantics — free-floating
+    // `anchor_z`. With `independent_support_layer_height` enabled (the
+    // default) and a support pitch finer than the object layer height, at
+    // least one emitted `SupportPlanEntry.anchor_z` differs from
+    // `mm_to_units(layer_plan.layers[..].z)` by more than
+    // `AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS`, planes are
+    // distinct and strictly ordered per object, and the intermediate planes
+    // follow the canonical `generate_support_layers` stepping.
+    //
+    // Fixture: a 10-layer 0.2 mm plan (1.8 mm tall tree contact at layer 8)
+    // with a 0.1 mm support pitch. Every adjacent pair of support rows
+    // (0.2 mm apart) admits n = ceil((0.2 - 1e-4)/0.1) = 2 canonical rows,
+    // so one strictly-between plane per adjacent pair is expected.
+    let demand_region = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(1.0, 1.0),
+                Point2::from_mm(1.2, 1.0),
+                Point2::from_mm(1.2, 1.2),
+                Point2::from_mm(1.0, 1.2),
+            ],
+        },
+        holes: vec![],
+    };
+    let analysis = SupportAnalysisView {
+        candidates: vec![SupportAnalysisCandidate {
+            id: 51,
+            object_id: "indep".into(),
+            region_id: "0".into(),
+            global_layer_index: 8,
+            z_units: slicer_ir::mm_to_units(1.8),
+            geometry: vec![demand_region],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    // The default planner already carries `independent_support_layer_height
+    // = true`; state the pitch explicitly through the config.
+    let planner = tree_support_planner::SupportPlanner::from_config(&planner_config_full_with(
+        true,
+        5.0,
+        45.0,
+        &[("support_layer_height_mm", ConfigValue::Float(0.1))],
+    ))
+    .expect("from_config");
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry_with_analysis(
+            &[overhang("indep", 0.0, 0.0, 4.0)],
+            &layer_plan(),
+            &regions("indep"),
+            &analysis,
+            &SupportGeometryView::default(),
+            &mut output,
+            &ConfigView::new(),
+        )
+        .expect("run_support_geometry_with_analysis");
+    assert!(
+        !output.entries().is_empty(),
+        "tree contact must produce plan entries"
+    );
+    let tolerance = slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS;
+    let off_grid: Vec<i64> = output
+        .entries()
+        .iter()
+        .filter(|entry| {
+            let grid_z = layer_plan().layers[entry.anchor_layer_index.min(9) as usize].z;
+            entry.anchor_z.abs_diff(slicer_ir::mm_to_units(grid_z)) > tolerance as u64
+        })
+        .map(|entry| entry.anchor_z)
+        .collect();
+    assert!(
+        !off_grid.is_empty(),
+        "enabled branch must produce at least one off-grid anchor_z \
+         (>{tolerance} units from its object layer's Z); got {:?}",
+        output
+            .entries()
+            .iter()
+            .map(|e| (e.global_layer_index, e.anchor_z))
+            .collect::<Vec<_>>()
+    );
+    // Intermediate planes follow the canonical stepping: with a 0.2 mm gap
+    // and a 0.1 mm pitch every off-grid plane sits at bottom_z + 0.1 mm for
+    // some adjacent pair of grid rows.
+    let grid: std::collections::BTreeSet<i64> = layer_plan()
+        .layers
+        .iter()
+        .map(|layer| slicer_ir::mm_to_units(layer.z))
+        .collect();
+    for plane in &off_grid {
+        let between = grid
+            .range((plane + 1)..)
+            .next()
+            .copied()
+            .expect("an off-grid plane must sit below some grid plane");
+        let step = between - plane;
+        assert!(
+            plane + step == between && grid.contains(&between),
+            "off-grid plane {plane} must sit one canonical step below grid plane {between}"
+        );
+    }
+    // Distinct and strictly increasing when ordered by plane.
+    let mut planes: Vec<i64> = output.entries().iter().map(|e| e.anchor_z).collect();
+    planes.sort_unstable();
+    planes.dedup();
+    let distinct_ordered = planes.len() == output.entries().len();
+    assert!(
+        distinct_ordered,
+        "declared planes must be distinct; got {planes:?}"
+    );
+}
+
+fn run_multi_layer_demand_on_plan(
+    pitch_mm: f64,
+    layer_plan: &LayerPlanView,
+) -> SupportGeometryOutput {
+    let demand_region = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(1.0, 1.0),
+                Point2::from_mm(1.2, 1.0),
+                Point2::from_mm(1.2, 1.2),
+                Point2::from_mm(1.0, 1.2),
+            ],
+        },
+        holes: vec![],
+    };
+    let analysis = SupportAnalysisView {
+        candidates: vec![
+            SupportAnalysisCandidate {
+                id: 81,
+                object_id: "coarse".into(),
+                region_id: "0".into(),
+                global_layer_index: layer_plan.layers[3].global_layer_index,
+                z_units: slicer_ir::mm_to_units(layer_plan.layers[3].z),
+                geometry: vec![demand_region.clone()],
+                ..Default::default()
+            },
+            SupportAnalysisCandidate {
+                id: 82,
+                object_id: "coarse".into(),
+                region_id: "0".into(),
+                global_layer_index: layer_plan.layers[8].global_layer_index,
+                z_units: slicer_ir::mm_to_units(layer_plan.layers[8].z),
+                geometry: vec![demand_region],
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+    let planner = tree_support_planner::SupportPlanner::from_config(&planner_config_full_with(
+        true,
+        5.0,
+        45.0,
+        &[("support_layer_height_mm", ConfigValue::Float(pitch_mm))],
+    ))
+    .expect("from_config");
+    let mut output = SupportGeometryOutput::new();
+    let segmentation = RegionSegmentationView {
+        entries: layer_plan
+            .layers
+            .iter()
+            .map(|layer| RegionSegmentationViewEntry {
+                object_id: "coarse".into(),
+                layer_index: layer.global_layer_index,
+                region_ids: vec!["0".into()],
+            })
+            .collect(),
+        region_support_configs: vec![],
+    };
+    planner
+        .run_support_geometry_with_analysis(
+            &[overhang("coarse", 0.0, 0.0, 4.0)],
+            layer_plan,
+            &segmentation,
+            &analysis,
+            &SupportGeometryView::default(),
+            &mut output,
+            &ConfigView::new(),
+        )
+        .expect("run_support_geometry_with_analysis");
+    output
+}
+
+#[test]
+fn coarse_synthesized_rows_use_height_local_geometry() {
+    let output = run_multi_layer_demand_on_plan(0.3, &layer_plan());
+    let synthesized: Vec<_> = output
+        .entries()
+        .iter()
+        .filter(|entry| entry.global_layer_index < 0)
+        .collect();
+    let anchors: Vec<_> = synthesized.iter().map(|entry| entry.anchor_z).collect();
+
+    assert!(
+        synthesized.len() >= 2,
+        "coarse demand must emit at least two synthesized rows; anchors: {anchors:?}"
+    );
+    assert!(
+        synthesized.iter().all(|entry| entry.skeleton.is_some()),
+        "coarse synthesized rows must retain skeleton geometry; anchors: {anchors:?}"
+    );
+    assert!(
+        synthesized
+            .windows(2)
+            .any(|pair| pair[0].skeleton != pair[1].skeleton),
+        "coarse synthesized rows must use height-local skeleton geometry; anchors: {anchors:?}"
+    );
+}
+
+#[test]
+fn coarse_pitch_produces_free_floating_anchor_z() {
+    let mut non_dense_identity_plan = layer_plan();
+    for (layer, global_layer_index) in non_dense_identity_plan
+        .layers
+        .iter_mut()
+        .zip([40, 7, 81, 3, 55, 13, 99, 21, 1, 34])
+    {
+        layer.global_layer_index = global_layer_index;
+    }
+    let output = run_multi_layer_demand_on_plan(0.3, &non_dense_identity_plan);
+    assert!(
+        !output.entries().is_empty(),
+        "tree demand must produce entries"
+    );
+    let tolerance = slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS;
+    assert!(
+        output.entries().iter().any(|entry| {
+            entry.anchor_z.abs_diff(slicer_ir::mm_to_units(
+                non_dense_identity_plan.layers[entry.anchor_layer_index.min(9) as usize].z,
+            )) > tolerance as u64
+        }),
+        "coarse pitch must produce an off-grid anchor_z"
+    );
+    let planes: Vec<i64> = output
+        .entries()
+        .iter()
+        .map(|entry| entry.anchor_z)
+        .collect();
+    assert_eq!(
+        planes,
+        vec![2000, 5000, 8000, 11000, 14000],
+        "tree-family ceil(dist / pitch) planes must be emitted in original order"
+    );
+    assert!(
+        planes.windows(2).all(|pair| pair[0] < pair[1]),
+        "coarse support planes must be strictly increasing: {planes:?}"
+    );
+    assert_eq!(
+        output
+            .entries()
+            .iter()
+            .map(|entry| (entry.anchor_z, entry.anchor_layer_index))
+            .collect::<Vec<_>>(),
+        vec![(2000, 0), (5000, 1), (8000, 3), (11000, 4), (14000, 6)],
+        "anchor_layer_index must be positional, true-nearest, and choose the lower index on ties"
+    );
+    let fallback = run_near_distinct_interface_fixture();
+    assert_eq!(
+        fallback
+            .entries()
+            .iter()
+            .map(|entry| entry.anchor_z)
+            .collect::<Vec<_>>(),
+        vec![2000, 5000, 8000, 11000, 13999, 14000],
+        "AC-2 endpoint fallback must preserve the exact ordered plane sequence"
+    );
+    assert_eq!(
+        fallback
+            .entries()
+            .iter()
+            .filter(|entry| entry.global_layer_index < 0)
+            .map(|entry| entry.anchor_z)
+            .collect::<Vec<_>>(),
+        vec![5000, 8000, 11000],
+        "AC-2 endpoint fallback must emit the exact off-grid planes"
+    );
+    assert_eq!(
+        fallback
+            .entries()
+            .iter()
+            .filter(|entry| entry
+                .roles
+                .iter()
+                .any(|role| role.role == SupportPlanRole::TopInterface && !role.regions.is_empty()))
+            .map(|entry| entry.anchor_z)
+            .collect::<Vec<_>>(),
+        vec![13999, 14000],
+        "AC-2 endpoint fallback must retain both protected interface planes"
+    );
+    for entry in output.entries() {
+        let is_interface_bracket = entry.roles.iter().any(|role| {
+            matches!(
+                role.role,
+                SupportPlanRole::TopInterface
+                    | SupportPlanRole::BaseInterface
+                    | SupportPlanRole::BottomInterface
+            )
+        });
+        assert!(
+            (is_interface_bracket
+                && entry.roles.iter().any(|role| {
+                    matches!(
+                        role.role,
+                        SupportPlanRole::TopInterface
+                            | SupportPlanRole::BaseInterface
+                            | SupportPlanRole::BottomInterface
+                    )
+                }))
+                || (!is_interface_bracket
+                    && entry
+                        .roles
+                        .iter()
+                        .all(|role| role.role == SupportPlanRole::SupportBody)),
+            "coarse stack plane {} retained an interface role: {:?}",
+            entry.anchor_z,
+            entry.roles
+        );
+        let expected_anchor = non_dense_identity_plan
+            .layers
+            .iter()
+            .enumerate()
+            .min_by_key(|(index, layer)| {
+                (
+                    entry.anchor_z.abs_diff(slicer_ir::mm_to_units(layer.z)),
+                    *index,
+                )
+            })
+            .map(|(index, _)| index as u32)
+            .unwrap();
+        assert_eq!(
+            entry.anchor_layer_index, expected_anchor,
+            "plane {} must use the true-nearest object layer",
+            entry.anchor_z
+        );
+    }
+
+    // This second production-path fixture has interface planes at 0.8 and
+    // 1.6 mm with a surviving body row between them. The expected 1.2 mm
+    // plane distinguishes the body-bearing interface-span brackets from the
+    // endpoint fallback, which would start at the run's 0.2 mm row.
+    let body_span = run_mixed_source_tree_fixture();
+    let interface_planes: std::collections::BTreeSet<i64> = body_span
+        .entries()
+        .iter()
+        .filter(|entry| {
+            entry.roles.iter().any(|role| {
+                matches!(
+                    role.role,
+                    SupportPlanRole::TopInterface
+                        | SupportPlanRole::BaseInterface
+                        | SupportPlanRole::BottomInterface
+                ) && !role.regions.is_empty()
+            })
+        })
+        .map(|entry| entry.anchor_z)
+        .collect();
+    assert_eq!(
+        interface_planes,
+        std::collections::BTreeSet::from([8000, 16000]),
+        "body-bearing interface span must use its two interface planes as brackets"
+    );
+    assert!(body_span.entries().iter().any(|entry| {
+        entry.anchor_z == 12000
+            && entry.global_layer_index < 0
+            && entry
+                .roles
+                .iter()
+                .all(|role| role.role == SupportPlanRole::SupportBody)
+    }));
+}
+
+fn run_near_distinct_interface_fixture() -> SupportGeometryOutput {
+    let object = overhang("near-interface", 0.0, 0.0, 4.0);
+    let planner = tree_support_planner::SupportPlanner::from_config(&planner_config_full_with(
+        true,
+        5.0,
+        30.0,
+        &[
+            ("support_layer_height_mm", ConfigValue::Float(0.3)),
+            ("support_interface_top_layers", ConfigValue::Int(2)),
+        ],
+    ))
+    .unwrap();
+    let mut near_plan = layer_plan();
+    near_plan.layers[4].z = 1.1;
+    near_plan.layers[5].z = 1.3999;
+    near_plan.layers[6].z = 1.4;
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry(
+            &[object.clone()],
+            &near_plan,
+            &regions(&object.object_id),
+            &SupportGeometryView::default(),
+            &mut output,
+            &ConfigView::new(),
+        )
+        .unwrap();
+    output
+}
+
+#[test]
+fn coarse_pitch_preserves_lone_interface_bracket() {
+    let object = overhang("one-interface", 0.0, 0.0, 4.0);
+    let planner = tree_support_planner::SupportPlanner::from_config(&planner_config_full_with(
+        true,
+        5.0,
+        30.0,
+        &[
+            ("support_layer_height_mm", ConfigValue::Float(0.3)),
+            ("support_interface_top_layers", ConfigValue::Int(1)),
+        ],
+    ))
+    .unwrap();
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry(
+            &[object.clone()],
+            &layer_plan(),
+            &regions(&object.object_id),
+            &SupportGeometryView::default(),
+            &mut output,
+            &ConfigView::new(),
+        )
+        .unwrap();
+    let interface_entries: Vec<_> = output
+        .entries()
+        .iter()
+        .filter(|entry| {
+            entry.roles.iter().any(|role| {
+                matches!(
+                    role.role,
+                    SupportPlanRole::TopInterface
+                        | SupportPlanRole::BaseInterface
+                        | SupportPlanRole::BottomInterface
+                )
+            })
+        })
+        .collect();
+    let mut interface_planes: Vec<_> = interface_entries
+        .iter()
+        .map(|entry| entry.anchor_z)
+        .collect();
+    interface_planes.sort_unstable();
+    interface_planes.dedup();
+    assert_eq!(
+        interface_planes.len(),
+        1,
+        "the fixture must exercise Q1's one-interface-plane bracket case"
+    );
+    let planes: Vec<i64> = output
+        .entries()
+        .iter()
+        .map(|entry| entry.anchor_z)
+        .collect();
+    assert_eq!(
+        planes,
+        vec![2000, 5000, 8000, 11000, 14000],
+        "lone interface bracket must preserve the original coarse stack order and multiplicity"
+    );
+    let interface_index = planes
+        .iter()
+        .position(|plane| *plane == interface_planes[0])
+        .expect("lone interface must remain in the emitted stack");
+    assert!(
+        interface_index > 0,
+        "lone interface must have a synthesized plane below it"
+    );
+    assert_eq!(
+        planes[interface_index] - planes[interface_index - 1],
+        3000,
+        "the synthesized stack must reach the lone interface bracket"
+    );
+    assert!(output.entries()[interface_index]
+        .roles
+        .iter()
+        .any(|role| role.role == SupportPlanRole::TopInterface));
+    assert!(output.entries()[interface_index - 1]
+        .roles
+        .iter()
+        .all(|role| role.role == SupportPlanRole::SupportBody));
+    assert!(interface_entries.iter().all(|entry| entry
+        .roles
+        .iter()
+        .any(|role| role.role == SupportPlanRole::TopInterface)));
+}
+
+#[test]
+fn near_distinct_interface_planes_count_separately() {
+    let output = run_near_distinct_interface_fixture();
+
+    let interface_sequence: Vec<_> = output
+        .entries()
+        .iter()
+        .filter(|entry| {
+            entry.roles.iter().any(|role| {
+                matches!(
+                    role.role,
+                    SupportPlanRole::TopInterface
+                        | SupportPlanRole::BaseInterface
+                        | SupportPlanRole::BottomInterface
+                )
+            })
+        })
+        .map(|entry| entry.anchor_z)
+        .collect();
+    assert!(
+        interface_sequence == vec![13999, 14000],
+        "fixture must retain both near-distinct interface planes in source order: {interface_sequence:?}"
+    );
+    let synthesized: Vec<_> = output
+        .entries()
+        .iter()
+        .filter(|entry| entry.global_layer_index < 0)
+        .map(|entry| entry.anchor_z)
+        .collect();
+    assert_eq!(
+        synthesized,
+        vec![5000, 8000, 11000],
+        "adjacent interface planes with no interior body row must use the run endpoint fallback"
+    );
+    let planes: Vec<_> = output
+        .entries()
+        .iter()
+        .map(|entry| entry.anchor_z)
+        .collect();
+    assert_eq!(
+        planes,
+        vec![2000, 5000, 8000, 11000, 13999, 14000],
+        "endpoint fallback must emit the exact coarse stack while retaining both adjacent interface planes: {planes:?}"
+    );
+    assert_eq!(
+        output
+            .entries()
+            .iter()
+            .filter(|entry| entry
+                .roles
+                .iter()
+                .any(|role| role.role == SupportPlanRole::TopInterface))
+            .map(|entry| entry.anchor_z)
+            .collect::<Vec<_>>(),
+        vec![13999, 14000],
+        "both canonical interface brackets must retain TopInterface roles"
+    );
+    assert!(output
+        .entries()
+        .iter()
+        .filter(|entry| entry.global_layer_index < 0)
+        .all(|entry| entry
+            .roles
+            .iter()
+            .all(|role| role.role == SupportPlanRole::SupportBody)));
+}
+
+#[test]
+fn zero_pitch_sentinel_stays_object_grid() {
+    let adaptive_plan = LayerPlanView {
+        layers: (0..10)
+            .map(|i| LayerPlanViewEntry {
+                global_layer_index: i,
+                z: 0.2 + i as f32 * 0.3,
+                effective_layer_height: if i == 0 { 0.2 } else { 0.3 },
+            })
+            .collect(),
+    };
+    let output = run_multi_layer_demand_on_plan(0.0, &adaptive_plan);
+    assert!(
+        !output.entries().is_empty(),
+        "tree demand must produce entries"
+    );
+    let tolerance = slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS;
+    assert!(
+        output.entries().iter().all(|entry| {
+            entry.anchor_z.abs_diff(slicer_ir::mm_to_units(
+                adaptive_plan.layers[entry.anchor_layer_index.min(9) as usize].z,
+            )) <= tolerance as u64
+        }),
+        "zero pitch sentinel must keep every anchor on the object grid"
+    );
+    assert_eq!(
+        output
+            .entries()
+            .iter()
+            .map(|entry| entry.anchor_z)
+            .collect::<Vec<_>>(),
+        vec![20000, 17000, 14000, 11000, 8000, 5000, 2000],
+        "zero pitch sentinel must preserve the original object-grid order and multiplicity"
+    );
+}
+
+#[test]
+fn adaptive_local_gap_stays_finer() {
+    let adaptive_plan = LayerPlanView {
+        layers: (0..10)
+            .map(|i| LayerPlanViewEntry {
+                global_layer_index: i,
+                z: 0.2 + i as f32 * 0.3,
+                effective_layer_height: if i == 0 { 0.2 } else { 0.3 },
+            })
+            .collect(),
+    };
+    let output = run_multi_layer_demand_on_plan(0.2, &adaptive_plan);
+    let planes: Vec<i64> = output
+        .entries()
+        .iter()
+        .map(|entry| entry.anchor_z)
+        .collect();
+    assert_eq!(
+        planes,
+        vec![20000, 17000, 14000, 11000, 8000, 5000, 2000, 3500, 6500, 9500, 12500, 15500, 18500,],
+        "adaptive finer output must preserve exact order and multiplicity"
+    );
+    for coarse_only in [4000, 6000, 10000, 12000, 16000, 18000] {
+        assert!(
+            !planes.contains(&coarse_only),
+            "adaptive finer output must not contain coarse-only plane {coarse_only}: {planes:?}"
+        );
+    }
+}
+
+#[test]
+fn finer_same_region_multi_source_preserves_lower_entry_identity() {
+    let output = run_multi_layer_demand_on_plan(0.1, &layer_plan());
+    let grid: std::collections::BTreeSet<_> = layer_plan()
+        .layers
+        .iter()
+        .map(|layer| slicer_ir::mm_to_units(layer.z))
+        .collect();
+    let finer: Vec<_> = output
+        .entries()
+        .iter()
+        .filter(|entry| !grid.contains(&entry.anchor_z))
+        .collect();
+    assert!(!finer.is_empty());
+    for entry in finer {
+        let lower = output
+            .entries()
+            .iter()
+            .filter(|candidate| {
+                candidate.region_id == entry.region_id
+                    && grid.contains(&candidate.anchor_z)
+                    && candidate.anchor_z < entry.anchor_z
+            })
+            .max_by_key(|candidate| candidate.anchor_z)
+            .expect("same-region lower source row");
+        assert_eq!(entry.demand_ids, lower.demand_ids);
+        assert_eq!(entry.body_ids, lower.body_ids);
+        assert_eq!(entry.roles, lower.roles);
+    }
+}
+
+#[test]
+fn staggered_region_runs_do_not_pair_across_region_boundaries() {
+    let object = overhang("staggered-regions", 0.0, 0.0, 4.0);
+    let mut adaptive_plan = layer_plan();
+    for (index, layer) in adaptive_plan.layers.iter_mut().enumerate() {
+        layer.z = if index <= 4 {
+            0.2 + index as f32 * 0.2
+        } else {
+            1.0 + (index - 4) as f32 * 0.3
+        };
+        layer.effective_layer_height = if index <= 4 { 0.2 } else { 0.3 };
+    }
+    let candidate_geometry = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(1.0, 1.0),
+                Point2::from_mm(1.2, 1.0),
+                Point2::from_mm(1.2, 1.2),
+                Point2::from_mm(1.0, 1.2),
+            ],
+        },
+        holes: vec![],
+    };
+    let analysis = SupportAnalysisView {
+        candidates: vec![
+            SupportAnalysisCandidate {
+                id: 91,
+                object_id: object.object_id.clone(),
+                region_id: "0".into(),
+                global_layer_index: 4,
+                z_units: slicer_ir::mm_to_units(adaptive_plan.layers[4].z),
+                geometry: vec![candidate_geometry.clone()],
+                ..Default::default()
+            },
+            SupportAnalysisCandidate {
+                id: 92,
+                object_id: object.object_id.clone(),
+                region_id: "1".into(),
+                global_layer_index: 8,
+                z_units: slicer_ir::mm_to_units(adaptive_plan.layers[8].z),
+                geometry: vec![ExPolygon {
+                    contour: Polygon {
+                        points: vec![
+                            Point2::from_mm(2.0, 1.0),
+                            Point2::from_mm(2.2, 1.0),
+                            Point2::from_mm(2.2, 1.2),
+                            Point2::from_mm(2.0, 1.2),
+                        ],
+                    },
+                    holes: vec![],
+                }],
+                ..Default::default()
+            },
+        ],
+        // Let the planner's native tree fallback assign only regions present in
+        // segmentation; explicit assignments would stamp one region's template
+        // into every layer of the other region.
+        family_assignments: vec![],
+        ..Default::default()
+    };
+    let segmentation = RegionSegmentationView {
+        entries: adaptive_plan
+            .layers
+            .iter()
+            .enumerate()
+            .map(|(index, layer)| RegionSegmentationViewEntry {
+                object_id: object.object_id.clone(),
+                layer_index: layer.global_layer_index,
+                region_ids: if index < 3 {
+                    vec!["0".into()]
+                } else if index <= 4 {
+                    vec!["0".into(), "1".into()]
+                } else {
+                    vec!["1".into()]
+                },
+            })
+            .collect(),
+        region_support_configs: vec![],
+    };
+    let planner = tree_support_planner::SupportPlanner::from_config(&planner_config_full_with(
+        true,
+        5.0,
+        45.0,
+        &[("support_layer_height_mm", ConfigValue::Float(0.2))],
+    ))
+    .unwrap();
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry_with_analysis(
+            &[object],
+            &adaptive_plan,
+            &segmentation,
+            &analysis,
+            &SupportGeometryView::default(),
+            &mut output,
+            &ConfigView::new(),
+        )
+        .unwrap();
+
+    let region_zero: Vec<_> = output
+        .entries()
+        .iter()
+        .filter(|entry| entry.region_id == "0")
+        .collect();
+    assert!(
+        !region_zero.is_empty(),
+        "region zero must be assigned and emitted"
+    );
+    let region_zero_planes: Vec<_> = region_zero.iter().map(|entry| entry.anchor_z).collect();
+    let region_one: Vec<_> = output
+        .entries()
+        .iter()
+        .filter(|entry| entry.region_id == "1")
+        .collect();
+    assert!(
+        !region_one.is_empty(),
+        "staggered fixture must retain region one"
+    );
+    let region_one_planes: Vec<_> = region_one.iter().map(|entry| entry.anchor_z).collect();
+    assert_eq!(region_zero_planes, vec![2000, 4000, 6000, 8000, 10000]);
+    assert_eq!(
+        region_one_planes,
+        vec![8000, 10000, 11500, 13000, 14500, 16000]
+    );
+    assert_ne!(region_zero_planes, region_one_planes);
+    let region_zero_synthesized: Vec<_> = region_zero
+        .iter()
+        .filter(|entry| entry.global_layer_index < 0)
+        .map(|entry| entry.anchor_z)
+        .collect();
+    let region_one_synthesized: Vec<_> = region_one
+        .iter()
+        .filter(|entry| entry.global_layer_index < 0)
+        .map(|entry| entry.anchor_z)
+        .collect();
+    assert_ne!(region_zero_synthesized, region_one_synthesized);
+}
+
+#[test]
+fn coarse_same_region_sources_keep_geometry_and_membership() {
+    let object = overhang("same-region-coarse", 0.0, 0.0, 4.0);
+    let square = |x: f32| ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(x, 1.0),
+                Point2::from_mm(x + 2.0, 1.0),
+                Point2::from_mm(x + 2.0, 3.0),
+                Point2::from_mm(x, 3.0),
+            ],
+        },
+        holes: vec![],
+    };
+    let analysis = SupportAnalysisView {
+        candidates: vec![
+            SupportAnalysisCandidate {
+                id: 101,
+                object_id: object.object_id.clone(),
+                region_id: "0".into(),
+                global_layer_index: 3,
+                z_units: slicer_ir::mm_to_units(0.8),
+                geometry: vec![square(-100.0)],
+                ..Default::default()
+            },
+            SupportAnalysisCandidate {
+                id: 102,
+                object_id: object.object_id.clone(),
+                region_id: "0".into(),
+                global_layer_index: 5,
+                z_units: slicer_ir::mm_to_units(1.2),
+                geometry: vec![square(0.0)],
+                ..Default::default()
+            },
+            SupportAnalysisCandidate {
+                id: 103,
+                object_id: object.object_id.clone(),
+                region_id: "0".into(),
+                global_layer_index: 8,
+                z_units: slicer_ir::mm_to_units(1.8),
+                geometry: vec![square(100.0)],
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+    let planner = tree_support_planner::SupportPlanner::from_config(&planner_config_full_with(
+        true,
+        5.0,
+        45.0,
+        &[
+            ("support_layer_height_mm", ConfigValue::Float(0.3)),
+            ("support_interface_top_layers", ConfigValue::Int(1)),
+        ],
+    ))
+    .unwrap();
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry_with_analysis(
+            &[object],
+            &layer_plan(),
+            &regions("same-region-coarse"),
+            &analysis,
+            &SupportGeometryView::default(),
+            &mut output,
+            &ConfigView::new(),
+        )
+        .unwrap();
+    let synthesized: Vec<_> = output
+        .entries()
+        .iter()
+        .filter(|entry| entry.global_layer_index < 0)
+        .collect();
+    assert_eq!(
+        output
+            .entries()
+            .iter()
+            .map(|entry| entry.anchor_z)
+            .collect::<Vec<_>>(),
+        vec![2000, 4000, 6000, 8000, 11000, 14000],
+        "coarse rows must retain original order and multiplicity"
+    );
+    assert_eq!(
+        synthesized.len(),
+        2,
+        "each bracket pair must produce exactly one synthesized interior plane"
+    );
+    assert_eq!(
+        synthesized
+            .iter()
+            .map(|entry| (entry.anchor_z, entry.body_ids.clone()))
+            .collect::<Vec<_>>(),
+        vec![
+            (6000, vec!["tree-body-same-region-coarse-1".to_string()]),
+            (11000, vec!["tree-body-same-region-coarse-4".to_string()]),
+        ],
+        "each coarse plane must use the nearest same-region source layer at or below it"
+    );
+    assert_ne!(
+        synthesized[0].body_ids, synthesized[1].body_ids,
+        "same-region source layers must retain distinct body membership"
+    );
+    assert_ne!(
+        synthesized[0].skeleton, synthesized[1].skeleton,
+        "same-region source layers must retain distinct skeleton geometry"
+    );
+    assert_ne!(
+        synthesized[0].roles[0].regions, synthesized[1].roles[0].regions,
+        "same-region source layers must retain distinct contour geometry"
+    );
+    for synthesized in &synthesized {
+        assert!(
+            synthesized
+                .roles
+                .iter()
+                .all(|role| role.role == SupportPlanRole::SupportBody),
+            "synthesized source roles must be rewritten to SupportBody"
+        );
+        assert!(
+            synthesized.global_layer_index < 0,
+            "synthesized source rows must retain a distinct physical-plane identity"
+        );
+        assert!(
+            output
+                .entries()
+                .iter()
+                .filter(|entry| {
+                    entry.anchor_z == synthesized.anchor_z
+                        && entry.global_layer_index == synthesized.global_layer_index
+                })
+                .count()
+                == output
+                    .entries()
+                    .iter()
+                    .filter(|entry| { entry.anchor_z == synthesized.anchor_z })
+                    .count(),
+            "entries sharing a physical plane must share its DEV-163 identity"
+        );
+    }
+}
+
+fn run_mixed_source_tree_fixture() -> SupportGeometryOutput {
+    let object = overhang("mixed-source-tree", 0.0, 0.0, 12.0);
+    let square = |x: f32| ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(x, 1.0),
+                Point2::from_mm(x + 2.0, 1.0),
+                Point2::from_mm(x + 2.0, 3.0),
+                Point2::from_mm(x, 3.0),
+            ],
+        },
+        holes: vec![],
+    };
+    let analysis = SupportAnalysisView {
+        candidates: vec![
+            SupportAnalysisCandidate {
+                id: 111,
+                object_id: object.object_id.clone(),
+                region_id: "0".into(),
+                global_layer_index: 4,
+                z_units: slicer_ir::mm_to_units(1.25),
+                geometry: vec![square(1.0)],
+                ..Default::default()
+            },
+            SupportAnalysisCandidate {
+                id: 112,
+                object_id: object.object_id.clone(),
+                region_id: "0".into(),
+                global_layer_index: 6,
+                z_units: slicer_ir::mm_to_units(1.8),
+                geometry: vec![square(8.0)],
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+    let layers = LayerPlanView {
+        layers: [0.2, 0.4, 0.6, 0.8, 1.25, 1.6, 1.8]
+            .into_iter()
+            .enumerate()
+            .map(|(index, z)| LayerPlanViewEntry {
+                global_layer_index: index as u32,
+                z,
+                effective_layer_height: 0.2,
+            })
+            .collect(),
+    };
+    let planner = tree_support_planner::SupportPlanner::from_config(&planner_config_full_with(
+        true,
+        5.0,
+        45.0,
+        &[
+            ("support_layer_height_mm", ConfigValue::Float(0.45)),
+            ("support_interface_top_layers", ConfigValue::Int(1)),
+            ("support_top_z_distance", ConfigValue::Float(0.0)),
+        ],
+    ))
+    .expect("from_config");
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry_with_analysis(
+            &[object.clone()],
+            &layers,
+            &regions(&object.object_id),
+            &analysis,
+            &SupportGeometryView::default(),
+            &mut output,
+            &ConfigView::new(),
+        )
+        .expect("run_support_geometry_with_analysis");
+    output
+}
+
+#[test]
+fn coarse_mixed_source_entry_rewrites_interface_geometry_to_body() {
+    let output = run_mixed_source_tree_fixture();
+    let source = output
+        .entries()
+        .iter()
+        .find(|entry| entry.anchor_z == 8000 && entry.global_layer_index >= 0)
+        .expect("the lower interface bracket must survive as a real source entry");
+    assert!(source
+        .roles
+        .iter()
+        .any(|role| role.role == SupportPlanRole::TopInterface));
+    assert!(source
+        .roles
+        .iter()
+        .any(|role| role.role == SupportPlanRole::SupportBody));
+
+    let synthesized = output
+        .entries()
+        .iter()
+        .find(|entry| entry.anchor_z == 12000 && entry.global_layer_index < 0)
+        .expect("the mixed source entry must seed the first coarse plane");
+    assert!(synthesized
+        .roles
+        .iter()
+        .all(|role| role.role == SupportPlanRole::SupportBody));
+    assert_eq!(
+        synthesized
+            .roles
+            .iter()
+            .flat_map(|role| role.regions.iter())
+            .collect::<Vec<_>>(),
+        source
+            .roles
+            .iter()
+            .flat_map(|role| role.regions.iter())
+            .collect::<Vec<_>>(),
+        "rewriting the mixed source must retain both body and interface geometry"
+    );
+}
+
+fn run_two_region_demand(pitch_mm: f64, distinct_grouping_brackets: bool) -> SupportGeometryOutput {
+    let object = overhang("two-regions", 0.0, 0.0, 4.0);
+    let planner = tree_support_planner::SupportPlanner::from_config(&planner_config_full_with(
+        true,
+        5.0,
+        45.0,
+        &[("support_layer_height_mm", ConfigValue::Float(pitch_mm))],
+    ))
+    .expect("from_config");
+    let segmentation = RegionSegmentationView {
+        entries: (0..10)
+            .map(|layer_index| RegionSegmentationViewEntry {
+                object_id: object.object_id.clone(),
+                layer_index,
+                region_ids: vec!["0".into(), "1".into()],
+            })
+            .collect(),
+        region_support_configs: vec![],
+    };
+    let candidate_geometry = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(1.0, 1.0),
+                Point2::from_mm(1.2, 1.0),
+                Point2::from_mm(1.2, 1.2),
+                Point2::from_mm(1.0, 1.2),
+            ],
+        },
+        holes: vec![],
+    };
+    let analysis = SupportAnalysisView {
+        candidates: vec![
+            SupportAnalysisCandidate {
+                id: 71,
+                object_id: object.object_id.clone(),
+                region_id: "0".into(),
+                global_layer_index: 8,
+                z_units: slicer_ir::mm_to_units(1.8),
+                geometry: vec![candidate_geometry.clone()],
+                ..Default::default()
+            },
+            SupportAnalysisCandidate {
+                id: 72,
+                object_id: object.object_id.clone(),
+                region_id: "1".into(),
+                global_layer_index: if distinct_grouping_brackets { 9 } else { 8 },
+                z_units: if distinct_grouping_brackets {
+                    slicer_ir::mm_to_units(2.0)
+                } else {
+                    slicer_ir::mm_to_units(1.8)
+                },
+                geometry: vec![candidate_geometry],
+                ..Default::default()
+            },
+        ],
+        family_assignments: vec![
+            SupportFamilyAssignment {
+                object_id: object.object_id.clone(),
+                region_id: "0".into(),
+                family_id: "tree".into(),
+            },
+            SupportFamilyAssignment {
+                object_id: object.object_id.clone(),
+                region_id: "1".into(),
+                family_id: "tree".into(),
+            },
+        ],
+        ..Default::default()
+    };
+    let mut output = SupportGeometryOutput::new();
+    let mut grouping_plan = layer_plan();
+    // The two candidate contacts terminate their production runs on layers 6
+    // and 7 respectively. Keep those consumed bracket Z values distinct but
+    // within canonical EPSILON after tree-family stepping.
+    if distinct_grouping_brackets {
+        grouping_plan.layers[6].z = 1.39928;
+        grouping_plan.layers[7].z = 1.39952;
+    }
+    planner
+        .run_support_geometry_with_analysis(
+            &[object],
+            &grouping_plan,
+            &segmentation,
+            &analysis,
+            &SupportGeometryView::default(),
+            &mut output,
+            &ConfigView::new(),
+        )
+        .expect("run_support_geometry_with_analysis");
+    output
+}
+
+#[test]
+fn coarse_candidates_group_before_plane_identity_assignment() {
+    let output = run_two_region_demand(0.3, true);
+    let grouped: Vec<_> = output
+        .entries()
+        .iter()
+        .filter(|entry| entry.anchor_z == slicer_ir::mm_to_units(0.49985))
+        .collect();
+    assert_eq!(
+        grouped.len(),
+        2,
+        "within-EPSILON candidates from both regions must survive one physical plane group"
+    );
+    let candidate_z = [
+        0.2_f64 + (1.39928_f64 - 0.2) / 4.0,
+        0.2_f64 + (1.39952_f64 - 0.2) / 4.0,
+    ];
+    assert_ne!(
+        candidate_z[0], candidate_z[1],
+        "production bracket Z values must yield genuinely distinct candidates"
+    );
+    assert!(
+        (candidate_z[0] - candidate_z[1]).abs() < 1e-4,
+        "production-derived candidate Z values must be within EPSILON"
+    );
+    assert_eq!(
+        grouped[0].anchor_z, 4999,
+        "EPSILON grouping must produce one physical midpoint plane"
+    );
+    assert_eq!(grouped[0].global_layer_index, grouped[1].global_layer_index);
+    assert_ne!(grouped[0].region_id, grouped[1].region_id);
+    assert!(grouped.iter().all(|entry| entry
+        .roles
+        .iter()
+        .all(|role| role.role == SupportPlanRole::SupportBody)));
+}
+
+#[test]
+fn intermediate_planes_generated_per_support_body_not_per_layer() {
+    let output = run_two_region_demand(0.1, false);
+
+    let grid: std::collections::BTreeSet<_> = layer_plan()
+        .layers
+        .iter()
+        .map(|layer| slicer_ir::mm_to_units(layer.z))
+        .collect();
+    let mut off_grid_by_region: std::collections::BTreeMap<_, Vec<_>> =
+        std::collections::BTreeMap::new();
+    let mut off_grid_in_order = Vec::new();
+    for entry in output.entries() {
+        if !grid.contains(&entry.anchor_z) {
+            off_grid_in_order.push((entry.region_id.as_str(), entry.anchor_z));
+            off_grid_by_region
+                .entry(entry.region_id.clone())
+                .or_default()
+                .push(entry);
+        }
+    }
+    assert!(
+        off_grid_in_order.chunks_exact(2).all(|pair| {
+            pair[0].0 == "0" && pair[1].0 == "1" && pair[0].1 == pair[1].1
+        }),
+        "239c finer candidates must retain object-level append order and per-region multiplicity: {off_grid_in_order:?}"
+    );
+    assert_eq!(
+        off_grid_by_region.len(),
+        2,
+        "each assigned region is a support body"
+    );
+    let first = &off_grid_by_region["0"];
+    let second = &off_grid_by_region["1"];
+    assert_eq!(
+        first.iter().map(|entry| entry.anchor_z).collect::<Vec<_>>(),
+        second
+            .iter()
+            .map(|entry| entry.anchor_z)
+            .collect::<Vec<_>>(),
+        "each body must receive every intermediate plane"
+    );
+    for entry in first.iter().chain(second) {
+        // Real planner streams are exact-Z validated before renderer dispatch.
+        // Intermediate rows therefore inherit the lower bracket's bottom-up
+        // projection; upper-row geometry can overlap model occupancy between
+        // object planes.
+        let lower = output
+            .entries()
+            .iter()
+            .filter(|candidate| {
+                candidate.region_id == entry.region_id
+                    && candidate.anchor_z < entry.anchor_z
+                    && grid.contains(&candidate.anchor_z)
+            })
+            .max_by_key(|candidate| candidate.anchor_z)
+            .expect("lower bracket");
+        assert_eq!(
+            entry.roles, lower.roles,
+            "intermediate geometry is seeded from the lower row"
+        );
+    }
+}
+
+#[test]
 fn mixed_height_contacts_keep_body_and_roof_on_the_same_layer() {
     let square = |x0: f32, side: f32| ExPolygon {
         contour: Polygon {
@@ -1249,4 +2490,145 @@ fn radius_raises_to_base_under_interfaces() {
         interface_adjusted_radius(ordinary, base_radius, 0, true),
         ordinary
     );
+}
+
+/// Ticket 19: territory owned by another family is barred like the model.
+/// The tree is the base family here; a traditional sub-region owns the right
+/// half of the overhang. No tree role area and no skeleton point may enter
+/// that half, while the branch still reaches the plate on its own side.
+#[test]
+fn foreign_territory_bars_tree_roles_and_skeleton() {
+    fn rect(x0: f32, y0: f32, x1: f32, y1: f32) -> ExPolygon {
+        ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(x0, y0),
+                    Point2::from_mm(x1, y0),
+                    Point2::from_mm(x1, y1),
+                    Point2::from_mm(x0, y1),
+                ],
+            },
+            holes: vec![],
+        }
+    }
+    fn area(poly: &ExPolygon) -> f64 {
+        let ring = |points: &[Point2]| -> f64 {
+            points
+                .iter()
+                .enumerate()
+                .map(|(i, a)| {
+                    let b = &points[(i + 1) % points.len()];
+                    (a.x as f64) * (b.y as f64) - (b.x as f64) * (a.y as f64)
+                })
+                .sum::<f64>()
+                .abs()
+                * 0.5
+        };
+        ring(&poly.contour.points) - poly.holes.iter().map(|h| ring(&h.points)).sum::<f64>()
+    }
+    let foreign = rect(2.0, 0.0, 4.0, 4.0);
+    let candidate = SupportAnalysisCandidate {
+        id: 19,
+        object_id: "territory".into(),
+        region_id: "0".into(),
+        global_layer_index: 8,
+        z_units: slicer_ir::mm_to_units(1.8),
+        geometry: vec![rect(0.0, 0.0, 2.0, 4.0)],
+        ..Default::default()
+    };
+    let assignments = vec![
+        SupportFamilyAssignment {
+            object_id: "territory".into(),
+            region_id: "0".into(),
+            family_id: "tree".into(),
+        },
+        SupportFamilyAssignment {
+            object_id: "territory".into(),
+            region_id: "1".into(),
+            family_id: "traditional".into(),
+        },
+    ];
+    let with_territory = run_planner_with_analysis_and_diameter(
+        true,
+        overhang("territory", 0.0, 0.0, 4.0),
+        SupportAnalysisView {
+            candidates: vec![candidate.clone()],
+            family_assignments: assignments.clone(),
+            support_territory: (0..10)
+                .map(|layer| SupportAnalysisGeometryEntry {
+                    global_support_layer_index: layer,
+                    object_id: "territory".into(),
+                    region_id: "1".into(),
+                    polygons: vec![foreign.clone()],
+                })
+                .collect(),
+            ..Default::default()
+        },
+        1.0,
+    );
+    let control = run_planner_with_analysis_and_diameter(
+        true,
+        overhang("territory", 0.0, 0.0, 4.0),
+        SupportAnalysisView {
+            candidates: vec![candidate],
+            family_assignments: assignments,
+            ..Default::default()
+        },
+        1.0,
+    );
+    let role_area = |output: &SupportGeometryOutput| -> f64 {
+        output
+            .entries()
+            .iter()
+            .flat_map(|entry| entry.roles.iter())
+            .flat_map(|role| role.regions.iter())
+            .map(area)
+            .sum()
+    };
+    assert!(
+        role_area(&control) > 0.0,
+        "control must plan support, or the territory assertions prove nothing"
+    );
+    assert!(
+        role_area(&with_territory) > 0.0,
+        "tree support must survive on its own side of the boundary"
+    );
+    assert!(
+        with_territory
+            .entries()
+            .iter()
+            .any(|entry| entry.global_layer_index == 0
+                && entry.roles.iter().any(|role| !role.regions.is_empty())),
+        "branch must still reach the plate outside the foreign half; entries={:?}",
+        with_territory
+            .entries()
+            .iter()
+            .map(|e| e.global_layer_index)
+            .collect::<Vec<_>>()
+    );
+    for entry in with_territory.entries() {
+        for role in &entry.roles {
+            let inside = host::clip_polygons(
+                &role.regions,
+                &[foreign.clone()],
+                ClipOperation::Intersection,
+            );
+            let inside_area: f64 = inside.iter().map(area).sum();
+            assert_eq!(
+                inside_area, 0.0,
+                "layer {} role {:?} has area inside the foreign half",
+                entry.global_layer_index, role.role
+            );
+        }
+        if let Some(skeleton) = &entry.skeleton {
+            for point in &skeleton.points {
+                let inside_foreign = point.x > 2.0 && point.y > 0.0 && point.y < 4.0;
+                assert!(
+                    !inside_foreign,
+                    "layer {} skeleton point {:?} lies inside the foreign half",
+                    entry.global_layer_index, point
+                );
+            }
+        }
+    }
 }

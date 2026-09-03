@@ -95,6 +95,9 @@ interface support-geometry-types {
         shared-settings: list<tuple<string, string>>,
         baseline-feasible-envelope: list<ex-polygon>,
         family-assignments: list<support-family-assignment>,
+        /// Per-layer XY territory owned by each minted modifier sub-region
+        /// (ticket 19). Base regions have no entry.
+        support-territory: list<support-analysis-geometry-entry>,
     }
 
     enum severity-level {

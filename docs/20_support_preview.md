@@ -17,8 +17,19 @@ requested output path and never emits G-code.
 
 ## Schema Version
 
-The document has `schema_version: "1.0.0"`. This is the document contract
+The document has `schema_version: "1.2.0"`. This is the document contract
 version, not an IR version. Additive fields bump the minor version.
+
+1.1.0 adds `layers[].support_body` — the actual support structures from the
+committed `SupportPlanIR` (`SupportBody` role regions), which the fork renders
+as the overlay. The 1.0.0 `support` field is retained unchanged: it carries
+the model's own cross-sections at support layers (coarse outlines of where
+supports attach), which is not the support geometry itself.
+
+1.2.0 adds `layers[].support_interface` — the interface role regions from the
+committed `SupportPlanIR` (`TopInterface`/`BaseInterface`/`BottomInterface`
+role regions), where the support meets the model and the bed. Same polygon
+shape as `support_body`; the fork renders them as a distinct band.
 
 ## Coordinate Units
 
@@ -36,7 +47,7 @@ The top-level document has these fields:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `schema_version` | string | The support-preview document schema version, currently `"1.0.0"`. |
+| `schema_version` | string | The support-preview document schema version, currently `"1.2.0"`. |
 | `units` | string | Coordinate unit label, currently `"mm"`. |
 | `layer_count` | u32 | Total model-layer count in `plan.global_layers`. |
 | `skipped_intermediate_entries` | u32 | Number of intermediate-model-resolution support entries excluded by the sentinel rule. |
@@ -48,7 +59,9 @@ Each element of `layers` has this shape:
 | --- | --- | --- |
 | `layer_index` | u32 | Model-layer index from `plan.global_layers`, not a support-only layer index. |
 | `z_mm` | f64 | The model layer Z coordinate in millimeters. |
-| `support` | array of polygon objects | Coarse support outline geometry for this model layer. |
+| `support` | array of polygon objects | Coarse support outline geometry for this model layer (the model's own cross-sections at support layers; where supports attach, not the supports themselves). |
+| `support_body` | array of polygon objects | Actual support structures for this model layer (schema 1.1.0): the `SupportPlanIR` `SupportBody` role regions — the tree/traditional support cross-sections. Always present in 1.1.0+ documents, possibly empty. Raft prefix entries carry no geometry and are excluded. |
+| `support_interface` | array of polygon objects | Interface role regions for this model layer (schema 1.2.0): the `SupportPlanIR` `TopInterface`/`BaseInterface`/`BottomInterface` role regions — where the support meets the model and the bed. Always present in 1.2.0 documents, possibly empty. |
 
 Each element of `support` has this shape:
 
@@ -61,7 +74,7 @@ A complete example document is:
 
 ```json
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.2.0",
   "units": "mm",
   "layer_count": 4,
   "skipped_intermediate_entries": 1,
@@ -76,6 +89,28 @@ A complete example document is:
             [1.0, -8.9012],
             [1.0, 0.5],
             [123.4567, 0.5]
+          ],
+          "holes": []
+        }
+      ],
+      "support_body": [
+        {
+          "contour": [
+            [2.0, 0.5],
+            [3.0, 0.5],
+            [3.0, 1.5],
+            [2.0, 1.5]
+          ],
+          "holes": []
+        }
+      ],
+      "support_interface": [
+        {
+          "contour": [
+            [2.0, 0.5],
+            [3.0, 0.5],
+            [3.0, 1.5],
+            [2.0, 1.5]
           ],
           "holes": []
         }
@@ -139,11 +174,10 @@ For identical input and configuration, output is byte-deterministic. Entries
 are sorted by `(layer_index, object_id, region_id)` before emission, and
 layers are sorted by `layer_index` ascending.
 
-There is no interface split at this stage. The single `support` array is the
-coarse per-layer outline. An `interface`/role split is not available until
-Tier 2 per-layer execution runs, which is out of scope for this verb. A future
-minor schema bump may add an `interface` array.
-
-These outlines are approximate by design and may differ from final support
-paths after Tier 2 post-plan trimming. The fork should debounce calls because
-prepass cost is model-size-dependent.
+There is no finer role split at this stage. The `support_interface` array
+merges the three interface roles (`TopInterface`/`BaseInterface`/
+`BottomInterface`) into one band; a per-polygon role tag is a future additive
+minor bump if a consumer needs to colour them separately. These outlines are
+approximate by design and may differ from final support paths after Tier 2
+post-plan trimming. The fork should debounce calls because prepass cost is
+model-size-dependent.

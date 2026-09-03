@@ -40,7 +40,8 @@
 #![allow(dead_code)]
 
 use slicer_ir::{
-    ExPolygon, PaintValue, PerimeterIR, PerimeterRegion, Point2, Polygon, SliceIR, SlicedRegion,
+    ConfigDelta, ExPolygon, IndexedTriangleSet, MeshIR, ModifierScope, ModifierVolume, ObjectMesh,
+    PaintValue, PerimeterIR, PerimeterRegion, Point2, Point3, Polygon, SliceIR, SlicedRegion,
     CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
 use slicer_runtime::blackboard::LayerArena;
@@ -51,11 +52,6 @@ use slicer_wasm_host::dispatch::wall_source_region_id;
 /// be consumed by the split. The implementation removes this sentinel and mints
 /// a proper sub-region in the modifier `region_id` namespace.
 const MODIFIER_FOOTPRINT_REGION_ID: u64 = u64::MAX;
-
-/// Modifier `region_id` namespace stride (next prime above paint's 1_000_000),
-/// per design.md §FWD-RESOLVED 2. Used by AC-2 to build a representative
-/// minted modifier sub-region id for base region 0.
-const MODIFIER_VARIANT_REGION_ID_STRIDE: u64 = 1_000_003;
 
 fn square(x0: f32, y0: f32, x1: f32, y1: f32) -> ExPolygon {
     ExPolygon {
@@ -103,6 +99,46 @@ fn poly_area(exps: &[ExPolygon]) -> f64 {
     total
 }
 
+fn canonicalize_ring(ring: &mut Polygon) {
+    let Some(start) = ring
+        .points
+        .iter()
+        .enumerate()
+        .min_by_key(|(_, point)| **point)
+        .map(|(index, _)| index)
+    else {
+        return;
+    };
+    let points = ring.points.clone();
+    ring.points = points[start..]
+        .iter()
+        .chain(points[..start].iter())
+        .copied()
+        .collect();
+}
+
+fn canonicalize_region_rings(regions: &mut [SlicedRegion]) {
+    for region in regions {
+        for polygons in [
+            &mut region.polygons,
+            &mut region.infill_areas,
+            &mut region.bridge_areas,
+            &mut region.bottom_solid_fill,
+            &mut region.top_solid_fill,
+            &mut region.sparse_infill_area,
+            &mut region.internal_solid_fill,
+            &mut region.internal_bridge_areas,
+        ] {
+            for expolygon in polygons {
+                canonicalize_ring(&mut expolygon.contour);
+                for hole in &mut expolygon.holes {
+                    canonicalize_ring(hole);
+                }
+            }
+        }
+    }
+}
+
 fn base_region(object_id: &str, footprint: ExPolygon) -> SlicedRegion {
     SlicedRegion {
         object_id: object_id.to_string(),
@@ -122,6 +158,37 @@ fn modifier_footprint_region(object_id: &str, footprint: ExPolygon) -> SlicedReg
         infill_areas: vec![footprint],
         effective_layer_height: 0.5,
         ..Default::default()
+    }
+}
+
+fn modifier_box_mesh(x0: f32, y0: f32, x1: f32, y1: f32) -> IndexedTriangleSet {
+    let v = |x: f32, y: f32, z: f32| Point3 { x, y, z };
+    IndexedTriangleSet {
+        vertices: vec![
+            v(x0, y0, 0.0),
+            v(x1, y0, 0.0),
+            v(x1, y1, 0.0),
+            v(x0, y1, 0.0),
+            v(x0, y0, 1.0),
+            v(x1, y0, 1.0),
+            v(x1, y1, 1.0),
+            v(x0, y1, 1.0),
+        ],
+        indices: vec![
+            0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6, 0, 4, 7, 0, 7,
+            3, 1, 2, 6, 1, 6, 5,
+        ],
+    }
+}
+
+fn parameter_modifier(id: &str, priority: u32, mesh: IndexedTriangleSet) -> ModifierVolume {
+    // exhaustive: ModifierVolume has no Default impl; this fixture pins every field.
+    ModifierVolume {
+        id: id.to_string(),
+        mesh,
+        config_delta: ConfigDelta::default(),
+        priority,
+        applies_to: ModifierScope::AllFeatures,
     }
 }
 
@@ -175,7 +242,7 @@ fn find_sub_region(slice: &SliceIR) -> Option<&SlicedRegion> {
     slice
         .regions
         .iter()
-        .find(|r| r.region_id != 0 && r.region_id != MODIFIER_FOOTPRINT_REGION_ID)
+        .find(|r| slicer_ir::is_modifier_namespace_id(r.region_id))
 }
 
 // ---------------------------------------------------------------------------
@@ -230,11 +297,7 @@ fn modifier_split_partition_conservation() {
 
 #[test]
 fn modifier_split_wall_source() {
-    // Representative minted modifier sub-region id for base region 0, index 0.
-    // Derivation: base_region_id * MODIFIER_VARIANT_REGION_ID_STRIDE + modifier_hash.
-    // With base=0 this is just modifier_hash; we pick 7 (any value < stride works,
-    // since the predicate inverts it back to base=0 via integer division).
-    let sub_id: u64 = 7;
+    let sub_id = slicer_ir::modifier_sub_region_id(0, "obj1", &[square(3.0, 3.0, 7.0, 7.0)]);
 
     let sub = SlicedRegion {
         object_id: "obj1".to_string(),
@@ -365,6 +428,290 @@ fn modifier_split_degenerate_no_split() {
 }
 
 // ---------------------------------------------------------------------------
+// Ticket 19 follow-up — prepass materialization must preserve classified roles
+// ---------------------------------------------------------------------------
+
+#[test]
+fn prepass_materialized_subregion_roles_survive_perimeter_sync() {
+    let base = square(0.0, 0.0, 10.0, 10.0);
+    let modifier = square(3.0, 3.0, 7.0, 7.0);
+    let sub_id = slicer_ir::modifier_sub_region_id(0, "obj1", &[modifier.clone()]);
+
+    // The overlapping base top role models a stale/recomputed source. The
+    // already-materialized sub-region's bridge role must never be inferred from
+    // the base fields at the Tier-2 seam.
+    let mut base_region = base_region("obj1", base.clone());
+    base_region.top_solid_fill = vec![modifier.clone()];
+    let sub_region = SlicedRegion {
+        object_id: "obj1".to_string(),
+        region_id: sub_id,
+        polygons: vec![modifier.clone()],
+        infill_areas: vec![modifier.clone()],
+        bridge_areas: vec![modifier.clone()],
+        effective_layer_height: 0.5,
+        ..Default::default()
+    };
+    let expected_bridge = sub_region.bridge_areas.clone();
+
+    let slice = SliceIR {
+        schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+        global_layer_index: 0,
+        z: 1.0,
+        regions: vec![base_region, sub_region],
+    };
+    let mut arena = LayerArena::new();
+    arena.set_slice(slice).expect("stage slice must succeed");
+    arena
+        .set_perimeter(base_perimeter("obj1", base.clone()))
+        .expect("stage perimeter must succeed");
+
+    sync_perimeter_infill_areas_into_slice(&mut arena, 0)
+        .expect("sync_perimeter_infill_areas_into_slice must succeed");
+
+    let sub = find_sub_region(arena.slice().expect("slice must be restaged"))
+        .expect("prepass-materialized sub-region must remain present");
+    assert_eq!(
+        sub.bridge_areas, expected_bridge,
+        "Tier-2 must preserve prepass-classified bridge geometry"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Ticket 19 follow-up — priority-first geometry ownership
+// ---------------------------------------------------------------------------
+
+#[test]
+fn prepass_modifier_overlap_assigns_geometry_to_highest_priority_first() {
+    let object_id = "obj1";
+    let base = square(0.0, 0.0, 10.0, 10.0);
+    let low_mesh = modifier_box_mesh(1.0, 1.0, 8.0, 8.0);
+    let high_mesh = modifier_box_mesh(5.0, 1.0, 9.0, 8.0);
+    let low_polygons = slicer_core::slice_mesh_ex(&low_mesh, &[0.5])
+        .into_iter()
+        .next()
+        .expect("low modifier must slice");
+    let high_polygons = slicer_core::slice_mesh_ex(&high_mesh, &[0.5])
+        .into_iter()
+        .next()
+        .expect("high modifier must slice");
+    let low_id = slicer_ir::modifier_sub_region_id(0, object_id, &low_polygons);
+    let high_id = slicer_ir::modifier_sub_region_id(0, object_id, &high_polygons);
+
+    let mut slice = SliceIR {
+        schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+        global_layer_index: 0,
+        z: 0.5,
+        regions: vec![base_region(object_id, base)],
+    };
+    let mesh = MeshIR {
+        objects: vec![ObjectMesh {
+            id: object_id.to_string(),
+            modifier_volumes: vec![
+                parameter_modifier("low", 1, low_mesh),
+                parameter_modifier("high", 9, high_mesh),
+            ],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    slicer_runtime::region_partition::split_modifier_sub_regions_for_prepass(&mut slice, &mesh)
+        .expect("prepass modifier split must succeed");
+
+    let low = slice
+        .regions
+        .iter()
+        .find(|region| region.region_id == low_id)
+        .expect("low-priority sub-region must remain");
+    let high = slice
+        .regions
+        .iter()
+        .find(|region| region.region_id == high_id)
+        .expect("high-priority sub-region must remain");
+    let low_area = poly_area(&low.polygons);
+    let high_area = poly_area(&high.polygons);
+    assert!(
+        (low_area - 28.0e8).abs() < 0.01e8,
+        "low-priority modifier must receive only the non-overlapping remainder; area={low_area}"
+    );
+    assert!(
+        (high_area - 28.0e8).abs() < 0.01e8,
+        "high-priority modifier must own the full overlap and its footprint; area={high_area}"
+    );
+}
+
+#[test]
+fn prepass_and_tier2_modifier_splits_produce_identical_regions() {
+    let object_id = "obj1";
+    let base = square(0.0, 0.0, 10.0, 10.0);
+    let low_mesh = modifier_box_mesh(1.0, 1.0, 8.0, 8.0);
+    let high_mesh = modifier_box_mesh(5.0, 1.0, 9.0, 8.0);
+    let mesh = MeshIR {
+        objects: vec![ObjectMesh {
+            id: object_id.to_string(),
+            modifier_volumes: vec![
+                parameter_modifier("low", 1, low_mesh.clone()),
+                parameter_modifier("high", 9, high_mesh.clone()),
+            ],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    let mut prepass_slice = SliceIR {
+        schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+        global_layer_index: 0,
+        z: 0.5,
+        regions: vec![base_region(object_id, base.clone())],
+    };
+    slicer_runtime::region_partition::split_modifier_sub_regions_for_prepass(
+        &mut prepass_slice,
+        &mesh,
+    )
+    .expect("prepass modifier split must succeed");
+    let mut prepass_arena = LayerArena::new();
+    prepass_arena
+        .set_slice(prepass_slice)
+        .expect("stage prepass slice must succeed");
+    prepass_arena
+        .set_perimeter(base_perimeter(object_id, base.clone()))
+        .expect("stage prepass perimeter must succeed");
+    sync_perimeter_infill_areas_into_slice(&mut prepass_arena, 0)
+        .expect("prepass partition must succeed");
+
+    let high_footprint = slicer_core::slice_mesh_ex(&high_mesh, &[0.5])
+        .into_iter()
+        .next()
+        .expect("high modifier must slice");
+    let low_footprint = slicer_core::slice_mesh_ex(&low_mesh, &[0.5])
+        .into_iter()
+        .next()
+        .expect("low modifier must slice");
+    let mut tier2_arena = LayerArena::new();
+    tier2_arena
+        .set_slice(SliceIR {
+            schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+            global_layer_index: 0,
+            z: 0.5,
+            regions: vec![
+                base_region(object_id, base.clone()),
+                modifier_footprint_region(
+                    object_id,
+                    high_footprint
+                        .into_iter()
+                        .next()
+                        .expect("high footprint polygon"),
+                ),
+                modifier_footprint_region(
+                    object_id,
+                    low_footprint
+                        .into_iter()
+                        .next()
+                        .expect("low footprint polygon"),
+                ),
+            ],
+        })
+        .expect("stage Tier-2 slice must succeed");
+    tier2_arena
+        .set_perimeter(base_perimeter(object_id, base))
+        .expect("stage Tier-2 perimeter must succeed");
+    sync_perimeter_infill_areas_into_slice(&mut tier2_arena, 0)
+        .expect("Tier-2 partition must succeed");
+
+    let mut prepass_regions = prepass_arena
+        .slice()
+        .expect("prepass slice must remain")
+        .regions
+        .clone();
+    let mut tier2_regions = tier2_arena
+        .slice()
+        .expect("Tier-2 slice must remain")
+        .regions
+        .clone();
+    // Polygon booleans preserve geometry but may choose a different cyclic
+    // start point for an otherwise identical ring depending on call order.
+    canonicalize_region_rings(&mut prepass_regions);
+    canonicalize_region_rings(&mut tier2_regions);
+    assert_eq!(
+        prepass_regions,
+        tier2_regions,
+        "prepass and Tier-2 must agree on modifier ids, geometry, priority ownership, and fill roles"
+    );
+}
+
+#[test]
+fn modifier_split_rejects_overflow_without_mutating_slice() {
+    let stride = slicer_ir::MODIFIER_VARIANT_REGION_ID_STRIDE;
+    let max_parent = ((1_u64 << 63) - 2 - (stride - 1)) / stride;
+    let invalid_parent = max_parent + 1;
+    assert!(!slicer_ir::modifier_sub_region_id_fits(invalid_parent));
+
+    let modifier_mesh = modifier_box_mesh(2.0, 2.0, 8.0, 8.0);
+    let mesh = MeshIR {
+        objects: vec![ObjectMesh {
+            id: "obj1".to_string(),
+            modifier_volumes: vec![parameter_modifier("modifier", 0, modifier_mesh)],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let mut slice = SliceIR {
+        schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+        global_layer_index: 0,
+        z: 0.5,
+        regions: vec![base_region("obj1", square(0.0, 0.0, 10.0, 10.0))],
+    };
+    slice.regions[0].region_id = invalid_parent;
+    let before = slice.clone();
+
+    let error =
+        slicer_runtime::region_partition::split_modifier_sub_regions_for_prepass(&mut slice, &mesh)
+            .expect_err("an intersecting modifier must reject an unencodable parent id");
+    assert!(error.contains("parent_region_id"));
+    assert_eq!(slice, before, "failed splitting must be atomic");
+}
+
+#[test]
+fn modifier_split_rejects_existing_child_identity_collision() {
+    let base = square(0.0, 0.0, 10.0, 10.0);
+    let modifier_mesh = modifier_box_mesh(2.0, 2.0, 8.0, 8.0);
+    let footprint = slicer_core::slice_mesh_ex(&modifier_mesh, &[0.5])
+        .into_iter()
+        .next()
+        .expect("modifier must slice");
+    let child_id = slicer_ir::modifier_sub_region_id(0, "obj1", &footprint);
+    let child = SlicedRegion {
+        object_id: "obj1".to_string(),
+        region_id: child_id,
+        polygons: footprint.clone(),
+        infill_areas: footprint,
+        effective_layer_height: 0.5,
+        ..Default::default()
+    };
+    let mut slice = SliceIR {
+        schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+        global_layer_index: 0,
+        z: 0.5,
+        regions: vec![base_region("obj1", base), child],
+    };
+    let before = slice.clone();
+    let mesh = MeshIR {
+        objects: vec![ObjectMesh {
+            id: "obj1".to_string(),
+            modifier_volumes: vec![parameter_modifier("modifier", 0, modifier_mesh)],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    let error =
+        slicer_runtime::region_partition::split_modifier_sub_regions_for_prepass(&mut slice, &mesh)
+            .expect_err("re-materializing an existing child must reject duplicate identity");
+    assert!(error.contains("identity collision"));
+    assert_eq!(slice, before, "failed splitting must be atomic");
+}
+
+// ---------------------------------------------------------------------------
 // DEV-130 — the footprint binds to BASE, never to a painted variant that
 // happens to be emitted first
 // ---------------------------------------------------------------------------
@@ -374,8 +721,8 @@ fn modifier_split_degenerate_no_split() {
 /// `object_id` and "not a footprint" only, so on an object carrying BOTH paint
 /// variants and a modifier volume it bound to whichever region was emitted
 /// first — which can be a painted variant. The minted sub-region id encodes its
-/// parent (`base_region_id * STRIDE + hash`, invertible by integer division),
-/// so the parent choice is directly observable.
+/// parent (recoverable through `modifier_base_region_id`), so the parent choice
+/// is directly observable.
 #[test]
 fn modifier_split_binds_to_base_not_painted_variant() {
     let footprint = square(0.0, 0.0, 10.0, 10.0);
@@ -414,29 +761,90 @@ fn modifier_split_binds_to_base_not_painted_variant() {
     let sub = slice
         .regions
         .iter()
-        .find(|r| {
-            r.region_id != 0 && r.region_id != 7 && r.region_id != MODIFIER_FOOTPRINT_REGION_ID
-        })
-        .expect("DEV-130: a modifier sub-region must still be minted");
+        .find(|r| slicer_ir::modifier_base_region_id(r.region_id) == Some(0))
+        .expect("DEV-130: a BASE modifier sub-region must still be minted");
 
     assert_eq!(
-        sub.region_id / MODIFIER_VARIANT_REGION_ID_STRIDE,
-        0,
+        slicer_ir::modifier_base_region_id(sub.region_id),
+        Some(0),
         "DEV-130: minted sub-region must encode BASE (region_id 0) as its parent, \
          not the painted variant (region_id 7) that precedes it in emission order"
     );
 
-    // The painted variant must not have been notched — only BASE gives up area.
+    // The base child must be rooted in BASE, not in the painted variant.
     let variant_after = slice
         .regions
         .iter()
         .find(|r| r.region_id == 7)
         .expect("the painted variant region must survive the split");
+    let variant_area_after = poly_area(&variant_after.polygons);
     assert!(
-        (poly_area(&variant_after.polygons) - variant_area_before).abs() < 1e-6,
-        "DEV-130: the painted variant must keep its full area; only BASE is \
-         reduced by the footprint difference"
+        variant_area_after < variant_area_before,
+        "painted modifier coverage must be removed from the painted parent; before={variant_area_before}, after={variant_area_after}"
     );
+
+    let painted_sub = slice
+        .regions
+        .iter()
+        .find(|r| {
+            r.variant_chain == vec![("material".to_string(), PaintValue::ToolIndex(1))]
+                && slicer_ir::is_modifier_namespace_id(r.region_id)
+        })
+        .expect("a modifier child must be materialized for the painted parent");
+    assert_eq!(
+        slicer_ir::modifier_base_region_id(painted_sub.region_id),
+        Some(7),
+        "painted modifier child must identify its painted parent as wall source"
+    );
+    assert_eq!(painted_sub.variant_chain, variant_after.variant_chain);
+    assert!(
+        poly_area(&painted_sub.polygons) > 0.0,
+        "painted modifier child must carry the overlapping geometry"
+    );
+}
+
+#[test]
+fn modifier_split_composes_base_and_painted_geometry() {
+    let base = square(0.0, 0.0, 10.0, 10.0);
+    let modifier = modifier_box_mesh(3.0, 3.0, 7.0, 7.0);
+    let mut variant = base_region("obj1", base.clone());
+    variant.region_id = 7;
+    variant.variant_chain = vec![("material".to_string(), PaintValue::ToolIndex(1))];
+    let variant_before = poly_area(&variant.polygons);
+    let mut slice = SliceIR {
+        schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+        global_layer_index: 0,
+        z: 0.5,
+        regions: vec![base_region("obj1", base), variant],
+    };
+    let mesh = MeshIR {
+        objects: vec![ObjectMesh {
+            id: "obj1".to_string(),
+            modifier_volumes: vec![parameter_modifier("modifier", 0, modifier)],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    slicer_runtime::region_partition::split_modifier_sub_regions_for_prepass(&mut slice, &mesh)
+        .expect("prepass modifier split must succeed");
+
+    let painted_sub = slice
+        .regions
+        .iter()
+        .find(|r| {
+            r.variant_chain == vec![("material".to_string(), PaintValue::ToolIndex(1))]
+                && slicer_ir::is_modifier_namespace_id(r.region_id)
+        })
+        .expect("painted modifier child must be materialized");
+    let painted_parent = slice
+        .regions
+        .iter()
+        .find(|r| r.region_id == 7)
+        .expect("painted parent must remain");
+    assert!(poly_area(&painted_parent.polygons) < variant_before);
+    assert!(poly_area(&painted_sub.polygons) > 0.0);
+    assert_eq!(wall_source_region_id(false, painted_sub), Some(7));
 }
 
 // ---------------------------------------------------------------------------
@@ -507,5 +915,65 @@ fn modifier_split_inherits_shell_classification() {
     assert_eq!(
         sub.bridge_orientation_deg, 37.0,
         "Follow-up #3: sub-region must inherit bridge_orientation_deg from base"
+    );
+}
+
+#[test]
+fn prepass_materialized_subregion_receives_parent_wall_inset_fill() {
+    let base = square(0.0, 0.0, 10.0, 10.0);
+    let modifier = square(3.0, 3.0, 7.0, 7.0);
+    let sub_id = slicer_ir::modifier_sub_region_id(0, "obj1", &[modifier.clone()]);
+    let base_remaining = slicer_core::polygon_ops::difference(
+        std::slice::from_ref(&base),
+        std::slice::from_ref(&modifier),
+    );
+    let mut base_region = base_region("obj1", base.clone());
+    base_region.polygons = base_remaining.clone();
+    base_region.infill_areas = base_remaining;
+    let slice = SliceIR {
+        schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+        global_layer_index: 0,
+        z: 1.0,
+        regions: vec![
+            base_region,
+            SlicedRegion {
+                object_id: "obj1".to_string(),
+                region_id: sub_id,
+                polygons: vec![modifier],
+                // Paint segmentation can leave this pre-perimeter field empty;
+                // partitioning must still use the donor's wall inset.
+                infill_areas: Vec::new(),
+                ..Default::default()
+            },
+        ],
+    };
+    let mut arena = LayerArena::new();
+    arena.set_slice(slice).expect("stage slice must succeed");
+    arena
+        .set_perimeter(base_perimeter("obj1", base.clone()))
+        .expect("stage perimeter must succeed");
+
+    sync_perimeter_infill_areas_into_slice(&mut arena, 0)
+        .expect("sync_perimeter_infill_areas_into_slice must succeed");
+
+    let slice = arena.slice().expect("slice must be restaged");
+    let base_area = slice
+        .regions
+        .iter()
+        .find(|region| region.region_id == 0)
+        .map(|region| poly_area(&region.sparse_infill_area))
+        .expect("base region must remain");
+    let sub_area = slice
+        .regions
+        .iter()
+        .find(|region| region.region_id == sub_id)
+        .map(|region| poly_area(&region.sparse_infill_area))
+        .expect("modifier child must remain");
+    let expected_area = poly_area(std::slice::from_ref(&base));
+
+    assert!(base_area > 0.0 && sub_area > 0.0);
+    assert!(
+        (base_area + sub_area - expected_area).abs() / expected_area < 0.01,
+        "parent and child sparse fill must conserve the donor wall inset: base={base_area}, sub={sub_area}"
     );
 }

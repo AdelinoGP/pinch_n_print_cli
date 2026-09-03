@@ -4,6 +4,7 @@
 #![warn(unused_imports)]
 #![warn(unused_must_use)]
 
+pub mod anchored_rows;
 pub mod blackboard;
 /// Builtin pipeline step producers.
 pub mod builtins;
@@ -206,6 +207,17 @@ pub use visual_debug_render::{
     collect_overlay_events, compute_viewport_bounds, render_stage_capture,
     render_stage_capture_styled, GeometryView, Projector, RenderError, RenderStyle, RenderView,
     RenderedImage, ViewportBoundsMm, BASE_DIMENSION_PX, VIEWPORT_MARGIN_MM,
+};
+// Silhouette composite path (packet 247, schema 1.2.0).
+pub use visual_debug_render::{
+    build_silhouette_slice_height_index, compute_silhouette_viewport_bounds,
+    gcode_emit_silhouette_segments, render_gcode_emit_silhouette,
+    render_gcode_emit_silhouette_seamed, render_silhouette_composite,
+    render_silhouette_composite_seamed, render_silhouette_composite_styled,
+    render_silhouette_overhang_composite, render_silhouette_seam_overlay, silhouette_flow_width_mm,
+    silhouette_seam_events, union_silhouette_intervals, GcodeEmitSegment,
+    SilhouetteLayerHeightClass, SilhouetteScheduleSlab, SilhouetteSlabSchedule,
+    SilhouetteSliceHeightIndex, SilhouetteView,
 };
 pub use visual_debug_style::{
     parse_hex_color, ColorBy, OverlayEvent, OverlayKind, ToolColors, LEGEND_VERSION,

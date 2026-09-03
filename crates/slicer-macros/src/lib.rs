@@ -173,7 +173,7 @@ fn generate_slicer_module_impl(
                     &module, req.layer_index, &req.regions, paint, &mut output, &req.config,
                 )?;
                 Ok(::slicer_sdk::native::NativeLayerResponse {
-                     infill: Some(output), perimeters: None, support: None, slice_postprocess: None, path_optimization: None,
+                      infill: Some(output), perimeters: None, support: None, slice_postprocess: None, path_optimization: None, anchored_events: None,
                 })
             },
             "run_perimeters" => quote! {
@@ -184,7 +184,7 @@ fn generate_slicer_module_impl(
                     &module, req.layer_index, &req.regions, paint, &mut output, &req.config,
                 )?;
                 Ok(::slicer_sdk::native::NativeLayerResponse {
-                     infill: None, perimeters: Some(output), support: None, slice_postprocess: None, path_optimization: None,
+                      infill: None, perimeters: Some(output), support: None, slice_postprocess: None, path_optimization: None, anchored_events: None,
                 })
             },
             "run_wall_postprocess" => quote! {
@@ -195,7 +195,7 @@ fn generate_slicer_module_impl(
                     &module, req.layer_index, regions, &mut output, &req.config,
                 )?;
                 Ok(::slicer_sdk::native::NativeLayerResponse {
-                     infill: None, perimeters: Some(output), support: None, slice_postprocess: None, path_optimization: None,
+                      infill: None, perimeters: Some(output), support: None, slice_postprocess: None, path_optimization: None, anchored_events: None,
                 })
             },
             "run_infill_postprocess" => quote! {
@@ -207,7 +207,7 @@ fn generate_slicer_module_impl(
                     &module, req.layer_index, regions, prior, &mut output, &req.config,
                 )?;
                 Ok(::slicer_sdk::native::NativeLayerResponse {
-                     infill: Some(output), perimeters: None, support: None, slice_postprocess: None, path_optimization: None,
+                      infill: Some(output), perimeters: None, support: None, slice_postprocess: None, path_optimization: None, anchored_events: None,
                 })
             },
             "run_slice_postprocess" => quote! {
@@ -218,18 +218,19 @@ fn generate_slicer_module_impl(
                     &module, req.layer_index, &req.regions, paint, &mut output, &req.config,
                 )?;
                 Ok(::slicer_sdk::native::NativeLayerResponse {
-                     infill: None, perimeters: None, support: None, slice_postprocess: Some(output), path_optimization: None,
+                      infill: None, perimeters: None, support: None, slice_postprocess: Some(output), path_optimization: None, anchored_events: None,
                 })
             },
             "run_support" => quote! {
                 let module = <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&req.config)?;
                 let paint = req.paint.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native layer request is missing paint".to_string()))?;
                 let mut output = ::slicer_sdk::builders::SupportOutputBuilder::new();
+                let mut collection = ::slicer_sdk::layer_collection_builder::LayerCollectionBuilder::new();
                 <#self_ty as ::slicer_sdk::traits::LayerModule>::run_support(
-                    &module, req.layer_index, &req.regions, paint, &mut output, &req.config,
+                    &module, req.layer_index, &req.regions, paint, &mut output, &mut collection, &req.config,
                 )?;
                 Ok(::slicer_sdk::native::NativeLayerResponse {
-                     infill: None, perimeters: None, support: Some(output), slice_postprocess: None, path_optimization: None,
+                      infill: None, perimeters: None, support: Some(::slicer_sdk::native::NativeSupportOutput { output, collection }), slice_postprocess: None, path_optimization: None, anchored_events: None,
                 })
             },
             "run_support_postprocess" => quote! {
@@ -239,7 +240,7 @@ fn generate_slicer_module_impl(
                     &module, req.layer_index, &req.regions, &mut output, &req.config,
                 )?;
                 Ok(::slicer_sdk::native::NativeLayerResponse {
-                     infill: None, perimeters: None, support: Some(output), slice_postprocess: None, path_optimization: None,
+                      infill: None, perimeters: None, support: Some(::slicer_sdk::native::NativeSupportOutput { output, collection: ::slicer_sdk::layer_collection_builder::LayerCollectionBuilder::new() }), slice_postprocess: None, path_optimization: None, anchored_events: None,
                 })
             },
             "run_path_optimization" => quote! {
@@ -253,6 +254,19 @@ fn generate_slicer_module_impl(
                 Ok(::slicer_sdk::native::NativeLayerResponse {
                      infill: None, perimeters: None, support: None, slice_postprocess: None,
                      path_optimization: Some(::slicer_sdk::native::NativePathOptimizationOutput { output, collection }),
+                     anchored_events: None,
+                })
+            },
+            "run_anchored_events" => quote! {
+                let module = <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&req.config)?;
+                let regions = req.perimeter_regions.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native layer request is missing perimeter regions".to_string()))?;
+                let mut collection = ::slicer_sdk::layer_collection_builder::LayerCollectionBuilder::new();
+                <#self_ty as ::slicer_sdk::traits::LayerModule>::run_anchored_events(
+                    &module, req.layer_index, regions, &mut collection, &req.config,
+                )?;
+                Ok(::slicer_sdk::native::NativeLayerResponse {
+                     infill: None, perimeters: None, support: None, slice_postprocess: None,
+                     path_optimization: None, anchored_events: Some(collection),
                 })
             },
             _ => quote! { unreachable!() },
@@ -584,6 +598,7 @@ fn generate_slicer_module_impl(
             build_layer_support_postprocess_glue(self_ty)
         }
         Some(StageGlueKind::LayerPathOptimization) => build_layer_path_optimization_glue(self_ty),
+        Some(StageGlueKind::LayerAnchoredEvents) => build_layer_anchored_events_glue(self_ty),
         Some(StageGlueKind::PrepassMeshAnalysis) => build_prepass_mesh_analysis_glue(self_ty),
         Some(StageGlueKind::PrepassLayerPlanning) => build_prepass_layer_planning_glue(self_ty),
         Some(StageGlueKind::PrepassSeamPlanning) => build_prepass_seam_planning_glue(self_ty),
@@ -627,6 +642,7 @@ enum StageGlueKind {
     LayerSupport,
     LayerSupportPostprocess,
     LayerPathOptimization,
+    LayerAnchoredEvents,
     PrepassMeshAnalysis,
     PrepassLayerPlanning,
     PrepassSeamPlanning,
@@ -651,6 +667,7 @@ fn resolve_stage_glue(stage_id: &str, trait_ident: Option<&str>) -> Option<Stage
         "Layer::Support" => Some(StageGlueKind::LayerSupport),
         "Layer::SupportPostProcess" => Some(StageGlueKind::LayerSupportPostprocess),
         "Layer::PathOptimization" => Some(StageGlueKind::LayerPathOptimization),
+        "Layer::AnchoredEvents" => Some(StageGlueKind::LayerAnchoredEvents),
         "PrePass::MeshAnalysis" => Some(StageGlueKind::PrepassMeshAnalysis),
         "PrePass::LayerPlanning" => Some(StageGlueKind::PrepassLayerPlanning),
         "PrePass::SeamPlanning" => Some(StageGlueKind::PrepassSeamPlanning),
@@ -2082,6 +2099,10 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
             family_assignments: support_analysis.family_assignments.iter().map(|e| ::slicer_sdk::prepass_types::SupportFamilyAssignment {
                 object_id: e.object_id.clone(), region_id: e.region_id.clone(), family_id: e.family_id.clone(),
             }).collect(),
+            support_territory: support_analysis.support_territory.iter().map(|e| ::slicer_sdk::prepass_types::SupportAnalysisGeometryEntry {
+                global_support_layer_index: e.global_support_layer_index, object_id: e.object_id.clone(), region_id: e.region_id.clone(),
+                polygons: e.polygons.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
+            }).collect(),
         };
         let mut sdk_output = ::slicer_sdk::prepass_builders::SupportGeometryOutput::new();
         let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_support_geometry_with_analysis(
@@ -2467,6 +2488,14 @@ fn layer_light_helpers() -> TokenStream2 {
                     .iter()
                     .map(__slicer_wit_expolygon_to_ir)
                     .collect();
+                // Ticket 19 (R1): this field was never marshalled, so every
+                // guest saw an empty `internal_solid_fill` and the shell
+                // shadow read as exposed top.
+                let internal_solid_fill: ::std::vec::Vec<::slicer_ir::ExPolygon> = r
+                    .internal_solid_fill()
+                    .iter()
+                    .map(__slicer_wit_expolygon_to_ir)
+                    .collect();
                 let sparse_infill_area: ::std::vec::Vec<::slicer_ir::ExPolygon> = r
                     .sparse_infill_area()
                     .iter()
@@ -2481,6 +2510,7 @@ fn layer_light_helpers() -> TokenStream2 {
                 sdk_view.set_is_bridge(r.is_bridge());
                 sdk_view.set_bridge_areas(bridge_areas);
                 sdk_view.set_internal_bridge_areas(internal_bridge_areas);
+                sdk_view.set_internal_solid_fill(internal_solid_fill);
                 sdk_view.set_bridge_orientation_deg(r.bridge_orientation_deg());
                 sdk_view.set_sparse_infill_area(sparse_infill_area);
                 sdk_view.set_held_claims(r.held_claims());
@@ -3094,6 +3124,99 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
         }
     };
 
+    let anchored_helpers = quote! {
+        use self::slicer::ir_handles::ir_handles::{
+            AnchoredEntity as WitAnchoredEntity,
+            AnchoredEntityProvenance as WitAnchoredEntityProvenance,
+            AnchoredEventRuntimeHooks as WitAnchoredEventRuntimeHooks,
+            AnchoredGeometryContract as WitAnchoredGeometryContract,
+            OrderedEventCollection as WitOrderedEventCollection,
+        };
+        use self::slicer::types::geometry::{
+            ExtrusionRole as AnchoredWitExtrusionRole,
+            Point3WithWidth as AnchoredWitPoint3WithWidth,
+        };
+
+        fn __slicer_ir_anchored_role_to_wit(
+            role: &::slicer_ir::ExtrusionRole,
+        ) -> AnchoredWitExtrusionRole {
+            match role {
+                ::slicer_ir::ExtrusionRole::OuterWall => AnchoredWitExtrusionRole::OuterWall,
+                ::slicer_ir::ExtrusionRole::InnerWall => AnchoredWitExtrusionRole::InnerWall,
+                ::slicer_ir::ExtrusionRole::ThinWall => AnchoredWitExtrusionRole::ThinWall,
+                ::slicer_ir::ExtrusionRole::TopSolidInfill => AnchoredWitExtrusionRole::TopSolidInfill,
+                ::slicer_ir::ExtrusionRole::BottomSolidInfill => AnchoredWitExtrusionRole::BottomSolidInfill,
+                ::slicer_ir::ExtrusionRole::InternalSolidInfill => AnchoredWitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/internal-solid-infill@1")),
+                ::slicer_ir::ExtrusionRole::SparseInfill => AnchoredWitExtrusionRole::SparseInfill,
+                ::slicer_ir::ExtrusionRole::RaftInfill => AnchoredWitExtrusionRole::RaftInfill,
+                ::slicer_ir::ExtrusionRole::SupportMaterial => AnchoredWitExtrusionRole::SupportMaterial,
+                ::slicer_ir::ExtrusionRole::SupportInterface => AnchoredWitExtrusionRole::SupportInterface,
+                ::slicer_ir::ExtrusionRole::SupportBaseInterface => AnchoredWitExtrusionRole::SupportBaseInterface,
+                ::slicer_ir::ExtrusionRole::WipeTower => AnchoredWitExtrusionRole::WipeTower,
+                ::slicer_ir::ExtrusionRole::PrimeTower => AnchoredWitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/prime-tower@1")),
+                ::slicer_ir::ExtrusionRole::Ironing => AnchoredWitExtrusionRole::Ironing,
+                ::slicer_ir::ExtrusionRole::BridgeInfill => AnchoredWitExtrusionRole::BridgeInfill,
+                ::slicer_ir::ExtrusionRole::InternalBridgeInfill => AnchoredWitExtrusionRole::InternalBridgeInfill,
+                ::slicer_ir::ExtrusionRole::Skirt => AnchoredWitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/skirt@1")),
+                ::slicer_ir::ExtrusionRole::Brim => AnchoredWitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/brim@1")),
+                ::slicer_ir::ExtrusionRole::Custom(value) => AnchoredWitExtrusionRole::Custom(value.clone()),
+                ::slicer_ir::ExtrusionRole::GapFill => AnchoredWitExtrusionRole::GapFill,
+            }
+        }
+
+        fn __slicer_ir_anchored_collection_to_wit(
+            collection: &::slicer_ir::OrderedEventCollection,
+        ) -> WitOrderedEventCollection {
+            WitOrderedEventCollection {
+                anchor_global_layer_index: collection.anchor_global_layer_index,
+                events: collection.events.iter().map(|event| WitAnchoredEntity {
+                    local_id: event.local_id,
+                    anchor_global_layer_index: event.anchor_global_layer_index,
+                    geometry: match event.geometry {
+                        ::slicer_ir::AnchoredGeometryContract::Planar { z } =>
+                            WitAnchoredGeometryContract::Planar(z),
+                        ::slicer_ir::AnchoredGeometryContract::ZSpanning { min_z, max_z } =>
+                            WitAnchoredGeometryContract::ZSpanning((min_z, max_z)),
+                    },
+                    input_capabilities: event.input_capabilities.clone(),
+                    output_capabilities: event.output_capabilities.clone(),
+                    provenance: WitAnchoredEntityProvenance {
+                        requesting_feature: event.provenance.requesting_feature.clone(),
+                        source_plan_entry: event.provenance.source_plan_entry.clone(),
+                    },
+                    path_points: event.path_points.iter().map(|point| AnchoredWitPoint3WithWidth {
+                        x: point.x,
+                        y: point.y,
+                        z: point.z,
+                        width: point.width,
+                        flow_factor: point.flow_factor,
+                        overhang_quartile: point.overhang_quartile,
+                        dist_to_top_mm: point.dist_to_top_mm,
+                        overhang_distance_mm: point.overhang_distance_mm,
+                    }).collect(),
+                    role: __slicer_ir_anchored_role_to_wit(&event.role),
+                }).collect(),
+                runtime_hooks: WitAnchoredEventRuntimeHooks {
+                    optimize_paths: collection.runtime_hooks.optimize_paths,
+                    account_cooling: collection.runtime_hooks.account_cooling,
+                    account_time: collection.runtime_hooks.account_time,
+                },
+            }
+        }
+
+        fn __slicer_drain_anchored_collection(
+            sdk: &::slicer_sdk::LayerCollectionBuilder,
+            wit: &LayerCollectionBuilder,
+        ) -> ::std::result::Result<(), ::std::string::String> {
+            if let Some(collection) = sdk.anchored_proposal() {
+                wit.set_anchored_event_collection(
+                    &__slicer_ir_anchored_collection_to_wit(collection),
+                )?;
+            }
+            Ok(())
+        }
+    };
+
     match stage {
         "layer_slice_postprocess" => quote! {
             use self::slicer::ir_handles::ir_handles::{
@@ -3133,13 +3256,25 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
             #ir_role_and_path_helpers
             #drain_infill
         },
-        "layer_support" | "layer_support_postprocess" => quote! {
+        "layer_support" => quote! {
             use self::slicer::types::geometry::{
                 ExtrusionPath3d as WitExtrusionPath3d, ExtrusionRole as WitExtrusionRole,
                 Point3WithWidth as WitPoint3WithWidth,
             };
             #ir_role_and_path_helpers
             #drain_support
+            #anchored_helpers
+        },
+        "layer_support_postprocess" => quote! {
+            use self::slicer::types::geometry::{
+                ExtrusionPath3d as WitExtrusionPath3d, ExtrusionRole as WitExtrusionRole,
+                Point3WithWidth as WitPoint3WithWidth,
+            };
+            #ir_role_and_path_helpers
+            #drain_support
+        },
+        "layer_anchored_events" => quote! {
+            #anchored_helpers
         },
         "layer_path_optimization" => quote! {
             fn __slicer_ir_role_to_wit(r: &::slicer_ir::ExtrusionRole) -> WitExtrusionRole {
@@ -3502,11 +3637,20 @@ fn build_layer_support_glue(self_ty: &syn::Type) -> TokenStream2 {
             }).collect(),
         }));
         let mut sdk_output = ::slicer_sdk::builders::SupportOutputBuilder::new();
+        let mut sdk_collection = ::slicer_sdk::LayerCollectionBuilder::new();
         let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_support(
-            &module, layer_index, &sdk_regions, &sdk_paint, &mut sdk_output, &ir_config,
+            &module, layer_index, &sdk_regions, &sdk_paint, &mut sdk_output, &mut sdk_collection, &ir_config,
         );
-        __slicer_drain_support(&sdk_output, &output);
-        match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
+        match out {
+            Ok(()) => {
+                __slicer_drain_support(&sdk_output, &output);
+                if let Err(e) = __slicer_drain_anchored_collection(&sdk_collection, &collection) {
+                    return Err(__slicer_error_out(::slicer_sdk::error::ModuleError::fatal(1, e)));
+                }
+                Ok(())
+            }
+            Err(e) => Err(__slicer_error_out(e)),
+        }
     };
     quote! {
         #[cfg(target_arch = "wasm32")]
@@ -3516,14 +3660,70 @@ fn build_layer_support_glue(self_ty: &syn::Type) -> TokenStream2 {
             use slicer::common::module_errors::ModuleError;
             use slicer::config::config_types::ConfigView;
             #preamble #aliases #helpers #stage_helpers
+            use exports::slicer::layer_support::support::LayerCollectionBuilder;
             struct __SlicerLayerSupportComponent;
             impl exports::slicer::layer_support::support::Guest for __SlicerLayerSupportComponent {
-                fn run(layer_index: i32, regions: Vec<SliceRegionView>, paint: PaintRegionLayerView, output: SupportOutputBuilder, config: ConfigView) -> Result<(), ModuleError> {
+                fn run(layer_index: i32, regions: Vec<SliceRegionView>, paint: PaintRegionLayerView, output: SupportOutputBuilder, collection: LayerCollectionBuilder, config: ConfigView) -> Result<(), ModuleError> {
                     #profile_install
                     #arm
                 }
             }
             export!(__SlicerLayerSupportComponent);
+        }
+    }
+}
+
+fn anchored_events_wit_preamble() -> TokenStream2 {
+    let wit_inline = include_str!(
+        "../../slicer-schema/wit/deps/layer-anchored-events/layer-anchored-events.wit"
+    );
+    emit_world_preamble("anchored-events-module", "anchored_events", wit_inline)
+}
+
+fn build_layer_anchored_events_glue(self_ty: &syn::Type) -> TokenStream2 {
+    let preamble = anchored_events_wit_preamble();
+    let profile_install = profile_install_stmt();
+    let aliases = layer_per_stage_aliases("layer_anchored_events");
+    let helpers = layer_light_helpers();
+    let stage_helpers = layer_stage_helpers("layer_anchored_events");
+    let arm = quote! {
+        let layer_index = layer_index as u32;
+        let ir_config = __slicer_adapt_config(&config);
+        let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&ir_config) {
+            Ok(m) => m, Err(e) => return Err(__slicer_error_out(e)),
+        };
+        let sdk_regions = __slicer_adapt_slice_regions(&regions);
+        let mut sdk_collection = ::slicer_sdk::LayerCollectionBuilder::new();
+        let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_anchored_events(
+            &module, layer_index, &sdk_regions, &mut sdk_collection, &ir_config,
+        );
+        match out {
+            Ok(()) => {
+                if let Err(e) = __slicer_drain_anchored_collection(&sdk_collection, &collection) {
+                    return Err(__slicer_error_out(::slicer_sdk::error::ModuleError::fatal(1, e)));
+                }
+                Ok(())
+            }
+            Err(e) => Err(__slicer_error_out(e)),
+        }
+    };
+    quote! {
+        #[cfg(target_arch = "wasm32")]
+        #[doc(hidden)]
+        mod __slicer_layer_anchored_events_world_export {
+            use super::#self_ty;
+            use slicer::common::module_errors::ModuleError;
+            use slicer::config::config_types::ConfigView;
+            #preamble #aliases #helpers #stage_helpers
+            use exports::slicer::layer_anchored_events::anchored_events::LayerCollectionBuilder;
+            struct __SlicerLayerAnchoredEventsComponent;
+            impl exports::slicer::layer_anchored_events::anchored_events::Guest for __SlicerLayerAnchoredEventsComponent {
+                fn run(layer_index: i32, regions: Vec<SliceRegionView>, collection: LayerCollectionBuilder, config: ConfigView) -> Result<(), ModuleError> {
+                    #profile_install
+                    #arm
+                }
+            }
+            export!(__SlicerLayerAnchoredEventsComponent);
         }
     }
 }

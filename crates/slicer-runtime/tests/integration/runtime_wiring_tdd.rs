@@ -590,9 +590,12 @@ fn config_schema_json_matches_documented_shape() {
     // {"schema_version": "1.1.0",
     //  "schema": [{"module": "...", "fields": [{"key": "...", "type": "..."}]}],
     //  "host": [...]}
-    // Wire version 1.1.0 (commit a50bfc28, SchemaBridgeMap ticket 02) added the
-    // top-level `host` array and the per-field `scope`; this assertion was left
-    // pinning the pre-1.1.0 spelling and has been red since that commit.
+    // The wire version is owned by `CONFIG_SCHEMA_WIRE_VERSION`
+    // (`crates/slicer-scheduler/src/manifest.rs`); 1.1.0 added the top-level
+    // `host` key array and the per-field `scope`. Bumping rules live in
+    // docs/11_operational_governance_and_acceptance_gate.md. Compare against the
+    // constant itself so this test can never lag a bump again (it did once:
+    // a50bfc28 bumped 1.0.0 -> 1.1.0 and updated the emitter but not this test).
     let json = build_config_schema_json(&[]);
     assert_eq!(
         json["schema_version"].as_str(),

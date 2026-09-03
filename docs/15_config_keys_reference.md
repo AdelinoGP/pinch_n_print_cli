@@ -246,6 +246,7 @@ is the authoritative catalog of their defaults and ranges.
 | `support_speed` | float | `50.0` | [1.0, 300.0] | `traditional-support` |
 | `support_style` | string | `"default"` | — | `traditional-support` |
 | `enable_support` | bool | `false` | — | `traditional-support-planner` |
+| `independent_support_layer_height` | bool | `true` | — | `traditional-support-planner` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `traditional-support-planner` |
 | `support_base_pattern` | string | `"rectilinear"` | — (values: default|rectilinear|rectilinear-grid|honeycomb|lightning|hollow) | `traditional-support-planner` |
 | `support_base_pattern_spacing` | float | `2.5` | [0.1, 10.0] | `traditional-support-planner` |
@@ -266,6 +267,7 @@ is the authoritative catalog of their defaults and ranges.
 | `tree_support_wall_count` | int | `1` | [1.0, 10.0] | `tree-support` |
 | `base_raft_layers` | int | `1` | [0.0, 20.0] | `tree-support-planner` |
 | `enable_support` | bool | `false` | — | `tree-support-planner` |
+| `independent_support_layer_height` | bool | `true` | — | `tree-support-planner` |
 | `interface_raft_layers` | int | `0` | [0.0, 20.0] | `tree-support-planner` |
 | `line_width` | float | `0.4` | [0.0, 2.0] | `tree-support-planner` |
 | `max_bridge_length` | float | `10.0` | >= 0.0 | `tree-support-planner` |
@@ -276,7 +278,7 @@ is the authoritative catalog of their defaults and ranges.
 | `support_interface_bottom_layers` | int | `-1` | [-1.0, 10.0] | `tree-support-planner` |
 | `support_interface_top_layers` | int | `2` | [0.0, 10.0] | `tree-support-planner` |
 | `support_layer_height_mm` | float | `0.0` | [0.0, 1.0] | `tree-support-planner` |
-| `support_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `tree-support-planner` |
+| `support_line_width` | float_or_percent | `0.0` | [0.0, 1000.0] | `tree-support-planner` |
 | `support_max_branches_per_layer` | int | `1024` | [1.0, 10000.0] | `tree-support-planner` |
 | `support_object_xy_distance` | float | `0.35` | [0.0, 10.0] | `tree-support-planner` |
 | `support_on_build_plate_only` | bool | `false` | — | `tree-support-planner` |

@@ -279,9 +279,14 @@ pub const CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION: SemVer = SemVer {
 /// only enforcer-covered geometry yields candidates, and `enforced`/`blocked`
 /// are now derived from sliced modifier volumes instead of being hardcoded
 /// `false`.
+///
+/// Bumped to 1.3.0 by SchemaBridgeMap ticket 19 (reopened): additive
+/// `support_territory` map — the per-layer XY territory owned by each minted
+/// modifier sub-region, so support families that disagree across a modifier
+/// boundary can be clipped to their own side instead of annihilated.
 pub const CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
-    minor: 2,
+    minor: 3,
     patch: 0,
 };
 
@@ -1119,8 +1124,10 @@ pub struct AnchoredEntity {
     pub output_capabilities: Vec<String>,
     /// Origin of the entity.
     pub provenance: AnchoredEntityProvenance,
-    /// The entity's committed output path in millimeters.
-    pub path_points: Vec<Point3>,
+    /// The entity's committed extrusion path, including per-point flow metadata.
+    pub path_points: Vec<Point3WithWidth>,
+    /// Extrusion role applied to the whole committed path.
+    pub role: ExtrusionRole,
 }
 
 /// Capability closure used to derive stages without an event-kind table.
@@ -1561,6 +1568,16 @@ pub struct SupportAnalysisIR {
     pub baseline_feasible_envelope: Vec<ExPolygon>,
     /// Per-object/per-region family assignments.
     pub family_assignments: BTreeMap<(ObjectId, RegionId), String>,
+    /// Support territory owned by each minted modifier sub-region, keyed
+    /// `(global_layer_index, object_id, modifier_sub_region_id)`. The value is
+    /// the modifier mesh's full cross-section at that layer's Z — NOT clipped
+    /// by the model, because support lives in the free air under it. Base
+    /// regions get no entry; consumers derive their own/foreign split from
+    /// `family_assignments` (see `SupportAnalysisView::territory_partition`).
+    /// Orca has no per-region support family, so this carrier has no
+    /// canonical counterpart (see `docs/DEVIATION_LOG.md`).
+    #[serde(default)]
+    pub support_territory: HashMap<SupportGeometryKey, Vec<ExPolygon>>,
 }
 
 impl Default for SupportAnalysisIR {
@@ -1574,6 +1591,7 @@ impl Default for SupportAnalysisIR {
             shared_settings: BTreeMap::new(),
             baseline_feasible_envelope: Vec::new(),
             family_assignments: BTreeMap::new(),
+            support_territory: HashMap::new(),
         }
     }
 }
@@ -1789,6 +1807,108 @@ pub struct ExPolygon {
 /// dispatch layer is what enforces the invariant and cannot depend on the
 /// runtime crate.
 pub const MODIFIER_FOOTPRINT_REGION_ID: RegionId = RegionId::MAX;
+
+/// Modifier `region_id` payload stride (packet 132): beneath the namespace bit,
+/// a minted modifier sub-region stores
+/// `base_region_id * MODIFIER_VARIANT_REGION_ID_STRIDE + hash` (`hash != 0`).
+/// The next prime above paint's stride (`PAINT_VARIANT_REGION_ID_STRIDE =
+/// 1_000_000`) keeps payloads stable while the high bit makes namespace
+/// membership unambiguous for every ordinary region id. `MAX` remains reserved
+/// for the raw modifier-footprint staging marker and is not a sub-region id.
+///
+/// Lives here because both minting sites need it: the Tier-2 geometry split
+/// (`slicer-runtime::region_partition::split_modifier_footprints`) and the
+/// region-map kernel (`slicer-core::algos::region_mapping`, ticket 18), which
+/// re-derives the same ids in prepass so RegionMapIR entries match the arena
+/// `SlicedRegion`s byte-for-byte. `slicer-wasm-host` reads it for the
+/// `is_modifier_namespace_id` predicate; it must never be restated per-crate.
+pub const MODIFIER_VARIANT_REGION_ID_STRIDE: u64 = 1_000_003;
+const MODIFIER_VARIANT_REGION_ID_FLAG: u64 = 1 << 63;
+
+/// Derive the stable modifier sub-region id from the parent region id and the
+/// modifier footprint geometry. The returned id carries the high-bit namespace
+/// marker over a `parent_region_id * STRIDE + hash` payload with `hash != 0`.
+///
+/// FNV-1a over the `object_id` bytes + footprint contour and hole points makes
+/// the id stable for a given modifier cross-section at a layer and distinct
+/// across modifiers within the same parent. The footprint polygons MUST be the
+/// same slice output both sites use — `slicer_core::slice_mesh_ex` on the
+/// modifier mesh at the layer Z, taking the first polygon batch — or the ids
+/// diverge and the RegionMapIR entry stops matching the minted geometry.
+pub fn modifier_sub_region_id(
+    parent_region_id: u64,
+    object_id: &str,
+    footprint_geo: &[ExPolygon],
+) -> u64 {
+    // FNV-1a over object_id bytes + footprint contour and hole points.
+    let mut h: u64 = 0xcbf29ce484222325;
+    let mut mix = |b: u8| {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    };
+    for b in object_id.as_bytes() {
+        mix(*b);
+    }
+    for ep in footprint_geo {
+        for p in &ep.contour.points {
+            for byte in (p.x as u64).to_le_bytes() {
+                mix(byte);
+            }
+            for byte in (p.y as u64).to_le_bytes() {
+                mix(byte);
+            }
+        }
+        for hole in &ep.holes {
+            // Keep hole boundaries distinct from the enclosing contour and
+            // from each other without changing ids for hole-free footprints.
+            mix(0xff);
+            for p in &hole.points {
+                for byte in (p.x as u64).to_le_bytes() {
+                    mix(byte);
+                }
+                for byte in (p.y as u64).to_le_bytes() {
+                    mix(byte);
+                }
+            }
+        }
+    }
+    let hash = (h % (MODIFIER_VARIANT_REGION_ID_STRIDE - 1)) + 1;
+    assert!(
+        modifier_sub_region_id_fits(parent_region_id),
+        "modifier sub-region id payload exceeds its namespace or reserved sentinel"
+    );
+    let payload = parent_region_id
+        .checked_mul(MODIFIER_VARIANT_REGION_ID_STRIDE)
+        .and_then(|base| base.checked_add(hash))
+        .expect("modifier sub-region id payload overflow");
+    debug_assert!(payload < MODIFIER_VARIANT_REGION_ID_FLAG - 1);
+    MODIFIER_VARIANT_REGION_ID_FLAG | payload
+}
+
+/// Return whether `parent_region_id` can safely be used by
+/// [`modifier_sub_region_id`] for every possible footprint hash.
+pub fn modifier_sub_region_id_fits(parent_region_id: u64) -> bool {
+    parent_region_id
+        .checked_mul(MODIFIER_VARIANT_REGION_ID_STRIDE)
+        .and_then(|payload| payload.checked_add(MODIFIER_VARIANT_REGION_ID_STRIDE - 1))
+        .is_some_and(|payload| payload < MODIFIER_VARIANT_REGION_ID_FLAG - 1)
+}
+
+/// ADR-0030: identifies ids in the modifier namespace.
+///
+/// Modifier sub-region ids carry a dedicated high-bit namespace marker. This
+/// is disjoint from base and paint region ids regardless of their numeric
+/// value; the payload retains the stride/hash shape for deterministic inversion.
+/// The all-bits-set value is excluded because it is the raw footprint marker.
+pub fn is_modifier_namespace_id(id: u64) -> bool {
+    id != MODIFIER_FOOTPRINT_REGION_ID && id & MODIFIER_VARIANT_REGION_ID_FLAG != 0
+}
+
+/// Recover the wall-owning parent region id from a modifier sub-region id.
+pub fn modifier_base_region_id(id: u64) -> Option<u64> {
+    is_modifier_namespace_id(id)
+        .then_some((id & !MODIFIER_VARIANT_REGION_ID_FLAG) / MODIFIER_VARIANT_REGION_ID_STRIDE)
+}
 
 /// Sliced region
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -2221,7 +2341,6 @@ pub struct Point3WithWidth {
 }
 
 /// Extrusion role
-#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ExtrusionRole {
     /// Outer wall

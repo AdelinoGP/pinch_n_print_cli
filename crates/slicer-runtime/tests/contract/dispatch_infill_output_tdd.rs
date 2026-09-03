@@ -266,6 +266,7 @@ fn full_pipeline_with_typed_layer_dispatch() {
         wasm_handles,
         cancel_flag: None,
         support_tools: Default::default(),
+        anchored_entities: Vec::new(),
     };
 
     let result = run_pipeline(config);
@@ -354,6 +355,7 @@ fn full_pipeline_multi_tier_with_typed_layer() {
         wasm_handles,
         cancel_flag: None,
         support_tools: Default::default(),
+        anchored_entities: Vec::new(),
     };
 
     let result = run_pipeline(config);
@@ -552,6 +554,7 @@ fn end_to_end_pipeline_commits_guest_output_to_arena() {
         wasm_handles,
         cancel_flag: None,
         support_tools: Default::default(),
+        anchored_entities: Vec::new(),
     };
 
     let result = run_pipeline(config);

@@ -372,7 +372,7 @@ fn stage_fn_signature(stage: &str) -> &'static str {
         "Layer::PerimetersPostProcess" => "fn run_wall_postprocess(\n        &self,\n        _layer_index: u32,\n        _regions: &[PerimeterRegionView],\n        _output: &mut PerimeterOutputBuilder,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
         "Layer::InfillPostProcess" => "fn run_infill_postprocess(\n        &self,\n        _layer_index: u32,\n        _regions: &[PerimeterRegionView],\n        _output: &mut InfillOutputBuilder,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
         "Layer::SlicePostProcess" => "fn run_slice_postprocess(\n        &self,\n        _layer_index: u32,\n        _regions: &[SliceRegionView],\n        _paint: &PaintRegionLayerView,\n        _output: &mut SlicePostprocessBuilder,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
-        "Layer::Support" => "fn run_support(\n        &self,\n        _layer_index: u32,\n        _regions: &[SliceRegionView],\n        _paint: &PaintRegionLayerView,\n        _output: &mut SupportOutputBuilder,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
+        "Layer::Support" => "fn run_support(\n        &self,\n        _layer_index: u32,\n        _regions: &[SliceRegionView],\n        _paint: &PaintRegionLayerView,\n        _output: &mut SupportOutputBuilder,\n        _collection: &mut LayerCollectionBuilder,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
         "Layer::SupportPostProcess" => "fn run_support_postprocess(\n        &self,\n        _layer_index: u32,\n        _regions: &[SliceRegionView],\n        _output: &mut SupportOutputBuilder,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
         "Layer::PathOptimization" => "fn run_path_optimization(\n        &self,\n        _layer_index: u32,\n        _regions: &[PerimeterRegionView],\n        _output: &mut GcodeOutputBuilder,\n        _collection: &mut LayerCollectionBuilder,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
         "PrePass::MeshAnalysis" => "fn run_mesh_analysis(\n        &self,\n        _objects: &[ObjectId],\n        _output: &mut MeshAnalysisOutput,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
@@ -758,8 +758,8 @@ mod tests {
             checked += 1;
         }
         assert_eq!(
-            checked, 15,
-            "all 15 WASM-dispatched stages must be covered; a drop here means \
+            checked, 16,
+            "all 16 WASM-dispatched stages must be covered; a drop here means \
              the loop stopped exercising stages rather than the scaffold \
              getting better",
         );

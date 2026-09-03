@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 251-visual-debug-silhouette-seam-overlays
 task_ids:
   - TASK-455
@@ -35,7 +35,7 @@ Model source only; seams are `SeamPlanIR`-sourced from the blackboard (`SeamPlan
 - **AC-5. Given** a declared `schema_version: "1.1.0"` model-source request whose `diagnostic_overlay` spec has `overlays: ["seams"]` over a seam-carrying tap, **when** the bundle renders after this packet's `OverlayEvent::Seam` change, **then** every serialized seam event is byte-identical to the pre-change shape — the JSON object contains exactly the keys `event`, `x`, `y` and **no** `z` key (the new field is `Option` + `skip_serializing_if`, and every top-down construction site passes `None`; pinned on serialization output, not parsing). | `cargo test -p pnp-cli --test visual_debug_seam_overlay_tdd -- legacy_seam_events_serialize_without_z_key 2>&1 | tee target/test-output.log | grep -E "^test result"`
 - **AC-6. Given** the same captures, seam plan, view, scale, viewport, and schedule, **when** the isolated seam-overlay render runs twice, **then** the two PNG byte vectors are identical and the two event lists are equal element-for-element (events in `SeamPlanIR.entries` source order, filtered); **and** the packet 247/249 composite entry points, called without seams, remain byte-equivalent to their pre-251 output (their own suites pass unchanged). | `cargo test -p slicer-runtime --test visual_debug_silhouette_tdd -- seam_overlay_render_is_deterministic 2>&1 | tee target/test-output.log | grep -E "^test result"`
 - **AC-7. Given** a tool-colored composited request (`color_by: "tool"` + `composited_overlays: ["seams"]`) over a tool-carrying silhouette tap, **when** the bundle renders, **then** the glyphs draw in the same fixed seam color `[220, 0, 0]` on the `_tool` base image (glyph shape/color identical across role and tool palettes — visibility is a documented caveat, not a per-palette restyle). | `cargo test -p pnp-cli --test visual_debug_seam_overlay_tdd -- composited_seams_on_tool_colored_base 2>&1 | tee target/test-output.log | grep -E "^test result"`
-- **AC-8 (docs).** `docs/19_visual_debug.md` documents `composited_overlays` (the literal key, absent from the doc today, so the grep fails until written): seams-only membership, model-source-only, isolated-vs-composited semantics, the z-carrying event mirror, and the glyph-over-palette visibility caveat. | `rg -q 'composited_overlays' docs/19_visual_debug.md && echo PASS`
+- **AC-8 (docs).** `docs/19_visual_debug.md` documents `composited_overlays` in a "Seam overlays" subsection: seams-only membership, model-source-only, isolated-vs-composited semantics, the z-carrying event mirror, and the glyph-over-palette visibility caveat. (Preflight 2026-08-29: the bare literal `composited_overlays` already occurs in the doc's post-247 text at ~line 167, so the originally-specified bare-key grep was vacuous; the grep now anchors on the subsection heading.) | `rg -q 'Seam overlays' docs/19_visual_debug.md && rg -q 'composited_overlays' docs/19_visual_debug.md && echo PASS`
 
 ## Negative Test Cases
 

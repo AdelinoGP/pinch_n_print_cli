@@ -202,46 +202,42 @@ fn populate_surface_classification_fields(
     view.set_surface_group(surface_group);
 
     let region_bbox = expolygons_bbox(&region.polygons);
-    let overhang_quartile_polygons: Vec<slicer_ir::slice_ir::QuartileBand> =
-        surface_classification
-            .and_then(|sc| {
-                sc.overhang_quartile_polygons
-                    .get(&region.object_id)
-                    .and_then(|by_layer| by_layer.get(&global_layer_index))
-            })
-            .map(|bands| {
-                bands
-                    .iter()
-                    .filter_map(|band| {
-                        let prefiltered: Vec<slicer_ir::ExPolygon> = band
-                            .polygons
-                            .iter()
-                            .filter(|poly| match region_bbox {
-                                Some(rb) => bbox_overlaps(rb, poly),
-                                None => false,
-                            })
-                            .cloned()
-                            .collect();
-                        if prefiltered.is_empty() {
-                            return None;
-                        }
-                        let clipped: Vec<slicer_ir::ExPolygon> =
-                            slicer_core::polygon_ops::intersection_ex(
-                                &prefiltered,
-                                &region.polygons,
-                            );
-                        if clipped.is_empty() {
-                            None
-                        } else {
-                            Some(slicer_ir::slice_ir::QuartileBand {
-                                quartile: band.quartile,
-                                polygons: clipped,
-                            })
-                        }
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+    let overhang_quartile_polygons: Vec<slicer_ir::slice_ir::QuartileBand> = surface_classification
+        .and_then(|sc| {
+            sc.overhang_quartile_polygons
+                .get(&region.object_id)
+                .and_then(|by_layer| by_layer.get(&global_layer_index))
+        })
+        .map(|bands| {
+            bands
+                .iter()
+                .filter_map(|band| {
+                    let prefiltered: Vec<slicer_ir::ExPolygon> = band
+                        .polygons
+                        .iter()
+                        .filter(|poly| match region_bbox {
+                            Some(rb) => bbox_overlaps(rb, poly),
+                            None => false,
+                        })
+                        .cloned()
+                        .collect();
+                    if prefiltered.is_empty() {
+                        return None;
+                    }
+                    let clipped: Vec<slicer_ir::ExPolygon> =
+                        slicer_core::polygon_ops::intersection_ex(&prefiltered, &region.polygons);
+                    if clipped.is_empty() {
+                        None
+                    } else {
+                        Some(slicer_ir::slice_ir::QuartileBand {
+                            quartile: band.quartile,
+                            polygons: clipped,
+                        })
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let overhang_areas: Vec<slicer_ir::ExPolygon> = overhang_quartile_polygons
         .iter()
         .flat_map(|band| band.polygons.clone())
@@ -269,12 +265,31 @@ pub fn build_native_layer_request(
     module: &CompiledModuleLive<'_>,
     held_claims_map: &HashMap<(String, String), Vec<String>>,
 ) -> NativeLayerRequest {
+    // Ticket 19: support carriers for planned bodies with no slice geometry
+    // on this layer (see `dispatch::support_carrier_regions`).
+    let carriers: Vec<slicer_ir::SlicedRegion> = if stage_export == "Layer::Support" {
+        crate::dispatch::support_carrier_regions(
+            module.claims,
+            layer_index,
+            input.support_plan.as_deref(),
+            input.slice,
+        )
+    } else {
+        Vec::new()
+    };
     let regions = input
         .slice
         .map(|slice| {
-            slice
-                .regions
+            let projected;
+            let regions = if stage_export == "Layer::Perimeters" {
+                projected = super::perimeter_source_regions(slice);
+                projected.as_slice()
+            } else {
+                slice.regions.as_slice()
+            };
+            regions
                 .iter()
+                .chain(carriers.iter())
                 .map(|region| {
                     let mut view = SliceRegionView::from_ir(
                         region,
@@ -366,6 +381,87 @@ pub fn build_native_layer_request(
         prior_infill: input.infill.map(|infill| infill.regions.clone()),
         config: (*module.config_view).clone(),
         stage_export,
+    }
+}
+
+/// Project the host-owned `SupportAnalysisIR` onto the SDK's read-only view.
+///
+/// Shared by the native dispatch path and by host-side consumers that want
+/// the SDK's territory helpers (`SupportAnalysisView::territory_partition`)
+/// over the committed IR without re-implementing the projection.
+pub fn support_analysis_view_from_ir(
+    analysis: &slicer_ir::SupportAnalysisIR,
+) -> SupportAnalysisView {
+    let mut candidates: Vec<_> = analysis
+        .candidates
+        .iter()
+        .map(
+            |candidate| slicer_sdk::prepass_types::SupportAnalysisCandidate {
+                id: candidate.id,
+                geometry: candidate.geometry.clone(),
+                object_id: candidate.source.object_id.clone(),
+                region_id: candidate.source.region_id.to_string(),
+                global_layer_index: candidate.source.global_layer_index,
+                z_units: candidate.source.z_units,
+                enforced: candidate.enforced,
+                blocked: candidate.blocked,
+            },
+        )
+        .collect();
+    candidates.sort_by_key(|candidate| {
+        (
+            candidate.global_layer_index,
+            candidate.object_id.clone(),
+            candidate.region_id.clone(),
+            candidate.id,
+        )
+    });
+    let project_geometry = |entries: &std::collections::HashMap<
+        slicer_ir::SupportGeometryKey,
+        Vec<slicer_ir::ExPolygon>,
+    >| {
+        let mut entries: Vec<_> = entries
+            .iter()
+            .map(
+                |(key, polygons)| slicer_sdk::prepass_types::SupportAnalysisGeometryEntry {
+                    global_support_layer_index: key.global_support_layer_index,
+                    object_id: key.object_id.clone(),
+                    region_id: key.region_id.to_string(),
+                    polygons: polygons.clone(),
+                },
+            )
+            .collect();
+        entries.sort_by_key(|entry| {
+            (
+                entry.global_support_layer_index,
+                entry.object_id.clone(),
+                entry.region_id.clone(),
+            )
+        });
+        entries
+    };
+    SupportAnalysisView {
+        candidates,
+        model_occupancy: project_geometry(&analysis.model_occupancy),
+        termination_surfaces: project_geometry(&analysis.termination_surfaces),
+        shared_settings: analysis
+            .shared_settings
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
+        baseline_feasible_envelope: analysis.baseline_feasible_envelope.clone(),
+        family_assignments: analysis
+            .family_assignments
+            .iter()
+            .map(|((object_id, region_id), family_id)| {
+                slicer_sdk::prepass_types::SupportFamilyAssignment {
+                    object_id: object_id.clone(),
+                    region_id: region_id.to_string(),
+                    family_id: family_id.clone(),
+                }
+            })
+            .collect(),
+        support_territory: project_geometry(&analysis.support_territory),
     }
 }
 
@@ -498,78 +594,10 @@ pub fn build_native_prepass_request(
                 )
                 .collect(),
         });
-    let support_analysis = input.support_analysis.as_deref().map(|analysis| {
-        let mut candidates: Vec<_> = analysis
-            .candidates
-            .iter()
-            .map(
-                |candidate| slicer_sdk::prepass_types::SupportAnalysisCandidate {
-                    id: candidate.id,
-                    geometry: candidate.geometry.clone(),
-                    object_id: candidate.source.object_id.clone(),
-                    region_id: candidate.source.region_id.to_string(),
-                    global_layer_index: candidate.source.global_layer_index,
-                    z_units: candidate.source.z_units,
-                    enforced: candidate.enforced,
-                    blocked: candidate.blocked,
-                },
-            )
-            .collect();
-        candidates.sort_by_key(|candidate| {
-            (
-                candidate.global_layer_index,
-                candidate.object_id.clone(),
-                candidate.region_id.clone(),
-                candidate.id,
-            )
-        });
-        let project_geometry = |entries: &std::collections::HashMap<
-            slicer_ir::SupportGeometryKey,
-            Vec<slicer_ir::ExPolygon>,
-        >| {
-            let mut entries: Vec<_> = entries
-                .iter()
-                .map(
-                    |(key, polygons)| slicer_sdk::prepass_types::SupportAnalysisGeometryEntry {
-                        global_support_layer_index: key.global_support_layer_index,
-                        object_id: key.object_id.clone(),
-                        region_id: key.region_id.to_string(),
-                        polygons: polygons.clone(),
-                    },
-                )
-                .collect();
-            entries.sort_by_key(|entry| {
-                (
-                    entry.global_support_layer_index,
-                    entry.object_id.clone(),
-                    entry.region_id.clone(),
-                )
-            });
-            entries
-        };
-        SupportAnalysisView {
-            candidates,
-            model_occupancy: project_geometry(&analysis.model_occupancy),
-            termination_surfaces: project_geometry(&analysis.termination_surfaces),
-            shared_settings: analysis
-                .shared_settings
-                .iter()
-                .map(|(key, value)| (key.clone(), value.clone()))
-                .collect(),
-            baseline_feasible_envelope: analysis.baseline_feasible_envelope.clone(),
-            family_assignments: analysis
-                .family_assignments
-                .iter()
-                .map(|((object_id, region_id), family_id)| {
-                    slicer_sdk::prepass_types::SupportFamilyAssignment {
-                        object_id: object_id.clone(),
-                        region_id: region_id.to_string(),
-                        family_id: family_id.clone(),
-                    }
-                })
-                .collect(),
-        }
-    });
+    let support_analysis = input
+        .support_analysis
+        .as_deref()
+        .map(support_analysis_view_from_ir);
     let seam_regions =
         input
             .slice_ir
@@ -1194,23 +1222,83 @@ pub fn commit_native_layer_response(
                 LayerStageCommit::Infill(ir)
             }))
         }
-        "Layer::Support" | "Layer::SupportPostProcess" => {
-            let Some(builder) = response.support.as_ref() else {
+        "Layer::Support" => {
+            let Some(support) = response.support.as_ref() else {
                 return Ok(None);
             };
-            let collected = collect_support(builder);
+            let collected = collect_support(&support.output);
+            let anchored_events = if let Some(collection) = support.collection.anchored_proposal() {
+                for entity in &collection.events {
+                    crate::marshal::validate_anchored_entity_geometry(entity)?;
+                }
+                Some(vec![collection.clone()])
+            } else {
+                None
+            };
             if collected.support_paths.is_empty()
                 && collected.interface_paths.is_empty()
                 && collected.raft_paths.is_empty()
             {
-                return Ok(None);
+                let Some(collections) = anchored_events else {
+                    return Ok(None);
+                };
+                return Ok(Some(LayerStageCommit::AnchoredEvents(collections)));
             }
             let ir = convert_support_output_with_plan(&collected, layer_index, support_plan)?;
-            Ok(Some(if stage_export.ends_with("PostProcess") {
-                LayerStageCommit::SupportPostProcess(ir)
+            Ok(Some(if let Some(anchored_events) = anchored_events {
+                LayerStageCommit::SupportWithAnchoredEvents {
+                    support: ir,
+                    anchored_events,
+                }
             } else {
                 LayerStageCommit::Support(ir)
             }))
+        }
+        "Layer::SupportPostProcess" => {
+            let Some(support) = response.support.as_ref() else {
+                return Ok(None);
+            };
+            let collected = collect_support(&support.output);
+            let anchored_events = if let Some(collection) = support.collection.anchored_proposal() {
+                for entity in &collection.events {
+                    crate::marshal::validate_anchored_entity_geometry(entity)?;
+                }
+                Some(vec![collection.clone()])
+            } else {
+                None
+            };
+            if collected.support_paths.is_empty()
+                && collected.interface_paths.is_empty()
+                && collected.raft_paths.is_empty()
+            {
+                let Some(collections) = anchored_events else {
+                    return Ok(None);
+                };
+                return Ok(Some(LayerStageCommit::AnchoredEvents(collections)));
+            }
+            let ir = convert_support_output_with_plan(&collected, layer_index, support_plan)?;
+            Ok(Some(if let Some(anchored_events) = anchored_events {
+                LayerStageCommit::SupportPostProcessWithAnchoredEvents {
+                    support: ir,
+                    anchored_events,
+                }
+            } else {
+                LayerStageCommit::SupportPostProcess(ir)
+            }))
+        }
+        "Layer::AnchoredEvents" => {
+            let Some(builder) = response.anchored_events.as_ref() else {
+                return Ok(None);
+            };
+            let Some(collection) = builder.anchored_proposal() else {
+                return Ok(None);
+            };
+            for entity in &collection.events {
+                crate::marshal::validate_anchored_entity_geometry(entity)?;
+            }
+            Ok(Some(LayerStageCommit::AnchoredEvents(vec![
+                collection.clone()
+            ])))
         }
         "Layer::Perimeters" | "Layer::PerimetersPostProcess" => {
             let Some(builder) = response.perimeters.as_ref() else {

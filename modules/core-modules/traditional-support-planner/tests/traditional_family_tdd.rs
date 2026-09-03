@@ -9,11 +9,13 @@ use slicer_ir::{
     SupportPlanDeclineReason, SupportPlanEntry, SupportPlanIR, SupportPlanRole,
     SupportPlanRoleRegion, Transform3d,
 };
+use slicer_sdk::host::{self, ClipOperation};
 use slicer_sdk::prepass_builders::SupportGeometryOutput;
 use slicer_sdk::prepass_types::{
     LayerPlanView, LayerPlanViewEntry, MeshObjectView, RegionSegmentationView,
     RegionSegmentationViewEntry, SupportAnalysisCandidate, SupportAnalysisGeometryEntry,
     SupportAnalysisView, SupportFamilyAssignment, SupportGeometryView,
+    SupportPlanEntry as SdkSupportPlanEntry,
 };
 use slicer_sdk::traits::PrepassModule;
 use slicer_wasm_host::exact_z_query::ExactZQueryService;
@@ -240,6 +242,28 @@ fn run_planner_with_config(
     output
 }
 
+fn run_planner_with_layer_plan(
+    config: ConfigView,
+    object: MeshObjectView,
+    analysis: SupportAnalysisView,
+    layers: LayerPlanView,
+) -> SupportGeometryOutput {
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry_with_analysis(
+            &[object.clone()],
+            &layers,
+            &regions(&object.object_id),
+            &analysis,
+            &SupportGeometryView::default(),
+            &mut output,
+            &ConfigView::new(),
+        )
+        .expect("run_support_geometry_with_analysis");
+    output
+}
+
 #[test]
 fn contact_area_planning() {
     let object = overhang_object("contact");
@@ -327,6 +351,1164 @@ fn contact_area_planning() {
         output.entries().len() >= 2,
         "contact area must derive body/interface roles across layers"
     );
+}
+
+#[test]
+fn disabled_independent_height_copies_object_layer_print_z_exactly() {
+    // Packet 239c AC-3 + AC-2: the enabled/disabled off-grid matrix at module
+    // level, run through the planner's native run_support_geometry path.
+    //
+    // Disabled (AC-3, canonical `PrintObjectSupportMaterial::
+    // bottom_contact_layer` disabled path calling `sync_gap_with_object_layer`):
+    // every emitted `SupportPlanEntry.anchor_z` equals
+    // `mm_to_units(layer_plan.layers[entry.anchor_layer_index].z)` with
+    // INTEGER equality — no tolerance window.
+    //
+    // Enabled (AC-2, canonical `generate_support_layers`
+    // (`SupportCommon.cpp`) stepping: `n_layers_extra = ceil((dist - EPSILON)
+    // / max_support_layer_height)`, `step = dist / n_layers_extra`,
+    // `print_z = bottom_z + k * step`): with a pitch of 0.1 mm against a
+    // 0.2 mm object grid and a candidate spanning layers 0..=8, the gap
+    // between adjacent support rows (0.2 mm) demands n = ceil((0.2 - 1e-4) /
+    // 0.1) = 2 rows per gap, so one strictly-between plane (step 0.1 mm)
+    // is inserted under every row the planner emits; at least one such
+    // plane differs from its object layer's Z by more than
+    // `AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS` (10 units).
+    let analysis = SupportAnalysisView {
+        candidates: vec![SupportAnalysisCandidate {
+            id: 1,
+            object_id: "contact".into(),
+            region_id: "0".into(),
+            global_layer_index: 8,
+            z_units: slicer_ir::mm_to_units(1.8),
+            geometry: vec![contact_region()],
+            ..Default::default()
+        }],
+        family_assignments: vec![traditional_assignment("contact")],
+        ..Default::default()
+    };
+    let object = overhang_object("contact");
+
+    // Disabled: exact copy. Integer equality on i64 units.
+    let disabled = run_planner_with_config(
+        {
+            let base = planner_config(true);
+            let mut values = base
+                .keys()
+                .into_iter()
+                .filter_map(|key| base.get(&key).map(|value| (key, value.clone())))
+                .collect::<HashMap<ConfigKey, ConfigValue>>();
+            values.insert(
+                "independent_support_layer_height".into(),
+                ConfigValue::Bool(false),
+            );
+            ConfigView::from_map(values)
+        },
+        object.clone(),
+        analysis.clone(),
+    );
+    assert!(
+        !disabled.entries().is_empty(),
+        "traditional contact must produce plan entries"
+    );
+    for entry in disabled.entries() {
+        let grid_z = layer_plan().layers[entry.anchor_layer_index as usize].z;
+        assert_eq!(
+            entry.anchor_z,
+            slicer_ir::mm_to_units(grid_z),
+            "disabled branch must copy the object layer print_z exactly \
+             (integer equality, canonical sync_gap_with_object_layer); \
+             entry at layer {} had anchor_z {}",
+            entry.global_layer_index,
+            entry.anchor_z
+        );
+    }
+
+    // A raw zero pitch bypasses both coarse replacement and off-grid rows.
+    let zero_pitch = run_planner_with_analysis(true, object.clone(), analysis.clone());
+    assert!(zero_pitch.entries().iter().all(|entry| {
+        entry.anchor_z
+            == slicer_ir::mm_to_units(layer_plan().layers[entry.anchor_layer_index as usize].z)
+    }));
+
+    // Enabled: at least one off-grid plane, strictly increasing per body.
+    let enabled = run_planner_with_config(
+        {
+            // Note: `independent_support_layer_height` defaults to true, and
+            // the config here sets an explicit finer pitch (0.1 mm).
+            planner_config_with(true, 0.0, 0.1)
+        },
+        object.clone(),
+        analysis.clone(),
+    );
+    let tolerance_units = slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS;
+    let off_grid: Vec<i64> = enabled
+        .entries()
+        .iter()
+        .filter(|entry| {
+            let grid_z = layer_plan().layers[entry.anchor_layer_index as usize].z;
+            entry.anchor_z.abs_diff(slicer_ir::mm_to_units(grid_z)) > tolerance_units as u64
+        })
+        .map(|entry| entry.anchor_z)
+        .collect();
+    assert!(
+        !off_grid.is_empty(),
+        "enabled branch must produce at least one off-grid anchor_z \
+         (>{tolerance_units} units from its object layer's Z); got {:?}",
+        enabled
+            .entries()
+            .iter()
+            .map(|e| (e.global_layer_index, e.anchor_z))
+            .collect::<Vec<_>>()
+    );
+    // Free-floating planes must be strictly increasing within the object's
+    // emitted sequence ordered by declared plane.
+    let mut planes: Vec<i64> = enabled.entries().iter().map(|e| e.anchor_z).collect();
+    planes.sort_unstable();
+    planes.dedup();
+    let sorted = {
+        let mut sorted = planes.clone();
+        sorted.sort_unstable();
+        sorted == planes
+    };
+    assert!(
+        sorted,
+        "declared planes must be distinct and strictly ordered; got {planes:?}"
+    );
+}
+
+#[test]
+fn coarse_pitch_produces_free_floating_anchor_z() {
+    let object = overhang_object("coarse-traditional");
+    let analysis = SupportAnalysisView {
+        candidates: vec![SupportAnalysisCandidate {
+            id: 1,
+            object_id: "coarse-traditional".into(),
+            region_id: "0".into(),
+            global_layer_index: 8,
+            z_units: slicer_ir::mm_to_units(1.8),
+            geometry: vec![contact_region()],
+            ..Default::default()
+        }],
+        termination_surfaces: vec![SupportAnalysisGeometryEntry {
+            global_support_layer_index: 2,
+            object_id: "coarse-traditional".into(),
+            region_id: "0".into(),
+            polygons: vec![contact_region()],
+        }],
+        family_assignments: vec![traditional_assignment("coarse-traditional")],
+        ..Default::default()
+    };
+    let output = run_planner_with_config(planner_config_with(true, 0.0, 0.3), object, analysis);
+    let planes: Vec<_> = output
+        .entries()
+        .iter()
+        .map(|entry| entry.anchor_z)
+        .collect();
+    assert_eq!(planes, vec![6000, 9000, 12000, 14000, 16000]);
+    assert!(planes.windows(2).all(|pair| pair[0] < pair[1]));
+
+    let synthesized = output
+        .entries()
+        .iter()
+        .find(|entry| entry.anchor_z == 9000)
+        .expect("traditional midpoint must be synthesized off-grid");
+    assert!(synthesized.global_layer_index < 0);
+    assert_eq!(
+        synthesized.anchor_layer_index, 3,
+        "0.9 mm ties the 0.8 and 1.0 mm layers, so the lower index wins"
+    );
+    assert!(synthesized
+        .roles
+        .iter()
+        .all(|role| role.role == SupportPlanRole::SupportBody));
+    assert!(
+        synthesized.anchor_z.abs_diff(slicer_ir::mm_to_units(
+            layer_plan().layers[synthesized.anchor_layer_index as usize].z
+        )) > slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS as u64
+    );
+
+    for plane in [6000, 12000, 14000, 16000] {
+        let entry = output
+            .entries()
+            .iter()
+            .find(|entry| entry.anchor_z == plane)
+            .unwrap();
+        assert!(
+            entry.roles.iter().any(|role| matches!(
+                role.role,
+                SupportPlanRole::TopInterface | SupportPlanRole::BottomInterface
+            )),
+            "genuine interface plane {plane} must survive"
+        );
+    }
+    assert!(
+        !planes.contains(&8000) && !planes.contains(&10000),
+        "strictly interior body rows must be replaced"
+    );
+    let interface_planes: Vec<_> = output
+        .entries()
+        .iter()
+        .filter(|entry| {
+            entry.roles.iter().any(|role| {
+                matches!(
+                    role.role,
+                    SupportPlanRole::TopInterface
+                        | SupportPlanRole::BaseInterface
+                        | SupportPlanRole::BottomInterface
+                ) && !role.regions.is_empty()
+            })
+        })
+        .map(|entry| entry.anchor_z)
+        .collect();
+    assert!(
+        interface_planes.windows(2).any(|pair| {
+            output.entries().iter().any(|entry| {
+                entry.anchor_z > pair[0]
+                    && entry.anchor_z < pair[1]
+                    && entry.global_layer_index < 0
+                    && entry
+                        .roles
+                        .iter()
+                        .all(|role| role.role == SupportPlanRole::SupportBody)
+            })
+        }),
+        "a body-bearing interface span must use interface planes as brackets"
+    );
+    let fallback = run_adjacent_interface_fixture();
+    assert_eq!(
+        fallback
+            .entries()
+            .iter()
+            .map(|entry| entry.anchor_z)
+            .collect::<Vec<_>>(),
+        vec![2000, 4800, 7600, 10400, 12000, 13200, 14000, 16000],
+        "AC-3 endpoint fallback must preserve the exact ordered plane sequence"
+    );
+    assert_eq!(
+        fallback
+            .entries()
+            .iter()
+            .filter(|entry| entry.global_layer_index < 0)
+            .map(|entry| entry.anchor_z)
+            .collect::<Vec<_>>(),
+        vec![4800, 7600, 10400, 13200],
+        "AC-3 endpoint fallback must emit the exact EPSILON-biased off-grid planes"
+    );
+    assert_eq!(
+        fallback
+            .entries()
+            .iter()
+            .filter(|entry| entry
+                .roles
+                .iter()
+                .any(|role| role.role == SupportPlanRole::TopInterface && !role.regions.is_empty()))
+            .map(|entry| entry.anchor_z)
+            .collect::<Vec<_>>(),
+        vec![12000, 14000, 16000],
+        "AC-3 endpoint fallback must retain every protected interface plane"
+    );
+
+    // AC-3's promised range-local `support_step` neutralization (D3), asserted
+    // on the production path: the coarse region's rows bypass the legacy
+    // `support_step` gate while rows outside the coarse ranges retain the
+    // computed decimation. `run_step_local_fixture` gives `support_step = 3`
+    // (0.3 mm pitch over a 0.1 mm model layer). The coarse region "0" keeps its
+    // real endpoint brackets at layers 4 and 6 — layer 4 would be removed by
+    // `(6 - 4) = 2` not being a multiple of 3, but it is inside the coarse
+    // range so it bypasses the gate. The finer region "1" outside the coarse
+    // range keeps only its `support_step = 3` rows (termination layer 0, layer
+    // 1, and the interface layer 4); layers 2 and 3 are decimated away.
+    let step_local = run_step_local_fixture();
+    assert_eq!(
+        step_local
+            .entries()
+            .iter()
+            .filter(|entry| entry.global_layer_index >= 0)
+            .map(|entry| (entry.region_id.as_str(), entry.anchor_layer_index))
+            .collect::<Vec<_>>(),
+        vec![("1", 0), ("1", 1), ("0", 4), ("1", 4), ("0", 6)],
+        "coarse-range rows must bypass legacy support_step while rows outside \
+         the coarse ranges retain the computed decimation"
+    );
+}
+
+fn run_adjacent_interface_fixture() -> SupportGeometryOutput {
+    let object = overhang_object("adjacent-interface-traditional");
+    let analysis = SupportAnalysisView {
+        candidates: vec![SupportAnalysisCandidate {
+            id: 1,
+            object_id: "adjacent-interface-traditional".into(),
+            region_id: "0".into(),
+            global_layer_index: 8,
+            z_units: slicer_ir::mm_to_units(1.8),
+            geometry: vec![contact_region()],
+            ..Default::default()
+        }],
+        family_assignments: vec![traditional_assignment("adjacent-interface-traditional")],
+        ..Default::default()
+    };
+    let base = planner_config_with(true, 0.0, 0.3);
+    let mut values = base
+        .keys()
+        .into_iter()
+        .filter_map(|key| base.get(&key).map(|value| (key, value.clone())))
+        .collect::<HashMap<ConfigKey, ConfigValue>>();
+    values.insert("support_interface_top_layers".into(), ConfigValue::Int(3));
+    values.insert(
+        "support_interface_bottom_layers".into(),
+        ConfigValue::Int(0),
+    );
+    run_planner_with_config(ConfigView::from_map(values), object, analysis)
+}
+
+#[test]
+fn coarse_adjacent_interface_cluster_uses_endpoint_fallback() {
+    let output = run_adjacent_interface_fixture();
+    let planes_and_roles: Vec<_> = output
+        .entries()
+        .iter()
+        .map(|entry| {
+            (
+                entry.anchor_z,
+                entry.global_layer_index,
+                entry.roles.iter().map(|role| role.role).collect::<Vec<_>>(),
+            )
+        })
+        .collect();
+
+    assert_eq!(
+        planes_and_roles,
+        vec![
+            (2000, 0, vec![SupportPlanRole::SupportBody]),
+            (4800, i32::MIN, vec![SupportPlanRole::SupportBody]),
+            (7600, i32::MIN + 1, vec![SupportPlanRole::SupportBody]),
+            (10400, i32::MIN + 2, vec![SupportPlanRole::SupportBody]),
+            (12000, 5, vec![SupportPlanRole::TopInterface]),
+            (13200, i32::MIN + 3, vec![SupportPlanRole::SupportBody]),
+            (14000, 6, vec![SupportPlanRole::TopInterface]),
+            (16000, 7, vec![SupportPlanRole::TopInterface]),
+        ],
+        "an adjacent interface cluster has no body-bearing interface span, so the run endpoints must bracket the off-grid stack while every genuine interface row survives"
+    );
+}
+
+#[test]
+fn coarse_candidates_within_epsilon_group_before_identity_assignment() {
+    let object = overhang_object("grouped-traditional");
+    let analysis = SupportAnalysisView {
+        candidates: vec![(1, "0", 6), (2, "1", 7)]
+            .into_iter()
+            .map(
+                |(id, region_id, global_layer_index)| SupportAnalysisCandidate {
+                    id,
+                    object_id: "grouped-traditional".into(),
+                    region_id: region_id.into(),
+                    global_layer_index,
+                    // The coarse stack's production Z is derived from the layer
+                    // plan's bracket rows, not from the candidate's declared
+                    // `z_units` (that field only feeds declined entries). Keep
+                    // the declaration consistent with the grid anyway.
+                    z_units: slicer_ir::mm_to_units(if id == 1 { 1.2003 } else { 1.4 }),
+                    geometry: vec![contact_region()],
+                    ..Default::default()
+                },
+            )
+            .collect(),
+        family_assignments: ["0", "1"]
+            .into_iter()
+            .map(|region_id| SupportFamilyAssignment {
+                object_id: "grouped-traditional".into(),
+                region_id: region_id.into(),
+                family_id: "traditional".into(),
+            })
+            .collect(),
+        ..Default::default()
+    };
+    let layers = LayerPlanView {
+        layers: [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.2003, 1.4, 1.6, 1.8]
+            .into_iter()
+            .enumerate()
+            .map(|(i, z)| LayerPlanViewEntry {
+                global_layer_index: i as u32,
+                z,
+                effective_layer_height: 0.2,
+            })
+            .collect(),
+    };
+    let config = {
+        let base = planner_config_with(true, 0.0, 0.3);
+        let mut values = base
+            .keys()
+            .into_iter()
+            .filter_map(|key| base.get(&key).map(|value| (key, value.clone())))
+            .collect::<HashMap<ConfigKey, ConfigValue>>();
+        values.insert("support_interface_top_layers".into(), ConfigValue::Int(1));
+        values.insert(
+            "support_interface_bottom_layers".into(),
+            ConfigValue::Int(0),
+        );
+        ConfigView::from_map(values)
+    };
+    let output = run_planner_with_layer_plan(config, object, analysis, layers.clone());
+
+    // The two assigned regions end their coarse brackets on grid layers 5 and 6
+    // whose Z values (`0.2, ..., 1.2, 1.2003, ...`) give the traditional-family
+    // stepping (`raft_and_intermediate_support_layers`, `SupportMaterial.cpp`)
+    // a distinct n=4 plane spacing. The first stepped plane of each bracket is
+    // `(3*below_units + above_units)/4`; below is layer 0 at 0.2 mm.
+    let below_units = slicer_ir::mm_to_units(layers.layers[0].z);
+    let above_units_0 = slicer_ir::mm_to_units(layers.layers[5].z);
+    let above_units_1 = slicer_ir::mm_to_units(layers.layers[6].z);
+    let raw_mm =
+        |above_units: i64| (3 * below_units + above_units) as f64 / 4.0 / slicer_ir::UNITS_PER_MM;
+    let raw_0 = raw_mm(above_units_0);
+    let raw_1 = raw_mm(above_units_1);
+    assert!(
+        (raw_0 - raw_1).abs() < 1e-4,
+        "production-derived raw Z must be within the canonical grouping EPSILON \
+         (1e-4 mm); got {raw_0} and {raw_1}"
+    );
+    assert_ne!(
+        raw_0, raw_1,
+        "the two production candidates must consume genuinely distinct raw Z values"
+    );
+    assert_ne!(
+        slicer_ir::mm_to_units(raw_0 as f32),
+        slicer_ir::mm_to_units(raw_1 as f32),
+        "within-EPSILON raw Z must still map to distinct integer plane identities \
+         before grouping, so the fold is observable: got {raw_0} and {raw_1}"
+    );
+
+    // Canonical EPSILON candidate grouping (`generate_support_layers`,
+    // `SupportCommon.cpp`) folds the two raw planes into ONE midpoint plane.
+    // No intermediate integer identity is ever emitted for either raw value.
+    let midpoint = slicer_ir::mm_to_units(((raw_0 + raw_1) / 2.0) as f32);
+    let grouped: Vec<_> = output
+        .entries()
+        .iter()
+        .filter(|entry| entry.anchor_z == midpoint)
+        .collect();
+    assert_eq!(
+        grouped.len(),
+        2,
+        "the distinct production candidates must fold into one midpoint plane"
+    );
+    assert!(
+        output
+            .entries()
+            .iter()
+            .filter(|entry| entry.anchor_z == slicer_ir::mm_to_units(raw_1 as f32))
+            .all(|entry| entry.anchor_z == midpoint),
+        "neither pre-group raw integer identity may survive as a separate plane"
+    );
+    assert_eq!(grouped[0].global_layer_index, grouped[1].global_layer_index);
+    assert_ne!(grouped[0].body_ids, grouped[1].body_ids);
+    assert_eq!(
+        grouped
+            .iter()
+            .map(|entry| entry.region_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["0", "1"],
+        "both production candidates must survive midpoint grouping"
+    );
+    assert!(grouped.iter().all(|entry| {
+        entry
+            .roles
+            .iter()
+            .all(|role| role.role == SupportPlanRole::SupportBody)
+    }));
+    assert!(
+        output
+            .entries()
+            .iter()
+            .filter(|entry| entry.anchor_z == midpoint)
+            .count()
+            == grouped.len(),
+        "exactly one grouped synthesized plane exists at the midpoint, not one per region"
+    );
+
+    for (region, interface_z) in [("0", above_units_0), ("1", above_units_1)] {
+        let interface = output
+            .entries()
+            .iter()
+            .find(|entry| entry.region_id == region && entry.anchor_z == interface_z)
+            .expect("the run's lone interface must survive as a bracket");
+        assert!(interface
+            .roles
+            .iter()
+            .any(|role| role.role == SupportPlanRole::TopInterface));
+    }
+}
+
+#[test]
+fn adaptive_local_gap_stays_finer() {
+    let object = overhang_object("adaptive-traditional");
+    let analysis = SupportAnalysisView {
+        candidates: vec![SupportAnalysisCandidate {
+            id: 1,
+            object_id: "adaptive-traditional".into(),
+            region_id: "0".into(),
+            global_layer_index: 5,
+            z_units: slicer_ir::mm_to_units(1.8),
+            geometry: vec![contact_region()],
+            ..Default::default()
+        }],
+        family_assignments: vec![traditional_assignment("adaptive-traditional")],
+        ..Default::default()
+    };
+    let layers = LayerPlanView {
+        layers: (0..6)
+            .map(|i| LayerPlanViewEntry {
+                global_layer_index: i,
+                z: (i as f32 + 1.0) * 0.3,
+                effective_layer_height: 0.1,
+            })
+            .collect(),
+    };
+    let output = run_planner_with_layer_plan(
+        planner_config_with(true, 0.0, 0.2),
+        object,
+        analysis,
+        layers,
+    );
+    assert_eq!(
+        output
+            .entries()
+            .iter()
+            .map(|entry| entry.anchor_z)
+            .collect::<Vec<_>>(),
+        vec![15000, 13500, 12000, 10500, 9000, 5000, 7000, 3000],
+        "the finer path first applies support_step=2, then inserts planes between surviving rows"
+    );
+    assert_eq!(
+        output
+            .entries()
+            .iter()
+            .filter(|entry| entry.global_layer_index >= 0)
+            .count(),
+        4,
+        "the finer path must retain the legacy support_step=2 rows plus interface rows"
+    );
+    assert!(
+        output
+            .entries()
+            .iter()
+            .filter(|entry| entry.global_layer_index < 0)
+            .all(|entry| matches!(entry.anchor_z, 5000 | 7000 | 10500 | 13500)),
+        "the finer path must not contain coarse-only planes"
+    );
+}
+
+#[test]
+fn mixed_coarse_and_finer_ranges_are_ordered_as_one_object_stack() {
+    let object = overhang_object("mixed-traditional");
+    let analysis = SupportAnalysisView {
+        candidates: vec![(1, "0", 3), (2, "1", 5)]
+            .into_iter()
+            .map(
+                |(id, region_id, global_layer_index)| SupportAnalysisCandidate {
+                    id,
+                    object_id: "mixed-traditional".into(),
+                    region_id: region_id.into(),
+                    global_layer_index,
+                    z_units: slicer_ir::mm_to_units(if id == 1 { 0.8 } else { 1.4 }),
+                    geometry: vec![contact_region()],
+                    ..Default::default()
+                },
+            )
+            .collect(),
+        family_assignments: ["0", "1"]
+            .into_iter()
+            .map(|region_id| SupportFamilyAssignment {
+                object_id: "mixed-traditional".into(),
+                region_id: region_id.into(),
+                family_id: "traditional".into(),
+            })
+            .collect(),
+        ..Default::default()
+    };
+    let layers = LayerPlanView {
+        layers: [0.2, 0.4, 0.6, 0.8, 1.1, 1.4]
+            .into_iter()
+            .enumerate()
+            .map(|(i, z)| LayerPlanViewEntry {
+                global_layer_index: i as u32,
+                z,
+                effective_layer_height: if i < 4 { 0.2 } else { 0.3 },
+            })
+            .collect(),
+    };
+    let config = {
+        let base = planner_config_with(true, 0.0, 0.2);
+        let mut values = base
+            .keys()
+            .into_iter()
+            .filter_map(|key| base.get(&key).map(|value| (key, value.clone())))
+            .collect::<HashMap<ConfigKey, ConfigValue>>();
+        values.insert("support_interface_top_layers".into(), ConfigValue::Int(1));
+        values.insert(
+            "support_interface_bottom_layers".into(),
+            ConfigValue::Int(0),
+        );
+        ConfigView::from_map(values)
+    };
+    let output = run_planner_with_layer_plan(config, object, analysis, layers);
+    let planes: Vec<_> = output
+        .entries()
+        .iter()
+        .map(|entry| entry.anchor_z)
+        .collect();
+
+    assert_eq!(
+        planes,
+        vec![2000, 2000, 4000, 4000, 6000, 6000, 8000, 9500, 11000],
+        "mixed coarse/finer output must preserve every row and synthesized stack plane"
+    );
+    assert_eq!(
+        output
+            .entries()
+            .iter()
+            .filter(|entry| entry.body_ids == ["traditional-body-mixed-traditional-1"])
+            .map(|entry| entry.anchor_z)
+            .collect::<Vec<_>>(),
+        vec![2000, 4000, 6000],
+        "the finer candidate's original multiplicity and order must survive"
+    );
+    assert_eq!(
+        output
+            .entries()
+            .iter()
+            .filter(|entry| entry.body_ids == ["traditional-body-mixed-traditional-2"])
+            .map(|entry| entry.anchor_z)
+            .collect::<Vec<_>>(),
+        vec![2000, 4000, 6000, 8000, 9500, 11000],
+        "the coarse candidate must retain its original rows and coarse stack order"
+    );
+    assert!(
+        output.entries().iter().any(|entry| {
+            entry.body_ids == ["traditional-body-mixed-traditional-2"] && entry.anchor_z == 9500
+        }),
+        "the adaptive range must retain its 239c finer candidate"
+    );
+}
+
+#[test]
+fn coarse_bracket_neutralizes_support_step_only_inside_its_range() {
+    let output = run_step_local_fixture();
+
+    assert_eq!(
+        output
+            .entries()
+            .iter()
+            .map(|entry| entry.anchor_z)
+            .collect::<Vec<_>>(),
+        vec![2000, 4000, 6000, 9000, 12000, 15000, 18000, 18000, 20000, 22000],
+        "the coarse region emits its endpoint-bracket stack while the finer region applies support_step=3 before deriving intermediate planes"
+    );
+    assert_eq!(
+        output
+            .entries()
+            .iter()
+            .filter(|entry| entry.global_layer_index >= 0)
+            .map(|entry| entry.anchor_layer_index)
+            .collect::<Vec<_>>(),
+        vec![0, 1, 4, 4, 6],
+        "the finer region keeps only its support_step=3 rows while the coarse region keeps its real brackets"
+    );
+    assert!(output.entries().iter().any(|entry| entry.region_id == "0"
+        && entry.anchor_z == 20000
+        && entry.global_layer_index < 0
+        && entry
+            .roles
+            .iter()
+            .all(|role| role.role == SupportPlanRole::SupportBody)));
+}
+
+#[test]
+fn coarse_synthesized_rows_use_height_local_geometry() {
+    let output = run_step_local_fixture();
+    let lower = output
+        .entries()
+        .iter()
+        .find(|entry| {
+            entry.region_id == "0"
+                && entry.anchor_z == 18000
+                && entry.body_ids == ["traditional-body-step-local-traditional-1"]
+        })
+        .expect("coarse lower bracket must retain its source membership");
+    let synthesized = output
+        .entries()
+        .iter()
+        .find(|entry| {
+            entry.region_id == "0"
+                && entry.anchor_z == 20000
+                && entry.global_layer_index < 0
+                && entry.body_ids == ["traditional-body-step-local-traditional-1"]
+        })
+        .expect("coarse synthesized row must retain its source membership");
+    let body_regions = |entry: &SdkSupportPlanEntry| {
+        entry
+            .roles
+            .iter()
+            .find(|role| role.role == SupportPlanRole::SupportBody)
+            .expect("entry must retain SupportBody role")
+            .regions
+            .clone()
+    };
+
+    assert_ne!(
+        body_regions(synthesized),
+        body_regions(lower),
+        "the synthesized coarse row must use geometry at its own height"
+    );
+}
+
+/// The production D3 fixture: two regions of one object, one coarse (region
+/// "0", terminating on the model at layer 4) and one finer (region "1", running
+/// to the plate). With `support_layer_height_mm = 0.3` over a 0.1 mm model
+/// layer, `support_step = round(0.3 / 0.1) = 3`. The coarse region's endpoint
+/// bracket (layers 4..=6) satisfies the binding coarse predicate (pitch 3000
+/// units >= `local_support_gap` 2000 units), so its rows bypass the
+/// `support_step` gate; the finer region's rows outside the coarse range retain
+/// the computed `support_step = 3` decimation.
+fn run_step_local_fixture() -> SupportGeometryOutput {
+    let object = overhang_object("step-local-traditional");
+    let analysis = SupportAnalysisView {
+        candidates: vec![(1, "0", 7), (2, "1", 5)]
+            .into_iter()
+            .map(
+                |(id, region_id, global_layer_index)| SupportAnalysisCandidate {
+                    id,
+                    object_id: "step-local-traditional".into(),
+                    region_id: region_id.into(),
+                    global_layer_index,
+                    z_units: slicer_ir::mm_to_units(if id == 1 { 2.4 } else { 2.0 }),
+                    geometry: vec![contact_region()],
+                    ..Default::default()
+                },
+            )
+            .collect(),
+        termination_surfaces: vec![SupportAnalysisGeometryEntry {
+            global_support_layer_index: 4,
+            object_id: "step-local-traditional".into(),
+            region_id: "0".into(),
+            polygons: vec![contact_region()],
+        }],
+        model_occupancy: vec![SupportAnalysisGeometryEntry {
+            global_support_layer_index: 4,
+            object_id: "step-local-traditional".into(),
+            region_id: "0".into(),
+            polygons: vec![ExPolygon {
+                contour: Polygon {
+                    points: vec![
+                        Point2::from_mm(0.0, 0.0),
+                        Point2::from_mm(2.0, 0.0),
+                        Point2::from_mm(2.0, 4.0),
+                        Point2::from_mm(0.0, 4.0),
+                    ],
+                },
+                holes: vec![],
+            }],
+        }],
+        family_assignments: ["0", "1"]
+            .into_iter()
+            .map(|region_id| SupportFamilyAssignment {
+                object_id: "step-local-traditional".into(),
+                region_id: region_id.into(),
+                family_id: "traditional".into(),
+            })
+            .collect(),
+        ..Default::default()
+    };
+    let layers = LayerPlanView {
+        layers: [0.2, 0.6, 1.0, 1.4, 1.8, 2.0, 2.2, 2.4]
+            .into_iter()
+            .enumerate()
+            .map(|(i, z)| LayerPlanViewEntry {
+                global_layer_index: i as u32,
+                z,
+                effective_layer_height: 0.1,
+            })
+            .collect(),
+    };
+    let config = {
+        let base = planner_config_with(true, 0.0, 0.3);
+        let mut values = base
+            .keys()
+            .into_iter()
+            .filter_map(|key| base.get(&key).map(|value| (key, value.clone())))
+            .collect::<HashMap<ConfigKey, ConfigValue>>();
+        values.insert("support_interface_top_layers".into(), ConfigValue::Int(1));
+        values.insert(
+            "support_interface_bottom_layers".into(),
+            ConfigValue::Int(0),
+        );
+        ConfigView::from_map(values)
+    };
+    run_planner_with_layer_plan(config, object, analysis, layers)
+}
+
+#[test]
+fn adaptive_zero_pitch_preserves_object_grid_output() {
+    let object = overhang_object("adaptive-zero-traditional");
+    let analysis = SupportAnalysisView {
+        candidates: vec![SupportAnalysisCandidate {
+            id: 1,
+            object_id: "adaptive-zero-traditional".into(),
+            region_id: "0".into(),
+            global_layer_index: 5,
+            z_units: slicer_ir::mm_to_units(1.8),
+            geometry: vec![contact_region()],
+            ..Default::default()
+        }],
+        family_assignments: vec![traditional_assignment("adaptive-zero-traditional")],
+        ..Default::default()
+    };
+    let layers = LayerPlanView {
+        layers: (0..6)
+            .map(|i| LayerPlanViewEntry {
+                global_layer_index: i,
+                z: (i as f32 + 1.0) * 0.3,
+                effective_layer_height: 0.2,
+            })
+            .collect(),
+    };
+    let output = run_planner_with_layer_plan(
+        planner_config_with(true, 0.0, 0.0),
+        object,
+        analysis,
+        layers,
+    );
+
+    assert_eq!(
+        output
+            .entries()
+            .iter()
+            .map(|entry| (entry.global_layer_index, entry.anchor_z))
+            .collect::<Vec<_>>(),
+        vec![(4, 15000), (3, 12000), (2, 9000), (1, 6000), (0, 3000)],
+        "raw zero pitch must preserve adaptive object-grid order and multiplicity"
+    );
+}
+
+#[test]
+fn coarse_same_region_sources_keep_distinct_body_membership() {
+    let object = overhang_object("same-region-traditional");
+    let analysis = SupportAnalysisView {
+        candidates: vec![(1, 6), (2, 8)]
+            .into_iter()
+            .map(|(id, global_layer_index)| SupportAnalysisCandidate {
+                id,
+                object_id: "same-region-traditional".into(),
+                region_id: "0".into(),
+                global_layer_index,
+                z_units: slicer_ir::mm_to_units(layer_plan().layers[global_layer_index as usize].z),
+                geometry: vec![if id == 1 {
+                    contact_region()
+                } else {
+                    obstacle_region()
+                }],
+                ..Default::default()
+            })
+            .collect(),
+        termination_surfaces: vec![SupportAnalysisGeometryEntry {
+            global_support_layer_index: 2,
+            object_id: "same-region-traditional".into(),
+            region_id: "0".into(),
+            polygons: vec![contact_region()],
+        }],
+        family_assignments: vec![traditional_assignment("same-region-traditional")],
+        ..Default::default()
+    };
+    let config = {
+        let base = planner_config_with(true, 0.0, 0.3);
+        let mut values = base
+            .keys()
+            .into_iter()
+            .filter_map(|key| base.get(&key).map(|value| (key, value.clone())))
+            .collect::<HashMap<ConfigKey, ConfigValue>>();
+        values.insert("support_interface_top_layers".into(), ConfigValue::Int(1));
+        values.insert(
+            "support_interface_bottom_layers".into(),
+            ConfigValue::Int(0),
+        );
+        ConfigView::from_map(values)
+    };
+    let output = run_planner_with_config(config, object, analysis);
+    let synthesized: Vec<_> = output
+        .entries()
+        .iter()
+        .filter(|entry| entry.anchor_z == 14000 && entry.global_layer_index < 0)
+        .collect();
+
+    assert_eq!(
+        synthesized.len(),
+        1,
+        "the height-local row at 14000 must retain only body 2"
+    );
+    assert_eq!(
+        synthesized[0].body_ids,
+        ["traditional-body-same-region-traditional-2"]
+    );
+    assert!(synthesized[0]
+        .roles
+        .iter()
+        .any(|role| role.role == SupportPlanRole::SupportBody));
+    assert!(output.entries().iter().any(|entry| {
+        entry.body_ids == ["traditional-body-same-region-traditional-2"]
+            && entry.anchor_z > slicer_ir::mm_to_units(layer_plan().layers[5].z)
+    }));
+    let same_plane: Vec<_> = output
+        .entries()
+        .iter()
+        .filter(|entry| entry.anchor_z == 10000 && entry.global_layer_index < 0)
+        .collect();
+    assert_eq!(
+        same_plane.len(),
+        2,
+        "both same-plane source body memberships must survive"
+    );
+    assert_ne!(same_plane[0].body_ids, same_plane[1].body_ids);
+    assert!(same_plane.iter().all(|entry| {
+        entry
+            .roles
+            .iter()
+            .any(|role| role.role == SupportPlanRole::SupportBody)
+    }));
+    let contours: Vec<_> = same_plane
+        .iter()
+        .flat_map(|entry| entry.roles.iter())
+        .filter(|role| role.role == SupportPlanRole::SupportBody)
+        .flat_map(|role| role.regions.iter())
+        .map(|region| region.contour.points.clone())
+        .collect();
+    assert_eq!(
+        contours.len(),
+        2,
+        "both same-plane source geometries must survive"
+    );
+    assert_ne!(contours[0], contours[1]);
+}
+
+#[test]
+fn coarse_source_preference_keeps_mixed_source_memberships() {
+    let object_id = "mixed-source-traditional";
+    let object = overhang_object(object_id);
+    let body_id = format!("traditional-body-{object_id}-1");
+    let interface_only_id = format!("traditional-body-{object_id}-2");
+    let analysis = SupportAnalysisView {
+        candidates: vec![
+            SupportAnalysisCandidate {
+                id: 1,
+                object_id: object_id.into(),
+                region_id: "0".into(),
+                global_layer_index: 6,
+                z_units: slicer_ir::mm_to_units(1.6),
+                geometry: vec![obstacle_region()],
+                ..Default::default()
+            },
+            SupportAnalysisCandidate {
+                id: 2,
+                object_id: object_id.into(),
+                region_id: "0".into(),
+                global_layer_index: 6,
+                z_units: slicer_ir::mm_to_units(1.6),
+                geometry: vec![contact_region()],
+                ..Default::default()
+            },
+            // A second record with membership 1 is interface-only at the
+            // selected source plane. The body-only record above must win for
+            // that membership, while membership 2 remains interface-only.
+            SupportAnalysisCandidate {
+                id: 1,
+                object_id: object_id.into(),
+                region_id: "0".into(),
+                global_layer_index: 6,
+                z_units: slicer_ir::mm_to_units(1.6),
+                geometry: vec![contact_region()],
+                ..Default::default()
+            },
+        ],
+        termination_surfaces: vec![SupportAnalysisGeometryEntry {
+            global_support_layer_index: 3,
+            object_id: object_id.into(),
+            region_id: "0".into(),
+            polygons: vec![contact_region()],
+        }],
+        family_assignments: vec![traditional_assignment(object_id)],
+        ..Default::default()
+    };
+    let layers = LayerPlanView {
+        layers: [0.2, 0.4, 0.6, 0.8, 1.25, 1.6, 1.8]
+            .into_iter()
+            .enumerate()
+            .map(|(index, z)| LayerPlanViewEntry {
+                global_layer_index: index as u32,
+                z,
+                effective_layer_height: 0.2,
+            })
+            .collect(),
+    };
+    let config = {
+        let base = planner_config_with(true, 0.0, 0.45);
+        let mut values = base
+            .keys()
+            .into_iter()
+            .filter_map(|key| base.get(&key).map(|value| (key, value.clone())))
+            .collect::<HashMap<ConfigKey, ConfigValue>>();
+        values.insert("support_interface_top_layers".into(), ConfigValue::Int(0));
+        values.insert(
+            "support_interface_bottom_layers".into(),
+            ConfigValue::Int(1),
+        );
+        ConfigView::from_map(values)
+    };
+    let output = run_planner_with_layer_plan(config, object, analysis, layers);
+    let synthesized: Vec<_> = output
+        .entries()
+        .iter()
+        .filter(|entry| entry.anchor_z == 12000 && entry.global_layer_index < 0)
+        .collect();
+
+    assert_eq!(
+        synthesized.len(),
+        2,
+        "the selected source plane must retain one body entry and one interface-only membership"
+    );
+    let mut memberships: Vec<_> = synthesized
+        .iter()
+        .map(|entry| entry.body_ids.clone())
+        .collect();
+    memberships.sort();
+    assert_eq!(
+        memberships,
+        vec![vec![body_id.clone()], vec![interface_only_id.clone()]],
+        "body-only geometry must be preferred per membership without dropping an interface-only membership"
+    );
+    assert!(synthesized.iter().all(|entry| {
+        entry
+            .roles
+            .iter()
+            .all(|role| role.role == SupportPlanRole::SupportBody)
+    }));
+
+    let source_regions = |entry: &SdkSupportPlanEntry| {
+        entry
+            .roles
+            .first()
+            .expect("source entry must have geometry")
+            .regions
+            .clone()
+    };
+    let body_source = output
+        .entries()
+        .iter()
+        .find(|entry| {
+            entry.anchor_z == 8000
+                && entry.body_ids == [body_id.clone()]
+                && entry
+                    .roles
+                    .iter()
+                    .all(|role| role.role == SupportPlanRole::SupportBody)
+        })
+        .expect("body membership must have a body-only source at the selected plane");
+    let body_clone = synthesized
+        .iter()
+        .find(|entry| entry.body_ids == [body_id.clone()])
+        .expect("body membership must be synthesized");
+    assert_eq!(source_regions(body_clone), source_regions(body_source));
+
+    let interface_source = output
+        .entries()
+        .iter()
+        .find(|entry| {
+            entry.anchor_z == 8000
+                && entry.body_ids == [interface_only_id.clone()]
+                && entry.roles.iter().any(|role| {
+                    role.role == SupportPlanRole::BottomInterface && !role.regions.is_empty()
+                })
+        })
+        .expect("interface-only membership must remain at the selected source plane");
+    let interface_clone = synthesized
+        .iter()
+        .find(|entry| entry.body_ids == [interface_only_id.clone()])
+        .expect("interface-only membership must be synthesized");
+    assert_eq!(
+        source_regions(interface_clone),
+        source_regions(interface_source)
+    );
+}
+
+#[test]
+fn coarse_lone_interface_survives_as_bracket() {
+    let object = overhang_object("lone-interface-traditional");
+    let analysis = SupportAnalysisView {
+        candidates: vec![SupportAnalysisCandidate {
+            id: 1,
+            object_id: "lone-interface-traditional".into(),
+            region_id: "0".into(),
+            global_layer_index: 6,
+            z_units: slicer_ir::mm_to_units(1.4),
+            geometry: vec![contact_region()],
+            ..Default::default()
+        }],
+        family_assignments: vec![traditional_assignment("lone-interface-traditional")],
+        ..Default::default()
+    };
+    let config = {
+        let base = planner_config_with(true, 0.0, 0.3);
+        let mut values = base
+            .keys()
+            .into_iter()
+            .filter_map(|key| base.get(&key).map(|value| (key, value.clone())))
+            .collect::<HashMap<ConfigKey, ConfigValue>>();
+        values.insert("support_interface_top_layers".into(), ConfigValue::Int(1));
+        values.insert(
+            "support_interface_bottom_layers".into(),
+            ConfigValue::Int(0),
+        );
+        ConfigView::from_map(values)
+    };
+    let output = run_planner_with_config(config, object, analysis);
+    let interface = output
+        .entries()
+        .iter()
+        .find(|entry| entry.anchor_z == 12000)
+        .expect("the genuine lone interface plane must survive");
+
+    assert!(interface
+        .roles
+        .iter()
+        .any(|role| role.role == SupportPlanRole::TopInterface));
+    let planes: Vec<_> = output
+        .entries()
+        .iter()
+        .map(|entry| entry.anchor_z)
+        .collect();
+    assert_eq!(
+        planes,
+        vec![2000, 4500, 7000, 9500, 12000],
+        "the lone interface bracket must retain the coarse stack order and multiplicity"
+    );
+    let interface_index = planes
+        .iter()
+        .position(|plane| *plane == interface.anchor_z)
+        .unwrap();
+    assert!(interface_index > 0);
+    assert!(output.entries()[interface_index - 1]
+        .roles
+        .iter()
+        .all(|role| role.role == SupportPlanRole::SupportBody));
+    assert!(output.entries()[interface_index - 1].global_layer_index < 0);
+    assert!(output.entries().iter().any(|entry| {
+        entry.global_layer_index < 0
+            && entry.anchor_z < interface.anchor_z
+            && entry
+                .roles
+                .iter()
+                .all(|role| role.role == SupportPlanRole::SupportBody)
+    }));
 }
 
 #[test]
@@ -700,26 +1882,29 @@ fn support_layer_height_controls_body_spacing() {
         ..Default::default()
     };
     let output = run_planner_with_config(planner_config_with(true, 0.0, 0.6), object, analysis);
-    let mut layers: Vec<_> = output
+    let planes: Vec<_> = output
         .entries()
         .iter()
         .filter(|entry| entry.decline_reason.is_none())
-        .map(|entry| entry.global_layer_index)
+        .map(|entry| {
+            (
+                entry.anchor_z,
+                entry.anchor_layer_index,
+                entry.roles.iter().map(|role| role.role).collect::<Vec<_>>(),
+            )
+        })
         .collect();
-    layers.sort_unstable_by(|a, b| b.cmp(a));
-    // Shifted down one layer from the previous `[8, 7, 5, 2, 0]`: layer 8 is
-    // the layer that *contains* the overhang, so support may not print there
-    // even at a zero top gap. Layer 0 is the termination layer, which now
-    // always prints — it used to be dropped whenever it failed the
-    // support-layer-height modulo, leaving the column stopping short of the
-    // plate.
-    // G-18 (238c, design.md §Plan Corrections item 4): with a positive
-    // configured bottom count the traditional top band widens by one layer,
-    // so top=2/bottom=1 here yields interface layers 7/6/5 instead of 7/6.
     assert_eq!(
-        layers,
-        vec![7, 6, 5, 4, 1, 0],
-        "support body layers use every third model layer, interfaces retain their G-18-widened bands, and the termination layer always prints"
+        planes,
+        vec![
+            (2000, 0, vec![SupportPlanRole::SupportBody]),
+            (6667, 2, vec![SupportPlanRole::SupportBody]),
+            (11333, 5, vec![SupportPlanRole::SupportBody]),
+            (12000, 5, vec![SupportPlanRole::TopInterface]),
+            (14000, 6, vec![SupportPlanRole::TopInterface]),
+            (16000, 7, vec![SupportPlanRole::TopInterface]),
+        ],
+        "the adjacent interface cluster must survive while endpoint fallback emits the exact ordered coarse stack with true-nearest anchors"
     );
 }
 
@@ -1142,4 +2327,140 @@ fn short_plate_column_keeps_its_plate_layer_in_the_top_band() {
          the top-interface band: {:?}",
         plate_entry.roles
     );
+}
+
+fn rect(x0: f32, y0: f32, x1: f32, y1: f32) -> ExPolygon {
+    ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(x0, y0),
+                Point2::from_mm(x1, y0),
+                Point2::from_mm(x1, y1),
+                Point2::from_mm(x0, y1),
+            ],
+        },
+        holes: vec![],
+    }
+}
+
+fn territory_entries(region_id: &str, footprint: &ExPolygon) -> Vec<SupportAnalysisGeometryEntry> {
+    (0..10)
+        .map(|layer| SupportAnalysisGeometryEntry {
+            global_support_layer_index: layer,
+            object_id: "territory".into(),
+            region_id: region_id.into(),
+            polygons: vec![footprint.clone()],
+        })
+        .collect()
+}
+
+/// Ticket 19: a candidate planned for a minted sub-region keeps every role
+/// inside that sub-region's own footprint.
+#[test]
+fn sub_region_column_stays_inside_own_territory() {
+    let own = rect(1.0, 0.0, 3.0, 4.0);
+    let output = run_planner_with_analysis(
+        true,
+        overhang_object("territory"),
+        SupportAnalysisView {
+            candidates: vec![SupportAnalysisCandidate {
+                id: 19,
+                object_id: "territory".into(),
+                region_id: "0".into(),
+                global_layer_index: 8,
+                z_units: slicer_ir::mm_to_units(1.8),
+                geometry: vec![contact_region()],
+                ..Default::default()
+            }],
+            family_assignments: vec![traditional_assignment("territory")],
+            support_territory: territory_entries("0", &own),
+            ..Default::default()
+        },
+    );
+    assert!(
+        output
+            .entries()
+            .iter()
+            .any(|entry| entry.roles.iter().any(|role| !role.regions.is_empty())),
+        "column must still be planned inside its own footprint"
+    );
+    for entry in output.entries() {
+        for role in &entry.roles {
+            let outside =
+                host::clip_polygons(&role.regions, &[own.clone()], ClipOperation::Difference);
+            assert!(
+                outside.is_empty(),
+                "layer {} role {:?} leaves the sub-region footprint: {:?}",
+                entry.global_layer_index,
+                role.role,
+                outside
+            );
+        }
+    }
+}
+
+/// Ticket 19: a base-region column keeps clear of territory owned by another
+/// family, by at least the line width.
+#[test]
+fn base_column_keeps_clear_of_foreign_territory() {
+    let foreign = rect(2.0, 0.0, 4.0, 4.0);
+    let output = run_planner_with_analysis(
+        true,
+        overhang_object("territory"),
+        SupportAnalysisView {
+            candidates: vec![SupportAnalysisCandidate {
+                id: 19,
+                object_id: "territory".into(),
+                region_id: "0".into(),
+                global_layer_index: 8,
+                z_units: slicer_ir::mm_to_units(1.8),
+                geometry: vec![contact_region()],
+                ..Default::default()
+            }],
+            family_assignments: vec![
+                traditional_assignment("territory"),
+                SupportFamilyAssignment {
+                    object_id: "territory".into(),
+                    region_id: "1".into(),
+                    family_id: "tree".into(),
+                },
+            ],
+            support_territory: territory_entries("1", &foreign),
+            ..Default::default()
+        },
+    );
+    assert!(
+        output
+            .entries()
+            .iter()
+            .any(|entry| entry.roles.iter().any(|role| !role.regions.is_empty())),
+        "column must still be planned on its own side"
+    );
+    for entry in output.entries() {
+        for role in &entry.roles {
+            let inside = host::clip_polygons(
+                &role.regions,
+                &[foreign.clone()],
+                ClipOperation::Intersection,
+            );
+            assert!(
+                inside.is_empty(),
+                "layer {} role {:?} enters the foreign footprint: {:?}",
+                entry.global_layer_index,
+                role.role,
+                inside
+            );
+            for region in &role.regions {
+                for point in &region.contour.points {
+                    assert!(
+                        point.x <= slicer_ir::mm_to_units(2.0),
+                        "layer {} role {:?} point {:?} crosses the boundary",
+                        entry.global_layer_index,
+                        role.role,
+                        point
+                    );
+                }
+            }
+        }
+    }
 }

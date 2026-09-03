@@ -52,10 +52,6 @@ pub fn tolerance_for_role(role: &ExtrusionRole, cfg: &ResolvedConfig) -> f32 {
         // Raft infill: bed-adhesion layer, print at perimeter resolution so
         // D-P simplification doesn't round the contact surface.
         ExtrusionRole::RaftInfill => cfg.gcode_resolution,
-        // Forward-compat fallback for future `#[non_exhaustive]` variants:
-        // perimeter resolution is the safe default (tighter than the typical
-        // infill, never looser than an existing role's intent).
-        _ => cfg.gcode_resolution,
     }
 }
 

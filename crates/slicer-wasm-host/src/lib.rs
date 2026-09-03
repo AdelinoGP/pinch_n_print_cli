@@ -20,6 +20,7 @@ pub mod pool;
 /// process-global scope-name registry (ADR-0055).
 pub mod profiling;
 pub mod support_aggregation;
+pub mod support_territory;
 pub mod traits;
 
 // ---------------------------------------------------------------------------

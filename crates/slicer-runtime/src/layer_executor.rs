@@ -267,6 +267,14 @@ pub enum CommittedLayerEvent {
 }
 
 /// Execute ordinary layers and return the structurally committed event stream.
+///
+/// Compatibility wrapper: threads anchored entities only. Support-tool
+/// selection defaults to tool 0 for both support and interface paths,
+/// instrumentation is a no-op, and the run is not cancellable. Callers with a
+/// configured selection must use
+/// [`execute_per_layer_with_committed_anchored_events_and_support_tools`];
+/// callers needing instrumentation or cancellation must use
+/// [`execute_per_layer_with_committed_anchored_events_instrumented`].
 pub fn execute_per_layer_with_committed_anchored_events(
     plan: &ExecutionPlan,
     blackboard: &Blackboard,
@@ -282,11 +290,87 @@ pub fn execute_per_layer_with_committed_anchored_events(
     >,
     anchored_entities: &[slicer_ir::AnchoredEntity],
 ) -> Result<(Vec<CommittedLayerEvent>, Vec<ModuleAccessAudit>), LayerExecutionError> {
-    let (layers, audits) =
-        execute_per_layer_with_events(plan, blackboard, runner, sink, wasm_handles)?;
+    execute_per_layer_with_committed_anchored_events_and_support_tools(
+        plan,
+        blackboard,
+        runner,
+        sink,
+        wasm_handles,
+        SupportToolSelection::default(),
+        anchored_entities,
+    )
+}
+
+/// Like [`execute_per_layer_with_committed_anchored_events`] but also selects
+/// the filament indices used for support and interface paths. Instrumentation
+/// is a no-op and the run is not cancellable.
+pub fn execute_per_layer_with_committed_anchored_events_and_support_tools(
+    plan: &ExecutionPlan,
+    blackboard: &Blackboard,
+    runner: &(dyn LayerStageRunner + Sync),
+    sink: &(dyn LayerProgressSink + Sync),
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
+    support_tools: SupportToolSelection,
+    anchored_entities: &[slicer_ir::AnchoredEntity],
+) -> Result<(Vec<CommittedLayerEvent>, Vec<ModuleAccessAudit>), LayerExecutionError> {
+    execute_per_layer_with_committed_anchored_events_instrumented(
+        plan,
+        blackboard,
+        runner,
+        sink,
+        &NoopInstrumentation,
+        wasm_handles,
+        support_tools,
+        None,
+        anchored_entities,
+    )
+}
+
+/// Capability-complete committed-stream execution: threads anchored entities
+/// together with support-tool selection, pipeline instrumentation, and the
+/// cancellation flag. This is the real body; the two wrappers above fill in
+/// defaults for the capabilities they do not expose.
+pub(crate) fn execute_per_layer_with_committed_anchored_events_instrumented(
+    plan: &ExecutionPlan,
+    blackboard: &Blackboard,
+    runner: &(dyn LayerStageRunner + Sync),
+    sink: &(dyn LayerProgressSink + Sync),
+    instrumentation: &(dyn PipelineInstrumentation + Sync),
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
+    support_tools: SupportToolSelection,
+    cancel_flag: Option<&std::sync::atomic::AtomicBool>,
+    anchored_entities: &[slicer_ir::AnchoredEntity],
+) -> Result<(Vec<CommittedLayerEvent>, Vec<ModuleAccessAudit>), LayerExecutionError> {
+    let (layers, audits, mut producer_collections) =
+        execute_per_layer_with_instrumentation_and_support_tools(
+            plan,
+            blackboard,
+            runner,
+            sink,
+            instrumentation,
+            wasm_handles,
+            support_tools,
+            cancel_flag,
+        )?;
     let mut layers = layers;
     append_same_z_entities(&mut layers, plan, anchored_entities)?;
-    let collections = execute_anchored_event_collections(plan, anchored_entities)?;
+    let mut collections = execute_anchored_event_collections(plan, anchored_entities)?;
+    collections.append(&mut producer_collections);
+    collections.sort_by_key(|collection| collection.anchor_global_layer_index);
     let mut committed = Vec::with_capacity(layers.len() + collections.len());
     let mut collections = collections.into_iter().peekable();
     for layer in layers {
@@ -406,23 +490,50 @@ pub fn config_for_region_smallest_chain(
         })
 }
 
-fn is_same_z_entity(entity: &slicer_ir::AnchoredEntity, plan: &ExecutionPlan) -> bool {
+/// Where an [`slicer_ir::AnchoredEntity`] is executed.
+///
+/// The two variants are exhaustive and mutually exclusive: every anchored
+/// entity takes exactly one route, so the partition computed by [`route_of`]
+/// is total. Do not add a "neither" case — an entity that is not same-Z is by
+/// definition a distinct anchored event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AnchoredRoute {
+    /// Same-plane support: appended to the anchor layer's `ordered_entities`
+    /// and printed as part of the ordinary model event.
+    SameZLayerEntity,
+    /// Physically distinct work below the anchor plane: executed as its own
+    /// anchored `OrderedEventCollection`.
+    AnchoredCollection,
+}
+
+/// Decide which route `entity` takes under `plan`.
+///
+/// Same-plane routing requires all three of: the `same-z-support` requesting
+/// feature, a resolvable anchor layer, and planar geometry whose Z sits within
+/// [`slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS`] of that
+/// anchor's Z. Anything else is a distinct anchored event.
+fn route_of(entity: &slicer_ir::AnchoredEntity, plan: &ExecutionPlan) -> AnchoredRoute {
     if entity.provenance.requesting_feature != "same-z-support" {
-        return false;
+        return AnchoredRoute::AnchoredCollection;
     }
     let Some(anchor) = plan
         .global_layers
         .iter()
         .find(|layer| layer.index == entity.anchor_global_layer_index)
     else {
-        return false;
+        return AnchoredRoute::AnchoredCollection;
     };
-    matches!(
+    let same_plane = matches!(
         entity.geometry,
         slicer_ir::AnchoredGeometryContract::Planar { z }
             if (z - slicer_ir::mm_to_units(anchor.z)).abs()
                 <= slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS
-    )
+    );
+    if same_plane {
+        AnchoredRoute::SameZLayerEntity
+    } else {
+        AnchoredRoute::AnchoredCollection
+    }
 }
 
 fn append_same_z_entities(
@@ -432,7 +543,7 @@ fn append_same_z_entities(
 ) -> Result<(), LayerExecutionError> {
     for entity in entities
         .iter()
-        .filter(|entity| is_same_z_entity(entity, plan))
+        .filter(|entity| matches!(route_of(entity, plan), AnchoredRoute::SameZLayerEntity))
     {
         validate_anchored_entity(entity).map_err(|message| {
             LayerExecutionError::AnchoredGeometry {
@@ -447,31 +558,39 @@ fn append_same_z_entities(
             continue;
         };
         let topo_order = layer.ordered_entities.len() as u32;
-        layer.ordered_entities.push(PrintEntity {
-            entity_id: entity.local_id,
-            path: slicer_ir::ExtrusionPath3D {
-                points: entity
-                    .path_points
-                    .iter()
-                    .map(|point| slicer_ir::Point3WithWidth {
-                        x: point.x,
-                        y: point.y,
-                        z: point.z,
-                        ..Default::default()
-                    })
-                    .collect(),
-                role: slicer_ir::ExtrusionRole::SupportMaterial,
-                speed_factor: 1.0,
-                tool_index: None,
-                order_lock: None,
-            },
-            role: slicer_ir::ExtrusionRole::SupportMaterial,
-            region_key: RegionKey::default(),
-            topo_order,
-            tool_index: 0,
-        });
+        layer
+            .ordered_entities
+            .push(anchored_entity_to_print_entity(entity, topo_order));
     }
     Ok(())
+}
+
+/// Convert one [`slicer_ir::AnchoredEntity`] into the `PrintEntity` that
+/// represents it inside a `LayerCollectionIR` row.
+///
+/// This is the single conversion used by both anchored routes: the same-Z route
+/// ([`append_same_z_entities`], which appends into the anchor layer's ordinary
+/// model row) and the synthesized off-grid row route
+/// (`crate::anchored_rows::synthesize_anchored_rows`). `topo_order` is the
+/// entity's position within the destination row's `ordered_entities`.
+pub(crate) fn anchored_entity_to_print_entity(
+    entity: &slicer_ir::AnchoredEntity,
+    topo_order: u32,
+) -> PrintEntity {
+    PrintEntity {
+        entity_id: entity.local_id,
+        path: slicer_ir::ExtrusionPath3D {
+            points: entity.path_points.clone(),
+            role: entity.role.clone(),
+            speed_factor: 1.0,
+            tool_index: None,
+            order_lock: None,
+        },
+        role: entity.role.clone(),
+        region_key: RegionKey::default(),
+        topo_order,
+        tool_index: 0,
+    }
 }
 
 /// Like [`execute_per_layer_with_events`] but selects the filament indices
@@ -491,16 +610,18 @@ pub fn execute_per_layer_with_events_and_support_tools(
     >,
     support_tools: SupportToolSelection,
 ) -> Result<(Vec<LayerCollectionIR>, Vec<ModuleAccessAudit>), LayerExecutionError> {
-    execute_per_layer_with_instrumentation_and_support_tools(
-        plan,
-        blackboard,
-        runner,
-        sink,
-        &NoopInstrumentation,
-        wasm_handles,
-        support_tools,
-        None,
-    )
+    let (layers, audits, _producer_collections) =
+        execute_per_layer_with_instrumentation_and_support_tools(
+            plan,
+            blackboard,
+            runner,
+            sink,
+            &NoopInstrumentation,
+            wasm_handles,
+            support_tools,
+            None,
+        )?;
+    Ok((layers, audits))
 }
 
 /// Like [`execute_per_layer_with_events`] but additionally records timing,
@@ -526,16 +647,18 @@ pub fn execute_per_layer_with_instrumentation(
     >,
     cancel_flag: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<(Vec<LayerCollectionIR>, Vec<ModuleAccessAudit>), LayerExecutionError> {
-    execute_per_layer_with_instrumentation_and_support_tools(
-        plan,
-        blackboard,
-        runner,
-        sink,
-        instrumentation,
-        wasm_handles,
-        SupportToolSelection::default(),
-        cancel_flag,
-    )
+    let (layers, audits, _producer_collections) =
+        execute_per_layer_with_instrumentation_and_support_tools(
+            plan,
+            blackboard,
+            runner,
+            sink,
+            instrumentation,
+            wasm_handles,
+            SupportToolSelection::default(),
+            cancel_flag,
+        )?;
+    Ok((layers, audits))
 }
 
 pub(crate) fn execute_per_layer_with_instrumentation_and_support_tools(
@@ -554,40 +677,55 @@ pub(crate) fn execute_per_layer_with_instrumentation_and_support_tools(
     >,
     support_tools: SupportToolSelection,
     cancel_flag: Option<&std::sync::atomic::AtomicBool>,
-) -> Result<(Vec<LayerCollectionIR>, Vec<ModuleAccessAudit>), LayerExecutionError> {
+) -> Result<
+    (
+        Vec<LayerCollectionIR>,
+        Vec<ModuleAccessAudit>,
+        Vec<slicer_ir::OrderedEventCollection>,
+    ),
+    LayerExecutionError,
+> {
     let global_layers = &plan.global_layers;
 
     use rayon::iter::ParallelIterator;
-    let results: Result<Vec<(LayerCollectionIR, Vec<ModuleAccessAudit>)>, LayerExecutionError> =
-        global_layers
-            .par_iter()
-            .map(|layer| {
-                if cancel_flag.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Relaxed)) {
-                    return Err(LayerExecutionError::Cancelled);
-                }
-                execute_single_layer(
-                    plan,
-                    blackboard,
-                    runner,
-                    sink,
-                    instrumentation,
-                    &[],
-                    layer,
-                    wasm_handles,
-                    support_tools,
-                )
-            })
-            .collect();
+    let results: Result<
+        Vec<(
+            LayerCollectionIR,
+            Vec<ModuleAccessAudit>,
+            Vec<slicer_ir::OrderedEventCollection>,
+        )>,
+        LayerExecutionError,
+    > = global_layers
+        .par_iter()
+        .map(|layer| {
+            if cancel_flag.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Relaxed)) {
+                return Err(LayerExecutionError::Cancelled);
+            }
+            execute_single_layer(
+                plan,
+                blackboard,
+                runner,
+                sink,
+                instrumentation,
+                &[],
+                layer,
+                wasm_handles,
+                support_tools,
+            )
+        })
+        .collect();
 
     match results {
         Ok(layer_results) => {
             let mut layer_irs = Vec::with_capacity(layer_results.len());
             let mut all_audits = Vec::new();
-            for (layer_ir, audits) in layer_results {
+            let mut anchored_collections = Vec::new();
+            for (layer_ir, audits, mut collections) in layer_results {
                 all_audits.extend(audits);
+                anchored_collections.append(&mut collections);
                 layer_irs.push(layer_ir);
             }
-            Ok((layer_irs, all_audits))
+            Ok((layer_irs, all_audits, anchored_collections))
         }
         Err(e) => Err(e),
     }
@@ -596,8 +734,8 @@ pub(crate) fn execute_per_layer_with_instrumentation_and_support_tools(
 /// Execute all stages for a single layer sequentially, collecting runtime
 /// access audits for each user module that produces output.
 ///
-/// Returns both the finalized `LayerCollectionIR` and the `ModuleAccessAudit`
-/// entries for all modules that committed output during this layer's execution.
+/// Returns the finalized `LayerCollectionIR`, access audits, and anchored event
+/// collections committed during this layer's execution.
 fn execute_single_layer(
     plan: &ExecutionPlan,
     blackboard: &Blackboard,
@@ -615,7 +753,14 @@ fn execute_single_layer(
         ),
     >,
     support_tools: SupportToolSelection,
-) -> Result<(LayerCollectionIR, Vec<ModuleAccessAudit>), LayerExecutionError> {
+) -> Result<
+    (
+        LayerCollectionIR,
+        Vec<ModuleAccessAudit>,
+        Vec<slicer_ir::OrderedEventCollection>,
+    ),
+    LayerExecutionError,
+> {
     instrumentation.on_layer_start(layer.index, layer.z);
     let result = execute_single_layer_inner(
         plan,
@@ -677,7 +822,14 @@ fn execute_single_layer_inner(
         ),
     >,
     support_tools: SupportToolSelection,
-) -> Result<(LayerCollectionIR, Vec<ModuleAccessAudit>), LayerExecutionError> {
+) -> Result<
+    (
+        LayerCollectionIR,
+        Vec<ModuleAccessAudit>,
+        Vec<slicer_ir::OrderedEventCollection>,
+    ),
+    LayerExecutionError,
+> {
     let mut audits = Vec::new();
 
     // Create an isolated LayerArena for this layer
@@ -731,6 +883,15 @@ fn execute_single_layer_inner(
                         region,
                     )
                 })
+                // Ticket 19: a family renderer must also run where its plan
+                // holds bodies but no region has geometry (support carriers).
+                && slicer_wasm_host::dispatch::support_carrier_regions(
+                    module.claims(),
+                    layer.index,
+                    blackboard.support_plan().map(Arc::as_ref),
+                    arena.slice(),
+                )
+                .is_empty()
             {
                 continue;
             }
@@ -983,7 +1144,8 @@ fn execute_single_layer_inner(
             .collect();
         layer_output.travel_moves.extend(mapped);
     }
-    Ok((layer_output, audits))
+    let anchored_collections = arena.take_anchored_event_collections().unwrap_or_default();
+    Ok((layer_output, audits, anchored_collections))
 }
 
 /// Hydrate the per-layer arena's `SliceIR` slot from the prepass-committed
@@ -1015,12 +1177,9 @@ fn hydrate_slice_arena(
             module_id: "host:slice".to_string(),
             message: format!("slice_ir Vec missing entry for layer index {}", layer.index),
         })?;
-    // Packet 132 (follow-up 1): stage a modifier-footprint `SlicedRegion` per
-    // non-support modifier volume whose mesh has a non-empty cross-section at
-    // this layer's Z. `sync_perimeter_infill_areas_into_slice` (invoked at
-    // `Layer::Perimeters`) consumes these footprints and mints the modifier
-    // sub-region. Support subtypes are routed through the support path instead.
-    // No-op for objects without `modifier_volumes` (preserves AC-N1).
+    // Production prepass already materializes modifier sub-regions. Retain the
+    // footprint fallback for focused tests and callers that seed a pre-ticket-19
+    // blackboard slice directly.
     stage_modifier_footprints(&mut slice, blackboard, layer);
     arena
         .set_slice(slice)
@@ -1044,7 +1203,20 @@ fn stage_modifier_footprints(slice: &mut SliceIR, blackboard: &Blackboard, layer
     let mesh = blackboard.mesh();
     let zs = [layer.z];
     for object in &mesh.objects {
-        for mv in &object.modifier_volumes {
+        if slice.regions.iter().any(|region| {
+            region.object_id == object.id && slicer_ir::is_modifier_namespace_id(region.region_id)
+        }) {
+            continue;
+        }
+        let mut modifier_indices: Vec<usize> = (0..object.modifier_volumes.len()).collect();
+        modifier_indices.sort_by_key(|&index| {
+            (
+                std::cmp::Reverse(object.modifier_volumes[index].priority),
+                index,
+            )
+        });
+        for modifier_index in modifier_indices {
+            let mv = &object.modifier_volumes[modifier_index];
             // Skip support_* modifiers: those go through the existing support path.
             if let Some(ConfigValue::String(s)) = mv.config_delta.fields.get("subtype") {
                 match s.as_str() {
@@ -2432,7 +2604,19 @@ pub fn commit_ordered_event_collections(collections: &mut [slicer_ir::OrderedEve
 }
 
 fn validate_anchored_entity(entity: &slicer_ir::AnchoredEntity) -> Result<(), String> {
-    for point in &entity.path_points {
+    for (index, point) in entity.path_points.iter().enumerate() {
+        if point.width <= 0.0 || !point.width.is_finite() {
+            return Err(format!(
+                "anchored entity point[{index}].width must be finite and positive, got {}",
+                point.width
+            ));
+        }
+        if point.flow_factor <= 0.0 || !point.flow_factor.is_finite() {
+            return Err(format!(
+                "anchored entity point[{index}].flow_factor must be finite and positive, got {}",
+                point.flow_factor
+            ));
+        }
         let Some(z) = point.z.is_finite().then(|| slicer_ir::mm_to_units(point.z)) else {
             return Err(match entity.geometry {
                 slicer_ir::AnchoredGeometryContract::Planar { .. } => {
@@ -2563,7 +2747,7 @@ fn execute_anchored_event_collections_with_mode_and_feedrate(
     }
     let anchored_entities = entities
         .iter()
-        .filter(|entity| !is_same_z_entity(entity, plan));
+        .filter(|entity| matches!(route_of(entity, plan), AnchoredRoute::AnchoredCollection));
     let anchored_entities = anchored_entities.collect::<Vec<_>>();
     let invoked: Vec<(slicer_ir::AnchoredEntity, bool, bool)> = if force_parallel
         && anchored_entities.iter().all(|entity| {
@@ -2659,8 +2843,17 @@ fn execute_anchored_event_collections_with_mode_and_feedrate(
                         0.0
                     },
                     time_s: if collection.runtime_hooks.account_time {
+                        let positions = event
+                            .path_points
+                            .iter()
+                            .map(|point| slicer_ir::Point3 {
+                                x: point.x,
+                                y: point.y,
+                                z: point.z,
+                            })
+                            .collect::<Vec<_>>();
                         slicer_gcode::estimator::estimate_event_time(
-                            &event.path_points,
+                            &positions,
                             feedrate_mm_s,
                             &slicer_gcode::estimator::EstimatorLimits::default(),
                         )
@@ -3395,11 +3588,33 @@ pub(crate) fn apply(
                 .set_support(incoming)
                 .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
         }
+        LayerStageCommit::SupportWithAnchoredEvents {
+            support,
+            anchored_events,
+        } => {
+            apply(arena, LayerStageCommit::Support(support), ctx)?;
+            apply(
+                arena,
+                LayerStageCommit::AnchoredEvents(anchored_events),
+                ctx,
+            )?;
+        }
         LayerStageCommit::SupportPostProcess(ir) => {
             let _ = arena.take_support();
             arena
                 .set_support(ir)
                 .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
+        }
+        LayerStageCommit::SupportPostProcessWithAnchoredEvents {
+            support,
+            anchored_events,
+        } => {
+            apply(arena, LayerStageCommit::SupportPostProcess(support), ctx)?;
+            apply(
+                arena,
+                LayerStageCommit::AnchoredEvents(anchored_events),
+                ctx,
+            )?;
         }
         LayerStageCommit::SlicePostProcess {
             polygon_updates,
@@ -3609,6 +3824,45 @@ pub fn module_invocation_allowed_on_layer(
 
 #[cfg(test)]
 mod tests {
+    fn anchored_entity(width: f32, flow_factor: f32) -> slicer_ir::AnchoredEntity {
+        // Pins every AnchoredEntity field so a future transport widening
+        // fails here instead of silently defaulting (E=0 class).
+        // exhaustive: every field pinned intentionally.
+        slicer_ir::AnchoredEntity {
+            local_id: 1,
+            anchor_global_layer_index: 0,
+            geometry: slicer_ir::AnchoredGeometryContract::Planar { z: 2000 },
+            input_capabilities: Vec::new(),
+            output_capabilities: Vec::new(),
+            provenance: slicer_ir::AnchoredEntityProvenance {
+                requesting_feature: String::new(),
+                source_plan_entry: String::new(),
+            },
+            path_points: vec![slicer_ir::Point3WithWidth { // exhaustive: fixture pins every field
+                // exhaustive: fixture pins every field
+                x: 0.0,
+                y: 0.0,
+                z: 0.2,
+                width,
+                flow_factor,
+                overhang_quartile: None,
+                dist_to_top_mm: 0.0,
+                overhang_distance_mm: None,
+            }],
+            role: slicer_ir::ExtrusionRole::SupportMaterial,
+        }
+    }
+
+    #[test]
+    fn validate_anchored_entity_rejects_non_positive_width_and_flow() {
+        assert!(super::validate_anchored_entity(&anchored_entity(0.0, 1.0))
+            .unwrap_err()
+            .contains("width must be finite and positive"));
+        assert!(super::validate_anchored_entity(&anchored_entity(0.4, 0.0))
+            .unwrap_err()
+            .contains("flow_factor must be finite and positive"));
+    }
+
     #[test]
     fn support_tool_selection_assigns_entities() {
         fn path(role: slicer_ir::ExtrusionRole) -> slicer_ir::ExtrusionPath3D {

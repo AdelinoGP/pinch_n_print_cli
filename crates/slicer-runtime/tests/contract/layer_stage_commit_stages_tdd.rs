@@ -1,7 +1,7 @@
 //! ADR-0020 meta-test: the `LayerStageCommit` enum and the canonical
 //! `slicer-schema::STAGES` table cannot drift.
 //!
-//! `LayerStageCommit`'s production variants must mirror exactly the eight
+//! `LayerStageCommit`'s production variants must mirror exactly the nine
 //! `world-layer` stages in `STAGES`. Adding a ninth per-layer stage, renaming
 //! one, or dropping a variant breaks this test — closing the one drift gap the
 //! per-stage enum could otherwise hide.
@@ -33,6 +33,7 @@ fn production_variants_match_world_layer_stages_exactly() {
         LayerStageCommit::InfillPostProcess(InfillIR::default()),
         LayerStageCommit::Support(SupportIR::default()),
         LayerStageCommit::SupportPostProcess(SupportIR::default()),
+        LayerStageCommit::AnchoredEvents(Vec::new()),
         LayerStageCommit::SlicePostProcess {
             polygon_updates: Vec::new(),
             path_z_updates: Vec::new(),
@@ -54,8 +55,8 @@ fn production_variants_match_world_layer_stages_exactly() {
          rows exactly — the enum and the canonical stage table have drifted"
     );
 
-    // Sanity: there are exactly eight, and the count matches the variant list.
-    assert_eq!(expected.len(), 8, "expected 8 world-layer stages");
+    // Sanity: there are exactly nine, and the count matches the variant list.
+    assert_eq!(expected.len(), 9, "expected 9 world-layer stages");
     assert_eq!(
         production.len(),
         expected.len(),

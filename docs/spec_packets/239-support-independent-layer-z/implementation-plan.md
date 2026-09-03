@@ -17,18 +17,25 @@
 ### Step 1: Re-verify blockers live (read-only discovery)
 
 - Task IDs: `TASK-399`
-- Objective: confirm both G-02 blockers still hold on the working tree: (a)
-  `is_same_z_entity`'s tolerance match excludes off-grid planes from both routes; (b) no
-  production call site invokes `execute_per_layer_with_anchored_events` or its committed
-  variant.
-- Precondition: packet generated; branch `parity/support-planners-clean`.
+- Objective: confirm the live state of the working tree: (a) `is_same_z_entity` has exactly
+  three references — its definition, the positive filter in `append_same_z_entities`, and
+  the negated filter in `execute_anchored_event_collections` — i.e. the partition is total
+  and off-grid entities DO reach the anchored collection (the earlier "off-grid planes are
+  excluded from both routes" claim is refuted; see `design.md` §Plan Corrections); (b) the
+  real blocker holds — no production call site invokes
+  `execute_per_layer_with_anchored_events` or its committed variant, with
+  `crates/slicer-runtime/src/pipeline.rs` (two sites) and
+  `crates/pnp-cli/src/visual_debug.rs` (one site) on the non-anchored variants.
+- Precondition: packet generated; branch `parity/support-features`.
 - Postcondition: a recorded LOCATIONS inventory naming each consumer of `is_same_z_entity`
-  and each `execute_per_layer*` caller, with one-line context each; if either blocker has
-  moved, STOP and re-derive from the plan before proceeding.
+  and each `execute_per_layer*` caller, with one-line context each; if the reference set or
+  the call-site set differs from (a)/(b) above, STOP and re-derive from the plan before
+  proceeding.
 - Files allowed to read, with ranges when over 300 lines:
   - `crates/slicer-runtime/src/layer_executor.rs` - symbol-windowed ranges around
     `is_same_z_entity`, `append_same_z_entities`, and the committed-event exclusion filter
   - `crates/slicer-runtime/src/pipeline.rs` - the two per-layer call sites only
+  - `crates/pnp-cli/src/visual_debug.rs` - the `execute_per_layer*` call site only
 - Files allowed to edit (at most 3):
   - none (discovery step; findings recorded in the dispatch return)
 - Files explicitly out of bounds:
@@ -44,24 +51,40 @@
   - none this step
 - Verification:
   - The dispatch return itself is the deliverable: it must show ≥2 `is_same_z_entity`
-    consumers and ≥1 non-test pipeline call site of a non-anchored variant — FACT counts,
+    consumers (definition + positive filter + negated filter = 3 references total) and ≥3
+    non-test call sites of a non-anchored variant across `pipeline.rs` and
+    `visual_debug.rs`, with zero production callers of an anchored variant — FACT counts,
     else the step's exit condition fails.
 - Exit condition: blocker inventory recorded verbatim in the step log; zero edits made.
 
-### Step 2: Red tests for exact-Z routing totality
+### Step 2: Red tests for pipeline-level routing totality
 
 - Task IDs: `TASK-400`
 - Objective: author the failing tests that define the target semantics: AC-2
   (`every_same_z_support_entity_routes_exactly_once`) and AC-N2
   (`offgrid_entity_never_merged_into_grid_layers`), plus AC-N1's preservation check wired to
-  the existing `anchored_event_ordering` expectations.
+  the existing `anchored_event_ordering` expectations. **Both AC-2 and AC-N2 MUST be
+  asserted at the PIPELINE level — over the rows the production pipeline actually produces
+  — not at the executor level.** The executor's routing partition is already total (its
+  positive filter in `append_same_z_entities` and negated filter in
+  `execute_anchored_event_collections` are exact complements; see `design.md` §Plan
+  Corrections), so an executor-level assertion of either AC would be GREEN on day one and
+  therefore vacuous (evidence standard E1). At the pipeline level the off-grid entity
+  genuinely never emits today, because no production call site invokes an anchored executor
+  entry point — that is the real red.
 - Precondition: Step 1 inventory recorded.
 - Postcondition: new integration module mounted in
-  `crates/slicer-runtime/tests/integration/main.rs`; AC-2/AC-N2 compile and FAIL for the
-  right reason (off-grid entity dropped today); `anchored_event_ordering` still passes.
+  `crates/slicer-runtime/tests/integration/main.rs`; AC-2 and AC-N2 compile and FAIL for the
+  right reason — the off-grid entity produces no print row in the pipeline's output stream
+  (AC-2: its route is never observably taken exactly once because it is never executed;
+  AC-N2: no grid row may absorb it, checked against emitted rows, not against executor
+  internals); `anchored_event_ordering` still passes. Both stay red until Step 4 lands;
+  neither may be satisfied by Step 3's behavior-neutral refactor.
 - Files allowed to read, with ranges when over 300 lines:
   - `crates/slicer-runtime/tests/integration/anchored_event_ordering.rs` - full (small file;
     reuses its plan/event builders)
+  - `crates/slicer-runtime/src/pipeline.rs` - the per-layer phase region only, to fix the
+    pipeline entry point the two new tests must drive (read-only this step)
 - Files allowed to edit (at most 3):
   - `crates/slicer-runtime/tests/integration/offgrid_routing_tdd.rs` (new)
   - `crates/slicer-runtime/tests/integration/main.rs` (module mount + wrappers)
@@ -82,19 +105,28 @@
   - `cargo test -p slicer-runtime --test integration -- anchored_event_ordering --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - Exit condition: each red-first command names ONE test with `--exact` and asserts exactly
   its own `... FAILED` line (libtest accepts a single filter; the tee masks cargo's nonzero
-  exit so the grep guard is the verdict); substrate suite green. Falsifying exit: new tests
-  pass pre-implementation (they assert nothing).
+  exit so the grep guard is the verdict); substrate suite green. Falsifying exit: either new
+  test passes pre-implementation — which here means it was written against executor
+  internals rather than pipeline output, since the executor partition is already total and
+  such an assertion is vacuous (E1). A red that disappears after Step 3 (the
+  behavior-neutral refactor) is the same failure and must be re-aimed at pipeline output.
 
-### Step 3: Total route-partition predicate in the executor
+### Step 3: Behavior-neutral route-decision helper in the executor
 
 - Task IDs: `TASK-401`
-- Objective: replace `is_same_z_entity`'s boolean filter role with a total partition helper:
-  tolerance match ⇒ ordinary merge (unchanged), else ⇒ anchored route. Both consumers call
-  the one helper.
+- Objective: **behavior-neutral refactor only.** Extract the same-z route decision into one
+  named private helper consulted by both consumers — the positive filter in
+  `append_same_z_entities` and the negated filter in `execute_anchored_event_collections` —
+  so the two can never drift apart. Semantics are unchanged: tolerance match ⇒ ordinary
+  merge, else ⇒ anchored route. The partition is ALREADY total today (the two filters are
+  exact complements over one predicate); this step asserts that structurally, it does not
+  create it.
 - Precondition: Step 2 red tests in place.
-- Postcondition: AC-N2 and AC-N1 green; off-grid entities now flow into the committed
-  anchored stream when the executor entry point is called directly (AC-2 may remain red
-  until Step 4 wires production).
+- Postcondition: AC-N1 green (it already was); zero behavior change — every substrate suite
+  green before and after with identical results. AC-2 and AC-N2 REMAIN RED: both are
+  pipeline-level assertions and go green only after Step 4 wires production. If either
+  flips green here, the test was aimed at executor internals and must be re-aimed (Step 2
+  falsifying exit).
 - Files allowed to read, with ranges when over 300 lines:
   - `crates/slicer-runtime/src/layer_executor.rs` - windows around `is_same_z_entity`,
     `append_same_z_entities`, the committed-event filter
@@ -106,21 +138,22 @@
 - Expected sub-agent dispatches:
   - Question: "Confirm no other crate references `is_same_z_entity`"; scope:
     `crates/`; return: `FACT`
-- Context cost: `M`
+- Context cost: `S`
 - Authoritative docs:
   - `docs/08_coordinate_system.md` - consulted via the coord-system constraint; do not full-read
 - OrcaSlicer refs:
   - none this step
 - Verification:
   - `cargo xtask build-guests --check && echo FRESH` (exit 0 required before the commands below; exit 1 = rebuild guests first, exit 3 = `wasm-tools` infrastructure error — stop and report, never grep for `STALE:`)
-  - `cargo test -p slicer-runtime --test integration -- offgrid_entity_never_merged_into_grid_layers --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+  - `cargo test -p slicer-runtime --test integration -- offgrid_entity_never_merged_into_grid_layers --exact 2>&1 | tee target/test-output.log && test "$(grep -cF 'offgrid_entity_never_merged_into_grid_layers ... FAILED' target/test-output.log)" -eq 1` (STILL RED by design — this step changes no behavior; a green here means the AC-N2 test is executor-scoped and vacuous)
   - `cargo test -p slicer-runtime --test integration -- anchored_event_ordering --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
   - `cargo test -p slicer-runtime --test integration -- anchored_parallel_determinism --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
   - `cargo test -p slicer-runtime --test integration -- anchored_z_span_validation --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
   - `cargo check --workspace --all-targets`
-- Exit condition: partition is total (every same-z-support entity takes exactly one route);
-  substrate suites green. Falsifying exit: `anchored_event_ordering` regresses (invariant 6
-  broken) or any anchored_* suite flips red.
+- Exit condition: one named helper is the sole route decision, consulted by both consumers;
+  substrate suites green with unchanged results; AC-2/AC-N2 still red. Falsifying exit:
+  `anchored_event_ordering` regresses (invariant 6 broken), any anchored_* suite flips red,
+  or any observable behavior changes at all (this step is behavior-neutral by definition).
 
 ### Step 4: Production enablement + support-only row synthesis
 
@@ -129,20 +162,26 @@
   `execute_per_layer_with_committed_anchored_events`, thread the anchored entity list, split
   committed events, and synthesize support-only print rows at their declared Z positions so
   finalization/postpass/G-code see them.
-- Precondition: Step 3 landed; AC-N1/N2 green.
-- Postcondition: AC-1, AC-3, AC-4 green through the real pipeline; support-free output
-  unchanged (AC-N3 green); empty-collection stream byte-equivalent with the pre-change
-  layer list.
+- Precondition: Step 3 landed (behavior-neutral); AC-N1 green; AC-2/AC-N2 still red.
+- Postcondition: AC-1, AC-3, AC-4 green through the real pipeline; AC-2 and AC-N2 flip green
+  HERE (this is the step that makes the off-grid entity emit); support-free output unchanged
+  (AC-N3 green); empty-collection stream byte-equivalent with the pre-change layer list;
+  visual-debug output shows the same intermediate support rows as the slice path.
 - Files allowed to read, with ranges when over 300 lines:
   - `crates/slicer-runtime/src/pipeline.rs` - the per-layer phase region only
+  - `crates/pnp-cli/src/visual_debug.rs` - the `execute_per_layer*` call site region only
   - `crates/slicer-runtime/src/blackboard.rs` - the `anchored_event_collections` slot region only
   - `crates/slicer-ir/src/slice_ir.rs` - `OrderedEventCollection`,
     `AnchoredGeometryContract` definitions only
-- Files allowed to edit (at most 3):
-  - `crates/slicer-runtime/src/pipeline.rs`
-  - `crates/slicer-runtime/tests/integration/offgrid_routing_tdd.rs` (extend with AC-1/3/4
-    pipeline-level cases; counts as the step's second edit surface alongside main.rs mounts
-    already owned from Step 2)
+- Files allowed to edit (at most 3 — this step owns EXACTLY 3):
+  1. `crates/slicer-runtime/src/pipeline.rs`
+  2. `crates/pnp-cli/src/visual_debug.rs` (third non-anchored `execute_per_layer*` call site;
+     switch to the anchored variant so visual-debug output matches sliced output — user-
+     approved scope widening this session, required for Step 7's `tmp/vd-p239/` bundle to
+     evidence the intermediate support rows)
+  3. `crates/slicer-runtime/tests/integration/offgrid_routing_tdd.rs` (extend with AC-1/3/4
+     pipeline-level cases and flip AC-2/AC-N2 green; `main.rs` mounts were already owned
+     from Step 2 and are not re-opened here)
 - Files explicitly out of bounds:
   - `crates/slicer-gcode/**` until Step 5's verdict; planner/renderer modules; WIT trees
 - Blast-radius discipline: mandatory check — if synthesis requires a new `LayerCollectionIR`
@@ -163,8 +202,11 @@
   - `cargo test -p slicer-runtime --test integration -- offgrid_interleaving_identical_serial_and_parallel --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
   - `cargo test -p slicer-runtime --test integration -- zspanning_support_entity_emits_atomic_single_block --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
   - `cargo test -p slicer-runtime --test integration -- support_disabled_pipeline_emits_nothing --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+  - `cargo test -p slicer-runtime --test integration -- every_same_z_support_entity_routes_exactly_once --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` (AC-2 flips green here, not in Step 3)
+  - `cargo test -p slicer-runtime --test integration -- offgrid_entity_never_merged_into_grid_layers --exact 2>&1 | tee target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` (AC-N2 flips green here, not in Step 3)
   - `cargo clippy --workspace --all-targets -- -D warnings`
-- Exit condition: all four pipeline-level tests green; lint gate green. Falsifying exit: any
+- Exit condition: all six pipeline-level tests green (AC-1/3/4/N3 plus AC-2/AC-N2); lint gate
+  green. Falsifying exit: any
   grid-only slice's layer count/order changes vs pre-change baseline (empty-collection
   equivalence broken).
 
@@ -365,7 +407,7 @@
 | --- | --- | --- |
 | Step 1 | S | discovery, delegated |
 | Step 2 | S | two red tests |
-| Step 3 | M | executor predicate swap |
+| Step 3 | S | behavior-neutral route-decision helper |
 | Step 4 | M | largest: pipeline enablement + synthesis |
 | Step 5 | M | measurement dispatch |
 | Step 6 | M | conditional fix / lock |

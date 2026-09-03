@@ -175,6 +175,70 @@ fn ac_manifest_serializes_required_index_and_entry_fields() {
     ] {
         assert!(image.get(key).is_some(), "image entry missing {key}");
     }
+    // Packet 247: schema 1.2.0 adds `view` / `layers_rendered`, both
+    // `skip_serializing_if`. A 1.0.0 bundle's entry key set must be
+    // unchanged — the new keys may never leak into a legacy manifest.
+    for key in ["view", "layers_rendered"] {
+        assert!(
+            image.get(key).is_none(),
+            "a 1.0.0 entry must not carry the 1.2.0-only key {key}"
+        );
+    }
+}
+
+/// Packet 247 (AC-8): the `ImageEntry` field-shape change must be
+/// byte-compatible for 1.0/1.1 bundles. The sharp case is a standalone
+/// G-code layer with a `;LAYER_CHANGE` marker but NO `;Z:` line:
+/// `visual_debug_gcode::ParsedLayer::layer_z` is `None` there, and the entry
+/// has always serialized `"layer_z": null`. A plain
+/// `skip_serializing_if = "Option::is_none"` on an `Option<f64>` would
+/// silently flip that `null` to an absent key; the tri-state
+/// `Option<Option<f64>>` keeps it. Pinned on serialization, not parsing.
+#[test]
+fn legacy_entries_keep_layer_index_and_null_layer_z_serialization() {
+    let tmp = TempDir::new().expect("tempdir");
+    let gcode_path = tmp.path().join("no_z_marker.gcode");
+    fs::write(
+        &gcode_path,
+        ";LAYER_CHANGE
+G1 Z0.2 F600
+;TYPE:Outer wall
+G1 X0 Y0 F3000
+G1 X10 Y0 E1.0 F1200
+G1 X10 Y10 E2.0
+G1 X0 Y10 E3.0
+G1 X0 Y0 E4.0
+",
+    )
+    .expect("write markerless-Z gcode fixture");
+
+    let mut body = gcode_request();
+    body["source"]["path"] = json!(gcode_path.to_string_lossy());
+    body["taps"] = json!(["final_gcode"]);
+    body["visualizations"] = json!(["filament_lines"]);
+    let request = write_request(tmp.path(), body);
+    let output = tmp.path().join("bundle");
+
+    run(&request, &output).success();
+
+    let value = manifest(&output);
+    assert_eq!(value["schema_version"], "1.0.0");
+    let image = &value["images"][0];
+    assert!(
+        image
+            .get("layer_index")
+            .expect("a 1.0.0 entry must still serialize layer_index")
+            .is_i64(),
+        "layer_index must stay an integer, got {:?}",
+        image.get("layer_index")
+    );
+    assert_eq!(
+        image
+            .get("layer_z")
+            .expect("a 1.0.0 entry must still serialize the layer_z key, even when unknown"),
+        &Value::Null,
+        "a layer with no ;Z: marker must keep serializing layer_z as null, never omit it"
+    );
 }
 
 #[test]

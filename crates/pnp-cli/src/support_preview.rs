@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::Serialize;
-use slicer_ir::{ConfigValue, ExPolygon, GlobalLayer, SupportGeometryIR};
+use slicer_ir::{
+    ConfigValue, ExPolygon, GlobalLayer, SupportGeometryIR, SupportPlanIR, SupportPlanRole,
+};
 
 #[derive(Debug, Serialize)]
 pub struct SupportPreviewDoc {
@@ -20,6 +22,17 @@ pub struct SupportPreviewLayer {
     pub layer_index: u32,
     pub z_mm: f64,
     pub support: Vec<SupportPreviewExPolygon>,
+    /// Actual support structures (SupportPlanIR `SupportBody` role regions)
+    /// at this layer, schema 1.1.0. Always emitted (possibly empty) so
+    /// consumers can distinguish "no supports" from "old document"; the
+    /// 1.0.0 `support` field carries the model's own cross-sections at
+    /// support layers (coarse outlines of where supports attach).
+    pub support_body: Vec<SupportPreviewExPolygon>,
+    /// Interface role regions (SupportPlanIR `TopInterface`/`BaseInterface`/
+    /// `BottomInterface`) at this layer, schema 1.2.0 — where the support
+    /// meets the model and the bed. Always emitted (possibly empty) so
+    /// consumers can distinguish "no interface" from "old document".
+    pub support_interface: Vec<SupportPreviewExPolygon>,
 }
 
 #[derive(Debug, Serialize)]
@@ -73,17 +86,31 @@ pub fn run_support_preview(
     )
     .map_err(|e| e.to_string())?;
 
-    let doc = match (support_enabled, ctx.blackboard.support_geometry()) {
-        (false, _) => SupportPreviewDoc {
-            schema_version: "1.0.0".to_owned(),
+    let doc = match (
+        support_enabled,
+        ctx.blackboard.support_geometry(),
+        ctx.blackboard.support_plan().cloned(),
+    ) {
+        (false, _, _) => SupportPreviewDoc {
+            schema_version: "1.2.0".to_owned(),
             units: "mm".to_owned(),
             layer_count: ctx.plan.global_layers.len() as u32,
             skipped_intermediate_entries: 0,
             layers: Vec::new(),
         },
-        (true, Some(geometry)) => build_preview_doc(geometry, ctx.plan.global_layers.as_ref()),
-        (true, None) => SupportPreviewDoc {
-            schema_version: "1.0.0".to_owned(),
+        (true, Some(geometry), Some(plan)) => {
+            build_preview_doc(geometry, &plan, ctx.plan.global_layers.as_ref())
+        }
+        // A committed plan is the normal prepass outcome; fall back to an
+        // empty plan (no support_body) rather than fail when a planner
+        // module did not run.
+        (true, Some(geometry), None) => build_preview_doc(
+            geometry,
+            &SupportPlanIR::default(),
+            ctx.plan.global_layers.as_ref(),
+        ),
+        (true, None, _) => SupportPreviewDoc {
+            schema_version: "1.2.0".to_owned(),
             units: "mm".to_owned(),
             layer_count: ctx.plan.global_layers.len() as u32,
             skipped_intermediate_entries: 0,
@@ -113,6 +140,7 @@ pub fn run_support_preview(
 
 pub fn build_preview_doc(
     geometry: &SupportGeometryIR,
+    plan: &SupportPlanIR,
     global_layers: &[GlobalLayer],
 ) -> SupportPreviewDoc {
     let mut entries: Vec<_> = geometry.entries.iter().collect();
@@ -148,6 +176,8 @@ pub fn build_preview_doc(
                 layer_index,
                 z_mm: global_layer.z as f64,
                 support: Vec::new(),
+                support_body: Vec::new(),
+                support_interface: Vec::new(),
             });
         }
 
@@ -159,15 +189,90 @@ pub fn build_preview_doc(
             .extend(polygons.iter().map(|polygon| preview_expolygon(polygon)));
     }
 
+    // Schema 1.1.0: the actual support structures, taken from the committed
+    // SupportPlanIR `SupportBody` role regions (the tree/traditional support
+    // cross-sections at each layer). Raft prefix entries (negative layer
+    // index) carry no geometry and are skipped.
+    let body_by_layer = role_regions_by_layer(plan, |role| role == SupportPlanRole::SupportBody);
+    for (layer_index, body) in body_by_layer {
+        if let Some(layer) = layers
+            .iter_mut()
+            .find(|layer| layer.layer_index == layer_index)
+        {
+            layer.support_body = body;
+        } else if let Some(global_layer) = global_layers.get(layer_index as usize) {
+            layers.push(SupportPreviewLayer {
+                layer_index,
+                z_mm: global_layer.z as f64,
+                support: Vec::new(),
+                support_body: body,
+                support_interface: Vec::new(),
+            });
+        }
+    }
+
+    // Schema 1.2.0: the interface role regions (top/base/bottom interface) —
+    // where the support meets the model and the bed. Same per-layer shape as
+    // support_body; the fork renders them as a distinct band.
+    let interface_by_layer = role_regions_by_layer(plan, |role| {
+        matches!(
+            role,
+            SupportPlanRole::TopInterface
+                | SupportPlanRole::BaseInterface
+                | SupportPlanRole::BottomInterface
+        )
+    });
+    for (layer_index, interface) in interface_by_layer {
+        if let Some(layer) = layers
+            .iter_mut()
+            .find(|layer| layer.layer_index == layer_index)
+        {
+            layer.support_interface = interface;
+        } else if let Some(global_layer) = global_layers.get(layer_index as usize) {
+            layers.push(SupportPreviewLayer {
+                layer_index,
+                z_mm: global_layer.z as f64,
+                support: Vec::new(),
+                support_body: Vec::new(),
+                support_interface: interface,
+            });
+        }
+    }
+
     layers.sort_by_key(|layer| layer.layer_index);
 
     SupportPreviewDoc {
-        schema_version: "1.0.0".to_owned(),
+        schema_version: "1.2.0".to_owned(),
         units: "mm".to_owned(),
         layer_count: global_layers.len() as u32,
         skipped_intermediate_entries,
         layers,
     }
+}
+
+/// Collect the role regions matching `predicate` from a committed plan into a
+/// per-layer map, skipping raft prefix entries (negative layer index), which
+/// carry no geometry.
+fn role_regions_by_layer(
+    plan: &SupportPlanIR,
+    predicate: impl Fn(SupportPlanRole) -> bool,
+) -> HashMap<u32, Vec<SupportPreviewExPolygon>> {
+    let mut by_layer: HashMap<u32, Vec<SupportPreviewExPolygon>> = HashMap::new();
+    for entry in &plan.entries {
+        if entry.global_layer_index < 0 {
+            continue;
+        }
+        let layer_index = entry.global_layer_index as u32;
+        for role in &entry.roles {
+            if predicate(role.role) {
+                by_layer
+                    .entry(layer_index)
+                    .or_default()
+                    .extend(role.regions.iter().map(preview_expolygon));
+            }
+        }
+    }
+    by_layer
 }
 
 fn preview_expolygon(polygon: &ExPolygon) -> SupportPreviewExPolygon {

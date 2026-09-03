@@ -14,28 +14,42 @@
 
 ## Approach
 
-Two verified blockers, one measured risk — each gets its own surface.
+One verified blocker, one behavior-neutral refactor, one measured risk — each gets its own
+surface.
 
-### 1. Exact-Z routing replaces the on-grid filter (`layer_executor.rs`)
+### 1. Route-decision consolidation in the executor (`layer_executor.rs`) — BEHAVIOR-NEUTRAL
 
-Today `is_same_z_entity` returns true only when a same-z-support entity's declared planar Z
-sits within `AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS` of its anchor layer's
-`mm_to_units(anchor.z)`; `append_same_z_entities` consumes matches and the committed-event
-filter (`!is_same_z_entity`) excludes them from anchored work. Net effect: an off-grid
-plane matches neither route and vanishes. Replace with exact-Z semantics that partition,
-not filter:
+**This section previously claimed a routing gap. That claim is refuted; see §Plan
+Corrections.** `crates/slicer-runtime/src/layer_executor.rs` contains exactly three
+references to `is_same_z_entity`: its definition, a positive filter inside
+`append_same_z_entities`, and a negated filter (`!is_same_z_entity`) inside
+`execute_anchored_event_collections`. The two filters are exact complements over a single
+predicate, so the partition is ALREADY TOTAL:
 
-- **On-grid branch (unchanged behavior):** tolerance match ⇒ append into the anchor layer's
-  ordinary `ordered_entities` exactly as today (invariant 6: same-Z support prints inside
-  ordinary ordering).
-- **Off-grid branch (new):** no tolerance match ⇒ entity stays in the anchored route and is
-  emitted as anchored work at its declared plane. The routing predicate is total: every
-  same-z-support entity lands on exactly one branch (AC-2); non-same-z-support entities are
-  unaffected (they were never candidates for either branch).
-- The predicate becomes one shared helper consulted by both consumers so the two filters can
-  never disagree about an entity's route.
+- **On-grid branch:** declared planar Z within
+  `AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS` of `mm_to_units(anchor.z)` ⇒
+  appended into the anchor layer's ordinary `ordered_entities` (invariant 6: same-Z support
+  prints inside ordinary ordering).
+- **Off-grid branch:** no tolerance match ⇒ rejected by the ordinary route and therefore
+  caught by the negated filter, landing in the anchored collection at its declared plane.
+  It does not fall through a gap and does not vanish here.
+- Non-same-z-support entities are unaffected (never candidates for either branch).
 
-### 2. Production enablement of the anchored executor (`pipeline.rs`)
+The only remaining work on this surface is a clarity refactor: extract the route decision
+into one named helper in the same crate, consulted by both `append_same_z_entities` and
+`execute_anchored_event_collections`, so the two call sites can never drift apart if either
+is edited later. **This changes no behavior.** Consequently AC-2
+(`every_same_z_support_entity_routes_exactly_once`) and AC-N2
+(`offgrid_entity_never_merged_into_grid_layers`) CANNOT be made red at the executor level —
+the executor already satisfies them. Both ACs are therefore authored as PIPELINE-level
+assertions (see `implementation-plan.md` Steps 2 and 4), where the off-grid entity genuinely
+never emits today; they go green only after §Approach 2 lands.
+
+### 2. Production enablement of the anchored executor (`pipeline.rs`, `visual_debug.rs`)
+
+**This is the sole mechanism of the observable defect.** The off-grid entity reaches the
+anchored collection (§Approach 1); that collection is never executed, because no production
+call site invokes an anchored executor entry point.
 
 `run_pipeline_core` currently calls `execute_per_layer_with_events_and_support_tools` /
 `execute_per_layer_with_instrumentation_and_support_tools`, which return only model layers;
@@ -48,6 +62,11 @@ print rows (a `LayerCollectionIR` per distinct declared plane, ordered by physic
 stable local id via `OrderedEventCollection::sort_deterministically` semantics) inserted at
 their Z position among the model rows. Rows carry their own `z`; nothing divides by or
 derives from row spacing (the G-09 prohibition stands).
+
+`crates/pnp-cli/src/visual_debug.rs` is the third non-anchored call site (it calls
+`execute_per_layer_with_events_and_support_tools`) and takes the same switch, so the Step 7
+`tmp/vd-p239/` bundle actually shows the intermediate support rows it is meant to evidence.
+Scope widening approved by the user this session.
 
 The empty-collection case must be byte-equivalent with today's output ordering: when no
 anchored collections exist, the committed stream is all `Model` events and the synthesized
@@ -79,11 +98,40 @@ off-grid support pass inherits a wrong height term is UNVERIFIED. Protocol:
 
 ## Plan Corrections
 
-None. Every §12-brief claim re-verified live this session: `is_same_z_entity`'s tolerance
-match (`layer_executor.rs`), both non-anchored pipeline call sites, the bare
-`anchored_event_ordering` wrapper registration in `integration/main.rs`, and the `height_delta`/
-E product lines in `emit.rs`. The stub's content is carried here verbatim where relevant
-(G-02 blockers, disabled-reference note) and the stub file is deleted at authoring time.
+### PC-1 — "off-grid entities vanish at the routing filter" is REFUTED (2026-08-28)
+
+- **What the plan claimed (2026-08-22, carried into this packet's first draft):**
+  `requirements.md` §Problem Statement blocker 1 said an off-grid same-z-support entity
+  "matches nothing, so it is silently excluded from ordinary merging", and this design's
+  §Approach 1 said "an off-grid plane matches neither route and vanishes". The packet was
+  scoped around closing that gap.
+- **What was verified (direct read of `crates/slicer-runtime/src/layer_executor.rs`, this
+  session):** the file contains exactly three references to `is_same_z_entity` — its
+  definition, a positive filter inside `append_same_z_entities`, and a negated filter
+  (`!is_same_z_entity`) inside `execute_anchored_event_collections`. The two filters are
+  exact complements over one predicate, so the partition is already total. An off-grid
+  entity fails the tolerance match, is rejected by the ordinary route, and is therefore
+  caught by the negated filter — it lands in the anchored collection. Blocker 2 (no
+  production call site invokes `execute_per_layer_with_anchored_events` /
+  `execute_per_layer_with_committed_anchored_events`) was re-verified live and HOLDS, and
+  is the entire mechanism of the observable defect.
+- **What changed as a result:**
+  1. §Approach 1 is now a behavior-neutral clarity refactor (one shared named helper), not a
+     gap fix; it makes no AC go from red to green.
+  2. AC-2 and AC-N2 are re-aimed at the PIPELINE level, where they are genuinely red before
+     production enablement (`implementation-plan.md` Steps 2 and 4). They cannot be made red
+     at the executor level.
+  3. `implementation-plan.md` Step 3 is downgraded to the refactor and its context cost
+     lowered from `M` to `S`.
+  4. A third non-anchored call site, `crates/pnp-cli/src/visual_debug.rs` (calls
+     `execute_per_layer_with_events_and_support_tools`), was found in the same
+     re-verification and added to the change surface — user-approved scope widening, so the
+     Step 7 visual-debug bundle evidences the same rows the slice emits.
+- **Unchanged:** `packet.spec.md`'s acceptance criteria (no AC is weakened or removed); the
+  bare `anchored_event_ordering` wrapper registration in `integration/main.rs`; the
+  `height_delta` / E product lines in `emit.rs`. The stub's content is carried here where
+  relevant (G-02 blockers, disabled-reference note) and the stub file is deleted at
+  authoring time.
 
 ## Architecture Constraints
 
@@ -112,15 +160,21 @@ E product lines in `emit.rs`. The stub's content is carried here verbatim where 
 
 ## Code Change Surface
 
-- Selected approach: exact-Z partition predicate + committed-event production enablement +
-  support-only row synthesis + measure-first emitter protocol (above).
+- Selected approach: behavior-neutral route-decision helper + committed-event production
+  enablement + support-only row synthesis + measure-first emitter protocol (above).
 - Exact functions, traits, manifests, tests, and fixtures:
-  - `is_same_z_entity` → replaced by a total route-partition helper (same crate, private);
-    both consumers (`append_same_z_entities`, the committed-event exclusion filter) call it.
+  - `is_same_z_entity` → folded into one named route-decision helper (same crate, private);
+    both consumers (`append_same_z_entities`, the `!is_same_z_entity` filter inside
+    `execute_anchored_event_collections`) call it. Behavior-neutral: the partition is
+    already total.
   - `execute_per_layer_with_anchored_events` /
     `execute_per_layer_with_committed_anchored_events` — consumed, signature unchanged.
   - `pipeline.rs`: swap the two per-layer call sites; add anchored-entity input plumbing and
     committed-stream splitting + support-only row synthesis.
+  - `crates/pnp-cli/src/visual_debug.rs`: third non-anchored `execute_per_layer*` call site
+    (`execute_per_layer_with_events_and_support_tools`); switch to the anchored variant so
+    visual-debug output matches sliced output. Scope widening approved by the user this
+    session.
   - `emit.rs`: NO edit unless Step 5's verdict is `MISSCALE_FIXED`; then the minimal
     height-term correction plus the AC-5 test.
   - New tests: ≥5 integration tests (AC-1..AC-4, AC-N1..AC-N3 minus the pre-existing
@@ -140,12 +194,21 @@ E product lines in `emit.rs`. The stub's content is carried here verbatim where 
 
 Target at most 3 primary files; justify extras and consider splitting.
 
-- `crates/slicer-runtime/src/layer_executor.rs` - role: exact-Z route partition; expected
-  change: replace `is_same_z_entity` with the total predicate; keep both consumers aligned.
+- `crates/slicer-runtime/src/layer_executor.rs` - role: shared route-decision helper;
+  expected change: fold `is_same_z_entity` into one named helper consulted by both
+  consumers (`append_same_z_entities` and the `!is_same_z_entity` filter inside
+  `execute_anchored_event_collections`). BEHAVIOR-NEUTRAL — the partition is already total.
   Very long file — ranged reads around named symbols only.
 - `crates/slicer-runtime/src/pipeline.rs` - role: production enablement; expected change:
   swap two call sites to the committed variant, thread anchored entities, synthesize
   support-only rows.
+- `crates/pnp-cli/src/visual_debug.rs` - role: third non-anchored `execute_per_layer*` call
+  site; switch to the anchored variant so visual-debug output matches sliced output.
+  Scope widening approved by the user this session, so Step 7's `tmp/vd-p239/` bundle
+  actually shows the intermediate support rows it is meant to evidence. (Fourth entry
+  against the "at most 3 primary files" target — justified: it is a one-call-site switch,
+  not a design surface, and omitting it leaves visual-debug output disagreeing with sliced
+  output.)
 - `crates/slicer-gcode/src/emit.rs` - role: emission correctness; expected change: none on
   `CONSISTENT`; minimal height-term correction + test on `MISSCALE_FIXED`.
 

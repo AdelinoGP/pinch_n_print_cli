@@ -20,15 +20,92 @@ const VERSION: &str = "1.0.0";
 /// 1.0.0 (fail-closed, never silently ignored).
 const VERSION_1_1: &str = "1.1.0";
 
+/// Schema 1.2.0 (packet 247): adds the `silhouette` visualization kind
+/// (one composite X-Z / Y-Z side-view image per tap) and its
+/// `options.view` selector. Everything 1.1.0 accepts stays accepted;
+/// `silhouette` and `view` are rejected under any earlier declared version
+/// (fail-closed, never silently ignored).
+const VERSION_1_2: &str = "1.2.0";
+
+/// The schema 1.2.0 side-view visualization kind.
+const SILHOUETTE_KIND: &str = "silhouette";
+
+/// The taps a `silhouette` visualization may be requested for (packet 247):
+/// the four `CapturedIr::Slice` taps plus the support-plan tap - the
+/// Z-attributable set. Every other tap is rejected with a stated reason;
+/// later packets extend this list rather than bypassing validation.
+/// Why a silhouette requested against a standalone final-G-code source
+/// cannot honour a named tap: that source has no pipeline to tap.
+const GCODE_SILHOUETTE_NO_TAPS_REASON: &str =
+    "the standalone gcode source has no pipeline taps: it carries only the final toolpath,      so there is no stage capture to project";
+
+const SILHOUETTE_TAP_STAGE_IDS: &[&str] = &[
+    "Layer::Slice",
+    "PrePass::PaintSegmentation",
+    "PrePass::RegionMapping",
+    "PrePass::OverhangAnnotation",
+    "Layer::PaintRegionAnnotation",
+    "Layer::SlicePostProcess",
+    "PrePass::SupportGeometry",
+    "PostPass::LayerFinalization",
+    "PostPass::GCodeEmit",
+];
+
+/// Whether a declared schema version gets the strict typed `options` parse
+/// (`deny_unknown_fields`, typed option validation). True for 1.1.0 and
+/// 1.2.0; a 1.0.0 request keeps the legacy loose read.
+fn strict_options(schema_version: &str) -> bool {
+    schema_version == VERSION_1_1 || schema_version == VERSION_1_2
+}
+
+/// The resolved silhouette projection plane name for a visualization's
+/// options: `"front"` (X-Z, the default) or `"side"` (Y-Z). Unknown values
+/// fail closed.
+fn silhouette_view_name(view: Option<&str>) -> Result<&'static str, ValidationError> {
+    match view {
+        None | Some("front") => Ok("front"),
+        Some("side") => Ok("side"),
+        Some(other) => Err(ValidationError::InvalidSilhouetteView {
+            message: format!("view must be \"front\" (X-Z) or \"side\" (Y-Z), got \"{other}\""),
+        }),
+    }
+}
+
+/// Why a tap outside [`SILHOUETTE_TAP_STAGE_IDS`] cannot carry a
+/// silhouette. Never empty: a rejection that does not say why trains
+/// callers to guess.
+fn silhouette_tap_rejection_reason(tap: &str) -> String {
+    match tap {
+        "Layer::Perimeters" => "its captured geometry is arena-owned toolpath data with no \
+             per-region layer height to attribute a Z slab to"
+            .to_string(),
+        "PrePass::MeshAnalysis" | "PrePass::SeamPlanning" => {
+            "its capture carries no per-layer geometry, so no Z slab can be attributed to it"
+                .to_string()
+        }
+        "PostPass::LayerFinalization" | "PostPass::GCodeEmit" => {
+            "its whole-print capture would have to be re-attributed to model-layer slabs; \
+             not supported by this packet"
+                .to_string()
+        }
+        _ => format!(
+            "'{tap}' is not one of the Z-attributable silhouette taps ({})",
+            SILHOUETTE_TAP_STAGE_IDS.join(", ")
+        ),
+    }
+}
+
 fn schema_supported(v: &str) -> bool {
-    v == VERSION || v == VERSION_1_1
+    v == VERSION || v == VERSION_1_1 || v == VERSION_1_2
 }
 
 /// The legend version recorded for a bundle: a 1.0.0 request renders only
 /// the v1 legend; a 1.1.0 request's images may use the v1.1 glyph legend
 /// (a strict superset — see `slicer_runtime::visual_debug_style`).
+/// A 1.2.0 request records the same legend as 1.1.0: silhouettes add fill
+/// classes, not glyphs, so `LEGEND_VERSION` is deliberately not bumped.
 fn legend_version_for(schema_version: &str) -> &str {
-    if schema_version == VERSION_1_1 {
+    if schema_version == VERSION_1_1 || schema_version == VERSION_1_2 {
         slicer_runtime::LEGEND_VERSION
     } else {
         VERSION
@@ -57,6 +134,16 @@ pub struct VisualizationOptions {
     /// `z_hops`, `tool_changes`).
     #[serde(default)]
     pub overlays: Option<Vec<String>>,
+    /// Schema 1.2.0: the silhouette projection plane - `"front"` (X-Z,
+    /// the default) or `"side"` (Y-Z). `silhouette` visualizations only;
+    /// rejected on any other kind and under any pre-1.2.0 schema.
+    #[serde(default)]
+    pub view: Option<String>,
+    /// Schema 1.2.0 (packet 251): overlay event classes composited onto the
+    /// silhouette image itself (not isolated images). `silhouette`
+    /// visualizations only; `"seams"` is the only member.
+    #[serde(default)]
+    pub composited_overlays: Option<Vec<String>>,
 }
 
 impl VisualizationOptions {
@@ -105,7 +192,7 @@ fn effective_visualization_options(
     schema_version: &str,
     viz: &VisualizationSpec,
 ) -> VisualizationOptions {
-    if schema_version == VERSION_1_1 {
+    if strict_options(schema_version) {
         return visualization_options(viz)
             .expect("validate_request already accepted these options");
     }
@@ -378,6 +465,34 @@ pub enum ValidationError {
     OverlayUnsupportedOnGcode {
         name: String,
     },
+    /// Schema 1.2.0 (packet 247): a `silhouette` visualization appeared in a
+    /// request declaring an earlier schema version. Named rather than
+    /// folded into `UnknownVisualizationKind` so the message can state the
+    /// fix (declare 1.2.0), exactly like `OptionRequiresSchema11`.
+    SilhouetteRequiresSchema12,
+    /// A `silhouette` visualization was mixed with a top-down kind in one
+    /// request. A silhouette bundle projects to one plane and every entry
+    /// shares one byte-identical `world_bounds_mm`; mixing planes would
+    /// break that pinned invariant. Two bundles cover the workflow.
+    SilhouetteMixedWithOtherKinds {
+        other_kind: String,
+    },
+    /// `frame: "plate"` was requested alongside a silhouette. The bed is an
+    /// XY polygon with no machine-height concept, so it cannot frame a
+    /// Z-bearing projection.
+    SilhouettePlateFrameUnsupported,
+    /// `options.view` carried an unknown value, was set on a non-silhouette
+    /// kind, was set under a pre-1.2.0 schema, or two silhouette
+    /// visualizations in one request resolved to different planes.
+    InvalidSilhouetteView {
+        message: String,
+    },
+    /// A silhouette was requested for a tap outside
+    /// [`SILHOUETTE_TAP_STAGE_IDS`]. Carries the tap and the reason.
+    SilhouetteUnsupportedForTap {
+        tap: String,
+        reason: String,
+    },
 }
 
 impl fmt::Display for ValidationError {
@@ -422,6 +537,27 @@ impl fmt::Display for ValidationError {
                 f,
                 "overlay '{name}' is not supported on a standalone gcode source"
             ),
+            Self::SilhouetteRequiresSchema12 => write!(
+                f,
+                "visualization kind '{SILHOUETTE_KIND}' requires schema_version \"{VERSION_1_2}\""
+            ),
+            Self::SilhouetteMixedWithOtherKinds { other_kind } => write!(
+                f,
+                "a silhouette bundle may contain only silhouette visualizations; this request \
+                 also asks for '{other_kind}' - render it as a separate bundle"
+            ),
+            Self::SilhouettePlateFrameUnsupported => write!(
+                f,
+                "frame: \"plate\" is not supported for silhouette visualizations: the bed is an \
+                 XY polygon with no machine-height extent; use frame: \"model\""
+            ),
+            Self::InvalidSilhouetteView { message } => {
+                write!(f, "invalid silhouette view request: {message}")
+            }
+            Self::SilhouetteUnsupportedForTap { tap, reason } => write!(
+                f,
+                "silhouette is not supported for tap '{tap}': {reason}"
+            ),
         }
     }
 }
@@ -455,6 +591,11 @@ pub enum VisualDebugError {
     Validation(ValidationError),
     NonEmptyOutputRequiresOverwrite,
     Write(String),
+    /// The request JSON could not be read or deserialized. Distinct from
+    /// [`Self::Write`]: a malformed request is an input error, and
+    /// labelling it "write error" sends the reader to look at the output
+    /// directory instead of at their request file.
+    RequestParse(String),
     /// A requested tap is not one of the documented, supported taps
     /// (packet 158). Carries the offending tap name verbatim.
     UnsupportedTap(String),
@@ -481,6 +622,12 @@ pub enum VisualDebugError {
     /// must fail the whole request rather than report a successful
     /// empty/partial bundle — see `visual_debug_gcode::GcodeRenderError::NoRenderableMoves`.
     NoRenderableGcodeMoves(String),
+    /// A `silhouette` render over a standalone final-G-code source could not
+    /// derive a bead width from flow for an extruding move, and the request
+    /// supplied no `gcode_line_width_mm` fallback. Carries the renderer's
+    /// own detail, which names the missing datum and the remedy — see
+    /// `visual_debug_gcode::GcodeRenderError::SilhouetteWidthUnderivable`.
+    SilhouetteWidthUnderivable(String),
 }
 
 impl fmt::Display for VisualDebugError {
@@ -491,6 +638,7 @@ impl fmt::Display for VisualDebugError {
                 write!(f, "output directory is non-empty; use --overwrite")
             }
             Self::Write(e) => write!(f, "write error: {e}"),
+            Self::RequestParse(e) => write!(f, "invalid request: {e}"),
             Self::UnsupportedTap(tap) => write!(f, "unsupported visual-debug tap: '{tap}'"),
             Self::NoApplicableLayer => write!(
                 f,
@@ -500,6 +648,9 @@ impl fmt::Display for VisualDebugError {
             Self::InvalidBedShape(e) => write!(f, "frame: \"plate\" is unusable: {e}"),
             Self::RenderFailed(e) => write!(f, "intermediate render failed: {e}"),
             Self::NoRenderableGcodeMoves(e) => write!(f, "gcode render failed: {e}"),
+            Self::SilhouetteWidthUnderivable(e) => {
+                write!(f, "gcode silhouette render failed: {e}")
+            }
         }
     }
 }
@@ -512,7 +663,8 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
     if !schema_supported(&req.schema_version) {
         return Err(ValidationError::SchemaVersion);
     }
-    let is_v1_1 = req.schema_version == VERSION_1_1;
+    let strict = strict_options(&req.schema_version);
+    let is_v1_2 = req.schema_version == VERSION_1_2;
     if !(1..=3).contains(&req.resolution_scale) {
         return Err(ValidationError::ResolutionScale);
     }
@@ -524,7 +676,15 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
     // are now named, fail-closed rejections.
     for viz in &req.visualizations {
         let kind = viz.kind();
-        if !matches!(
+        if kind == SILHOUETTE_KIND {
+            // Schema 1.2.0 (packet 247): the silhouette kind is version
+            // gated, so a pre-1.2 request gets a named requires-1.2.0
+            // error naming the fix rather than the generic unknown-kind
+            // rejection.
+            if !is_v1_2 {
+                return Err(ValidationError::SilhouetteRequiresSchema12);
+            }
+        } else if !matches!(
             kind,
             "filled_areas" | "filament_lines" | "diagnostic_overlay"
         ) {
@@ -536,12 +696,37 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
         // legacy loose treatment (stray keys tolerated, only `base` read) —
         // EXCEPT that the 1.1-only option names are hard-rejected so an old
         // schema declaration can never silently drop a requested behavior.
-        if !is_v1_1 {
+        if !strict {
             if let VisualizationSpec::Detail { options, .. } = viz {
                 for option in ["color_by", "tool_color_source", "overlays"] {
                     if options.get(option).is_some() {
                         return Err(ValidationError::OptionRequiresSchema11 { option });
                     }
+                }
+                // `view` is 1.2.0-only. Under 1.0.0 the options object is
+                // read loosely, so probe the raw key: tolerating it as a
+                // stray would silently render the default plane instead of
+                // the requested one.
+                if options.get("view").is_some() {
+                    return Err(ValidationError::InvalidSilhouetteView {
+                        message: format!(
+                            "option 'view' requires schema_version \"{VERSION_1_2}\" (this request declares \
+                             '{}')",
+                            req.schema_version
+                        ),
+                    });
+                }
+                // `composited_overlays` is 1.2.0-only (packet 251). Same
+                // fail-closed probe as `view`: the loose read would
+                // otherwise silently drop the requested overlay.
+                if options.get("composited_overlays").is_some() {
+                    return Err(ValidationError::InvalidOverlays {
+                        message: format!(
+                            "option 'composited_overlays' requires schema_version \"{VERSION_1_2}\" \
+                             (this request declares '{}')",
+                            req.schema_version
+                        ),
+                    });
                 }
             }
             if kind == "diagnostic_overlay" && matches!(req.source, VisualDebugSource::Gcode { .. })
@@ -551,6 +736,28 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
             continue;
         }
         let opts = visualization_options(viz)?;
+        // Schema 1.2.0: `options.view` is silhouette-only and 1.2.0-only.
+        match opts.view.as_deref() {
+            None => {}
+            Some(_) if !is_v1_2 => {
+                return Err(ValidationError::InvalidSilhouetteView {
+                    message: format!(
+                        "option 'view' requires schema_version \"{VERSION_1_2}\" (this request declares '{}')",
+                        req.schema_version
+                    ),
+                });
+            }
+            Some(_) if kind != SILHOUETTE_KIND => {
+                return Err(ValidationError::InvalidSilhouetteView {
+                    message: format!(
+                        "view applies to '{SILHOUETTE_KIND}' visualizations, not '{kind}'"
+                    ),
+                });
+            }
+            Some(view) => {
+                silhouette_view_name(Some(view))?;
+            }
+        }
         match opts.color_by.as_deref() {
             None | Some("role") | Some("tool") => {}
             Some(other) => {
@@ -581,7 +788,7 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
             });
         }
         if let Some(overlays) = &opts.overlays {
-            if kind != "diagnostic_overlay" {
+            if kind != "diagnostic_overlay" && kind != SILHOUETTE_KIND {
                 return Err(ValidationError::InvalidOverlays {
                     message: format!("overlays applies to diagnostic_overlay, not '{kind}'"),
                 });
@@ -591,14 +798,84 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
                     message: "overlays must name at least one overlay".into(),
                 });
             }
-            for name in overlays {
-                if slicer_runtime::OverlayKind::parse(name).is_none() {
+            if kind == SILHOUETTE_KIND {
+                // Packet 251 (R9): a silhouette's only overlayable event
+                // class is seams; anything else fails closed by name.
+                for name in overlays {
+                    if name != "seams" {
+                        return Err(ValidationError::InvalidOverlays {
+                            message: format!(
+                                "unknown silhouette overlay '{name}' (\"seams\" is the only \
+                                 silhouette overlay kind)"
+                            ),
+                        });
+                    }
+                }
+            } else {
+                for name in overlays {
+                    if slicer_runtime::OverlayKind::parse(name).is_none() {
+                        return Err(ValidationError::InvalidOverlays {
+                            message: format!(
+                                "unknown overlay '{name}' (expected travel, seams, retractions, \
+                                 z_hops, or tool_changes)"
+                            ),
+                        });
+                    }
+                }
+            }
+        }
+        // Schema 1.2.0 (packet 251, R9): `composited_overlays` is
+        // silhouette-only and 1.2.0-only. The schema gate runs first so a
+        // pre-1.2.0 request hears about the version, not the kind; the kind
+        // gate is a named validation error, never a parse/unknown-key one.
+        if let Some(composited) = &opts.composited_overlays {
+            if !is_v1_2 {
+                return Err(ValidationError::InvalidOverlays {
+                    message: format!(
+                        "option 'composited_overlays' requires schema_version \"{VERSION_1_2}\" \
+                         (this request declares '{}')",
+                        req.schema_version
+                    ),
+                });
+            }
+            if kind != SILHOUETTE_KIND {
+                return Err(ValidationError::InvalidOverlays {
+                    message: format!(
+                        "composited_overlays applies to '{SILHOUETTE_KIND}' visualizations, \
+                         not '{kind}'"
+                    ),
+                });
+            }
+            if composited.is_empty() {
+                return Err(ValidationError::InvalidOverlays {
+                    message: "composited_overlays must name at least one overlay".into(),
+                });
+            }
+            for name in composited {
+                if name != "seams" {
                     return Err(ValidationError::InvalidOverlays {
                         message: format!(
-                            "unknown overlay '{name}' (expected travel, seams, retractions, \
-                             z_hops, or tool_changes)"
+                            "unknown silhouette overlay '{name}' (\"seams\" is the only \
+                             silhouette overlay kind)"
                         ),
                     });
+                }
+            }
+        }
+        if kind == SILHOUETTE_KIND && matches!(req.source, VisualDebugSource::Gcode { .. }) {
+            // R10 (packet 251): final G-code carries no seam marker, so BOTH
+            // silhouette seam-overlay forms are unsourceable on a standalone
+            // gcode source — the same named rejection as the
+            // diagnostic_overlay arm below. Runs after the member checks, so
+            // a non-seam member keeps the normal InvalidOverlays path.
+            for name in opts
+                .overlays
+                .iter()
+                .flatten()
+                .chain(opts.composited_overlays.iter().flatten())
+            {
+                if name == "seams" {
+                    return Err(ValidationError::OverlayUnsupportedOnGcode { name: name.clone() });
                 }
             }
         }
@@ -619,6 +896,109 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
                         }
                     }
                 }
+            }
+        }
+    }
+    // Schema 1.2.0 (packet 247): bundle-wide silhouette rules. Ordered so
+    // the most specific misuse is named first: mixing, then the bundle
+    // plane, then frame / source / tap support.
+    if is_v1_2
+        && req
+            .visualizations
+            .iter()
+            .any(|v| v.kind() == SILHOUETTE_KIND)
+    {
+        if let Some(other) = req
+            .visualizations
+            .iter()
+            .map(VisualizationSpec::kind)
+            .find(|k| *k != SILHOUETTE_KIND)
+        {
+            return Err(ValidationError::SilhouetteMixedWithOtherKinds {
+                other_kind: other.to_string(),
+            });
+        }
+        // One silhouette plane per bundle: every entry shares one
+        // byte-identical `world_bounds_mm`, which two planes cannot.
+        let mut bundle_view: Option<&'static str> = None;
+        for viz in &req.visualizations {
+            let opts = visualization_options(viz)?;
+            let view = silhouette_view_name(opts.view.as_deref())?;
+            match bundle_view {
+                None => bundle_view = Some(view),
+                Some(previous) if previous != view => {
+                    return Err(ValidationError::InvalidSilhouetteView {
+                        message: format!(
+                            "one silhouette plane per bundle: this request asks for both \
+                             '{previous}' and '{view}'; render them as two bundles"
+                        ),
+                    });
+                }
+                Some(_) => {}
+            }
+        }
+        // Packet 251 (R9): overlay options are per-GROUP, not per-spec. One
+        // composite image is rendered per (tap, view, color mode) group and
+        // every silhouette spec applies to every selected tap, so two specs
+        // resolving to the same group must agree on BOTH overlay options
+        // (absent = absent, present-with-same-members = agree) — otherwise
+        // whichever spec the grouping happened to keep would silently win.
+        let mut group_overlay_options: std::collections::BTreeMap<
+            (&'static str, bool),
+            (Option<Vec<String>>, Option<Vec<String>>),
+        > = std::collections::BTreeMap::new();
+        for viz in &req.visualizations {
+            let opts = visualization_options(viz)?;
+            let key = (
+                silhouette_view_name(opts.view.as_deref())?,
+                opts.color_by() == slicer_runtime::ColorBy::Tool,
+            );
+            let overlay_options = (opts.overlays.clone(), opts.composited_overlays.clone());
+            match group_overlay_options.entry(key) {
+                std::collections::btree_map::Entry::Vacant(entry) => {
+                    entry.insert(overlay_options);
+                }
+                std::collections::btree_map::Entry::Occupied(entry) => {
+                    if entry.get() != &overlay_options {
+                        return Err(ValidationError::InvalidOverlays {
+                            message: format!(
+                                "silhouette visualizations in the same (tap, view, color mode) \
+                                 group must agree on 'overlays' and 'composited_overlays' \
+                                 (view '{}', color mode '{}'): they render one composite image, \
+                                 so render the differing forms as separate bundles",
+                                key.0,
+                                if key.1 { "tool" } else { "role" }
+                            ),
+                        });
+                    }
+                }
+            }
+        }
+        if matches!(req.frame, FrameMode::Plate) {
+            return Err(ValidationError::SilhouettePlateFrameUnsupported);
+        }
+        // Packet 248: a standalone final-G-code source IS a silhouette
+        // source. It has no pipeline, though, so it has no taps to select
+        // from: a request that names one is asking for something the source
+        // cannot produce, and is rejected with that stated reason rather
+        // than silently rendering the single whole-file projection.
+        let gcode_source = matches!(req.source, VisualDebugSource::Gcode { .. });
+        for tap in &req.taps {
+            let id = match tap {
+                TapSelector::Name(name) => name.as_str(),
+                TapSelector::Detail { id } => id.as_str(),
+            };
+            if gcode_source {
+                return Err(ValidationError::SilhouetteUnsupportedForTap {
+                    tap: id.to_string(),
+                    reason: GCODE_SILHOUETTE_NO_TAPS_REASON.to_string(),
+                });
+            }
+            if !SILHOUETTE_TAP_STAGE_IDS.contains(&id) {
+                return Err(ValidationError::SilhouetteUnsupportedForTap {
+                    tap: id.to_string(),
+                    reason: silhouette_tap_rejection_reason(id),
+                });
             }
         }
     }
@@ -744,8 +1124,22 @@ pub struct Viewport {
 pub struct ImageEntry {
     pub source: String,
     pub tap: String,
-    pub layer_index: i64,
-    pub layer_z: Option<f64>,
+    /// The global layer index this entry rendered. `None` (and absent from
+    /// the manifest) only on a schema 1.2.0 silhouette entry, which is a
+    /// composite over many layers and has no single index; every 1.0/1.1
+    /// entry still serializes it, byte-unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layer_index: Option<i64>,
+    /// Tri-state, deliberately: `Some(Some(z))` serializes the number,
+    /// `Some(None)` serializes JSON `null`, and `None` omits the key.
+    /// The middle state is load-bearing - a standalone-G-code layer with no
+    /// `;Z:` marker has always serialized `"layer_z": null`
+    /// (`visual_debug_gcode::ParsedLayer::layer_z` is `None` there), so a
+    /// plain `Option<f64>` + `skip_serializing_if` would silently flip that
+    /// `null` to an absent key and break 1.0/1.1 byte-compatibility. Only a
+    /// silhouette entry omits the key.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layer_z: Option<Option<f64>>,
     pub visualization: String,
     pub png_path: String,
     pub viewport: Viewport,
@@ -791,6 +1185,38 @@ pub struct ImageEntry {
     /// `"filament"`) when `color_by` is `"tool"`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_color_source: Option<String>,
+    /// Schema 1.2.0: the silhouette projection plane this composite was
+    /// rendered on (`"front"` = X-Z, `"side"` = Y-Z). Absent on every
+    /// non-silhouette entry.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub view: Option<String>,
+    /// Schema 1.2.0: the global layer indices the silhouette composite
+    /// actually drew, compressed to inclusive ranges. Absent on every
+    /// non-silhouette entry.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layers_rendered: Option<Vec<LayerRangeEntry>>,
+    /// Schema 1.2.0: overlay kinds composited onto this silhouette image.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub composited_overlays: Option<Vec<String>>,
+}
+
+/// Resolve the seam plan required by a silhouette seam overlay. Overlay
+/// requests fail closed when the seam-planner prepass did not publish a plan.
+pub fn require_seam_plan(
+    plan: Option<&Arc<slicer_ir::SeamPlanIR>>,
+) -> Result<&slicer_ir::SeamPlanIR, VisualDebugError> {
+    plan.map(Arc::as_ref).ok_or_else(|| {
+        VisualDebugError::CaptureFailed("silhouette seam overlay requires a seam plan".into())
+    })
+}
+
+/// One inclusive global-layer-index range in
+/// [`ImageEntry::layers_rendered`]. A single layer is `start == end`, so the
+/// encoding round-trips losslessly for any index set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct LayerRangeEntry {
+    pub start: i64,
+    pub end: i64,
 }
 
 /// One row of [`Manifest::tool_palette`]: the exact RGB a tool renders as
@@ -1033,6 +1459,64 @@ fn mesh_xy_bounds(mesh: &slicer_ir::MeshIR) -> Option<slicer_runtime::ViewportBo
     Some(bounds.with_margin())
 }
 
+/// The model-wide silhouette plane extent in millimeters (packet 247, D3):
+/// horizontal axis = the mesh's X (front) or Y (side) extent, vertical axis
+/// = its **Z** extent, both read from the same `MeshIR::build_volume`
+/// `mesh_xy_bounds` reads.
+///
+/// This is what makes the Z frame *model-wide* rather than selection-wide: it
+/// never varies with which layers a request selected, so two silhouette
+/// bundles over one model are directly comparable (AC-7).
+///
+/// Returned **unmargined**, unlike `mesh_xy_bounds`:
+/// `compute_silhouette_viewport_bounds` applies `with_margin` itself after
+/// unioning with the captured geometry. Degenerate handling mirrors
+/// `mesh_xy_bounds` — a non-finite or collapsed box yields `None` and the
+/// viewport falls back to captured geometry alone.
+fn mesh_silhouette_plane_extent(
+    mesh: &slicer_ir::MeshIR,
+    view: slicer_runtime::SilhouetteView,
+) -> Option<slicer_runtime::ViewportBoundsMm> {
+    if mesh.objects.is_empty() {
+        return None;
+    }
+    let bv = mesh.build_volume;
+    let (min_h, max_h) = match view {
+        slicer_runtime::SilhouetteView::Front => (bv.min.x, bv.max.x),
+        slicer_runtime::SilhouetteView::Side => (bv.min.y, bv.max.y),
+    };
+    let bounds = slicer_runtime::ViewportBoundsMm {
+        min_x: min_h,
+        min_y: bv.min.z,
+        max_x: max_h,
+        max_y: bv.max.z,
+    };
+    let degenerate = !(bounds.min_x.is_finite()
+        && bounds.min_y.is_finite()
+        && bounds.max_x.is_finite()
+        && bounds.max_y.is_finite())
+        || bounds.max_x <= bounds.min_x
+        || bounds.max_y <= bounds.min_y;
+    if degenerate {
+        return None;
+    }
+    Some(bounds)
+}
+
+/// Compress an ascending, de-duplicated global-layer-index list into maximal
+/// inclusive runs for [`ImageEntry::layers_rendered`]. Lossless: a lone index
+/// becomes `start == end`.
+fn compress_layer_ranges(indices: &[i64]) -> Vec<LayerRangeEntry> {
+    let mut out: Vec<LayerRangeEntry> = Vec::new();
+    for &i in indices {
+        match out.last_mut() {
+            Some(last) if i == last.end + 1 => last.end = i,
+            _ => out.push(LayerRangeEntry { start: i, end: i }),
+        }
+    }
+    out
+}
+
 /// The printer bed's XY extent in millimeters, margin included, for
 /// `frame: "plate"`.
 ///
@@ -1128,32 +1612,117 @@ fn map_capture_error(e: slicer_runtime::CaptureExecutionError) -> VisualDebugErr
 /// `LayerCollectionIR`/`GCodeIR` shape this capture needs, only cosmetic
 /// G-code formatting choices that belong to `pnp_cli slice`'s production
 /// emission path, not visual-debug capture.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PostpassCaptureShape {
+    PerLayer,
+    WholePrint,
+}
+
+/// Builds deterministic visual-debug rows from whole-print postpass artifacts.
+pub fn postpass_stage_captures(
+    capture: &slicer_runtime::postpass::PostPassCapture,
+    stage_ids: &[String],
+    applicable: &[u32],
+    applicable_layer_z: &dyn Fn(u32) -> f32,
+    shape: PostpassCaptureShape,
+) -> Vec<slicer_runtime::StageCapture> {
+    let mut captures = Vec::new();
+    match shape {
+        PostpassCaptureShape::PerLayer => {
+            for &layer_index in applicable {
+                let layer_z = applicable_layer_z(layer_index);
+                for tap in stage_ids {
+                    let ir = match tap.as_str() {
+                        "PostPass::LayerFinalization" => {
+                            slicer_runtime::CapturedIr::LayerFinalization(
+                                capture.finalized_layers.clone(),
+                            )
+                        }
+                        "PostPass::GCodeEmit" => {
+                            slicer_runtime::CapturedIr::GCodeEmit(capture.gcode_ir.clone())
+                        }
+                        _ => unreachable!(
+                            "tap validated against POSTPASS_TAP_STAGE_IDS at function entry"
+                        ),
+                    };
+                    captures.push(slicer_runtime::StageCapture {
+                        stage_id: tap.clone(),
+                        layer_index,
+                        layer_z,
+                        ir,
+                    });
+                }
+            }
+        }
+        PostpassCaptureShape::WholePrint => {
+            for tap in stage_ids {
+                let ir = match tap.as_str() {
+                    "PostPass::LayerFinalization" => slicer_runtime::CapturedIr::LayerFinalization(
+                        capture.finalized_layers.clone(),
+                    ),
+                    "PostPass::GCodeEmit" => {
+                        slicer_runtime::CapturedIr::GCodeEmit(capture.gcode_ir.clone())
+                    }
+                    _ => unreachable!(
+                        "tap validated against POSTPASS_TAP_STAGE_IDS at function entry"
+                    ),
+                };
+                // Whole-print rows have no meaningful layer identity.
+                captures.push(slicer_runtime::StageCapture {
+                    stage_id: tap.clone(),
+                    layer_index: 0,
+                    layer_z: 0.0,
+                    ir,
+                });
+            }
+        }
+    }
+    captures.sort_by_key(|c| {
+        (
+            slicer_runtime::STAGE_ORDER
+                .iter()
+                .position(|s| *s == c.stage_id.as_str())
+                .unwrap_or(usize::MAX),
+            c.layer_index,
+        )
+    });
+    captures
+}
+
 fn run_postpass_taps(
     ctx: &mut slicer_runtime::PrepassContext,
     request: &slicer_runtime::CaptureRequest,
     support_tools: slicer_runtime::layer_executor::SupportToolSelection,
-) -> Result<slicer_runtime::CaptureOutput, VisualDebugError> {
+    shape: PostpassCaptureShape,
+) -> Result<(slicer_runtime::CaptureOutput, Vec<(u32, f32)>), VisualDebugError> {
     for tap in &request.stage_ids {
         if !slicer_runtime::layer_executor::POSTPASS_TAP_STAGE_IDS.contains(&tap.as_str()) {
             return Err(VisualDebugError::UnsupportedTap(tap.clone()));
         }
     }
     if request.stage_ids.is_empty() {
-        return Ok(slicer_runtime::CaptureOutput::default());
+        return Ok((slicer_runtime::CaptureOutput::default(), Vec::new()));
     }
 
     // Tier 2: run every per-layer stage for every layer (no truncation —
     // the finalization/emission tiers below need every layer's committed
     // LayerCollectionIR).
-    let (mut layer_irs, _layer_audits) =
-        slicer_runtime::layer_executor::execute_per_layer_with_events_and_support_tools(
+    //
+    // visual-debug builds its `PrepassContext` directly and never constructs a
+    // `PipelineConfig`, so it has no anchored-entity payload of its own: the
+    // empty slice below is the behaviour-preserving choice.
+    let (committed_events, _layer_audits) =
+        slicer_runtime::layer_executor::execute_per_layer_with_committed_anchored_events_and_support_tools(
             &ctx.plan,
             &ctx.blackboard,
             &ctx.layer_runner,
             &slicer_runtime::NoopLayerProgressSink,
             &ctx.wasm_handles,
             support_tools,
+            &[],
         )
+        .map_err(|e| VisualDebugError::CaptureFailed(e.to_string()))?;
+    let mut layer_irs = slicer_runtime::anchored_rows::synthesize_anchored_rows(committed_events)
         .map_err(|e| VisualDebugError::CaptureFailed(e.to_string()))?;
 
     // Tier 3: layer finalization (module-based, if any is bound in this plan).
@@ -1169,7 +1738,8 @@ fn run_postpass_taps(
     // Tier 4: postpass, with the read-only capture sink enabled so we get
     // back the finalized (travel-reconciled) layers and the initially
     // emitted GCodeIR without altering what would ordinarily be emitted.
-    let emitter = slicer_runtime::DefaultGCodeEmitter::new("pnp_cli visual-debug".to_string());
+    let emitter = slicer_runtime::DefaultGCodeEmitter::new("pnp_cli visual-debug".to_string())
+        .with_resolved_config((*ctx.default_resolved_config).clone());
     let serializer = slicer_runtime::DefaultGCodeSerializer::new();
     let mut capture = slicer_runtime::postpass::PostPassCapture::default();
     slicer_runtime::postpass::execute_postpass_with_capture(
@@ -1190,6 +1760,12 @@ fn run_postpass_taps(
         .iter()
         .map(|l| l.global_layer_index)
         .collect();
+    let mut finalized_schedule: Vec<(u32, f32)> = capture
+        .finalized_layers
+        .iter()
+        .map(|layer| (layer.global_layer_index, layer.z))
+        .collect();
+    finalized_schedule.sort_by_key(|(index, _)| *index);
     let applicable: std::collections::BTreeSet<u32> = request
         .layer_indices
         .iter()
@@ -1200,41 +1776,20 @@ fn run_postpass_taps(
         return Err(VisualDebugError::NoApplicableLayer);
     }
 
-    let mut captures = Vec::new();
-    for &layer_index in &applicable {
-        let layer_z = capture
-            .finalized_layers
-            .iter()
-            .find(|l| l.global_layer_index == layer_index)
-            .map(|l| l.z)
-            .unwrap_or(0.0);
-        for tap in &request.stage_ids {
-            let ir = match tap.as_str() {
-                "PostPass::LayerFinalization" => {
-                    slicer_runtime::CapturedIr::LayerFinalization(capture.finalized_layers.clone())
-                }
-                "PostPass::GCodeEmit" => {
-                    slicer_runtime::CapturedIr::GCodeEmit(capture.gcode_ir.clone())
-                }
-                _ => unreachable!("tap validated against POSTPASS_TAP_STAGE_IDS at function entry"),
-            };
-            captures.push(slicer_runtime::StageCapture {
-                stage_id: tap.clone(),
-                layer_index,
-                layer_z,
-                ir,
-            });
-        }
-    }
-    captures.sort_by_key(|c| {
-        (
-            slicer_runtime::STAGE_ORDER
+    let captures = postpass_stage_captures(
+        &capture,
+        &request.stage_ids,
+        &applicable.iter().copied().collect::<Vec<_>>(),
+        &|layer_index| {
+            capture
+                .finalized_layers
                 .iter()
-                .position(|s| *s == c.stage_id.as_str())
-                .unwrap_or(usize::MAX),
-            c.layer_index,
-        )
-    });
+                .find(|l| l.global_layer_index == layer_index)
+                .map(|l| l.z)
+                .unwrap_or(0.0)
+        },
+        shape,
+    );
 
     // Whole-print closure (this function's documented minimal-closure
     // deviation): every per-layer / finalization / postpass stage, and
@@ -1252,12 +1807,15 @@ fn run_postpass_taps(
     closure_stage_ids.extend(ctx.plan.postpass_stages.iter().map(|s| s.stage_id.clone()));
     closure_stage_ids.push("PostPass::GCodeSerialize".to_string());
 
-    Ok(slicer_runtime::CaptureOutput {
-        captures,
-        expansions: Vec::new(),
-        closure_stage_ids,
-        executed_layer_indices: real_layer_indices.into_iter().collect(),
-    })
+    Ok((
+        slicer_runtime::CaptureOutput {
+            captures,
+            expansions: Vec::new(),
+            closure_stage_ids,
+            executed_layer_indices: real_layer_indices.into_iter().collect(),
+        },
+        finalized_schedule,
+    ))
 }
 
 /// Canonical stable string name for a [`slicer_ir::PaintSemantic`], mirroring
@@ -1507,6 +2065,28 @@ fn run_model_source(
     // so two bundles over one model can be compared stage-to-stage.
     let model_bounds = mesh_xy_bounds(&mesh);
 
+    // Schema 1.2.0 silhouette bundle (packet 247): one bundle is either
+    // all-silhouette or all-XY (the mixing ban, enforced in
+    // `validate_request`), and every silhouette visualization in it resolves
+    // to the same plane, so the bundle's projection plane is a single value
+    // read off the first silhouette spec. The model-wide plane extent must be
+    // taken here, while `mesh` is still owned by this frame.
+    let silhouette_view: Option<slicer_runtime::SilhouetteView> = req
+        .visualizations
+        .iter()
+        .find(|v| v.kind() == SILHOUETTE_KIND)
+        .map(|v| {
+            let opts = effective_visualization_options(&req.schema_version, v);
+            silhouette_view_name(opts.view.as_deref()).map_err(VisualDebugError::Validation)
+        })
+        .transpose()?
+        .map(|name| {
+            slicer_runtime::SilhouetteView::parse(name)
+                .expect("silhouette_view_name only yields parseable plane names")
+        });
+    let silhouette_model_extent =
+        silhouette_view.and_then(|view| mesh_silhouette_plane_extent(&mesh, view));
+
     let mut ctx = slicer_runtime::prepare_prepass_context(
         Arc::new(mesh),
         config_source,
@@ -1590,12 +2170,22 @@ fn run_model_source(
     }
 
     let mut postpass_output = slicer_runtime::CaptureOutput::default();
+    let mut postpass_schedule: Vec<(u32, f32)> = Vec::new();
     if !postpass_tap_ids.is_empty() {
         let capture_request = slicer_runtime::CaptureRequest {
             stage_ids: postpass_tap_ids,
             layer_indices: layer_indices.clone(),
         };
-        postpass_output = run_postpass_taps(&mut ctx, &capture_request, support_tools)?;
+        (postpass_output, postpass_schedule) = run_postpass_taps(
+            &mut ctx,
+            &capture_request,
+            support_tools,
+            if silhouette_view.is_some() {
+                PostpassCaptureShape::WholePrint
+            } else {
+                PostpassCaptureShape::PerLayer
+            },
+        )?;
     }
 
     // Merge the three closures' outputs into one, deterministically ordered
@@ -1648,12 +2238,376 @@ fn run_model_source(
     let mut images: Vec<ImageEntry> = Vec::new();
     let mut rendered_files: Vec<(String, Vec<u8>)> = Vec::new();
     let mut tool_palette: Option<Vec<ToolPaletteEntry>> = None;
-    if req.visualizations.is_empty() {
+    if let Some(view) = silhouette_view {
+        // Schema 1.2.0 silhouette bundle (packet 247). Disjoint from the
+        // per-capture render loop below by the mixing ban: a silhouette
+        // request produces exactly one composite image per (tap, view) group,
+        // never one per (capture, visualization) pair — which is also why two
+        // identical silhouette specs collapse into a single image (AC-9).
+
+        // One shared viewport for the whole bundle, framed model-wide (D3):
+        // horizontal = the mesh's X (front) / Y (side) extent, vertical = its
+        // Z extent, both unioned with the captured geometry. The selection
+        // never moves the frame, which is exactly what AC-7 pins. `frame:
+        // "plate"` has no silhouette meaning (a bed polygon carries no Z), so
+        // silhouette framing is always model-wide.
+        let mut viewport_schedule = slicer_runtime::SilhouetteSlabSchedule::default();
+        if !postpass_schedule.is_empty() {
+            let mut previous_z = 0.0f32;
+            for (index, z) in &postpass_schedule {
+                viewport_schedule
+                    .slabs
+                    .push(slicer_runtime::SilhouetteScheduleSlab {
+                        index: *index,
+                        z_bottom: previous_z,
+                        z_top: *z,
+                    });
+                previous_z = *z;
+            }
+        } else if let Some(lp) = ctx.blackboard.layer_plan() {
+            let mut previous_z = 0.0f32;
+            for gl in &lp.global_layers {
+                viewport_schedule
+                    .slabs
+                    .push(slicer_runtime::SilhouetteScheduleSlab {
+                        index: gl.index,
+                        z_bottom: previous_z,
+                        z_top: gl.z,
+                    });
+                previous_z = gl.z;
+            }
+        }
+        let viewport_bounds = slicer_runtime::compute_silhouette_viewport_bounds(
+            &output.captures,
+            view,
+            &viewport_schedule,
+            silhouette_model_extent,
+        );
+
+        // Group by tap and requested color mode. An ordered map keeps role
+        // before tool within each tap and makes duplicate specs collapse.
+        let mut groups: std::collections::BTreeMap<
+            (usize, String, bool),
+            Vec<slicer_runtime::StageCapture>,
+        > = std::collections::BTreeMap::new();
+        for capture in &output.captures {
+            let position = slicer_runtime::STAGE_ORDER
+                .iter()
+                .position(|s| *s == capture.stage_id.as_str())
+                .unwrap_or(usize::MAX);
+            for viz in &req.visualizations {
+                let opts = effective_visualization_options(&req.schema_version, viz);
+                groups
+                    .entry((
+                        position,
+                        capture.stage_id.clone(),
+                        opts.color_by() == slicer_runtime::ColorBy::Tool,
+                    ))
+                    .or_default()
+                    .push(capture.clone());
+            }
+        }
+
+        let legend = legend_version_for(&req.schema_version).to_string();
+        let seam_requested = req.visualizations.iter().any(|viz| {
+            let opts = effective_visualization_options(&req.schema_version, viz);
+            opts.overlays
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .any(|name| name == "seams")
+                || opts
+                    .composited_overlays
+                    .as_deref()
+                    .unwrap_or_default()
+                    .iter()
+                    .any(|name| name == "seams")
+        });
+        let seam_plan = seam_requested
+            .then(|| require_seam_plan(ctx.blackboard.seam_plan()))
+            .transpose()?;
+        let mut emitted_isolated_seams = std::collections::BTreeSet::<(String, String)>::new();
+        let silhouette_height_index = slicer_runtime::build_silhouette_slice_height_index(
+            ctx.blackboard
+                .slice_ir()
+                .map_or(&[], |slice_ir| slice_ir.as_ref()),
+        );
+        for ((_, tap, is_tool), group) in groups {
+            let layer_index = group.first().map_or(0, |capture| capture.layer_index);
+            let mut schedule = slicer_runtime::SilhouetteSlabSchedule::default();
+            let mut previous_z = 0.0f32;
+            for (index, z) in &postpass_schedule {
+                schedule.slabs.push(slicer_runtime::SilhouetteScheduleSlab {
+                    index: *index,
+                    z_bottom: previous_z,
+                    z_top: *z,
+                });
+                previous_z = *z;
+            }
+            if schedule.slabs.is_empty() {
+                let mut previous_z = 0.0f32;
+                if let Some(lp) = ctx.blackboard.layer_plan() {
+                    for gl in &lp.global_layers {
+                        schedule.slabs.push(slicer_runtime::SilhouetteScheduleSlab {
+                            index: gl.index,
+                            z_bottom: previous_z,
+                            z_top: gl.z,
+                        });
+                        previous_z = gl.z;
+                    }
+                }
+            }
+            let selected: std::collections::BTreeSet<u32> = layer_indices.iter().copied().collect();
+            let full_schedule = schedule;
+            let mut schedule = full_schedule.clone();
+            schedule.slabs.retain(|slab| selected.contains(&slab.index));
+            let indices: Vec<i64> = schedule
+                .slabs
+                .iter()
+                .filter(|slab| selected.contains(&slab.index))
+                .map(|slab| i64::from(slab.index))
+                .collect();
+            let selected_slabs: Vec<u32> = indices.iter().map(|index| *index as u32).collect();
+            let rendered_layers: std::collections::BTreeSet<u32> =
+                selected_slabs.iter().copied().collect();
+            let (isolated_seams, composited_seams) = req
+                .visualizations
+                .iter()
+                .filter(|viz| {
+                    let opts = effective_visualization_options(&req.schema_version, viz);
+                    opts.color_by()
+                        == if is_tool {
+                            slicer_runtime::ColorBy::Tool
+                        } else {
+                            slicer_runtime::ColorBy::Role
+                        }
+                })
+                .fold((false, false), |(isolated, composited), viz| {
+                    let opts = effective_visualization_options(&req.schema_version, viz);
+                    (
+                        isolated
+                            || opts
+                                .overlays
+                                .as_deref()
+                                .unwrap_or_default()
+                                .iter()
+                                .any(|name| name == "seams"),
+                        composited
+                            || opts
+                                .composited_overlays
+                                .as_deref()
+                                .unwrap_or_default()
+                                .iter()
+                                .any(|name| name == "seams"),
+                    )
+                });
+            let tool_color_source = if is_tool {
+                req.visualizations.iter().find_map(|viz| {
+                    let opts = effective_visualization_options(&req.schema_version, viz);
+                    (opts.color_by() == slicer_runtime::ColorBy::Tool).then(|| {
+                        opts.tool_color_source
+                            .clone()
+                            .unwrap_or_else(|| "palette".to_string())
+                    })
+                })
+            } else {
+                None
+            };
+            let tool_colors = if tool_color_source.as_deref() == Some("filament") {
+                filament_tool_colors(&config_source_raw)
+            } else {
+                slicer_runtime::ToolColors::default()
+            };
+            if is_tool && tool_palette.is_none() {
+                tool_palette = Some(tool_palette_entries(&tool_colors));
+            }
+            let render_style = slicer_runtime::RenderStyle {
+                color_by: if is_tool {
+                    slicer_runtime::ColorBy::Tool
+                } else {
+                    slicer_runtime::ColorBy::Role
+                },
+                tool_colors,
+            };
+            let (rendered, overlay_events, warnings) = if tap == "PostPass::GCodeEmit" {
+                let gcode = group
+                    .iter()
+                    .find_map(|capture| match &capture.ir {
+                        slicer_runtime::CapturedIr::GCodeEmit(gcode) => Some(gcode),
+                        _ => None,
+                    })
+                    .ok_or_else(|| {
+                        VisualDebugError::RenderFailed("missing GCodeEmit capture".into())
+                    })?;
+                if composited_seams {
+                    slicer_runtime::render_gcode_emit_silhouette_seamed(
+                        gcode,
+                        view,
+                        req.resolution_scale,
+                        viewport_bounds,
+                        &full_schedule,
+                        &render_style,
+                        ctx.default_resolved_config.filament_diameter,
+                        &selected_slabs,
+                        Some((
+                            seam_plan.expect("seam plan resolved above"),
+                            &rendered_layers,
+                        )),
+                    )
+                } else {
+                    slicer_runtime::render_gcode_emit_silhouette(
+                        gcode,
+                        view,
+                        req.resolution_scale,
+                        viewport_bounds,
+                        &full_schedule,
+                        &render_style,
+                        ctx.default_resolved_config.filament_diameter,
+                        &selected_slabs,
+                    )
+                    .map(|(image, warnings)| (image, Vec::new(), warnings))
+                }
+            } else if tap == "PrePass::OverhangAnnotation" {
+                if is_tool {
+                    return Err(VisualDebugError::RenderFailed(
+                        slicer_runtime::RenderError::ToolColorUnavailable {
+                            tap: tap.clone(),
+                            layer_index,
+                        }
+                        .to_string(),
+                    ));
+                }
+                slicer_runtime::render_silhouette_overhang_composite(
+                    &group,
+                    view,
+                    req.resolution_scale,
+                    viewport_bounds,
+                    &silhouette_height_index,
+                )
+                .map(|(image, warnings)| (image, Vec::new(), warnings))
+            } else {
+                if is_tool && tap == "PrePass::RegionMapping" {
+                    return Err(VisualDebugError::RenderFailed(
+                        slicer_runtime::RenderError::ToolColorUnavailable {
+                            tap: tap.clone(),
+                            layer_index,
+                        }
+                        .to_string(),
+                    ));
+                }
+                if composited_seams {
+                    slicer_runtime::render_silhouette_composite_seamed(
+                        &group,
+                        view,
+                        req.resolution_scale,
+                        viewport_bounds,
+                        &schedule,
+                        &render_style,
+                        Some((
+                            seam_plan.expect("seam plan resolved above"),
+                            &rendered_layers,
+                        )),
+                    )
+                } else {
+                    slicer_runtime::render_silhouette_composite_styled(
+                        &group,
+                        view,
+                        req.resolution_scale,
+                        viewport_bounds,
+                        &schedule,
+                        &render_style,
+                    )
+                    .map(|(image, warnings)| (image, Vec::new(), warnings))
+                }
+            }
+            .map_err(|e| VisualDebugError::RenderFailed(e.to_string()))?;
+            if isolated_seams
+                && emitted_isolated_seams.insert((tap.clone(), view.name().to_string()))
+            {
+                let (isolated, events, isolated_warnings) =
+                    slicer_runtime::render_silhouette_seam_overlay(
+                        &group,
+                        view,
+                        req.resolution_scale,
+                        viewport_bounds,
+                        &schedule,
+                        seam_plan.expect("seam plan resolved above"),
+                        &rendered_layers,
+                    )
+                    .map_err(|e| VisualDebugError::RenderFailed(e.to_string()))?;
+                let relative_path = format!(
+                    "images/{}_silhouette_{}_overlay_seams.png",
+                    sanitize_path_component(&tap),
+                    view.name()
+                );
+                rendered_files.push((relative_path.clone(), isolated.png_bytes));
+                images.push(ImageEntry {
+                    source: "model".into(),
+                    tap: tap.clone(),
+                    layer_index: None,
+                    layer_z: None,
+                    visualization: SILHOUETTE_KIND.to_string(),
+                    png_path: relative_path,
+                    viewport: viewport.clone(),
+                    legend_version: legend.clone(),
+                    ir_schema_version: group.first().map(|c| c.ir.schema_version_string()),
+                    gcode_parser_version: None,
+                    warnings: isolated_warnings,
+                    typed_capture: None,
+                    world_bounds_mm: Some(viewport_bounds),
+                    overlay: Some("seams".into()),
+                    overlay_events: Some(events),
+                    // The isolated base is uniformly `FAINT_BASE` regardless
+                    // of the group's color mode (one image per (tap, view)),
+                    // so the entry is never tool-colored — the manifest
+                    // marker would depend on which color-mode group emitted
+                    // it first.
+                    color_by: None,
+                    tool_color_source: None,
+                    view: Some(view.name().into()),
+                    layers_rendered: Some(compress_layer_ranges(&indices)),
+                    composited_overlays: None,
+                });
+            }
+            let file_name = format!(
+                "{}_silhouette_{}{}.png",
+                sanitize_path_component(&tap),
+                view.name(),
+                if is_tool { "_tool" } else { "" }
+            );
+            let relative_path = format!("images/{file_name}");
+            rendered_files.push((relative_path.clone(), rendered.png_bytes));
+            images.push(ImageEntry {
+                source: "model".into(),
+                tap: tap.clone(),
+                // A composite spans many layers: no single index or Z is
+                // truthful, so both keys are absent (D7).
+                layer_index: None,
+                layer_z: None,
+                visualization: SILHOUETTE_KIND.to_string(),
+                png_path: relative_path,
+                viewport: viewport.clone(),
+                legend_version: legend.clone(),
+                ir_schema_version: group.first().map(|c| c.ir.schema_version_string()),
+                gcode_parser_version: None,
+                warnings,
+                typed_capture: None,
+                world_bounds_mm: Some(viewport_bounds),
+                overlay: None,
+                overlay_events: (!overlay_events.is_empty()).then_some(overlay_events),
+                color_by: is_tool.then(|| "tool".to_string()),
+                tool_color_source,
+                view: Some(view.name().to_string()),
+                layers_rendered: Some(compress_layer_ranges(&indices)),
+                composited_overlays: composited_seams.then(|| vec!["seams".to_string()]),
+            });
+        }
+    } else if req.visualizations.is_empty() {
         images.extend(output.captures.iter().map(|capture| ImageEntry {
             source: "model".into(),
             tap: capture.stage_id.clone(),
-            layer_index: capture.layer_index as i64,
-            layer_z: Some(capture.layer_z as f64),
+            layer_index: Some(capture.layer_index as i64),
+            layer_z: Some(Some(capture.layer_z as f64)),
             visualization: "typed_ir".into(),
             png_path: String::new(),
             viewport: viewport.clone(),
@@ -1667,6 +2621,9 @@ fn run_model_source(
             overlay_events: None,
             color_by: None,
             tool_color_source: None,
+            view: None,
+            layers_rendered: None,
+            composited_overlays: None,
         }));
     } else {
         let viewport_bounds = match req.frame {
@@ -1737,8 +2694,8 @@ fn run_model_source(
                         images.push(ImageEntry {
                             source: "model".into(),
                             tap: capture.stage_id.clone(),
-                            layer_index: capture.layer_index as i64,
-                            layer_z: Some(capture.layer_z as f64),
+                            layer_index: Some(capture.layer_index as i64),
+                            layer_z: Some(Some(capture.layer_z as f64)),
                             visualization: viz.kind().to_string(),
                             png_path: relative_path,
                             viewport: viewport.clone(),
@@ -1752,6 +2709,9 @@ fn run_model_source(
                             overlay_events: Some(events),
                             color_by: None,
                             tool_color_source: None,
+                            view: None,
+                            layers_rendered: None,
+                            composited_overlays: None,
                         });
                     }
                     continue;
@@ -1813,8 +2773,8 @@ fn run_model_source(
                 images.push(ImageEntry {
                     source: "model".into(),
                     tap: capture.stage_id.clone(),
-                    layer_index: capture.layer_index as i64,
-                    layer_z: Some(capture.layer_z as f64),
+                    layer_index: Some(capture.layer_index as i64),
+                    layer_z: Some(Some(capture.layer_z as f64)),
                     visualization: viz.kind().to_string(),
                     png_path: relative_path,
                     viewport: viewport.clone(),
@@ -1830,6 +2790,9 @@ fn run_model_source(
                         .then(|| "tool".to_string()),
                     tool_color_source: (color_by == slicer_runtime::ColorBy::Tool)
                         .then(|| if use_filament { "filament" } else { "palette" }.to_string()),
+                    view: None,
+                    layers_rendered: None,
+                    composited_overlays: None,
                 });
             }
         }
@@ -1926,6 +2889,13 @@ pub fn run_visual_debug(
             // the standalone renderer takes one color mode per call, so a
             // request mixing role- and tool-colored views renders in two
             // passes over the same parse.
+            // Schema 1.2.0 (packet 248): a silhouette is a whole-bundle
+            // composite, not a per-layer image, so it is collected here as
+            // "which color modes were asked for" rather than pushed onto the
+            // per-layer visualization lists. `validate_request`'s mixing ban
+            // guarantees these flags and those lists are never both set.
+            let mut silhouette_role = false;
+            let mut silhouette_tool = false;
             let mut role_visualizations: Vec<visual_debug_gcode::GcodeVisualization> = Vec::new();
             let mut tool_visualizations: Vec<visual_debug_gcode::GcodeVisualization> = Vec::new();
             for v in &req.visualizations {
@@ -1949,12 +2919,32 @@ pub fn run_visual_debug(
                                 .push(visual_debug_gcode::GcodeVisualization::Overlay(kind));
                         }
                     }
+                    SILHOUETTE_KIND => match opts.color_by() {
+                        slicer_runtime::ColorBy::Tool => silhouette_tool = true,
+                        slicer_runtime::ColorBy::Role => silhouette_role = true,
+                    },
                     other => unreachable!(
                         "validate_request rejects unknown/mismatched visualization kind \
                          {other:?} before this dispatch runs"
                     ),
                 }
             }
+            // One silhouette plane per bundle (packet 247's invariant, which
+            // is source-independent), so the bundle's plane is a single value
+            // read off the first silhouette spec.
+            let gcode_silhouette_view: Option<slicer_runtime::SilhouetteView> = req
+                .visualizations
+                .iter()
+                .find(|v| v.kind() == SILHOUETTE_KIND)
+                .map(|v| {
+                    let opts = effective_visualization_options(&req.schema_version, v);
+                    silhouette_view_name(opts.view.as_deref()).map_err(VisualDebugError::Validation)
+                })
+                .transpose()?
+                .map(|name| {
+                    slicer_runtime::SilhouetteView::parse(name)
+                        .expect("silhouette_view_name only yields parseable plane names")
+                });
             let any_tool_colored = !tool_visualizations.is_empty();
             let visualizations: Vec<visual_debug_gcode::GcodeVisualization> = role_visualizations
                 .iter()
@@ -1962,7 +2952,7 @@ pub fn run_visual_debug(
                 .copied()
                 .collect();
 
-            if visualizations.is_empty() {
+            if visualizations.is_empty() && gcode_silhouette_view.is_none() {
                 // Nothing to render: skip opening/parsing the gcode file
                 // entirely, mirroring `run_model_source`'s "no taps -> no
                 // capture" short-circuit. A request that only exercises the
@@ -2059,122 +3049,234 @@ pub fn run_visual_debug(
                             "filled_areas requires an explicit gcode_line_width_mm".into(),
                         )
                     }
+                    visual_debug_gcode::GcodeRenderError::SilhouetteWidthUnderivable { detail } => {
+                        VisualDebugError::SilhouetteWidthUnderivable(format!(
+                            "{}: {detail}",
+                            gcode_path.display()
+                        ))
+                    }
                 };
                 let gcode_frame = match req.frame {
                     FrameMode::Model => visual_debug_gcode::GcodeFrame::Model,
                     FrameMode::Plate => visual_debug_gcode::GcodeFrame::Plate,
                 };
-                // One render pass per color mode (the standalone renderer
-                // takes one `color_by` per call); both passes share the
-                // already-read text, and their outputs are merged in
-                // role-then-tool order.
-                let mut outputs: Vec<(visual_debug_gcode::GcodeVisualDebugOutput, bool)> =
-                    Vec::new();
-                for (group, is_tool) in
-                    [(&role_visualizations, false), (&tool_visualizations, true)]
-                {
-                    if group.is_empty() {
-                        continue;
-                    }
-                    let output = visual_debug_gcode::render_gcode_visual_debug_styled(
-                        &gcode_text,
-                        &layer_indices,
-                        group,
-                        viewport.width,
-                        viewport.height,
-                        req.gcode_line_width_mm,
-                        gcode_frame,
-                        if is_tool {
-                            slicer_runtime::ColorBy::Tool
+                if let Some(view) = gcode_silhouette_view {
+                    // Schema 1.2.0 silhouette bundle over a standalone
+                    // final-G-code source (packet 248). Disjoint from the
+                    // per-layer render loop below by the validation-level
+                    // mixing ban: a silhouette bundle contains only
+                    // silhouette visualizations, so this branch and that loop
+                    // never both run for one request.
+                    //
+                    // One image per (view, color mode) group, never one per
+                    // spec — two identical silhouette specs collapse into a
+                    // single render.
+                    let legend = legend_version_for(&req.schema_version).to_string();
+                    let mut images: Vec<ImageEntry> = Vec::new();
+                    let mut rendered_files: Vec<(String, Vec<u8>)> = Vec::new();
+                    let mut parser_version: Option<String> = None;
+                    for (is_tool, requested) in [(false, silhouette_role), (true, silhouette_tool)]
+                    {
+                        if !requested {
+                            continue;
+                        }
+                        let out = visual_debug_gcode::render_gcode_silhouette(
+                            &gcode_text,
+                            &layer_indices,
+                            view,
+                            viewport.width,
+                            viewport.height,
+                            req.gcode_line_width_mm,
+                            if is_tool {
+                                slicer_runtime::ColorBy::Tool
+                            } else {
+                                slicer_runtime::ColorBy::Role
+                            },
+                        )
+                        .map_err(map_gcode_error)?;
+                        let file_name = if is_tool {
+                            format!("gcode_silhouette_{}_tool.png", view.name())
                         } else {
-                            slicer_runtime::ColorBy::Role
-                        },
-                    )
-                    .map_err(map_gcode_error)?;
-                    outputs.push((output, is_tool));
-                }
-                let parser_version = outputs
-                    .first()
-                    .map(|(o, _)| o.parser_version.clone())
-                    .unwrap_or_else(|| visual_debug_gcode::GCODE_PARSER_VERSION.to_string());
-                let world_bounds = outputs.first().map(|(o, _)| o.world_bounds_mm);
-                // A standalone gcode source has no config to read filament
-                // colors from — the table is always the fixed palette here.
-                let gcode_tool_palette = any_tool_colored
-                    .then(|| tool_palette_entries(&slicer_runtime::ToolColors::default()));
-
-                let legend = legend_version_for(&req.schema_version).to_string();
-                let mut images = Vec::new();
-                let mut rendered_files: Vec<(String, Vec<u8>)> = Vec::new();
-                for (output, is_tool) in &outputs {
-                    for image in &output.images {
-                        let overlay_kind = match image.visualization {
-                            visual_debug_gcode::GcodeVisualization::Overlay(k) => Some(k),
-                            _ => None,
+                            format!("gcode_silhouette_{}.png", view.name())
                         };
-                        for tap in &taps {
-                            let file_name = match overlay_kind {
-                                Some(kind) => format!(
-                                    "{}_overlay_{}_l{}.png",
-                                    sanitize_path_component(tap),
-                                    kind.name(),
-                                    image.layer_index
-                                ),
-                                None if *is_tool => format!(
-                                    "{}_{}_tool_l{}.png",
-                                    sanitize_path_component(tap),
-                                    image.visualization.name(),
-                                    image.layer_index
-                                ),
-                                None => format!(
-                                    "{}_{}_l{}.png",
-                                    sanitize_path_component(tap),
-                                    image.visualization.name(),
-                                    image.layer_index
-                                ),
+                        let relative_path = format!("images/{file_name}");
+                        rendered_files.push((relative_path.clone(), out.png_bytes));
+                        let mut indices = out.layers_rendered;
+                        indices.sort_unstable();
+                        indices.dedup();
+                        parser_version.get_or_insert_with(|| out.parser_version.clone());
+                        images.push(ImageEntry {
+                            source: "gcode".into(),
+                            // The standalone gcode bundle's existing empty-tap
+                            // convention: this source has no captured stage to
+                            // name, and a pseudo-tap would read like one.
+                            tap: String::new(),
+                            // A composite spans many layers: no single index
+                            // or Z is truthful, so both keys are absent (D7).
+                            layer_index: None,
+                            layer_z: None,
+                            visualization: SILHOUETTE_KIND.to_string(),
+                            png_path: relative_path,
+                            // The raster the renderer actually produced,
+                            // read back off its own output rather than
+                            // re-asserted from the request.
+                            viewport: Viewport {
+                                width: out.width,
+                                height: out.height,
+                            },
+                            legend_version: legend.clone(),
+                            ir_schema_version: None,
+                            gcode_parser_version: Some(out.parser_version),
+                            warnings: out.warnings,
+                            typed_capture: None,
+                            world_bounds_mm: Some(out.world_bounds_mm),
+                            overlay: None,
+                            overlay_events: None,
+                            color_by: is_tool.then(|| "tool".to_string()),
+                            // A standalone `.gcode` resolves no config, so the
+                            // fixed palette is the only available color source.
+                            tool_color_source: is_tool.then(|| "palette".to_string()),
+                            view: Some(view.name().to_string()),
+                            layers_rendered: Some(compress_layer_ranges(&indices)),
+                            composited_overlays: None,
+                        });
+                    }
+                    let gcode_tool_palette = silhouette_tool
+                        .then(|| tool_palette_entries(&slicer_runtime::ToolColors::default()));
+                    let parser_version = parser_version
+                        .unwrap_or_else(|| visual_debug_gcode::GCODE_PARSER_VERSION.to_string());
+                    (
+                        source,
+                        None,
+                        Some(parser_version),
+                        images,
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        rendered_files,
+                        gcode_tool_palette,
+                    )
+                } else {
+                    // One render pass per color mode (the standalone renderer
+                    // takes one `color_by` per call); both passes share the
+                    // already-read text, and their outputs are merged in
+                    // role-then-tool order.
+                    let mut outputs: Vec<(visual_debug_gcode::GcodeVisualDebugOutput, bool)> =
+                        Vec::new();
+                    for (group, is_tool) in
+                        [(&role_visualizations, false), (&tool_visualizations, true)]
+                    {
+                        if group.is_empty() {
+                            continue;
+                        }
+                        let output = visual_debug_gcode::render_gcode_visual_debug_styled(
+                            &gcode_text,
+                            &layer_indices,
+                            group,
+                            viewport.width,
+                            viewport.height,
+                            req.gcode_line_width_mm,
+                            gcode_frame,
+                            if is_tool {
+                                slicer_runtime::ColorBy::Tool
+                            } else {
+                                slicer_runtime::ColorBy::Role
+                            },
+                        )
+                        .map_err(map_gcode_error)?;
+                        outputs.push((output, is_tool));
+                    }
+                    let parser_version = outputs
+                        .first()
+                        .map(|(o, _)| o.parser_version.clone())
+                        .unwrap_or_else(|| visual_debug_gcode::GCODE_PARSER_VERSION.to_string());
+                    let world_bounds = outputs.first().map(|(o, _)| o.world_bounds_mm);
+                    // A standalone gcode source has no config to read filament
+                    // colors from — the table is always the fixed palette here.
+                    let gcode_tool_palette = any_tool_colored
+                        .then(|| tool_palette_entries(&slicer_runtime::ToolColors::default()));
+
+                    let legend = legend_version_for(&req.schema_version).to_string();
+                    let mut images = Vec::new();
+                    let mut rendered_files: Vec<(String, Vec<u8>)> = Vec::new();
+                    for (output, is_tool) in &outputs {
+                        for image in &output.images {
+                            let overlay_kind = match image.visualization {
+                                visual_debug_gcode::GcodeVisualization::Overlay(k) => Some(k),
+                                _ => None,
                             };
-                            let relative_path = format!("images/{file_name}");
-                            rendered_files.push((relative_path.clone(), image.png_bytes.clone()));
-                            images.push(ImageEntry {
-                                source: "gcode".into(),
-                                tap: tap.clone(),
-                                layer_index: image.layer_index,
-                                layer_z: image.layer_z,
-                                visualization: image.visualization.name().to_string(),
-                                png_path: relative_path,
-                                viewport: viewport.clone(),
-                                legend_version: legend.clone(),
-                                ir_schema_version: None,
-                                gcode_parser_version: Some(output.parser_version.clone()),
-                                warnings: output.warnings.clone(),
-                                typed_capture: None,
-                                // The whole-file mm viewport every image in
-                                // this bundle was projected through.
-                                // Identical across entries, like the model
-                                // path's.
-                                world_bounds_mm: world_bounds,
-                                overlay: overlay_kind.map(|k| k.name().to_string()),
-                                overlay_events: overlay_kind.map(|_| image.overlay_events.clone()),
-                                color_by: (*is_tool && overlay_kind.is_none())
-                                    .then(|| "tool".to_string()),
-                                tool_color_source: (*is_tool && overlay_kind.is_none())
-                                    .then(|| "palette".to_string()),
-                            });
+                            for tap in &taps {
+                                let file_name = match overlay_kind {
+                                    Some(kind) => format!(
+                                        "{}_overlay_{}_l{}.png",
+                                        sanitize_path_component(tap),
+                                        kind.name(),
+                                        image.layer_index
+                                    ),
+                                    None if *is_tool => format!(
+                                        "{}_{}_tool_l{}.png",
+                                        sanitize_path_component(tap),
+                                        image.visualization.name(),
+                                        image.layer_index
+                                    ),
+                                    None => format!(
+                                        "{}_{}_l{}.png",
+                                        sanitize_path_component(tap),
+                                        image.visualization.name(),
+                                        image.layer_index
+                                    ),
+                                };
+                                let relative_path = format!("images/{file_name}");
+                                rendered_files
+                                    .push((relative_path.clone(), image.png_bytes.clone()));
+                                images.push(ImageEntry {
+                                    source: "gcode".into(),
+                                    tap: tap.clone(),
+                                    layer_index: Some(image.layer_index),
+                                    // `Some(None)` when the layer had no `;Z:`
+                                    // marker: preserves the historical
+                                    // `"layer_z": null` exactly.
+                                    layer_z: Some(image.layer_z),
+                                    visualization: image.visualization.name().to_string(),
+                                    png_path: relative_path,
+                                    viewport: viewport.clone(),
+                                    legend_version: legend.clone(),
+                                    ir_schema_version: None,
+                                    gcode_parser_version: Some(output.parser_version.clone()),
+                                    warnings: output.warnings.clone(),
+                                    typed_capture: None,
+                                    // The whole-file mm viewport every image in
+                                    // this bundle was projected through.
+                                    // Identical across entries, like the model
+                                    // path's.
+                                    world_bounds_mm: world_bounds,
+                                    overlay: overlay_kind.map(|k| k.name().to_string()),
+                                    overlay_events: overlay_kind
+                                        .map(|_| image.overlay_events.clone()),
+                                    color_by: (*is_tool && overlay_kind.is_none())
+                                        .then(|| "tool".to_string()),
+                                    tool_color_source: (*is_tool && overlay_kind.is_none())
+                                        .then(|| "palette".to_string()),
+                                    view: None,
+                                    layers_rendered: None,
+                                    composited_overlays: None,
+                                });
+                            }
                         }
                     }
-                }
 
-                (
-                    source,
-                    None,
-                    Some(parser_version),
-                    images,
-                    Vec::new(),
-                    Vec::new(),
-                    Vec::new(),
-                    rendered_files,
-                    gcode_tool_palette,
-                )
+                    (
+                        source,
+                        None,
+                        Some(parser_version),
+                        images,
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        rendered_files,
+                        gcode_tool_palette,
+                    )
+                }
             }
         }
     };
@@ -2253,14 +3355,34 @@ pub fn run_visual_debug(
     result
 }
 
+/// Augment a request-deserialization failure with the one piece of context
+/// serde cannot supply: [`VisualDebugSource`] is internally tagged on `kind`,
+/// while a `visualizations` entry is tagged on `type`. The two keys sitting
+/// in one request file is a genuine trap — the bare serde message
+/// (`missing field \`kind\``) says neither what the field should contain nor
+/// that its sibling deliberately spells the same idea differently.
+///
+/// The wire format is untouched: renaming the tag would invalidate every
+/// existing request file. Only the error text changes.
+fn request_parse_hint(serde_message: &str) -> String {
+    format!(
+        "the visual-debug request JSON could not be parsed: {serde_message}\n\
+         hint: `source` is tagged by a `kind` field — `{{\"kind\": \"model\", ...}}` or \
+         `{{\"kind\": \"gcode\", ...}}`. This is NOT a typo for `type`: entries in \
+         `visualizations` are tagged by `type` (e.g. `{{\"type\": \"silhouette\", ...}}`), \
+         and the two keys are intentionally different."
+    )
+}
+
 pub fn run_cli(
     req_path: &Path,
     output_dir: &Path,
     overwrite: bool,
 ) -> Result<PathBuf, VisualDebugError> {
-    let bytes = fs::read(req_path).map_err(|e| VisualDebugError::Write(e.to_string()))?;
-    let request =
-        serde_json::from_slice(&bytes).map_err(|e| VisualDebugError::Write(e.to_string()))?;
+    let bytes = fs::read(req_path)
+        .map_err(|e| VisualDebugError::RequestParse(format!("{}: {e}", req_path.display())))?;
+    let request = serde_json::from_slice(&bytes)
+        .map_err(|e| VisualDebugError::RequestParse(request_parse_hint(&e.to_string())))?;
     run_visual_debug(request, output_dir, overwrite)
 }
 

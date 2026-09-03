@@ -119,8 +119,9 @@ with "Wall 1 should have perimeter_index 1" (left `2`, right `1`). Reverting onl
 this key returned all 24 `classic-perimeters` tests to green, isolating it as the
 sole cause. PnP's precise-outer-wall path changes wall *ordering* where
 canonical's changes only spacing, so aligning the default means fixing that
-defect first — packet work, not a default change. Recorded as **DEV-158**
-(number re-derived from disk at write time); its two rows stay in doc 15's table.
+defect first — packet work, not a default change. Recorded as **DEV-166**
+(filed as DEV-158; renumbered during the 2026-09-03 merge of `master`, which had
+independently allocated DEV-158..165); its two rows stay in doc 15's table.
 
 Tests were updated to track the new defaults, not weakened:
 `manifest_default_reconcile_tdd`'s hand-maintained table (it asserts manifest

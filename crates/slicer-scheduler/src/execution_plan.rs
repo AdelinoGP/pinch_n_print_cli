@@ -39,6 +39,7 @@ pub const STAGE_ORDER: &[&str] = &[
     "Layer::InfillPostProcess",
     "Layer::Support",
     "Layer::SupportPostProcess",
+    "Layer::AnchoredEvents",
     "Layer::PathOptimization",
     "PostPass::LayerFinalization",
     "PostPass::GCodeEmit",

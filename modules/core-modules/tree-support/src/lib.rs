@@ -51,6 +51,7 @@ use slicer_sdk::host::{self, OffsetJoinType};
 use slicer_sdk::slicer_module;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView, SupportPaintPolicy};
 use slicer_sdk::views::SliceRegionView;
+use slicer_sdk::LayerCollectionBuilder;
 
 /// Default base speed used for normalizing speed factors (mm/s).
 const BASE_SPEED: f32 = 50.0;
@@ -306,6 +307,7 @@ impl LayerModule for TreeSupport {
         regions: &[SliceRegionView],
         paint: &PaintRegionLayerView,
         output: &mut SupportOutputBuilder,
+        anchored_collection: &mut LayerCollectionBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         if !self.enabled {
@@ -337,15 +339,36 @@ impl LayerModule for TreeSupport {
             // Structural support plans carry semantic regions, not printable
             // paths. A missing entry means this demand was declined; do not
             // resurrect it with the legacy grid-MST filler.
-            let planned_entries =
-                paint.support_plan_entries_for(region.object_id().as_str(), *region.region_id());
+            let planned_entries: Vec<&slicer_ir::SupportPlanEntry> = paint
+                .support_plan()
+                .map(|plan| {
+                    plan.entries
+                        .iter()
+                        .filter(|entry| {
+                            entry.object_id == region.object_id().as_str()
+                                && entry.region_id == *region.region_id()
+                                && (entry.global_layer_index == layer_index as i32
+                                    || (entry.anchor_layer_index == layer_index
+                                        && entry.anchor_z.abs_diff(slicer_ir::mm_to_units(z))
+                                            > slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS
+                                                as u64))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
 
             if planned_entries.is_empty() {
                 continue;
             }
 
+            let mut off_grid_entities: Vec<slicer_ir::AnchoredEntity> = Vec::new();
             for entry in planned_entries.iter().filter(|entry| {
-                entry.global_layer_index == layer_index as i32 && entry.decline_reason.is_none()
+                entry.decline_reason.is_none()
+                    && (entry.global_layer_index == layer_index as i32
+                        || (entry.anchor_layer_index == layer_index
+                            && entry.anchor_z.abs_diff(slicer_ir::mm_to_units(z))
+                                > slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS
+                                    as u64))
             }) {
                 if entry.family_id != "tree" {
                     return Err(ModuleError::non_fatal(
@@ -356,6 +379,28 @@ impl LayerModule for TreeSupport {
                         ),
                     ));
                 }
+                // Packet 239c Step 4: the plan entry DECLARES its own print
+                // plane (`entry.anchor_z`, canonical units). On-grid entries
+                // render at `region.z()` through the unchanged on-grid push
+                // route; off-grid entries render at the declared plane and
+                // leave as an anchored event collection through 239b's drain
+                // (the `collection` parameter this `run_support` receives),
+                // so `region.z()` can never misplace an off-grid row. The
+                // single on-grid/off-grid discriminator is
+                // `AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS`, the
+                // same constant the planner used to derive the plane.
+                let plan_z_units = slicer_ir::mm_to_units(z);
+                let off_grid = entry.anchor_z.abs_diff(plan_z_units)
+                    > slicer_ir::AnchoredGeometryContract::COORDINATE_TOLERANCE_UNITS as u64;
+                let print_z_mm = if off_grid {
+                    slicer_ir::units_to_mm(entry.anchor_z)
+                } else {
+                    z
+                };
+
+                // Off-grid paths accumulate here in role order so they can be
+                // proposed as ONE anchored collection per dispatch (the
+                // builder rejects a second proposal).
                 output.begin_region(region.object_id(), *region.region_id());
                 // F-37: canonical `generate_interface_layers` regularizes every
                 // interface band (`closing` + `smooth_outward`) and subtracts
@@ -380,7 +425,10 @@ impl LayerModule for TreeSupport {
                             .iter()
                             .map(|r| (r.role, r.regions.clone()))
                             .collect()
-                    });
+                    })
+                    .into_iter()
+                    .map(|(role, regions)| (role, slicer_core::polygon_ops::union_ex(&regions)))
+                    .collect();
                 for (role, role_regions) in rendered.iter() {
                     let role = *role;
                     for expoly in role_regions.iter() {
@@ -416,7 +464,7 @@ impl LayerModule for TreeSupport {
                             slicer_ir::SupportPlanRole::BottomInterface => bottom_interface_spacing,
                             slicer_ir::SupportPlanRole::RaftRelated => continue,
                         };
-                        let vertical = entry.global_layer_index.rem_euclid(2) != 0;
+                        let vertical = entry.anchor_layer_index % 2 != 0;
                         let extra_walls = entry
                             .skeleton
                             .as_ref()
@@ -424,7 +472,7 @@ impl LayerModule for TreeSupport {
                             .unwrap_or(0);
                         let mut paths = self.render_polygon_with_wall_count(
                             expoly,
-                            z,
+                            print_z_mm,
                             speed_factor,
                             fill_spacing,
                             vertical,
@@ -442,18 +490,72 @@ impl LayerModule for TreeSupport {
                                 }
                             }
                         }
+                        let extrusion_role = match role {
+                            // The extrusion role must be stamped here, not
+                            // left as `SupportMaterial`: `;TYPE:Support
+                            // interface` and `support_interface_speed` are
+                            // both selected from `ExtrusionRole` in
+                            // `crates/slicer-gcode/src/emit.rs`, so an
+                            // interface path that keeps the body role is
+                            // emitted and fed as plain support.
+                            slicer_ir::SupportPlanRole::SupportBody => {
+                                ExtrusionRole::SupportMaterial
+                            }
+                            slicer_ir::SupportPlanRole::TopInterface => {
+                                ExtrusionRole::SupportInterface
+                            }
+                            slicer_ir::SupportPlanRole::BaseInterface => {
+                                ExtrusionRole::SupportBaseInterface
+                            }
+                            slicer_ir::SupportPlanRole::BottomInterface => {
+                                ExtrusionRole::SupportInterface
+                            }
+                            slicer_ir::SupportPlanRole::RaftRelated => {
+                                ExtrusionRole::SupportMaterial
+                            }
+                        };
+                        // Packet 239c Step 4: the off-grid branch carries its
+                        // paths as ordered anchored events (declared plane =
+                        // `entry.anchor_z`, mm points) with the plan entry's
+                        // identity retained in the provenance; the on-grid
+                        // route below is byte-identical to pre-239c.
+                        if off_grid {
+                            for path in paths {
+                                off_grid_entities.push(slicer_ir::AnchoredEntity {
+                                    local_id: off_grid_entities.len() as u64,
+                                    anchor_global_layer_index: entry.anchor_layer_index,
+                                    geometry: slicer_ir::AnchoredGeometryContract::Planar {
+                                        z: entry.anchor_z,
+                                    },
+                                    input_capabilities: vec!["support.plan".to_string()],
+                                    output_capabilities: vec!["extrusion.paths".to_string()],
+                                    provenance: slicer_ir::AnchoredEntityProvenance {
+                                        requesting_feature: "support-stage".to_string(),
+                                        source_plan_entry: format!(
+                                            "{}:{}:{}",
+                                            entry.object_id,
+                                            entry.region_id,
+                                            entry.body_ids.first().cloned().unwrap_or_default()
+                                        ),
+                                    },
+                                    path_points: path
+                                        .points
+                                        .iter()
+                                        .map(|point| slicer_ir::Point3WithWidth {
+                                            z: slicer_ir::units_to_mm(entry.anchor_z),
+                                            ..*point
+                                        })
+                                        .collect(),
+                                    role: extrusion_role.clone(),
+                                });
+                            }
+                            continue;
+                        }
                         for mut path in paths {
                             match role {
                                 slicer_ir::SupportPlanRole::SupportBody => {
                                     let _ = output.push_support_path(path);
                                 }
-                                // The extrusion role must be stamped here, not
-                                // left as `SupportMaterial`: `;TYPE:Support
-                                // interface` and `support_interface_speed` are
-                                // both selected from `ExtrusionRole` in
-                                // `crates/slicer-gcode/src/emit.rs`, so an
-                                // interface path that keeps the body role is
-                                // emitted and fed as plain support.
                                 slicer_ir::SupportPlanRole::TopInterface => {
                                     path.role = ExtrusionRole::SupportInterface;
                                     let _ = output.push_interface_path(path, true);
@@ -471,6 +573,17 @@ impl LayerModule for TreeSupport {
                         }
                     }
                 }
+            }
+            // Packet 239c Step 4: propose all off-grid entries anchored to this
+            // model layer as one atomic collection through 239b's drain.
+            if !off_grid_entities.is_empty() {
+                anchored_collection
+                    .set_anchored_event_collection(slicer_ir::OrderedEventCollection {
+                        anchor_global_layer_index: off_grid_entities[0].anchor_global_layer_index,
+                        events: off_grid_entities,
+                        runtime_hooks: slicer_ir::AnchoredEventRuntimeHooks::default(),
+                    })
+                    .map_err(|e| ModuleError::non_fatal(335, e))?;
             }
         }
 

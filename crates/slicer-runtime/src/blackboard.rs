@@ -200,6 +200,20 @@ impl Blackboard {
         self.layer_plan.as_ref()
     }
 
+    /// Atomically replace the committed `LayerPlanIR` during prepass.
+    ///
+    /// Region mapping uses this to surface host-minted modifier sub-regions
+    /// after the module-authored plan has been committed but before slicing.
+    pub fn replace_layer_plan(&mut self, ir: Arc<LayerPlanIR>) -> Result<(), BlackboardError> {
+        if self.layer_plan.is_none() {
+            return Err(BlackboardError::MissingRequiredPrepass {
+                slot: BlackboardPrepassSlot::LayerPlan,
+            });
+        }
+        self.layer_plan = Some(ir);
+        Ok(())
+    }
+
     /// Commit `SeamPlanIR` exactly once.
     ///
     /// Rejects any IR that contains duplicate full `RegionKey` entries

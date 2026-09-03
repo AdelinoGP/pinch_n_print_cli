@@ -79,6 +79,8 @@ mod finalization_builder_permute;
 mod finalization_builder_readback;
 mod finalization_live_tdd;
 mod finalization_mutation_roundtrip_tdd;
+mod anchored_events_roundtrip_tdd;
+mod support_anchored_reach_tdd;
 mod finalization_world_deep_copy_tdd;
 mod infill_linker_pipeline_smoke_tdd;
 mod layer_executor_tdd;

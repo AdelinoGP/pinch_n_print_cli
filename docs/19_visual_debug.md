@@ -117,6 +117,361 @@ as many pixels; `resolution_scale: 3` uses nine times as many. Select the
 smallest scale that makes the suspected feature visible to avoid unnecessary
 image context cost.
 
+## Silhouette Side Views (schema 1.2.0)
+
+`schema_version: "1.2.0"` adds the `silhouette` visualization: a **side-on
+projection** of the print, rendered in a vertical plane rather than looking down
+at one layer. Every other view in this document answers "what does layer N look
+like"; a silhouette answers "how do these layers stack, and where do the
+interface bands sit". Read it as a projection, not a section.
+
+```json
+{"schema_version": "1.2.0",
+ "visualizations": [
+   {"type": "silhouette", "tap": "Layer::Slice", "options": {"view": "front"}}
+ ]}
+```
+
+`options.view` selects the projection plane:
+
+| `view`     | Plane | Horizontal axis |
+|------------|-------|-----------------|
+| `"front"`  | X–Z   | X (default when `view` is omitted) |
+| `"side"`   | Y–Z   | Y |
+
+An unknown `view` value is rejected, and `view` on a non-silhouette
+visualization is rejected. An explicit `view` key under a declared `"1.0.0"` or
+`"1.1.0"` schema is **hard-rejected naming `"1.2.0"`** — it is never silently
+tolerated, and the `silhouette` kind itself is likewise rejected naming
+`"1.2.0"` under those schemas.
+
+**One plane per bundle.** Silhouette never mixes with `filled_areas`,
+`filament_lines`, or `diagnostic_overlay` in one request, and every silhouette
+spec in a single request must resolve to the **same** `view`. This is what lets
+the whole bundle share one byte-identical `world_bounds_mm`; render front and
+side as two separate bundles. `frame: "plate"` plus silhouette is also rejected
+— a plate frame is an XY footprint and has no Z meaning.
+
+### Supported And Rejected Taps
+
+Supported in this release: `Layer::Slice`, `PrePass::PaintSegmentation`,
+`Layer::PaintRegionAnnotation`, `Layer::SlicePostProcess` (all `CapturedIr::Slice`),
+`PrePass::SupportGeometry`, `PrePass::RegionMapping`, `PrePass::OverhangAnnotation`,
+`PostPass::LayerFinalization`, and `PostPass::GCodeEmit`. Every other tap is
+rejected with a named reason rather than rendered empty — including
+`Layer::Perimeters` and the other per-layer arena taps, `PrePass::MeshAnalysis`,
+and `PrePass::SeamPlanning`.
+
+| Tap | Silhouette semantics |
+|-----|----------------------|
+| `PrePass::RegionMapping` | Joined per-region slabs `[z − effective_layer_height, z]`; deterministic `tint class` paint order is ascending RGB of the region config tint, with overlapping classes painting the larger tint last. Unjoined entries are warned and skipped. |
+| `PrePass::OverhangAnnotation` | Per-`quartile` band colors paint in ascending quartile order (Q1–Q4, most severe last and winning overlaps), with slab heights from SliceIR-derived height classes, never schedule Z-diffs. Bridge/overhang XY footprints are deliberately excluded because they have no honest Z attribution. |
+
+`options.composited_overlays` is now **accepted** in schema 1.2.0 for seam
+overlays — see "Seam overlays" below. `color_by: "tool"` is supported; see "Tool-Colored
+Silhouettes" below. Silhouette on a standalone **G-code source** is also
+supported — see "Standalone G-code Silhouettes" below.
+
+### Seam overlays
+
+Seams are Z-sensitive (seam towers, layer-to-layer drift), so side views can
+draw the committed seam plan as glyphs. Seams are **model-source only** and come
+straight from the blackboard's committed `SeamPlanIR` (`chosen_candidate.point`,
+in mm) — a silhouette never re-derives or guesses a seam, and `SeamPlanIR`
+remains rejected as a silhouette *tap*. Two forms exist, both requested through
+the silhouette spec's `options`:
+
+- **Isolated overlay** — `options: {"overlays": ["seams"]}`. Renders one extra
+  image per (tap, view) named
+  `images/{sanitized_tap}_silhouette_{view}_overlay_seams.png` (for example
+  `images/Layer__Slice_silhouette_front_overlay_seams.png`), emitted once
+  regardless of `color_by` (the base is a uniform faint gray, `FAINT_BASE`
+  `[210,210,210]`, so role and tool groups share it). The glyphs are the
+  legend-1.1.0 red filled circles (`[220,0,0]`) at the seams' projected
+  (horizontal, z) positions, and every rendered seam is mirrored into the
+  entry's `overlay_events`.
+- **Composited overlay** — `options: {"composited_overlays": ["seams"]}`.
+  Draws the same glyphs **onto the colored silhouette base image itself** — no
+  extra file. The entry carries `"composited_overlays": ["seams"]` plus the same
+  `overlay_events` mirror. A spec may carry **both** options; the isolated
+  image and the composited base then coexist without filename collision.
+
+Seam events in `overlay_events` carry a `z` field (mm) on silhouette renders.
+This field is additive: schema 1.0/1.1 output never contains `z` on seam
+events, and the top-down isolated-overlay seam events stay `z`-less. Only
+seams whose layer was rendered draw — events are filtered by the
+scheduled/rendered layer set, filtered in the seam plan's source order, and
+`chosen_candidate` is the only position that draws.
+
+**R9 validation (all named errors, never silent tolerance):** `overlays` and
+`composited_overlays` on a silhouette accept only `"seams"`; travel, retraction,
+z-hop and tool-change glyphs have no silhouette story (they need their own Z
+story) and are rejected. `composited_overlays` is silhouette-only and
+model-source-only — the gcode source rejects both seam forms with
+`OverlayUnsupportedOnGcode`, and other Kinds reject `composited_overlays`. It is
+1.2.0-only: a declared 1.1.0 (or a stray key under 1.0.0) request is rejected
+naming `"1.2.0"`, and an empty list is rejected. Silhouette specs that resolve
+to the same (tap, view, color mode) must agree on both overlay options —
+conflicting demands for one base filename are rejected. A seams request whose
+pipeline committed no seam plan fails closed with an error naming the seam plan
+— never a silently glyph-less image.
+
+**Visibility caveat:** the fixed red glyph can blend into similar hues in a
+tool-colored palette (glyph color is identical across role and tool palettes by
+design — the legend does not fork per palette). The isolated form is the
+legibility escape hatch. A seam above a sub-pixel-height slab band can also
+appear to float over the background; its Z is real and honest.
+
+### Postpass Silhouettes And The Single Whole-Print Capture
+
+`PostPass::LayerFinalization` is a supported silhouette tap. A silhouette bundle
+uses a **single whole-print capture**: one `StageCapture` carries the finalized
+`Vec<LayerCollectionIR>` once. It never stores one whole-print clone per layer,
+which would scale to an out-of-memory failure on large models. The per-layer
+capture rows read by top-down consumers are unchanged and byte-stable.
+
+Finalized-layer slabs are schedule-Z-diff slabs: each layer occupies
+`[previous finalized layer z, own z]`, with the first finalized layer starting at
+`0`. These are the only heights a finalized layer can honestly attest to because
+`LayerCollectionIR` carries no per-region `effective_layer_height`. For a
+postpass silhouette entry, `layers_rendered` is the resolved selection intersected
+with finalized layer indices, compressed into maximal inclusive ranges.
+
+`PostPass::GCodeEmit` is likewise a whole-print postpass tap, but renders the
+**pre-rewrite** emit IR: the typed `GCodeIR` before `PostPass::GCodePostProcess`
+rewrites it — the tap's unique value. A defect visible here yet absent from the
+final `.gcode` localizes to the postprocess modules. Widths are recovered from
+consecutive accumulated `Move.e` positions: Δe by differencing; an `e: None`
+travel carries the carried position but contributes no interval; and a negative
+delta — an inline purge retract — is non-extruding, contributes no segment,
+while the carried position still updates through it. Each move is bucketed by
+**Z-containment** (containment first: `z_bottom < z ≤ z_top`): a move whose Z is
+outside every schedule slab draws at the nearest slab with a W4 warning naming
+the affected Z, whereas a move contained in an unselected slab draws nothing —
+that is selection, not loss. This E-inversion is **testable mainly against itself**: it is a second inversion, deliberately separate from the standalone
+G-code source's parser-based one, and is anchored externally by the emitter
+round-trip test. Images are
+`PostPass__GCodeEmit_silhouette_{view}[_tool].png`.
+
+### Manifest Shape
+
+A silhouette entry carries `"visualization": "silhouette"`, `"view"`,
+`"layers_rendered"`, and `"world_bounds_mm"`, and **omits `"layer_index"` and
+`"layer_z"` entirely** — a silhouette spans layers, so there is no single layer
+to name.
+
+```json
+{"visualization": "silhouette",
+ "view": "front",
+ "layers_rendered": [{"start": 0, "end": 11}, {"start": 20, "end": 24}],
+ "world_bounds_mm": {"min_x": -2.0, "max_x": 62.0, "min_y": -2.0, "max_y": 41.5},
+ "png_path": "images/Layer__Slice_silhouette_front.png"}
+```
+
+`layers_rendered` is a list of **inclusive** `{"start", "end"}` ranges: the
+maximal runs of consecutive rendered layer indices, ascending, non-overlapping,
+and lossless — every rendered layer appears in exactly one run.
+
+`world_bounds_mm` reuses the top-down bounds object, but **inside a silhouette
+bundle its `min_y`/`max_y` carry Z millimetres**, while `min_x`/`max_x` carry X
+(`view: "front"`) or Y (`view: "side"`). Do not read a silhouette's `min_y` as a
+Y coordinate.
+
+`legend_version` for a `1.2.0` bundle is still `"1.1.0"`: silhouettes add fill
+classes, not glyphs. `1.0.0` and `1.1.0` manifests are byte-unchanged by this
+schema, and a G-code layer with no `;Z:` marker still serializes
+`"layer_z": null`.
+
+Entry ordering is deterministic but mildly surprising: `Layer::Slice` is not a
+`STAGE_ORDER` member (the scheduler stage is `PrePass::Slice`), so a
+`Layer::Slice` entry sorts **after** `Layer::SlicePostProcess`. That is observed,
+correct ordering — not an unsorted manifest.
+
+### Filenames
+
+One image per `(tap, view)` group, written as
+`images/{sanitized_tap}_silhouette_{view}.png` — e.g.
+`images/Layer__Slice_silhouette_front.png`. Duplicate specs collapse into a
+single group, and no two entries in a bundle ever share a `png_path`. A
+ tool-colored silhouette adds the `_tool` suffix after the view suffix, for
+ example `images/PostPass__LayerFinalization_silhouette_front_tool.png`.
+
+### Framing And Scale
+
+The Z frame is **model-wide**, exactly as the XY viewport is: it is taken from
+`MeshIR::build_volume`, unioned with the captured geometry so nothing is
+clipped, then margined. Selecting a layer subset therefore does **not** zoom the
+image — two bundles over the same model record byte-identical `world_bounds_mm`
+regardless of which layers each selected, which is what makes them directly
+comparable.
+
+Because selection cannot zoom, `resolution_scale` is the only lever for detail:
+**for interface-band inspection on tall models, raise** `resolution_scale`
+rather than narrowing the layer selection, which will not change the framing at
+all. Select the smallest scale that makes the band visible.
+
+### Paint Order And The Occlusion Caveat
+
+Fill classes paint in one fixed order, back to front:
+
+1. `SliceRegion` (body) / `Support` (body)
+2. `SupportRaft`
+3. `SupportBaseInterface`
+4. `SupportBottomInterface`
+5. `SupportInterface` (last, always on top)
+
+**A silhouette is a projection, not a section — overlapping structures
+occlude.** Where a later class overlaps an earlier one in the projected
+interval, the later class's colour wins and the earlier class's extent is
+hidden. When overlap actually occurs, the manifest entry carries a per-entry
+occlusion warning naming the affected layer count; when no overlap occurs there
+is no warning at all, so this caveat is your only notice that a hidden extent is
+possible. Never conclude a body region is missing from a silhouette alone.
+
+For a tool-colored silhouette, this caveat applies **per tool**: a later tool's
+fill occludes an earlier tool's entire slab area wherever their projected areas
+overlap. Paint order is ascending tool index, so an earlier tool's hidden extent
+cannot be recovered from the image alone.
+
+Vertical extents come from per-region slabs, never a uniform one. For the
+Slice-family taps each region's slab is `[z − effective_layer_height, z]`
+**per region**, so a catch-up region's slab bottom correctly reaches below its
+neighbours'. For `PrePass::SupportGeometry` the slabs come from the layer
+schedule. Holes never split a projected interval (the contour is what is
+projected), and touching intervals merge into one run.
+
+### Warnings Inventory
+
+Nothing is ever inferred or inflated: sub-pixel bands are **not** inflated to a
+minimum pixel width, and every omission is either a named warning or a named
+rejection.
+
+- **W1 — raft.** `SupportPlanIR` entries with a negative `global_layer_index`
+  are skipped; the warning names the count and the dropped index range. Raft
+  prefix layers have no slab in the layer schedule and so are not drawn. Tracked
+  as an open deviation in `docs/DEVIATION_LOG.md`.
+- **W2 — coarse support geometry.** Non-empty coarse `SupportGeometryIR.entries`
+  are skipped; the warning names the count. Emit-schedule entries span multiple
+  model layers (the `u32::MAX` sentinel denotes intermediate layers) and cannot
+  be honestly drawn on single-layer slabs — inspect them via the top-down view
+  instead.
+- **W3 — unusable layer Z (G-code source only).** A layer whose `;Z:` marker
+  duplicates or decreases relative to the previous accepted marker, or which
+  carries no `;Z:` marker at all, is skipped entirely; the warning names the
+  offending layer index and the Z values involved (or the marker's absence).
+  See "Standalone G-code Silhouettes" below.
+- **W4 — out-of-slab Z on an emit silhouette.** A `PostPass::GCodeEmit` move
+  whose Z is outside every schedule slab is drawn at the nearest slab; the
+  warning reads
+  `gcode emit: extruding move at z=... outside every schedule slab; drawn at
+  nearest slab ...` and names the affected Z. Containment is checked **first**:
+  a move contained in an unselected slab draws nothing and emits no warning —
+  selection, not loss.
+- **Occlusion.** Per-entry, as described above, only when overlap occurred.
+
+### Tool-Colored Silhouettes
+
+`options.color_by: "tool"` is legal on silhouettes. The R7 `tool_color_source`
+rules are unchanged: `tool_color_source` still requires `color_by: "tool"`, and
+its values remain `"palette"` or `"filament"`. A capture with no tool assignment
+(for example, a blackboard tap such as `Layer::Slice`) fails closed with
+`ToolColorUnavailable`, and the error names the tap. Tool fills paint in
+ascending tool-index order, the manifest emits a `tool_palette` table, and the
+filename uses the `_tool` suffix described above.
+
+The occlusion caveat is per tool: in an overlap, a later tool's fill occludes an
+earlier tool's entire slab area. A tool-colored silhouette is therefore a
+projection of tool-painted slabs, not a section that can reveal every tool's
+full extent.
+
+### Standalone G-code Silhouettes
+
+A silhouette also renders from a standalone `.gcode` source, with no model and
+no pipeline stages behind it. The projection, view options, paint order, and
+occlusion caveat are exactly as above; what differs is where the slabs and the
+segment widths come from, and both are derived from the file's own contents.
+
+**Slabs come from `;Z:` markers only.** A layer's slab is
+`[previous accepted ;Z: marker, this layer's z]`, and the **first** accepted
+marker yields `[0, z]` — the first slab's bottom is always 0, never a
+marker-delta guess. No layer-height config comment, no interpolation, and no
+neighbour guess ever produces a slab.
+
+**Unusable Z fails closed (W3).** A layer whose marker duplicates or decreases
+against the previous accepted marker, or which has no `;Z:` marker at all, is
+**skipped**: it contributes no pixels, it is excluded from `layers_rendered`,
+and it does **not** advance the carried marker. A W3 warning names the layer
+index and the Z values (or the marker's absence). A guessed slab is the
+misleading-image failure mode, so the layer is dropped instead.
+
+**Widths are flow-derived, per move.** Each extruding move's width comes from
+inverting our emitter's rectangular extrusion model:
+
+```
+w = Δe × A_filament / (L × h)
+```
+
+`A_filament = π × (d/2)²`, with `d` read from the file's own
+`; filament_diameter = …` config comment; `h` is the layer's slab height; `Δe`
+is the per-move E delta, honouring `M82` absolute / `M83` relative modes and
+`G92 E` resets. This is deliberately unlike `filled_areas`, which never derives
+width from E and keeps `gcode_line_width_mm` **mandatory**: a side view's whole
+value is showing real per-move deposition, and a single uniform width would
+flatten exactly the signal you opened the view to see.
+
+**`gcode_line_width_mm` is a fallback, not an override (D14).** When supplied in
+the request it is used **only** for moves whose width is underivable; it is
+never preferred over a derivable width. A move is underivable when the file
+carries no usable `filament_diameter` comment, or when the move sits at or after
+an `M200` line.
+
+**Underivable and rendered, with no fallback, is an error (R8).** Such a move
+fails the command with an error naming the missing datum and the
+`gcode_line_width_mm` remedy, and no bundle content is written. Evaluation is
+**lazy and per rendered move, in parse order**, so a layer selection that avoids
+the poisoned moves still succeeds and partial inspection of a damaged file stays
+possible. A later selection over the same file can therefore fail where an
+earlier one passed; that is deliberate, not a flake.
+
+**`M200` is a poison marker, not a supported mode.** From its source line
+onward, flow derivation is refused rather than approximated — inverting the
+linear-E model over volumetric E values silently produces wrong widths.
+
+**The width shown is deposited width**, reconstructed from the file's own E
+values: a move printed with a low `flow_factor` renders genuinely thin. **Do not
+cite the silhouette as a width-measurement tool** — it shows what the G-code
+asks the printer to deposit, not a measured extrusion. The `PostPass::GCodeEmit`
+width recovery is the same inversion over the emit `Move.e` stream (see the
+GCodeEmit paragraph above), not a separate model.
+
+**Foreign files carry a systematic bias.** The inversion assumes our emitter's
+rectangular cross-section. Foreign slicers commonly model a stadium
+(rounded-end) cross-section, so widths reconstructed from a foreign `.gcode` are
+still derived from that file's own data, but are not a cross-slicer-comparable
+measurement. The `PostPass::GCodeEmit` E-differencing inversion carries the same
+rectangular-model bias.
+
+**Multi-tool diameters.** `; filament_diameter = …` may carry a comma-separated
+per-extruder list; a segment uses the entry at its tool index, **clamped to the
+last entry** when the tool index exceeds the list. A malformed comment — any
+unusable entry — is rejected wholesale rather than parsed partially, because the
+list is extruder-indexed and a hole would misattribute diameters.
+
+**Tool colouring is palette-only.** `options.color_by: "tool"` is supported here
+and always resolves to the fixed default palette; a standalone `.gcode` resolves
+no printer or filament config, so the entry records
+`"tool_color_source": "palette"`.
+
+**Bundle shape.** Images are `images/gcode_silhouette_{view}.png` and
+`images/gcode_silhouette_{view}_tool.png`. The manifest entry carries
+`"source": "gcode"`, `"tap": ""` (a standalone G-code source has no pipeline
+taps, and naming any tap on a G-code silhouette is rejected),
+`"visualization": "silhouette"`, `"view"`, `"layers_rendered"` as inclusive
+`{start, end}` ranges, `"gcode_parser_version"`, and `"world_bounds_mm"`; it has
+no `"layer_index"` / `"layer_z"` keys. Framing is whole-file and
+**selection-independent**: a layer-subset request and an all-layers request over
+the same file record identical `world_bounds_mm`.
+
 ## Framing
 
 Every render is **aspect-preserving**: one uniform scale is applied to both
