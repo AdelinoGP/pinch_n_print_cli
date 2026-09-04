@@ -231,6 +231,16 @@ fn shell_band_excludes_exposed_seed_but_keeps_propagated_under_top_fill() {
     let config = region_map.intern_config(slicer_ir::ResolvedConfig {
         top_shell_layers: 2,
         bottom_shell_layers: 0,
+        // Isolates the shell-band marker, which is what this test is about.
+        // `internal_solid_fill` has two producers at this stage: this marker
+        // (`difference(top_solid_fill, top_solid_seed)`) and
+        // `convert_small_sparse_islands`, which since the five-way fill
+        // partition writes converted `minimum_sparse_infill_area` islands into
+        // the same bucket. `0.0` is canonical's own "feature off" value for the
+        // threshold, so with it the bucket holds the marker alone. The island
+        // half of the interaction is pinned by
+        // `converted_islands_join_the_shell_band_marker_in_the_internal_bucket`.
+        minimum_sparse_infill_area: 0.0,
         ..Default::default()
     });
     for index in 0..2 {
@@ -272,6 +282,122 @@ fn shell_band_excludes_exposed_seed_but_keeps_propagated_under_top_fill() {
         propagated_area
     );
     assert!(approx_eq(ex_area_mm2(lower), 38.64, 0.1));
+}
+
+/// Companion to `shell_band_excludes_exposed_seed_but_keeps_propagated_under_top_fill`,
+/// which switches island conversion off to isolate the marker. This one leaves
+/// `minimum_sparse_infill_area` at its canonical default (15 mm2) and pins what
+/// the five-way fill partition changed: `convert_small_sparse_islands` writes
+/// converted islands into `internal_solid_fill` (they used to ride
+/// `bottom_solid_fill` under a `bottom_shell_index = Some(1)` stamp).
+///
+/// Same fixture. `internal_solid_fill` must therefore hold *both* producers:
+///
+/// - the shell-band marker, still the shrunk propagated half, still excluding
+///   the exposed seed — the marker's own invariant is unchanged by conversion;
+/// - converted islands, which are `difference(infill_areas, solids)` and so lie
+///   strictly OUTSIDE `top_solid_fill`. Some of them fall in the exposed half —
+///   correctly: they are genuine sub-threshold sparse islands there, not the
+///   exposed top surface, which stays in `top_solid_fill`.
+///
+/// The load-bearing assertion is the last one: whatever lands in the exposed
+/// half must not overlap the exposed top surface. That is the invariant the
+/// sibling test's `is_empty()` used to carry when this bucket had one producer.
+#[test]
+fn converted_islands_join_the_shell_band_marker_in_the_internal_bucket() {
+    let object_id = ObjectId::from("seed-square");
+    let full_square = square(0.0, 0.0, 10.0, 10.0);
+    let covered = square(5.0, 0.0, 10.0, 10.0);
+    let slices = vec![
+        SliceIR {
+            schema_version: SemVer {
+                major: 4,
+                minor: 1,
+                patch: 0,
+            },
+            global_layer_index: 0,
+            z: 0.2,
+            regions: vec![sliced_region("seed-square", 0, vec![full_square])],
+        },
+        SliceIR {
+            schema_version: SemVer {
+                major: 4,
+                minor: 1,
+                patch: 0,
+            },
+            global_layer_index: 1,
+            z: 0.4,
+            regions: vec![sliced_region("seed-square", 0, vec![covered])],
+        },
+    ];
+    let mut region_map = RegionMapIR::default();
+    let config = region_map.intern_config(slicer_ir::ResolvedConfig {
+        top_shell_layers: 2,
+        bottom_shell_layers: 0,
+        // Canonical default, i.e. conversion ON — the difference from the
+        // sibling test is this one line.
+        minimum_sparse_infill_area: 15.0,
+        ..Default::default()
+    });
+    for index in 0..2 {
+        region_map.entries.insert(
+            RegionKey {
+                global_layer_index: index,
+                object_id: object_id.clone(),
+                region_id: 0,
+                variant_chain: Vec::new(),
+            },
+            RegionPlan {
+                config,
+                ..Default::default()
+            },
+        );
+    }
+    let mut blackboard = Blackboard::new(Arc::new(Default::default()), 2);
+    blackboard
+        .commit_region_map(Arc::new(region_map))
+        .expect("region map");
+    blackboard
+        .commit_slice_ir(Arc::new(slices))
+        .expect("slice IR");
+
+    commit_shell_classification_builtin(&mut blackboard).expect("shell classification");
+    let classified = blackboard.slice_ir().expect("classified slices");
+    let region = &classified[0].regions[0];
+    let lower = &region.internal_solid_fill;
+
+    // Strictly more than the marker alone: conversion added geometry.
+    let marker_area = 38.64;
+    assert!(
+        ex_area_mm2(lower) > marker_area + 0.1,
+        "conversion must contribute to internal_solid_fill on top of the {marker_area} mm2          marker; got {:.4}. Equal to the marker means converted islands stopped landing          in this bucket.",
+        ex_area_mm2(lower)
+    );
+
+    // The exposed half now carries island geometry, and only island geometry.
+    let exposed_half = square(0.0, 0.0, 5.0, 10.0);
+    let in_exposed = intersection(lower, &[exposed_half]);
+    assert!(
+        !in_exposed.is_empty(),
+        "sub-threshold islands in the exposed half must land in internal_solid_fill"
+    );
+
+    // The invariant that matters, and the one the sibling test's `is_empty()`
+    // used to carry: what lands in the exposed half is island geometry, never
+    // the exposed top surface itself. Converted islands are
+    // `difference(infill_areas, solids)`, so they are disjoint from
+    // `top_solid_fill` by construction; the exposed top surface stays in
+    // `top_solid_fill` alone. Restricting to the exposed half is what isolates
+    // the island producer here — the marker lives entirely in the propagated
+    // half (x >= 5.4) and IS a subset of `top_solid_fill`, deliberately: it is
+    // the shell band, and the fill-stage partition carves it back to empty
+    // under `top > internal` precedence.
+    let overlap = intersection(&in_exposed, &region.top_solid_fill);
+    assert!(
+        ex_area_mm2(&overlap) < 0.001,
+        "internal_solid_fill's exposed-half content must be converted islands only,          disjoint from top_solid_fill. Overlap {:.6} mm2 means the exposed top seed          itself is being claimed as internal solid.",
+        ex_area_mm2(&overlap)
+    );
 }
 
 fn approx_eq(a: f64, b: f64, tol: f64) -> bool {

@@ -67,3 +67,38 @@ Do not read a passing module test as proof that a user's numeric profile value
 reaches the decision point in the right unit.
 
 ## Answer
+
+## Measured evidence — `sparse_infill_density` is INERT on the numeric spelling (2026-09-04)
+
+Found by ticket 130 while probing an unrelated red; recorded here because it
+sharpens this ticket's table with an end-to-end measurement rather than a
+read-site inspection.
+
+Through the `pnp_cli --config` sidecar on `resources/regression_wedge.stl`
+(`slice --no-integrated-modules` with the core-module dirs):
+
+| config | `gcode_filament_length_mm` |
+|---|---|
+| `{"sparse_infill_density": 5}` | 11054.1767578125 |
+| `{"sparse_infill_density": 25}` | 11054.1767578125 |
+| `{"sparse_infill_density": 90}` | 11054.1767578125 |
+| `{"sparse_infill_density": "5%"}` | 6210.55859375 |
+| `{"sparse_infill_density": "90%"}` | 33465.38671875 |
+
+Control on the same route and the same run: `{"layer_height": 0.3}` yields 133
+layers and 11332.9765625 mm against 200 layers at the default — the sidecar is
+live, and this key is dead on the numeric spelling specifically.
+
+Two corrections to this ticket's analysis:
+
+1. The table above predicts a bare `100.0` is read as an **absolute** value
+   (silently ~100x over-dense). On this path the observed outcome is **inert** —
+   byte-identical output across a 18x range of inputs, so the module is keeping
+   its own fallback. Inert is quieter than over-dense and harder to notice.
+2. It is user-facing today. `sparse_infill_density` is a documented CLI key and
+   the bare number is the spelling a user reaches for first; it silently does
+   nothing.
+
+This does not change the ruling being sought (which unit wins, and where the
+coercion lands) — it raises the stakes and gives the fix a ready end-to-end
+regression: the three numeric rows above must separate once the coercion is in.
