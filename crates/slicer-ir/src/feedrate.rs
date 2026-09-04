@@ -249,6 +249,90 @@ pub const SPEED_KEYS: &[(&str, fn(&mut FeedrateConfig) -> &mut f32)] = &[
 /// assertion below compares the two.
 pub const SPEED_KEY_COUNT: usize = SPEED_KEYS.len();
 
+/// Inclusive lower bound for every key in [`SPEED_KEYS`], and the upper bound
+/// (always `None`).
+///
+/// **Canonical declares these as GUI spinner hints, not validation rules.**
+/// Wayfinder ticket 113 measured it: `ConfigBase::set_deserialize` /
+/// `set_deserialize_raw` never consult `def->min` / `def->max`, the speed check
+/// in `Print::validate` is commented out ("Orca: disable the speed check for
+/// now as we don't cap the speed"), and the only consumer of those fields
+/// outside `PrintConfig.cpp` is the GUI spinner in `Field.cpp`. OrcaSlicer will
+/// therefore load a negative speed from a file or CLI without complaint. This
+/// port enforces them instead — a **deliberate divergence**, recorded as such,
+/// because an unbounded speed reaches `DefaultGCodeEmitter::resolve_feedrate`
+/// (`crates/slicer-gcode/src/emit.rs`) with no floor and emits `F0` or a
+/// negative feedrate straight into the G-code.
+///
+/// Values are canonical's `def->min` from `PrintConfigDef::init_fff_params`
+/// (`PrintConfig.cpp`). **No canonical speed key declares a `max`** — the
+/// `max = 300.0` rows that used to sit on the module-manifest twins of these
+/// keys were a PnP invention with no canonical basis and were retired with this
+/// table (they would have rejected legitimate high-speed profiles).
+///
+/// A min of `0.0` is not laxity: for these keys canonical assigns zero a
+/// *meaning*, so the bound has to admit it —
+/// `overhang_1_4_speed`..`overhang_4_4_speed` (0 = use the wall speed),
+/// `skirt_speed` (0 = use the default layer extrusion speed), `travel_speed_z`
+/// (0 = use `travel_speed`), `wipe_speed` (canonical min 0), and
+/// `filament_ironing_speed` (0 = use `ironing_speed`, per this port's
+/// `resolve_feedrate`; canonical declares min 1 with an unset default, which
+/// this port cannot express, so the sentinel wins — see the deviation note).
+///
+/// Three keys have **no canonical counterpart** at all (`thin_wall_speed`,
+/// `bottom_surface_speed`, `prime_tower_speed` appear nowhere in
+/// `PrintConfig.cpp`), so their bounds are this port's own choice, taken as
+/// `1.0` to match the canonical family they sit in.
+///
+/// Positionally aligned with [`SPEED_KEYS`]; the const assertion below fails
+/// the build if the two drift apart.
+pub const SPEED_BOUNDS: [(f64, Option<f64>); SPEED_KEY_COUNT] = [
+    (1.0, None),  // outer_wall_speed — canonical min 1
+    (1.0, None),  // inner_wall_speed — canonical min 1
+    (1.0, None),  // thin_wall_speed — PnP-only; no canonical counterpart
+    (1.0, None),  // top_surface_speed — canonical min 1
+    (1.0, None),  // bottom_surface_speed — PnP-only; no canonical counterpart
+    (1.0, None),  // sparse_infill_speed — canonical min 1
+    (1.0, None),  // bridge_speed — canonical min 1
+    (1.0, None),  // internal_bridge_speed — canonical min 1 (coFloatsOrPercents over bridge_speed)
+    (1.0, None),  // support_speed — canonical min 1
+    (1.0, None),  // support_interface_speed — canonical min 1
+    (1.0, None),  // gap_infill_speed — canonical min 1
+    (1.0, None),  // ironing_speed — canonical min 1
+    (0.0, None),  // skirt_speed — canonical min 0; 0 = default layer extrusion speed
+    (10.0, None), // wipe_tower_max_purge_speed — canonical min 10 (the bound ticket 108 could not express)
+    (1.0, None),  // prime_tower_speed — PnP-only; no canonical counterpart
+    (1.0, None),  // travel_speed — canonical min 1
+    (0.0, None),  // travel_speed_z — canonical min 0; 0 = use travel_speed
+    (1.0, None),  // initial_layer_speed — canonical min 1
+    (1.0, None),  // initial_layer_infill_speed — canonical min 1
+    (1.0, None),  // initial_layer_travel_speed — canonical min 1 (coFloatsOrPercents over travel_speed)
+    (0.0, None),  // wipe_speed — canonical min 0 (coFloatOrPercent over travel_speed)
+    (0.0, None),  // overhang_1_4_speed — canonical min 0; 0 = use outer_wall_speed
+    (0.0, None),  // overhang_2_4_speed — canonical min 0; 0 = use outer_wall_speed
+    (0.0, None),  // overhang_3_4_speed — canonical min 0; 0 = use outer_wall_speed
+    (0.0, None),  // overhang_4_4_speed — canonical min 0; 0 = use outer_wall_speed
+    (0.0, None),  // filament_ironing_speed — 0 = use ironing_speed (port sentinel)
+];
+
+/// `SPEED_BOUNDS` must stay positionally aligned with [`SPEED_KEYS`].
+const _: () = assert!(SPEED_KEYS.len() == SPEED_BOUNDS.len());
+
+/// The host speed keys paired with their bounds, for the config-resolution
+/// bounds index.
+///
+/// `ConfigBoundsIndex::from_modules` (`crates/slicer-scheduler`) seeds itself
+/// from this so a host `[speeds]` key is range-checked at config resolution by
+/// the same code path, with the same error, as a module-manifest key. Before
+/// ticket 113 only the 14 speed keys that happened to also be declared in some
+/// module manifest were checked at all.
+pub fn speed_bounds() -> impl Iterator<Item = (&'static str, f64, Option<f64>)> {
+    SPEED_KEYS
+        .iter()
+        .zip(SPEED_BOUNDS.iter())
+        .map(|((key, _), (min, max))| (*key, *min, *max))
+}
+
 impl FeedrateConfig {
     /// Builds the feedrate table from a raw config source keyed by the
     /// `[speeds]` host names (the Orca key names the GUI's translated config

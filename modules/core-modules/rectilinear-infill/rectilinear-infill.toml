@@ -55,7 +55,6 @@ group   = "Infill"
 type    = "float"
 default = 100.0
 min     = 1.0
-max     = 300.0
 display = "Sparse Infill Speed"
 group   = "Infill"
 
@@ -63,7 +62,6 @@ group   = "Infill"
 type    = "float"
 default = 60.0
 min     = 1.0
-max     = 300.0
 display = "Top Surface Speed"
 group   = "Infill"
 
@@ -124,7 +122,6 @@ group   = "Infill"
 type    = "float"
 default = 25.0
 min     = 1.0
-max     = 300.0
 display = "Bridge Speed"
 group   = "Infill"
 

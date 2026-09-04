@@ -57,6 +57,13 @@ impl NumericBounds {
     }
 }
 
+/// Pseudo-module id recorded as the contributor for the host `[speeds]`
+/// bounds seeded by [`ConfigBoundsIndex::from_modules`]. It names no real
+/// module; it exists so the empty-intersection warning can say where a bound
+/// came from when a module manifest declares a speed key more strictly than
+/// the host does.
+const HOST_SPEEDS_PSEUDO_MODULE: &str = "<host [speeds]>";
+
 /// Per-key numeric bounds aggregated from every loaded module's manifest
 /// schema. Built once at host startup via [`ConfigBoundsIndex::from_modules`]
 /// and threaded into the resolver entry points so out-of-range CLI values are
@@ -146,7 +153,21 @@ impl ConfigBoundsIndex {
                     })
                 })
         });
-        let mut index = Self::from_declarations(declarations);
+        // Seed the host `[speeds]` keys before the module declarations, so a
+        // speed is range-checked whether or not some module manifest happens to
+        // also declare it (wayfinder ticket 113: before this, 14 of the 26
+        // `SPEED_KEYS` were checked because a module twin declared them and the
+        // other 12 were unchecked). Bounds intersect, so a module declaring a
+        // stricter range still wins.
+        let host_speeds = slicer_ir::feedrate::speed_bounds().map(|(key, min, max)| {
+            BoundsDeclaration {
+                key: key.to_string(),
+                min: Some(min),
+                max,
+                module_id: HOST_SPEEDS_PSEUDO_MODULE.to_string(),
+            }
+        });
+        let mut index = Self::from_declarations(host_speeds.chain(declarations));
         index.schema_defaults = schema_defaults;
         index.enum_values = enum_values;
         index

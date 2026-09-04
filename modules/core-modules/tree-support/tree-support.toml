@@ -51,7 +51,6 @@ group   = "Support"
 type    = "float"
 default = 50.0
 min     = 1.0
-max     = 300.0
 display = "Support Speed"
 group   = "Support"
 

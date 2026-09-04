@@ -112,7 +112,6 @@ group   = "Wave Overhangs"
 type    = "float"
 default = 25.0
 min     = 1.0
-max     = 300.0
 display = "Bridge Speed"
 group   = "Bridging"
 

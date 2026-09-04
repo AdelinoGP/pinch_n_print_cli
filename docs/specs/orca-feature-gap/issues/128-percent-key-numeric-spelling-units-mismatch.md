@@ -132,3 +132,28 @@ discriminate between the two readings, because its callers pass `base = 100.0`
 and absolute coincide. Pick a key with a non-100 base — `bridge_density`
 (`base = 1.0`) is the one this ticket was filed from — when building the
 regression that proves the ruling.
+
+**A sixth key family joins this ticket (ticket 113, 2026-09-04): the host
+`[speeds]` keys reject the percent spelling outright rather than misreading it.**
+`read_speed` (`crates/slicer-ir/src/feedrate.rs`) matches
+`ConfigValue::FloatOrPercent { is_percent: false }` only, so a percent-form value
+returns `None` and `from_raw_config` silently keeps the `FeedrateConfig::default`
+value. Six `SPEED_KEYS` are `coFloatOrPercent` / `coFloatsOrPercents` in
+canonical, each with a declared `ratio_over` base (verified against
+`PrintConfigDef::init_fff_params`, `PrintConfig.cpp`):
+
+| key | canonical `ratio_over` | canonical default |
+|---|---|---|
+| `internal_bridge_speed` | `bridge_speed` | `150%` |
+| `initial_layer_travel_speed` | `travel_speed` | `100%` |
+| `wipe_speed` | `travel_speed` | `80%` |
+| `overhang_1_4_speed` .. `overhang_4_4_speed` | `outer_wall_speed` | `0` |
+
+So an Orca profile spelling `internal_bridge_speed = 150%` — canonical's own
+default — reaches the emitter as this port's hardcoded `37.5`. That equals 150%
+of `bridge_speed`'s 25 today, so the two agree **by coincidence** and diverge the
+moment `bridge_speed` moves. This is a distinct failure mode from the rest of the
+ticket (rejected, not misread) but the same underlying question — what a percent
+means and where the coercion lands — and the answer here needs the `ratio_over`
+base, which this port models nowhere. Ticket 113 deliberately did not fix it
+blind; it belongs in this ruling.

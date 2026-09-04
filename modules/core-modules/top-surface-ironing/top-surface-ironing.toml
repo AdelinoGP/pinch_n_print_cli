@@ -48,7 +48,6 @@ group   = "TopSurface"
 type    = "float"
 default = 20.0
 min     = 1.0
-max     = 300.0
 display = "Ironing Speed"
 group   = "TopSurface"
 

@@ -135,7 +135,6 @@ group   = "Seam"
 type    = "float"
 default = 30.0
 min     = 1.0
-max     = 300.0
 display = "Gap infill speed"
 group   = "Quality"
 
@@ -163,7 +162,6 @@ group   = "Quality"
 type    = "float"
 default = 30.0
 min     = 1.0
-max     = 300.0
 display = "Outer Wall Speed"
 group   = "Walls"
 
@@ -171,7 +169,6 @@ group   = "Walls"
 type    = "float"
 default = 45.0
 min     = 1.0
-max     = 300.0
 display = "Inner Wall Speed"
 group   = "Walls"
 
