@@ -483,8 +483,15 @@ impl LayerModule for WaveOverhangs {
             // The packet docs call this `prev_object_boundary`; the accessor
             // that actually exists is `prev_layer_boundary()` (object-scoped
             // since packet 243). Naming drift in the docs, not here.
+            // Support geometry: top/bottom solid fill plus the converted
+            // sparse islands (internal_solid_fill) — an island is 100% solid
+            // material at this z, so wave crests may terminate on it exactly
+            // as on any other solid fill.
             let solid_and_sparse = union(
-                &union(region.top_solid_fill(), region.bottom_solid_fill()),
+                &union(
+                    &union(region.top_solid_fill(), region.bottom_solid_fill()),
+                    region.internal_solid_fill(),
+                ),
                 region.sparse_infill_area(),
             );
             let supported_fill = intersection(region.prev_layer_boundary(), &solid_and_sparse);

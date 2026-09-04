@@ -240,6 +240,9 @@ pub struct PerimeterRegionData {
     pub top_solid_fill: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Partitioned bottom-solid fill polygons (see `sparse_infill_area`).
     pub bottom_solid_fill: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
+    /// Partitioned internal-solid fill polygons (converted sparse islands; see
+    /// `sparse_infill_area`).
+    pub internal_solid_fill: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Partitioned bridge polygons (see `sparse_infill_area`).
     pub bridge_areas: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Host-computed tool index (ADR-0028 §Amendment): variant-chain material
@@ -3016,6 +3019,7 @@ mod region_origin_tests {
                     sparse_infill_area: Vec::new(),
                     top_solid_fill: Vec::new(),
                     bottom_solid_fill: Vec::new(),
+                    internal_solid_fill: Vec::new(),
                     bridge_areas: Vec::new(),
                     tool_index: 0,
                     wall_source_region_id: None,
@@ -3556,6 +3560,15 @@ impl ir::HostPerimeterRegionView for HostExecutionContext {
         self.runtime_reads
             .push(String::from("PerimeterIR.bottom-solid-fill"));
         Ok(self.table.get(&self_)?.bottom_solid_fill.clone())
+    }
+    fn internal_solid_fill(
+        &mut self,
+        self_: Resource<PerimeterRegionData>,
+    ) -> wasmtime::Result<Vec<ExPolygon>> {
+        self.touch_perimeter_region(&self_)?;
+        self.runtime_reads
+            .push(String::from("PerimeterIR.internal-solid-fill"));
+        Ok(self.table.get(&self_)?.internal_solid_fill.clone())
     }
     fn bridge_areas(
         &mut self,

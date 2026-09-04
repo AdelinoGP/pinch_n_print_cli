@@ -235,14 +235,15 @@ impl LayerModule for RectilinearInfill {
             * if layer_index.is_multiple_of(2) { 1 } else { -1 };
 
         // Per-role per-polygon emit (Q3 + Q5 partition contract): the host
-        // pre-partitions every region's wall-inset into four pairwise-disjoint
+        // pre-partitions every region's wall-inset into five pairwise-disjoint
         // canonical fill polygons (`sparse_infill_area`, `top_solid_fill`,
-        // `bottom_solid_fill`, `bridge_areas`) with precedence
-        // bridge > bottom > top > sparse. Each role emits over its own
-        // polygon — zero polygon math, zero per-region role-pick. Per-region
-        // `sparse_infill_density` / `line_width` overrides (packet 131 / TASK-256)
-        // are read through `slicer_sdk::config_resolution` and forwarded to
-        // each `scan_expolygon` call below.
+        // `bottom_solid_fill`, `internal_solid_fill`, `bridge_areas`) with
+        // precedence bridge > bottom > top > internal > sparse. Each role
+        // emits over its own polygon — zero polygon math, zero per-region
+        // role-pick. Per-region `sparse_infill_density` / `line_width`
+        // overrides (packet 131 / TASK-256) are read through
+        // `slicer_sdk::config_resolution` and forwarded to each
+        // `scan_expolygon` call below.
         // See `crates/slicer-runtime/src/region_partition.rs`.
         for region in regions {
             output.begin_region(region.object_id(), *region.region_id());
@@ -358,6 +359,46 @@ impl LayerModule for RectilinearInfill {
                 );
                 let solid_spacing = slicer_ir::mm_to_units(solid_line_width / SOLID_DENSITY);
                 for expoly in bottom {
+                    let paths = scan_expolygon(
+                        expoly,
+                        solid_spacing,
+                        std_cos_a,
+                        std_sin_a,
+                        z,
+                        speed_factor,
+                        1.0,
+                        &role,
+                        solid_line_width,
+                        true,
+                        x_shift_units,
+                    );
+                    for path in paths {
+                        let _ = output.push_solid_path(path);
+                    }
+                }
+            }
+
+            // Internal solid fill (the dedicated domain). Content by
+            // construction: the PrePass shell-band marker carves to empty in
+            // the fill-stage partition (it is a subset of `top_solid_fill`),
+            // so what survives is the converted sparse islands
+            // (`minimum_sparse_infill_area`). Emitted as
+            // `ExtrusionRole::InternalSolidInfill` — canonical's per-surface
+            // role, at the internal-solid width/speed — and gated on the
+            // top-fill claim, which owns solid fill for this region
+            // (`should_emit` maps `InternalSolidInfill` to "always allowed",
+            // so the gate must name the owning claim explicitly).
+            let internal = region.internal_solid_fill();
+            if !internal.is_empty() && region.should_emit(ExtrusionRole::TopSolidInfill) {
+                let role = ExtrusionRole::InternalSolidInfill;
+                let solid_line_width = resolve_role_width(
+                    role.clone(),
+                    layer_index == 0,
+                    false,
+                    &region_width_context,
+                );
+                let solid_spacing = slicer_ir::mm_to_units(solid_line_width / SOLID_DENSITY);
+                for expoly in internal {
                     let paths = scan_expolygon(
                         expoly,
                         solid_spacing,

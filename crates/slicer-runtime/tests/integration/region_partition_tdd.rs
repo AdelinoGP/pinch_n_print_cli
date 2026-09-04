@@ -6,8 +6,8 @@
 //! - For each `(object_id, region_id)` present in `SliceIR`, finds the matching
 //!   `PerimeterIR.regions` entry; absence is fatal.
 //! - Computes pairwise-disjoint canonical fill polygons by precedence
-//!   `bridge > bottom > top > sparse` and writes them back onto the arena's
-//!   `SlicedRegion` in place.
+//!   `bridge > bottom > top > internal > sparse` and writes them back onto the
+//!   arena's `SlicedRegion` in place.
 //! - `top_solid_fill` / `bottom_solid_fill` / `bridge_areas` end up clipped to
 //!   `perimeter.infill_areas` AND deduped against higher-precedence siblings.
 //! - `sparse_infill_area` is the remainder of `perimeter.infill_areas` after
@@ -830,4 +830,58 @@ fn perimeter_region_ir_for_test(infill_area: ExPolygon) -> PerimeterIR {
         .regions
         .push(perimeter_region("obj-1", 0, vec![infill_area]));
     perimeter
+}
+
+#[test]
+fn internal_solid_fill_partition_carves_marker_and_keeps_islands() {
+    // The internal-solid bucket has dual content by construction: the PrePass
+    // shell-band marker (a subset of `top_solid_fill`) must carve to empty,
+    // while converted sparse islands must survive as the bucket's only
+    // survivors — and the sparse zone must not re-absorb them (the five-way
+    // precedence `bridge > bottom > top > internal > sparse`).
+    let wall_inset = square(0.0, 0.0, 10.0, 10.0);
+    let island = square(1.0, 1.0, 4.0, 4.0); // 9 mm^2, inside the wall inset
+    let mut slice = empty_slice_ir();
+    let mut sr = sliced_region("obj-1", 0, vec![wall_inset.clone()]);
+    // Both contents in one fixture: the marker (subset of top) and a
+    // converted island (in neither top nor bottom nor bridge).
+    sr.top_solid_fill = vec![square(6.0, 6.0, 9.0, 9.0)];
+    sr.internal_solid_fill = vec![island.clone(), square(6.5, 6.5, 8.5, 8.5)];
+    slice.regions.push(sr);
+
+    let mut perim = empty_perimeter_ir();
+    perim
+        .regions
+        .push(perimeter_region("obj-1", 0, vec![wall_inset.clone()]));
+
+    let mut arena = arena_with(slice, perim);
+    sync_perimeter_infill_areas_into_slice(&mut arena, 0).expect("partition");
+
+    let r = &arena.slice().expect("slice").regions[0];
+    // The marker square (6.5..8.5, strictly inside the top square 6..9) carves
+    // to empty; the island survives.
+    assert_eq!(
+        r.internal_solid_fill.len(),
+        1,
+        "the shell-band marker (subset of top_solid_fill) must carve away; the \
+         converted island must survive — got {:?}",
+        r.internal_solid_fill
+    );
+    assert!(
+        approx_eq(ex_area_mm2(&r.internal_solid_fill), 9.0, 0.01),
+        "the surviving polygon must be the 9 mm^2 island, got {} mm^2",
+        ex_area_mm2(&r.internal_solid_fill)
+    );
+    // The sparse zone must not re-absorb the island.
+    let island_area_in_sparse = ex_area_mm2(&intersection(&r.sparse_infill_area, &[island]));
+    assert!(
+        island_area_in_sparse < 0.01,
+        "sparse must not re-absorb a converted island, got {island_area_in_sparse} mm^2"
+    );
+    // The top bucket survives its own partition arm untouched.
+    assert!(
+        approx_eq(ex_area_mm2(&r.top_solid_fill), 9.0, 0.01),
+        "the top bucket must keep its square, got {} mm^2",
+        ex_area_mm2(&r.top_solid_fill)
+    );
 }

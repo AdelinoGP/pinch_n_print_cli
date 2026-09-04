@@ -26,8 +26,8 @@ fn make_square_expolygon() -> ExPolygon {
 
 // Post-host-partition fixture: each role's canonical polygon is populated
 // independently of the others. The host's `sync_perimeter_infill_areas_into_slice`
-// already enforces the bridge > bottom > top > sparse precedence and the
-// pairwise-disjoint invariant, so this fixture mirrors what the modules see
+// already enforces the bridge > bottom > top > internal > sparse precedence and
+// the pairwise-disjoint invariant, so this fixture mirrors what the modules see
 // AFTER that hook runs. `sparse_infill_area` is only populated when neither
 // top/bottom nor bridge applies — matching the post-partition remainder.
 fn make_test_region(is_top: bool, is_bottom: bool, is_bridge: bool) -> SliceRegionView {

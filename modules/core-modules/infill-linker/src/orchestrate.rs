@@ -54,6 +54,9 @@ struct RoleBoundaries {
     sparse: Vec<ExPolygon>,
     top: Vec<ExPolygon>,
     bottom: Vec<ExPolygon>,
+    /// Partitioned internal-solid fill (converted sparse islands). Empty on
+    /// regions the host never partitioned, mirroring the other three.
+    internal: Vec<ExPolygon>,
     bridge: Vec<ExPolygon>,
     /// `infill_areas` — the union. Only used for views the host never
     /// partitioned, and for roles that have no dedicated partition.
@@ -66,6 +69,7 @@ impl RoleBoundaries {
             sparse: view.sparse_infill_area().to_vec(),
             top: view.top_solid_fill().to_vec(),
             bottom: view.bottom_solid_fill().to_vec(),
+            internal: view.internal_solid_fill().to_vec(),
             bridge: view.bridge_areas().to_vec(),
             union: view.infill_areas().to_vec(),
         }
@@ -75,6 +79,7 @@ impl RoleBoundaries {
         !(self.sparse.is_empty()
             && self.top.is_empty()
             && self.bottom.is_empty()
+            && self.internal.is_empty()
             && self.bridge.is_empty())
     }
 
@@ -93,12 +98,15 @@ impl RoleBoundaries {
             ExtrusionRole::BridgeInfill => Some(self.bridge.clone()),
             // `solid_role` in rectilinear-infill / gyroid-infill relabels a
             // top or bottom shell at depth ≥ 1 as InternalSolidInfill, so its
-            // legal area is the union of the two solid-shell polygons.
+            // legal area is the union of the two solid-shell polygons plus
+            // the partitioned internal-solid bucket (converted sparse
+            // islands), which is now emitted under the same label.
             ExtrusionRole::InternalSolidInfill => Some(union_ex(
                 &self
                     .top
                     .iter()
                     .chain(self.bottom.iter())
+                    .chain(self.internal.iter())
                     .cloned()
                     .collect::<Vec<_>>(),
             )),

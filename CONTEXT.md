@@ -264,17 +264,19 @@ Depth, in layers, of a region within its owning object's top or bottom shell zon
 The sparse or solid extrusion paths filling the interior of a region's
 wall-inset polygon. Produced by `Layer::Infill` modules (raw segments) and
 connected by the `Layer::InfillPostProcess` linker (see Infill linker). Divided
-into four roles — sparse, top-solid, bottom-solid, bridge — each carried by a
-pre-partitioned polygon (`sparse_infill_area`, `top_solid_fill`,
-`bottom_solid_fill`, `bridge_areas`) produced by the host at
-`Layer::Perimeters` commit with precedence `bridge > bottom > top > sparse`.
+into five roles — sparse, top-solid, bottom-solid, internal-solid, bridge — each
+carried by a pre-partitioned polygon (`sparse_infill_area`, `top_solid_fill`,
+`bottom_solid_fill`, `internal_solid_fill`, `bridge_areas`) produced by the host
+at `Layer::Perimeters` commit with precedence
+`bridge > bottom > top > internal > sparse`.
 Under the order-lock exception (ADR-0063), order-locked paths are self-clipping
 and may occupy neighboring fill domains; the linker differences untagged fill
 of the same region by their swept footprint.
 
 ### Fill holder
-The module currently configured to produce extrusions for one of the four
-infill roles on a region. Selected per-role via `top_fill_holder` /
+The module currently configured to produce extrusions for one of the five
+infill roles on a region (the internal-solid role rides the top-fill holder).
+Selected per-role via `top_fill_holder` /
 `bottom_fill_holder` / `bridge_fill_holder` / `sparse_fill_holder` (default
 `"rectilinear-infill"`). Distinct from a **declared claim**: a module may
 declare a claim it never holds (out-prioritized by another holder), and may

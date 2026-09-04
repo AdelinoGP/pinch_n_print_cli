@@ -1956,15 +1956,23 @@ pub struct SlicedRegion {
     pub bridge_orientation_deg: f32,
     /// Sparse-only infill polygon after host-side fill partition.
     /// Empty until `Layer::Perimeters` commits — the host then computes
-    /// `perimeter.infill_areas − union(bridge_areas, bottom_solid_fill, top_solid_fill)`
-    /// with precedence `bridge > bottom > top > sparse`. The four canonical
+    /// `perimeter.infill_areas − union(bridge_areas, bottom_solid_fill,
+    /// top_solid_fill, internal_solid_fill)` with precedence
+    /// `bridge > bottom > top > internal > sparse`. The five canonical
     /// fill polygons (`bridge_areas`, `bottom_solid_fill`, `top_solid_fill`,
-    /// `sparse_infill_area`) are pairwise disjoint subsets of
-    /// `perimeter.infill_areas` after that hook. See
+    /// `internal_solid_fill`, `sparse_infill_area`) are pairwise disjoint
+    /// subsets of `perimeter.infill_areas` after that hook. See
     /// `crates/slicer-runtime/src/region_partition.rs`.
     #[serde(default)]
     pub sparse_infill_area: Vec<ExPolygon>,
-    /// dense-interior band (shell band minus depth-0 exposed seed); WIT-mirrored in a later step.
+    /// Internal-solid fill polygons. Dual content by construction: the PrePass
+    /// shell-band marker (shell band minus depth-0 exposed seed — a subset of
+    /// `top_solid_fill`) plus converted sparse islands
+    /// (`minimum_sparse_infill_area`). The fill-stage partition
+    /// (`region_partition`) subtracts the top/bottom/bridge precedence zones,
+    /// which carves the marker to empty and leaves the islands as the
+    /// bucket's only survivors; the `claim:top-fill` holders emit that bucket
+    /// as `ExtrusionRole::InternalSolidInfill`.
     #[serde(default)]
     pub internal_solid_fill: Vec<ExPolygon>,
     /// host-only — qualified internal-bridge-over-infill areas; never mirrored into module views.

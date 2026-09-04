@@ -606,7 +606,7 @@ findings (the one flagged row was a stale-asset artifact).
 | `extra_solid_infills` | B | object-level solid-fill planning (PrintObject.cpp) |
 | `infill_combination` | B | object-level infill planning (PrintObject.cpp) |
 | `infill_combination_max_layer_height` | B | object-level infill planning (PrintObject.cpp) |
-| `minimum_sparse_infill_area` | B | infill modules |
+| `minimum_sparse_infill_area` | B | infill modules — **live** (ticket 35, direct implementation): small sparse islands convert to internal solid fill in the host `PrePass::ShellClassification` prepass, measured pre-wall-inset (strictly conservative). Islands land in the dedicated `internal_solid_fill` bucket (five-way fill partition; emitted as `InternalSolidInfill` by the `claim:top-fill` holders) |
 
 ### Strength / Infill
 | `fill_multiline` | A | infill modules |

@@ -581,6 +581,7 @@ fn perimeter_region_view_has_infill_postprocess_enrichment_members() {
         "sparse-infill-area: func() -> list<ex-polygon>",
         "top-solid-fill: func() -> list<ex-polygon>",
         "bottom-solid-fill: func() -> list<ex-polygon>",
+        "internal-solid-fill: func() -> list<ex-polygon>",
         "bridge-areas: func() -> list<ex-polygon>",
         "tool-index: func() -> u32",
         "wall-source-region-id: func() -> option<region-id>",

@@ -1205,6 +1205,16 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
   host `PrePass::ShellClassification` pass, conservative against canonical because the
   port measures the sparse zone before the wall inset. Ticket 04's `infill modules`
   owner was wrong for two of the three.
+  — **Follow-up (2026-09-04, user ruling):** the first landing rode
+  `bottom_solid_fill` + a `bottom_shell_index` stamp; the same session then gave
+  internal solid infill its own classification domain — the fill-stage partition
+  now runs five-way precedence `bridge > bottom > top > internal > sparse`, the
+  `claim:top-fill` holders emit the `internal_solid_fill` bucket as
+  `InternalSolidInfill`, the linker boundary and `perimeter-region-view` gained
+  `internal-solid-fill`, and the stamp (with its mixed-region divergence) is
+  retired. Finding 2's "no internal-solid fill domain" is no longer true of the
+  tree; 262b's DIV-8 seam statement survives (the claim seam is still per region,
+  so the narrow split still lives inside the holder module).
 
 ## Not yet specified
 

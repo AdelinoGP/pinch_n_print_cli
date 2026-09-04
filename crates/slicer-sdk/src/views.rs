@@ -394,9 +394,10 @@ impl SliceRegionView {
     /// `sync_perimeter_infill_areas_into_slice`
     /// (`crates/slicer-runtime/src/region_partition.rs`) clips this polygon
     /// to `perimeter.infill_areas` and deduplicates it by precedence
-    /// `bridge > bottom > top > sparse`. So at Layer::Infill / Layer::InfillPostProcess
-    /// stages this getter returns the **post-partition clipped** polygon
-    /// (pairwise-disjoint with `bottom_solid_fill`, `bridge_areas`, and
+    /// `bridge > bottom > top > internal > sparse`. So at Layer::Infill /
+    /// Layer::InfillPostProcess stages this getter returns the
+    /// **post-partition clipped** polygon (pairwise-disjoint with
+    /// `bottom_solid_fill`, `internal_solid_fill`, `bridge_areas`, and
     /// `sparse_infill_area`). At earlier stages (PrePass, `Layer::Slice`,
     /// `Layer::SlicePostProcess`, `Layer::Perimeters` before the commit
     /// hook) it returns the raw `PrePass::ShellClassification` projection.
@@ -681,6 +682,8 @@ pub struct PerimeterRegionView {
     top_solid_fill: Vec<ExPolygon>,
     /// Polygon-precise area to solid-fill from bottom shell projection (ADR-0028).
     bottom_solid_fill: Vec<ExPolygon>,
+    /// Partitioned internal-solid fill (converted sparse islands).
+    internal_solid_fill: Vec<ExPolygon>,
     /// Per-layer expanded bridge polygons (empty if not a bridge region) (ADR-0028).
     bridge_areas: Vec<ExPolygon>,
     /// Host-computed tool index: variant-chain material tool →
@@ -769,6 +772,12 @@ impl PerimeterRegionView {
         self.bridge_areas = bridge_areas;
     }
 
+    /// Override the internal-solid fill (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_internal_solid_fill(&mut self, internal_solid_fill: Vec<ExPolygon>) {
+        self.internal_solid_fill = internal_solid_fill;
+    }
+
     /// Override the tool index (host-only, for testing).
     #[doc(hidden)]
     pub fn set_tool_index(&mut self, tool_index: u32) {
@@ -825,6 +834,12 @@ impl PerimeterRegionView {
     /// Returns the polygon-precise bottom-shell solid-fill areas.
     pub fn bottom_solid_fill(&self) -> &[ExPolygon] {
         &self.bottom_solid_fill
+    }
+
+    /// Returns the partitioned internal-solid fill polygons (converted
+    /// sparse islands).
+    pub fn internal_solid_fill(&self) -> &[ExPolygon] {
+        &self.internal_solid_fill
     }
 
     /// Returns the per-layer expanded bridge polygons (empty if not a

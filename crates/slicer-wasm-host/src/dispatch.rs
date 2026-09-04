@@ -2547,6 +2547,7 @@ fn push_infill_postprocess_regions(
                 sparse_infill_area: Vec::new(),
                 top_solid_fill: Vec::new(),
                 bottom_solid_fill: Vec::new(),
+                internal_solid_fill: Vec::new(),
                 bridge_areas: Vec::new(),
                 tool_index: 0,
                 wall_source_region_id: None,
@@ -2558,6 +2559,8 @@ fn push_infill_postprocess_regions(
         data.sparse_infill_area = crate::marshal::ir_to_wit_expolygons(&region.sparse_infill_area);
         data.top_solid_fill = crate::marshal::ir_to_wit_expolygons(&region.top_solid_fill);
         data.bottom_solid_fill = crate::marshal::ir_to_wit_expolygons(&region.bottom_solid_fill);
+        data.internal_solid_fill =
+            crate::marshal::ir_to_wit_expolygons(&region.internal_solid_fill);
         data.bridge_areas = crate::marshal::ir_to_wit_expolygons(&region.bridge_areas);
         data.tool_index = resolve_region_tool_index(
             &region.variant_chain,

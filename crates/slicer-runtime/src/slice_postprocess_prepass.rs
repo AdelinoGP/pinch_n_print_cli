@@ -234,8 +234,8 @@ pub fn commit_shell_classification_builtin(
     // below and author anchored bridge centerlines per region. Runs after the
     // shell passes (top/bottom solid fills are populated for every layer
     // above) and strictly after 234's false-site gate. Material exclusion
-    // flows through `bridge_areas`: the partition derives `sparse_infill_area`
-    // from it at Perimeters commit, so module sparse infill never covers the
+    // flows through `bridge_areas`: the partition subtracts it from the sparse
+    // zone at Perimeters commit, so module sparse infill never covers the
     // gated area. (`sparse_infill_area` itself is NOT mutated here — it does
     // not exist yet at this stage and would be overwritten.)
     gate_internal_bridge_sites(
@@ -576,9 +576,9 @@ fn resolve_opening_radius(
 /// against the committed layer below and authors anchored internal-bridge
 /// polygons into `SlicedRegion::internal_bridge_areas` for the same-layer
 /// InfillPostProcess arm to construct and emit. Extends `bridge_areas` with the qualified
-/// polygons so the existing partition dataflow (`region_partition` derives
-/// `sparse_infill_area = difference(wall_inset, bridge ∪ bottom ∪ top)` at
-/// Perimeters commit) keeps module sparse infill out of the gated area.
+/// polygons so the existing partition dataflow (`region_partition` subtracts
+/// `bridge_areas` from the sparse zone at Perimeters commit) keeps module
+/// sparse infill out of the gated area.
 ///
 /// Sequential by construction: only this prepass legally sees every committed
 /// layer; per-layer stage arms run under rayon with private arenas. Config
@@ -1000,8 +1000,10 @@ const MM2_IN_SQUARED_UNITS: f64 = 1e8;
 /// `<= scale_(scale_(minimum_sparse_infill_area))` is erased from the sparse
 /// zone and unioned into the internal-solid zone.
 ///
-/// Two deliberate divergences from canonical, both recorded on wayfinder
-/// ticket 35:
+/// The islands land in `SlicedRegion::internal_solid_fill` — the dedicated
+/// internal-solid domain, which already exists as a polygon field (WIT-mirrored
+/// on `slice-region-view`). Two consequences of the domain, both recorded on
+/// wayfinder ticket 35:
 ///
 /// 1. **The sparse zone is measured before the wall inset.** Canonical runs
 ///    this inside `process_external_surfaces`, after `make_perimeters`, so its
@@ -1011,19 +1013,15 @@ const MM2_IN_SQUARED_UNITS: f64 = 1e8;
 ///    island therefore measures larger than canonical would measure it, which
 ///    makes the conversion strictly **conservative**: this port converts a
 ///    subset of what canonical converts, never a superset.
-/// 2. **The converted area rides `bottom_solid_fill`.** This port has no
-///    internal-solid fill *domain* — the `InternalSolidInfill` role comes from
-///    a per-region `top_shell_index` / `bottom_shell_index` >= 1 (see
-///    `solid_fill_role` in `modules/core-modules/rectilinear-infill/src/lib.rs`)
-///    and `SlicedRegion::internal_solid_fill` is a marker subset of
-///    `top_solid_fill`, not a fillable polygon set. Converted islands are
-///    therefore unioned into `bottom_solid_fill`, and `bottom_shell_index` is
-///    stamped to `Some(1)` when the region-layer had no bottom shell — which
-///    yields the canonical `InternalSolidInfill` role. When the region-layer
-///    already carries `bottom_shell_index == Some(0)` (an exposed bottom in the
-///    same region on the same layer) the island inherits that index and emits
-///    as `BottomSolidInfill` instead: still 100% solid, but at the exposed
-///    surface's width and speed rather than the internal one's.
+/// 2. **No `bottom_shell_index` is stamped.** The converted polygons carry
+///    their role through the bucket itself: the fill-stage partition
+///    (`region_partition::sync_perimeter_infill_areas_into_slice`) carves
+///    `internal_solid_fill` out of the sparse zone with precedence
+///    `bridge > bottom > top > internal > sparse`, and the `claim:top-fill`
+///    holders emit that bucket under `ExtrusionRole::InternalSolidInfill`
+///    directly — canonical's per-surface role decision, instead of the earlier
+///    shell-index stamp that made a converted island in a mixed region emit at
+///    the exposed-bottom width and speed.
 ///
 /// `spiral_mode` is part of canonical's guard and has no counterpart here — it
 /// is an unimplemented queue key, so the guard reduces to the density test.
@@ -1053,8 +1051,7 @@ fn convert_small_sparse_islands(slices: &mut [SliceIR], region_map: &slicer_ir::
             };
             // Canonical guard: the block is skipped entirely for a fully
             // hollow region. `0` on the threshold disables the feature.
-            if resolved.minimum_sparse_infill_area <= 0.0 || resolved.sparse_infill_density <= 0.0
-            {
+            if resolved.minimum_sparse_infill_area <= 0.0 || resolved.sparse_infill_density <= 0.0 {
                 continue;
             }
             let min_area_units =
@@ -1071,10 +1068,12 @@ fn convert_small_sparse_islands(slices: &mut [SliceIR], region_map: &slicer_ir::
                 continue;
             }
 
-            region.bottom_solid_fill = union(&region.bottom_solid_fill, &small);
-            if region.bottom_shell_index.is_none() {
-                region.bottom_shell_index = Some(1);
-            }
+            // The dedicated internal-solid domain. The fill-stage partition
+            // subtracts this bucket from the sparse zone (see
+            // `region_partition::sync_perimeter_infill_areas_into_slice`) and
+            // the `claim:top-fill` holders emit it as `InternalSolidInfill`,
+            // so no shell-index stamp is needed here.
+            region.internal_solid_fill = union(&region.internal_solid_fill, &small);
         }
     }
 }

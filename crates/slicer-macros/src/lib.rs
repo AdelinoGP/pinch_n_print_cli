@@ -2803,6 +2803,7 @@ fn layer_glue_helpers() -> TokenStream2 {
                 perimeter_view.set_sparse_infill_area(r.sparse_infill_area().iter().map(__slicer_wit_expolygon_to_ir).collect());
                 perimeter_view.set_top_solid_fill(r.top_solid_fill().iter().map(__slicer_wit_expolygon_to_ir).collect());
                 perimeter_view.set_bottom_solid_fill(r.bottom_solid_fill().iter().map(__slicer_wit_expolygon_to_ir).collect());
+                perimeter_view.set_internal_solid_fill(r.internal_solid_fill().iter().map(__slicer_wit_expolygon_to_ir).collect());
                 perimeter_view.set_bridge_areas(r.bridge_areas().iter().map(__slicer_wit_expolygon_to_ir).collect());
                 perimeter_view.set_tool_index(r.tool_index());
                 perimeter_view.set_wall_source_region_id(r.wall_source_region_id().map(|s| s.parse().unwrap_or(0)));

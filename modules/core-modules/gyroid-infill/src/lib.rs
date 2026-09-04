@@ -175,14 +175,15 @@ impl LayerModule for GyroidInfill {
         let speed_factor = self.sparse_infill_speed / BASE_SPEED;
 
         // Per-role per-polygon emit (Q3 + Q5 partition contract): the host
-        // pre-partitions every region's wall-inset into four pairwise-disjoint
+        // pre-partitions every region's wall-inset into five pairwise-disjoint
         // canonical fill polygons (`sparse_infill_area`, `top_solid_fill`,
-        // `bottom_solid_fill`, `bridge_areas`) with precedence
-        // bridge > bottom > top > sparse. Each role emits over its own
-        // polygon — zero polygon math, zero per-region role-pick. Per-region
-        // `sparse_infill_density` / `line_width` overrides (packet 131 / TASK-256)
-        // are read through `slicer_sdk::config_resolution` and forwarded to
-        // each `fill_expolygon` call below.
+        // `bottom_solid_fill`, `internal_solid_fill`, `bridge_areas`) with
+        // precedence bridge > bottom > top > internal > sparse. Each role
+        // emits over its own polygon — zero polygon math, zero per-region
+        // role-pick. Per-region `sparse_infill_density` / `line_width`
+        // overrides (packet 131 / TASK-256) are read through
+        // `slicer_sdk::config_resolution` and forwarded to each
+        // `fill_expolygon` call below.
         // See `crates/slicer-runtime/src/region_partition.rs`.
         for region in regions {
             output.begin_region(region.object_id(), *region.region_id());
@@ -255,6 +256,19 @@ impl LayerModule for GyroidInfill {
                     ExtrusionRole::BottomSolidInfill,
                 ),
                 ExtrusionRole::BottomSolidInfill,
+                true,
+                output,
+            );
+            emit_polys(
+                region.internal_solid_fill(),
+                // The internal bucket's role: the internal-solid label, at
+                // `internal_solid_infill_line_width` (resolve_role_width maps
+                // both solid-shell roles to it). Gated on the top-fill claim,
+                // which owns solid fill for this region — `should_emit` maps
+                // `InternalSolidInfill` to "always allowed", so naming it here
+                // would bypass claim gating.
+                ExtrusionRole::InternalSolidInfill,
+                ExtrusionRole::TopSolidInfill,
                 true,
                 output,
             );

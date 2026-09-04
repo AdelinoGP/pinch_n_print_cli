@@ -58,7 +58,7 @@ and neither can be wired without that packet's code:
    `atan2(m(1,0), m(0,0))` of `object->trafo()` has no counterpart to read. So the
    key is not "declare and wire" at all — it needs a model-io/IR change first.
    262a now owns that as its Step 7.
-2. **This port has no internal-solid fill *domain*.** `SlicedRegion::internal_solid_fill`
+2. **This port had no internal-solid fill *domain*.** `SlicedRegion::internal_solid_fill`
    is a *marker* (`top_solid_fill − top_solid_seed`, used by `arachne-perimeters`
    to find the exposed top and by internal-bridge detection to find what is not
    sparse); nothing fills it. The `InternalSolidInfill` role comes from a
@@ -67,7 +67,9 @@ and neither can be wired without that packet's code:
    consequences: canonical's per-polygon pattern override cannot be a second claim
    holder (the claim seam is per region), so the narrow split has to live inside
    the holder module; and a polygon reclassified from sparse to solid has no
-   dedicated vector to land in.
+   dedicated vector to land in. *(Superseded in part, 2026-09-04: the domain now
+   exists — see "The internal-solid domain" above. The claim-seam consequence
+   stands; the "no vector" consequence was fixed by the five-way partition.)*
 3. **No concentric filler exists yet.** `InfillPattern::Concentric` is in the IR
    enum, but the only concentric generator in the tree is the wall path;
    `arachne_parity.rs` records the absence as
@@ -96,6 +98,36 @@ unions them into the internal-solid zone.
   counts as solid support for the layer above, matching canonical's ordering of
   `process_external_surfaces` before bridge detection).
 
+### The internal-solid domain (2026-09-04, user ruling)
+
+The islands first landed in `bottom_solid_fill` with a `bottom_shell_index =
+Some(1)` stamp (see the divergence history below). The user then ruled the
+precedent sufficient to give internal solid infill its own classification
+domain, and that was implemented the same day:
+
+- **`region_partition::sync_perimeter_infill_areas_into_slice`** partitions by
+  the five-way precedence `bridge > bottom > top > internal > sparse`. The
+  PrePass shell-band marker content of `internal_solid_fill` (a subset of
+  `top_solid_fill`) carves to empty; converted islands survive as the bucket's
+  only polygons — canonical's `stInternalSolid` fill zone. The two
+  no-perimeter skip arms carve the marker out too, so it never double-fills
+  against `top_solid_fill`.
+- **The `claim:top-fill` holders** (`rectilinear-infill`, `gyroid-infill`) emit
+  `region.internal_solid_fill()` as `ExtrusionRole::InternalSolidInfill`,
+  gated on `should_emit(ExtrusionRole::TopSolidInfill)` (the claim that owns
+  solid fill; `should_emit` itself maps `InternalSolidInfill` to
+  always-allowed, so the gate must name the owning claim).
+- **`perimeter-region-view` gains `internal-solid-fill`** (WIT, host resource,
+  SDK view + macro adapter, drift-test member list) so the infill linker clips
+  `InternalSolidInfill` paths against the partitioned bucket; its
+  `RoleBoundaries::for_role` unions it into the internal-solid boundary.
+- **`wave-overhangs`** unions the bucket into its solid support geometry.
+- **The `bottom_shell_index = Some(1)` stamp is retired.** The role now comes
+  from the bucket itself — canonical's per-surface role decision. This removes
+  the IR lie (a depth index that was not a shell depth) and the recorded
+  `Some(0)` divergence: a converted island in a mixed region now emits at the
+  internal-solid width/speed, not the exposed bottom's.
+
 ### Recorded divergences
 
 - **The sparse zone is measured before the wall inset.** Canonical runs this after
@@ -108,15 +140,14 @@ unions them into the internal-solid zone.
   post-inset sparse zone does exist) would have got the area right and the
   *ordering* wrong: it runs at `Layer::Perimeters`, after the prepass bridge
   detection that canonical performs downstream of this conversion.
-- **The converted area rides `bottom_solid_fill`**, per finding 2 above, with
-  `bottom_shell_index` stamped to `Some(1)` when the region-layer had no bottom
-  shell — which yields the canonical `InternalSolidInfill` role. When the
-  region-layer already carries `bottom_shell_index == Some(0)` (an exposed bottom
-  in the same region on the same layer) the island inherits that index and emits as
-  `BottomSolidInfill`: still 100% solid, but at the exposed surface's width and
-  speed rather than the internal one's.
 - **`spiral_mode` has no counterpart**, so canonical's guard reduces to the density
   test. `spiral_mode` is still an unimplemented queue key.
+- **Historical (retired 2026-09-04, see "The internal-solid domain" above):** the
+  first landing rode `bottom_solid_fill` with a `bottom_shell_index = Some(1)`
+  stamp, which made a converted island in a mixed region inherit
+  `bottom_shell_index == Some(0)` and emit as `BottomSolidInfill` at the exposed
+  bottom's width/speed. Both are gone — islands land in the dedicated
+  `internal_solid_fill` bucket.
 
 ### Verification
 

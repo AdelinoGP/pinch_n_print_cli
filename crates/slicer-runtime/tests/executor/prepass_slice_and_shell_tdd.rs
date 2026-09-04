@@ -399,7 +399,6 @@ fn shell_classification_replace_is_atomic_against_prior_slice_ir() {
     );
 }
 
-
 // ============================================================================
 // minimum_sparse_infill_area (wayfinder ticket 35)
 // ============================================================================
@@ -481,24 +480,27 @@ fn minimum_sparse_infill_area_converts_island_at_or_below_threshold() {
     // the key under test.
     let converted = classify_one_layer_with_min_sparse_area(vec![mm_square(1.5)], 15.0, 20.0);
     assert!(
-        !converted.bottom_solid_fill.is_empty(),
-        "a 9 mm^2 island must be reclassified as solid at minimum_sparse_infill_area = 15; \
-         got bottom_solid_fill = {:?}",
-        converted.bottom_solid_fill
+        !converted.internal_solid_fill.is_empty(),
+        "a 9 mm^2 island must be reclassified as internal solid at \
+         minimum_sparse_infill_area = 15; got internal_solid_fill = {:?}",
+        converted.internal_solid_fill
+    );
+    assert!(
+        converted.bottom_solid_fill.is_empty(),
+        "converted islands land in the dedicated internal-solid domain; the \
+         bottom bucket must stay empty (the bottom_shell_index stamp is retired)"
     );
     assert_eq!(
-        converted.bottom_shell_index,
-        Some(1),
-        "a converted island with no bottom shell must be stamped depth 1 so the \
-         fill modules emit InternalSolidInfill, not BottomSolidInfill"
+        converted.bottom_shell_index, None,
+        "no bottom shell exists in this fixture; the old Some(1) stamp is retired"
     );
 
     let kept = classify_one_layer_with_min_sparse_area(vec![mm_square(1.5)], 5.0, 20.0);
     assert!(
-        kept.bottom_solid_fill.is_empty(),
+        kept.internal_solid_fill.is_empty(),
         "the same 9 mm^2 island must stay sparse at minimum_sparse_infill_area = 5; \
-         got bottom_solid_fill = {:?}",
-        kept.bottom_solid_fill
+         got internal_solid_fill = {:?}",
+        kept.internal_solid_fill
     );
     assert_eq!(kept.bottom_shell_index, None);
 }
@@ -508,10 +510,10 @@ fn minimum_sparse_infill_area_leaves_large_islands_sparse() {
     // A 10x10 mm island is 100 mm^2 - far above the canonical default.
     let region = classify_one_layer_with_min_sparse_area(vec![mm_square(5.0)], 15.0, 20.0);
     assert!(
-        region.bottom_solid_fill.is_empty(),
+        region.internal_solid_fill.is_empty(),
         "a 100 mm^2 island must never be converted at threshold 15 mm^2; \
-         got bottom_solid_fill = {:?}",
-        region.bottom_solid_fill
+         got internal_solid_fill = {:?}",
+        region.internal_solid_fill
     );
     assert_eq!(region.bottom_shell_index, None);
 }
@@ -523,13 +525,13 @@ fn minimum_sparse_infill_area_is_disabled_at_zero_and_for_hollow_regions() {
     // 9 mm^2 island sparse that the first test converts.
     let disabled = classify_one_layer_with_min_sparse_area(vec![mm_square(1.5)], 0.0, 20.0);
     assert!(
-        disabled.bottom_solid_fill.is_empty(),
+        disabled.internal_solid_fill.is_empty(),
         "minimum_sparse_infill_area = 0 must disable the conversion"
     );
 
     let hollow = classify_one_layer_with_min_sparse_area(vec![mm_square(1.5)], 15.0, 0.0);
     assert!(
-        hollow.bottom_solid_fill.is_empty(),
+        hollow.internal_solid_fill.is_empty(),
         "a hollow region (sparse_infill_density = 0) must never gain solid fill"
     );
 }
@@ -553,13 +555,13 @@ fn minimum_sparse_infill_area_converts_only_the_small_island_of_a_mixed_layer() 
     };
     let region = classify_one_layer_with_min_sparse_area(vec![small, large], 15.0, 20.0);
     assert_eq!(
-        region.bottom_solid_fill.len(),
+        region.internal_solid_fill.len(),
         1,
         "exactly one of the two islands must convert; got {:?}",
-        region.bottom_solid_fill
+        region.internal_solid_fill
     );
     let converted_area_mm2 =
-        slicer_core::polygon_ops::expolygon_area(&region.bottom_solid_fill[0]) / 1e8;
+        slicer_core::polygon_ops::expolygon_area(&region.internal_solid_fill[0]) / 1e8;
     assert!(
         (converted_area_mm2 - 9.0).abs() < 0.01,
         "the converted island must be the 9 mm^2 one, got {converted_area_mm2} mm^2"

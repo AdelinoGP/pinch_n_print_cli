@@ -614,7 +614,7 @@ optional non-planar surface, effective height, segment paint annotations, shell
 depths, shell/bridge fill polygons, and its paint `variant_chain`. The removed
 `external_contour` field is not part of the current schema.
 
-/// ### Post-`Layer::Perimeters` invariant: four canonical fill polygons
+/// ### Post-`Layer::Perimeters` invariant: five canonical fill polygons
 ///
 /// After the host runs `sync_perimeter_infill_areas_into_slice` at
 /// `Layer::Perimeters` commit (see
@@ -625,14 +625,20 @@ depths, shell/bridge fill polygons, and its paint `variant_chain`. The removed
 ///    may extend beyond the wall-inset polygon — at a ceiling layer the
 ///    perimeter module's infill area can be empty (the whole cross-section is
 ///    top surface) and the canonical bridge site must survive.
-///    **`bottom_solid_fill`**, **`top_solid_fill`**, and
+///    **`bottom_solid_fill`**, **`top_solid_fill`**,
+///    **`internal_solid_fill`**, and
 ///    **`sparse_infill_area`** are pairwise disjoint subsets of the
 ///    corresponding `PerimeterIR.regions[i].infill_areas` (the wall-inset
-///    polygon). All four sets remain pairwise disjoint from each other via the
-///    precedence dedup (`bottom`/`top`/`sparse` are differenced against the
-///    bridge claim in `sync_perimeter_infill_areas_into_slice`).
-/// 2. Precedence on overlap is strict: `bridge > bottom > top > sparse`
-///    (OrcaSlicer `PrintObject::prepare_infill` parity).
+///    polygon). All five sets remain pairwise disjoint from each other via the
+///    precedence dedup (`bottom`/`top`/`internal`/`sparse` are differenced
+///    against the higher-precedence claims in
+///    `sync_perimeter_infill_areas_into_slice`).
+/// 2. Precedence on overlap is strict:
+///    `bridge > bottom > top > internal > sparse`
+///    (OrcaSlicer `PrintObject::prepare_infill` parity; the internal bucket
+///    carries the converted sparse islands of `minimum_sparse_infill_area` —
+///    the PrePass shell-band marker content carves to empty here because it is
+///    a subset of `top_solid_fill`).
 /// 3. The pre-perimeter values of `top_solid_fill` / `bottom_solid_fill` /
 ///    `bridge_areas` (committed by `PrePass::ShellClassification` and
 ///    `PrePass::MeshAnalysis`) live unchanged on the **Blackboard**'s
@@ -644,7 +650,9 @@ depths, shell/bridge fill polygons, and its paint `variant_chain`. The removed
 ///
 /// Each fill claim holder (`claim:sparse-fill`, `claim:top-fill`,
 /// `claim:bottom-fill`, `claim:bridge-fill`; see `docs/03_wit_and_manifest.md`)
-/// emits over exactly one of these polygons with zero polygon math. Exception:
+/// emits over exactly one of these polygons with zero polygon math; the
+/// internal-solid bucket is emitted by its `claim:top-fill` holder as
+/// `ExtrusionRole::InternalSolidInfill`. Exception:
 /// order-locked paths (ADR-0063) are self-clipping and may extend into
 /// neighboring fill domains; the linker differences untagged fill of the same
 /// region by their swept footprint instead of clipping them.
