@@ -26,3 +26,7 @@ workspace = true
 [[test]]
 name = "traditional_family_tdd"
 path = "tests/traditional_family_tdd.rs"
+
+[[test]]
+name = "agg_rasterizer_tdd"
+path = "tests/agg_rasterizer_tdd.rs"

@@ -154,6 +154,7 @@ mod region_partition_tdd;
 mod region_split_dispatch_filter;
 mod run_pipeline_with_instrumentation_tdd;
 mod runtime_wiring_tdd;
+mod support_agg_rasterizer_tdd;
 mod support_geometry_config_normalization_tdd;
 mod support_invariants_wedge_tdd;
 mod thin_wall_emission_tdd;

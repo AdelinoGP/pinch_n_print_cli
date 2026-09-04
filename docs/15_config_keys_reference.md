@@ -248,6 +248,7 @@ is the authoritative catalog of their defaults and ranges.
 | `enable_support` | bool | `true` | — | `traditional-support-planner` |
 | `independent_support_layer_height` | bool | `true` | — | `traditional-support-planner` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `traditional-support-planner` |
+| `support_area_rasterizer` | enum | `"legacy_semantic"` | — (values: agg|legacy_semantic) | `traditional-support-planner` |
 | `support_base_pattern` | string | `"rectilinear"` | — (values: default|rectilinear|rectilinear-grid|honeycomb|lightning|hollow) | `traditional-support-planner` |
 | `support_base_pattern_spacing` | float | `2.5` | [0.1, 10.0] | `traditional-support-planner` |
 | `support_interface_bottom_layers` | int | `-1` | [-1.0, 10.0] | `traditional-support-planner` |

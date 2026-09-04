@@ -24,6 +24,8 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
+pub mod agg_raster;
+
 use std::collections::BTreeMap;
 
 use slicer_ir::SupportPlanDeclineReason;
@@ -42,10 +44,40 @@ const DEFAULT_OBJECT_XY_DISTANCE_MM: f32 = 0.35;
 /// Default extrusion line width in mm, used to expand the canonical bottom
 /// contact area (`support_material_flow.scaled_width()`).
 const DEFAULT_LINE_WIDTH_MM: f32 = 0.4;
+/// Default support base pattern spacing in mm, matching the manifest
+/// `support_base_pattern_spacing` default. Canonical `SupportGridPattern`
+/// derives its grid resolution and oversampling from this spacing.
+const DEFAULT_BASE_PATTERN_SPACING_MM: f32 = 2.5;
+/// Canonical `SupportGridPattern::island_samples` shrinks each expolygon by
+/// `offset(expoly, -20)` orca nm before sampling it. 20 orca nm is 0.2 PnP
+/// units, which truncates to 0; rounded AWAY from zero to one whole unit
+/// (`-0.0001` mm) so the inset stays a real shrink.
+const ISLAND_SAMPLE_INSET_MM: f32 = -0.0001;
+/// Canonical `expansion_to_propagate` is `-3` orca nm = -0.03 PnP units, which
+/// truncates to 0 on `i64`. Rounded AWAY from zero to `-1`: the propagated area
+/// must stay strictly smaller than the printed one, and rounding to 0 would
+/// delete that semantic outright.
+const OFFSET_TO_PROPAGATE: i64 = -1;
+/// Canonical `expansion_to_slice` is `scaled_spacing / 2 + 5` orca nm on the
+/// support extrusion flow. The `+5` is 0.05 PnP units, rounded UP to `1` (the
+/// conservative direction: the printed area may never under-cover).
+const OFFSET_TO_SLICE_EPSILON: i64 = 1;
 /// Default vertical gap between a support contact and the model above it.
 /// Matches OrcaSlicer's `support_top_z_distance` default of 0.2 mm. This was
 /// `0.0`, so support was printed flush against the overhang with no gap.
 const DEFAULT_TOP_Z_DISTANCE_MM: f32 = 0.2;
+
+/// Which area-propagation path the traditional planner uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RasterizerMode {
+    /// Canonical `SupportGridPattern` AGG rasterization. **Opt-in**: a faithful
+    /// port block-snaps the carry (canonical `seed_fill_block`,
+    /// `SupportMaterial.cpp`), which PnP's demand model cannot absorb. See
+    /// DEV-166.
+    Agg,
+    /// The pre-241 propagate-without-growth semantic. **This is the default.**
+    LegacySemantic,
+}
 
 /// Multi-layer traditional support planner.
 #[allow(dead_code)]
@@ -76,6 +108,14 @@ pub struct SupportPlanner {
     /// Extrusion line width in mm. Canonical expands the bottom contact area by
     /// one support-flow width (`bottom_contact_layers_and_layer_support_areas`).
     line_width_mm: f32,
+    /// Support base pattern spacing in mm. Canonical `SupportGridPattern`
+    /// derives `grid_resolution` and the oversampling factor from it.
+    support_base_pattern_spacing_mm: f32,
+    /// Packet 241: which area-propagation path to run. `LegacySemantic` (the
+    /// default) keeps the pre-241 propagate-without-growth behaviour; `Agg`
+    /// opts in to the canonical `SupportGridPattern` rasterization and its
+    /// DEV-166 block-snapping divergence.
+    pub support_area_rasterizer: RasterizerMode,
 }
 
 #[slicer_module]
@@ -131,6 +171,29 @@ impl PrepassModule for SupportPlanner {
             Some(ConfigValue::Int(v)) => *v as f32,
             _ => DEFAULT_LINE_WIDTH_MM,
         };
+        let support_base_pattern_spacing_mm = match config.get("support_base_pattern_spacing") {
+            Some(ConfigValue::Float(v)) => *v as f32,
+            Some(ConfigValue::Int(v)) => *v as f32,
+            _ => DEFAULT_BASE_PATTERN_SPACING_MM,
+        };
+        // A present-but-unknown string is fatal; a missing or wrong-typed value
+        // falls back to `legacy_semantic` (the `SeamPlacer` precedent). `agg` is
+        // opt-in: see DEV-166 and the manifest comment on this key.
+        let support_area_rasterizer = match config.get("support_area_rasterizer") {
+            Some(ConfigValue::String(s)) => match s.as_str() {
+                "agg" => RasterizerMode::Agg,
+                "legacy_semantic" => RasterizerMode::LegacySemantic,
+                other => {
+                    return Err(ModuleError::fatal(
+                        1,
+                        format!(
+                            "unknown support_area_rasterizer: {other};                              allowed values: agg, legacy_semantic"
+                        ),
+                    ));
+                }
+            },
+            _ => RasterizerMode::LegacySemantic,
+        };
         Ok(Self {
             enabled,
             support_family,
@@ -142,6 +205,8 @@ impl PrepassModule for SupportPlanner {
             independent_support_layer_height,
             support_object_xy_distance,
             line_width_mm,
+            support_base_pattern_spacing_mm,
+            support_area_rasterizer,
         })
     }
 
@@ -241,22 +306,74 @@ impl SupportPlanner {
             )?;
         }
 
-        if self.independent_support_layer_height && self.support_layer_height_mm > 0.0 {
+        let mut emitted = if self.independent_support_layer_height
+            && self.support_layer_height_mm > 0.0
+        {
+            let mut coarse = Vec::new();
             self.emit_coarse_entries(
                 layer_plan,
                 &mut pending_entries,
                 &mut intermediate_plane_indices,
-                output,
+                &mut coarse,
             )?;
+            coarse
         } else {
-            for entry in pending_entries.drain(..) {
-                output
-                    .push_support_plan_entry(entry)
-                    .map_err(|e| ModuleError::fatal(1, format!("push_support_plan failed: {e}")))?;
-            }
+            std::mem::take(&mut pending_entries)
+        };
+        // One entry per support-region identity is the producer's contract,
+        // not the host's to repair. See `merge_region_identity_entries`.
+        merge_region_identity_entries(&mut emitted);
+        for entry in emitted {
+            output
+                .push_support_plan_entry(entry)
+                .map_err(|e| ModuleError::fatal(1, format!("push_support_plan failed: {e}")))?;
         }
 
         Ok(())
+    }
+
+    /// Ticket 19 territory clip: keep geometry on the side of a modifier
+    /// boundary this family owns. A minted sub-region keeps `polys ∩ own`; a
+    /// base region keeps `polys - inflate(foreign, line width)` so the two
+    /// families never touch. Orca has no per-region support family; this has
+    /// no canonical counterpart.
+    fn clip_to_territory(
+        &self,
+        polys: Vec<ExPolygon>,
+        support_analysis: &SupportAnalysisView,
+        object_id: &str,
+        region_id: &str,
+        layer: u32,
+    ) -> Vec<ExPolygon> {
+        if polys.is_empty() {
+            return polys;
+        }
+        if let Some(own) = support_analysis.region_territory(object_id, layer, region_id) {
+            return host::clip_polygons(&polys, own, ClipOperation::Intersection);
+        }
+        let Some(partition) = support_analysis.territory_partition(object_id, layer, "traditional")
+        else {
+            return polys;
+        };
+        if partition.foreign.is_empty() {
+            return polys;
+        }
+        let bar = if self.line_width_mm > 0.0 {
+            let grown = host::offset_polygons(
+                &partition.foreign,
+                self.line_width_mm,
+                OffsetJoinType::Miter,
+                0.0,
+            );
+            if grown.is_empty() {
+                partition.foreign
+            } else {
+                grown
+            }
+        } else {
+            partition.foreign
+        };
+        host::clip_polygons(&polys, &bar, ClipOperation::Difference)
     }
 
     fn plan_candidate(
@@ -384,11 +501,18 @@ impl SupportPlanner {
         // 1. **The carry does not grow.** Canonical propagates a *smaller* area
         //    than it prints (`extract_support(expansion_to_propagate)` versus
         //    `(expansion_to_slice)`) precisely so base areas do not swell with
-        //    depth. Propagating the contact area unexpanded is that semantic.
-        //    The printed-area expansion is deliberately not applied here — it
-        //    exists to snap the zig-zag onto `SupportGridPattern`'s grid lines,
-        //    and without the grid it would only fatten support by an arbitrary
-        //    amount. See the needs-research deviation on the grid pattern.
+        //    depth.
+        //
+        //    Packet 241 supplies the missing half. `RasterizerMode::Agg`
+        //    (opt-in) routes both areas through the ported
+        //    `SupportGridPattern` port in `agg_raster`, so the printed area
+        //    really is the grid-snapped `expansion_to_slice` extraction and the
+        //    carry really is the smaller `expansion_to_propagate` one.
+        //    `RasterizerMode::LegacySemantic` -- propagate the trimmed contact
+        //    area unexpanded, print the same thing -- is the DEFAULT, because
+        //    canonical `seed_fill_block` block-snapping grows the carry by one
+        //    macro-block extent that PnP's demand model cannot absorb
+        //    (DEV-166). This closes gap-register row G-07.
         //
         // 2. **Each layer is trimmed against the object.** Canonical trims in
         //    `trim_support_layers_by_object` using `gap_xy`
@@ -403,6 +527,12 @@ impl SupportPlanner {
         // occupancy. The contact geometry is an analysis input, not a license
         // for the renderer to overlap the model at the chosen support Z.
         let trim_end = emit_top_layer + 1;
+        // The per-layer trimming mask: model occupancy inflated by `gap_xy`.
+        // Canonical feeds exactly this set both to the layer trim and to
+        // `SupportGridPattern`'s trimming polygons, so it is computed once and
+        // shared. An empty mask stays empty rather than being handed to the
+        // clipper, so a difference against nothing can never empty the carry.
+        let mut blocked_at: Option<u32> = None;
         for layer in (termination_layer..trim_end).rev() {
             let occupancy = occupancy_at(
                 support_analysis,
@@ -410,80 +540,144 @@ impl SupportPlanner {
                 &candidate.region_id,
                 layer,
             );
-            if !occupancy.is_empty() {
-                let trimming = if self.support_object_xy_distance > 0.0 {
-                    let clearance = host::offset_polygons(
-                        &occupancy,
-                        self.support_object_xy_distance,
-                        OffsetJoinType::Miter,
-                        0.0,
-                    );
-                    if clearance.is_empty() {
-                        occupancy
-                    } else {
-                        clearance
-                    }
-                } else {
+            let trimming: Vec<ExPolygon> = if occupancy.is_empty() {
+                Vec::new()
+            } else if self.support_object_xy_distance > 0.0 {
+                let clearance = host::offset_polygons(
+                    &occupancy,
+                    self.support_object_xy_distance,
+                    OffsetJoinType::Miter,
+                    0.0,
+                );
+                if clearance.is_empty() {
                     occupancy
-                };
+                } else {
+                    clearance
+                }
+            } else {
+                occupancy
+            };
+            if !trimming.is_empty() {
                 carry = host::clip_polygons(&carry, &trimming, ClipOperation::Difference);
             }
             // Ticket 19: keep the column on the side of a modifier boundary
-            // this family owns. A minted sub-region keeps `carry ∩ own`; a
-            // base region keeps `carry - inflate(foreign, line width)` so the
-            // two families never touch. Orca has no per-region support family;
-            // this has no canonical counterpart. An emptied carry falls into
-            // the `NoRoute` decline below.
-            if !carry.is_empty() {
-                if let Some(own) =
-                    support_analysis.region_territory(&obj.object_id, layer, &candidate.region_id)
-                {
-                    carry = host::clip_polygons(&carry, own, ClipOperation::Intersection);
-                } else if let Some(partition) =
-                    support_analysis.territory_partition(&obj.object_id, layer, "traditional")
-                {
-                    if !partition.foreign.is_empty() {
-                        let bar = if self.line_width_mm > 0.0 {
-                            let grown = host::offset_polygons(
-                                &partition.foreign,
-                                self.line_width_mm,
-                                OffsetJoinType::Miter,
-                                0.0,
-                            );
-                            if grown.is_empty() {
-                                partition.foreign
-                            } else {
-                                grown
-                            }
-                        } else {
-                            partition.foreign
-                        };
-                        carry = host::clip_polygons(&carry, &bar, ClipOperation::Difference);
-                    }
-                }
-            }
+            // this family owns. See `clip_to_territory`.
+            carry = self.clip_to_territory(
+                carry,
+                support_analysis,
+                &obj.object_id,
+                &candidate.region_id,
+                layer,
+            );
             if carry.is_empty() {
-                // The object closes off every route below this layer. The demand
-                // is unmet and must be recorded as such — never silently
-                // dropped, and never tunnelled through the model.
-                let _ = output.push_diagnostic(Diagnostic {
-                    severity: DiagnosticSeverity::Warn,
-                    code: 1203,
-                    layer: Some(layer as i32),
-                    object_id: Some(obj.object_id.clone()),
-                    message: format!(
-                        "traditional body rejected: complete body intersects model occupancy at layer {layer}"
-                    ),
-                });
-                return push_declined(
-                    output,
-                    obj,
-                    candidate,
-                    demand_id,
-                    SupportPlanDeclineReason::NoRoute,
-                );
+                blocked_at = Some(layer);
+                break;
             }
-            propagated_by_layer.insert(layer, carry.clone());
+            // Printed area vs propagated area. The two rasterizer modes differ
+            // HERE and nowhere else in this loop.
+            let printed = match self.support_area_rasterizer {
+                // Pre-241 semantic, unchanged: print and propagate the same
+                // trimmed carry.
+                RasterizerMode::LegacySemantic => carry.clone(),
+                // Canonical `SupportGridPattern`: one grid per layer, built from
+                // the carry and the same inflated-occupancy trimming mask, then
+                // extracted twice at two different in-cell expansions.
+                RasterizerMode::Agg => {
+                    let grid = agg_raster::SupportGrid::new(
+                        &carry,
+                        &trimming,
+                        self.support_base_pattern_spacing_mm,
+                        self.line_width_mm,
+                    );
+                    // `contours_simplified` asserts the in-cell bound in release
+                    // builds too, so both offsets are clamped into it first.
+                    let max_offset = agg_raster::max_in_cell_offset(grid.params().pixel_size);
+                    let offset_to_slice = (mm_to_units(self.line_width_mm) / 2
+                        + OFFSET_TO_SLICE_EPSILON)
+                        .clamp(0, max_offset);
+                    let offset_to_propagate = OFFSET_TO_PROPAGATE.clamp(-max_offset, 0);
+
+                    // Expanding extraction: canonical samples the union of the
+                    // support polygons themselves.
+                    let slice_islands = grid.extract_islands(offset_to_slice, true);
+                    let slice_area =
+                        grid.filter_islands_by_samples(slice_islands, &island_samples(&carry));
+
+                    // Shrinking extraction: canonical samples the support
+                    // polygons intersected with the extracted islands.
+                    let propagate_islands = grid.extract_islands(offset_to_propagate, true);
+                    let seeded = host::clip_polygons(
+                        &carry,
+                        &propagate_islands,
+                        ClipOperation::Intersection,
+                    );
+                    let propagate_area = grid
+                        .filter_islands_by_samples(propagate_islands, &island_samples(&seeded));
+
+                    // WIP PROBE (packet 241, step 10). The asymmetric clamp
+                    // that used to sit here -- propagated carry intersected
+                    // with the pre-grid carry, printed area intersected with
+                    // the pre-grid carry grown by `offset_to_slice` -- has
+                    // been REMOVED. The agg arm now returns the rasterizer's
+                    // own output for both the carry and the printed area, so
+                    // the unclamped failure modes can be characterised. Do not
+                    // restore the clamp; see the step-10 root-cause probe.
+                    carry = propagate_area;
+
+                    // The grid extraction snaps to macro blocks, so both
+                    // extracted areas can bulge back across the territory
+                    // boundary the clip above enforced. The bar is
+                    // PnP-specific (ticket 19) and has no canonical
+                    // counterpart, so canonical's ordering says nothing here;
+                    // the invariant "this family never crosses into foreign
+                    // territory" is the whole point of the bar and must hold
+                    // on the emitted geometry, not merely on the pre-grid
+                    // carry. Re-apply it to both extractions.
+                    carry = self.clip_to_territory(
+                        carry,
+                        support_analysis,
+                        &obj.object_id,
+                        &candidate.region_id,
+                        layer,
+                    );
+                    self.clip_to_territory(
+                        slice_area,
+                        support_analysis,
+                        &obj.object_id,
+                        &candidate.region_id,
+                        layer,
+                    )
+                }
+            };
+            if carry.is_empty() {
+                // Only reachable under `Agg`: the grid extraction can starve the
+                // carry where the legacy difference did not. It must decline
+                // identically rather than silently truncate the column.
+                blocked_at = Some(layer);
+                break;
+            }
+            propagated_by_layer.insert(layer, printed);
+        }
+        if let Some(layer) = blocked_at {
+            // The object closes off every route below this layer. The demand
+            // is unmet and must be recorded as such — never silently
+            // dropped, and never tunnelled through the model.
+            let _ = output.push_diagnostic(Diagnostic {
+                severity: DiagnosticSeverity::Warn,
+                code: 1203,
+                layer: Some(layer as i32),
+                object_id: Some(obj.object_id.clone()),
+                message: format!(
+                    "traditional body rejected: complete body intersects model occupancy at layer {layer}"
+                ),
+            });
+            return push_declined(
+                output,
+                obj,
+                candidate,
+                demand_id,
+                SupportPlanDeclineReason::NoRoute,
+            );
         }
         let support_step = if self.support_layer_height_mm > 0.0 && model_layer_height > 0.0 {
             (self.support_layer_height_mm / model_layer_height)
@@ -656,13 +850,11 @@ impl SupportPlanner {
                 provenance: vec!["traditional-support-planner".to_string()],
                 decline_reason: None,
             };
-            if buffer_for_possible_coarse_order {
-                pending_entries.push(entry);
-            } else {
-                output
-                    .push_support_plan_entry(entry)
-                    .map_err(|e| ModuleError::fatal(1, format!("push_support_plan failed: {e}")))?;
-            }
+            // Every planned entry is buffered: `plan_for_object` unions the
+            // ones that share a support-region identity before any of them
+            // reaches `output`. Declines still go straight to `output` -
+            // aggregation drops them before the identity check.
+            pending_entries.push(entry);
         }
 
         Ok(())
@@ -673,7 +865,7 @@ impl SupportPlanner {
         layer_plan: &LayerPlanView,
         entries: &mut Vec<SupportPlanEntry>,
         intermediate_plane_indices: &mut BTreeMap<i64, i32>,
-        output: &mut SupportGeometryOutput,
+        sink: &mut Vec<SupportPlanEntry>,
     ) -> Result<(), ModuleError> {
         if self.support_layer_height_mm <= 0.0 {
             return Ok(());
@@ -972,11 +1164,7 @@ impl SupportPlanner {
                 previous_by_body.insert(entry.body_ids.clone(), entry.clone());
                 retained.push(entry.clone());
             }
-            for entry in retained.drain(..) {
-                output
-                    .push_support_plan_entry(entry)
-                    .map_err(|e| ModuleError::fatal(1, format!("push_support_plan failed: {e}")))?;
-            }
+            sink.append(&mut retained);
             return Ok(());
         }
 
@@ -1070,11 +1258,7 @@ impl SupportPlanner {
         retained.sort_by_key(|entry| entry.anchor_z);
         entries.clear();
         entries.extend(retained);
-        for entry in entries.drain(..) {
-            output
-                .push_support_plan_entry(entry)
-                .map_err(|e| ModuleError::fatal(1, format!("push_support_plan failed: {e}")))?;
-        }
+        sink.append(entries);
         Ok(())
     }
 }
@@ -1151,6 +1335,106 @@ fn next_intermediate_plane_index(
     Ok(*intermediate_plane_indices
         .entry(plane)
         .or_insert(next_index))
+}
+
+/// Union the planned entries that share one `(global_layer_index, object_id,
+/// region_id)` support-region identity, so the plan this module publishes
+/// satisfies the identity the IR enforces.
+///
+/// `SupportPlanIR::duplicate_region_identity` (`crates/slicer-ir/src/slice_ir.rs`),
+/// checked by `Blackboard::commit_support_plan`
+/// (`crates/slicer-runtime/src/blackboard.rs`), admits exactly ONE entry per
+/// that triple. This planner emits one entry per *candidate* per layer, so an
+/// object/region carrying several demands whose columns reach a common layer
+/// produces several entries for one identity.
+///
+/// Until packet 241 that was masked by host `union_same_family_entries`
+/// (`crates/slicer-wasm-host/src/support_aggregation.rs`), which unions
+/// same-family entries on `family_id` / layer / `object_id` / `anchor_z` plus
+/// (`same_body` OR equal `routing_cell`). `region_id` is not in that key, and
+/// `routing_cell` is the `ROUTING_CELL_SIZE` grid cell containing the
+/// bounding-box centroid - so two columns of ONE region merged only when their
+/// centroids happened to land in the same cell. Measured on
+/// `resources/regression_wedge.stl` (packet 241 step 17): `legacy_semantic`
+/// reaches layer 0 with two entries for region 0, centroids (503750, 250000)
+/// and (250000, 541750), both in cell (0, 0) - they merged. `agg` reaches
+/// layer 0 with three, because the block-snapped carry keeps `demand-1`'s
+/// column alive (DEV-166); its centroid is (250004, -15250), whose negative Y
+/// puts it in cell (0, -1), so it did not merge and the commit was rejected.
+/// The host merge is a superset convenience, never the producer's safety net.
+///
+/// Merge semantics mirror the host union exactly: role regions are
+/// concatenated per role kind (no clipping, so no planned area is lost), and
+/// the identity lists are extended then deduplicated. `anchor_z` is part of
+/// the key rather than merged over: within one object a layer index maps to a
+/// single physical plane (the direct path derives `anchor_z` from the layer's
+/// `z`, and `next_intermediate_plane_index` mints one synthetic index per
+/// plane), so no group can hold two planes, and independent support rows that
+/// deliberately carry distinct planes keep distinct indices.
+///
+/// Declined entries pass through untouched: aggregation converts them to
+/// diagnostics and drops them before the identity check, so they neither need
+/// nor tolerate merging.
+///
+/// One consequence is deliberate. Host `validate_entry` runs per entry BEFORE
+/// its union, so it now sees the merged entry: its `in_routing_cell` extent
+/// bound (bbox span <= `ROUTING_CELL_SIZE`) and its exact-Z occupancy check
+/// apply to the union of a region's columns rather than to each column. For a
+/// region whose columns span more than one cell edge the previous behaviour
+/// was not "both survive" but a hard commit rejection - the bug fixed here -
+/// so this trades a fatal for a recorded rejection.
+fn merge_region_identity_entries(entries: &mut Vec<SupportPlanEntry>) {
+    let mut merged: Vec<SupportPlanEntry> = Vec::with_capacity(entries.len());
+    let mut index_by_identity: BTreeMap<(i32, String, String, i64), usize> = BTreeMap::new();
+    for entry in entries.drain(..) {
+        if entry.decline_reason.is_some() {
+            merged.push(entry);
+            continue;
+        }
+        let identity = (
+            entry.global_layer_index,
+            entry.object_id.clone(),
+            entry.region_id.clone(),
+            entry.anchor_z,
+        );
+        let Some(&index) = index_by_identity.get(&identity) else {
+            index_by_identity.insert(identity, merged.len());
+            merged.push(entry);
+            continue;
+        };
+        let existing = &mut merged[index];
+        existing.demand_ids.extend(entry.demand_ids);
+        existing.body_ids.extend(entry.body_ids);
+        for incoming_role in entry.roles {
+            if let Some(role) = existing
+                .roles
+                .iter_mut()
+                .find(|role| role.role == incoming_role.role)
+            {
+                role.regions.extend(incoming_role.regions);
+            } else {
+                existing.roles.push(incoming_role);
+            }
+        }
+        existing.capabilities.extend(entry.capabilities);
+        existing.provenance.extend(entry.provenance);
+        if existing.skeleton.is_none() {
+            existing.skeleton = entry.skeleton;
+        }
+        dedup_sorted(&mut existing.demand_ids);
+        dedup_sorted(&mut existing.body_ids);
+        dedup_sorted(&mut existing.capabilities);
+        dedup_sorted(&mut existing.provenance);
+    }
+    *entries = merged;
+}
+
+/// Deduplicate and sort an identity list, matching `dedup_sorted` in
+/// `crates/slicer-wasm-host/src/support_aggregation.rs` so the module-side and
+/// host-side unions agree on the shape of a merged entry.
+fn dedup_sorted(values: &mut Vec<String>) {
+    values.sort();
+    values.dedup();
 }
 
 fn push_declined(
@@ -1250,6 +1534,41 @@ fn canonical_support_family_alias(value: Option<&str>) -> String {
 }
 
 /// Return the model-occupancy polygons for one (object, region, layer) triple.
+/// Ports canonical `SupportGridPattern::island_samples`.
+///
+/// Each expolygon is shrunk slightly, then up to four contour points are taken
+/// at a fixed stride from every surviving polygon; the result is sorted, which
+/// is what lets `filter_islands_by_samples` binary-search it. Canonical skips
+/// expolygons whose contour has two points or fewer; here the pre-inset contour
+/// is used as the fallback when the inset collapses the polygon entirely, so a
+/// thin-but-real island still contributes a sample.
+///
+/// This lives in `lib.rs`, not `agg_raster.rs`: it needs a polygon offset, and
+/// the rasterizer module is deliberately free of one.
+fn island_samples(expolys: &[ExPolygon]) -> Vec<Point2> {
+    let mut pts: Vec<Point2> = Vec::new();
+    for expoly in expolys {
+        let single = std::slice::from_ref(expoly);
+        let inset = host::offset_polygons(
+            single,
+            ISLAND_SAMPLE_INSET_MM,
+            OffsetJoinType::Miter,
+            0.0,
+        );
+        let sampled: &[ExPolygon] = if inset.is_empty() { single } else { &inset };
+        for ex in sampled {
+            let points = &ex.contour.points;
+            if points.len() <= 2 {
+                continue;
+            }
+            let stride = points.len().div_ceil(4).max(1);
+            pts.extend(points.iter().step_by(stride).take(4).copied());
+        }
+    }
+    pts.sort_unstable_by_key(|p| (p.x, p.y));
+    pts
+}
+
 fn occupancy_at(
     analysis: &SupportAnalysisView,
     object_id: &str,
