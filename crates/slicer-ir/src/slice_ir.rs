@@ -908,10 +908,20 @@ impl ConfigView {
     /// `Percent` never coerces here — no base is available. `FloatOrPercent`
     /// only yields its literal when `is_percent` is `false`; when the value
     /// is a percent, callers MUST resolve it via [`ConfigView::get_abs_value`].
+    ///
+    /// `Int` IS accepted: a JSON integer is a valid float spelling, and the
+    /// module sees the raw source variant (ticket 131).
     #[must_use]
     pub fn get_float(&self, key: &str) -> Option<f64> {
         match self.fields.get(key)? {
             ConfigValue::Float(f) => Some(if f.is_subnormal() { 0.0 } else { *f }),
+            // A JSON integer is a valid spelling of a float value. `serde_json`
+            // hands `1` to `json_to_config_value` as an integer and `1.0` as a
+            // float, and modules read the RAW source map
+            // (`bind_module_config_view` -> `ConfigView::from_declared`), so
+            // that spelling difference used to reach the accessor and drop the
+            // integer form on the floor. See ticket 131.
+            ConfigValue::Int(i) => Some(*i as f64),
             ConfigValue::FloatOrPercent {
                 value,
                 is_percent: false,
@@ -938,6 +948,8 @@ impl ConfigView {
     ///   `is_percent` is `true`; when `false`, `value` is already absolute
     ///   and is returned unchanged regardless of `base`.
     /// * `Float(f)` is already absolute and is returned unchanged.
+    /// * `Int(i)` is read exactly like `Float` — a JSON integer is a valid
+    ///   spelling of the same number (ticket 131).
     /// * `String(s)` with a trailing `%` (the form 3MF metadata preserves for
     ///   percent keys such as `sparse_infill_density`) is parsed and resolves
     ///   like `Percent`; other strings yield `None`. Wayfinder ticket 107 made
@@ -964,6 +976,14 @@ impl ConfigView {
                 }
             }
             ConfigValue::Float(f) => Some(*f),
+            // Same absolute reading as `Float`, for the same reason
+            // `get_float` accepts it: `90` and `90.0` are two JSON spellings of
+            // one number, and the module receives whichever the profile used.
+            // This does NOT decide ticket 128's separate question of whether a
+            // bare number against a `percent` key should mean percent-of-base
+            // or absolute — whatever that ruling is, it applies identically to
+            // `Float` and `Int`, which is exactly the point of this arm.
+            ConfigValue::Int(i) => Some(*i as f64),
             ConfigValue::String(s) => {
                 if let Some(num) = s.strip_suffix('%') {
                     num.trim().parse::<f64>().ok().and_then(percent)
@@ -3238,6 +3258,45 @@ mod config_value_percent_tests {
         let view = view_with("k", ConfigValue::Float(3.5));
         assert_eq!(view.get_abs_value("k", 0.0), Some(3.5));
         assert_eq!(view.get_abs_value("k", 100.0), Some(3.5));
+    }
+
+    /// Ticket 131: `serde_json` gives `90` as `Int` and `90.0` as `Float`
+    /// (`json_to_config_value`), and modules read the raw source map, so the
+    /// JSON spelling reaches this accessor. Both must resolve identically.
+    #[test]
+    fn get_abs_value_reads_int_exactly_like_float() {
+        let by_int = view_with("k", ConfigValue::Int(90)).get_abs_value("k", 100.0);
+        let by_float = view_with("k", ConfigValue::Float(90.0)).get_abs_value("k", 100.0);
+        assert_eq!(by_int, Some(90.0));
+        assert_eq!(by_int, by_float, "Int and Float spellings must agree");
+    }
+
+    /// The base is irrelevant for both, exactly as for `Float`: an integer is
+    /// read as an absolute value, not as a percent of `base`. Which of those a
+    /// bare number *should* mean for a `percent` key is ticket 128's open
+    /// question — this only pins that `Int` and `Float` answer it the same way.
+    #[test]
+    fn get_abs_value_int_is_absolute_and_ignores_base() {
+        let view = view_with("k", ConfigValue::Int(7));
+        assert_eq!(view.get_abs_value("k", 100.0), Some(7.0));
+        assert_eq!(view.get_abs_value("k", 0.4), Some(7.0));
+    }
+
+    /// Same gap, same fix, on the plain float accessor.
+    #[test]
+    fn get_float_reads_int_exactly_like_float() {
+        assert_eq!(view_with("k", ConfigValue::Int(1)).get_float("k"), Some(1.0));
+        assert_eq!(
+            view_with("k", ConfigValue::Int(-3)).get_float("k"),
+            Some(-3.0)
+        );
+    }
+
+    /// Widening the float accessors must not disturb the integer accessor.
+    #[test]
+    fn get_int_still_reads_int_and_rejects_float() {
+        assert_eq!(view_with("k", ConfigValue::Int(3)).get_int("k"), Some(3));
+        assert_eq!(view_with("k", ConfigValue::Float(3.0)).get_int("k"), None);
     }
 
     #[test]

@@ -3172,6 +3172,9 @@ impl ct::HostConfigView for HostExecutionContext {
                 value,
                 is_percent: false,
             } => Some(normalize_subnormal_boundary(*value)),
+            // Also mirrors it: a JSON integer is a valid float spelling and
+            // must not vanish at the WIT boundary (ticket 131).
+            ConfigValueStorage::Int(i) => Some(*i as f64),
             _ => None,
         }))
     }

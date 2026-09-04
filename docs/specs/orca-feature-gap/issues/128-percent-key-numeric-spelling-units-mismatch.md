@@ -102,3 +102,33 @@ Two corrections to this ticket's analysis:
 This does not change the ruling being sought (which unit wins, and where the
 coercion lands) — it raises the stakes and gives the fix a ready end-to-end
 regression: the three numeric rows above must separate once the coercion is in.
+
+## Correction (2026-09-04) — the sidecar half was a separate defect, fixed on ticket 131
+
+The measurement recorded above ("`sparse_infill_density` is INERT on the numeric
+spelling") was **not** an instance of this ticket. Ticket 131 traced it: bare
+JSON `90` becomes `ConfigValue::Int` while `90.0` becomes `Float`
+(`json_to_config_value` tries `as_i64()` first), modules read the raw source map
+via `ConfigView::from_declared`, and `Int` fell into the `_ => None` arm of
+`get_abs_value` / `get_float`. Inert, because the module kept its fallback. Fixed
+by giving `Int` the same arm as `Float`.
+
+That explains the mismatch between this ticket's prediction and that measurement.
+The reasoning here — that a bare number reaches `get_abs_value`'s `Float` arm and
+is read as **absolute**, so a `percent` key silently goes ~100x over-dense — is
+correct, and is now reachable from the sidecar for the first time: post-131,
+`{"sparse_infill_density": 90}` and `{"sparse_infill_density": 90.0}` both land
+on that arm and agree.
+
+**This ticket's question is unchanged and still open**: for a `percent` /
+`float_or_percent` key, does a bare number mean percent-of-base or absolute, and
+where does the coercion belong? 131 deliberately did not answer it — it only made
+the two numeric spellings agree, which is a precondition for any ruling here
+rather than a substitute for one. The four open questions above stand.
+
+One consequence worth noting for the ruling: `sparse_infill_density` does **not**
+discriminate between the two readings, because its callers pass `base = 100.0`
+(`slicer_sdk::config_resolution::resolve_percent_float`), where percent-of-base
+and absolute coincide. Pick a key with a non-100 base — `bridge_density`
+(`base = 1.0`) is the one this ticket was filed from — when building the
+regression that proves the ruling.

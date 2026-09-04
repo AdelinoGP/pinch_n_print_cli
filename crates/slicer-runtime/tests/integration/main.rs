@@ -14,6 +14,7 @@ mod anchored_event_ordering;
 mod anchored_parallel_determinism;
 mod anchored_z_span_validation;
 mod anchored_z_validation;
+mod sidecar_integer_config_spelling_tdd;
 mod structured_support_identity;
 mod support_disabled_no_output;
 mod support_eligibility_signal_tdd;
