@@ -5,8 +5,8 @@
 - Primary code path: `SupportPlanIR.raft_plan` (blackboard) →
   `paint-region-layer-view.raft-plan` (240a accessor) → new
   `com.core.raft-default` guest (`Layer::Infill`) → `SlicedRegion.raft_fill`
-  (240a carrier) → ordinary ordered-entity G-code at negative global-layer
-  indices.
+  (240a carrier) → ordinary ordered-entity G-code at the raft band layers
+  (global indices `0 .. support_raft_layers - 1`).
 - Neighboring tests/fixtures:
   `crates/slicer-sdk/tests/should_emit_raft_fill_claim_tdd.rs` (case
   `ac4_raft_fill_claim_emits_raft_infill`),
@@ -29,17 +29,24 @@ mid-implementation.
 | `raft-fill` accessor | `func() -> list<ex-polygon>`, on BOTH region resources | `crates/slicer-schema/wit/deps/ir-types.wit` |
 | `raft-plan-view` | record mirroring the prepass `raft-plan` | `crates/slicer-schema/wit/deps/ir-types.wit` |
 | `paint-region-layer-view.raft-plan` | `func() -> option<raft-plan-view>` | same |
+| `paint-region-layer-view.is-raft` | `func() -> bool` | same |
+| `PaintRegionLayerView::is_raft()` | SDK getter beside `raft_plan()` | `crates/slicer-sdk/src/traits.rs` |
 | `PaintRegionLayerView::raft_plan()` | SDK getter beside `support_plan()` | `crates/slicer-sdk/src/traits.rs` |
-| `LayerModule::run_infill` | takes `layer_index: i32` | `crates/slicer-sdk/src/traits.rs` |
-| negative prefix band | `GlobalLayer.index` in `-N .. -1`, sorting before 0 | `crates/slicer-wasm-host/src/marshal/{in_,native}.rs` |
+| `LayerModule::run_infill` | takes `layer_index: u32` (unchanged by 240a) | `crates/slicer-sdk/src/traits.rs` |
+| positive raft offset band | `GlobalLayer.index` in `0 .. N-1` with `is_raft == true`; model layers at `N ..` | `crates/slicer-wasm-host/src/marshal/{in_,native}.rs` |
+| `GlobalLayer.is_raft` | `bool`, `#[serde(default)]` raft marker (host-side; a WASM guest CANNOT read this directly — it reads `paint-region-layer-view.is-raft` above) | `crates/slicer-ir/src/slice_ir.rs` |
 | `CURRENT_SLICE_IR_SCHEMA_VERSION` | minor-bumped past 4.8.0 | `crates/slicer-ir/src/slice_ir.rs` |
 
 ## Architecture Constraints
 
-- **ADR-0009 preserved:** rafts are signed negative global-layer PREFIX
-  entries. No raft geometry may be minted as an `AnchoredEntity`, routed
-  through `execute_per_layer_with_anchored_events`, or carried by any
-  anchored-event structure (plan §15 prohibition).
+- **Positive raft offset band (plan §12/§15 authority, matching canonical):**
+  rafts occupy global layer indices `0 .. N-1` where `N = support_raft_layers`,
+  identified by `GlobalLayer.is_raft`, with model layers at `N ..`. No raft
+  geometry may be minted as an `AnchoredEntity`, routed through
+  `execute_per_layer_with_anchored_events`, or carried by any anchored-event
+  structure (plan §15 prohibition). Note ADR-0009 is NOT a layer-index
+  authority — it decides where raft pattern algorithms live and its Status is
+  `Proposed`; this packet owns its Decision-5 amendment.
 - **Single-writer per IR is unchanged:** `com.core.raft-default` writes only
   the `SlicedRegion.raft_fill` sub-field of `SliceIR`; it does not claim
   `SliceIR` wholesale against perimeter/infill writers. Its manifest declares
@@ -96,9 +103,10 @@ mid-implementation.
    raft-related key the existing core-module manifests actually declare,
    re-derived by grep at execution time rather than assumed; regenerate
    `docs/15_config_keys_reference.md` with `cargo xtask gen-config-docs`.
-4. **Negatives:** claim-conflict, band-bounds rejection, and an undeclared-key
-   rejection that actually exercises the rejection path rather than grepping
-   the manifest for a key's presence.
+4. **Negatives:** claim-conflict (AC-N1, Step 2), a non-raft-layer no-write
+   case (AC-N2, Step 3 — module-side, NOT a host band-bounds validator), and an
+   undeclared-key rejection (AC-N3, Step 4) that actually exercises the
+   rejection path rather than grepping the manifest for a key's presence.
 5. **ADR + records:** formal ADR-0009 amendment plus its deviation row; DEV-124
    re-verification.
 
@@ -108,11 +116,12 @@ mid-implementation.
   raft-default.toml, src/lib.rs, wit-guest/}`, mirroring
   `modules/core-modules/rectilinear-infill/` as the shape template.
 - Tests authored: integration cases
+  `raft_writes_nothing_on_non_raft_layer` (AC-N2),
   `raft_fill_is_deterministic_across_two_runs`,
   `raft_first_layer_expansion_exceeds_upper_layers`,
   `raft_geometry_orders_before_model_layers`,
   `raft_mints_no_anchored_entities`; contract cases
-  `raft_keys_declared_and_wired`, `raft_index_outside_band_rejected`,
+  `raft_keys_declared_and_wired`,
   `undeclared_raft_key_is_rejected_not_defaulted`; scheduler case
   `raft_fill_double_holder_conflicts` in a new
   `crates/slicer-scheduler/tests/raft_claim_conflict_tdd.rs`.
@@ -216,7 +225,7 @@ com.core.raft-default (NEW, Layer::Infill, holds claim:raft-fill)
   writes: SlicedRegion.raft_fill                                 [240a carrier - FORWARD-DEP]
        ↓ host partition/delivery (existing region flow;
          raft_fill survives modifier splits via 240a's split_field!)
-G-code emission at negative-index layers (ordinary ordering; NO anchored events)
+G-code emission at raft band layers 0..N-1 (ordinary ordering; NO anchored events)
 ```
 
 The write leg was already complete before this family started; 240a supplied
@@ -228,7 +237,7 @@ consumer.
 - `modules/core-modules/raft-default/**` - role: the new guest module; expected change: full directory (Cargo.toml, manifest, src, wit-guest).
 - `modules/core-modules/*/*.toml` for whichever manifests the Step 5 re-derivation grep shows declare a raft-related key (at authoring: `arachne-perimeters`, `classic-perimeters`, `tree-support-planner`; re-derive, do not assume) - role: wire-or-record annotations; expected change: comment or `[config.schema]` rows only, no logic.
 - `crates/slicer-runtime/tests/integration/raft_geometry.rs` + `main.rs` registration - role: AC-3/AC-4/AC-5 cases.
-- `crates/slicer-runtime/tests/contract/raft_bounds_tdd.rs` + `main.rs` registration - role: AC-6/AC-N2/AC-N3 cases.
+- `crates/slicer-runtime/tests/contract/raft_bounds_tdd.rs` + `main.rs` registration - role: AC-6/AC-N3 cases. (AC-N2 is module-side and lives in `crates/slicer-runtime/tests/integration/raft_geometry.rs`, Step 3.)
 - `crates/slicer-scheduler/tests/raft_claim_conflict_tdd.rs` - role: AC-N1.
 - `docs/adr/0009-raft-as-layer-infill-role.md`, `docs/DEVIATION_LOG.md`, `docs/15_config_keys_reference.md`, `docs/03_wit_and_manifest.md` - role: records.
 - `docs/spec_packets/240b-support-raft-module/requirements.md` - role: the wire-or-record table and the DEV-124 outcome.
@@ -289,8 +298,10 @@ consumer.
 
 ## Locked Assumptions and Invariants
 
-- Rafts remain signed negative global-layer prefix entries; never anchored
-  entities (plan §15; ADR-0009).
+- Rafts remain a positive `0..N-1` global-layer offset band marked by
+  `GlobalLayer.is_raft`; never anchored entities (plan §15 — the sole
+  authority; ADR-0009 says nothing about indices).
+- The first printed MODEL layer is index `support_raft_layers`, not `0`.
 - Canonical defaults: `raft_contact_distance` 0.1 mm, `raft_expansion` 1.5 mm,
   `raft_first_layer_expansion` 2.0 mm, sourced from
   `docs/ORCA_CONFIG_REFERENCE.md` and canonical `init_fff_params`

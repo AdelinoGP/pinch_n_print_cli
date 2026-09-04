@@ -31,7 +31,7 @@ Gate.
 ## Scope Boundaries
 
 This packet owns the consumer and the key surface only. Every type, index, and
-transport it stands on — the signed negative prefix band, the `raft_fill`
+transport it stands on — the positive raft offset band, the `raft_fill`
 carrier, the `raft-plan` read accessor — is 240a's and must already be green.
 Extrusion-path conversion happens downstream under the claim-holder emit path
 (design.md §ADR-0009 Reconciliation); no pattern algorithm or renderer lives in
@@ -44,8 +44,10 @@ excluded.
   must be green before Step 1 here. Re-derive at activation
   (`grep '^status:' docs/spec_packets/240a-support-raft-substrate/packet.spec.md`);
   it is `draft` at authoring time, so every reference below to `raft_fill`,
-  `raft-plan`, `is-raft-prefix`, or an `i32` layer index is a FORWARD-DEP on
-  240a, reconciled name-for-name against 240a's `design.md`.
+  `raft-plan`, `is-raft-prefix`, or `GlobalLayer.is_raft` is a FORWARD-DEP on
+  240a, reconciled name-for-name against 240a's `design.md`. Layer indices are
+  `u32` and unchanged by 240a; the raft band is `0 .. N-1` with model layers at
+  `N ..` where `N = support_raft_layers`.
 - Also depends on: **236-support-stabilization** (`implemented` at authoring
   time — G-21 validator, ADR-0059 acceptance are shipped facts).
 - Unblocks: 242-support-family-orca-closure (plan §11 queue row #9).
@@ -61,7 +63,7 @@ excluded.
   `holds = ["claim:raft-fill"]`, `reads = ["SliceIR", "LayerPlanIR",
   "SupportPlanIR"]`, `writes = ["SliceIR"]`, and the guest compiles to a fresh
   component artifact. |
-  `rg -q 'id = "com.core.raft-default"' modules/core-modules/raft-default/raft-default.toml && rg -q 'claim:raft-fill' modules/core-modules/raft-default/raft-default.toml && rg -q 'Layer::Infill' modules/core-modules/raft-default/raft-default.toml && cargo xtask build-guests && cargo xtask build-guests --check; echo EXIT:$?`
+  `rg -q 'id\s*=\s*"com\.core\.raft-default"' modules/core-modules/raft-default/raft-default.toml && rg -q 'claim:raft-fill' modules/core-modules/raft-default/raft-default.toml && rg -q 'Layer::Infill' modules/core-modules/raft-default/raft-default.toml && cargo xtask build-guests && cargo xtask build-guests --check; echo EXIT:$?`
 - **AC-2. Given** the claim machinery already maps
   `ExtrusionRole::RaftInfill` to `"claim:raft-fill"` in
   `SliceRegionView::should_emit` (`crates/slicer-sdk/src/views.rs`), **when**
@@ -70,14 +72,14 @@ excluded.
   and the startup claim registry resolves exactly one holder of the exact
   string `claim:raft-fill`. |
   `mkdir -p target && cargo test -p slicer-sdk --test should_emit_raft_fill_claim_tdd -- ac4_raft_fill_claim_emits_raft_infill --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && test "$(rg -l 'claim:raft-fill' modules/core-modules/*/[a-z-]*.toml | wc -l)" -eq 1`
-- **AC-3. Given** `SupportPlanIR.raft_plan` is `Some` and the layer's global
-  index is negative, **when** `com.core.raft-default`'s `run_infill` executes,
+- **AC-3. Given** `SupportPlanIR.raft_plan` is `Some` and the layer carries
+  `GlobalLayer.is_raft == true`, **when** `com.core.raft-default`'s `run_infill` executes,
   **then** it writes `SlicedRegion.raft_fill` with object-independent raft
   footprint polygons honoring `RaftPlan.raft_layers` /
   `.base_raft_layers` / `.interface_raft_layers`, and two runs over identical
   inputs produce byte-identical `raft_fill` (no RNG, no iteration-order
   dependence, identical across the wasm and native legs). |
-  `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_fill_is_deterministic_across_two_runs --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+  `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_fill_is_deterministic_across_two_runs --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - **AC-4. Given** the canonical expansions, **when** the band is synthesized,
   **then** the first printed raft layer is expanded by
   `raft_first_layer_expansion` and the remaining layers by `raft_expansion`
@@ -85,12 +87,13 @@ excluded.
   offsets preserving canonical's multi-step inflation), interface-band
   footprints are derived at `raft_contact_distance`-based spacing, and the
   first raft layer's area strictly exceeds every upper raft layer's area. |
-  `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_first_layer_expansion_exceeds_upper_layers --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+  `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_first_layer_expansion_exceeds_upper_layers --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - **AC-5. Given** `support_raft_layers > 0`, **when** the pipeline executes end
-  to end, **then** raft geometry is emitted at the negative global-layer prefix
-  entries only, those entries sort strictly before model layer `0` in the
-  G-code, and no `AnchoredEntity` is minted for any raft entry. |
-  `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry_orders_before_model_layers --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && cargo test -p slicer-runtime --test integration -- raft_mints_no_anchored_entities --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+  to end, **then** raft geometry is emitted at the `is_raft` band entries only
+  (global indices `0 .. support_raft_layers - 1`), those entries sort strictly
+  before the first model layer (index `support_raft_layers`) in the G-code, and
+  no `AnchoredEntity` is minted for any raft entry. |
+  `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_geometry_orders_before_model_layers --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_mints_no_anchored_entities --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - **AC-6. Given** the three canonical raft keys are net-new (no manifest under
   `modules/` and no source under `crates/` declares any of them today; the
   names and defaults come from `docs/ORCA_CONFIG_REFERENCE.md` and canonical
@@ -100,7 +103,7 @@ excluded.
   `raft_first_layer_expansion` (default 2.0) are declared in
   `modules/core-modules/raft-default/raft-default.toml`'s `[config.schema]`
   with those defaults and each is read by the geometry it controls. |
-  `mkdir -p target && cargo test -p slicer-runtime --test contract -- raft_keys_declared_and_wired --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+  `mkdir -p target && cargo test -p slicer-runtime --test contract -- raft_bounds_tdd::raft_keys_declared_and_wired --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - **AC-7. Given** the raft-related keys actually declared by the existing
   core-module manifests (re-derived at execution time by grepping
   `modules/core-modules/*/*.toml` - do not assume a fixed set; at authoring the
@@ -111,16 +114,17 @@ excluded.
   §Wire-or-Record Decisions naming the key, the manifest, the verdict (`wired`
   or `stays dead`), and the reason - one table row per declaration site, none
   still reading `pending Step 5`. |
-  `DECL="$(rg --no-filename -o '^\[config\.schema\.[a-z_]*raft[a-z_]*\]' modules/core-modules -g '*.toml' -g '!raft-default.toml' | wc -l)"; ROWS="$(rg -c '^\| .[a-z_]*raft[a-z_]*. \| .[a-z0-9-]+. \| [a-z]' docs/spec_packets/240b-support-raft-module/requirements.md)"; test "$DECL" -ge 1 && test "${ROWS:-0}" -eq "$DECL" && ! rg -q 'pending Step 5' docs/spec_packets/240b-support-raft-module/requirements.md`
-- **AC-8. Given** DEV-124's clamp is index-convention-dependent and 240a filed
-  a reopen row for it, **when** the raft path is live, **then**
+  `DECL="$(rg --no-filename -o '^\[config\.schema\.[a-z_]*raft[a-z_]*\]' modules/core-modules -g '*.toml' -g '!raft-default.toml' | wc -l)"; ROWS="$(sed -n '/^## Wire-or-Record Decisions$/,/^## DEV-124 Re-verification$/p' docs/spec_packets/240b-support-raft-module/requirements.md | rg -c '^\| `[a-z_]*raft[a-z_]*` \| `[^`]+` \| (wired|stays dead)')"; test "$DECL" -ge 1 && test "${ROWS:-0}" -eq "$DECL" && ! sed -n '/^## Wire-or-Record Decisions$/,/^## DEV-124 Re-verification$/p' docs/spec_packets/240b-support-raft-module/requirements.md | rg -q '^\|.*PENDING-STEP5-ROW'`
+- **AC-8. Given** DEV-124's clamp gates on `layer_index == support_raft_layers`
+  and 240a UPHELD it rather than reopening it (the positive band makes the
+  shipped predicate correct), **when** the raft path is live, **then**
   `classic_clamp_follows_raft_layers_not_layer_zero` and
   `classic_clamp_unchanged_when_no_raft_configured`
   (`crates/slicer-runtime/tests/contract/only_one_wall_first_layer_tdd.rs`) are
   re-run under a raft-configured config view and the outcome — pass, or the
-  corrected predicate and the fix — is written into `requirements.md`
+  observed failure and its cause — is written into `requirements.md`
   §DEV-124 Re-verification. |
-  `mkdir -p target && cargo test -p slicer-runtime --test contract -- classic_clamp_follows_raft_layers_not_layer_zero --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && cargo test -p slicer-runtime --test contract -- classic_clamp_unchanged_when_no_raft_configured --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+  `mkdir -p target && cargo test -p slicer-runtime --test contract -- only_one_wall_first_layer_tdd::classic_clamp_follows_raft_layers_not_layer_zero --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && cargo test -p slicer-runtime --test contract -- only_one_wall_first_layer_tdd::classic_clamp_unchanged_when_no_raft_configured --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 
 Every AC names exact fields, paths, counts, errors, variants, or output
 fragments and ends with its own runnable command. Repeat shared commands; never
@@ -146,23 +150,28 @@ registration in the same step (Steps 4 and 6).
   `module_b` fields, with `claim` equal to the raft-fill claim string — not
   silence, not a panic. |
   `mkdir -p target && cargo test -p slicer-scheduler --test raft_claim_conflict_tdd -- raft_fill_double_holder_conflicts --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
-- **AC-N2. Given** the declared raft band is `-N .. -1`, **when** a raft entry
-  carries a global layer index below `-N`, **then** the host rejects it with a
-  typed validation error naming the offending index instead of emitting
-  geometry at an unprintable Z. |
-  `mkdir -p target && cargo test -p slicer-runtime --test contract -- raft_index_outside_band_rejected --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+- **AC-N2. Given** `com.core.raft-default`'s `run_infill` is dispatched on a
+  layer whose `paint-region-layer-view.is-raft` returns `false` (a MODEL layer,
+  where no raft geometry belongs) while `SupportPlanIR.raft_plan` is still
+  `Some`, **then** the module writes ZERO polygons into
+  `SlicedRegion.raft_fill` for that layer and returns `Ok(())` — it does not
+  synthesize raft geometry on a model layer, and it does not error. Ownership:
+  this is module-side behavior implemented in Step 3, not a host validator;
+  240a already owns the harvest-time band rejection
+  (`noncontiguous_raft_band_rejected`). |
+  `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_writes_nothing_on_non_raft_layer --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - **AC-N3. Given** the E9 silent-default mechanism, **when** a raft key the
   module consumes is missing from its manifest `[config.schema]`, **then** the
   module's own config-declaration test fails rather than resolving an in-code
   default invisibly — asserted by removing a key in the test fixture, not by
   grepping the manifest for its presence. |
-  `mkdir -p target && cargo test -p slicer-runtime --test contract -- undeclared_raft_key_is_rejected_not_defaulted --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+  `mkdir -p target && cargo test -p slicer-runtime --test contract -- raft_bounds_tdd::undeclared_raft_key_is_rejected_not_defaulted --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 
 ## Verification
 
 - `cargo check --workspace --all-targets`
 - `cargo clippy --workspace --all-targets -- -D warnings`
-- `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry_orders_before_model_layers --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+- `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_geometry_orders_before_model_layers --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 
 ## Authoritative Docs
 
@@ -172,8 +181,8 @@ registration in the same step (Steps 4 and 6).
 - `docs/adr/0009-raft-as-layer-infill-role.md` - role/claim pattern and
   synthesizer shape; short - full read allowed.
 - `docs/spec_packets/240a-support-raft-substrate/design.md` - the substrate this
-  packet consumes; direct read of §Migration Table and §`raft_plan`
-  Read-Path Footprint only.
+  packet consumes; direct read of §`raft_plan` Read-Path Footprint and
+  §Architecture Constraints only.
 - `docs/15_config_keys_reference.md` - regenerated, not read in bulk.
 - `docs/19_visual_debug.md` + `docs/17_agent_debugging.md` - human-gate bundle
   only; delegated SUMMARY.
@@ -217,7 +226,7 @@ existence).
 Artifact-producing commands (run from repo root; matched profiles
 `tmp/support-family-config-tree-matched.json` / `-normal-matched.json`):
 
-- `cargo run --bin pnp_cli --release -- slice --model crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl --output tmp/p240b-pnp-raft.gcode` (with `support_raft_layers >= 2` in the matched profile copy saved as `tmp/p240b-profile.json`)
+- `cargo run --bin pnp_cli --release -- slice --config tmp/p240b-profile.json --model crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl --output tmp/p240b-pnp-raft.gcode` (with `support_raft_layers >= 2` in the matched profile copy saved as `tmp/p240b-profile.json`)
 - Regenerated Orca references (§9, human-owned): `tmp/p240b-orca-tree-raft.gcode` and `tmp/p240b-orca-normal-raft.gcode` sliced with `raft_layers > 0`. **These references must exist before this gate can sign** — the gate blocks without them.
 - Visual-debug bundle for the raft boundary: `tmp/p240b-vd-raft.json` request → PNGs + `manifest.json` per `docs/19_visual_debug.md`.
 
@@ -231,8 +240,8 @@ Checklist — standard five items (each: source, layer/tap, verdict):
 
 Raft-specific observations (required additions):
 
-6. Raft layers present below plate contact — negative-index entries emitted before model layer 0 in Z order.
+6. Raft layers present below plate contact — band entries at global indices `0 .. support_raft_layers - 1` emitted before the first model layer (index `support_raft_layers`) in Z order.
 7. First-layer expansion visible: the first printed raft layer is wider than the upper raft layers by roughly `raft_first_layer_expansion` (2.0 mm canonical).
-8. No anchored-entity leakage: no raft geometry appears through the anchored-event path (the G-code viewer shows raft as ordinary ordered entities at negative-index layers).
+8. No anchored-entity leakage: no raft geometry appears through the anchored-event path (the G-code viewer shows raft as ordinary ordered entities at the `0 .. support_raft_layers - 1` band layers).
 
 Sign-off: _(date + verdict pending; required before `status: implemented`)_

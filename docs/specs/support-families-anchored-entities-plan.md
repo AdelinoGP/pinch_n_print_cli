@@ -226,11 +226,14 @@ profile), under which `independent_support_layer_height` was disabled.
   `orca-divergences.md` are inherited here. `TASK-335` closes at 242.
 - **215/216/217/218** are deleted in 236 (provenance: git history). Absorption mapping:
   - 215-raft-geometry → 240. Verified absent today: no `SlicedRegion.raft_fill` field, no
-    `com.core.raft-default` module, no `claim:raft-fill` in any manifest; the u32→i32
-    signed-index migration was never done (`GlobalLayer.index`,
-    `ObjectLayerRef.local_layer_index`/`global_layer_index`, `SliceIR.global_layer_index`,
-    `SupportIR.global_layer_index` are `u32`; only `SupportPlanEntry.global_layer_index` is
-    `i32`); `LayerModule::run_infill` takes `u32`.
+    `com.core.raft-default` module. Layer indices are `u32` and STAY `u32`
+    (`GlobalLayer.index`, `ObjectLayerRef.local_layer_index`/`global_layer_index`,
+    `SliceIR.global_layer_index`, `SupportIR.global_layer_index`; only
+    `SupportPlanEntry.global_layer_index` is `i32`, retained for historical
+    reasons); `LayerModule::run_infill` takes `u32`. The u32→i32 signed-index
+    migration once planned here is WITHDRAWN — see the Banding decision note
+    below. Note `claim:raft-fill` DOES already ship (`should_emit`,
+    `crates/slicer-sdk/src/views.rs`); only the holding manifest is absent.
   - 216-support-interface-layers → behavior shipped by 220/224 (`InterfaceRole` end-to-end;
     code-1003 retired; `tree-support-planner/tests/diagnostics_tdd.rs` documents the
     replacement); residue (G-18 counts) → 238c. Do **not** resurrect the pre-families
@@ -276,7 +279,7 @@ TASK-324..328, which are historically claimed/collided). Numbers shown assume 23
 | 238b | tree-planner-canonical-fidelity | Bring the tree planner's algorithms to canonical fidelity: top-Z gap, smoothing, role coexistence, circle fidelity, collision/avoidance keying, move semantics, tree styles; size DEV-128. | 238a | divergences 1.1–5.7/7.1–8.1; DEV-141, DEV-142, DEV-143, DEV-144 |
 | 238c | support-renderer-flow-interfaces | Fix renderer flow/density/interface semantics: hollow tree walls, density scaling, over-extrusion, radius caps, roof/floor counts, base-interface role. | 238b | stub (renderer half); G-10, G-11, G-12, G-13, G-18; F-37 piece 2; DEV-129, DEV-145, DEV-146 |
 | 239 | support-independent-layer-z | Implement support-layer Z independent of object-layer Z, against fresh enabled-feature Orca references. | 238c | stub; G-02 |
-| 240 | support-raft | Implement raft geometry: `raft-default` synthesizer, `claim:raft-fill`, signed negative layer indices, raft keys; ADR-0009 preserved. | 236 | stub; G-06; all of 215; issue-19/20 raft keys; DEV-124 check |
+| 240 | support-raft | Implement raft geometry: `raft-default` synthesizer, `claim:raft-fill`, a **positive raft offset band** (raft at global layer indices `0..N-1`, model layers shifted to `N..`, matching canonical), raft keys. | 236 | stub; G-06; all of 215; issue-19/20 raft keys; DEV-124 upheld |
 | 241 | support-agg-rasterizer | Port the canonical `SupportGridPattern` AGG rasterizer as a config-selectable mode, canonical by default (Rulings 7/8). | 238c | stub; G-07 |
 | 242 | support-family-orca-closure | Close the sequence: register closure, invariant suite, matched-height inspection, e2e `;TYPE:` evidence, TASK-335/TASK-163b disposition, final human gate. | 237, 238a/b/c, 239, 240, 241 | supersedes 224; absorbs 218 |
 
@@ -578,24 +581,41 @@ Known traps: T1, T4, T5.
 
 ### 240-support-raft (split into 240a + 240b)
 
-> Split at preflight. The substrate half (signed-index migration, the raft
-> prefix band and its WIT marking, the positional-consumer repair, the
-> `SlicedRegion.raft_fill` carrier, the `raft-plan` read accessor) is
+> Split at preflight. The substrate half (the `GlobalLayer.is_raft` marker and
+> its WIT marking, the positive raft band emission, the object-bottom predicate
+> audit, the `SlicedRegion.raft_fill` carrier, the `raft-plan` read accessor) is
 > `docs/spec_packets/240a-support-raft-substrate`; the consumer half
 > (`com.core.raft-default`, the `generate_raft_base` port, the raft keys,
 > the ADR-0009 amendment, the human gate) is
 > `docs/spec_packets/240b-support-raft-module`. 240b hard-depends on 240a.
 
 - **All of 215's scope + G-06** (canonical reference `SupportCommon.cpp::generate_raft_base`;
-  ADR-0009 contract preserved — rafts stay signed negative global-layer prefix entries, never
+  rafts occupy a **positive offset band** — global layer indices `0..N-1` where
+  `N = support_raft_layers`, with model layers shifted to `N..` — and are never
   anchored entities):
+
+  > **Banding decision, corrected 2026-09-04.** Earlier revisions of this plan
+  > specified *signed negative* layer indices (`-N..-1`) for the raft band and
+  > attributed that contract to ADR-0009. Both were wrong. ADR-0009 concerns
+  > where raft *pattern algorithms* live and mentions no layer index or
+  > signedness; its Status is `Proposed`. And canonical does the opposite of
+  > what was claimed: `generate_support_layers` (`SupportCommon.cpp`) appends
+  > raft layers at strictly positive print_z in `[0, object_print_z_min]`,
+  > sorts by print_z, and assigns a dense non-negative counter, while object
+  > `Layer` ids start at `slicing_parameters().raft_layers()` in `new_layers`
+  > (`PrintObjectSlice.cpp`). The positive band therefore matches canonical,
+  > needs no `u32`->`i32` migration of the layer-index surface, and upholds
+  > DEV-124's shipped `layer_index == support_raft_layers` clamp instead of
+  > reopening it. The consequence to respect everywhere: **the first printed
+  > model layer is `support_raft_layers`, not `0`.**
   - New module `com.core.raft-default` (`Layer::Infill` synthesizer) holding `claim:raft-fill`;
     reads `SupportPlanIR.raft_plan`, `SliceIR`, `LayerPlanIR`; writes the new
     `SlicedRegion.raft_fill`; deterministic rectilinear rendering.
-  - Signed-index migration u32→i32: `GlobalLayer.index`, `ObjectLayerRef.local_layer_index` /
-    `global_layer_index`, `SliceIR.global_layer_index`, `SupportIR.global_layer_index`
-    (`crates/slicer-ir/src/slice_ir.rs`), and `LayerModule::run_infill`.
-    `SupportPlanEntry.global_layer_index` is already `i32` — the pattern to follow.
+  - Raft marker: `GlobalLayer.is_raft: bool` (`#[serde(default)]`,
+    `crates/slicer-ir/src/slice_ir.rs`) set from a new WIT
+    `layer-proposal.is-raft-prefix: bool`, plus an `is-raft` accessor on
+    `paint-region-layer-view` so a `Layer::Infill` guest can see it. Layer
+    indices stay `u32`; no signed-index migration.
   - Existing transport to reuse: `RaftPlan` (`crates/slicer-ir/src/slice_ir.rs`) is produced by
     the tree planner (`push_raft_plan`) and already flows through SDK
     (`crates/slicer-sdk/src/prepass_builders.rs`), the macro (`crates/slicer-macros/src/lib.rs`),
@@ -733,7 +753,8 @@ Known traps: all of §13.
   producers; a global cross-layer scheduler; planner-to-planner negotiation.
 - Exact Orca toolpath identity. Behavioral parity, measured deltas, and collision-safe
   printable geometry are the bar.
-- Replacing signed negative raft-prefix layers with anchored entities.
+- Replacing raft-prefix layers with anchored entities (the raft band stays a
+  positive `0..N-1` global-layer range; anchored entities remain prohibited for it).
 - Silent clipping of invalid family geometry, emergency fallback fillers, or allowing model
   collisions to preserve support coverage.
 - 212-extra-perimeters-parity (not support).
@@ -758,7 +779,7 @@ the column records what was allocated.
 | 4 | tree-planner-canonical-fidelity | Tree planner algorithms to canonical fidelity (top-Z gap, smoothing, roles, circles, keying, moves, styles); size DEV-128. | TASK-369..TASK-380 | #3 | generated | docs/spec_packets/238b-tree-planner-canonical-fidelity |
 | 5 | support-renderer-flow-interfaces | Renderer flow/density/interface semantics: hollow walls, density scale, radius caps, roof/floor counts, base-interface role. | TASK-381..TASK-398 | #4 | generated | docs/spec_packets/238c-support-renderer-flow-interfaces |
 | 6 | support-independent-layer-z | Support-layer Z independent of object-layer Z, against fresh enabled-feature Orca references. | TASK-399..TASK-408 | #5 | generated | docs/spec_packets/239-support-independent-layer-z |
-| 7a | support-raft-substrate | Signed-index migration, raft prefix band, positional-consumer repair, `raft_fill` carrier, `raft-plan` read accessor. | TASK-409..TASK-413, TASK-533..TASK-536 | #1 | generated | docs/spec_packets/240a-support-raft-substrate |
+| 7a | support-raft-substrate | `GlobalLayer.is_raft` marker + WIT marking, positive raft band emission, object-bottom predicate audit, `raft_fill` carrier, `raft-plan` + `is-raft` read accessors. | TASK-409..TASK-413, TASK-533..TASK-536 | #1 | generated | docs/spec_packets/240a-support-raft-substrate |
 | 7b | support-raft-module | `raft-default` synthesizer, `claim:raft-fill`, `generate_raft_base` port, raft keys, ADR-0009 amendment, human gate. | TASK-414..TASK-418, TASK-537 | #7a | generated | docs/spec_packets/240b-support-raft-module |
 | 8 | support-agg-rasterizer | Port the canonical AGG rasterizer as config-selectable mode, canonical by default (Rulings 7/8). | TASK-419..TASK-428 | #5 | generated | docs/spec_packets/241-support-agg-rasterizer |
 | 9 | support-family-orca-closure | Close the sequence: register closure, invariant suite, matched-height inspection, e2e `;TYPE:` evidence, TASK-335 disposition, final human gate. | TASK-429..TASK-440 | #2,#3,#4,#5,#6,#7,#8 | generated | docs/spec_packets/242-support-family-orca-closure |

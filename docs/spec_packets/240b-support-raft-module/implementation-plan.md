@@ -32,7 +32,7 @@
   `[ir-access] reads = ["SliceIR", "LayerPlanIR", "SupportPlanIR"]`,
   `writes = ["SliceIR"]`, `wit-guest/` binding the existing
   `slicer:layer-infill` world, and a guest `src/lib.rs` implementing
-  `LayerModule::run_infill(layer_index: i32, ...)` that reads `raft_plan` via
+  `LayerModule::run_infill(layer_index: u32, ...)` that reads `raft_plan` via
   the paint view and returns `Ok(())` — geometry deferred to Step 3, so this
   step proves only that the module loads, the claim resolves, and the read path
   reaches the guest. Rebuild guests IN-STEP (new artifact).
@@ -46,8 +46,18 @@
   - `modules/core-modules/rectilinear-infill/Cargo.toml` (full; small)
   - `modules/core-modules/rectilinear-infill/rectilinear-infill.toml` (full; small)
   - `crates/slicer-schema/wit/deps/layer-infill/layer-infill.wit` (full; 20 lines)
-- Files allowed to edit (at most 3; `wit-guest/` rides with `src/` as part of
-  the new directory):
+- Files allowed to edit (**explicit waiver of the 3-edit cap**: 3 new module files + 1 workspace wiring edit;
+  `wit-guest/` rides with `src/` as part of the new directory):
+  - `crates/slicer-runtime/Cargo.toml` - add
+    `[dev-dependencies.raft-default]` with
+    `path = "../../modules/core-modules/raft-default"`, beside the sibling
+    entries under the "Fill-claim modules" comment. **Without it the native leg
+    cannot reach the module at all**: integration tests import module crates
+    directly (`use rectilinear_infill::RectilinearInfill;` in
+    `crates/slicer-runtime/tests/integration/infill_partitioned_input_tdd.rs`,
+    backed by `[dev-dependencies.rectilinear-infill]`), and AC-3 asserts
+    wasm/native parity. It lands in Step 1, not Step 3, which has no cap
+    headroom.
   - `modules/core-modules/raft-default/Cargo.toml` (new)
   - `modules/core-modules/raft-default/raft-default.toml` (new)
   - `modules/core-modules/raft-default/src/lib.rs` (new)
@@ -64,7 +74,7 @@
 - OrcaSlicer refs: none this step
 - Verification:
   - `cargo xtask build-guests && cargo xtask build-guests --check; echo EXIT:$?` - FACT exit 0
-  - `rg -q 'id = "com.core.raft-default"' modules/core-modules/raft-default/raft-default.toml && rg -q 'claim:raft-fill' modules/core-modules/raft-default/raft-default.toml && rg -q 'Layer::Infill' modules/core-modules/raft-default/raft-default.toml` - AC-1 manifest half
+  - `rg -q 'id\s*=\s*"com\.core\.raft-default"' modules/core-modules/raft-default/raft-default.toml && rg -q 'claim:raft-fill' modules/core-modules/raft-default/raft-default.toml && rg -q 'Layer::Infill' modules/core-modules/raft-default/raft-default.toml` - AC-1 manifest half
 - Exit condition: fresh guest artifact; manifest greps pass; every substrate
   FACT returned EXISTS.
 
@@ -121,7 +131,8 @@
 
 - Task IDs: `TASK-416`
 - Objective: implement the port inside `run_infill` — given `Some(raft_plan)`
-  on a layer with a negative global index, synthesize object-independent raft
+  on a layer whose `GlobalLayer.is_raft` is true (global index `0 .. N-1`),
+  synthesize object-independent raft
   footprint POLYGONS for the declared band (`raft_layers` = first +
   `base_raft_layers` + `interface_raft_layers`), apply `raft_expansion`
   inflation staged as iterated offsets, expand the first printed raft layer by
@@ -132,12 +143,13 @@
   at the unit boundary. No anchored entities anywhere. Author the four
   integration cases and register their `mod` line.
 - Precondition: Step 2 green.
-- Postcondition: AC-3, AC-4, AC-5 green; guests rebuilt.
+- Postcondition: AC-3, AC-4, AC-5 and AC-N2 green; guests rebuilt.
 - Files allowed to read, with ranges when over 300 lines:
   - delegated Orca SUMMARY of `generate_raft_base` staging (working notes)
 - Files allowed to edit (at most 3):
   - `modules/core-modules/raft-default/src/lib.rs`
-  - `crates/slicer-runtime/tests/integration/raft_geometry.rs` (new; holds
+  - `crates/slicer-runtime/tests/integration/raft_geometry.rs` (new; also holds
+    `raft_writes_nothing_on_non_raft_layer` for AC-N2 — see Objective; holds
     `raft_fill_is_deterministic_across_two_runs`,
     `raft_first_layer_expansion_exceeds_upper_layers`,
     `raft_geometry_orders_before_model_layers`,
@@ -157,11 +169,12 @@
   - `OrcaSlicerDocumented/src/libslic3r/Support/SupportCommon.cpp` - delegate; never load
 - Verification:
   - `cargo xtask build-guests && cargo xtask build-guests --check; echo EXIT:$?` - FACT exit 0
-  - `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_fill_is_deterministic_across_two_runs --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-3
-  - `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_first_layer_expansion_exceeds_upper_layers --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-4
-  - `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry_orders_before_model_layers --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && cargo test -p slicer-runtime --test integration -- raft_mints_no_anchored_entities --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-5
+  - `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_fill_is_deterministic_across_two_runs --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-3
+  - `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_first_layer_expansion_exceeds_upper_layers --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-4
+  - `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_geometry_orders_before_model_layers --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_mints_no_anchored_entities --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-5
+  - `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_writes_nothing_on_non_raft_layer --exact --nocapture 2>&1 | tee target/acn2.log && test "$(grep -c '^test .* ok$' target/acn2.log)" -gt 0` - AC-N2
   - `grep -q 'mod raft_geometry;' crates/slicer-runtime/tests/integration/main.rs` - FACT registration present
-- Exit condition: AC-3/AC-4/AC-5 green with non-zero counts; registration grep
+- Exit condition: AC-3/AC-4/AC-5/AC-N2 green with non-zero counts; registration grep
   passes; two identical runs produce byte-identical `raft_fill`. If the
   claim-holder emit path turns out not to convert `raft_fill` to paths, record
   it as a follow-up per `design.md` §Open Questions — do not add a renderer here.
@@ -179,13 +192,16 @@
   with min/max/display/group matching
   sibling modules, and confirm each is actually read by the geometry it
   controls. Author `crates/slicer-runtime/tests/contract/raft_bounds_tdd.rs`
-  with `raft_keys_declared_and_wired`, `raft_index_outside_band_rejected`, and
+  with `raft_keys_declared_and_wired` and
   `undeclared_raft_key_is_rejected_not_defaulted`, registering
   `mod raft_bounds_tdd;` in `crates/slicer-runtime/tests/contract/main.rs`.
   AC-N3 must exercise the rejection path (a consumed key absent from the
-  schema), never a manifest presence grep.
+  schema), never a manifest presence grep. NOTE: AC-N2 is NOT owned here — it
+  moved to Step 3, because it is module-side behavior (`run_infill` declining
+  to write on a non-raft layer) and this step may not edit
+  `modules/core-modules/raft-default/src/lib.rs`.
 - Precondition: Step 3 green.
-- Postcondition: AC-6, AC-N2, AC-N3 green.
+- Postcondition: AC-6 and AC-N3 green (AC-N2 is Step 3's).
 - Files allowed to read, with ranges when over 300 lines:
   - `crates/slicer-runtime/tests/contract/main.rs` - registration list only
   - `modules/core-modules/rectilinear-infill/rectilinear-infill.toml` - the
@@ -206,11 +222,10 @@
 - OrcaSlicer refs:
   - `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` - delegate; never load
 - Verification:
-  - `mkdir -p target && cargo test -p slicer-runtime --test contract -- raft_keys_declared_and_wired --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-6
-  - `mkdir -p target && cargo test -p slicer-runtime --test contract -- raft_index_outside_band_rejected --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-N2
-  - `mkdir -p target && cargo test -p slicer-runtime --test contract -- undeclared_raft_key_is_rejected_not_defaulted --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-N3
+  - `mkdir -p target && cargo test -p slicer-runtime --test contract -- raft_bounds_tdd::raft_keys_declared_and_wired --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-6
+  - `mkdir -p target && cargo test -p slicer-runtime --test contract -- raft_bounds_tdd::undeclared_raft_key_is_rejected_not_defaulted --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-N3
   - `grep -q 'mod raft_bounds_tdd;' crates/slicer-runtime/tests/contract/main.rs` - FACT registration present
-- Exit condition: all three cases pass with non-zero counts; registration grep
+- Exit condition: both cases (`raft_keys_declared_and_wired`, `undeclared_raft_key_is_rejected_not_defaulted`) pass with non-zero counts; registration grep
   passes.
 
 ### Step 5: Raft-key wire-or-record sweep + config doc regeneration
@@ -247,7 +262,7 @@
 - OrcaSlicer refs: none this step
 - Verification:
   - `cargo xtask gen-config-docs && rg -q 'raft_contact_distance' docs/15_config_keys_reference.md && rg -q 'raft_first_layer_expansion' docs/15_config_keys_reference.md` - FACT
-  - `DECL="$(rg --no-filename -o '^\[config\.schema\.[a-z_]*raft[a-z_]*\]' modules/core-modules -g '*.toml' -g '!raft-default.toml' | wc -l)"; ROWS="$(rg -c '^\| .[a-z_]*raft[a-z_]*. \| .[a-z0-9-]+. \| [a-z]' docs/spec_packets/240b-support-raft-module/requirements.md)"; test "$DECL" -ge 1 && test "${ROWS:-0}" -eq "$DECL" && ! rg -q 'pending Step 5' docs/spec_packets/240b-support-raft-module/requirements.md` - AC-7
+  - `DECL="$(rg --no-filename -o '^\[config\.schema\.[a-z_]*raft[a-z_]*\]' modules/core-modules -g '*.toml' -g '!raft-default.toml' | wc -l)"; ROWS="$(sed -n '/^## Wire-or-Record Decisions$/,/^## DEV-124 Re-verification$/p' docs/spec_packets/240b-support-raft-module/requirements.md | rg -c '^\| `[a-z_]*raft[a-z_]*` \| `[^`]+` \| (wired|stays dead)')"; test "$DECL" -ge 1 && test "${ROWS:-0}" -eq "$DECL" && ! sed -n '/^## Wire-or-Record Decisions$/,/^## DEV-124 Re-verification$/p' docs/spec_packets/240b-support-raft-module/requirements.md | rg -q '^\|.*PENDING-STEP5-ROW'` - AC-7
   - `git diff --stat docs/15_config_keys_reference.md` - FACT: regenerated, not hand-edited
 - Exit condition: AC-7 green; every key the grep returned has a written verdict; the
   config doc regenerates cleanly.
@@ -284,10 +299,15 @@
   - `docs/adr/0009-raft-as-layer-infill-role.md` - short; full read allowed
   - `docs/DEVIATION_LOG.md` - the header row and the two `*-ADR-*-AMENDED` rows
     only, as the format template
-- Files allowed to edit (at most 3):
+- Files allowed to edit (3 authored + 1 regenerated-only):
   - `docs/adr/0009-raft-as-layer-infill-role.md`
   - `docs/DEVIATION_LOG.md`
   - `docs/03_wit_and_manifest.md`
+  - `docs/07_implementation_status.md` — **regenerated only, never hand-edited.**
+    Filing an `Open` deviation row staleness-invalidates doc 07's generated
+    Open Deviation Map, so `check-deviations --check` fails unless this step
+    regenerates it. Run bare `cargo xtask check-deviations` FIRST, then assert
+    with `--check`.
 - Files explicitly out of bounds:
   - `docs/specs/support-families-anchored-entities-plan.md` (the plan is the
     governing authority being cited, not edited)
@@ -302,7 +322,7 @@
   - ``rg -A2 '^## Status' docs/adr/0009-raft-as-layer-infill-role.md | rg -q 'Accepted' && rg -q '^## Amendment' docs/adr/0009-raft-as-layer-infill-role.md && rg -q 'com\.core\.raft-default' docs/adr/0009-raft-as-layer-infill-role.md`` - FACT: amendment present with reassignment
   - ``test "$(rg -c 'rectilinear-infill` declaring the claim' docs/adr/0009-raft-as-layer-infill-role.md)" -ge 2`` - FACT: the clause appears TWICE (original Decision 5 + the verbatim quote inside the Amendment). One occurrence means the amendment did not quote it; a single-hit `rg -q` would pass against the unamended file and prove nothing.
   - `rg -q 'raft-default-module\.md' docs/adr/0009-raft-as-layer-infill-role.md && exit 1 || true` - FACT: the dangling reference is gone
-  - `rg -q 'ADR-0009-AMENDED' docs/DEVIATION_LOG.md && cargo xtask check-deviations; echo EXIT:$?` - FACT exit 0
+  - `rg -q 'ADR-0009-AMENDED' docs/DEVIATION_LOG.md && cargo xtask check-deviations && cargo xtask check-deviations --check; echo EXIT:$?` - FACT exit 0. Order matters: bare `check-deviations` REGENERATES doc 07's Open Deviation Map (stale the moment the new `Open` row lands), then `--check` VALIDATES and is the real gate. Running only `--check` fails; running only the bare form always exits 0 and gates nothing.
 - Exit condition: all greps pass; `git diff` on the ADR shows additions plus
   the Status-line change and the two dangling-pointer replacements (Decision-3
   parenthetical, References entry). Apart from swapping that one dead path, no
@@ -314,9 +334,9 @@
 - Task IDs: `TASK-537`
 - Objective: run the AC-8 commands under a raft-configured config view and
   write the outcome into `requirements.md` §DEV-124 Re-verification — pass, or
-  the corrected predicate plus the fix. 240a filed the reopen row on the
-  grounds that the clamp is index-convention-dependent; this is where it is
-  tested against real behaviour. Never widen or weaken the assertions. Then run
+  the observed failure and its cause. 240a UPHELD DEV-124 rather than reopening
+  it — under the positive band the shipped `layer_index == support_raft_layers`
+  predicate is correct; this is where it is tested against real behaviour. Never widen or weaken the assertions. Then run
   the packet-level gates and produce the human-gate artifacts (`tmp/p240b-*`
   G-code + visual-debug bundle), recording checklist verdicts and leaving
   sign-off to the human.
@@ -334,8 +354,9 @@
   - `tmp/p240b-profile.json` + `tmp/p240b-vd-raft.json` (artifact inputs; count
     as one surface)
 - Files explicitly out of bounds:
-  - the perimeter generators — if AC-8 fails, the fix goes through the reopened
-    deviation's routing, and the failure is recorded here before any code moves
+  - the perimeter generators — if AC-8 fails, that is a NEW finding (DEV-124 is
+    closed and upheld); file a fresh deviation row and record the failure here
+    before any code moves
   - anything under `docs/spec_packets/` other than this packet
 - Expected sub-agent dispatches:
   - cargo runs delegated under the FACT contract; visual-debug bundle
@@ -346,7 +367,7 @@
   - `docs/17_agent_debugging.md` - delegated SUMMARY
 - OrcaSlicer refs: comparison against the regenerated references only
 - Verification:
-  - `mkdir -p target && cargo test -p slicer-runtime --test contract -- classic_clamp_follows_raft_layers_not_layer_zero --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && cargo test -p slicer-runtime --test contract -- classic_clamp_unchanged_when_no_raft_configured --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-8
+  - `mkdir -p target && cargo test -p slicer-runtime --test contract -- only_one_wall_first_layer_tdd::classic_clamp_follows_raft_layers_not_layer_zero --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && cargo test -p slicer-runtime --test contract -- only_one_wall_first_layer_tdd::classic_clamp_unchanged_when_no_raft_configured --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-8
   - `cargo clippy --workspace --all-targets -- -D warnings` - FACT pass/fail
   - `cargo xtask check-literals --report` - FACT: violation count equal to the count recorded on a clean tree immediately BEFORE this packet's first edit (re-derive it then; do not trust any number written here). Requirement: this packet adds zero new violations.
 - Exit condition: AC-8 outcome recorded with evidence; gates green; artifacts
@@ -358,8 +379,8 @@
 | --- | --- | --- |
 | Step 1 | M | substrate verification + new guest dir + first rebuild |
 | Step 2 | S | claim resolution + double-holder negative |
-| Step 3 | M | geometry port + four integration cases |
-| Step 4 | M | keys + bounds + undeclared-key negative |
+| Step 3 | M | geometry port + five integration cases (incl. AC-N2) |
+| Step 4 | M | keys + undeclared-key negative (AC-N2 moved to Step 3) |
 | Step 5 | M | wire-or-record across the manifests the grep flags + doc regen |
 | Step 6 | S | ADR amendment + deviation row |
 | Step 7 | S | DEV-124 re-verification + gates + human gate |

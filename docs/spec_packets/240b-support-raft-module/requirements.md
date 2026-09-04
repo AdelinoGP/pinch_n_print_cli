@@ -26,9 +26,9 @@ no manifest anywhere declares that claim, so raft emission is suppressed
 everywhere.
 
 **240a-support-raft-substrate** removes the four structural blockers that made
-writing the consumer impossible (unsigned indices, no way to create a prefix
-band, three consumers assuming `index == Vec position`, and a sign-truncating
-guest bridge) and adds the two carriers the consumer needs
+writing the consumer impossible (no way to mark a layer as raft, no raft flag
+on the IR, object-bottom predicates hardcoding layer zero, and no read-side
+raft transport) and adds the two carriers the consumer needs
 (`SlicedRegion.raft_fill`, `paint-region-layer-view.raft-plan`). This packet
 builds the consumer on top of it and closes G-06.
 
@@ -43,9 +43,9 @@ below rather than re-litigated.
   writes `SlicedRegion.raft_fill` with deterministic fill polygons.
   Extrusion-path conversion happens downstream under the claim-holder path
   (design.md §ADR-0009 Reconciliation). — **this packet.**
-- ADR-0009 contract preserved: rafts stay signed negative global-layer prefix
-  entries, never anchored entities. — **substrate in 240a, honored here.**
-- Signed-index migration `u32`→`i32`. — **240a.**
+- Rafts occupy a positive global-layer offset band (`0 .. N-1`, model layers at
+  `N ..`), never anchored entities (plan §15). — **substrate in 240a, honored here.**
+- `GlobalLayer.is_raft` marker + WIT `layer-proposal.is-raft-prefix`. — **240a.**
 - Issue-19/20 raft keys `raft_contact_distance`, `raft_expansion`,
   `raft_first_layer_expansion` — all three net-new, introduced only in the new
   raft-default manifest — plus a wire-or-record sweep over whatever
@@ -81,7 +81,7 @@ below rather than re-litigated.
   into §Wire-or-Record Decisions below.
 - Regeneration of `docs/15_config_keys_reference.md` via `cargo xtask gen-config-docs` (T8).
 - Claim-conflict behavior for a second `claim:raft-fill` holder (AC-N1).
-- Raft-band bounds rejection (AC-N2) and the undeclared-key rejection test
+- Module writes nothing on a non-raft layer (AC-N2) and the undeclared-key rejection test
   (AC-N3).
 - Formal ADR-0009 amendment plus the `D-<pkt>-ADR-0009-AMENDED` deviation row.
 - DEV-124 re-verification under a live raft (AC-8).
@@ -89,8 +89,8 @@ below rather than re-litigated.
 
 ## Out of Scope
 
-- Everything 240a owns: the signed-index migration, the raft prefix band and
-  its WIT marking, the positional-consumer repair, the `SlicedRegion.raft_fill`
+- Everything 240a owns: the `GlobalLayer.is_raft` marker and its WIT marking,
+  the raft band emission, the object-bottom predicate audit, the `SlicedRegion.raft_fill`
   carrier and its WIT accessors, the `paint-region-layer-view.raft-plan`
   accessor, and the SliceIR schema bump. If any of it needs changing, that is a
   240a defect to route back, not work to absorb here.
@@ -117,7 +117,7 @@ below rather than re-litigated.
 - `docs/specs/support-families-anchored-entities-plan.md` - ~750 lines; direct range reads of §7, §8, §9, §10, §12 only.
 - `docs/adr/0009-raft-as-layer-infill-role.md` - short; full read allowed.
 - `docs/specs/support-parity-gap-register.md` - G-06 row only; direct range read.
-- `docs/spec_packets/240a-support-raft-substrate/design.md` - §Migration Table and §`raft_plan` Read-Path Footprint only.
+- `docs/spec_packets/240a-support-raft-substrate/design.md` - §`raft_plan` Read-Path Footprint and §Architecture Constraints only. (There is no §Migration Table; the u32->i32 migration was withdrawn in the re-spec.)
 - `docs/15_config_keys_reference.md` - regenerated, not read in bulk.
 - `docs/ORCA_CONFIG_REFERENCE.md` - canonical name/default source for the three net-new raft keys; targeted grep only, never a bulk read.
 - `docs/19_visual_debug.md` / `docs/17_agent_debugging.md` - human-gate bundle only; delegated SUMMARY.
@@ -158,13 +158,21 @@ NOT among them: those three are net-new in this packet and belong to
 Each row must have the literal shape
 ``| `<key>` | `<manifest>` | <verdict> | <reason> |`` with the verdict starting
 in lowercase (`wired` / `stays dead`) — AC-7 counts rows of that shape and
-compares the count against the grep above, and additionally fails if any row
-still reads `_pending Step 5_`. A row whose verdict is `stays dead` must name
-the owner of that decision.
+compares the count against the grep above, and additionally fails while a TABLE
+ROW still carries the placeholder sentinel. A row whose verdict
+is `stays dead` must name the owner of that decision.
+
+AC-7's greps are SECTION-SCOPED (`sed` from this heading to
+`## DEV-124 Re-verification`) on purpose: `requirements.md` quotes AC-7's own
+command verbatim in §Verification Commands, so an unscoped
+`rg` for the sentinel over the whole file would match the command text itself
+and be unsatisfiable forever. The grep is ALSO row-anchored (`^\|`) so it cannot
+match this explanatory prose, which sits inside the scoped range. Both the
+scoping and the row anchor are load-bearing — do not "simplify" either away.
 
 | Key | Manifest | Verdict | Reason / decision owner |
 | --- | --- | --- | --- |
-| _rows added in Step 5, one per grep hit_ | | _pending Step 5_ | |
+| _rows added in Step 5, one per grep hit_ | | PENDING-STEP5-ROW | |
 
 ## DEV-124 Re-verification
 
@@ -175,12 +183,13 @@ day") makes both perimeter generators gate `only_one_wall_first_layer` on
 `classic_clamp_unchanged_when_no_raft_configured` in
 `crates/slicer-runtime/tests/contract/only_one_wall_first_layer_tdd.rs`.
 
-240a's `requirements.md` §DEV-124 Reopen establishes that this predicate is
-**index-convention-dependent**: it is correct under a positive prefix band, and
-wrong under the signed negative band this family adopted, where the first
-printed model layer is index `0`. 240a files the reopen row; this packet is
-where the raft path actually goes live, so this is where the predicate is
-re-verified against real behaviour.
+240a's `requirements.md` §DEV-124 Upheld establishes that this predicate is
+**correct as shipped** under the positive offset band this family adopted: the
+first printed model layer is index `support_raft_layers`, exactly what the
+clamp tests. 240a files no reopen row, and its AC-N4 asserts the pinning file
+is unmodified. This packet is where the raft path actually goes live, so this
+is where the predicate is re-verified against real behaviour rather than a
+synthesized config view.
 
 Step 7 records here, with evidence:
 
@@ -202,12 +211,12 @@ Reference, never copy, criteria from `packet.spec.md`.
 - Positive: `AC-1` (manifest + fresh artifact), `AC-2` (single claim holder +
   `should_emit`), `AC-3` (deterministic `raft_fill` across two runs and both
   legs), `AC-4` (expansions and interface spacing honored), `AC-5`
-  (negative-prefix ordering, zero anchored entities), `AC-6` (keys declared and
+  (raft band ordering before the first model layer, zero anchored entities), `AC-6` (keys declared and
   wired), `AC-7` (raft-key wire-or-record table), `AC-8` (DEV-124
   re-verification).
 - Negative: `AC-N1` (double-holder `SchedulerError::ClaimConflict`, the
   four-field variant `claim` / `module_a` / `module_b` / `scope`), `AC-N2`
-  (out-of-band negative index rejected), `AC-N3` (undeclared key rejected, not
+  (module writes nothing on a non-raft layer), `AC-N3` (undeclared key rejected, not
   silently defaulted).
 - Cross-packet impact: hard-depends on 240a; feeds 242's closure evidence;
   leaves 239/241 untouched.
@@ -218,18 +227,18 @@ This is the authoritative full matrix; `packet.spec.md` lists only the closure-g
 
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
-| `rg -q 'id = "com.core.raft-default"' modules/core-modules/raft-default/raft-default.toml && rg -q 'claim:raft-fill' modules/core-modules/raft-default/raft-default.toml && rg -q 'Layer::Infill' modules/core-modules/raft-default/raft-default.toml && cargo xtask build-guests && cargo xtask build-guests --check; echo EXIT:$?` | AC-1 manifest + freshness | FACT exit code |
+| `rg -q 'id\s*=\s*"com\.core\.raft-default"' modules/core-modules/raft-default/raft-default.toml && rg -q 'claim:raft-fill' modules/core-modules/raft-default/raft-default.toml && rg -q 'Layer::Infill' modules/core-modules/raft-default/raft-default.toml && cargo xtask build-guests && cargo xtask build-guests --check; echo EXIT:$?` | AC-1 manifest + freshness | FACT exit code |
 | `mkdir -p target && cargo test -p slicer-sdk --test should_emit_raft_fill_claim_tdd -- ac4_raft_fill_claim_emits_raft_infill --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-2 claim dispatch | FACT pass/fail |
 | `test "$(rg -l 'claim:raft-fill' modules/core-modules/*/[a-z-]*.toml \| wc -l)" -eq 1` | AC-2 exactly one declared holder | FACT exit code |
-| `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_fill_is_deterministic_across_two_runs --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-3 determinism | FACT pass/fail |
-| `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_first_layer_expansion_exceeds_upper_layers --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-4 expansions | FACT pass/fail |
-| `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry_orders_before_model_layers --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && cargo test -p slicer-runtime --test integration -- raft_mints_no_anchored_entities --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-5 ordering / no anchored (each command tees and is guarded separately) | FACT pass/fail |
-| `mkdir -p target && cargo test -p slicer-runtime --test contract -- raft_keys_declared_and_wired --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-6 keys wired | FACT pass/fail |
-| `DECL="$(rg --no-filename -o '^\[config\.schema\.[a-z_]*raft[a-z_]*\]' modules/core-modules -g '*.toml' -g '!raft-default.toml' \| wc -l)"; ROWS="$(rg -c '^\| .[a-z_]*raft[a-z_]*. \| .[a-z0-9-]+. \| [a-z]' docs/spec_packets/240b-support-raft-module/requirements.md)"; test "$DECL" -ge 1 && test "${ROWS:-0}" -eq "$DECL" && ! rg -q 'pending Step 5' docs/spec_packets/240b-support-raft-module/requirements.md` | AC-7 wire-or-record table filled: one row per raft-key declaration site the grep returns | FACT exit code |
-| `mkdir -p target && cargo test -p slicer-runtime --test contract -- classic_clamp_follows_raft_layers_not_layer_zero --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && cargo test -p slicer-runtime --test contract -- classic_clamp_unchanged_when_no_raft_configured --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-8 DEV-124 re-verification (each command tees and is guarded separately) | FACT pass/fail |
+| `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_fill_is_deterministic_across_two_runs --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-3 determinism | FACT pass/fail |
+| `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_first_layer_expansion_exceeds_upper_layers --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-4 expansions | FACT pass/fail |
+| `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_geometry_orders_before_model_layers --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_mints_no_anchored_entities --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-5 ordering / no anchored (each command tees and is guarded separately) | FACT pass/fail |
+| `mkdir -p target && cargo test -p slicer-runtime --test contract -- raft_bounds_tdd::raft_keys_declared_and_wired --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-6 keys wired | FACT pass/fail |
+| `DECL="$(rg --no-filename -o '^\[config\.schema\.[a-z_]*raft[a-z_]*\]' modules/core-modules -g '*.toml' -g '!raft-default.toml' \| wc -l)"; ROWS="$(sed -n '/^## Wire-or-Record Decisions$/,/^## DEV-124 Re-verification$/p' docs/spec_packets/240b-support-raft-module/requirements.md \| rg -c '^\| `[a-z_]*raft[a-z_]*` \| `[^`]+` \| (wired\|stays dead)')"; test "$DECL" -ge 1 && test "${ROWS:-0}" -eq "$DECL" && ! sed -n '/^## Wire-or-Record Decisions$/,/^## DEV-124 Re-verification$/p' docs/spec_packets/240b-support-raft-module/requirements.md \| rg -q '^\|.*PENDING-STEP5-ROW'` | AC-7 wire-or-record table filled: one row per raft-key declaration site the grep returns | FACT exit code |
+| `mkdir -p target && cargo test -p slicer-runtime --test contract -- only_one_wall_first_layer_tdd::classic_clamp_follows_raft_layers_not_layer_zero --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && cargo test -p slicer-runtime --test contract -- only_one_wall_first_layer_tdd::classic_clamp_unchanged_when_no_raft_configured --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-8 DEV-124 re-verification (each command tees and is guarded separately) | FACT pass/fail |
 | `mkdir -p target && cargo test -p slicer-scheduler --test raft_claim_conflict_tdd -- raft_fill_double_holder_conflicts --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-N1 conflict advisory | FACT pass/fail |
-| `mkdir -p target && cargo test -p slicer-runtime --test contract -- raft_index_outside_band_rejected --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-N2 bounds rejection | FACT pass/fail |
-| `mkdir -p target && cargo test -p slicer-runtime --test contract -- undeclared_raft_key_is_rejected_not_defaulted --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-N3 undeclared key | FACT pass/fail |
+| `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_writes_nothing_on_non_raft_layer --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-N2 module writes nothing on a non-raft layer (owned by Step 3) | FACT pass/fail |
+| `mkdir -p target && cargo test -p slicer-runtime --test contract -- raft_bounds_tdd::undeclared_raft_key_is_rejected_not_defaulted --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-N3 undeclared key | FACT pass/fail |
 | `cargo check --workspace --all-targets` | compile gate incl. test targets | FACT pass/fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | lint gate | FACT pass/fail |
 
@@ -254,5 +263,5 @@ pure exit-code checks; none invokes `cargo test --workspace`.
   reads only; never load in full.
 - `crates/slicer-ir/src/slice_ir.rs` is >3k lines: locate symbols with
   `rg -n 'pub struct <Name>'` at read time; never store a line pin.
-- Read 240a's `design.md` only for §Migration Table and §`raft_plan` Read-Path
+- Read 240a's `design.md` only for §Architecture Constraints and §`raft_plan` Read-Path
   Footprint; the rest is substrate detail this packet does not need.
