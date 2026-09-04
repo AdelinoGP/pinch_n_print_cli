@@ -479,14 +479,14 @@ findings (the one flagged row was a stale-asset artifact).
 
 ### Quality / Bridging
 | `bridge_angle` | B | classic-perimeters + arachne-perimeters (LayerRegion.cpp + PerimeterGenerator.cpp) |
-| `bridge_density` | B | infill modules (bridge-fill holder) |
+| `bridge_density` | B | infill modules — **live** (ticket 34, direct implementation): divides bridge line spacing in `RectilinearInfill::run_infill` and `wave-overhangs`' fallback fill. `max` corrected 120→125 against the oracle. Not read by `gyroid-infill` (ticket 127); bare-number spelling misread (ticket 128) |
 | `counterbore_hole_bridging` | B | classic-perimeters + arachne-perimeters |
 | `dont_filter_internal_bridges` | B | bridge-over-infill (slicing stage, PrintObject.cpp) |
 | `enable_extra_bridge_layer` | B | bridge-over-infill (slicing stage, PrintObject.cpp) |
 | `internal_bridge_angle` | B | bridge-over-infill (slicing stage, PrintObject.cpp) |
-| `internal_bridge_density` | B | infill modules (bridge-fill holder) |
+| `internal_bridge_density` | B | infill modules — **live** (ticket 34, direct implementation): internal-bridge twin of `bridge_density`, selected off `is_internal_bridge` in both bridge-fill holders. Not read by `gyroid-infill` (ticket 127) |
 | `internal_bridge_flow` | B | crates/slicer-gcode (emission flow scaling) |
-| `thick_internal_bridges` | B | infill modules (bridge-fill holder, Fill.cpp) |
+| `thick_internal_bridges` | B | infill modules — **live** (ticket 34, direct implementation): selects `canonical_bridging_flow`'s round-thread spacing for internal bridges in both bridge-fill holders. Canonical's second read site (`Print::validate`'s `allow_thin_bridge_width`) is config-range validation, deferred to ticket 113 |
 
 ### Quality / Ironing
 | `ironing_angle` | A | top-surface-ironing + support-surface-ironing |
