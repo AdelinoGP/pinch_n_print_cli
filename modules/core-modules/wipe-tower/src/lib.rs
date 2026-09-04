@@ -317,6 +317,54 @@ impl WipeTower {
         Ok(())
     }
 
+    /// Depth (y-extent, mm) of the purge box emitted for a single tool change.
+    ///
+    /// This is the `y_max - y_min` of the scan-line box `generate_purge_paths`
+    /// lays down, and both call it so the validated footprint and the emitted
+    /// footprint cannot drift. Canonical models the tower the same way — width
+    /// and depth are independent quantities there too (`WipeTower::get_depth`,
+    /// paired with `WipeTower::width` by `Print.cpp`'s `construct_mesh` call).
+    ///
+    /// Returns 0.0 for a degenerate cross section, matching
+    /// `generate_purge_paths`, which emits nothing in that case.
+    fn purge_depth_for(&self, layer_height: f32, tc: &slicer_ir::ToolChange) -> f32 {
+        let cross_section = self.line_width * layer_height * self.tower_width;
+        if cross_section <= 0.0 {
+            return 0.0;
+        }
+        self.purge_volume_for(tc.from_tool, tc.to_tool) / cross_section
+    }
+
+    /// Largest [`purge_depth_for`](Self::purge_depth_for) any purge box in
+    /// `layers` will reach, or `None` when no tool change will emit anything.
+    ///
+    /// `None` is the single-filament case: no tool changes means no tower, so
+    /// there is no footprint to validate against the bed. The layer-height
+    /// derivation mirrors `run_finalization`'s exactly.
+    fn max_purge_depth(&self, layers: &[LayerCollectionView]) -> Option<f32> {
+        let mut max_depth: Option<f32> = None;
+        for (idx, view) in layers.iter().enumerate() {
+            if view.tool_changes().is_empty() {
+                continue;
+            }
+            let layer_height = if idx > 0 {
+                let dz = view.z() - layers[idx - 1].z();
+                if dz > 0.0 {
+                    dz
+                } else {
+                    DEFAULT_LAYER_HEIGHT
+                }
+            } else {
+                DEFAULT_LAYER_HEIGHT
+            };
+            for tc in view.tool_changes() {
+                let depth = self.purge_depth_for(layer_height, tc);
+                max_depth = Some(max_depth.map_or(depth, |m: f32| m.max(depth)));
+            }
+        }
+        max_depth
+    }
+
     /// Generate purge paths for a single tool change.
     ///
     /// Returns `(ExtrusionPath3D, RegionKey)` pairs in the order:
@@ -392,7 +440,7 @@ impl WipeTower {
         pairs.push((travel_path, region_key.clone()));
 
         // ── 2. Rectilinear scan-line wall entities ───────────────────────────
-        let purge_depth = purge_volume / cross_section;
+        let purge_depth = self.purge_depth_for(layer_height, tc);
         let x_min = self.tower_x;
         let x_max = self.tower_x + self.tower_width;
         let y_min = self.tower_y;
@@ -592,27 +640,35 @@ impl FinalizationModule for WipeTower {
             None => self.printable_area.clone(),
         };
 
-        // Validate all 4 corners of the tower bounding rectangle against the bed polygon.
-        // Corners: (x, y), (x+w, y), (x+w, y+purge_depth_max), (x, y+purge_depth_max).
-        // Use tower_width for a conservative bound; purge_depth varies per layer.
-        let tower_corners = [
-            (self.tower_x, self.tower_y),
-            (self.tower_x + self.tower_width, self.tower_y),
-            (
-                self.tower_x + self.tower_width,
-                self.tower_y + self.tower_width,
-            ),
-            (self.tower_x, self.tower_y + self.tower_width),
-        ];
-        for (cx, cy) in &tower_corners {
-            if !point_in_polygon(*cx, *cy, &bed_polygon) {
-                return Err(ModuleError::fatal(
-                    3,
-                    format!(
-                        "wipe-tower corner ({:.3}, {:.3}) lies outside bed polygon",
-                        cx, cy
-                    ),
-                ));
+        // Validate the 4 corners of the tower's real bounding rectangle against
+        // the bed polygon: `tower_width` wide by the deepest purge box any tool
+        // change in this print will lay down (`max_purge_depth`). The depth is
+        // NOT the width — the box is `purge_volume / (line_width · layer_height
+        // · tower_width)` deep, which is what `generate_purge_paths` emits and
+        // what canonical means by `WipeTower::get_depth` as distinct from
+        // `WipeTower::width`. Validating a `width × width` square instead
+        // rejected towers that fit (ticket 129).
+        //
+        // `None` means no layer carries a tool change, so no tower geometry is
+        // emitted at all; a print with no tool changes has no footprint to place
+        // and is not rejected for one.
+        if let Some(max_depth) = self.max_purge_depth(layers) {
+            let tower_corners = [
+                (self.tower_x, self.tower_y),
+                (self.tower_x + self.tower_width, self.tower_y),
+                (self.tower_x + self.tower_width, self.tower_y + max_depth),
+                (self.tower_x, self.tower_y + max_depth),
+            ];
+            for (cx, cy) in &tower_corners {
+                if !point_in_polygon(*cx, *cy, &bed_polygon) {
+                    return Err(ModuleError::fatal(
+                        3,
+                        format!(
+                            "wipe-tower corner ({:.3}, {:.3}) lies outside bed polygon",
+                            cx, cy
+                        ),
+                    ));
+                }
             }
         }
 

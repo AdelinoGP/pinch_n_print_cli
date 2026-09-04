@@ -1359,19 +1359,21 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
    solid-infill direction or rotation-template metadata. Whether the IR gains
    the canonical base direction, and which other ironing consumers use it, is
    future IR/geometry work; fog until a packet picks it up.
-- **A wipe-tower placement failure is red at HEAD on this branch.** Surfaced by
-  ticket 35's no-regression run and confirmed on a stashed baseline through
-  `cargo xtask test` (so the guest-freshness gate ran against the baseline tree):
-  `modifier_support_territory_top_shell_layers_keep_full_walls_and_internal_bridge_role`
-  (`crates/slicer-runtime/tests/e2e/modifier_support_territory_e2e_tdd.rs`) fails with
-  `wipe-tower corner (63.000, 232.972) lies outside bed polygon`. The branch is
-  `wayfinder/ticket-100-wipe-tower-rename` and ticket 100's own finding was that
-  `bed_shape` → `printable_area` changes how the bed *value* is spelled, not just the
-  key — so the first hypothesis to test is that the tower's bed polygon is being read
-  through the renamed key in a spelling the placement search does not understand. Not
-  phraseable as a ticket until someone confirms whether it is the rename, the
-  uncommitted ticket-33/34 work, or an older regression; whoever next runs a broad
-  suite on this branch should not read it as their own breakage.
+- **Two integration tests are red at HEAD, unrelated to the wipe tower.** Found
+  while gating ticket 129 (2026-09-04) and confirmed on a stashed `71a4c832`
+  baseline through `cargo xtask test` (guest-freshness gate clean, exit 0), so
+  they are pre-existing and not that fix. `cargo test -p slicer-runtime --test
+  integration`: 338 pass, 2 fail —
+  `no_linker_module_degraded_raw_output_tdd::no_linker_module_degraded_raw_output`
+  ("mean G1 moves per sparse-infill block should be at the raw baseline (< 28.0);
+  got 28.05") and
+  `region_partition_tdd::shell_band_excludes_exposed_seed_but_keeps_propagated_under_top_fill`
+  (`assertion failed: intersection(lower, &[exposed_half]).is_empty()`). Both sit
+  on the five-way fill partition's surface (`71a4c832`), which is the first place
+  to look; neither has been diagnosed. This corrects the earlier note that the
+  wipe-tower e2e was the only red on this branch — that sweep predates them.
+  Whoever next runs a broad suite here should not read these as their own
+  breakage.
 
 ## Out of scope
 
