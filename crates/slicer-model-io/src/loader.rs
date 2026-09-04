@@ -64,13 +64,6 @@ pub enum ModelLoadError {
     ObjParse(String),
     /// 3MF parse error.
     ThreeMfParse(String),
-    /// WORLD_Z_BELOW_FLOOR â€” one or more object vertices map to a world-space Z
-    /// below the print volume floor (0.0 mm).  Translate the object upward so
-    /// its lowest point is at or above Z = 0.
-    WorldZBelowFloor {
-        /// The minimum world-space Z found on the object (negative).
-        z_min: f32,
-    },
     /// DUPLICATE_INPUT_BASENAME — two distinct model inputs in one job share a
     /// file name. Object ids are derived from the basename, so these inputs would
     /// mint colliding ids. Rename or stage one of the files apart.
@@ -99,10 +92,6 @@ impl fmt::Display for ModelLoadError {
             Self::StlParse(msg) => write!(f, "STL parse error: {msg}"),
             Self::ObjParse(msg) => write!(f, "OBJ parse error: {msg}"),
             Self::ThreeMfParse(msg) => write!(f, "3MF parse error: {msg}"),
-            Self::WorldZBelowFloor { z_min } => write!(
-                f,
-                "WORLD_Z_BELOW_FLOOR: object world-space Z minimum {z_min} mm is below print floor 0.0 mm"
-            ),
             Self::DuplicateInputBasename { basename, first, second } => write!(
                 f,
                 "DUPLICATE_INPUT_BASENAME: two inputs share the file name '{basename}' \
@@ -2845,29 +2834,6 @@ fn object_world_z_extent_from_mesh_and_transform(
     }
 }
 
-/// Validate that an [`ObjectMesh`] transform does not have non-uniform scale.
-///
-/// Validate that the world-space Z minimum of an [`ObjectMesh`] is at or above
-/// the print volume floor (0.0 mm).
-///
-/// Uses [`object_world_z_extent`] to compute the world-space Z range.  If the
-/// minimum Z is negative, returns [`ModelLoadError::WorldZBelowFloor`].
-///
-/// Objects with no geometry (empty mesh) or a degenerate extent (single vertex)
-/// are treated as valid â€” they will be caught by later validation stages.
-///
-/// # Errors
-///
-/// Returns `Err(WorldZBelowFloor { z_min })` when the object extends below Z = 0.
-pub fn validate_world_z_floor(object: &ObjectMesh) -> Result<(), ModelLoadError> {
-    if let Some((z_min, _z_max)) = object_world_z_extent(object) {
-        if z_min < 0.0 {
-            return Err(ModelLoadError::WorldZBelowFloor { z_min });
-        }
-    }
-    Ok(())
-}
-
 /// Compute the world-space Z extent `(z_min, z_max)` of an [`ObjectMesh`] by
 /// applying its `transform` to each vertex and reducing.
 ///
@@ -2904,6 +2870,219 @@ pub fn object_world_z_extent(object: &ObjectMesh) -> Option<(f32, f32)> {
     } else {
         None
     }
+}
+
+/// World-space AABB of one object, honouring its `transform`.
+///
+/// Uses the same zero-matrix-is-identity convention as
+/// [`object_world_z_extent`].
+fn object_world_aabb(object: &ObjectMesh) -> Option<(Point3, Point3)> {
+    let m = &object.transform.matrix;
+    let identity = m.iter().all(|v| *v == 0.0);
+    let mut min = Point3 {
+        x: f32::INFINITY,
+        y: f32::INFINITY,
+        z: f32::INFINITY,
+    };
+    let mut max = Point3 {
+        x: f32::NEG_INFINITY,
+        y: f32::NEG_INFINITY,
+        z: f32::NEG_INFINITY,
+    };
+    for v in &object.mesh.vertices {
+        let p = if identity {
+            *v
+        } else {
+            let (x, y, z) = (v.x as f64, v.y as f64, v.z as f64);
+            Point3 {
+                x: (m[0] * x + m[4] * y + m[8] * z + m[12]) as f32,
+                y: (m[1] * x + m[5] * y + m[9] * z + m[13]) as f32,
+                z: (m[2] * x + m[6] * y + m[10] * z + m[14]) as f32,
+            }
+        };
+        min.x = min.x.min(p.x);
+        min.y = min.y.min(p.y);
+        min.z = min.z.min(p.z);
+        max.x = max.x.max(p.x);
+        max.y = max.y.max(p.y);
+        max.z = max.z.max(p.z);
+    }
+    (min.x.is_finite() && max.x.is_finite()).then_some((min, max))
+}
+
+/// The centre of a `bed_shape` polygon, given as interleaved
+/// `[x0, y0, x1, y1, ...]` millimetres (the `ResolvedConfig::bed_shape`
+/// encoding). Returns `None` when the polygon cannot describe a plate.
+#[must_use]
+pub fn bed_center_mm(bed_shape: &[f64]) -> Option<(f32, f32)> {
+    if bed_shape.len() < 6 || !bed_shape.len().is_multiple_of(2) {
+        return None;
+    }
+    let (mut min_x, mut max_x) = (f64::INFINITY, f64::NEG_INFINITY);
+    let (mut min_y, mut max_y) = (f64::INFINITY, f64::NEG_INFINITY);
+    for pair in bed_shape.chunks_exact(2) {
+        if !pair[0].is_finite() || !pair[1].is_finite() {
+            return None;
+        }
+        min_x = min_x.min(pair[0]);
+        max_x = max_x.max(pair[0]);
+        min_y = min_y.min(pair[1]);
+        max_y = max_y.max(pair[1]);
+    }
+    if max_x <= min_x || max_y <= min_y {
+        return None;
+    }
+    Some((
+        ((min_x + max_x) / 2.0) as f32,
+        ((min_y + max_y) / 2.0) as f32,
+    ))
+}
+
+/// Axis-aligned extent of a `bed_shape` polygon as `(min_x, max_x, min_y,
+/// max_y)` in millimetres, or `None` when the polygon cannot describe a plate.
+#[must_use]
+pub fn bed_extent_mm(bed_shape: &[f64]) -> Option<(f32, f32, f32, f32)> {
+    if bed_shape.len() < 6 || !bed_shape.len().is_multiple_of(2) {
+        return None;
+    }
+    let (mut min_x, mut max_x) = (f64::INFINITY, f64::NEG_INFINITY);
+    let (mut min_y, mut max_y) = (f64::INFINITY, f64::NEG_INFINITY);
+    for pair in bed_shape.chunks_exact(2) {
+        if !pair[0].is_finite() || !pair[1].is_finite() {
+            return None;
+        }
+        min_x = min_x.min(pair[0]);
+        max_x = max_x.max(pair[0]);
+        min_y = min_y.min(pair[1]);
+        max_y = max_y.max(pair[1]);
+    }
+    if max_x <= min_x || max_y <= min_y {
+        return None;
+    }
+    Some((min_x as f32, max_x as f32, min_y as f32, max_y as f32))
+}
+
+/// How far a model's XY footprint spills past the plate, in millimetres.
+///
+/// Returns `None` when the model fits. Nothing in the pipeline knows the
+/// printer volume — `MeshIR::build_volume` is the *model* AABB, not the plate
+/// — so without this a too-large model slices silently and prints off the bed.
+#[must_use]
+pub fn bed_overflow_mm(mesh: &MeshIR, bed_shape: &[f64]) -> Option<(f32, f32)> {
+    let (bed_min_x, bed_max_x, bed_min_y, bed_max_y) = bed_extent_mm(bed_shape)?;
+    let mut lo_x = f32::INFINITY;
+    let mut hi_x = f32::NEG_INFINITY;
+    let mut lo_y = f32::INFINITY;
+    let mut hi_y = f32::NEG_INFINITY;
+    for object in &mesh.objects {
+        if let Some((lo, hi)) = object_world_aabb(object) {
+            lo_x = lo_x.min(lo.x);
+            hi_x = hi_x.max(hi.x);
+            lo_y = lo_y.min(lo.y);
+            hi_y = hi_y.max(hi.y);
+        }
+    }
+    if !lo_x.is_finite() || !lo_y.is_finite() {
+        return None;
+    }
+    let over_x = (bed_min_x - lo_x).max(hi_x - bed_max_x).max(0.0);
+    let over_y = (bed_min_y - lo_y).max(hi_y - bed_max_y).max(0.0);
+    (over_x > 0.0 || over_y > 0.0).then_some((over_x, over_y))
+}
+
+/// Translation applied by [`place_bare_mesh_on_bed`], in millimetres.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BedPlacement {
+    /// X shift applied to every object.
+    pub dx: f32,
+    /// Y shift applied to every object.
+    pub dy: f32,
+    /// Z shift applied to every object.
+    pub dz: f32,
+}
+
+/// Place a bare mesh (STL/OBJ) onto the print bed.
+///
+/// This is OrcaSlicer's two placement primitives applied together:
+///
+/// - `ModelObject::ensure_on_bed` (`Model.cpp`) with `allow_negative_z =
+///   false`, i.e. `z_offset = -min_z`, dropping the model so it rests on the
+///   plate. Canonical's CLI applies this unconditionally to every object
+///   loaded from an STL or 3MF (`OrcaSlicer.cpp`).
+/// - `Model::center_instances_around_point` (`Model.cpp`), shifting the
+///   model's XY bounding-box centre onto `bed_center`.
+///
+/// Canonical gates the XY half behind its `center` option because its GUI
+/// carries authored plate placement. A bare STL or OBJ has no plate
+/// coordinate system at all — its coordinates are whatever the authoring tool
+/// happened to emit — so placement is the only sane default here. **3MF is
+/// excluded by the caller**: it carries authored placement that must survive.
+///
+/// The model is translated as a rigid body: relative positions between
+/// objects are preserved, so multi-object scenes keep their arrangement.
+///
+/// Returns the applied translation, or `None` when the mesh has no finite
+/// geometry to place.
+pub fn place_bare_mesh_on_bed(mesh: &mut MeshIR, bed_center: (f32, f32)) -> Option<BedPlacement> {
+    let mut min = Point3 {
+        x: f32::INFINITY,
+        y: f32::INFINITY,
+        z: f32::INFINITY,
+    };
+    let mut max = Point3 {
+        x: f32::NEG_INFINITY,
+        y: f32::NEG_INFINITY,
+        z: f32::NEG_INFINITY,
+    };
+    let mut any = false;
+    for object in &mesh.objects {
+        if let Some((lo, hi)) = object_world_aabb(object) {
+            any = true;
+            min.x = min.x.min(lo.x);
+            min.y = min.y.min(lo.y);
+            min.z = min.z.min(lo.z);
+            max.x = max.x.max(hi.x);
+            max.y = max.y.max(hi.y);
+            max.z = max.z.max(hi.z);
+        }
+    }
+    if !any {
+        return None;
+    }
+
+    let placement = BedPlacement {
+        dx: bed_center.0 - (min.x + max.x) / 2.0,
+        dy: bed_center.1 - (min.y + max.y) / 2.0,
+        dz: -min.z,
+    };
+    if placement.dx == 0.0 && placement.dy == 0.0 && placement.dz == 0.0 {
+        return Some(placement);
+    }
+
+    for object in &mut mesh.objects {
+        let m = &mut object.transform.matrix;
+        if m.iter().all(|v| *v == 0.0) {
+            // Zero matrix is the identity convention, and `assemble_object`
+            // bakes authored transforms into vertices, so shifting vertices
+            // keeps the "world transform lives in the vertices" invariant the
+            // rest of the pipeline relies on.
+            for v in &mut object.mesh.vertices {
+                v.x += placement.dx;
+                v.y += placement.dy;
+                v.z += placement.dz;
+            }
+        } else {
+            // A live transform: fold the shift into its translation column so
+            // the result is a world-space translation regardless of the
+            // linear part.
+            m[12] += f64::from(placement.dx);
+            m[13] += f64::from(placement.dy);
+            m[14] += f64::from(placement.dz);
+        }
+    }
+
+    mesh.build_volume = compute_bounding_box_union(mesh.objects.iter().map(|o| &o.mesh));
+    Some(placement)
 }
 
 #[cfg(test)]

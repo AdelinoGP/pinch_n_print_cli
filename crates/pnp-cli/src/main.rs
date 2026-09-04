@@ -487,12 +487,13 @@ fn main() {
             let output_path = output.clone();
             let model_label = model.to_string_lossy().into_owned();
             let mesh = match slicer_model_io::load_model(&model) {
-                Ok(m) => std::sync::Arc::new(m),
+                Ok(m) => m,
                 Err(e) => {
                     eprintln!("error: failed to load model {}: {e}", model.display());
                     std::process::exit(1);
                 }
             };
+            let mesh = std::sync::Arc::new(place_model_on_bed(mesh, &model, config.as_deref()));
             #[cfg(feature = "report")]
             let (report_opt, report_verbose_opt) = (report, report_verbose);
             #[cfg(not(feature = "report"))]
@@ -813,4 +814,77 @@ fn main() {
             }
         },
     }
+}
+
+/// Place a freshly loaded model on the print bed.
+///
+/// Bare meshes (STL/OBJ) carry no plate coordinate system — their coordinates
+/// are whatever the authoring tool emitted — so they are dropped onto the bed
+/// and centred on it. A 3MF carries authored plate placement and is returned
+/// untouched.
+///
+/// Mirrors OrcaSlicer's `ModelObject::ensure_on_bed` and
+/// `Model::center_instances_around_point` (`Model.cpp`); canonical's CLI
+/// applies the former unconditionally on load (`OrcaSlicer.cpp`).
+fn place_model_on_bed(
+    mut mesh: slicer_ir::MeshIR,
+    model_path: &std::path::Path,
+    config_path: Option<&std::path::Path>,
+) -> slicer_ir::MeshIR {
+    match slicer_model_io::detect_format(model_path) {
+        Ok(slicer_model_io::ModelFormat::Stl | slicer_model_io::ModelFormat::Obj) => {}
+        // 3MF placement is authored; leave it alone. An undetectable format
+        // has already failed in `load_model`, so treat it as pass-through.
+        _ => return mesh,
+    }
+
+    let bed_shape = read_bed_shape(config_path);
+    let Some(center) = slicer_model_io::bed_center_mm(&bed_shape) else {
+        eprintln!(
+            "warning: bed_shape does not describe a usable plate; skipping bed placement"
+        );
+        return mesh;
+    };
+
+    if let Some(p) = slicer_model_io::place_bare_mesh_on_bed(&mut mesh, center) {
+        if p.dx != 0.0 || p.dy != 0.0 || p.dz != 0.0 {
+            eprintln!(
+                "note: placed model on bed centre ({:.1}, {:.1}) mm (shift dx={:.2} dy={:.2} dz={:.2} mm)",
+                center.0, center.1, p.dx, p.dy, p.dz
+            );
+        }
+    }
+    warn_if_off_bed(&mesh, &bed_shape);
+    mesh
+}
+
+/// Warn when the model's XY footprint spills past the plate.
+///
+/// Nothing downstream knows the printer volume (`MeshIR::build_volume` is the
+/// model AABB, not the plate), so without this a too-large model slices
+/// silently and prints off the bed. Warn rather than fail: `bed_shape` falls
+/// back to a 250 x 250 default when unconfigured, and refusing to slice on an
+/// unconfigured bed would be worse than printing a warning.
+fn warn_if_off_bed(mesh: &slicer_ir::MeshIR, bed_shape: &[f64]) {
+    if let Some((over_x, over_y)) = slicer_model_io::bed_overflow_mm(mesh, bed_shape) {
+        eprintln!(
+            "warning: model extends past the print bed by {over_x:.2} mm in X and              {over_y:.2} mm in Y; slicing anyway, but the print will not fit"
+        );
+    }
+}
+
+/// `bed_shape` from the `--config` JSON, falling back to the resolved default.
+fn read_bed_shape(config_path: Option<&std::path::Path>) -> Vec<f64> {
+    let from_config = config_path
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|value| {
+            value
+                .get("bed_shape")?
+                .as_array()?
+                .iter()
+                .map(serde_json::Value::as_f64)
+                .collect::<Option<Vec<f64>>>()
+        });
+    from_config.unwrap_or_else(|| slicer_ir::ResolvedConfig::default().bed_shape)
 }

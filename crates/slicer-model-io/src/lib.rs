@@ -12,8 +12,8 @@ pub mod sidecar;
 pub mod writer;
 
 pub use loader::{
-    assemble_object, check_basename_collisions, detect_format, load_model,
-    read_3mf_project_settings, ModelFormat, ModelLoadError,
+    assemble_object, bed_center_mm, bed_extent_mm, bed_overflow_mm, check_basename_collisions, detect_format, load_model,
+    place_bare_mesh_on_bed, read_3mf_project_settings, BedPlacement, ModelFormat, ModelLoadError,
 };
 pub use sidecar::{parse_3mf_sidecar, ObjectSidecarInfo, PartSubtype};
 pub use writer::{write_3mf, write_obj};
