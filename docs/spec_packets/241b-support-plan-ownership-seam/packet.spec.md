@@ -1,204 +1,99 @@
 ---
-status: draft
+status: implemented
 packet: 241b-support-plan-ownership-seam
-task_ids: []
+task_ids:
+  - TASK-531
 depends_on: 241-support-agg-rasterizer
 backlog_source: docs/specs/support-families-anchored-entities-plan.md
-context_cost_estimate: TBD
+context_cost_estimate: M
 ---
 
 # Packet Contract: 241b-support-plan-ownership-seam
 
-> **STUB ONLY.** This file records scope and the evidence behind it. `requirements.md`,
-> `design.md`, `implementation-plan.md`, and `task-map.md` are NOT yet written — generate them
-> with `/spec-packet-generator` and grill the result before activation. Every measured value
-> below was taken during the packet-241 session (2026-09-03); re-derive anything load-bearing
-> before you rely on it.
-
 ## Goal
 
-Make region ownership real at the support-plan seam: one module owns a region, a module cannot
-publish output for a region it does not own, and entry identity is enforced by declared
-identifiers rather than by where geometry happens to sit.
+Make support-region ownership enforced at the single host merge point: `union_same_family_entries` keys on declared `(family_id, global_layer_index, object_id, region_id, anchor_z)` instead of a bbox-centroid grid cell, every `SupportPlanEntry` is checked against `SupportAnalysisIR::family_assignments` and its producing module's `support-family:<id>` claim (default-deny), arrival-order arbitration is deleted, the traditional planner's per-triple merge becomes the DEV-167 fix with an `anchor_z`↔`global_layer_index` consistency check, and the two packet-239 tests are restored against the one-entry-per-triple shape.
 
-## Why this packet exists
+## Scope Boundaries
 
-Packet 241 removed the DEV-166 clamp from the `agg` rasterizer arm. The resulting geometry
-tripped a commit-time invariant and exposed a class of defect that predates 241 entirely:
+Host side: `crates/slicer-wasm-host/src/support_aggregation.rs` (merge key, ownership check, `SupportAggregationInput` producer identity) and its call site in `crates/slicer-runtime/src/prepass.rs`. Guest side: `modules/core-modules/traditional-support-planner` (merge invariant, two tests) and the `assignments_empty` self-default in `modules/core-modules/tree-support-planner`. Docs: the W7 text defects, the routing-cell prose in **both** the `docs/04_host_scheduler.md` aggregation and complete-body-validation bullets, the routing-cell ownership paragraph in `docs/02_ir_schemas.md` §"IR 9 — SupportIR", and an ADR-0059 `Ruling 2` amendment for the deleted routing-cell mechanism. Everything else, including the schedule-time claim pass and the inert paint/tool config axis, is recorded, not changed. Full lists live in `requirements.md`.
 
-> `SupportPlanIR contains duplicate entries for support region (layer=0, object=..., region=0)`
+## Prerequisites and Blockers
 
-Root cause, verified by instrumented probe (not inferred). `SupportPlanner::plan_for_object`
-(`modules/core-modules/traditional-support-planner/src/lib.rs`) publishes one
-`SupportPlanEntry` per CANDIDATE per layer, so several entries can share one
-`(global_layer_index, object_id, region_id)`. That contradicts
-`docs/02_ir_schemas.md` section "IR 9b — SupportPlanIR" ("Each `SupportPlanEntry` is produced
-once per `(global_layer_index, object_id, region_id)` triple") and
-`docs/specs/support-families-anchored-entities-plan.md` section 6 invariant 15 ("Every RegionMap
-region has exactly one attributed plan entry"). Ruling 1 of that same plan diagnosed this exact
-class once already — "assignments were minted per candidate".
-
-It survived because host `union_same_family_entries`
-(`crates/slicer-wasm-host/src/support_aggregation.rs`) merges on `family_id` + layer +
-`object_id` + `anchor_z` plus (same body **OR** equal `routing_cell`) — and `region_id` is
-absent from that key. `routing_cell` is the entry bbox centroid floored onto a
-`ROUTING_CELL_SIZE` = `1<<20` unit grid (~104.86 mm). Measured at the failure: centroids
-(503750, 250000) and (250000, 541750) both land in cell (0, 0) and merge; the third, at
-(250004, **-15250**), is floored by `div_euclid` into cell (0, -1) and never merges. The
-duplicates had been merging on centroid coincidence.
-
-**Prior art — the same bug, the same file, the same grid line.** Packet 224 section RC-14
-records that `in_routing_cell` once demanded absolute-grid containment: a 0.4 mm interface tip
-reaching y = -0.4 mm crossed the y = 0 cell boundary, producing 528 rejections at
-`support_top_z_distance = 0.2` and zero at `0.0`, destroying both `TopInterface` layers. It was
-fixed by switching that check to a pure extent bound. The merge path never got the same
-treatment.
-
-## Scope
-
-### W1 — Revive region-scoped claim enforcement
-
-`ConflictScope::Region { object_id, region_id, global_layer_index }`
-(`crates/slicer-scheduler/src/validation.rs`) exists, and `validate_claim_conflicts` has a
-region pass. But the only production construction site — the `claim_holders` build in
-`crates/slicer-runtime/src/run.rs` — emits `ConflictScope::Global` for every claim, so the
-`PerRegionClaimConflicts` pass runs on an empty set every time. `docs/01_system_architecture.md`
-section "Claim Conflict Resolution (Normative)" step 4, "Validate uniqueness for every
-`(layer, object, region, claim)`", is a **dead pass**. Construct region-scoped holders so it
-becomes live.
-
-Note before designing: support claims are deliberately exempted from the global exclusivity
-check — `if global_only && FAMILY_SCOPED_SUPPORT_CLAIMS.contains(&claim.as_str()) { continue; }`,
-covering `support-generator`, `support-planner`, `support-family:traditional`,
-`support-family:tree`. Both planners hold `support-planner` simultaneously by design. Reviving
-region scope must not break that; the exemption is about global co-existence, not about
-per-region exclusivity.
-
-### W2 — Key the union on declared identity, not on geometry
-
-Replace the centroid `routing_cell` term in `union_same_family_entries`'s merge predicate with
-`region_id`. Blast radius measured SMALL: `RoutingCell` is a private struct in one file with
-~8 call sites, derives no `Serialize`, and has no IR field, WIT type, or persisted form. **No
-test exercises the cell-merge branch** — every union test shares a `body_id` and merges via
-`same_body`.
-
-Do NOT confuse the two mechanisms that share the name: `in_routing_cell` (used by
-`validate_entry`) is a pure bbox-**extent** bound since packet 224 and computes no cell at all.
-It is independent of the merge key and must be left alone.
-
-The documented determinism justification in `docs/04_host_scheduler.md` does not depend on
-centroids: ordering comes from `entries.sort_by(compare_entries)`. The `group_cells` snapshot
-exists only because recomputing the centroid mid-loop let the key drift as a group absorbed
-members — an order-sensitivity that centroid keying itself introduced. A declared key removes it.
-
-### W3 — Verify self-declared family ownership
-
-`entry.family_id` is written by the guest about itself (hardcoded `"traditional"` / `"tree"`)
-and is never cross-checked against the producing module's manifest claims or against
-`SupportAnalysisIR::family_assignments`. Cross-family arbitration currently trusts it.
-
-Thread producing-module identity into aggregation and verify. The seam already exists:
-`aggregate_support_plan_irs_degrading_with_attributed_diagnostics`
-(`crates/slicer-runtime/src/prepass.rs`) sees every plan, holds per-plan indices for
-attribution, already drops and clips entries, and already receives `family_assignments`. What
-it lacks is module identity — `SupportAggregationInput` carries `plans` with no module id,
-though the id is available at the `live_module` construction site in the same loop. This is a
-new parameter, not a new stage.
-
-**Follow the shipping precedent**, do not invent one: `enforce_authored_coloring` /
-`AuthoredColoringContext::allows`, called from `convert_infill_output`
-(`crates/slicer-wasm-host/src/marshal/out.rs`), is default-deny per `(object_id, region_id)`
-and strips ungranted output at the commit boundary. It is the only producer-output-vs-ownership
-check in the tree.
-
-### W4 — Make the `anchor_z` coincidence an enforced invariant
-
-`SupportPlanIR::duplicate_region_identity` (`crates/slicer-ir/src/slice_ir.rs`) keys on
-`(global_layer_index, object_id, region_id)` and ignores `anchor_z`, while the union key
-**includes** `anchor_z` — deliberately, per DEV-162, because merging across distinct declared
-planes broke off-grid support. The two agree today only because synthetic negative layer
-indices are minted per `anchor_z` (`intermediate_plane_indices`), making `global_layer_index` a
-function of `anchor_z` by construction. Assert that relationship at the producer so a future
-change to plane minting fails loudly there instead of mysteriously at commit.
-
-### W5 — Retire the interim producer-side merge
-
-Packet 241 landed `merge_region_identity_entries`
-(`modules/core-modules/traditional-support-planner/src/lib.rs`) as a temporary unblock so `agg`
-does not abort real-mesh slices. It unions on
-`(global_layer_index, object_id, region_id, anchor_z)` before publish and preserves geometry
-exactly. Once W1-W3 make ownership real at the seam, decide whether the producer-side merge is
-still wanted as defence in depth or should be removed. See DEV-167.
-
-### W6 — Restore the intent of two packet-239 tests
-
-`coarse_same_region_sources_keep_distinct_body_membership` and
-`coarse_source_preference_keeps_mixed_source_memberships`
-(`modules/core-modules/traditional-support-planner/tests/traditional_family_tdd.rs`) assert that
-TWO entries share one identity triple — the shape the IR forbids. They fail under 241's interim
-merge and were left RED by human decision, with AC-N2 red, rather than rewritten under a packet
-that did not own the semantics. The behaviour they protect is real and must survive: both source
-body memberships surviving, and the body-only / interface-only preference of
-`select_coarse_source_entries` remaining observable. Restore that intent against whatever shape
-this packet settles on.
-
-### W7 — Documentation defects found while investigating
-
-- `docs/02_ir_schemas.md` section "Config Precedence Rules" (IR 3) states
-  `layer-range override > modifier > object config > global default`, while section "Config Key
-  Namespaces" (IR 5) plus the Modifier Resolution Contract give
-  `global < object < modifier < paint < tool`. **The two chains contradict each other**, and no
-  implementation of a `layer-range override` level was found.
-- The Modifier Resolution Contract cites `stamp_modifier_config_deltas`; the live symbol is
-  `stamp_modifier_sub_region_configs` (`crates/slicer-core/src/algos/region_mapping.rs`).
-- **The paint and tool levels of the hierarchy are inert.** No shipped module manifest declares
-  `[[region_split]]` (only scheduler test fixtures do), so `aggregated_region_split` is empty in
-  a stock slice, `enumerate_canonical_chains` yields only the empty chain, and
-  `paint_config:*` / `tool_config:*` overlays never fire — for any feature, not just support.
-  Determine whether that is intentional staging or an unnoticed regression before filing it as a
-  bug; it is out of scope to FIX here beyond recording it.
-- `docs/adr/0059-support-families-and-anchored-entities.md` folded in Ruling 1's
-  "`family_assignments` are minted per RegionMap region" but dropped its exclusivity half
-  ("exactly one attributed plan entry"). That omission is why this invariant was easy to violate
-  unnoticed.
-
-## Out of Scope
-
-- The AGG rasterizer port itself, the `support_area_rasterizer` knob, and the DEV-166
-  block-snapping divergence — all owned by `241-support-agg-rasterizer`.
-- Fixing the inert paint/tool axis (W7) — record and diagnose only; the fix belongs to a packet
-  that owns config resolution.
-- Raft, independent support-layer Z, renderer flow/density — packets 240a/240b, 239, 238c.
-
-## Open Questions for Grilling
-
-1. Should region-scoped claim holders be constructed for **every** claim, or only where a
-   per-region owner is meaningful? Building them for all claims makes a currently-empty pass
-   suddenly load-bearing across every stage at once.
-2. Does W3's verification **reject**, **clip**, or **degrade-and-diagnose** a trespassing entry?
-   `AuthoredColoringContext` strips silently; support aggregation already has a
-   `FamilyConflictPolicy` with `Fail` / `Degrade` arms and a territory-clipping path (DEV-165).
-3. Is `region_id` alone the right union key, or `(region_id, anchor_z)`? W4's invariant makes
-   them equivalent today; stating which one is authoritative decides whether off-grid planes
-   are identity-distinct.
-4. Cross-family competition for one region is currently resolved by **arrival order**
-   (`arrival_owners`, keyed `(plan_index, entry_index)`) — an accident of plan indexing, not a
-   design. Config resolution already assigns family per region through
-   `global < object < modifier`, so genuine two-family competition for one region may be
-   unreachable. If so, is arrival order dead code to delete rather than a hierarchy to build?
-5. Does W1 subsume W3, or are they independent? A live region-scoped claim pass may already
-   make a self-declared `family_id` unforgeable, or may not — claims are validated at schedule
-   time, `family_id` is written at publish time.
+- Depends on: `241-support-agg-rasterizer` (frontmatter `status: implemented`, closed by human override with AC-N2 red; DEV-167 `Open — target close: packet 241b`). Note that packet 241's own body and the DEV-166/DEV-167 rows describe it as closing "NARROW and NOT GREEN with `status: draft`"; the frontmatter is authoritative for the dependency check, and this packet does not reopen or edit packet 241.
+- Unblocks: packet 241 AC-N2 turning green; `TASK-352` green gate for the support family.
+- Activation blockers: none recorded. Grilling decisions (2026-09-03) and the two preflight design rulings (2026-09-03: `MAX_BODY_EXTENT_UNITS` rename; `SupportAggregationError` stays a struct) are locked in `design.md` §Locked Assumptions.
+- Task-ID note: `docs/07_implementation_status.md` binds `TASK-531` to this packet. The Packet Queue rows 7a/7b of the backlog source carried an unregistered forward reservation of `TASK-531..TASK-535` for packets 240a/240b; Step 6c repairs those rows so only the collided id moves.
 
 ## Acceptance Criteria
 
-TBD — none written. Every criterion must end with a runnable pipe-suffixed verification command,
-and this packet changes enforcement behaviour, so it needs at least one negative/rejection
-criterion (a trespassing entry must be provably refused, not silently accepted).
+- **AC-1. Given** two same-family entries with the same `(global_layer_index, object_id, region_id, anchor_z)`, disjoint `body_ids`, and bounding boxes more than `2_000_000` units apart, **when** `try_aggregate_support_plans_with_policy` runs with `family_assignments` granting that region to the family, **then** `retained.len() == 1` and the retained `body_ids` contains both source ids. | `mkdir -p target && cargo test -p slicer-wasm-host --test unit -- --exact support_plan_ownership_tdd::union_merges_same_region_entries_regardless_of_distance 2>&1 | tee target/test-output.log; grep -q '^test result: ok' target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -eq 1 && echo PASS`
+- **AC-2. Given** the host aggregation source, **when** the merge key is inspected, **then** `RoutingCell`, `ROUTING_CELL_SIZE`, `fn routing_cell`, `group_cells`, and `arrival_owners` are absent, while `fn in_routing_cell` remains and its extent bound reads from the renamed constant `MAX_BODY_EXTENT_UNITS`. | `! rg -q 'RoutingCell|ROUTING_CELL_SIZE|fn routing_cell|group_cells|arrival_owners' crates/slicer-wasm-host/src/support_aggregation.rs && rg -q 'fn in_routing_cell' crates/slicer-wasm-host/src/support_aggregation.rs && rg -q 'const MAX_BODY_EXTENT_UNITS' crates/slicer-wasm-host/src/support_aggregation.rs && echo PASS`
+- **AC-3. Given** `SupportAggregationInput`, **when** its definition is inspected, **then** it carries a `producers: Vec<SupportPlanProducer>` field index-parallel to `plans`, and `SupportPlanProducer` has `module_id: String` and `claims: Vec<String>`. | `rg -q 'pub producers: Vec<SupportPlanProducer>' crates/slicer-wasm-host/src/support_aggregation.rs && rg -q 'pub struct SupportPlanProducer' crates/slicer-wasm-host/src/support_aggregation.rs && rg -q 'pub module_id: String' crates/slicer-wasm-host/src/support_aggregation.rs && rg -q 'pub claims: Vec<String>' crates/slicer-wasm-host/src/support_aggregation.rs && echo PASS`
+- **AC-4. Given** the prepass support-plan collection loop, **when** plans are buffered, **then** each buffered plan is paired with a `SupportPlanProducer` built from `module.module_id()` and `module.claims()`. | `rg -q 'SupportPlanProducer' crates/slicer-runtime/src/prepass.rs && rg -q 'module\.claims\(\)' crates/slicer-runtime/src/prepass.rs && echo PASS`
+- **AC-5. Given** a tree entry and a traditional entry sharing one identity triple where `family_assignments` grants the region to `traditional`, **when** the plans are aggregated in both plan orders, **then** the retained entry is `traditional` in both orders and one ownership diagnostic names `tree` as the trespasser. | `mkdir -p target && cargo test -p slicer-wasm-host --test contract -- --exact support_plan_validation::support_plan_aggregation_diagnoses_duplicate_identity 2>&1 | tee target/test-output.log; grep -q '^test result: ok' target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -eq 1 && echo PASS`
+- **AC-6. Given** the traditional planner emits two candidates in one region on one plane, **when** `merge_region_identity_entries` runs, **then** exactly one entry exists at that `anchor_z` whose `body_ids` holds both memberships and whose summed `roles[].regions` area (shoelace, computed by a local test helper) equals the union area of both source contours. | `mkdir -p target && cargo test -p traditional-support-planner --test traditional_family_tdd -- --exact coarse_same_region_sources_keep_distinct_body_membership coarse_source_preference_keeps_mixed_source_memberships 2>&1 | tee target/test-output.log; grep -q '^test result: ok' target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -eq 2 && echo PASS`
+- **AC-7. Given** the traditional planner test binary after W6, **when** the whole binary runs, **then** it reports `0 failed` over more than ten passing tests (packet 241 AC-N2 turns green under that packet's own command shape). | `mkdir -p target && cargo test -p traditional-support-planner --test traditional_family_tdd 2>&1 | tee target/test-output.log; grep -q '^test result: ok' target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 10 && echo PASS`
+- **AC-8. Given** the routing and closure integration suites updated to supply `family_assignments`, **when** the whole `integration` binary runs, **then** it reports `0 failed`, more than thirty passing tests, and the run names both the renamed routing test and a closure wrapper. | `mkdir -p target && cargo test -p slicer-runtime --test integration 2>&1 | tee target/test-output.log; grep -q '^test result: ok' target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 30 && grep -q '^test support_family_routing::declared_identity_is_input_order_independent' target/test-output.log && grep -q '^test fixture_invariants' target/test-output.log && echo PASS`
+- **AC-9. Given** the doc edits, **when** the anchors are grepped, **then** each edited section carries its new text and no doc in the edit surface still describes routing-cell ownership. | `rg -q 'support-family:<family_id>' docs/02_ir_schemas.md && ! rg -q 'stamp_modifier_config_deltas' docs/02_ir_schemas.md && ! rg -q 'layer-range override' docs/02_ir_schemas.md && ! rg -qi 'routing[ -]cell' docs/02_ir_schemas.md && ! rg -qi 'routing[ -]cell' docs/04_host_scheduler.md && rg -q 'support-plan commit seam' docs/01_system_architecture.md && rg -q 'exactly one attributed plan entry' docs/adr/0059-support-families-and-anchored-entities.md && echo PASS`
+- **AC-10. Given** `docs/DEVIATION_LOG.md`, **when** DEV-167 is read, **then** its Status column reads `Closed` and names this packet. | `rg -q '^\| DEV-167 .*\| Closed[^|]*241b' docs/DEVIATION_LOG.md && echo PASS`
+- **AC-11. Given** the packet deletes the routing-cell mechanism that ADR-0059's decision text names, **when** the ADR and the deviation log are read, **then** ADR-0059 carries a dated `Ruling 2` amendment quoting the superseded clause, and the deviation log carries a row naming ADR-0059. | `rg -q 'Ruling 2:.*assigns deterministic routing cells' docs/adr/0059-support-families-and-anchored-entities.md && rg -q 'ADR-0059' docs/DEVIATION_LOG.md && echo PASS`
 
-## Prerequisites
+Every AC names exact fields, paths, counts, errors, variants, or output fragments and ends with its own runnable command. Repeat shared commands; never write "see AC-N". Commands that dump more than 200 successful output lines must be wrapped or filtered so a subagent can return a FACT.
 
-- `241-support-agg-rasterizer` reaching a settled state (it closes `draft`, AC-N2 red, with
-  DEV-167 filed against this packet).
-- Re-derive DEV-167's status and the `241` AC-N2 result from disk before activation; both are
-  ledger facts and will have moved.
+**Test-command rules (mandatory — `docs/specs/support-families-anchored-entities-plan.md` §6 invariant 16, and CLAUDE.md §"Test output must always tee").**
+
+1. **No acceptance command may match zero tests.** Every `cargo test` AC above passes `--exact` test names or asserts a matched count in the same run (`-eq N` / `-gt N`). A bare `grep -q ' 0 failed'` is forbidden — `test result: ok. 0 passed; 0 failed` satisfies it and reads green.
+2. **Every `cargo test` invocation tees to `target/test-output.log`** and results are read from that file. Never re-run a test to see more output.
+3. **Never filter the `integration` binary on `support_family_`.** `support_family_closure`'s cases are plain fns wrapped by top-level `#[test]` fns in `crates/slicer-runtime/tests/integration/main.rs` that carry no module prefix, so that filter matches only 1 of ~28 closure tests. This is the packet-224 lesson that produced invariant 16; AC-8 therefore runs the whole binary.
+
+AC verification command rule (mandatory): each pipe-suffixed command's `--test` binary must be one that can actually drive the asserted behavior. `slicer-wasm-host --test unit` and `--test contract` already drive `try_aggregate_support_plans` / `aggregate_support_plans` with inline `SupportAnalysisIR` fixtures (`support_cross_family_scope_tdd.rs`, `support_plan_validation.rs`); `traditional-support-planner --test traditional_family_tdd` already drives `plan_for_object` natively (it has no polygon-area helper today; AC-6 adds a local shoelace helper in the same step); `slicer-runtime --test integration` already drives host aggregation in `support_family_routing.rs`. No new driver is required. None of these targets carries `required-features`, so a bare `-p <crate> --test <bin>` run compiles them. Note that `crates/slicer-runtime/Cargo.toml` also declares a second `[[test]] name = "support_family_routing"` over the same file, so Step 3c's edits compile into two binaries; AC-8 verifies the `integration` one and `cargo check --workspace --all-targets` covers the other.
+
+## Negative Test Cases
+
+- **AC-N1. Given** `family_assignments` has no row for `(object_id, region_id)`, **when** an entry for that region is aggregated under `FamilyConflictPolicy::Degrade`, **then** it is dropped, `degraded == true`, and a diagnostic with code `1206` names the entry's `family_id` and region; under `FamilyConflictPolicy::Fail` the call returns `Err(SupportAggregationError { reason: OwnershipReason::NoAssignment, .. })`. | `mkdir -p target && cargo test -p slicer-wasm-host --test unit -- --exact support_plan_ownership_tdd::unassigned_region_entry_is_a_trespass 2>&1 | tee target/test-output.log; grep -q '^test result: ok' target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -eq 1 && echo PASS`
+- **AC-N2. Given** the producer of a `family_id == "tree"` entry has `claims` lacking `support-family:tree`, **when** aggregated under `Degrade` with the region assigned to `tree`, **then** the entry is dropped with code `1206` and the diagnostic's `plan_index` resolves to that producer. | `mkdir -p target && cargo test -p slicer-wasm-host --test unit -- --exact support_plan_ownership_tdd::producer_without_family_claim_is_a_trespass 2>&1 | tee target/test-output.log; grep -q '^test result: ok' target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -eq 1 && echo PASS`
+- **AC-N3. Given** the traditional planner would publish two entries with equal `(global_layer_index, object_id, region_id)` but different `anchor_z`, or equal `(object_id, region_id, anchor_z)` but different `global_layer_index`, **when** `merge_region_identity_entries` runs, **then** it returns the module's error path instead of publishing. | `mkdir -p target && cargo test -p traditional-support-planner --test traditional_family_tdd -- --exact merge_rejects_anchor_z_layer_index_disagreement 2>&1 | tee target/test-output.log; grep -q '^test result: ok' target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -eq 1 && echo PASS`
+- **AC-N4. Given** `family_assignments` is empty, **when** the tree planner plans, **then** it emits zero entries and sets no `fallback_family_emitted` self-default. | `mkdir -p target && cargo test -p tree-support-planner --test tree_family_tdd -- --exact empty_family_assignments_emit_nothing 2>&1 | tee target/test-output.log; grep -q '^test result: ok' target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -eq 1 && echo PASS`
+
+## Verification
+
+- `cargo check --workspace --all-targets`
+- `cargo clippy --workspace --all-targets -- -D warnings`
+- `cargo xtask check-literals; echo EXIT=$?`
+- `cargo xtask build-guests --check; echo EXIT=$?`
+- `mkdir -p target && cargo test -p slicer-wasm-host --test unit support_plan_ownership_tdd 2>&1 | tee target/test-output.log; grep -q '^test result: ok' target/test-output.log && test "$(grep -c '^test .* ok$' target/test-output.log)" -eq 4 && echo PASS`
+
+## Authoritative Docs
+
+- `docs/02_ir_schemas.md` - long; ranged reads only: §"IR 9 — SupportIR" (the routing-cell ownership paragraph), §"IR 9b — SupportPlanIR", §"Modifier Resolution Contract", §"Config Precedence Rules".
+- `docs/04_host_scheduler.md` - long; ranged read of the §"Host aggregation as the sole multi-writer merge point" bullet **and** the following §"Complete-body validation" bullet — both name routing cells.
+- `docs/01_system_architecture.md` - long; ranged read of §"Claim Conflict Resolution (Normative)".
+- `docs/specs/support-families-anchored-entities-plan.md` - delegate SUMMARY of §6 invariants 15 **and 16**, the AC-8 Ruling 1, and the Packet Queue.
+- `docs/adr/0059-support-families-and-anchored-entities.md` - short; read in full.
+
+## Doc Impact Statement (Required)
+
+- `docs/02_ir_schemas.md` §"IR 9b — SupportPlanIR" - add the ownership sentence (owner = `family_assignments`; producer must hold `support-family:<family_id>`), written on a single source line so a line-oriented `rg` can match it - `rg -q 'support-family:<family_id>' docs/02_ir_schemas.md`
+- `docs/02_ir_schemas.md` §"IR 9 — SupportIR" - replace the routing-cell ownership paragraph; it describes both the deleted routing cells and the deleted cross-family arrival-order branch - `! rg -qi 'routing[ -]cell' docs/02_ir_schemas.md`
+- `docs/02_ir_schemas.md` §"Config Precedence Rules" and the IR 3 merging sentence - remove the `layer-range override` level (all three occurrences) and point to §"Modifier Resolution Contract" - `! rg -q 'layer-range override' docs/02_ir_schemas.md`
+- `docs/02_ir_schemas.md` §"Modifier Resolution Contract" - rename the stale `stamp_modifier_config_deltas` reference to the real symbol `stamp_modifier_sub_region_configs` (`crates/slicer-core/src/algos/region_mapping.rs`) - `! rg -q 'stamp_modifier_config_deltas' docs/02_ir_schemas.md`
+- `docs/01_system_architecture.md` §"Claim Conflict Resolution (Normative)" step 4 - state that per-region uniqueness for support is enforced at the support-plan commit seam and that production constructs only `ConflictScope::Global` holders - `rg -q 'support-plan commit seam' docs/01_system_architecture.md`
+- `docs/04_host_scheduler.md` §"Host aggregation as the sole multi-writer merge point" **and** §"Complete-body validation" - replace routing-cell prose in both bullets; the second must describe `in_routing_cell` as a max-body-extent bound, not a cell assignment - `! rg -qi 'routing[ -]cell' docs/04_host_scheduler.md`
+- `docs/adr/0059-support-families-and-anchored-entities.md` `## Amendments` - **add** (not restore) a dated `Ruling 2`, written as a **single source line** beginning `Ruling 2:` and matching Ruling 1's one-line style, that quotes the superseded decision clause "assigns deterministic routing cells" on that same line, records that aggregation now keys on declared identity, and states that every RegionMap region has exactly one attributed plan entry with candidate-less regions carrying a structured no-work/declined record per Ruling 1. The line must be unwrapped because the AC grep is line-oriented. Existing decision paragraphs and Ruling 1 stay byte-identical - `rg -q 'Ruling 2:.*assigns deterministic routing cells' docs/adr/0059-support-families-and-anchored-entities.md && rg -q 'exactly one attributed plan entry' docs/adr/0059-support-families-and-anchored-entities.md`
+- `docs/DEVIATION_LOG.md` DEV-167 - Status `Closed`, this packet - `rg -q '^\| DEV-167 .*\| Closed[^|]*241b' docs/DEVIATION_LOG.md`
+- `docs/DEVIATION_LOG.md` - new row (ID re-derived at Step 6 via `rg -o '^\| DEV-[0-9]{3}' docs/DEVIATION_LOG.md | sort -u | tail -1`) recording the ADR-0059 amendment - `rg -q 'ADR-0059' docs/DEVIATION_LOG.md`
+- `docs/07_implementation_status.md` - close `TASK-531`; add one open row recording the inert paint/tool config axis (evidence: no shipped manifest declares `[[region_split]]` — the only TOML hits are scheduler test fixtures under `crates/slicer-scheduler/tests/fixtures/region_split_manifests/` — so `paint_config:*` / `tool_config:*` overlays never fire) - `rg -q 'region_split.*paint_config' docs/07_implementation_status.md`
+- `docs/specs/support-families-anchored-entities-plan.md` Packet Queue - set row 10 status, and repair the `TASK-531` double-allocation in rows 7a/7b - `! rg -q 'TASK-531\.\.TASK-534' docs/specs/support-families-anchored-entities-plan.md`
+
+<!-- snippet: context-discipline -->
+## Context Discipline Note
+
+This packet was generated against the context_discipline preamble shared by `spec-packet-generator`, `swarm`, and `spec-review`. Downstream agents implementing or reviewing this packet must:
+
+- treat `design.md`'s code change surface as the authoritative files-in-scope list
+- honor `design.md`'s out-of-bounds list — those files must not be loaded directly
+- delegate every cargo run and authoritative-doc fact-check
+- obey the shared absolute context bands: 120k reading budget with hand-off at 150k (standard); the extended band (240k reading / 300k hard stop) only via swarm's escalation protocol
+
+Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation (an extended-band run may carry a single L step only when `design.md` justifies why it cannot be split).

@@ -1,12 +1,13 @@
 //! Contract tests for the traditional support family seam.
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{ConfigKey, ConfigValue, ConfigView};
 use slicer_ir::{
     ExPolygon, IndexedTriangleSet, MeshIR, ObjectMesh, Point2, Point3, Polygon,
-    SupportPlanDeclineReason, SupportPlanEntry, SupportPlanIR, SupportPlanRole,
+    SupportAnalysisIR, SupportPlanDeclineReason, SupportPlanEntry, SupportPlanIR, SupportPlanRole,
     SupportPlanRoleRegion, Transform3d,
 };
 use slicer_sdk::host::{self, ClipOperation};
@@ -20,7 +21,8 @@ use slicer_sdk::prepass_types::{
 use slicer_sdk::traits::PrepassModule;
 use slicer_wasm_host::exact_z_query::ExactZQueryService;
 use slicer_wasm_host::support_aggregation::{
-    aggregate_declined_support_plans, aggregate_support_plan_irs_with_diagnostics,
+    aggregate_declined_support_plans, aggregate_support_plan_irs_with_policy_attributed,
+    FamilyConflictPolicy, SupportPlanProducer,
 };
 use traditional_support_planner::SupportPlanner;
 
@@ -1236,29 +1238,33 @@ fn coarse_same_region_sources_keep_distinct_body_membership() {
         ConfigView::from_map(values)
     };
     let output = run_planner_with_config(config, object, analysis);
+    let body_one = "traditional-body-same-region-traditional-1";
+    let body_two = "traditional-body-same-region-traditional-2";
+
     let synthesized: Vec<_> = output
         .entries()
         .iter()
         .filter(|entry| entry.anchor_z == 14000 && entry.global_layer_index < 0)
         .collect();
-
     assert_eq!(
         synthesized.len(),
         1,
         "the height-local row at 14000 must retain only body 2"
     );
-    assert_eq!(
-        synthesized[0].body_ids,
-        ["traditional-body-same-region-traditional-2"]
-    );
+    assert_eq!(synthesized[0].body_ids, [body_two]);
     assert!(synthesized[0]
         .roles
         .iter()
         .any(|role| role.role == SupportPlanRole::SupportBody));
     assert!(output.entries().iter().any(|entry| {
-        entry.body_ids == ["traditional-body-same-region-traditional-2"]
+        entry.body_ids == [body_two]
             && entry.anchor_z > slicer_ir::mm_to_units(layer_plan().layers[5].z)
     }));
+
+    // Packet 241b: one entry per support-region identity is the producer's
+    // contract, so the two same-plane sources now arrive as ONE entry. Nothing
+    // is lost by that, and this test pins exactly that: the merged entry must
+    // carry both body memberships AND the whole planned area of both sources.
     let same_plane: Vec<_> = output
         .entries()
         .iter()
@@ -1266,29 +1272,46 @@ fn coarse_same_region_sources_keep_distinct_body_membership() {
         .collect();
     assert_eq!(
         same_plane.len(),
-        2,
-        "both same-plane source body memberships must survive"
+        1,
+        "one support-region identity must publish exactly one entry"
     );
-    assert_ne!(same_plane[0].body_ids, same_plane[1].body_ids);
-    assert!(same_plane.iter().all(|entry| {
-        entry
-            .roles
-            .iter()
-            .any(|role| role.role == SupportPlanRole::SupportBody)
-    }));
-    let contours: Vec<_> = same_plane
-        .iter()
-        .flat_map(|entry| entry.roles.iter())
-        .filter(|role| role.role == SupportPlanRole::SupportBody)
-        .flat_map(|role| role.regions.iter())
-        .map(|region| region.contour.points.clone())
-        .collect();
+    let mut memberships = same_plane[0].body_ids.clone();
+    memberships.sort();
     assert_eq!(
-        contours.len(),
-        2,
-        "both same-plane source geometries must survive"
+        memberships,
+        vec![body_one.to_string(), body_two.to_string()],
+        "both same-plane source body memberships must survive the merge"
     );
-    assert_ne!(contours[0], contours[1]);
+    assert!(same_plane[0]
+        .roles
+        .iter()
+        .any(|role| role.role == SupportPlanRole::SupportBody));
+
+    // The sources are the single-membership body rows on the grid; their
+    // geometries are disjoint (`contact_region` at 0..4mm, `obstacle_region`
+    // at 10..14mm), so their union area is their sum.
+    let source_area = |body: &str| -> f64 {
+        output
+            .entries()
+            .iter()
+            .filter(|entry| {
+                entry.body_ids == [body]
+                    && entry.global_layer_index >= 0
+                    && entry
+                        .roles
+                        .iter()
+                        .all(|role| role.role == SupportPlanRole::SupportBody)
+            })
+            .map(entry_area)
+            .next()
+            .unwrap_or_else(|| panic!("body '{body}' must keep a single-membership source row"))
+    };
+    let expected = source_area(body_one) + source_area(body_two);
+    let merged = entry_area(same_plane[0]);
+    assert!(
+        (merged - expected).abs() <= AREA_TOLERANCE_UNITS2,
+        "merged entry must retain the union area of both sources: {merged} vs {expected}"
+    );
 }
 
 #[test]
@@ -1371,72 +1394,110 @@ fn coarse_source_preference_keeps_mixed_source_memberships() {
         .filter(|entry| entry.anchor_z == 12000 && entry.global_layer_index < 0)
         .collect();
 
+    // Packet 241b: the selected source plane is ONE support-region identity, so
+    // it publishes one entry - carrying both the body-only membership and the
+    // interface-only membership rather than dropping either.
     assert_eq!(
         synthesized.len(),
-        2,
-        "the selected source plane must retain one body entry and one interface-only membership"
+        1,
+        "one support-region identity must publish exactly one entry"
     );
-    let mut memberships: Vec<_> = synthesized
-        .iter()
-        .map(|entry| entry.body_ids.clone())
-        .collect();
+    let mut memberships = synthesized[0].body_ids.clone();
     memberships.sort();
     assert_eq!(
         memberships,
-        vec![vec![body_id.clone()], vec![interface_only_id.clone()]],
+        vec![body_id.clone(), interface_only_id.clone()],
         "body-only geometry must be preferred per membership without dropping an interface-only membership"
     );
-    assert!(synthesized.iter().all(|entry| {
-        entry
+    assert!(synthesized[0]
+        .roles
+        .iter()
+        .all(|role| role.role == SupportPlanRole::SupportBody));
+    let mut demands = synthesized[0].demand_ids.clone();
+    demands.sort();
+    assert_eq!(
+        demands,
+        vec!["demand-1".to_string(), "demand-2".to_string()],
+        "the merged entry must account for both source demands"
+    );
+    // AC-6: exactly one entry at this `anchor_z` holds both memberships AND its
+    // summed `roles[].regions` shoelace area equals the union area of both
+    // source contours.
+    //
+    // The source plane is `anchor_z == 8000`, which packet 241b publishes as a
+    // single region-identity entry: its `SupportBody` role carries membership
+    // 1's body-only geometry (`obstacle_region`, x 10..14mm) and its
+    // `BottomInterface` role carries membership 2's geometry plus the losing
+    // duplicate interface record for membership 1 (both `contact_region`,
+    // x 0..4mm). Every fixture contour here is therefore either identical to
+    // or disjoint from every other, so the UNION over the source regions is
+    // exactly the set of distinct source contours - no clipper needed.
+    let source = output
+        .entries()
+        .iter()
+        .find(|entry| entry.anchor_z == 8000 && entry.global_layer_index >= 0)
+        .expect("the selected source plane must still be published at anchor_z 8000");
+    let mut source_memberships = source.body_ids.clone();
+    source_memberships.sort();
+    assert_eq!(
+        source_memberships,
+        vec![body_id.clone(), interface_only_id.clone()],
+        "the source plane must carry both memberships that feed the merge"
+    );
+    assert!(
+        source
             .roles
             .iter()
-            .all(|role| role.role == SupportPlanRole::SupportBody)
-    }));
-
-    let source_regions = |entry: &SdkSupportPlanEntry| {
-        entry
+            .any(|role| role.role == SupportPlanRole::SupportBody
+                && !role.regions.is_empty()),
+        "membership 1's body-only source geometry must exist at the source plane"
+    );
+    assert!(
+        source
             .roles
-            .first()
-            .expect("source entry must have geometry")
-            .regions
-            .clone()
-    };
-    let body_source = output
-        .entries()
-        .iter()
-        .find(|entry| {
-            entry.anchor_z == 8000
-                && entry.body_ids == [body_id.clone()]
-                && entry
-                    .roles
-                    .iter()
-                    .all(|role| role.role == SupportPlanRole::SupportBody)
-        })
-        .expect("body membership must have a body-only source at the selected plane");
-    let body_clone = synthesized
-        .iter()
-        .find(|entry| entry.body_ids == [body_id.clone()])
-        .expect("body membership must be synthesized");
-    assert_eq!(source_regions(body_clone), source_regions(body_source));
+            .iter()
+            .any(|role| role.role == SupportPlanRole::BottomInterface
+                && !role.regions.is_empty()),
+        "membership 2's interface-only source geometry must exist at the source plane"
+    );
+    let mut union_regions: Vec<ExPolygon> = Vec::new();
+    for region in source.roles.iter().flat_map(|role| role.regions.iter()) {
+        if !union_regions.contains(region) {
+            union_regions.push(region.clone());
+        }
+    }
+    let expected: f64 = union_regions.iter().map(expolygon_area).sum();
+    if expected <= 0.0 || union_regions.len() < 2 {
+        // Guard: a bug that empties the source side must not read as equality.
+        panic!(
+            "source union collapsed to {} contour(s) totalling {expected}; the comparison below              would be vacuous",
+            union_regions.len()
+        );
+    }
 
-    let interface_source = output
-        .entries()
+    // Exact geometry, not just area: every distinct source contour must appear
+    // in the merged entry, and the merged entry must carry no extra region.
+    let merged_regions: Vec<&ExPolygon> = synthesized[0]
+        .roles
         .iter()
-        .find(|entry| {
-            entry.anchor_z == 8000
-                && entry.body_ids == [interface_only_id.clone()]
-                && entry.roles.iter().any(|role| {
-                    role.role == SupportPlanRole::BottomInterface && !role.regions.is_empty()
-                })
-        })
-        .expect("interface-only membership must remain at the selected source plane");
-    let interface_clone = synthesized
-        .iter()
-        .find(|entry| entry.body_ids == [interface_only_id.clone()])
-        .expect("interface-only membership must be synthesized");
+        .flat_map(|role| role.regions.iter())
+        .collect();
     assert_eq!(
-        source_regions(interface_clone),
-        source_regions(interface_source)
+        merged_regions.len(),
+        union_regions.len(),
+        "the merged entry must carry exactly the distinct source contours"
+    );
+    for region in &union_regions {
+        assert!(
+            merged_regions.contains(&region),
+            "a source contour was dropped by the merge: {region:?}"
+        );
+    }
+
+    let merged = entry_area(synthesized[0]);
+    assert!(
+        (merged - expected).abs() <= AREA_TOLERANCE_UNITS2,
+        "merged entry must retain the union area of both sources: {merged} vs {expected}"
     );
 }
 
@@ -1990,7 +2051,7 @@ fn invalid_body_rejected() {
         "colliding demand must emit no body/interface polygons"
     );
 
-    // Genuinely oversized: one unit wider AND taller than ROUTING_CELL_SIZE
+    // Genuinely oversized: one unit wider AND taller than MAX_BODY_EXTENT_UNITS
     // (1 << 20), so it fits in no cell-sized territory wherever it is placed.
     // (Before packet 224 this fixture was a 1_000-unit body parked across the
     // x = 1 << 20 grid line, which pinned the absolute-grid defect rather than
@@ -2050,15 +2111,44 @@ fn invalid_body_rejected() {
         ..Default::default()
     };
     let exact_z = ExactZQueryService::new(Arc::new(validation_mesh()));
-    let (aggregated, diagnostics) =
-        aggregate_support_plan_irs_with_diagnostics(vec![plan], &exact_z);
+    // Packet 241b: the merge point is default-deny on support-region ownership,
+    // so a plan with no `family_assignments` row is refused before any body is
+    // validated. This fixture is about the max-body-extent bound, so it
+    // declares the ownership the real manifest declares
+    // (`[claims].holds = support-family:traditional` in
+    // `traditional-support-planner.toml`) and lets the entry reach
+    // `validate_entry`. Without this it would still be dropped - but for the
+    // wrong reason, testing nothing about extent.
+    let territory = SupportAnalysisIR {
+        family_assignments: BTreeMap::from([(
+            ("object-a".to_string(), 9u64),
+            "traditional".to_string(),
+        )]),
+        ..Default::default()
+    };
+    let producer = SupportPlanProducer {
+        module_id: "traditional-support-planner".into(),
+        claims: vec!["support-family:traditional".into()],
+    };
+    let (aggregated, diagnostics) = aggregate_support_plan_irs_with_policy_attributed(
+        vec![plan],
+        vec![producer],
+        &exact_z,
+        Some(&territory),
+        FamilyConflictPolicy::Degrade,
+    )
+    .expect("the degrading policy never aborts aggregation");
     assert!(
         aggregated.entries.is_empty(),
         "complete crossing body is dropped"
     );
-    assert!(diagnostics.iter().any(|diagnostic| {
-        diagnostic.message.contains("spans-cell") && diagnostic.message.contains("routing-cell")
-    }));
+    assert!(
+        diagnostics.iter().any(|attributed| {
+            attributed.diagnostic.message.contains("spans-cell")
+                && attributed.diagnostic.message.contains("max-body-extent")
+        }),
+        "an owned body larger than the extent bound must be rejected as such: {diagnostics:?}"
+    );
     assert!(aggregated
         .entries
         .iter()
@@ -2463,4 +2553,74 @@ fn base_column_keeps_clear_of_foreign_territory() {
             }
         }
     }
+}
+
+/// Area comparisons here are exact in principle - the shoelace sum accumulates
+/// in `i128`, and these fixtures' areas (~1e9 squared units, 1 unit = 100 nm)
+/// are far inside f64's exact-integer range - so this tolerance only absorbs
+/// the single halving of an odd doubled area on either side of a comparison.
+const AREA_TOLERANCE_UNITS2: f64 = 1.0;
+
+/// Shoelace area of an `ExPolygon` (contour minus holes), in squared canonical
+/// units. The doubled area accumulates in `i128`: coordinates reach ~1e6 units,
+/// so cross products would overflow `i64` on a large contour.
+fn expolygon_area(poly: &ExPolygon) -> f64 {
+    let ring = |points: &[Point2]| -> i128 {
+        let mut doubled: i128 = 0;
+        for index in 0..points.len() {
+            let a = &points[index];
+            let b = &points[(index + 1) % points.len()];
+            doubled += a.x as i128 * b.y as i128 - b.x as i128 * a.y as i128;
+        }
+        doubled.abs()
+    };
+    let contour = ring(&poly.contour.points) as f64;
+    let holes: f64 = poly.holes.iter().map(|hole| ring(&hole.points) as f64).sum();
+    (contour - holes) / 2.0
+}
+
+/// Total planned area of one entry, summed across ALL roles.
+///
+/// `SupportPlanEntry` carries no contour field, and both the producer merge and
+/// the host union concatenate role regions per role KIND, so a merged entry
+/// routinely carries several roles - summing only the first would silently
+/// under-count.
+fn entry_area(entry: &SdkSupportPlanEntry) -> f64 {
+    entry
+        .roles
+        .iter()
+        .flat_map(|role| role.regions.iter())
+        .map(expolygon_area)
+        .sum()
+}
+
+/// W4 (packet 241b): within one plan, `(global_layer_index, object_id,
+/// region_id)` determines `anchor_z`. Two entries sharing that triple while
+/// disagreeing on the plane are a producer bug, so the merge refuses to publish
+/// rather than fusing two planes into one entry - and rather than leaving the
+/// disagreement to surface downstream as an opaque commit rejection carrying no
+/// producer context.
+#[test]
+fn merge_rejects_anchor_z_layer_index_disagreement() {
+    let disagreeing = |anchor_z: i64| SdkSupportPlanEntry {
+        global_layer_index: 3,
+        object_id: "object-a".into(),
+        region_id: "0".into(),
+        family_id: "traditional".into(),
+        demand_ids: vec!["demand-1".into()],
+        body_ids: vec!["traditional-body-object-a-1".into()],
+        anchor_layer_index: 3,
+        anchor_z,
+        roles: vec![SupportPlanRoleRegion {
+            role: SupportPlanRole::SupportBody,
+            regions: vec![contact_region()],
+        }],
+        ..Default::default()
+    };
+    let mut entries = vec![disagreeing(10_000), disagreeing(12_000)];
+    let result = traditional_support_planner::merge_region_identity_entries(&mut entries);
+    assert!(
+        result.is_err(),
+        "one identity triple resolving to two planes must be rejected, not published"
+    );
 }

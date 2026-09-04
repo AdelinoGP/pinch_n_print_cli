@@ -28,7 +28,46 @@ use slicer_ir::{
     SupportPlanEntry, SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion, SupportPlanSkeleton,
 };
 use slicer_wasm_host::exact_z_query::ExactZQueryService;
-use slicer_wasm_host::support_aggregation::try_aggregate_support_plan_irs_with_diagnostics;
+use slicer_wasm_host::support_aggregation::{
+    aggregate_support_plan_irs_with_policy_attributed, FamilyConflictPolicy, OwnershipReason,
+    SupportPlanProducer,
+};
+
+/// Ownership at the merge point is default-deny: a region with no
+/// `family_assignments` row has no owner, so a fixture that expects its entries
+/// to reach validation at all must say who owns what. This grants each entry's
+/// `(object_id, region_id)` to that entry's own family.
+fn owning_analysis(plans: &[SupportPlanIR]) -> slicer_ir::SupportAnalysisIR {
+    slicer_ir::SupportAnalysisIR {
+        family_assignments: plans
+            .iter()
+            .flat_map(|plan| plan.entries.iter())
+            .map(|entry| {
+                (
+                    (entry.object_id.clone(), entry.region_id),
+                    entry.family_id.clone(),
+                )
+            })
+            .collect(),
+        ..slicer_ir::SupportAnalysisIR::default()
+    }
+}
+
+/// One producer per plan, holding the `support-family:<id>` claim for every
+/// family that plan writes. Index-parallel to `plans` by construction.
+fn support_producers(plans: &[SupportPlanIR]) -> Vec<SupportPlanProducer> {
+    plans
+        .iter()
+        .map(|plan| SupportPlanProducer {
+            module_id: "test.support-writer".into(),
+            claims: plan
+                .entries
+                .iter()
+                .map(|entry| format!("support-family:{}", entry.family_id))
+                .collect(),
+        })
+        .collect()
+}
 
 use crate::common::model_cache::cached_load_model;
 
@@ -788,14 +827,24 @@ pub fn invalid_geometry_fails() -> Result<(), String> {
         }],
         ..Default::default()
     });
-    let (_, diagnostics) = try_aggregate_support_plan_irs_with_diagnostics(
-        vec![SupportPlanIR {
-            entries: vec![invalid, invalid_body, valid],
-            ..Default::default()
-        }],
+    let plans = vec![SupportPlanIR {
+        entries: vec![invalid, invalid_body, valid],
+        ..Default::default()
+    }];
+    let owned = owning_analysis(&plans);
+    let producers = support_producers(&plans);
+    let (_, attributed) = aggregate_support_plan_irs_with_policy_attributed(
+        plans,
+        producers,
         &ExactZQueryService::new(Arc::clone(&mesh)),
+        Some(&owned),
+        FamilyConflictPolicy::Fail,
     )
     .map_err(|error| format!("synthetic aggregation failed: {error:?}"))?;
+    let diagnostics = attributed
+        .into_iter()
+        .map(|entry| entry.diagnostic)
+        .collect::<Vec<_>>();
     let diagnostic = diagnostics.iter().find(|diagnostic| {
         diagnostic.code == 1200
             && diagnostic.message.contains("invalid-body")
@@ -854,15 +903,33 @@ pub fn invalid_geometry_fails() -> Result<(), String> {
         }],
         ..Default::default()
     });
-    let overlap_result = try_aggregate_support_plan_irs_with_diagnostics(
-        vec![SupportPlanIR {
-            entries: vec![tree_body, trad_body],
-            ..Default::default()
-        }],
+    // The contested region is assigned to `traditional`, so the `tree` write is
+    // a trespass and `Fail` refuses the whole aggregate.
+    let overlap_plans = vec![SupportPlanIR {
+        entries: vec![tree_body, trad_body],
+        ..Default::default()
+    }];
+    let overlap_owned = slicer_ir::SupportAnalysisIR {
+        family_assignments: std::collections::BTreeMap::from([(
+            ("overlap-obj".to_string(), 0),
+            "traditional".to_string(),
+        )]),
+        ..slicer_ir::SupportAnalysisIR::default()
+    };
+    let overlap_producers = support_producers(&overlap_plans);
+    let overlap_result = aggregate_support_plan_irs_with_policy_attributed(
+        overlap_plans,
+        overlap_producers,
         &ExactZQueryService::new(overlap_mesh),
+        Some(&overlap_owned),
+        FamilyConflictPolicy::Fail,
     );
     match overlap_result {
-        Ok((retained, overlap_diagnostics)) => {
+        Ok((retained, overlap_attributed)) => {
+            let overlap_diagnostics = overlap_attributed
+                .into_iter()
+                .map(|entry| entry.diagnostic)
+                .collect::<Vec<_>>();
             let has_overlap_diag = overlap_diagnostics.iter().any(|d| {
                 d.message.contains("cross-family") || d.message.contains("positive-area overlap")
             });
@@ -879,8 +946,13 @@ pub fn invalid_geometry_fails() -> Result<(), String> {
             }
         }
         Err(err) => {
-            // Fatal family conflict at same (layer, object, region) is correct degraded behavior.
-            if !format!("{err:?}").contains("conflicting_family_id") {
+            // An ownership refusal at the same (layer, object, region) is the
+            // correct degraded behaviour: the region belongs to `traditional`,
+            // so the `tree` write is named as the trespasser and nothing is
+            // published.
+            if err.family_id != "tree"
+                || !matches!(err.reason, OwnershipReason::WrongFamily { .. })
+            {
                 return Err(format!("unexpected overlap error: {err:?}"));
             }
         }

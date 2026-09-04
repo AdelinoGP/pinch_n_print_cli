@@ -870,7 +870,7 @@ Resolution order:
 1. Apply global enable/disable rules.
 2. Apply object-level overrides.
 3. Apply region-level overrides.
-4. Validate uniqueness for every `(layer, object, region, claim)`.
+4. Validate uniqueness for every `(layer, object, region, claim)`. Per-region uniqueness for support is enforced at the support-plan commit seam — the host aggregation merge point — not here. Production constructs only `ConflictScope::Global` claim holders, so the schedule-time per-region pass has no region ids to work with at startup.
 
 Determinism constraints:
 

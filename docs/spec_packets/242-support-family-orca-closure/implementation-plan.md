@@ -19,9 +19,14 @@
   the TASK-335 row to record "closes at packet 242 (this packet); see
   docs/spec_packets/242-support-family-orca-closure/". TASK-335's final `[x]` flip happens in
   Step 8 only after the gate evidence exists.
-- Precondition: re-derive the next free ID immediately before writing (`grep -oE "TASK-[0-9]{3}"
-  docs/07_implementation_status.md | sort -u | tail -1` → must be ≤ TASK-428; if it exceeds
-  TASK-428 because another packet registered first, stop and re-map IDs before proceeding).
+- Precondition: TASK-429..TASK-440 is a **backfill into an unused gap**, not an append at the tip
+  of the ledger. Re-derive the tip immediately before writing (`grep -oE "TASK-[0-9]{3}"
+  docs/07_implementation_status.md | sort -u | tail -1`) — expect a value **well above**
+  TASK-440 (TASK-530 at authoring; TASK-523..TASK-537 are reserved by 239d/240a/240b), so a tip
+  above TASK-428 is normal and is NOT a stop condition. The real check is absence: run
+  `grep -oE "TASK-4(29|3[0-9]|40)" docs/07_implementation_status.md | sort -u` and proceed only
+  if it returns nothing. If any of TASK-429..TASK-440 is already registered, stop and re-map IDs
+  to a fresh gap (or to the tip) before proceeding.
 - Postcondition: twelve open rows TASK-429..TASK-440 attributed to packet 242 exist; TASK-335 row
   carries the pending-closure pointer; no other row changed.
 - Files allowed to read, with ranges when over 300 lines:
@@ -52,12 +57,16 @@
   owner packet's closure state; for DEV-141..146 their current DEVIATION_LOG state; for each of
   the eight divergence sections the consuming packet. This step decides nothing; it feeds
   Steps 3-5.
-- Precondition: all seven dependency packets implemented (activation gate).
-- Postcondition: one FACT table covering G-01..G-24 × {owner, candidate verdict}, six deviation
+- Precondition: every dependency in `packet.spec.md`'s frontmatter (237, 238a, 238b, 238c,
+  239a, 239b, 239c, 239d, 240a, 240b, 241) is `implemented` — verify per-dep with
+  `grep '^status:' docs/spec_packets/<dep>/packet.spec.md`, never from prose (activation gate).
+- Postcondition: one FACT table covering every live `| G-NN |` register row (count re-derived,
+  not quoted) × {owner, candidate verdict}, six deviation
   states, eight divergence verdicts — recorded in the working notes, not yet in design.md.
 - Files allowed to read, with ranges when over 300 lines:
-  - `docs/specs/support-parity-gap-register.md` - full read (~70 lines)
-  - `docs/spec_packets/237..241` packet dirs - delegated per-packet FACT surveys
+  - `docs/specs/support-parity-gap-register.md` - full read (short file)
+  - `docs/spec_packets/{237,238a,238b,238c,239a,239b,239c,239d,240a,240b,241}-*` packet dirs -
+    delegated per-packet FACT surveys
 - Files allowed to edit (at most 3): none (read-only step).
 - Files explicitly out of bounds:
   - `docs/DEVIATION_LOG.md` body beyond the DEV-141..146 rows (ranged grep reads only)
@@ -67,10 +76,10 @@
 - Context cost: `M`
 - Authoritative docs:
   - `docs/specs/support-families-anchored-entities-plan.md` - §10 (supersession), §12 briefs of
-    the seven packets (what each was supposed to close).
+    the eleven dependency packets (what each was supposed to close).
 - OrcaSlicer refs: none.
 - Verification:
-  - `test "$(grep -cE '^\| G-[0-9]+ ' docs/specs/support-parity-gap-register.md)" -eq 24 && echo PREAUDIT_INPUT_COMPLETE`
+  - `test "$(grep -cE '^\| G-[0-9]+ ' docs/specs/support-parity-gap-register.md)" -gt 0 && grep -cE '^\| G-[0-9]+ ' docs/specs/support-parity-gap-register.md && echo PREAUDIT_INPUT_COMPLETE` (prints the live row total the FACT table must cover; no frozen count)
 - Exit condition: FACT table complete; every row has an owner + candidate verdict. Falsifying
   exit: any routed destination missing its implementation → `[BLOCK]`, route back, do not write
   a fake CLOSED.
@@ -78,10 +87,15 @@
 ### Step 3: Write the gap-register disposition ledger and mirror tokens
 
 - Task IDs: `TASK-431`, `TASK-432`
-- Objective: author `design.md ## Gap Register Disposition Ledger (242)` with 24 tokened rows,
-  then mirror each token into the corresponding register evidence cell.
+- Objective: author `design.md ## Gap Register Disposition Ledger (242)` with one tokened row per
+  live `| G-NN |` register row (total re-derived from the register, never a literal), ADD the
+  fifth `Disposition` column to `docs/specs/support-parity-gap-register.md` — header
+  `| # | Gap | Evidence | Destination | Disposition |` plus the matching separator row — mirror
+  each token into that new final cell, and re-point the register's prose framing (which still
+  names packet 224 as the closing packet) at packet 242.
 - Precondition: Step 2 table complete.
-- Postcondition: AC-8 and AC-N3 commands pass; tokens follow the grammar
+- Postcondition: AC-8 and AC-N3 commands pass; the register table has five columns and every
+  `| G-NN |` row ends with its token cell; tokens follow the grammar
   `[CLOSED <packet> <date>]` / `[WAIVED <date>: <justification>]` / `[CARRIED -> <owner>:
   <reason>]`; G-14/G-15/G-20 carry explicit waiver/register-only tokens.
 - Files allowed to read, with ranges when over 300 lines:
@@ -100,7 +114,8 @@
 - OrcaSlicer refs: none.
 - Verification:
   - AC-8 command verbatim (`packet.spec.md`) - FACT pass/fail with both counts printed.
-- Exit condition: both counts equal 24 and equal each other. Falsifying exit: a row whose true
+- Exit condition: both counts are equal and non-zero (the total is whatever the register
+  currently holds; do not compare against a remembered number). Falsifying exit: a row whose true
   state is open → route back / `[BLOCK]`; writing CLOSED without owner evidence is forbidden.
 
 ### Step 4: Deviation and divergence dispositions
@@ -173,14 +188,16 @@
   requests against FRESH references), run the eight-name suite with asserted count, then write
   `design.md ## Matched-Height Inspection Record (242)` and `## Differential Inspection Record
   (242)` plus the `## TASK-163b and TASK-335 Disposition` re-confirmation — per family × five
-  axes, each verdict naming layer + tap (E2), including 239's branch outcome note ([FWD] in
+  axes, each verdict naming layer + tap (E2), including 239c's branch outcome note ([FWD] in
   design.md).
 - Precondition: fresh references under `tmp/` verified by direct listing (T1);
   `cargo xtask build-guests --check` exit 0.
 - Postcondition: AC-1, AC-2, AC-3, AC-4, AC-6 commands pass; records name source, layer, tap,
   verdict per family.
 - Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-runtime/tests/integration/support_family_closure.rs` - full read
+  - `crates/slicer-runtime/tests/integration/support_family_closure.rs` - very long; ranged or
+    delegated reads only (locate each case by symbol name; the cases are `pub fn`s wrapped by
+    `#[test]` shims in `crates/slicer-runtime/tests/integration/main.rs`)
   - 224 design.md - §Orca reference profile + §Orca Inspection Checklist ranges (delegated SUMMARY)
 - Files allowed to edit (at most 3):
   - `docs/spec_packets/242-support-family-orca-closure/design.md`
@@ -207,7 +224,7 @@
 
 - Task IDs: `TASK-439`
 - Objective: author `requirements.md ## Supersession Records (242)` (213/TASK-329 with the
-  degenerate-disk exclusion; 215→240, 216→220/224+238c residue, 217→220/224, 218→242 absorption
+  degenerate-disk exclusion; 215→240a/240b, 216→220/224+238c residue, 217→220/224, 218→242 absorption
   mapping; 224 itself) and flip
   `docs/spec_packets/224-support-family-orca-closure/packet.spec.md` YAML to
   `status: superseded` + `superseded_by: 242-support-family-orca-closure`.

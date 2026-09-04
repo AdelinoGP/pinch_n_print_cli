@@ -3,7 +3,7 @@
 ## Execution Rules
 
 - Work one atomic step at a time; map every step to grouped task IDs
-  (`TASK-409`..`TASK-413`, `TASK-531`..`TASK-534` only).
+  (`TASK-409`..`TASK-413`, `TASK-533`..`TASK-536` only).
 - Use TDD, then implementation, then the narrowest falsifying validation.
 - Every field below is a context-budget contract and must be filled
   independently; never write "see Step N".
@@ -27,8 +27,8 @@
   assertions on the migrated fields, serde round-trip of a `SliceIR` with
   `global_layer_index: -2`, ordering of `-2 < -1 < 0`) and
   `crates/slicer-ir/tests/sliced_region_raft_fill_tdd.rs` (`raft_fill` defaults
-  empty, serde-default backward compat with a 4.8.0 fixture, round-trip
-  stability).
+  empty, serde-default backward compat with a `4.8.0` fixture — the pre-bump
+  value at authoring — round-trip stability).
 - Precondition: clean tree; 236 confirmed `implemented` (re-derive with
   `grep '^status:' docs/spec_packets/236-support-stabilization/packet.spec.md`).
 - Postcondition: both files exist and fail to compile / fail asserts for
@@ -196,7 +196,7 @@
 
 ### Step 5: WIT prefix marking + negative index assignment on both legs
 
-- Task IDs: `TASK-531`
+- Task IDs: `TASK-533`
 - Objective: add `is-raft-prefix: bool` to `layer-proposal`
   (`crates/slicer-schema/wit/deps/prepass-layer-planning/prepass-layer-planning.wit`);
   in `harvest_layer_plan_ir_from` (`crates/slicer-wasm-host/src/marshal/in_.rs`)
@@ -219,6 +219,13 @@
   - `crates/slicer-wasm-host/src/marshal/native.rs`
   - `crates/slicer-wasm-host/tests/marshal_layer_plan_prefix_tdd.rs` (new;
     auto-discovered, no registration needed)
+  - Convention note: both `crates/slicer-wasm-host/tests/*_tdd.rs` files this
+    packet adds are deliberately loose top-level test binaries, following the
+    existing `crates/slicer-wasm-host/tests/module_log_human_channel_dedup_tdd.rs`
+    precedent. They are NOT `mod`-registered into the crate's `contract` /
+    `integration` / `unit` `[[test]]` aggregators; auto-discovery is still on,
+    so `cargo test -p slicer-wasm-host --test <file_stem>` runs them and no
+    aggregator edit is required.
 - Files explicitly out of bounds: `modules/**` (Step 6), `ir-types.wit`
 - Expected sub-agent dispatches:
   - OrcaSlicer SUMMARY: `generate_support_layers` below-zero print_z insertion;
@@ -237,7 +244,7 @@
 
 ### Step 6: layer-planner-default emits the raft prefix band
 
-- Task IDs: `TASK-532`
+- Task IDs: `TASK-534`
 - Objective: teach `com.core.layer-planner-default` to read
   `support_raft_layers` (declared in its manifest `[config.schema]` so E9's
   silent-default trap cannot fire) and push exactly that many
@@ -251,7 +258,10 @@
   - `modules/core-modules/layer-planner-default/src/lib.rs` - the
     `generate_object_layers` and `DefaultLayerPlanner::from_config` ranges
     (there is no `LayerPlannerConfig` type; the config is read by
-    `DefaultLayerPlanner`'s `from_config`)
+    `DefaultLayerPlanner`'s `from_config`, which is a `PrepassModule`
+    trait-method impl in
+    `modules/core-modules/layer-planner-default/src/lib.rs`, not an inherent
+    fn)
   - `crates/slicer-runtime/tests/integration/main.rs` - registration list only
 - Files allowed to edit (at most 3 primaries + the new/registered test files):
   - `modules/core-modules/layer-planner-default/src/lib.rs`
@@ -279,7 +289,7 @@
 
 ### Step 7: SlicedRegion.raft_fill carrier + WIT accessors + schema bump
 
-- Task IDs: `TASK-533`
+- Task IDs: `TASK-535`
 - Objective: add `pub raft_fill: Vec<ExPolygon>` with `#[serde(default)]` to
   `SlicedRegion`; add the `raft-fill` accessor to BOTH region resources in
   `crates/slicer-schema/wit/deps/ir-types.wit`; add
@@ -287,8 +297,11 @@
   project the field through the host accessor impls, the macro marshal legs,
   the SDK views and both fixture builders, the visual-debug render and the
   pnp-cli manifest emission; minor-bump `CURRENT_SLICE_IR_SCHEMA_VERSION` to
-  `4.9.0` with a version-history doc-comment line and update every test
-  asserting the old value in the same step. Follow
+  the next MINOR above its live value (re-derived from
+  `crates/slicer-ir/src/slice_ir.rs` at the moment of the edit; it was `4.8.0`
+  at authoring, so `4.9.0` unless another packet bumped first — do not hardcode
+  the literal from this plan) with a version-history doc-comment line and
+  update every test asserting the old value in the same step. Follow
   `design.md` §`raft_fill` Carrier Footprint as the site checklist.
 - Precondition: Step 6 green.
 - Postcondition: AC-6 green; `cargo build --tests` green after the WIT edit.
@@ -321,7 +334,7 @@
 
 ### Step 8: raft_plan read accessor
 
-- Task IDs: `TASK-534`
+- Task IDs: `TASK-536`
 - Objective: declare a `raft-plan-view` record in
   `crates/slicer-schema/wit/deps/ir-types.wit` (local mirror of the prepass
   `raft-plan`, no cross-world import) and a `raft-plan` accessor on
@@ -331,8 +344,11 @@
   `build_paint_layer_data_with_plan` (`crates/slicer-wasm-host/src/dispatch.rs`)
   with no layer filter; mirror it in the `slicer-macros` guest shim; add
   `PaintRegionLayerView::raft_plan()` in `crates/slicer-sdk/src/traits.rs`. The
-  native leg needs no further change. Move the 8 existing
-  `PaintRegionLayerData` construction sites to FRU or `Default`. Author
+  native leg needs no further change. Move the two existing
+  `PaintRegionLayerData` struct literals — one in `paint_region_ir_to_layer_data`
+  (`crates/slicer-wasm-host/src/host.rs`), one in
+  `crates/slicer-wasm-host/src/dispatch.rs` — to FRU or `Default`; both files
+  are already primaries below, so this adds no new edit surface. Author
   `crates/slicer-wasm-host/tests/raft_plan_read_accessor_tdd.rs`.
 - Precondition: Step 7 green.
 - Postcondition: AC-7 green; `cargo build --tests` green; guests rebuilt.
@@ -346,7 +362,15 @@
   - `crates/slicer-wasm-host/src/host.rs`
   - `crates/slicer-wasm-host/src/dispatch.rs`
   - `crates/slicer-sdk/src/traits.rs`
-  - `crates/slicer-wasm-host/tests/raft_plan_read_accessor_tdd.rs` (new)
+  - `crates/slicer-wasm-host/tests/raft_plan_read_accessor_tdd.rs` (new;
+    auto-discovered, no registration needed)
+  - Convention note: both `crates/slicer-wasm-host/tests/*_tdd.rs` files this
+    packet adds are deliberately loose top-level test binaries, following the
+    existing `crates/slicer-wasm-host/tests/module_log_human_channel_dedup_tdd.rs`
+    precedent. They are NOT `mod`-registered into the crate's `contract` /
+    `integration` / `unit` `[[test]]` aggregators; auto-discovery is still on,
+    so `cargo test -p slicer-wasm-host --test <file_stem>` runs them and no
+    aggregator edit is required.
 - Files explicitly out of bounds: `modules/**`, `region_partition.rs`
 - Expected sub-agent dispatches:
   - FACT: does `ir-types.wit` resolve with a locally-declared `raft-plan-view`
@@ -364,7 +388,7 @@
 
 ### Step 9: DEV-124 reopen row + docs
 
-- Task IDs: `TASK-534`
+- Task IDs: `TASK-536`
 - Objective: file the DEV-124 reopen deviation row per `requirements.md`
   §DEV-124 Reopen — re-derive the next free ID at write time
   (`rg -o '^\| DEV-[0-9]{3}' docs/DEVIATION_LOG.md | sort -u | tail -1`), name
@@ -422,7 +446,7 @@ therefore requires the swarm extended band with a logged ESCALATION.
   clean tree immediately BEFORE this packet's first edit — re-derive it then;
   do not trust any number written here).
 - Update `docs/07_implementation_status.md` with `TASK-409`..`TASK-413` and
-  `TASK-531`..`TASK-534` through a worker dispatch, never a full backlog read.
+  `TASK-533`..`TASK-536` through a worker dispatch, never a full backlog read.
 - Confirm 240b is unblocked: AC-1..AC-7 green.
 
 ## Acceptance Ceremony

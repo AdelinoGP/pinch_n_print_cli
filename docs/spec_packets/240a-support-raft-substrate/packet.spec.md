@@ -8,10 +8,10 @@ task_ids:
   - TASK-411
   - TASK-412
   - TASK-413
-  - TASK-531
-  - TASK-532
   - TASK-533
   - TASK-534
+  - TASK-535
+  - TASK-536
 backlog_source: docs/specs/support-families-anchored-entities-plan.md
 context_cost_estimate: L
 ---
@@ -110,7 +110,10 @@ rasterizer (241) are excluded.
   `slice-region-view` and the perimeter region resource in
   `crates/slicer-schema/wit/deps/ir-types.wit`, `region_partition.rs` carries a
   `split_field!(raft_fill);` line so the field survives modifier-region
-  splitting, and `CURRENT_SLICE_IR_SCHEMA_VERSION` is `4.9.0` with a
+  splitting, and `CURRENT_SLICE_IR_SCHEMA_VERSION` has been minor-bumped to the
+  next minor above its live value (re-derived from
+  `crates/slicer-ir/src/slice_ir.rs` at the moment of the edit; `4.8.0` at
+  authoring, so `4.9.0` unless something bumped first) with a
   version-history doc-comment entry. |
   `mkdir -p target && cargo test -p slicer-ir --test sliced_region_raft_fill_tdd -- raft_fill_defaults_empty_and_survives_roundtrip --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && test "$(rg -c 'raft-fill: func' crates/slicer-schema/wit/deps/ir-types.wit)" -eq 2 && rg -q 'split_field..raft_fill' crates/slicer-runtime/src/region_partition.rs`
 - **AC-7. Given** `SupportPlanIR.raft_plan` has no read-side transport today,
@@ -164,8 +167,11 @@ binary today.
   `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_band_satisfies_finalization_monotonic_gate --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - **AC-N3. Given** a raft prefix layer whose Z lies below all object geometry,
   **when** `PrePass::Slice` runs, **then** it yields a `SliceIR` with zero
-  region polygons (canonical `slice_mesh_ex` returns an empty `Vec<ExPolygon>`
-  for a non-intersecting Z) and NOT a `FatalLayer`. |
+  region polygons (canonical `slice_mesh_ex`
+  (`crates/slicer-core/src/triangle_mesh_slicer.rs`) returns
+  `Vec<Vec<ExPolygon>>` — one inner `Vec` per requested z — so a
+  non-intersecting Z yields an EMPTY inner entry, not a missing one) and NOT a
+  `FatalLayer`. |
   `mkdir -p target && cargo test -p slicer-runtime --test executor -- raft_layer_below_geometry_slices_empty_not_fatal --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 
 ## Verification
@@ -187,7 +193,7 @@ binary today.
 
 ## Doc Impact Statement (Required)
 
-- `docs/02_ir_schemas.md` section "IR 6 — SliceIR" (schema bump to 4.9.0 + `SlicedRegion.raft_fill`) - `rg -q 'raft_fill' docs/02_ir_schemas.md`
+- `docs/02_ir_schemas.md` section "IR 6 — SliceIR" (schema minor bump to the next minor above the live `CURRENT_SLICE_IR_SCHEMA_VERSION`, re-derived from `crates/slicer-ir/src/slice_ir.rs` at the moment of the edit; `4.8.0` at authoring, so `4.9.0` unless something bumped first, + `SlicedRegion.raft_fill`) - `rg -q 'raft_fill' docs/02_ir_schemas.md`
 - `docs/02_ir_schemas.md` signed-layer-index semantics (the `-N .. -1` raft prefix band and the `index != Vec position` consequence) - `rg -q 'raft prefix band' docs/02_ir_schemas.md`
 - `docs/03_wit_and_manifest.md` - the new `layer-proposal.is-raft-prefix` field, the `raft-plan-view` record, and the `raft-fill` accessors - `rg -q 'is-raft-prefix' docs/03_wit_and_manifest.md && rg -q 'raft-plan-view' docs/03_wit_and_manifest.md`
 - `docs/DEVIATION_LOG.md` gains the DEV-124 reopen row (the shipped `layer_index == support_raft_layers` clamp is wrong under a negative prefix band — see `requirements.md` §DEV-124 Reopen). Re-derive the next free ID at write time (`rg -o '^\| DEV-[0-9]{3}' docs/DEVIATION_LOG.md | sort -u | tail -1`) rather than trusting any ID written here - `rg -q 'raft prefix band' docs/DEVIATION_LOG.md`

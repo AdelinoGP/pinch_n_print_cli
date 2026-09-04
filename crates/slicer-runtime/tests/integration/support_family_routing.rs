@@ -14,9 +14,8 @@ use slicer_runtime::{
 use slicer_wasm_host::{
     exact_z_query::ExactZQueryService,
     support_aggregation::{
-        aggregate_support_plan_irs_with_diagnostics,
-        try_aggregate_support_plan_irs_with_diagnostics, try_aggregate_support_plans,
-        SupportAggregationInput,
+        aggregate_support_plan_irs_with_policy_attributed, try_aggregate_support_plans,
+        FamilyConflictPolicy, OwnershipReason, SupportAggregationInput, SupportPlanProducer,
     },
 };
 
@@ -129,9 +128,86 @@ fn exact_z() -> ExactZQueryService {
     }))
 }
 
+
+/// Ownership at the merge point is default-deny: a region with no
+/// `family_assignments` row has no owner, so a fixture that expects retention
+/// must say who owns what. This grants each entry's `(object_id, region_id)` to
+/// that entry's own family -- the "no contested region" baseline these routing
+/// fixtures assumed before ownership became a declared property. It publishes
+/// no `support_territory`, so the territory clipper stays disarmed and the
+/// legacy routing/overlap guards are exercised unchanged.
+fn family_assignments_for(entries: &[SupportPlanEntry]) -> SupportAnalysisIR {
+    SupportAnalysisIR {
+        family_assignments: entries
+            .iter()
+            .map(|entry| {
+                (
+                    (entry.object_id.clone(), entry.region_id),
+                    entry.family_id.clone(),
+                )
+            })
+            .collect(),
+        ..SupportAnalysisIR::default()
+    }
+}
+
+/// One producer per plan, holding the `support-family:<id>` claim for every
+/// family that plan writes. Index-parallel to `plans` by construction.
+fn producers_for(plans: &[SupportPlanIR]) -> Vec<SupportPlanProducer> {
+    plans
+        .iter()
+        .map(|plan| SupportPlanProducer {
+            module_id: "test.support-writer".into(),
+            claims: plan
+                .entries
+                .iter()
+                .map(|entry| format!("support-family:{}", entry.family_id))
+                .collect(),
+        })
+        .collect()
+}
+
+/// Every entry across `plans`, in plan order.
+fn all_entries(plans: &[SupportPlanIR]) -> Vec<SupportPlanEntry> {
+    plans
+        .iter()
+        .flat_map(|plan| plan.entries.iter().cloned())
+        .collect()
+}
+
 fn aggregate(plans: Vec<SupportPlanIR>) -> (SupportPlanIR, Vec<slicer_ir::Diagnostic>) {
     let exact_z = exact_z();
-    aggregate_support_plan_irs_with_diagnostics(plans, &exact_z)
+    let owned = family_assignments_for(&all_entries(&plans));
+    let producers = producers_for(&plans);
+    aggregate_support_plan_irs_with_policy_attributed(
+        plans,
+        producers,
+        &exact_z,
+        Some(&owned),
+        FamilyConflictPolicy::Fail,
+    )
+    .map(|(plan, attributed)| {
+        (
+            plan,
+            attributed
+                .into_iter()
+                .map(|entry| entry.diagnostic)
+                .collect(),
+        )
+    })
+    .unwrap_or_else(|error| {
+        (
+            SupportPlanIR::default(),
+            // exhaustive: mirrors the host wrapper's own 1204 fallback diagnostic; Diagnostic has no Default and FRU would let a new field drift away from the shape under test
+            vec![slicer_ir::Diagnostic {
+                severity: slicer_ir::DiagnosticSeverity::Error,
+                code: 1204,
+                layer: None,
+                object_id: None,
+                message: format!("support family routing mismatch: {error:?}"),
+            }],
+        )
+    })
 }
 
 fn support_entry(
@@ -178,7 +254,7 @@ fn support_entry(
 }
 
 #[test]
-fn routing_cells() {
+fn declared_identity_is_input_order_independent() {
     let plans = vec![
         plan(vec![entry(
             "tree",
@@ -350,9 +426,28 @@ fn same_family_union() {
     // Previously this asserted `entries.is_empty()` plus two code-1200 unmet
     // diagnostics, which captured the host re-validating merged groups and
     // dropping legitimately-merged demands wholesale.
-    assert_eq!(output.entries.len(), 1);
-    assert_eq!(output.entries[0].body_ids, ["cross-cell-body"]);
-    assert_eq!(output.entries[0].demand_ids, ["demand-a", "demand-b"]);
+    //
+    // Packet 241b: union is now keyed by DECLARED IDENTITY -- family, layer,
+    // object, region and anchor plane -- not by `body_id`. These two entries
+    // name regions 0 and 1, which are two owned identities, so they stay two
+    // entries. What this fixture pins is unchanged and is still the point:
+    // neither demand is dropped, and neither is rejected for the merged
+    // envelope spanning more than one cell.
+    assert_eq!(output.entries.len(), 2);
+    assert!(output
+        .entries
+        .iter()
+        .all(|entry| entry.body_ids == ["cross-cell-body"]));
+    assert_eq!(
+        output
+            .entries
+            .iter()
+            .flat_map(|entry| entry.demand_ids.iter().cloned())
+            .collect::<std::collections::BTreeSet<_>>(),
+        ["demand-a".to_string(), "demand-b".to_string()]
+            .into_iter()
+            .collect()
+    );
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
 
     let (output, diagnostics) = aggregate(vec![
@@ -377,44 +472,47 @@ fn same_family_union() {
     assert!(diagnostics.is_empty());
 
     let exact_z = exact_z();
+    let plans = vec![
+        plan(vec![entry(
+            "tree",
+            "tree-body",
+            "tree-demand",
+            "object",
+            0,
+            Some(polygon(100, 100, 1_100_000, 200)),
+        )]),
+        plan(vec![entry(
+            "traditional",
+            "normal-body",
+            "normal-demand",
+            "object",
+            1,
+            Some(polygon(1_100_000, 100, 1_100_200, 200)),
+        )]),
+    ];
+    let owned = family_assignments_for(&all_entries(&plans));
     let structured = try_aggregate_support_plans(SupportAggregationInput {
-        plans: vec![
-            plan(vec![entry(
-                "tree",
-                "tree-body",
-                "tree-demand",
-                "object",
-                0,
-                Some(polygon(100, 100, 1_100_000, 200)),
-            )]),
-            plan(vec![entry(
-                "traditional",
-                "normal-body",
-                "normal-demand",
-                "object",
-                1,
-                Some(polygon(1_100_000, 100, 1_100_200, 200)),
-            )]),
-        ],
+        producers: producers_for(&plans),
+        plans,
         exact_z: &exact_z,
-        territory: None,
+        territory: Some(&owned),
     })
     .expect("structured aggregation");
     assert_eq!(structured.retained.len(), 1);
     assert_eq!(structured.retained[0].family_id, "traditional");
     assert!(structured.retained.iter().all(|e| e.family_id != "tree"));
-    let cell_crossing: Vec<_> = structured
+    let extent_violation: Vec<_> = structured
         .unmet
         .iter()
-        .filter(|d| d.reason == "body rejected: routing-cell collision")
+        .filter(|d| d.reason == "body rejected: max-body-extent violation")
         .collect();
-    assert_eq!(cell_crossing.len(), 1);
-    assert_eq!(cell_crossing[0].demand_id, "tree-demand");
-    assert_eq!(cell_crossing[0].body_id, "tree-body");
+    assert_eq!(extent_violation.len(), 1);
+    assert_eq!(extent_violation[0].demand_id, "tree-demand");
+    assert_eq!(extent_violation[0].body_id, "tree-body");
     let routing: Vec<_> = structured
         .diagnostics
         .iter()
-        .filter(|d| d.reason == "body rejected: routing-cell collision")
+        .filter(|d| d.reason == "body rejected: max-body-extent violation")
         .collect();
     assert_eq!(routing.len(), 1);
     assert_eq!(routing[0].family_id, "tree");
@@ -449,27 +547,30 @@ fn cross_family_body_overlap() {
         .any(|d| d.code == 1200 && d.message.contains("tree-body")));
 
     let exact_z = exact_z();
+    let plans = vec![
+        plan(vec![entry(
+            "tree",
+            "tree-body",
+            "tree-demand",
+            "object",
+            0,
+            Some(polygon(100, 100, 300, 300)),
+        )]),
+        plan(vec![entry(
+            "traditional",
+            "normal-body",
+            "normal-demand",
+            "object",
+            1,
+            Some(polygon(200, 200, 400, 400)),
+        )]),
+    ];
+    let owned = family_assignments_for(&all_entries(&plans));
     let structured = try_aggregate_support_plans(SupportAggregationInput {
-        plans: vec![
-            plan(vec![entry(
-                "tree",
-                "tree-body",
-                "tree-demand",
-                "object",
-                0,
-                Some(polygon(100, 100, 300, 300)),
-            )]),
-            plan(vec![entry(
-                "traditional",
-                "normal-body",
-                "normal-demand",
-                "object",
-                1,
-                Some(polygon(200, 200, 400, 400)),
-            )]),
-        ],
+        producers: producers_for(&plans),
+        plans,
         exact_z: &exact_z,
-        territory: None,
+        territory: Some(&owned),
     })
     .expect("structured aggregation");
     let cross_family: Vec<_> = structured
@@ -502,25 +603,27 @@ fn cross_family_body_overlap() {
         )]),
         ..SupportAnalysisIR::default()
     };
+    let territory_plans = vec![
+        plan(vec![entry(
+            "tree",
+            "tree-body",
+            "tree-demand",
+            "object",
+            0,
+            Some(polygon(100, 100, 300, 300)),
+        )]),
+        plan(vec![entry(
+            "traditional",
+            "normal-body",
+            "normal-demand",
+            "object",
+            1,
+            Some(polygon(200, 200, 400, 400)),
+        )]),
+    ];
     let with_territory = try_aggregate_support_plans(SupportAggregationInput {
-        plans: vec![
-            plan(vec![entry(
-                "tree",
-                "tree-body",
-                "tree-demand",
-                "object",
-                0,
-                Some(polygon(100, 100, 300, 300)),
-            )]),
-            plan(vec![entry(
-                "traditional",
-                "normal-body",
-                "normal-demand",
-                "object",
-                1,
-                Some(polygon(200, 200, 400, 400)),
-            )]),
-        ],
+        producers: producers_for(&territory_plans),
+        plans: territory_plans,
         exact_z: &exact_z,
         territory: Some(&analysis),
     })
@@ -656,33 +759,56 @@ fn degraded_diagnostics() {
 #[test]
 fn mismatched_family_fatal() {
     let exact_z = exact_z();
-    let result = try_aggregate_support_plan_irs_with_diagnostics(
-        vec![
-            plan(vec![entry(
-                "tree",
-                "tree-body",
-                "tree-demand",
-                "object",
-                0,
-                Some(polygon(100, 100, 200, 200)),
-            )]),
-            plan(vec![entry(
-                "traditional",
-                "normal-body",
-                "normal-demand",
-                "object",
-                0,
-                Some(polygon(300, 100, 400, 200)),
-            )]),
-        ],
+    let plans = vec![
+        plan(vec![entry(
+            "tree",
+            "tree-body",
+            "tree-demand",
+            "object",
+            0,
+            Some(polygon(100, 100, 200, 200)),
+        )]),
+        plan(vec![entry(
+            "traditional",
+            "normal-body",
+            "normal-demand",
+            "object",
+            0,
+            Some(polygon(300, 100, 400, 200)),
+        )]),
+    ];
+    // The host assigned the single contested region to `traditional`, so the
+    // `tree` write is a trespass -- and under `Fail` a trespass publishes
+    // nothing at all.
+    let owned = SupportAnalysisIR {
+        family_assignments: std::collections::BTreeMap::from([(
+            ("object".to_string(), 0),
+            "traditional".to_string(),
+        )]),
+        ..SupportAnalysisIR::default()
+    };
+    let producers = producers_for(&plans);
+    let result = aggregate_support_plan_irs_with_policy_attributed(
+        plans,
+        producers,
         &exact_z,
+        Some(&owned),
+        FamilyConflictPolicy::Fail,
     );
     let error = result.expect_err("two families cannot claim one source region");
     assert_eq!(error.global_layer_index, 0);
     assert_eq!(error.object_id, "object");
     assert_eq!(error.region_id, 0);
-    assert_eq!(error.expected_family_id, "traditional");
-    assert_eq!(error.conflicting_family_id, "tree");
+    assert_eq!(
+        error.family_id, "tree",
+        "the error must name the trespassing family"
+    );
+    assert_eq!(
+        error.reason,
+        OwnershipReason::WrongFamily {
+            owner: "traditional".to_string()
+        }
+    );
 }
 
 #[test]
@@ -706,8 +832,8 @@ fn invalid_body_degraded() {
     // Exact-Z occupancy. `anchor_z` = 1_000_000 units = 100 mm, which cuts the
     // fixture solid and yields a 10 x 10 mm occupancy square (0..100_000
     // units). The body sits at 1..2 mm, wholly inside that square, so it
-    // collides. Its extent is 10_000 units, far under ROUTING_CELL_SIZE
-    // (1 << 20), so routing-cell rejection cannot be what drops it.
+    // collides. Its extent is 10_000 units, far under MAX_BODY_EXTENT_UNITS
+    // (1 << 20), so max-body-extent rejection cannot be what drops it.
     let mut occupied = entry(
         "tree",
         "occupied-body",
@@ -726,10 +852,13 @@ fn invalid_body_degraded() {
     // Assert the *reason*, not merely the drop: the structured aggregation
     // reports why each body was rejected.
     let exact_z = exact_z();
+    let plans = vec![plan(vec![occupied])];
+    let owned = family_assignments_for(&all_entries(&plans));
     let structured = try_aggregate_support_plans(SupportAggregationInput {
-        plans: vec![plan(vec![occupied])],
+        producers: producers_for(&plans),
+        plans,
         exact_z: &exact_z,
-        territory: None,
+        territory: Some(&owned),
     })
     .expect("structured aggregation");
     assert!(structured.retained.is_empty());
@@ -740,7 +869,7 @@ fn invalid_body_degraded() {
             .map(|d| d.reason.as_str())
             .collect::<Vec<_>>(),
         ["body rejected: exact-Z occupancy"],
-        "occupied body must be dropped for occupancy, not routing-cell: {:?}",
+        "occupied body must be dropped for occupancy, not max-body-extent: {:?}",
         structured.unmet
     );
 

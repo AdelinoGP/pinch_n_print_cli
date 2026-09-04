@@ -2,14 +2,50 @@
 use std::sync::Arc;
 
 use slicer_ir::{
-    MeshIR, SupportPlanDeclineReason as DeclineReason, SupportPlanEntry as DeclineEntry,
-    SupportPlanIR as DeclinePlan,
+    MeshIR, SupportAnalysisIR, SupportPlanDeclineReason as DeclineReason,
+    SupportPlanEntry as DeclineEntry, SupportPlanIR as DeclinePlan,
 };
 use slicer_wasm_host::exact_z_query::ExactZQueryService;
 use slicer_wasm_host::support_aggregation::{
     aggregate_support_plan_irs_degrading_with_attributed_diagnostics,
-    aggregate_support_plan_irs_with_diagnostics,
+    aggregate_support_plan_irs_with_policy_attributed, FamilyConflictPolicy, SupportPlanProducer,
 };
+
+/// Ownership at the merge point is default-deny, and a DECLINE is only reported
+/// for an entry that owns the region it names -- a trespassing entry is refused
+/// before its decline is ever read. So a decline fixture must grant each
+/// entry's `(object_id, region_id)` to that entry's own family.
+fn family_assignments_for(plans: &[DeclinePlan]) -> SupportAnalysisIR {
+    SupportAnalysisIR {
+        family_assignments: plans
+            .iter()
+            .flat_map(|plan| plan.entries.iter())
+            .map(|entry| {
+                (
+                    (entry.object_id.clone(), entry.region_id),
+                    entry.family_id.clone(),
+                )
+            })
+            .collect(),
+        ..SupportAnalysisIR::default()
+    }
+}
+
+/// One producer per plan, holding the `support-family:<id>` claim for every
+/// family that plan writes. Index-parallel to `plans` by construction.
+fn producers_for(plans: &[DeclinePlan]) -> Vec<SupportPlanProducer> {
+    plans
+        .iter()
+        .map(|plan| SupportPlanProducer {
+            module_id: "test.support-writer".into(),
+            claims: plan
+                .entries
+                .iter()
+                .map(|entry| format!("support-family:{}", entry.family_id))
+                .collect(),
+        })
+        .collect()
+}
 
 #[test]
 pub fn support_decline_contract() {
@@ -34,7 +70,20 @@ pub fn support_decline_contract() {
         ..Default::default()
     };
     let exact_z = ExactZQueryService::new(Arc::new(MeshIR::default()));
-    let (result, diagnostics) = aggregate_support_plan_irs_with_diagnostics(vec![plan], &exact_z);
+    let plans = vec![plan];
+    let owned = family_assignments_for(&plans);
+    let (result, attributed) = aggregate_support_plan_irs_with_policy_attributed(
+        plans.clone(),
+        producers_for(&plans),
+        &exact_z,
+        Some(&owned),
+        FamilyConflictPolicy::Fail,
+    )
+    .expect("owned decline must not be a routing failure");
+    let diagnostics = attributed
+        .into_iter()
+        .map(|entry| entry.diagnostic)
+        .collect::<Vec<_>>();
 
     assert!(result.entries.is_empty());
     assert_eq!(diagnostics.len(), 1);
@@ -102,8 +151,14 @@ pub fn decline_is_attributed_to_producing_family_not_last_writer() {
     ];
 
     let exact_z = ExactZQueryService::new(Arc::new(MeshIR::default()));
-    let (_plan, diagnostics) =
-        aggregate_support_plan_irs_degrading_with_attributed_diagnostics(plans, &exact_z, None);
+    let owned = family_assignments_for(&plans);
+    let producers = producers_for(&plans);
+    let (_plan, diagnostics) = aggregate_support_plan_irs_degrading_with_attributed_diagnostics(
+        plans,
+        producers,
+        &exact_z,
+        Some(&owned),
+    );
 
     let declines: Vec<_> = diagnostics
         .iter()

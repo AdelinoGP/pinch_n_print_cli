@@ -334,6 +334,12 @@ pub enum DagValidationPass {
     /// Pass 2.
     GlobalClaimConflicts,
     /// Pass 3.
+    ///
+    /// Production constructs only `ConflictScope::Global` claim holders and has no
+    /// region ids available at startup, so this pass always runs on an empty set.
+    /// Per-region claim uniqueness for support is enforced instead at the
+    /// support-plan commit seam — host aggregation in
+    /// `crates/slicer-wasm-host/src/support_aggregation.rs`.
     PerRegionClaimConflicts,
     /// Pass 4.
     IncompatibilityDeclarations,

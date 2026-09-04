@@ -2,7 +2,7 @@
 
 ## Packet Metadata
 
-- Grouped task IDs: `TASK-414`..`TASK-418`, `TASK-535`
+- Grouped task IDs: `TASK-414`..`TASK-418`, `TASK-537`
 - Backlog source: `docs/specs/support-families-anchored-entities-plan.md` (§11 queue row 7, §12 brief "240-support-raft"); gap register row G-06
 - Packet status: `draft`
 - Aggregate context cost: `M`
@@ -12,8 +12,12 @@
 G-06 states the raft situation exactly: "the IR exists, the consumer does not."
 `RaftPlan` is produced by the tree planner's `push_raft_plan` when
 `support_raft_layers > 0` and merged into the blackboard by `raft_plan_min`
-(`crates/slicer-runtime/src/blackboard.rs`), and nothing renders it. Every raft
-config key is dead in the four support modules.
+(`crates/slicer-runtime/src/blackboard.rs`), and nothing renders it. Every
+raft-related config key any existing manifest declares is unread (re-derive
+the set with a grep over `modules/core-modules/*/*.toml`, per
+§Wire-or-Record Decisions), and the three canonical Orca raft keys
+(`raft_contact_distance`, `raft_expansion`, `raft_first_layer_expansion`) do
+not exist anywhere under `modules/` or `crates/` at all.
 
 The role/claim plumbing half-exists: `ExtrusionRole::RaftInfill` is a real
 variant (`crates/slicer-ir/src/slice_ir.rs`) and `SliceRegionView::should_emit`
@@ -43,8 +47,10 @@ below rather than re-litigated.
   entries, never anchored entities. — **substrate in 240a, honored here.**
 - Signed-index migration `u32`→`i32`. — **240a.**
 - Issue-19/20 raft keys `raft_contact_distance`, `raft_expansion`,
-  `raft_first_layer_expansion`, plus wire-or-record for the existing dead raft
-  keys in the four support modules. — **this packet.**
+  `raft_first_layer_expansion` — all three net-new, introduced only in the new
+  raft-default manifest — plus a wire-or-record sweep over whatever
+  raft-related keys the existing core-module manifests actually declare. —
+  **this packet.**
 - DEV-124 check while the raft path is open. — **filed by 240a, re-verified
   here** (see §DEV-124 Re-verification).
 
@@ -63,11 +69,16 @@ below rather than re-litigated.
   honoring `RaftPlan.raft_layers` / `.base_raft_layers` /
   `.interface_raft_layers`.
 - Config keys `raft_contact_distance` / `raft_expansion` /
-  `raft_first_layer_expansion` declared in the new manifest's
-  `[config.schema]` with canonical defaults, each read by the geometry it
-  controls.
-- Wire-or-record decisions for every dead raft key in the four support-module
-  manifests, written into §Wire-or-Record Decisions below.
+  `raft_first_layer_expansion` — net-new; none of the three exists anywhere
+  under `modules/` or `crates/` today — declared in
+  `modules/core-modules/raft-default/raft-default.toml`'s `[config.schema]`
+  with canonical defaults, each read by the geometry it controls. The canonical
+  name and default source is `docs/ORCA_CONFIG_REFERENCE.md` together with
+  canonical `init_fff_params` in `PrintConfig.cpp`, never a pre-existing
+  manifest.
+- Wire-or-record decisions for every raft-related key the existing core-module
+  manifests actually declare (re-derived by grep at execution time), written
+  into §Wire-or-Record Decisions below.
 - Regeneration of `docs/15_config_keys_reference.md` via `cargo xtask gen-config-docs` (T8).
 - Claim-conflict behavior for a second `claim:raft-fill` holder (AC-N1).
 - Raft-band bounds rejection (AC-N2) and the undeclared-key rejection test
@@ -104,10 +115,11 @@ below rather than re-litigated.
 ## Authoritative Docs
 
 - `docs/specs/support-families-anchored-entities-plan.md` - ~750 lines; direct range reads of §7, §8, §9, §10, §12 only.
-- `docs/adr/0009-raft-as-layer-infill-role.md` - 93 lines; direct read.
+- `docs/adr/0009-raft-as-layer-infill-role.md` - short; full read allowed.
 - `docs/specs/support-parity-gap-register.md` - G-06 row only; direct range read.
 - `docs/spec_packets/240a-support-raft-substrate/design.md` - §Migration Table and §`raft_plan` Read-Path Footprint only.
 - `docs/15_config_keys_reference.md` - regenerated, not read in bulk.
+- `docs/ORCA_CONFIG_REFERENCE.md` - canonical name/default source for the three net-new raft keys; targeted grep only, never a bulk read.
 - `docs/19_visual_debug.md` / `docs/17_agent_debugging.md` - human-gate bundle only; delegated SUMMARY.
 
 <!-- snippet: orca-delegation -->
@@ -122,25 +134,37 @@ Files to inspect for this packet:
 
 ## Wire-or-Record Decisions
 
-AC-7 is satisfied by this table, not by a test. Step 5 fills the Verdict and
-Reason columns; the table below is the scaffold and MUST list one row per
-(key, manifest) pair the step inspects. Each row must begin with a pipe followed by the backticked key — the literal
-shape ``| `raft_<key>` | `<manifest>` | <verdict> | <reason> |`` — so AC-7's
-count grep matches it; and no row may still read `_pending Step 5_` at closure.
-AC-7 asserts both. A row whose verdict is `stays dead` must name the owner of
-that decision.
+AC-7 is satisfied by this table, not by a test. **The row set is not fixed by
+this packet.** Step 5 must first re-derive the real set of raft-related keys
+declared by the existing core-module manifests:
+
+```
+rg --no-filename -o '^\[config\.schema\.[a-z_]*raft[a-z_]*\]' modules/core-modules -g '*.toml' -g '!raft-default.toml'
+```
+
+(drop `--no-filename` to get the manifest per hit) and write exactly one row per
+declaration site the grep returns. At authoring time that grep returns
+`support_raft_layers` in
+`modules/core-modules/arachne-perimeters/arachne-perimeters.toml`,
+`modules/core-modules/classic-perimeters/classic-perimeters.toml`, and
+`modules/core-modules/tree-support-planner/tree-support-planner.toml`, plus
+`raft_first_layer_density`, `base_raft_layers`, and `interface_raft_layers` in
+`tree-support-planner`. **That is an observation, not a contract** — re-run the
+grep and follow whatever it returns. Note in particular that
+`raft_contact_distance`, `raft_expansion`, and `raft_first_layer_expansion` are
+NOT among them: those three are net-new in this packet and belong to
+`raft-default.toml` only, so they get no row here.
+
+Each row must have the literal shape
+``| `<key>` | `<manifest>` | <verdict> | <reason> |`` with the verdict starting
+in lowercase (`wired` / `stays dead`) — AC-7 counts rows of that shape and
+compares the count against the grep above, and additionally fails if any row
+still reads `_pending Step 5_`. A row whose verdict is `stays dead` must name
+the owner of that decision.
 
 | Key | Manifest | Verdict | Reason / decision owner |
 | --- | --- | --- | --- |
-| `raft_contact_distance` | `tree-support-planner` | _pending Step 5_ | |
-| `raft_contact_distance` | `traditional-support-planner` | _pending Step 5_ | |
-| `raft_expansion` | `tree-support` | _pending Step 5_ | |
-| `raft_first_layer_expansion` | `traditional-support` | _pending Step 5_ | |
-
-Step 5 expands this table to the actual key set each manifest declares — the
-four rows above are the minimum AC-7 enforces, not the expected total. Enumerate
-the real set with a dispatched grep before filling it in; do not assume this
-scaffold is complete.
+| _rows added in Step 5, one per grep hit_ | | _pending Step 5_ | |
 
 ## DEV-124 Re-verification
 
@@ -179,9 +203,10 @@ Reference, never copy, criteria from `packet.spec.md`.
   `should_emit`), `AC-3` (deterministic `raft_fill` across two runs and both
   legs), `AC-4` (expansions and interface spacing honored), `AC-5`
   (negative-prefix ordering, zero anchored entities), `AC-6` (keys declared and
-  wired), `AC-7` (four-manifest wire-or-record table), `AC-8` (DEV-124
+  wired), `AC-7` (raft-key wire-or-record table), `AC-8` (DEV-124
   re-verification).
-- Negative: `AC-N1` (double-holder `SchedulerError::ClaimConflict`), `AC-N2`
+- Negative: `AC-N1` (double-holder `SchedulerError::ClaimConflict`, the
+  four-field variant `claim` / `module_a` / `module_b` / `scope`), `AC-N2`
   (out-of-band negative index rejected), `AC-N3` (undeclared key rejected, not
   silently defaulted).
 - Cross-packet impact: hard-depends on 240a; feeds 242's closure evidence;
@@ -200,7 +225,7 @@ This is the authoritative full matrix; `packet.spec.md` lists only the closure-g
 | `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_first_layer_expansion_exceeds_upper_layers --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-4 expansions | FACT pass/fail |
 | `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry_orders_before_model_layers --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && cargo test -p slicer-runtime --test integration -- raft_mints_no_anchored_entities --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-5 ordering / no anchored (each command tees and is guarded separately) | FACT pass/fail |
 | `mkdir -p target && cargo test -p slicer-runtime --test contract -- raft_keys_declared_and_wired --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-6 keys wired | FACT pass/fail |
-| `test "$(rg -c '^\| .raft_[a-z_]+. \|' docs/spec_packets/240b-support-raft-module/requirements.md)" -ge 4 && ! rg -q 'pending Step 5' docs/spec_packets/240b-support-raft-module/requirements.md` | AC-7 wire-or-record table filled | FACT exit code |
+| `DECL="$(rg --no-filename -o '^\[config\.schema\.[a-z_]*raft[a-z_]*\]' modules/core-modules -g '*.toml' -g '!raft-default.toml' \| wc -l)"; ROWS="$(rg -c '^\| .[a-z_]*raft[a-z_]*. \| .[a-z0-9-]+. \| [a-z]' docs/spec_packets/240b-support-raft-module/requirements.md)"; test "$DECL" -ge 1 && test "${ROWS:-0}" -eq "$DECL" && ! rg -q 'pending Step 5' docs/spec_packets/240b-support-raft-module/requirements.md` | AC-7 wire-or-record table filled: one row per raft-key declaration site the grep returns | FACT exit code |
 | `mkdir -p target && cargo test -p slicer-runtime --test contract -- classic_clamp_follows_raft_layers_not_layer_zero --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && cargo test -p slicer-runtime --test contract -- classic_clamp_unchanged_when_no_raft_configured --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-8 DEV-124 re-verification (each command tees and is guarded separately) | FACT pass/fail |
 | `mkdir -p target && cargo test -p slicer-scheduler --test raft_claim_conflict_tdd -- raft_fill_double_holder_conflicts --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-N1 conflict advisory | FACT pass/fail |
 | `mkdir -p target && cargo test -p slicer-runtime --test contract -- raft_index_outside_band_rejected --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-N2 bounds rejection | FACT pass/fail |
@@ -225,7 +250,7 @@ pure exit-code checks; none invokes `cargo test --workspace`.
 
 - Never open `OrcaSlicerDocumented/` directly (E7/T1): it is gitignored, so
   glob tools miss it — verify by direct listing before claiming absence.
-- `modules/core-modules/tree-support-planner/src/lib.rs` is ~5.9k lines: ranged
+- `modules/core-modules/tree-support-planner/src/lib.rs` is very long: ranged
   reads only; never load in full.
 - `crates/slicer-ir/src/slice_ir.rs` is >3k lines: locate symbols with
   `rg -n 'pub struct <Name>'` at read time; never store a line pin.

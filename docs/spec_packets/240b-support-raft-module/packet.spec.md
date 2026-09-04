@@ -8,7 +8,7 @@ task_ids:
   - TASK-416
   - TASK-417
   - TASK-418
-  - TASK-535
+  - TASK-537
 backlog_source: docs/specs/support-families-anchored-entities-plan.md
 context_cost_estimate: M
 ---
@@ -22,8 +22,10 @@ Close G-06 by building the raft consumer on 240a's substrate: a new
 that reads `SupportPlanIR.raft_plan` (through 240a's
 `paint-region-layer-view.raft-plan` accessor), `SliceIR`, and `LayerPlanIR` and
 writes deterministic raft footprint polygons into `SlicedRegion.raft_fill`;
-plus the three canonical raft config keys, the four-manifest wire-or-record
-decisions, the formal ADR-0009 Decision-5 amendment, and the Human Validation
+plus the three net-new canonical raft config keys (none of them exists
+anywhere under `modules/` or `crates/` today - they are introduced here for the
+first time), the raft-key wire-or-record sweep across the existing support
+manifests, the formal ADR-0009 Decision-5 amendment, and the Human Validation
 Gate.
 
 ## Scope Boundaries
@@ -89,19 +91,27 @@ excluded.
   entries only, those entries sort strictly before model layer `0` in the
   G-code, and no `AnchoredEntity` is minted for any raft entry. |
   `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry_orders_before_model_layers --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && cargo test -p slicer-runtime --test integration -- raft_mints_no_anchored_entities --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
-- **AC-6. Given** the canonical raft keys, **when** `com.core.raft-default` is
-  dispatched, **then** `raft_contact_distance` (default 0.1),
-  `raft_expansion` (default 1.5), and `raft_first_layer_expansion` (default
-  2.0) are declared in its manifest `[config.schema]` with those defaults and
-  each is read by the geometry it controls. |
+- **AC-6. Given** the three canonical raft keys are net-new (no manifest under
+  `modules/` and no source under `crates/` declares any of them today; the
+  names and defaults come from `docs/ORCA_CONFIG_REFERENCE.md` and canonical
+  `init_fff_params` in `PrintConfig.cpp`, never from a pre-existing manifest),
+  **when** `com.core.raft-default` is dispatched, **then**
+  `raft_contact_distance` (default 0.1), `raft_expansion` (default 1.5), and
+  `raft_first_layer_expansion` (default 2.0) are declared in
+  `modules/core-modules/raft-default/raft-default.toml`'s `[config.schema]`
+  with those defaults and each is read by the geometry it controls. |
   `mkdir -p target && cargo test -p slicer-runtime --test contract -- raft_keys_declared_and_wired --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
-- **AC-7. Given** the four support-module manifests
-  (`tree-support-planner`, `traditional-support-planner`, `tree-support`,
-  `traditional-support`), **when** the wire-or-record pass completes, **then**
-  every raft key each manifest declares or deliberately omits has a written
-  decision in `requirements.md` §Wire-or-Record Decisions naming the key, the
-  manifest, the verdict (`wired` or `stays dead`), and the reason. |
-  `test "$(rg -c '^\| .raft_[a-z_]+. \|' docs/spec_packets/240b-support-raft-module/requirements.md)" -ge 4 && ! rg -q 'pending Step 5' docs/spec_packets/240b-support-raft-module/requirements.md && rg -q 'tree-support-planner' docs/spec_packets/240b-support-raft-module/requirements.md && rg -q 'traditional-support' docs/spec_packets/240b-support-raft-module/requirements.md`
+- **AC-7. Given** the raft-related keys actually declared by the existing
+  core-module manifests (re-derived at execution time by grepping
+  `modules/core-modules/*/*.toml` - do not assume a fixed set; at authoring the
+  grep returns only `support_raft_layers` plus tree-support-planner's
+  `raft_first_layer_density` / `base_raft_layers` / `interface_raft_layers`),
+  **when** the wire-or-record pass completes, **then** every (key, manifest)
+  pair the grep returns has a written decision in `requirements.md`
+  §Wire-or-Record Decisions naming the key, the manifest, the verdict (`wired`
+  or `stays dead`), and the reason - one table row per declaration site, none
+  still reading `pending Step 5`. |
+  `DECL="$(rg --no-filename -o '^\[config\.schema\.[a-z_]*raft[a-z_]*\]' modules/core-modules -g '*.toml' -g '!raft-default.toml' | wc -l)"; ROWS="$(rg -c '^\| .[a-z_]*raft[a-z_]*. \| .[a-z0-9-]+. \| [a-z]' docs/spec_packets/240b-support-raft-module/requirements.md)"; test "$DECL" -ge 1 && test "${ROWS:-0}" -eq "$DECL" && ! rg -q 'pending Step 5' docs/spec_packets/240b-support-raft-module/requirements.md`
 - **AC-8. Given** DEV-124's clamp is index-convention-dependent and 240a filed
   a reopen row for it, **when** the raft path is live, **then**
   `classic_clamp_follows_raft_layers_not_layer_zero` and
@@ -130,8 +140,11 @@ registration in the same step (Steps 4 and 6).
 - **AC-N1. Given** `com.core.raft-default` is the intended single holder (plan
   §12), **when** a second loaded `Layer::Infill` manifest also declares
   `claim:raft-fill`, **then** startup DAG validation surfaces the duplicate as
-  a structured `SchedulerError::ClaimConflict` naming both module ids in its
-  `module_a` / `module_b` fields — not silence, not a panic. |
+  a structured `SchedulerError::ClaimConflict` — a FOUR-field variant
+  (`claim: String`, `module_a: ModuleId`, `module_b: ModuleId`,
+  `scope: ConflictScope`) — naming both module ids in its `module_a` /
+  `module_b` fields, with `claim` equal to the raft-fill claim string — not
+  silence, not a panic. |
   `mkdir -p target && cargo test -p slicer-scheduler --test raft_claim_conflict_tdd -- raft_fill_double_holder_conflicts --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - **AC-N2. Given** the declared raft band is `-N .. -1`, **when** a raft entry
   carries a global layer index below `-N`, **then** the host rejects it with a
@@ -157,7 +170,7 @@ registration in the same step (Steps 4 and 6).
   "240-support-raft", §10 absorption mapping, §7 evidence standards, §8 human
   gate, §13 traps T1/T4/T5/T8; direct range read.
 - `docs/adr/0009-raft-as-layer-infill-role.md` - role/claim pattern and
-  synthesizer shape; direct read (93 lines).
+  synthesizer shape; short - full read allowed.
 - `docs/spec_packets/240a-support-raft-substrate/design.md` - the substrate this
   packet consumes; direct read of §Migration Table and §`raft_plan`
   Read-Path Footprint only.
@@ -167,7 +180,7 @@ registration in the same step (Steps 4 and 6).
 
 ## Doc Impact Statement (Required)
 
-- `docs/adr/0009-raft-as-layer-infill-role.md` formal amendment: Status line → `Accepted`, dropping the dangling `lands with docs/specs/raft-default-module.md` parenthetical (that file does not exist and never landed); additive `## Amendment — <date> (packet 240b)` section recording the Decision-5 claim reassignment to `com.core.raft-default` and quoting the original clause verbatim - ``rg -A2 '^## Status' docs/adr/0009-raft-as-layer-infill-role.md | rg -q 'Accepted' && rg -q '^## Amendment' docs/adr/0009-raft-as-layer-infill-role.md && rg -q 'com\.core\.raft-default' docs/adr/0009-raft-as-layer-infill-role.md && test "$(rg -c 'rectilinear-infill` declaring the claim' docs/adr/0009-raft-as-layer-infill-role.md)" -ge 2``
+- `docs/adr/0009-raft-as-layer-infill-role.md` formal amendment: Status line → `Accepted`, dropping the dangling `lands with docs/specs/raft-default-module.md` parenthetical, and replacing the other two `docs/specs/raft-default-module.md` pointers in the ADR (Decision-3 carrier parenthetical and the References list) — three occurrences in all. That path does not exist; the doc was archived to `docs/specs/_OLD/raft-default-module.md`, which is historical context only (it uses `raft_expansion_mm` / `raft_z_gap_mm` / `raft_layer_height_mm` / `raft_pattern`, superseded here by the canonical Orca names) and must not be cited as the contract; additive `## Amendment — <date> (packet 240b)` section recording the Decision-5 claim reassignment to `com.core.raft-default` and quoting the original clause verbatim - ``rg -A2 '^## Status' docs/adr/0009-raft-as-layer-infill-role.md | rg -q 'Accepted' && rg -q '^## Amendment' docs/adr/0009-raft-as-layer-infill-role.md && rg -q 'com\.core\.raft-default' docs/adr/0009-raft-as-layer-infill-role.md && test "$(rg -c 'rectilinear-infill` declaring the claim' docs/adr/0009-raft-as-layer-infill-role.md)" -ge 2`` and ``rg -q 'raft-default-module\.md' docs/adr/0009-raft-as-layer-infill-role.md && exit 1 || true``
 - `docs/DEVIATION_LOG.md` gains the ADR-amendment row required whenever a packet supersedes an ADR's normative clause (live convention: `D-285-ADR-0051-AMENDED`, `D-286-ADR-0005-AMENDED`) - `rg -q 'ADR-0009-AMENDED' docs/DEVIATION_LOG.md`
 - `docs/15_config_keys_reference.md` regenerated for the three new keys - `rg -q 'raft_contact_distance' docs/15_config_keys_reference.md && rg -q 'raft_first_layer_expansion' docs/15_config_keys_reference.md`
 - `docs/03_wit_and_manifest.md` module inventory gains `com.core.raft-default` - `rg -q 'com\.core\.raft-default' docs/03_wit_and_manifest.md`
@@ -204,7 +217,7 @@ existence).
 Artifact-producing commands (run from repo root; matched profiles
 `tmp/support-family-config-tree-matched.json` / `-normal-matched.json`):
 
-- `cargo run --bin pnp_cli --release -- slice --input crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl --output tmp/p240b-pnp-raft.gcode` (with `support_raft_layers >= 2` in the matched profile copy saved as `tmp/p240b-profile.json`)
+- `cargo run --bin pnp_cli --release -- slice --model crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl --output tmp/p240b-pnp-raft.gcode` (with `support_raft_layers >= 2` in the matched profile copy saved as `tmp/p240b-profile.json`)
 - Regenerated Orca references (§9, human-owned): `tmp/p240b-orca-tree-raft.gcode` and `tmp/p240b-orca-normal-raft.gcode` sliced with `raft_layers > 0`. **These references must exist before this gate can sign** — the gate blocks without them.
 - Visual-debug bundle for the raft boundary: `tmp/p240b-vd-raft.json` request → PNGs + `manifest.json` per `docs/19_visual_debug.md`.
 

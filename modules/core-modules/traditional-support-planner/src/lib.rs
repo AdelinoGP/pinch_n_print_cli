@@ -26,6 +26,7 @@
 
 pub mod agg_raster;
 
+use std::collections::btree_map;
 use std::collections::BTreeMap;
 
 use slicer_ir::SupportPlanDeclineReason;
@@ -322,7 +323,7 @@ impl SupportPlanner {
         };
         // One entry per support-region identity is the producer's contract,
         // not the host's to repair. See `merge_region_identity_entries`.
-        merge_region_identity_entries(&mut emitted);
+        merge_region_identity_entries(&mut emitted)?;
         for entry in emitted {
             output
                 .push_support_plan_entry(entry)
@@ -1338,58 +1339,137 @@ fn next_intermediate_plane_index(
 }
 
 /// Union the planned entries that share one `(global_layer_index, object_id,
-/// region_id)` support-region identity, so the plan this module publishes
-/// satisfies the identity the IR enforces.
+/// region_id, anchor_z)` support-region identity, so the plan this module
+/// publishes satisfies the identity the IR enforces.
+///
+/// This is the producer-side invariant, deliberately retained: **one
+/// `SupportPlanEntry` exists per support-region identity, and the producer is
+/// what guarantees it.** It is the DEV-167 fix. The 2026-09-03 grilling
+/// REVERSED the earlier plan to delete this function once the host merged on
+/// declared identity - a host that merges correctly is a convenience, never
+/// this planner's safety net, and the two are not interchangeable (the host
+/// sees every family's plans at once; only the producer can say what its own
+/// region identities are meant to be).
 ///
 /// `SupportPlanIR::duplicate_region_identity` (`crates/slicer-ir/src/slice_ir.rs`),
 /// checked by `Blackboard::commit_support_plan`
 /// (`crates/slicer-runtime/src/blackboard.rs`), admits exactly ONE entry per
-/// that triple. This planner emits one entry per *candidate* per layer, so an
-/// object/region carrying several demands whose columns reach a common layer
-/// produces several entries for one identity.
+/// `(global_layer_index, object_id, region_id)`. This planner emits one entry
+/// per *candidate* per layer, so an object/region carrying several demands
+/// whose columns reach a common layer produces several entries for one
+/// identity; without this merge the commit is rejected outright.
 ///
-/// Until packet 241 that was masked by host `union_same_family_entries`
-/// (`crates/slicer-wasm-host/src/support_aggregation.rs`), which unions
-/// same-family entries on `family_id` / layer / `object_id` / `anchor_z` plus
-/// (`same_body` OR equal `routing_cell`). `region_id` is not in that key, and
-/// `routing_cell` is the `ROUTING_CELL_SIZE` grid cell containing the
-/// bounding-box centroid - so two columns of ONE region merged only when their
-/// centroids happened to land in the same cell. Measured on
-/// `resources/regression_wedge.stl` (packet 241 step 17): `legacy_semantic`
-/// reaches layer 0 with two entries for region 0, centroids (503750, 250000)
-/// and (250000, 541750), both in cell (0, 0) - they merged. `agg` reaches
-/// layer 0 with three, because the block-snapped carry keeps `demand-1`'s
-/// column alive (DEV-166); its centroid is (250004, -15250), whose negative Y
-/// puts it in cell (0, -1), so it did not merge and the commit was rejected.
-/// The host merge is a superset convenience, never the producer's safety net.
+/// Merge semantics: role regions are concatenated per role kind (no clipping,
+/// so no planned area is lost), and the identity lists are extended then
+/// deduplicated. `anchor_z` is part of the key rather than merged over: within
+/// one object a layer index maps to a single physical plane (the direct path
+/// derives `anchor_z` from the layer's `z`, and `next_intermediate_plane_index`
+/// mints one synthetic index per plane), so no group can hold two planes, and
+/// independent support rows that deliberately carry distinct planes keep
+/// distinct indices.
 ///
-/// Merge semantics mirror the host union exactly: role regions are
-/// concatenated per role kind (no clipping, so no planned area is lost), and
-/// the identity lists are extended then deduplicated. `anchor_z` is part of
-/// the key rather than merged over: within one object a layer index maps to a
-/// single physical plane (the direct path derives `anchor_z` from the layer's
-/// `z`, and `next_intermediate_plane_index` mints one synthetic index per
-/// plane), so no group can hold two planes, and independent support rows that
-/// deliberately carry distinct planes keep distinct indices.
+/// That last sentence is an invariant, not a hope, so it is checked. The merge
+/// REJECTS - returning `ModuleError::fatal` rather than publishing - when
+/// either direction of the layer/plane correspondence breaks within one plan:
+///
+/// - two entries share `(global_layer_index, object_id, region_id)` but carry
+///   different `anchor_z` (one layer index claiming two planes); or
+/// - two entries share `(object_id, region_id, anchor_z)` *within one index
+///   space* but carry different `global_layer_index` (one plane claiming two
+///   layer indices).
+///
+/// The second rule is scoped to an index space - grid rows
+/// (`global_layer_index >= 0`) and synthesized intermediate rows
+/// (`global_layer_index < 0`, minted per plane by
+/// `next_intermediate_plane_index`) are checked separately - because coarse
+/// mode legitimately snaps a synthesized plane onto a grid row's `anchor_z`
+/// (measured: `coarse_same_region_sources_keep_distinct_body_membership` emits
+/// a grid row and an intermediate row that both sit at `anchor_z` 6000). Those
+/// two entries carry different identities on purpose; whether the coarse path
+/// *should* emit both is a separate question, not one this merge answers.
+///
+/// Either shape means the identity the merge keys on has stopped naming a
+/// single physical thing, and merging would then either fuse two planes or
+/// split one. Failing here names the disagreeing identity; failing downstream
+/// surfaces as an opaque commit rejection with no producer context.
 ///
 /// Declined entries pass through untouched: aggregation converts them to
 /// diagnostics and drops them before the identity check, so they neither need
-/// nor tolerate merging.
+/// nor tolerate merging. They are also exempt from the consistency check above,
+/// for the same reason - a decline records a candidate that was never planned.
 ///
-/// One consequence is deliberate. Host `validate_entry` runs per entry BEFORE
-/// its union, so it now sees the merged entry: its `in_routing_cell` extent
-/// bound (bbox span <= `ROUTING_CELL_SIZE`) and its exact-Z occupancy check
-/// apply to the union of a region's columns rather than to each column. For a
-/// region whose columns span more than one cell edge the previous behaviour
-/// was not "both survive" but a hard commit rejection - the bug fixed here -
-/// so this trades a fatal for a recorded rejection.
-fn merge_region_identity_entries(entries: &mut Vec<SupportPlanEntry>) {
+/// One consequence is deliberate. Host `validate_entry`
+/// (`crates/slicer-wasm-host/src/support_aggregation.rs`) runs per entry BEFORE
+/// its union, so it sees the merged entry: the `in_routing_cell` bound (bbox
+/// span <= `MAX_BODY_EXTENT_UNITS`) and the exact-Z occupancy check apply to
+/// the union of a region's columns rather than to each column. Despite its
+/// name, `in_routing_cell` is a pure maximum-body-extent bound - it assigns no
+/// entry to a cell and partitions nothing - so this widens what each check is
+/// measuring, not which entries are compared against each other.
+pub fn merge_region_identity_entries(
+    entries: &mut Vec<SupportPlanEntry>,
+) -> Result<(), ModuleError> {
     let mut merged: Vec<SupportPlanEntry> = Vec::with_capacity(entries.len());
     let mut index_by_identity: BTreeMap<(i32, String, String, i64), usize> = BTreeMap::new();
+    // The two directions of the layer-index <-> plane correspondence, each
+    // recording the first witness so a disagreement can name both sides.
+    let mut plane_of_layer: BTreeMap<(i32, String, String), i64> = BTreeMap::new();
+    // Keyed inside one index space (`synthetic = global_layer_index < 0`):
+    // intermediate rows are minted per plane and grid rows are indexed by the
+    // layer plan, so each space maps a plane to one index, but a synthesized
+    // plane may legitimately coincide with a grid row's `anchor_z`.
+    let mut layer_of_plane: BTreeMap<(bool, String, String, i64), i32> = BTreeMap::new();
     for entry in entries.drain(..) {
         if entry.decline_reason.is_some() {
             merged.push(entry);
             continue;
+        }
+        match plane_of_layer.entry((
+            entry.global_layer_index,
+            entry.object_id.clone(),
+            entry.region_id.clone(),
+        )) {
+            btree_map::Entry::Vacant(slot) => {
+                slot.insert(entry.anchor_z);
+            }
+            btree_map::Entry::Occupied(slot) if *slot.get() != entry.anchor_z => {
+                return Err(ModuleError::fatal(
+                    1,
+                    format!(
+                        "support plan identity disagreement: object '{}' region '{}' layer {}                          maps to two planes, anchor_z {} and {}",
+                        entry.object_id,
+                        entry.region_id,
+                        entry.global_layer_index,
+                        slot.get(),
+                        entry.anchor_z
+                    ),
+                ));
+            }
+            btree_map::Entry::Occupied(_) => {}
+        }
+        match layer_of_plane.entry((
+            entry.global_layer_index < 0,
+            entry.object_id.clone(),
+            entry.region_id.clone(),
+            entry.anchor_z,
+        )) {
+            btree_map::Entry::Vacant(slot) => {
+                slot.insert(entry.global_layer_index);
+            }
+            btree_map::Entry::Occupied(slot) if *slot.get() != entry.global_layer_index => {
+                return Err(ModuleError::fatal(
+                    1,
+                    format!(
+                        "support plan identity disagreement: object '{}' region '{}' plane                          anchor_z {} maps to two layer indices, {} and {}",
+                        entry.object_id,
+                        entry.region_id,
+                        entry.anchor_z,
+                        slot.get(),
+                        entry.global_layer_index
+                    ),
+                ));
+            }
+            btree_map::Entry::Occupied(_) => {}
         }
         let identity = (
             entry.global_layer_index,
@@ -1427,6 +1507,7 @@ fn merge_region_identity_entries(entries: &mut Vec<SupportPlanEntry>) {
         dedup_sorted(&mut existing.provenance);
     }
     *entries = merged;
+    Ok(())
 }
 
 /// Deduplicate and sort an identity list, matching `dedup_sorted` in

@@ -15,5 +15,6 @@ mod raycast_z_down_miss_tdd;
 mod raycast_z_down_transformed_object_tdd;
 mod support_carrier_regions_tdd;
 mod support_cross_family_scope_tdd;
+mod support_plan_ownership_tdd;
 mod surface_normal_at_oob_tdd;
 mod surface_normal_at_unit_length_tdd;

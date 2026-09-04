@@ -2,7 +2,7 @@
 
 ## Packet Metadata
 
-- Grouped task IDs: `TASK-409`..`TASK-413`, `TASK-531`..`TASK-534`
+- Grouped task IDs: `TASK-409`..`TASK-413`, `TASK-533`..`TASK-536`
 - Backlog source: `docs/specs/support-families-anchored-entities-plan.md` (§11 queue row 7, §12 brief "240-support-raft"); gap register row G-06
 - Packet status: `draft`
 - Aggregate context cost: `L` (justified in `design.md` §Why This Packet Carries An L)
@@ -99,8 +99,11 @@ projects only `plan.entries`. And `SlicedRegion` has no `raft_fill` field.
   accessors on BOTH `ir-types.wit` region resources, the
   `split_field!(raft_fill);` line in
   `crates/slicer-runtime/src/region_partition.rs`, host/SDK/macro/fixture
-  projection, and the `CURRENT_SLICE_IR_SCHEMA_VERSION` minor bump to `4.9.0`
-  with its version-history doc-comment entry.
+  projection, and the `CURRENT_SLICE_IR_SCHEMA_VERSION` minor bump to the next
+  minor above its live value (re-derived from
+  `crates/slicer-ir/src/slice_ir.rs` at the moment of the edit; `4.8.0` at
+  authoring, so `4.9.0` unless something bumped first) with its
+  version-history doc-comment entry.
 - `raft-plan-view` record in `ir-types.wit`, `paint-region-layer-view.raft-plan`
   accessor, host `PaintRegionLayerData.raft_plan` + population in
   `build_paint_layer_data_with_plan`, macro guest shim, and the SDK
@@ -185,7 +188,8 @@ Reference, never copy, criteria from `packet.spec.md`.
   (no truncation at the paint-view bridge), `AC-3` (three positional consumers
   repaired), `AC-4` (prefix band assigned negative indices on both harvest
   legs), `AC-5` (layer planner emits the band from config), `AC-6`
-  (`raft_fill` carrier + both WIT accessors + region split + 4.9.0 bump),
+  (`raft_fill` carrier + both WIT accessors + region split + schema minor
+  bump),
   `AC-7` (`raft_plan` read accessor reaches a `Layer::Infill` guest).
 - Negative: `AC-N1` (non-contiguous prefix run rejected), `AC-N2` (finalization
   monotonic gate satisfied across the sign boundary), `AC-N3` (raft layer below

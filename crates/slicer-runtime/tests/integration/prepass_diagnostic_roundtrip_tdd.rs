@@ -152,8 +152,33 @@ fn blackboard_with_layer_plan(mesh: MeshIR) -> Blackboard {
         ..Default::default()
     }))
     .expect("commit_region_map must succeed");
+    // The support-plan merge point is default-deny: an entry survives only when
+    // a `family_assignments` row names its family as the owner of
+    // `(object_id, region_id)` AND the producing module holds the matching
+    // `support-family:<family_id>` claim (`check_ownership`,
+    // `crates/slicer-wasm-host/src/support_aggregation.rs`). The diagnostic
+    // guest writes one entry for ("cube", region 0) with the default (empty)
+    // family id, so the fixture grants that exact region to that exact family;
+    // otherwise the entry is refused and an extra code-1206 diagnostic joins the
+    // guest's own code-99 one, which is not what this test is about.
+    bb.commit_support_analysis(Arc::new(slicer_ir::SupportAnalysisIR {
+        family_assignments: std::collections::BTreeMap::from([(
+            ("cube".to_string(), DIAGNOSTIC_GUEST_REGION_ID),
+            DIAGNOSTIC_GUEST_FAMILY_ID.to_string(),
+        )]),
+        ..Default::default()
+    }))
+    .expect("commit_support_analysis must succeed");
     bb
 }
+
+/// Family id declared by the entry `sdk-support-diagnostic-guest` publishes.
+/// The guest leaves `SupportPlanEntry::family_id` at its default, so ownership
+/// must be granted to the empty family for the entry to be retained.
+const DIAGNOSTIC_GUEST_FAMILY_ID: &str = "";
+
+/// Region the same guest's entry names (`object_id = "cube"`, `region_id = 0`).
+const DIAGNOSTIC_GUEST_REGION_ID: slicer_ir::RegionId = 0;
 
 fn compile_diagnostic_guest(
     _engine: &Arc<WasmEngine>,
@@ -191,6 +216,12 @@ fn compile_diagnostic_guest(
         .expect("instance pool must build"),
     );
     let module = CompiledModuleBuilder::new(loaded.id().to_string())
+        // Producer half of the ownership check: without this claim the guest's
+        // support-plan entry is refused with diagnostic code 1206.
+        .claims(vec![format!(
+            "support-family:{}",
+            DIAGNOSTIC_GUEST_FAMILY_ID
+        )])
         .config_view(Arc::new(ConfigView::from_map(config)))
         .build();
     TestModuleBundle {

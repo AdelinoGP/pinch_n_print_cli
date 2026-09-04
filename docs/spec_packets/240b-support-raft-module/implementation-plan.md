@@ -3,7 +3,7 @@
 ## Execution Rules
 
 - Work one atomic step at a time; map every step to grouped task IDs
-  (`TASK-414`..`TASK-418`, `TASK-535` only).
+  (`TASK-414`..`TASK-418`, `TASK-537` only).
 - Use TDD, then implementation, then the narrowest falsifying validation.
 - Every field below is a context-budget contract and must be filled
   independently; never write "see Step N".
@@ -60,7 +60,7 @@
 - Context cost: `M`
 - Authoritative docs:
   - `docs/03_wit_and_manifest.md` - manifest section; delegated SUMMARY
-  - `docs/adr/0009-raft-as-layer-infill-role.md` - direct read (93 lines)
+  - `docs/adr/0009-raft-as-layer-infill-role.md` - short; full read allowed
 - OrcaSlicer refs: none this step
 - Verification:
   - `cargo xtask build-guests && cargo xtask build-guests --check; echo EXIT:$?` - FACT exit 0
@@ -79,11 +79,18 @@
   scheduler double-holder negative in a new
   `crates/slicer-scheduler/tests/raft_claim_conflict_tdd.rs`, asserting a
   `SchedulerError::ClaimConflict` whose `module_a` / `module_b` name both ids.
+  The variant carries FOUR fields — `claim: String`, `module_a: ModuleId`,
+  `module_b: ModuleId`, `scope: ConflictScope` — so
+  `raft_fill_double_holder_conflicts` must bind or `..`-elide `scope` in its
+  pattern (and supply it if it constructs the variant); pin `claim` to the
+  raft-fill claim string and record the observed `ConflictScope` rather than
+  asserting a guessed one.
 - Precondition: Step 1 green.
 - Postcondition: AC-2 and AC-N1 green.
 - Files allowed to read, with ranges when over 300 lines:
   - `crates/slicer-scheduler/src/validation.rs` - the `ClaimConflict` variant
-    definition only (locate with `rg -n 'ClaimConflict'`)
+    definition and the `ConflictScope` enum only (locate with
+    `rg -n 'ClaimConflict|ConflictScope'`)
   - `crates/slicer-sdk/tests/should_emit_raft_fill_claim_tdd.rs` (full; small)
 - Files allowed to edit (at most 3):
   - `crates/slicer-scheduler/tests/raft_claim_conflict_tdd.rs` (new;
@@ -162,10 +169,14 @@
 ### Step 4: Raft config keys declared and wired
 
 - Task IDs: `TASK-417`
-- Objective: declare `raft_contact_distance` (float, default 0.1, min 0.0),
-  `raft_expansion` (float, default 1.5, min 0.0), and
-  `raft_first_layer_expansion` (float, default 2.0, min 0.0) in
-  `raft-default.toml`'s `[config.schema]` with min/max/display/group matching
+- Objective: declare the three net-new keys `raft_contact_distance` (float,
+  default 0.1, min 0.0), `raft_expansion` (float, default 1.5, min 0.0), and
+  `raft_first_layer_expansion` (float, default 2.0, min 0.0) — none exists
+  anywhere under `modules/` or `crates/` today, so there is no manifest to copy
+  them from; take names and defaults from `docs/ORCA_CONFIG_REFERENCE.md` and
+  the delegated `init_fff_params` FACT — in
+  `modules/core-modules/raft-default/raft-default.toml`'s `[config.schema]`
+  with min/max/display/group matching
   sibling modules, and confirm each is actually read by the geometry it
   controls. Author `crates/slicer-runtime/tests/contract/raft_bounds_tdd.rs`
   with `raft_keys_declared_and_wired`, `raft_index_outside_band_rejected`, and
@@ -184,7 +195,7 @@
   - `crates/slicer-runtime/tests/contract/raft_bounds_tdd.rs` (new)
   - `crates/slicer-runtime/tests/contract/main.rs` (add `mod raft_bounds_tdd;`)
 - Files explicitly out of bounds:
-  - all other contract test files; the four support manifests (Step 5);
+  - all other contract test files; the existing core-module manifests (Step 5);
     scheduler internals
 - Expected sub-agent dispatches:
   - OrcaSlicer FACT: `PrintConfig.cpp::init_fff_params` defaults and any
@@ -202,31 +213,33 @@
 - Exit condition: all three cases pass with non-zero counts; registration grep
   passes.
 
-### Step 5: Four-manifest wire-or-record + config doc regeneration
+### Step 5: Raft-key wire-or-record sweep + config doc regeneration
 
 - Task IDs: `TASK-418`
-- Objective: enumerate every raft key declared in the four support-module
-  manifests (`tree-support-planner`, `traditional-support-planner`,
-  `tree-support`, `traditional-support`), decide wire-or-record for each, apply
-  the manifest edit where the verdict is `wired`, and write every (key,
-  manifest) pair into `requirements.md` §Wire-or-Record Decisions with a
-  verdict and a reason naming the decision owner. Then regenerate
-  `docs/15_config_keys_reference.md` with `cargo xtask gen-config-docs` (T8).
-  The scaffold table has four rows as AC-7's minimum — expand it to the real
-  key set the dispatched grep returns.
+- Objective: **first re-derive** the real set of raft-related keys declared by
+  the existing core-module manifests —
+  `rg -o '^\[config\.schema\.[a-z_]*raft[a-z_]*\]' modules/core-modules -g '*.toml' -g '!raft-default.toml'`
+  (keep filenames, to get the manifest per hit) — then decide wire-or-record
+  for each hit, apply the manifest edit where the verdict is `wired`, and write
+  one row per (key, manifest) declaration site into `requirements.md`
+  §Wire-or-Record Decisions with a verdict and a reason naming the decision
+  owner. Then regenerate `docs/15_config_keys_reference.md` with
+  `cargo xtask gen-config-docs` (T8). There is **no fixed expected key set**:
+  the table follows the grep. The three net-new raft-default keys are excluded
+  from this table by construction.
 - Precondition: Step 4 green.
 - Postcondition: AC-7 green; the regenerated config doc contains the three new
   keys.
 - Files allowed to read, with ranges when over 300 lines:
-  - the four support-module manifests (small; full read fine)
+  - the core-module manifests the re-derivation grep flags (small; full read fine)
 - Files allowed to edit (at most 3 logical surfaces):
-  - `modules/core-modules/{tree-support-planner,traditional-support-planner,tree-support,traditional-support}/*.toml` (annotation / declaration edits across these four count as one logical surface; no logic changes)
+  - the core-module manifests the re-derivation grep flags (`modules/core-modules/*/*.toml`; annotation / declaration edits across them count as one logical surface; no logic changes)
   - `docs/spec_packets/240b-support-raft-module/requirements.md` (the table)
   - `docs/15_config_keys_reference.md` (regenerated output only — never hand-edited)
 - Files explicitly out of bounds:
   - the support modules' `src/**` (238b/238c surface); `raft-default.toml`
 - Expected sub-agent dispatches:
-  - LOCATIONS: every raft key declared in the four support-module manifests;
+  - LOCATIONS: every raft-related key declared in any core-module manifest;
     scope `modules/core-modules/`; return LOCATIONS; purpose: the real key set
 - Context cost: `M`
 - Authoritative docs:
@@ -234,18 +247,28 @@
 - OrcaSlicer refs: none this step
 - Verification:
   - `cargo xtask gen-config-docs && rg -q 'raft_contact_distance' docs/15_config_keys_reference.md && rg -q 'raft_first_layer_expansion' docs/15_config_keys_reference.md` - FACT
-  - `test "$(rg -c '^\| .raft_[a-z_]+. \|' docs/spec_packets/240b-support-raft-module/requirements.md)" -ge 4 && ! rg -q 'pending Step 5' docs/spec_packets/240b-support-raft-module/requirements.md && rg -q 'tree-support-planner' docs/spec_packets/240b-support-raft-module/requirements.md && rg -q 'traditional-support' docs/spec_packets/240b-support-raft-module/requirements.md` - AC-7
+  - `DECL="$(rg --no-filename -o '^\[config\.schema\.[a-z_]*raft[a-z_]*\]' modules/core-modules -g '*.toml' -g '!raft-default.toml' | wc -l)"; ROWS="$(rg -c '^\| .[a-z_]*raft[a-z_]*. \| .[a-z0-9-]+. \| [a-z]' docs/spec_packets/240b-support-raft-module/requirements.md)"; test "$DECL" -ge 1 && test "${ROWS:-0}" -eq "$DECL" && ! rg -q 'pending Step 5' docs/spec_packets/240b-support-raft-module/requirements.md` - AC-7
   - `git diff --stat docs/15_config_keys_reference.md` - FACT: regenerated, not hand-edited
-- Exit condition: AC-7 green; every enumerated key has a written verdict; the
+- Exit condition: AC-7 green; every key the grep returned has a written verdict; the
   config doc regenerates cleanly.
 
 ### Step 6: Formal ADR-0009 amendment + deviation row
 
-- Task IDs: `TASK-535`
+- Task IDs: `TASK-537`
 - Objective: execute the ADR-0009 amendment per `design.md` §ADR-0009
   Reconciliation "Amendment mechanics" — flip the Status line from
   `Proposed (lands with docs/specs/raft-default-module.md)` to `Accepted`
-  (dropping the parenthetical, since that file does not exist), and add an
+  (dropping the parenthetical) AND replace the other two
+  `docs/specs/raft-default-module.md` pointers in the ADR — the Decision-3
+  carrier parenthetical and the References-list entry — for three occurrences
+  in all; run `rg -n 'raft-default-module\.md' docs/adr/0009-raft-as-layer-infill-role.md`
+  before and after to confirm none remain. The path does not exist; the doc was
+  archived to `docs/specs/_OLD/raft-default-module.md`. Point the replacements
+  at this packet (`docs/spec_packets/240b-support-raft-module/`), NOT at the
+  archived file: the archive predates the current key naming
+  (`raft_expansion_mm`, `raft_z_gap_mm`, `raft_layer_height_mm`,
+  `raft_pattern`) and 240b adopts the canonical Orca names instead, so it is
+  historical context only. Then add an
   additive `## Amendment — <date> (packet 240b)` section that QUOTES the
   original Decision-5 clause verbatim and records the reassignment of
   `claim:raft-fill` to `com.core.raft-default`. Decision 4, the
@@ -258,7 +281,7 @@
 - Precondition: Steps 1-5 green.
 - Postcondition: every `packet.spec.md` §Doc Impact Statement grep passes.
 - Files allowed to read, with ranges when over 300 lines:
-  - `docs/adr/0009-raft-as-layer-infill-role.md` - direct read (93 lines)
+  - `docs/adr/0009-raft-as-layer-infill-role.md` - short; full read allowed
   - `docs/DEVIATION_LOG.md` - the header row and the two `*-ADR-*-AMENDED` rows
     only, as the format template
 - Files allowed to edit (at most 3):
@@ -280,13 +303,15 @@
   - ``test "$(rg -c 'rectilinear-infill` declaring the claim' docs/adr/0009-raft-as-layer-infill-role.md)" -ge 2`` - FACT: the clause appears TWICE (original Decision 5 + the verbatim quote inside the Amendment). One occurrence means the amendment did not quote it; a single-hit `rg -q` would pass against the unamended file and prove nothing.
   - `rg -q 'raft-default-module\.md' docs/adr/0009-raft-as-layer-infill-role.md && exit 1 || true` - FACT: the dangling reference is gone
   - `rg -q 'ADR-0009-AMENDED' docs/DEVIATION_LOG.md && cargo xtask check-deviations; echo EXIT:$?` - FACT exit 0
-- Exit condition: all greps pass; `git diff` on the ADR shows additions plus the
-  single Status-line change, and no modification to any Decision or
-  Future-Reviewer line.
+- Exit condition: all greps pass; `git diff` on the ADR shows additions plus
+  the Status-line change and the two dangling-pointer replacements (Decision-3
+  parenthetical, References entry). Apart from swapping that one dead path, no
+  Decision or Future-Reviewer line changes in substance — Decision 4, Decision
+  5's original text, and the Future-Reviewer Note stay verbatim.
 
 ### Step 7: DEV-124 re-verification, acceptance gates, Human Validation Gate
 
-- Task IDs: `TASK-535`
+- Task IDs: `TASK-537`
 - Objective: run the AC-8 commands under a raft-configured config view and
   write the outcome into `requirements.md` §DEV-124 Re-verification — pass, or
   the corrected predicate plus the fix. 240a filed the reopen row on the
@@ -335,7 +360,7 @@
 | Step 2 | S | claim resolution + double-holder negative |
 | Step 3 | M | geometry port + four integration cases |
 | Step 4 | M | keys + bounds + undeclared-key negative |
-| Step 5 | M | wire-or-record across four manifests + doc regen |
+| Step 5 | M | wire-or-record across the manifests the grep flags + doc regen |
 | Step 6 | S | ADR amendment + deviation row |
 | Step 7 | S | DEV-124 re-verification + gates + human gate |
 
@@ -348,7 +373,7 @@ Aggregate is `M`; no row is `L`.
 - `cargo xtask check-literals` exit 0, with no new violations relative to the
   pre-packet baseline re-derived on a clean tree.
 - Update `docs/07_implementation_status.md` with `TASK-414`..`TASK-418` and
-  `TASK-535` through a worker dispatch, never a full backlog read.
+  `TASK-537` through a worker dispatch, never a full backlog read.
 - Reconcile superseded transitions: G-06 closed; 215-raft-geometry absorption
   recorded (the directory was already deleted by 236 AC-10); plan §11 queue
   row #7 marked done across both 240a and 240b.

@@ -52,10 +52,12 @@
 - Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and inspect its exit code: exit 0 means fresh, non-zero means stale (a distinct exit code signals `wasm-tools` is unavailable). Never use `rg -q 'STALE:'` — a `wasm-tools`-missing infrastructure error prints no `STALE:` and would read as fresh. If stale, rebuild without `--check` before re-running the failing test. Stale-guest failures look unrelated to the change but are caused by it.
 <!-- snippet: coord-system -->
 - Coordinate units: **1 unit = 100 nm** (10⁻⁴ mm), NOT 1 nm like OrcaSlicer. Divide OrcaSlicer constants by 100. Use `Point2::from_mm(x, y)` or `mm_to_units()` at every mm↔unit boundary. Full porting checklist in `docs/08_coordinate_system.md`.
-- Schema/version constants: this packet bumps
-  `CURRENT_SLICE_IR_SCHEMA_VERSION` from `4.8.0` to `4.9.0` for
-  `SlicedRegion.raft_fill` plus the signed indices. Re-derive the live value
-  before editing rather than trusting `4.8.0` written here. The bump and every
+- Schema/version constants: this packet minor-bumps
+  `CURRENT_SLICE_IR_SCHEMA_VERSION` for `SlicedRegion.raft_fill` plus the
+  signed indices. The target is **the next MINOR above the live value,
+  re-derived from `crates/slicer-ir/src/slice_ir.rs` at the moment of the edit** — never a
+  literal written here. The live value was `4.8.0` at authoring, so `4.9.0`
+  unless another in-flight packet bumped first. The bump and every
   test asserting the old value land in the same step (Step 7); only two test
   files assert the literal today (`crates/slicer-ir/tests/ir_tests.rs` and
   `crates/slicer-ir/tests/material_boundary_widening_tdd.rs`) — confirm that
@@ -237,8 +239,14 @@ template; the sites are:
   `paint-region-layer-view`.
 - `crates/slicer-wasm-host/src/host.rs` — `PaintRegionLayerData.raft_plan`
   field + accessor impl that pushes `"SupportPlanIR"` to `runtime_reads`,
-  matching the existing `support_plan_entries` impl. The 8 existing
-  `PaintRegionLayerData` construction sites must move to FRU or `Default`.
+  matching the existing `support_plan_entries` impl. There are exactly two
+  `PaintRegionLayerData` struct literals crate-wide — one in
+  `paint_region_ir_to_layer_data` (`crates/slicer-wasm-host/src/host.rs`) and
+  one in `crates/slicer-wasm-host/src/dispatch.rs` — and both must move to FRU
+  or `Default`. Several further functions merely *return*
+  `PaintRegionLayerData` (mostly in `dispatch.rs`) and need no change; re-derive
+  the exact set at edit time (`rg -n 'PaintRegionLayerData' crates/slicer-wasm-host/src`)
+  rather than trusting a count written here.
 - `crates/slicer-wasm-host/src/dispatch.rs` — populate in
   `build_paint_layer_data_with_plan` directly after the struct literal; raft is
   layer-independent, so unlike `support_plan_entries` it takes no
@@ -317,7 +325,10 @@ ESCALATION.
 
 ## Data and Contract Notes
 
-- IR/manifest contracts: `SliceIR` schema minor-bumped to `4.9.0`;
+- IR/manifest contracts: `SliceIR` schema minor-bumped to the next minor above
+  the live `CURRENT_SLICE_IR_SCHEMA_VERSION` (re-derived from
+  `crates/slicer-ir/src/slice_ir.rs` at the moment of the edit; `4.8.0` at
+  authoring, so `4.9.0` unless something bumped first);
   `SlicedRegion.raft_fill` serde-defaulted so old JSON loads; config keys
   snake_case (E9).
 - WIT boundary: canonical sources live at `crates/slicer-schema/wit/` (both

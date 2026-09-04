@@ -87,9 +87,14 @@ mid-implementation.
    ("inflate in multiple steps" staging preserved as iterated offsets), and
    derive interface-band footprints at contact-distance spacing. Emit polygons
    only through `run_infill` into `SlicedRegion.raft_fill`.
-3. **Keys + decisions:** declare the three canonical keys in the new manifest;
-   fill `requirements.md` §Wire-or-Record Decisions for every dead raft key in
-   the four support-module manifests; regenerate
+3. **Keys + decisions:** declare the three canonical keys — all net-new; none
+   of `raft_contact_distance`, `raft_expansion`, or
+   `raft_first_layer_expansion` exists anywhere under `modules/` or `crates/`
+   today, and their names/defaults come from `docs/ORCA_CONFIG_REFERENCE.md`
+   plus canonical `init_fff_params` in `PrintConfig.cpp` — in the new manifest;
+   fill `requirements.md` §Wire-or-Record Decisions with one row per
+   raft-related key the existing core-module manifests actually declare,
+   re-derived by grep at execution time rather than assumed; regenerate
    `docs/15_config_keys_reference.md` with `cargo xtask gen-config-docs`.
 4. **Negatives:** claim-conflict, band-bounds rejection, and an undeclared-key
    rejection that actually exercises the rejection path rather than grepping
@@ -175,8 +180,17 @@ immutability convention: the ADR's inline Decision-5 text stays verbatim, and a
 new `## Amendment — <date> (packet 240b)` section quotes the contested clause
 and records the reassignment. The Status line also flips from
 `Proposed (lands with docs/specs/raft-default-module.md)` to `Accepted`,
-dropping the parenthetical — `docs/specs/raft-default-module.md` does not exist
-and never landed, so leaving the reference would be a dangling citation. And
+dropping the parenthetical: `docs/specs/raft-default-module.md` does not exist
+at that path — an archived predecessor does exist at
+`docs/specs/_OLD/raft-default-module.md`, so the ADR's pointer is dangling
+because the doc was archived, not because it was never written. The pointer
+appears THREE times in the ADR (the `## Status` line, the Decision-3 carrier
+parenthetical, and the References list); all three must be replaced, not just
+the Status line. The archived doc is historical context only and is NOT the
+contract: it names `raft_expansion_mm`, `raft_z_gap_mm`, `raft_layer_height_mm`,
+and `raft_pattern`, whereas 240b deliberately adopts the canonical Orca names
+(`raft_contact_distance`, `raft_expansion`, `raft_first_layer_expansion`) per
+`docs/ORCA_CONFIG_REFERENCE.md`. And
 because the packet supersedes an ADR's normative clause, it MUST also file a
 deviation row: the live convention is `D-<pkt>-ADR-<NNNN>-AMENDED`
 (`D-285-ADR-0051-AMENDED`, `D-286-ADR-0005-AMENDED` are the shipped
@@ -212,7 +226,7 @@ consumer.
 ## Files in Scope (read + edit)
 
 - `modules/core-modules/raft-default/**` - role: the new guest module; expected change: full directory (Cargo.toml, manifest, src, wit-guest).
-- `modules/core-modules/{tree-support-planner,traditional-support-planner,tree-support,traditional-support}/*.toml` - role: wire-or-record annotations; expected change: comment or `[config.schema]` rows only, no logic.
+- `modules/core-modules/*/*.toml` for whichever manifests the Step 5 re-derivation grep shows declare a raft-related key (at authoring: `arachne-perimeters`, `classic-perimeters`, `tree-support-planner`; re-derive, do not assume) - role: wire-or-record annotations; expected change: comment or `[config.schema]` rows only, no logic.
 - `crates/slicer-runtime/tests/integration/raft_geometry.rs` + `main.rs` registration - role: AC-3/AC-4/AC-5 cases.
 - `crates/slicer-runtime/tests/contract/raft_bounds_tdd.rs` + `main.rs` registration - role: AC-6/AC-N2/AC-N3 cases.
 - `crates/slicer-scheduler/tests/raft_claim_conflict_tdd.rs` - role: AC-N1.
@@ -224,8 +238,8 @@ consumer.
 - `modules/core-modules/rectilinear-infill/{Cargo.toml, rectilinear-infill.toml}` - full read (small) - purpose: the shape template for the new module.
 - `crates/slicer-schema/wit/deps/layer-infill/layer-infill.wit` - full read (20 lines) - purpose: confirm the world's import set covers the new accessors.
 - `crates/slicer-sdk/src/views.rs` - the `should_emit` range, located at read time with `rg -n 'fn should_emit'` - purpose: the claim-string mapping.
-- `crates/slicer-scheduler/src/validation.rs` - the `ClaimConflict` variant definition only (`rg -n 'ClaimConflict'`) - purpose: the exact error shape AC-N1 asserts (`claim: String, module_a: ModuleId, module_b: ModuleId`).
-- `modules/core-modules/tree-support-planner/src/lib.rs` - the range around `push_raft_plan` only - purpose: producer contract; never load the ~5.9k-line file.
+- `crates/slicer-scheduler/src/validation.rs` - the `ClaimConflict` variant definition only (`rg -n 'ClaimConflict'`) - purpose: the exact error shape AC-N1 asserts. It has FOUR fields: `claim: String`, `module_a: ModuleId`, `module_b: ModuleId`, and `scope: ConflictScope` ("scope in which the conflict was observed"). Any match or construction must bind or `..`-elide all four.
+- `modules/core-modules/tree-support-planner/src/lib.rs` - the range around `push_raft_plan` only - purpose: producer contract; the file is very long - ranged reads only, never load it in full.
 
 ## Out-of-Bounds Files
 
@@ -253,9 +267,10 @@ consumer.
   structure); return SUMMARY; purpose: Step 3.
 - OrcaSlicer FACT: `PrintConfig.cpp::init_fff_params` defaults for the three
   raft keys; return FACT; purpose: Step 4.
-- LOCATIONS: every raft key declared in the four support-module manifests;
+- LOCATIONS: every raft-related key declared in any core-module manifest;
   scope `modules/core-modules/`; return LOCATIONS; purpose: Step 5's
-  wire-or-record table (the four scaffold rows are a minimum, not the total).
+  wire-or-record table (the row set is whatever the grep returns; there is no
+  fixed expected set, and the three net-new raft-default keys are excluded).
 
 ## Data and Contract Notes
 
@@ -268,15 +283,19 @@ consumer.
   it needs to, that is 240a scope.
 - Determinism/scheduler constraints: exactly one `claim:raft-fill` holder
   expected; a double holder surfaces as `SchedulerError::ClaimConflict` with
-  both module ids, and per-region resolution stays deterministic.
+  both module ids plus the `claim` string and a `scope: ConflictScope`
+  discriminator (four fields total), and per-region resolution stays
+  deterministic.
 
 ## Locked Assumptions and Invariants
 
 - Rafts remain signed negative global-layer prefix entries; never anchored
   entities (plan §15; ADR-0009).
 - Canonical defaults: `raft_contact_distance` 0.1 mm, `raft_expansion` 1.5 mm,
-  `raft_first_layer_expansion` 2.0 mm — declared as-is in mm, converted ÷100 at
-  the unit boundary.
+  `raft_first_layer_expansion` 2.0 mm, sourced from
+  `docs/ORCA_CONFIG_REFERENCE.md` and canonical `init_fff_params`
+  (`PrintConfig.cpp`) — declared as-is in mm, converted ÷100 at the unit
+  boundary. All three are net-new keys owned solely by `raft-default.toml`.
 - ADR-0009 Decision 4 and the Future-Reviewer Note are preserved verbatim; only
   Decision 5's claim assignment is amended, additively.
 - Invariant 16: every acceptance command names `--exact` tests or asserts a
