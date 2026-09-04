@@ -531,9 +531,9 @@ dependencies = [
 
 [[package]]
 name = "clipper2-rust"
-version = "1.0.3"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "119b9306cc17492f50224736a2b2595543665c3095ba40c04c5c5181d53678bc"
+checksum = "0fd663fe209e7030c956e3be4c051dcc20cdb73da794f31466762cff12ca11bf"
 dependencies = [
  "num-traits",
 ]
