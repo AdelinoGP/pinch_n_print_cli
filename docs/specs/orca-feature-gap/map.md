@@ -366,6 +366,25 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
     item's transform, bakes it into the vertices, and discards it. Canonical's
     `object->trafo()` has no counterpart to read, so any key deriving from object
     orientation needs a model-io change first, not a config declaration.
+- **The CONFIG_BLOCK is parsed by OrcaSlicer, and it silently corrects what it
+  cannot parse — so a wrong *spelling* is invisible, not loud.** Measured by
+  ticket 112. The G-code viewer calls canonical `ConfigBase::load_from_gcode_file`
+  (`Config.cpp`) with `ForwardCompatibilitySubstitutionRule::EnableSilent`, and
+  under that rule `ConfigBase::set_deserialize_raw`'s fallback rescues any value
+  a `coBool` or `coEnum` rejects: bools go through
+  `ConfigHelpers::enum_looks_like_true_value` (which matches only `"enabled"` /
+  `"on"`), enums are reset to `optdef->default_value`. Nothing is thrown, nothing
+  is logged, and the pair still counts toward the ≥80 floor. Consequences this
+  port is living with today: `ConfigOptionBool::deserialize` accepts only `"1"` /
+  `"0"`, so **every word-form `true` emitted by `emit_config_kv`
+  (`crates/slicer-gcode/src/serialize.rs`) reads back in OrcaSlicer as `false`**;
+  and `wall_generator`, emitted as `format!("{:?}")`, resets to canonical's
+  default because the keywords are lowercase. `SupportType::as_canonical_str`
+  (`crates/slicer-ir/src/slice_ir.rs`) is the same bug already fixed for one enum.
+  **Any packet that adds a CONFIG_BLOCK key owes a canonical *value* spelling, not
+  just a canonical key name** — and note that canonical's `key_value_pairs`
+  counter increments only for keys it *accepted*, so an unrecognised key buys no
+  margin. Ticket 132 carries the fix; do not spot-fix one key ahead of it.
 - **Skills every session should consult:** `/grilling` and `/domain-modeling`
   for decision tickets; `/spec-packet-generator` for authoring; `/spec-review
   <packet> --preflight` as the authoring gate.
@@ -1215,6 +1234,8 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
   retired. Finding 2's "no internal-solid fill domain" is no longer true of the
   tree; 262b's DIV-8 seam statement survives (the claim seam is still per region,
   so the narrow split still lives inside the holder module).
+- [111 — Convert the part-cooling fan scale to percent 0–100, and make `overhang_fan_speed` absolute](issues/111-convert-fan-scale-to-percent.md) — **confirm-and-amend on packet 253, which already owns the conversion; no code written.** Canonical declares all fan speeds percent 0–100, so the port's 0–255 scale is the divergence. Three rulings: percent→PWM converts **once per channel with three different formulas** (`set_fan` biases with 255.5, `set_additional_fan`/`set_exhaust_fan` truncate with 255.0), never one shared helper; `overhang_fan_speed` is **absolute**, gated by `overhang_fan_speed > base` (a `>` test that then replaces the base outright — not a `max` merge, not a fraction of `fan_max_speed`), so at the packet's own defaults the overhang branch does not even engage; and the 0–255→percent break is **accepted unmigrated** (user ruling, ticket-107 precedent) — >100 fails loudly at bounds check, 0–100 is silently reinterpreted. The sibling `slow_down_*` keys need no ticket: packet 253's AC-10/AC-11 already carry them. Corrected three contradictions in packet 253 (its `design.md` mandated a single shared converter against its own AC-2, preserved the percentage-of-max semantics the ruling rejected, and mis-stated the default overhang byte) and found one fixture whose premise inverts under absolute semantics rather than merely restating in percent. **Trap for any later fan work:** `fan_min_speed` was declaration-only — declared and schema-tested, never read by the module.
+- [112 — Derive the CONFIG_BLOCK padding table from the resolved config](issues/112-derive-config-block-padding-from-resolved-config.md) — **decided, not executed; the premise inverted and the scope grew, so it filed a packet ticket instead.** The hardcoded padding table turned out to be the *correctly spelled* part; the resolved-config emission that shadows it is where values are silently corrupted (see the CONFIG_BLOCK Note above). Rulings: derive from **module manifest `[config.schema]` defaults** via `ConfigFieldEntry.default` (a string for every type, unlike the percent-only `parsed_default`) — and the map's "manifest default is dead" hazard **inverts** here, because a key with a `ResolvedConfig` field is already emitted and padding never fires for it; keep an explicit canonically-grounded floor list for the keys no module declares, pinned by a test that each entry is live in `PrintConfigDef` and declared by no module (that, not "nothing hardcoded", is the anti-drift property Q5 wanted); delete the canonical-unknown rows (`top_fill_pattern`, `support_material`, `outer_wall_direction`, `infill_first`, `extra_perimeters` — none of them a legacy alias, all silently dropped by canonical). Measured taxonomy of the 69 rows: **9 dead** (shadowed by `to_config_map`), **24 live and derivable**, **36 live with no in-tree owner**. **The ≥80 floor is not currently guaranteed:** canonical counts only *accepted* pairs, and the port's integration test counts *lines*, so it asserts the wrong quantity; the true accepted count is **unmeasured**. **Two ledger facts in the ticket body re-verified false:** `skirt_loops` / `skirt_distance` / `brim_width` were *not* realigned by Q14(a) (padding still reads 1/2/0 against manifests 6/3.0/8.0), and `support_raft_layers` is not in the table at all. Implementation handed to [132 — Author packet — the CONFIG_BLOCK is a contract with OrcaSlicer's reader](issues/132-author-packet-config-block-reader-contract.md).
 
 ## Not yet specified
 
