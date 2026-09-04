@@ -2,8 +2,10 @@
 
 ## Packet Metadata
 
-- Grouped task IDs: `TASK-429`..`TASK-440` (allocated from docs/07's ledger at authoring;
-  registered into docs/07 by this packet's own closure step — Step 1)
+- Grouped task IDs: `TASK-429`..`TASK-440` — a **backfill into an unused gap**, not an append at
+  the tip of docs/07's ledger; registered into docs/07 by this packet's own closure step (Step 1),
+  which must verify TASK-429..TASK-440 are *absent* before writing (see `implementation-plan.md`
+  Step 1 for the re-derivation command and its expected non-tip result)
 - Backlog source: `docs/07_implementation_status.md`
 - Packet status: `draft`
 - Aggregate context cost: `M`
@@ -15,8 +17,10 @@ Packet 224-support-family-orca-closure closed prematurely twice (2026-08-17 retr
 two vacuous evidence tests, all amended in-session). Its amended ACs, the gap register
 (`docs/specs/support-parity-gap-register.md`), the parity audit, and
 `docs/spec_packets/224-support-family-orca-closure/handoffs/orca-divergences.md` are inherited
-by this packet, which supersedes 224 and closes the sequence for real: the seven dependency
-packets (237, 238a, 238b, 238c, 239, 240, 241) each change support behavior, so every inherited
+by this packet, which supersedes 224 and closes the sequence for real: the eleven dependency
+packets named in `packet.spec.md`'s frontmatter (237, 238a, 238b, 238c, 239a, 239b, 239c, 239d,
+240a, 240b, 241 — the former 239 is superseded by 239a/239b/239c/239d, and the former 240 was
+split into 240a + 240b) each change support behavior, so every inherited
 closure claim must be re-proven against the post-dependency tree, every routed gap/deviation/
 divergence must come back dispositioned in writing, and the absorbed 218 e2e `;TYPE:` evidence
 must finally exist. TASK-335 closes here and only here. This is one coherent slice because
@@ -36,14 +40,20 @@ differential inspection that the final gate signs.
   per-family/per-axis inspection record (AC-3), five behavioral axes only.
 - Final G-code role markers `;TYPE:Support` / `;TYPE:Support interface` (AC-4).
 - Supersession records: 213/TASK-329, deleted drafts 215/216/217/218 with absorption mapping
-  (215→240, 216→220/224+238c, 217→220/224, 218→242), and 224 itself; flip 224's packet.spec.md
+  (215→240a/240b, 216→220/224+238c, 217→220/224, 218→242), and 224 itself; flip 224's packet.spec.md
   to `status: superseded` with `superseded_by:` (AC-5).
 - TASK-163b-orca-ref disposition re-confirmation against the fresh references (AC-6).
 - Absorbed 218 scope: a support-marked e2e case in
   `crates/pnp-cli/tests/visual_debug_gcode_renderer_tdd.rs` proving `;TYPE:Support` /
   `;TYPE:Support interface` markers coexist with layer images (AC-7).
-- Register closure audit: one grep-able disposition token per G-row, mirrored in
-  `design.md §Gap Register Disposition Ledger` (AC-8, AC-N3).
+- Register closure audit: this packet ADDS a fifth `Disposition` column to
+  `docs/specs/support-parity-gap-register.md` — updating the table's header row to
+  `| # | Gap | Evidence | Destination | Disposition |` and its separator row to match — and writes
+  exactly one of `[CLOSED <packet> <date>]` / `[WAIVED <date>: <justification>]` /
+  `[CARRIED -> <owner>: <reason>]` into that cell for every `| G-NN |` row, mirrored in
+  `design.md §Gap Register Disposition Ledger` (AC-8, AC-N3). The register's prose framing still
+  names packet **224** as the closing packet; re-point that framing text at 242 as part of the
+  same edit. Row totals are re-derived at audit time, never quoted from this document.
 - Deviation dispositions DEV-141..146 (AC-9); divergence dispositions for all eight
   squashed-commit sections (AC-10).
 - Final human gate: full differential inspection both families vs fresh references + whole-suite
@@ -54,7 +64,8 @@ differential inspection that the final gate signs.
 ## Out of Scope
 
 - Any new support geometry, planner algorithm, config key, scheduler rule, renderer semantic, or
-  rasterizer behavior — that work belongs to 237/238a/238b/238c/239/240/241. Discovering a
+  rasterizer behavior — that work belongs to
+  237/238a/238b/238c/239a/239b/239c/239d/240a/240b/241. Discovering a
   defect in those areas routes it back to the owner (or `[BLOCK]`), never a fix in passing.
 - Recreating `missing_fixture_is_blocking` or any dedicated missing-fixture test: the
   `support_test_path` resolver panic contract is the gate; the dedicated test was deleted
@@ -76,14 +87,14 @@ differential inspection that the final gate signs.
 
 ## Authoritative Docs
 
-- `docs/specs/support-families-anchored-entities-plan.md` (755 lines) - direct range reads only:
+- `docs/specs/support-families-anchored-entities-plan.md` (very long) - direct range reads only:
   §3 Ruling 2, §7 E1-E9, §8 human gate, §9 references, §10 supersession, §12 brief 242, §13
   traps T1-T11, §14 authoring rules. Never full-file loads in implementation.
-- `docs/specs/support-parity-gap-register.md` (70 lines) - direct read; row bodies of owner
+- `docs/specs/support-parity-gap-register.md` (short) - direct read; row bodies of owner
   packets delegated when auditing.
 - `docs/spec_packets/224-support-family-orca-closure/packet.spec.md` + `design.md` - delegated
-  SUMMARY of amended ACs, §Orca reference profile, and §Orca Inspection Checklist (both over 300
-  lines; ranged reads only).
+  SUMMARY of amended ACs, §Orca reference profile, and §Orca Inspection Checklist (both long;
+  ranged reads only, never a full read).
 - `docs/spec_packets/224-support-family-orca-closure/handoffs/orca-divergences.md` - direct read
   of section headers; section bodies delegated.
 - `docs/19_visual_debug.md` - delegated bounded summary for bundle/manifest contract questions.
@@ -109,7 +120,8 @@ Reference, never copy, criteria from `packet.spec.md`.
   audit; deviation dispositions; divergence dispositions).
 - Negative: `AC-N1` (invalid geometry fails), `AC-N2` (resolver panic contract intact; no
   recreated missing-fixture test), `AC-N3` (no unwritten waiver).
-- Cross-packet impact: consumes the finished state of 237/238a/238b/238c/239/240/241; flips 224
+- Cross-packet impact: consumes the finished state of
+  237/238a/238b/238c/239a/239b/239c/239d/240a/240b/241; flips 224
   to `superseded`; closes TASK-335 in docs/07; registers TASK-429..440. The only cross-packet
   file edit is the 224 `packet.spec.md` status flip (packet-safety rule: the superseding packet
   owns it).
@@ -126,7 +138,7 @@ This is the authoritative full matrix; `packet.spec.md` lists only gate commands
 | `cargo test -p pnp-cli --test visual_debug_gcode_renderer_tdd -- gcode_support_type_markers_render_alongside_layer_images --exact 2>&1 \| tee target/test-output.log \| grep -E "^test result: ok\. 1 passed"` | AC-7: absorbed-218 e2e `;TYPE:` evidence | FACT pass/fail; failure SNIPPETS ≤20 lines |
 | `cargo run -q --bin pnp_cli -- visual-debug --request tmp/visual-debug-support-family-tree.json --output target/vd-p242-support-family-tree --overwrite && cargo run -q --bin pnp_cli -- visual-debug --request tmp/visual-debug-support-family-normal.json --output target/vd-p242-support-family-normal --overwrite && cargo test -p slicer-runtime --test integration -- matched_height_evidence --exact` | AC-2 precondition renders | FACT pass/fail |
 | `rg -q '^## Matched-Height Inspection Record \(242\)' docs/spec_packets/242-support-family-orca-closure/design.md && rg -q '^## Differential Inspection Record \(242\)' docs/spec_packets/242-support-family-orca-closure/design.md && rg -q '^## TASK-163b and TASK-335 Disposition' docs/spec_packets/242-support-family-orca-closure/design.md` | AC-2/AC-3/AC-6 written halves (E2) | FACT present/absent |
-| `test "$(grep -cE '^\| G-[0-9]+ ' docs/specs/support-parity-gap-register.md)" -eq "$(grep -cE '^\| G-[0-9]+ .*\[(CLOSED\|WAIVED\|CARRIED)' docs/specs/support-parity-gap-register.md)" && test "$(grep -cE '^\| G-[0-9]+ ' docs/specs/support-parity-gap-register.md)" -eq 24` | AC-8/AC-N3 register-closure audit (register-local counts) | FACT pass/fail with both counts |
+| `test "$(grep -cE '^\| G-[0-9]+ ' docs/specs/support-parity-gap-register.md)" -eq "$(grep -cE '^\| G-[0-9]+ .*\| \[(CLOSED\|WAIVED\|CARRIED)[^]]*\] \|$' docs/specs/support-parity-gap-register.md)" && test "$(grep -cE '^\| G-[0-9]+ ' docs/specs/support-parity-gap-register.md)" -gt 0` | AC-8/AC-N3 register-closure audit (register-local counts, live total re-derived — no frozen literal; asserts the new `Disposition` column) | FACT pass/fail with both counts |
 | `for d in 141 142 143 144 145 146; do rg -q "DEV-$d: (CLOSED\|CARRIED)" docs/spec_packets/242-support-family-orca-closure/design.md \|\| exit 1; done && cargo xtask check-deviations >/dev/null` | AC-9 deviation dispositions | FACT pass/fail |
 | `test "$(grep -c '^## Squashed commit' docs/spec_packets/224-support-family-orca-closure/handoffs/orca-divergences.md)" -eq "$(grep -cE '^- Squashed commit [0-9]+ of 8: DISPOSITIONED' docs/spec_packets/242-support-family-orca-closure/design.md)"` | AC-10 divergence dispositions | FACT pass/fail with both counts |
 | `rg -q '^status: superseded' docs/spec_packets/224-support-family-orca-closure/packet.spec.md && rg -q '^superseded_by: 242-support-family-orca-closure' docs/spec_packets/224-support-family-orca-closure/packet.spec.md` | AC-5 224 flip | FACT pass/fail |

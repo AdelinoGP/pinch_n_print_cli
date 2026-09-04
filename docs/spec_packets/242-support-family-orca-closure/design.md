@@ -18,7 +18,11 @@
   only inline `;TYPE:Outer wall` / `;TYPE:Solid infill` fixtures);
   `orca_type_label` mapping in `crates/slicer-gcode/src/emit.rs`
   (`ExtrusionRole::SupportMaterial → ";TYPE:Support"`,
-  `ExtrusionRole::SupportInterface → ";TYPE:Support interface"`).
+  `ExtrusionRole::SupportInterface → ";TYPE:Support interface"`). **Non-injective:**
+  `ExtrusionRole::SupportBaseInterface` maps to the SAME `;TYPE:Support interface` literal, so
+  `;TYPE:` markers cannot discriminate base-interface from top-interface. AC-4 and AC-7 are
+  worded to claim only interface-family marker survival; any base-interface claim must assert on
+  the IR role, not the label.
 - OrcaSlicer comparison: see `requirements.md` §OrcaSlicer Reference Obligations; do not repeat delegation rules.
 
 ## Architecture Constraints
@@ -60,9 +64,14 @@
     `_styled`/`from_path` variant the neighboring tests use), asserting support/interface moves
     appear as layer images coexisting with wall/infill roles in the manifest/PNG set.
     Red-first per repo discipline.
-  - Disposition token cells appended to each G-row's evidence column in
-    `docs/specs/support-parity-gap-register.md`, format `[CLOSED <packet> <date>]` /
-    `[WAIVED <date>: <justification>]` / `[CARRIED -> <owner>: <reason>]`.
+  - A NEW fifth `Disposition` column added to the register table in
+    `docs/specs/support-parity-gap-register.md` (today a four-column
+    `| # | Gap | Evidence | Destination |`): the header becomes
+    `| # | Gap | Evidence | Destination | Disposition |`, the separator row gains a fifth cell,
+    and every `| G-NN |` row carries exactly one token in that final cell, format
+    `[CLOSED <packet> <date>]` / `[WAIVED <date>: <justification>]` /
+    `[CARRIED -> <owner>: <reason>]`. The same edit re-points the register's prose framing, which
+    still names packet 224 as the closing packet, at packet 242.
   - `docs/spec_packets/224-support-family-orca-closure/packet.spec.md` YAML flip to
     `status: superseded` + `superseded_by: 242-support-family-orca-closure` (no other line of
     that file changes).
@@ -87,8 +96,10 @@ Target at most 3 primary files; justified extras below are ledgers owned by this
   records.
 - `crates/pnp-cli/tests/visual_debug_gcode_renderer_tdd.rs` - role: absorbed-218 e2e evidence;
   expected change: add one support-marked test (Step 5).
-- `docs/specs/support-parity-gap-register.md` - role: register closure; expected change: one
-  token cell per row (Step 3). Justified extra: it is the audited artifact itself.
+- `docs/specs/support-parity-gap-register.md` - role: register closure; expected change: add the
+  fifth `Disposition` column (header + separator + one token cell per `| G-NN |` row) and
+  re-point the 224-framed prose at 242 (Step 3). Justified extra: it is the audited artifact
+  itself.
 - `docs/spec_packets/224-support-family-orca-closure/packet.spec.md` - role: superseded flip
   (Step 7); two YAML lines. Justified extra: assigned to the superseding packet by rule.
 - `docs/07_implementation_status.md` - role: task registration + TASK-335 closure (Step 1);
@@ -103,8 +114,13 @@ Include ranges for files over 300 lines.
 - `docs/spec_packets/224-support-family-orca-closure/design.md` - §Measured Baseline, §Orca
   reference profile, §Orca Inspection Checklist ranges only - purpose: inherited amended-AC
   semantics, reference profile settings, prior verdicts being re-inspected.
-- `crates/slicer-runtime/tests/integration/support_family_closure.rs` (~200 lines) - full read
-  allowed - purpose: know what each of the twelve closures asserts before re-running them.
+- `crates/slicer-runtime/tests/integration/support_family_closure.rs` (**very long** — ranged or
+  delegated reads only, never a full read) - purpose: know what each of the twelve closures
+  asserts before re-running them. Declaration shape: the file contains exactly one `#[test]` fn
+  (`tree_branch_a_merge_keeps_drawable_nodes_on_merge_layer`); every other closure case is a
+  `pub fn` returning `Result`, wrapped by a bare `#[test]` shim in
+  `crates/slicer-runtime/tests/integration/main.rs` — which is why the eight AC-1 names carry no
+  module prefix. Locate each case by symbol name via grep, then read only its body.
 - `crates/pnp-cli/tests/visual_debug_gcode_renderer_tdd.rs` - helper range (`write_gcode`,
   `gcode_request`, `manifest_at`, `png_dimensions`, ~lines 42-100) plus one existing test body -
   purpose: reuse the fixture/request pattern for the new test.
@@ -133,7 +149,8 @@ Include ranges for files over 300 lines.
   `docs/spec_packets/224-support-family-orca-closure/design.md`; return: SUMMARY ≤200 words +
   ≤10 settings verbatim; purpose: Steps 4/6 inspection baselines.
 - Question: "FACT per owner packet: current disposition state of G-rows routed to you";
-  scope: `docs/spec_packets/23{6,7,8a,8b,8c,9,240*,241}*` packet dirs + gap register; return:
+  scope: `docs/spec_packets/23{6,7,8a,8b,8c,9a,9b,9c,9d}*`, `docs/spec_packets/24{0a,0b,1}*`
+  packet dirs + gap register; return:
   FACT table (row → closed/open/waived candidate); purpose: Step 2 pre-audit.
 - Question: "Does the standalone G-code-mode visual-debug path preserve `;TYPE:` role markers
   through parse and render?"; scope: `crates/pnp-cli/src/visual_debug_gcode.rs`; return: FACT;
@@ -147,7 +164,8 @@ Include ranges for files over 300 lines.
   apply before attribution; a real mismatch routes to the owning packet.
 - Determinism/scheduler constraints: `differential_evidence`'s structural invariants depend on
   deterministic family routing and serial/parallel determinism (plan invariants 12/13);
-  re-running them after 239's anchored-events enablement must not regress ordering guarantees —
+  re-running them after the 239a/239b anchored host-seam + WIT-transport enablement must not
+  regress ordering guarantees —
   the suite itself is the tripwire.
 
 ## Closure Ledger Contracts (authored by implementation)
@@ -155,17 +173,26 @@ Include ranges for files over 300 lines.
 These sections are created in `design.md` by the steps named; their exact anchors are verified
 by ACs:
 
-- `## Gap Register Disposition Ledger (242)` (Step 2): 24 rows `| G-NN | <token> | <one-line
+- `## Gap Register Disposition Ledger (242)` (Step 2): one row per live `| G-NN |` register row
+  (count re-derived at audit time, never frozen here) `| G-NN | <token> | <one-line
   justification> |`. Token grammar: `[CLOSED <packet-slug> <YYYY-MM-DD>]`,
   `[WAIVED <YYYY-MM-DD>: <justification>]`, `[CARRIED -> <owner>: <reason>]`. Mirror the final
-  token into the register's evidence cell (Step 3). Expected shape (pre-audit, not pre-decided):
+  token into the register's NEW fifth `Disposition` column (Step 3; this packet adds that column
+  and its header/separator rows, and re-points the register's 224-framed prose at 242).
+  Expected shape (pre-audit, not pre-decided):
   G-14 waived as pre-existing noise (T10), G-15 carried -> repo-wide literal debt, G-20 waived
   as register-only per human decision, G-19 closed-at-224 or explicitly re-triaged, everything
   else closed at its routing destination.
-- `## Deviation Dispositions` (Step 4): six lines `DEV-141: CLOSED — …` / `DEV-142: CLOSED — …`
-  / `DEV-143: CLOSED — …` / `DEV-144: CLOSED — …` / `DEV-145: CARRIED — premise corrected in
-  238c (canonical key exists; divergence is PnP default −1.0 vs 0.5 mm)` / `DEV-146: CLOSED — …`
-  — exact verbs set by auditing 238b/238c outcomes, not assumed here.
+- `## Deviation Dispositions` (Step 4): six lines of the form `DEV-NNN: CLOSED — …` or
+  `DEV-NNN: CARRIED — …`, one each for DEV-141..DEV-146. **No verb is pre-written here**: the
+  packet's own rule is that dispositions are established by the closure work (Step 2's audit of
+  238b/238c outcomes against `docs/DEVIATION_LOG.md`), never asserted at authoring time.
+  Re-derive each row's live state at Step 2 with
+  `grep -n 'DEV-14[1-6]' docs/DEVIATION_LOG.md` rather than trusting any status quoted in a spec
+  packet. Note as of authoring the log records DEV-141..DEV-144 as **Open** and DEV-145/DEV-146
+  as already **Closed-implemented** — so for DEV-145/DEV-146 the disposition work is a
+  re-verification of an already-closed row, not a closure, and writing `CARRIED` for either would
+  contradict the log.
 - `## Divergence Dispositions` (Step 4): one line per squashed-commit section:
   `- Squashed commit N of 8: DISPOSITIONED — <verdict citing consuming packet or void premise>`.
 - `## Supersession Records (242)` lives in `requirements.md` (AC-5 anchor there).
@@ -178,7 +205,7 @@ by ACs:
   shape stands unchanged).
 - Parity claims remain limited to termination, coverage, collision freedom, interfaces,
   independent heights; exact path identity is never claimed.
-- Rafts stay signed negative global-layer prefix entries (ADR-0009 as amended by 240); the
+- Rafts stay signed negative global-layer prefix entries (ADR-0009 as amended by 240b); the
   independent-heights axis inspects them accordingly.
 
 ## Risks and Tradeoffs
@@ -209,9 +236,13 @@ by ACs:
 
 Tag implementer-resolvable questions `[FWD]`; tag activation blockers `[BLOCK]`. Scope/interface/verification questions keep the packet `draft`. Delegate answers requiring out-of-bounds reads. Write `None.` when absent.
 
-- `[BLOCK]` Activation requires all seven dependency packets (237, 238a, 238b, 238c, 239, 240,
-  241) to reach `implemented` — currently `generated`/draft. This resolves automatically as the
-  queue executes; no authoring action.
-- `[FWD]` If 239's measure-first `height_delta` protocol lands CONSISTENT (emitter unchanged),
+- `[BLOCK]` Activation requires every dependency in `packet.spec.md`'s frontmatter to reach
+  `implemented`. The named remaining blockers are **240a-support-raft-substrate**,
+  **240b-support-raft-module**, and **241-support-agg-rasterizer**; 237, 238a, 238b, 238c and
+  239a/239b/239c/239d had already reached `implemented` at authoring. Do NOT trust that split —
+  statuses are ledger facts and rot. Re-derive every dependency's status at activation with
+  `grep '^status:' docs/spec_packets/<dep>/packet.spec.md` and treat anything not `implemented`
+  as a live blocker. This resolves as the queue executes; no authoring action.
+- `[FWD]` If 239c's measure-first `height_delta` protocol lands CONSISTENT (emitter unchanged),
   the independent-heights inspection axis still applies (Z schedule from the layer executor);
   Step 6 records which branch actually landed before writing the verdict.

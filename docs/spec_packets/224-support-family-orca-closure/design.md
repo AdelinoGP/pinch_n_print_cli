@@ -51,11 +51,11 @@ Measured on 2026-08-18 against **regenerated** OrcaSlicer references, with `carg
 
 The corrected tree deficit is **63.3%** of Orca's deposited material — a **1.58x** deficit, **not 3.2x**. It decomposes cleanly: PnP lays down 13,013.9 mm of support XY path against Orca's 22,774.9 mm (**1.75x short**), while PnP's flow per mm of path is **1.107x higher** than Orca's, and 1.75 / 1.107 = 1.58. The path-length row is the honest coverage metric; the filament row is path length scaled by a flow discrepancy that is a separate defect (see the gap register).
 
-**Re-measured 2026-08-20 after the RC-15 contact-sampling port (commit `ad9019ee`).** The PnP tree rows above were re-derived from a fresh slice (`target/pnp_support_tree.gcode`, config `tmp/support-family-config-tree-matched.json`, `--module-dir modules/core-modules`) with the same deposited-material parser as the 2026-08-18 measurement, anchored against each file's own `; filament used [mm]` footer (PnP 1908.02 vs 1908.03; Orca 2872.81 vs 2872.80). The port moved the tree deficit from 1.76x to 1.58x on deposited material (1.949x → 1.75x on XY path length); the structural rows (distinct Z, block counts, Z carrying support) are unchanged. The remaining deficit decomposes into the routed causes recorded in `tree-density-diagnosis.md` (wall/fill divergence W1/W2/W3, the uniform flow model, and top-interface area downstream of contact density) — none of which this packet implements.
+**Re-measured 2026-08-20 after the RC-15 contact-sampling port (commit `ad9019ee`†).** The PnP tree rows above were re-derived from a fresh slice (`target/pnp_support_tree.gcode`, config `tmp/support-family-config-tree-matched.json`, `--module-dir modules/core-modules`) with the same deposited-material parser as the 2026-08-18 measurement, anchored against each file's own `; filament used [mm]` footer (PnP 1908.02 vs 1908.03; Orca 2872.81 vs 2872.80). The port moved the tree deficit from 1.76x to 1.58x on deposited material (1.949x → 1.75x on XY path length); the structural rows (distinct Z, block counts, Z carrying support) are unchanged. The remaining deficit decomposes into the routed causes recorded in `tree-density-diagnosis.md` (wall/fill divergence W1/W2/W3, the uniform flow model, and top-interface area downstream of contact density) — none of which this packet implements.
 
 **Extruding-move counts are NOT a parity metric.** Orca's tree segments are roughly 15x shorter than PnP's, so a move count measures polygon granularity, not deposited material. Never gate on it, and never quote it as evidence of coverage.
 
-Two rows are 224 blockers: the normal family's 1-versus-3 interface blocks (locked decision 4), and the tree coverage deficit — 1.75x short on support XY path length, 1.58x short on deposited material (post-port, 2026-08-20) — over an identical Z range and layer count (locked decision 5). Root-cause diagnosis was blocking and is now recorded as RC-15; the RC-15 port landed in `ad9019ee` and the remaining deficit is attributable to the routed causes in `tree-density-diagnosis.md`.
+Two rows are 224 blockers: the normal family's 1-versus-3 interface blocks (locked decision 4), and the tree coverage deficit — 1.75x short on support XY path length, 1.58x short on deposited material (post-port, 2026-08-20) — over an identical Z range and layer count (locked decision 5). Root-cause diagnosis was blocking and is now recorded as RC-15; the RC-15 port landed in `ad9019ee`† and the remaining deficit is attributable to the routed causes in `tree-density-diagnosis.md`.
 
 ### Orca reference profile (normal), regenerated 2026-08-18
 
@@ -114,7 +114,7 @@ Renderer-side relaxation (`continue` on a foreign family) was attempted previous
 
 ### RC-4 — the support family never reaches region routing (FIXED 2026-08-18)
 
-**Fixed 2026-08-18 by the backfill described below, and covered by `family_reaches_region_routing`.** RC-11 (tree top-Z) is likewise fixed (`d97fb2b8`). The open work in this packet is now the interface layer counts and RC-15 (tree contact-point derivation) — see §Measured Baseline.
+**Fixed 2026-08-18 by the backfill described below, and covered by `family_reaches_region_routing`.** RC-11 (tree top-Z) is likewise fixed (`d97fb2b8`†). The open work in this packet is now the interface layer counts and RC-15 (tree contact-point derivation) — see §Measured Baseline.
 
 `tree(auto)` publishes a full 126-entry tree `SupportPlanIR` and `run_slice` emits no `;TYPE:Support` at all.
 
@@ -160,15 +160,20 @@ Recorded from `HANDOFF-224.md` §"Defects found and fixed". The `;TYPE:Support i
 
 The tree interface was synthesised from bounding-box scan lines (`push_interface_scan_lines`) rather than from the node's own area. It is now the node's own area classified as roof/floor (`InterfaceRole`) and **carved out of** the body, matching the canonical rule that roof geometry is subtracted from `base_areas` (§RC-2). `push_interface_scan_lines` is deleted. The `is_roof` band includes the contact layer (`dist_to_top < top_n`), so the topmost support layer is interface rather than bare body.
 
-### RC-11 — tree ignores `support_top_z_distance_mm` (FIXED 2026-08-18, commit `d97fb2b8`)
+### RC-11 — tree ignores `support_top_z_distance_mm` (FIXED 2026-08-18, commit `d97fb2b8`†)
 
-**FIXED in commit `d97fb2b8`** (`fix(tree-support): honour support_top_z_distance_mm (RC-11)`). Recorded below because the root cause was misdiagnosed twice before it was found.
+**FIXED in commit `d97fb2b8`†** (`fix(tree-support): honour support_top_z_distance_mm (RC-11)`). Recorded below because the root cause was misdiagnosed twice before it was found.
 
 **True root cause: the key was never read.** `tree-support-planner`'s `from_config` reads 17 other keys and does not read `support_top_z_distance_mm` at all, while the module declares the key in two manifests. The key is also absent from `crates/slicer-schema/wit/` entirely. Tree's top interface therefore lands at the overhang underside with a **zero** gap; traditional is fixed and Orca-matching.
 
 **The earlier "unexplained contradiction" is closed, not open.** A prior session recorded that a shift implemented in `push_contact_with_demand` had no effect while the config *value* still moved the result by 35 layers (125 entries at `0`, 90 at `0.2`, 89 at `0.4`), and declined to ship on that basis. Those measurements were **stale-guest artifacts** — the guest `.wasm` did not contain the edited planner. Do not carry the contradiction framing forward; there is nothing anomalous to explain. Run `cargo xtask build-guests --check` before trusting any tree-planner measurement.
 
-**Fix as landed.** The key is read in `from_config`, and the contact layer is shifted the contact layer by **walking actual layer Z**, the technique `traditional-support-planner::plan_for_object` already uses. Dividing by `LayerPlanViewEntry.effective_layer_height` remains prohibited — the field is unreliable in the guest view (it produced a zero-layer gap in traditional and a 35-layer gap in tree) and should be separately investigated or documented as untrustworthy.
+**Fix as landed.** The key is read in `from_config` and the top gap is honoured. **Corrected 2026-09-03 — the two families do this differently, and the earlier blanket claim that the contact layer is shifted "along actual layer Z" is true only of traditional.**
+
+- `traditional-support-planner::plan_for_object` **walks actual layer Z**, with an in-source comment rejecting the division.
+- `tree-support-planner` does **not** walk Z. It computes a layer *count*, `z_distance_top_layers`, via `round_up_divide(mm_to_units(z_distance_top), mm_to_units(nominal_layer_height))`, where `nominal_layer_height` is taken from `layer_plan.layers[0].effective_layer_height` (`modules/core-modules/tree-support-planner/src/lib.rs`). That is canonical layer-count arithmetic against a single nominal height, and it is **permitted**.
+
+The **prohibited** pattern is narrower than previously written: dividing by the **per-entry** guest-view `LayerPlanViewEntry.effective_layer_height` of the layer being processed. That field is unreliable in the guest view (it produced a zero-layer gap in traditional and a 35-layer gap in tree) and should be separately investigated or documented as untrustworthy. Reading the **layer-0 nominal** height once and dividing with `round_up_divide` is what the tree planner does and is not the prohibited pattern. **Do not describe the tree planner as a Z-walk**; it retains a layer-count computation.
 
 Note: `eprintln!` from guest code does not reach the test harness. Use `push_diagnostic`.
 
@@ -180,13 +185,13 @@ Note: `eprintln!` from guest code does not reach the test harness. Use `push_dia
 
 The helper ended with `point_in_polygon(closest_boundary_point)`, so the verdict depended on which side of the boundary a floating-point rounding landed; it reported "overlapping" for a body 8 mm clear of occupancy. Pinned by `body_clear_of_occupancy_does_not_overlap`.
 
-### RC-14 — `in_routing_cell` rejected any body straddling an absolute grid line (FIXED 2026-08-18, commit `2afa4cf9`)
+### RC-14 — `in_routing_cell` rejected any body straddling an absolute grid line (FIXED 2026-08-18, commit `2afa4cf9`†)
 
 `in_routing_cell` (`crates/slicer-wasm-host/src/support_aggregation.rs`) required a support body's bounding box to fall inside a single cell of an **absolute** grid keyed by `ROUTING_CELL_SIZE = 1 << 20` units — 104.8576 mm at this repo's 100 nm unit. A body was therefore accepted or rejected by *where it sat on the world grid*, not by how large it was.
 
 The decisive fixture's bbox edge sits exactly on `y = 0`, which is a grid line. A 0.4 mm tip disc at a model corner reaches `y = -0.4 mm`, crossing it, and was dropped. Measured: **528 rejections at `support_top_z_distance = 0.2`, zero at `0.0`** — the gap moves the tip across the line. The rejections took layers 90..124 with them and destroyed **both** `TopInterface` layers, which is why the interface counts and the top-of-branch coverage looked like planner defects.
 
-**Fix.** `2afa4cf9` bounds a body by its **extent** (`maxx - minx` and `maxy - miny` against `ROUTING_CELL_SIZE`) rather than by absolute cell containment. Size is the property the guard was ever meant to check.
+**Fix.** `2afa4cf9`† bounds a body by its **extent** (`maxx - minx` and `maxy - miny` against `ROUTING_CELL_SIZE`) rather than by absolute cell containment. Size is the property the guard was ever meant to check.
 
 **Canonical hits the same case and does not guard against it.** `TreeSupport::generate_contact_points` (`TreeSupport.cpp`) emits overhang **contour vertices directly** as contact points, so contacts land on the model's outer boundary as a matter of course — including on axis-aligned bbox edges. Any containment test keyed to an absolute grid is wrong for that input by construction.
 
@@ -208,7 +213,7 @@ All three streams are deduped through a hash-bucket grid of cell size `base_radi
 
 **Classification: GAP** (a canonical sampling algorithm PnP has never had, not a regression). **Agreed to be implemented in 224**, because every other tree parity claim in this packet — coverage, interface placement, footprint — is unmeasurable until contact derivation is 2D and slice-based. It is not routed to the gap register.
 
-### RC-16 — three tests passed only because RC-14 was broken (REPAIRED, commit `4d1848eb`)
+### RC-16 — three tests passed only because RC-14 was broken (REPAIRED, commit `4d1848eb`†)
 
 `invalid_body_degraded` and `invalid_body_rejected` (the latter in **both** the tree-family and traditional-family planner test files) asserted rejection, and got it — but from `in_routing_cell`'s absolute-grid bug (RC-14), not from the invariant each test names. Fixing RC-14 correctly turned them red. They were wrong-reason passes, not regressions.
 
@@ -217,11 +222,11 @@ All three streams are deduped through a hash-bucket grid of cell size `base_radi
 - the mesh was a **single coplanar triangle at `z = 100`**, which produces no occupancy at any layer the test inspects; and
 - it was built with `..ObjectMesh::default()`, whose `Transform3d::default()` is an **all-zeros matrix** — so every vertex collapses to the origin regardless of the coordinates written above it.
 
-An all-zeros default transform is a silent geometry eraser: it never errors, it just yields a degenerate mesh. Any fixture using `..ObjectMesh::default()` must set the transform explicitly. All three tests were repaired in `4d1848eb` to fail for the reason they name.
+An all-zeros default transform is a silent geometry eraser: it never errors, it just yields a degenerate mesh. Any fixture using `..ObjectMesh::default()` must set the transform explicitly. All three tests were repaired in `4d1848eb`† to fail for the reason they name.
 
-### RC-17 — commit `9f4540bd` introduced eight tree-family regressions
+### RC-17 — commit `9f4540bd`† introduced eight tree-family regressions
 
-The tree renderer rewrite (`9f4540bd`, RC-8/RC-9/RC-10) took the two tree modules from **3 failures at `5a38fdce`** to **11 at `9f4540bd`**, and **10 at HEAD**. Seven of the eight introduced failures are in test files that are **byte-identical** across the window, so they cannot be new-test-against-old-source artefacts. Full per-test attribution, method, and its stated limitation: `tree-failure-attribution.md` in this packet directory.
+The tree renderer rewrite (`9f4540bd`†, RC-8/RC-9/RC-10) took the two tree modules from **3 failures at `5a38fdce`†** to **11 at `9f4540bd`†**, and **10 at HEAD**. Seven of the eight introduced failures are in test files that are **byte-identical** across the window, so they cannot be new-test-against-old-source artefacts. Full per-test attribution, method, and its stated limitation: `tree-failure-attribution.md` in this packet directory.
 
 **Process finding, recorded so it is not repeated.** `HANDOFF-224.md` called this work "Completed and verified". That verification rested on narrow `cargo test` runs that **stopped at the first failing binary** and consequently never built three of the eight relevant test binaries. A run that aborts early is not a green run; a binary that was never built cannot have passed. Compare binary counts before trusting any narrow run (see `CLAUDE.md` §Test Discipline).
 
@@ -241,7 +246,7 @@ Consequence: PnP has no object on which to hang gap-band behaviour, so anything 
 
 ## Out-of-Bounds Files
 - Orca source (delegated sub-agent reads only), target bundles, generated bindings, and packet 213 files.
-- Base/interface **pattern generators**, `support_expansion`, `support_bottom_z_distance`, raft geometry, independent support-layer Z, and the `SupportGridPattern` AGG rasterizer — all routed to follow-on packets via `docs/specs/support-parity-gap-register.md` (unnumbered stubs under `docs/spec_packets/stubs/`; the previously named 224a/225/226/227 are taken by unrelated packets). The renderers themselves are in scope (see §Files in Scope); their family-mismatch hard errors stay as they are, since RC-3 is fixed host-side.
+- Base/interface **pattern generators**, `support_expansion`, `support_bottom_z_distance`, raft geometry, independent support-layer Z, and the `SupportGridPattern` AGG rasterizer — all routed to follow-on packets via `docs/specs/support-parity-gap-register.md`. **Destinations corrected 2026-09-03:** `docs/spec_packets/stubs/` never existed, and 225/226/227 are unrelated packets (`225-dragon-curve-feasibility-gate`, `226-authored-coloring-carrier`, `227-dragon-curve-community-module`). The real destinations are `238a-support-pattern-config-keys` (patterns, `support_expansion`, `support_bottom_z_distance`, dead config keys), `238c-support-renderer-flow-interfaces` (renderer/flow/interfaces), `239a-anchored-host-seams` / `239b-anchored-wit-contract` / `239c-support-layer-height-producer` / `239d-support-coarse-floating-planes` (independent support-layer Z), `240a-support-raft-substrate` + `240b-support-raft-module` (raft), and `241-support-agg-rasterizer` (AGG rasterizer / `support_area_algorithm`). Re-derive the owning packet per gap from the register's destination column rather than from this list. The renderers themselves are in scope (see §Files in Scope); their family-mismatch hard errors stay as they are, since RC-3 is fixed host-side.
 - `docs/07_implementation_status.md` is updated only through delegated status work.
 
 ## Orca Differential Evidence
@@ -256,7 +261,18 @@ Recorded by inspection against `tmp/SupportTest_Tree_Orca.gcode` and `tmp/Suppor
 
 ## Orca Inspection Checklist
 
-*Written by Step 6, 2026-08-20, after the RC-15 port (`ad9019ee`) and the Step 2 interface-count fix (`ee27ac94`). All four bundles were rendered with `cargo xtask build-guests --check` clean; `matched_height_evidence` passed.*
+> **HISTORICAL RECORD — SUPERSEDED, NOT CLOSURE EVIDENCE (annotated 2026-09-03).**
+> Everything in this section is a **point-in-time measurement taken on 2026-08-20**. Every packet this one now waits on (see `packet.spec.md` §Activation Gate) changes support behaviour, so these verdicts have rotted, and at least one is known wrong (see §Checklist correction). **This table MUST NOT be cited as evidence for AC-2, AC-3(b) or AC-6(b), and MUST NOT be reused, edited in place, or partially refreshed.** It is retained only to document what was seen on 2026-08-20. Amended AC-2/AC-3(b)/AC-6(b) are satisfied **only** by a checklist regenerated at execution time against HEAD and recorded in a new, separately dated `## Orca Inspection Checklist (regenerated <YYYY-MM-DD>)` section placed directly below this one.
+>
+> The regenerated checklist MUST carry the same five required elements: (1) the two per-family visual-debug requests actually used; (2) the matched physical heights inspected; (3) the Orca render placed beside each PnP render; (4) a verdict for each of termination, coverage, collision freedom, interface placement/count, and independent heights; (5) the layer **and** tap each verdict was read from.
+>
+> **The evidence does not survive on disk.** The four render bundles (`target/vd-support-family-*`, `target/vd-orca-*-compare`), the four `tmp/*.json` request files, and the two `tmp/SupportTest_*_Orca.gcode` references are all untracked/gitignored. A future reader cannot re-open them. The regenerated checklist must therefore **stand alone**: inline the request contents (or their decisive fields), the exact layer indices with their physical Z, the Orca profile used, and enough description of what was seen that each verdict is auditable without the bundles.
+
+### Checklist correction (2026-09-03) — traditional interface placement/count
+
+The `DIVERGENT (count)` verdict in the table below ("PnP emits **2** `;TYPE:Support interface` blocks at `top_layers=2`/`bottom_layers=2` … Orca emits **3**") is **no longer true**. That divergence was **closed by `238c-support-renderer-flow-interfaces`**, which is where G-18's destination column routed it. PnP and Orca now **agree at 3 blocks** for `top_layers=2`/`bottom_layers=2`, and `interface_band_counts_match_canonical_structure` (`crates/slicer-runtime/tests/integration/support_family_closure.rs`) asserts 3 and describes 3 as the canonical roof/floor structure. **G-18 is closed-by-238c; it is not an open 224 gap and must not be recorded as one.** Re-derive 238c's status with `grep '^status:' docs/spec_packets/238c-support-renderer-flow-interfaces/packet.spec.md`.
+
+*Written by Step 6, 2026-08-20, after the RC-15 port (`ad9019ee`†) and the Step 2 interface-count fix (`ee27ac94`†). All four bundles were rendered with `cargo xtask build-guests --check` clean; `matched_height_evidence` passed.*
 
 **Requests and bundles.** Per family, the PnP render is a model-source request and the Orca render is a standalone-G-code request over the regenerated reference, both at the same five layer indices:
 
@@ -286,7 +302,23 @@ Recorded by inspection against `tmp/SupportTest_Tree_Orca.gcode` and `tmp/Suppor
 | traditional | interface placement/count | DIVERGENT (count) | 123 | `Layer::Support` | Placement is correct (topmost, carved out of the body). Count: PnP emits **2** `;TYPE:Support interface` blocks at `top_layers=2`/`bottom_layers=2` (the count follows the configured top band, pinned by `interface_layer_count_follows_config`), Orca emits **3** at the same config. The difference is canonical roof/floor layer-count semantics, registered as a gap (see the gap register). |
 | traditional | independent heights | PASS | 123 | `Layer::Support` | Both emit the same 150-layer schedule; support appears at the same matched heights. |
 
-**Per-family disposition (AC-3 half (b)).** Tree: the PnP render (`target/vd-support-family-tree`, source `tmp/visual-debug-support-family-tree.json`) was inspected beside the Orca render (`target/vd-orca-tree-compare`, source `tmp/SupportTest_Tree_Orca.gcode`) at layers 10/30/79/119/123; all five axes PASS, with the recorded top-Z gap-structure deviation noted under independent heights. Traditional: the PnP render (`target/vd-support-family-normal`, source `tmp/visual-debug-support-family-normal.json`) was inspected beside the Orca render (`target/vd-orca-normal-compare`, source `tmp/SupportTest_Normal_Orca.gcode`) at the same layers; four axes PASS and interface placement/count is DIVERGENT on count (2 vs 3), registered as gap G-18. Neither family claims exact path identity.
+**Per-family disposition (AC-3 half (b)).** Tree: the PnP render (`target/vd-support-family-tree`, source `tmp/visual-debug-support-family-tree.json`) was inspected beside the Orca render (`target/vd-orca-tree-compare`, source `tmp/SupportTest_Tree_Orca.gcode`) at layers 10/30/79/119/123; all five axes PASS, with the recorded top-Z gap-structure deviation noted under independent heights. Traditional: the PnP render (`target/vd-support-family-normal`, source `tmp/visual-debug-support-family-normal.json`) was inspected beside the Orca render (`target/vd-orca-normal-compare`, source `tmp/SupportTest_Normal_Orca.gcode`) at the same layers; four axes PASS and interface placement/count is DIVERGENT on count (2 vs 3), registered at the time as gap G-18 — **since closed by 238c; see §Checklist correction above**. Neither family claims exact path identity.
+
+## Orphaned commit references (recorded 2026-09-03)
+
+**Every per-step commit SHA cited by this packet, and by the documents under `handoffs/`, was orphaned.** The packet-224 work was squashed; the original per-step commits are on no branch and are not ancestors of `HEAD`, so `git show <sha>` fails for all of them on a fresh clone. The affected SHAs, marked † throughout this packet's contract files, are: `8cb60b91`, `ad9019ee`, `ee27ac94`, `d97fb2b8`, `4c67ccd9`, `9f4540bd`, `2afa4cf9`, `4d1848eb`, `5a38fdce`, `ed62090d`, `4d245486`, `39507cff`, `0629a9b5`, `868508ba`.
+
+The work itself is present at `HEAD`, in these **reachable** commits:
+
+| reachable commit | what it carries |
+| --- | --- |
+| `bab79c5c` | `feat(support): angle-thresholded contact detection, per-family wiring, interface roles (packet 224 squash, 26 commits)` — the host/renderer half: angle-thresholded contact detection, per-family wiring, interface roles. |
+| `55211648` | `feat(tree-support-planner): canonical contact sampling, TreeVolumes, merge/move pass (packet 224 squash, 26 commits)` — the tree-planner half: canonical contact sampling (RC-15), TreeVolumes, merge/move pass. |
+| `a644abee` | handoff / divergence archive. |
+| `ea71ebc0` | the `238c` interface-count change (see §Checklist correction). |
+| `ac9466c6` | replacement of the self-captured tripwire golden with algorithmic invariants (see `requirements.md` §In Scope, benchy golden). |
+
+**Rule for this packet.** Per `CLAUDE.md` §"Ledger Facts Must Be Re-derived", a SHA is a mutable ledger fact and is never the identifier of a change. Cite a change by **what it did** plus the **crate-qualified symbol or file** it landed in; add one of the reachable commits above only where a commit reference genuinely helps. Do not "fix" a † citation by substituting a fresher SHA — the next rebase orphans that one too. Verify reachability with `git merge-base --is-ancestor <sha> HEAD` before citing any SHA.
 
 ## Session Handoff (2026-08-17) — superseded
 
@@ -349,10 +381,10 @@ The final packet-scope review returned CHANGES REQUESTED with five findings. Dis
 - **AC-2 (SupportAnalysis capture).** The review noted the requests carry no `PrePass::SupportAnalysis` tap. The packet's Notes already adjudicate this (the tap does not exist in the implementation's inventory; the intent is met by asserting the `SupportAnalysisIR` blackboard slot directly). The checklist now names where that evidence lives (§Orca Inspection Checklist, "PrePass::SupportAnalysis evidence"). Doc fix applied.
 - **AC-6 (no-Orca-read assertion + docs/07 conflict).** Valid on both counts. The no-Orca-read static self-check was added to `task_163b_disposition` (recursive scan of `crates/slicer-runtime/tests/`, self-file excluded), and the `docs/07` TASK-163b-orca-ref row was reconciled with the recorded disposition. Fixed.
 - **AC-N1 (fatal conflict without diagnostic).** The review noted the cross-family-overlap branch accepts a fatal error without a structured diagnostic. The fatal same-identity family conflict is the packet-223 aggregation contract's documented behavior; the test accepts either drop-plus-code-1200-diagnostic or the fatal error naming `conflicting_family_id` — both are loud rejections, never a golden or fallback path. Recorded, no code change.
-- **AC-N2 (absence panic not exercised).** Rejected: the 2026-08-17 amendment deliberately deleted the dedicated missing-fixture test (`4c67ccd9`) and made the `support_test_path` resolver's panic contract the gate, exercised by every closure test. The review's finding contradicts the amendment, which is authoritative.
+- **AC-N2 (absence panic not exercised).** Rejected: the 2026-08-17 amendment deliberately deleted the dedicated missing-fixture test (`4c67ccd9`†) and made the `support_test_path` resolver's panic contract the gate, exercised by every closure test. The review's finding contradicts the amendment, which is authoritative.
 
 ## Inherited debt (recorded 2026-08-20, bisect-verified)
-- **32 pre-existing workspace test failures at `ed62090d`** — `cargo test --workspace` fails 32 tests (wedge plan-structure invariants, e2e support evidence, integrated-parity contracts, live-dispatch tests, tool-selection tests, `support_plan_validation`). A bisect at the pre-port baseline `ed62090d` (guests rebuilt, `cargo xtask build-guests --check` clean) shows all 32 fail there too: **0 attributable to this branch's work**. Registered as G-19; human-approved 2026-08-20 to record rather than fix in 224. The packet's own gates (closure 12/12, planner crate 8/8, clippy) are green.
+- **32 pre-existing workspace test failures at `ed62090d`†** — `cargo test --workspace` fails 32 tests (wedge plan-structure invariants, e2e support evidence, integrated-parity contracts, live-dispatch tests, tool-selection tests, `support_plan_validation`). A bisect at the pre-port baseline `ed62090d`† (guests rebuilt, `cargo xtask build-guests --check` clean) shows all 32 fail there too: **0 attributable to this branch's work**. Registered as G-19; human-approved 2026-08-20 to record rather than fix in 224. The packet's own gates (closure 12/12, planner crate 8/8, clippy) are green.
 - `cargo xtask check-literals` exits 1 on 61 inherited violations across 34 files, 0 attributable to this branch (re-derived 2026-08-20; the port's diff adds no watched-type literal). Human-approved to commit over. Registered as G-15.
 - `cargo xtask test --summary --workspace` cannot run while the check-literals preflight fails: the wrapper hard-aborts before the test phase. The guest-WASM freshness gate was therefore verified separately (`cargo xtask build-guests --check`, exit 0) before the direct `cargo test --workspace` run.
 
@@ -363,5 +395,9 @@ The final packet-scope review returned CHANGES REQUESTED with five findings. Dis
 
 ## Open Questions
 - [RESOLVED] TASK-331 exact-Z seam and WIT migration decisions. Exact-Z seam = `ExactZQueryService` in `crates/slicer-wasm-host/src/exact_z_query.rs` (injected into `HostExecutionContext`; normalized to repo units, immutable per-(object,region,Z) caching). WIT migration = breaking in-place replacement of the `support-plan-entry` record within `slicer:prepass-support-geometry@1.0.0`; `CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION` 1.3.0→2.0.0, `CURRENT_SUPPORT_IR_SCHEMA_VERSION` 1.0.0→2.0.0, `CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION` 1.0.0. New contracts live: `PrePass::SupportAnalysis` + `SupportAnalysisIR` (candidates, occupancy/termination surfaces, baseline envelope, deterministic family assignments); structural `SupportPlanIR` v2.0.0 (family_id, demand IDs, body IDs, anchor layer index + Z, semantic ExPolygon roles, optional skeleton metadata, capabilities/provenance, decline reasons); attributed `SupportIR` v2.0.0 (per body/role: family_id, body_id, demand_ids, object/region, role incl. raft+ironing, printable paths); `support_family` canonical + `support_type` aliases; `support-family:<id>` claims; startup pairing validation; host aggregation in `crates/slicer-wasm-host/src/support_aggregation.rs` with internal deterministic routing cells; no fallback filler.
-- [BLOCK] Who will provide authoritative Orca tree/normal G-code references if the documented checkout cannot regenerate them?
+- [RESOLVED 2026-09-03] *Who will provide authoritative Orca tree/normal G-code references?* — resolved by §Orca Differential Evidence: `TASK-163b-orca-ref` is closed against `tmp/SupportTest_Tree_Orca.gcode` and `tmp/SupportTest_Normal_Orca.gcode`, regenerated 2026-08-18 with the profile in §Orca reference profile. There is no external blocker. The former `[BLOCK]` wording contradicted that section and is withdrawn.
 - [FWD] TASK-334 must export final diagnostic fields and unmet-demand disposition consumed by closure tests.
+
+---
+
+† Commit SHAs marked † were **orphaned by the packet-224 squash** and no longer resolve (`git show` fails on a fresh clone). The work is present at HEAD in the reachable squashes `bab79c5c` and `55211648`. Cite a change by what it did plus its crate-qualified symbol or file, never by an orphaned SHA; see `design.md` §Orphaned commit references.
