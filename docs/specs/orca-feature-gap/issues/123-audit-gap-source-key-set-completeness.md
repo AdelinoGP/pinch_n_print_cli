@@ -62,4 +62,30 @@ say so and file those as separate tickets rather than absorbing them here — an
 if the count moves, remember the scoped queue target (currently 407) is a
 **ledger fact**: re-derive it, do not quote it.
 
+
+### Four more confirmed absentees (ticket 33, 2026-09-03)
+
+Ticket 33 hit the same gap from the other direction: it could not close
+`calib_flowrate_topinfill_special_order` without a key that is not in the queue.
+All four below are defined in canonical `PrintConfig.cpp` and read in the slicing
+pipeline (so they pass authoring rule 3), and none appears anywhere in
+`docs/ORCA_CONFIG_REFERENCE.md`:
+
+| key | canonical read site | note |
+| --- | --- | --- |
+| `top_surface_fill_order` | `Fill/Fill.cpp`, gated on pattern ∈ {`ipConcentric`, `ipArchimedeanChords`, `ipOctagramSpiral`}; invalidation set in `PrintObject.cpp` | `coEnum` `default`/`outward`/`inward`. **Now implemented by packet 275** |
+| `bottom_surface_fill_order` | same | same. **Now implemented by packet 275** |
+| `separated_infills` | 8 read sites outside `PrintConfig`/`Preset` | untriaged |
+| `center_of_surface_pattern` | 12 read sites outside `PrintConfig`/`Preset` | untriaged |
+
+This raises the confirmed-absent count from ticket 30's two to six, and — unlike
+the fast-purge pair — these are **not** dead-in-canonical, which weakens the
+"the missing rows may skew toward keys that are dead anyway" hypothesis above.
+Two of the six were only found because a ticket tripped over them; nobody diffed
+for them. Treat that as evidence the row-set diff is worth running, not as the
+result of one.
+
+**Do not re-derive the two fill-order keys as new queue work** — packet 275 owns
+them. The remaining two are untriaged and belong to this ticket's diff.
+
 ## Answer
