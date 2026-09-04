@@ -132,6 +132,12 @@ pub struct WaveOverhangs {
     layer_height: f32,
     /// Whether the printer profile enables thick (round-thread) bridges.
     thick_bridges: bool,
+    /// Internal-bridge fill density as a fraction (1.0 == the manifest's `100%`).
+    internal_bridge_density: f32,
+    /// Internal-bridge flow ratio.
+    internal_bridge_flow: f32,
+    /// Whether internal bridges use the thick (round-thread) bridge model.
+    thick_internal_bridges: bool,
 }
 
 impl WaveOverhangs {
@@ -400,9 +406,15 @@ impl LayerModule for WaveOverhangs {
             nozzle_diameter: cfg_float(config, "nozzle_diameter", 0.4),
             wall_loops: cfg_u32(config, "wall_loops", 2),
             layer_height: cfg_float(config, "layer_height", 0.2),
-            // Not a manifest key: printer profiles supply it, and its absence
-            // means the flat-thread bridge model, matching the host default.
+            // Declared in this manifest because `ConfigView::from_declared`
+            // whitelists by the module's own schema: an undeclared key can
+            // never reach the guest, so the read below would always have
+            // taken the fallback. Absence still means the flat-thread bridge
+            // model, matching the host default.
             thick_bridges: cfg_bool(config, "thick_bridges", false),
+            internal_bridge_density: cfg_density(config, "internal_bridge_density", 1.0),
+            internal_bridge_flow: cfg_float(config, "internal_bridge_flow", 1.0),
+            thick_internal_bridges: cfg_bool(config, "thick_internal_bridges", true),
         })
     }
 
@@ -582,29 +594,40 @@ impl LayerModule for WaveOverhangs {
             } else {
                 self.nozzle_diameter
             };
-            let base_spacing_mm = if self.thick_bridges {
-                canonical_bridging_flow(
-                    self.bridge_line_width,
-                    self.bridge_flow,
-                    self.nozzle_diameter,
+            // Canonical `Fill::make_fills` picks the density and the thick /
+            // thin bridging flow from the *internal* twins of these keys when
+            // the surface is an internal bridge (`is_thick_bridge`,
+            // `internal_bridge_density.get_abs_value(1.0)`); the fallback fill
+            // below carries the same role split, so it must read the same pair.
+            let is_internal_bridge = region.is_internal_bridge();
+            let (bridge_density, thick_bridges, bridge_flow) = if is_internal_bridge {
+                (
+                    self.internal_bridge_density,
+                    self.thick_internal_bridges,
+                    self.internal_bridge_flow,
                 )
-                .spacing_mm
+            } else {
+                (self.bridge_density, self.thick_bridges, self.bridge_flow)
+            };
+            let base_spacing_mm = if thick_bridges {
+                canonical_bridging_flow(self.bridge_line_width, bridge_flow, self.nozzle_diameter)
+                    .spacing_mm
             } else {
                 line_width_to_spacing(bridge_width, layer_h).unwrap_or(bridge_width)
             };
-            let fallback_spacing_units = if self.bridge_density > 0.0 {
-                generator::units(base_spacing_mm / self.bridge_density)
+            let fallback_spacing_units = if bridge_density > 0.0 {
+                generator::units(base_spacing_mm / bridge_density)
             } else {
                 0.0
             };
             let fallback_flow = bridging_flow(
-                self.bridge_flow,
-                self.thick_bridges,
+                bridge_flow,
+                thick_bridges,
                 thread_base_width,
                 bridge_width,
                 layer_h,
             );
-            let fallback_role = if region.is_internal_bridge() {
+            let fallback_role = if is_internal_bridge {
                 ExtrusionRole::InternalBridgeInfill
             } else {
                 ExtrusionRole::BridgeInfill

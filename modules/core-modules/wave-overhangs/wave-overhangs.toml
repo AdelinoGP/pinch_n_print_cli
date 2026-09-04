@@ -135,8 +135,35 @@ group   = "Bridging"
 type    = "float_or_percent"
 default = "100%"
 min     = 10.0
-max     = 120.0
+max     = 125.0
 display = "Bridge Density"
+group   = "Bridging"
+
+[config.schema.thick_bridges]
+type    = "bool"
+default = false
+display = "Thick Bridges"
+group   = "Bridging"
+
+[config.schema.internal_bridge_density]
+type    = "float_or_percent"
+default = "100%"
+min     = 10.0
+max     = 125.0
+display = "Internal Bridge Density"
+group   = "Bridging"
+
+[config.schema.internal_bridge_flow]
+type    = "float"
+default = 1.0
+min     = 0.0
+display = "Internal Bridge Flow"
+group   = "Bridging"
+
+[config.schema.thick_internal_bridges]
+type    = "bool"
+default = true
+display = "Thick Internal Bridges"
 group   = "Bridging"
 
 [config.schema.nozzle_diameter]

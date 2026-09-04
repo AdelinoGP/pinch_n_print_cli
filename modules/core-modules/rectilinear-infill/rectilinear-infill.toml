@@ -103,7 +103,7 @@ group   = "Infill"
 type    = "float_or_percent"
 default = "100%"
 min     = 10.0
-max     = 120.0
+max     = 125.0
 display = "Bridge Density"
 group   = "Infill"
 

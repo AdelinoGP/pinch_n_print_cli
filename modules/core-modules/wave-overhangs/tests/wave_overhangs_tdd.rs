@@ -1115,3 +1115,131 @@ fn wave_bead_footprint_stays_inside_trim_boundary() {
          (area mm^2, bbox mm): {worst:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Internal-bridge key selection (wayfinder ticket 34 / P27)
+// ---------------------------------------------------------------------------
+
+/// Module config for the fallback bridge fill, with the density pair spelled
+/// explicitly. Both are `float_or_percent` in the manifest; a bare float is
+/// read as a fraction, so `1.0` is the manifest's `"100%"`.
+fn density_config(bridge_density: f64, internal_bridge_density: f64) -> slicer_ir::ConfigView {
+    ConfigViewBuilder::new()
+        .float("nozzle_diameter", f64::from(NOZZLE_MM))
+        .float("layer_height", f64::from(LAYER_HEIGHT_MM))
+        .float("bridge_speed", f64::from(BRIDGE_SPEED))
+        .float("bridge_line_width", f64::from(NOZZLE_MM))
+        .float("bridge_density", bridge_density)
+        .float("internal_bridge_density", internal_bridge_density)
+        .bool("thick_bridges", false)
+        .bool("thick_internal_bridges", false)
+        .int("wall_loops", 3)
+        .build()
+}
+
+/// Unanchored bridge square — waves are impossible, so every component takes
+/// the conventional rectilinear fallback whose spacing the density keys drive.
+fn unanchored_bridge_region(internal: bool) -> SliceRegionView {
+    let mut region = SliceRegionViewBuilder::new()
+        .object_id("obj")
+        .region_id(1)
+        .z(LAYER_HEIGHT_MM)
+        .effective_layer_height(LAYER_HEIGHT_MM)
+        .is_bridge(true)
+        .is_internal_bridge(internal)
+        .bridge_orientation_deg(0.0)
+        .bridge_areas(vec![rect_mm(0.0, 0.0, 10.0, 10.0)])
+        .build();
+    region.set_held_claims(vec!["claim:bridge-fill".to_string()]);
+    region
+}
+
+fn fallback_path_count(config: &slicer_ir::ConfigView, internal: bool) -> usize {
+    let module = WaveOverhangs::from_config(config).expect("config");
+    let region = unanchored_bridge_region(internal);
+    let mut output = InfillOutputBuilder::new();
+    module
+        .run_infill(1, &[region], &paint_view(), &mut output, config)
+        .expect("run_infill must succeed");
+    output.solid_paths().len()
+}
+
+/// Canonical `Fill::make_fills` overrides an internal bridge's density from
+/// `internal_bridge_density`, not from `bridge_density` — the two are separate
+/// decision points on the same surface class. The fallback fill must make the
+/// same split: halving the internal key must space an internal bridge's lines,
+/// and halving the external key must leave it untouched.
+#[test]
+fn internal_bridge_density_drives_internal_bridge_fallback_spacing() {
+    let full = fallback_path_count(&density_config(1.0, 1.0), true);
+    let half_internal = fallback_path_count(&density_config(1.0, 0.5), true);
+    let half_external = fallback_path_count(&density_config(0.5, 1.0), true);
+
+    assert!(full > 4, "100% density must fill the bridge, got {full} paths");
+    let ratio = half_internal as f32 / full as f32;
+    assert!(
+        (0.4..=0.65).contains(&ratio),
+        "50% internal_bridge_density must roughly halve internal bridge lines: \
+         {half_internal} of {full} (ratio {ratio})"
+    );
+    assert_eq!(
+        half_external, full,
+        "bridge_density must not drive an internal bridge's spacing"
+    );
+}
+
+/// The external twin of the split: `bridge_density` drives an external bridge,
+/// and `internal_bridge_density` must not.
+#[test]
+fn bridge_density_drives_external_bridge_fallback_spacing() {
+    let full = fallback_path_count(&density_config(1.0, 1.0), false);
+    let half_external = fallback_path_count(&density_config(0.5, 1.0), false);
+    let half_internal = fallback_path_count(&density_config(1.0, 0.5), false);
+
+    assert!(full > 4, "100% density must fill the bridge, got {full} paths");
+    let ratio = half_external as f32 / full as f32;
+    assert!(
+        (0.4..=0.65).contains(&ratio),
+        "50% bridge_density must roughly halve external bridge lines: \
+         {half_external} of {full} (ratio {ratio})"
+    );
+    assert_eq!(
+        half_internal, full,
+        "internal_bridge_density must not drive an external bridge's spacing"
+    );
+}
+
+/// `thick_internal_bridges` selects the round-thread bridging flow for an
+/// internal bridge (canonical `is_thick_bridge`), which widens line spacing;
+/// its external twin `thick_bridges` must not affect that surface.
+#[test]
+fn thick_internal_bridges_drives_internal_bridge_fallback_spacing() {
+    let base = |thick_internal: bool, thick_external: bool| {
+        ConfigViewBuilder::new()
+            .float("nozzle_diameter", f64::from(NOZZLE_MM))
+            .float("layer_height", f64::from(LAYER_HEIGHT_MM))
+            .float("bridge_speed", f64::from(BRIDGE_SPEED))
+            .float("bridge_line_width", f64::from(NOZZLE_MM))
+            .float("bridge_density", 1.0)
+            .float("internal_bridge_density", 1.0)
+            .bool("thick_bridges", thick_external)
+            .bool("thick_internal_bridges", thick_internal)
+            .int("wall_loops", 3)
+            .build()
+    };
+
+    let thin = fallback_path_count(&base(false, false), true);
+    let thick = fallback_path_count(&base(true, false), true);
+    let external_thick = fallback_path_count(&base(false, true), true);
+
+    assert!(thin > 0 && thick > 0, "both settings must fill the bridge");
+    assert!(
+        thick < thin,
+        "thick_internal_bridges must widen internal bridge spacing: \
+         thick {thick} vs thin {thin}"
+    );
+    assert_eq!(
+        external_thick, thin,
+        "thick_bridges must not drive an internal bridge's spacing"
+    );
+}
