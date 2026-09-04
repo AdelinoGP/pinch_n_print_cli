@@ -1287,26 +1287,15 @@ fn coarse_same_region_sources_keep_distinct_body_membership() {
         .iter()
         .any(|role| role.role == SupportPlanRole::SupportBody));
 
-    // The sources are the single-membership body rows on the grid; their
-    // geometries are disjoint (`contact_region` at 0..4mm, `obstacle_region`
-    // at 10..14mm), so their union area is their sum.
-    let source_area = |body: &str| -> f64 {
-        output
-            .entries()
-            .iter()
-            .filter(|entry| {
-                entry.body_ids == [body]
-                    && entry.global_layer_index >= 0
-                    && entry
-                        .roles
-                        .iter()
-                        .all(|role| role.role == SupportPlanRole::SupportBody)
-            })
-            .map(entry_area)
-            .next()
-            .unwrap_or_else(|| panic!("body '{body}' must keep a single-membership source row"))
-    };
-    let expected = source_area(body_one) + source_area(body_two);
+    // The two columns carry disjoint geometry (`contact_region` at 0..4mm,
+    // `obstacle_region` at 10..14mm), so their union area is their sum. The
+    // expected value is taken from the fixture polygons rather than from
+    // another planned row: DEV-169 removed the single-membership grid row at
+    // z=6000 this previously borrowed as body 1's stand-in (it now merges with
+    // the intermediate row that lands on that same plane). The asserted value
+    // is unchanged - each fixture polygon is 4mm x 4mm, which is exactly the
+    // area that row carried.
+    let expected = expolygon_area(&contact_region()) + expolygon_area(&obstacle_region());
     let merged = entry_area(same_plane[0]);
     assert!(
         (merged - expected).abs() <= AREA_TOLERANCE_UNITS2,
@@ -2622,5 +2611,133 @@ fn merge_rejects_anchor_z_layer_index_disagreement() {
     assert!(
         result.is_err(),
         "one identity triple resolving to two planes must be rejected, not published"
+    );
+}
+
+/// DEV-169: a 239c intermediate plane can land exactly on a grid plane that a
+/// grid row of the SAME `(object_id, region_id)` still occupies, because the
+/// support-step decimation removes one body's grid row at that plane while a
+/// different body's row survives there. That is one physical plane of one
+/// region, so it must publish ONE entry carrying both body memberships - the
+/// same shape planes 8000 and 10000 already produce in this fixture.
+///
+/// Construction: two bodies whose columns overlap. Body 2 spans layers 0..7,
+/// body 1 spans layers 2..5, support pitch 0.3mm over a 0.2mm grid. Body 2's
+/// grid row at z=6000 is decimated, then re-inserted by
+/// `packet239c_intermediate_planes` across the resulting 4000->8000 gap at the
+/// midpoint 6000 - exactly where body 1's grid row still sits.
+#[test]
+fn coarse_intermediate_plane_on_occupied_grid_plane_publishes_one_entry() {
+    let object = overhang_object("same-region-traditional");
+    let analysis = SupportAnalysisView {
+        candidates: vec![(1, 6), (2, 8)]
+            .into_iter()
+            .map(|(id, global_layer_index)| SupportAnalysisCandidate {
+                id,
+                object_id: "same-region-traditional".into(),
+                region_id: "0".into(),
+                global_layer_index,
+                z_units: slicer_ir::mm_to_units(layer_plan().layers[global_layer_index as usize].z),
+                geometry: vec![if id == 1 {
+                    contact_region()
+                } else {
+                    obstacle_region()
+                }],
+                ..Default::default()
+            })
+            .collect(),
+        termination_surfaces: vec![SupportAnalysisGeometryEntry {
+            global_support_layer_index: 2,
+            object_id: "same-region-traditional".into(),
+            region_id: "0".into(),
+            polygons: vec![contact_region()],
+        }],
+        family_assignments: vec![traditional_assignment("same-region-traditional")],
+        ..Default::default()
+    };
+    let config = {
+        let base = planner_config_with(true, 0.0, 0.3);
+        let mut values = base
+            .keys()
+            .into_iter()
+            .filter_map(|key| base.get(&key).map(|value| (key, value.clone())))
+            .collect::<HashMap<ConfigKey, ConfigValue>>();
+        values.insert("support_interface_top_layers".into(), ConfigValue::Int(1));
+        values.insert(
+            "support_interface_bottom_layers".into(),
+            ConfigValue::Int(0),
+        );
+        ConfigView::from_map(values)
+    };
+    let output = run_planner_with_config(config, object, analysis);
+    let body_one = "traditional-body-same-region-traditional-1";
+    let body_two = "traditional-body-same-region-traditional-2";
+
+    let at_plane: Vec<_> = output
+        .entries()
+        .iter()
+        .filter(|entry| entry.anchor_z == 6000 && entry.decline_reason.is_none())
+        .collect();
+    assert_eq!(
+        at_plane.len(),
+        1,
+        "one physical plane of one region must publish exactly one entry, got {:?}",
+        at_plane
+            .iter()
+            .map(|entry| (entry.global_layer_index, entry.body_ids.clone()))
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        at_plane[0].global_layer_index >= 0,
+        "the surviving grid row's index owns the plane, not a synthesized index"
+    );
+    let mut memberships = at_plane[0].body_ids.clone();
+    memberships.sort();
+    assert_eq!(
+        memberships,
+        vec![body_one.to_string(), body_two.to_string()],
+        "both body columns present at this plane must survive the merge"
+    );
+
+    // Geometries are disjoint (`contact_region` 0..4mm, `obstacle_region`
+    // 10..14mm), so the merged area is their sum. Areas are taken from the
+    // fixture polygons, not from another planned row, so this stays valid
+    // however the neighbouring rows are decimated.
+    let expected = expolygon_area(&contact_region()) + expolygon_area(&obstacle_region());
+    let merged = entry_area(at_plane[0]);
+    assert!(
+        (merged - expected).abs() <= AREA_TOLERANCE_UNITS2,
+        "merged entry must retain the union area of both columns: {merged} vs {expected}"
+    );
+}
+
+/// W4 direction 2, now enforced LITERALLY (DEV-169): within one plan,
+/// `(object_id, region_id, anchor_z)` determines `global_layer_index`. Packet
+/// 241b had to scope this by index space, because the coarse path could hand a
+/// grid row and a synthesized row the same plane; the producer no longer does
+/// that (`grid_index_at_plane`), so the check is unscoped and the grid vs.
+/// synthesized pairing it used to excuse is now rejected.
+#[test]
+fn merge_rejects_grid_and_synthesized_rows_claiming_one_plane() {
+    let claiming = |global_layer_index: i32| SdkSupportPlanEntry {
+        global_layer_index,
+        object_id: "object-a".into(),
+        region_id: "0".into(),
+        family_id: "traditional".into(),
+        demand_ids: vec!["demand-1".into()],
+        body_ids: vec!["traditional-body-object-a-1".into()],
+        anchor_layer_index: 3,
+        anchor_z: 6000,
+        roles: vec![SupportPlanRoleRegion {
+            role: SupportPlanRole::SupportBody,
+            regions: vec![contact_region()],
+        }],
+        ..Default::default()
+    };
+    let mut entries = vec![claiming(2), claiming(i32::MIN)];
+    let result = traditional_support_planner::merge_region_identity_entries(&mut entries);
+    assert!(
+        result.is_err(),
+        "one plane of one region claiming two layer indices must be rejected, not published"
     );
 }

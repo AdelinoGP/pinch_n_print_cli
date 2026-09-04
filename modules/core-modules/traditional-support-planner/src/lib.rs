@@ -1156,9 +1156,25 @@ impl SupportPlanner {
                         self.support_layer_height_mm as f64,
                     ) {
                         let mut clone = entry.clone();
-                        clone.global_layer_index =
-                            next_intermediate_plane_index(intermediate_plane_indices, plane)?;
                         clone.anchor_z = plane;
+                        // Searched over EVERY surviving grid row, not the
+                        // partially built `retained`: `entries` is not ordered
+                        // by plane, so a row occupying this plane can still be
+                        // ahead of the cursor.
+                        let occupant = grid_index_at_plane(
+                            entries
+                                .iter()
+                                .enumerate()
+                                .filter(|(index, _)| !removed.contains(index))
+                                .map(|(_, row)| row),
+                            &clone,
+                        );
+                        clone.global_layer_index = match occupant {
+                            Some(grid_index) => grid_index,
+                            None => {
+                                next_intermediate_plane_index(intermediate_plane_indices, plane)?
+                            }
+                        };
                         retained.push(clone);
                     }
                 }
@@ -1246,14 +1262,10 @@ impl SupportPlanner {
             ))
         });
         for (entry, _) in &mut synthesized {
-            let plane_ordinal = i32::try_from(intermediate_plane_indices.len()).map_err(|_| {
-                ModuleError::fatal(1, "too many intermediate traditional-support planes")
-            })?;
-            entry.global_layer_index = *intermediate_plane_indices.entry(entry.anchor_z).or_insert(
-                i32::MIN.checked_add(plane_ordinal).ok_or_else(|| {
-                    ModuleError::fatal(1, "too many intermediate traditional-support planes")
-                })?,
-            );
+            entry.global_layer_index = match grid_index_at_plane(retained.iter(), entry) {
+                Some(grid_index) => grid_index,
+                None => next_intermediate_plane_index(intermediate_plane_indices, entry.anchor_z)?,
+            };
         }
         retained.extend(synthesized.into_iter().map(|(entry, _)| entry));
         retained.sort_by_key(|entry| entry.anchor_z);
@@ -1324,6 +1336,47 @@ fn packet239d_coarse_planes(below_units: i64, above_units: i64, pitch_mm: f64) -
         .collect()
 }
 
+/// The `global_layer_index` of a retained GRID row that already occupies this
+/// synthesized row's `(object_id, region_id, anchor_z)`, if one does.
+///
+/// Packet 239c inserts an intermediate row wherever the gap between two
+/// consecutive surviving rows of one body exceeds the support pitch. That
+/// midpoint can land exactly on a grid plane - and that grid plane can still be
+/// occupied by a row of the SAME object and region belonging to a DIFFERENT
+/// body, because the support-step decimation is per body membership: it removes
+/// one body's row at the plane while another body's row survives there.
+///
+/// Measured in `coarse_intermediate_plane_on_occupied_grid_plane_publishes_one_entry`
+/// (`tests/traditional_family_tdd.rs`): body 2's grid row at `anchor_z` 6000 is
+/// decimated, then re-inserted across the resulting 4000 -> 8000 gap at the
+/// midpoint 6000, where body 1's grid row still sits.
+///
+/// Minting a synthesized index there would publish TWO entries for one physical
+/// plane of one region - the shape DEV-169 flagged. It is not two identities:
+/// `SupportPlanIR` admits one entry per `(global_layer_index, object_id,
+/// region_id)`, and one region at one plane is one support region. Adopting the
+/// grid row's index lets `merge_region_identity_entries` fold the pair, which is
+/// exactly what the neighbouring planes in that fixture already do when both
+/// body columns reach them on the grid. Per the DEV-170 precedent on the tree
+/// planner, the resolution is a MERGE, never a new fatal invariant.
+///
+/// Declined rows are excluded: a decline records a candidate that was never
+/// planned, so it owns no plane.
+fn grid_index_at_plane<'a>(
+    rows: impl IntoIterator<Item = &'a SupportPlanEntry>,
+    synthesized: &SupportPlanEntry,
+) -> Option<i32> {
+    rows.into_iter()
+        .find(|row| {
+            row.decline_reason.is_none()
+                && row.global_layer_index >= 0
+                && row.object_id == synthesized.object_id
+                && row.region_id == synthesized.region_id
+                && row.anchor_z == synthesized.anchor_z
+        })
+        .map(|row| row.global_layer_index)
+}
+
 fn next_intermediate_plane_index(
     intermediate_plane_indices: &mut BTreeMap<i64, i32>,
     plane: i64,
@@ -1374,19 +1427,20 @@ fn next_intermediate_plane_index(
 ///
 /// - two entries share `(global_layer_index, object_id, region_id)` but carry
 ///   different `anchor_z` (one layer index claiming two planes); or
-/// - two entries share `(object_id, region_id, anchor_z)` *within one index
-///   space* but carry different `global_layer_index` (one plane claiming two
-///   layer indices).
+/// - two entries share `(object_id, region_id, anchor_z)` but carry different
+///   `global_layer_index` (one plane claiming two layer indices).
 ///
-/// The second rule is scoped to an index space - grid rows
-/// (`global_layer_index >= 0`) and synthesized intermediate rows
-/// (`global_layer_index < 0`, minted per plane by
-/// `next_intermediate_plane_index`) are checked separately - because coarse
-/// mode legitimately snaps a synthesized plane onto a grid row's `anchor_z`
-/// (measured: `coarse_same_region_sources_keep_distinct_body_membership` emits
-/// a grid row and an intermediate row that both sit at `anchor_z` 6000). Those
-/// two entries carry different identities on purpose; whether the coarse path
-/// *should* emit both is a separate question, not one this merge answers.
+/// The second rule was scoped by index space in packet 241b and is UNSCOPED
+/// again as of DEV-169. It was scoped because the coarse path could put a grid
+/// row and a synthesized intermediate row on one `anchor_z`; that was a
+/// producer defect, not legitimate output, and it is fixed at the producer by
+/// `grid_index_at_plane`. Every entry is born with a grid index (`layer as
+/// i32`), and the only negative indices come from
+/// `next_intermediate_plane_index`, whose two call sites both consult
+/// `grid_index_at_plane` first - so a plane of one object/region is owned by a
+/// grid index or by one minted index, never both, and the literal rule holds.
+/// Pinned by `merge_rejects_grid_and_synthesized_rows_claiming_one_plane` and
+/// `coarse_intermediate_plane_on_occupied_grid_plane_publishes_one_entry`.
 ///
 /// Either shape means the identity the merge keys on has stopped naming a
 /// single physical thing, and merging would then either fuse two planes or
@@ -1414,11 +1468,11 @@ pub fn merge_region_identity_entries(
     // The two directions of the layer-index <-> plane correspondence, each
     // recording the first witness so a disagreement can name both sides.
     let mut plane_of_layer: BTreeMap<(i32, String, String), i64> = BTreeMap::new();
-    // Keyed inside one index space (`synthetic = global_layer_index < 0`):
-    // intermediate rows are minted per plane and grid rows are indexed by the
-    // layer plan, so each space maps a plane to one index, but a synthesized
-    // plane may legitimately coincide with a grid row's `anchor_z`.
-    let mut layer_of_plane: BTreeMap<(bool, String, String, i64), i32> = BTreeMap::new();
+    // Unscoped (DEV-169): every entry is born with a grid index, and the only
+    // negative indices come from `next_intermediate_plane_index`, whose two
+    // call sites both defer to `grid_index_at_plane` first. So a plane is owned
+    // by a grid index or by one minted index, never both.
+    let mut layer_of_plane: BTreeMap<(String, String, i64), i32> = BTreeMap::new();
     for entry in entries.drain(..) {
         if entry.decline_reason.is_some() {
             merged.push(entry);
@@ -1448,7 +1502,6 @@ pub fn merge_region_identity_entries(
             btree_map::Entry::Occupied(_) => {}
         }
         match layer_of_plane.entry((
-            entry.global_layer_index < 0,
             entry.object_id.clone(),
             entry.region_id.clone(),
             entry.anchor_z,
