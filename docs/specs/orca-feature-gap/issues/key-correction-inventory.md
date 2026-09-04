@@ -728,6 +728,18 @@ correction is stated.
   `(100 x 255)/100 = 255`, i.e. full. The real divergence is semantic (relative-to-max vs absolute).
 - **`fan_min_speed` and `fan_max_speed` defaults are not value mismatches.** 51/255 = 20% and
   255/255 = 100%, exactly canonical's 20 and 100. Both are unit divergences, not wrong values.
+- **`fan_min_speed` is declaration-only, and the `slow_down_*` keys are not unruled** (ticket 111,
+  2026-09-04). Two corrections to this document's fan rows. (a) `fan_min_speed` has **no read site**:
+  its only non-doc occurrences are its `[config.schema]` row in
+  `modules/core-modules/part-cooling/part-cooling.toml` and a schema-default assertion in
+  `modules/core-modules/part-cooling/tests/cooling_config_schema_tdd.rs`;
+  `PartCooling::from_config` (`modules/core-modules/part-cooling/src/lib.rs`) reads four keys and
+  this is not one of them. Any claim that its default "matches canonical" describes an inert
+  declaration, the disposition Authoring rule 1 prohibits. (b) The "In-scope keys not ruled on"
+  entry listing `slow_down_for_layer_cooling`, `slow_down_layer_time` and `slow_down_min_speed` as
+  STUBs no question reached is **stale**: packet 253's AC-10 ports the canonical layer-time
+  slowdown stage that consumes all three, and AC-11 carries `dont_slow_down_outer_wall`. No
+  separate ticket is owed for them.
 - **`layer_id` is not a fourth instance of the severed-plumbing bug.** The consumer call site in
   `support_analysis_producer.rs` rebuilds the struct per contact with
   `layer_id: *layer_index, ..base_params.clone()`, so the `0` is always overridden. The genuinely
