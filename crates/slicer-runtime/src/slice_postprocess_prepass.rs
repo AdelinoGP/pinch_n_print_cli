@@ -57,7 +57,9 @@ use rayon::prelude::*;
 use slicer_core::algos::prepass_slice::{
     gate_bridge_areas_by_unsupported_span, update_external_bridge_orientation,
 };
-use slicer_core::polygon_ops::{difference, intersection, offset, union, OffsetJoinType};
+use slicer_core::polygon_ops::{
+    difference, expolygon_area, intersection, offset, union, OffsetJoinType,
+};
 use slicer_ir::{ConfigValue, ExPolygon, ObjectId, RegionId, RegionKey, RegionMapIR, SliceIR};
 
 use slicer_ir::BlackboardError;
@@ -179,6 +181,14 @@ pub fn commit_shell_classification_builtin(
             }
         }
     }
+
+    // Too-small sparse islands become internal solid fill before anything
+    // downstream reads the sparse/solid split (canonical
+    // `LayerRegion::process_external_surfaces`'s `minimum_sparse_infill_area`
+    // block). Runs after the two shell passes so the already-solid roles are
+    // final, and before the bridge gates so an island that just turned solid
+    // counts as solid support for the layer above.
+    convert_small_sparse_islands(&mut new_vec, region_map.as_ref());
 
     // Bridge candidates are produced during slicing, but only remain bridges
     // where the committed lower-layer slice leaves an unsupported span. Keep
@@ -972,6 +982,101 @@ fn build_region_timelines(slices: &[SliceIR]) -> HashMap<(ObjectId, RegionId), V
         }
     }
     timelines
+}
+
+/// One mm^2 expressed in squared coordinate units.
+///
+/// A coordinate unit is 100 nm (`docs/08_coordinate_system.md`), so 1 mm is
+/// 10_000 units and 1 mm^2 is 1e8 squared units. This is the Rust spelling of
+/// canonical's `scale_(scale_(value))` double-scale.
+const MM2_IN_SQUARED_UNITS: f64 = 1e8;
+
+/// Reclassify sparse islands at or below `minimum_sparse_infill_area` as
+/// internal solid fill.
+///
+/// Ports the `minimum_sparse_infill_area` block of canonical
+/// `LayerRegion::process_external_surfaces` (`LayerRegion.cpp`): with
+/// `sparse_infill_density > 0`, every internal (sparse) expolygon whose area is
+/// `<= scale_(scale_(minimum_sparse_infill_area))` is erased from the sparse
+/// zone and unioned into the internal-solid zone.
+///
+/// Two deliberate divergences from canonical, both recorded on wayfinder
+/// ticket 35:
+///
+/// 1. **The sparse zone is measured before the wall inset.** Canonical runs
+///    this inside `process_external_surfaces`, after `make_perimeters`, so its
+///    `fill_surfaces` are already inset by the walls. This port classifies
+///    shells in a prepass that runs before perimeters exist, so the zone here
+///    is the region footprint (`infill_areas`) minus the solid roles. Every
+///    island therefore measures larger than canonical would measure it, which
+///    makes the conversion strictly **conservative**: this port converts a
+///    subset of what canonical converts, never a superset.
+/// 2. **The converted area rides `bottom_solid_fill`.** This port has no
+///    internal-solid fill *domain* — the `InternalSolidInfill` role comes from
+///    a per-region `top_shell_index` / `bottom_shell_index` >= 1 (see
+///    `solid_fill_role` in `modules/core-modules/rectilinear-infill/src/lib.rs`)
+///    and `SlicedRegion::internal_solid_fill` is a marker subset of
+///    `top_solid_fill`, not a fillable polygon set. Converted islands are
+///    therefore unioned into `bottom_solid_fill`, and `bottom_shell_index` is
+///    stamped to `Some(1)` when the region-layer had no bottom shell — which
+///    yields the canonical `InternalSolidInfill` role. When the region-layer
+///    already carries `bottom_shell_index == Some(0)` (an exposed bottom in the
+///    same region on the same layer) the island inherits that index and emits
+///    as `BottomSolidInfill` instead: still 100% solid, but at the exposed
+///    surface's width and speed rather than the internal one's.
+///
+/// `spiral_mode` is part of canonical's guard and has no counterpart here — it
+/// is an unimplemented queue key, so the guard reduces to the density test.
+fn convert_small_sparse_islands(slices: &mut [SliceIR], region_map: &slicer_ir::RegionMapIR) {
+    for slice in slices.iter_mut() {
+        let layer_index = slice.global_layer_index;
+        for region in &mut slice.regions {
+            let exact = RegionKey {
+                global_layer_index: layer_index,
+                object_id: region.object_id.clone(),
+                region_id: region.region_id,
+                variant_chain: region.variant_chain.clone(),
+            };
+            let resolved = if let Some(plan) = region_map.entries.get(&exact) {
+                Some(region_map.config_for_raw(plan.config))
+            } else {
+                crate::layer_executor::config_for_region_smallest_chain(
+                    region_map,
+                    layer_index,
+                    &region.object_id,
+                    region.region_id,
+                )
+                .map(|config| region_map.config_for_raw(config))
+            };
+            let Some(resolved) = resolved else {
+                continue;
+            };
+            // Canonical guard: the block is skipped entirely for a fully
+            // hollow region. `0` on the threshold disables the feature.
+            if resolved.minimum_sparse_infill_area <= 0.0 || resolved.sparse_infill_density <= 0.0
+            {
+                continue;
+            }
+            let min_area_units =
+                f64::from(resolved.minimum_sparse_infill_area) * MM2_IN_SQUARED_UNITS;
+
+            let mut solids = region.top_solid_fill.clone();
+            solids.extend(region.bottom_solid_fill.iter().cloned());
+            solids.extend(region.bridge_areas.iter().cloned());
+            let small: Vec<ExPolygon> = difference(&region.infill_areas, &solids)
+                .into_iter()
+                .filter(|island| expolygon_area(island) <= min_area_units)
+                .collect();
+            if small.is_empty() {
+                continue;
+            }
+
+            region.bottom_solid_fill = union(&region.bottom_solid_fill, &small);
+            if region.bottom_shell_index.is_none() {
+                region.bottom_shell_index = Some(1);
+            }
+        }
+    }
 }
 
 fn resolve_shell_counts(

@@ -30,8 +30,9 @@ Classification: **(a)** live decision point already in tree; **(b)** decision po
 | `sparse_infill_rotate_template` | **(b)** | `rectilinear-infill`, `gyroid-infill` | per-layer sparse angle cycled from a comma-separated list | AC-4 |
 | `solid_infill_rotate_template` | **(b)** | `rectilinear-infill`, `gyroid-infill` | per-layer solid angle cycled from a comma-separated list | AC-5 |
 | `fill_multiline` | **(b)** | `rectilinear-infill` | N parallel sparse lines per scan line at line-width offsets | AC-6 |
+| `align_infill_direction_to_model` | **(b)** | `rectilinear-infill`, `gyroid-infill` | object Z-rotation added to every resolved fill angle, after the direction key and the rotate template | AC-13, AC-14 |
 
-Counts: **(a) 0 · (b) 4 · (c) 0 · (d) 0.** Zero declaration-only keys (map gate (a)); every key has a non-default-value AC (map gate (b)).
+Counts: **(a) 0 · (b) 5 · (c) 0 · (d) 0.** Zero declaration-only keys (map gate (a)); every key has a non-default-value AC (map gate (b)).
 
 ## Returned to Queue — unimplemented
 
@@ -47,7 +48,11 @@ Counts: **(a) 0 · (b) 4 · (c) 0 · (d) 0.** Zero declaration-only keys (map ga
 2. **Rotate templates** — both modules resolve a per-layer angle by cycling a comma-separated list by `layer_index`, one list for the sparse role and one for the solid roles. An empty string means "use the base angle"; an unparseable template logs one warn and falls back to the base angle (AC-7).
 3. **`fill_multiline`** — `rectilinear-infill` emits N copies of each sparse scan line at line-width offsets, keeping the group period unchanged, sparse role only.
 4. **Manifests** — seven net-new `[config.schema]` tables (rectilinear 4, gyroid 3), each with the canonical default/bounds and a `description` naming the in-module consumer.
-5. **Guard + fallout** — a new manifest guard test binary in `rectilinear-infill`, bounds/type arms in `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs`, the CONFIG_BLOCK arm in `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs`, and regeneration of `docs/15_config_keys_reference.md`.
+5. **`align_infill_direction_to_model`** (folded in from wayfinder ticket 35, P28) — three linked pieces:
+   - **Retain the rotation.** `crates/slicer-model-io/src/loader.rs` bakes each 3MF build item's composed transform into the mesh vertices and then sets `ObjectMesh.transform` to `identity_transform()`, so the object's Z-rotation is currently *unrecoverable anywhere in the port*. A new `ObjectMesh.model_rotation_z_rad: f32` (`#[serde(default)]`, `crates/slicer-ir/src/slice_ir.rs`) records `atan2(m[1], m[0])` of the transform that was baked. Nothing is re-applied; the field is a record, not a transform.
+   - **Publish it, gated.** `align_infill_direction_to_model` becomes a cli-bound `ResolvedConfig` bool (default `false`). After `resolve_per_object_configs` in `crates/slicer-runtime/src/run.rs`, the host writes a derived `model_rotation_deg` into each object's resolved config — the object's recorded rotation when the bool is set for that object, `0.0` otherwise.
+   - **Apply it in the module, last.** Both fill modules declare `align_infill_direction_to_model` and `model_rotation_deg`, and add the rotation to the angle they have already resolved from the direction key and the rotate template. The canonical ordering is load-bearing and is pinned by AC-14.
+6. **Guard + fallout** — a new manifest guard test binary in `rectilinear-infill`, bounds/type arms in `crates/slicer-scheduler/tests/integration/config_bounds_enforcement_tdd.rs`, the CONFIG_BLOCK arm in `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs`, and regeneration of `docs/15_config_keys_reference.md`.
 
 ## Out of Scope
 
@@ -56,7 +61,8 @@ Counts: **(a) 0 · (b) 4 · (c) 0 · (d) 0.** Zero declaration-only keys (map ga
 - `fill_multiline` on `gyroid-infill` and `lightning-infill`: offsetting a TPMS curve and a lightning tree are different algorithms, not a parameter. Declaring the key there would be declaration-only. Pinned by AC-N2.
 - Any key on `lightning-infill`: it has no scan-line angle and no multiline concept.
 - Canonical's rotate-template metalanguage (joints, repeats, unit suffixes). Only the comma-separated list form is ported; anything else is rejected loudly, not silently accepted (AC-7).
-- Any WIT interface change, IR schema bump, or new `ResolvedConfig` field — none is required.
+- Any WIT interface change or IR **schema version** bump — neither is required. (`align_infill_direction_to_model` and the derived `model_rotation_deg` do add `ResolvedConfig` fields, and `ObjectMesh` gains one `#[serde(default)]` field; the original revision's blanket "no `ResolvedConfig` field" rule is superseded for those two keys only.)
+- Aligning any angle other than the fill angles. Canonical folds the same offset into the ironing angle, the user-specified bridge angle, and the internal-bridge-angle override as well. This port has no `ironing_angle` and no `bridge_angle` key at all, and `internal_bridge_angle` (`rectilinear-infill`) is left unaligned here: canonical aligns it only on its `> 0` user-set branch, which belongs with that key's own packet. Recorded as a divergence, not a gap; whichever packet lands those keys inherits the obligation.
 
 ## Authoritative Docs
 
@@ -96,7 +102,11 @@ Canonical is cited by file + function name, never line number. A worker disputin
 | AC-N1 | guard drift fails loudly | all four |
 | AC-N2 | lightning declares none; gyroid declares no `fill_multiline` | ownership discipline |
 | AC-N3 | zero `ORCA_CONFIG_PADDING` diff | rule 2 |
-| AC-N4 | default-path byte identity (additional evidence only) | all four |
+| AC-11 | loader records the object Z-rotation, moves no geometry | `align_infill_direction_to_model` (source) |
+| AC-12 | gated per-object publication of `model_rotation_deg` | `align_infill_direction_to_model` |
+| AC-13 | every fill angle rotates 0° → 30° with the object | `align_infill_direction_to_model` |
+| AC-14 | offset applies **after** the rotate template (30°/120°, not 0°/90°) | `align_infill_direction_to_model` |
+| AC-N4 | default-path byte identity (additional evidence only) | all five |
 
 ## Verification Matrix
 
@@ -107,10 +117,12 @@ Canonical is cited by file + function name, never line number. A worker disputin
 | `cargo test -p rectilinear-infill --test infill_angle_multiline_config_schema_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-1, AC-N1, AC-N2 |
 | `cargo test -p slicer-scheduler --test scheduler_integration config_bounds_enforcement 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-8 |
 | `cargo test -p slicer-runtime --test integration gcode_header_thumbnail_config_blocks 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-9 |
+| `cargo test -p slicer-model-io --test model_rotation_z_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-11 |
+| `cargo test -p slicer-runtime --test integration model_rotation_alignment 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-12 |
 | `cargo xtask gen-config-docs --check` + the AC-10 key loop | AC-10 |
-| `git diff --unified=0 -- crates/slicer-gcode/src/serialize.rs \| grep -cE "^[+-][^+-]"` | AC-N3 |
+| `git diff --unified=0 — crates/slicer-gcode/src/serialize.rs \| grep -cE "^[+-][^+-]"` | AC-N3 |
 | `cargo xtask build-guests --check; echo "exit=$?"` | guest freshness (both manifests are fingerprint inputs) |
-| `cargo check --workspace --all-targets`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo xtask check-literals` | packet gates |
+| `cargo check --workspace --all-targets`, `cargo clippy --workspace --all-targets — -D warnings`, `cargo xtask check-literals` | packet gates |
 
 ## Step Completion Expectations
 

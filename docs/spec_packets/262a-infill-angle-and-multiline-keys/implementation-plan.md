@@ -6,7 +6,8 @@
 - Every OrcaSlicer read is delegated (`requirements.md` §OrcaSlicer Reference Obligations). Every cargo/xtask run is delegated with a `FACT pass/fail` return.
 - Test output always tees to `target/test-output.log`; read the log rather than re-running (`CLAUDE.md` §Test output).
 - `crates/slicer-gcode/src/serialize.rs` is never opened for editing. No padding twin is added or corrected in this packet.
-- No step may add a WIT interface, bump an IR schema version, or add a `ResolvedConfig` field. A step that appears to need one stops and reports a `[BLOCK]`.
+- No step may add a WIT interface or bump an IR schema version. A step that appears to need one stops and reports a `[BLOCK]`.
+- The only permitted IR edits are the three fields named in `design.md` §Code Change Surface (`ObjectMesh.model_rotation_z_rad`, `ResolvedConfig.align_infill_direction_to_model`, `ResolvedConfig.model_rotation_deg`), and only in Step 7.
 - Adding a field to a module's config struct obliges the same step to fix every struct literal of that struct in the module's tests (`..` rest or an `// exhaustive: <reason>` waiver) so `cargo xtask check-literals` stays green.
 
 ## Steps
@@ -91,6 +92,28 @@
   6. `cargo check --workspace --all-targets` and `cargo clippy --workspace --all-targets -- -D warnings`
 - Exit / falsifying condition: fails if `build-guests --check` returns anything but exit 0, if `gen-config-docs --check` is non-zero, if any of the four keys is missing from the generated table or carries a wrong owner, if the deviation-row count moved, if the padding diff is non-zero, or if clippy or `check-literals` reports anything.
 
+### Step 7: `align_infill_direction_to_model` — retain, publish, apply
+
+- Objective: AC-11, AC-12, AC-13, AC-14. The object's Z-rotation survives loading, reaches each object's resolved config under the key's gate, and is added by both fill modules to the angle they have already resolved.
+- Preconditions: Steps 1–6 exit met. Runs last because AC-14 asserts the offset lands *after* the rotate-template resolver Step 3 builds; the ordering cannot be asserted before that resolver exists.
+- Allowed reads: `crates/slicer-model-io/src/loader.rs` (ranged: `resolve_object`'s `effective_transform` computation and the private `ObjectMesh` constructor), `crates/slicer-ir/src/slice_ir.rs` (ranged: `ObjectMesh`), `crates/slicer-ir/src/resolved_config.rs` (ranged: the cli-field macro block), `crates/slicer-runtime/src/run.rs` (ranged: both `resolve_per_object_configs` call sites).
+- Files edited (≤ 3 per sub-step; take them in this order, checking between each):
+  1. `crates/slicer-ir/src/slice_ir.rs` + the `ObjectMesh` literal blast radius (re-derive with `rg -n 'ObjectMesh \{'`) + `crates/slicer-model-io/src/loader.rs`
+  2. `crates/slicer-ir/src/resolved_config.rs` + `crates/slicer-runtime/src/run.rs` + `crates/slicer-runtime/tests/integration/model_rotation_alignment_tdd.rs`
+  3. `modules/core-modules/rectilinear-infill/{rectilinear-infill.toml,src/lib.rs}` and `modules/core-modules/gyroid-infill/{gyroid-infill.toml,src/lib.rs}` + their test arms
+- Out of bounds: `design.md` §Out-of-Bounds Files. In particular, no geometry may be multiplied by the recorded rotation.
+- Dispatches: `SNIPPETS` (≤ 2, ≤ 30 lines) — canonical's two `align_infill_direction_to_model` blocks (`Fill.cpp::group_fills`, `LayerRegion.cpp::process_external_surfaces`): the `atan2` spelling, the matrix entries read, and the position of the `+=` relative to `calculate_infill_rotation_angle`.
+- Cost: M.
+- Authorities: `docs/02_ir_schemas.md` (`ObjectMesh` shape), `docs/21_data_defaults_and_fixtures.md` (struct-literal churn gate), `docs/03_wit_and_manifest.md` (`[config.schema]` shape for the two new module keys).
+- Verification, in order:
+  1. `cargo test -p slicer-model-io --test model_rotation_z_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` (AC-11)
+  2. `cargo test -p slicer-runtime --test integration model_rotation_alignment 2>&1 | tee target/test-output.log | grep -E "^test result"` (AC-12)
+  3. `cargo test -p rectilinear-infill --test rectilinear_raw_emit_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` (AC-13, AC-14)
+  4. `cargo test -p gyroid-infill --test gyroid_infill_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` (AC-14, gyroid half)
+  5. `cargo xtask check-literals`, then `cargo xtask build-guests` and `cargo xtask build-guests --check; echo "exit=$?"` (both manifests changed again; must print `exit=0`)
+  6. `cargo xtask gen-config-docs` and re-run the AC-10 command with `align_infill_direction_to_model` and `model_rotation_deg` added to the key loop
+- Exit / falsifying condition: fails if a rotated 3MF's `ObjectMesh.transform` is no longer the identity or any vertex moved (AC-11 asserts both); if `model_rotation_deg` is non-zero for any object while `align_infill_direction_to_model` is false; if the template run yields 0°/90° instead of 30°/120° (the offset was folded in before the template instead of after); or if `check-literals`, `build-guests --check`, or clippy reports anything.
+
 ## Per-Step Budget Roll-Up
 
 | Step | Cost |
@@ -101,12 +124,13 @@
 | 4 multiline | M |
 | 5 guard + bounds + CONFIG_BLOCK | S |
 | 6 guests + docs + gates | S |
+| 7 model-rotation alignment (retain / publish / apply) | M |
 
 Aggregate: **M**. No single step is L.
 
 ## Packet Completion Gate
 
-- All 10 ACs and the four negative cases pass by their own commands.
+- All 14 ACs and the four negative cases pass by their own commands.
 - `cargo check --workspace --all-targets` and `cargo clippy --workspace --all-targets -- -D warnings` green.
 - `cargo xtask check-literals` exit 0.
 - `cargo xtask build-guests --check` exit 0.

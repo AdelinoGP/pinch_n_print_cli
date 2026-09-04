@@ -112,6 +112,26 @@
 - Verification: `cargo test -p slicer-scheduler --test scheduler_integration config_bounds_enforcement 2>&1 | tee target/test-output.log | grep -E "^test result"`; `cargo test -p slicer-runtime --test contract native_infill_claim_resolution 2>&1 | tee target/test-output.log | grep -E "^test result"`; the AC-11 `rg` chain.
 - Exit / falsifying condition: fails if `gap_fill_target = "bogus"` resolves, if `monotonic-infill` emits a sparse or bridge path, if `crosshatch-infill` emits a solid or bridge path, or if either doc lacks its required content.
 
+### Step 7b: `detect_narrow_internal_solid_infill` — SDK helpers, then the two targets
+
+- Objective: AC-13, AC-14, AC-15, AC-16, AC-N5.
+- Preconditions: Steps 1–7 exit met, and packet 262a is merged (this step edits `rectilinear-infill`, which 262a owns).
+- Allowed reads: `crates/slicer-sdk/src/host.rs` (ranged: the offset/clip primitives), `modules/core-modules/rectilinear-infill/src/lib.rs` (ranged: `solid_fill_role` and the top/bottom emit loops), `crates/slicer-core/src/polygon_ops.rs` (ranged: `offset`, `intersection`, `difference`).
+- Files edited, in two sub-steps (≤ 3 each, check between them):
+  1. `crates/slicer-sdk/src/narrow_solid.rs` (new) + `crates/slicer-sdk/src/lib.rs` (`mod` line) + `crates/slicer-sdk/tests/narrow_solid_tdd.rs` (new)
+  2. `modules/core-modules/rectilinear-infill/{rectilinear-infill.toml,src/lib.rs}` + `modules/core-modules/rectilinear-infill/tests/narrow_internal_solid_tdd.rs` (new), then the same two edits on `monotonic-infill`
+- Out of bounds: everything in `design.md` §Out-of-Bounds Files. In `rectilinear-infill`, only the three files named in §Code Change Surface, and only the `InternalSolidInfill` role's behaviour.
+- Dispatches: `SNIPPETS` (≤ 2, ≤ 30 lines) — canonical `split_solid_surface`'s non-line-based branch (`Fill/Fill.cpp`) and `FillConcentric::_fill_surface_single` (`Fill/FillConcentric.cpp`): the exact opening radii and the loop-termination condition.
+- Cost: M.
+- Authorities: `docs/08_coordinate_system.md` (spacing is in 100 nm units; the opening radius is a spacing, not a millimetre), `docs/03_wit_and_manifest.md` (`[config.schema]` shape), `docs/21_data_defaults_and_fixtures.md` (struct-literal churn gate for the new config field on both modules' config structs).
+- Verification, in order:
+  1. `cargo test -p slicer-sdk --test narrow_solid_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` (AC-13, AC-14)
+  2. `cargo test -p rectilinear-infill --test narrow_internal_solid_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` (AC-15, AC-N5)
+  3. `cargo test -p monotonic-infill --test monotonic_infill_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` (AC-15, monotonic half)
+  4. `cargo test -p infill-gap-fill --test infill_gap_fill_config_schema_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` (AC-16)
+  5. `cargo test -p slicer-runtime --test e2e slice_end_to_end 2>&1 | tee target/test-output.log | grep -E "^test result"` (AC-N5's byte-identity half)
+- Exit / falsifying condition: fails if the T-shape's bar lands in the narrow set or its stem in the normal set; if a concentric loop is emitted over an exposed depth-0 top or bottom surface at either value of the key; if the square fixture's G-code moves at the `true` default; if any behaviour of `rectilinear-infill` other than the `InternalSolidInfill` role changes; or if `check-literals` reports a violation on either module's config struct.
+
 ### Step 8: Guest rebuild, generated docs, and closure gates
 
 - Objective: AC-10, AC-N1, AC-N2, and the packet gates.
@@ -143,13 +163,14 @@
 | 5b linker `GapFill` passthrough | S |
 | 6 pattern→holder derivation | M |
 | 7 bounds + claims + docs | S |
+| 7b narrow internal solid (SDK + two targets) | M |
 | 8 guests + docs + gates | S |
 
 Aggregate: **L**. No single step is L, so the packet does not require a further split.
 
 ## Packet Completion Gate
 
-- All 12 ACs and the four negative cases pass by their own commands.
+- All 16 ACs and the five negative cases pass by their own commands.
 - `cargo check --workspace --all-targets` and `cargo clippy --workspace --all-targets -- -D warnings` green.
 - `cargo xtask check-literals` exit 0.
 - `cargo xtask build-guests --check` exit 0 with all three new guests present.

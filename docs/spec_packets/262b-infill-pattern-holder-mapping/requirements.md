@@ -24,12 +24,13 @@ Classification: **(a)** live decision point already in tree; **(b)** decision po
 | `sparse_infill_pattern` | **(b)** | host — `resolve_global_config` (`crates/slicer-scheduler/src/config_resolution.rs`) | value → `claim:sparse-fill` holder (`sparse_fill_holder`), with `crosshatch-infill` shipped as a new module; unshipped values rejected by name | AC-2, AC-4, AC-N3 |
 | `internal_solid_infill_pattern` | **(b)** | host — `resolve_global_config` | value → `claim:top-fill` holder (`top_fill_holder`), with `monotonic-infill` shipped as a new module; unshipped values rejected by name | AC-3, AC-5, AC-N3 |
 | `gap_fill_target` | **(b)** | `infill-gap-fill` (new module, `Layer::InfillPostProcess`) | region scope of a new medial-axis fill-side gap-fill pass | AC-6 |
+| `detect_narrow_internal_solid_infill` | **(b)** | `rectilinear-infill`, `monotonic-infill` (the two shipped `internal_solid_infill_pattern` targets) | narrow sub-areas of an internal-solid fill are rerouted to concentric loops; the rest keeps the selected pattern | AC-15 |
 
-Counts: **(a) 0 · (b) 3 · (c) 0 · (d) 0.** Zero declaration-only keys (map gate (a)); every key has at least one AC asserting a behaviour change at a non-default value (map gate (b)).
+Counts: **(a) 0 · (b) 4 · (c) 0 · (d) 0.** Zero declaration-only keys (map gate (a)); every key has at least one AC asserting a behaviour change at a non-default value (map gate (b)).
 
 ## Returned to Queue — unimplemented
 
-**None.** Together with packet 262a, every key on the P08 list is implemented.
+**None.** Together with packet 262a, every key on the P08 list is implemented, and so is the `detect_narrow_internal_solid_infill` third of P28 folded in from wayfinder ticket 35.
 
 The *unshipped enum values* are a different thing from an unimplemented key and are not "returned": the key is live, and a value the port does not implement is **rejected by name** at config resolution (AC-N3) rather than silently accepted. Shipped values this packet supports:
 
@@ -42,7 +43,7 @@ A future packet adds values by adding modules and one table row each. Packet 263
 
 ## Ruled Dead-in-Canonical
 
-**None.** All three keys have read sites inside OrcaSlicer's slicing pipeline under `src/libslic3r/`: the two pattern enums through `Fill::new_from_type` and `Layer::make_fills`, and `gap_fill_target` in `Fill::_create_gap_fill` (`Fill/FillBase.cpp`), called from `Fill::fill_surface_extrusion`.
+**None.** `detect_narrow_internal_solid_infill` is read by `Layer::make_fills`' `group_fills` (`Fill/Fill.cpp`) — `layer.object()->config().detect_narrow_internal_solid_infill` gating the `split_solid_surface` / `ipConcentricInternal` block — inside the slicing pipeline. The other three keys likewise have read sites inside `src/libslic3r/`: the two pattern enums through `Fill::new_from_type` and `Layer::make_fills`, and `gap_fill_target` in `Fill::_create_gap_fill` (`Fill/FillBase.cpp`), called from `Fill::fill_surface_extrusion`.
 
 ## In Scope
 
@@ -51,13 +52,19 @@ A future packet adds values by adding modules and one table row each. Packet 263
 3. **`monotonic-infill`** — new `claim:top-fill` module emitting solid fill in monotonic sweep order (all lines in one direction, sweep coordinate non-decreasing).
 4. **`infill-gap-fill`** — new `Layer::InfillPostProcess` module holding the new `claim:infill-gap-fill`, reading `InfillIR` + `PerimeterIR` + `RegionMapIR` and writing `InfillIR`. Gated by `gap_fill_target`; computes the area the fill lines did not cover, extracts the gap band, runs `slicer_sdk::host::medial_axis`, and appends `ExtrusionRole::GapFill` paths via `slicer_ir::variable_width`.
 5. **`GapFill` passthrough in `infill-linker`** — `GapFill`-role paths in the sparse/solid buckets are re-emitted verbatim instead of being clipped by `RoleBoundaries::for_role`'s catch-all arm and dropped by `remove_short_polylines`; modelled on the existing `InfillLinker::copy_ironing`. No other linker behaviour changes.
-6. **Registration** of the three modules (workspace members, integrated registry, `pnp-cli` passthrough features) and the module-count assertion.
-7. **Docs**: the pattern→holder mapping in `docs/04_host_scheduler.md` §Claim Resolution; the `claim:infill-gap-fill` row in `docs/03_wit_and_manifest.md` §Known claim IDs; regeneration of `docs/15_config_keys_reference.md`.
-8. **Tests**: a new `config_resolution_pattern_holder.rs` under `crates/slicer-scheduler/tests/integration/` **plus its `mod` registration in that directory's `main.rs`** (the binary is aggregated — an unregistered file silently compiles to zero tests); per-module behaviour suites; a manifest guard for `gap_fill_target`; bounds arms; claim-resolution arms.
+6. **`detect_narrow_internal_solid_infill`** (folded in from wayfinder ticket 35, P28) — three pieces:
+   - **`slicer_sdk::narrow_solid`**, a new SDK module with two helpers: `split_narrow_solid(areas, spacing)` (canonical `split_solid_surface`'s geometric-core branch — `intersection(area, opening(area, spacing, spacing))` is the normal set, `area − core` is the narrow set, an empty core means wholly narrow) and `concentric_loops(expolygon, spacing)` (canonical `FillConcentric::_fill_surface_single`'s successive inward offsets). The generator lives in the SDK so packet 264's `concentric-infill` consumes it rather than duplicating it.
+   - **A narrow branch in the two `internal_solid_infill_pattern` targets**, `rectilinear-infill` and `monotonic-infill`: when the key is true and the emitted role is `ExtrusionRole::InternalSolidInfill` (top/bottom shell depth ≥ 1 — see `solid_fill_role` in `modules/core-modules/rectilinear-infill/src/lib.rs`), split the area, emit concentric loops over the narrow part and the module's own pattern over the rest. Exposed depth-0 surfaces are never split, matching canonical's `stInternalSolid`-only guard.
+   - **The `[config.schema]` table** on both modules, `default = true` (canonical's own default).
+7. **Registration** of the three modules (workspace members, integrated registry, `pnp-cli` passthrough features) and the module-count assertion.
+8. **Docs**: the pattern→holder mapping in `docs/04_host_scheduler.md` §Claim Resolution; the `claim:infill-gap-fill` row in `docs/03_wit_and_manifest.md` §Known claim IDs; regeneration of `docs/15_config_keys_reference.md`.
+9. **Tests**: a new `config_resolution_pattern_holder.rs` under `crates/slicer-scheduler/tests/integration/` **plus its `mod` registration in that directory's `main.rs`** (the binary is aggregated — an unregistered file silently compiles to zero tests); per-module behaviour suites; a manifest guard for `gap_fill_target`; bounds arms; claim-resolution arms.
 
 ## Out of Scope
 
 - The four angle/multiline keys — packet 262a.
+- Canonical's **line-based** branch of `split_solid_surface` (the rotate-by-`aligning_angle`, `LinesDistancer`-driven reconnection path it takes for `ipRectilinear` / `ipMonotonic` / `ipMonotonicLine` / `ipAlignedRectilinear`). This packet applies the geometric-core branch to every pattern. Recorded as a divergence in `design.md`, not a gap: the narrow/normal partition is the same in kind, and the line-based path's extra reconnection affects which slivers survive at the margin, not whether narrow areas are rerouted.
+- Creating a `concentric-infill` module — packet 264 ships it, and must consume `slicer_sdk::narrow_solid::concentric_loops`.
 - The remaining 22 sparse and 6 solid canonical enum values: each needs its own module. Rejected by name, not silently mapped (AC-N3).
 - Canonical's ant-colony `chain_monotonic_regions` optimisation and `pinch_contours_insert_phony_outer_intersections` — see `design.md` DIV-3.
 - `filter_out_gap_fill` (canonical's minimum gap-fill length) — not on P08's key list; this port applies no length filter, recorded as `design.md` DIV-5.
@@ -106,7 +113,12 @@ Canonical semantics carried into the ACs: `gftEverywhere` = gap fill on top, bot
 | AC-N1 | default print byte-identical (additional evidence only) | all three |
 | AC-N2 | zero `ORCA_CONFIG_PADDING` diff | rule 2 |
 | AC-N3 | unshipped values rejected by name | both pattern keys |
+| AC-13 | narrow / normal split of a sliver, a square, and a T-shape | `detect_narrow_internal_solid_infill` |
+| AC-14 | SDK concentric-loop generator (nested closed loops, no scan lines) | `detect_narrow_internal_solid_infill` |
+| AC-15 | narrow stem loops + normal bar scan lines at `true`, all scan lines at `false` | `detect_narrow_internal_solid_infill` |
+| AC-16 | manifest guard: exact table on the two targets, nowhere else | `detect_narrow_internal_solid_infill` |
 | AC-N4 | new modules emit only their claimed role | — (claim scope) |
+| AC-N5 | no narrow area and depth-0 surfaces stay byte-identical at the `true` default | `detect_narrow_internal_solid_infill` |
 
 ## Verification Matrix
 
@@ -121,7 +133,9 @@ Canonical semantics carried into the ACs: `gftEverywhere` = gap fill on top, bot
 | `cargo test -p slicer-scheduler --test scheduler_integration manifest_ingestion 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-1 |
 | `cargo test -p slicer-scheduler --test scheduler_integration config_bounds_enforcement 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-9 |
 | `cargo test -p slicer-runtime --test contract native_infill_claim_resolution 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-N4 |
-| `cargo test -p slicer-runtime --test e2e slice_end_to_end 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-N1 |
+| `cargo test -p slicer-runtime --test e2e slice_end_to_end 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-N1, AC-N5 |
+| `cargo test -p slicer-sdk --test narrow_solid_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-13, AC-14 |
+| `cargo test -p rectilinear-infill --test narrow_internal_solid_tdd 2>&1 \| tee target/test-output.log \| grep -E "^test result"` | AC-15, AC-N5 |
 | `cargo xtask gen-config-docs --check` + the AC-10 row probe | AC-10 |
 | the AC-11 `rg` chain | AC-11 |
 | `git diff --unified=0 -- crates/slicer-gcode/src/serialize.rs \| grep -cE "^[+-][^+-]"` | AC-N2 |

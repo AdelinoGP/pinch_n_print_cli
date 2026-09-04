@@ -289,6 +289,83 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
   set for completeness against upstream](issues/123-audit-gap-source-key-set-completeness.md)
   measures it. Until it resolves, treat "the queue is closed" as weaker than "the
   destination is reached".
+- **The canonical oracle is `D:\slicerProject\pinch_n_print_cli\OrcaSlicerDocumented`
+  — and only that checkout (user ruling, 2026-09-03, ticket 33).** Two other
+  OrcaSlicer trees sit beside this repo and neither is usable for a
+  dead-in-canonical check under Authoring rule 3:
+  - `D:\slicerProject\Orca(pnp_gui)` is the **GUI-only PnP fork**. Its HEAD is
+    `pnp B7/F13: FFF pipeline removal — M2 CLOSE (native-slicing rip-out
+    complete)`, and **73 of its 215 `libslic3r` `.cpp` files are gone** — all of
+    `Fill/`, all of `Arachne/`, `GCode.cpp` and `GCode/`, `Brim.cpp`,
+    `Feature/Interlocking/`, `FuzzySkin.cpp`. Grepping it for a slicing key
+    returns the *declaration only*, which reads exactly like a dead key. Ticket
+    33 hit this: `calib_flowrate_topinfill_special_order` shows zero read sites
+    there and two live ones in `Fill/FillBase.cpp` and `Fill/FillPlanePath.cpp`
+    in the real oracle. It is also older (`02.06.00.51` vs `02.08.01.55`).
+  - `pinch_n_print_cli_2/OrcaSlicerDocumented` is content-identical to the
+    canonical one at the time of writing, but is not the designated copy.
+  **Never rule a key dead against a checkout you have not confirmed still has
+  the pipeline file the key would be read in.** Re-derive the path at point of
+  use; do not trust this note's spelling of it if the tree has moved.
+- **`order_lock` is a geometry contract, not just an ordering flag — and its shipped
+  implementation is narrower than its own ADR.** Surfaced by ticket 33. ADR-0062 says the
+  host remaps local tags to global tags **"at every output boundary"** and enforces the
+  invariant "at every mutation point"; the shipped
+  `remap_infill_order_locks_from` / `next_global_infill_tag` / `validate_infill_order_locks`
+  (`crates/slicer-runtime/src/layer_executor.rs`) walk `InfillRegion::sparse_infill` **only**,
+  so no lock emitted on `solid_infill`, `ironing`, or `internal_bridge_infill` survives.
+  Packet 275 closes that as ADR conformance, not as an amendment — do not file an
+  `ADR-AMENDED` deviation for it. ADR-0063 additionally makes locked paths **self-clipping**:
+  the producer guarantees the whole swept footprint is in its legal domain, the linker
+  neither clips nor links them, and it differences that footprint out of untagged fill of
+  the same region. Any packet that emits a lock takes on both obligations; asserting them is
+  not optional.
+- **A passing module test does not prove a percent key reaches the guest in the
+  right unit.** Ticket 34 measured it on `bridge_density`: manifest bounds check a
+  bare number as a **percent** (`is_numeric_field_type` includes `percent` /
+  `float_or_percent`, and `check_value` bounds the raw number), while
+  `ConfigView::get_abs_value` reads a bare `Float` as a **fraction**. Canonical's
+  own spelling `100.0` therefore passes `[10, 125]` and reaches the guest as
+  density 100. `1.0` is rejected as below min. `100` (an `Int`) is unhandled and
+  falls back. Only the percent **string** is correct, and strings skip bounds
+  entirely. Module tests spell fractions, so they never see it.
+  [128](issues/128-percent-key-numeric-spelling-units-mismatch.md) settles the
+  unit and where the coercion lands; until then, do not read "the key is live" as
+  "a user's profile value drives it".
+- **A module cannot read a key its own manifest does not declare.**
+  `ConfigView::from_declared` (`crates/slicer-ir/src/slice_ir.rs`) whitelists the
+  raw source by the module's schema keys, so an undeclared key is filtered out and
+  the guest's `unwrap_or` fallback always wins — silently, and a comment saying
+  "profiles supply it" reads exactly like a working key. Found in `wave-overhangs`
+  for `thick_bridges` (ticket 34). When checking whether a key is live, check the
+  owner's manifest declares it, not just that the code reads it.
+- **A queue ticket's keys may not belong in one packet — or in a new packet at
+  all.** Ticket 35 re-derived P28's three owners and got three different seams, none
+  of them ticket 04's `infill modules`. Two of the keys were *operators on decisions
+  another already-authored packet was building*, so they were **folded into those
+  packets** (262a, 262b) rather than carried as a fourth; the third was implemented
+  directly. Before authoring, check whether an existing draft packet already owns the
+  decision the key modifies — `ls docs/spec_packets/` and read the neighbouring
+  packet's Goal. A fold is cheaper than a packet and keeps the decision in one place;
+  packets 253–266 are being re-authored anyway, so amending one costs little.
+- **This port has no internal-solid fill *domain*, and the object's rotation does
+  not survive loading.** Two structural absences measured by ticket 35 that will
+  bite any packet touching solid fill or fill angles:
+  - `SlicedRegion::internal_solid_fill` is a **marker** (`top_solid_fill −
+    top_solid_seed`), read by `arachne-perimeters` for the exposed top and by
+    internal-bridge detection for what is not sparse. **Nothing fills it.** The
+    `InternalSolidInfill` role comes from a **per-region** `top_shell_index` /
+    `bottom_shell_index` ≥ 1 (`solid_fill_role`,
+    `modules/core-modules/rectilinear-infill/src/lib.rs`). So (a) a polygon
+    reclassified from sparse to solid has no dedicated vector to land in, and (b)
+    canonical's per-polygon pattern overrides cannot be expressed as a second claim
+    holder — the claim seam is per region. Do not assume `internal_solid_fill` is a
+    fill domain because its name reads like one.
+  - `ObjectMesh.transform` is `identity_transform()` for **every** loaded object:
+    `resolve_object` (`crates/slicer-model-io/src/loader.rs`) composes the 3MF build
+    item's transform, bakes it into the vertices, and discards it. Canonical's
+    `object->trafo()` has no counterpart to read, so any key deriving from object
+    orientation needs a model-io change first, not a config declaration.
 - **Skills every session should consult:** `/grilling` and `/domain-modeling`
   for decision tickets; `/spec-packet-generator` for authoring; `/spec-review
   <packet> --preflight` as the authoring gate.
@@ -1091,6 +1168,44 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
   narrowing + a suspected precedence defect, read from code and not yet
   reproduced). No key declared, no code change.
 
+- [33 — Author packet P26 — Calibration / Flow / Pressure advance calibration — infill modules](issues/33-author-packet-p26-calibration-flow-pressure-advance-calibration-infill-modules.md)
+  — sizing rotted: `calib_flowrate_topinfill_special_order` is a **rider on a pattern
+  family the port lacks**, not a declare-and-wire key. Packet 264 already ships
+  `archimedean-chords-infill`; per user ruling the module stays with 264 and everything
+  else went to **packet 275** (`docs/spec_packets/275-top-fill-order-and-calibration-order/`,
+  draft, `PREFLIGHT PASS`): an SDK ordering kernel, the `order_lock` emission, the host
+  widening, and `top_surface_fill_order` / `bottom_surface_fill_order` — two live keys
+  absent from the gap source. Three corrections: the `Orca(pnp_gui)` checkout would have
+  produced a **false dead-key ruling** (see the canonical-oracle Notes bullet); 3MF ingest
+  is **not** a blocker (`parse_project_settings_json` ingests every key generically, no
+  allowlist); and `order_lock` carries **geometry** semantics, not just ordering.
+
+- [34 — Author packet P27 — Quality / Bridging — infill modules](issues/34-author-packet-p27-quality-bridging-infill-modules.md)
+  — **closed by direct implementation, no packet.** `bridge_density`,
+  `internal_bridge_density` and `thick_internal_bridges` were already live in
+  `rectilinear-infill`; the gap was the second `claim:bridge-fill` holder,
+  `wave-overhangs`, which read the **external** keys on internal bridges and read
+  four bridge keys its manifest never declared — including
+  `thick_bridges`, whose read could never fire because `ConfigView::from_declared`
+  whitelists by the module's own schema. Five new tests, each a two-run comparison
+  differing only in the key it names. Two findings filed rather than fixed:
+  `gyroid-infill` fills bridges and solid surfaces at `sparse_infill_density`
+  (ticket 127), and percent-typed keys are misread when spelled as a bare number
+  (ticket 128).
+
+- [35 — Author packet P28 — Strength / Advanced (Strength) — infill modules](issues/35-author-packet-p28-strength-advanced-strength-infill-modules.md)
+  — **no new packet: two folds and one direct implementation.**
+  `align_infill_direction_to_model` folded into packet **262a** (it adds the object
+  rotation *after* the direction key and the rotate template that packet builds — and
+  it first needs the rotation to survive loading at all);
+  `detect_narrow_internal_solid_infill` folded into packet **262b** (it overrides the
+  `internal_solid_infill_pattern` selection 262b builds, and must live inside the
+  `claim:top-fill` holder because this port's claim seam is per region, not per
+  polygon); `minimum_sparse_infill_area` **implemented in the ticket's session** in the
+  host `PrePass::ShellClassification` pass, conservative against canonical because the
+  port measures the sparse zone before the wall inset. Ticket 04's `infill modules`
+  owner was wrong for two of the three.
+
 ## Not yet specified
 
 - **The time-lapse gate has two open clauses waiting on other work.** Surfaced by
@@ -1234,6 +1349,19 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
    solid-infill direction or rotation-template metadata. Whether the IR gains
    the canonical base direction, and which other ironing consumers use it, is
    future IR/geometry work; fog until a packet picks it up.
+- **A wipe-tower placement failure is red at HEAD on this branch.** Surfaced by
+  ticket 35's no-regression run and confirmed on a stashed baseline through
+  `cargo xtask test` (so the guest-freshness gate ran against the baseline tree):
+  `modifier_support_territory_top_shell_layers_keep_full_walls_and_internal_bridge_role`
+  (`crates/slicer-runtime/tests/e2e/modifier_support_territory_e2e_tdd.rs`) fails with
+  `wipe-tower corner (63.000, 232.972) lies outside bed polygon`. The branch is
+  `wayfinder/ticket-100-wipe-tower-rename` and ticket 100's own finding was that
+  `bed_shape` → `printable_area` changes how the bed *value* is spelled, not just the
+  key — so the first hypothesis to test is that the tower's bed polygon is being read
+  through the renamed key in a spelling the placement search does not understand. Not
+  phraseable as a ticket until someone confirms whether it is the rename, the
+  uncommitted ticket-33/34 work, or an older regression; whoever next runs a broad
+  suite on this branch should not read it as their own breakage.
 
 ## Out of scope
 

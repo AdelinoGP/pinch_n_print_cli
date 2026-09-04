@@ -263,6 +263,27 @@ pub fn clip_polygons(
     expolygons_from_tree(&tree)
 }
 
+/// Net area of one `ExPolygon` in squared coordinate units (contour area
+/// minus the area of every hole).
+///
+/// One unit is 100 nm, so one mm^2 is `1e8` squared units — see
+/// `docs/08_coordinate_system.md`. Callers comparing against a mm^2 config
+/// value must scale it twice, exactly as canonical `scale_(scale_(v))` does.
+#[must_use]
+pub fn expolygon_area(polygon: &ExPolygon) -> f64 {
+    fn ring_area(ring: &slicer_ir::Polygon) -> f64 {
+        ring.points
+            .iter()
+            .zip(ring.points.iter().cycle().skip(1))
+            .take(ring.points.len())
+            .map(|(a, b)| a.x as f64 * b.y as f64 - b.x as f64 * a.y as f64)
+            .sum::<f64>()
+            .abs()
+            / 2.0
+    }
+    ring_area(&polygon.contour) - polygon.holes.iter().map(ring_area).sum::<f64>()
+}
+
 /// Computes the union of polygon sets.
 pub fn union(subject: &[ExPolygon], clip: &[ExPolygon]) -> Vec<ExPolygon> {
     clip_polygons(subject, clip, ClipOperation::Union)

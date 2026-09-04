@@ -398,3 +398,170 @@ fn shell_classification_replace_is_atomic_against_prior_slice_ir() {
         "replace_slice_ir must publish a new Arc, not mutate the old one"
     );
 }
+
+
+// ============================================================================
+// minimum_sparse_infill_area (wayfinder ticket 35)
+// ============================================================================
+
+/// Build a 1-layer SliceIR whose single region is `polygons`, run shell
+/// classification with the given threshold, and return the classified region.
+fn classify_one_layer_with_min_sparse_area(
+    polygons: Vec<ExPolygon>,
+    minimum_sparse_infill_area: f32,
+    sparse_infill_density: f32,
+) -> SlicedRegion {
+    let object_id = "min-sparse";
+    let plan = make_plan(1, 0.2, object_id);
+    let mut region_map = RegionMapIR::default();
+    for gl in &plan.global_layers {
+        for active in &gl.active_regions {
+            let mut config = active.resolved_config.clone();
+            // Shell counts of 0 keep top/bottom classification out of the way,
+            // so the only thing that can mark this region solid is the
+            // minimum-sparse-area conversion under test.
+            config.top_shell_layers = 0;
+            config.bottom_shell_layers = 0;
+            config.minimum_sparse_infill_area = minimum_sparse_infill_area;
+            config.sparse_infill_density = sparse_infill_density;
+            let config_id = region_map.intern_config(config);
+            region_map.entries.insert(
+                RegionKey {
+                    global_layer_index: gl.index,
+                    object_id: active.object_id.clone(),
+                    region_id: active.region_id,
+                    variant_chain: Vec::new(),
+                },
+                RegionPlan {
+                    config: config_id,
+                    ..Default::default()
+                },
+            );
+        }
+    }
+    let mesh = cuboid_mesh(object_id, 0.6);
+    let mut bb = seeded_blackboard(mesh, plan, region_map);
+    bb.commit_slice_ir(Arc::new(vec![SliceIR {
+        schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+        global_layer_index: 0,
+        z: 0.2,
+        regions: vec![SlicedRegion {
+            object_id: object_id.to_string(),
+            region_id: 0,
+            polygons: polygons.clone(),
+            infill_areas: polygons,
+            ..Default::default()
+        }],
+    }]))
+    .expect("commit_slice_ir");
+
+    commit_shell_classification_builtin(&mut bb).expect("PrePass::ShellClassification");
+    bb.slice_ir().expect("classified slice_ir")[0].regions[0].clone()
+}
+
+fn mm_square(half_side_mm: f32) -> ExPolygon {
+    ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(-half_side_mm, -half_side_mm),
+                Point2::from_mm(half_side_mm, -half_side_mm),
+                Point2::from_mm(half_side_mm, half_side_mm),
+                Point2::from_mm(-half_side_mm, half_side_mm),
+            ],
+        },
+        holes: vec![],
+    }
+}
+
+#[test]
+fn minimum_sparse_infill_area_converts_island_at_or_below_threshold() {
+    // A 3x3 mm island is 9 mm^2. At the canonical default threshold of 15 mm^2
+    // it is below the bar and must become solid; at a 5 mm^2 threshold the same
+    // island is above the bar and must stay sparse. Two runs differing only in
+    // the key under test.
+    let converted = classify_one_layer_with_min_sparse_area(vec![mm_square(1.5)], 15.0, 20.0);
+    assert!(
+        !converted.bottom_solid_fill.is_empty(),
+        "a 9 mm^2 island must be reclassified as solid at minimum_sparse_infill_area = 15; \
+         got bottom_solid_fill = {:?}",
+        converted.bottom_solid_fill
+    );
+    assert_eq!(
+        converted.bottom_shell_index,
+        Some(1),
+        "a converted island with no bottom shell must be stamped depth 1 so the \
+         fill modules emit InternalSolidInfill, not BottomSolidInfill"
+    );
+
+    let kept = classify_one_layer_with_min_sparse_area(vec![mm_square(1.5)], 5.0, 20.0);
+    assert!(
+        kept.bottom_solid_fill.is_empty(),
+        "the same 9 mm^2 island must stay sparse at minimum_sparse_infill_area = 5; \
+         got bottom_solid_fill = {:?}",
+        kept.bottom_solid_fill
+    );
+    assert_eq!(kept.bottom_shell_index, None);
+}
+
+#[test]
+fn minimum_sparse_infill_area_leaves_large_islands_sparse() {
+    // A 10x10 mm island is 100 mm^2 - far above the canonical default.
+    let region = classify_one_layer_with_min_sparse_area(vec![mm_square(5.0)], 15.0, 20.0);
+    assert!(
+        region.bottom_solid_fill.is_empty(),
+        "a 100 mm^2 island must never be converted at threshold 15 mm^2; \
+         got bottom_solid_fill = {:?}",
+        region.bottom_solid_fill
+    );
+    assert_eq!(region.bottom_shell_index, None);
+}
+
+#[test]
+fn minimum_sparse_infill_area_is_disabled_at_zero_and_for_hollow_regions() {
+    // Canonical guards the block on `sparse_infill_density > 0`; `0` on the
+    // threshold itself disables the feature outright. Both must leave the same
+    // 9 mm^2 island sparse that the first test converts.
+    let disabled = classify_one_layer_with_min_sparse_area(vec![mm_square(1.5)], 0.0, 20.0);
+    assert!(
+        disabled.bottom_solid_fill.is_empty(),
+        "minimum_sparse_infill_area = 0 must disable the conversion"
+    );
+
+    let hollow = classify_one_layer_with_min_sparse_area(vec![mm_square(1.5)], 15.0, 0.0);
+    assert!(
+        hollow.bottom_solid_fill.is_empty(),
+        "a hollow region (sparse_infill_density = 0) must never gain solid fill"
+    );
+}
+
+#[test]
+fn minimum_sparse_infill_area_converts_only_the_small_island_of_a_mixed_layer() {
+    // Two disjoint islands on one layer: 9 mm^2 (below 15) and 100 mm^2 (above).
+    // Only the small one may move, and the large one must remain outside the
+    // solid set - canonical erases per expolygon, not per layer.
+    let small = mm_square(1.5);
+    let large = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(20.0, 20.0),
+                Point2::from_mm(30.0, 20.0),
+                Point2::from_mm(30.0, 30.0),
+                Point2::from_mm(20.0, 30.0),
+            ],
+        },
+        holes: vec![],
+    };
+    let region = classify_one_layer_with_min_sparse_area(vec![small, large], 15.0, 20.0);
+    assert_eq!(
+        region.bottom_solid_fill.len(),
+        1,
+        "exactly one of the two islands must convert; got {:?}",
+        region.bottom_solid_fill
+    );
+    let converted_area_mm2 =
+        slicer_core::polygon_ops::expolygon_area(&region.bottom_solid_fill[0]) / 1e8;
+    assert!(
+        (converted_area_mm2 - 9.0).abs() < 0.01,
+        "the converted island must be the 9 mm^2 one, got {converted_area_mm2} mm^2"
+    );
+}

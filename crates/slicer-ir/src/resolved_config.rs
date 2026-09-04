@@ -1640,6 +1640,12 @@ declare_resolved_config! {
     cli "sparse_infill_density"  sparse_infill_density: f32 = 20.0 => extract_percent_float;
     /// Infill direction in degrees.
     cli "infill_direction"     infill_direction: f32 = 45.0 => extract_float;
+    /// Minimum sparse-infill island area in mm^2 (OrcaSlicer:
+    /// minimum_sparse_infill_area, coFloat default 15). A sparse island whose
+    /// area is at or below this threshold is reclassified as internal solid
+    /// fill by the host shell-classification prepass. `0` disables the
+    /// conversion.
+    cli "minimum_sparse_infill_area" minimum_sparse_infill_area: f32 = 15.0 => extract_float;
     /// Sparse infill speed in mm/s — the speed-factor base the infill modules
     /// normalise against BASE_SPEED (50). The *emitted* sparse feedrate is the
     /// host FeedrateConfig::sparse_infill_speed decision (OrcaSlicer:
