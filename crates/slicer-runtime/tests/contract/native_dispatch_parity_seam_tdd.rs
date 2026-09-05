@@ -465,6 +465,7 @@ fn native_prepass_commit_preserves_layer_support_and_mesh_outputs() {
                 effective_layer_height: 0.2,
                 ..Default::default()
             }],
+            is_raft: false,
         })
         .unwrap();
     let mut mesh = MeshAnalysisOutput::new();

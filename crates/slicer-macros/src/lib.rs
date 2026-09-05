@@ -1864,6 +1864,7 @@ fn build_prepass_layer_planning_glue(self_ty: &syn::Type) -> TokenStream2 {
             if let Err(e) = output.push_layer(&LayerProposal {
                 z: __slicer_layer.z,
                 active_regions: __slicer_wit_regions,
+                is_raft_prefix: __slicer_layer.is_raft,
             }) {
                 return Err(ModuleError { code: 5, message: e, fatal: true });
             }
@@ -2513,6 +2514,12 @@ fn layer_light_helpers() -> TokenStream2 {
                 sdk_view.set_internal_solid_fill(internal_solid_fill);
                 sdk_view.set_bridge_orientation_deg(r.bridge_orientation_deg());
                 sdk_view.set_sparse_infill_area(sparse_infill_area);
+                let raft_fill: ::std::vec::Vec<::slicer_ir::ExPolygon> = r
+                    .raft_fill()
+                    .iter()
+                    .map(__slicer_wit_expolygon_to_ir)
+                    .collect();
+                sdk_view.set_raft_fill(raft_fill);
                 sdk_view.set_held_claims(r.held_claims());
                 let overhang_areas: ::std::vec::Vec<::slicer_ir::ExPolygon> = r
                     .overhang_areas()
@@ -2552,7 +2559,8 @@ fn layer_light_helpers() -> TokenStream2 {
         ) -> ::slicer_sdk::traits::PaintRegionLayerView {
             let layer_idx = paint.layer_index() as u32;
             let sdk_paint = ::slicer_sdk::traits::PaintRegionLayerView::new(layer_idx)
-                .with_support_plan(__slicer_support_plan_from_view(paint, layer_idx, keys));
+                .with_support_plan(__slicer_support_plan_from_view(paint, layer_idx, keys))
+                .with_is_raft(paint.is_raft());
             match __slicer_lightning_tree_from_view(paint, layer_idx, keys) {
                 Some(ir) => sdk_paint.with_lightning_tree_ir(ir),
                 None => sdk_paint,
@@ -2648,7 +2656,15 @@ fn layer_light_helpers() -> TokenStream2 {
                     });
                 }
             }
-            ::std::sync::Arc::new(::slicer_ir::SupportPlanIR { entries, ..::core::default::Default::default() })
+            // Raft is print-wide configuration, not per-(layer, region) work:
+            // reconstruct it once, outside the key loop, with no layer filter.
+            let raft_plan = wit_paint.raft_plan().map(|raft| ::slicer_ir::RaftPlan {
+                raft_layers: raft.raft_layers,
+                raft_first_layer_density: raft.raft_first_layer_density,
+                base_raft_layers: raft.base_raft_layers,
+                interface_raft_layers: raft.interface_raft_layers,
+            });
+            ::std::sync::Arc::new(::slicer_ir::SupportPlanIR { entries, raft_plan, ..::core::default::Default::default() })
         }
 
     }
@@ -2804,6 +2820,7 @@ fn layer_glue_helpers() -> TokenStream2 {
                 perimeter_view.set_top_solid_fill(r.top_solid_fill().iter().map(__slicer_wit_expolygon_to_ir).collect());
                 perimeter_view.set_bottom_solid_fill(r.bottom_solid_fill().iter().map(__slicer_wit_expolygon_to_ir).collect());
                 perimeter_view.set_bridge_areas(r.bridge_areas().iter().map(__slicer_wit_expolygon_to_ir).collect());
+                perimeter_view.set_raft_fill(r.raft_fill().iter().map(__slicer_wit_expolygon_to_ir).collect());
                 perimeter_view.set_tool_index(r.tool_index());
                 perimeter_view.set_wall_source_region_id(r.wall_source_region_id().map(|s| s.parse().unwrap_or(0)));
                 out.push(perimeter_view);

@@ -615,6 +615,7 @@ fn stage_miss_is_fatal_at_instantiation() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
+        is_raft: false,
     };
     let layer_live = layer_bundle.as_live();
     let layer_result = LayerStageRunner::run_stage(

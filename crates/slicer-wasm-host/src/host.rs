@@ -197,6 +197,9 @@ pub struct SliceRegionData {
     /// Populated by `sync_perimeter_infill_areas_into_slice` at `Layer::Perimeters`
     /// commit; empty before that hook runs.
     pub sparse_infill_area: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
+    /// Raft-substrate fill polygons (packet 240a). Non-empty only on layers
+    /// inside the positive-offset raft band.
+    pub raft_fill: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Fill-role claim IDs held by the module that produced this region.
     pub held_claims: Vec<String>,
     /// Overhang area polygons. Populated from `SurfaceClassificationIR.overhang_quartile_polygons`
@@ -242,6 +245,9 @@ pub struct PerimeterRegionData {
     pub bottom_solid_fill: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Partitioned bridge polygons (see `sparse_infill_area`).
     pub bridge_areas: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
+    /// Raft-substrate fill polygons mirrored from the matching `SliceIR`
+    /// region at dispatch time (packet 240a).
+    pub raft_fill: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Host-computed tool index (ADR-0028 §Amendment): variant-chain material
     /// tool → `RegionMapIR` `extensions["extruder"]` → 0. Pinned in
     /// `crate::dispatch::resolve_region_tool_index`.
@@ -300,6 +306,7 @@ pub static HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS: std::sync::atomic::AtomicU32 =
 pub struct SupportOutputBuilderData;
 
 /// Backing data for a `paint-region-layer-view` resource handle.
+#[derive(Default)]
 pub struct PaintRegionLayerData {
     /// Layer index.
     pub layer_index: u32,
@@ -330,6 +337,13 @@ pub struct PaintRegionLayerData {
         (String, String),
         Vec<Vec<layer_perimeters::slicer::types::geometry::Point3WithWidth>>,
     >,
+    /// Configuration-only raft plan projected from `SupportPlanIR.raft_plan`.
+    /// Layer-independent — unlike `support_plan_entries` this carries no
+    /// per-layer filter, so every layer sees the same value.
+    pub raft_plan: Option<layer_perimeters::slicer::ir_handles::ir_handles::RaftPlanView>,
+    /// Whether this layer belongs to the positive-offset raft band, copied
+    /// from `GlobalLayer.is_raft`.
+    pub is_raft: bool,
 }
 
 // ── Bindgen: Per-stage worlds ──────────────────────────────────────────
@@ -2898,11 +2912,7 @@ pub use crate::marshal::leaf::{
 pub fn paint_region_ir_to_layer_data(_ir: &(), layer_index: u32) -> PaintRegionLayerData {
     PaintRegionLayerData {
         layer_index,
-        regions_by_semantic: HashMap::new(),
-        custom_regions: HashMap::new(),
-        support_plan_segments: HashMap::new(),
-        support_plan_entries: HashMap::new(),
-        lightning_tree_segments: HashMap::new(),
+        ..Default::default()
     }
 }
 
@@ -2979,6 +2989,7 @@ mod region_origin_tests {
                     internal_bridge_areas: Vec::new(),
                     bridge_orientation_deg: 0.0,
                     sparse_infill_area: Vec::new(),
+                    raft_fill: Vec::new(),
                     held_claims: Vec::new(),
                     overhang_areas: Vec::new(),
                     overhang_quartile_polygons: Vec::new(),
@@ -3017,6 +3028,7 @@ mod region_origin_tests {
                     top_solid_fill: Vec::new(),
                     bottom_solid_fill: Vec::new(),
                     bridge_areas: Vec::new(),
+                    raft_fill: Vec::new(),
                     tool_index: 0,
                     wall_source_region_id: None,
                 },
@@ -3363,6 +3375,11 @@ impl ir::HostSliceRegionView for HostExecutionContext {
             .push(String::from("SliceIR.regions.sparse-infill-area"));
         Ok(self.table.get(&self_)?.sparse_infill_area.clone())
     }
+    fn raft_fill(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<Vec<ExPolygon>> {
+        self.runtime_reads
+            .push(String::from("SliceIR.regions.raft-fill"));
+        Ok(self.table.get(&self_)?.raft_fill.clone())
+    }
     fn held_claims(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<Vec<String>> {
         self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.held_claims.clone())
@@ -3538,6 +3555,15 @@ impl ir::HostPerimeterRegionView for HostExecutionContext {
         self.runtime_reads
             .push(String::from("PerimeterIR.sparse-infill-area"));
         Ok(self.table.get(&self_)?.sparse_infill_area.clone())
+    }
+    fn raft_fill(
+        &mut self,
+        self_: Resource<PerimeterRegionData>,
+    ) -> wasmtime::Result<Vec<ExPolygon>> {
+        self.touch_perimeter_region(&self_)?;
+        self.runtime_reads
+            .push(String::from("PerimeterIR.raft-fill"));
+        Ok(self.table.get(&self_)?.raft_fill.clone())
     }
     fn top_solid_fill(
         &mut self,
@@ -4223,6 +4249,18 @@ impl ir::HostPaintRegionLayerView for HostExecutionContext {
             .get(&(object_id, region_id))
             .cloned()
             .unwrap_or_default())
+    }
+    fn raft_plan(
+        &mut self,
+        self_: Resource<PaintRegionLayerData>,
+    ) -> wasmtime::Result<Option<layer_perimeters::slicer::ir_handles::ir_handles::RaftPlanView>>
+    {
+        self.runtime_reads.push(String::from("SupportPlanIR"));
+        Ok(self.table.get(&self_)?.raft_plan)
+    }
+    fn is_raft(&mut self, self_: Resource<PaintRegionLayerData>) -> wasmtime::Result<bool> {
+        self.runtime_reads.push(String::from("LayerPlanIR"));
+        Ok(self.table.get(&self_)?.is_raft)
     }
     fn drop(&mut self, rep: Resource<PaintRegionLayerData>) -> wasmtime::Result<()> {
         self.table.delete(rep)?;

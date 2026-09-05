@@ -63,6 +63,7 @@ fn slice_ir() -> SliceIR {
                 sparse_infill_area: vec![square()],
                 internal_bridge_areas: Vec::new(),
                 internal_solid_fill: Vec::new(),
+                raft_fill: Vec::new(),
             }
         }],
     }

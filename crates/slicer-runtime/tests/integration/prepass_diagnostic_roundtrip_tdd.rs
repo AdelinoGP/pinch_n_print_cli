@@ -109,6 +109,7 @@ fn blackboard_with_layer_plan(mesh: MeshIR) -> Blackboard {
                 active_regions: regions,
                 has_nonplanar: false,
                 is_sync_layer: false,
+                is_raft: false,
             }
         })
         .collect();

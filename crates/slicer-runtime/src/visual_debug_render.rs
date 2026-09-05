@@ -532,6 +532,7 @@ fn geometry_points_mm(ir: &CapturedIr) -> Vec<(f32, f32)> {
                     .chain(region.infill_areas.iter())
                     .chain(region.internal_solid_fill.iter())
                     .chain(region.internal_bridge_areas.iter())
+                    .chain(region.raft_fill.iter())
                 {
                     push_expolygon_points(poly, &mut pts);
                 }
@@ -1043,6 +1044,9 @@ fn slice_shapes(
                 for poly in &region.internal_bridge_areas {
                     shapes.push(expolygon_fill_shape(poly, palette::SOLID_INFILL));
                 }
+                for poly in &region.raft_fill {
+                    shapes.push(expolygon_fill_shape(poly, palette::SOLID_INFILL));
+                }
             }
         }
         GeometryView::FilamentLines => {
@@ -1053,6 +1057,7 @@ fn slice_shapes(
                     .chain(region.infill_areas.iter())
                     .chain(region.internal_solid_fill.iter())
                     .chain(region.internal_bridge_areas.iter())
+                    .chain(region.raft_fill.iter())
                 {
                     shapes.extend(expolygon_outline_shapes(poly, palette::SLICE_REGION));
                 }

@@ -246,6 +246,7 @@ registration. The aggregated `slicer-runtime` binaries DO need an explicit
 - `docs/02_ir_schemas.md` section "IR 6 — SliceIR" (schema minor bump to the next minor above the live `CURRENT_SLICE_IR_SCHEMA_VERSION`, re-derived from `crates/slicer-ir/src/slice_ir.rs` at the moment of the edit, plus `SlicedRegion.raft_fill` and `GlobalLayer.is_raft`) - `rg -q 'raft_fill' docs/02_ir_schemas.md && rg -q 'is_raft' docs/02_ir_schemas.md`
 - `docs/02_ir_schemas.md` positive-band semantics (raft occupies `0..N-1`, the first printed model layer is `support_raft_layers`, and `index == Vec position` is preserved) - `rg -q 'raft offset band' docs/02_ir_schemas.md`
 - `docs/03_wit_and_manifest.md` - the new `layer-proposal.is-raft-prefix` field, the `raft-plan-view` record, and the `raft-fill` accessors - `rg -q 'is-raft-prefix' docs/03_wit_and_manifest.md && rg -q 'raft-plan-view' docs/03_wit_and_manifest.md`
+- `docs/15_config_keys_reference.md` generated `module-config-keys` section - the planner manifest's `support_raft_layers` declaration is reflected in the generated catalog - `cargo xtask gen-config-docs --check`
 - `docs/DEVIATION_LOG.md` gains a row recording that PnP's raft band is a positive offset band matching canonical, that this packet's earlier signed-negative specification was withdrawn, and that DEV-124's remedy is upheld rather than reopened. Re-derive the next free ID at write time (`rg -o '^\| DEV-[0-9]{3}' docs/DEVIATION_LOG.md | sort -u | tail -1`) - `rg -q 'raft offset band' docs/DEVIATION_LOG.md`
 
 <!-- snippet: orca-delegation -->

@@ -656,6 +656,7 @@ fn layer_plan_output(jitter: f32) -> PrepassStageOutput {
             active_regions: vec![active_region()],
             has_nonplanar: false,
             is_sync_layer: false,
+            is_raft: false,
         },
         // exhaustive: invariant selftest pins every field explicitly
         GlobalLayer {
@@ -664,6 +665,7 @@ fn layer_plan_output(jitter: f32) -> PrepassStageOutput {
             active_regions: vec![active_region()],
             has_nonplanar: false,
             is_sync_layer: false,
+            is_raft: false,
         },
     ];
     let mut object_participation = HashMap::new();

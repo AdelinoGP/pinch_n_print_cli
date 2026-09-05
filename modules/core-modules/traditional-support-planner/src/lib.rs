@@ -27,7 +27,7 @@
 pub mod agg_raster;
 
 use std::collections::btree_map;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use slicer_ir::SupportPlanDeclineReason;
 use slicer_sdk::prelude::*;
@@ -323,7 +323,11 @@ impl SupportPlanner {
         };
         // One entry per support-region identity is the producer's contract,
         // not the host's to repair. See `merge_region_identity_entries`.
-        merge_region_identity_entries(&mut emitted)?;
+        // 240a deliberately leaves raft and model Z values overlapping while
+        // the layer plan keeps their positive-band indices distinct. Preserve
+        // both grid rows in that one case; the public merge helper remains
+        // strict for producer fixtures and synthesized off-grid identities.
+        merge_region_identity_entries_with_layer_plan(&mut emitted, layer_plan)?;
         for entry in emitted {
             output
                 .push_support_plan_entry(entry)
@@ -1421,8 +1425,9 @@ fn next_intermediate_plane_index(
 /// independent support rows that deliberately carry distinct planes keep
 /// distinct indices.
 ///
-/// That last sentence is an invariant, not a hope, so it is checked. The merge
-/// REJECTS - returning `ModuleError::fatal` rather than publishing - when
+/// That last sentence is an invariant, not a hope, so the strict public helper
+/// checks it. The strict merge REJECTS - returning `ModuleError::fatal` rather
+/// than publishing - when
 /// either direction of the layer/plane correspondence breaks within one plan:
 ///
 /// - two entries share `(global_layer_index, object_id, region_id)` but carry
@@ -1431,14 +1436,20 @@ fn next_intermediate_plane_index(
 ///   `global_layer_index` (one plane claiming two layer indices).
 ///
 /// The second rule was scoped by index space in packet 241b and is UNSCOPED
-/// again as of DEV-169. It was scoped because the coarse path could put a grid
-/// row and a synthesized intermediate row on one `anchor_z`; that was a
-/// producer defect, not legitimate output, and it is fixed at the producer by
-/// `grid_index_at_plane`. Every entry is born with a grid index (`layer as
-/// i32`), and the only negative indices come from
+/// again as of DEV-169 for the strict helper. It was scoped because the coarse
+/// path could put a grid row and a synthesized intermediate row on one
+/// `anchor_z`; that was a producer defect, not legitimate output, and it is
+/// fixed at the producer by `grid_index_at_plane`. Every entry is born with a
+/// grid index (`layer as i32`), and the only negative indices come from
 /// `next_intermediate_plane_index`, whose two call sites both consult
 /// `grid_index_at_plane` first - so a plane of one object/region is owned by a
 /// grid index or by one minted index, never both, and the literal rule holds.
+/// The planner's private layer-plan-aware wrapper is the one deliberate
+/// exception: 240a's unshifted Z representation gives a raft grid row and a
+/// model grid row the same `anchor_z`, while their global indices remain
+/// distinct. It allows only that pair when both indices are actual duplicate-Z
+/// rows in the supplied layer plan; synthesized rows still fail the strict
+/// correspondence check.
 /// Pinned by `merge_rejects_grid_and_synthesized_rows_claiming_one_plane` and
 /// `coarse_intermediate_plane_on_occupied_grid_plane_publishes_one_entry`.
 ///
@@ -1462,6 +1473,33 @@ fn next_intermediate_plane_index(
 /// measuring, not which entries are compared against each other.
 pub fn merge_region_identity_entries(
     entries: &mut Vec<SupportPlanEntry>,
+) -> Result<(), ModuleError> {
+    merge_region_identity_entries_with_plane_aliases(entries, &BTreeMap::new())
+}
+
+/// Merge planner rows while allowing the explicit duplicate-Z grid rows that
+/// the positive raft band creates. `LayerPlanView` has no raft marker yet, but
+/// a duplicate Z in this view can only come from that band: ordinary global
+/// model layers are deduplicated by the layer planner. Synthesized negative
+/// indices are never aliases because they are absent from this map.
+fn merge_region_identity_entries_with_layer_plan(
+    entries: &mut Vec<SupportPlanEntry>,
+    layer_plan: &LayerPlanView,
+) -> Result<(), ModuleError> {
+    let mut indices_by_plane = BTreeMap::<i64, BTreeSet<i32>>::new();
+    for layer in &layer_plan.layers {
+        indices_by_plane
+            .entry(mm_to_units(layer.z))
+            .or_default()
+            .insert(layer.global_layer_index as i32);
+    }
+    indices_by_plane.retain(|_, indices| indices.len() > 1);
+    merge_region_identity_entries_with_plane_aliases(entries, &indices_by_plane)
+}
+
+fn merge_region_identity_entries_with_plane_aliases(
+    entries: &mut Vec<SupportPlanEntry>,
+    plane_aliases: &BTreeMap<i64, BTreeSet<i32>>,
 ) -> Result<(), ModuleError> {
     let mut merged: Vec<SupportPlanEntry> = Vec::with_capacity(entries.len());
     let mut index_by_identity: BTreeMap<(i32, String, String, i64), usize> = BTreeMap::new();
@@ -1509,7 +1547,12 @@ pub fn merge_region_identity_entries(
             btree_map::Entry::Vacant(slot) => {
                 slot.insert(entry.global_layer_index);
             }
-            btree_map::Entry::Occupied(slot) if *slot.get() != entry.global_layer_index => {
+            btree_map::Entry::Occupied(slot)
+                if *slot.get() != entry.global_layer_index
+                    && !plane_aliases.get(&entry.anchor_z).is_some_and(|indices| {
+                        indices.contains(slot.get()) && indices.contains(&entry.global_layer_index)
+                    }) =>
+            {
                 return Err(ModuleError::fatal(
                     1,
                     format!(

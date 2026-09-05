@@ -492,7 +492,9 @@ pub struct Diagnostic {
     pub severity: DiagnosticSeverity,
     /// Numeric code per diagnostic class; module-allocated (e.g. support-planner 1000-1999).
     pub code: u32,
-    /// Global layer index when the diagnostic is layer-scoped; `None` for prepass-global diagnostics. Signed to allow negative raft prefix layer indices.
+    /// Global layer index when the diagnostic is layer-scoped; `None` for
+    /// prepass-global diagnostics. Signed for historical compatibility with
+    /// off-grid support identities; the positive raft band is non-negative.
     pub layer: Option<i32>,
     /// Object identifier when the diagnostic is object-scoped; `None` for object-agnostic diagnostics.
     pub object_id: Option<String>,

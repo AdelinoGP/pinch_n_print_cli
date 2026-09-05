@@ -581,6 +581,7 @@ fn plan_with_stages(per_layer_stages: Vec<CompiledStage>, layer_count: usize) ->
                         has_nonplanar: false,
 
                         is_sync_layer: i == 0,
+                        is_raft: false,
                     }
                 })
                 .collect(),

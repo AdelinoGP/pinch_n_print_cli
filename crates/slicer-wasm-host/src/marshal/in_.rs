@@ -515,6 +515,7 @@ pub fn sliced_region_to_data(
         internal_bridge_areas: ir_to_wit_expolygons(view.internal_bridge_areas()),
         bridge_orientation_deg: view.bridge_orientation_deg(),
         sparse_infill_area: ir_to_wit_expolygons(view.sparse_infill_area()),
+        raft_fill: ir_to_wit_expolygons(view.raft_fill()),
         held_claims: view.held_claims().to_vec(),
         overhang_areas,
         overhang_quartile_polygons,
@@ -580,6 +581,7 @@ pub fn perimeter_region_to_data(region: &slicer_ir::PerimeterRegion) -> Perimete
         top_solid_fill: Vec::new(),
         bottom_solid_fill: Vec::new(),
         bridge_areas: Vec::new(),
+        raft_fill: Vec::new(),
         tool_index: 0,
         wall_source_region_id: None,
         // Note: width and flow_factor are intentionally discarded here;
@@ -620,6 +622,30 @@ pub fn perimeter_region_to_data(region: &slicer_ir::PerimeterRegion) -> Perimete
 //
 // These are the pure projection cores extracted from dispatch.rs's harvest_*
 // wrapper functions (which keep the HostExecutionContext unwrapping).
+
+/// Reject a raft band that is not a contiguous prefix of the push sequence.
+///
+/// Raft layers occupy global indices `0..N-1`; a raft-marked proposal pushed
+/// after any model proposal is a contract violation, and the error names the
+/// offending push position. Shared by both harvest legs (the WASM
+/// `harvest_layer_plan_ir_from` and the native
+/// `commit_native_prepass_response_with_inputs`) so their diagnostics are
+/// byte-identical.
+pub(crate) fn validate_raft_prefix_contiguity(is_raft_flags: &[bool]) -> Result<(), String> {
+    let mut seen_model_layer = false;
+    for (position, &is_raft) in is_raft_flags.iter().enumerate() {
+        if is_raft {
+            if seen_model_layer {
+                return Err(format!(
+                    "layer-plan-output: is-raft-prefix must be contiguous at the front of the push sequence; push position {position} is raft-marked but follows a non-raft layer"
+                ));
+            }
+        } else {
+            seen_model_layer = true;
+        }
+    }
+    Ok(())
+}
 
 /// Pure core of `harvest_layer_plan_ir`: `LayerProposal`s → `LayerPlanIR`.
 pub(crate) fn harvest_layer_plan_ir_from(
@@ -690,8 +716,11 @@ pub(crate) fn harvest_layer_plan_ir_from(
             active_regions,
             has_nonplanar: false,
             is_sync_layer: false,
+            is_raft: proposal.is_raft_prefix,
         });
     }
+
+    validate_raft_prefix_contiguity(&global_layers.iter().map(|l| l.is_raft).collect::<Vec<_>>())?;
 
     Ok(LayerPlanIR {
         global_layers,
@@ -1035,6 +1064,7 @@ mod tests {
                 is_catchup: false,
                 catchup_z_bottom: 0.0,
             }],
+            is_raft_prefix: false,
         };
 
         let error = harvest_layer_plan_ir_from(vec![proposal])
@@ -1053,10 +1083,131 @@ mod tests {
                 is_catchup: false,
                 catchup_z_bottom: 0.0,
             }],
+            is_raft_prefix: false,
         };
 
         harvest_layer_plan_ir_from(vec![proposal])
             .expect("an ordinary module-authored id is valid without modifier children");
+    }
+
+    /// A push sequence expressed once, replayed onto both harvest legs.
+    /// Each tuple is `(z, is_raft)` in push order.
+    const RAFT_PUSH_SEQUENCE: &[(f32, bool)] =
+        &[(0.30, true), (0.60, true), (0.80, false), (1.00, false)];
+
+    fn wit_proposals(seq: &[(f32, bool)]) -> Vec<LayerProposal> {
+        seq.iter()
+            .map(|&(z, is_raft)| LayerProposal {
+                z,
+                active_regions: vec![RegionLayerProposal {
+                    object_id: "object-a".into(),
+                    region_id: "1".into(),
+                    effective_layer_height: 0.2,
+                    is_catchup: false,
+                    catchup_z_bottom: 0.0,
+                }],
+                is_raft_prefix: is_raft,
+            })
+            .collect()
+    }
+
+    fn native_response(seq: &[(f32, bool)]) -> slicer_sdk::native::NativePrepassResponse {
+        let mut output = slicer_sdk::prepass_builders::LayerPlanOutput::new();
+        for &(z, is_raft) in seq {
+            output
+                .push_layer(slicer_sdk::prepass_types::LayerProposal {
+                    z,
+                    active_regions: vec![slicer_sdk::prepass_types::RegionLayerProposal {
+                        object_id: "object-a".into(),
+                        region_id: "1".into(),
+                        effective_layer_height: 0.2,
+                        is_catchup: false,
+                        catchup_z_bottom: 0.0,
+                    }],
+                    is_raft,
+                })
+                .expect("push_layer");
+        }
+        // exhaustive: layer-planning-only native response; every other stage slot is None
+        slicer_sdk::native::NativePrepassResponse {
+            mesh_analysis: None,
+            layer_plan: Some(output),
+            paint_segmentation: None,
+            seam_planning: None,
+            support_geometry: None,
+        }
+    }
+
+    fn native_markers(seq: &[(f32, bool)]) -> Result<Vec<(u32, bool)>, String> {
+        let response = native_response(seq);
+        let out = crate::marshal::native::commit_native_prepass_response_with_inputs(
+            &response,
+            "PrePass::LayerPlanning",
+            None,
+            None,
+            None,
+        )?;
+        match out {
+            slicer_core::PrepassStageOutput::LayerPlan(plan) => Ok(plan
+                .global_layers
+                .iter()
+                .map(|l| (l.index, l.is_raft))
+                .collect()),
+            _ => Err("native leg returned a non-layer-plan stage output".to_string()),
+        }
+    }
+
+    fn wit_markers(seq: &[(f32, bool)]) -> Result<Vec<(u32, bool)>, String> {
+        let plan = harvest_layer_plan_ir_from(wit_proposals(seq))?;
+        Ok(plan
+            .global_layers
+            .iter()
+            .map(|l| (l.index, l.is_raft))
+            .collect())
+    }
+
+    /// AC-2: both harvest legs copy `is-raft-prefix` onto `GlobalLayer.is_raft`
+    /// and leave index assignment at `0..` in push order, so the same push
+    /// sequence yields identical `(index, is_raft)` pairs on either leg.
+    #[test]
+    fn raft_marker_identical_on_both_legs() {
+        let expected: Vec<(u32, bool)> = RAFT_PUSH_SEQUENCE
+            .iter()
+            .enumerate()
+            .map(|(i, &(_, is_raft))| (i as u32, is_raft))
+            .collect();
+
+        let wit = wit_markers(RAFT_PUSH_SEQUENCE).expect("WIT leg harvests a raft-prefixed plan");
+        let native =
+            native_markers(RAFT_PUSH_SEQUENCE).expect("native leg commits a raft-prefixed plan");
+
+        assert_eq!(wit, expected, "WIT leg (index, is_raft) pairs");
+        assert_eq!(native, expected, "native leg (index, is_raft) pairs");
+        assert_eq!(wit, native, "both legs must agree on (index, is_raft)");
+    }
+
+    /// AC-N1: a raft-marked proposal pushed AFTER a model proposal is rejected
+    /// on both legs, with an error naming the offending push position.
+    #[test]
+    fn noncontiguous_raft_band_rejected() {
+        // Push position 2 is raft-marked but follows a non-raft layer.
+        let bad: &[(f32, bool)] = &[(0.30, true), (0.60, false), (0.80, true)];
+
+        let wit_err = wit_markers(bad).expect_err("WIT leg must reject a non-contiguous raft band");
+        let native_err =
+            native_markers(bad).expect_err("native leg must reject a non-contiguous raft band");
+
+        for (leg, err) in [("wit", &wit_err), ("native", &native_err)] {
+            assert!(
+                err.contains("push position 2"),
+                "{leg} leg error must name the offending push position, got: {err}"
+            );
+            assert!(
+                err.contains("is-raft-prefix"),
+                "{leg} leg error must name the offending field, got: {err}"
+            );
+        }
+        assert_eq!(wit_err, native_err, "both legs must report the same error");
     }
 }
 

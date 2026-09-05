@@ -1108,6 +1108,7 @@ fn execute_prepass_slice_single_layer_impl(
             sparse_infill_area: Vec::new(),
             internal_solid_fill: Vec::new(),
             internal_bridge_areas: Vec::new(),
+            raft_fill: Vec::new(),
         };
 
         assemble_bridge_areas(&mut sliced_region, surface_class);

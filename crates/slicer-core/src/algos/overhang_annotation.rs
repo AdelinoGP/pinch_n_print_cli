@@ -192,8 +192,17 @@ pub struct SupportContactParams {
     pub support_sharp_tails: bool,
     /// Force plain differences for the first support layers.
     pub enforce_support_layers: u32,
-    /// Zero-based current layer index.
+    /// Zero-based current **global** layer index.
     pub layer_id: u32,
+    /// Global index of the object's bottom layer, i.e. `support_raft_layers`.
+    ///
+    /// Under the positive-offset raft band, raft layers occupy global indices
+    /// `0..raft_layers-1` and the object's own first layer is
+    /// `raft_layers`. Object-bottom-geometry predicates must compare
+    /// `layer_id` against this value, never against `0` (canonical's
+    /// `this->layer_id == object_config->raft_layers`). `0` when no raft is
+    /// configured, which reproduces the pre-raft behaviour exactly.
+    pub raft_layers: u32,
 }
 
 /// Contact geometry plus the post-union cantilever annotation pass.
@@ -222,6 +231,7 @@ impl Default for SupportContactParams {
             support_sharp_tails: false,
             enforce_support_layers: 0,
             layer_id: 0,
+            raft_layers: 0,
         }
     }
 }
@@ -329,7 +339,15 @@ pub fn detect_support_contacts(
         return Vec::new();
     }
 
-    let force_support = params.layer_id < params.enforce_support_layers;
+    // The enforce window is object-relative: canonical counts
+    // `enforce_support_layers` from the object's own first layer, which under
+    // the positive-offset raft band is global index `raft_layers`, not `0`.
+    // Shifted window: `raft_layers .. raft_layers + enforce_support_layers`.
+    let force_support = params.layer_id >= params.raft_layers
+        && params.layer_id
+            < params
+                .raft_layers
+                .saturating_add(params.enforce_support_layers);
     let lower_layer_offset = if force_support {
         0.0
     } else {
@@ -363,9 +381,11 @@ pub fn detect_support_contacts(
         }
     };
 
-    // Sharp tails are a first-layer exception: preserve pointed profiles even
-    // when the ordinary lower-layer offset consumes their tiny footprint.
-    let sharp_tail_enabled = params.support_sharp_tails && params.layer_id == 0;
+    // Sharp tails are an object-bottom exception: preserve pointed profiles
+    // even when the ordinary lower-layer offset consumes their tiny footprint.
+    // The object's bottom layer is global index `raft_layers` (0 without a
+    // raft); under a raft this must not fire on the raft itself.
+    let sharp_tail_enabled = params.support_sharp_tails && params.layer_id == params.raft_layers;
     if sharp_tail_enabled {
         let has_sharp_tail = region_polygons
             .iter()

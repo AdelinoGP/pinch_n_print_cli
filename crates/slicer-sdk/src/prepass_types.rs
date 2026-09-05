@@ -210,7 +210,7 @@ impl PaintSegmentationObjectView {
 ///
 /// Per docs/03_wit_and_manifest.md (world-prepass.wit):
 /// ```wit
-/// record layer-proposal { z: f32, active-regions: list<region-layer-proposal> }
+/// record layer-proposal { z: f32, active-regions: list<region-layer-proposal>, is-raft-prefix: bool }
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct LayerProposal {
@@ -218,6 +218,10 @@ pub struct LayerProposal {
     pub z: f32,
     /// Regions active at this layer.
     pub active_regions: Vec<RegionLayerProposal>,
+    /// True if this layer belongs to the raft band (WIT `is-raft-prefix`).
+    /// Raft-marked layers must form a contiguous prefix of the push sequence.
+    #[serde(default)]
+    pub is_raft: bool,
 }
 
 /// Reason tag for seam scoring (mirrors WIT `seam-reason`).
@@ -261,8 +265,9 @@ pub struct SeamPlanEntry {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SupportPlanEntry {
     /// Global layer index for this support plan entry.
-    /// Negative values (`-1`, `-2`, ...) are reserved for raft prefix layers.
-    /// Non-negative values (`0`, `1`, ...) refer to model layers.
+    /// The positive raft band occupies non-negative indices
+    /// `0..support_raft_layers-1`, followed by model layers. Negative values
+    /// are deterministic off-grid support identities, not raft markers.
     pub global_layer_index: i32,
     /// Object this entry belongs to.
     pub object_id: ObjectId,
@@ -583,7 +588,8 @@ pub struct Diagnostic {
     pub severity: DiagnosticSeverity,
     /// Numeric error/warning code (e.g. 1003 for support-planning failure).
     pub code: u32,
-    /// Optional layer index (negative values for raft prefix layers).
+    /// Optional layer index. The positive raft band is non-negative; negative
+    /// values remain available for deterministic off-grid support identities.
     pub layer: Option<i32>,
     /// Optional object identifier.
     pub object_id: Option<String>,

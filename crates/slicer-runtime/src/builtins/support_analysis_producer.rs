@@ -725,6 +725,20 @@ fn resolve_contact_params(
         support_sharp_tails: false,
         enforce_support_layers: 0,
         layer_id: 0,
+        // Object-bottom boundary. This is the ONLY `ResolvedConfig` bridge
+        // into `SupportContactParams`, so without this read the raft-aware
+        // predicates in `detect_support_contacts` would ride at their default
+        // and the conversion would be inert (the DEV-124 failure mode).
+        raft_layers: extension_u32(config, "support_raft_layers").unwrap_or(0),
+    }
+}
+
+/// `extensions` read for a non-negative integer knob. Negative values clamp to
+/// `0`: `support_raft_layers` is a count and canonical treats it as such.
+fn extension_u32(config: &ResolvedConfig, key: &str) -> Option<u32> {
+    match config.extensions.get(key)? {
+        ConfigValue::Int(value) => Some((*value).max(0) as u32),
+        _ => None,
     }
 }
 
@@ -875,6 +889,25 @@ mod tests {
             support_enabled: true,
             ..ResolvedConfig::default()
         }
+    }
+
+    /// The raft boundary must survive the ONLY `ResolvedConfig` bridge into
+    /// `SupportContactParams`. Without this read the object-bottom predicates
+    /// in `detect_support_contacts` ride at their `0` default and the audit
+    /// conversion is inert.
+    #[test]
+    fn resolve_contact_params_carries_raft_boundary_from_config() {
+        let mut with_raft = ResolvedConfig::default();
+        with_raft
+            .extensions
+            .insert("support_raft_layers".to_string(), ConfigValue::Int(2));
+        assert_eq!(resolve_contact_params(&with_raft, 30.0).raft_layers, 2);
+
+        // No raft configured: the boundary is layer 0, i.e. pre-raft behaviour.
+        assert_eq!(
+            resolve_contact_params(&ResolvedConfig::default(), 30.0).raft_layers,
+            0
+        );
     }
 
     #[test]

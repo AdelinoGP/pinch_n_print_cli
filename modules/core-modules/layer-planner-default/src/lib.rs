@@ -42,6 +42,14 @@ pub struct DefaultLayerPlanner {
     layer_height: f64,
     /// First layer height in mm. `f64` for the same reason as `layer_height`.
     first_layer_height: f64,
+    /// Number of raft layers (`support_raft_layers`). Raft layers occupy the
+    /// contiguous global index prefix `0..N-1`; model layers shift to `N..`.
+    /// Model Zs are NOT offset by the raft height: `GlobalLayer` carries a
+    /// single `z` that is used directly as the mesh cutting plane, so a print-Z
+    /// offset here would slice the model at the wrong height. Introducing a
+    /// `print_z`/`slice_z` split (canonical `object_print_z_min`) is owned by
+    /// packet 240b.
+    raft_layers: u32,
 }
 
 #[slicer_module]
@@ -63,9 +71,22 @@ impl PrepassModule for DefaultLayerPlanner {
             })
             .unwrap_or(layer_height);
 
+        // `support_raft_layers` is an integer key, declared in
+        // `layer-planner-default.toml` under `[config.schema]` so a missing
+        // declaration cannot silently default it away.
+        let raft_layers = config
+            .get("support_raft_layers")
+            .and_then(|v| match v {
+                ConfigValue::Int(i) => Some(*i),
+                _ => None,
+            })
+            .unwrap_or(0)
+            .max(0) as u32;
+
         Ok(Self {
             layer_height,
             first_layer_height,
+            raft_layers,
         })
     }
 
@@ -119,8 +140,38 @@ impl PrepassModule for DefaultLayerPlanner {
             return Err(ModuleError::fatal(4, "no objects with positive height"));
         }
 
+        // Raft band: exactly `support_raft_layers` proposals, all flagged
+        // `is_raft`, pushed BEFORE any model proposal so the raft occupies the
+        // contiguous global index prefix `0..N-1`. Z is computed in `f64` with a
+        // single `as f32` cast at push time, matching `generate_object_layers`.
+        for i in 0..self.raft_layers {
+            let z_f64 = self.first_layer_height + (i as f64) * self.layer_height;
+            let effective_lh = if i == 0 {
+                self.first_layer_height
+            } else {
+                self.layer_height
+            };
+            // At least one active region per raft layer: without it the host's
+            // `derive_layer_output_envelope_from_input` falls back to a
+            // hardcoded height instead of the raft's own.
+            let regions = vec![RegionLayerProposal {
+                object_id: plans[0].object_id.clone(),
+                region_id: "0".to_string(),
+                effective_layer_height: effective_lh as f32,
+                is_catchup: false,
+                catchup_z_bottom: 0.0,
+            }];
+            output
+                .push_layer(LayerProposal {
+                    z: z_f64 as f32,
+                    active_regions: regions,
+                    is_raft: true,
+                })
+                .map_err(|e| ModuleError::fatal(5, e))?;
+        }
+
         // Merge layer sequences
-        let merged = merge_layer_sequences(&plans, self.first_layer_height);
+        let merged = merge_layer_sequences(&plans);
 
         // Push proposals to output
         for layer in merged {
@@ -128,6 +179,7 @@ impl PrepassModule for DefaultLayerPlanner {
                 .push_layer(LayerProposal {
                     z: layer.z,
                     active_regions: layer.regions,
+                    is_raft: false,
                 })
                 .map_err(|e| ModuleError::fatal(5, e))?;
         }
@@ -226,7 +278,7 @@ fn generate_object_layers(plan: &ObjectPlan) -> Vec<f32> {
 ///
 /// For objects with different layer heights, this inserts sync layers at LCM intervals
 /// and catch-up layers where needed.
-fn merge_layer_sequences(plans: &[ObjectPlan], _first_layer_height: f64) -> Vec<MergedLayer> {
+fn merge_layer_sequences(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
     if plans.is_empty() {
         return Vec::new();
     }
@@ -259,6 +311,7 @@ fn merge_same_height(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
         if z_f64 > max_height + 1e-6 {
             break;
         }
+        // Single terminal `as f32` cast: the Z is computed entirely in `f64`.
         let z = z_f64 as f32;
         let regions: Vec<RegionLayerProposal> = plans
             .iter()

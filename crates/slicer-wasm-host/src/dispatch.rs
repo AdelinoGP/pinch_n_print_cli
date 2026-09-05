@@ -509,6 +509,7 @@ impl WasmRuntimeDispatcher {
                     layer_index,
                     support_plan_ir,
                     lightning_tree_ir,
+                    layer.is_raft,
                 );
                 let paint = store
                     .data_mut()
@@ -667,7 +668,7 @@ impl WasmRuntimeDispatcher {
                     false,
                 )
                 .map_err(mk_ctx_err)?;
-                let paint_data = build_paint_layer_data(None, layer_index);
+                let paint_data = build_paint_layer_data(None, layer_index, layer.is_raft);
                 let paint = store
                     .data_mut()
                     .push_paint_region_layer_view(paint_data)
@@ -748,7 +749,7 @@ impl WasmRuntimeDispatcher {
                     true,
                 )
                 .map_err(mk_ctx_err)?;
-                let paint_data = build_paint_layer_data(None, layer_index);
+                let paint_data = build_paint_layer_data(None, layer_index, layer.is_raft);
                 let paint = store
                     .data_mut()
                     .push_paint_region_layer_view(paint_data)
@@ -920,6 +921,7 @@ impl WasmRuntimeDispatcher {
                     layer_index,
                     support_plan_ir,
                     lightning_tree_ir,
+                    layer.is_raft,
                 );
                 let paint = store
                     .data_mut()
@@ -2038,8 +2040,12 @@ impl WasmRuntimeDispatcher {
 /// Build `PaintRegionLayerData` from an optional paint source.
 /// Paint annotations now live in SliceIR segment_annotations (AC-16);
 /// this always returns empty-but-valid data.
-fn build_paint_layer_data(_paint_ir: Option<&()>, layer_index: u32) -> PaintRegionLayerData {
-    build_paint_layer_data_with_plan(_paint_ir, layer_index, None, None)
+fn build_paint_layer_data(
+    _paint_ir: Option<&()>,
+    layer_index: u32,
+    is_raft: bool,
+) -> PaintRegionLayerData {
+    build_paint_layer_data_with_plan(_paint_ir, layer_index, None, None, is_raft)
 }
 
 /// Variant of [`build_paint_layer_data`] that also indexes a committed
@@ -2049,15 +2055,26 @@ fn build_paint_layer_data_with_plan(
     layer_index: u32,
     support_plan_ir: Option<&slicer_ir::SupportPlanIR>,
     lightning_tree_ir: Option<&slicer_ir::LightningTreeIR>,
+    is_raft: bool,
 ) -> PaintRegionLayerData {
     let mut data = PaintRegionLayerData {
         layer_index,
-        regions_by_semantic: HashMap::new(),
-        custom_regions: HashMap::new(),
-        support_plan_segments: HashMap::new(),
-        support_plan_entries: HashMap::new(),
-        lightning_tree_segments: HashMap::new(),
+        ..Default::default()
     };
+    // Raft-ness is carried explicitly by `GlobalLayer.is_raft`, never inferred
+    // from the index. The raft plan is print-wide configuration, so unlike
+    // `support_plan_entries` below it takes NO `anchor_layer_index` filter.
+    data.is_raft = is_raft;
+    data.raft_plan = support_plan_ir
+        .and_then(|plan| plan.raft_plan.as_ref())
+        .map(
+            |raft| host::layer_perimeters::slicer::ir_handles::ir_handles::RaftPlanView {
+                raft_layers: raft.raft_layers,
+                raft_first_layer_density: raft.raft_first_layer_density,
+                base_raft_layers: raft.base_raft_layers,
+                interface_raft_layers: raft.interface_raft_layers,
+            },
+        );
     if let Some(plan) = support_plan_ir {
         for entry in &plan.entries {
             if entry.anchor_layer_index != layer_index {
@@ -2503,6 +2520,7 @@ fn push_infill_postprocess_regions(
                 top_solid_fill: Vec::new(),
                 bottom_solid_fill: Vec::new(),
                 bridge_areas: Vec::new(),
+                raft_fill: Vec::new(),
                 tool_index: 0,
                 wall_source_region_id: None,
             },
@@ -2514,6 +2532,7 @@ fn push_infill_postprocess_regions(
         data.top_solid_fill = crate::marshal::ir_to_wit_expolygons(&region.top_solid_fill);
         data.bottom_solid_fill = crate::marshal::ir_to_wit_expolygons(&region.bottom_solid_fill);
         data.bridge_areas = crate::marshal::ir_to_wit_expolygons(&region.bridge_areas);
+        data.raft_fill = crate::marshal::ir_to_wit_expolygons(&region.raft_fill);
         data.tool_index = resolve_region_tool_index(
             &region.variant_chain,
             region_map,
@@ -2905,12 +2924,13 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
                     message: "native entry family does not match layer runner".to_string(),
                 });
             };
-            let request = crate::marshal::native::build_native_layer_request(
+            let request = crate::marshal::native::build_native_layer_request_with_raft(
                 stage_export,
                 layer.index,
                 &input,
                 module,
                 &held_claims_map,
+                layer.is_raft,
             );
             let response =
                 entry(&request).map_err(|e| slicer_ir::LayerStageError::FatalModule {
@@ -3628,7 +3648,7 @@ pub fn build_paint_layer_data_for_test(
     layer_index: u32,
     lightning_tree_ir: &slicer_ir::LightningTreeIR,
 ) -> PaintRegionLayerData {
-    build_paint_layer_data_with_plan(None, layer_index, None, Some(lightning_tree_ir))
+    build_paint_layer_data_with_plan(None, layer_index, None, Some(lightning_tree_ir), false)
 }
 
 /// Build support-plan paint-layer data for dispatch contract tests.
@@ -3637,7 +3657,7 @@ pub fn build_support_plan_layer_data_for_test(
     layer_index: u32,
     support_plan_ir: &slicer_ir::SupportPlanIR,
 ) -> PaintRegionLayerData {
-    build_paint_layer_data_with_plan(None, layer_index, Some(support_plan_ir), None)
+    build_paint_layer_data_with_plan(None, layer_index, Some(support_plan_ir), None, false)
 }
 
 /// Deconstruct a `HostExecutionContext` returned from `dispatch_layer_call` into

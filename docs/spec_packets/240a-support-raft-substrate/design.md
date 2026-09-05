@@ -252,6 +252,7 @@ exact template; the sites are:
 - `modules/core-modules/classic-perimeters/src/lib.rs` - one audit conversion (overlap key ONLY; the DEV-124 wall clamp is untouched).
 - `modules/core-modules/layer-planner-default/{src/lib.rs, layer-planner-default.toml}` - raft band emission + key declaration.
 - `crates/slicer-core/src/algos/prepass_slice.rs`, `crates/slicer-runtime/src/{slice_postprocess_prepass.rs, layer_executor.rs, visual_debug_render.rs}`, `crates/pnp-cli/src/visual_debug.rs` - the `raft_fill` carrier footprint (Step 6). Listed here explicitly so this section stays authoritative: the Context Discipline Note declares Files in Scope binding, so a footprint file absent from it is a contradiction.
+- `docs/15_config_keys_reference.md` - generated `module-config-keys` catalog entry for the planner's declared `support_raft_layers` key.
 - `crates/slicer-wasm-host/tests/contract/prepass_output_builder_validation_tdd.rs` (11 WIT literals), `crates/slicer-sdk/tests/prepass_module_tdd.rs` (10 SDK literals), `crates/slicer-runtime/tests/contract/native_dispatch_parity_seam_tdd.rs` (2 SDK literals) - exhaustive `LayerProposal` literals broken by the `is-raft-prefix` / `is_raft` additions (Step 2). Neither `LayerProposal` type has a `Default` or FRU escape, and at 2 fields they sit below the >=5 struct-literal-gate watchlist threshold, so nothing forced `..` on them.
 - `crates/slicer-wasm-host/src/marshal/native.rs` - also Step 7: the native `PaintRegionLayerView` is constructed here and `is_raft` must be set at construction.
 - New test files listed in `packet.spec.md` section "AC verification command rule", plus `mod` registrations in `crates/slicer-runtime/tests/{executor,integration,contract}/main.rs`.
@@ -367,4 +368,20 @@ exact template; the sites are:
   object-bottom flow on the first model layer.
 - [FWD] `part-cooling`'s `close_fan_the_first_x_layers`: canonical counts these
   physically (raft included), so ruled leave-alone; confirm in 240b.
+- [FWD] Model-layer Z offset and the `print_z`/`slice_z` split. 240b owns
+  introducing a `print_z`/`slice_z` split on `GlobalLayer` (or an equivalent
+  carrier) plus the canonical `object_print_z_min` model-layer offset that
+  `new_layers` (`PrintObjectSlice.cpp`) applies. 240a deliberately emits raft
+  and model layers at OVERLAPPING Z: `GlobalLayer` has a single `z: f32` that
+  is used directly as the mesh cutting plane by `slice_mesh_ex` (via
+  `batch_slice_objects_by_layer` and `execute_prepass_slice_single_layer_impl`),
+  so shifting the emitted Z would slice the model at the wrong height while
+  the emission loop still terminates at the object-relative height. Structural
+  support planning remains keyed by global index; its traditional-family merge
+  admits the explicit duplicate-Z grid rows while rejecting malformed
+  grid/synthetic identity claims. Overlap does not yet create raft fill geometry
+  because `raft_fill` has no producer. An earlier in-run ruling in this packet forced a model-Z shift on
+  the belief that AC-N2's finalization gate required it; that ruling is
+  WITHDRAWN — the gate in `layer_finalization.rs` compares
+  `global_layer_index`, not `z`, so index monotonicity alone satisfies it.
 - None [BLOCK].

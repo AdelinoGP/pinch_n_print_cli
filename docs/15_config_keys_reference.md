@@ -152,6 +152,7 @@ is the authoritative catalog of their defaults and ranges.
 | `line_width` | float | `0.4` | [0.1, 2.0] | `infill-linker` |
 | `first_layer_height` | float | `0.3` | [0.01, 1.0] | `layer-planner-default` |
 | `layer_height` | float | `0.2` | [0.01, 1.0] | `layer-planner-default` |
+| `support_raft_layers` | int | `0` | [0.0, 100.0] | `layer-planner-default` |
 | `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `lightning-infill` |
 | `infill_density` | float | `0.2` | [0.0, 1.0] | `lightning-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `lightning-infill` |

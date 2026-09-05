@@ -505,6 +505,7 @@ fn layer_plan_in_world_space() -> LayerPlanIR {
             }],
             has_nonplanar: false,
             is_sync_layer: true,
+            is_raft: false,
         });
         z += layer_height;
         idx += 1;
@@ -557,6 +558,7 @@ fn layer_plan_identity_world_z() -> LayerPlanIR {
             }],
             has_nonplanar: false,
             is_sync_layer: true,
+            is_raft: false,
         });
         z += layer_height;
         idx += 1;
@@ -610,6 +612,7 @@ fn layer_plan_for_translated_mesh(tz: f64) -> LayerPlanIR {
             }],
             has_nonplanar: false,
             is_sync_layer: true,
+            is_raft: false,
         });
         z += layer_height;
         idx += 1;
