@@ -4,7 +4,8 @@
 
 - Grouped task IDs: `TASK-409`..`TASK-413`, `TASK-533`..`TASK-536`
 - Backlog source: `docs/specs/support-families-anchored-entities-plan.md` (section 11 queue row 7, section 12 brief "240-support-raft"); gap register row G-06
-- Packet status: `draft`
+- Packet status: `implemented` (acceptance ceremony green 2026-09-05; no
+  Human Validation Gate in this packet — the visual gate is 240b's)
 - Aggregate context cost: `M`
 
 ## Banding Decision

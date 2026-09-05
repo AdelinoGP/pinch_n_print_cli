@@ -11,9 +11,11 @@ free range before allocating any further ID** —
 `rg -o 'TASK-[0-9]{3}' docs/ -N --no-filename | sort -u | tail -1` — rather
 than trusting any boundary implied here.
 
-**None of these task IDs exists in `docs/07_implementation_status.md` today**
-(verified 2026-09-04). The completion gate ADDS the rows; it does not update
-them. Re-derive this before acting on it.
+**None of these task IDs can be assumed absent from
+`docs/07_implementation_status.md`** — that is a ledger fact. Re-derive it
+before acting on it (`rg -c 'TASK-409|TASK-533'
+docs/07_implementation_status.md`): the completion gate ADDS rows that are
+absent and must not add duplicates of rows a parallel session already filed.
 
 **Banding note.** This packet was re-authored on 2026-09-04 from a signed
 negative band to a positive offset band. The `u32` to `i32` migration that

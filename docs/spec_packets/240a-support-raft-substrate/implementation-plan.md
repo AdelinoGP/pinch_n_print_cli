@@ -523,8 +523,9 @@ escalation.
 - `cargo xtask build-guests --check` exit 0.
 - Add `TASK-409`..`TASK-413` and `TASK-533`..`TASK-536` to
   `docs/07_implementation_status.md` through a worker dispatch, never a full
-  backlog read. **These rows do not exist today** (verified 2026-09-04) — the
-  gate ADDS them rather than updating them.
+  backlog read. **Re-derive whether these rows already exist before acting**
+  (`rg -c 'TASK-409|TASK-533' docs/07_implementation_status.md`); a prior
+  session may have added them, in which case the gate must not add duplicates.
 - Confirm 240b is unblocked: AC-1..AC-7 green.
 
 ## Acceptance Ceremony
@@ -542,3 +543,60 @@ escalation.
 All `cargo check`, `cargo clippy`, and `cargo test` invocations in gate and
 verification commands use `--all-targets` where applicable so test, bench, and
 example targets compile.
+
+## Closure Evidence (2026-09-05)
+
+- Spec-review verdict: **APPROVED WITH NOTES** (2026-09-05). The notes are
+  closure housekeeping only, itemized below; no code change was required.
+- Status: `packet.spec.md` is `status: implemented`;
+  `requirements.md` Packet Status matches. This packet ships no printable
+  geometry, so it has no Human Validation Gate of its own — the visual gate is
+  240b's.
+- Gates, all green 2026-09-05, logs retained under `target/`:
+  - `target/240a-final-guest-freshness.log` — `cargo xtask build-guests
+    --check` EXIT:0 (artifact-verified freshness).
+  - `target/240a-final-cargo-check.log` and `target/240a-final-cargo-clippy.log`
+    — `--workspace --all-targets`, finished clean (clippy with `-D warnings`).
+  - `target/240a-final-cargo-build-workspace.log` — `cargo build --workspace`
+    finished clean.
+  - `target/240a-final-check-literals.log`, `target/240a-final-check-deviations.log`,
+    `target/240a-final-gen-config-docs.log`, `target/240a-final-rustfmt.log`
+    (RUSTFMT_FINAL:PASS) — all exit 0 / current.
+  - `target/240a-final-tree-orca-parity.log`,
+    `target/240a-final-tree-to-buildplate.log`,
+    `target/240a-final-tree-wall-clearance.log` — tree-support-planner suites
+    all `ok`.
+  - `target/240a-final-workspace.log` — acceptance ceremony via
+    `cargo xtask test --summary --workspace` (guest-freshness preflight
+    included): **VERDICT: PASS**, run with `slicer-core/host-algos` enabled and
+    the standing xtask skip `--skip
+    arachne_parity_pipeline_concentric_infill_uses_arachne` retained. Per Test
+    Discipline, that skip is not reconciled here; narrowing it is separate work.
+- Closure housekeeping (this session, prose/metadata only, no assertion-logic
+  changes):
+  - `task-map.md` / `implementation-plan.md`: removed the stale authoring-time
+    claim that this packet's `docs/07_implementation_status.md` task rows do
+    not exist — they were filed on 2026-09-04. Both docs now require
+    re-deriving row presence at use time instead of freezing it.
+  - `default_config_does_not_reject_to_model_contacts`
+    (`modules/core-modules/tree-support-planner/tests/to_buildplate_tdd.rs`):
+    comment and failure message corrected from layer 8 to the first real
+    support layer (layer 6 — the overhang is on layer 8; the default one-layer
+    top gap puts the virtual contact on layer 7 and the first real node on
+    layer 6, matching the fixture's `global_support_layer_index: 6`). FACT:
+    `cargo test -p tree-support-planner --test to_buildplate_tdd --
+    default_config_does_not_reject_to_model_contacts --exact --nocapture` →
+    `ok` (log: `target/240a-housekeeping-to-buildplate.log`).
+- Deferred to **240b-support-raft-module** (recorded, not outstanding here):
+  raft fill geometry and the `com.core.raft-default` module; the print-Z work
+  (canonical `object_print_z_min` model-layer offset and the `print_z` /
+  `slice_z` split on `GlobalLayer`); the ADR-0009 amendment; and 240b's Human
+  Validation Gate visual sign-off.
+- FWD audit risks carried into 240b (design.md "Open Questions", all `[FWD]`,
+  none an activation blocker): the arachne sandwich-order override, the
+  `rectilinear-infill` bottom-solid-fill width flag, `part-cooling`'s
+  `close_fan_the_first_x_layers`, and the model-layer Z offset /
+  `print_z`-`slice_z` split.
+- Residual packet-local risk class (design.md "Risks and Tradeoffs"): silent
+  semantic drift — a missed object-bottom predicate does not fail to compile.
+  Mitigated by AC-5's config-reach test and the AC-N4 leave-alone diff guard.

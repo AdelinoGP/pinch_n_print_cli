@@ -97,12 +97,10 @@ fn guest_reads_config_value_and_uses_it_in_output() {
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
     let paint_handle = ctx
-        .push_paint_region_layer_view(
-            PaintRegionLayerData {
-                layer_index: 0,
-                ..Default::default()
-            },
-        )
+        .push_paint_region_layer_view(PaintRegionLayerData {
+            layer_index: 0,
+            ..Default::default()
+        })
         .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
@@ -215,12 +213,10 @@ fn guest_reads_region_z_from_ir_view() {
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
     let paint_handle = ctx
-        .push_paint_region_layer_view(
-            PaintRegionLayerData {
-                layer_index: 42,
-                ..Default::default()
-            },
-        )
+        .push_paint_region_layer_view(PaintRegionLayerData {
+            layer_index: 42,
+            ..Default::default()
+        })
         .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
@@ -311,12 +307,10 @@ fn guest_emits_output_via_infill_builder() {
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
     let paint_handle = ctx
-        .push_paint_region_layer_view(
-            PaintRegionLayerData {
-                layer_index: 0,
-                ..Default::default()
-            },
-        )
+        .push_paint_region_layer_view(PaintRegionLayerData {
+            layer_index: 0,
+            ..Default::default()
+        })
         .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
@@ -415,12 +409,10 @@ fn guest_logs_via_host_services() {
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
     let paint_handle = ctx
-        .push_paint_region_layer_view(
-            PaintRegionLayerData {
-                layer_index: 7,
-                ..Default::default()
-            },
-        )
+        .push_paint_region_layer_view(PaintRegionLayerData {
+            layer_index: 7,
+            ..Default::default()
+        })
         .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
@@ -516,12 +508,10 @@ fn repeated_calls_produce_independent_outputs() {
             .unwrap();
         let output_handle = ctx.push_infill_output_builder().unwrap();
         let paint_handle = ctx
-            .push_paint_region_layer_view(
-                PaintRegionLayerData {
-                    layer_index: i,
-                    ..Default::default()
-                },
-            )
+            .push_paint_region_layer_view(PaintRegionLayerData {
+                layer_index: i,
+                ..Default::default()
+            })
             .unwrap();
 
         let mut store = wasmtime::Store::new(&engine, ctx);
@@ -593,12 +583,10 @@ fn empty_region_list_handled_gracefully() {
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
     let paint_handle = ctx
-        .push_paint_region_layer_view(
-            PaintRegionLayerData {
-                layer_index: 0,
-                ..Default::default()
-            },
-        )
+        .push_paint_region_layer_view(PaintRegionLayerData {
+            layer_index: 0,
+            ..Default::default()
+        })
         .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);

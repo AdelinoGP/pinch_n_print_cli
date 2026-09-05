@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 240a-support-raft-substrate
 depends_on: 236-support-stabilization
 task_ids:

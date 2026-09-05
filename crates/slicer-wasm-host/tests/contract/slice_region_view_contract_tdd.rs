@@ -180,12 +180,10 @@ fn prev_layer_boundary_reaches_live_perimeters_guest_view() {
         assert_eq!(actual.y, expected.y);
     }
     let paint_handle = ctx
-        .push_paint_region_layer_view(
-            PaintRegionLayerData {
-                layer_index: 0,
-                ..Default::default()
-            },
-        )
+        .push_paint_region_layer_view(PaintRegionLayerData {
+            layer_index: 0,
+            ..Default::default()
+        })
         .expect("paint resource");
     let output_handle = ctx
         .push_perimeter_output_builder()

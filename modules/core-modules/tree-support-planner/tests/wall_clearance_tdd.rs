@@ -134,6 +134,11 @@ fn analysis() -> SupportAnalysisView {
                 polygons: vec![wall()],
             })
             .collect(),
+        family_assignments: vec![slicer_sdk::prepass_types::SupportFamilyAssignment {
+            object_id: OBJECT_ID.into(),
+            region_id: REGION_ID.into(),
+            family_id: "tree".into(),
+        }],
         ..Default::default()
     }
 }
