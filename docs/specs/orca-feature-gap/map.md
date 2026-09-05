@@ -1409,6 +1409,18 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
    solid-infill direction or rotation-template metadata. Whether the IR gains
    the canonical base direction, and which other ironing consumers use it, is
    future IR/geometry work; fog until a packet picks it up.
+- **The filament-change travel path (`start_end_points`).** Surfaced by ticket
+  40's authoring: canonical's `get_path_of_change_filament` (`GCode.cpp`)
+  computes the three `travel_point_*` placeholders for `change_filament_gcode`
+  from `start_end_points` + `bed_exclude_area` + object bounding boxes, and
+  returns the safe default path when `bed_exclude_area.size() != 4`. The key
+  was returned to the queue as unimplemented (tier-table row annotated):
+  wiring it alone would be declaration-only until packet 256's
+  `bed_exclude_area` implementation lands, and the path computation needs
+  object bounding boxes at a seam that reaches the postpass substitution (new
+  `ResolvedConfig` fields or an extensions mechanism + `travel_point_*` schema
+  on `machine-gcode-emit`). Fog until packet 256's implementation lands; the
+  re-file should fold into or sequence after it.
 
 ## Out of scope
 
