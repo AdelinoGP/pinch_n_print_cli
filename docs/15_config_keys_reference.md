@@ -316,6 +316,7 @@ is the authoritative catalog of their defaults and ranges.
 | `enable_prime_tower` | bool | `false` | — | `wipe-tower` |
 | `flush_multiplier` | float | `0.3` | >= 0.0 | `wipe-tower` |
 | `flush_volumes_matrix` | float-list | `—` | — | `wipe-tower` |
+| `grab_length` | float | `0.0` | >= 0.0 | `wipe-tower` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `wipe-tower` |
 | `prime_tower_width` | float | `60.0` | [1.0, 100.0] | `wipe-tower` |
 | `prime_volume` | float | `45.0` | [1.0, 50.0] | `wipe-tower` |

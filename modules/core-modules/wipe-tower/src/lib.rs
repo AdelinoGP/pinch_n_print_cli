@@ -50,10 +50,22 @@ pub struct WipeTower {
     /// Scale applied to every `flush_volumes` entry. Inert while `flush_volumes`
     /// is empty — it never scales the `purge_volume` fallback.
     flush_multiplier: f32,
+    /// Length of filament (mm) the extruder extrudes for detection during a
+    /// filament change; the purge volume for that change is reduced by the
+    /// corresponding volume (canonical `grab_length`).
+    grab_length: f32,
 }
 
 /// Canonical OrcaSlicer default for `flush_multiplier` (`PrintConfig.cpp`).
 const DEFAULT_FLUSH_MULTIPLIER: f32 = 0.3;
+
+/// Cross-section (mm^2) of the grab-length filament, `(diameter/2)^2 * PI`
+/// for canonical's 1.75 mm filament — the `2.4` constant both canonical read
+/// sites hardcode (`GCode.cpp` toolchange path, `Print.cpp` wipe-tower
+/// planning, each with the comment `//(diameter/2)^2*PI=2.4`). Kept as the
+/// same constant for exact parity; the port's `filament_diameter` is
+/// per-filament (Tier D fog) and canonical itself does not use it here.
+const GRAB_CROSS_SECTION: f32 = 2.4;
 
 /// Parse a flat, row-major `N*N` float list into `[from_tool][to_tool]` rows.
 ///
@@ -244,6 +256,15 @@ impl WipeTower {
             _ => DEFAULT_FLUSH_MULTIPLIER,
         };
 
+        // `grab_length`: canonical default 0 (inert). The manifest default of a
+        // plain float never reaches a module (only `percent` / `float_or_percent`
+        // schema defaults are threaded into `ResolvedConfig`), so the effective
+        // default lives here, matching the manifest row.
+        let grab_length = match config.get("grab_length") {
+            Some(ConfigValue::Float(v)) => *v as f32,
+            _ => 0.0,
+        };
+
         Ok(Self {
             tower_x,
             tower_y,
@@ -255,6 +276,7 @@ impl WipeTower {
             printable_area,
             flush_volumes,
             flush_multiplier,
+            grab_length,
         })
     }
 
@@ -589,17 +611,34 @@ impl WipeTower {
     /// - **`filament_minimal_purge_on_wipe_tower`** (canonical's per-filament
     ///   lower clamp on each entry) is Tier D per-filament config and is not in
     ///   this tree; no clamp is applied.
+    /// - **`grab_length` is a scalar, not canonical's per-extruder `coFloats`**
+    ///   (DEV-170). Canonical reads `grab_length.get_at(new_extruder_id)` at
+    ///   both read sites; per-tool config scoping is inventoried by ticket 118
+    ///   and is not available here, so one value applies to every tool change.
+    ///   The reduction applies to the `prime_volume` fallback too — canonical
+    ///   always has a matrix, so it has no opinion on the fallback; the grab
+    ///   volume is extruded during the change regardless of the purge's source.
     pub fn purge_volume_for(&self, from_tool: u32, to_tool: u32) -> f32 {
         let (from, to) = (from_tool as usize, to_tool as usize);
-        match self.flush_volumes.get(from).and_then(|row| row.get(to)) {
+        let base = match self.flush_volumes.get(from).and_then(|row| row.get(to)) {
             Some(v) => v * self.flush_multiplier,
             None => self.purge_volume,
-        }
+        };
+        // During the filament change, the extruder extrudes an extra length of
+        // `grab_length` for the corresponding detection, so the purge can
+        // reduce this length (canonical `GCode.cpp` toolchange path:
+        // `wipe_volume = std::max(0.f, wipe_volume - grab_purge_volume)`).
+        (base - self.grab_length * GRAB_CROSS_SECTION).max(0.0)
     }
 
     /// Scale applied to `flush_volumes_matrix` entries.
     pub fn flush_multiplier(&self) -> f32 {
         self.flush_multiplier
+    }
+
+    /// Grab length in mm (canonical `grab_length`).
+    pub fn grab_length(&self) -> f32 {
+        self.grab_length
     }
 
     /// Line width in mm.
@@ -946,7 +985,8 @@ mod tests {
             ("retract_length", ConfigValue::Float(2.0)),
             ("flush_multiplier", ConfigValue::Float(multiplier)),
         ];
-        let matrix_value = ConfigValue::List(matrix.iter().map(|v| ConfigValue::Float(*v)).collect());
+        let matrix_value =
+            ConfigValue::List(matrix.iter().map(|v| ConfigValue::Float(*v)).collect());
         pairs.push(("flush_volumes_matrix", matrix_value));
         pairs.push((
             "printable_area",
@@ -990,11 +1030,9 @@ mod tests {
     /// A configured matrix selects per-pair volumes, scaled by the multiplier.
     #[test]
     fn flush_matrix_selects_per_pair_volume() {
-        let tower = WipeTower::from_config(&config_with_flush_matrix(
-            0.5,
-            &[0.0, 480.0, 120.0, 0.0],
-        ))
-        .expect("valid config");
+        let tower =
+            WipeTower::from_config(&config_with_flush_matrix(0.5, &[0.0, 480.0, 120.0, 0.0]))
+                .expect("valid config");
 
         assert_eq!(tower.purge_volume_for(0, 1), 240.0);
         assert_eq!(tower.purge_volume_for(1, 0), 60.0);
@@ -1006,10 +1044,10 @@ mod tests {
     #[test]
     fn flush_multiplier_scales_emitted_purge_geometry() {
         let matrix = [0.0, 480.0, 480.0, 0.0];
-        let low = WipeTower::from_config(&config_with_flush_matrix(0.5, &matrix))
-            .expect("valid config");
-        let high = WipeTower::from_config(&config_with_flush_matrix(1.0, &matrix))
-            .expect("valid config");
+        let low =
+            WipeTower::from_config(&config_with_flush_matrix(0.5, &matrix)).expect("valid config");
+        let high =
+            WipeTower::from_config(&config_with_flush_matrix(1.0, &matrix)).expect("valid config");
 
         let tc = tool_change(0, 1);
         let low_lines = scan_line_count(&low.generate_purge_paths(0.2, 0.2, 0, &tc));
@@ -1095,5 +1133,166 @@ mod tests {
         let tower = WipeTower::from_config(&default_config()).expect("valid config");
         assert_eq!(tower.flush_multiplier(), DEFAULT_FLUSH_MULTIPLIER);
         assert_eq!(tower.flush_multiplier(), 0.3);
+    }
+
+    // ── Ticket 40 (P33 — Extruder / Nozzle / MMU Hardware): grab_length ──
+    //
+    // `grab_length` reduces the purge volume of a tool change by the volume of
+    // the filament the extruder extrudes for detection during the change
+    // (canonical `GCode.cpp` toolchange path:
+    // `wipe_volume = std::max(0.f, wipe_volume - grab_length * 2.4)`). The
+    // reduction lands in `purge_volume_for`, so both consumers — the purge
+    // box's scan-line depth and the prime entity's extruded length — shrink.
+
+    /// `default_config` plus a `grab_length` value.
+    fn config_with_grab_length(grab: f64) -> ConfigView {
+        config_with_grab_and_prime(grab, 70.0)
+    }
+
+    /// `default_config` plus `grab_length` and an explicit `prime_volume`.
+    fn config_with_grab_and_prime(grab: f64, prime: f64) -> ConfigView {
+        let mut pairs: Vec<(&str, ConfigValue)> = vec![
+            ("enable_prime_tower", ConfigValue::Bool(true)),
+            ("wipe_tower_x", ConfigValue::Float(10.0)),
+            ("wipe_tower_y", ConfigValue::Float(10.0)),
+            ("prime_tower_width", ConfigValue::Float(60.0)),
+            ("prime_volume", ConfigValue::Float(prime)),
+            ("line_width", ConfigValue::Float(0.4)),
+            ("retract_length", ConfigValue::Float(2.0)),
+            ("grab_length", ConfigValue::Float(grab)),
+        ];
+        pairs.push((
+            "printable_area",
+            ConfigValue::List(vec![
+                ConfigValue::Float(0.0),
+                ConfigValue::Float(0.0),
+                ConfigValue::Float(250.0),
+                ConfigValue::Float(0.0),
+                ConfigValue::Float(250.0),
+                ConfigValue::Float(250.0),
+                ConfigValue::Float(0.0),
+                ConfigValue::Float(250.0),
+            ]),
+        ));
+        config_from_pairs(&pairs)
+    }
+
+    /// `config_with_flush_matrix` plus a `grab_length` value.
+    fn config_with_flush_matrix_and_grab(multiplier: f64, matrix: &[f64], grab: f64) -> ConfigView {
+        let mut pairs: Vec<(&str, ConfigValue)> = vec![
+            ("enable_prime_tower", ConfigValue::Bool(true)),
+            ("wipe_tower_x", ConfigValue::Float(10.0)),
+            ("wipe_tower_y", ConfigValue::Float(10.0)),
+            ("prime_tower_width", ConfigValue::Float(60.0)),
+            ("prime_volume", ConfigValue::Float(70.0)),
+            ("line_width", ConfigValue::Float(0.4)),
+            ("retract_length", ConfigValue::Float(2.0)),
+            ("flush_multiplier", ConfigValue::Float(multiplier)),
+            ("grab_length", ConfigValue::Float(grab)),
+        ];
+        let matrix_value =
+            ConfigValue::List(matrix.iter().map(|v| ConfigValue::Float(*v)).collect());
+        pairs.push(("flush_volumes_matrix", matrix_value));
+        pairs.push((
+            "printable_area",
+            ConfigValue::List(vec![
+                ConfigValue::Float(0.0),
+                ConfigValue::Float(0.0),
+                ConfigValue::Float(250.0),
+                ConfigValue::Float(0.0),
+                ConfigValue::Float(250.0),
+                ConfigValue::Float(250.0),
+                ConfigValue::Float(0.0),
+                ConfigValue::Float(250.0),
+            ]),
+        ));
+        config_from_pairs(&pairs)
+    }
+
+    /// Absent `grab_length` (the canonical default 0) is identity — the
+    /// pre-ticket-40 behaviour, unchanged.
+    #[test]
+    fn grab_length_absent_is_identity() {
+        let tower = WipeTower::from_config(&default_config()).expect("valid config");
+        assert_eq!(tower.grab_length(), 0.0);
+        assert_eq!(tower.purge_volume_for(0, 1), 70.0);
+        assert_eq!(tower.purge_volume_for(1, 0), 70.0);
+    }
+
+    /// A non-default `grab_length` reduces the purge volume by
+    /// `grab_length * 2.4` (the 1.75 mm filament cross-section both canonical
+    /// read sites hardcode), on the `prime_volume` fallback and the matrix
+    /// path alike.
+    #[test]
+    fn grab_length_reduces_purge_volume() {
+        let tower = WipeTower::from_config(&config_with_grab_length(5.0)).expect("valid config");
+        assert_eq!(tower.grab_length(), 5.0);
+        // 70 - 5 * 2.4 = 70 - 12 = 58.
+        assert_eq!(tower.purge_volume_for(0, 1), 58.0);
+        assert_eq!(tower.purge_volume_for(1, 0), 58.0);
+
+        let matrixed = WipeTower::from_config(&config_with_flush_matrix_and_grab(
+            0.5,
+            &[0.0, 480.0, 120.0, 0.0],
+            5.0,
+        ))
+        .expect("valid config");
+        // Matrix path: 240 - 12 = 228 (grab applies after the multiplier).
+        assert_eq!(matrixed.purge_volume_for(0, 1), 228.0);
+        assert_eq!(matrixed.purge_volume_for(1, 0), 48.0);
+    }
+
+    /// The reduction clamps at zero — a grab volume larger than the purge
+    /// volume yields an empty purge, matching canonical's `std::max(0.f, ...)`.
+    #[test]
+    fn grab_length_clamps_purge_volume_at_zero() {
+        let tower = WipeTower::from_config(&config_with_grab_length(100.0)).expect("valid config");
+        assert_eq!(tower.purge_volume_for(0, 1), 0.0);
+        assert_eq!(tower.purge_volume_for(1, 0), 0.0);
+    }
+
+    /// `grab_length` is the only thing that changes between these two towers,
+    /// and it changes the emitted geometry: the purge box's scan-line count
+    /// and the prime entity's extruded length both shrink.
+    #[test]
+    fn grab_length_reduces_emitted_purge_geometry() {
+        let baseline = WipeTower::from_config(&default_config()).expect("valid config");
+        let grabbed = WipeTower::from_config(&config_with_grab_length(5.0)).expect("valid config");
+
+        let tc = tool_change(0, 1);
+        let baseline_pairs = baseline.generate_purge_paths(0.2, 0.2, 0, &tc);
+        let grabbed_pairs = grabbed.generate_purge_paths(0.2, 0.2, 0, &tc);
+
+        let baseline_lines = scan_line_count(&baseline_pairs);
+        let grabbed_lines = scan_line_count(&grabbed_pairs);
+        assert!(
+            grabbed_lines < baseline_lines,
+            "grab_length must shallow the purge box: {} vs {}",
+            grabbed_lines,
+            baseline_lines
+        );
+
+        // Prime entity is the last pair; its length is
+        // purge_volume / (line_width * layer_height), capped at tower_width.
+        // With the default 70 mm^3 both volumes cap at 60, so use a small
+        // prime_volume where the uncapped length differs: 3.0 -> 37.5 mm,
+        // grab 1.0 -> volume 0.6 -> 7.5 mm.
+        let prime_length = |pairs: &[(ExtrusionPath3D, RegionKey)]| {
+            let (path, _) = pairs.last().expect("travel + scan lines + prime");
+            let (a, b) = (path.points[0], path.points[1]);
+            ((b.x - a.x).powi(2) + (b.y - a.y).powi(2)).sqrt()
+        };
+        let small_baseline =
+            WipeTower::from_config(&config_with_grab_and_prime(0.0, 3.0)).expect("valid config");
+        let small_grabbed =
+            WipeTower::from_config(&config_with_grab_and_prime(1.0, 3.0)).expect("valid config");
+        let baseline_prime = prime_length(&small_baseline.generate_purge_paths(0.2, 0.2, 0, &tc));
+        let grabbed_prime = prime_length(&small_grabbed.generate_purge_paths(0.2, 0.2, 0, &tc));
+        assert!(
+            grabbed_prime < baseline_prime,
+            "grab_length must shorten the prime entity: {} vs {}",
+            grabbed_prime,
+            baseline_prime
+        );
     }
 }

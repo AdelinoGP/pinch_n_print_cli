@@ -332,9 +332,17 @@ shape) and are **re-filed as
 ticket 125** (the per-tool config model ruling, itself gated on 126). The
 authoring ticket for the six is 136, not 39.
 
-### P33 — Extruder / Nozzle / MMU Hardware — emitter (2 keys, Tier B)
+### P33 — Extruder / Nozzle / MMU Hardware — emitter (1 key, Tier B)
 
-`grab_length`, `start_end_points`
+`grab_length` — **live** (ticket 40, direct implementation): declared on
+`wipe-tower.toml`, consumed by `WipeTower::purge_volume_for` (purge reduced by
+`grab_length × 2.4`, clamped at 0); scalar-vs-per-extruder divergence in
+DEV-170.
+
+`start_end_points` — **returned to the queue as unimplemented** by ticket 40:
+canonical's `get_path_of_change_filament` needs `bed_exclude_area` (packet
+256, not implemented) + object bounding boxes at a seam reaching the
+`change_filament_gcode` substitution. Re-file when packet 256 lands.
 
 ### P34 — Extruder / Nozzle / Nozzle — emitter (4 keys, Tier B)
 

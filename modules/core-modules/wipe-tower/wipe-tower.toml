@@ -77,6 +77,14 @@ display = "Flush Multiplier"
 group   = "Wipe Tower"
 description = "Scale applied to every `flush_volumes_matrix` entry. Inert when no matrix is supplied. Canonical default 0.3 (OrcaSlicer `flush_multiplier`)."
 
+[config.schema.grab_length]
+type    = "float"
+default = 0.0
+min     = 0.0
+display = "Grab Length"
+group   = "Wipe Tower"
+description = "Length of filament (mm) the extruder extrudes for detection during a filament change; the purge volume for that change is reduced by the corresponding volume (canonical `grab_length`, `GCode.cpp` toolchange path). Scalar here where canonical is a per-extruder `coFloats` (see DEV-170)."
+
 [config.schema.line_width]
 type    = "float"
 default = 0.4
