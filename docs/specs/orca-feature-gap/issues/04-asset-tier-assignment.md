@@ -192,18 +192,18 @@ findings (the one flagged row was a stale-asset artifact).
 
 ### Extruder / Nozzle / Extruder geometry / mapping
 | `extruder_ams_count` | B | tool-ordering (ToolOrdering.cpp calc_max_group_size) |
-| `extruder_colour` | B | crates/slicer-gcode (toolchange emission) |
-| `extruder_offset` | B | crates/slicer-gcode (toolchange emission) |
-| `extruder_type` | B | crates/slicer-gcode (toolchange emission) |
+| `extruder_colour` | B | **covered** (ticket 39): canonical's only pipeline read is the CONFIG_BLOCK alias to `filament_colour` (`GCode::append_full_config`); the port emits the directive in HEADER_BLOCK + CONFIG_BLOCK with the authored palette when supplied |
+| `extruder_offset` | B | — **blocked, unimplemented** by ticket 39: per-extruder XY offsets at emission (`GCode::point_to_gcode`, `WipeTowerIntegration::post_process_wipe_tower_moves` toolchange bridge move); the port has no offset term and no per-extruder vector model; re-filed as ticket 136, blocked on ticket 125 |
+| `extruder_type` | B | — **blocked, unimplemented** by ticket 39: per-extruder bowden/direct feeding `ToolOrdering.cpp::build_filament_group_context` and `Print::update_filament_maps_to_config`; no such machinery in the tree; re-filed as ticket 136, blocked on ticket 125 |
 | `extruder_variant_list` | B | config-resolution (Print.cpp get_config_index) |
 | `filament_extruder_variant` | B | config-resolution (Print.cpp get_config_index) |
 | `filament_self_index` | B | config-resolution (Print.cpp update_filament_self_index_cache) |
-| `master_extruder_id` | B | crates/slicer-gcode (toolchange emission) |
-| `physical_extruder_map` | B | crates/slicer-gcode (toolchange emission) |
+| `master_extruder_id` | B | — **blocked, unimplemented** by ticket 39: feeds the absent filament-grouping algorithm (`FilamentGroup.cpp`, `FilamentGroup::calc_group_by_kmedoids`); re-filed as ticket 136, blocked on ticket 125 |
+| `physical_extruder_map` | B | — **blocked, unimplemented** by ticket 39: internal→physical T-index map at emission (`GCode::_do_export` reorder, placeholder seeds, `WipeTower` M104/M109 targets); port emits plain runtime tool indices; re-filed as ticket 136, blocked on ticket 125 |
 | `print_extruder_id` | B | config-resolution (Print.cpp get_config_index) |
 | `print_extruder_variant` | B | config-resolution (Print.cpp get_config_index) |
-| `printer_extruder_id` | B | crates/slicer-gcode (toolchange emission) |
-| `printer_extruder_variant` | B | crates/slicer-gcode (toolchange emission) |
+| `printer_extruder_id` | B | — **blocked, unimplemented** by ticket 39: shape key of per-extruder option arrays (`ParameterUtils.cpp::get_index_for_extruder_parameter`, `update_values_to_printer_extruders`); port has no per-extruder vector model; re-filed as ticket 136, blocked on ticket 125 |
+| `printer_extruder_variant` | B | — **blocked, unimplemented** by ticket 39: same variant-array machinery + `Print::get_filament_unprintable_flow`; re-filed as ticket 136, blocked on ticket 125 |
 
 ### Extruder / Nozzle / MMU Hardware
 | `cooling_tube_length` | B | wipe-tower (Type2 SEMM unload/load choreography) — **blocked, unimplemented** by ticket 28: dead in canonical's BBS `WipeTower` (`#if 0`, delegated to `change_filament_gcode`), live only in `WipeTower2::toolchange_Unload`, fused with Tier D per-filament ramming values and gated on `single_extruder_multi_material` + `enable_filament_ramming` (neither in this tree); re-filed as ticket 119, blocked on ticket 118 |

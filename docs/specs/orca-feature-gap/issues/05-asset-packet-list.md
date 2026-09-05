@@ -322,6 +322,16 @@ on `gcode_toolchange_wrapping`, the runtime `contract` wipe-tower parity test, a
 
 `extruder_colour`, `extruder_offset`, `extruder_type`, `master_extruder_id`, `physical_extruder_map`, `printer_extruder_id`, `printer_extruder_variant`
 
+**Re-sized by ticket 39 (2026-09-05): not authorable as a standalone packet.**
+`extruder_colour` is already covered (CONFIG_BLOCK/HEADER alias to
+`filament_colour`, canonical's only pipeline read). The other six are
+per-extruder-vector or absent-feature keys (extruder offsets, bowden/direct
+grouping, master-extruder filament grouping, physical tool map, variant-array
+shape) and are **re-filed as
+[ticket 136](136-author-packet-p32-per-extruder-keys-refiled.md), blocked on
+ticket 125** (the per-tool config model ruling, itself gated on 126). The
+authoring ticket for the six is 136, not 39.
+
 ### P33 — Extruder / Nozzle / MMU Hardware — emitter (2 keys, Tier B)
 
 `grab_length`, `start_end_points`
