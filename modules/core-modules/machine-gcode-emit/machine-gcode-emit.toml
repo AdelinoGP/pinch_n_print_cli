@@ -123,6 +123,33 @@ display     = "Nozzle diameter"
 description = "OrcaSlicer coFloat key nozzle_diameter; exposed here so machine_start_gcode / machine_end_gcode templates can reference [nozzle_diameter] and have it substituted with the effective nozzle diameter. Bounds mirror the classic-perimeters declaration of the same key."
 group       = "Machine G-code"
 
+# P35 (ticket 42): static pressure-advance gate. Canonical `enable_pressure_advance`
+# (`coBools` false) + `pressure_advance` (`coFloats` 0.02, max 2) are per-extruder
+# vectors read at every `GCode.cpp` toolchange/start site; the port holds the
+# scalar-global subset here (per-tool values ride the existing
+# `tool_config:<idx>:` axis, Orca vector ingest rides ticket 125). Declared here
+# to close ticket 04's ResolvedConfig-only contract; the decision point lives in
+# the host emitter (`crates/slicer-gcode`), which reads the typed
+# `ResolvedConfig` fields directly (P18 `disable_m73` precedent). The manifest
+# default is dead for this class of key (see map Notes) — the macro default is
+# what the module receives. Bounds mirror canonical (`min 0`, `max 2`); the port
+# enforces them where canonical treats them as GUI hints (ticket 113 rule).
+[config.schema.enable_pressure_advance]
+type    = "bool"
+default = false
+display = "Enable pressure advance"
+group   = "Machine G-code"
+description = "OrcaSlicer coBools key enable_pressure_advance; when true the emitter prefixes the print and each toolchange with the flavor-specific pressure-advance command."
+
+[config.schema.pressure_advance]
+type    = "float"
+default = 0.02
+min     = 0.0
+max     = 2.0
+display = "Pressure advance"
+group   = "Machine G-code"
+description = "OrcaSlicer coFloats key pressure_advance (PA value for Klipper pressure advance / Marlin linear advance). Scalar-global subset; per-tool via tool_config axis, vector ingest rides ticket 125."
+
 [config.overridable-per-region]
 keys = []
 

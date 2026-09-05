@@ -3,6 +3,7 @@
 //! All IR types are shared contracts between the host and modules.
 //! Every IR struct carries a `schema_version: SemVer`.
 
+#![recursion_limit = "256"]
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 #![warn(unused_must_use)]

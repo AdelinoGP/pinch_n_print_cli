@@ -224,12 +224,12 @@ findings (the one flagged row was a stale-asset artifact).
 | `required_nozzle_HRC` | B | — **blocked, unimplemented** by ticket 41: `coInts` per-filament vector, the requirement side of canonical's `update_slice_warnings` HRC comparison; needs the per-tool axis (today `extract_float_or_first` keeps element 0); re-filed as ticket 137, blocked on ticket 125 |
 
 ### Extruder / Nozzle / Pressure advance
-| `adaptive_pressure_advance` | B | crates/slicer-gcode (flavor.rs) |
-| `adaptive_pressure_advance_bridges` | B | crates/slicer-gcode (flavor.rs) |
-| `adaptive_pressure_advance_model` | B | crates/slicer-gcode (flavor.rs) |
-| `adaptive_pressure_advance_overhangs` | B | crates/slicer-gcode (flavor.rs) |
-| `enable_pressure_advance` | B | crates/slicer-gcode (flavor.rs) |
-| `pressure_advance` | B | crates/slicer-gcode (flavor.rs) |
+| `adaptive_pressure_advance` | B | — **unimplemented** by ticket 42: needs the AdaptivePAProcessor-style per-feature prediction (per-tool interpolators over the `adaptive_pressure_advance_model` flow/accel triplets, `process_layer` G-code post-pass, bridge/overhang overrides); no tree decision point; returned to the queue with the missing feature named |
+| `adaptive_pressure_advance_bridges` | B | — **unimplemented** by ticket 42: static bridge override inside the same processor (`AdaptivePAProcessor.cpp` bridge branch, `coFloats` 0.0 max 2, 0 = follow walls); returned with the processor |
+| `adaptive_pressure_advance_model` | B | — **unimplemented** by ticket 42: per-tool calibration triplets (`coStrings` `"0,0,0\n0,0,0"`, parsed + validated per `Print.cpp`); returned with the processor |
+| `adaptive_pressure_advance_overhangs` | B | — **unimplemented** by ticket 42: in-feature flow-change arm of the same processor (`GCode.cpp` overhang branches); returned with the processor |
+| `enable_pressure_advance` | B | — **live** by ticket 42: host emitter gates the PA prefix on this (`coBools` false) at print start + after every toolchange |
+| `pressure_advance` | B | — **live** by ticket 42: host emitter emits the flavor-specific PA line for this value (`coFloats` 0.02 max 2) via `GcodeFlavor::set_pressure_advance`; per-tool values ride the existing `tool_config:<idx>:` axis, Orca vector ingest rides ticket 125 |
 
 ### Extruder / Nozzle / Retraction
 | `deretraction_speed` | B | crates/slicer-gcode (GCode::retract) |

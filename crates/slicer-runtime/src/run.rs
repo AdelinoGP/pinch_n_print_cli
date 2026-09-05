@@ -989,7 +989,8 @@ pub fn run_slice_with_collector(
                     slicer_ir::FeedrateConfig::from_raw_config(&config_source),
                 )
                 .with_resolved_config(default_resolved_config.clone())
-                .with_tool_configs(per_tool_configs_map.clone()),
+                .with_tool_configs(per_tool_configs_map.clone())
+                .with_flavor(flavor),
             ),
             serializer: Box::new(
                 DefaultGCodeSerializer::with_extrusion_mode(relative)

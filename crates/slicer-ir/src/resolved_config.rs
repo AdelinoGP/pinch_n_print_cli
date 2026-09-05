@@ -315,6 +315,11 @@ impl ResolvedConfig {
         // mmu_segmented_region_{max_width,interlocking_depth,interlocking_beam} intentionally
         // omitted — P96 AC-8: emitting these keys would change g-code CONFIG_BLOCK bytes for all
         // prints, breaking byte-identicality vs baseline.
+        // `enable_pressure_advance` / `pressure_advance` intentionally omitted —
+        // host-only emission control like `disable_m73` (P18 precedent): the
+        // emitter reads the typed fields directly, and emitting them would
+        // change CONFIG_BLOCK bytes for every print while the adaptive
+        // processor (ticket 42's returned keys) is still unimplemented.
         // Merge extension keys (module-contributed, already in ConfigValue form).
         for (k, v) in &self.extensions {
             m.insert(k.clone(), v.clone());
@@ -1882,6 +1887,22 @@ declare_resolved_config! {
     };
     /// Retract length in mm before tool change.
     cli "retract_length" retract_length: f32 = 2.0 => extract_float;
+    /// Whether pressure advance is enabled (OrcaSlicer: `enable_pressure_advance`,
+    /// `coBools` default false, per-extruder vector).
+    ///
+    /// Scalar-global subset: canonical reads per tool
+    /// (`GCode.cpp` toolchange/start sites via `get_at`); this port resolves
+    /// per-tool values through the existing `tool_config:<idx>:` axis
+    /// (`tool_configs` map, `retract_length_for_tool` precedent), so a
+    /// single-tool print and manual per-tool overrides work without the
+    /// Orca vector ingest that ticket 125 owns. Orca `coFloats`/`coBools`
+    /// vector spelling ingest rides 125, not this ticket.
+    cli "enable_pressure_advance" enable_pressure_advance: bool = false => extract_bool;
+    /// Pressure advance value (OrcaSlicer: `pressure_advance`, `coFloats`
+    /// default 0.02, max 2, per-extruder vector). See `enable_pressure_advance`
+    /// for the scalar-subset note. Negative values emit nothing, matching
+    /// canonical `GCodeWriter::set_pressure_advance`'s `pa < 0` early return.
+    cli "pressure_advance" pressure_advance: f32 = 0.02 => extract_float;
     /// Whether the wipe tower is enabled for multi-material purge.
     /// Default false matches single-material shipping behavior.
     cli "enable_prime_tower" enable_prime_tower: bool = false => extract_bool;
@@ -2003,6 +2024,8 @@ impl PartialEq for ResolvedConfig {
                 .zip(other.printable_area.iter())
                 .all(|(a, b)| a.to_bits() == b.to_bits())
             && self.retract_length.to_bits() == other.retract_length.to_bits()
+            && self.enable_pressure_advance == other.enable_pressure_advance
+            && self.pressure_advance.to_bits() == other.pressure_advance.to_bits()
             && self.enable_prime_tower == other.enable_prime_tower
             && self.mmu_segmented_region_max_width.to_bits()
                 == other.mmu_segmented_region_max_width.to_bits()
@@ -2110,6 +2133,8 @@ impl std::hash::Hash for ResolvedConfig {
             f.to_bits().hash(state);
         }
         self.retract_length.to_bits().hash(state);
+        self.enable_pressure_advance.hash(state);
+        self.pressure_advance.to_bits().hash(state);
         self.enable_prime_tower.hash(state);
         self.mmu_segmented_region_max_width.to_bits().hash(state);
         self.mmu_segmented_region_interlocking_depth

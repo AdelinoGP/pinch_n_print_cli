@@ -363,6 +363,15 @@ authoring ticket for the four is 137, not 41.
 
 `adaptive_pressure_advance`, `adaptive_pressure_advance_bridges`, `adaptive_pressure_advance_model`, `adaptive_pressure_advance_overhangs`, `enable_pressure_advance`, `pressure_advance`
 
+**Split by ticket 42 (2026-09-05): 2 keys live by direct implementation,
+4 returned as unimplemented.** `enable_pressure_advance` + `pressure_advance`
+are wired in the host emitter (start prefix + post-toolchange lines,
+flavor-specific via `GcodeFlavor::set_pressure_advance`, per-tool via the
+`tool_config:<idx>:` axis). The four `adaptive_*` keys need the
+AdaptivePAProcessor-style per-feature prediction and are returned to the queue
+with that missing feature named (tier-table rows annotated); no packet number
+taken for them, no new ticket — the future claim packets them.
+
 ### P36 — Extruder / Nozzle / Retraction (1/2) — emitter (10 keys, Tier B)
 
 `deretraction_speed`, `long_retractions_when_cut`, `long_retractions_when_ec`, `retract_before_wipe`, `retract_length_toolchange`, `retract_lift_above`, `retract_lift_below`, `retract_lift_enforce`, `retract_restart_extra`, `retract_restart_extra_toolchange`

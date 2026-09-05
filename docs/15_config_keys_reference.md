@@ -162,6 +162,7 @@ is the authoritative catalog of their defaults and ranges.
 | `before_layer_change_gcode` | string | `""` | — | `machine-gcode-emit` |
 | `change_extrusion_role_gcode` | string | `""` | — | `machine-gcode-emit` |
 | `change_filament_gcode` | string | `""` | — | `machine-gcode-emit` |
+| `enable_pressure_advance` | bool | `false` | — | `machine-gcode-emit` |
 | `filament_change_extrusion_role_gcode` | string | `""` | — | `machine-gcode-emit` |
 | `filament_end_gcode` | string | `""` | — | `machine-gcode-emit` |
 | `filament_start_gcode` | string | `""` | — | `machine-gcode-emit` |
@@ -170,6 +171,7 @@ is the authoritative catalog of their defaults and ranges.
 | `machine_start_gcode` | string | `"M190 S[bed_temperature_initial_layer_single]\nM…"` | — | `machine-gcode-emit` |
 | `nozzle_diameter` | float | `0.4` | [0.1, 2.0] | `machine-gcode-emit` |
 | `nozzle_temperature_initial_layer` | int | `215` | [0.0, 300.0] | `machine-gcode-emit` |
+| `pressure_advance` | float | `0.02` | [0.0, 2.0] | `machine-gcode-emit` |
 | `printer_structure` | enum | `"undefine"` | — (values: undefine|corexy|i3|hbot|delta) | `machine-gcode-emit` |
 | `process_change_extrusion_role_gcode` | string | `""` | — | `machine-gcode-emit` |
 | `time_lapse_gcode` | string | `""` | — | `machine-gcode-emit` |
