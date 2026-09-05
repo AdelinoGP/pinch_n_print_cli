@@ -3409,9 +3409,12 @@ pub(crate) fn apply(
                     );
                     // Cross-layer harvesting is sourced only from the committed
                     // SliceIR blackboard slot; per-layer arenas remain isolated.
-                    let depth_layers: Vec<
-                        slicer_core::algos::bridge_over_infill::BridgeDepthLayer,
-                    > = ctx
+                    // Match first, clone second. `gather_areas_w_depth` reads at
+                    // most a one-flow-height suffix, and building a
+                    // `BridgeDepthLayer` clones five polygon sets, so
+                    // materialising every committed layer below made this
+                    // quadratic in layer count for a fixed-size read.
+                    let matched: Vec<(f32, &slicer_ir::SlicedRegion)> = ctx
                         .committed_slices
                         .unwrap_or(&[])
                         .iter()
@@ -3423,24 +3426,38 @@ pub(crate) fn apply(
                                     candidate.object_id == region.object_id
                                         && candidate.region_id == region.region_id
                                 })
-                                .map(|candidate| {
-                                    let mut not_sparse = candidate.top_solid_fill.clone();
-                                    not_sparse.extend(candidate.bottom_solid_fill.iter().cloned());
-                                    not_sparse
-                                        .extend(candidate.internal_solid_fill.iter().cloned());
-                                    not_sparse.extend(candidate.bridge_areas.iter().cloned());
-                                    slicer_core::algos::bridge_over_infill::BridgeDepthLayer {
-                                        print_z: committed.z,
-                                        sparse_infill: candidate.infill_areas.clone(),
-                                        not_sparse_infill: not_sparse,
-                                    }
-                                })
+                                .map(|candidate| (committed.z, candidate))
+                        })
+                        .collect();
+                    let layer_height = value("layer_height", 0.2);
+                    let matched_zs: Vec<f32> = matched.iter().map(|(z, _)| *z).collect();
+                    let depth_index = matched.len().saturating_sub(1);
+                    let depth_start = slicer_core::algos::bridge_over_infill::depth_window_start(
+                        &matched_zs,
+                        depth_index,
+                        layer_height,
+                        slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
+                    );
+                    let depth_layers: Vec<
+                        slicer_core::algos::bridge_over_infill::BridgeDepthLayer,
+                    > = matched[depth_start.min(matched.len())..]
+                        .iter()
+                        .map(|(print_z, candidate)| {
+                            let mut not_sparse = candidate.top_solid_fill.clone();
+                            not_sparse.extend(candidate.bottom_solid_fill.iter().cloned());
+                            not_sparse.extend(candidate.internal_solid_fill.iter().cloned());
+                            not_sparse.extend(candidate.bridge_areas.iter().cloned());
+                            slicer_core::algos::bridge_over_infill::BridgeDepthLayer {
+                                print_z: *print_z,
+                                sparse_infill: candidate.infill_areas.clone(),
+                                not_sparse_infill: not_sparse,
+                            }
                         })
                         .collect();
                     let harvested = slicer_core::algos::bridge_over_infill::gather_areas_w_depth(
                         &depth_layers,
                         depth_layers.len().saturating_sub(1),
-                        value("layer_height", 0.2),
+                        layer_height,
                         slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
                     );
                     let angle_override = value("internal_bridge_angle", 0.0);

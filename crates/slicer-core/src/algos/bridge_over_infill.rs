@@ -44,6 +44,51 @@ pub struct BridgeCandidateLayer {
     pub new_polys: Vec<ExPolygon>,
 }
 
+/// First index of the depth window [`gather_areas_w_depth`] can reach from
+/// `layer_index`, given the layers' ascending `print_z` values.
+///
+/// The gather walks downward from `layer_index - 1` and stops at the first
+/// layer below `bottom_z` that is not the immediately preceding layer, so it
+/// consumes at most a one-flow-height suffix regardless of how tall the stack
+/// is. Callers materialise `BridgeDepthLayer`s by cloning whole polygon sets,
+/// which is why the window rule is exposed here rather than left implicit: it
+/// lets a caller build `layers` for `start..=layer_index` only, instead of the
+/// whole object below the layer. `gather_areas_w_depth(&layers[start..], i -
+/// start, ..)` yields the same polygons as passing the full prefix.
+pub fn depth_window_start(
+    print_zs: &[f32],
+    layer_index: usize,
+    target_flow_height: f32,
+    target_flow_height_factor: f32,
+) -> usize {
+    let Some(&print_z) = print_zs.get(layer_index) else {
+        return layer_index;
+    };
+    let bottom_z =
+        print_z - target_flow_height * target_flow_height_factor - SCALED_EPSILON_MM as f32;
+    for i in (0..layer_index).rev() {
+        if print_zs[i] < bottom_z && i < layer_index - 1 {
+            return i + 1;
+        }
+    }
+    0
+}
+
+/// First index whose layer still passes
+/// [`remove_filled_polygons_on_lower_layers`]'s `print_z >= bottom_z` filter.
+///
+/// Same purpose as [`depth_window_start`]: the filter keeps only a
+/// one-flow-height suffix, so a caller need not clone every lower layer's
+/// candidate polygons to hand them over. `print_zs` must be ascending.
+pub fn filled_window_start(
+    print_zs: &[f32],
+    current_print_z: f32,
+    target_flow_height: f32,
+) -> usize {
+    let bottom_z = current_print_z - target_flow_height - SCALED_EPSILON_MM as f32;
+    print_zs.partition_point(|&z| z < bottom_z)
+}
+
 /// Gather sparse lower-layer area within the canonical depth window.
 pub fn gather_areas_w_depth(
     layers: &[BridgeDepthLayer],
