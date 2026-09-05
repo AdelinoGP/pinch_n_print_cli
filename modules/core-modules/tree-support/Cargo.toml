@@ -14,6 +14,7 @@ slicer-core = { path = "../../../crates/slicer-core" }
 [dev-dependencies]
 slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test"] }
 slicer-wasm-host = { path = "../../../crates/slicer-wasm-host" }
+toml = "0.8"
 
 [[test]]
 name = "tree_family_tdd"

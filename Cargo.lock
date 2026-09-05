@@ -4004,6 +4004,7 @@ dependencies = [
  "slicer-schema",
  "slicer-sdk",
  "slicer-wasm-host",
+ "toml 0.8.23",
  "wit-bindgen 0.60.0",
 ]
 
@@ -4027,6 +4028,7 @@ dependencies = [
  "slicer-schema",
  "slicer-sdk",
  "slicer-wasm-host",
+ "toml 0.8.23",
  "wit-bindgen 0.60.0",
 ]
 

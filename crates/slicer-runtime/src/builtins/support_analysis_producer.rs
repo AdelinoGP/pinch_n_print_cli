@@ -379,15 +379,19 @@ pub fn commit_support_analysis_builtin(
 
 /// Clearance base-family bodies keep from foreign territory: the resolved
 /// support line width, so the two families never share an extrusion path.
-/// Mirrors the resolution in `slicer_runtime::run` (percent of, or auto to,
-/// `nozzle_diameter`).
+/// Mirrors the resolution in `slicer_runtime::run` (percent of the nozzle;
+/// auto resolves to `line_width`, then the nozzle).
 fn support_territory_clearance_mm(config: &ResolvedConfig) -> f32 {
     let nozzle_diameter_mm = match config.extensions.get("nozzle_diameter") {
         Some(ConfigValue::Float(value)) => *value as f32,
         Some(ConfigValue::Int(value)) => *value as f32,
         _ => 0.4,
     };
-    resolve_support_line_width_mm(config.support_line_width, nozzle_diameter_mm)
+    resolve_support_line_width_mm(
+        config.support_line_width,
+        config.line_width,
+        nozzle_diameter_mm,
+    )
 }
 
 /// Fill `SupportAnalysisIR::support_territory` with the full cross-section of

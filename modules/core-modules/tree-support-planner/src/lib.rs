@@ -68,12 +68,6 @@
 use slicer_sdk::prelude::*;
 
 const DEFAULT_BRANCH_ANGLE_DEG: f32 = 45.0;
-/// Canonical `support_line_width` (`PrintConfig.cpp`, `coFloatOrPercent`).
-/// Canonical derives the support extrusion width from
-/// `Flow::auto_extrusion_width(frSupportMaterial, nozzle_diameter)` when the
-/// setting is 0; this module has no nozzle diameter in scope, so it takes the
-/// same 0.35 mm default the G-code serializer already uses.
-const DEFAULT_SUPPORT_LINE_WIDTH_MM: f32 = 0.35;
 /// Canonical libslic3r `EPSILON`, in mm.
 const CANONICAL_EPSILON_MM: f32 = 1e-4;
 const DEFAULT_MAX_BRANCHES_PER_LAYER: usize = 1024;
@@ -1633,29 +1627,30 @@ impl PrepassModule for SupportPlanner {
             _ => DEFAULT_BRANCH_ANGLE_DEG,
         };
         let nozzle_diameter = config.get_float("nozzle_diameter").unwrap_or(0.0);
+        let line_width_mm = match config.get("line_width") {
+            Some(ConfigValue::Float(w)) if *w > 0.0 => *w as f32,
+            _ if nozzle_diameter > 0.0 => nozzle_diameter as f32,
+            _ => DEFAULT_LINE_WIDTH_MM,
+        };
+        // Canonical auto rule (`Flow::support_material_flow`, `Flow.cpp`): a
+        // non-positive `support_line_width` falls back to `line_width`, and a
+        // non-positive `line_width` (Orca's auto `0`) to the nozzle diameter
+        // (already folded into `line_width_mm` above).
         let support_line_width_mm = config
             .get_abs_value("support_line_width", nozzle_diameter)
             // Preserve hand-written legacy configs that encode an absolute
             // width as an integer rather than a Float/FloatOrPercent.
             .or_else(|| config.get_int("support_line_width").map(|v| v as f64))
-            .map(|v| {
-                if v > 0.0 {
-                    v as f32
-                } else {
-                    nozzle_diameter as f32
-                }
-            })
+            .map(|v| if v > 0.0 { v as f32 } else { line_width_mm })
             .filter(|v| *v > 0.0)
-            .unwrap_or(DEFAULT_SUPPORT_LINE_WIDTH_MM);
+            .unwrap_or(line_width_mm);
         let max_branches_per_layer = match config.get("support_max_branches_per_layer") {
             Some(ConfigValue::Int(n)) => (*n as usize).clamp(1, 10_000),
             Some(ConfigValue::Float(n)) => (*n as usize).clamp(1, 10_000),
             _ => DEFAULT_MAX_BRANCHES_PER_LAYER,
         };
-        let line_width_mm = match config.get("line_width") {
-            Some(ConfigValue::Float(w)) => *w as f32,
-            _ => DEFAULT_LINE_WIDTH_MM,
-        };
+        // `line_width_mm` is read above (guarded positive, nozzle-backed) so the
+        // canonical `support_line_width` auto rule can fall back to it.
         // ── New Step-5 config keys (with legacy fallback) ─────────────────
         let tree_support_branch_diameter = match config.get("tree_support_branch_diameter") {
             Some(ConfigValue::Float(d)) => *d as f32,
@@ -5579,6 +5574,10 @@ fn closest_point_on_segment(p0: [f32; 2], p1: [f32; 2], t: [f32; 2]) -> [f32; 2]
 
 #[cfg(test)]
 mod tests {
+    /// Legacy test width: the pre-P29 `from_config` default. Auto now resolves
+    /// to `line_width` (canonical `Flow::support_material_flow`), so this is
+    /// only a fixed input for geometry unit tests, not a default.
+    const DEFAULT_SUPPORT_LINE_WIDTH_MM: f32 = 0.35;
 
     /// Canonical `SupportNode` ctor: `for (auto& neighbor : parent->merged_neighbours)
     /// { neighbor->child = this; parents.push_back(neighbor); }` (`TreeSupport.hpp`).
@@ -7553,6 +7552,40 @@ mod tests {
             zero > 0,
             "plain (non-extra-wall) nodes must stay at 0, but every \
              wall_counts entry was nonzero"
+        );
+    }
+
+    /// P29 (ticket 36): `support_line_width` drives the planner's smoothing
+    /// width, with canonical auto (`Flow::support_material_flow`): explicit
+    /// zero falls back to `line_width`, and Orca's auto `line_width` of 0
+    /// resolves on to the nozzle diameter.
+    #[test]
+    fn support_line_width_explicit_and_auto_forms() {
+        use std::collections::HashMap;
+        let from_fields = |fields: HashMap<String, ConfigValue>| -> SupportPlanner {
+            <SupportPlanner as PrepassModule>::from_config(&ConfigView::from_map(fields))
+                .expect("planner from_config must succeed")
+        };
+        let mut fields = HashMap::new();
+        fields.insert("support_line_width".to_string(), ConfigValue::Float(0.8));
+        assert!(
+            (from_fields(fields).support_line_width_mm - 0.8).abs() < 0.001,
+            "a non-default value must drive the smoothing width"
+        );
+        let mut fields = HashMap::new();
+        fields.insert("support_line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert("line_width".to_string(), ConfigValue::Float(0.5));
+        assert!(
+            (from_fields(fields).support_line_width_mm - 0.5).abs() < 0.001,
+            "explicit zero must fall back to line_width"
+        );
+        let mut fields = HashMap::new();
+        fields.insert("support_line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert("line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.6));
+        assert!(
+            (from_fields(fields).support_line_width_mm - 0.6).abs() < 0.001,
+            "zero line_width must resolve on to the nozzle diameter"
         );
     }
 }

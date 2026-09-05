@@ -62,6 +62,19 @@ max     = 2.0
 display = "Line Width"
 group   = "Support"
 
+[config.schema.support_line_width]
+type    = "float_or_percent"
+default = 0.0
+min     = 0.0
+# Percent semantics: Orca's `support_line_width` (PrintConfig.cpp, coFloatOrPercent)
+# declares min 0 / max 1000 for the percent form (max_literal 10 mm for the bare
+# form), and the scheduler's bounds check applies to the raw percent number
+# ("80%" -> 80). Canonical default 0.0 is auto: `Flow::support_material_flow`
+# (`Flow.cpp`) falls back to `line_width` when the value is not positive.
+max     = 1000.0
+display = "Support Line Width"
+group   = "Support"
+
 [config.schema.support_interface_spacing]
 type    = "float"
 default = 0.4

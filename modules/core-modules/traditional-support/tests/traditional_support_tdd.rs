@@ -496,6 +496,51 @@ fn interface_pitch_derives_from_interface_flow_over_line_width() {
     assert_eq!(fallback_negative.len(), baseline.len());
 }
 
+/// P29 (ticket 36): a non-default `support_line_width` changes the extruded
+/// width (rule 6b behaviour-change evidence).
+#[test]
+fn support_line_width_non_default_drives_extruded_width() {
+    fn paths_with_width(flow: f64, support_width: f64) -> Vec<(slicer_ir::ExtrusionPath3D, bool)> {
+        let config = ConfigViewBuilder::new()
+            .bool("enable_support", true)
+            .float("support_base_pattern_spacing", 2.5)
+            .float("support_speed", 50.0)
+            .float("line_width", 0.4)
+            .float("support_line_width", support_width)
+            .float("support_interface_flow", flow)
+            .build();
+        let module = TraditionalSupport::from_config(&config).unwrap();
+        let region = make_square_region(10.0, 0.3);
+        let paint = paint_with_interface_plan();
+        let mut output = SupportOutputBuilder::new();
+        module
+            .run_support(
+                0,
+                &[region],
+                &paint,
+                &mut output,
+                &mut slicer_sdk::LayerCollectionBuilder::new(),
+                &config,
+            )
+            .unwrap();
+        output.interface_paths().to_vec()
+    }
+
+    let baseline = paths_with_width(100.0, 0.4);
+    let wide = paths_with_width(100.0, 0.8);
+    assert!(!baseline.is_empty() && !wide.is_empty());
+    for (path, _) in &baseline {
+        for point in &path.points {
+            assert_eq!(point.width, 0.4);
+        }
+    }
+    for (path, _) in &wide {
+        for point in &path.points {
+            assert_eq!(point.width, 0.8);
+        }
+    }
+}
+
 #[test]
 fn nonpositive_interface_flow_falls_back_to_default_module_boundary() {
     let baseline = interface_paths(100.0);

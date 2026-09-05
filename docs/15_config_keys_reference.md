@@ -244,6 +244,7 @@ is the authoritative catalog of their defaults and ranges.
 | `support_bottom_interface_spacing` | float | `0.5` | [-1.0, 2.0] | `traditional-support` |
 | `support_interface_flow` | percent | `"100%"` | >= 0.0 | `traditional-support` |
 | `support_interface_spacing` | float | `0.4` | [0.0, 2.0] | `traditional-support` |
+| `support_line_width` | float_or_percent | `0.0` | [0.0, 1000.0] | `traditional-support` |
 | `support_speed` | float | `50.0` | >= 1.0 | `traditional-support` |
 | `support_style` | string | `"default"` | — | `traditional-support` |
 | `enable_support` | bool | `false` | — | `traditional-support-planner` |
@@ -264,6 +265,7 @@ is the authoritative catalog of their defaults and ranges.
 | `support_bottom_interface_spacing` | float | `0.5` | [-1.0, 2.0] | `tree-support` |
 | `support_interface_flow` | percent | `"100%"` | >= 0.0 | `tree-support` |
 | `support_interface_spacing` | float | `0.4` | [0.0, 2.0] | `tree-support` |
+| `support_line_width` | float_or_percent | `0.0` | [0.0, 1000.0] | `tree-support` |
 | `support_speed` | float | `50.0` | >= 1.0 | `tree-support` |
 | `tree_support_wall_count` | int | `1` | [1.0, 10.0] | `tree-support` |
 | `base_raft_layers` | int | `1` | [0.0, 20.0] | `tree-support-planner` |
@@ -413,7 +415,7 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `support_bottom_z_distance` | float | `0.2` | >= 0 | `resolved_config.rs::ResolvedConfig` |
 | `support_critical_regions_only` | bool | `false` | — | `resolved_config.rs::ResolvedConfig` |
 | `support_expansion` | float | `0.0` | >= 0 | `resolved_config.rs::ResolvedConfig` |
-| `support_line_width` | float | `0.0` | >= 0 (float_or_percent; 0 = auto nozzle diameter) | `resolved_config.rs::ResolvedConfig` |
+| `support_line_width` | float | `0.0` | >= 0 (float_or_percent; 0 = auto line_width, then nozzle) | `resolved_config.rs::ResolvedConfig` |
 | `support_object_first_layer_gap` | float | `0.2` | >= 0 | `resolved_config.rs::ResolvedConfig` |
 | `support_remove_small_overhang` | bool | `true` | — | `resolved_config.rs::ResolvedConfig` |
 | `support_resolution` | float | `0.0375` | >= 0 (D-P tolerance for support / interface) | `resolved_config.rs::ResolvedConfig` |

@@ -121,6 +121,14 @@ impl LayerModule for TraditionalSupport {
         };
 
         let nozzle_diameter = config.get_float("nozzle_diameter").unwrap_or(0.4);
+        // Canonical auto rule (`Flow::support_material_flow`, `Flow.cpp`): a
+        // non-positive `support_line_width` falls back to `line_width`, and a
+        // non-positive `line_width` (Orca's auto `0`) to the nozzle diameter.
+        let line_width = match line_width {
+            w if w > 0.0 => w,
+            _ if nozzle_diameter > 0.0 => nozzle_diameter as f32,
+            _ => 0.4,
+        };
         let line_width = config
             .get_abs_value("support_line_width", nozzle_diameter)
             .or_else(|| config.get_int("support_line_width").map(|v| v as f64))
@@ -128,7 +136,7 @@ impl LayerModule for TraditionalSupport {
                 if width > 0.0 {
                     width as f32
                 } else {
-                    1.125 * nozzle_diameter as f32
+                    line_width
                 }
             })
             .filter(|width| *width > 0.0)
@@ -758,6 +766,42 @@ mod tests {
         assert!((module.line_width - 0.4).abs() < 0.001);
         assert!((module.top_interface_spacing_mm - 0.4).abs() < 0.001);
         assert!(module.bottom_interface_spacing_mm < 0.0);
+    }
+
+    #[test]
+    fn support_line_width_explicit_and_auto_forms() {
+        use std::collections::HashMap;
+        // A non-default value drives the extrusion width directly.
+        let mut fields = HashMap::new();
+        fields.insert("support_line_width".to_string(), ConfigValue::Float(0.8));
+        let module = TraditionalSupport::from_config(&ConfigView::from_map(fields)).unwrap();
+        assert!((module.line_width - 0.8).abs() < 0.001);
+        // Canonical auto (`Flow::support_material_flow`): explicit zero falls
+        // back to `line_width`.
+        let mut fields = HashMap::new();
+        fields.insert("support_line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert("line_width".to_string(), ConfigValue::Float(0.5));
+        let module = TraditionalSupport::from_config(&ConfigView::from_map(fields)).unwrap();
+        assert!((module.line_width - 0.5).abs() < 0.001);
+        // Zero line width (Orca's auto `0`) resolves on to the nozzle diameter.
+        let mut fields = HashMap::new();
+        fields.insert("support_line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert("line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.6));
+        let module = TraditionalSupport::from_config(&ConfigView::from_map(fields)).unwrap();
+        assert!((module.line_width - 0.6).abs() < 0.001);
+    }
+
+    /// The `pitches_mm` width guard stays live for directly-constructed
+    /// structs: `from_config` can no longer produce a non-positive width
+    /// (auto resolves to `line_width`, then the nozzle), but the arithmetic
+    /// below still rejects one.
+    #[test]
+    fn pitches_mm_rejects_nonpositive_width() {
+        let config = ConfigView::from_map(std::collections::HashMap::new());
+        let mut module = TraditionalSupport::from_config(&config).unwrap();
+        module.line_width = 0.0;
+        assert!(module.pitches_mm(0.2).is_err());
     }
 
     /// F-7: the interface pitch is the configured gap **plus** the interface

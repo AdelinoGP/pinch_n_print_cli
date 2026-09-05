@@ -60,7 +60,7 @@ printable_height        = { default = 250.0, range = ">= 0", note = "build-volum
 support_top_z_distance  = { default = 0.2, range = ">= 0" }
 support_bottom_z_distance = { default = 0.2, range = ">= 0" }
 support_threshold_overlap = { default = 50.0, range = ">= 0", note = "default is 50%" }
-support_line_width      = { default = 0.0, range = ">= 0", note = "float_or_percent; 0 = auto nozzle diameter" }
+support_line_width      = { default = 0.0, range = ">= 0", note = "float_or_percent; 0 = auto line_width, then nozzle" }
 bridge_no_support       = { default = false }
 enforce_support_layers  = { default = 0, range = "[0, 5000]" }
 support_critical_regions_only = { default = false }

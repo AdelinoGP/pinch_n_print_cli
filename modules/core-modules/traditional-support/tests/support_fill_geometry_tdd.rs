@@ -152,12 +152,20 @@ fn zero_length_span_is_dropped() {
     assert!(paths[0].points[0].y > 0.0);
 }
 
+/// P29 (ticket 36): canonical auto (`Flow::support_material_flow`) — a zero
+/// `line_width` (Orca's auto `0`) resolves to the nozzle diameter instead of
+/// erroring, so the run succeeds and every path is nozzle-wide.
 #[test]
-fn non_positive_spacing_yields_no_paths() {
-    assert!(run_support(
+fn zero_line_width_resolves_to_nozzle_auto() {
+    let paths = run_support(
         &[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)],
         0.0,
-        0.0
+        0.0,
     )
-    .is_err());
+    .expect("zero line width is auto, not an error");
+    assert!(!paths.is_empty());
+    assert!(paths.iter().all(|path| path
+        .points
+        .iter()
+        .all(|point| (point.width - 0.4).abs() < 0.001)));
 }

@@ -29,18 +29,23 @@ pub struct ResolvedFloatOrPercent {
 }
 
 /// Resolve `support_line_width` to millimetres. A percentage is of the nozzle
-/// diameter; the default `0` is auto and also resolves to the nozzle diameter
-/// (PnP has no flow model).
+/// diameter; the default `0` is auto and resolves to `line_width` (canonical
+/// `Flow::support_material_flow`, `Flow.cpp`, which falls back to the object
+/// line width when the value is not positive), and a non-positive
+/// `line_width` (Orca's auto `0`) resolves on to the nozzle diameter.
 pub fn resolve_support_line_width_mm(
     value: ResolvedFloatOrPercent,
+    line_width_mm: f32,
     nozzle_diameter_mm: f32,
 ) -> f32 {
     if value.is_percent {
         value.value as f32 / 100.0 * nozzle_diameter_mm
-    } else if value.value == 0.0 {
-        nozzle_diameter_mm
-    } else {
+    } else if value.value != 0.0 {
         value.value as f32
+    } else if line_width_mm > 0.0 {
+        line_width_mm
+    } else {
+        nozzle_diameter_mm
     }
 }
 
@@ -1789,10 +1794,11 @@ declare_resolved_config! {
      /// Overlap threshold as an absolute value or percentage.
      cli "support_threshold_overlap" support_threshold_overlap: ResolvedFloatOrPercent = ResolvedFloatOrPercent { value: 50.0, is_percent: true } => extract_float_or_percent;
      /// Support extrusion width as an absolute value or percentage of nozzle diameter.
-     /// Default 0 is auto: PnP has no flow model, so it resolves to nozzle_diameter.
-     /// Canonical `auto_extrusion_width` (`Flow.cpp`) returns nozzle for
-     /// `frSupportMaterial`; explicit percentages resolve against nozzle and
-     /// explicit millimeter values pass through.
+     /// Default 0 is auto: canonical `Flow::support_material_flow` (`Flow.cpp`)
+     /// falls back to `line_width` when the value is not positive (and Orca's
+     /// auto `line_width` of 0 resolves on to the nozzle diameter); explicit
+     /// percentages resolve against the nozzle and explicit millimeter values
+     /// pass through.
      cli "support_line_width" support_line_width: ResolvedFloatOrPercent = ResolvedFloatOrPercent::default() => extract_float_or_percent;
      /// Whether bridging regions suppress support generation.
      cli "bridge_no_support" bridge_no_support: bool = false => extract_bool;

@@ -952,8 +952,11 @@ pub fn run_slice_with_collector(
         _ => 0.4,
     };
     let support_line_width = default_resolved_config.support_line_width;
-    let support_line_width_mm =
-        resolve_support_line_width_mm(support_line_width, nozzle_diameter_mm);
+    let support_line_width_mm = resolve_support_line_width_mm(
+        support_line_width,
+        default_resolved_config.line_width,
+        nozzle_diameter_mm,
+    );
 
     // Packet 169 Step 3: capture the estimator inputs the slice_stats event
     // needs before `default_resolved_config` / `per_tool_configs_map` are
@@ -1324,6 +1327,7 @@ mod tests {
                     is_percent: false
                 },
                 0.4,
+                0.4,
             ),
             0.42
         );
@@ -1334,15 +1338,31 @@ mod tests {
                     is_percent: true
                 },
                 0.4,
+                0.4,
             ),
             0.2
         );
+        // Canonical auto (`Flow::support_material_flow`): 0 resolves to
+        // `line_width`, not the nozzle.
         assert_eq!(
             resolve_support_line_width_mm(
                 ResolvedFloatOrPercent {
                     value: 0.0,
                     is_percent: false
                 },
+                0.5,
+                0.4,
+            ),
+            0.5
+        );
+        // Orca's auto `line_width` of 0 resolves on to the nozzle diameter.
+        assert_eq!(
+            resolve_support_line_width_mm(
+                ResolvedFloatOrPercent {
+                    value: 0.0,
+                    is_percent: false
+                },
+                0.0,
                 0.4,
             ),
             0.4

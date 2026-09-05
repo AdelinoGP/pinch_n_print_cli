@@ -252,6 +252,14 @@ impl LayerModule for TreeSupport {
         };
 
         let nozzle_diameter = config.get_float("nozzle_diameter").unwrap_or(0.4);
+        // Canonical auto rule (`Flow::support_material_flow`, `Flow.cpp`): a
+        // non-positive `support_line_width` falls back to `line_width`, and a
+        // non-positive `line_width` (Orca's auto `0`) to the nozzle diameter.
+        let line_width_fallback = match config.get("line_width") {
+            Some(ConfigValue::Float(w)) if *w > 0.0 => *w as f32,
+            _ if nozzle_diameter > 0.0 => nozzle_diameter as f32,
+            _ => 0.4,
+        };
         let line_width = config
             .get_abs_value("support_line_width", nozzle_diameter)
             .or_else(|| config.get_int("support_line_width").map(|v| v as f64))
@@ -259,11 +267,11 @@ impl LayerModule for TreeSupport {
                 if w > 0.0 {
                     w as f32
                 } else {
-                    (1.125 * nozzle_diameter) as f32
+                    line_width_fallback
                 }
             })
             .filter(|w| *w > 0.0)
-            .unwrap_or(1.125 * nozzle_diameter as f32);
+            .unwrap_or(line_width_fallback);
         let interface_flow_percent = match config.get("support_interface_flow") {
             Some(ConfigValue::Float(value)) => *value as f32,
             Some(ConfigValue::Int(value)) => *value as f32,
@@ -847,15 +855,55 @@ mod tests {
         let config = ConfigView::from_map(std::collections::HashMap::new());
         let module = TreeSupport::from_config(&config).unwrap();
         assert!(!module.enabled);
-        assert!((module.line_width - 0.45).abs() < 0.001);
+        // Canonical auto (`Flow::support_material_flow`): absent key falls back
+        // to `line_width`, whose in-module default is 0.4 — not the retired
+        // 1.125 × nozzle invention (0.45).
+        assert!((module.line_width - 0.4).abs() < 0.001);
+    }
+
+    #[test]
+    fn support_line_width_auto_falls_back_to_line_width_then_nozzle() {
+        use std::collections::HashMap;
+        // Explicit zero with a configured line width resolves to it.
+        let mut fields = HashMap::new();
+        fields.insert("support_line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert("line_width".to_string(), ConfigValue::Float(0.5));
+        let module = TreeSupport::from_config(&ConfigView::from_map(fields)).unwrap();
+        assert!((module.line_width - 0.5).abs() < 0.001);
+        // Absent key with a configured line width resolves to it as well.
+        let mut fields = HashMap::new();
+        fields.insert("line_width".to_string(), ConfigValue::Float(0.5));
+        let module = TreeSupport::from_config(&ConfigView::from_map(fields)).unwrap();
+        assert!((module.line_width - 0.5).abs() < 0.001);
+        // Zero line width (Orca's auto `0`) resolves on to the nozzle diameter.
+        let mut fields = HashMap::new();
+        fields.insert("support_line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert("line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.6));
+        let module = TreeSupport::from_config(&ConfigView::from_map(fields)).unwrap();
+        assert!((module.line_width - 0.6).abs() < 0.001);
+        // Percent form resolves against the nozzle diameter.
+        let mut fields = HashMap::new();
+        fields.insert(
+            "support_line_width".to_string(),
+            ConfigValue::FloatOrPercent {
+                value: 150.0,
+                is_percent: true,
+            },
+        );
+        fields.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.4));
+        let module = TreeSupport::from_config(&ConfigView::from_map(fields)).unwrap();
+        assert!((module.line_width - 0.6).abs() < 0.001);
     }
 
     /// F-7: the tree renderer had no interface pitch at all — roofs and floors
     /// were scan-filled at the density-derived body pitch. Canonical is
     /// `support_interface_spacing + interface_flow.spacing()`. At defaults the
-    /// resolved support line width is 1.125 × 0.4 nozzle = 0.45 mm (238a auto
-    /// resolution), so `line_width_to_spacing(0.45, 0.2) = 0.4070796` and the
-    /// top pitch is 0.4 + 0.4070796 = 0.807 mm. With the key absent from the
+    /// support line width is the canonical auto (`Flow::support_material_flow`
+    /// falls back to `line_width`, 0.4 here), so
+    /// `line_width_to_spacing(0.4, 0.2) = 0.3570796` and the top pitch is
+    /// 0.4 + 0.3570796 = 0.757 mm — the same Orca-measured pitch the
+    /// traditional renderer pins. With the key absent from the
     /// raw config map (as here) the in-code fallback stays the legacy −1.0
     /// mirror-top sentinel, so bottom == top; in production the manifest
     /// default 0.5 (DEV-145) is host-injected and yields a 0.907 mm bottom
@@ -866,8 +914,8 @@ mod tests {
         let module = TreeSupport::from_config(&config).unwrap();
         let (_, _, _, top, bottom) = module.pitches_mm(0.2).unwrap();
         assert!(
-            (top - 0.807).abs() < 0.002,
-            "canonical interface pitch is 0.807 mm at defaults, got {top}"
+            (top - 0.757).abs() < 0.002,
+            "canonical interface pitch is 0.757 mm at defaults, got {top}"
         );
         assert_eq!(
             bottom, top,
