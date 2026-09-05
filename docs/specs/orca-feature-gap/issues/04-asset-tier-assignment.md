@@ -217,11 +217,11 @@ findings (the one flagged row was a stale-asset artifact).
 ### Extruder / Nozzle / Nozzle
 | `default_nozzle_volume_type` | B | config-resolution (PresetBundle.cpp) |
 | `nozzle_height` | B | skirt-brim (Print.cpp skirt/draft-shield height) |
-| `nozzle_hrc` | B | crates/slicer-gcode (nozzle_diameter lives in perimeters) |
-| `nozzle_type` | B | crates/slicer-gcode (nozzle_diameter lives in perimeters) |
-| `nozzle_volume` | B | crates/slicer-gcode (nozzle_diameter lives in perimeters) |
+| `nozzle_hrc` | B | — **blocked, unimplemented** by ticket 41: canonical's reads are all in `GCodeProcessor` (`apply_config` both overloads copy the scalar to every extruder; `update_slice_warnings` compares vs per-filament `required_nozzle_HRC` with the `Print::get_hrc_by_nozzle_type` fallback → non-fatal `NOZZLE_HRC_CHECKER` warning); the port has no warning-list seam and the comparison needs the per-tool axis; re-filed as ticket 137, blocked on ticket 125 |
+| `nozzle_type` | B | — **blocked, unimplemented** by ticket 41: `coEnums` per-extruder vector (default `{ntUndefine}`), canonical's only role is the fallback-HRC source on the same `update_slice_warnings` path; no tree decision point; re-filed as ticket 137, blocked on ticket 125 |
+| `nozzle_volume` | B | — **blocked, unimplemented** by ticket 41: `coFloats` per-extruder vector whose only behavioural effect is Elegoo-`M6211` flush attribution (`process_filaments` remaining-volume reset + `process_elegoo_M6211` statistics, ignored on non-Elegoo); no Elegoo seam and no per-tool ingestion in tree; re-filed as ticket 137, blocked on ticket 125 (vendor-scope ruling rides the re-file) |
 | `nozzle_volume_type` | B | tool-ordering (ToolOrdering.cpp + MultiNozzleUtils.cpp) |
-| `required_nozzle_HRC` | B | crates/slicer-gcode (nozzle_diameter lives in perimeters) |
+| `required_nozzle_HRC` | B | — **blocked, unimplemented** by ticket 41: `coInts` per-filament vector, the requirement side of canonical's `update_slice_warnings` HRC comparison; needs the per-tool axis (today `extract_float_or_first` keeps element 0); re-filed as ticket 137, blocked on ticket 125 |
 
 ### Extruder / Nozzle / Pressure advance
 | `adaptive_pressure_advance` | B | crates/slicer-gcode (flavor.rs) |

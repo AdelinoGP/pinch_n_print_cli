@@ -348,6 +348,17 @@ canonical's `get_path_of_change_filament` needs `bed_exclude_area` (packet
 
 `nozzle_hrc`, `nozzle_type`, `nozzle_volume`, `required_nozzle_HRC`
 
+**Re-sized by ticket 41 (2026-09-05): not authorable as a standalone packet.**
+All four keys have zero occurrences in the tree and all canonical read sites
+are in `GCodeProcessor` (the HRC trio feeds the non-fatal
+`NOZZLE_HRC_CHECKER` post-export warning; `nozzle_volume` feeds only
+Elegoo-`M6211` flush attribution) — the tier table's `crates/slicer-gcode`
+emitter owner is wrong for this tree, which has no warning-list seam, no
+Elegoo seam, and no per-tool vector ingestion. They are **re-filed as
+[ticket 137](137-author-packet-p34-nozzle-keys-refiled.md), blocked on
+ticket 125** (the per-tool config model ruling, itself gated on 126). The
+authoring ticket for the four is 137, not 41.
+
 ### P35 — Extruder / Nozzle / Pressure advance — emitter (6 keys, Tier B)
 
 `adaptive_pressure_advance`, `adaptive_pressure_advance_bridges`, `adaptive_pressure_advance_model`, `adaptive_pressure_advance_overhangs`, `enable_pressure_advance`, `pressure_advance`
