@@ -263,6 +263,15 @@ fn staircase_ironing_g1_lines_within_top_fill_extents() {
     let gcode = outcome.gcode.as_str();
     let max_extent = TIER_HALF_EXTENTS_MM[0]; // 10 mm
     let tolerance = 0.5_f32; // mm — allow for centre-line offset + extrusion width
+    // The staircase STL is authored around the origin, but a bare mesh is
+    // placed on the plate at load (`place_bare_mesh_on_bed`), so its footprint
+    // is centred on the bed, not on (0, 0). Derive that centre the way
+    // production does rather than re-deriving the rule here; the config below
+    // declares no `bed_shape`, so the resolved default applies. The 10 mm bound
+    // itself is unchanged — only what it is measured from.
+    let bed_shape = slicer_ir::ResolvedConfig::default().bed_shape;
+    let (centre_x, centre_y) = slicer_model_io::bed_center_mm(&bed_shape)
+        .expect("the default bed_shape must describe a plate");
 
     let mut in_ironing = false;
     let mut checked = 0;
@@ -281,7 +290,9 @@ fn staircase_ironing_g1_lines_within_top_fill_extents() {
         }
         for (x, y) in parse_xy_g1_lines(line) {
             checked += 1;
-            if x.abs() > max_extent + tolerance || y.abs() > max_extent + tolerance {
+            if (x - centre_x).abs() > max_extent + tolerance
+                || (y - centre_y).abs() > max_extent + tolerance
+            {
                 violations.push((line_no, x, y));
             }
         }
