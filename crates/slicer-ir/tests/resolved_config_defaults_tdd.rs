@@ -62,3 +62,19 @@ fn explicit_width_round_trips_with_canonical_initial_layer_name() {
     );
     assert!(!map.contains_key("first_layer_line_width"));
 }
+
+/// Wayfinder ticket 114: `sparse_infill_speed` defaults to canonical 100.0 —
+/// the value the modules receive via `to_config_map` (shadowing the manifold
+/// declarations), which is also the host `FeedrateConfig` default — not the
+/// old 50.0 whose 50/50 cancellation against the modules' private BASE_SPEED
+/// made factor 1.0 coincidental.
+#[test]
+fn sparse_infill_speed_resolved_default_is_canonical() {
+    let cfg = ResolvedConfig::default();
+    assert_eq!(cfg.sparse_infill_speed, 100.0_f32);
+    assert_eq!(
+        cfg.to_config_map().get("sparse_infill_speed"),
+        Some(&ConfigValue::Float(f64::from(100.0_f32))),
+        "the module-facing config map must carry the canonical default"
+    );
+}

@@ -237,7 +237,11 @@ fn samples_tree_ir_raw_emit() {
         assert!((end.x - slicer_ir::units_to_mm(segment[1].x)).abs() < 0.001);
         assert!((end.y - slicer_ir::units_to_mm(segment[1].y)).abs() < 0.001);
         assert_eq!(path.role, ExtrusionRole::SparseInfill);
-        assert!((path.speed_factor - 1.6).abs() < 0.001);
+        // Wayfinder ticket 114: the module no longer divides the configured
+        // sparse_infill_speed against a private base (80 / 50 = 1.6 under the
+        // old contract); sparse paths carry the neutral factor 1.0 because the
+        // host FeedrateConfig owns the emitted role speed.
+        assert!((path.speed_factor - 1.0).abs() < 0.001);
     }
 }
 

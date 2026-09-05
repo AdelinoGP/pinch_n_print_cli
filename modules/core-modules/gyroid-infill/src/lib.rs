@@ -45,9 +45,6 @@ use slicer_sdk::views::SliceRegionView;
 
 use std::f64::consts::{FRAC_PI_2, PI};
 
-/// Default base speed used for normalizing speed factors (mm/s).
-const BASE_SPEED: f32 = 50.0;
-
 /// Density adjustment factor matching OrcaSlicer's DensityAdjust constant.
 /// This scales the effective density to produce correct fill weight percentage.
 // OrcaSlicer: DensityAdjust = 2.44
@@ -74,9 +71,6 @@ pub struct GyroidInfill {
     density: f32,
     /// Base infill angle in degrees.
     base_angle: f32,
-    /// Sparse infill speed in mm/s — the speed-factor base (OrcaSlicer:
-    /// sparse_infill_speed).
-    sparse_infill_speed: f32,
     /// Extrusion line width in millimeters.
     line_width: f32,
 }
@@ -122,12 +116,6 @@ impl LayerModule for GyroidInfill {
             _ => 0.0,
         };
 
-        let sparse_infill_speed = match config.get("sparse_infill_speed") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => BASE_SPEED,
-        };
-
         let width = |key: &str, fallback: f32| match config.get(key) {
             Some(ConfigValue::Float(w)) => *w as f32,
             Some(ConfigValue::Int(w)) => *w as f32,
@@ -155,7 +143,6 @@ impl LayerModule for GyroidInfill {
         Ok(Self {
             density,
             base_angle,
-            sparse_infill_speed,
             line_width,
         })
     }
@@ -172,7 +159,13 @@ impl LayerModule for GyroidInfill {
             return Ok(());
         }
 
-        let speed_factor = self.sparse_infill_speed / BASE_SPEED;
+        // Sparse paths carry the neutral speed factor: the emitted feedrate is
+        // the host FeedrateConfig::sparse_infill_speed decision (the same raw
+        // `sparse_infill_speed` key this module used to divide against a
+        // private BASE_SPEED, which double-counted user-set values through the
+        // shared source). Wayfinder ticket 114 retired the module-side factor
+        // base; the host owns the role speed, matching rectilinear-infill.
+        let speed_factor = 1.0;
 
         // Per-role per-polygon emit (Q3 + Q5 partition contract): the host
         // pre-partitions every region's wall-inset into five pairwise-disjoint

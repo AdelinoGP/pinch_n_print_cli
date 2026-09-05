@@ -1651,11 +1651,14 @@ declare_resolved_config! {
     /// fill by the host shell-classification prepass. `0` disables the
     /// conversion.
     cli "minimum_sparse_infill_area" minimum_sparse_infill_area: f32 = 15.0 => extract_float;
-    /// Sparse infill speed in mm/s — the speed-factor base the infill modules
-    /// normalise against BASE_SPEED (50). The *emitted* sparse feedrate is the
-    /// host FeedrateConfig::sparse_infill_speed decision (OrcaSlicer:
-    /// sparse_infill_speed); this field only scales the IR speed_factor.
-    cli "sparse_infill_speed"    sparse_infill_speed: f32 = 50.0 => extract_float;
+    /// Sparse infill speed in mm/s. The *emitted* sparse feedrate is the host
+    /// FeedrateConfig::sparse_infill_speed decision (OrcaSlicer:
+    /// sparse_infill_speed); this field is the resolved-config twin of that
+    /// host key (same raw source), emitted into the module config map and the
+    /// CONFIG_BLOCK. The infill modules derive no per-path speed factor from
+    /// it — sparse paths carry factor 1.0 and the host owns the role speed
+    /// (wayfinder ticket 114). Default aligned to canonical 100.0.
+    cli "sparse_infill_speed"    sparse_infill_speed: f32 = 100.0 => extract_float;
     /// Solid infill speed in mm/s.
     cli "solid_infill_speed"     solid_infill_speed: f32 = 50.0 => extract_float;
     /// Number of top shell layers.

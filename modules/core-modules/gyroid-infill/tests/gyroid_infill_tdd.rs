@@ -76,6 +76,33 @@ fn from_config_custom() {
     assert!((module.line_width() - 0.5).abs() < 0.001);
 }
 
+/// Wayfinder ticket 114: sparse paths carry the neutral speed factor at any
+/// configured `sparse_infill_speed`. The emitter resolves the absolute
+/// feedrate from `FeedrateConfig::sparse_infill_speed` (the same raw key this
+/// module used to divide against a private BASE_SPEED, which double-counted
+/// user-set values through the shared source); the host owns the role speed.
+#[test]
+fn sparse_paths_carry_neutral_speed_factor() {
+    let config = make_config(0.2, 0.0, 200.0, 0.4);
+    let module = GyroidInfill::from_config(&config).unwrap();
+
+    let region = make_square_region(10.0, 0.3);
+    let mut output = InfillOutputBuilder::new();
+
+    module
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
+        .unwrap();
+
+    assert!(!output.sparse_paths().is_empty());
+    for path in output.sparse_paths() {
+        assert!(
+            (path.speed_factor - 1.0).abs() < 0.001,
+            "speed_factor should be 1.0 (host-owned role speed), got {}",
+            path.speed_factor
+        );
+    }
+}
+
 /// Test 3: 10mm square at density=0.2 produces non-empty sparse paths.
 #[test]
 fn square_region_produces_paths() {
