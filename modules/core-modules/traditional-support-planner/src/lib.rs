@@ -307,20 +307,19 @@ impl SupportPlanner {
             )?;
         }
 
-        let mut emitted = if self.independent_support_layer_height
-            && self.support_layer_height_mm > 0.0
-        {
-            let mut coarse = Vec::new();
-            self.emit_coarse_entries(
-                layer_plan,
-                &mut pending_entries,
-                &mut intermediate_plane_indices,
-                &mut coarse,
-            )?;
-            coarse
-        } else {
-            std::mem::take(&mut pending_entries)
-        };
+        let mut emitted =
+            if self.independent_support_layer_height && self.support_layer_height_mm > 0.0 {
+                let mut coarse = Vec::new();
+                self.emit_coarse_entries(
+                    layer_plan,
+                    &mut pending_entries,
+                    &mut intermediate_plane_indices,
+                    &mut coarse,
+                )?;
+                coarse
+            } else {
+                std::mem::take(&mut pending_entries)
+            };
         // One entry per support-region identity is the producer's contract,
         // not the host's to repair. See `merge_region_identity_entries`.
         // 240a deliberately leaves raft and model Z values overlapping while
@@ -616,8 +615,8 @@ impl SupportPlanner {
                         &propagate_islands,
                         ClipOperation::Intersection,
                     );
-                    let propagate_area = grid
-                        .filter_islands_by_samples(propagate_islands, &island_samples(&seeded));
+                    let propagate_area =
+                        grid.filter_islands_by_samples(propagate_islands, &island_samples(&seeded));
 
                     // WIP PROBE (packet 241, step 10). The asymmetric clamp
                     // that used to sit here -- propagated carry intersected
@@ -1726,12 +1725,8 @@ fn island_samples(expolys: &[ExPolygon]) -> Vec<Point2> {
     let mut pts: Vec<Point2> = Vec::new();
     for expoly in expolys {
         let single = std::slice::from_ref(expoly);
-        let inset = host::offset_polygons(
-            single,
-            ISLAND_SAMPLE_INSET_MM,
-            OffsetJoinType::Miter,
-            0.0,
-        );
+        let inset =
+            host::offset_polygons(single, ISLAND_SAMPLE_INSET_MM, OffsetJoinType::Miter, 0.0);
         let sampled: &[ExPolygon] = if inset.is_empty() { single } else { &inset };
         for ex in sampled {
             let points = &ex.contour.points;

@@ -572,16 +572,28 @@ pub fn contours_simplified(
             let (c, r) = (c as i64, r as i64);
             if left != current {
                 lines.push(if left {
-                    GridLine { a: (c, r + 1), b: (c, r) }
+                    GridLine {
+                        a: (c, r + 1),
+                        b: (c, r),
+                    }
                 } else {
-                    GridLine { a: (c, r), b: (c, r + 1) }
+                    GridLine {
+                        a: (c, r),
+                        b: (c, r + 1),
+                    }
                 });
             }
             if top != current {
                 lines.push(if top {
-                    GridLine { a: (c, r), b: (c + 1, r) }
+                    GridLine {
+                        a: (c, r),
+                        b: (c + 1, r),
+                    }
                 } else {
-                    GridLine { a: (c + 1, r), b: (c, r) }
+                    GridLine {
+                        a: (c + 1, r),
+                        b: (c, r),
+                    }
                 });
             }
         }
@@ -730,7 +742,9 @@ fn assemble_expolygons(rings: Vec<Point2Ring>) -> Vec<ExPolygon> {
     let mut out: Vec<ExPolygon> = contours
         .iter()
         .map(|(_, ring)| ExPolygon {
-            contour: Polygon { points: ring.clone() },
+            contour: Polygon {
+                points: ring.clone(),
+            },
             holes: Vec::new(),
         })
         .collect();
@@ -919,11 +933,7 @@ impl SupportGrid {
             // empty clip set can never be mistaken for an empty subject.
             simplified
         } else {
-            host::clip_polygons(
-                &simplified,
-                &self.trimming_polys,
-                ClipOperation::Difference,
-            )
+            host::clip_polygons(&simplified, &self.trimming_polys, ClipOperation::Difference)
         }
     }
 
