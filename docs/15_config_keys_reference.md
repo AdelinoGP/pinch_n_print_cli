@@ -250,7 +250,6 @@ is the authoritative catalog of their defaults and ranges.
 | `enable_support` | bool | `false` | — | `traditional-support-planner` |
 | `independent_support_layer_height` | bool | `true` | — | `traditional-support-planner` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `traditional-support-planner` |
-| `support_base_pattern` | string | `"rectilinear"` | — (values: default|rectilinear|rectilinear-grid|honeycomb|lightning|hollow) | `traditional-support-planner` |
 | `support_base_pattern_spacing` | float | `2.5` | [0.1, 10.0] | `traditional-support-planner` |
 | `support_interface_bottom_layers` | int | `-1` | [-1.0, 10.0] | `traditional-support-planner` |
 | `support_interface_top_layers` | int | `2` | [0.0, 10.0] | `traditional-support-planner` |
@@ -532,10 +531,10 @@ defaults to traditional). It drives which `tree-support-planner`/`tree-support`
 pair serves each region (see `docs/04_host_scheduler.md` § "Planner-Renderer
 Pairing").
 
-**Traditional support base pattern (packet 222).** `support_base_pattern`
-selects the traditional family's base fill pattern (e.g. `rectilinear`); it is
-owned by `traditional-support-planner` and recorded in each plan entry's
-`capabilities` as `traditional-base-pattern`.
+**Traditional support base-pattern selection.** `support_base_pattern` is not a
+recognized input. Algorithm-selecting alternatives are holder-only, and this
+tree does not yet ship a support-base-pattern holder; the implementation is
+queued separately in [ticket 135](specs/orca-feature-gap/issues/135-author-packet-support-base-pattern-holder.md).
 
 ---
 

@@ -966,11 +966,7 @@ fn object_metadata_to_config_data(
                     );
                 }
             }
-            "seam_position"
-            | "sparse_infill_pattern"
-            | "brim_type"
-            | "fuzzy_skin"
-            | "support_base_pattern" => {
+            "seam_position" | "sparse_infill_pattern" | "brim_type" | "fuzzy_skin" => {
                 out.insert(key.clone(), ConfigValue::String(value.clone()));
             }
             _ => {

@@ -34,8 +34,6 @@ const DEFAULT_INTERFACE_TOP_LAYERS: i32 = 2;
 /// Default number of dense interface layers at the bottom of a support column.
 /// `-1` means "mirror the top interface count" (OrcaSlicer convention).
 const DEFAULT_INTERFACE_BOTTOM_LAYERS: i32 = -1;
-/// Default base fill pattern.
-const DEFAULT_BASE_PATTERN: &str = "rectilinear";
 /// Default XY clearance between support and object, matching OrcaSlicer's
 /// `support_object_xy_distance` default of 0.35 mm.
 const DEFAULT_OBJECT_XY_DISTANCE_MM: f32 = 0.35;
@@ -58,8 +56,6 @@ pub struct SupportPlanner {
     /// Number of dense interface layers at the bottom of each support column.
     /// `-1` mirrors the top interface count.
     support_interface_bottom_layers: i32,
-    /// Base fill pattern recorded on every body entry.
-    support_base_pattern: String,
     /// Distance in mm from column tops to add intermediate model layers.
     /// Orca key `support_top_z_distance`.
     support_top_z_distance: f32,
@@ -97,10 +93,6 @@ impl PrepassModule for SupportPlanner {
             Some(ConfigValue::Float(n)) => *n as i32,
             _ => DEFAULT_INTERFACE_BOTTOM_LAYERS,
         };
-        let support_base_pattern = match config.get("support_base_pattern") {
-            Some(ConfigValue::String(s)) => s.clone(),
-            _ => DEFAULT_BASE_PATTERN.to_string(),
-        };
         let support_top_z_distance = match config.get("support_top_z_distance") {
             Some(ConfigValue::Float(v)) => *v as f32,
             Some(ConfigValue::Int(v)) => *v as f32,
@@ -137,7 +129,6 @@ impl PrepassModule for SupportPlanner {
             support_family,
             support_interface_top_layers,
             support_interface_bottom_layers,
-            support_base_pattern,
             support_top_z_distance,
             support_layer_height_mm,
             independent_support_layer_height,
@@ -650,10 +641,7 @@ impl SupportPlanner {
                 anchor_z: mm_to_units(z),
                 roles,
                 skeleton: None,
-                capabilities: vec![format!(
-                    "traditional-base-pattern:{}",
-                    self.support_base_pattern
-                )],
+                capabilities: Vec::new(),
                 provenance: vec!["traditional-support-planner".to_string()],
                 decline_reason: None,
             };

@@ -132,10 +132,6 @@ fn planner_config_with(
         ConfigValue::Int(1),
     );
     values.insert(
-        "support_base_pattern".into(),
-        ConfigValue::String("rectilinear".into()),
-    );
-    values.insert(
         "support_top_z_distance".into(),
         ConfigValue::Float(top_distance_mm.into()),
     );
@@ -1577,13 +1573,6 @@ fn base_interface_obstacle() {
             .iter()
             .any(|r| r.role == SupportPlanRole::BottomInterface)),
         "bottom interface must honor support_interface_bottom_layers"
-    );
-    assert!(
-        body_entries.iter().all(|e| e
-            .capabilities
-            .iter()
-            .any(|c| c.contains("traditional-base-pattern"))),
-        "base pattern must be recorded in capabilities"
     );
     assert!(
         output.entries().iter().any(|e| {

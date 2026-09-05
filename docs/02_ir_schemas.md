@@ -292,11 +292,10 @@ The complete admitted object-level key list is:
 - Float keys: `layer_height`, `brim_width`, `support_threshold_angle`,
   `support_top_z_distance`.
 - String keys: `seam_position`, `sparse_infill_density`,
-  `sparse_infill_pattern`, `brim_type`, `fuzzy_skin`,
-  `support_base_pattern`.
+  `sparse_infill_pattern`, `brim_type`, `fuzzy_skin`.
 
-The 18 Packet 172 additions are the six ordinary integer keys, two rebasing
-integer keys, four float keys, and six string keys above. Orca's
+The 17 admitted Packet 172 additions are the six ordinary integer keys, two
+rebasing integer keys, four float keys, and five string keys above. Orca's
 `support_filament` and `support_interface_filament` values are 1-indexed and
 are rebased to 0-indexed values at load time; raw `0` remains `0`. The existing
 `extruder` selector follows the same rebase convention. For

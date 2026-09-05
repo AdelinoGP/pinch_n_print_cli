@@ -98,6 +98,8 @@ fn extended_object_allowlist_types() {
         ("sparse_infill_pattern", "gyroid"),
         ("brim_type", "outer_only"),
         ("fuzzy_skin", "external"),
+        // Algorithm-selecting support patterns are holder-only; object
+        // metadata must not alias the removed input key.
         ("support_base_pattern", "rectilinear"),
     ]);
 
@@ -117,10 +119,13 @@ fn extended_object_allowlist_types() {
         "\"sparse_infill_pattern\": String(\"gyroid\")",
         "\"brim_type\": String(\"outer_only\")",
         "\"fuzzy_skin\": String(\"external\")",
-        "\"support_base_pattern\": String(\"rectilinear\")",
     ] {
         assert!(debug.contains(expected), "missing {expected} in {debug}");
     }
+    assert!(
+        !debug.contains("\"support_base_pattern\":"),
+        "holder-only support base patterns must be dropped from object metadata: {debug}"
+    );
 }
 
 #[test]

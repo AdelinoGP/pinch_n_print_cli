@@ -74,7 +74,8 @@ pub fn commit_support_analysis_builtin(
             let mut object_layer_polygons: BTreeMap<(String, u32), Vec<ExPolygon>> =
                 BTreeMap::new();
             let surface_classification = blackboard.surface_classification().cloned();
-            let mut contact_work: Vec<(u32, String, u64, Vec<ExPolygon>, bool)> = Vec::new();
+            let mut contact_work: Vec<(u32, String, u64, Vec<ExPolygon>, Vec<ExPolygon>, bool)> =
+                Vec::new();
             for slice in slices.iter() {
                 for region in &slice.regions {
                     if region.polygons.is_empty() {
@@ -121,6 +122,7 @@ pub fn commit_support_analysis_builtin(
                         region.object_id.clone(),
                         region.region_id,
                         region.polygons.clone(),
+                        region.bridge_areas.clone(),
                         needs_support,
                     ));
                 }
@@ -158,7 +160,14 @@ pub fn commit_support_analysis_builtin(
             let contacts: Vec<Contact> = contact_work
                 .par_iter()
                 .filter_map(
-                    |(layer_index, object_id, region_id, polygons, needs_support)| {
+                    |(
+                        layer_index,
+                        object_id,
+                        region_id,
+                        polygons,
+                        bridge_polygons,
+                        needs_support,
+                    )| {
                         // Layer 0 rests on the bed and has no layer below it.
                         let lower_index = layer_index.checked_sub(1)?;
                         let empty: Vec<ExPolygon> = Vec::new();
@@ -172,11 +181,11 @@ pub fn commit_support_analysis_builtin(
                                 &plan.global_layers,
                                 lower_index,
                             ),
+                            bridge_polygons: bridge_polygons.clone(),
                             // `layer_id` is trivially available here; the other
                             // new knobs ride neutral from `base_params` (OFF).
-                            // Clone (not move) the base: `bridge_polygons` is a
-                            // non-Copy field and this `Fn` closure may run
-                            // multiple times under rayon.
+                            // Clone (not move) the base because this `Fn` closure
+                            // may run multiple times under rayon.
                             layer_id: *layer_index,
                             ..base_params.clone()
                         };
@@ -721,10 +730,10 @@ fn resolve_contact_params(
         threshold_overlap_mm,
         xy_expansion_mm: extension_float(config, "support_expansion")
             .unwrap_or(config.support_expansion),
-        // New bridge / sharp-tail / enforce / layer-index knobs have no
-        // production config source yet; neutral values keep the candidate
-        // stream unchanged (all stages OFF).
-        bridge_no_support: false,
+        // Bridge polygons are supplied per region by the caller. The typed
+        // field is the canonical gate and is already emitted by
+        // `ResolvedConfig::to_config_map`.
+        bridge_no_support: config.bridge_no_support,
         bridge_polygons: Vec::new(),
         support_sharp_tails: false,
         enforce_support_layers: 0,
@@ -914,6 +923,20 @@ mod tests {
         blackboard_with_stack_and_mesh(lower, upper, MeshIR::default())
     }
 
+    /// As [`blackboard_with_stack`], but seeds the upper region with the
+    /// host-derived bridge polygons consumed by support analysis.
+    fn blackboard_with_stack_and_bridge(
+        lower: &ExPolygon,
+        upper: &ExPolygon,
+        bridge_polygons: Vec<ExPolygon>,
+    ) -> Blackboard {
+        let mut blackboard = blackboard_with_stack(lower, upper);
+        let mut slices = blackboard.slice_ir().unwrap().as_ref().clone();
+        slices[1].regions[0].bridge_areas = bridge_polygons;
+        blackboard.replace_slice_ir(Arc::new(slices)).unwrap();
+        blackboard
+    }
+
     /// As [`blackboard_with_stack`], but with a caller-supplied `MeshIR` so a
     /// fixture can carry support-enforcer / support-blocker modifier volumes.
     fn blackboard_with_stack_and_mesh(
@@ -1101,6 +1124,45 @@ mod tests {
                 .get("support_threshold_angle_deg"),
             Some(&"12.5".to_string()),
             "the configured typed field must reach detection; reading `extensions`              instead silently pinned this to the default"
+        );
+    }
+
+    #[test]
+    fn configured_bridge_no_support_removes_region_bridge_contacts() {
+        let lower = square(1.0, 2.0, 3.0);
+        let upper = square(0.0, 1.0, 5.0);
+        let bridge = vec![square(0.0, 1.0, 1.0)];
+
+        let mut disabled = blackboard_with_stack_and_bridge(&lower, &upper, bridge.clone());
+        commit_support_analysis_builtin(
+            &mut disabled,
+            &ResolvedConfig {
+                support_enabled: true,
+                bridge_no_support: false,
+                ..ResolvedConfig::default()
+            },
+        )
+        .unwrap();
+        let disabled_geometry = &disabled.support_analysis().unwrap().candidates[0].geometry;
+        assert!(
+            !intersection_ex(disabled_geometry, &bridge).is_empty(),
+            "bridge contacts must remain when bridge_no_support is disabled"
+        );
+
+        let mut enabled = blackboard_with_stack_and_bridge(&lower, &upper, bridge.clone());
+        commit_support_analysis_builtin(
+            &mut enabled,
+            &ResolvedConfig {
+                support_enabled: true,
+                bridge_no_support: true,
+                ..ResolvedConfig::default()
+            },
+        )
+        .unwrap();
+        let enabled_geometry = &enabled.support_analysis().unwrap().candidates[0].geometry;
+        assert!(
+            intersection_ex(enabled_geometry, &bridge).is_empty(),
+            "configured bridge_no_support must remove the bridge region from contacts"
         );
     }
 
