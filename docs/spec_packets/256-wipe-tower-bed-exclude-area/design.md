@@ -7,12 +7,22 @@ Pre-slice print validation becomes a **module**, not a host branch.
 `modules/core-modules/print-validator/` declares `[stage] id = "PrePass::MeshAnalysis"` — the earliest module-hostable stage, with no required prepass slots — and implements `PrepassModule::run_mesh_analysis`. It reads `bed_exclude_area` and `printable_area` from its `ConfigView`, and for each object id it is handed:
 
 1. **Cheap reject.** `slicer_sdk::host::object_bounds(object_id) -> Result<BoundingBox3, HostUnavailable>` gives the object's bounds; project to XY. If that rectangle does not overlap the exclusion polygon's bounding rectangle, the object cannot collide — skip it, zero raycasts. A `HostUnavailable` return is a host-services failure, not a collision: propagate it as a fatal module error naming the service, never as a silent pass.
-2. **Probe.** Otherwise walk a `1.0` mm grid over the intersection of the two rectangles. Keep only grid points **strictly inside** the exclusion polygon (even-odd ray cast, the same predicate `wipe-tower`'s `point_in_polygon` uses). Submit the kept points as one `slicer_sdk::host_batch::raycast_z_down_batch(&[RaycastRequest])` call — the batched form exists precisely to avoid N guest↔host crossings; `slicer_sdk::host::raycast_z_down` is the single-point fallback. `start_z` is just above the object's bounds max Z.
+2. **Probe.** Otherwise walk a `1.0` mm grid over the intersection of the two rectangles. Keep only grid points **inside** the exclusion polygon (even-odd ray cast, boundary-inclusive — the same predicate `wipe-tower`'s `point_in_polygon` uses). Submit the kept points as one `slicer_sdk::host_batch::raycast_z_down_batch(&[RaycastRequest])` call — the batched form exists precisely to avoid N guest↔host crossings; `slicer_sdk::host::raycast_z_down` is the single-point fallback. `start_z` is just above the object's bounds max Z.
 3. **Reject.** The first `Some(_)` in the batch result means the object has material above an excluded point. Return `ModuleError::fatal` naming the object id, the key, and the point. The prepass executor turns that into `PrepassExecutionError::FatalModule`, and the pipeline into `PipelineError::Prepass` — the slice fails, as canonical's `Print::validate` does.
 
 The module commits nothing to the blackboard and holds no claim, so the host built-in `host:mesh_analysis` still produces `SurfaceClassification` exactly as today.
 
 Separately, `wipe-tower` declares the same key and extends its existing code-3 bed-bounds site: any tower footprint corner inside the exclusion polygon is a fatal rejection naming `bed_exclude_area`. This is not redundant — the tower is generated at `PostPass::LayerFinalization`, hundreds of pipeline steps after the validator, and no pre-slice pass can see it.
+
+### The second decision point: the filament-change travel path
+
+`start_end_points` (returned to the queue by wayfinder ticket 40) drives canonical's `get_path_of_change_filament` (`GCode.cpp`): the three `travel_point_*` placeholders a user's `change_filament_gcode` template can reference. The transport is constrained by **ADR-0050 §2**: the resolvable placeholder set is *exactly* `machine-gcode-emit`'s manifest-declared keys plus the alias table — a computed-value insertion into the substitution lookup would be a third source and is forbidden. The design therefore conforms:
+
+1. **The host computes.** `crates/slicer-runtime/src/travel_path.rs` (new) holds the canonical algorithm as a pure function: safe default `(54,0),(54,0),(54,245)`; cutter area from `bed_exclude_area[2] + 2`; per-object intervals `[min.x-2, max.x+2]` merged and sorted; available intervals over `[0, 255]`; the four-branch `new_path` selection; left-travel vs right-travel point construction. Inputs: `start_end_points` + `bed_exclude_area` (read from `config_source`) and per-object world-space XY bounds (computed from `mesh_ir.objects`).
+2. **The host injects.** `run_slice` inserts the six `travel_point_1_x/y` … `travel_point_3_x/y` values into `config_source`, gated on the multi-tool predicate (≥ 2 distinct painted tool indices — the same predicate as the MMU wipe-tower auto-enable, extracted into a shared helper). This is the `slice_has_paint` / `object_height:<id>` host-injected-key pattern. Single-tool prints get no injection and are byte-identical.
+3. **The module declares.** `machine-gcode-emit.toml` gains eight schema keys: `start_end_points`, `bed_exclude_area`, and the six `travel_point_*` values. The existing `config.keys()` sweep in `run_gcode_postprocess` resolves the placeholders — **no module code change**. ADR-0050 §2's domain is preserved exactly: every resolvable name is a manifest-declared key.
+
+Why the host computes rather than the module: the `gcode-postprocess-module` world's `run(commands, output, config)` receives no object ids and there is no object-enumeration host service, so a postpass module cannot read object geometry; the prepass seam can read `object-bounds` but has no arbitrary-data output (`MeshAnalysisOutput` is facet annotations + surface groups only); and ADR-0050 §2 forbids a module-side computed-value insertion. The host is the only writer of `config_source`, so the host computation is the architecture's only channel for computed placeholder values — the same channel `slice_has_paint` uses. The decision point is the host computation, recorded as such (DIV-3, DIV-4).
 
 ## Why a module, and why this stage
 
@@ -22,15 +32,16 @@ The alternative — a `validate_bed_exclusion` function beside `validate_support
 
 ## Mechanism Check (Authoring rule 4)
 
-- **No WIT change.** `mesh-analysis`'s `run(objects: list<object-id>, output, config)` and the `mesh-analysis-module` world's import of `slicer:common/host-services` are used exactly as they stand. `object-bounds` and `raycast-z-down` are already exported.
-- **No IR schema bump, no new `ResolvedConfig` field, no new error type.** The key rides `ResolvedConfig.extensions` → `to_config_map` → `bind_module_config_view`; the rejection rides `ModuleError::fatal`, whose fatal path is already wired end to end.
+- **No WIT change.** `mesh-analysis`'s `run(objects: list<object-id>, output, config)` and the `mesh-analysis-module` world's import of `slicer:common/host-services` are used exactly as they stand. `object-bounds` and `raycast-z-down` are already exported. The `gcode-postprocess-module` world's `run(commands, output, config)` is likewise used as-is — the travel path is computed from config keys, not from a new host service.
+- **No IR schema bump, no new `ResolvedConfig` field, no new error type.** Both keys ride `ResolvedConfig.extensions` → `to_config_map` → `bind_module_config_view`; the rejection rides `ModuleError::fatal`, whose fatal path is already wired end to end.
 - **No claim.** `RECOGNIZED_CLAIMS` includes `mesh-analyzer`, but holding it would put the validator in conflict with the stage's host built-in, which is the actual mesh analyzer. Validation is not an interchangeable-implementation role with an output slot to own; it is an inert observer that can veto. `holds = []` (the `wipe-tower` precedent). A future packet adding a *second* validator can revisit whether a `claim:print-validation` is warranted; this packet does not mint a claim id for one module.
-- **No host-side special case.** The only host-crate edits are registration (workspace member, integrated registry, CLI features) and tests.
+- **The travel-path decision is host-computed, ADR-0050 conformant.** ADR-0050 §2 locks the resolvable placeholder set to `machine-gcode-emit`'s manifest-declared keys plus the alias table. The six `travel_point_*` values are therefore manifest-declared keys whose values the host writes into `config_source` (the `slice_has_paint` pattern) — the existing `config.keys()` sweep resolves them, with no module code change and no third placeholder source. The host computation is the architecture's only channel for computed placeholder values; recorded as DIV-3/DIV-4.
+- **No host-side special case.** The only host-crate edits are registration (workspace member, integrated registry, CLI features), the `travel_point_*` computation + injection in `run_slice` (the established host-injected-key mechanism), and tests.
 - **No `[BLOCK]` is open in this packet.**
 
 ## Tier Derivation
 
-**Tier C** — new granular module at a seam this tree does not use yet (ticket 04's rubric). Authoring rule 1 forces B or C for a packet that builds a decision point; the new module, its guest, and its registration surface put it above the single-module-diff shape of Tier B. The prior revision's Tier A rested on the tower-corner reading of the key and does not survive the ⚠ correction.
+**Tier C** — new granular module at a seam this tree does not use yet (ticket 04's rubric). Authoring rule 1 forces B or C for a packet that builds a decision point; the new module, its guest, and its registration surface put it above the single-module-diff shape of Tier B. The prior revision's Tier A rested on the tower-corner reading of the key and does not survive the ⚠ correction. The travel-path half is Tier B new logic in an existing owner (`machine-gcode-emit`), which does not raise the packet's tier — the new module dominates.
 
 ## Code Change Surface (authoritative files-in-scope)
 
@@ -46,22 +57,28 @@ The alternative — a `validate_bed_exclusion` function beside `validate_support
 | `crates/pnp-cli/Cargo.toml` | passthrough feature entry |
 | `crates/slicer-scheduler/tests/integration/manifest_ingestion_tdd.rs` | core-module count +1 (re-derived from disk) |
 | `crates/slicer-runtime/tests/integration/bed_exclusion_abort_tdd.rs` | **new** — AC-2 abort path, AC-3, AC-N2 |
-| `crates/slicer-runtime/tests/integration/main.rs` | `mod bed_exclusion_abort_tdd;` registration — without it the file compiles to zero tests and reports green |
+| `crates/slicer-runtime/tests/integration/travel_path_injection_tdd.rs` | **new** — AC-9 substitution arms, AC-11 (single-tool absence, multi-tool presence of the six `travel_point_*` lines) |
+| `crates/slicer-runtime/tests/integration/main.rs` | `mod bed_exclusion_abort_tdd;` and `mod travel_path_injection_tdd;` registration — without it the files compile to zero tests and report green |
 | `crates/slicer-runtime/tests/contract/config_view_binding_tdd.rs` | AC-N1 arm |
 | `modules/core-modules/wipe-tower/wipe-tower.toml` | one new `[config.schema.bed_exclude_area]` table |
 | `modules/core-modules/wipe-tower/src/lib.rs` | parse the polygon in `from_config`; extend the code-3 corner check |
 | `modules/core-modules/wipe-tower/tests/bed_bounds_tdd.rs` | AC-7 arms |
+| `modules/core-modules/machine-gcode-emit/machine-gcode-emit.toml` | eight new `[config.schema]` tables: `start_end_points` and `bed_exclude_area` (both `float-list`, no `default`) plus the six host-injected `travel_point_1_x/y` … `travel_point_3_x/y` (each `float`, no `default`) — **manifest-only, no `src/lib.rs` change** (the existing `config.keys()` sweep resolves the declared keys) |
+| `crates/slicer-runtime/src/travel_path.rs` | **new** — `compute_travel_path` (the canonical algorithm, pure function) + `#[cfg(test)]` unit tests (AC-10, AC-N4) |
+| `crates/slicer-runtime/src/run.rs` | compute per-object XY bounds from `mesh_ir.objects`; extract the multi-tool predicate into a shared helper; inject the six `travel_point_*` values into `config_source` (gated on multi-tool) |
+| `modules/core-modules/machine-gcode-emit/tests/machine_gcode_emit_tdd.rs` | re-derive the module's schema-guard tests against the eight new keys (no new behavior to test — the sweep already resolves declared keys) |
+| `crates/slicer-runtime/tests/integration/travel_path_injection_tdd.rs` | **new** — AC-9 substitution arms, AC-11 (single-tool absence, multi-tool presence of the six `travel_point_*` lines) |
 | `docs/04_host_scheduler.md` | one sentence: `PrePass::MeshAnalysis` hosts a guest validator beside its built-in; a fatal error there aborts the slice |
 | `docs/15_config_keys_reference.md` | regenerated by `cargo xtask gen-config-docs` — never hand-edited |
 
 ## Read-Only Context
 
-`modules/core-modules/layer-planner-default/**` (the prepass-module shape to copy), `crates/slicer-schema/wit/deps/prepass-mesh-analysis/prepass-mesh-analysis.wit` and `crates/slicer-schema/wit/deps/common.wit` (the `run` signature and host services), `crates/slicer-sdk/src/traits.rs` (`PrepassModule`), `crates/slicer-runtime/src/prepass.rs` (fatal handling — ranged read only), `modules/core-modules/wipe-tower/src/lib.rs` (`point_in_polygon`, `parse_printable_area`, `float_list_from_config`).
+`modules/core-modules/layer-planner-default/**` (the prepass-module shape to copy), `crates/slicer-schema/wit/deps/prepass-mesh-analysis/prepass-mesh-analysis.wit` and `crates/slicer-schema/wit/deps/common.wit` (the `run` signature and host services), `crates/slicer-sdk/src/traits.rs` (`PrepassModule`), `crates/slicer-runtime/src/prepass.rs` (fatal handling — ranged read only), `modules/core-modules/wipe-tower/src/lib.rs` (`point_in_polygon`, `parse_printable_area`, `float_list_from_config`), `modules/core-modules/machine-gcode-emit/src/lib.rs` (the `config.keys()` sweep and `InjectionSite::FilamentChange` — ranged read only), `docs/adr/0050-custom-gcode-architecture.md` (§2 placeholder domain — the conformance constraint), `crates/slicer-model-io/src/loader.rs` (`compute_z_extent_from_mesh` / `object_world_z_extent_from_mesh_and_transform` as the XY-bounds pattern — ranged read only).
 
 ## Out of Bounds (must not be loaded or edited)
 
 - `crates/slicer-schema/wit/**` — no WIT edit is in scope; if the implementation believes it needs one, it stops and raises a `[BLOCK]` rather than editing.
-- `crates/slicer-runtime/src/run.rs` and `crates/slicer-scheduler/src/config_resolution.rs` — the host-side validator route was considered and rejected; do not add one.
+- `crates/slicer-scheduler/src/config_resolution.rs` — the host-side validator route was considered and rejected; do not add one.
 - `crates/slicer-gcode/src/serialize.rs` (`ORCA_CONFIG_PADDING`).
 - `crates/slicer-core/src/algos/mesh_analysis.rs` — `compute_xy_footprint` is host-only and stays host-only.
 - Other packet directories, including `254a` / `254b` / `255` (reconcile via their `packet.spec.md` through a SUMMARY dispatch).
@@ -75,12 +92,16 @@ The alternative — a `validate_bed_exclusion` function beside `validate_support
 | Exact `PrepassModule` trait shape and the `MeshAnalysisOutput` methods | `crates/slicer-sdk/src/traits.rs` | `SNIPPETS` ≤ 1 × 30 lines |
 | The registration points a new core module must touch (workspace, integrated registry, CLI features) as they stand now | root `Cargo.toml`, `crates/slicer-integrated-modules/**`, `crates/pnp-cli/Cargo.toml` | `LOCATIONS` ≤ 10 |
 | Whether `254b` has landed and already changed the core-module count | `docs/spec_packets/254b-prime-tower-interface-and-ramming/packet.spec.md` | `FACT` ≤ 3 lines |
+| The exact `config.keys()` sweep and `InjectionSite::FilamentChange` in `machine-gcode-emit` (confirm the sweep resolves any declared key with no code change) | `modules/core-modules/machine-gcode-emit/src/lib.rs` | `SNIPPETS` ≤ 1 × 30 lines |
+| The multi-tool predicate and the `config_source` seeding block in `run_slice` as they stand now | `crates/slicer-runtime/src/run.rs` | `SNIPPETS` ≤ 1 × 30 lines |
 | Each verification command | workspace | `FACT` pass/fail |
 
 ## Divergences (recorded, with rationale)
 
 - **DIV-1 — sampled probe instead of a convex hull.** Canonical intersects each model volume's 2D convex hull with the exclusion polygon. At `PrePass::MeshAnalysis` a guest cannot see triangles (`mesh-object-view` is passed only to the seam-planning and support-geometry worlds), and extending the WIT is out of scope, so the port probes the excluded region on a `1.0` mm grid with `raycast-z-down` instead. Two consequences, both stated rather than hidden: (a) the port can miss a collision narrower than the grid pitch — a **false negative**, which is the safe direction for a fatal check, unlike the false positives an axis-aligned bounding-box test would produce; (b) the port tests the *actual mesh*, not its hull, so a C-shaped object whose hull covers the exclusion zone but whose material does not is **accepted** here and rejected by canonical. (b) is arguably the better answer — the hull is canonical's approximation, not its intent — but it is a difference, and it is recorded as one. Tightening this needs a host service exposing a per-object footprint polygon over WIT; that is a WIT change and therefore a separate packet, named here and not built.
 - **DIV-2 — the wipe tower is validated too.** Canonical never tests the tower against `bed_exclude_area`. This port does, because the tower is a real printed structure the pre-slice validator cannot see, and letting it print into a cutter zone would be a defect the user cannot diagnose. Recorded as a deliberate improvement, per Authoring rule 4's "where the port can give a better answer, take it".
+- **DIV-3 — the `travel_point_*` values are host-injected config keys.** Canonical computes the travel points at export time and keeps them dynamic-config-only (injected into the placeholder parser's config at toolchange, never into the full config). This port cannot compute them in the module (no object ids at the postpass seam, no arbitrary-data output at the prepass seam, and ADR-0050 §2 forbids a computed-value insertion into the lookup), so the host computes them and the values ride manifest-declared config keys. They therefore appear in the CONFIG_BLOCK of multi-tool prints as six `travel_point_* = …` lines — the established host-injected-data behavior (`slice_has_paint = true` and `object_height:<id>` are verifiably present in real G-code output today). Single-tool prints are byte-identical (no injection). The values are inert outside the `change_filament_gcode` substitution, which fires only at `ToolChange` commands.
+- **DIV-4 — the multi-tool gate is the toolchange approximation.** Canonical computes the path when `m_writer.multiple_extruders` — a printer property. No extruder-count key reaches this port (the DEV-168 (c) class), so the gate is "the model paints ≥ 2 distinct tool indices" — the same predicate as the MMU wipe-tower auto-enable, and the same approximation the time-lapse gate already uses. A single-tool print on a multi-extruder printer gets no travel points here where canonical would compute them; the port's `change_filament_gcode` templates referencing `travel_point_*` in that configuration leave the placeholders verbatim (the existing unresolved-key behavior).
 - **Probe pitch.** `1.0` mm is a fixed module constant, not a config key: it is a numerical tolerance, not a decision point, and inventing a PnP-specific key for it would add a key the queue does not track. If a future packet needs it tunable, the `_mm`-suffixed naming convention (grilling ruling Q15(a)) applies.
 
 ## Invariants
@@ -89,35 +110,44 @@ The alternative — a `validate_bed_exclusion` function beside `validate_support
 - A malformed value never fails a slice — canonical's own default is degenerate.
 - The rejection is fatal, never degraded: a non-fatal `ModuleError` is logged and execution continues, which would leave AC-2 unenforced.
 - The module writes no IR and commits no blackboard slot, so `host:mesh_analysis` still produces `SurfaceClassification` unchanged.
-- Only points strictly inside the exclusion polygon are probed; a point outside it can never trigger a rejection.
+- Only points inside the exclusion polygon (even-odd, boundary-inclusive — the same predicate `wipe-tower`'s `point_in_polygon` uses) are probed; a point outside it can never trigger a rejection.
+- Single-tool prints are byte-identical: no `travel_point_*` injection, no CONFIG_BLOCK change.
+- The travel path is computed host-side from `config_source` + `mesh_ir.objects` only — no host service, no WIT change; the algorithm is a verbatim port of canonical `get_path_of_change_filament` (safe default, `+2` margins, `[0, 255]` bed-x constant, four-branch `new_path` selection, left/right travel).
+- A malformed `start_end_points` (≠ 2 points) or `bed_exclude_area` (≠ 4 points) yields the canonical safe-default path, never a failure.
+- ADR-0050 §2's placeholder domain is preserved: every resolvable name in `machine-gcode-emit`'s substitution is a manifest-declared key or an alias-table entry; the six `travel_point_*` values are manifest-declared keys written by the host.
 
 ## Architecture Constraints
 
 <!-- snippet: coord-system -->
 - Coordinate units: **1 unit = 100 nm** (10⁻⁴ mm), NOT 1 nm like OrcaSlicer. Divide OrcaSlicer constants by 100. Use `Point2::from_mm(x, y)` or `mm_to_units()` at every mm↔unit boundary. Full porting checklist in `docs/08_coordinate_system.md`.
 
-  *Packet-specific note:* the exclusion polygon, `object-bounds`, `raycast-z-down` and the probe grid are all plain mm floats at this boundary — no scaled units appear. The `1.0` mm pitch is a millimetre literal, not a unit literal.
+  *Packet-specific note:* the exclusion polygon, `object-bounds`, `raycast-z-down`, the probe grid, the travel path and the six `travel_point_*` values are all plain mm floats at this boundary — no scaled units appear. The `1.0` mm pitch and the `255` bed-x constant are millimetre literals, not unit literals.
 
 <!-- snippet: wasm-staleness -->
 - Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and inspect its exit code: exit 0 means fresh, non-zero means stale (a distinct exit code signals `wasm-tools` is unavailable). Never use `rg -q 'STALE:'` — a `wasm-tools`-missing infrastructure error prints no `STALE:` and would read as fresh. If stale, rebuild without `--check` before re-running the failing test. Stale-guest failures look unrelated to the change but are caused by it.
 
 - Config keys are **snake_case** in every Rust and TOML string (`CLAUDE.md` § Config Key Naming Convention).
-- A module sees only its declared keys; an undeclared read returns `None` silently (`docs/03_wit_and_manifest.md` § Host-Boundary Access Enforcement). Both modules must declare `bed_exclude_area` to read it.
+- A module sees only its declared keys; an undeclared read returns `None` silently (`docs/03_wit_and_manifest.md` § Host-Boundary Access Enforcement). All three modules must declare `bed_exclude_area` to read it; `machine-gcode-emit` must declare `start_end_points` and the six `travel_point_*` keys for the sweep to resolve them.
+- Host-injected keys follow the `slice_has_paint` pattern: the manifest declares the key "expecting the host to populate it"; the host seeds `config_source` in `run_slice`; the key flows to the module's `ConfigView` via `extensions` → `to_config_map` → `bind_module_config_view`, and into the CONFIG_BLOCK as a side effect (DIV-3).
+- **ADR-0050 §2 (normative):** the resolvable placeholder set is exactly `machine-gcode-emit`'s manifest-declared `[config.schema]` keys plus the `PLACEHOLDER_ALIASES` table. This packet conforms — the six `travel_point_*` values are manifest-declared keys; no computed-value insertion into the lookup, no alias additions.
 
 ## Risks
 
 - **The core-module count is a shared ledger fact.** `254b` also adds a module. Re-derive the count in the step that edits the assertion; a frozen number here would be wrong the moment either packet lands.
-- **Aggregator registration.** `crates/slicer-runtime/tests/integration/` is a `mod`-aggregated bucket. An unregistered new file reports "0 tests" and reads as a pass — the exact false-green this repo's test discipline calls out. The registration is in the same step's edit list for that reason.
+- **Aggregator registration.** `crates/slicer-runtime/tests/integration/` is a `mod`-aggregated bucket. An unregistered new file reports "0 tests" and reads as a pass — the exact false-green this repo's test discipline calls out. The registration is in the same step's edit list for that reason. This packet adds **two** new files there (`bed_exclusion_abort_tdd.rs`, `travel_path_injection_tdd.rs`).
 - **Probe cost.** The grid is bounded by the exclusion rectangle ∩ the object rectangle, not by the bed, so the worst case is proportional to the excluded area, which is small by construction. If a user configures an exclusion polygon covering most of the bed, the probe cost grows — acceptable, since that print is about to be rejected anyway.
 - **Fatal-path blast radius.** Any test fixture that happens to configure `bed_exclude_area` and place an object in it will now fail the slice. At authoring the key has zero occurrences in the tree, so the blast radius is empty; re-derive that with `rg -n 'bed_exclude_area' crates modules resources` before Step 4.
 - **Guest-registration churn.** Adding a core module touches the workspace manifest, the integrated registry, and the CLI feature list. The `254b` packet plans the same surface; the second lander reconciles rather than duplicates.
+- **`machine-gcode-emit` manifest churn.** The module's manifest is shared with packets 253, 267 and the P18/P20 work; the eight new keys are additive and the manifest assertions re-derive the key set from disk. The module's schema-guard tests (if any assert an exact key set) must be re-derived in the same step.
+- **Travel-path blast radius.** The six `travel_point_*` placeholders resolve only when the host injects them (multi-tool prints). A multi-tool fixture whose `change_filament_gcode` template references them will now resolve instead of passing through verbatim — re-derive with `rg -n 'travel_point' modules crates` before Step 6. The CONFIG_BLOCK of multi-tool prints gains six lines (DIV-3) — re-derive any fixture asserting an exact CONFIG_BLOCK line count.
 
 ## Context Cost
 
-`L` in aggregate (one M module step, one M registration step, two M/S wiring steps, one S docs step). No single step is L. If Step 2's registration sprawls, split the integrated-registry edit from the workspace-member edit rather than escalating the band.
+`L` in aggregate (one M module step, one M registration step, two M/S wiring steps, one M travel-path step, one S host-injection step, one M integration step, one S docs step). No single step is L. If Step 2's registration sprawls, split the integrated-registry edit from the workspace-member edit rather than escalating the band.
 
 ## Open Questions
 
 - **`[FWD]` — a per-object footprint host service.** Tightening DIV-1 from a sampled probe to a true footprint polygon needs a new `slicer:common/host-services` function (e.g. returning the object's XY outline) and therefore a WIT change. Named here, out of scope, and the natural companion to the P18/P19 print-volume packets that will share this module.
 - **`[FWD]` — `claim:print-validation`.** If a second validator ever ships, the two will need a conflict rule. One module needs no claim; two might.
+- **`[FWD]` — object enumeration at the postpass seam.** DIV-3's host-computed transport exists because a `GCodePostProcess` module cannot enumerate objects and ADR-0050 §2 forbids a computed-value insertion into the lookup. A future `object-ids` / `object-count` host service would let a module read object bounds directly, and a future ADR amendment could admit a computed-value source; either would retire the host-computed `travel_point_*` keys. Both are WIT/ADR changes and separate packets.
 - No `[BLOCK]`.
