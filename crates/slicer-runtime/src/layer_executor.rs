@@ -779,7 +779,8 @@ fn execute_single_layer(
 
 #[derive(Clone, Copy)]
 /// Per-run tool selection: the filament indices chosen for support and
-/// interface paths, plus the number of tools the machine has configured.
+/// interface paths, the per-feature filament selectors, plus the number of
+/// tools the machine has configured.
 pub struct SupportToolSelection {
     /// Filament index used for support paths.
     pub support_tool: u32,
@@ -789,6 +790,9 @@ pub struct SupportToolSelection {
     /// guest-authored [`slicer_ir::ExtrusionPath3D::tool_index`]: an authored
     /// index is honored only when it is `< tool_count`.
     pub tool_count: u32,
+    /// Per-feature filament selectors (canonical `*_filament_id` family).
+    /// `None` per field means inherit — the existing resolution decides.
+    pub feature_filaments: FeatureFilamentSelection,
 }
 
 impl Default for SupportToolSelection {
@@ -801,8 +805,36 @@ impl Default for SupportToolSelection {
             support_tool: 0,
             interface_tool: 0,
             tool_count: 1,
+            feature_filaments: FeatureFilamentSelection::default(),
         }
     }
+}
+
+/// Per-run filament selection for model features: the canonical
+/// `*_filament_id` family (`sparse_infill_filament_id`,
+/// `internal_solid_filament_id`, `top_surface_filament_id`,
+/// `bottom_surface_filament_id`, `inner_wall_filament_id`,
+/// `outer_wall_filament_id`; coInt, default 0 = Default/inherit).
+/// Each field is the explicit 0-based tool when the run configured a
+/// non-zero selector, and `None` when the key is 0/absent/invalid — inherit,
+/// i.e. the existing paint/variant/spatial/modifier resolution decides.
+/// Parsed from the raw config source beside [`SupportToolSelection`] (see
+/// `crate::run::parse_support_tool_selection`); runtime-only like the
+/// support selectors, never a module-manifest key.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FeatureFilamentSelection {
+    /// Explicit tool for sparse infill, if configured.
+    pub sparse: Option<u32>,
+    /// Explicit tool for internal solid infill, if configured.
+    pub internal_solid: Option<u32>,
+    /// Explicit tool for top solid surfaces (and ironing), if configured.
+    pub top_surface: Option<u32>,
+    /// Explicit tool for bottom solid surfaces, if configured.
+    pub bottom_surface: Option<u32>,
+    /// Explicit tool for inner walls, if configured.
+    pub inner_wall: Option<u32>,
+    /// Explicit tool for outer walls, if configured.
+    pub outer_wall: Option<u32>,
 }
 
 fn execute_single_layer_inner(
@@ -2105,6 +2137,36 @@ fn dominant_tool_index(flags: &[WallFeatureFlags]) -> Option<u64> {
     counts.iter().max_by_key(|(_, c)| **c).map(|(ti, _)| *ti)
 }
 
+/// Map an extrusion role to the configured feature-filament selector, if any.
+///
+/// Ports canonical `LayerTools::extruder` (`GCode/ToolOrdering.cpp`): solid
+/// collections read `top_surface_filament_id` for top-surface or ironing
+/// roles, `bottom_surface_filament_id` for bottom-surface roles, and
+/// `internal_solid_filament_id` otherwise; non-solid infill reads
+/// `sparse_infill_filament_id`; perimeters read `inner_wall_filament_id` for
+/// the inner role and `outer_wall_filament_id` for anything else. The port's
+/// roles are per path rather than per collection, so the collection-level
+/// else-branches land per role: `ThinWall` and `GapFill` read the outer
+/// selector, bridge roles read the sparse selector. Roles outside the feature
+/// family (support, skirt/brim, raft, towers, custom) return `None` and keep
+/// their existing resolution.
+fn feature_tool_for_role(
+    selection: &FeatureFilamentSelection,
+    role: &slicer_ir::ExtrusionRole,
+) -> Option<u64> {
+    use slicer_ir::ExtrusionRole as R;
+    let tool = match role {
+        R::OuterWall | R::ThinWall | R::GapFill => selection.outer_wall,
+        R::InnerWall => selection.inner_wall,
+        R::SparseInfill | R::BridgeInfill | R::InternalBridgeInfill => selection.sparse,
+        R::InternalSolidInfill => selection.internal_solid,
+        R::TopSolidInfill | R::Ironing => selection.top_surface,
+        R::BottomSolidInfill => selection.bottom_surface,
+        _ => None,
+    };
+    tool.map(u64::from)
+}
+
 /// Assemble ordered entities and their support-attribution side table.
 ///
 /// The side table is keyed by the stable `PrintEntity.entity_id`, so a path
@@ -2329,6 +2391,10 @@ pub fn assemble_ordered_entities_with_support_identities(
                         spatial_tool
                     })
                     .or(modifier_tool)
+                    .or(feature_tool_for_role(
+                        &support_tools.feature_filaments,
+                        &wl.path.role,
+                    ))
                     .unwrap_or(DEFAULT_TOOL);
                 let entity_key = RegionKey {
                     global_layer_index,
@@ -2394,7 +2460,9 @@ pub fn assemble_ordered_entities_with_support_identities(
                     .map(u64::from);
                 // MMU topology closure: prefer `variant_tool` over the
                 // spatial fallback for tagged regions, matching the wall-loop
-                // resolver above.
+                // resolver above. Below every paint-derived source, an
+                // explicit feature-filament selector (`*_filament_id`, paint
+                // wins by map ruling) applies before the default tool.
                 let resolved_tool = authored_tool
                     .or(variant_tool)
                     .or(if infill_region_is_tagged {
@@ -2402,6 +2470,10 @@ pub fn assemble_ordered_entities_with_support_identities(
                     } else {
                         spatial_tool
                     })
+                    .or(feature_tool_for_role(
+                        &support_tools.feature_filaments,
+                        &role,
+                    ))
                     .unwrap_or(DEFAULT_TOOL);
                 let key = RegionKey {
                     global_layer_index,
@@ -3838,8 +3910,8 @@ mod tests {
                 requesting_feature: String::new(),
                 source_plan_entry: String::new(),
             },
-            path_points: vec![slicer_ir::Point3WithWidth { // exhaustive: fixture pins every field
-                // exhaustive: fixture pins every field
+            // exhaustive: fixture pins every field
+            path_points: vec![slicer_ir::Point3WithWidth {
                 x: 0.0,
                 y: 0.0,
                 z: 0.2,
@@ -4136,5 +4208,338 @@ mod tests {
                 entity.region_key.region_id
             );
         }
+    }
+
+    /// Every `*_filament_id` key drives the tool of its own roles and no
+    /// other: the six-key family routed through one role→tool map (canonical
+    /// `LayerTools::extruder`, `GCode/ToolOrdering.cpp`). Run with:
+    ///   cargo test -p slicer-runtime -- feature_filament_selection_routes_each_role
+    #[test]
+    fn feature_filament_selection_routes_each_role_to_its_configured_tool() {
+        use slicer_ir::{
+            ExtrusionPath3D, ExtrusionRole, InfillIR, InfillRegion, LoopType, PerimeterIR,
+            PerimeterRegion, Point3WithWidth, SemVer, WallBoundaryType, WallFeatureFlags, WallLoop,
+            WidthProfile,
+        };
+
+        let schema_version = SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        };
+        fn path(role: ExtrusionRole) -> ExtrusionPath3D {
+            let pt = Point3WithWidth {
+                x: 1.0,
+                y: 1.0,
+                z: 0.2,
+                width: 0.4,
+                flow_factor: 1.0,
+                overhang_quartile: None,
+                overhang_distance_mm: None,
+                ..Default::default()
+            };
+            // exhaustive: this test intentionally pins the path defaults.
+            ExtrusionPath3D {
+                points: vec![pt, pt],
+                role,
+                speed_factor: 1.0,
+                tool_index: None,
+                order_lock: None,
+            }
+        }
+        fn wall(role: ExtrusionRole) -> WallLoop {
+            // exhaustive: WallLoop explicit test fixture preserves boundary data
+            WallLoop {
+                perimeter_index: 0,
+                loop_type: LoopType::Outer,
+                path: path(role),
+                width_profile: WidthProfile::default(),
+                feature_flags: vec![WallFeatureFlags {
+                    tool_index: None,
+                    ..Default::default()
+                }],
+                boundary_type: WallBoundaryType::Interior,
+            }
+        }
+
+        let perimeter = PerimeterIR {
+            schema_version,
+            global_layer_index: 0,
+            regions: vec![PerimeterRegion {
+                object_id: "obj".to_string(),
+                region_id: 0,
+                walls: vec![
+                    wall(ExtrusionRole::OuterWall),
+                    wall(ExtrusionRole::InnerWall),
+                    wall(ExtrusionRole::ThinWall),
+                    wall(ExtrusionRole::GapFill),
+                ],
+                infill_areas: Vec::new(),
+                seam_candidates: Vec::new(),
+                resolved_seam: None,
+                ..Default::default()
+            }],
+        };
+        let infill = InfillIR {
+            schema_version,
+            global_layer_index: 0,
+            // exhaustive: every region vector pinned so an unrouted role fails here
+            regions: vec![InfillRegion {
+                object_id: "obj".to_string(),
+                region_id: 0,
+                sparse_infill: vec![
+                    path(ExtrusionRole::SparseInfill),
+                    path(ExtrusionRole::BridgeInfill),
+                    path(ExtrusionRole::Custom("unknown".to_string())),
+                ],
+                solid_infill: vec![
+                    path(ExtrusionRole::InternalSolidInfill),
+                    path(ExtrusionRole::TopSolidInfill),
+                    path(ExtrusionRole::BottomSolidInfill),
+                ],
+                ironing: vec![path(ExtrusionRole::Ironing)],
+                internal_bridge_infill: vec![path(ExtrusionRole::InternalBridgeInfill)],
+            }],
+        };
+
+        // One distinct tool per key; the `Custom` role has no selector.
+        let selection = super::SupportToolSelection {
+            tool_count: 7,
+            // exhaustive: one distinct tool per key is the test's point
+            feature_filaments: super::FeatureFilamentSelection {
+                sparse: Some(1),
+                internal_solid: Some(2),
+                top_surface: Some(3),
+                bottom_surface: Some(4),
+                inner_wall: Some(5),
+                outer_wall: Some(6),
+            },
+            ..Default::default()
+        };
+        let entities = super::assemble_ordered_entities_with_support_identities(
+            0,
+            Some(&perimeter),
+            Some(&infill),
+            None,
+            None,
+            None,
+            selection,
+        )
+        .0;
+
+        assert_eq!(
+            entities
+                .iter()
+                .map(|entity| entity.tool_index)
+                .collect::<Vec<_>>(),
+            // walls: outer/inner/thin/gap — then sparse, bridge, custom(0),
+            // internal-solid, top, bottom, ironing(top), internal-bridge(sparse)
+            vec![6, 5, 6, 6, 1, 1, 0, 2, 3, 4, 3, 1]
+        );
+    }
+
+    /// Default (all-inherit) selection changes nothing: every role keeps the
+    /// pre-existing resolution (tool 0 with no paint, variant, or modifier).
+    #[test]
+    fn feature_filament_selection_default_is_identity() {
+        use slicer_ir::{
+            ExtrusionPath3D, ExtrusionRole, InfillIR, InfillRegion, LoopType, PerimeterIR,
+            PerimeterRegion, Point3WithWidth, SemVer, WallBoundaryType, WallFeatureFlags, WallLoop,
+            WidthProfile,
+        };
+
+        let schema_version = SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        };
+        let pt = Point3WithWidth {
+            x: 1.0,
+            y: 1.0,
+            z: 0.2,
+            width: 0.4,
+            flow_factor: 1.0,
+            overhang_quartile: None,
+            overhang_distance_mm: None,
+            ..Default::default()
+        };
+        // exhaustive: this test intentionally pins the path defaults.
+        let wall_path = ExtrusionPath3D {
+            points: vec![pt, pt],
+            role: ExtrusionRole::OuterWall,
+            speed_factor: 1.0,
+            tool_index: None,
+            order_lock: None,
+        };
+        // exhaustive: WallLoop explicit test fixture preserves boundary data
+        let wall = WallLoop {
+            perimeter_index: 0,
+            loop_type: LoopType::Outer,
+            path: wall_path.clone(),
+            width_profile: WidthProfile::default(),
+            feature_flags: vec![WallFeatureFlags {
+                tool_index: None,
+                ..Default::default()
+            }],
+            boundary_type: WallBoundaryType::Interior,
+        };
+        let perimeter = PerimeterIR {
+            schema_version,
+            global_layer_index: 0,
+            regions: vec![PerimeterRegion {
+                object_id: "obj".to_string(),
+                region_id: 0,
+                walls: vec![wall],
+                infill_areas: Vec::new(),
+                seam_candidates: Vec::new(),
+                resolved_seam: None,
+                ..Default::default()
+            }],
+        };
+        let infill = InfillIR {
+            schema_version,
+            global_layer_index: 0,
+            regions: vec![InfillRegion {
+                object_id: "obj".to_string(),
+                region_id: 0,
+                sparse_infill: vec![wall_path.clone()],
+                solid_infill: vec![ExtrusionPath3D {
+                    role: ExtrusionRole::TopSolidInfill,
+                    ..wall_path.clone()
+                }],
+                ..Default::default()
+            }],
+        };
+
+        let entities = super::assemble_ordered_entities_with_support_identities(
+            0,
+            Some(&perimeter),
+            Some(&infill),
+            None,
+            None,
+            None,
+            super::SupportToolSelection::default(),
+        )
+        .0;
+
+        assert!(!entities.is_empty());
+        assert!(entities.iter().all(|entity| entity.tool_index == 0));
+    }
+
+    /// Map ruling Q4: a paint-derived tool wins over an explicit
+    /// feature-filament selector; the selector applies where paint is silent.
+    #[test]
+    fn paint_derived_tool_wins_over_feature_filament_selection() {
+        use slicer_ir::{
+            ExtrusionPath3D, ExtrusionRole, InfillIR, InfillRegion, LoopType, PerimeterIR,
+            PerimeterRegion, Point3WithWidth, SemVer, WallBoundaryType, WallFeatureFlags, WallLoop,
+            WidthProfile,
+        };
+
+        let schema_version = SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        };
+        let pt = Point3WithWidth {
+            x: 1.0,
+            y: 1.0,
+            z: 0.2,
+            width: 0.4,
+            flow_factor: 1.0,
+            overhang_quartile: None,
+            overhang_distance_mm: None,
+            ..Default::default()
+        };
+        // exhaustive: this test intentionally pins the path defaults.
+        let painted_path = ExtrusionPath3D {
+            points: vec![pt, pt],
+            role: ExtrusionRole::OuterWall,
+            speed_factor: 1.0,
+            tool_index: None,
+            order_lock: None,
+        };
+        // exhaustive: WallLoop explicit test fixture preserves boundary data
+        let painted_wall = WallLoop {
+            perimeter_index: 0,
+            loop_type: LoopType::Outer,
+            path: painted_path,
+            width_profile: WidthProfile::default(),
+            feature_flags: vec![WallFeatureFlags {
+                tool_index: Some(2),
+                ..Default::default()
+            }],
+            boundary_type: WallBoundaryType::Interior,
+        };
+        // exhaustive: WallLoop explicit test fixture preserves boundary data
+        let plain_wall = WallLoop {
+            perimeter_index: 1,
+            loop_type: LoopType::Outer,
+            // exhaustive: this test intentionally pins the path defaults.
+            path: ExtrusionPath3D {
+                points: vec![pt, pt],
+                role: ExtrusionRole::OuterWall,
+                speed_factor: 1.0,
+                tool_index: None,
+                order_lock: None,
+            },
+            width_profile: WidthProfile::default(),
+            feature_flags: vec![WallFeatureFlags {
+                tool_index: None,
+                ..Default::default()
+            }],
+            boundary_type: WallBoundaryType::Interior,
+        };
+        let perimeter = PerimeterIR {
+            schema_version,
+            global_layer_index: 0,
+            regions: vec![PerimeterRegion {
+                object_id: "obj".to_string(),
+                region_id: 0,
+                walls: vec![painted_wall, plain_wall],
+                infill_areas: Vec::new(),
+                seam_candidates: Vec::new(),
+                resolved_seam: None,
+                ..Default::default()
+            }],
+        };
+        let infill = InfillIR {
+            schema_version,
+            global_layer_index: 0,
+            regions: vec![InfillRegion {
+                object_id: "obj".to_string(),
+                region_id: 0,
+                sparse_infill: Vec::new(),
+                solid_infill: Vec::new(),
+                ..Default::default()
+            }],
+        };
+
+        let selection = super::SupportToolSelection {
+            tool_count: 3,
+            feature_filaments: super::FeatureFilamentSelection {
+                outer_wall: Some(1),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let entities = super::assemble_ordered_entities_with_support_identities(
+            0,
+            Some(&perimeter),
+            Some(&infill),
+            None,
+            None,
+            None,
+            selection,
+        )
+        .0;
+
+        assert_eq!(
+            entities
+                .iter()
+                .map(|entity| entity.tool_index)
+                .collect::<Vec<_>>(),
+            vec![2, 1]
+        );
     }
 }

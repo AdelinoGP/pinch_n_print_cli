@@ -49,6 +49,41 @@ where
         support_tool: rebase("support_filament"),
         interface_tool: rebase("support_interface_filament"),
         tool_count,
+        feature_filaments: parse_feature_filament_selection(&config_source, tool_count),
+    }
+}
+
+/// Parse the six canonical feature-filament selectors (`*_filament_id`,
+/// coInt, default 0 = Default/inherit) into explicit 0-based tools.
+///
+/// A configured value N ≥ 1 selects tool N−1, clamped to the configured tool
+/// count (the canonical `clamp_feature_filament_to_valid` shape — unlike the
+/// support selectors above, which reject out-of-range values to tool 0, an
+/// out-of-range explicit selector clamps to the last configured tool).
+/// A 0, absent, negative, or non-`Int` spelling means inherit (`None`): the
+/// existing paint/variant/spatial/modifier resolution decides, so a default
+/// profile never changes any tool assignment.
+fn parse_feature_filament_selection<K>(
+    config_source: &std::collections::HashMap<K, ConfigValue>,
+    tool_count: u32,
+) -> crate::layer_executor::FeatureFilamentSelection
+where
+    K: std::borrow::Borrow<str> + Eq + std::hash::Hash,
+{
+    let selector = |key: &str| match config_source.get(key) {
+        Some(ConfigValue::Int(value)) if *value >= 1 => {
+            let rebased = u32::try_from(value.saturating_sub(1)).unwrap_or(u32::MAX);
+            Some(rebased.min(tool_count.saturating_sub(1)))
+        }
+        _ => None,
+    };
+    crate::layer_executor::FeatureFilamentSelection {
+        sparse: selector("sparse_infill_filament_id"),
+        internal_solid: selector("internal_solid_filament_id"),
+        top_surface: selector("top_surface_filament_id"),
+        bottom_surface: selector("bottom_surface_filament_id"),
+        inner_wall: selector("inner_wall_filament_id"),
+        outer_wall: selector("outer_wall_filament_id"),
     }
 }
 
@@ -1311,7 +1346,8 @@ pub fn prepare_prepass_context(
 #[cfg(test)]
 mod tests {
     use super::{
-        emit_host_support_diagnostics, parse_support_tool_selection, resolve_support_line_width_mm,
+        emit_host_support_diagnostics, parse_feature_filament_selection,
+        parse_support_tool_selection, resolve_support_line_width_mm,
     };
     use slicer_ir::resolved_config::ResolvedFloatOrPercent;
     use slicer_ir::{ConfigValue, Diagnostic, DiagnosticSeverity};
@@ -1421,6 +1457,105 @@ mod tests {
         let selection = parse_support_tool_selection(&extreme);
         assert_eq!(selection.support_tool, 0);
         assert_eq!(selection.interface_tool, 0);
+    }
+
+    #[test]
+    fn parse_feature_filament_selection_rebases_configured_one_based_indices() {
+        let absent = HashMap::<String, ConfigValue>::new();
+        let selection = parse_feature_filament_selection(&absent, 1);
+        assert_eq!(selection.sparse, None);
+        assert_eq!(selection.internal_solid, None);
+        assert_eq!(selection.top_surface, None);
+        assert_eq!(selection.bottom_surface, None);
+        assert_eq!(selection.inner_wall, None);
+        assert_eq!(selection.outer_wall, None);
+
+        // Three configured tools; every key carries a 1-based Orca index.
+        let mut configured = HashMap::new();
+        configured.insert(
+            "filament_density".to_string(),
+            ConfigValue::List(vec![
+                ConfigValue::Float(1.24),
+                ConfigValue::Float(1.24),
+                ConfigValue::Float(1.24),
+            ]),
+        );
+        configured.insert("sparse_infill_filament_id".to_string(), ConfigValue::Int(2));
+        configured.insert(
+            "internal_solid_filament_id".to_string(),
+            ConfigValue::Int(3),
+        );
+        configured.insert("top_surface_filament_id".to_string(), ConfigValue::Int(1));
+        configured.insert(
+            "bottom_surface_filament_id".to_string(),
+            ConfigValue::Int(3),
+        );
+        configured.insert("inner_wall_filament_id".to_string(), ConfigValue::Int(2));
+        configured.insert("outer_wall_filament_id".to_string(), ConfigValue::Int(1));
+        let selection = parse_support_tool_selection(&configured);
+        assert_eq!(selection.tool_count, 3);
+        let features = selection.feature_filaments;
+        assert_eq!(features.sparse, Some(1));
+        assert_eq!(features.internal_solid, Some(2));
+        assert_eq!(features.top_surface, Some(0));
+        assert_eq!(features.bottom_surface, Some(2));
+        assert_eq!(features.inner_wall, Some(1));
+        assert_eq!(features.outer_wall, Some(0));
+    }
+
+    #[test]
+    fn parse_feature_filament_selection_zero_and_invalid_mean_inherit() {
+        // Canonical 0 = Default: inherit, never an explicit tool — so the
+        // parser yields `None`, and so do absent, negative, and non-`Int`
+        // spellings (the support-selector precedent maps those to tool 0;
+        // here tool 0 must stay reachable only as an explicit `1`).
+        let mut zero = HashMap::new();
+        zero.insert("sparse_infill_filament_id".to_string(), ConfigValue::Int(0));
+        zero.insert(
+            "outer_wall_filament_id".to_string(),
+            ConfigValue::Float(2.0),
+        );
+        zero.insert(
+            "inner_wall_filament_id".to_string(),
+            ConfigValue::String("2".to_string()),
+        );
+        zero.insert("top_surface_filament_id".to_string(), ConfigValue::Int(-1));
+        let selection = parse_feature_filament_selection(&zero, 3);
+        assert_eq!(selection.sparse, None);
+        assert_eq!(selection.outer_wall, None);
+        assert_eq!(selection.inner_wall, None);
+        assert_eq!(selection.top_surface, None);
+        assert_eq!(selection.internal_solid, None);
+        assert_eq!(selection.bottom_surface, None);
+    }
+
+    #[test]
+    fn parse_feature_filament_selection_clamps_explicit_index_to_tool_count() {
+        // Canonical `clamp_feature_filament_to_valid`: an explicit index past
+        // the last configured tool clamps to it instead of rejecting.
+        let mut clamped = HashMap::new();
+        clamped.insert(
+            "filament_density".to_string(),
+            ConfigValue::List(vec![ConfigValue::Float(1.24), ConfigValue::Float(1.24)]),
+        );
+        clamped.insert("sparse_infill_filament_id".to_string(), ConfigValue::Int(9));
+        clamped.insert(
+            "outer_wall_filament_id".to_string(),
+            ConfigValue::Int(i64::MAX),
+        );
+        let selection = parse_support_tool_selection(&clamped);
+        assert_eq!(selection.tool_count, 2);
+        assert_eq!(selection.feature_filaments.sparse, Some(1));
+        assert_eq!(selection.feature_filaments.outer_wall, Some(1));
+
+        // A single-tool machine folds every explicit selector onto tool 0.
+        let mut single = HashMap::new();
+        single.insert(
+            "bottom_surface_filament_id".to_string(),
+            ConfigValue::Int(4),
+        );
+        let selection = parse_feature_filament_selection(&single, 1);
+        assert_eq!(selection.bottom_surface, Some(0));
     }
 
     #[test]
