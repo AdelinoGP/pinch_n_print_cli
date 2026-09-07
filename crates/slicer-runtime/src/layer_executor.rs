@@ -805,6 +805,28 @@ impl Default for SupportToolSelection {
     }
 }
 
+/// Prepare only the region projection consumed by the current layer export.
+/// Stages that marshal only perimeter IR (or no region view at all) do not pay
+/// for the corresponding derived-region allocation.
+fn prepare_dispatch_region_views(arena: &mut LayerArena, stage_id: &str, blackboard: &Blackboard) {
+    let surface = blackboard
+        .surface_classification()
+        .map(|classification| classification.as_ref());
+    match stage_id {
+        "Layer::Perimeters" => {
+            arena.ensure_prepared_perimeter_source_regions(surface);
+        }
+        "Layer::Infill"
+        | "Layer::SlicePostProcess"
+        | "Layer::Support"
+        | "Layer::AnchoredEvents"
+        | "Layer::SupportPostProcess" => {
+            arena.ensure_prepared_regions(surface);
+        }
+        _ => {}
+    }
+}
+
 fn execute_single_layer_inner(
     plan: &ExecutionPlan,
     blackboard: &Blackboard,
@@ -914,6 +936,9 @@ fn execute_single_layer_inner(
             if let Some(entry) = native_entry {
                 live_module = live_module.with_native_entry(entry);
             }
+            prepare_dispatch_region_views(&mut arena, &stage.stage_id, blackboard);
+            let prepared_regions = arena.prepared_regions();
+            let prepared_perimeter_source_regions = arena.prepared_perimeter_source_regions();
             let input = LayerStageInput {
                 mesh: Arc::clone(blackboard.mesh()),
                 paint_regions: None,
@@ -925,6 +950,8 @@ fn execute_single_layer_inner(
                 perimeter: arena.perimeter(),
                 layer_collection: arena.layer_collection(),
                 surface_classification: blackboard.surface_classification().map(|a| a.as_ref()),
+                prepared_regions,
+                prepared_perimeter_source_regions,
                 // Committed InfillIR is only marshalled into the
                 // `prior-infill` parameter of `run-infill-postprocess`
                 // (ADR-0028 Option 1b); every other stage gets `None`.
@@ -1766,6 +1793,9 @@ pub fn execute_captured_stages_with_support_tools(
                 if let Some(entry) = native_entry {
                     live_module = live_module.with_native_entry(entry);
                 }
+                prepare_dispatch_region_views(&mut arena, &stage.stage_id, blackboard);
+                let prepared_regions = arena.prepared_regions();
+                let prepared_perimeter_source_regions = arena.prepared_perimeter_source_regions();
                 let input = LayerStageInput {
                     mesh: Arc::clone(blackboard.mesh()),
                     paint_regions: None,
@@ -1777,6 +1807,8 @@ pub fn execute_captured_stages_with_support_tools(
                     perimeter: arena.perimeter(),
                     layer_collection: arena.layer_collection(),
                     surface_classification: blackboard.surface_classification().map(|a| a.as_ref()),
+                    prepared_regions,
+                    prepared_perimeter_source_regions,
                     // Same gating as `execute_per_layer`: the committed
                     // InfillIR feeds only `run-infill-postprocess`.
                     infill: if stage.stage_id == "Layer::InfillPostProcess" {
@@ -3855,8 +3887,8 @@ mod tests {
                 requesting_feature: String::new(),
                 source_plan_entry: String::new(),
             },
-            path_points: vec![slicer_ir::Point3WithWidth { // exhaustive: fixture pins every field
-                // exhaustive: fixture pins every field
+            // exhaustive: fixture pins every Point3WithWidth field
+            path_points: vec![slicer_ir::Point3WithWidth {
                 x: 0.0,
                 y: 0.0,
                 z: 0.2,

@@ -382,6 +382,25 @@ pub fn sliced_region_to_data(
     surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
     global_layer_index: u32,
 ) -> SliceRegionData {
+    sliced_region_to_data_with_prepared(
+        region,
+        z,
+        held_claims,
+        surface_classification,
+        global_layer_index,
+        None,
+    )
+}
+
+/// Convert a region while consuming arena-prepared derived fields when present.
+pub fn sliced_region_to_data_with_prepared(
+    region: &slicer_ir::SlicedRegion,
+    z: f32,
+    held_claims: Vec<String>,
+    surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
+    global_layer_index: u32,
+    prepared: Option<&slicer_ir::PreparedRegionData>,
+) -> SliceRegionData {
     let view = slicer_sdk::views::SliceRegionView::from_ir(region, z, held_claims);
     let segment_annotations: Vec<SegmentAnnotationsEntry> = region
         .segment_annotations
@@ -411,22 +430,37 @@ pub fn sliced_region_to_data(
 
     // Resolve the surface group from SurfaceClassificationIR if available.
     let surface_group: Option<crate::host::layer::slicer::ir_handles::ir_handles::SurfaceGroup> =
-        region.nonplanar_surface.and_then(|sg_id| {
-            surface_classification
-                .and_then(|sc| sc.per_object.get(&region.object_id))
-                .and_then(|obj| obj.surface_groups.iter().find(|g| g.id == sg_id))
-                .map(
-                    |g| crate::host::layer::slicer::ir_handles::ir_handles::SurfaceGroup {
-                        id: g.id,
-                        facet_indices: g.facet_indices.clone(),
-                        z_min: g.z_min,
-                        z_max: g.z_max,
-                        area_mm2: g.area_mm2,
-                        printable: g.printable,
-                        shell_count: g.shell_count,
-                    },
-                )
-        });
+        prepared
+            .and_then(|p| p.surface_group.as_ref())
+            .map(
+                |g| crate::host::layer::slicer::ir_handles::ir_handles::SurfaceGroup {
+                    id: g.id,
+                    facet_indices: g.facet_indices.clone(),
+                    z_min: g.z_min,
+                    z_max: g.z_max,
+                    area_mm2: g.area_mm2,
+                    printable: g.printable,
+                    shell_count: g.shell_count,
+                },
+            )
+            .or_else(|| {
+                region.nonplanar_surface.and_then(|sg_id| {
+                    surface_classification
+                        .and_then(|sc| sc.per_object.get(&region.object_id))
+                        .and_then(|obj| obj.surface_groups.iter().find(|g| g.id == sg_id))
+                        .map(
+                            |g| crate::host::layer::slicer::ir_handles::ir_handles::SurfaceGroup {
+                                id: g.id,
+                                facet_indices: g.facet_indices.clone(),
+                                z_min: g.z_min,
+                                z_max: g.z_max,
+                                area_mm2: g.area_mm2,
+                                printable: g.printable,
+                                shell_count: g.shell_count,
+                            },
+                        )
+                })
+            });
 
     // Clip this layer's overhang quartile bands to this region's own polygon
     // area. AC-1 requires bands to be exactly pre-filtered to the region's
@@ -441,58 +475,78 @@ pub fn sliced_region_to_data(
     let region_bbox = expolygons_bbox(&region.polygons);
     let overhang_quartile_polygons: Vec<
         crate::host::layer::slicer::ir_handles::ir_handles::QuartileBand,
-    > = surface_classification
-        .and_then(|sc| {
-            sc.overhang_quartile_polygons
-                .get(&region.object_id)
-                .and_then(|by_layer| by_layer.get(&global_layer_index))
-        })
-        .map(|bands| {
-            bands
+    > = prepared
+        .map(|p| {
+            p.overhang_quartile_polygons
                 .iter()
-                .filter_map(|band| {
-                    let prefiltered: Vec<slicer_ir::ExPolygon> = band
-                        .polygons
+                .map(
+                    |band| crate::host::layer::slicer::ir_handles::ir_handles::QuartileBand {
+                        quartile: band.quartile,
+                        polygons: ir_to_wit_expolygons(&band.polygons),
+                    },
+                )
+                .collect()
+        })
+        .unwrap_or_else(|| {
+            surface_classification
+                .and_then(|sc| {
+                    sc.overhang_quartile_polygons
+                        .get(&region.object_id)
+                        .and_then(|by_layer| by_layer.get(&global_layer_index))
+                })
+                .map(|bands| {
+                    bands
                         .iter()
-                        .filter(|poly| match region_bbox {
-                            Some(rb) => bbox_overlaps(rb, poly),
-                            None => false,
-                        })
-                        .cloned()
-                        .collect();
-                    if prefiltered.is_empty() {
-                        return None;
-                    }
-                    let clipped: Vec<slicer_ir::ExPolygon> =
-                        slicer_core::polygon_ops::intersection_ex(&prefiltered, &region.polygons);
-                    if clipped.is_empty() {
-                        None
-                    } else {
-                        Some(
+                        .filter_map(|band| {
+                            let prefiltered: Vec<slicer_ir::ExPolygon> = band
+                                .polygons
+                                .iter()
+                                .filter(|poly| match region_bbox {
+                                    Some(rb) => bbox_overlaps(rb, poly),
+                                    None => false,
+                                })
+                                .cloned()
+                                .collect();
+                            if prefiltered.is_empty() {
+                                return None;
+                            }
+                            let clipped: Vec<slicer_ir::ExPolygon> =
+                                slicer_core::polygon_ops::intersection_ex(
+                                    &prefiltered,
+                                    &region.polygons,
+                                );
+                            if clipped.is_empty() {
+                                None
+                            } else {
+                                Some(
                             crate::host::layer::slicer::ir_handles::ir_handles::QuartileBand {
                                 quartile: band.quartile,
                                 polygons: ir_to_wit_expolygons(&clipped),
                             },
                         )
-                    }
+                            }
+                        })
+                        .collect()
                 })
-                .collect()
-        })
-        .unwrap_or_default();
+                .unwrap_or_default()
+        });
     let overhang_areas: Vec<crate::host::layer::slicer::types::geometry::ExPolygon> =
         overhang_quartile_polygons
             .iter()
             .flat_map(|band| band.polygons.clone())
             .collect();
-    let prev_layer_boundary: Vec<crate::host::layer::slicer::types::geometry::ExPolygon> =
-        surface_classification
-            .and_then(|sc| {
-                sc.prev_layer_boundaries
-                    .get(&region.object_id)
-                    .and_then(|by_layer| by_layer.get(&global_layer_index))
-            })
-            .map(|polygons| ir_to_wit_expolygons(polygons))
-            .unwrap_or_default();
+    let prev_layer_boundary: Vec<crate::host::layer::slicer::types::geometry::ExPolygon> = prepared
+        .map(|p| ir_to_wit_expolygons(&p.prev_layer_boundary))
+        .unwrap_or_else(|| {
+            surface_classification
+                .and_then(|sc| {
+                    sc.prev_layer_boundaries
+                        .get(&region.object_id)
+                        .and_then(|by_layer| by_layer.get(&global_layer_index))
+                })
+                .map(|polygons| ir_to_wit_expolygons(polygons))
+                .unwrap_or_default()
+        });
 
     SliceRegionData {
         object_id: view.object_id().clone(),
@@ -504,7 +558,10 @@ pub fn sliced_region_to_data(
         variant_chain,
         has_nonplanar: view.has_nonplanar(),
         segment_annotations,
-        needs_support: view.derive_needs_support(surface_classification),
+        needs_support: prepared.map_or_else(
+            || view.derive_needs_support(surface_classification),
+            |p| p.needs_support,
+        ),
         top_shell_index: view.top_shell_index(),
         bottom_shell_index: view.bottom_shell_index(),
         top_solid_fill: ir_to_wit_expolygons(view.top_solid_fill()),

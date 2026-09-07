@@ -840,9 +840,7 @@ fn place_model_on_bed(
 
     let bed_shape = read_bed_shape(config_path);
     let Some(center) = slicer_model_io::bed_center_mm(&bed_shape) else {
-        eprintln!(
-            "warning: bed_shape does not describe a usable plate; skipping bed placement"
-        );
+        eprintln!("warning: bed_shape does not describe a usable plate; skipping bed placement");
         return mesh;
     };
 

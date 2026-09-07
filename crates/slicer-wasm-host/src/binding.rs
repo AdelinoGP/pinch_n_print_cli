@@ -14,8 +14,8 @@ use std::sync::Arc;
 
 use slicer_ir::{
     ConfigView, InfillIR, LayerCollectionIR, LayerPlanIR, LightningTreeIR, MeshIR, ModuleId,
-    PerimeterIR, RegionMapIR, SeamPlanIR, SliceIR, SupportAnalysisIR, SupportGeometryIR,
-    SupportPlanIR, SurfaceClassificationIR,
+    PerimeterIR, PreparedRegionData, RegionMapIR, SeamPlanIR, SliceIR, SupportAnalysisIR,
+    SupportGeometryIR, SupportPlanIR, SurfaceClassificationIR,
 };
 
 use crate::instance::WasmComponent;
@@ -99,6 +99,11 @@ pub struct LayerStageInput<'a> {
     /// Committed-once global IR from `blackboard.surface_classification()`.
     /// Threaded into `push_slice_regions` so the WIT `surface-group` accessor resolves.
     pub surface_classification: Option<&'a SurfaceClassificationIR>,
+    /// Arena-prepared ordinary region projections, aligned with `slice.regions`.
+    pub prepared_regions: Option<&'a [PreparedRegionData]>,
+    /// Arena-prepared perimeter-source projections, aligned with the reconstructed
+    /// perimeter-source region list.
+    pub prepared_perimeter_source_regions: Option<&'a [PreparedRegionData]>,
     /// Pre-call read from `arena.infill()` — the committed `InfillIR` from
     /// `Layer::Infill`. Marshalled into the `prior-infill` parameter of
     /// `run-infill-postprocess` (ADR-0028 Option 1b). `None` for every other

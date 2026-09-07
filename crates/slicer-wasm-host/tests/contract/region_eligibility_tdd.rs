@@ -75,6 +75,8 @@ fn marshal_needs_support(overhang: ExPolygon) -> (bool, bool) {
         perimeter: None,
         layer_collection: None,
         surface_classification: Some(&classification),
+        prepared_regions: None,
+        prepared_perimeter_source_regions: None,
         infill: None,
     };
     let native = slicer_wasm_host::marshal::native::build_native_layer_request(

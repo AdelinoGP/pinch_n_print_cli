@@ -2920,7 +2920,7 @@ pub use crate::marshal::in_::{
 };
 
 // sliced_region_to_data moved to marshal/in_.rs (packet 113, Step 7 / ADR-0021).
-pub use crate::marshal::in_::sliced_region_to_data;
+pub use crate::marshal::in_::{sliced_region_to_data, sliced_region_to_data_with_prepared};
 
 // ir_to_wit_wall_loop_type, ir_to_wit_extrusion_role moved to marshal/leaf.rs (packet 113).
 // Re-exported above via pub(crate) use crate::marshal::leaf::*.

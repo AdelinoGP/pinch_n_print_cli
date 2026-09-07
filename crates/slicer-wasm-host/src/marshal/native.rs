@@ -287,10 +287,17 @@ pub fn build_native_layer_request(
             } else {
                 slice.regions.as_slice()
             };
+            let region_count = regions.len();
             regions
                 .iter()
-                .chain(carriers.iter())
-                .map(|region| {
+                .enumerate()
+                .chain(
+                    carriers
+                        .iter()
+                        .enumerate()
+                        .map(move |(i, region)| (region_count + i, region)),
+                )
+                .map(|(index, region)| {
                     let mut view = SliceRegionView::from_ir(
                         region,
                         slice.z,
@@ -299,14 +306,33 @@ pub fn build_native_layer_request(
                             .cloned()
                             .unwrap_or_default(),
                     );
-                    view.set_needs_support(view.derive_needs_support(input.surface_classification));
+                    let prepared = if stage_export == "Layer::Perimeters" {
+                        input
+                            .prepared_perimeter_source_regions
+                            .and_then(|data| data.get(index))
+                    } else {
+                        input.prepared_regions.and_then(|data| data.get(index))
+                    };
+                    view.set_needs_support(prepared.map_or_else(
+                        || view.derive_needs_support(input.surface_classification),
+                        |data| data.needs_support,
+                    ));
                     view.set_config((*module.config_view).clone());
-                    populate_surface_classification_fields(
-                        &mut view,
-                        region,
-                        input.surface_classification,
-                        slice.global_layer_index,
-                    );
+                    if let Some(data) = prepared {
+                        view.set_surface_group(data.surface_group.clone());
+                        view.set_overhang_quartile_polygons(
+                            data.overhang_quartile_polygons.clone(),
+                        );
+                        view.set_overhang_areas(data.overhang_areas.clone());
+                        view.set_prev_layer_boundary(data.prev_layer_boundary.clone());
+                    } else {
+                        populate_surface_classification_fields(
+                            &mut view,
+                            region,
+                            input.surface_classification,
+                            slice.global_layer_index,
+                        );
+                    }
                     view
                 })
                 .collect()

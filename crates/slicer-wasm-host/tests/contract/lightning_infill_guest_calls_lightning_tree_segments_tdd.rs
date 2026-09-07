@@ -99,6 +99,8 @@ fn lightning_infill_guest_calls_lightning_tree_segments() {
         perimeter: None,
         layer_collection: None,
         surface_classification: None,
+        prepared_regions: None,
+        prepared_perimeter_source_regions: None,
         infill: None,
     };
 

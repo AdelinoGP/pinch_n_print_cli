@@ -55,6 +55,8 @@ fn native_and_wasm_layer_views_are_field_identical() {
         perimeter: None,
         layer_collection: None,
         surface_classification: None,
+        prepared_regions: None,
+        prepared_perimeter_source_regions: None,
         infill: None,
     };
     let native = slicer_wasm_host::marshal::native::build_native_layer_request(
@@ -212,4 +214,61 @@ fn native_and_wasm_layer_views_are_field_identical() {
     assert_eq!(native.prior_infill, None, "prior_infill");
     assert_eq!(native.config, *module.config_view, "config");
     assert_eq!(native.stage_export, "Layer::Infill", "stage_export");
+}
+
+#[test]
+fn prepared_region_projection_matches_fallback_projection() {
+    let region = SlicedRegion {
+        object_id: "prepared-object".to_owned(),
+        region_id: 9,
+        polygons: vec![ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2 { x: 0, y: 0 },
+                    Point2 { x: 20, y: 0 },
+                    Point2 { x: 0, y: 20 },
+                ],
+            },
+            holes: Vec::new(),
+        }],
+        ..Default::default()
+    };
+    let slice = SliceIR {
+        global_layer_index: 0,
+        regions: vec![region.clone()],
+        ..Default::default()
+    };
+    let prepared = slicer_wasm_host::marshal::prepare_slice_regions(&slice, None);
+    let fallback = slicer_wasm_host::host::sliced_region_to_data(
+        &region,
+        slice.z,
+        Vec::new(),
+        None,
+        slice.global_layer_index,
+    );
+    let reused = slicer_wasm_host::host::sliced_region_to_data_with_prepared(
+        &region,
+        slice.z,
+        Vec::new(),
+        None,
+        slice.global_layer_index,
+        Some(&prepared[0]),
+    );
+    assert_eq!(fallback.object_id, reused.object_id);
+    assert_eq!(fallback.region_id, reused.region_id);
+    assert_eq!(fallback.polygons.len(), reused.polygons.len());
+    assert_eq!(fallback.needs_support, reused.needs_support);
+    assert_eq!(fallback.overhang_areas.len(), reused.overhang_areas.len());
+    assert_eq!(
+        fallback.overhang_quartile_polygons.len(),
+        reused.overhang_quartile_polygons.len()
+    );
+    assert_eq!(
+        fallback.prev_layer_boundary.len(),
+        reused.prev_layer_boundary.len()
+    );
+    assert_eq!(
+        fallback.surface_group.is_some(),
+        reused.surface_group.is_some()
+    );
 }

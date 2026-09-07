@@ -5,10 +5,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
-    BoundingBox3, ExtrusionPath3D, ExtrusionRole, GlobalLayer, InfillIR, LayerCollectionIR,
-    LayerPlanIR, MeshIR, ModuleInvocation, ObjectMesh, ObjectSurfaceData, PerimeterIR, Point3,
-    Point3WithWidth, PrintEntity, RegionKey, RegionMapIR, RegionPlan, SliceIR, SupportIR,
-    SurfaceClassificationIR, ToolChange, Transform3d, ZHop,
+    BoundingBox3, ExPolygon, ExtrusionPath3D, ExtrusionRole, GlobalLayer, InfillIR,
+    LayerCollectionIR, LayerPlanIR, MeshIR, ModuleInvocation, ObjectMesh, ObjectSurfaceData,
+    OverhangRegion, PerimeterIR, Point2, Point3, Point3WithWidth, Polygon, PrintEntity,
+    QuartileBand, RegionKey, RegionMapIR, RegionPlan, SliceIR, SlicedRegion, SupportIR,
+    SurfaceClassificationIR, SurfaceGroup, ToolChange, Transform3d, ZHop,
 };
 use slicer_runtime::{
     Blackboard, BlackboardError, BlackboardPrepassSlot, LayerArena, LayerArenaError, LayerArenaSlot,
@@ -177,6 +178,216 @@ fn layer_arena_contract_stages_ephemeral_intermediates_with_shared_borrows_take_
     assert!(arena.perimeter().is_none());
     assert!(arena.infill().is_none());
     assert!(arena.support().is_none());
+}
+
+#[test]
+fn layer_arena_prepares_both_region_views_once_and_reuses_them() {
+    let classification = prepared_surface_fixture();
+    let mut arena = LayerArena::new();
+    arena
+        .set_slice(prepared_slice_fixture())
+        .expect("slice should stage");
+
+    let ordinary_ptr = {
+        let prepared = arena
+            .ensure_prepared_regions(Some(&classification))
+            .expect("ordinary regions should prepare");
+        assert_prepared_region_fields(&prepared[0]);
+        prepared.as_ptr()
+    };
+    assert_eq!(
+        ordinary_ptr,
+        arena
+            .ensure_prepared_regions(None)
+            .expect("prepared data should be reused without re-derivation")
+            .as_ptr()
+    );
+
+    let perimeter_ptr = arena
+        .ensure_prepared_perimeter_source_regions(Some(&classification))
+        .expect("perimeter-source regions should prepare")
+        .as_ptr();
+    assert_eq!(
+        perimeter_ptr,
+        arena
+            .ensure_prepared_perimeter_source_regions(None)
+            .expect("prepared perimeter data should be reused")
+            .as_ptr()
+    );
+    assert_prepared_region_fields(
+        &arena
+            .prepared_perimeter_source_regions()
+            .expect("perimeter getter should expose prepared data")[0],
+    );
+}
+
+#[test]
+fn layer_arena_take_slice_invalidates_prepared_region_data() {
+    let mut arena = prepared_arena();
+
+    assert!(arena.take_slice().is_some());
+
+    assert!(arena.prepared_regions().is_none());
+    assert!(arena.prepared_perimeter_source_regions().is_none());
+}
+
+#[test]
+fn layer_arena_successful_set_slice_starts_unprepared() {
+    let mut arena = LayerArena::new();
+
+    arena
+        .set_slice(prepared_slice_fixture())
+        .expect("empty slice slot should accept a new slice");
+
+    assert!(arena.prepared_regions().is_none());
+    assert!(arena.prepared_perimeter_source_regions().is_none());
+}
+
+#[test]
+fn layer_arena_reset_clears_prepared_region_data() {
+    let mut arena = prepared_arena();
+
+    arena.reset();
+
+    assert!(arena.prepared_regions().is_none());
+    assert!(arena.prepared_perimeter_source_regions().is_none());
+}
+
+#[test]
+fn layer_arena_failed_set_slice_preserves_existing_prepared_pairing() {
+    let mut arena = prepared_arena();
+    let ordinary_ptr = arena
+        .prepared_regions()
+        .expect("fixture prepares ordinary regions")
+        .as_ptr();
+    let perimeter_ptr = arena
+        .prepared_perimeter_source_regions()
+        .expect("fixture prepares perimeter regions")
+        .as_ptr();
+
+    assert_eq!(
+        arena.set_slice(SliceIR {
+            global_layer_index: 99,
+            ..SliceIR::default()
+        }),
+        Err(LayerArenaError::SlotAlreadyOccupied {
+            slot: LayerArenaSlot::Slice,
+        })
+    );
+
+    assert_eq!(
+        ordinary_ptr,
+        arena
+            .prepared_regions()
+            .expect("failed set must preserve ordinary preparation")
+            .as_ptr()
+    );
+    assert_eq!(
+        perimeter_ptr,
+        arena
+            .prepared_perimeter_source_regions()
+            .expect("failed set must preserve perimeter preparation")
+            .as_ptr()
+    );
+    assert_eq!(
+        arena
+            .slice()
+            .expect("failed set must preserve existing slice")
+            .global_layer_index,
+        7
+    );
+}
+
+fn prepared_arena() -> LayerArena {
+    let classification = prepared_surface_fixture();
+    let mut arena = LayerArena::new();
+    arena
+        .set_slice(prepared_slice_fixture())
+        .expect("fixture slice should stage");
+    arena
+        .ensure_prepared_regions(Some(&classification))
+        .expect("fixture ordinary regions should prepare");
+    arena
+        .ensure_prepared_perimeter_source_regions(Some(&classification))
+        .expect("fixture perimeter regions should prepare");
+    arena
+}
+
+fn assert_prepared_region_fields(prepared: &slicer_ir::PreparedRegionData) {
+    assert!(prepared.needs_support);
+    assert_eq!(
+        prepared.surface_group.as_ref().map(|group| group.id),
+        Some(5)
+    );
+    assert_eq!(prepared.overhang_quartile_polygons.len(), 1);
+    assert_eq!(prepared.overhang_quartile_polygons[0].quartile, 2);
+    assert_eq!(prepared.overhang_areas.len(), 1);
+    assert_eq!(prepared.prev_layer_boundary.len(), 1);
+}
+
+fn prepared_slice_fixture() -> SliceIR {
+    SliceIR {
+        global_layer_index: 7,
+        z: 1.6,
+        regions: vec![SlicedRegion {
+            object_id: "cube".into(),
+            region_id: 3,
+            polygons: vec![rect(0.0, 0.0, 10.0, 10.0)],
+            nonplanar_surface: Some(5),
+            ..SlicedRegion::default()
+        }],
+        ..SliceIR::default()
+    }
+}
+
+fn prepared_surface_fixture() -> SurfaceClassificationIR {
+    SurfaceClassificationIR {
+        per_object: HashMap::from([(
+            "cube".into(),
+            ObjectSurfaceData {
+                surface_groups: vec![SurfaceGroup {
+                    id: 5,
+                    printable: true,
+                    ..SurfaceGroup::default()
+                }],
+                overhang_regions: vec![OverhangRegion {
+                    needs_support: true,
+                    xy_footprint: vec![rect(1.0, 1.0, 2.0, 2.0)],
+                    ..OverhangRegion::default()
+                }],
+                ..ObjectSurfaceData::default()
+            },
+        )]),
+        overhang_quartile_polygons: HashMap::from([(
+            "cube".into(),
+            HashMap::from([(
+                7,
+                vec![QuartileBand {
+                    quartile: 2,
+                    polygons: vec![rect(5.0, 5.0, 15.0, 15.0)],
+                }],
+            )]),
+        )]),
+        prev_layer_boundaries: HashMap::from([(
+            "cube".into(),
+            HashMap::from([(7, vec![rect(0.0, 0.0, 9.0, 9.0)])]),
+        )]),
+        ..SurfaceClassificationIR::default()
+    }
+}
+
+fn rect(x0: f32, y0: f32, x1: f32, y1: f32) -> ExPolygon {
+    ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(x0, y0),
+                Point2::from_mm(x1, y0),
+                Point2::from_mm(x1, y1),
+                Point2::from_mm(x0, y1),
+            ],
+        },
+        holes: Vec::new(),
+    }
 }
 
 fn expect_arc_ref<T>(_: &Arc<T>) {}

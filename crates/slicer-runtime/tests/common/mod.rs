@@ -534,6 +534,8 @@ pub fn layer_input<'a>(blackboard: &'a Blackboard, arena: &'a LayerArena) -> Lay
         perimeter: arena.perimeter(),
         layer_collection: arena.layer_collection(),
         surface_classification: blackboard.surface_classification().map(|a| a.as_ref()),
+        prepared_regions: arena.prepared_regions(),
+        prepared_perimeter_source_regions: arena.prepared_perimeter_source_regions(),
         infill: arena.infill(),
     }
 }

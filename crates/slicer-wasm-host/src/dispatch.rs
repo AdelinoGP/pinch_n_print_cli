@@ -398,6 +398,8 @@ impl WasmRuntimeDispatcher {
         perimeter_ir: Option<&slicer_ir::PerimeterIR>,
         layer_collection: Option<&slicer_ir::LayerCollectionIR>,
         surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
+        prepared_regions: Option<&[slicer_ir::PreparedRegionData]>,
+        prepared_perimeter_source_regions: Option<&[slicer_ir::PreparedRegionData]>,
         region_map: Option<&slicer_ir::RegionMapIR>,
         infill_ir: Option<&slicer_ir::InfillIR>,
         // Packet 137: `PrePass::LightningTreeGen` IR for the live dispatch path.
@@ -502,6 +504,8 @@ impl WasmRuntimeDispatcher {
                     layer,
                     module_claims,
                     false,
+                    prepared_regions,
+                    prepared_perimeter_source_regions,
                 )
                 .map_err(mk_ctx_err)?;
                 let paint_data = build_paint_layer_data_with_plan(
@@ -665,6 +669,8 @@ impl WasmRuntimeDispatcher {
                     layer,
                     module_claims,
                     false,
+                    prepared_regions,
+                    prepared_perimeter_source_regions,
                 )
                 .map_err(mk_ctx_err)?;
                 let paint_data = build_paint_layer_data(None, layer_index);
@@ -746,6 +752,8 @@ impl WasmRuntimeDispatcher {
                     layer,
                     module_claims,
                     true,
+                    prepared_regions,
+                    prepared_perimeter_source_regions,
                 )
                 .map_err(mk_ctx_err)?;
                 let paint_data = build_paint_layer_data(None, layer_index);
@@ -895,6 +903,8 @@ impl WasmRuntimeDispatcher {
                     layer,
                     module_claims,
                     false,
+                    prepared_regions,
+                    prepared_perimeter_source_regions,
                 )
                 .map_err(mk_ctx_err)?;
                 // Ticket 19: planned bodies with no slice geometry on this
@@ -1004,6 +1014,8 @@ impl WasmRuntimeDispatcher {
                     layer,
                     module_claims,
                     false,
+                    prepared_regions,
+                    prepared_perimeter_source_regions,
                 )
                 .map_err(mk_ctx_err)?;
                 let snapshot = project_ordered_entities_from(layer_collection);
@@ -1080,6 +1092,8 @@ impl WasmRuntimeDispatcher {
                     layer,
                     module_claims,
                     false,
+                    prepared_regions,
+                    prepared_perimeter_source_regions,
                 )
                 .map_err(mk_ctx_err)?;
                 let output = store
@@ -2145,6 +2159,8 @@ fn push_slice_regions(
     layer: &GlobalLayer,
     module_claims: &[String],
     perimeter_sources: bool,
+    prepared_regions: Option<&[slicer_ir::PreparedRegionData]>,
+    prepared_perimeter_source_regions: Option<&[slicer_ir::PreparedRegionData]>,
 ) -> Result<Vec<Resource<host::SliceRegionData>>, wasmtime::Error> {
     let slice_ir = match slice_ir {
         Some(ir) => ir,
@@ -2159,7 +2175,7 @@ fn push_slice_regions(
         slice_ir.regions.as_slice()
     };
     let mut handles = Vec::with_capacity(regions.len());
-    for region in regions {
+    for (index, region) in regions.iter().enumerate() {
         if !module_receives_slice_region(module_claims, layer, region) {
             continue;
         }
@@ -2178,12 +2194,18 @@ fn push_slice_regions(
             .data()
             .held_claims_for(&region.object_id, &region.region_id.to_string())
             .to_vec();
-        let data = host::sliced_region_to_data(
+        let data = host::sliced_region_to_data_with_prepared(
             region,
             layer_z,
             held_claims,
             surface_classification,
             slice_ir.global_layer_index,
+            (if perimeter_sources {
+                prepared_perimeter_source_regions
+            } else {
+                prepared_regions
+            })
+            .and_then(|prepared| prepared.get(index)),
         );
         let handle = store.data_mut().push_slice_region(data)?;
         handles.push(handle);
@@ -3042,6 +3064,8 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             input.perimeter,
             input.layer_collection,
             input.surface_classification,
+            input.prepared_regions,
+            input.prepared_perimeter_source_regions,
             input.region_map.as_deref(),
             input.infill,
             input.lightning_tree_ir.as_deref(),

@@ -104,9 +104,11 @@ pub fn run_support_preview(
         // A committed plan is the normal prepass outcome; fall back to an
         // empty plan (no support_body) rather than fail when a planner
         // module did not run.
-        (true, Some(geometry), None) => {
-            build_preview_doc(geometry, &SupportPlanIR::default(), ctx.plan.global_layers.as_ref())
-        }
+        (true, Some(geometry), None) => build_preview_doc(
+            geometry,
+            &SupportPlanIR::default(),
+            ctx.plan.global_layers.as_ref(),
+        ),
         (true, None, _) => SupportPreviewDoc {
             schema_version: "1.2.0".to_owned(),
             units: "mm".to_owned(),
