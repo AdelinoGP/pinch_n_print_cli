@@ -1,8 +1,8 @@
 # 52 — Author packet P45 — Others / Special mode — emitter
 
 Type: task
-Status: open
-Assignee: —
+Status: resolved
+Assignee: wayfinder session (ses_f85a5005dffe3zApQVtecoEPDY)
 Blocked by: 06, 101, 107
 Map: ../map.md
 
@@ -22,3 +22,31 @@ Authoring obligations:
 Resolved when the packet is authored, preflighted, and its directory linked here.
 
 ## Answer
+
+**Authored as packet 279** (`docs/spec_packets/279-spiral-vase-modes/`,
+`draft`), preflight **PASS** (S0–S8 clean, no blockers, no high findings).
+Claim-time re-derivation kept Tier B and all 5 keys in, with one spelling
+adoption and no code change.
+
+- Tree grounding (2026-09-07): all four SpiralVase keys zero-occurrence;
+  `spiral_mode` is padding-row-only as behaviour. The one live fragment is
+  PnP-spelled `spiral_vase` forcing classic perimeters in scheduler dispatch
+  (`crates/slicer-scheduler/src/execution_plan.rs`,
+  `crates/slicer-wasm-host/src/execution_plan_live.rs`, both perimeter
+  manifests) — the same decision point as Orca's `spiral_mode`, not a second
+  feature.
+- Canonical grounding (oracle `D:\slicerProject\pinch_n_print_cli\OrcaSlicerDocumented`):
+  all five pass rule 3 and stay in scope — `Print::validate` (copies,
+  materials), `GCode::process_layers` (post-filter placement),
+  `SpiralVase::process_layer` + constructor (Z-ramp, XY smoothing, flow
+  ramps, tiny-move removal). Defaults: mode/smooth `false`, ratios `0`,
+  cap `200%` FloatOrPercent.
+- **`spiral_mode` adopted as canonical spelling, `spiral_vase` kept as
+  fallback alias** (ticket-07 standardise shape; no removal this packet, no
+  new ticket — retire-later noted in 04/05). The packet builds the SpiralVase
+  emitter stage, orchestration validation (copies/materials/relative-only),
+  and the map's time-lapse fog obligation (`!spiral` clause) in one coherent
+  slice. Slicing beyond classic-forcing is a recorded non-borrow with an
+  `[FWD]` delegated re-check, not a gap.
+- P45 still covers **5 keys**; no queue-count change; no fold (packet 264's
+  octagram-spiral is a different feature).
