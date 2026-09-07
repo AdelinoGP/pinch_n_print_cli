@@ -488,6 +488,10 @@ flows with no port subject (purge-only tower); sequences after ticket 122
 
 `internal_bridge_flow`
 
+**Closed without packet (ticket 57):** key already live in both bridge-fill
+holders via ticket 34; owner corrected to infill modules. No packet number
+consumed.
+
 ### P51 — Quality / Precision — emitter (2 keys, Tier B)
 
 `enable_arc_fitting`, `resolution` (the latter re-adjudicated from the rename pool in ticket 105 — canonical's generation-time global simplification is a missing decision point; packet grounding decides whether it lands emit-side or in a generation stage)

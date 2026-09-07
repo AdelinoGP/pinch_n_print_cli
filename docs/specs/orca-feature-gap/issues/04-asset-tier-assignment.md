@@ -489,7 +489,7 @@ findings (the one flagged row was a stale-asset artifact).
 | `enable_extra_bridge_layer` | B | bridge-over-infill (slicing stage, PrintObject.cpp) |
 | `internal_bridge_angle` | B | bridge-over-infill (slicing stage, PrintObject.cpp) |
 | `internal_bridge_density` | B | infill modules — **live** (ticket 34, direct implementation): internal-bridge twin of `bridge_density`, selected off `is_internal_bridge` in both bridge-fill holders. Not read by `gyroid-infill` (ticket 127) |
-| `internal_bridge_flow` | B | crates/slicer-gcode (emission flow scaling) |
+| `internal_bridge_flow` | B | infill modules — **live** (ticket 57, no packet: already landed by ticket 34's direct implementation in both bridge-fill holders + host harvest; owner corrected from `crates/slicer-gcode` — the emitter must not scale, `flow_factor` already carries it) |
 | `thick_internal_bridges` | B | infill modules — **live** (ticket 34, direct implementation): selects `canonical_bridging_flow`'s round-thread spacing for internal bridges in both bridge-fill holders. Canonical's second read site (`Print::validate`'s `allow_thin_bridge_width`) is config-range validation, deferred to ticket 113 |
 
 ### Quality / Ironing
