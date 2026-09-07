@@ -1,6 +1,7 @@
 ---
-status: draft
+status: superseded
 packet: 224-support-family-orca-closure
+superseded_by: 242-support-family-orca-closure
 task_ids:
   - TASK-335
 backlog_source: docs/07_implementation_status.md

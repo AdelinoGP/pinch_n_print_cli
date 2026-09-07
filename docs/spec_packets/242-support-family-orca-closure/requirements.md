@@ -72,6 +72,25 @@ eleven direct dependencies before execution.
 - docs/07 registration of TASK-538..549 and the TASK-335 closure row (packet-owned closure work;
   the only docs/07 edits in the queue).
 
+## Supersession Records (242)
+
+- `213-support-planner-defect-fix` and reopened `TASK-329` are superseded by this
+  fixture-backed closure. The degenerate-disk result from packet 213 is explicitly
+  excluded from closure evidence and is not counted as proof.
+- Deleted draft `215` is absorbed by `240a-support-raft-substrate` and
+  `240b-support-raft-module`.
+- Deleted draft `216` is absorbed by `220-support-analysis-family-contracts` and
+  packet 224, with its remaining renderer-flow residue absorbed by
+  `238c-support-renderer-flow-interfaces`.
+- Deleted draft `217` is absorbed by `220-support-analysis-family-contracts` and
+  packet 224.
+- Deleted draft `218-support-gcode-e2e` is absorbed by this packet; its support-marked
+  end-to-end marker evidence is delivered under AC-7.
+- `224-support-family-orca-closure` is superseded by this packet. Packet 242 inherits
+  packet 224's amended acceptance criteria and closure evidence requirements, and
+  records the post-dependency proof rather than treating the earlier packet as
+  independent evidence.
+
 ## Out of Scope
 
 - Any new support geometry, planner algorithm, config key, scheduler rule, renderer semantic, or
@@ -153,7 +172,7 @@ This is the authoritative full matrix; `packet.spec.md` lists only gate commands
 | `mkdir -p target && cargo test -p pnp-cli --test visual_debug_gcode_renderer_tdd -- gcode_support_type_markers_render_alongside_layer_images --exact 2>&1 \| tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log` | AC-7: absorbed-218 e2e `;TYPE:` evidence; test name is net-new in the existing standalone target | FACT pass/fail; failure SNIPPETS ≤20 lines |
 | `cargo run -q --bin pnp_cli -- visual-debug --request tmp/p242-vd-pnp-tree.json --output target/vd-p242-pnp-tree --overwrite && cargo run -q --bin pnp_cli -- visual-debug --request tmp/p242-vd-pnp-normal.json --output target/vd-p242-pnp-normal --overwrite && cargo run -q --bin pnp_cli -- visual-debug --request tmp/p242-vd-orca-tree.json --output target/vd-p242-orca-tree --overwrite && cargo run -q --bin pnp_cli -- visual-debug --request tmp/p242-vd-orca-normal.json --output target/vd-p242-orca-normal --overwrite && cargo test -p slicer-runtime --test integration -- matched_height_evidence --exact 2>&1 \| tee target/test-output.log` | AC-2 precondition renders | FACT pass/fail; confirm exactly one pass from the log |
 | `rg -q '^## Matched-Height Inspection Record \(242\)' docs/spec_packets/242-support-family-orca-closure/design.md && rg -q '^## Differential Inspection Record \(242\)' docs/spec_packets/242-support-family-orca-closure/design.md && rg -q '^## TASK-163b and TASK-335 Disposition' docs/spec_packets/242-support-family-orca-closure/design.md` | AC-2/AC-3/AC-6 written halves (E2) | FACT present/absent |
-| `test "$(grep -cE '^\| G-[0-9]+ ' docs/specs/support-parity-gap-register.md)" -eq "$(grep -cE '^\| G-[0-9]+ .*\| \[(CLOSED\|WAIVED\|CARRIED)[^]]*\] \|$' docs/specs/support-parity-gap-register.md)" && test "$(grep -cE '^\| G-[0-9]+ ' docs/specs/support-parity-gap-register.md)" -gt 0` | AC-8/AC-N3 register-closure audit (register-local counts, live total re-derived — no frozen literal; asserts the new `Disposition` column) | FACT pass/fail with both counts |
+| `test "$(grep -cE '^\| G-[0-9]+ ' docs/specs/support-parity-gap-register.md)" -eq "$(grep -cE '^\| G-[0-9]+ .*\| \[(CLOSED|WAIVED|CARRIED)[^]]*\] \|$' docs/specs/support-parity-gap-register.md)" && test "$(grep -cE '^\| G-[0-9]+ ' docs/specs/support-parity-gap-register.md)" -gt 0` | AC-8/AC-N3 register-closure audit (register-local counts, live total re-derived — no frozen literal; asserts the new `Disposition` column) | FACT pass/fail with both counts |
 | `for d in 141 142 143 144 145 146; do rg -q "DEV-$d: (CLOSED\|CARRIED)" docs/spec_packets/242-support-family-orca-closure/design.md \|\| exit 1; done && cargo xtask check-deviations >/dev/null` | AC-9 deviation dispositions | FACT pass/fail |
 | `test "$(grep -c '^## Squashed commit' docs/spec_packets/224-support-family-orca-closure/handoffs/orca-divergences.md)" -eq "$(grep -cE '^- Squashed commit [0-9]+ of 8: DISPOSITIONED' docs/spec_packets/242-support-family-orca-closure/design.md)"` | AC-10 divergence dispositions | FACT pass/fail with both counts |
 | `rg -q '^status: superseded' docs/spec_packets/224-support-family-orca-closure/packet.spec.md && rg -q '^superseded_by: 242-support-family-orca-closure' docs/spec_packets/224-support-family-orca-closure/packet.spec.md` | AC-5 224 flip | FACT pass/fail |

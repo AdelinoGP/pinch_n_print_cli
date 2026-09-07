@@ -192,10 +192,9 @@ by ACs:
   support-branch/raft-plane interleave on non-band routing is **gate-blocking** until the
   `DefaultLayerPlanner::run_layer_planning` support surface is fixed or a human records an
   explicit waiver; a bare `[CARRIED]` token cannot close TASK-335. Band-layer harvested regions
-  carrying model-plane polygons are recorded as intentional non-emitting DATA used to seed the
-  raft footprint; this item is non-blocking only while the band-suppression evidence proves no
-  model content emits on raft-band output layers. Step 3's register ledger must reference both
-  dispositions rather than silently dropping the 240b findings.
+  carrying model-plane polygons remain uncertified DATA: no observed raft-band suppression bundle
+  is available in this run. Step 3's register ledger must reference both dispositions rather than
+  silently dropping the 240b findings.
 - `## Deviation Dispositions` (Step 4): six lines of the form `DEV-NNN: CLOSED — …` or
   `DEV-NNN: CARRIED — …`, one each for DEV-141..DEV-146. **No verb is pre-written here**: the
   packet's own rule is that dispositions are established by the closure work (Step 2's audit of
@@ -257,3 +256,118 @@ by ACs:
 None. All eleven direct dependencies and the 241b remediation are implemented; 239c's
 measure-first `height_delta` verdict is CONSISTENT. Their statuses remain mutable ledger facts and
 must be re-derived at activation and Step 2 rather than copied from this paragraph.
+
+## Gap Register Disposition Ledger (242)
+
+The 29 live register rows were audited on 2026-09-07. These dispositions are mirrored in the
+register's fifth `Disposition` column. The 240b findings are not omitted: see
+`## 240b Upstream-Finding Dispositions` for the blocking interleave and non-emitting harvested-data
+records.
+
+| Gap | Disposition | Justification |
+| --- | --- | --- |
+| G-01 | [CLOSED 224-support-family-orca-closure 2026-09-07] | Tree contact derivation was implemented by packet 224. |
+| G-02 | [CLOSED 239c-support-layer-height-producer 2026-09-07] | The successor producer/height work owns the independent support-layer Z seam. |
+| G-03 | [CLOSED 238a-support-pattern-config-keys 2026-09-07] | Base and interface pattern configuration was consumed by 238a. |
+| G-04 | [CLOSED 238a-support-pattern-config-keys 2026-09-07] | Support expansion configuration was consumed by 238a. |
+| G-05 | [CLOSED 238a-support-pattern-config-keys 2026-09-07] | Bottom-Z configuration was consumed by 238a. |
+| G-06 | [CLOSED 240b-support-raft-module 2026-09-07] | Raft substrate and module routing were closed by 240a/240b. |
+| G-07 | [CLOSED 241-support-agg-rasterizer 2026-09-07] | The AGG rasterizer gap was consumed by packet 241. |
+| G-08 | [CLOSED 238a-support-pattern-config-keys 2026-09-07] | Support-specific line-width configuration was consumed by 238a. |
+| G-09 | [CLOSED 238a-support-pattern-config-keys 2026-09-07] | Effective layer-height transport handling was consumed by 238a. |
+| G-10 | [CLOSED 238c-support-renderer-flow-interfaces 2026-09-07] | Tree branch rendering and density scaling were consumed by 238c. |
+| G-11 | [CLOSED 238c-support-renderer-flow-interfaces 2026-09-07] | Support flow accounting was consumed by 238c. |
+| G-12 | [CLOSED 238c-support-renderer-flow-interfaces 2026-09-07] | Branch radius cap parity was consumed by 238c. |
+| G-13 | [CLOSED 238c-support-renderer-flow-interfaces 2026-09-07] | Interface-driven branch-radius behavior was consumed by 238c. |
+| G-14 | [WAIVED 2026-09-07: pre-existing machine-gcode-emit warning noise, unrelated to support] | The malformed-marker warning is pre-existing noise with support disabled. |
+| G-15 | [WAIVED 2026-09-07: inherited repo-wide check-literals debt predates packet 242] | Literal violations are inherited repository debt, not support closure work. |
+| G-16 | [CLOSED 238a-support-pattern-config-keys 2026-09-07] | Tree planner manifest key declarations were consumed by 238a. |
+| G-17 | [CLOSED 237-support-analysis-parity 2026-09-07] | Support eligibility classification was consumed by 237. |
+| G-18 | [CLOSED 238c-support-renderer-flow-interfaces 2026-09-07] | Roof/floor interface layer-count handling was consumed by 238c. |
+| G-19 | [CLOSED 224-support-family-orca-closure 2026-09-07] | The pre-existing failure set was re-triaged and its support debt assigned at 224. |
+| G-20 | [WAIVED 2026-09-07: register-only by human decision; revisit if a producer appears] | No in-tree producer requires a distinct transition role. |
+| G-21 | [CARRIED -> 236-support-stabilization: owner state not verified in this audit] | Startup DAG advisory cleanup remains routed to 236 pending owner-state evidence. |
+| G-22 | [CARRIED -> 236-support-stabilization: owner state not verified in this audit] | Support-angle bounds enforcement remains routed to 236 pending owner-state evidence. |
+| G-23 | [CARRIED -> 236-support-stabilization: owner state not verified in this audit] | Tree tripwire strengthening remains routed to 236 pending owner-state evidence. |
+| G-24 | [CARRIED -> 236-support-stabilization: owner state not verified in this audit] | Native/WASM harness staleness handling remains routed to 236 pending owner-state evidence. |
+| G-25 | [CARRIED -> unassigned: warning root cause remains undiagnosed] | Repeated emitter warnings have no verified root-cause owner yet. |
+| G-26 | [CARRIED -> TASK-441: residual organic tree geometry deltas remain] | Residual tip, collapse, and interface-placement deltas remain with the organic-engine work. |
+| G-27 | [CARRIED -> 239c-support-layer-height-producer: production anchored-entity producer remains absent] | The host seam is closed, but production still has no anchored-entity producer. |
+| G-28 | [CLOSED 239b-anchored-wit-contract 2026-09-07] | Anchored-event WIT transport was wired by 239b. |
+| G-29 | [CLOSED 239d-support-coarse-floating-planes 2026-09-07] | Coarse floating support planes were closed by 239d. |
+
+## Deviation Dispositions
+
+DEV-141: CARRIED — the intentional `smooth_outward` far-vertex correction remains a deliberate divergence from canonical; no 238b/238c change closes it.
+DEV-142: CARRIED — unconditional role-region simplification remains a deliberate tree-renderer divergence; no 238b/238c change closes it.
+DEV-143: CARRIED — f64 smoothing with one final rounding remains a deliberate arithmetic divergence; no 238b/238c change closes it.
+DEV-144: CARRIED — the missing per-node extra-wall transport remains an IR/consumer gap; no 238b/238c change adds that channel.
+DEV-145: CLOSED — packet 238c corrected both family defaults to canonical `0.5` and regenerated the config reference.
+DEV-146: CLOSED — packet 238c verified the interface-flow-over-line-width pitch derivation in both support-family suites.
+
+## Divergence Dispositions
+
+- Squashed commit 1 of 8: DISPOSITIONED — retained as carried tree-planner parity debt; no 238b/238c correction closes the top-Z mechanism or density-model differences.
+- Squashed commit 2 of 8: DISPOSITIONED — retained as carried tree-planner geometry parity debt; no 238b/238c correction restores smoothing, mixed body/interface emission, full contours, or per-circle collision clipping.
+- Squashed commit 3 of 8: DISPOSITIONED — retained as carried contact-generation parity debt; no 238b/238c correction adds the undeclared override, host overhang source, or canonical miter limit.
+- Squashed commit 4 of 8: DISPOSITIONED — retained as carried tree-volume parity debt; no 238b/238c correction changes the radius, collision, simplification, or to-buildplate mechanisms recorded here.
+- Squashed commit 5 of 8: DISPOSITIONED — retained as carried support-analysis/tree-planner parity debt; no 238b/238c correction closes the move-out, enforcer, overhang-step, width, merge, or strong/hybrid-style differences.
+- Squashed commit 6 of 8: DISPOSITIONED — DEV-145's premise was voided and its real default discrepancy was consumed by packet 238c.
+- Squashed commit 7 of 8: DISPOSITIONED — retained as carried emit/move-pass parity debt; no 238b/238c correction closes largest-part retention or the retry dilation-argument difference.
+- Squashed commit 8 of 8: DISPOSITIONED — DEV-142 remains carried as deliberate simplification divergence; packet 238c did not make canonical's square-support-only simplification model the general path.
+
+## Matched-Height Inspection Record (242)
+
+Inspection status: **RECORDED**. Four fresh G-code inputs and four visual-debug bundles were
+present and re-rendered with `--overwrite` on 2026-09-07. Each bundle contains four
+`final_gcode/filament_lines` images at layers 0..3 with zero manifest warnings. Tree PnP/Orca
+layers are Z=0.2, 0.4, 0.6, 0.8; traditional PnP/Orca layers are Z=0.2, 0.4, 0.6, 0.647273.
+The `matched_height_evidence` invariant passed with one exact test match; the height comparison is
+CONSISTENT with 239c's baseline.
+
+| Family | Source / routing | Physical layers, Z, tap | termination | coverage | collision freedom | interfaces | independent heights |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| tree | PnP bundle / plain | 0..3 / 0.2,0.4,0.6,0.8 / `final_gcode/filament_lines` | CONSISTENT | CONSISTENT | CONSISTENT | CONSISTENT | PASS |
+| tree | fresh Orca ref / plain | 0..3 / 0.2,0.4,0.6,0.8 / `final_gcode/filament_lines` | CONSISTENT | CONSISTENT | CONSISTENT | CONSISTENT | PASS |
+| tree | PnP bundle / raft | not observed (layer/Z/tap unavailable) | BLOCKED | BLOCKED | BLOCKED | BLOCKED | BLOCKED |
+| tree | fresh Orca ref / raft | not observed (layer/Z/tap unavailable) | BLOCKED | BLOCKED | BLOCKED | BLOCKED | BLOCKED |
+| normal | PnP bundle / plain | 0..3 / 0.2,0.4,0.6,0.647273 / `final_gcode/filament_lines` | CONSISTENT | CONSISTENT | CONSISTENT | CONSISTENT | PASS |
+| normal | fresh Orca ref / plain | 0..3 / 0.2,0.4,0.6,0.647273 / `final_gcode/filament_lines` | CONSISTENT | CONSISTENT | CONSISTENT | CONSISTENT | PASS |
+| normal | PnP bundle / raft | not observed (layer/Z/tap unavailable) | BLOCKED | BLOCKED | BLOCKED | BLOCKED | BLOCKED |
+| normal | fresh Orca ref / raft | not observed (layer/Z/tap unavailable) | BLOCKED | BLOCKED | BLOCKED | BLOCKED | BLOCKED |
+
+## Differential Inspection Record (242)
+
+Inspection status: **RECORDED for plain sources with a gate-blocking finding; BLOCKED for raft
+sources**. The four observed manifests provide `final_gcode/filament_lines` at the layer/Z tuples
+listed above. The support-branch/raft-plane interleave remains **gate-blocking pending an owner fix
+or explicit human waiver**. No raft-band suppression record was observed; harvested band DATA is
+therefore uncertified and is not described as retained evidence.
+Band-layer harvested model-plane regions are recorded as intentional non-emitting DATA used to seed the raft footprint; band-suppression proof is unavailable in the current bundles, so this item remains uncertified and non-closing.
+
+| Family | Source / routing | Physical layers, Z, tap | termination | coverage | collision freedom | interfaces | independent heights |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| tree | PnP bundle vs fresh Orca ref / plain | 0..3 / 0.2,0.4,0.6,0.8 / `final_gcode/filament_lines` | CONSISTENT | CONSISTENT | CONSISTENT | BLOCKED — interleave | PASS |
+| tree | fresh Orca ref vs PnP bundle / plain | 0..3 / 0.2,0.4,0.6,0.8 / `final_gcode/filament_lines` | CONSISTENT | CONSISTENT | CONSISTENT | BLOCKED — interleave | PASS |
+| tree | PnP bundle / raft | not observed (layer/Z/tap unavailable) | BLOCKED | BLOCKED | BLOCKED | BLOCKED — interleave | BLOCKED |
+| tree | fresh Orca ref / raft | not observed (layer/Z/tap unavailable) | BLOCKED | BLOCKED | BLOCKED | BLOCKED — interleave | BLOCKED |
+| normal | PnP bundle vs fresh Orca ref / plain | 0..3 / 0.2,0.4,0.6,0.647273 / `final_gcode/filament_lines` | CONSISTENT | CONSISTENT | CONSISTENT | BLOCKED — interleave | PASS |
+| normal | fresh Orca ref vs PnP bundle / plain | 0..3 / 0.2,0.4,0.6,0.647273 / `final_gcode/filament_lines` | CONSISTENT | CONSISTENT | CONSISTENT | BLOCKED — interleave | PASS |
+| normal | PnP bundle / raft | not observed (layer/Z/tap unavailable) | BLOCKED | BLOCKED | BLOCKED | BLOCKED — interleave | BLOCKED |
+| normal | fresh Orca ref / raft | not observed (layer/Z/tap unavailable) | BLOCKED | BLOCKED | BLOCKED | BLOCKED — interleave | BLOCKED |
+
+## TASK-163b and TASK-335 Disposition
+
+- **TASK-163b:** PnP disposition invariant re-confirmed: `task_163b_disposition` passed with one
+  exact test match, including the static prohibition on tests reading Orca-derived G-code. Fresh
+  reference manifests are recorded; exact path parity is not claimed.
+- **TASK-335:** not closed by this run. The support-branch/raft-plane interleave remains
+  gate-blocking until fixed in its owner path or explicitly waived by a human; a bare carried token
+  is insufficient.
+
+## 240b Upstream-Finding Dispositions
+
+1. **support-branch/raft-plane interleave:** **GATE-BLOCKING** absent a production fix or explicit
+   human waiver. No closure claim is made from the PnP invariant suite.
+2. **harvested band DATA:** **UNCERTIFIED**. No observed raft-band bundle proves whether model-plane
+   polygons emit on raft-band output layers; no non-emitting disposition is certified by this run.

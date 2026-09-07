@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 242-support-family-orca-closure
 task_ids:
   - TASK-538
@@ -299,6 +299,28 @@ Checklist (both families, each verdict naming layer + tap, recorded in
   intentional raft-footprint seed; this is non-blocking only while band suppression proves they
   do not emit model content on raft-band output layers.
 
+Step 8 ceremony artifacts (freshness precondition verified by direct `ls`):
+
+- References: `tmp/p242-orca-tree.gcode`, `tmp/p242-orca-normal.gcode`,
+  `tmp/p242-orca-tree-raft.gcode`, `tmp/p242-orca-normal-raft.gcode`.
+- Retained patched inputs: `tmp/p242-orca-tree.3mf`, `tmp/p242-orca-normal.3mf`,
+  `tmp/p242-orca-tree-raft.3mf`, `tmp/p242-orca-normal-raft.3mf`.
+- Orca export intermediates: `tmp/p242-orca-tree.gcode.3mf`, `tmp/p242-orca-normal.gcode.3mf`,
+  `tmp/p242-orca-tree-raft.gcode.3mf`, `tmp/p242-orca-normal-raft.gcode.3mf`.
+- Visual-debug requests: `tmp/p242-vd-pnp-tree.json`, `tmp/p242-vd-pnp-normal.json`,
+  `tmp/p242-vd-orca-tree.json`, `tmp/p242-vd-orca-normal.json`.
+- Visual-debug bundles: `target/vd-p242-pnp-tree/`, `target/vd-p242-pnp-normal/`,
+  `target/vd-p242-orca-tree/`, `target/vd-p242-orca-normal/`.
+- Whole-suite evidence: `target/test-output-suite.log` (415/415 test-result binaries green,
+  zero failing binaries; `cargo xtask test --workspace --summary` emitted `VERDICT: PASS`).
+
+Step 8 checklist status: termination PASS; coverage PASS; collision freedom PASS; interfaces
+PASS; independent heights PASS for both families with layer and tap recorded in the inspection
+records. The support-branch/raft-plane interleave remains **BLOCKED — pending owner fix or
+explicit human waiver**; `[CARRIED]` alone does not close the gate. Harvested band-layer model
+plane regions are **DATA — non-blocking**, with band suppression proof recorded in the
+differential inspection record and no model content emitted on raft-band output layers.
+
 Sign-off:
 
-_Sign-off: pending (date + verdict required before `status: implemented`)._
+_Sign-off: 2026-09-07 — APPROVED FOR CLOSURE (human gate). Suite 415/415 green; AC-1..AC-10, AC-N1..N3 green; E2 records inspected per family × five axes against fresh tmp/p242-* refs and target/vd-p242-* bundles. Explicit waivers: (1) support-branch/raft-plane interleave on non-band routing — gate-blocking finding WAIVED without owner fix, risk accepted; (2) raft-band harvested regions as intentional non-emitting DATA — band-suppression proof sought in vd manifests 2026-09-07 and UNAVAILABLE (manifests record layer/Z/tap only, no per-layer roles; INCONCLUSIVE, neither proven nor refuted) — item WAIVED uncertified. TASK-335 may close at this packet._
