@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use slicer_core::algos::region_mapping::{
     execute_region_mapping_inner, execute_region_mapping_with_cap, RegionMappingError,
@@ -13,6 +13,10 @@ use slicer_ir::{
 };
 use slicer_scheduler::manifest::RegionSplitValueType;
 use slicer_scheduler::region_split::AggregatedRegionSplitEntry;
+use slicer_scheduler::{
+    resolve_global_config, resolve_per_object_configs, resolve_per_paint_semantic_configs,
+    resolve_per_tool_configs, ConfigBoundsIndex,
+};
 
 // ---- helpers ----------------------------------------------------------------
 
@@ -1521,4 +1525,299 @@ fn region_mapping_enumerate_chains() {
         .map(|k| k.variant_chain.clone())
         .collect();
     assert_eq!(actual, expected);
+}
+
+// ---- wayfinder ticket 126: overlay composition ---------------------------------
+//
+// `ResolvedConfig::overlay_onto` composes the per-paint-semantic and per-tool
+// overlays onto each region's base config. Ticket 118 measured two defects in
+// the old hand-written `overlay_resolved` diff; these tests reproduce them
+// through the FULL production resolution stack — the same
+// `resolve_global_config` / `resolve_per_object_configs` /
+// `resolve_per_paint_semantic_configs` / `resolve_per_tool_configs` calls
+// `prepass.rs` makes, with `host_config = Some((per_object, global))` exactly
+// as `commit_region_mapping_builtin` passes it — so a green here pins the real
+// seam, not a hand-built approximation of it.
+
+/// Build the production config stack from a raw config source: global,
+/// per-object, per-paint-semantic and per-tool configs, all resolved the way
+/// `slicer-runtime`'s prepass resolves them (paint and tool overlays start
+/// from the global config).
+fn resolved_stack(
+    source: &HashMap<String, ConfigValue>,
+    object_ids: &[&str],
+) -> (
+    ResolvedConfig,
+    BTreeMap<String, ResolvedConfig>,
+    BTreeMap<PaintSemantic, ResolvedConfig>,
+    BTreeMap<u32, ResolvedConfig>,
+) {
+    let bounds = ConfigBoundsIndex::default();
+    let global = resolve_global_config(source, &bounds).expect("global resolution");
+    let per_object = resolve_per_object_configs(&global, source, object_ids, &bounds)
+        .expect("per-object resolution");
+    let (paint, _warnings) =
+        resolve_per_paint_semantic_configs(&global, source, &[PaintSemantic::Material], &bounds)
+            .expect("per-paint-semantic resolution");
+    let tools = resolve_per_tool_configs(&global, source, &bounds).expect("per-tool resolution");
+    (global, per_object, paint, tools)
+}
+
+/// One layer, one object (`obj_a`), one region, painted with the given
+/// material tool indices; region mapping runs with the host config authority
+/// exactly as `commit_region_mapping_builtin` supplies it.
+fn map_painted_object(
+    source: &HashMap<String, ConfigValue>,
+    tools_on_object: &[u32],
+) -> RegionMapIR {
+    let (global, per_object, paint, tool_configs) = resolved_stack(source, &["obj_a"]);
+
+    let plan = single_region_plan("obj_a");
+    let projection = RegionMappingPlanProjection {
+        stage_invocations: &[],
+    };
+    let agg = aggregated(&["material"]);
+    let objects = vec![painted_object(
+        "obj_a",
+        &[(
+            "material",
+            tools_on_object
+                .iter()
+                .map(|t| PaintValue::ToolIndex(*t))
+                .collect(),
+        )],
+    )];
+
+    execute_region_mapping_inner(
+        &plan,
+        &projection,
+        &paint,
+        &agg,
+        &objects,
+        Some((&per_object, &global)),
+        &tool_configs,
+        DEFAULT_REGION_MAP_CAP,
+    )
+    .expect("region mapping must succeed")
+}
+
+/// Ticket 126 Part 2 — the precedence defect, reproduced. Global sets
+/// `line_width = 0.6`; a paint semantic sets `line_width = 0.5`; tool 1's
+/// overlay sets only `retract_length` and says nothing about `line_width`.
+/// The painted region on tool 1 must keep the paint semantic's 0.5: the
+/// per-tool overlay inherited the global 0.6 at resolution time, and an
+/// inherited value must not clobber a higher-than-global, lower-than-tool
+/// override. (The old compare-against-`ResolvedConfig::default()` diff
+/// copies the inherited 0.6 over the paint value.)
+#[test]
+fn tool_overlay_silent_on_a_key_keeps_the_paint_semantic_value() {
+    let mut source = HashMap::new();
+    source.insert("line_width".to_string(), ConfigValue::Float(0.6));
+    source.insert(
+        "paint_config:material:line_width".to_string(),
+        ConfigValue::Float(0.5),
+    );
+    source.insert(
+        "tool_config:1:retract_length".to_string(),
+        ConfigValue::Float(5.5),
+    );
+
+    let region_map = map_painted_object(&source, &[1, 2]);
+
+    let tool1_key = RegionKey {
+        global_layer_index: 0,
+        object_id: "obj_a".to_string(),
+        region_id: 0,
+        variant_chain: vec![("material".to_string(), PaintValue::ToolIndex(1))],
+    };
+    let tool1 = region_map.config_for(&tool1_key);
+    assert_eq!(
+        tool1.line_width, 0.5,
+        "tool 1 did not override line_width, so the paint semantic's 0.5 must survive \
+         (the per-tool overlay's inherited global 0.6 must not clobber it)"
+    );
+    assert_eq!(
+        tool1.retract_length, 5.5,
+        "tool 1's explicit retract_length override must reach the region"
+    );
+
+    // Tool 2 (no per-tool override at all) keeps the paint value too.
+    let tool2_key = RegionKey {
+        global_layer_index: 0,
+        object_id: "obj_a".to_string(),
+        region_id: 0,
+        variant_chain: vec![("material".to_string(), PaintValue::ToolIndex(2))],
+    };
+    assert_eq!(
+        region_map.config_for(&tool2_key).line_width,
+        0.5,
+        "tool 2 has no overlay; the paint semantic's 0.5 applies"
+    );
+
+    // The unpainted base chain keeps the global value.
+    let base_key = RegionKey {
+        global_layer_index: 0,
+        object_id: "obj_a".to_string(),
+        region_id: 0,
+        variant_chain: vec![],
+    };
+    assert_eq!(
+        region_map.config_for(&base_key).line_width,
+        0.6,
+        "the base (unpainted) chain keeps the global line_width"
+    );
+}
+
+/// Ticket 126 Part 1 — the field narrowing, reproduced. `retract_length` is a
+/// declared `ResolvedConfig` field that the old hand-written overlay diff had
+/// no arm for, so a `tool_config:1:retract_length` override resolved correctly
+/// per-tool and was then silently dropped at composition. The macro-emitted
+/// overlay covers every declared field, so the override must reach the region.
+#[test]
+fn tool_override_on_a_field_outside_the_old_allowlist_reaches_the_region() {
+    let mut source = HashMap::new();
+    source.insert(
+        "tool_config:1:retract_length".to_string(),
+        ConfigValue::Float(5.5),
+    );
+
+    let region_map = map_painted_object(&source, &[1]);
+
+    let tool1_key = RegionKey {
+        global_layer_index: 0,
+        object_id: "obj_a".to_string(),
+        region_id: 0,
+        variant_chain: vec![("material".to_string(), PaintValue::ToolIndex(1))],
+    };
+    assert_eq!(
+        region_map.config_for(&tool1_key).retract_length,
+        5.5,
+        "a declared-field tool override must compose onto the painted region"
+    );
+
+    // The unpainted chain is untouched (global default retract_length).
+    let base_key = RegionKey {
+        global_layer_index: 0,
+        object_id: "obj_a".to_string(),
+        region_id: 0,
+        variant_chain: vec![],
+    };
+    assert_eq!(
+        region_map.config_for(&base_key).retract_length,
+        ResolvedConfig::default().retract_length,
+        "the base chain keeps the global retract_length"
+    );
+}
+
+/// Ticket 126 Part 2 (same root cause) — "override this field back to its
+/// default value" must be expressible. The global config sets
+/// `line_width = 0.6`; the paint semantic explicitly sets it back to the
+/// default `0.0`. The old diff compared against `ResolvedConfig::default()`,
+/// so the explicit `0.0` read as "not set" and the region kept 0.6. Comparing
+/// against the overlay's resolution origin (the global config) makes the
+/// explicit reset observable: 0.0 differs from the global 0.6, so it copies.
+#[test]
+fn paint_semantic_overriding_a_field_back_to_its_default_is_expressible() {
+    let mut source = HashMap::new();
+    source.insert("line_width".to_string(), ConfigValue::Float(0.6));
+    source.insert(
+        "paint_config:material:line_width".to_string(),
+        ConfigValue::Float(0.0),
+    );
+
+    let region_map = map_painted_object(&source, &[0]);
+
+    let painted_key = RegionKey {
+        global_layer_index: 0,
+        object_id: "obj_a".to_string(),
+        region_id: 0,
+        variant_chain: vec![("material".to_string(), PaintValue::ToolIndex(0))],
+    };
+    assert_eq!(
+        region_map.config_for(&painted_key).line_width,
+        0.0,
+        "the paint semantic's explicit reset to the default 0.0 must reach the region"
+    );
+
+    let base_key = RegionKey {
+        global_layer_index: 0,
+        object_id: "obj_a".to_string(),
+        region_id: 0,
+        variant_chain: vec![],
+    };
+    assert_eq!(
+        region_map.config_for(&base_key).line_width,
+        0.6,
+        "the unpainted chain keeps the global 0.6"
+    );
+}
+
+/// Ticket 126 — the extensions half of the same composition defect. A paint
+/// overlay resolved from the global config inherits every global
+/// `extensions` key; the old blanket merge wrote those inherited values back
+/// over the region's base, clobbering per-object extension overrides the
+/// paint semantic never touched. Origin comparison skips inherited keys and
+/// copies only explicitly-set ones.
+#[test]
+fn paint_overlay_does_not_clobber_object_extension_overrides() {
+    let mut source = HashMap::new();
+    // A module-owned key (unknown to `ResolvedConfig`) set globally.
+    source.insert("some_module_speed".to_string(), ConfigValue::Float(1.0));
+    // The per-object override for the same key — higher precedence than
+    // global, lower than paint.
+    source.insert(
+        "object_config:obj_a:some_module_speed".to_string(),
+        ConfigValue::Float(2.0),
+    );
+    // The paint semantic explicitly overrides a different module key and a
+    // typed field, so its overlay exists and carries the inherited global
+    // `some_module_speed = 1.0`.
+    source.insert(
+        "paint_config:material:line_width".to_string(),
+        ConfigValue::Float(0.42),
+    );
+    source.insert(
+        "paint_config:material:other_module_speed".to_string(),
+        ConfigValue::Float(3.0),
+    );
+
+    let region_map = map_painted_object(&source, &[0]);
+
+    let painted_key = RegionKey {
+        global_layer_index: 0,
+        object_id: "obj_a".to_string(),
+        region_id: 0,
+        variant_chain: vec![("material".to_string(), PaintValue::ToolIndex(0))],
+    };
+    let painted = region_map.config_for(&painted_key);
+    assert_eq!(
+        painted.extensions.get("some_module_speed"),
+        Some(&ConfigValue::Float(2.0)),
+        "the paint overlay inherited the global 1.0 for this key and never set it, \
+         so the per-object override 2.0 must survive composition"
+    );
+    assert_eq!(
+        painted.extensions.get("other_module_speed"),
+        Some(&ConfigValue::Float(3.0)),
+        "the paint semantic's explicit extension override must compose"
+    );
+    assert_eq!(painted.line_width, 0.42);
+
+    // The unpainted chain carries only global + per-object values.
+    let base_key = RegionKey {
+        global_layer_index: 0,
+        object_id: "obj_a".to_string(),
+        region_id: 0,
+        variant_chain: vec![],
+    };
+    let base = region_map.config_for(&base_key);
+    assert_eq!(
+        base.extensions.get("some_module_speed"),
+        Some(&ConfigValue::Float(2.0)),
+        "the base chain carries the per-object extension override"
+    );
+    assert!(
+        !base.extensions.contains_key("other_module_speed"),
+        "the base chain must not see the paint-only extension key"
+    );
 }

@@ -211,102 +211,23 @@ fn cap_exceeded(
 
 /// Apply a paint-semantic `ResolvedConfig` on top of a base `ResolvedConfig`.
 ///
-/// For each field in `overlay` that differs from `ResolvedConfig::default()`,
-/// the overlay value is written into `base`. This implements the
-/// global → per_object → per_paint_semantic precedence chain: the paint
-/// overlay wins over the per-object config for any field it explicitly sets.
-fn overlay_resolved(base: ResolvedConfig, overlay: &ResolvedConfig) -> ResolvedConfig {
-    let d = ResolvedConfig::default();
-    let mut r = base;
-    if overlay.layer_height != d.layer_height {
-        r.layer_height = overlay.layer_height;
-    }
-    if overlay.line_width != d.line_width {
-        r.line_width = overlay.line_width;
-    }
-    if overlay.initial_layer_print_height != d.initial_layer_print_height {
-        r.initial_layer_print_height = overlay.initial_layer_print_height;
-    }
-    if overlay.initial_layer_line_width != d.initial_layer_line_width {
-        r.initial_layer_line_width = overlay.initial_layer_line_width;
-    }
-    if overlay.wall_loops != d.wall_loops {
-        r.wall_loops = overlay.wall_loops;
-    }
-    if overlay.outer_wall_speed != d.outer_wall_speed {
-        r.outer_wall_speed = overlay.outer_wall_speed;
-    }
-    if overlay.inner_wall_speed != d.inner_wall_speed {
-        r.inner_wall_speed = overlay.inner_wall_speed;
-    }
-    if overlay.wall_generator != d.wall_generator {
-        r.wall_generator = overlay.wall_generator;
-    }
-    if overlay.arachne_min_feature_size != d.arachne_min_feature_size {
-        r.arachne_min_feature_size = overlay.arachne_min_feature_size;
-    }
-    if overlay.infill_type != d.infill_type {
-        r.infill_type = overlay.infill_type;
-    }
-    if overlay.sparse_infill_density != d.sparse_infill_density {
-        r.sparse_infill_density = overlay.sparse_infill_density;
-    }
-    if overlay.infill_direction != d.infill_direction {
-        r.infill_direction = overlay.infill_direction;
-    }
-    if overlay.sparse_infill_speed != d.sparse_infill_speed {
-        r.sparse_infill_speed = overlay.sparse_infill_speed;
-    }
-    if overlay.solid_infill_speed != d.solid_infill_speed {
-        r.solid_infill_speed = overlay.solid_infill_speed;
-    }
-    if overlay.top_shell_layers != d.top_shell_layers {
-        r.top_shell_layers = overlay.top_shell_layers;
-    }
-    if overlay.bottom_shell_layers != d.bottom_shell_layers {
-        r.bottom_shell_layers = overlay.bottom_shell_layers;
-    }
-    if overlay.top_fill_holder != d.top_fill_holder {
-        r.top_fill_holder = overlay.top_fill_holder.clone();
-    }
-    if overlay.bottom_fill_holder != d.bottom_fill_holder {
-        r.bottom_fill_holder = overlay.bottom_fill_holder.clone();
-    }
-    if overlay.bridge_fill_holder != d.bridge_fill_holder {
-        r.bridge_fill_holder = overlay.bridge_fill_holder.clone();
-    }
-    if overlay.sparse_fill_holder != d.sparse_fill_holder {
-        r.sparse_fill_holder = overlay.sparse_fill_holder.clone();
-    }
-    if overlay.support_enabled != d.support_enabled {
-        r.support_enabled = overlay.support_enabled;
-    }
-    if overlay.support_type != d.support_type {
-        r.support_type = overlay.support_type;
-    }
-    if overlay.support_threshold_angle != d.support_threshold_angle {
-        r.support_threshold_angle = overlay.support_threshold_angle;
-    }
-    if overlay.nonplanar_max_angle_deg != d.nonplanar_max_angle_deg {
-        r.nonplanar_max_angle_deg = overlay.nonplanar_max_angle_deg;
-    }
-    if overlay.nonplanar_shell_count != d.nonplanar_shell_count {
-        r.nonplanar_shell_count = overlay.nonplanar_shell_count;
-    }
-    if overlay.nonplanar_amplitude != d.nonplanar_amplitude {
-        r.nonplanar_amplitude = overlay.nonplanar_amplitude;
-    }
-    if overlay.smoothificator_target_height != d.smoothificator_target_height {
-        r.smoothificator_target_height = overlay.smoothificator_target_height;
-    }
-    if overlay.smoothificator_adaptive != d.smoothificator_adaptive {
-        r.smoothificator_adaptive = overlay.smoothificator_adaptive;
-    }
-    // Merge extension keys from overlay into base.
-    for (k, v) in &overlay.extensions {
-        r.extensions.insert(k.clone(), v.clone());
-    }
-    r
+/// Delegates to [`ResolvedConfig::overlay_onto`] with `origin` naming the
+/// config the overlay was *resolved from* (the global config in the host
+/// path; `ResolvedConfig::default()` for overlays built from defaults). A
+/// field is copied only when it differs from `origin` — i.e. only when the
+/// overlay explicitly set it — which implements the documented
+/// `global < per_object < per_paint_semantic < per_tool` precedence: an
+/// inherited value the overlay never touched cannot clobber a
+/// lower-precedence override, and "override back to the default" is
+/// expressible (wayfinder ticket 126; the old hand-written
+/// compare-against-`default()` diff had both defects, plus a 28-of-83
+/// field allowlist).
+fn overlay_resolved(
+    base: ResolvedConfig,
+    overlay: &ResolvedConfig,
+    origin: &ResolvedConfig,
+) -> ResolvedConfig {
+    ResolvedConfig::overlay_onto(base, overlay, origin)
 }
 
 /// Packet 132 (AC-4) — bind a modifier's config delta to the modifier's
@@ -339,6 +260,11 @@ pub fn stamp_modifier_sub_region_configs(
     let mut order: Vec<usize> = (0..modifier_volumes.len()).collect();
     order.sort_by_key(|&i| (modifier_volumes[i].priority, std::cmp::Reverse(i)));
 
+    // The modifier overlay is built from `ResolvedConfig::default()` — only
+    // its `extensions` entries are explicit — so the default config is its
+    // correct resolution origin (inherited-vs-explicit comparison is a
+    // no-op on the typed fields).
+    let default_origin = ResolvedConfig::default();
     let mut sub_config = base_config.clone();
     for idx in order {
         let mv = &modifier_volumes[idx];
@@ -363,7 +289,7 @@ pub fn stamp_modifier_sub_region_configs(
         if overlay.extensions.is_empty() {
             continue;
         }
-        sub_config = overlay_resolved(sub_config, &overlay);
+        sub_config = overlay_resolved(sub_config, &overlay, &default_origin);
     }
 
     let mut map = BTreeMap::new();
@@ -675,6 +601,19 @@ pub fn execute_region_mapping_inner(
     let stage_invocations: Vec<(StageId, Vec<ModuleInvocation>)> =
         projection.stage_invocations.to_vec();
 
+    // Resolution origin of the paint-semantic and per-tool overlays: the
+    // config they were built from by `resolve_per_paint_semantic_configs` /
+    // `resolve_per_tool_configs` (both take the global config as base). The
+    // origin is what `overlay_resolved` compares against to tell an
+    // explicitly-set field from an inherited one (wayfinder ticket 126);
+    // the legacy no-host entry point has no global base, and its callers
+    // build overlays from `ResolvedConfig::default()`, so the default is
+    // the correct origin there.
+    let overlay_origin: ResolvedConfig = match host_config {
+        Some((_, global)) => global.clone(),
+        None => ResolvedConfig::default(),
+    };
+
     // --- P93 cross-product preflight: scan paint data + canonical axis order.
     // `aggregated_region_split` keys define which semantics drive expansion;
     // `scan_paint_data` produces the per-object value sets and rejects
@@ -870,7 +809,7 @@ pub fn execute_region_mapping_inner(
                         .find(|sem| &paint_semantic_namespace_key(sem) == sem_name);
                     if let Some(sem_key) = matched_key {
                         if let Some(sem_cfg) = paint_semantic_configs.get(sem_key) {
-                            effective = overlay_resolved(effective, sem_cfg);
+                            effective = overlay_resolved(effective, sem_cfg, &overlay_origin);
                             paint_overrides.insert(sem_key.clone(), sem_cfg.clone());
                         }
                     }
@@ -888,7 +827,7 @@ pub fn execute_region_mapping_inner(
                 // perimeter generation. `region_id` stays the pure identity.
                 if let Some(t) = chain_tool_index {
                     if let Some(tool_cfg) = tool_configs.get(&t) {
-                        effective = overlay_resolved(effective, tool_cfg);
+                        effective = overlay_resolved(effective, tool_cfg, &overlay_origin);
                     }
                 }
 
@@ -929,14 +868,16 @@ pub fn execute_region_mapping_inner(
                                 .find(|sem| &paint_semantic_namespace_key(sem) == sem_name);
                             if let Some(sem_key) = matched_key {
                                 if let Some(sem_cfg) = paint_semantic_configs.get(sem_key) {
-                                    child_config = overlay_resolved(child_config, sem_cfg);
+                                    child_config =
+                                        overlay_resolved(child_config, sem_cfg, &overlay_origin);
                                 }
                             }
                             let _ = value;
                         }
                         if let Some(t) = chain_tool_index {
                             if let Some(tool_cfg) = tool_configs.get(&t) {
-                                child_config = overlay_resolved(child_config, tool_cfg);
+                                child_config =
+                                    overlay_resolved(child_config, tool_cfg, &overlay_origin);
                             }
                         }
 

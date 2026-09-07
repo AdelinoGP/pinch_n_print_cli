@@ -3,7 +3,7 @@
 Type: grilling
 Status: open
 Assignee: —
-Blocked by: 126
+Blocked by: — (was 126; resolved 2026-09-06 — per-tool overrides now compose onto every declared field)
 Map: ../map.md
 
 ## Question

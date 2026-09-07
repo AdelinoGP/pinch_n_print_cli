@@ -1102,6 +1102,29 @@ macro_rules! declare_resolved_config {
     };
 }
 
+/// Emit the per-field copy arms of [`ResolvedConfig::overlay_onto`].
+///
+/// Re-parses the struct-field tokens accumulated by `__drc!`'s parse arms
+/// (`$(#[$m])* pub $field: $ty,` per declared field), so the overlay covers
+/// **every** declared field by construction: adding a `declare_resolved_config!`
+/// row adds its overlay arm here too, with no hand-maintained list to forget
+/// (wayfinder ticket 126 — the old `overlay_resolved` hand-enumerated a
+/// 28-field allowlist against 83 declared fields).
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __drc_overlay_arms {
+    (
+        $base:ident, $overlay:ident, $origin:ident,
+        $( $(#[$m:meta])* pub $field:ident : $ty:ty, )*
+    ) => {
+        $(
+            if $overlay.$field != $origin.$field {
+                $base.$field = ::core::clone::Clone::clone(&$overlay.$field);
+            }
+        )*
+    };
+}
+
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __drc {
@@ -1179,6 +1202,59 @@ macro_rules! __drc {
             pub fn host_config_keys() -> ::std::vec::Vec<$crate::resolved_config::HostConfigKey> {
                 let $dflt = ResolvedConfig::default();
                 ::std::vec![ $($hk)* ]
+            }
+
+            /// Compose `overlay` onto `base`, copying only the fields this
+            /// overlay **explicitly set** relative to `origin` (the config
+            /// the overlay was resolved from), then merging `extensions`
+            /// by the same rule. Returns the composed config.
+            ///
+            /// `origin` is the fixed point of the comparison, and the choice
+            /// is the whole point (wayfinder ticket 126):
+            ///
+            /// - Per-tool and per-paint-semantic overlays are built as
+            ///   `global.clone()` + overrides (`apply_overlay`), so *every*
+            ///   field the global config sets away from its default is
+            ///   non-default in the overlay too — an inherited value, not an
+            ///   explicit one. Comparing against `ResolvedConfig::default()`
+            ///   therefore writes the **global** value back over `base`,
+            ///   clobbering a lower-precedence override (e.g. a paint
+            ///   semantic's) that the overlay never touched, and it cannot
+            ///   express "override this field back to its default".
+            ///   Comparing against `origin` — the actual global base —
+            ///   identifies exactly the keys the overlay itself set, because
+            ///   an inherited field equals its origin by construction.
+            /// - `ResolvedConfig::default()` remains the correct `origin`
+            ///   for overlays built **from** defaults, such as modifier
+            ///   config deltas: their explicit entries are the non-default
+            ///   ones relative to that same default.
+            ///
+            /// Both parameters are configs the overlay is already derived
+            /// from, and the per-field arms are emitted from the same
+            /// declaration that defines the fields — there is no
+            /// hand-maintained field list to drift (the ticket-118
+            /// 28-of-83-allowlist defect this replaces).
+            ///
+            /// `extensions` follows the same explicit-vs-inherited rule:
+            /// only keys absent from `origin.extensions` or differing from
+            /// it are copied. A module-owned key set globally is inherited
+            /// by every overlay, so it no longer clobbers a per-object
+            /// override for the same key.
+            pub fn overlay_onto(
+                mut base: ResolvedConfig,
+                overlay: &ResolvedConfig,
+                origin: &ResolvedConfig,
+            ) -> ResolvedConfig {
+                $crate::__drc_overlay_arms!(base, overlay, origin, $($sf)*);
+                for (k, v) in &overlay.extensions {
+                    match origin.extensions.get(k) {
+                        Some(origin_v) if origin_v == v => {}
+                        _ => {
+                            base.extensions.insert(k.clone(), v.clone());
+                        }
+                    }
+                }
+                base
             }
         }
     };
@@ -2410,6 +2486,122 @@ mod orca_point_string_tests {
         assert!(
             extract_float_list("printable_area", &value).is_err(),
             "an unparseable entry must surface as a type mismatch"
+        );
+    }
+}
+
+/// Wayfinder ticket 126 — the overlay-composition drift guard.
+///
+/// `overlay_onto` must copy **every** macro-declared field that an overlay
+/// explicitly set (i.e. that differs from its resolution `origin`). The old
+/// hand-written `overlay_resolved` diff in `region_mapping.rs` enumerated a
+/// 28-field allowlist by hand, so an override naming any other declared field
+/// resolved correctly and was then **silently dropped** at composition. The
+/// arms are now emitted by the `declare_resolved_config!` macro itself, so
+/// this test cannot enumerate fields by hand either — it drives the field
+/// set through `ResolvedConfig::host_config_keys()` (also macro-derived), which
+/// means a new `cli` row is automatically covered: if its overlay arm were
+/// ever missed, the key's explicit value fails to reach the composed config
+/// here.
+#[cfg(test)]
+mod overlay_onto_drift_guard {
+    use super::*;
+
+    #[test]
+    fn explicit_overrides_reach_the_composed_config_for_every_declared_field() {
+        // Drive the composition through real resolution: the overlay is
+        // built from `origin` (as `resolve_per_*_configs` builds every
+        // per-axis overlay from the global config), then one explicit
+        // override is applied per key and must survive onto the base.
+        let origin = ResolvedConfig::default();
+        let mut overlay = origin.clone();
+
+        // A sentinel value per field, typed by the declared wire type and
+        // distinct from the default for every field. `apply_cli_key` both
+        // types the value and finds the field, so an undeclared key cannot
+        // sneak into the loop.
+        let sentinel = |field_type: &str| -> ConfigValue {
+            match field_type {
+                "float" => ConfigValue::Float(12345.6789),
+                "int" => ConfigValue::Int(7777),
+                "bool" => ConfigValue::Bool(true),
+                "string" => ConfigValue::String("overlay_sentinel".to_string()),
+                "float-list" => ConfigValue::List(vec![ConfigValue::Float(99.5)]),
+                "string-list" => {
+                    ConfigValue::List(vec![ConfigValue::String("overlay_sentinel".to_string())])
+                }
+                "float_or_percent" => ConfigValue::FloatOrPercent {
+                    value: 77.7,
+                    is_percent: true,
+                },
+                other => panic!("unmapped wire type {other} needs a sentinel"),
+            }
+        };
+        let mut applied = 0usize;
+        for HostConfigKey {
+            key, field_type, ..
+        } in ResolvedConfig::host_config_keys()
+        {
+            let value = sentinel(field_type);
+            assert!(
+                overlay.apply_cli_key(key, &value).is_ok_and(|hit| hit),
+                "{key} must be a declared CLI field"
+            );
+            applied += 1;
+        }
+        // The guard is only meaningful if the declaration is non-empty.
+        assert!(applied > 50, "expected the full declared field set");
+
+        // Base equals origin (both default): every explicit overlay value
+        // must copy through, so the composed config must equal the overlay
+        // whole — one `PartialEq` over every declared field at once, no
+        // per-key enumeration that could itself drift. `ResolvedConfig`'s
+        // `PartialEq` compares every field (bit-exact on floats) plus
+        // `extensions`.
+        let base = ResolvedConfig::default();
+        let composed = ResolvedConfig::overlay_onto(base, &overlay, &origin);
+        assert_eq!(
+            composed, overlay,
+            "every explicitly-set override must reach the composed config; a mismatch names \
+             the dropped field via the debug diff"
+        );
+    }
+
+    /// The inherited half of the same contract: a field the overlay did NOT
+    /// set (identical to its origin) must never be copied, and an explicit
+    /// override back to the default value must be honoured (the old
+    /// compare-against-default diff could not express it).
+    #[test]
+    fn inherited_fields_are_not_copied_and_reset_to_default_is_expressible() {
+        // Origin (global) sets a field away from its default; the overlay
+        // inherits it; the base carries a different, lower-precedence value.
+        let origin = ResolvedConfig {
+            line_width: 0.6,
+            ..Default::default()
+        };
+        let overlay = origin.clone();
+        let base = ResolvedConfig {
+            line_width: 0.5,
+            ..Default::default()
+        };
+
+        // Inherited: the overlay is identical to origin, so nothing copies
+        // and the base's own value survives.
+        let composed = ResolvedConfig::overlay_onto(base.clone(), &overlay, &origin);
+        assert_eq!(
+            composed.line_width, 0.5,
+            "an inherited field must not clobber the base's lower-precedence override"
+        );
+
+        // Explicit reset to the default: the overlay sets the field back to
+        // the default 0.0; against origin's 0.6 that is an explicit change
+        // and must copy.
+        let mut reset_overlay = origin.clone();
+        reset_overlay.line_width = 0.0;
+        let composed = ResolvedConfig::overlay_onto(base.clone(), &reset_overlay, &origin);
+        assert_eq!(
+            composed.line_width, 0.0,
+            "an explicit override back to the default value must be expressible"
         );
     }
 }
