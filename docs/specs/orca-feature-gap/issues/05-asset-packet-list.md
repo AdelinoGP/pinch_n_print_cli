@@ -1,7 +1,7 @@
 # Asset — Packet list for the FFF gap queue (ticket 05)
 
 Derived from ticket 04's per-key tier assignment by applying the grouping rule
-below. **91 packets, 357 keys** (Tier A 114, Tier B 228, Tier C 15 — plus 2
+below. **91 packets, 360 keys** (Tier A 114, Tier B 231, Tier C 15 — plus 2
 fog-blocked Tier A keys and 47 Tier D keys, deferred). Packet order is the
 queue order: **tier-major (A, B, C), then owning module, then Orca UI section**.
 (Amended by ticket 07: P14 +`ironing_type` [B], P15 +`support_ironing` [A];
@@ -52,7 +52,7 @@ queue) — packet counts are now 17 A, 68 B, 6 C.)
 | Packet | keys | split |
 |---|---|---|
 | P02/P03 — Prime tower (A) | 26 | 13+13: interface/tower-feature keys, then purge/geometry keys |
-| P36/P37 — Retraction (B) | 20 | 10+10: lift/toolchange/restart keys, then wipe/travel/cut keys |
+| P36/P37 — Retraction (B) | 19 | 8+11: lift/toolchange/restart keys, then wipe/travel/cut keys incl. `retract_before_wipe` from P36 (`long_retractions_when_ec` returned to the queue by ticket 43) |
 | P52/P53 — Seam (B) | 16 | 8+8: scarf/slope keys, then slope-variant/wipe keys |
 | P54/P55 — Walls and surfaces (B) | 17 | 9+9: flow-ratio keys, then compensation/travel keys |
 | P89/P90 — interlocking (C) | 6 | 3+3: beam definition, then structure & boundary |
@@ -372,37 +372,93 @@ AdaptivePAProcessor-style per-feature prediction and are returned to the queue
 with that missing feature named (tier-table rows annotated); no packet number
 taken for them, no new ticket — the future claim packets them.
 
-### P36 — Extruder / Nozzle / Retraction (1/2) — emitter (10 keys, Tier B)
+### P36 — Extruder / Nozzle / Retraction (1/2) — emitter (8 keys, Tier B; packet 276)
 
-`deretraction_speed`, `long_retractions_when_cut`, `long_retractions_when_ec`, `retract_before_wipe`, `retract_length_toolchange`, `retract_lift_above`, `retract_lift_below`, `retract_lift_enforce`, `retract_restart_extra`, `retract_restart_extra_toolchange`
+`deretraction_speed`, `long_retractions_when_cut`, `retract_length_toolchange`, `retract_lift_above`, `retract_lift_below`, `retract_lift_enforce`, `retract_restart_extra`, `retract_restart_extra_toolchange`
 
-### P37 — Extruder / Nozzle / Retraction (2/2) — emitter (10 keys, Tier B)
+(`retract_before_wipe` shed to P37 and `long_retractions_when_ec` returned to the queue by ticket 43.)
 
-`retract_when_changing_layer`, `retraction_distances_when_cut`, `retraction_distances_when_ec`, `retraction_minimum_travel`, `travel_slope`, `use_firmware_retraction`, `wipe`, `wipe_distance`, `z_hop_types`, `z_offset`
+### P37 — Extruder / Nozzle / Retraction (2/2) — emitter (11 keys, Tier B; packet 277)
+
+`retract_before_wipe`, `retract_when_changing_layer`, `retraction_distances_when_cut`, `retraction_distances_when_ec`, `retraction_minimum_travel`, `travel_slope`, `use_firmware_retraction`, `wipe`, `wipe_distance`, `z_hop_types`, `z_offset`
 
 ### P38 — Filament / Bed temperature — emitter (2 keys, Tier B)
 
 `bed_temperature_formula`, `curr_bed_type`
 
-### P39 — Multimaterial / Filament for Features — emitter (3 keys, Tier B)
+**Re-sized by ticket 45 (2026-09-06): not authorable as a standalone packet.**
+Both keys are selectors over absent data — the formula over per-filament
+`bed_temperature` vectors, the bed type over six Tier D plate-temperature
+vector pairs (all zero-occurrence) — so a packet today would be 100%
+declaration-only (rule 1). **Re-filed as
+[ticket 138](138-author-packet-p38-bed-temperature-selection-refiled.md),
+blocked on ticket 125** (the per-tool config model ruling, itself gated on
+126). The authoring ticket for both keys is 138, not 45.
 
-`solid_infill_filament`, `sparse_infill_filament`, `wall_filament`
+### P39 — Multimaterial / Filament for Features — emitter (6 keys, Tier B)
+
+`sparse_infill_filament_id`, `internal_solid_filament_id`, `top_surface_filament_id`, `bottom_surface_filament_id`, `inner_wall_filament_id`, `outer_wall_filament_id`
+
+**Re-sized and closed by direct implementation in ticket 46 (2026-09-06): no
+packet.** The 3 queued legacy names are load-time aliases in the oracle
+(`PrintConfig.cpp` `handle_legacy`) for the live `*_filament_id` family
+(coInt, 0 = Default/inherit); the other 3 family members were never queued
+(absent from source, queue, and tree — queue 407 → 410). All 6 are live in
+runtime entity assembly; the port's tier-table owner (`crates/slicer-gcode`)
+was wrong (ticket-27 hazard — the emitter only emits the `tool_index` the
+runtime resolves).
 
 ### P40 — Multimaterial / Flush options — emitter (2 keys, Tier B)
 
 `filament_flush_temp`, `filament_flush_volumetric_speed`
 
+**Closed by direct implementation in ticket 47 (2026-09-06): no packet.**
+Claim-time re-sizing under the packets-are-for-complex-work rule: both keys
+are placeholder-only in canonical (every `GCode.cpp` read publishes the
+derived `flush_temperatures` / `flush_volumetric_speeds` placeholders for
+custom G-code — no geometry, no IR/WIT, no new module), and this tree's
+substitution seam already exists in `machine-gcode-emit` (generic sweep
+publishes every declared int/float; int/float render canonically, so no
+key-specific arm was needed — unlike 276's word-form-bool guarantee). The
+work was two scalar-global `ResolvedConfig` fields + two manifest rows + six
+tests. Owner re-derived `crates/slicer-gcode` → `machine-gcode-emit`
+(ticket-27 hazard). `DEV-171` records scalar-vs-vector, the missing Tier D
+fallback, and the raw-vs-plural name divergence.
+
 ### P41 — Multimaterial / Multimaterial advanced — emitter (1 keys, Tier B)
 
 `support_object_skip_flush`
+
+**Returned to the queue by ticket 48 (2026-09-06): not authorable as a
+standalone packet.** Both canonical reads are riders on the exclude-object
+seam (`m_enable_exclude_object` + `M624` label codes — P44 / ticket 51
+scope, still open); wiring the bool alone would be declaration-only
+(rule 1). Sequences after (or folds into) P44 when ticket 51 lands
+(6→7 keys stays under the B ceiling 12).
 
 ### P42 — Multimaterial / Ooze prevention — emitter (4 keys, Tier B)
 
 `ooze_prevention`, `preheat_steps`, `preheat_time`, `standby_temperature_delta`
 
-### P43 — Multimaterial / Prime tower — emitter (2 keys, Tier B)
+**Re-sized by ticket 49 (2026-09-06): not authorable as a standalone packet.**
+All four keys are zero-occurrence as behaviour (the one `ORCA_CONFIG_PADDING`
+row is not evidence, rule 2). The ooze pair needs per-filament nozzle-temp
+vectors the host cannot see (Tier D); the preheat pair needs a
+`GCodeProcessor`-style backtrace injector with no port seam. They are
+**re-filed as
+[ticket 139](139-author-packet-p42-ooze-prevention-refiled.md), blocked on
+ticket 125** (the per-tool config model ruling, itself gated on 126). The
+authoring ticket for the four is 139, not 49.
 
-`manual_filament_change`, `single_extruder_multi_material_priming`
+### P43 — Multimaterial / Prime tower — emitter (1 key live, 1 returned; Tier B)
+
+`manual_filament_change` — **live** (ticket 50, direct implementation):
+`ResolvedConfig` bool + serializer tag line + module first-injection skip.
+
+`single_extruder_multi_material_priming` — **returned to the queue as
+unimplemented** by ticket 50: all canonical reads are Type2 priming-tower
+flows with no port subject (purge-only tower); sequences after ticket 122
+(prime tower body parity). P43 now covers 1 key.
 
 ### P44 — Others / G-code output — emitter (6 keys, Tier B)
 

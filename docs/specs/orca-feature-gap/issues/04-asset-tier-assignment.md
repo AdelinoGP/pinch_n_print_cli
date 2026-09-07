@@ -53,8 +53,9 @@ coBools in `PrintConfigDef::init_fff_params`, resolved via `get_at` /
 Keys ruled out by the reviews and the human: dead-in-canonical (OrcaSlicer
 itself never reads them in the pipeline), preset-management (matching
 ticket 03's ruling), and dead alternate spellings. 11 keys; the scoped
-target is now **407** (403 + ticket 07's two reclassified ironing keys +
-ticket 99's two fan-scale reclassifications).
+target is now **410** (403 + ticket 07's two reclassified ironing keys +
+ticket 99's two fan-scale reclassifications + ticket 46's three
+source-missing `*_filament_id` siblings).
 
 ### Special rulings
 
@@ -84,11 +85,11 @@ ticket 99's two fan-scale reclassifications).
 | Tier | keys | meaning |
 |---:|---:|---|
 | A | 119 | plumbing into an existing decision point (incl. `support_ironing`, +1 from ticket 07) |
-| B | 226 | new logic in an existing owner (incl. `ironing_type` +1 from 07; `fan_max_speed`/`fan_min_speed` +2 from 99) |
+| B | 229 | new logic in an existing owner (incl. `ironing_type` +1 from 07; `fan_max_speed`/`fan_min_speed` +2 from 99; `top/bottom_surface_filament_id` + `inner_wall_filament_id` +3 from 46) |
 | C | 15 | new granular modules (Precision 8, interlocking 6, mmu-segmented-region 2, minus precise_z_height folded into layer-planner) |
 | D | 47 | deferred — per-filament config model (58 minus 11 global keys now assignable) |
 | X | 11 | out of scope (dead-in-canonical 6+2, preset-management 3) |
-| **in scope** | **407** | |
+| **in scope** | **410** | |
 
 ## Owner map (verified + five times adversarially reviewed)
 
@@ -233,9 +234,9 @@ findings (the one flagged row was a stale-asset artifact).
 
 ### Extruder / Nozzle / Retraction
 | `deretraction_speed` | B | crates/slicer-gcode (GCode::retract) |
-| `long_retractions_when_cut` | B | crates/slicer-gcode (GCode::retract) |
-| `long_retractions_when_ec` | B | crates/slicer-gcode (GCode::retract) |
-| `retract_before_wipe` | B | crates/slicer-gcode (GCode::retract) |
+| `long_retractions_when_cut` | B | machine-gcode-emit placeholder seam — **in packet 276** by ticket 43: canonical's only reads are the export flag + `update_placeholder_parser_with_variant_params` publication, so the port publishes it through the module's existing substitution with a key-specific `1`/`0` guarantee (ADR-0050); scalar-global + `ResolvedConfig` field, vector model stays with ticket 125 |
+| `long_retractions_when_ec` | B | — **returned to the queue, unimplemented** by ticket 43: `ConfigOptionBoolsNullable` with no geometric read site (placeholder publication only); the `_cut` wiring in packet 276 names its landing pattern when claimed |
+| `retract_before_wipe` | B | crates/slicer-gcode (GCode::retract) — **shed to P37** by ticket 43: partitions retraction around wipe moves this tree does not emit yet; wiring it in 276 would be declaration-only (rule 1) |
 | `retract_length_toolchange` | B | crates/slicer-gcode (GCode::retract) |
 | `retract_lift_above` | B | crates/slicer-gcode (GCode::retract) |
 | `retract_lift_below` | B | crates/slicer-gcode (GCode::retract) |
@@ -243,8 +244,8 @@ findings (the one flagged row was a stale-asset artifact).
 | `retract_restart_extra` | B | crates/slicer-gcode (GCode::retract) |
 | `retract_restart_extra_toolchange` | B | crates/slicer-gcode (GCode::retract) |
 | `retract_when_changing_layer` | B | crates/slicer-gcode (GCode::retract) |
-| `retraction_distances_when_cut` | B | crates/slicer-gcode (GCode::retract) |
-| `retraction_distances_when_ec` | B | crates/slicer-gcode (GCode::retract) |
+| `retraction_distances_when_cut` | B | machine-gcode-emit placeholder seam — **in packet 277** by ticket 44: canonical's reads are `append_tcr` / `update_placeholder_parser_with_variant_params` publication plus the `do_export` long-retraction flag (no cut motion is generated), so the port publishes it through the module's existing substitution with float spelling (276 `_cut`-bool precedent); scalar-global + `ResolvedConfig` field, vector model stays with ticket 125 |
+| `retraction_distances_when_ec` | B | machine-gcode-emit placeholder seam — **in packet 277** by ticket 44: placeholder-only in canonical (`update_placeholder_parser_with_variant_params`; EC remains placeholder-only in `GCode.cpp`), published through the module's existing substitution with float spelling; canonical's null state is not represented (unset means default); scalar-global + `ResolvedConfig` field, vector model stays with ticket 125 |
 | `retraction_minimum_travel` | B | crates/slicer-gcode (GCode::retract) |
 | `travel_slope` | B | crates/slicer-gcode (GCode::travel) |
 | `use_firmware_retraction` | B | crates/slicer-gcode (GCodeWriter::retract) |
@@ -254,10 +255,10 @@ findings (the one flagged row was a stale-asset artifact).
 | `z_offset` | B | crates/slicer-gcode (GCode::travel) |
 
 ### Filament / Bed temperature
-| `bed_temperature_formula` | B | crates/slicer-gcode (bed-temp selection, global) |
+| `bed_temperature_formula` | B | — **blocked, unimplemented** by ticket 45: highest-vs-first-filament selector (`GCode::_print_first_layer_bed_temperature`, `GCode::process_layer`, `GCode::_do_export`) over per-filament `bed_temperature` vectors that do not exist in this tree (only PnP scalar `bed_temperature_initial_layer_single` in `machine-gcode-emit`); re-filed as ticket 138, blocked on ticket 125 |
 | `cool_plate_temp` | D | deferred (per-filament config model) |
 | `cool_plate_temp_initial_layer` | D | deferred (per-filament config model) |
-| `curr_bed_type` | B | crates/slicer-gcode (bed-type, global) |
+| `curr_bed_type` | B | — **blocked, unimplemented** by ticket 45: plate-type selector (`GCode::get_highest_bed_temperature`, `GCode::_print_first_layer_bed_temperature`, `GCode::process_layer`, `GCode::_do_export`) over six Tier D plate-temperature vector pairs with zero occurrences in tree; re-filed as ticket 138, blocked on ticket 125 |
 | `default_bed_type` | X | out of scope — no pipeline consumer (GUI Plater.cpp only, preset-management) |
 | `eng_plate_temp` | D | deferred (per-filament config model) |
 | `eng_plate_temp_initial_layer` | D | deferred (per-filament config model) |
@@ -316,14 +317,17 @@ findings (the one flagged row was a stale-asset artifact).
 ### Multimaterial / Filament for Features
 | `filament_map` | B | config-resolution (Print.cpp get_filament_maps, print-level) |
 | `filament_map_mode` | B | config-resolution (Print.cpp get_filament_map_mode, global) |
-| `solid_infill_filament` | B | crates/slicer-gcode (per-region filament selection) |
-| `sparse_infill_filament` | B | crates/slicer-gcode (per-region filament selection) |
-| `wall_filament` | B | crates/slicer-gcode (per-region filament selection) |
+| `solid_infill_filament` → `internal_solid_filament_id` | B | runtime entity assembly (`assemble_ordered_entities_with_support_identities`, `crates/slicer-runtime/src/layer_executor.rs`) — **live** (ticket 46, direct implementation): canonical coInt 0=Default/inherit adopted as the declared name; explicit 1..N rebased to 0-based and clamped to tool count, resolved per entity by role below all paint-derived tools |
+| `sparse_infill_filament` → `sparse_infill_filament_id` | B | runtime entity assembly — **live** (ticket 46, direct implementation, same seam) |
+| `wall_filament` → `outer_wall_filament_id` | B | runtime entity assembly — **live** (ticket 46, direct implementation, same seam) |
+| `top_surface_filament_id` | B | runtime entity assembly — **live** (ticket 46, direct implementation, same seam; never queued — absent from the gap source, the queue, and the tree; queue +1) |
+| `bottom_surface_filament_id` | B | runtime entity assembly — **live** (ticket 46, direct implementation, same seam; never queued; queue +1) |
+| `inner_wall_filament_id` | B | runtime entity assembly — **live** (ticket 46, direct implementation, same seam; never queued; queue +1) |
 | `wipe_tower_filament` | B | wipe-tower (tower filament, global) — **blocked, unimplemented** by ticket 29: a selector over the tower's *finish extrusions* (`ToolOrdering::insert_wipe_tower_extruder`, `WipeTower2::first_toolchange_to_nonsoluble_nonsupport`), and this port's tower is purge-only — no shell/brim/infill, no idle-layer body, every path stamped `tool_index = tc.to_tool`; folded into ticket 122 (prime tower body parity), which the user ruled in scope at full canonical parity |
 
 ### Multimaterial / Flush options
-| `filament_flush_temp` | B | crates/slicer-gcode (toolchange flush) |
-| `filament_flush_volumetric_speed` | B | crates/slicer-gcode (toolchange flush) |
+| `filament_flush_temp` | B | machine-gcode-emit placeholder seam — **live** (ticket 47, direct implementation): scalar-global `ResolvedConfig` field (canonical default 0) + manifest row, published as-is through the module's generic `[key]` substitution into custom templates; per-tool via `tool_config:<idx>:` axis, Orca vector ingest rides 125. Owner re-derived from `crates/slicer-gcode` (ticket-27 hazard — canonical's reads are all `GCode.cpp` placeholder publication, and this tree's substitution lives in the module). Divergences in `DEV-171` (scalar not per-filament, 0 with no Tier D fallback, raw names not canonical's plural derived names) |
+| `filament_flush_volumetric_speed` | B | machine-gcode-emit placeholder seam — **live** (ticket 47, direct implementation, same seam): scalar-global `ResolvedConfig` field (canonical default 0.0, max 200) + manifest row; same owner note and `DEV-171` |
 | `flush_into_infill` | B | tool-ordering (ToolOrdering.cpp) |
 | `flush_into_objects` | B | tool-ordering (ToolOrdering.cpp) |
 | `flush_into_support` | B | tool-ordering (ToolOrdering.cpp) |
@@ -342,13 +346,13 @@ findings (the one flagged row was a stale-asset artifact).
 | `interlocking_orientation` | C | new interlocking module |
 | `mmu_segmented_region_interlocking_depth` | C | new mmu-segmented-region module (consumed host-side in paint_segmentation) |
 | `mmu_segmented_region_max_width` | C | new mmu-segmented-region module (consumed host-side in paint_segmentation) |
-| `support_object_skip_flush` | B | crates/slicer-gcode (exclude-object emission) |
+| `support_object_skip_flush` | B | crates/slicer-gcode (exclude-object emission) — **returned to queue, unimplemented** by ticket 48: both canonical reads (`GCode.cpp` sequential-toolchange + by-layer extrusion loop) are gated on `m_enable_exclude_object` (BBL + non-calib + exclude) and emit `M624` label codes — none of which exists in this tree (P44 / ticket 51 scope); wiring alone would be declaration-only (rule 1). Sequences after (or folds into) P44 when ticket 51 lands |
 
 ### Multimaterial / Ooze prevention
-| `ooze_prevention` | B | crates/slicer-gcode (standby_temperature in serialize.rs) |
-| `preheat_steps` | B | crates/slicer-gcode (standby_temperature in serialize.rs) |
-| `preheat_time` | B | crates/slicer-gcode (standby_temperature in serialize.rs) |
-| `standby_temperature_delta` | B | crates/slicer-gcode (standby_temperature in serialize.rs) |
+| `ooze_prevention` | B | crates/slicer-gcode (standby_temperature in serialize.rs) — **blocked, unimplemented** by ticket 49: standby arms need per-filament nozzle-temp vectors (Tier D) the host cannot see (its only temp field is the unrelated `filament_flush_temp`); re-filed as ticket 139, blocked on ticket 125 |
+| `preheat_steps` | B | crates/slicer-gcode (standby_temperature in serialize.rs) — **blocked, unimplemented** by ticket 49: `GCodeProcessor` backtrace injector has no port seam (no usage-block builder, no XL concept, no filament count); re-filed as ticket 139, blocked on ticket 125 |
+| `preheat_time` | B | crates/slicer-gcode (standby_temperature in serialize.rs) — **blocked, unimplemented** by ticket 49: same backtrace injector gap as `preheat_steps`; re-filed as ticket 139, blocked on ticket 125 |
+| `standby_temperature_delta` | B | crates/slicer-gcode (standby_temperature in serialize.rs) — **blocked, unimplemented** by ticket 49: same missing base-temp source as `ooze_prevention` (`idle_temperature` is Tier D); re-filed as ticket 139, blocked on ticket 125 |
 
 ### Multimaterial / Prime tower
 | `enable_filament_ramming` | A | wipe-tower |
@@ -359,7 +363,7 @@ findings (the one flagged row was a stale-asset artifact).
 | `filament_tower_interface_print_temp` | A | wipe-tower |
 | `filament_tower_interface_purge_volume` | A | wipe-tower |
 | `filament_tower_ironing_area` | A | wipe-tower |
-| `manual_filament_change` | B | crates/slicer-gcode (toolchange emission) |
+| `manual_filament_change` | B | crates/slicer-gcode (toolchange emission) + machine-gcode-emit (first-`change_filament_gcode` skip) — **live** (ticket 50, direct implementation): `ResolvedConfig` bool (default false) + serializer `; MANUAL_TOOL_CHANGE T<n>` tag line + module `FilamentChange` skip at 1-based count 1; later toolchanges unaffected |
 | `prime_tower_brim_width` | A | wipe-tower |
 | `prime_tower_enable_framework` | A | wipe-tower |
 | `prime_tower_flat_ironing` | A | wipe-tower |
@@ -367,7 +371,7 @@ findings (the one flagged row was a stale-asset artifact).
 | `prime_tower_skip_points` | A | wipe-tower |
 | `purge_in_prime_tower` | A | wipe-tower |
 | `single_extruder_multi_material` | A | wipe-tower |
-| `single_extruder_multi_material_priming` | B | crates/slicer-gcode (toolchange emission) |
+| `single_extruder_multi_material_priming` | B | crates/slicer-gcode (toolchange emission) — **returned to queue, unimplemented** by ticket 50: every canonical read sits in `WipeTowerType::Type2` priming-tower flows (`initial_extruder` selection, `has_single_extruder_multi_material_priming` placeholder, `set_extruder` skip, `m_wipe_tower->prime()`), none of which exists in this tree (purge-only tower, ticket 29 census); sequences after ticket 122 (prime tower body parity), the same seat as `wipe_tower_filament` |
 | `wipe_tower_bridging` | A | wipe-tower |
 | `wipe_tower_cone_angle` | A | wipe-tower |
 | `wipe_tower_extra_flow` | A | wipe-tower |

@@ -91,11 +91,12 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
   this class of key.** Not enumerated. Before asserting a default matches, check
   whether the key has a `ResolvedConfig` field and compare *that*
   (2026-09-01 grilling, Q11).
-- **The scoped target is 407 queue keys** (03's 415 minus 04's 11 rulings plus
+- **The scoped target is 410 queue keys** (03's 415 minus 04's 11 rulings plus
   07's 2 reclassified ironing keys plus 99's 2 fan-scale keys — minus ticket
   12's dead-in-canonical `brim_ears` ruling: **407**; the 406→407 step is
   ticket 105's re-adjudication of `resolution` out of the rename pool into the
-  gap set; per-key tier table in
+  gap set; the 407→410 step is ticket 46's three source-missing
+  `*_filament_id` siblings; per-key tier table in
   [`04-asset-tier-assignment.md`](issues/04-asset-tier-assignment.md), packet
   list in [`05-asset-packet-list.md`](issues/05-asset-packet-list.md). Size
   packets off those, never off the reference's ❌ column.
