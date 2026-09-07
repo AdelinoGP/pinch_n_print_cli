@@ -54,7 +54,7 @@ queue) — packet counts are now 17 A, 68 B, 6 C.)
 | P02/P03 — Prime tower (A) | 26 | 13+13: interface/tower-feature keys, then purge/geometry keys |
 | P36/P37 — Retraction (B) | 19 | 8+11: lift/toolchange/restart keys, then wipe/travel/cut keys incl. `retract_before_wipe` from P36 (`long_retractions_when_ec` returned to the queue by ticket 43) |
 | P52/P53 — Seam (B) | 16 | 8+8: scarf/slope keys, then slope-variant/wipe keys |
-| P54/P55 — Walls and surfaces (B) | 17 | 9+9: flow-ratio keys, then compensation/travel keys |
+| P54/P55 — Walls and surfaces (B) | 17 | 8+8: flow-ratio keys + adopted gate, then compensation/travel keys (re-sized by ticket 61: `is_infill_first` + `max_travel_detour_distance` returned to the queue, `set_other_flow_ratios` adopted P55→P54) |
 | P89/P90 — interlocking (C) | 6 | 3+3: beam definition, then structure & boundary |
 
 Split boundaries are proposals; the authoring ticket may adjust the boundary by
@@ -504,13 +504,17 @@ consumed.
 
 `seam_slope_entire_loop`, `seam_slope_inner_walls`, `seam_slope_min_length`, `seam_slope_start_height`, `seam_slope_steps`, `seam_slope_type`, `wipe_before_external_loop`, `wipe_on_loops`
 
-### P54 — Quality / Walls and surfaces (1/2) — emitter (9 keys, Tier B)
+### P54 — Quality / Walls and surfaces (1/2) — emitter (8 keys, Tier B; packet 287)
 
-`bottom_solid_infill_flow_ratio`, `first_layer_flow_ratio`, `gap_fill_flow_ratio`, `inner_wall_flow_ratio`, `internal_solid_infill_flow_ratio`, `is_infill_first`, `max_travel_detour_distance`, `outer_wall_flow_ratio`, `overhang_flow_ratio`
+`bottom_solid_infill_flow_ratio`, `first_layer_flow_ratio`, `gap_fill_flow_ratio`, `inner_wall_flow_ratio`, `internal_solid_infill_flow_ratio`, `outer_wall_flow_ratio`, `overhang_flow_ratio`, `set_other_flow_ratios` (adopted from P55 by ticket 61)
 
-### P55 — Quality / Walls and surfaces (2/2) — emitter (9 keys, Tier B)
+**Re-sized by ticket 61 (2026-09-07): 7 ratios + adopted gate in, two keys returned, packet 287 authored.** `is_infill_first` (ordering lives in runtime orchestration, not emission) and `max_travel_detour_distance` (no avoidance planner to clamp) are returned to the queue as unimplemented with missing features named (no new ticket — a future claim packets them). `set_other_flow_ratios` adopted P55→P54 as a split-boundary adjustment (the gate arms this family's ratios). P54 9→8; no queue-count change.
 
-`print_flow_ratio`, `reduce_crossing_wall`, `set_other_flow_ratios`, `small_area_infill_flow_compensation`, `small_area_infill_flow_compensation_model`, `sparse_infill_flow_ratio`, `support_flow_ratio`, `support_interface_flow_ratio`, `top_solid_infill_flow_ratio`
+### P55 — Quality / Walls and surfaces (2/2) — emitter (8 keys, Tier B)
+
+`print_flow_ratio`, `reduce_crossing_wall`, `small_area_infill_flow_compensation`, `small_area_infill_flow_compensation_model`, `sparse_infill_flow_ratio`, `support_flow_ratio`, `support_interface_flow_ratio`, `top_solid_infill_flow_ratio`
+
+(Sheds `set_other_flow_ratios` to P54 by ticket 61 — 9→8; depends backward on packet 287's gate when authored.)
 
 ### P56 — Speed / Acceleration — emitter (11 keys, Tier B)
 

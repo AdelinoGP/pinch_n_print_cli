@@ -1,0 +1,9 @@
+# Task Map: 287-walls-flow-ratios-emitter
+
+Queue packet from the wayfinder map "Close the OrcaSlicer FFF feature gap"; authored under map ticket 61. Single-task packet (no backlog slice); this crosswalk exists for the S0 structural gate and records the map provenance.
+
+| docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| `TASK-000` (queue packet, `task_ids: []`) | Steps 1–1b–4 | `docs/config/host-keys.toml`; `docs/DEVIATION_LOG.md` (DEV-179); `docs/15_config_keys_reference.md` (generated via `cargo xtask gen-config-docs`, Step 1b); `docs/01_system_architecture.md` (claim-system trigger test) | `crates/slicer-ir/src/resolved_config.rs` + `crates/slicer-gcode/src/emit.rs` (role-gated multiplier + bounds) + `crates/slicer-gcode/tests/flow_ratio_emission_tdd.rs` (new) + `docs/config/host-keys.toml` | `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` (eight declarations + bounds) + `OrcaSlicerDocumented/src/libslic3r/GCode.cpp` (`GCode::extrude_entity` role mapping, gate, first-layer exclusion, composition position) | M | P54: Tier B held, owner `crates/slicer-gcode` stands (all canonical reads emission-time; machine-gcode-emit sweep is the wrong seam); membership re-sized 9→8 (seven ratios in + `set_other_flow_ratios` adopted from P55 as a split-boundary adjustment; `is_infill_first` returned — wrong owner, orchestration seam; `max_travel_detour_distance` returned — no avoidance planner, declaration-only per rule 1); scalar-global is parity (all canonical scalars — no ticket-125 vector model); defaults identity (no CONFIG_BLOCK change, table untouched); P55 sheds the gate 9→8 with a backward dep; overhang selection via point marking DEV-179(b); bounds enforcement DEV-179(a). |
+
+Copy costs from `implementation-plan.md`. Split before activation if any row is L or aggregate exceeds M.

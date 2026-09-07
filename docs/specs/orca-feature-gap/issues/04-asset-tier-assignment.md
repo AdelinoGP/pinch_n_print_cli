@@ -548,19 +548,19 @@ findings (the one flagged row was a stale-asset artifact).
 | `min_feature_size` | A | arachne-perimeters |
 
 ### Quality / Walls and surfaces
-| `bottom_solid_infill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
+| `bottom_solid_infill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 287** by ticket 61 |
 | `extruder` | B | print/orchestration (per-object extruder assignment) |
-| `first_layer_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
-| `gap_fill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
-| `inner_wall_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
-| `internal_solid_infill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
-| `is_infill_first` | B | crates/slicer-gcode (emission ordering) |
-| `max_travel_detour_distance` | B | crates/slicer-gcode (travel planning) |
-| `outer_wall_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
-| `overhang_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
+| `first_layer_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 287** by ticket 61 |
+| `gap_fill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 287** by ticket 61 |
+| `inner_wall_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 287** by ticket 61 |
+| `internal_solid_infill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 287** by ticket 61 |
+| `is_infill_first` | B | — **returned to the queue, unimplemented** by ticket 61: per-region walls-vs-infill order (+ first-layer-always-walls exception) lives in runtime orchestration (`assemble_ordered_entities_with_support_identities`), not emission — the emitter preserves `ordered_entities` and must not reorder; wiring it in the emitter would be the wrong seam (ticket-27 hazard) |
+| `max_travel_detour_distance` | B | — **returned to the queue, unimplemented** by ticket 61: zero-disables detour cap over a perimeter-avoiding planner the port does not have (path-optimization emits direct inter-region travel; the emitter consumes precomputed travels) — a limit with no planner would be declaration-only (rule 1); missing feature: avoid-crossing-perimeters planner |
+| `outer_wall_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 287** by ticket 61 |
+| `overhang_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 287** by ticket 61 (overhang selection via point-level `overhang_quartile` marking, DEV-179(b) — the port has no `OverhangPerimeter` role) |
 | `print_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
 | `reduce_crossing_wall` | B | crates/slicer-gcode (travel planning) |
-| `set_other_flow_ratios` | B | crates/slicer-gcode (emission flow scaling) |
+| `set_other_flow_ratios` | B | crates/slicer-gcode (emission flow scaling) — **adopted into packet 287** by ticket 61 (split-boundary adjustment: the gate arms P54's ratios, so the decision lives in one place — P55 sheds it 9→8 with a backward dep) |
 | `small_area_infill_flow_compensation` | B | crates/slicer-gcode (emission flow scaling) |
 | `small_area_infill_flow_compensation_model` | B | crates/slicer-gcode (emission flow scaling) |
 | `sparse_infill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
