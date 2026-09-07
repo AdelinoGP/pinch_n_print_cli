@@ -558,15 +558,15 @@ findings (the one flagged row was a stale-asset artifact).
 | `max_travel_detour_distance` | B | — **returned to the queue, unimplemented** by ticket 61: zero-disables detour cap over a perimeter-avoiding planner the port does not have (path-optimization emits direct inter-region travel; the emitter consumes precomputed travels) — a limit with no planner would be declaration-only (rule 1); missing feature: avoid-crossing-perimeters planner |
 | `outer_wall_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 287** by ticket 61 |
 | `overhang_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 287** by ticket 61 (overhang selection via point-level `overhang_quartile` marking, DEV-179(b) — the port has no `OverhangPerimeter` role) |
-| `print_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
-| `reduce_crossing_wall` | B | crates/slicer-gcode (travel planning) |
+| `print_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 288** by ticket 62 |
+| `reduce_crossing_wall` | B | — **returned to the queue, unimplemented** by ticket 62: the enable for perimeter-avoiding travel (`AvoidCrossingPerimeters::travel_to` + `init_layer`, `GCode.cpp`) over a planner the port does not have (path-optimization emits direct inter-region travel; the emitter consumes precomputed travels — ticket-61's detour precedent); wiring the bool alone would be declaration-only (rule 1); missing feature: avoid-crossing-perimeters planner (shared with `max_travel_detour_distance`) |
 | `set_other_flow_ratios` | B | crates/slicer-gcode (emission flow scaling) — **adopted into packet 287** by ticket 61 (split-boundary adjustment: the gate arms P54's ratios, so the decision lives in one place — P55 sheds it 9→8 with a backward dep) |
-| `small_area_infill_flow_compensation` | B | crates/slicer-gcode (emission flow scaling) |
-| `small_area_infill_flow_compensation_model` | B | crates/slicer-gcode (emission flow scaling) |
-| `sparse_infill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
-| `support_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
-| `support_interface_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
-| `top_solid_infill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) |
+| `small_area_infill_flow_compensation` | B | crates/slicer-gcode (emission flow scaling) — **in packet 288** by ticket 62 |
+| `small_area_infill_flow_compensation_model` | B | crates/slicer-gcode (emission flow scaling) — **in packet 288** by ticket 62 |
+| `sparse_infill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 288** by ticket 62 |
+| `support_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 288** by ticket 62 |
+| `support_interface_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 288** by ticket 62 |
+| `top_solid_infill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 288** by ticket 62 |
 
 ### Speed / Acceleration
 | `accel_to_decel_enable` | B | crates/slicer-gcode (estimator.rs) |

@@ -54,7 +54,7 @@ queue) — packet counts are now 17 A, 68 B, 6 C.)
 | P02/P03 — Prime tower (A) | 26 | 13+13: interface/tower-feature keys, then purge/geometry keys |
 | P36/P37 — Retraction (B) | 19 | 8+11: lift/toolchange/restart keys, then wipe/travel/cut keys incl. `retract_before_wipe` from P36 (`long_retractions_when_ec` returned to the queue by ticket 43) |
 | P52/P53 — Seam (B) | 16 | 8+8: scarf/slope keys, then slope-variant/wipe keys |
-| P54/P55 — Walls and surfaces (B) | 17 | 8+8: flow-ratio keys + adopted gate, then compensation/travel keys (re-sized by ticket 61: `is_infill_first` + `max_travel_detour_distance` returned to the queue, `set_other_flow_ratios` adopted P55→P54) |
+| P54/P55 — Walls and surfaces (B) | 17 | 8+7+1: flow-ratio keys + adopted gate, then compensation/remaining-ratio keys, then the returned travel key (re-sized by tickets 61+62: `is_infill_first` + `max_travel_detour_distance` + `reduce_crossing_wall` returned to the queue, `set_other_flow_ratios` adopted P55→P54) |
 | P89/P90 — interlocking (C) | 6 | 3+3: beam definition, then structure & boundary |
 
 Split boundaries are proposals; the authoring ticket may adjust the boundary by
@@ -510,11 +510,11 @@ consumed.
 
 **Re-sized by ticket 61 (2026-09-07): 7 ratios + adopted gate in, two keys returned, packet 287 authored.** `is_infill_first` (ordering lives in runtime orchestration, not emission) and `max_travel_detour_distance` (no avoidance planner to clamp) are returned to the queue as unimplemented with missing features named (no new ticket — a future claim packets them). `set_other_flow_ratios` adopted P55→P54 as a split-boundary adjustment (the gate arms this family's ratios). P54 9→8; no queue-count change.
 
-### P55 — Quality / Walls and surfaces (2/2) — emitter (8 keys, Tier B)
+### P55 — Quality / Walls and surfaces (2/2) — emitter (7 keys in, 1 returned; Tier B; packet 288)
 
-`print_flow_ratio`, `reduce_crossing_wall`, `small_area_infill_flow_compensation`, `small_area_infill_flow_compensation_model`, `sparse_infill_flow_ratio`, `support_flow_ratio`, `support_interface_flow_ratio`, `top_solid_infill_flow_ratio`
+`print_flow_ratio`, `small_area_infill_flow_compensation`, `small_area_infill_flow_compensation_model`, `sparse_infill_flow_ratio`, `support_flow_ratio`, `support_interface_flow_ratio`, `top_solid_infill_flow_ratio`
 
-(Sheds `set_other_flow_ratios` to P54 by ticket 61 — 9→8; depends backward on packet 287's gate when authored.)
+**Re-sized by ticket 62 (2026-09-07): 5 ratios + small-area pair in, one key returned, packet 288 authored.** `reduce_crossing_wall` (perimeter-avoiding travel enable) is returned to the queue as unimplemented with the missing planner named (no avoidance planner in tree — ticket-61 detour precedent; no new ticket). `set_other_flow_ratios` shed to P54 by ticket 61 — 9→8 there; P55 8→7+1 with a backward FORWARD-DEP on draft packet 287's gate (referenced, never redeclared). No queue-count change.
 
 ### P56 — Speed / Acceleration — emitter (11 keys, Tier B)
 
