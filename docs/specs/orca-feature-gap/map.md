@@ -1298,6 +1298,8 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
 
   - [55 — Author packet P48 — Printer / Machine / Resonance — emitter](issues/55-author-packet-p48-printer-machine-resonance-emitter.md) — **authored as packet 282** (`docs/spec_packets/282-resonance-avoidance-emitter/`, `draft`), preflight **PASS**. Tier B held, all 3 keys in (all zero-occurrence; owner `crates/slicer-gcode` stands — canonical `GCode::_extrude` is emission-time feedrate adjustment, not placeholder publication). Scalar-global (canonical scalar, no ticket-125 model); DEV-174 is first collision-free (LOG max 171, drafts claim 171–173). No code change.
 
+  - [56 — Author packet P49 — Printer / Machine / Timing — emitter](issues/56-author-packet-p49-printer-machine-timing-emitter.md) — **authored as packet 283** (`docs/spec_packets/283-printer-timing-emitter/`, `draft`), preflight **PASS** (S0–S8 clean; one self-review split of a 4-file behaviour step; one gate re-verify retraction of three wrong-file `N` greps). Tier B held with all **4 keys in, none shed, no code change**: per-`ToolChange` plain-sum time charge in the estimator (PnP simplification of the canonical conditional table — no extruder model to condition on, DEV-175(a)), `time_cost * total / 3600` printer-cost footer line gated on `> 0` (canonical has no printer-cost footer label, DEV-175(b)), negative rejection (DEV-175(c)), filament-cost total omitted with `filament_cost` Tier D (DEV-175(d)). `Option<f32>` machine-key shape (not 282's plain `f32`) keeps the CONFIG_BLOCK byte-stable at defaults. 04/05 rows unchanged; no new fog.
+
 ## Not yet specified
 
 - **The time-lapse gate has two open clauses waiting on other work.** Surfaced by
