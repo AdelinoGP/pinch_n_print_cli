@@ -10,7 +10,9 @@
 use std::collections::HashMap;
 
 use slicer_core::perimeter_utils::build_wall_flags;
-use slicer_ir::{PaintSemantic, PaintValue, WallBoundaryType};
+use slicer_ir::{
+    ExPolygon, PaintSemantic, PaintValue, Point2, Polygon, WallBoundaryType, WallFeatureFlags,
+};
 
 /// Build a `segment_annotations` map for a 4-point polygon where the first two
 /// points belong to tool 1 and the last two to tool 2.
@@ -157,4 +159,254 @@ fn inner_wall_correct_poly_idx_selected() {
         matches!(boundary_type, WallBoundaryType::MaterialBoundary { .. }),
         "poly_idx=2 should still find the two-tool annotations; got {boundary_type:?}"
     );
+}
+
+#[test]
+fn ineffective_annotations_skip_reprojection_but_preserve_length_and_fallback() {
+    let mut annotations = HashMap::new();
+    annotations.insert(
+        PaintSemantic::Material,
+        vec![vec![Some(PaintValue::Scalar(0.5))]],
+    );
+    annotations.insert(
+        PaintSemantic::FuzzySkin,
+        vec![vec![Some(PaintValue::Flag(false))]],
+    );
+    let original = vec![ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2 { x: 0, y: 0 },
+                Point2 { x: 100, y: 0 },
+                Point2 { x: 100, y: 100 },
+                Point2 { x: 0, y: 100 },
+            ],
+        },
+        holes: vec![],
+    }];
+    let ring = [Point2 { x: 10, y: 10 }];
+
+    let (flags, boundary_type) = build_wall_flags(
+        5,
+        0,
+        &annotations,
+        true,
+        Some(&ring),
+        Some(&original),
+        false,
+    );
+
+    assert_eq!(flags.len(), 5, "including a closing slot must be preserved");
+    assert!(flags.iter().all(|flag| flag.tool_index.is_none()));
+    assert!(flags.iter().all(|flag| !flag.fuzzy_skin));
+    assert_eq!(boundary_type, WallBoundaryType::ExteriorSurface);
+}
+
+#[test]
+fn variant_fuzzy_seeds_fastpath_for_inner_and_outer_walls() {
+    let annotations = HashMap::new();
+    for is_outer in [false, true] {
+        let (flags, boundary_type) =
+            build_wall_flags(3, 0, &annotations, is_outer, None, None, true);
+        assert_eq!(flags.len(), 3);
+        assert!(flags.iter().all(|flag| flag.fuzzy_skin));
+        assert_eq!(
+            boundary_type,
+            if is_outer {
+                WallBoundaryType::ExteriorSurface
+            } else {
+                WallBoundaryType::Interior
+            }
+        );
+    }
+}
+
+#[test]
+fn annotation_guard_cases_have_exact_expected_outputs() {
+    struct GuardCase {
+        name: &'static str,
+        annotations: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+        poly_idx: usize,
+        is_outer: bool,
+        num_points: usize,
+        expected_flags: Vec<WallFeatureFlags>,
+        expected_boundary: WallBoundaryType,
+    }
+
+    let mut uniform_material = HashMap::new();
+    uniform_material.insert(
+        PaintSemantic::Material,
+        vec![vec![Some(PaintValue::ToolIndex(7)); 2]],
+    );
+    let mut empty = HashMap::new();
+    empty.insert(PaintSemantic::Material, vec![vec![]]);
+    let mut all_none = HashMap::new();
+    all_none.insert(PaintSemantic::Material, vec![vec![None, None, None]]);
+    let mut custom_only = HashMap::new();
+    custom_only.insert(
+        PaintSemantic::Material,
+        vec![vec![Some(PaintValue::Custom("ignored".to_string()))]],
+    );
+    let mut ineffective = HashMap::new();
+    ineffective.insert(
+        PaintSemantic::Material,
+        vec![vec![Some(PaintValue::Scalar(0.25))]],
+    );
+    ineffective.insert(
+        PaintSemantic::FuzzySkin,
+        vec![vec![Some(PaintValue::Flag(false))]],
+    );
+
+    let cases = [
+        GuardCase {
+            name: "effective material uses index mode",
+            annotations: uniform_material,
+            poly_idx: 0,
+            is_outer: true,
+            num_points: 2,
+            expected_flags: vec![
+                WallFeatureFlags {
+                    tool_index: Some(7),
+                    ..Default::default()
+                },
+                WallFeatureFlags {
+                    tool_index: Some(7),
+                    ..Default::default()
+                },
+            ],
+            expected_boundary: WallBoundaryType::ExteriorSurface,
+        },
+        GuardCase {
+            name: "empty annotation vector",
+            annotations: empty,
+            poly_idx: 0,
+            is_outer: false,
+            num_points: 2,
+            expected_flags: vec![WallFeatureFlags::default(); 2],
+            expected_boundary: WallBoundaryType::Interior,
+        },
+        GuardCase {
+            name: "all none annotations",
+            annotations: all_none,
+            poly_idx: 0,
+            is_outer: true,
+            num_points: 3,
+            expected_flags: vec![WallFeatureFlags::default(); 3],
+            expected_boundary: WallBoundaryType::ExteriorSurface,
+        },
+        GuardCase {
+            name: "custom annotation",
+            annotations: custom_only,
+            poly_idx: 0,
+            is_outer: false,
+            num_points: 1,
+            expected_flags: vec![WallFeatureFlags::default()],
+            expected_boundary: WallBoundaryType::Interior,
+        },
+        GuardCase {
+            name: "ineffective typed paint",
+            annotations: ineffective,
+            poly_idx: 0,
+            is_outer: false,
+            num_points: 1,
+            expected_flags: vec![WallFeatureFlags::default()],
+            expected_boundary: WallBoundaryType::Interior,
+        },
+        GuardCase {
+            name: "zero points",
+            annotations: HashMap::new(),
+            poly_idx: 99,
+            is_outer: true,
+            num_points: 0,
+            expected_flags: vec![],
+            expected_boundary: WallBoundaryType::ExteriorSurface,
+        },
+    ];
+
+    for case in cases {
+        let (flags, boundary) = build_wall_flags(
+            case.num_points,
+            case.poly_idx,
+            &case.annotations,
+            case.is_outer,
+            None,
+            None,
+            false,
+        );
+        assert_eq!(flags, case.expected_flags, "flags for {}", case.name);
+        assert_eq!(
+            boundary, case.expected_boundary,
+            "boundary for {}",
+            case.name
+        );
+    }
+}
+
+#[test]
+fn reprojection_guard_scans_all_polygons_even_with_wrong_poly_idx() {
+    let mut annotations = HashMap::new();
+    annotations.insert(
+        PaintSemantic::Material,
+        vec![vec![None, None], vec![Some(PaintValue::ToolIndex(4))]],
+    );
+    let original = vec![
+        ExPolygon {
+            contour: Polygon {
+                points: vec![Point2 { x: 0, y: 0 }, Point2 { x: 10, y: 0 }],
+            },
+            holes: vec![],
+        },
+        ExPolygon {
+            contour: Polygon {
+                points: vec![Point2 { x: 1000, y: 1000 }],
+            },
+            holes: vec![],
+        },
+    ];
+    let ring = [Point2 { x: 1001, y: 1001 }];
+
+    let (flags, boundary) = build_wall_flags(
+        2,
+        999,
+        &annotations,
+        false,
+        Some(&ring),
+        Some(&original),
+        false,
+    );
+
+    assert_eq!(
+        flags,
+        vec![
+            WallFeatureFlags {
+                tool_index: Some(4),
+                ..Default::default()
+            },
+            WallFeatureFlags {
+                tool_index: Some(4),
+                ..Default::default()
+            },
+        ]
+    );
+    assert_eq!(boundary, WallBoundaryType::Interior);
+}
+
+#[test]
+fn empty_reprojection_ring_is_safe_when_annotations_are_ineffective() {
+    let mut annotations = HashMap::new();
+    annotations.insert(
+        PaintSemantic::Material,
+        vec![vec![Some(PaintValue::Custom("ignored".to_string()))]],
+    );
+    let original = vec![ExPolygon {
+        contour: Polygon {
+            points: vec![Point2 { x: 0, y: 0 }],
+        },
+        holes: vec![],
+    }];
+
+    let (flags, boundary) =
+        build_wall_flags(2, 0, &annotations, true, Some(&[]), Some(&original), false);
+
+    assert_eq!(flags, vec![WallFeatureFlags::default(); 2]);
+    assert_eq!(boundary, WallBoundaryType::ExteriorSurface);
 }
