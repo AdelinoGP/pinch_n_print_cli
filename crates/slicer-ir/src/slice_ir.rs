@@ -2749,6 +2749,17 @@ pub struct InfillRegion {
     pub internal_bridge_infill: Vec<ExtrusionPath3D>,
 }
 
+/// Raft-fill polygon group attributed to one source region.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct InfillRaftRegion {
+    /// Object ID this raft group belongs to.
+    pub object_id: ObjectId,
+    /// Region ID this raft group belongs to.
+    pub region_id: RegionId,
+    /// Raft-fill polygons emitted for the region.
+    pub polygons: Vec<ExPolygon>,
+}
+
 /// Infill IR
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InfillIR {
@@ -2758,6 +2769,9 @@ pub struct InfillIR {
     pub global_layer_index: u32,
     /// Infill regions in this layer
     pub regions: Vec<InfillRegion>,
+    /// Raft-fill polygon groups, retained separately from path infill.
+    #[serde(default)]
+    pub raft_regions: Vec<InfillRaftRegion>,
 }
 
 impl Default for InfillIR {
@@ -2766,6 +2780,7 @@ impl Default for InfillIR {
             schema_version: CURRENT_INFILL_IR_SCHEMA_VERSION,
             global_layer_index: 0,
             regions: Vec::new(),
+            raft_regions: Vec::new(),
         }
     }
 }

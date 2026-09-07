@@ -3109,6 +3109,15 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
                 }
                 let _ = wit.push_ironing_path(&__slicer_ir_path_to_wit(p));
             }
+            let raft_origins = sdk.raft_fill_origins();
+            for (i, polygons) in sdk.raft_fill().iter().enumerate() {
+                if let Some(origin) = &raft_origins[i] {
+                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string());
+                }
+                let areas: ::std::vec::Vec<WitExPolygon> =
+                    polygons.iter().map(__slicer_ir_expolygon_to_wit).collect();
+                let _ = wit.push_raft_fill(&areas);
+            }
         }
     };
 
@@ -3266,10 +3275,12 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
                 ExtrusionPath3d as WitExtrusionPath3d, ExtrusionRole as WitExtrusionRole,
                 Point3WithWidth as WitPoint3WithWidth,
             };
+            #ir_expolygon_helpers
             #ir_role_and_path_helpers
             #drain_infill
         },
         "layer_infill_postprocess" => quote! {
+            #ir_expolygon_helpers
             #ir_role_and_path_helpers
             #drain_infill
         },

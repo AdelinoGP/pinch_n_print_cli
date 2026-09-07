@@ -31,6 +31,7 @@ pub struct InfillOutputBuilder {
     sparse_paths: Vec<ExtrusionPath3D>,
     solid_paths: Vec<ExtrusionPath3D>,
     ironing_paths: Vec<ExtrusionPath3D>,
+    raft_fill: Vec<Vec<ExPolygon>>,
     /// Explicit origin set by `begin_region` — the highest-precedence
     /// origin for per-region infill output pushes. Stored as the SDK
     /// representation `(String, u64)`; the macro drain forwards it to the
@@ -44,6 +45,7 @@ pub struct InfillOutputBuilder {
     solid_path_origins: Vec<Option<RegionOrigin>>,
     /// Per-`push_ironing_path` origin tags, parallel to `ironing_paths`.
     ironing_path_origins: Vec<Option<RegionOrigin>>,
+    raft_fill_origins: Vec<Option<RegionOrigin>>,
 }
 
 impl InfillOutputBuilder {
@@ -53,10 +55,12 @@ impl InfillOutputBuilder {
             sparse_paths: Vec::new(),
             solid_paths: Vec::new(),
             ironing_paths: Vec::new(),
+            raft_fill: Vec::new(),
             current_origin: None,
             sparse_path_origins: Vec::new(),
             solid_path_origins: Vec::new(),
             ironing_path_origins: Vec::new(),
+            raft_fill_origins: Vec::new(),
         }
     }
 
@@ -98,6 +102,13 @@ impl InfillOutputBuilder {
         Ok(())
     }
 
+    /// Push a raft-fill polygon group.
+    pub fn push_raft_fill(&mut self, polygons: Vec<ExPolygon>) -> Result<(), String> {
+        self.raft_fill.push(polygons);
+        self.raft_fill_origins.push(self.current_origin.clone());
+        Ok(())
+    }
+
     /// Get all sparse paths (for testing).
     #[doc(hidden)]
     pub fn sparse_paths(&self) -> &[ExtrusionPath3D] {
@@ -132,6 +143,16 @@ impl InfillOutputBuilder {
     #[doc(hidden)]
     pub fn ironing_path_origins(&self) -> &[Option<RegionOrigin>] {
         &self.ironing_path_origins
+    }
+
+    #[doc(hidden)]
+    pub fn raft_fill(&self) -> &[Vec<ExPolygon>] {
+        &self.raft_fill
+    }
+
+    #[doc(hidden)]
+    pub fn raft_fill_origins(&self) -> &[Option<RegionOrigin>] {
+        &self.raft_fill_origins
     }
 }
 

@@ -3694,6 +3694,7 @@ pub fn deconstruct_layer_ctx(
             if infill.sparse_paths.is_empty()
                 && infill.solid_paths.is_empty()
                 && infill.ironing_paths.is_empty()
+                && infill.raft_fill.is_empty()
             {
                 return Ok(None);
             }

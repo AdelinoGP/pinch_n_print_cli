@@ -732,7 +732,7 @@ requires = []                     # claim slots that MUST be held by another mod
 | `claim:bottom-fill`       | Held by the module producing `BottomSolidInfill` extrusions.             |
 | `claim:bridge-fill`       | Held by the module producing `BridgeInfill` extrusions.                  |
 | `claim:sparse-fill`       | Held by the module producing `SparseInfill` extrusions.                  |
-| `claim:raft-fill`         | Reserved by the SDK's `RaftInfill` role mapping (packet 124; ADR-0009); no current core manifest declares it. |
+| `claim:raft-fill`         | Held by `com.core.raft-default` under the SDK's `RaftInfill` role mapping (packet 240b; ADR-0009). |
 | `claim:ironing`           | Held by the module producing `Ironing` extrusions (`top-surface-ironing`). |
 | `claim:authored-coloring` | Capability claim a module discloses to request per-path tool authorship (`ExtrusionPath3D.tool_index`; ADR-0058). Disclosure alone grants nothing: the grant is two-sided, and also requires the fill-role claim the module holds for the region to be listed in that region's `fill_authored_coloring` config key. Ungranted — or out of range against `tool-count` — the authored value is silently stripped to `None` at the infill commit boundary and the host resolves the region tool as before. |
 

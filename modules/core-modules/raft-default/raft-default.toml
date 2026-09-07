@@ -1,0 +1,64 @@
+[module]
+id           = "com.core.raft-default"
+version      = "0.1.0"
+display-name = "Default Raft"
+description  = "Core default raft fill module"
+author       = "modular-slicer"
+license      = "AGPL-3.0-only"
+
+[stage]
+id = "Layer::Infill"
+
+[ir-access]
+reads  = ["SliceIR"]
+writes = ["SliceIR", "InfillIR"]
+
+[claims]
+holds = ["claim:raft-fill"]
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires          = []
+min-host-version  = "0.1.0"
+min-ir-schema     = "4.9.0"
+max-ir-schema     = "5.0.0"
+
+[config.schema]
+[config.schema.raft_contact_distance]
+type    = "float"
+default = 0.1
+min     = 0.0
+display = "Raft Contact Distance"
+group   = "Raft"
+
+[config.schema.raft_expansion]
+type    = "float"
+default = 1.5
+min     = 0.0
+display = "Raft Expansion"
+group   = "Raft"
+
+[config.schema.raft_first_layer_expansion]
+type    = "float"
+default = 2.0
+min     = 0.0
+display = "Raft First Layer Expansion"
+group   = "Raft"
+
+[config.schema.raft_line_spacing]
+type    = "float"
+default = 0.5
+min     = 0.000001
+display = "Raft Line Spacing"
+group   = "Raft"
+
+[config.overridable-per-region]
+keys = []
+
+[config.overridable-per-layer]
+keys = []
+
+[hints]
+estimated-ms-per-layer = 1
+layer-parallel-safe    = true

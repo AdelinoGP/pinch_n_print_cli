@@ -37,6 +37,79 @@ mid-implementation.
 | `GlobalLayer.is_raft` | `bool`, `#[serde(default)]` raft marker (host-side; a WASM guest CANNOT read this directly — it reads `paint-region-layer-view.is-raft` above) | `crates/slicer-ir/src/slice_ir.rs` |
 | `CURRENT_SLICE_IR_SCHEMA_VERSION` | minor-bumped past 4.8.0 | `crates/slicer-ir/src/slice_ir.rs` |
 
+## Absorbed Substrate Gap: Guest→raft_fill Transport + Emitter (AD-240B-1)
+
+- **Verified at Step 3 (2026-09-05, independent source inspection):** the
+  authoring-time assumption "the write leg was already complete" is FALSE.
+  `slice-region-view::raft-fill` and `perimeter-region-view::raft-fill` in
+  `crates/slicer-schema/wit/deps/ir-types.wit` are GETTERS ONLY — no WIT
+  setter exists for raft polygons. Guests deliver fill output only via the
+  `infill-output-builder` resource (`push-sparse-path` / `push-solid-path` /
+  `push-ironing-path` / `set-current-origin`), and the host carrier
+  `InfillOutputCollected`
+  (`crates/slicer-wasm-host/src/marshal/accumulators.rs`) holds
+  sparse/solid/ironing path Vecs with parallel `Vec<Option<OriginId>>` origin
+  vecs — no polygon carrier.
+- **Verified in the same inspection:** nothing CONSUMES
+  `SlicedRegion.raft_fill` for emission — remaining hits are definition,
+  partition (`split_field!`), restore, visual-debug, and tests. G-code
+  emission reads `LayerCollectionIR.ordered_entities`, assembled by
+  `assemble_ordered_entities_with_support_identities`
+  (`crates/slicer-runtime/src/layer_executor.rs`) from
+  PerimeterIR/InfillIR/SupportIR after dispatch.
+- **Decision (user-approved scope amendment, 2026-09-05):** packet 240b
+  absorbs the missing write transport and the missing emitter as
+  **AD-240B-1** rather than routing them back to 240a or deferring them to a
+  follow-up packet.
+
+Also absorbed (Step 4): the dispatch-time claim resolution for `claim:raft-fill` (`resolve_held_claims` in crates/slicer-scheduler/src/validation.rs) and raft-only WASM commit preservation (crates/slicer-wasm-host/src/dispatch.rs) — both were missing and are now owned here.
+
+Absorbed work (this packet now owns, and only these):
+
+1. **(a) WIT:** one additive method on the existing `infill-output-builder`
+   resource in `crates/slicer-schema/wit/deps/ir-types.wit`:
+   `push-raft-fill: func(polygons: list<ex-polygon>) -> result<_, string>`,
+   correlated to regions via the existing `set-current-origin` mechanism
+   (host-provided resource — additive, no guest forced to call it; no new
+   type introduced; no `SliceIR` schema field added; no
+   `CURRENT_SLICE_IR_SCHEMA_VERSION` bump).
+2. **(b) Host:** `HostInfillOutputBuilder::push_raft_fill`
+   (`crates/slicer-wasm-host/src/host.rs`, mirroring the path pushes),
+   `InfillOutputCollected.raft_fill` polygon carrier with parallel origins
+   (`crates/slicer-wasm-host/src/marshal/accumulators.rs`), and
+   `convert_infill_output` (`crates/slicer-wasm-host/src/marshal/out.rs`)
+   gains an additive per-region raft polygon carrier (e.g.
+   `InfillIR.raft_regions`) — the exact struct shape is the implementer's
+   choice, keyed like `InfillRegion`/`OriginBucket`.
+3. **(c) Runtime commit:** the `LayerStageCommit::Infill` commit path writes
+   the delivered polygons into the layer's `SlicedRegion.raft_fill` for
+   matching regions (region partition/restore for `raft_fill` already exists
+   via `split_field!`).
+4. **(d) Emitter (amended after the human validation gate, 2026-09-06):**
+   the original contour-only conversion was a defect: it emitted raft
+   outlines but no raft fill. Canonical `generate_raft_base` areas go through
+   OrcaSlicer's infill pass; this repository's equivalent is a generic
+   host-side `hatch_areas` helper (parallel scanlines clipped to ExPolygons,
+   including holes), exposed through the same WIT/native host-service surface
+   as `offset_polygons`. `run_infill` keeps the expanded area contours as
+   closed `RaftInfill` rings and also emits the hatch result as open, two-point
+   contours through `push-raft-fill`. The `raft_fill` conversion in
+   `assemble_ordered_entities_with_support_identities` must preserve two-point
+   contours as open `ExtrusionPath3D` paths; other contours are closed only
+   when needed. Both are ordinary ordered entities (RegionKey from region
+   object_id / region_id + layer index), NOT anchored events. The module owns
+   the pattern: `raft_line_spacing` is a snake_case float-mm config key,
+   default 0.5, and the hatch angle is a documented constant of 45 degrees.
+   `RaftInfill` already has G-code feedrate handling and the `;TYPE:Support`
+   label — no flow/width table changes.
+5. **(e) SDK native-leg mirror** of the builder method (slicer-sdk /
+   slicer-macros adaptation surface) so the wasm and native legs deliver
+   identically — AC-3's byte-identical parity requirement.
+6. **(f) Guest:** the raft-default module's `run_infill` (Step 4) writes its
+   synthesized polygons through `push-raft-fill` into
+   `SlicedRegion.raft_fill` instead of the path-emission fallback used by
+   the initial partial attempt.
+
 ## Architecture Constraints
 
 - **Positive raft offset band (plan §12/§15 authority, matching canonical):**
@@ -48,10 +121,14 @@ mid-implementation.
   authority — it decides where raft pattern algorithms live and its Status is
   `Proposed`; this packet owns its Decision-5 amendment.
 - **Single-writer per IR is unchanged:** `com.core.raft-default` writes only
-  the `SlicedRegion.raft_fill` sub-field of `SliceIR`; it does not claim
-  `SliceIR` wholesale against perimeter/infill writers. Its manifest declares
-  `writes = ["SliceIR"]` with the fill-role claim narrowing actual ownership,
-  mirroring how the existing infill modules coexist via fill claims today.
+  the `SlicedRegion.raft_fill` sub-field of `SliceIR` and its `InfillIR` output
+  carrier; it does not claim `SliceIR` wholesale against perimeter/infill
+  writers. Its manifest declares `reads = ["SliceIR"]`,
+  `writes = ["SliceIR", "InfillIR"]` with the fill-role claim narrowing
+  actual ownership, mirroring how the existing infill modules coexist via fill
+  claims today. The raft-plan accessor rides the host-provisioned paint view
+  per the `Layer::Infill` stage contract (docs/01 §Module Access Contract), so
+  `LayerPlanIR` and `SupportPlanIR` are not declared reads.
   Note that scheduler validation (`validate_unfulfilled_reads` /
   `read_is_declared` in `crates/slicer-scheduler/src/validation.rs`) checks only
   that a declared read has *some* upstream writer — it does NOT check that a
@@ -67,9 +144,12 @@ mid-implementation.
 - Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and inspect its exit code: exit 0 means fresh, non-zero means stale (a distinct exit code signals `wasm-tools` is unavailable). Never use `rg -q 'STALE:'` — a `wasm-tools`-missing infrastructure error prints no `STALE:` and would read as fresh. If stale, rebuild without `--check` before re-running the failing test. Stale-guest failures look unrelated to the change but are caused by it.
 <!-- snippet: coord-system -->
 - Coordinate units: **1 unit = 100 nm** (10⁻⁴ mm), NOT 1 nm like OrcaSlicer. Divide OrcaSlicer constants by 100. Use `Point2::from_mm(x, y)` or `mm_to_units()` at every mm↔unit boundary. Full porting checklist in `docs/08_coordinate_system.md`.
-- Schema/version constants: this packet does **not** bump any schema version.
-  It adds no IR field. If it finds itself needing one, that is 240a scope to
-  route back.
+- Schema/version constants: this packet adds no `SliceIR` schema field and
+  bumps no schema version. Per AD-240B-1 it DOES amend the WIT
+  `infill-output-builder` resource with one additive method
+  (`push-raft-fill`, host-provided) and an additive transient `InfillIR`
+  per-region raft carrier; everything else in 240a's change surface stays
+  out of bounds.
 
 ## Code Change Surface
 
@@ -129,6 +209,31 @@ mid-implementation.
   case `ac4_raft_fill_claim_emits_raft_infill` (verified to exist under that
   exact name; the file's other cases are `ac_n1_sparse_fill_claim_does_not_emit_raft_infill`
   and `ac_n3_empty_held_claims_suppress_raft_infill`).
+- Absorbed transport (AD-240B-1):
+  - `crates/slicer-schema/wit/deps/ir-types.wit` — one additive resource
+    method `push-raft-fill: func(polygons: list<ex-polygon>) -> result<_, string>`
+    on `infill-output-builder` (item (a)).
+  - `crates/slicer-wasm-host/src/host.rs` —
+    `HostInfillOutputBuilder::push_raft_fill` mirroring the path pushes
+    (item (b)).
+  - `crates/slicer-wasm-host/src/marshal/accumulators.rs` —
+    `InfillOutputCollected.raft_fill` polygon carrier with parallel origins
+    (item (b)).
+  - `crates/slicer-wasm-host/src/marshal/out.rs` — `convert_infill_output`
+    gains an additive per-region raft polygon carrier, e.g.
+    `InfillIR.raft_regions`, keyed like `InfillRegion`/`OriginBucket`
+    (item (b)).
+  - `crates/slicer-ir/src/slice_ir.rs` — additive `InfillIR` raft carrier
+    only (never `SlicedRegion`) (item (b)).
+  - `crates/slicer-wasm-host/src/dispatch.rs` — only if the commit path
+    needs it.
+  - `crates/slicer-runtime/src/layer_executor.rs` — emitter:
+    `assemble_ordered_entities_with_support_identities` converts raft_fill
+    ex-polygons to `ExtrusionRole::RaftInfill` ordered entities at raft
+    band layers (item (d)).
+  - `crates/slicer-sdk` (+ `slicer-macros` adaptation surface) — native-leg
+    mirror of the builder method so wasm and native legs deliver
+    identically (item (e)).
 
 ### Rejected alternatives and reasons
 
@@ -228,15 +333,31 @@ com.core.raft-default (NEW, Layer::Infill, holds claim:raft-fill)
 G-code emission at raft band layers 0..N-1 (ordinary ordering; NO anchored events)
 ```
 
-The write leg was already complete before this family started; 240a supplied
-the read leg and the carrier; this packet supplies the only missing piece, the
-consumer.
+The write leg was assumed complete at authoring; verification at Step 3
+found it missing (no WIT setter, no host carrier, no emitter — AD-240B-1).
+This packet now supplies the consumer AND the absorbed transport+emitter:
+guest `push-raft-fill` → `InfillOutputCollected.raft_fill` → `InfillIR` raft
+carrier → `SlicedRegion.raft_fill` →
+`assemble_ordered_entities_with_support_identities` (RaftInfill-role ordered
+entities).
 
 ## Files in Scope (read + edit)
 
 - `modules/core-modules/raft-default/**` - role: the new guest module; expected change: full directory (Cargo.toml, manifest, src, wit-guest).
 - `modules/core-modules/*/*.toml` for whichever manifests the Step 5 re-derivation grep shows declare a raft-related key (at authoring: `arachne-perimeters`, `classic-perimeters`, `tree-support-planner`; re-derive, do not assume) - role: wire-or-record annotations; expected change: comment or `[config.schema]` rows only, no logic.
 - `crates/slicer-runtime/tests/integration/raft_geometry.rs` + `main.rs` registration - role: AC-3/AC-4/AC-5 cases.
+- Absorbed transport files (AD-240B-1):
+  `crates/slicer-schema/wit/deps/ir-types.wit` (one additive resource
+  method), `crates/slicer-wasm-host/src/host.rs` +
+  `crates/slicer-wasm-host/src/marshal/accumulators.rs` +
+  `crates/slicer-wasm-host/src/marshal/out.rs` (+
+  `crates/slicer-wasm-host/src/dispatch.rs` only if the commit path needs
+  it), `crates/slicer-ir/src/slice_ir.rs` (additive `InfillIR` raft carrier
+  only — never `SlicedRegion`), the `crates/slicer-sdk` native builder
+  mirror surface (+ `slicer-macros` adaptation), and
+  `crates/slicer-runtime/src/layer_executor.rs` (emitter) - role: the
+  guest→`SlicedRegion.raft_fill` write transport and the `raft_fill`
+  ordered-entity emitter per §Absorbed Substrate Gap.
 - `crates/slicer-runtime/tests/contract/raft_bounds_tdd.rs` + `main.rs` registration - role: AC-6/AC-N3 cases. (AC-N2 is module-side and lives in `crates/slicer-runtime/tests/integration/raft_geometry.rs`, Step 3.)
 - `crates/slicer-scheduler/tests/raft_claim_conflict_tdd.rs` - role: AC-N1.
 - `docs/adr/0009-raft-as-layer-infill-role.md`, `docs/DEVIATION_LOG.md`, `docs/15_config_keys_reference.md`, `docs/03_wit_and_manifest.md` - role: records.
@@ -256,13 +377,17 @@ consumer.
 - `target/`, `Cargo.lock`, generated code, vendored dependencies - never load.
 - Everything in 240a's change surface — `crates/slicer-ir/src/slice_ir.rs`,
   `crates/slicer-schema/wit/deps/{ir-types.wit, prepass-layer-planning/}`,
-  `crates/slicer-wasm-host/src/marshal/**`, `crates/slicer-runtime/src/**`.
-  Read them if a FORWARD-DEP needs verifying; never edit them here. A needed
-  change is a 240a defect to route back.
+  `crates/slicer-wasm-host/src/marshal/**`, `crates/slicer-runtime/src/**` —
+  except the AD-240B-1 absorbed items listed in Files in Scope. Read them if
+  a FORWARD-DEP needs verifying; never edit them here beyond the absorbed
+  scope. A needed change OUTSIDE the absorbed list is a 240a defect to route
+  back.
 - `modules/core-modules/rectilinear-infill/src/**` and other pattern modules -
   untouched this packet.
 - `crates/slicer-scheduler/src/validation.rs` - the validator shape is
-  236-owned; this packet only tests its observable contract.
+  236-owned; the `resolve_held_claims` claim-resolution table is absorbed by
+  AD-240B-1, and everything else in this file remains 236-owned. This packet
+  only tests the observable contract outside that carve-out.
 - `modules/core-modules/tree-support-planner/src/lib.rs` beyond the cited
   range - planner algorithms are 238b's surface.
 
@@ -325,10 +450,11 @@ consumer.
 - **ADR boundary:** the polygon-synthesis vs pattern-rendering split is made
   explicit in §ADR-0009 Reconciliation and recorded as an ADR amendment plus a
   deviation row (Step 6) rather than left to silent drift.
-- **Downstream conversion may be missing:** the design assumes the claim-holder
-  emit path already converts `raft_fill` polygons to paths. If Step 3 finds it
-  does not, that is a real gap — record it as a follow-up packet, do not absorb
-  a renderer into this module (ADR-0009).
+- **Downstream conversion WAS missing (and the write transport too)** —
+  verified at Step 3 and absorbed as AD-240B-1; the packet's scope amendment
+  is recorded in §Absorbed Substrate Gap. Substrate drift risk reduced
+  accordingly but the absorbed surface is now owned here: a defect inside it
+  is this packet's bug.
 
 ## Context Cost Estimate
 
@@ -345,7 +471,7 @@ consumer.
   precise consumption site via the delegated `generate_raft_base` SUMMARY in
   Step 3 and records the mapping in code comments; no activation blocker.
 - [FWD] Does the claim-holder emit path already convert `raft_fill` polygons to
-  extrusion paths, or is a holder-side wiring change needed? Worker resolves in
-  Step 3; if a change is needed it is recorded as a follow-up, not absorbed.
-  No activation blocker.
+  extrusion paths, or is a holder-side wiring change needed?
+  **RESOLVED at Step 3 (2026-09-05): the emit path did NOT exist and neither
+  did the guest→`raft_fill` write transport; both absorbed as AD-240B-1.**
 - None [BLOCK].

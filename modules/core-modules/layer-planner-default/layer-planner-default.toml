@@ -50,6 +50,7 @@ default = 0
 min     = 0
 max     = 100
 display = "Raft Layers"
+description = "PnP's support_raft_layers key; consumed by layer planning to emit the raft band proposals."
 group   = "Layer Planning"
 
 [config.overridable-per-region]

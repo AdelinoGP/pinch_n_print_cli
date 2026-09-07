@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 240b-support-raft-module
 depends_on: 240a-support-raft-substrate
 task_ids:
@@ -20,7 +20,7 @@ context_cost_estimate: M
 Close G-06 by building the raft consumer on 240a's substrate: a new
 `com.core.raft-default` `Layer::Infill` synthesizer holding `claim:raft-fill`
 that reads `SupportPlanIR.raft_plan` (through 240a's
-`paint-region-layer-view.raft-plan` accessor), `SliceIR`, and `LayerPlanIR` and
+  `paint-region-layer-view.raft-plan` accessor), and `SliceIR` and
 writes deterministic raft footprint polygons into `SlicedRegion.raft_fill`;
 plus the three net-new canonical raft config keys (none of them exists
 anywhere under `modules/` or `crates/` today - they are introduced here for the
@@ -38,6 +38,20 @@ Extrusion-path conversion happens downstream under the claim-holder emit path
 this module. Independent support-Z (239) and the AGG rasterizer (241) are
 excluded.
 
+**AD-240B-1 (scope amendment, user-approved 2026-09-05):** verification during
+Step 3 proved the guest→`SlicedRegion.raft_fill` write transport and the
+`raft_fill`→G-code emitter do NOT exist (WIT region accessors are
+getters-only; `InfillOutputCollected` has no polygon carrier; nothing emits
+raft_fill). Both are absorbed into this packet: additive
+`infill-output-builder::push-raft-fill` WIT method (host-provided resource),
+host + SDK builder methods, `InfillIR` additive raft carrier, runtime commit
+into `SlicedRegion.raft_fill`, and the emitter at
+`assemble_ordered_entities_with_support_identities` (raft_fill ex-polygons →
+`ExtrusionRole::RaftInfill` ordered entities at raft band layers). No
+`SliceIR` schema field is added and no schema version bumps. Every OTHER
+type, index, and transport remains 240a's (verified green: paint-view
+accessors, `is_raft` band, `raft_fill` field + partition/restore).
+
 ## Prerequisites and Blockers
 
 - Depends on: **240a-support-raft-substrate** — HARD BLOCKER. 240a's AC-1..AC-7
@@ -50,6 +64,10 @@ excluded.
   `N ..` where `N = support_raft_layers`.
 - Also depends on: **236-support-stabilization** (`implemented` at authoring
   time — G-21 validator, ADR-0059 acceptance are shipped facts).
+- AD-240B-1 (absorbed transport): the guest→`SlicedRegion.raft_fill` write
+  transport and the `raft_fill` emitter were verified missing at Step 3 and
+  absorbed into this packet by user-approved scope amendment — details and
+  evidence in `design.md` §Absorbed Substrate Gap.
 - Unblocks: 242-support-family-orca-closure (plan §11 queue row #9).
 - Activation blockers: the §9 raft-enabled Orca references must exist under
   `tmp/` (human-owned) before the Human Validation Gate can sign. Authoring and
@@ -60,10 +78,12 @@ excluded.
 - **AC-1. Given** the new module directory `modules/core-modules/raft-default/`,
   **when** the host loads the module directory, **then** the manifest declares
   id `com.core.raft-default`, stage `Layer::Infill`,
-  `holds = ["claim:raft-fill"]`, `reads = ["SliceIR", "LayerPlanIR",
-  "SupportPlanIR"]`, `writes = ["SliceIR"]`, and the guest compiles to a fresh
+  `holds = ["claim:raft-fill"]`, `reads = ["SliceIR"]`,
+  `writes = ["SliceIR", "InfillIR"]` (the raft-plan accessor rides the
+  host-provisioned paint view per the `Layer::Infill` stage contract
+  (docs/01 §Module Access Contract)), and the guest compiles to a fresh
   component artifact. |
-  `rg -q 'id\s*=\s*"com\.core\.raft-default"' modules/core-modules/raft-default/raft-default.toml && rg -q 'claim:raft-fill' modules/core-modules/raft-default/raft-default.toml && rg -q 'Layer::Infill' modules/core-modules/raft-default/raft-default.toml && cargo xtask build-guests && cargo xtask build-guests --check; echo EXIT:$?`
+  `rg -q 'id\s*=\s*"com\.core\.raft-default"' modules/core-modules/raft-default/raft-default.toml && rg -q 'claim:raft-fill' modules/core-modules/raft-default/raft-default.toml && rg -q 'Layer::Infill' modules/core-modules/raft-default/raft-default.toml && cargo xtask build-guests && cargo xtask build-guests --check && echo AC1-PASS`
 - **AC-2. Given** the claim machinery already maps
   `ExtrusionRole::RaftInfill` to `"claim:raft-fill"` in
   `SliceRegionView::should_emit` (`crates/slicer-sdk/src/views.rs`), **when**
@@ -87,7 +107,13 @@ excluded.
   offsets preserving canonical's multi-step inflation), interface-band
   footprints are derived at `raft_contact_distance`-based spacing, and the
   first raft layer's area strictly exceeds every upper raft layer's area. |
-  `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_first_layer_expansion_exceeds_upper_layers --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+ `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_first_layer_expansion_exceeds_upper_layers --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+- **AC-9. Given** `support_raft_layers > 0`, **when** the pipeline executes,
+  **then** each raft band layer's raft-role output (`ExtrusionRole::RaftInfill`, emitted under the canonical `;TYPE:Support` label; the retired `;TYPE:Raft` label must NOT reappear) contains open fill lines
+  spanning the harvested region — hatch line count ≥
+  `floor(band span / raft_line_spacing) − 1` and total raft extrusion exceeds
+  the border-outline-only baseline by ≥5x.
+  `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_band_fill_lines_cover_region --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
 - **AC-5. Given** `support_raft_layers > 0`, **when** the pipeline executes end
   to end, **then** raft geometry is emitted at the `is_raft` band entries only
   (global indices `0 .. support_raft_layers - 1`), those entries sort strictly
@@ -172,6 +198,8 @@ registration in the same step (Steps 4 and 6).
 - `cargo check --workspace --all-targets`
 - `cargo clippy --workspace --all-targets -- -D warnings`
 - `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_geometry_orders_before_model_layers --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0`
+- `rg -q 'push-raft-fill' crates/slicer-schema/wit/deps/ir-types.wit`
+- `rg -q 'raft_fill' crates/slicer-runtime/src/layer_executor.rs`
 
 ## Authoritative Docs
 
@@ -226,22 +254,28 @@ existence).
 Artifact-producing commands (run from repo root; matched profiles
 `tmp/support-family-config-tree-matched.json` / `-normal-matched.json`):
 
-- `cargo run --bin pnp_cli --release -- slice --config tmp/p240b-profile.json --model crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl --output tmp/p240b-pnp-raft.gcode` (with `support_raft_layers >= 2` in the matched profile copy saved as `tmp/p240b-profile.json`)
-- Regenerated Orca references (§9, human-owned): `tmp/p240b-orca-tree-raft.gcode` and `tmp/p240b-orca-normal-raft.gcode` sliced with `raft_layers > 0`. **These references must exist before this gate can sign** — the gate blocks without them.
+- `cargo run --bin pnp_cli --release -- slice --module-dir modules/core-modules --config tmp/p240b-profile.json --model crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl --output tmp/p240b-pnp-raft.gcode` (with `support_raft_layers >= 2` in the matched profile copy saved as `tmp/p240b-profile.json`) **— current certified artifact: `tmp/p240b-pnp-raft-v4.gcode` (2026-09-07, post gate-defect fixes incl. bottom-shell re-anchor; the canonical-path file was viewer-locked during regeneration, so v4 is the authoritative file — re-point or rename when the viewer releases it)**
+- Regenerated Orca references (§9, human-owned): `tmp/p240b-orca-tree-raft.gcode` and `tmp/p240b-orca-normal-raft.gcode` sliced with `raft_layers > 0`. **These references must exist before this gate can sign** — the gate blocks without them. **Generated 2026-09-06**: copies of `tmp/SupportTest.3mf` with `Metadata/project_settings.config` patched (`raft_layers=2`, `independent_support_layer_height=1`, `support_layer_height_mm=0.1`; tree copy also `tree_support_branch_angle=40`/`tree_support_branch_diameter=2`/`tree_support_branch_distance=1`; normal copy `support_type=normal(auto)`) and sliced headlessly via `"C:\Program Files\OrcaSlicer\orca-slicer.exe" --slice 1 --allow-newer-file --export-3mf tmp/p240b-orca-<family>-raft.gcode.3mf tmp/p240b-orca-<family>-raft.3mf`, raw G-code extracted from `Metadata/plate_1.gcode` (intermediate `.3mf`/`.gcode.3mf` files retained in `tmp/`). Source 3MF project settings already matched the matched profiles except for the patched keys.
 - Visual-debug bundle for the raft boundary: `tmp/p240b-vd-raft.json` request → PNGs + `manifest.json` per `docs/19_visual_debug.md`.
 
 Checklist — standard five items (each: source, layer/tap, verdict):
 
-1. Termination: raft reaches the plate beneath the object overhang for both families.
-2. Coverage: raft area covers the supported footprint at every raft layer.
-3. Collision freedom: raft does not intersect object walls above it.
-4. Interfaces: interface-raft layers distinct from base-raft layers in spacing/density.
-5. Block counts vs Orca references: raft `;TYPE:` block counts compared against `tmp/p240b-orca-*-raft.gcode`.
+1. Termination: **PASS (G-code `final_gcode` at raft layers 0-1; re-verified 2026-09-06 on `tmp/p240b-pnp-raft-v3.gcode`)** — raft-bearing layers at Z:0.2 and Z:0.4 (emitted under the canonical `;TYPE:Support` label after the custom-label retirement; identified by band membership, not label) reach the plate before the first model layer (Z 0.6); band footprint encloses the harvested region (X -12..2 / Y -2..22 at layer 0). The support footprint (right slab, X 0..22.2) is **not** covered — support branches start above the band post-suppression.
+2. Coverage: **FAIL → FIXED (defect found at human gate 2026-09-06, fixed same day; G-code `final_gcode`, raft layers 0-1, certified on `tmp/p240b-pnp-raft-v3.gcode`)** — DEFECT HISTORY: the pre-fix artifact contained raft *outlines*, not a raft: the two raft blocks carried one contour loop each (layer 0: 41 moves / 2.41 mm extrusion; layer 1: 35 moves / 1.15 mm; 3.57 mm total — vs Orca's band layer at 237 fill blocks). Root cause: `layer_executor.rs` raft_fill→ExtrusionPath3D conversion consumed `polygon.contour.points` only; `design.md` AD-240B-1(d) specified exactly that contour conversion and omitted fill generation. FIX (Fix B, guest-side pattern): generic host hatch engine `hatch_areas` (`crates/slicer-core/src/polygon_ops.rs`) exposed to guests as `hatch-areas` (WIT `crates/slicer-schema/wit/deps/common.wit`); `raft-default` emits the expanded border ring plus hatch lines as open 2-point contours through `push_raft_fill` with new key `raft_line_spacing` (0.5 mm); executor closure contract fixed (2-point contours stay open, rings closed); a second gate defect (the executor's transport/merge hunks dropped during an interrupted worker reconstruction) was repaired the same day. CERTIFIED MEASUREMENT (v3): layer 0 = 91 segments / 24.52 mm E spanning X -12..2 / Y -2..22; layer 1 = 83 unique geometries / 22.06 mm E (bead 0.4 × 0.2 mm — exactly 2x the earlier under-computed 11.03 mm because v3's monotonic Z sequence removed the 0.1 mm interleave that halved the bead height) — ~9x the outline baseline (AC-9 threshold ≥5x); segment-set identity with the separately-tagged raft layer verified 0 extra / 0 missing.
+3. Collision freedom: **PASS with upstream note (G-code `final_gcode`, all layers, re-measured 2026-09-07 on v4 post Z-shift + band suppression + bottom-shell re-anchor)** — the earlier BLOCKED-upstream verdict is retired by the fixes: model Z now shifts above the band (first model layer Z 0.6 vs band top 0.4) and band layers emit no model/support content, so the same-Z coexistence no longer exists. Measured on v4: min XY distance raft↔brim 0.40 mm (the configured object gap), band↔nearest model wall 2.2 mm, Z separation raft-top 0.4 / model 0.6; zero negative `;HEIGHT` deltas; model bottom-shell classification correctly re-anchored at the model's first non-band layer (Z 0.6), so the raft adds BELOW the model without altering the model's own layer stack, shell classification, or top Z. RESIDUAL UPSTREAM NOTE (not a raft defect, does not block this item): support branches still interleave the band's Z plane on non-band routing — recorded in Upstream Findings below for the layer-planner-default support surface.
+4. Interfaces: **not applicable (planner-side) (pipeline trace, `RaftPlan`)** — `RaftPlan.interface_raft_layers = 0` (tree planner derivation, 238b surface); the module honors the plan; interface-band behavior is covered by the integration tests.
+5. Block counts vs Orca references: **PASS with comparability notes (certified on v3; defect history retained; references generated 2026-09-06)** — the pre-fix verdict was wrong: the headline "PASS with comparability notes" measured structural parity (block counts, bounds) and called it done while the band layers carried one contour loop each (3.57 mm total) where Orca's band layers carry dense fill (237 / 224 blocks in the tree reference); "no contradiction found" was a false conclusion — the contradiction was the defect. Item 2's E-volume instrument is the authoritative measure and AC-9 now enforces it. Certified facts on v3: exactly 2 raft-band layers in all three files; both band layers carry dense fill (91 / 83 unique segment geometries, 24.52 / 22.06 mm E); first band layer wider than second in all three (pnp X -12..2 vs -11.5..1.5; orca-tree X 90.8..121.8 vs 93.7..119.3; orca-normal X 90.6..128.9 vs 93.5..107.6); model/support content starts only above the band in all three. Comparability caveats unchanged: this Orca build tags band layers `;TYPE:Support`/`;TYPE:Support interface` — after the label retirement pnp now matches that convention (interface-band labeling remains a deferred refinement while `interface_raft_layers = 0` in this plan surface); Orca rafts the full model footprint while pnp rafts the harvested region per the ADR-0009 amendment; band Z differs (pnp 0.2/0.4 vs orca 0.2/0.575 — Orca's own contact spacing).
 
 Raft-specific observations (required additions):
 
-6. Raft layers present below plate contact — band entries at global indices `0 .. support_raft_layers - 1` emitted before the first model layer (index `support_raft_layers`) in Z order.
-7. First-layer expansion visible: the first printed raft layer is wider than the upper raft layers by roughly `raft_first_layer_expansion` (2.0 mm canonical).
-8. No anchored-entity leakage: no raft geometry appears through the anchored-event path (the G-code viewer shows raft as ordinary ordered entities at the `0 .. support_raft_layers - 1` band layers).
+6. Raft layers present below plate contact: **PASS with note (pipeline trace + G-code `final_gcode`, global layers 0-2; re-verified on v3)** — band entries at global indices 0..1 (Z 0.2/0.4) are emitted before the first model layer (Z 0.6); layer Z sequence is strictly monotonic (0.2, 0.4, 0.6, 0.7, ...), retiring the old Z-overlap note.
+7. First-layer expansion visible: **PASS (G-code `final_gcode`, raft layers 0-1; re-verified on v3: X -12..2 → -11.5..1.5)** — first raft layer is wider than the upper raft layer by ~0.5 mm per side = `raft_first_layer_expansion` (2.0) − `raft_expansion` (1.5); the checklist's "roughly 2.0 mm" is the expansion magnitude, not the inter-layer delta.
+8. No anchored-entity leakage: **PASS (pipeline trace + G-code `final_gcode`, raft layers 0-1; re-verified post-fix: regenerated `tmp/p240b-trace-v3.jsonl` against the current pipeline, 0 anchored events, 310 raft-default events)** — no raft geometry travels through the anchored-event path; raft appears as ordinary ordered entities at the band layers; band suppression also filters anchored collections at band indices (`layer_executor.rs` anchored-entity filters).
 
-Sign-off: _(date + verdict pending; required before `status: implemented`)_
+### Upstream Findings (recorded at gate, not 240b defects)
+
+- Z overlap — `DefaultLayerPlanner::run_layer_planning` (`modules/core-modules/layer-planner-default/src/lib.rs`) left model Z unshifted above the raft band. **MODEL HALF FIXED 2026-09-06** (this packet's gate work): model-layer Z now shifts above the band top in both merge paths (`merge_same_height` / `merge_different_heights`), first model layer at Z 0.6 with the 2-layer 0.2/0.4 band; byte-identical when `support_raft_layers = 0`; verified end-to-end on v3 (strictly monotonic Z sequence, zero negative `;HEIGHT` deltas). **REMAINING:** support branches still interleave the raft band plane on non-band routing — same owner, layer-planner-default support surface; the band-layer `;TYPE:Support` label is now shared by genuine support, so band/support disambiguation in G-code assertions must use Z ranges, not labels.
+- `RaftPlan.interface_raft_layers = 0` despite `support_interface_top_layers = 2` — tree planner derivation (238b surface); owner suggestion: 238b.
+- Band layers' regions carry model-plane content — harvest behavior upstream of this packet; owner suggestion: 240a harvest.
+
+Sign-off: **APPROVED — 2026-09-07 (human gate)** — artifacts reviewed by the approver (`tmp/p240b-pnp-raft-v4.gcode` + visual-debug bundle + Orca references); all checklist items above carry measured verdicts; certification 293/293 binaries (target/test-output.log). Status flipped to `implemented`; TASK-537 closed in docs/07.

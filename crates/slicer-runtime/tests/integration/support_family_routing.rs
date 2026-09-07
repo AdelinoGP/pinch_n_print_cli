@@ -128,7 +128,6 @@ fn exact_z() -> ExactZQueryService {
     }))
 }
 
-
 /// Ownership at the merge point is default-deny: a region with no
 /// `family_assignments` row has no owner, so a fixture that expects retention
 /// must say who owns what. This grants each entry's `(object_id, region_id)` to

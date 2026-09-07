@@ -1123,6 +1123,12 @@ fn collect_infill(builder: &InfillOutputBuilder) -> InfillOutputCollected {
         sparse_path_origins: builder.sparse_path_origins().iter().map(origin).collect(),
         solid_path_origins: builder.solid_path_origins().iter().map(origin).collect(),
         ironing_path_origins: builder.ironing_path_origins().iter().map(origin).collect(),
+        raft_fill: builder
+            .raft_fill()
+            .iter()
+            .map(|polygons| ir_to_wit_expolygons(polygons))
+            .collect(),
+        raft_fill_origins: builder.raft_fill_origins().iter().map(origin).collect(),
     }
 }
 

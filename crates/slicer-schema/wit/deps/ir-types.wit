@@ -249,6 +249,7 @@ interface ir-handles {
         push-sparse-path:  func(path: extrusion-path3d) -> result<_, string>;
         push-solid-path:   func(path: extrusion-path3d) -> result<_, string>;
         push-ironing-path: func(path: extrusion-path3d) -> result<_, string>;
+        push-raft-fill:    func(polygons: list<ex-polygon>) -> result<_, string>;
         set-current-origin: func(object-id: string, region-id: string) -> result<_, string>;
     }
 

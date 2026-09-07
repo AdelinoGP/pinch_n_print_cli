@@ -10,8 +10,8 @@
 //! layer INDICES across the raft/model boundary, so
 //! `execute_layer_finalization_with_instrumentation`'s "layer indices must be
 //! monotonic" gate accepts it, and Vec order matches index order. The gate is
-//! index-based and never inspects `z`; raft and model Zs deliberately overlap
-//! in 240a (see `raft_band_emitted_before_model_layers`).
+//! index-based and never inspects `z`; packet 240b shifts model Zs above the
+//! raft band (see `raft_band_emitted_before_model_layers`).
 
 #![allow(missing_docs)]
 
@@ -63,11 +63,14 @@ fn plan_with_raft_layers(raft_layers: i64) -> Vec<LayerProposal> {
     output.layers().to_vec()
 }
 
-/// Literal expected Z values for `layer_height 0.2`, `first_layer_height 0.3`,
-/// `object_height 1.0`. Deliberately NOT recomputed from the planner's formula:
-/// a test-side reimplementation tracks a formula change silently, which is how
-/// an erroneous model-Z raft shift previously passed this suite.
-const EXPECTED_MODEL_ZS: [f32; 4] = [0.3, 0.5, 0.7, 0.9];
+/// Literal expected model Z values for `layer_height 0.2`,
+/// `first_layer_height 0.3`, `object_height 1.0`, and
+/// `support_raft_layers = 3`. Packet 240b shifts these above the 0.7 raft-band
+/// top. Deliberately NOT recomputed from the planner's formula so a formula
+/// change fails loudly.
+const EXPECTED_MODEL_ZS: [f32; 4] = [1.0, 1.2, 1.4, 1.6];
+/// Literal pre-raft model Z values used to lock the zero-raft behavior.
+const EXPECTED_NO_RAFT_MODEL_ZS: [f32; 4] = [0.3, 0.5, 0.7, 0.9];
 /// Literal expected raft Z values for `support_raft_layers = 3`.
 const EXPECTED_RAFT_ZS: [f32; 3] = [0.3, 0.5, 0.7];
 
@@ -125,15 +128,14 @@ fn raft_band_emitted_before_model_layers() {
         );
     }
 
-    // Model Zs carry NO raft offset: `GlobalLayer.z` is the mesh cutting plane
-    // and PnP has no `print_z`/`slice_z` split to absorb one. Raft and model
-    // bands therefore overlap in Z; that is accepted for this substrate packet
-    // (no consumer of raft layers exists yet) and 240b owns the real Z model.
+    // Packet 240b shifts model Zs above the raft-band top. The expected values
+    // stay hand-computed rather than mirroring the planner formula so any
+    // arithmetic change fails loudly here.
     let model_zs: Vec<f32> = proposals[raft_layers..].iter().map(|p| p.z).collect();
     assert_zs_eq(
         &model_zs,
         &EXPECTED_MODEL_ZS,
-        "model Z values must be unshifted by the raft band",
+        "model Z values must be shifted above the raft band",
     );
 }
 
@@ -152,7 +154,7 @@ fn no_raft_band_when_raft_layers_zero() {
     let zs: Vec<f32> = proposals.iter().map(|p| p.z).collect();
     assert_zs_eq(
         &zs,
-        &EXPECTED_MODEL_ZS,
+        &EXPECTED_NO_RAFT_MODEL_ZS,
         "model Z sequence must be unchanged",
     );
 }

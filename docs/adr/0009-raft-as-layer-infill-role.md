@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed (lands with `docs/specs/raft-default-module.md`).
+Accepted
 
 ## Context
 
@@ -51,7 +51,7 @@ Raft rendering uses the existing `Layer::Infill` role/claim pattern:
 
 1. **`ExtrusionRole::RaftInfill`** is added as a new variant in `crates/slicer-ir/src/slice_ir.rs`'s `ExtrusionRole` enum.
 2. **`claim:raft-fill`** is added to the `should_emit` mapping in `crates/slicer-sdk/src/views.rs`.
-3. **`SliceRegionView` (or a sibling carrier per `raft-default-module.md` Carrier choice)** carries `raft_fill: Vec<ExPolygon>` polygon inputs on the layers where raft applies.
+3. **`SliceRegionView` (or a sibling carrier per the packet 240b carrier choice)** carries `raft_fill: Vec<ExPolygon>` polygon inputs on the layers where raft applies.
 4. **`raft-default`** is a synthesizer module — it reads `SupportPlanIR.raft_plan` (emitted by `support-planner`) and populates the raft polygon carriers. It contains zero pattern algorithms.
 5. **Pattern variety** is provided by whichever `Layer::Infill` module(s) declare `claim:raft-fill` in their manifest. v1 ships with `rectilinear-infill` declaring the claim (matches OrcaSlicer's default `raft_pattern = "rectilinear"`). Users who want grid / honeycomb / lightning raft swap the claim to a different infill module.
 6. **Each existing infill module gains a small dispatch addition** (10-15 lines) mirroring the existing `TopSolidInfill` / `BottomSolidInfill` handling. The module's existing fill function is called with the raft polygon and the role tag changes; no pattern math is duplicated.
@@ -87,7 +87,15 @@ DEV-127, dependent on a future WIT-interface pattern-services design).
 
 ## References
 
-- `docs/specs/raft-default-module.md`.
+- `docs/spec_packets/240b-support-raft-module/`.
 - `crates/slicer-sdk/src/views.rs:330-359` — existing role/claim dispatch.
 - `crates/slicer-ir/src/slice_ir.rs:1463-1492` — `ExtrusionRole` enum.
 - OrcaSlicer `src/libslic3r/Support/SupportCommon.cpp::generate_raft_base` — reference behavior.
+
+## Amendment — 2026-09-05 (packet 240b)
+
+The original Decision 5 clause is:
+
+> 5. **Pattern variety** is provided by whichever `Layer::Infill` module(s) declare `claim:raft-fill` in their manifest. v1 ships with `rectilinear-infill` declaring the claim (matches OrcaSlicer's default `raft_pattern = "rectilinear"`). Users who want grid / honeycomb / lightning raft swap the claim to a different infill module.
+
+Packet 240b reassigns the `claim:raft-fill` holder to `com.core.raft-default`; the module remains the default raft pattern provider while preserving the existing `Layer::Infill` role/claim contract. AD-240B-1 records that the guest→`SlicedRegion.raft_fill` transport and emitter were verified missing and absorbed into this packet.

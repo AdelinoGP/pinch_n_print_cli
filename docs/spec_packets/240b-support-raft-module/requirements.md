@@ -39,8 +39,11 @@ below rather than re-litigated.
 ### Absorption mapping from 215-raft-geometry (plan §10)
 
 - New module `com.core.raft-default` (`Layer::Infill` synthesizer) holding
-  `claim:raft-fill`; reads `SupportPlanIR.raft_plan`, `SliceIR`, `LayerPlanIR`;
-  writes `SlicedRegion.raft_fill` with deterministic fill polygons.
+  `claim:raft-fill`; declares `reads = ["SliceIR"]` and
+  `writes = ["SliceIR", "InfillIR"]`; its `SupportPlanIR.raft_plan` access rides
+  the host-provisioned paint view per the `Layer::Infill` stage contract
+  (docs/01 §Module Access Contract), and it writes `SlicedRegion.raft_fill`
+  with deterministic fill polygons.
   Extrusion-path conversion happens downstream under the claim-holder path
   (design.md §ADR-0009 Reconciliation). — **this packet.**
 - Rafts occupy a positive global-layer offset band (`0 .. N-1`, model layers at
@@ -53,6 +56,52 @@ below rather than re-litigated.
   **this packet.**
 - DEV-124 check while the raft path is open. — **filed by 240a, re-verified
   here** (see §DEV-124 Re-verification).
+
+### AD-240B-1: absorbed transport gap (scope amendment)
+
+Verified at Step 3 (2026-09-05, independent source inspection):
+
+- The authoring-time assumption "the write leg was already complete" is FALSE:
+  `slice-region-view::raft-fill` / `perimeter-region-view::raft-fill` in
+  `crates/slicer-schema/wit/deps/ir-types.wit` are GETTERS ONLY, guests
+  deliver fill output only via `infill-output-builder` path pushes, and
+  `InfillOutputCollected`
+  (`crates/slicer-wasm-host/src/marshal/accumulators.rs`) has no polygon
+  carrier — no WIT setter or host carrier exists for raft polygons.
+- Nothing CONSUMES `SlicedRegion.raft_fill` for emission: remaining hits are
+  definition, partition (`split_field!`), restore, visual-debug, tests. G-code
+  emission reads `LayerCollectionIR.ordered_entities`, assembled by
+  `assemble_ordered_entities_with_support_identities`
+  (`crates/slicer-runtime/src/layer_executor.rs`).
+- `convert_infill_output` (`crates/slicer-wasm-host/src/marshal/out.rs`)
+  groups paths by (object_id, region_id) into `InfillIR.regions`; the runtime
+  commits `LayerStageCommit::Infill` into a per-layer arena slot — nothing
+  maps guest output to `SlicedRegion.raft_fill`.
+
+**Decision (user-approved scope amendment, 2026-09-05):** packet 240b absorbs
+the missing write transport and emitter rather than routing them to 240a or a
+follow-up packet. Absorbed items (this packet now owns, and only these):
+
+- **(a)** WIT: additive `infill-output-builder::push-raft-fill:
+  func(polygons: list<ex-polygon>) -> result<_, string>` on the existing
+  host-provided resource, correlated via `set-current-origin`; no new type,
+  no `SliceIR` schema field, no schema-version bump.
+- **(b)** Host: `HostInfillOutputBuilder::push_raft_fill`,
+  `InfillOutputCollected.raft_fill` carrier with parallel origins, and an
+  additive per-region raft carrier in `convert_infill_output`
+  (e.g. `InfillIR.raft_regions`).
+- **(c)** Runtime commit: the `LayerStageCommit::Infill` commit path writes
+  delivered polygons into the layer's `SlicedRegion.raft_fill` for matching
+  regions (partition/restore already exist via `split_field!`).
+- **(d)** Emitter at `assemble_ordered_entities_with_support_identities`:
+  raft_fill ex-polygons → `ExtrusionPath3D` with `ExtrusionRole::RaftInfill`
+  as ordinary ordered entities at raft band layers — no anchored events, no
+  flow/width table changes.
+- **(e)** SDK native-leg mirror of the builder method so wasm and native
+  legs deliver identically (AC-3 byte-identical parity).
+- **(f)** The raft-default module's `run_infill` (Step 4) writes its
+  synthesized polygons through `push-raft-fill` into
+  `SlicedRegion.raft_fill` — no path-emission fallback.
 
 ## In Scope
 
@@ -86,6 +135,15 @@ below rather than re-litigated.
 - Formal ADR-0009 amendment plus the `D-<pkt>-ADR-0009-AMENDED` deviation row.
 - DEV-124 re-verification under a live raft (AC-8).
 - Human Validation Gate artifacts (`packet.spec.md` §Human Validation Gate).
+- Guest→`SlicedRegion.raft_fill` delivery transport (absorbed AD-240B-1):
+  additive WIT `infill-output-builder::push-raft-fill`, host + SDK native
+  builder methods, `InfillOutputCollected.raft_fill` carrier, `InfillIR`
+  per-region raft carrier, runtime commit into `SlicedRegion.raft_fill`.
+- `raft_fill`→ordered-entity emitter (absorbed AD-240B-1):
+  `assemble_ordered_entities_with_support_identities` converts raft_fill
+  ex-polygons to `ExtrusionRole::RaftInfill` paths at raft band layers —
+  ordinary ordered entities, no anchored events, no flow/width table
+  changes.
 
 ## Out of Scope
 
@@ -93,7 +151,10 @@ below rather than re-litigated.
   the raft band emission, the object-bottom predicate audit, the `SlicedRegion.raft_fill`
   carrier and its WIT accessors, the `paint-region-layer-view.raft-plan`
   accessor, and the SliceIR schema bump. If any of it needs changing, that is a
-  240a defect to route back, not work to absorb here.
+  240a defect to route back, not work to absorb here. Exception: the
+  guest→`SlicedRegion.raft_fill` write transport and the `raft_fill` emitter
+  are absorbed into this packet per AD-240B-1 (scope amendment); everything
+  else in that list remains route-back territory.
 - Extrusion-path, flow, speed, or role-tagged rendering inside
   `com.core.raft-default` — ADR-0009 Decision 4's zero-pattern-algorithm clause
   and the "Do not re-suggest making `raft-default` a renderer" Future-Reviewer
@@ -172,7 +233,13 @@ scoping and the row anchor are load-bearing — do not "simplify" either away.
 
 | Key | Manifest | Verdict | Reason / decision owner |
 | --- | --- | --- | --- |
-| _rows added in Step 5, one per grep hit_ | | PENDING-STEP5-ROW | |
+| `support_raft_layers` | `modules/core-modules/arachne-perimeters/arachne-perimeters.toml` | wired | consumed by `run_perimeters` for the DEV-124 first-printed-layer predicate; owner: arachne perimeter generator |
+| `support_raft_layers` | `modules/core-modules/classic-perimeters/classic-perimeters.toml` | wired | consumed by `run_perimeters` for the DEV-124 first-printed-layer predicate; owner: classic perimeter generator |
+| `support_raft_layers` | `modules/core-modules/tree-support-planner/tree-support-planner.toml` | wired | consumed by `push_raft_plan` to populate the raft plan band; owner: tree support planner |
+| `raft_first_layer_density` | `modules/core-modules/tree-support-planner/tree-support-planner.toml` | wired | consumed by `push_raft_plan` as `RaftPlan.raft_first_layer_density`; owner: tree support planner |
+| `base_raft_layers` | `modules/core-modules/tree-support-planner/tree-support-planner.toml` | wired | consumed by `push_raft_plan` as `RaftPlan.base_raft_layers`; owner: tree support planner |
+| `interface_raft_layers` | `modules/core-modules/tree-support-planner/tree-support-planner.toml` | wired | consumed by `push_raft_plan` as `RaftPlan.interface_raft_layers`; owner: tree support planner |
+| `support_raft_layers` | `modules/core-modules/layer-planner-default/layer-planner-default.toml` | wired | consumed by layer planning to emit raft-band proposals; owner: default layer planner |
 
 ## DEV-124 Re-verification
 
@@ -202,7 +269,12 @@ Step 7 records here, with evidence:
   `has_bottom_shell_layers` conjunct is unconditionally true under PnP's
   `ResolvedConfig` range [1, 10]; revisit only if that range ever admits 0.
 
-_(Outcome pending Step 7.)_
+Outcome: **PASS** for both AC-8 pins. `classic_clamp_follows_raft_layers_not_layer_zero` passed with
+the live raft-configured perimeter path (1 passed, 0 failed), and
+`classic_clamp_unchanged_when_no_raft_configured` passed (1 passed, 0 failed).
+The assertions remain unchanged; no predicate or generator change was needed.
+Evidence: the two exact `cargo test -p slicer-runtime --test contract -- ... --exact
+--nocapture` runs, recorded in `target/test-output.log` after each run (2026-09-05).
 
 ## Acceptance Summary
 
@@ -223,11 +295,33 @@ Reference, never copy, criteria from `packet.spec.md`.
 
 ## Verification Commands
 
+## Acceptance Ceremony Record
+
+The first workspace run passed 69/70 binaries. The single failure,
+`instrument_stderr_is_superset_of_core` (`crates/pnp-cli/tests/slice_progress_events_default_tdd.rs`),
+was a caught numerical panic in untouched `slicer-core`; its panic-hook note
+interleaved with a JSONL progress line. It was non-reproducible in isolation
+(the test passed alone, five manual slice runs were clean, and the subprocess
+exited 0). A re-run timed out at 40 minutes (serial jobs=1 build); the final
+re-run result will be appended when available. The AC-1 command was also fixed
+to fail closed and emit `AC1-PASS` only after manifest checks and both guest
+build/freshness commands succeed.
+
+The authoritative full-suite run covered 517 binaries: 515 passed and 2
+failed, both raft-default IR-access contract tests. The aggregate result was
+6202 tests passed, 4 failed, and 16 ignored; the two raft-default contract
+failures are fixed by the corrected manifest declaration above. A
+certification re-run was attempted but could not complete in-session (agent
+usage limit); the two fixed failures are verified by targeted re-runs of the
+contract tests, the AC-3 wasm/native parity test, the full raft_geometry
+suite, the raft_bounds/claim-conflict tests, and the workspace check/clippy/
+check-literals gates — all green.
+
 This is the authoritative full matrix; `packet.spec.md` lists only the closure-gate commands.
 
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
-| `rg -q 'id\s*=\s*"com\.core\.raft-default"' modules/core-modules/raft-default/raft-default.toml && rg -q 'claim:raft-fill' modules/core-modules/raft-default/raft-default.toml && rg -q 'Layer::Infill' modules/core-modules/raft-default/raft-default.toml && cargo xtask build-guests && cargo xtask build-guests --check; echo EXIT:$?` | AC-1 manifest + freshness | FACT exit code |
+| `rg -q 'id\s*=\s*"com\.core\.raft-default"' modules/core-modules/raft-default/raft-default.toml && rg -q 'claim:raft-fill' modules/core-modules/raft-default/raft-default.toml && rg -q 'Layer::Infill' modules/core-modules/raft-default/raft-default.toml && cargo xtask build-guests && cargo xtask build-guests --check && echo AC1-PASS` | AC-1 manifest + freshness | FACT exit code |
 | `mkdir -p target && cargo test -p slicer-sdk --test should_emit_raft_fill_claim_tdd -- ac4_raft_fill_claim_emits_raft_infill --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-2 claim dispatch | FACT pass/fail |
 | `test "$(rg -l 'claim:raft-fill' modules/core-modules/*/[a-z-]*.toml \| wc -l)" -eq 1` | AC-2 exactly one declared holder | FACT exit code |
 | `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_fill_is_deterministic_across_two_runs --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-3 determinism | FACT pass/fail |
@@ -241,6 +335,8 @@ This is the authoritative full matrix; `packet.spec.md` lists only the closure-g
 | `mkdir -p target && cargo test -p slicer-runtime --test contract -- raft_bounds_tdd::undeclared_raft_key_is_rejected_not_defaulted --exact --nocapture 2>&1 \| tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` | AC-N3 undeclared key | FACT pass/fail |
 | `cargo check --workspace --all-targets` | compile gate incl. test targets | FACT pass/fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | lint gate | FACT pass/fail |
+| `rg -q 'push-raft-fill' crates/slicer-schema/wit/deps/ir-types.wit` | transport declared (AD-240B-1) | FACT exit code |
+| `rg -q 'raft_fill' crates/slicer-runtime/src/layer_executor.rs` | emitter present (AD-240B-1) | FACT exit code |
 
 All commands name `--exact` tests plus a non-zero matched-count guard, or are
 pure exit-code checks; none invokes `cargo test --workspace`.
@@ -248,7 +344,8 @@ pure exit-code checks; none invokes `cargo test --workspace`.
 ## Step Completion Expectations
 
 - 240a's AC-1..AC-7 must be green before Step 1. Verify, do not assume.
-- Steps land in order Step 1 → Step 7.
+- Steps land in order Step 1 → Step 8; the AD-240B-1 transport (Step 3)
+  precedes the geometry port (Step 4).
 - Guest-facing edits require `cargo xtask build-guests --check` before
   attributing any test result (T4/E4); the new guest requires an actual rebuild
   (drop `--check`) inside the creating step.

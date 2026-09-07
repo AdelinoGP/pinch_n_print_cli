@@ -784,6 +784,7 @@ fn infill_ir(jitter: f32) -> InfillIR {
         schema_version: semver(),
         global_layer_index: 0,
         regions: vec![infill_region(jitter)],
+        ..Default::default()
     }
 }
 

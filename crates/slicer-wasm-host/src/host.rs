@@ -2583,6 +2583,34 @@ impl hs::Host for HostExecutionContext {
         Ok(ir_to_wit_expolygons(&result))
     }
 
+    fn hatch_areas(
+        &mut self,
+        areas: Vec<ExPolygon>,
+        spacing_mm: f32,
+        angle_degrees: f32,
+    ) -> wasmtime::Result<Vec<Polygon>> {
+        let lines = slicer_core::polygon_ops::hatch_areas(
+            &wit_to_ir_expolygons(&areas),
+            spacing_mm,
+            angle_degrees,
+        );
+        Ok(lines
+            .into_iter()
+            .map(|line| Polygon {
+                points: vec![
+                    Point2 {
+                        x: line.start.x,
+                        y: line.start.y,
+                    },
+                    Point2 {
+                        x: line.end.x,
+                        y: line.end.y,
+                    },
+                ],
+            })
+            .collect())
+    }
+
     fn simplify_polygon(
         &mut self,
         polygon: Polygon,
@@ -3676,6 +3704,17 @@ impl ir::HostInfillOutputBuilder for HostExecutionContext {
         let origin = self.effective_perimeter_origin();
         self.infill_output.ironing_paths.push(path);
         self.infill_output.ironing_path_origins.push(origin);
+        self.record_write("InfillIR");
+        Ok(Ok(()))
+    }
+    fn push_raft_fill(
+        &mut self,
+        _self_: Resource<InfillOutputBuilderData>,
+        polygons: Vec<ExPolygon>,
+    ) -> wasmtime::Result<Result<(), String>> {
+        let origin = self.effective_perimeter_origin();
+        self.infill_output.raft_fill.push(polygons);
+        self.infill_output.raft_fill_origins.push(origin);
         self.record_write("InfillIR");
         Ok(Ok(()))
     }

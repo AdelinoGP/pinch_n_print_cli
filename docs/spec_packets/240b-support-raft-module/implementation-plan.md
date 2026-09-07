@@ -10,13 +10,19 @@
 - Guest-facing steps: run `cargo xtask build-guests --check` and judge by its
   exit code before attributing any failure; the step that creates the guest
   rebuilds it in-step (drop `--check`).
-- This packet edits no WIT. If a step needs a WIT change, STOP — that is a 240a
-  defect to route back, not scope to absorb.
+- This packet edits no WIT EXCEPT the one AD-240B-1 additive method in Step 3
+  (`infill-output-builder::push-raft-fill`); any OTHER WIT change remains a
+  240a defect to route back, not scope to absorb.
 - All test commands tee to `target/test-output.log`; read results from the file,
   never re-run for more output.
 - A new test file under an aggregated `slicer-runtime` binary gets its `mod`
   registration in the SAME step, or it compiles to zero tests and reports a
   false pass.
+- WIT changes (AD-240B-1, Step 3): additive method only, on a host-provided
+  resource; still follow the repo's WIT checklist — search `wit_host.rs` /
+  `dispatch.rs` / `wit_guest` bindings for the affected resource, verify type
+  identity (`list<ex-polygon>` already imported), and run
+  `cargo build --tests` after the change.
 
 ## Steps
 
@@ -127,7 +133,76 @@
 - Exit condition: AC-2 and AC-N1 green with non-zero counts; the double-holder
   test genuinely observes a `ClaimConflict`, not an absence of error.
 
-### Step 3: Raft geometry synthesis (deterministic polygons)
+### Step 3: Raft polygon delivery transport (absorbed AD-240B-1)
+
+- Task IDs: `TASK-416`
+- Objective: implement the absorbed transport + emitter (design.md §Absorbed
+  Substrate Gap) — (a) additive WIT method on the existing host-provided
+  `infill-output-builder` resource:
+  `push-raft-fill: func(polygons: list<ex-polygon>) -> result<_, string>`;
+  (b) host `HostInfillOutputBuilder::push_raft_fill` +
+  `InfillOutputCollected.raft_fill` polygon carrier with parallel origins
+  (mirror the existing path pushes); (c) `convert_infill_output` gains an
+  additive per-region raft carrier (e.g. `InfillIR.raft_regions`, keyed like
+  `InfillRegion`/`OriginBucket`); (d) the runtime infill-commit writes the
+  delivered polygons into the layer's `SlicedRegion.raft_fill` for matching
+  regions; (e) emitter at `assemble_ordered_entities_with_support_identities`:
+  per raft band layer, per `slice.regions[*].raft_fill` ex-polygon →
+  `ExtrusionPath3D` with `ExtrusionRole::RaftInfill`, ordinary ordered
+  entity, RegionKey(object_id, region_id, layer_index); (f) SDK native-leg
+  mirror so wasm/native deliver identically.
+- Precondition: Step 2 green.
+- Postcondition: WIT grep passes, guests rebuilt fresh, workspace compiles
+  incl. tests, and a narrow transport proof shows raft_fill reaching
+  `SlicedRegion.raft_fill` through real dispatch (a new integration case
+  `raft_fill_reaches_sliced_region_after_dispatch` placed in the Step 4 file
+  — Step 3 may add it but must not depend on geometry).
+- Files allowed to read, with ranges when over 300 lines:
+  - `crates/slicer-schema/wit/deps/ir-types.wit` - the builder resource +
+    the `ex-polygon` type
+  - `crates/slicer-wasm-host/src/host.rs` -
+    `HostInfillOutputBuilder` + `HostSupportOutputBuilder` as the
+    writable-builder pattern
+  - `crates/slicer-wasm-host/src/marshal/accumulators.rs`
+  - `crates/slicer-wasm-host/src/marshal/out.rs`
+  - `crates/slicer-wasm-host/src/dispatch.rs` - layer ctx + commit
+  - `crates/slicer-runtime/src/layer_executor.rs` - assembly + emit closure
+  - `crates/slicer-ir/src/slice_ir.rs` - `InfillIR`/`InfillRegion`/region
+    keys only, located via `rg`
+  - `crates/slicer-runtime/src/region_partition.rs` - raft_fill
+    split/restore
+  - slicer-sdk builder surface + slicer-macros adaptation (locate via `rg`)
+  - existing wasm-host contract tests binding the builder
+- Files allowed to edit (**explicit waiver of the 3-edit cap** — one
+  coordinated transport change):
+  - `crates/slicer-schema/wit/deps/ir-types.wit`
+  - `crates/slicer-wasm-host/src/host.rs`
+  - `crates/slicer-wasm-host/src/marshal/accumulators.rs`
+  - `crates/slicer-wasm-host/src/marshal/out.rs`
+  - `crates/slicer-ir/src/slice_ir.rs` (InfillIR carrier only)
+  - `crates/slicer-runtime/src/layer_executor.rs`
+  - the SDK/macros surface if the native mirror is not generated
+  - any wasm-host/sdk contract test that binds the modified resource
+  - `crates/slicer-runtime/tests/integration/raft_geometry.rs` ONLY for the
+    one transport proof case (no geometry)
+- Files explicitly out of bounds:
+  - everything else in 240a's change surface (notably `SlicedRegion` itself,
+    ir-types region-resource getters, the raft band harvest)
+- Expected sub-agent dispatches: none (Orca refs not needed for a transport)
+- Context cost: `M`
+- Authoritative docs: `docs/03_wit_and_manifest.md` - WIT boundary; delegated
+  SUMMARY
+- OrcaSlicer refs: none this step
+- Verification:
+  - `cargo xtask build-guests && cargo xtask build-guests --check; echo EXIT:$?` - FACT exit 0 (WIT changed — rebuild mandatory, report literal code)
+  - `rg -q 'push-raft-fill' crates/slicer-schema/wit/deps/ir-types.wit` - FACT
+  - `rg -q 'raft_fill' crates/slicer-runtime/src/layer_executor.rs` - FACT
+  - `cargo check --workspace --all-targets` - FACT pass/fail
+  - `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_fill_reaches_sliced_region_after_dispatch --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - transport proof (tee'd)
+- Exit condition: all green; the transport case observes raft_fill in
+  `SlicedRegion.raft_fill` after a real dispatch on BOTH legs.
+
+### Step 4: Raft geometry synthesis (deterministic polygons)
 
 - Task IDs: `TASK-416`
 - Objective: implement the port inside `run_infill` — given `Some(raft_plan)`
@@ -138,11 +213,13 @@
   inflation staged as iterated offsets, expand the first printed raft layer by
   `raft_first_layer_expansion`, and derive interface-band footprints at
   contact-distance spacing — deterministic pure geometry into
-  `SlicedRegion.raft_fill`. Polygons only: no scan-line pattern math, no
+  `SlicedRegion.raft_fill`, written through the new `push-raft-fill` builder
+  method (Step 3) into `SlicedRegion.raft_fill` — NO path-emission fallback.
+  Polygons only: no scan-line pattern math, no
   extrusion paths (design.md §ADR-0009 Reconciliation). All mm constants ÷100
   at the unit boundary. No anchored entities anywhere. Author the four
   integration cases and register their `mod` line.
-- Precondition: Step 2 green.
+- Precondition: Step 3 green.
 - Postcondition: AC-3, AC-4, AC-5 and AC-N2 green; guests rebuilt.
 - Files allowed to read, with ranges when over 300 lines:
   - delegated Orca SUMMARY of `generate_raft_base` staging (working notes)
@@ -169,7 +246,7 @@
   - `OrcaSlicerDocumented/src/libslic3r/Support/SupportCommon.cpp` - delegate; never load
 - Verification:
   - `cargo xtask build-guests && cargo xtask build-guests --check; echo EXIT:$?` - FACT exit 0
-  - `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_fill_is_deterministic_across_two_runs --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-3
+  - `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_fill_is_deterministic_across_two_runs --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-3 (the determinism test compares BYTE-IDENTICAL `raft_fill` across the wasm and native legs — mechanism required by AD-240B-1)
   - `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_first_layer_expansion_exceeds_upper_layers --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-4
   - `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_geometry_orders_before_model_layers --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0 && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_mints_no_anchored_entities --exact --nocapture 2>&1 | tee target/test-output.log; test "$(grep -c '^test .* ok$' target/test-output.log)" -gt 0` - AC-5
   - `mkdir -p target && cargo test -p slicer-runtime --test integration -- raft_geometry::raft_writes_nothing_on_non_raft_layer --exact --nocapture 2>&1 | tee target/acn2.log && test "$(grep -c '^test .* ok$' target/acn2.log)" -gt 0` - AC-N2
@@ -179,7 +256,7 @@
   claim-holder emit path turns out not to convert `raft_fill` to paths, record
   it as a follow-up per `design.md` §Open Questions — do not add a renderer here.
 
-### Step 4: Raft config keys declared and wired
+### Step 5: Raft config keys declared and wired
 
 - Task IDs: `TASK-417`
 - Objective: declare the three net-new keys `raft_contact_distance` (float,
@@ -197,11 +274,11 @@
   `mod raft_bounds_tdd;` in `crates/slicer-runtime/tests/contract/main.rs`.
   AC-N3 must exercise the rejection path (a consumed key absent from the
   schema), never a manifest presence grep. NOTE: AC-N2 is NOT owned here — it
-  moved to Step 3, because it is module-side behavior (`run_infill` declining
+  moved to Step 4, because it is module-side behavior (`run_infill` declining
   to write on a non-raft layer) and this step may not edit
   `modules/core-modules/raft-default/src/lib.rs`.
-- Precondition: Step 3 green.
-- Postcondition: AC-6 and AC-N3 green (AC-N2 is Step 3's).
+- Precondition: Step 4 green.
+- Postcondition: AC-6 and AC-N3 green (AC-N2 is Step 4's).
 - Files allowed to read, with ranges when over 300 lines:
   - `crates/slicer-runtime/tests/contract/main.rs` - registration list only
   - `modules/core-modules/rectilinear-infill/rectilinear-infill.toml` - the
@@ -228,7 +305,7 @@
 - Exit condition: both cases (`raft_keys_declared_and_wired`, `undeclared_raft_key_is_rejected_not_defaulted`) pass with non-zero counts; registration grep
   passes.
 
-### Step 5: Raft-key wire-or-record sweep + config doc regeneration
+### Step 6: Raft-key wire-or-record sweep + config doc regeneration
 
 - Task IDs: `TASK-418`
 - Objective: **first re-derive** the real set of raft-related keys declared by
@@ -242,7 +319,7 @@
   `cargo xtask gen-config-docs` (T8). There is **no fixed expected key set**:
   the table follows the grep. The three net-new raft-default keys are excluded
   from this table by construction.
-- Precondition: Step 4 green.
+- Precondition: Step 5 green.
 - Postcondition: AC-7 green; the regenerated config doc contains the three new
   keys.
 - Files allowed to read, with ranges when over 300 lines:
@@ -267,7 +344,7 @@
 - Exit condition: AC-7 green; every key the grep returned has a written verdict; the
   config doc regenerates cleanly.
 
-### Step 6: Formal ADR-0009 amendment + deviation row
+### Step 7: Formal ADR-0009 amendment + deviation row
 
 - Task IDs: `TASK-537`
 - Objective: execute the ADR-0009 amendment per `design.md` §ADR-0009
@@ -286,14 +363,16 @@
   historical context only. Then add an
   additive `## Amendment — <date> (packet 240b)` section that QUOTES the
   original Decision-5 clause verbatim and records the reassignment of
-  `claim:raft-fill` to `com.core.raft-default`. Decision 4, the
+  `claim:raft-fill` to `com.core.raft-default`; the Amendment section must
+  also record AD-240B-1 in one sentence (transport + emitter absorbed)
+  alongside the Decision-5 reassignment. Decision 4, the
   zero-pattern-algorithm clause, and the "Do not re-suggest making
   `raft-default` a renderer" Future-Reviewer Note stay UNCHANGED. Then file the
   `D-<pkt>-ADR-0009-AMENDED` deviation row — re-derive the free ID space at
   write time, do not trust an ID written in this packet. Also add
   `com.core.raft-default` to the module inventory in
   `docs/03_wit_and_manifest.md`.
-- Precondition: Steps 1-5 green.
+- Precondition: Steps 1-6 green.
 - Postcondition: every `packet.spec.md` §Doc Impact Statement grep passes.
 - Files allowed to read, with ranges when over 300 lines:
   - `docs/adr/0009-raft-as-layer-infill-role.md` - short; full read allowed
@@ -329,7 +408,7 @@
   Decision or Future-Reviewer line changes in substance — Decision 4, Decision
   5's original text, and the Future-Reviewer Note stay verbatim.
 
-### Step 7: DEV-124 re-verification, acceptance gates, Human Validation Gate
+### Step 8: DEV-124 re-verification, acceptance gates, Human Validation Gate
 
 - Task IDs: `TASK-537`
 - Objective: run the AC-8 commands under a raft-configured config view and
@@ -340,7 +419,7 @@
   the packet-level gates and produce the human-gate artifacts (`tmp/p240b-*`
   G-code + visual-debug bundle), recording checklist verdicts and leaving
   sign-off to the human.
-- Precondition: Step 6 green; the §9 raft-enabled Orca references exist at
+- Precondition: Step 7 green; the §9 raft-enabled Orca references exist at
   `tmp/p240b-orca-*-raft.gcode` (human-owned). If absent, the gate stays open
   and the packet reports blocked-on-human, not done.
 - Postcondition: gates green; the checklist is written in `packet.spec.md`
@@ -379,13 +458,14 @@
 | --- | --- | --- |
 | Step 1 | M | substrate verification + new guest dir + first rebuild |
 | Step 2 | S | claim resolution + double-holder negative |
-| Step 3 | M | geometry port + five integration cases (incl. AC-N2) |
-| Step 4 | M | keys + undeclared-key negative (AC-N2 moved to Step 3) |
-| Step 5 | M | wire-or-record across the manifests the grep flags + doc regen |
-| Step 6 | S | ADR amendment + deviation row |
-| Step 7 | S | DEV-124 re-verification + gates + human gate |
+| Step 3 | M | AD-240B-1 transport + emitter (absorbed) |
+| Step 4 | M | geometry port + five integration cases (incl. AC-N2) |
+| Step 5 | M | keys + undeclared-key negative (AC-N2 stays with Step 4's geometry file) |
+| Step 6 | M | wire-or-record across the manifests the grep flags + doc regen |
+| Step 7 | S | ADR amendment + deviation row |
+| Step 8 | S | DEV-124 re-verification + gates + human gate |
 
-Aggregate is `M`; no row is `L`.
+Aggregate is `M`-family; no row is `L`.
 
 ## Packet Completion Gate
 

@@ -122,6 +122,13 @@ pub fn commit_shell_classification_builtin(
         .region_map()
         .ok_or(ShellClassificationError::RegionMapNotCommitted)?
         .clone();
+    let raft_layer_indices: HashSet<u32> = blackboard
+        .layer_plan()
+        .into_iter()
+        .flat_map(|plan| &plan.global_layers)
+        .filter(|layer| layer.is_raft)
+        .map(|layer| layer.index)
+        .collect();
 
     let mut new_vec: Vec<SliceIR> = old_arc.as_ref().clone();
 
@@ -129,7 +136,7 @@ pub fn commit_shell_classification_builtin(
     // (object, region) pair appears. Slices retain their `global_layer_index`
     // ordering by construction (built per the layer plan), so iteration order
     // is already plan-order.
-    let timelines = build_region_timelines(&new_vec);
+    let timelines = build_region_timelines(&new_vec, &raft_layer_indices);
 
     // Per-region computation produces a Vec<(slice_idx, RegionUpdate)> tagged
     // with (object_id, region_id). Reads are against the immutable `new_vec`
@@ -959,9 +966,18 @@ fn gate_internal_bridge_sites(
     }
 }
 
-fn build_region_timelines(slices: &[SliceIR]) -> HashMap<(ObjectId, RegionId), Vec<usize>> {
+fn build_region_timelines(
+    slices: &[SliceIR],
+    raft_layer_indices: &HashSet<u32>,
+) -> HashMap<(ObjectId, RegionId), Vec<usize>> {
     let mut timelines: HashMap<(ObjectId, RegionId), Vec<usize>> = HashMap::new();
     for (idx, slice) in slices.iter().enumerate() {
+        // Raft layers may reference the model's regions so the raft module can
+        // key its output, but they are not part of the model's shell timeline.
+        // In particular, they must not consume the bottom-shell depth budget.
+        if raft_layer_indices.contains(&slice.global_layer_index) {
+            continue;
+        }
         for region in &slice.regions {
             timelines
                 .entry((region.object_id.clone(), region.region_id))

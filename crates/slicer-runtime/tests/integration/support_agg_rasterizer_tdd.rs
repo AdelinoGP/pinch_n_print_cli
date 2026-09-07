@@ -58,9 +58,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use slicer_core::polygon_ops::{
-    difference_ex, intersection_ex, offset, union_ex, OffsetJoinType,
-};
+use slicer_core::polygon_ops::{difference_ex, intersection_ex, offset, union_ex, OffsetJoinType};
 use slicer_ir::{ConfigValue, ExPolygon, Polygon, SupportPlanIR, SupportPlanRole};
 use slicer_wasm_host::exact_z_query::ExactZQueryService;
 
@@ -1672,11 +1670,7 @@ fn agg_column_continuity_measurement_beats_baseline() {
         "P241-AC7 column continuity on {}: baseline(legacy) drops={} area={:.1} units^2 | \
          post-port(agg) drops={} area={:.1} units^2 | RECORDED area delta={delta_pct:+.2}% \
          (not a gate; see DEV-166)",
-        ADVERSARIAL_FIXTURE_LABEL,
-        report.legacy_drops,
-        base_area,
-        report.agg_drops,
-        agg_area,
+        ADVERSARIAL_FIXTURE_LABEL, report.legacy_drops, base_area, report.agg_drops, agg_area,
     );
     eprintln!(
         "P241-AC7 macro-block extent derived from config: spacing={} mm line_width={} mm -> \
@@ -1778,7 +1772,8 @@ fn agg_column_continuity_measurement_beats_baseline() {
         report.outside_pieces, report.max_outside_raw_units2, CONTAINMENT_SLIVER_FLOOR_UNITS2,
     );
     assert_eq!(
-        report.max_outside_units2, 0.0,
+        report.max_outside_units2,
+        0.0,
         "agg support exceeds the legacy region grown by one macro-block extent ({} units, \
          {:.4} mm): layer {:?} has {:.1} units^2 ({:.6} mm^2) outside it, and containment needs a \
          grow of {} units ({:.4} mm). Canonical seed_fill_block is block-local, so this means \
@@ -1864,7 +1859,11 @@ fn compare_control_vs_agg() -> Result<ControlComparison, String> {
             grown
         } else {
             let mask = offset(occupancy, xy_distance, OffsetJoinType::Miter, 0.0);
-            let mask = if mask.is_empty() { occupancy.clone() } else { mask };
+            let mask = if mask.is_empty() {
+                occupancy.clone()
+            } else {
+                mask
+            };
             difference_ex(&grown, &mask)
         };
         if !control.is_empty() {
@@ -1872,8 +1871,11 @@ fn compare_control_vs_agg() -> Result<ControlComparison, String> {
         }
     }
 
-    let control_columns =
-        column_continuity_metrics(&control_by_layer, &legacy.occupancy_by_layer, &printable_layers);
+    let control_columns = column_continuity_metrics(
+        &control_by_layer,
+        &legacy.occupancy_by_layer,
+        &printable_layers,
+    );
 
     let layers: BTreeSet<i32> = control_by_layer
         .keys()
@@ -1960,8 +1962,14 @@ fn agg_printed_area_exceeds_global_offset_control() {
 
     // Non-vacuity: the fixture still has legacy drops to remove and bodies to
     // compare; otherwise the assertions below hold trivially.
-    assert!(cmp.legacy_drops > 0, "legacy baseline has no drops ({cmp:?})");
-    assert!(cmp.compared_layers > 0, "no body layers to compare ({cmp:?})");
+    assert!(
+        cmp.legacy_drops > 0,
+        "legacy baseline has no drops ({cmp:?})"
+    );
+    assert!(
+        cmp.compared_layers > 0,
+        "no body layers to compare ({cmp:?})"
+    );
     assert_eq!(
         cmp.control_drops, 0,
         "the offset_to_slice control alone should remove every legacy drop ({cmp:?})"

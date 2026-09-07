@@ -950,8 +950,7 @@ pub fn invalid_geometry_fails() -> Result<(), String> {
             // correct degraded behaviour: the region belongs to `traditional`,
             // so the `tree` write is named as the trespasser and nothing is
             // published.
-            if err.family_id != "tree"
-                || !matches!(err.reason, OwnershipReason::WrongFamily { .. })
+            if err.family_id != "tree" || !matches!(err.reason, OwnershipReason::WrongFamily { .. })
             {
                 return Err(format!("unexpected overlap error: {err:?}"));
             }

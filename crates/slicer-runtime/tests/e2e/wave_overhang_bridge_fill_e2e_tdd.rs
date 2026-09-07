@@ -110,8 +110,11 @@ fn capture_infill_manifest(config: &Path) -> Value {
         "resolution_scale": 1,
         "frame": "model"
     });
-    std::fs::write(&request, serde_json::to_vec(&body).expect("serialize request"))
-        .expect("write visual-debug request");
+    std::fs::write(
+        &request,
+        serde_json::to_vec(&body).expect("serialize request"),
+    )
+    .expect("write visual-debug request");
     let proc = Command::new(pnp_cli_bin())
         .args(["visual-debug", "--request"])
         .arg(&request)

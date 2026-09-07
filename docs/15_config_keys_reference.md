@@ -196,6 +196,10 @@ is the authoritative catalog of their defaults and ranges.
 | `retract_mode` | enum | `"gcode"` | — (values: gcode|firmware) | `path-optimization-default` |
 | `retract_speed` | float | `25.0` | — | `path-optimization-default` |
 | `travel_z_hop` | float | `0.0` | — | `path-optimization-default` |
+| `raft_contact_distance` | float | `0.1` | >= 0.0 | `raft-default` |
+| `raft_expansion` | float | `1.5` | >= 0.0 | `raft-default` |
+| `raft_first_layer_expansion` | float | `2.0` | >= 0.0 | `raft-default` |
+| `raft_line_spacing` | float | `0.5` | >= 0.000001 | `raft-default` |
 | `bridge_density` | float_or_percent | `"100%"` | [10.0, 120.0] | `rectilinear-infill` |
 | `bridge_flow` | float | `1.0` | >= 0.0 | `rectilinear-infill` |
 | `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
