@@ -12,7 +12,7 @@
   `crates/slicer-runtime/tests/integration/main.rs`.
 - Neighboring tests/fixtures:
   `crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl` +
-  `tests/fixtures/support-family/orca-matched-config.json` (tracked authoritative fixtures,
+  `crates/slicer-runtime/tests/fixtures/support-family/orca-matched-config.json` (tracked authoritative fixtures,
   resolved by the panicking `support_test_path` / `matched_config_path` resolvers);
   `crates/pnp-cli/tests/visual_debug_gcode_renderer_tdd.rs` (G-code-mode renderer TDD, today
   only inline `;TYPE:Outer wall` / `;TYPE:Solid infill` fixtures);
@@ -31,11 +31,11 @@
   are forbidden except `crates/pnp-cli/src/visual_debug_gcode.rs` when AC-7's new test fails for
   a real parser/renderer reason; every other failure routes back to its owning packet (237..241)
   or becomes a `[BLOCK]`/written waiver — never an in-passing fix.
-- **Invariant 16 is enforced by count, not by trust.** Every suite command asserts its matched
-  count (`8 passed`; `1 passed` for the new AC-7 test). Measured 2026-08-23 with `--list`: the
-  inherited multi-name shared-filter `--exact` form matches exactly the eight registered bare
-  wrappers and exits non-zero on any mismatch via the grep gate. A future wrapper rename turns
-  the count red instead of silently filtering to zero.
+- **Invariant 16 is enforced by count, not by trust.** Each inherited wrapper runs in its own
+  `--exact` invocation and asserts `1 passed`; AC-7 does the same for its standalone pnp-cli test
+  binary. The eight wrappers and the `slicer-runtime --test integration` target were re-resolved
+  on 2026-09-07. A future wrapper rename turns its command red instead of silently filtering to
+  zero.
 - <!-- snippet: wasm-staleness -->
 - Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and inspect its exit code: exit 0 means fresh, non-zero means stale (a distinct exit code signals `wasm-tools` is unavailable). Never use `rg -q 'STALE:'` — a `wasm-tools`-missing infrastructure error prints no `STALE:` and would read as fresh. If stale, rebuild without `--check` before re-running the failing test. Stale-guest failures look unrelated to the change but are caused by it.
   (This packet's normal surface does not feed guest WASM; the check is required before
@@ -46,7 +46,7 @@
   invalidates a golden, that packet owns it. No Orca-derived constant may be hardcoded into any
   test; no test may read `tmp/*_Orca.gcode` (locked 224 gate shape).
 - **E5 totals discipline.** The whole-suite green claim comes only from
-  `cargo xtask test --summary --workspace -- --no-fail-fast` output in
+  `cargo xtask test --workspace --summary` output in
   `target/test-output.log`; fail-fast truncation has twice produced false greens.
 
 ## Code Change Surface
@@ -55,7 +55,7 @@
   documents (gap-register disposition ledger + mirror tokens, deviation dispositions,
   divergence dispositions, supersession records, matched-height inspection record, differential
   inspection record); one new test proves the absorbed-218 e2e evidence; one status flip marks
-  224 superseded; docs/07 gets TASK-429..440 rows + the TASK-335 closure edit.
+  224 superseded; docs/07 gets TASK-538..549 rows + the TASK-335 closure edit.
 - Exact functions, traits, manifests, tests, and fixtures:
   - NEW test `gcode_support_type_markers_render_alongside_layer_images` in
     `crates/pnp-cli/tests/visual_debug_gcode_renderer_tdd.rs`: inline G-code with
@@ -75,15 +75,14 @@
   - `docs/spec_packets/224-support-family-orca-closure/packet.spec.md` YAML flip to
     `status: superseded` + `superseded_by: 242-support-family-orca-closure` (no other line of
     that file changes).
-  - `docs/07_implementation_status.md`: insert TASK-429..440 rows (via delegated dispatch) and
+  - `docs/07_implementation_status.md`: insert TASK-538..549 rows (via delegated dispatch) and
     close TASK-335 with a pointer to this packet.
 - Rejected alternatives and reasons:
   - Re-running the full 224 implementation flow — rejected: the sequence moved; 237..241 changed
     the behavior under those tests; closure must re-prove against the current tree instead.
-  - Splitting the eight-name shared filter into eight single-name commands — rejected by
-    measurement: the shared-filter form matches all eight (invariant 16 satisfied with the
-    asserted count); eight separate invocations lose the single-run count proof without adding
-    coverage. Per-name isolation remains available as a debugging command.
+   - One multi-name `--exact` filter — rejected because Cargo/libtest name resolution can produce
+     a zero-match false green and the current bucket layout registers bare wrappers. Eight
+     single-name invocations, each asserting exactly one pass, are the locked command shape.
   - A dedicated missing-fixture regression test — rejected: deleted for asserting `std::fs`
     behavior; the resolver panic contract is the gate (AC-N2).
 
@@ -141,7 +140,7 @@ Include ranges for files over 300 lines.
 
 ## Expected Sub-Agent Dispatches
 
-- Question: "Register TASK-429..TASK-440 as open rows attributed to packet 242 and amend the
+- Question: "Register TASK-538..TASK-549 as open rows attributed to packet 242 and amend the
   TASK-335 row to record its pending closure at 242"; scope: `docs/07_implementation_status.md`;
   return: FACT (inserted row IDs + amended row confirmation); purpose: Step 1.
 - Question: "SUMMARY of 224 design.md §Orca reference profile + §Orca Inspection Checklist
@@ -167,6 +166,12 @@ Include ranges for files over 300 lines.
   re-running them after the 239a/239b anchored host-seam + WIT-transport enablement must not
   regress ordering guarantees —
   the suite itself is the tripwire.
+- Human-owned reference inputs/artifacts: `tmp/p242-orca-tree.gcode`,
+  `tmp/p242-orca-normal.gcode`, `tmp/p242-orca-tree-raft.gcode`,
+  `tmp/p242-orca-normal-raft.gcode`, their matching patched `.3mf` and `.gcode.3mf` files, and
+  `tmp/p242-vd-{pnp,orca}-{tree,normal}.json`. Render outputs are
+  `target/vd-p242-{pnp,orca}-{tree,normal}`. These names are identical to packet.spec.md AC-2 and
+  implementation-plan.md Step 6; packet 239/240 artifacts do not satisfy this fresh-set gate.
 
 ## Closure Ledger Contracts (authored by implementation)
 
@@ -183,6 +188,14 @@ by ACs:
   G-14 waived as pre-existing noise (T10), G-15 carried -> repo-wide literal debt, G-20 waived
   as register-only per human decision, G-19 closed-at-224 or explicitly re-triaged, everything
   else closed at its routing destination.
+- `## 240b Upstream-Finding Dispositions` (Step 6): exactly two entries. The
+  support-branch/raft-plane interleave on non-band routing is **gate-blocking** until the
+  `DefaultLayerPlanner::run_layer_planning` support surface is fixed or a human records an
+  explicit waiver; a bare `[CARRIED]` token cannot close TASK-335. Band-layer harvested regions
+  carrying model-plane polygons are recorded as intentional non-emitting DATA used to seed the
+  raft footprint; this item is non-blocking only while the band-suppression evidence proves no
+  model content emits on raft-band output layers. Step 3's register ledger must reference both
+  dispositions rather than silently dropping the 240b findings.
 - `## Deviation Dispositions` (Step 4): six lines of the form `DEV-NNN: CLOSED — …` or
   `DEV-NNN: CARRIED — …`, one each for DEV-141..DEV-146. **No verb is pre-written here**: the
   packet's own rule is that dispositions are established by the closure work (Step 2's audit of
@@ -199,14 +212,17 @@ by ACs:
 
 ## Locked Assumptions and Invariants
 
-- The eight wrapper names and the `8 passed` count are locked for this packet's lifetime; a
-  rename upstream is a deliberate breakage of this AC and must update both sides consciously.
+- The eight wrapper names and eight separate `1 passed` assertions are locked for this packet's
+  lifetime; a rename upstream is a deliberate breakage of this AC and must update both sides
+  consciously.
 - No test reads `tmp/*_Orca.gcode`; no Orca-derived constant enters any test (224 locked gate
   shape stands unchanged).
 - Parity claims remain limited to termination, coverage, collision freedom, interfaces,
   independent heights; exact path identity is never claimed.
-- Rafts stay signed negative global-layer prefix entries (ADR-0009 as amended by 240b); the
-  independent-heights axis inspects them accordingly.
+- Rafts are a front-contiguous positive-index prefix (`GlobalLayer.is_raft`) below the shifted
+  model Z stack; band output is raft-only, bottom-shell classification starts at the first
+  non-raft layer, and raft paths use canonical `;TYPE:Support` labels. The independent-heights
+  axis identifies raft bands by marker/Z membership, never by a custom label.
 
 ## Risks and Tradeoffs
 
@@ -214,15 +230,19 @@ by ACs:
   anchors being grep-verified (AC-2/AC-3/AC-6) and by forbidding golden reblessing here.
 - **Zero-match filters (T2):** mitigated by asserted counts everywhere; the measured baseline
   makes any drift visible as a red count, not a green nothing.
-- **Fail-fast truncation (T3):** the whole-suite gate uses `--summary --workspace --
-  --no-fail-fast` and results are read from `target/test-output.log`.
+- **Fail-fast truncation (T3):** the whole-suite gate uses the mandated
+  `cargo xtask test --workspace --summary` entry point and results are read from
+  `target/test-output.log`.
 - **Stale guests (T4):** freshness check precedes attribution and the Step 8 ceremony.
 - **Feature-gated blindness (T5/E6):** the workspace run unifies `host-algos`; if a narrow
   slicer-core run is ever dispatched for diagnosis, it must carry `--features host-algos`.
-- **Pre-existing noise misattribution (T10):** G-14/G-15 dispositions are written waivers that
-  forbid re-diagnosis; the clippy/literal gates stay at inherited counts.
+- **Pre-existing noise misattribution (T10):** G-14/G-25 and G-15 are audited from their live
+  premises; stale warning/literal counts are not frozen or credited as fixes.
+- **Known whole-suite flake:** `instrument_stderr_is_superset_of_core` can fail when JSONL and
+  progress output interleave at a newline. It is not waived: a red occurrence keeps the closure
+  gate red and routes the atomic-newline-write repair to the emitter owner.
 - **Disproved premises resurrected (T11):** the out-of-scope list names them explicitly.
-- Tradeoff: asserting the exact `8 passed` couples the AC to the wrapper inventory; accepted
+- Tradeoff: asserting eight exact `1 passed` results couples the AC to the wrapper inventory; accepted
   because the opposite (unasserted filter) is precisely how 224's false green happened.
 
 ## Context Cost Estimate
@@ -234,15 +254,6 @@ by ACs:
 
 ## Open Questions
 
-Tag implementer-resolvable questions `[FWD]`; tag activation blockers `[BLOCK]`. Scope/interface/verification questions keep the packet `draft`. Delegate answers requiring out-of-bounds reads. Write `None.` when absent.
-
-- `[BLOCK]` Activation requires every dependency in `packet.spec.md`'s frontmatter to reach
-  `implemented`. The named remaining blockers are **240a-support-raft-substrate**,
-  **240b-support-raft-module**, and **241-support-agg-rasterizer**; 237, 238a, 238b, 238c and
-  239a/239b/239c/239d had already reached `implemented` at authoring. Do NOT trust that split —
-  statuses are ledger facts and rot. Re-derive every dependency's status at activation with
-  `grep '^status:' docs/spec_packets/<dep>/packet.spec.md` and treat anything not `implemented`
-  as a live blocker. This resolves as the queue executes; no authoring action.
-- `[FWD]` If 239c's measure-first `height_delta` protocol lands CONSISTENT (emitter unchanged),
-  the independent-heights inspection axis still applies (Z schedule from the layer executor);
-  Step 6 records which branch actually landed before writing the verdict.
+None. All eleven direct dependencies and the 241b remediation are implemented; 239c's
+measure-first `height_delta` verdict is CONSISTENT. Their statuses remain mutable ledger facts and
+must be re-derived at activation and Step 2 rather than copied from this paragraph.

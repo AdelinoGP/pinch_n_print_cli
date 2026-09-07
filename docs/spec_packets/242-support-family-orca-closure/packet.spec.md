@@ -2,18 +2,18 @@
 status: draft
 packet: 242-support-family-orca-closure
 task_ids:
-  - TASK-429
-  - TASK-430
-  - TASK-431
-  - TASK-432
-  - TASK-433
-  - TASK-434
-  - TASK-435
-  - TASK-436
-  - TASK-437
-  - TASK-438
-  - TASK-439
-  - TASK-440
+  - TASK-538
+  - TASK-539
+  - TASK-540
+  - TASK-541
+  - TASK-542
+  - TASK-543
+  - TASK-544
+  - TASK-545
+  - TASK-546
+  - TASK-547
+  - TASK-548
+  - TASK-549
 depends_on:
   - 237-support-analysis-parity
   - 238a-support-pattern-config-keys
@@ -56,48 +56,54 @@ parser/renderer reason.
 
 ## Prerequisites and Blockers
 
-- Depends on (all eleven frontmatter entries; FORWARD-DEP: this terminal packet consumes the
-  finished state of every other packet in the queue and cannot activate until each reaches
-  `implemented`): 237-support-analysis-parity, 238a-support-pattern-config-keys,
+- Depends on (all eleven frontmatter entries; re-derived 2026-09-07 as `implemented`):
+  237-support-analysis-parity, 238a-support-pattern-config-keys,
   238b-tree-planner-canonical-fidelity, 238c-support-renderer-flow-interfaces,
   239a-anchored-host-seams, 239b-anchored-wit-contract,
   239c-support-layer-height-producer, 239d-support-coarse-floating-planes,
   240a-support-raft-substrate, 240b-support-raft-module, 241-support-agg-rasterizer.
-  The former `239-support-independent-layer-z` is superseded; its behaviour is owned by
+  Packet 241's human override shipped AC-N2 red, but implemented remediation packet
+  241b-support-plan-ownership-seam restored `traditional_family_tdd` green and closed DEV-167;
+  241b is therefore a required closure-state check even though the governing plan does not list
+  it as a twelfth direct dependency. The former `239-support-independent-layer-z` is superseded; its behaviour is owned by
   239a/239b (anchored host seams + WIT transport) and 239c/239d (independent support layer
   height + off-grid support planes). The former `240` was split into 240a + 240b.
   Re-derive every dependency's live status at activation with
   `grep '^status:' docs/spec_packets/<dep>/packet.spec.md` — never quote a status from prose.
 - Unblocks: merge of `parity/support-planners-clean` to master after the human gate signs
   (plan §14 rule 8); nothing else — this is the terminal packet.
-- Activation blockers: any dependency packet not yet `implemented`; fresh Orca references
-  (plan §9) absent under `tmp/` at gate time blocks the gate, not generation.
+- Activation blockers: none from dependency status as re-derived 2026-09-07. Re-check all eleven
+  direct dependencies plus 241b at activation; any regression from `implemented` blocks.
+  Fresh packet-242 Orca references absent under `tmp/` block the human gate, not activation.
 
 ## Acceptance Criteria
 
 State ACs only here; `requirements.md` references their IDs.
 
 - **AC-1. Given** the post-dependency tree with `crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl`
-  and `tests/fixtures/support-family/orca-matched-config.json` tracked, **when** each of the eight
+  and `crates/slicer-runtime/tests/fixtures/support-family/orca-matched-config.json` tracked, **when** each of the eight
   registered bare-wrapper closure tests runs under its own single-name `--exact` command (chained
   with `&&`; invariant 16: every command asserts exactly `1 passed`, so zero-match or partial-match
   runs fail), **then** all eight pass: fixture_invariants, family_reaches_region_routing,
   invalid_geometry_fails, matched_height_evidence, differential_evidence, final_gcode_roles,
   supersedes_packet_213_and_task_329, task_163b_disposition. |
-  `(cargo test -p slicer-runtime --test integration -- fixture_invariants --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed") && (cargo test -p slicer-runtime --test integration -- family_reaches_region_routing --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed") && (cargo test -p slicer-runtime --test integration -- invalid_geometry_fails --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed") && (cargo test -p slicer-runtime --test integration -- matched_height_evidence --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed") && (cargo test -p slicer-runtime --test integration -- differential_evidence --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed") && (cargo test -p slicer-runtime --test integration -- final_gcode_roles --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed") && (cargo test -p slicer-runtime --test integration -- supersedes_packet_213_and_task_329 --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed") && (cargo test -p slicer-runtime --test integration -- task_163b_disposition --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed") && echo P242_INVARIANT_SUITE_8_OF_8`
-- **AC-2. Given** fresh regenerated Orca references for both families under `tmp/` (plan §9;
-  239c/239d and 240a/240b gate outputs confirmed current), **when** the matched-height artefact-presence
+  `(mkdir -p target && cargo test -p slicer-runtime --test integration -- fixture_invariants --exact 2>&1 | tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log) && (cargo test -p slicer-runtime --test integration -- family_reaches_region_routing --exact 2>&1 | tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log) && (cargo test -p slicer-runtime --test integration -- invalid_geometry_fails --exact 2>&1 | tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log) && (cargo test -p slicer-runtime --test integration -- matched_height_evidence --exact 2>&1 | tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log) && (cargo test -p slicer-runtime --test integration -- differential_evidence --exact 2>&1 | tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log) && (cargo test -p slicer-runtime --test integration -- final_gcode_roles --exact 2>&1 | tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log) && (cargo test -p slicer-runtime --test integration -- supersedes_packet_213_and_task_329 --exact 2>&1 | tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log) && (cargo test -p slicer-runtime --test integration -- task_163b_disposition --exact 2>&1 | tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log) && echo P242_INVARIANT_SUITE_8_OF_8`
+- **AC-2. Given** packet-242's fresh regenerated plain and raft-enabled Orca reference pairs under
+  `tmp/` (plan §9; packet 239/240 artifacts are recipe evidence, not substitutes), **when** the matched-height artefact-presence
   precondition passes and the dual-family visual-debug bundles are rendered, **then** the
   inspection itself is satisfied ONLY by a written record naming source, layer, tap, and verdict
   per family and per axis (E2) in `design.md §Matched-Height Inspection Record (242)` — the test
-  proves artefacts exist and are indexed, never judgement (T6). | `cargo run -q --bin pnp_cli -- visual-debug --request tmp/visual-debug-support-family-tree.json --output target/vd-p242-support-family-tree --overwrite && cargo run -q --bin pnp_cli -- visual-debug --request tmp/visual-debug-support-family-normal.json --output target/vd-p242-support-family-normal --overwrite && cargo test -p slicer-runtime --test integration -- matched_height_evidence --exact && rg -q '^## Matched-Height Inspection Record \(242\)' docs/spec_packets/242-support-family-orca-closure/design.md && echo P242_MATCHED_HEIGHT_EVIDENCE_PRESENT`
+  proves artefacts exist and are indexed, never judgement (T6). | `mkdir -p target && cargo run -q --bin pnp_cli -- visual-debug --request tmp/p242-vd-pnp-tree.json --output target/vd-p242-pnp-tree --overwrite && cargo run -q --bin pnp_cli -- visual-debug --request tmp/p242-vd-pnp-normal.json --output target/vd-p242-pnp-normal --overwrite && cargo run -q --bin pnp_cli -- visual-debug --request tmp/p242-vd-orca-tree.json --output target/vd-p242-orca-tree --overwrite && cargo run -q --bin pnp_cli -- visual-debug --request tmp/p242-vd-orca-normal.json --output target/vd-p242-orca-normal --overwrite && cargo test -p slicer-runtime --test integration -- matched_height_evidence --exact 2>&1 | tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log && rg -q '^## Matched-Height Inspection Record \(242\)' docs/spec_packets/242-support-family-orca-closure/design.md && echo P242_MATCHED_HEIGHT_EVIDENCE_PRESENT`
 - **AC-3. Given** PnP and standalone-Orca renders at matched physical heights for both families,
   **when** differential review runs, **then** `differential_evidence` asserts the PnP-side
   structural invariants (per-entry attribution, decline reasons on unmet demands, role presence
   for both families) and the differential verdicts are recorded by inspection in
   `design.md §Differential Inspection Record (242)` with source, layer, tap, and disposition per
-  family; parity claims stay limited to termination, coverage, collision freedom, interfaces,
-  independent heights; exact path identity is never claimed. | `cargo test -p slicer-runtime --test integration -- differential_evidence --exact && rg -q '^## Differential Inspection Record \(242\)' docs/spec_packets/242-support-family-orca-closure/design.md && echo P242_DIFFERENTIAL_RECORD_PRESENT`
+  family. The record must explicitly adjudicate 240b's support-branch/raft-plane interleave as
+  gate-blocking unless fixed by the layer-planner-default owner or human-waived in writing, and
+  record band-layer harvested model-plane regions as intentional non-emitting DATA used to seed
+  the raft footprint. Parity claims stay limited to termination, coverage, collision freedom,
+  interfaces, independent heights; exact path identity is never claimed. | `mkdir -p target && cargo test -p slicer-runtime --test integration -- differential_evidence --exact 2>&1 | tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log && rg -q '^## Differential Inspection Record \(242\)' docs/spec_packets/242-support-family-orca-closure/design.md && rg -q 'support-branch/raft-plane interleave' docs/spec_packets/242-support-family-orca-closure/design.md && rg -q 'intentional non-emitting DATA' docs/spec_packets/242-support-family-orca-closure/design.md && echo P242_DIFFERENTIAL_RECORD_PRESENT`
 - **AC-4. Given** final PNP G-code for both family selections, **when** role inspection runs,
   **then** support and interface output contains the exact markers `;TYPE:Support` and
   `;TYPE:Support interface` and family attribution remains present in the closure manifest.
@@ -107,7 +113,7 @@ State ACs only here; `requirements.md` references their IDs.
   This AC therefore claims only that *an* interface role reached the G-code — base-interface vs
   top-interface CANNOT be discriminated from `;TYPE:` markers alone. Any claim of base-interface
   role retention must assert on the IR role (`ExtrusionRole::SupportBaseInterface`) or on a
-  distinct marker, never on the `;TYPE:` label. | `cargo test -p slicer-runtime --test integration -- final_gcode_roles --exact`
+  distinct marker, never on the `;TYPE:` label. | `mkdir -p target && cargo test -p slicer-runtime --test integration -- final_gcode_roles --exact 2>&1 | tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log && echo P242_FINAL_GCODE_ROLES_PASS`
 - **AC-5. Given** the closure ledger, **when** supersession records are reviewed, **then**
   `requirements.md §Supersession Records (242)` names 213/TASK-329 (superseded 2026-08-12;
   degenerate-disk result is not closure evidence), deleted drafts 215/216/217/218 with their
@@ -119,7 +125,7 @@ State ACs only here; `requirements.md` references their IDs.
   PnP-side invariants (fixture resolves via `support_test_path`; no Orca-derived constant and no
   Orca-G-code read in any test) and the written half-b disposition is re-confirmed against the
   fresh references in `design.md §TASK-163b and TASK-335 Disposition`; exact path parity is
-  never claimed. | `cargo test -p slicer-runtime --test integration -- task_163b_disposition --exact && rg -q '^## TASK-163b and TASK-335 Disposition' docs/spec_packets/242-support-family-orca-closure/design.md && echo P242_TASK163B_RECONFIRMED`
+  never claimed. | `mkdir -p target && cargo test -p slicer-runtime --test integration -- task_163b_disposition --exact 2>&1 | tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log && rg -q '^## TASK-163b and TASK-335 Disposition' docs/spec_packets/242-support-family-orca-closure/design.md && echo P242_TASK163B_RECONFIRMED`
 - **AC-7. Given** the absorbed 218-support-gcode-e2e scope, **when** the G-code-mode
   visual-debug renderer is driven over an inline G-code containing `;TYPE:Support` and
   `;TYPE:Support interface` extrusion-role markers, **then** the new test in
@@ -131,7 +137,7 @@ State ACs only here; `requirements.md` references their IDs.
   `crates/slicer-gcode/src/emit.rs`) survives the standalone G-code parse-render round-trip.
   Same marker-resolution limit as AC-4: `ExtrusionRole::SupportBaseInterface` shares the
   `;TYPE:Support interface` literal, so this AC proves marker survival for the interface family as
-  a whole and never which interface role produced it. | `cargo test -p pnp-cli --test visual_debug_gcode_renderer_tdd -- gcode_support_type_markers_render_alongside_layer_images --exact 2>&1 | tee target/test-output.log | grep -E "^test result: ok\. 1 passed" && echo P242_E2E_TYPE_MARKERS_PROVEN`
+  a whole and never which interface role produced it. | `mkdir -p target && cargo test -p pnp-cli --test visual_debug_gcode_renderer_tdd -- gcode_support_type_markers_render_alongside_layer_images --exact 2>&1 | tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log && echo P242_E2E_TYPE_MARKERS_PROVEN`
 - **AC-8. Given** `docs/specs/support-parity-gap-register.md` (its `| G-NN |` row inventory
   re-derived at audit time — the total is a ledger fact and is never frozen into this AC),
   **when** the closure audit runs, **then** this packet has added a fifth `Disposition` column to
@@ -160,7 +166,7 @@ command. Commands that dump more than 200 successful lines are filtered through
 AC verification command rule: AC-1..AC-4, AC-6 drive real pipeline/module-dispatch behavior and
 use the binaries that own that setup today (`slicer-runtime` integration harness with its
 `support_family_closure` module and bare wrappers in `crates/slicer-runtime/tests/integration/main.rs`;
-measured live 2026-08-23). AC-7 uses the pnp-cli G-code-mode renderer test binary that owns
+re-resolved 2026-09-07). AC-7 uses the pnp-cli G-code-mode renderer test binary that owns
 `parse_gcode`/`render_gcode_visual_debug` today.
 
 ## Negative Test Cases
@@ -168,13 +174,13 @@ measured live 2026-08-23). AC-7 uses the pnp-cli G-code-mode renderer test binar
 - **AC-N1. Given** a fixture body entering exact-Z model occupancy, lacking valid termination, or
   cross-family overlap, **when** closure validation runs, **then** the body is dropped, its
   demand is marked unmet with a structured diagnostic, and the test fails rather than accepting a
-  golden or fallback path. | `cargo test -p slicer-runtime --test integration -- invalid_geometry_fails --exact`
+  golden or fallback path. | `mkdir -p target && cargo test -p slicer-runtime --test integration -- invalid_geometry_fails --exact 2>&1 | tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log && echo P242_INVALID_GEOMETRY_REJECTED`
 - **AC-N2. Given** the decisive fixture absent from its tracked path, **when** any closure test
   runs, **then** the `support_test_path` resolver panics naming the exact tracked path
   (`crates/slicer-runtime/tests/integration/support_family_closure.rs` — the panic contract IS the
   fixture-absence gate). The dedicated `missing_fixture_is_blocking` test stays DELETED (it
   asserted `std::fs::read` NotFound behavior and tested nothing about this closure): this packet
-  forbids recreating it or any dedicated missing-fixture test. | `rg -q 'fn support_test_path' crates/slicer-runtime/tests/integration/support_family_closure.rs && rg -q 'required support-family fixture is missing' crates/slicer-runtime/tests/integration/support_family_closure.rs && ! rg -q 'fn missing_fixture_is_blocking' crates/slicer-runtime/tests/integration/support_family_closure.rs && echo P242_RESOLVER_CONTRACT_INTACT_NO_RECREATED_TEST`
+  forbids recreating it or any dedicated missing-fixture test. | `(rg -q 'support_family_closure::support_test_path' crates/slicer-runtime/tests/integration || rg -q 'fn support_test_path' crates/slicer-runtime/tests/integration/support_family_closure.rs) && rg -q 'required support-family fixture is missing' crates/slicer-runtime/tests/integration/support_family_closure.rs && ! rg -q 'fn missing_fixture_is_blocking' crates/slicer-runtime/tests/integration/support_family_closure.rs && echo P242_RESOLVER_CONTRACT_INTACT_NO_RECREATED_TEST`
 - **AC-N3. Given** any closure claim (register row, deviation, divergence, superseded packet),
   **when** it lacks a written disposition or waiver token, **then** the corresponding audit in
   AC-8/AC-9/AC-10 returns non-zero and the packet may not close — an unwritten waiver is no
@@ -186,7 +192,7 @@ measured live 2026-08-23). AC-7 uses the pnp-cli G-code-mode renderer test binar
 - `cargo check --workspace --all-targets`
 - `cargo clippy --workspace --all-targets -- -D warnings`
 - Inherited closure suite (AC-1 form, eight chained single-name guarded commands):
-  `(cargo test -p slicer-runtime --test integration -- fixture_invariants --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed") && (cargo test -p slicer-runtime --test integration -- family_reaches_region_routing --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed") && (cargo test -p slicer-runtime --test integration -- invalid_geometry_fails --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed") && (cargo test -p slicer-runtime --test integration -- matched_height_evidence --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed") && (cargo test -p slicer-runtime --test integration -- differential_evidence --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed") && (cargo test -p slicer-runtime --test integration -- final_gcode_roles --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed") && (cargo test -p slicer-runtime --test integration -- supersedes_packet_213_and_task_329 --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed") && (cargo test -p slicer-runtime --test integration -- task_163b_disposition --exact 2>&1 | tee target/test-output.log | grep -qE "^test result: ok\. 1 passed") && echo P242_INVARIANT_SUITE_8_OF_8`
+  `(mkdir -p target && cargo test -p slicer-runtime --test integration -- fixture_invariants --exact 2>&1 | tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log) && (cargo test -p slicer-runtime --test integration -- family_reaches_region_routing --exact 2>&1 | tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log) && (cargo test -p slicer-runtime --test integration -- invalid_geometry_fails --exact 2>&1 | tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log) && (cargo test -p slicer-runtime --test integration -- matched_height_evidence --exact 2>&1 | tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log) && (cargo test -p slicer-runtime --test integration -- differential_evidence --exact 2>&1 | tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log) && (cargo test -p slicer-runtime --test integration -- final_gcode_roles --exact 2>&1 | tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log) && (cargo test -p slicer-runtime --test integration -- supersedes_packet_213_and_task_329 --exact 2>&1 | tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log) && (cargo test -p slicer-runtime --test integration -- task_163b_disposition --exact 2>&1 | tee target/test-output.log && grep -qE '^test result: ok\. 1 passed' target/test-output.log) && echo P242_INVARIANT_SUITE_8_OF_8`
 
 **Invariant-16 note (the 224 lesson).** The eight names are all bare wrapper registrations in
 `crates/slicer-runtime/tests/integration/main.rs` delegating to `support_family_closure::*`; no
@@ -194,7 +200,7 @@ test name carries the module prefix. Each command asserts exactly `1 passed`, so
 rename turns that command red instead of silently filtering to fewer tests.
 
 **Packet-level completion gate (NOT an AC pipe):** the whole-suite green run per E5/invariant-16
-is a closure ceremony step — `cargo xtask test --summary --workspace -- --no-fail-fast`, results
+is a closure ceremony step — `cargo xtask test --workspace --summary`, results
 read from `target/test-output.log`, every binary green. It is executed once in the final step
 (`implementation-plan.md` Step 8) and recorded in the Human Validation Gate, never piped onto an
 individual AC.
@@ -221,7 +227,7 @@ individual AC.
 - `docs/spec_packets/242-support-family-orca-closure/design.md` closure ledgers (register
   mirror, deviations, divergences) - `rg -q '^## Deviation Dispositions' docs/spec_packets/242-support-family-orca-closure/design.md`
 - `docs/spec_packets/224-support-family-orca-closure/packet.spec.md` superseded flip - `rg -q '^status: superseded' docs/spec_packets/224-support-family-orca-closure/packet.spec.md`
-- `docs/07_implementation_status.md` TASK-335 closure + TASK-429..440 registration - `rg -q 'TASK-335' docs/07_implementation_status.md && rg -q 'TASK-440' docs/07_implementation_status.md`
+- `docs/07_implementation_status.md` TASK-335 closure + TASK-538..549 registration - `rg -q 'TASK-335' docs/07_implementation_status.md && rg -q 'TASK-549' docs/07_implementation_status.md`
 - `docs/spec_packets/242-support-family-orca-closure/design.md` inspection records (E2) -
   `rg -q '^## Matched-Height Inspection Record \(242\)' docs/spec_packets/242-support-family-orca-closure/design.md`
 
@@ -253,18 +259,29 @@ Aggregate context cost above is the sum of per-step costs in `implementation-pla
 This section is THE final gate of the support-families sequence (plan §8 + §12 brief 242 +
 §9). The packet may not flip to `status: implemented` without the sign-off line below.
 
-Reference-freshness precondition (blocks the gate until met): freshly regenerated Orca
-references for BOTH families exist under `tmp/` (plan §9: 242 re-confirms all references fresh,
-including 239c/239d's enabled-feature and 240a/240b's raft-enabled sets where their axes are
-inspected).
-Verify by direct listing — `tmp/` is gitignored; globs lie (T1).
+Reference-freshness precondition (blocks the gate until met): packet 242 owns a newly generated
+four-file reference set, not a freshness assertion over packet 239/240 artifacts:
+`tmp/p242-orca-tree.gcode`, `tmp/p242-orca-normal.gcode`,
+`tmp/p242-orca-tree-raft.gcode`, and `tmp/p242-orca-normal-raft.gcode`. The plain pair has
+`independent_support_layer_height=1`; the raft pair additionally has `raft_layers=2`. Generate
+from retained patched inputs `tmp/p242-orca-{tree,normal}.3mf` and
+`tmp/p242-orca-{tree,normal}-raft.3mf`, retaining Orca export intermediates with the matching
+`.gcode.3mf` suffix. Use 240b's verified 3MF-patch recipe: patch
+`Metadata/project_settings.config` in a copy of `tmp/SupportTest.3mf`, slice headlessly with
+Orca's `--slice 1 --allow-newer-file --export-3mf`, then extract `Metadata/plate_1.gcode`.
+Verify all named paths by direct `ls` — `tmp/` is gitignored; globs lie (T1). Packet 240b's
+2026-09-06 references are recipe evidence only and do not satisfy this fresh-set precondition.
 
 Artifact-producing commands (artifacts under `tmp/p242-*` / `target/vd-p242-*`):
 
-- `cargo run -q --bin pnp_cli -- slice --model crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl --config tmp/support-family-config-tree-matched.json --output tmp/p242-tree.gcode --module-dir modules/core-modules`
-- `cargo run -q --bin pnp_cli -- slice --model crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl --config tmp/support-family-config-normal-matched.json --output tmp/p242-normal.gcode --module-dir modules/core-modules`
-- The four visual-debug renders of AC-2 (`target/vd-p242-support-family-{tree,normal}`) plus the standalone-Orca comparison bundles rendered from the fresh references.
-- The whole-suite green run: `cargo xtask test --summary --workspace -- --no-fail-fast` (E5; results read from `target/test-output.log`).
+- `cargo run -q --bin pnp_cli -- slice --model crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl --config tmp/support-family-config-tree-matched.json --output tmp/p242-pnp-tree.gcode --module-dir modules/core-modules`
+- `cargo run -q --bin pnp_cli -- slice --model crates/slicer-runtime/tests/fixtures/support-family/SupportTest.stl --config tmp/support-family-config-normal-matched.json --output tmp/p242-pnp-normal.gcode --module-dir modules/core-modules`
+- Four request files under `tmp/`: `p242-vd-pnp-tree.json`, `p242-vd-pnp-normal.json`,
+  `p242-vd-orca-tree.json`, and `p242-vd-orca-normal.json`; four output directories under
+  `target/`: `vd-p242-pnp-tree`, `vd-p242-pnp-normal`, `vd-p242-orca-tree`, and
+  `vd-p242-orca-normal`. Raft-axis inspection additionally records the four reference paths
+  named in the freshness precondition.
+- The whole-suite green run: `cargo xtask test --workspace --summary` (E5; results read from `target/test-output.log`).
 
 Checklist (both families, each verdict naming layer + tap, recorded in
 `design.md §Matched-Height Inspection Record (242)` and
@@ -275,6 +292,12 @@ Checklist (both families, each verdict naming layer + tap, recorded in
 - Collision freedom: support footprint never enters model occupancy.
 - Interfaces: placement topmost and carved out; block counts compared against the references.
 - Independent heights: support Z schedule vs object Z (239c/239d outcome) against enabled-feature references.
+- Known 240b finding: support branches interleaving a raft-band plane on non-band routing is a
+  **gate blocker** until fixed by `DefaultLayerPlanner::run_layer_planning`'s support surface or
+  explicitly human-waived in writing; `[CARRIED]` without that waiver cannot close TASK-335.
+- Known 240b DATA note: harvested band-layer regions may carry model-plane polygons as the
+  intentional raft-footprint seed; this is non-blocking only while band suppression proves they
+  do not emit model content on raft-band output layers.
 
 Sign-off:
 
