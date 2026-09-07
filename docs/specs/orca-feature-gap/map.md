@@ -1296,6 +1296,8 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
 
   - [54 — Author packet P47 — Printer / Machine / Motion limits — emitter](issues/54-author-packet-p47-printer-machine-motion-limits-emitter.md) — **authored as packet 281** (`docs/spec_packets/281-machine-motion-limits-emitter/`, `draft`), preflight **PASS** after one HIGH round (fictional `--test scheduler_integration` binary → real `--test integration` aggregator; `emit_machine_limits_to_gcode` gate made an explicit reconciled FORWARD-DEP on draft packet 267). Tier B held with all **9 families (18 scalars) in, none shed, no code change**: 8 new scalar-global fields (first-wins ingest, DEV-173 — stealth variant stays with ticket 117), `M201` + `M204 R` + `M205 J` extending 267's builder (activation blocked on 267), min-rate estimator clamps, min-0 bounds with no maxima. P47 still covers 9 keys; no queue-count change.
 
+  - [55 — Author packet P48 — Printer / Machine / Resonance — emitter](issues/55-author-packet-p48-printer-machine-resonance-emitter.md) — **authored as packet 282** (`docs/spec_packets/282-resonance-avoidance-emitter/`, `draft`), preflight **PASS**. Tier B held, all 3 keys in (all zero-occurrence; owner `crates/slicer-gcode` stands — canonical `GCode::_extrude` is emission-time feedrate adjustment, not placeholder publication). Scalar-global (canonical scalar, no ticket-125 model); DEV-174 is first collision-free (LOG max 171, drafts claim 171–173). No code change.
+
 ## Not yet specified
 
 - **The time-lapse gate has two open clauses waiting on other work.** Surfaced by
