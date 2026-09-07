@@ -1454,3 +1454,171 @@ fn timelapse_survives_suppression_when_the_print_performs_a_toolchange() {
          the port's stand-in for it is the presence of a toolchange in the print"
     );
 }
+
+// ---------------------------------------------------------------------------
+// P40 (ticket 47): flush temp/speed placeholders
+// ---------------------------------------------------------------------------
+
+#[test]
+fn flush_temp_and_speed_substitute_into_change_filament_template() {
+    let output = run(
+        &[
+            (
+                "change_filament_gcode",
+                ConfigValue::String(
+                    "M104 S[filament_flush_temp] ; flush at [filament_flush_volumetric_speed]mm3/s"
+                        .into(),
+                ),
+            ),
+            ("filament_flush_temp", ConfigValue::Int(270)),
+            ("filament_flush_volumetric_speed", ConfigValue::Float(12.5)),
+        ],
+        &[GCodeCommand::ToolChange {
+            after_entity_index: 0,
+            from: 0,
+            to: 1,
+        }],
+    );
+    let texts = raw_texts(&output);
+    assert!(
+        texts.iter().any(|t| t.contains("M104 S270")),
+        "non-default flush temp must substitute into the template; got {texts:?}"
+    );
+    assert!(
+        texts.iter().any(|t| t.contains("12.5")),
+        "non-default flush volumetric speed must substitute into the template; got {texts:?}"
+    );
+}
+
+#[test]
+fn flush_temp_and_speed_default_to_inert_zero() {
+    let output = run(
+        &[
+            (
+                "change_filament_gcode",
+                ConfigValue::String(
+                    "T=[filament_flush_temp] V=[filament_flush_volumetric_speed]".into(),
+                ),
+            ),
+            ("filament_flush_temp", ConfigValue::Int(0)),
+            ("filament_flush_volumetric_speed", ConfigValue::Float(0.0)),
+        ],
+        &[GCodeCommand::ToolChange {
+            after_entity_index: 0,
+            from: 0,
+            to: 1,
+        }],
+    );
+    let texts = raw_texts(&output);
+    assert!(
+        texts.iter().any(|t| t.contains("T=0")),
+        "default flush temp 0 must render as-is (inert, no Tier D fallback); got {texts:?}"
+    );
+    assert!(
+        texts.iter().any(|t| t.contains("V=0")),
+        "default flush speed 0.0 must render as-is (inert, no Tier D fallback); got {texts:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// `manual_filament_change` first-toolchange skip (wayfinder ticket 50 / P43)
+// ---------------------------------------------------------------------------
+
+/// Canonical `GCode.cpp` toolchange path skips `change_filament_gcode` on the
+/// first toolchange (`m_toolchange_count == 1`) when `manual_filament_change`
+/// is set; later toolchanges still inject. The count here is 1-based,
+/// matching canonical.
+#[test]
+fn manual_filament_change_skips_first_change_filament_injection_only() {
+    let commands = &[
+        GCodeCommand::ToolChange {
+            after_entity_index: 0,
+            from: 0,
+            to: 1,
+        },
+        GCodeCommand::ToolChange {
+            after_entity_index: 1,
+            from: 1,
+            to: 2,
+        },
+    ];
+
+    // Default (absent key): both toolchanges inject.
+    let output = run(
+        &[(
+            "change_filament_gcode",
+            ConfigValue::String("FCHG".into()),
+        )],
+        commands,
+    );
+    let texts = raw_texts(&output);
+    assert_eq!(
+        texts.iter().filter(|t| *t == "FCHG").count(),
+        2,
+        "default must inject change_filament_gcode at every toolchange; got {texts:?}"
+    );
+
+    // Enabled: first injection skipped, second still injected, and both
+    // ToolChange commands are re-emitted (the skip affects the template only).
+    let output = run(
+        &[
+            (
+                "change_filament_gcode",
+                ConfigValue::String("FCHG".into()),
+            ),
+            ("manual_filament_change", ConfigValue::Bool(true)),
+        ],
+        commands,
+    );
+    let texts = raw_texts(&output);
+    assert_eq!(
+        texts.iter().filter(|t| *t == "FCHG").count(),
+        1,
+        "enabled must skip the first change_filament_gcode only; got {texts:?}"
+    );
+    let toolchanges = output
+        .commands()
+        .iter()
+        .filter(|c| {
+            matches!(
+                c,
+                GcodeOutputCommand::Command(GCodeCommand::ToolChange { .. })
+            )
+        })
+        .count();
+    assert_eq!(
+        toolchanges, 2,
+        "both ToolChange commands must still be re-emitted; got {toolchanges}"
+    );
+}
+
+/// The skip is scoped to the `FilamentChange` site: `filament_end_gcode`
+/// still injects at the first toolchange under `manual_filament_change`.
+#[test]
+fn manual_filament_change_does_not_skip_filament_end_gcode() {
+    let commands = &[GCodeCommand::ToolChange {
+        after_entity_index: 0,
+        from: 0,
+        to: 1,
+    }];
+    let output = run(
+        &[
+            ("filament_end_gcode", ConfigValue::String("FEND".into())),
+            (
+                "change_filament_gcode",
+                ConfigValue::String("FCHG".into()),
+            ),
+            ("manual_filament_change", ConfigValue::Bool(true)),
+        ],
+        commands,
+    );
+    let texts = raw_texts(&output);
+    assert!(
+        texts.iter().any(|t| *t == "FEND"),
+        "filament_end_gcode must still inject at the first toolchange; got {texts:?}"
+    );
+    assert!(
+        !texts.iter().any(|t| *t == "FCHG"),
+        "change_filament_gcode must be skipped at the first toolchange; got {texts:?}"
+    );
+}

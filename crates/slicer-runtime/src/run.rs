@@ -1030,7 +1030,8 @@ pub fn run_slice_with_collector(
             serializer: Box::new(
                 DefaultGCodeSerializer::with_extrusion_mode(relative)
                     .with_flavor(flavor)
-                    .with_support_line_width(support_line_width_mm),
+                    .with_support_line_width(support_line_width_mm)
+                    .with_manual_filament_change(default_resolved_config.manual_filament_change),
             ),
         },
         support_tools: parse_support_tool_selection(&config_source),

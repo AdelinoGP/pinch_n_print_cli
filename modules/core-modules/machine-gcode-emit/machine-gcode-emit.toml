@@ -150,6 +150,53 @@ display = "Pressure advance"
 group   = "Machine G-code"
 description = "OrcaSlicer coFloats key pressure_advance (PA value for Klipper pressure advance / Marlin linear advance). Scalar-global subset; per-tool via tool_config axis, vector ingest rides ticket 125."
 
+# P40 (ticket 47): flush temp/speed placeholder pair. Canonical
+# `filament_flush_temp` (`coInts` nullable, default 0, max `max_temp` = 1500)
+# + `filament_flush_volumetric_speed` (`coFloats` nullable, default 0,
+# max 200) are per-filament vectors read at every `GCode.cpp`
+# toolchange/placeholder site (`update_placeholder_parser_with_variant_params`,
+# `set_extruder`, toolchange config builder) and published as the
+# `flush_temperatures` / `flush_volumetric_speeds` placeholders for custom
+# G-code; a 0 entry falls back to `nozzle_temperature_range_high` /
+# `filament_max_volumetric_speed` (both Tier D deferred). The port holds the
+# scalar-global subset here (per-tool via the `tool_config:<idx>:` axis,
+# vector ingest rides ticket 125); `0`/`0.0` publish as-is with no fallback
+# (ticket-47 DEV row). The generic placeholder sweep substitutes both keys
+# into every template (`change_filament_gcode`, machine start/end); no
+# key-specific `lib.rs` arm is needed (int/float render canonically, unlike
+# word-form bools). Bounds mirror canonical; the port enforces them where
+# canonical treats them as GUI hints (ticket 113 rule).
+[config.schema.filament_flush_temp]
+type    = "int"
+default = 0
+min     = 0
+max     = 1500
+display = "Flush temperature"
+group   = "Machine G-code"
+description = "OrcaSlicer coInts key filament_flush_temp (flush temperature in degC; 0 is inert, no fallback). Scalar-global subset; per-tool via tool_config axis, vector ingest rides ticket 125."
+
+[config.schema.filament_flush_volumetric_speed]
+type    = "float"
+default = 0.0
+min     = 0.0
+max     = 200.0
+display = "Flush volumetric speed"
+group   = "Machine G-code"
+description = "OrcaSlicer coFloats key filament_flush_volumetric_speed (flush volumetric speed in mm3/s; 0.0 is inert, no fallback). Scalar-global subset; per-tool via tool_config axis, vector ingest rides ticket 125."
+
+# P43 (ticket 50): manual filament change. Canonical `manual_filament_change`
+# (`coBool`, default false) omits the custom `change_filament_gcode` on the
+# first toolchange (`GCode.cpp` toolchange path, `m_toolchange_count == 1`)
+# for manual multi-material printing (M600/PAUSE driven); the toolchange tag
+# line itself is emitted host-side by the serializer. Read here to gate the
+# FilamentChange injection point.
+[config.schema.manual_filament_change]
+type    = "bool"
+default = false
+display = "Manual filament change"
+group   = "Machine G-code"
+description = "OrcaSlicer coBool key manual_filament_change; when true the first change_filament_gcode injection is skipped (manual swap via M600/PAUSE)."
+
 [config.overridable-per-region]
 keys = []
 

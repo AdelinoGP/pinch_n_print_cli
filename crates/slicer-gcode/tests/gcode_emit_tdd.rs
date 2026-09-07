@@ -792,6 +792,40 @@ fn serialize_tool_change_command() {
 }
 
 // ============================================================================
+// Test 12b: Serialize ToolChange with manual_filament_change (ticket 50 / P43)
+// ============================================================================
+
+#[test]
+fn serialize_tool_change_with_manual_filament_change_emits_tag_line() {
+    let serializer = DefaultGCodeSerializer::new().with_manual_filament_change(true);
+
+    let gcode_ir = gcode_ir_fixture(vec![GCodeCommand::ToolChange {
+        after_entity_index: 0,
+        from: 0,
+        to: 1,
+    }]);
+
+    let result = serializer.serialize_gcode(&gcode_ir);
+
+    assert!(
+        result.is_ok(),
+        "serialize_gcode should succeed, got {:?}",
+        result
+    );
+    let text = result.unwrap();
+
+    // Canonical `GCodeWriter::toolchange_prefix` tag line verbatim.
+    assert!(
+        text.contains("; MANUAL_TOOL_CHANGE T1"),
+        "should contain the manual tool-change tag line; got {text:?}"
+    );
+    assert!(
+        !text.lines().any(|line| line.trim() == "T1"),
+        "the bare T1 command must not appear alongside the tag line; got {text:?}"
+    );
+}
+
+// ============================================================================
 // Test 13: Serialize Comment command
 // ============================================================================
 

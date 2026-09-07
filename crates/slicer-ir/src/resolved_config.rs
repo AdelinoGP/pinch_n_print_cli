@@ -236,6 +236,14 @@ impl ResolvedConfig {
             "support_sharp_tails".into(),
             ConfigValue::Bool(self.support_sharp_tails),
         );
+        // Wayfinder ticket 50 (P43): `machine-gcode-emit` reads this through
+        // its manifest-declared schema to skip the first `change_filament_gcode`
+        // injection; the host serializer reads the field directly. Canonical
+        // `coBool` default false.
+        m.insert(
+            "manual_filament_change".into(),
+            ConfigValue::Bool(self.manual_filament_change),
+        );
         if let Some(v) = self.nonplanar_max_angle_deg {
             m.insert(
                 "nonplanar_max_angle_deg".into(),
@@ -311,6 +319,18 @@ impl ResolvedConfig {
         m.insert(
             "printable_height".into(),
             ConfigValue::Float(f64::from(self.printable_height)),
+        );
+        // P40 (ticket 47): flush temp/speed ride the module placeholder seam
+        // (`machine-gcode-emit` declares both keys; its generic sweep publishes
+        // every declared int/float into `[key]` substitution), so unlike the
+        // host-only P35 pair they must be present in this map.
+        m.insert(
+            "filament_flush_temp".into(),
+            ConfigValue::Int(i64::from(self.filament_flush_temp)),
+        );
+        m.insert(
+            "filament_flush_volumetric_speed".into(),
+            ConfigValue::Float(f64::from(self.filament_flush_volumetric_speed)),
         );
         // mmu_segmented_region_{max_width,interlocking_depth,interlocking_beam} intentionally
         // omitted — P96 AC-8: emitting these keys would change g-code CONFIG_BLOCK bytes for all
@@ -1979,6 +1999,38 @@ declare_resolved_config! {
     /// for the scalar-subset note. Negative values emit nothing, matching
     /// canonical `GCodeWriter::set_pressure_advance`'s `pa < 0` early return.
     cli "pressure_advance" pressure_advance: f32 = 0.02 => extract_float;
+    /// Manual filament change (OrcaSlicer: `manual_filament_change`, `coBool`
+    /// default false, scalar). When true, every toolchange emits canonical's
+    /// `GCodeWriter::toolchange_prefix` tag line (`; MANUAL_TOOL_CHANGE T<n>`
+    /// instead of `T<n>`) and `machine-gcode-emit` skips the first
+    /// `change_filament_gcode` injection (`GCode.cpp` toolchange path,
+    /// `m_toolchange_count == 1`); later toolchanges still inject. Default
+    /// false is byte-identical to today on both seams.
+    cli "manual_filament_change" manual_filament_change: bool = false => extract_bool;
+    /// Flush temperature in °C when flushing filament on toolchange
+    /// (OrcaSlicer: `filament_flush_temp`, `coInts` nullable default 0,
+    /// per-filament vector).
+    ///
+    /// Scalar-global subset: canonical reads per filament
+    /// (`GCode::update_placeholder_parser_with_variant_params`,
+    /// `GCode::set_extruder`, and the toolchange placeholder builder in
+    /// `GCode.cpp` via `get_at`) and falls back to
+    /// `nozzle_temperature_range_high` when the entry is 0; both the vector
+    /// shape and the fallback key are Tier D (ticket 125 owns the vector
+    /// ingest, `nozzle_temperature_range_high` is deferred). This port holds
+    /// the scalar here; per-tool values ride the existing
+    /// `tool_config:<idx>:` axis (`apply_cli_key` covers every
+    /// `cli`-declared field). `0` is inert — published as-is, no fallback —
+    /// and recorded in the ticket-47 DEV row.
+    cli "filament_flush_temp" filament_flush_temp: u32 = 0 => extract_int_as_u32;
+    /// Flush volumetric speed in mm³/s when flushing filament on toolchange
+    /// (OrcaSlicer: `filament_flush_volumetric_speed`, `coFloats` nullable
+    /// default 0, per-filament vector, max 200).
+    ///
+    /// Same scalar-subset note as `filament_flush_temp`: canonical falls back
+    /// to `filament_max_volumetric_speed` (Tier D deferred) when the entry is
+    /// 0. `0.0` is inert here — published as-is — per the ticket-47 DEV row.
+    cli "filament_flush_volumetric_speed" filament_flush_volumetric_speed: f32 = 0.0 => extract_float;
     /// Whether the wipe tower is enabled for multi-material purge.
     /// Default false matches single-material shipping behavior.
     cli "enable_prime_tower" enable_prime_tower: bool = false => extract_bool;
@@ -2102,6 +2154,10 @@ impl PartialEq for ResolvedConfig {
             && self.retract_length.to_bits() == other.retract_length.to_bits()
             && self.enable_pressure_advance == other.enable_pressure_advance
             && self.pressure_advance.to_bits() == other.pressure_advance.to_bits()
+            && self.manual_filament_change == other.manual_filament_change
+            && self.filament_flush_temp == other.filament_flush_temp
+            && self.filament_flush_volumetric_speed.to_bits()
+                == other.filament_flush_volumetric_speed.to_bits()
             && self.enable_prime_tower == other.enable_prime_tower
             && self.mmu_segmented_region_max_width.to_bits()
                 == other.mmu_segmented_region_max_width.to_bits()
@@ -2211,6 +2267,9 @@ impl std::hash::Hash for ResolvedConfig {
         self.retract_length.to_bits().hash(state);
         self.enable_pressure_advance.hash(state);
         self.pressure_advance.to_bits().hash(state);
+        self.manual_filament_change.hash(state);
+        self.filament_flush_temp.hash(state);
+        self.filament_flush_volumetric_speed.to_bits().hash(state);
         self.enable_prime_tower.hash(state);
         self.mmu_segmented_region_max_width.to_bits().hash(state);
         self.mmu_segmented_region_interlocking_depth

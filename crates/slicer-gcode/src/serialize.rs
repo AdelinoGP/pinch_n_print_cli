@@ -83,6 +83,11 @@ pub struct DefaultGCodeSerializer {
     top_surface_line_width: f32,
     /// Extrusion width for support material in mm (resolved from config; defaults to 0.4).
     support_line_width: f32,
+    /// Manual filament change (OrcaSlicer `manual_filament_change`, default
+    /// false). When true, toolchanges serialize as canonical's
+    /// `GCodeWriter::toolchange_prefix` tag line (`; MANUAL_TOOL_CHANGE T<n>`)
+    /// instead of the bare `T<n>` command.
+    manual_filament_change: bool,
     /// Decimal places for XYZ coordinate values in serialized GCode (default 3).
     gcode_xy_decimals: u32,
 }
@@ -111,6 +116,7 @@ impl DefaultGCodeSerializer {
             sparse_infill_line_width: 0.45,
             top_surface_line_width: 0.42,
             support_line_width: 0.4,
+            manual_filament_change: false,
             gcode_xy_decimals: 3,
         }
     }
@@ -124,6 +130,14 @@ impl DefaultGCodeSerializer {
     /// Sets the resolved support extrusion width in millimeters.
     pub fn with_support_line_width(mut self, width_mm: f32) -> Self {
         self.support_line_width = width_mm;
+        self
+    }
+
+    /// Sets manual-filament-change mode (OrcaSlicer `manual_filament_change`).
+    /// Wired from the resolved config in `run_slice`; default false keeps the
+    /// bare `T<n>` toolchange emission.
+    pub fn with_manual_filament_change(mut self, enabled: bool) -> Self {
+        self.manual_filament_change = enabled;
         self
     }
 
@@ -837,7 +851,17 @@ impl GCodeSerializer for DefaultGCodeSerializer {
                     output.push_str(&self.flavor.set_temperature(*tool, *celsius, *wait));
                 }
                 GCodeCommand::ToolChange { to, .. } => {
-                    writeln!(output, "T{}", to).unwrap();
+                    // Wayfinder ticket 50 (P43): manual-filament-change mode
+                    // emits canonical `GCodeWriter::toolchange_prefix`'s tag
+                    // line (`GCodeProcessor::ETags::Manual_Tool_Change`, the
+                    // ` MANUAL_TOOL_CHANGE ` reserved tag) instead of the bare
+                    // tool-select command, so MMU manual-change handling keeps
+                    // working. Default false keeps `T<n>`.
+                    if self.manual_filament_change {
+                        writeln!(output, "; MANUAL_TOOL_CHANGE T{}", to).unwrap();
+                    } else {
+                        writeln!(output, "T{}", to).unwrap();
+                    }
                 }
                 GCodeCommand::Comment { text } => {
                     writeln!(output, "; {}", text).unwrap();

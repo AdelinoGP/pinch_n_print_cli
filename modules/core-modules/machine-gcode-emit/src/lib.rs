@@ -306,6 +306,17 @@ impl PostpassModule for MachineGcodeEmit {
         } else {
             templates
         };
+        // `manual_filament_change` skips the first `change_filament_gcode`
+        // injection, matching canonical `GCode.cpp`'s toolchange path
+        // (`m_toolchange_count == 1`). Wayfinder ticket 50 (P43): manual
+        // multi-material printing drives the swap via M600/PAUSE, so the
+        // custom filament-change template is omitted at the first toolchange
+        // only — later toolchanges still inject. Default false injects
+        // everywhere, as before.
+        let manual_filament_change = matches!(
+            config.get("manual_filament_change"),
+            Some(ConfigValue::Bool(true))
+        );
         // Unresolved [key]s gathered per site, so one aggregated warning at
         // the end can name every contributing site. An unresolved key is
         // **not** a slice error: a module's `ConfigView` is scoped to its own
@@ -371,6 +382,16 @@ impl PostpassModule for MachineGcodeEmit {
                         &point.site,
                         &InjectionSite::FilamentEnd | &InjectionSite::FilamentChange
                     ) {
+                        // First-toolchange `change_filament_gcode` is skipped
+                        // under `manual_filament_change` (see above); the
+                        // count is 1-based, matching canonical's
+                        // `m_toolchange_count == 1`.
+                        if manual_filament_change
+                            && toolchange.toolchange_count == 1
+                            && matches!(&point.site, &InjectionSite::FilamentChange)
+                        {
+                            continue;
+                        }
                         if let Some(template) = &templates[idx] {
                             let lookup = site_lookup(
                                 &base_lookup,
