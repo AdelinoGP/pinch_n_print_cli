@@ -834,16 +834,25 @@ pub fn extract_float_list(
 /// `coFloats` list.
 ///
 /// Used by keys OrcaSlicer declares as `coFloats` but this port models as one
-/// scalar: the `machine_max_*` kinematic limits and `filament_diameter`.
+/// scalar, in two shapes:
 ///
-/// OrcaSlicer types these options `coFloats`, and the entries are machine *time
-/// modes* — `[normal, stealth]` — not per-extruder values (see the `AxisDefault`
-/// table in canonical `PrintConfig::PrintConfig`, whose second entry is the
-/// silent variant). Every canonical consumer that wants one scalar reads index
-/// 0: `GCode::print_machine_envelope` and `Print`'s motion-ability check both
-/// take the front element, and `GCodeProcessor`'s limit getters index by
-/// `ETimeMode`, whose `Normal` discriminant is 0. We therefore take index 0 and
-/// ignore any trailing modes.
+/// - machine *time modes* (`machine_max_*` kinematic limits): `[normal,
+///   stealth]` — not per-extruder values (see the `AxisDefault` table in
+///   canonical `PrintConfig::PrintConfig`, whose second entry is the silent
+///   variant). Every canonical consumer that wants one scalar reads index 0:
+///   `GCode::print_machine_envelope` and `Print`'s motion-ability check both
+///   take the front element, and `GCodeProcessor`'s limit getters index by
+///   `ETimeMode`, whose `Normal` discriminant is 0. Index 0 is taken and any
+///   trailing modes ignored.
+/// - per-filament / per-extruder vectors modelled as a scalar-global subset
+///   (`filament_diameter`, `pressure_advance`,
+///   `filament_flush_volumetric_speed`): canonical reads per filament via
+///   `get_at`, but this port holds one scalar (per-tool values ride the
+///   existing `tool_config:<idx>:` axis; full Orca vector ingest rides ticket
+///   125). Index 0 — the first filament — is taken and trailing entries
+///   discarded, matching the `filament_diameter` precedent. This is a
+///   documented scalar-subset divergence (DEV-169 (c) / DEV-170 (a) /
+///   DEV-171 (a) precedent), not a canonical-equivalent read.
 ///
 /// Values reach us as `List` because a real project's `project_settings.config`
 /// stores them as JSON arrays of *strings* (e.g. `["9","9"]`), so list elements
@@ -881,8 +890,127 @@ pub fn extract_float_or_first(
     }
 
     match value {
-        // Index 0 is canonical "normal" mode; trailing entries are stealth-mode
-        // variants this port does not model.
+        // Index 0 is canonical "normal" mode for the machine-limit keys, and
+        // the first filament for the per-filament scalar-subset keys (see the
+        // doc comment above); trailing entries are variants this port does not
+        // model.
+        ConfigValue::List(items) => match items.first() {
+            Some(first) => scalar(&format!("{key}[0]"), first),
+            None => Err(ConfigResolutionError::TypeMismatch {
+                key: key.to_string(),
+                expected: "non-empty List",
+                actual: "empty List".to_string(),
+            }),
+        },
+        other => scalar(key, other),
+    }
+}
+
+/// Extract a single `u32` from a scalar, or from the first entry of an Orca
+/// `coInts` list.
+///
+/// Per-filament scalar-subset companion to [`extract_float_or_first`]: used by
+/// keys OrcaSlicer declares as `coInts` per-filament vectors but this port
+/// models as one scalar (`filament_flush_temp`). Canonical reads per filament
+/// via `get_at`; this port holds one scalar (per-tool values ride the existing
+/// `tool_config:<idx>:` axis; full Orca vector ingest rides ticket 125).
+/// Index 0 — the first filament — is taken and trailing entries discarded
+/// (DEV-171 (a) precedent). A bare scalar is accepted unchanged so
+/// hand-written CLI/JSON configs keep working.
+///
+/// An unparseable or empty value is a hard error, as with
+/// [`extract_float_or_first`]. A `Bool` is rejected — see [`extract_float`].
+#[doc(hidden)]
+pub fn extract_u32_or_first(key: &str, value: &ConfigValue) -> Result<u32, ConfigResolutionError> {
+    fn scalar(key: &str, value: &ConfigValue) -> Result<u32, ConfigResolutionError> {
+        match value {
+            ConfigValue::Int(i) => Ok(*i as u32),
+            ConfigValue::Float(f) => Ok(*f as u32),
+            ConfigValue::String(s) => {
+                let t = s.trim();
+                if let Ok(i) = t.parse::<i64>() {
+                    Ok(i as u32)
+                } else {
+                    t.parse::<f64>().map(|f| f as u32).map_err(|_| {
+                        ConfigResolutionError::TypeMismatch {
+                            key: key.to_string(),
+                            expected: "Int",
+                            actual: "String".to_string(),
+                        }
+                    })
+                }
+            }
+            other => Err(ConfigResolutionError::TypeMismatch {
+                key: key.to_string(),
+                expected: "Int",
+                actual: variant_name(other),
+            }),
+        }
+    }
+
+    match value {
+        ConfigValue::List(items) => match items.first() {
+            Some(first) => scalar(&format!("{key}[0]"), first),
+            None => Err(ConfigResolutionError::TypeMismatch {
+                key: key.to_string(),
+                expected: "non-empty List",
+                actual: "empty List".to_string(),
+            }),
+        },
+        other => scalar(key, other),
+    }
+}
+
+/// Extract a single `bool` from a scalar, or from the first entry of an Orca
+/// `coBools` list.
+///
+/// Per-extruder scalar-subset companion to [`extract_float_or_first`]: used by
+/// keys OrcaSlicer declares as `coBools` per-extruder vectors but this port
+/// models as one scalar (`enable_pressure_advance`). Canonical reads per tool
+/// via `get_at`; this port holds one scalar (per-tool values ride the existing
+/// `tool_config:<idx>:` axis; full Orca vector ingest rides ticket 125).
+/// Index 0 — the first extruder — is taken and trailing entries discarded.
+/// A bare scalar is accepted unchanged so hand-written CLI/JSON configs keep
+/// working.
+///
+/// Scalar tolerance mirrors [`extract_bool`]: `Bool` plus `Int` 0/1. A
+/// `String` `"true"` / `"false"` / `"0"` / `"1"` is additionally accepted so
+/// hand-written CLI JSON (which, unlike the 3MF loader, does not coerce
+/// strings) can spell a flag textually. Anything else — including a `Float`,
+/// an unparseable string, or an empty list — is a hard error.
+#[doc(hidden)]
+pub fn extract_bool_or_first(
+    key: &str,
+    value: &ConfigValue,
+) -> Result<bool, ConfigResolutionError> {
+    fn scalar(key: &str, value: &ConfigValue) -> Result<bool, ConfigResolutionError> {
+        match value {
+            ConfigValue::Bool(b) => Ok(*b),
+            ConfigValue::Int(0) => Ok(false),
+            ConfigValue::Int(1) => Ok(true),
+            ConfigValue::String(s) => {
+                let t = s.trim();
+                if t.eq_ignore_ascii_case("true") || t == "1" {
+                    Ok(true)
+                } else if t.eq_ignore_ascii_case("false") || t == "0" {
+                    Ok(false)
+                } else {
+                    Err(ConfigResolutionError::TypeMismatch {
+                        key: key.to_string(),
+                        expected: "Bool",
+                        actual: "String".to_string(),
+                    })
+                }
+            }
+            other => Err(ConfigResolutionError::TypeMismatch {
+                key: key.to_string(),
+                expected: "Bool",
+                actual: variant_name(other),
+            }),
+        }
+    }
+
+    match value {
         ConfigValue::List(items) => match items.first() {
             Some(first) => scalar(&format!("{key}[0]"), first),
             None => Err(ConfigResolutionError::TypeMismatch {
@@ -1991,14 +2119,16 @@ declare_resolved_config! {
     /// per-tool values through the existing `tool_config:<idx>:` axis
     /// (`tool_configs` map, `retract_length_for_tool` precedent), so a
     /// single-tool print and manual per-tool overrides work without the
-    /// Orca vector ingest that ticket 125 owns. Orca `coFloats`/`coBools`
-    /// vector spelling ingest rides 125, not this ticket.
-    cli "enable_pressure_advance" enable_pressure_advance: bool = false => extract_bool;
+    /// Orca vector ingest that ticket 125 owns. An Orca `coBools` vector
+    /// spelling takes its first entry (first extruder); full vector ingest
+    /// rides 125.
+    cli "enable_pressure_advance" enable_pressure_advance: bool = false => extract_bool_or_first;
     /// Pressure advance value (OrcaSlicer: `pressure_advance`, `coFloats`
     /// default 0.02, max 2, per-extruder vector). See `enable_pressure_advance`
-    /// for the scalar-subset note. Negative values emit nothing, matching
+    /// for the scalar-subset note (an Orca vector spelling takes its first
+    /// entry). Negative values emit nothing, matching
     /// canonical `GCodeWriter::set_pressure_advance`'s `pa < 0` early return.
-    cli "pressure_advance" pressure_advance: f32 = 0.02 => extract_float;
+    cli "pressure_advance" pressure_advance: f32 = 0.02 => extract_float_or_first;
     /// Manual filament change (OrcaSlicer: `manual_filament_change`, `coBool`
     /// default false, scalar). When true, every toolchange emits canonical's
     /// `GCodeWriter::toolchange_prefix` tag line (`; MANUAL_TOOL_CHANGE T<n>`
@@ -2020,17 +2150,20 @@ declare_resolved_config! {
     /// ingest, `nozzle_temperature_range_high` is deferred). This port holds
     /// the scalar here; per-tool values ride the existing
     /// `tool_config:<idx>:` axis (`apply_cli_key` covers every
-    /// `cli`-declared field). `0` is inert — published as-is, no fallback —
-    /// and recorded in the ticket-47 DEV row.
-    cli "filament_flush_temp" filament_flush_temp: u32 = 0 => extract_int_as_u32;
+    /// `cli`-declared field). An Orca `coInts` vector spelling takes its
+    /// first entry (first filament). `0` is inert — published as-is, no
+    /// fallback — and recorded in the ticket-47 DEV row.
+    cli "filament_flush_temp" filament_flush_temp: u32 = 0 => extract_u32_or_first;
     /// Flush volumetric speed in mm³/s when flushing filament on toolchange
     /// (OrcaSlicer: `filament_flush_volumetric_speed`, `coFloats` nullable
     /// default 0, per-filament vector, max 200).
     ///
     /// Same scalar-subset note as `filament_flush_temp`: canonical falls back
     /// to `filament_max_volumetric_speed` (Tier D deferred) when the entry is
-    /// 0. `0.0` is inert here — published as-is — per the ticket-47 DEV row.
-    cli "filament_flush_volumetric_speed" filament_flush_volumetric_speed: f32 = 0.0 => extract_float;
+    /// 0. An Orca `coFloats` vector spelling takes its first entry (first
+    /// filament). `0.0` is inert here — published as-is — per the ticket-47
+    /// DEV row.
+    cli "filament_flush_volumetric_speed" filament_flush_volumetric_speed: f32 = 0.0 => extract_float_or_first;
     /// Whether the wipe tower is enabled for multi-material purge.
     /// Default false matches single-material shipping behavior.
     cli "enable_prime_tower" enable_prime_tower: bool = false => extract_bool;
@@ -2427,6 +2560,203 @@ mod machine_limit_config_tests {
             cfg.apply_cli_key("machine_max_jerk_e", &ConfigValue::Bool(true))
                 .is_err(),
             "a bool is not a machine limit"
+        );
+    }
+}
+
+/// Regression (tickets 140 + 47): the four per-filament / per-extruder
+/// scalar-subset keys rejected real Orca 3MF vectors at global resolution,
+/// failing all five painted / modifier e2e fixtures before any slicing
+/// (`config key 'pressure_advance': expected Float value, got List`, and the
+/// `enable_pressure_advance` Bool / `filament_flush_temp` Int /
+/// `filament_flush_volumetric_speed` Float variants — the reported key varies
+/// run to run because `resolve_global_config` iterates a `HashMap`).
+///
+/// Orca spells each as a per-filament vector (`coFloats` / `coBools` /
+/// `coInts`): `resources/cube_4color.3mf` carries 4-element string lists for
+/// all four, and the single-filament modifier fixtures carry 1-element lists
+/// (e.g. `pressure_advance: ["0.02"]`). The loader coerces elements
+/// schema-directedly, so by resolution time the shapes are `List[Float]` for
+/// `pressure_advance`, `List[Bool]` for `enable_pressure_advance`, and
+/// `List[Int]` for both flush keys. The scalar-global subset takes index 0
+/// (first filament / extruder); full vector ingest rides ticket 125.
+#[cfg(test)]
+mod per_filament_scalar_subset_tests {
+    use super::*;
+
+    #[test]
+    fn pressure_advance_accepts_orca_vector_and_takes_first_filament() {
+        let mut cfg = ResolvedConfig::default();
+        // Loader-coerced shape from cube_4color.3mf: 4-element Float list.
+        cfg.apply_cli_key(
+            "pressure_advance",
+            &ConfigValue::List(vec![
+                ConfigValue::Float(0.02),
+                ConfigValue::Float(0.05),
+                ConfigValue::Float(0.05),
+                ConfigValue::Float(0.05),
+            ]),
+        )
+        .expect("Orca 4-element coFloats must be accepted");
+        assert_eq!(
+            cfg.pressure_advance, 0.02,
+            "index 0 is the first filament; trailing entries are discarded"
+        );
+
+        // Single-filament modifier shape: 1-element list.
+        cfg.apply_cli_key(
+            "pressure_advance",
+            &ConfigValue::List(vec![ConfigValue::Float(0.03)]),
+        )
+        .expect("single-element list must be accepted");
+        assert_eq!(cfg.pressure_advance, 0.03);
+
+        // Bare scalar (hand-written CLI JSON) keeps working.
+        cfg.apply_cli_key("pressure_advance", &ConfigValue::Float(0.04))
+            .expect("bare scalar must still be accepted");
+        assert_eq!(cfg.pressure_advance, 0.04);
+    }
+
+    #[test]
+    fn enable_pressure_advance_accepts_orca_bool_vector_and_takes_first() {
+        let mut cfg = ResolvedConfig::default();
+        // Loader-coerced shape from cube_4color.3mf: 4-element Bool list
+        // (`"0"` coerces to Bool for a declared-boolean key).
+        cfg.apply_cli_key(
+            "enable_pressure_advance",
+            &ConfigValue::List(vec![
+                ConfigValue::Bool(false),
+                ConfigValue::Bool(true),
+                ConfigValue::Bool(true),
+                ConfigValue::Bool(true),
+            ]),
+        )
+        .expect("Orca 4-element coBools must be accepted");
+        assert!(
+            !cfg.enable_pressure_advance,
+            "index 0 is the first extruder; trailing entries are discarded"
+        );
+
+        cfg.apply_cli_key(
+            "enable_pressure_advance",
+            &ConfigValue::List(vec![ConfigValue::Bool(true)]),
+        )
+        .expect("single-element list must be accepted");
+        assert!(cfg.enable_pressure_advance);
+
+        // Numeric 0/1 backstop (mirrors extract_bool) in both shapes.
+        cfg.apply_cli_key("enable_pressure_advance", &ConfigValue::Int(1))
+            .expect("bare Int 1 must be accepted as true");
+        assert!(cfg.enable_pressure_advance);
+        cfg.apply_cli_key(
+            "enable_pressure_advance",
+            &ConfigValue::List(vec![ConfigValue::Int(0), ConfigValue::Int(1)]),
+        )
+        .expect("Int list must be accepted");
+        assert!(!cfg.enable_pressure_advance);
+    }
+
+    #[test]
+    fn filament_flush_keys_accept_orca_vectors_and_take_first_filament() {
+        let mut cfg = ResolvedConfig::default();
+        // Loader-coerced shapes from cube_4color.3mf: `"0"` coerces to Int
+        // for both non-boolean keys.
+        cfg.apply_cli_key(
+            "filament_flush_temp",
+            &ConfigValue::List(vec![
+                ConfigValue::Int(0),
+                ConfigValue::Int(0),
+                ConfigValue::Int(0),
+                ConfigValue::Int(0),
+            ]),
+        )
+        .expect("Orca 4-element coInts must be accepted");
+        assert_eq!(cfg.filament_flush_temp, 0);
+
+        cfg.apply_cli_key(
+            "filament_flush_volumetric_speed",
+            &ConfigValue::List(vec![
+                ConfigValue::Int(0),
+                ConfigValue::Int(0),
+                ConfigValue::Int(0),
+                ConfigValue::Int(0),
+            ]),
+        )
+        .expect("Orca 4-element coFloats-as-Int must be accepted");
+        assert_eq!(cfg.filament_flush_volumetric_speed, 0.0);
+
+        // Distinct trailing entries prove first-wins rather than last-wins.
+        cfg.apply_cli_key(
+            "filament_flush_temp",
+            &ConfigValue::List(vec![ConfigValue::Int(270), ConfigValue::Int(240)]),
+        )
+        .expect("multi-element Int list must be accepted");
+        assert_eq!(cfg.filament_flush_temp, 270);
+
+        cfg.apply_cli_key(
+            "filament_flush_volumetric_speed",
+            &ConfigValue::List(vec![ConfigValue::Float(12.5), ConfigValue::Float(8.0)]),
+        )
+        .expect("multi-element Float list must be accepted");
+        assert_eq!(cfg.filament_flush_volumetric_speed, 12.5);
+
+        // Bare scalars keep working.
+        cfg.apply_cli_key("filament_flush_temp", &ConfigValue::Int(240))
+            .expect("bare Int must still be accepted");
+        assert_eq!(cfg.filament_flush_temp, 240);
+        cfg.apply_cli_key("filament_flush_volumetric_speed", &ConfigValue::Float(10.0))
+            .expect("bare Float must still be accepted");
+        assert_eq!(cfg.filament_flush_volumetric_speed, 10.0);
+    }
+
+    #[test]
+    fn per_filament_subset_rejects_malformed_values() {
+        let mut cfg = ResolvedConfig::default();
+        assert!(
+            cfg.apply_cli_key("pressure_advance", &ConfigValue::List(vec![]))
+                .is_err(),
+            "an empty list has no first filament to read"
+        );
+        assert!(
+            cfg.apply_cli_key(
+                "pressure_advance",
+                &ConfigValue::List(vec![ConfigValue::String("fast".to_string())]),
+            )
+            .is_err(),
+            "a non-numeric string must not be silently accepted"
+        );
+        assert!(
+            cfg.apply_cli_key("pressure_advance", &ConfigValue::Bool(true))
+                .is_err(),
+            "a bool is not a pressure-advance value"
+        );
+        assert!(
+            cfg.apply_cli_key("enable_pressure_advance", &ConfigValue::List(vec![]),)
+                .is_err(),
+            "an empty list has no first extruder to read"
+        );
+        assert!(
+            cfg.apply_cli_key("enable_pressure_advance", &ConfigValue::Float(1.0))
+                .is_err(),
+            "a float is not a pressure-advance flag"
+        );
+        assert!(
+            cfg.apply_cli_key("filament_flush_temp", &ConfigValue::List(vec![]))
+                .is_err(),
+            "an empty list has no first filament to read"
+        );
+        assert!(
+            cfg.apply_cli_key("filament_flush_temp", &ConfigValue::Bool(true))
+                .is_err(),
+            "a bool is not a flush temperature"
+        );
+        assert!(
+            cfg.apply_cli_key(
+                "filament_flush_volumetric_speed",
+                &ConfigValue::List(vec![]),
+            )
+            .is_err(),
+            "an empty list has no first filament to read"
         );
     }
 }
