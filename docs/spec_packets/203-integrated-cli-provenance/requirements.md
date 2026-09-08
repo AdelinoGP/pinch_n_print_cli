@@ -4,7 +4,7 @@
 
 - Grouped task IDs: `ADR-0056`, `ADR-0057` (no `docs/07_implementation_status.md` TASK rows exist for this program — see `docs/specs/multi-edition-distribution-plan.md` §"Backlog anchoring [FWD]"; do not create them in this packet)
 - Backlog source: `docs/specs/multi-edition-distribution-plan.md` (queue row 4)
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Problem Statement

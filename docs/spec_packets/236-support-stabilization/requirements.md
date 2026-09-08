@@ -4,7 +4,7 @@
 
 - Grouped task IDs: `TASK-344` through `TASK-352` (allocated fresh; next free after the re-derived high-water mark `TASK-343` in `docs/07_implementation_status.md`; TASK-324..328 never reused)
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M` (largest step M — Step 8's green gate is dispatch-heavy, not read-heavy)
 
 ## Problem Statement

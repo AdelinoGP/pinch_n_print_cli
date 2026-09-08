@@ -220,6 +220,7 @@ pub const STAGE_ORDER: &[&str] = &[
     "Layer::InfillPostProcess",
     "Layer::Support",
     "Layer::SupportPostProcess",
+    "Layer::AnchoredEvents",
     "Layer::PathOptimization",
     // ── rayon join happens here ──────────────────────────────────────────
     // PostPass tier — all stages below are sequential, whole-print.
@@ -257,8 +258,9 @@ Two caveats a reader must know:
   `lightning-infill`: the zero-cost promise from ADR-0029.
 
 `PrePass::OverhangAnnotation` — populates `SurfaceClassificationIR.overhang_quartile_polygons` by diffing consecutive-layer footprints, mirroring OrcaSlicer's `detect_overhangs_for_lift` (`PrintObject.cpp`) which diffs consecutive `lslices`. It runs **strictly after `PrePass::Slice`** and reads the committed `SliceIR` (each object's final per-layer region polygons) rather than re-slicing the mesh — the object meshes are sliced exactly once, in `PrePass::Slice`. Host built-in (`host:overhang_annotation`). Since packet 193 the same host built-in additionally writes
-`SurfaceClassificationIR.prev_layer_boundaries` — a `HashMap<u32, Vec<ExPolygon>>`
-keyed by global layer index exactly like `overhang_quartile_polygons`,
+`SurfaceClassificationIR.prev_layer_boundaries` — a
+`HashMap<ObjectId, HashMap<u32, Vec<ExPolygon>>>` keyed by object id first and
+global layer index second, like `overhang_quartile_polygons`,
 populated by `commit_overhang_annotation_builtin` from the previous-layer
 contours `annotate_overhangs` already computes for the diff. This is the
 carrier that packet 193's `signed_distance_to_boundary` (stamped into
@@ -424,6 +426,11 @@ active per region at a time.
 12. **Cross-stage dependency legality** — module may not require a module from a later stage
 13. **Transitive dependency legality** — transitive `requires` closure may not include later-stage modules
 14. **Host version compatibility** — module's declared `min-host-version` must be `<=` the running host version (`env!("CARGO_PKG_VERSION")` of `slicer-runtime`). Fatal, same blocking tier as pass 6 (IR version compatibility); see `SchedulerError::HostVersionIncompatible` and `docs/11_operational_governance_and_acceptance_gate.md` §2 "Compatibility Policy" dimension 1. Closes DEV-026 gap (1).
+
+For the `claim:raft-fill` role, duplicate active holders are rejected at the
+applicable scope as `SchedulerError::ClaimConflict`. The resolved holder is
+deterministic for each region and layer; no ambiguous raft-fill dispatch is
+permitted.
 
 ### Call-Time Access Enforcement (Normative)
 
@@ -625,6 +632,23 @@ support paths.
 - **No missing-plan fallback filler.** When a family's plan is missing, the
   host does not substitute a fallback filler — the region is left without
   that family's output and the unmet condition is reported.
+
+Aggregation keys on declared identity, applies default-deny family ownership,
+enforces `MAX_BODY_EXTENT_UNITS`, and applies the documented own/foreign
+territory trim rule. Routing-cell ownership is not itself a contract, and
+positive-area cross-family swept-path conflicts drop both complete bodies and
+mark their demands unmet; tolerance-only boundary contact is retained. Such
+diagnostics carry the family, body, demand, and conflict reason.
+
+Anchored-event swept-path checks are normative: a positive-area cross-family
+swept-path conflict drops the complete bodies and marks their demands unmet,
+while tolerance-only boundary contact is retained. Diagnostics identify the
+family, body, demand, and reason.
+
+The host-owned Exact-Z Support Query is keyed by `(object_id, region_id,
+physical Z)`. Coordinates are normalized to repository units; results are
+immutable and cached. Each result contains occupancy, blockers, eligible
+termination geometry, and the baseline feasible envelope.
 
 ### Write Conflict vs Claim Conflict — Enforcement Level Summary
 
@@ -1114,6 +1138,27 @@ boundary is shared between transports; the native path re-enters at the
 leg differs. Module logic is single-threaded on both paths (ADR-0056 Decision
 item 5).
 
+Native calls do not lease WASM instances, but each dispatch still performs one
+module invocation and preserves stage/module ordering. Host-layer fan-out is
+the only permitted concurrency; skipping instance-pool bookkeeping does not
+permit concurrent calls within a module.
+
+For live bindings, construction rejects an Integrated-provenance module that
+has no matching `NativeStageEntry`, naming both the module and stage. External
+provenance remains WASM-backed. An Integrated module with a matching native
+entry is never silently skipped or routed through an absent native function:
+the existing phase-appropriate `MissingComponent`/fatal dispatch error is the
+loud failure for a missing entry.
+
+Native dispatch currently leaves all `last_*` capture channels empty,
+including profiling, fuel, and batch-call captures. This is a known
+packet-local limitation, not evidence that module execution failed.
+
+Native commit is lossless for every declared supported stage output: it
+preserves all output variants, commits explicit empty postprocess results,
+retains region IDs and seam reasons, and does not fatal on outputless
+`PrePass::PaintSegmentation` when the WASM leg is also outputless.
+
 The orchestrator constructs the input struct at each dispatch call
 site by projecting field-level borrows from `Blackboard` / `LayerArena`,
 then hands it to the wasm-host's `instance.call_*` path. Errors from
@@ -1217,6 +1262,7 @@ pub fn execute_prepass(
     }
     Ok(())
 }
+
 ```
 
 #### Stage Prerequisites (Normative)
@@ -1232,6 +1278,7 @@ must not run their own ad-hoc presence checks for these slots.
 | `PrePass::SeamPlanning`            | `LayerPlan`, `SliceIR`, `RegionMap` — reads the committed `LayerPlan` plus per-region `SliceIR` geometry and annotations (projected via `SeamPlanningView`, packet 178); writes `SeamPlanIR`. Dispatch occurs only after these products are committed. |
 | `PrePass::PaintSegmentation`       | `SliceIR`, `RegionMap`; produces split `SliceIR` via `replace_slice_ir`  |
 | `PrePass::RegionMapping`           | `LayerPlan`                                                               |
+| `PrePass::SupportAnalysis`         | `SliceIR`, `LayerPlan`, `SurfaceClassification`, `RegionMap`              |
 | `PrePass::SupportGeometry`         | `MeshIR`, `LayerPlan`, `RegionMap`, `SupportGeometry` (committed by the host built-in within this stage before the guest runs) |
 
 A stage scheduled before its prerequisites are committed produces
@@ -1239,6 +1286,22 @@ A stage scheduled before its prerequisites are committed produces
 the prepass without invoking any module. This guard short-circuits before
 dispatch so module-side error handling for "the IR I need wasn't committed"
 is unnecessary.
+
+Bridge gating occurs after `PrePass::Slice`, in `ShellClassification`. It uses
+the previous global layer's same-object committed region polygons; when that
+layer is missing, candidates are cleared, while an existing layer with empty
+polygons subtracts nothing. Cross-layer bridge qualification runs only after
+the `ShellClassification` state is committed. Same-layer anchored construction
+then consumes committed `internal_bridge_areas`, wall geometry, and
+`Layer::Infill` sparse polylines in `InfillPostProcess`, preserving the
+deterministic sequential prepass ordering.
+
+`ShellClassification` consumes gated bridge areas plus previous-layer
+contours and writes `bridge_orientation_deg` after gating. Empty gated areas
+leave the existing orientation unchanged. External orientation is computed
+from gated geometry and raw lower contours by floating-edge normal-cost
+minimization; empty candidates use the minor principal axis, and degenerate
+geometry falls back to `0°`.
 
 
 
@@ -1339,6 +1402,11 @@ fn validate_finalization_state(
     }
     Ok(())
 }
+
+Anchored synthesized rows are an explicit exception to duplicate-index
+validation: anchored rows may share the upper anchor's `global_layer_index`.
+`validate_finalization_state` must distinguish those rows from invalid
+duplicate ordinary layers.
 
 
 Finalization ordering guarantees:
@@ -1640,6 +1708,11 @@ Field derivation:
 | `PrimeTower`           | `Prime tower`       |
 | `Ironing`              | `Ironing`           |
 | `Custom(s)`            | `s` verbatim        |
+
+`SupportBaseInterface` uses the same `Support interface` label as
+`SupportInterface`; `;TYPE:` markers therefore prove interface-family
+emission only, not the specific interface role. Base-interface retention must
+be asserted at the IR role or represented by a distinct marker.
 
 Modules that attempt to emit any of these strings via `Raw(text)` are accepted
 (the escape hatch is intentional) but doing so duplicates the host-emitted

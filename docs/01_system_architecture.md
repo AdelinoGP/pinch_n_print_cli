@@ -84,7 +84,7 @@ the authoritative normalized form).
 
 #### PrePass Stage Order
 
-Ten `PrePass::*` stages are declared in the following scheduler order. The retired
+Eleven `PrePass::*` stages are declared in the following scheduler order. The retired
 `PrePass::MeshSegmentation` is not among them: `split_triangle_strokes` in
 `crates/slicer-model-io/src/loader.rs` already normalizes sub-facet paint
 strokes at load time. `SeamPlanning` and `SupportGeometry`'s guest half run only when a
@@ -99,8 +99,9 @@ corresponding module is loaded; the rest always run.
 6. PrePass::OverhangAnnotation   (host-built-in; runs AFTER Slice — derives overhang from the committed SliceIR)
 7. PrePass::ShellClassification  (host-built-in; annotates the committed SliceIR)
 8. PrePass::PaintSegmentation    (host-built-in; reads the annotated SliceIR, writes via replace_slice_ir)
-9. PrePass::SupportGeometry      (host-built-in always runs; guest optional)
-10. PrePass::LightningTreeGen     (host-built-in; commits only for lightning sparse fill)
+9. PrePass::SupportAnalysis      (host-built-in; shared host-owned support analysis)
+10. PrePass::SupportGeometry      (host-built-in always runs; guest optional)
+11. PrePass::LightningTreeGen     (host-built-in; commits only for lightning sparse fill)
 ```
 
 **Operational order:** `STAGE_ORDER` is the scheduler's validation and
@@ -141,8 +142,26 @@ overhang data without cross-layer access. `PrePass::ShellClassification`
 polygon-precise top/bottom solid fill. `PrePass::PaintSegmentation` (stage 8)
 runs after ShellClassification — it needs the annotated `SliceIR` — and writes
 per-variant polygons back via `replace_slice_ir`. `PaintRegionIR` is deleted.
-`PrePass::SupportGeometry` (stage 9) runs last so it can consume the
-fully-split, colour-resolved `SliceIR`.
+Seam paint is delivery-only: it does not participate in MMU or cell
+decomposition. Seam-only inputs must still pass through the annotation writer
+on every non-empty return path, including paths that otherwise return the
+unchanged slice.
+The executed support chain is `PrePass::SupportAnalysis` →
+`PrePass::SupportGeometry` → family planning. `SupportAnalysisIR` is the
+shared host-owned input for family planners; it carries the analysis products,
+exact-Z information, and baseline feasible envelope. `SupportGeometry` runs
+after analysis so it can consume the fully-split, colour-resolved `SliceIR`.
+There is no obsolete grid-MST fallback in this chain: a missing or declined
+family plan remains degraded rather than silently generating fallback filler.
+
+Bridge gating occurs in `PrePass::ShellClassification` after `PrePass::Slice`
+and uses the previous global layer's same-object committed region polygons.
+Missing layers clear candidates; existing layers with empty polygons subtract
+nothing. `ShellClassification` consumes gated bridge areas plus previous-layer
+contours and writes `bridge_orientation_deg` after gating; empty gated areas
+leave the existing orientation unchanged. The orientation cost minimizes
+floating-edge normal cost, uses the minor principal axis for empty candidates,
+and falls back to `0°` for degenerate geometry.
 
 **Note:** `host:slice` and `host:shell_classification` are the host built-ins
 backing `PrePass::Slice` and `PrePass::ShellClassification` respectively. Both
@@ -174,8 +193,10 @@ PrePass::LayerPlanning
 
 PrePass::OverhangAnnotation  [introduced P106; host built-in host:overhang_annotation; runs AFTER PrePass::Slice]
   Input:  SliceIR (committed by PrePass::Slice) + LayerPlanIR + SurfaceClassificationIR
-  Output: SurfaceClassificationIR.overhang_quartile_polygons (per-layer HashMap<u32, Vec<QuartileBand>>)
-          SurfaceClassificationIR.prev_layer_boundaries (per-layer HashMap<u32, Vec<ExPolygon>>)
+   Output: SurfaceClassificationIR.overhang_quartile_polygons
+           (HashMap<ObjectId, HashMap<u32, Vec<QuartileBand>>>)
+           SurfaceClassificationIR.prev_layer_boundaries
+           (HashMap<ObjectId, HashMap<u32, Vec<ExPolygon>>>)
   Purpose: For each object, take its per-layer footprints from the committed SliceIR and diff
            consecutive layers (current \ previous) — canonical detect_overhangs_for_lift
            (PrintObject.cpp), which diffs consecutive lslices; the object meshes are
@@ -192,7 +213,9 @@ PrePass::OverhangAnnotation  [introduced P106; host built-in host:overhang_annot
            contours are carried end to end (SurfaceClassificationIR → slice-region-view →
            perimeter stamping sites) so `expolygon_to_path3d` and the Arachne per-vertex
            loop can stamp the continuous signed `overhang_distance_mm` beside
-           `overhang_quartile`. Both maps are keyed by GLOBAL layer index; the boundary is
+            `overhang_quartile`. Both maps are keyed by object id first and GLOBAL layer index
+            second; commit and marshal lookup use both keys, and consumers receive the
+            object-selected inner layer map. The boundary is
            canonical's `unscaled_prev_layer` input — built from the previous layer's slice
            boundary, not its extrusion paths.
 
@@ -225,6 +248,13 @@ PrePass::PaintSegmentation
            See `specs/_OLD/orca-paint-segmentation-parity.md` for the full
            7-phase algorithm (superseded spec, retained for the algorithm write-up).
 
+PrePass::SupportAnalysis  [host-built-in; shared host-owned input]
+  Input:  SliceIR + LayerPlanIR + SurfaceClassificationIR + RegionMapIR
+  Output: SupportAnalysisIR
+  Purpose: Exact-Z occupancy, blockers, eligible termination geometry,
+           baseline feasible envelope, and deterministic family assignments.
+           Results are immutable and cached by (object, region, physical Z).
+
 PrePass::SupportGeometry  [host built-in always runs; guest optional]
   Input  (host built-in): LayerPlanIR + MeshIR
   Input  (guest, if a `support-planner` module is loaded):
@@ -253,7 +283,7 @@ PrePass::SupportGeometry  [host built-in always runs; guest optional]
             per-(layer, object, region) branch geometry as `SupportPlanIR` that
             `Layer::Support` modules consume directly when present. When no
             support-planner module is installed only Phase 1 runs and
-            tree-support falls back to its per-layer grid-MST filler.
+             no fallback filler is synthesized.
 
 PrePass::LightningTreeGen  [host built-in; conditional]
   Input:  SliceIR + LayerPlanIR + RegionMapIR + SurfaceClassificationIR
@@ -403,8 +433,15 @@ Layer::Infill
              claim:bridge-fill → SlicedRegion.bridge_areas       → BridgeInfill
              claim:raft-fill   → raft fill carrier (SlicedRegion.raft_fill)
                                  → RaftInfill; raft polygons are supplied by
-                                 raft-default-module (ADR-0009; packet 124)
-           No per-region role-pick; no polygon math in modules.
+                                  raft-default-module (ADR-0009;
+                                  packet 240b-support-raft-module)
+            No per-region role-pick; no polygon math in modules, except
+            raft-default's deterministic footprint synthesis via the host hatch
+            service (ADR-0009's role/claim reference).
+            The wave-overhangs bridge holder subtracts `internal_bridge_areas`,
+            emits anchor-first locked `BridgeInfill` waves over external areas,
+            and uses unlocked rectilinear fallback for internal or
+            non-generatable components without silently dropping coverage.
 
 Layer::InfillPostProcess
   Input:  InfillIR
@@ -412,7 +449,13 @@ Layer::InfillPostProcess
   Modules: `com.core.infill-linker` (holds `claim:infill-link`).
   Purpose: Non-planar sine-wave infill modulation.
            Infill-wall interlocking.
-           Infill-linker connects raw sparse segments into linked polylines.
+            Infill-linker connects raw sparse segments into linked polylines.
+            The host also consumes committed fill context and may emit
+            `InternalBridgeInfill` regions while subtracting them from sparse
+            infill. Internal bridge angle uses a length-weighted mean over a
+            ±18° window, with a positive `internal_bridge_angle` override;
+            anchor clustering and bridge-flow scan spacing are deterministic,
+            and generated line count is invariant for identical inputs.
 
 Layer::Support
   Input:  SliceIR
@@ -428,17 +471,30 @@ Layer::Support
              3. Otherwise → support if overhang angle exceeds config threshold
            Planner-consuming tier (TASK-161): modules holding the `support-generator`
            claim that also declare `SupportPlanIR` as a read (e.g. `tree-support`)
-           emit committed branch geometry directly when the plan is present, and
-           fall back to their per-layer filler otherwise. Modules whose algorithm
-           is inherently per-layer (e.g. `traditional-support` with its scan-line
-           fill) intentionally do not declare the read.
+            emit committed branch geometry directly when the plan is present;
+            absent or declined plans produce no fallback filler. Modules whose algorithm
+            is inherently per-layer (e.g. `traditional-support` with its scan-line
+            fill) intentionally do not declare the read.
+            Tree body regions emit configured concentric walls plus
+            density-pitched interior fill; sub-pitch regions retain a center
+            fill line, fill direction alternates by layer, and disconnected
+            plan components are filled independently in plan-entry order.
+            The renderer intentionally emits discrete planner role regions,
+            not circle-and-chord centerline outlines. Slightly polygonal
+            abutments are the accepted visual consequence; a human-gate defect
+            triggers a follow-up.
 
 Layer::SupportPostProcess
   Input:  SupportIR
   Output: SupportIR (modified)
-  Purpose: Support top surface ironing.
-           Support interface density variation.
-           Any future support geometry post-processing.
+   Purpose: Support top surface ironing.
+            Support interface density variation.
+            Any future support geometry post-processing.
+
+Layer::AnchoredEvents
+   Input:  committed anchored-event collection and layer geometry
+   Output: anchored entities in LayerCollectionIR
+   Purpose: Execute anchored event bodies before path optimization.
 
 Layer::PathOptimization
   Input:  PerimeterIR + InfillIR + SupportIR
@@ -680,9 +736,10 @@ declares reads/writes that contradict this table, the manifest is incorrect.
 |------------------------------------------|--------------------------------------------------------------------|---------------------------------------------------------------------|
 | `PrePass::MeshAnalysis`                  | `MeshIR`                                                           | `SurfaceClassificationIR`                                                                                |
 | `PrePass::LayerPlanning`                 | `MeshIR`, `SurfaceClassificationIR`, global/object/modifier config | `LayerPlanIR`                                                                                            |
-| `PrePass::OverhangAnnotation` (after Slice) | `SliceIR`, `LayerPlanIR`, `SurfaceClassificationIR`             | `SurfaceClassificationIR.overhang_quartile_polygons` (per-layer quartile bands from consecutive-slice diff; introduced P106) and `SurfaceClassificationIR.prev_layer_boundaries` (previous layer's committed slice boundary; introduced P193)         |
+| `PrePass::OverhangAnnotation` (after Slice) | `SliceIR`, `LayerPlanIR`, `SurfaceClassificationIR`             | object-scoped `SurfaceClassificationIR.overhang_quartile_polygons` and `prev_layer_boundaries`, each keyed by object id then global layer index (introduced P106/P193)         |
 | `PrePass::PaintSegmentation`             | `MeshIR`, `SurfaceClassificationIR`, `LayerPlanIR`                 | `SliceIR` (via `replace_slice_ir`; per-variant polygons)                                                 |
 | `PrePass::RegionMapping` (host-built-in) | `LayerPlanIR`, loaded modules, resolved config                     | `RegionMapIR`                                                       |
+| `PrePass::SupportAnalysis`              | `SliceIR`, `LayerPlanIR`, `SurfaceClassificationIR`, `RegionMapIR` | `SupportAnalysisIR` (host-owned, immutable, cached exact-Z results) |
 | `PrePass::SupportGeometry` (optional)   | `MeshIR`, `LayerPlanIR`, `RegionMapIR`, `SupportGeometryIR`        | `SupportGeometryIR` (host-committed), `SupportPlanIR` (guest-emitted) |
 | `Layer::Slice`                           | `MeshIR`, `LayerPlanIR`                                            | `SliceIR`                                                           |
 | `Layer::PaintRegionAnnotation` (host no-op) | `SliceIR` (current layer)                                      | none (reserved boundary; a WASM module claiming the stage runs instead of the host built-in) |
@@ -693,6 +750,7 @@ declares reads/writes that contradict this table, the manifest is incorrect.
 | `Layer::InfillPostProcess`               | `InfillIR`, `PerimeterIR` (partitioned per-role fill polygons), `RegionMapIR` | `InfillIR` (linked sparse polylines from `com.core.infill-linker`)   |
 | `Layer::Support`                         | `SliceIR`, `SurfaceClassificationIR`, `PaintRegionLayerView`, `SupportPlanIR` (optional, declared per module) | `SupportIR`                                                         |
 | `Layer::SupportPostProcess`              | `SupportIR`                                                        | `SupportIR`                                                         |
+| `Layer::AnchoredEvents`                  | `LayerCollectionIR` anchored-event context                          | `LayerCollectionIR`                                                 |
 | `Layer::PathOptimization`                | `PerimeterIR`, `InfillIR`, `SupportIR`                             | `LayerCollectionIR`                                                 |
 | `PostPass::LayerFinalization`            | `Vec<LayerCollectionIR>`, Blackboard IRs                           | `Vec<LayerCollectionIR>` (may insert synthetic layers)              |
 | `PostPass::GCodeEmit` (host-built-in)    | `Vec<LayerCollectionIR>`                                           | `GCodeIR`                                                           |
@@ -1040,6 +1098,15 @@ directory name shared by `modules/core-modules/<name>`, its
 `slicer-integrated-modules` Cargo feature, and the staged `<name>.wasm` and
 `<name>.toml` stems. `xtask::editions::load_editions` reads and validates this
 configuration before `cargo xtask dist` stages the selected layout.
+
+The `dist/editions.toml` evidence block must record, for every Hybrid-integrated
+module, its ADR-0055 guest-fuel result, profiling-off wall-clock result, model,
+exact command, and measured run-to-run spread. Each integrated module is
+enabled in `pnp-cli` through `integrated-<name>`, whose body delegates to
+`slicer-integrated-modules/<name>`; the `integrated-` prefix is the only
+transformation. `cargo xtask dist --plan` is a no-build command that emits one
+tab-separated `<kind>\t<value>` record per line, with kinds `edition`, `out_dir`,
+`features`, `integrated`, and `external`; output is sorted and has no header.
 
 ### Diagnostics
 

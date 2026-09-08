@@ -621,6 +621,8 @@ optional non-planar surface, effective height, segment paint annotations, shell
 depths, shell/bridge fill polygons, and its paint `variant_chain`. The removed
 `external_contour` field is not part of the current schema.
 
+`SlicedRegion.internal_solid_fill: Vec<ExPolygon>` is a `#[serde(default)]` dense-interior polygon carrier authored by shell classification. `SlicedRegion.internal_bridge_areas: Vec<ExPolygon>` is a `#[serde(default)]` host-only qualification carrier, populated by host qualification and consumed by the host/module seam; both fields are additive, region-owned, and preserved through region partition/restore.
+
 /// ### Post-`Layer::Perimeters` invariant: four canonical fill polygons
 ///
 /// After the host runs `sync_perimeter_infill_areas_into_slice` at
@@ -640,6 +642,9 @@ depths, shell/bridge fill polygons, and its paint `variant_chain`. The removed
 ///    bridge claim in `sync_perimeter_infill_areas_into_slice`).
 /// 2. Precedence on overlap is strict: `bridge > bottom > top > sparse`
 ///    (OrcaSlicer `PrintObject::prepare_infill` parity).
+///    An unsupported span is the bridge candidate after subtracting ungrown
+///    committed lower-layer contours. This is a pure gate: it does not expand
+///    the candidate or grow the result, and repeated application is invariant.
 /// 3. The pre-perimeter values of `top_solid_fill` / `bottom_solid_fill` /
 ///    `bridge_areas` (committed by `PrePass::ShellClassification` and
 ///    `PrePass::MeshAnalysis`) live unchanged on the **Blackboard**'s
@@ -648,7 +653,7 @@ depths, shell/bridge fill polygons, and its paint `variant_chain`. The removed
 /// 4. A `SliceIR` region with no matching `PerimeterIR.regions` entry is
 ///    skipped silently (used by the region_split work in packets 92–95 where
 ///    variant regions share wall geometry with their base region).
-///
+
 /// Each fill claim holder (`claim:sparse-fill`, `claim:top-fill`,
 /// `claim:bottom-fill`, `claim:bridge-fill`; see `docs/03_wit_and_manifest.md`)
 /// emits over exactly one of these polygons with zero polygon math. Exception:
@@ -656,14 +661,29 @@ depths, shell/bridge fill polygons, and its paint `variant_chain`. The removed
 /// neighboring fill domains; the linker differences untagged fill of the same
 /// region by their swept footprint instead of clipping them.
 
+Internal-bridge candidates difference sparse-infill input by already-claimed
+`bridge_areas` before generating internal bridge polygons.
+
+#### Internal bridge support gating (host-only lifecycle)
+
+Construction expands and qualifies candidates, then harvests lower fills and
+clusters compatible spans into `internal_bridge_areas`. When
+`enable_extra_bridge_layer` is enabled, gated duplicates are appended to the
+upper layer's existing host-only carrier; no additional IR carrier is added.
+
+`SlicedRegion.internal_bridge_areas` is an additive existing carrier exposed
+through `slice-region-view`; this accessor does not alter SliceIR schema
+versioning.
+
 ### Raft substrate (packet 240a — additive, schema 4.9.0)
 
-`SlicedRegion.raft_fill: Vec<ExPolygon>` (`#[serde(default)]`) carries the
-per-region raft fill polygons. **Nothing populates it yet.** Packet 240a landed
-it as a pure carrier — the field, the `raft-fill` accessors on both
+`SlicedRegion.raft_fill: Vec<ExPolygon>` (`#[serde(default)]`) is an additive
+transient per-region raft carrier. The raft-default producer populates it on
+raft-marked layers; runtime commit stores it in `SlicedRegion`, and the emitter
+converts it to ordinary ordered `RaftInfill` entities at raft-band layers while
+preserving open hatch contours. Packet 240a landed the field, the `raft-fill` accessors on both
 `slice-region-view` and `perimeter-region-view` (`docs/03_wit_and_manifest.md`),
-and a `split_field!` entry in `crates/slicer-runtime/src/region_partition.rs`;
-the producing module is owned by packet 240b. On every model layer it is empty.
+and a `split_field!` entry in `crates/slicer-runtime/src/region_partition.rs`.
 
 `GlobalLayer.is_raft: bool` (`#[serde(default)]`) marks membership of the
 **positive raft offset band**. `GlobalLayer` is the `LayerPlanIR` global-layer
@@ -684,35 +704,26 @@ record, defined alongside `SliceIR` in `crates/slicer-ir/src/slice_ir.rs`.
   continues to hold unchanged under the band.
 
 `com.core.layer-planner-default` emits the band, reading `support_raft_layers`
-from its declared config schema (`type = "int"`, default `0`). Raft Zs are
-`first_layer_height + i * layer_height` for `i` in `0..N-1`. **Model layer Zs are
-unshifted** — identical to their pre-raft values — so under the raft offset band
-raft and model layers deliberately share overlapping Z values in this packet.
-That is accepted because packet 240a synthesizes no raft fill geometry yet:
-`raft_fill` has no producer. Structural support planning remains keyed by the
-global layer index; its traditional-family merge admits the explicit duplicate-Z
-grid rows while continuing to reject malformed grid/synthetic identity claims.
-With `layer_height 0.2`,
-`first_layer_height 0.3`, `object_height 1.0` and `support_raft_layers 3`, the
-raft Zs are `[0.3, 0.5, 0.7]` and the model Zs are `[0.3, 0.5, 0.7, 0.9]`. A
-print with no raft configured (`N == 0`) is bit-identical to pre-raft behaviour.
+from its declared config schema (`type = "int"`, default `0`). Raft-default
+populates `raft_fill` before model-layer output; raft entities emit before model
+layers, and model-layer scheduling is shifted above the raft band where
+applicable. No-raft behavior remains unchanged. Raft-band Z values are computed
+in `f64` from `support_raft_layers`, `first_layer_height`, and `layer_height`,
+with exactly one terminal cast to `f32`, preserving parity with
+`generate_object_layers`.
 
-Canonical's constant `object_print_z_min` model-Z offset is **deferred to packet
-240b**, together with the `print_z` / `slice_z` split needed to carry it safely.
-Canonical `generate_support_layers` (`SupportCommon.cpp`) appends raft layers at
-strictly positive `print_z`, and `new_layers` (`PrintObjectSlice.cpp`) starts
-object `Layer` ids at `slicing_parameters().raft_layers()` and sets
-`print_z = hi + object_print_z_min` while `slice_z` stays object-relative. PnP's
-`GlobalLayer` has a single `z: f32` and no `print_z` / `slice_z` split, and
-`slice_mesh_ex` uses `layer.z` directly as the mesh cutting plane — shifting it
-would move the slice plane, not just the print height, and would slice every
-model layer too high once `support_raft_layers > 0`. This is recorded as a
-`[FWD]` item under "Open Questions" in
-`docs/spec_packets/240a-support-raft-substrate/design.md`. Note that the
-finalization gate (`crates/slicer-runtime/src/layer_finalization.rs`) enforces
-monotonic `global_layer_index`, not monotonic Z, so it does not require the
-shift. An earlier revision of packet 240a specified a signed negative band
-(`-N..-1`) plus a `u32` → `i32` index migration; that revision was withdrawn.
+Object-bottom predicates resolve `support_raft_layers`, while physical-first-layer
+flags remain layer 0; `SupportContactParams` receives the raft boundary through
+`resolve_contact_params`. The three converted sites are the sharp-tail gate and
+enforce window in `detect_support_contacts`, and overlap-key selection in
+`run_perimeters`. Physical/local-index guards remain unchanged: first-layer flow
+and `is_initial_layer`, the no-predecessor `layer_height_mm` guard, and local
+`layer_id == 0`/`idx == 0` guards.
+
+The post-240b producer/rendering state is authoritative. Support-branch/raft-plane
+interleave on non-band routing is an accepted, human-waived residual deviation;
+see the companion row in `docs/DEVIATION_LOG.md`.
+
 
 ### Modifier sub-regions
 
@@ -972,6 +983,18 @@ trespassing entry is dropped with a diagnostic instead of being arbitrated
 against a competing family, so per-demand family attribution is preserved
 end-to-end and is independent of plan arrival order.
 
+Packet 205c introduced origin-preserving per-region support output; packet 220
+subsequently superseded its `SupportIR` shape with attributed `SupportEntry`
+entries. The entries shape is authoritative.
+
+Same-family aggregation may union compatible bodies, but the resulting
+entry/body retains every contributing source demand ID exactly once;
+cross-family ownership is never resolved by arrival order.
+
+Support aggregation keys on declared identity, applies default-deny family
+ownership, enforces `MAX_BODY_EXTENT_UNITS`, and applies the documented
+own/foreign territory trim rule.
+
 ---
 
 ## IR 9a — SupportGeometryIR
@@ -999,6 +1022,10 @@ The `support_top_z_distance_mm` and `support_layer_height_mm` fields carry
 resolved region/config values, rather than hardcoded constants or a literal
 `0.0`.
 
+Both layer-plan marshal legs derive `effective_layer_height` with one shared,
+order-independent MAX-across-participating-objects helper. Consumers must use
+the actual layer Z rather than divide by this field.
+
 ---
 
 ## IR 9a′ — SupportAnalysisIR
@@ -1012,11 +1039,11 @@ in `crates/slicer-ir/src/slice_ir.rs`. Minor bump by SchemaBridgeMap ticket 19
 `#[serde(default)]`, mirrored on the WIT `support-analysis-view` as
 `support-territory`. Prior version 1.2.0 by packet 237 — additive
 `cantilever_surfaces` map, `#[serde(default)]` and host-only. Prior
-version 1.1.0 by F-19 — the shape was otherwise unchanged, but the
-candidate-population semantics changed: under a *manual* `support_type` only
-enforcer-covered geometry yields candidates, and `enforced` / `blocked` are
-derived from sliced support-enforcer / support-blocker modifier volumes instead
-of being hardcoded `false`. Prior version: 1.0.0 initial.)
+version 1.1.0 by F-19 — the shape was otherwise unchanged, while
+`enforced` / `blocked` became derived from sliced support-enforcer /
+support-blocker modifier volumes instead of hardcoded `false`. Current
+candidate population follows the manual/auto rules below. Prior version: 1.0.0
+initial.)
 
 **Producer:** The host built-in. `SupportAnalysisIR` is the strategy-neutral
 host-owned input shared by all support family planners — it is produced once
@@ -1025,6 +1052,10 @@ candidate and occupancy inputs.
 
 `SupportAnalysisIR`, `SupportCandidate`, and `SupportCandidateSource` are
 defined in `crates/slicer-ir/src/slice_ir.rs`. The IR carries:
+
+Planner host-computed contact geometry is available only through
+polygon-bearing `SupportAnalysisIR` candidates. Open or coplanar meshes with no
+sliced region remain the legacy facet-projection shim boundary.
 
 - `candidates: Vec<SupportCandidate>` — strategy-neutral candidates. Each
   candidate carries an `id`, its `geometry: Vec<ExPolygon>`, and a
@@ -1038,11 +1069,12 @@ defined in `crates/slicer-ir/src/slice_ir.rs`. The IR carries:
   volumes, sliced per layer via
   `slicer_core::algos::paint_segmentation::modifier_volumes::slice_modifier_volumes`.
   `blocked` is tested against the region cross-section, so it stays true for a
-  candidate whose blocked part has already been subtracted away. Under a
-  *manual* `support_type` (`normal(manual)` / `tree(manual)`) the
-  angle-thresholded branch is skipped entirely and only enforcer-covered
-  geometry produces candidates, mirroring canonical `detect_overhangs`'
-  `auto_normal_support` gate (`SupportMaterial.cpp`).
+  candidate whose blocked part has already been subtracted away. Under manual
+  `support_type`, the angle-thresholded branch is skipped and
+  enforcer-covered geometry produces candidates. Under normal(auto), the
+  angle-thresholded branch and any enforcer-covered geometry are both evaluated
+  and their surviving contact geometry is unioned. Enforcer coverage is not
+  gated by `support_type`.
 - `model_occupancy: HashMap<SupportGeometryKey, Vec<ExPolygon>>` — model
   occupancy per `(layer, object, region)` key.
 - `cantilever_surfaces: HashMap<SupportGeometryKey, Vec<ExPolygon>>` — additive
@@ -1126,7 +1158,9 @@ Each entry carries:
   its Z (in repository units) that place the entry's geometry.
 - `roles: Vec<SupportPlanRoleRegion>` — structural universal roles, each a
   semantic `ExPolygon` region: `SupportBody`, `TopInterface`,
-  `BottomInterface`, and `RaftRelated`.
+  `BottomInterface`, `BaseInterface`, and `RaftRelated`. `BaseInterface` is
+  carried through WIT, both marshal legs, planner attribution, renderer
+  emission, and the `SupportBaseInterface` G-code role.
 - `skeleton: Option<SupportPlanSkeleton>` — optional structural skeleton
   metadata for organic families. Its parallel `points` and `wall_counts` lists
   have identical lengths; each count is `0` for a plain node or at least `1`
@@ -1144,8 +1178,37 @@ not a raft marker.
 
 `raft_plan` is emitted as `Some(RaftPlan)` when the support planner receives a
 positive `support_raft_layers` value. It mirrors the raft configuration only;
-raft polygons, layer geometry, and raft infill remain deferred to packet 240b.
+raft polygons and raft infill are carried through the additive 240b raft
+substrate.
 The current support planner emits no negative raft-prefix entries.
+
+#### Support renderer flow and planner contract (normative)
+
+Body density is `min(1, flow_spacing / (base_pattern_spacing + flow_spacing))`;
+top and bottom interface densities use analogous formulas. `flow_spacing` uses
+resolved line width plus effective layer height, and resulting pitch is never
+below extrusion width. Non-positive interface flow falls back to the canonical
+default ratio. Planner radius is bounded to `0.4–10.0 mm`; positive
+top-interface layers raise radius to base. A negative bottom-interface count
+mirrors top, otherwise the bottom count is explicit; locked top=2/bottom=2
+interface-block behavior is preserved.
+
+`anchor_z` is the declared support print plane. With
+`independent_support_layer_height = true`, canonical pitch-derived off-grid
+planes are permitted; otherwise the associated object layer Z is copied.
+`anchor_layer_index` remains the nearest object-layer anchor. Enabled coarse
+support may emit off-grid planes using family-specific `dist`/`n` stepping,
+preserves genuine interface entries, and selects coarse versus finer derivation
+per contiguous object/region bracket.
+
+Synthesized entries select the nearest surviving at-or-below source within the
+run, prefer non-interface memberships, rewrite cloned roles to `SupportBody`,
+preserve genuine interfaces, assign `anchor_layer_index` by nearest Z with
+lower-index tie-break, and deduplicate only synthesized candidates by full
+source identity plus `anchor_z`. Coarse-range entries bypass traditional
+`support_step` decimation only for qualifying bracket pairs; outside-range rows
+retain decimation. Pitch `0.0` retains object-grid behavior, and finer-direction
+derivation is unchanged.
 
 **Consumption pattern — tree-support precedence:**
 
@@ -1383,6 +1446,11 @@ carrying the same width and flow-factor metadata as `Point3WithWidth`.
 `AnchoredEntityProvenance`
 records the producing module and source identity needed to retain attribution.
 
+Host commit rejects planar points outside the declared plane with
+`anchored entity planar z mismatch` and retains no partial event. It rejects
+Z-spanning points outside `[min_z,max_z]` with `anchored entity z-span violation`,
+drops the complete entity, and never clips the path.
+
 The host groups entities into an `OrderedEventCollection`. The collection is
 an atomic ordered event: path optimization may propose an entity order within
 it, but must not reorder across physical event boundaries. An
@@ -1390,6 +1458,11 @@ it, but must not reorder across physical event boundaries. An
 capabilities, and `AnchoredEventRuntimeHooks` covers path optimization,
 cooling accounting, and time accounting. These types are additive beside the
 layer IR; `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` remains `1.2.0`.
+
+At host emission, planar anchored collections are lowered into ordinary
+`LayerCollectionIR` rows at declared Z. A collection merges with an object row
+when their canonical internal-unit Z difference is at most
+`COORDINATE_TOLERANCE_UNITS`; otherwise the lower-Z row is emitted separately.
 
 #### Anchored-event WIT transport
 
@@ -1483,6 +1556,10 @@ field defaults (typically `None` / `vec![]` / `false`). The contract
 exists so test migrations from hand-rolled fixture helpers can be
 mechanical — one builder chain call per original field assignment, no
 order-dependence.
+
+`bridge_orientation_deg` is expressed in degrees modulo 180 and converted once
+from canonical radians; this packet changes its producer, not the schema/WIT
+type.
 
 ### `rect_polygon` fixture helper (Normative — Packet 79 fixture support)
 

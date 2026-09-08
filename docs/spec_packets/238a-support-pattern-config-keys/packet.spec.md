@@ -2,12 +2,12 @@
 status: implemented
 packet: 238a-support-pattern-config-keys
 task_ids:
-  - TASK-363
-  - TASK-364
-  - TASK-365
-  - TASK-366
-  - TASK-367
-  - TASK-368
+  - TASK-472
+  - TASK-473
+  - TASK-474
+  - TASK-475
+  - TASK-476
+  - TASK-477
 depends_on: 236-support-stabilization
 backlog_source: docs/specs/support-parity-gap-register.md
 context_cost_estimate: M
@@ -215,8 +215,8 @@ Sign-off: `2026-08-25 — approved` (human validation gate satisfied; packet clo
 - `docs/DEVIATION_LOG.md` new row recording the divergence-5.4 decision (key-based
   `support_line_width` mapping; percent/auto resolve against `nozzle_diameter`) -
   `rg -q 'support_line_width' docs/DEVIATION_LOG.md`
-- `docs/07_implementation_status.md` - TASK-363..368 rows registered by the packet-owned
-  closure step (TASK-368), per `task-map.md` - `rg -q 'TASK-368' docs/07_implementation_status.md`
+- `docs/07_implementation_status.md` - TASK-472..477 rows registered by the packet-owned
+  closure step (TASK-477), per `task-map.md` - `rg -q 'TASK-477' docs/07_implementation_status.md`
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations

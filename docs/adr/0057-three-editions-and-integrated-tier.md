@@ -34,10 +34,18 @@ because "profile" is already overloaded by cargo build profiles and the fuel
 - Every edition keeps external-module loading (and per-id override of
   integrated modules) wherever a WASM runtime ships; wasm-less platform builds
   are per-target variants of the Integrated edition per ADR-0056.
-- New `--no-integrated-modules` flag disables the integrated tier entirely
-  (for module developers testing pure-external setups on Hybrid/Integrated
-  binaries). `--no-default-module-paths` keeps its current meaning (drops the
-  config-dir and exe-dir tiers only); the flags compose.
+- New `--no-integrated-modules` flag disables the integrated tier entirely on
+  the verbs `slice`, `module diagnose`, `module config-schema`, `dag stages`,
+  `dag stage`, `dag depends`, `dag claims`, `support-preview`, and
+  `visual-debug` (for module developers testing
+  pure-external setups on Hybrid/Integrated binaries). `--no-default-module-paths`
+  keeps its current meaning (drops the config-dir and exe-dir tiers only); the
+  flags compose. Support-preview and visual-debug are required to honor this
+  flag; their current coverage gap is tracked for a follow-up packet.
+- Feature-surface invariant: the registry has one existing feature per core
+  module and defaults to no enabled features. Integrated-edition passthrough
+  features enable the corresponding integrated rows without changing edition
+  membership.
 - Disjointness invariant: an edition's staged external set and its integrated
   set never intersect (ADR-0056 consequence).
 - Delivery phases: (1) batched host bridges — perf for all editions,

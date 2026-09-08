@@ -255,7 +255,8 @@ Round 4, this round produced blocking findings. All rulings below are user-made.
   `wit_parser` replaces the scanner (R5-5), but must not be reintroduced.
 - **R5-12.** `docs/03`'s freshness contract also names a second, host-side gate -
   `crates/slicer-runtime/tests/contract/guest_fixture_freshness_tdd.rs` - which
-  hardcodes 10 test guests and its own mtime rule. It is independent of xtask and
+  hardcodes 8 test guests and its own mtime rule (re-count from the tree when
+  changing this documentation). It is independent of xtask and
   keeps working, but packet 232 must reconcile the doc text that presents both as one
   model. `build_script_check_mode_reports_freshness` in that file is vacuous (returns
   early when `build-test-guests.sh` is absent, which it is).

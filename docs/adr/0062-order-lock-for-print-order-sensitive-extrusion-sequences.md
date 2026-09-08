@@ -28,6 +28,8 @@ bypasses D-P and min-segment pruning for locked paths.
 
 Tags are allocated by the producing module through an SDK allocator type
 (invocation-local, from 1, deterministic discovery order; `Some(0)` rejected).
+The allocator returns local tags in `1..2^63-1` in deterministic discovery
+order and returns `None` once that namespace is exhausted.
 The host remaps local tags to layer-unique global tags (bit 63 set) at every
 output boundary; unknown global tags in module output are a contract error. Any
 layer producer, InfillPostProcess module, or finalization module may mint locks;

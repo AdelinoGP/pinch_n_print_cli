@@ -456,6 +456,14 @@ final holdout) — two behavioural consequences for module authors:
   propagated by the host as `DispatchError` (no longer swallowed by
   macro/host glue).
 
+### `Layer::AnchoredEvents` stage method
+
+`Layer::AnchoredEvents` is user-targetable through the `run_anchored_events`
+stage method. Modules receive the layer context and submit anchored, ordered
+event collections through `LayerCollectionBuilder`; the host commits those
+collections at their declared anchor plane rather than treating them as an
+ordinary on-grid layer response.
+
 ### Single-Stage-Per-Impl Constraint
 
 `#[slicer_module]` is single-stage per impl block. The macro in
@@ -553,6 +561,10 @@ to receive a non-empty plan. Modules whose algorithm is inherently per-layer
 (e.g. `traditional-support`'s scan-line filler) intentionally omit the
 declaration so the audit contract reflects that they ignore the plan.
 
+Renderers place each planned support entry at `SupportPlanEntry.anchor_z`.
+On-grid entries use the ordinary support builder; off-grid paths are submitted
+through `LayerCollectionBuilder` as anchored, ordered event collections.
+
 For native host-side tests, `SliceRegionView` also exposes paint annotation
 accessors so perimeter generators can consume contour-parallel segment
 annotations ergonomically (via `segment_annotations()` / the `variant_chain`
@@ -611,6 +623,11 @@ let normal: Option<Point3> = host::surface_normal_at(object_id, x, y, z);
 let clipped: Vec<ExPolygon> = host::clip_polygons(&subject, &clip, ClipOperation::Intersection);
 let offset:  Vec<ExPolygon> = host::offset_polygons(&polys, -0.2, OffsetJoinType::Miter, arc_tolerance_mm);
 let simple:  Polygon        = host::simplify_polygon(&poly, 0.05);
+
+// `raycast_z_down`, `surface_normal_at`, `object_bounds`, `clip_polygons`,
+// `offset_polygons`, `simplify_polygon`, and `now_us` use host imports on
+// wasm32; native builds retain local implementations. An unknown object id
+// propagates as a dispatch failure, never as `None` or an empty result.
 
 // Timing
 let t0 = host::now_us();
@@ -752,7 +769,7 @@ silently `Ok(())`.
 
 ### Seam-candidate generation convention (packet 108)
 
-Perimeter-generation modules (currently `classic-perimeters`) emit
+Perimeter-generation modules (`classic-perimeters` and `arachne-perimeters`) emit
 `seam_candidates` for the outer wall only, via
 `slicer_core::perimeter_utils::generate_sharp_corner_seam_candidates(contour,
 z, angle_threshold_deg)`. A vertex becomes a candidate only when its absolute
@@ -974,6 +991,11 @@ Per ADR-0004 (quoted from its `## Decision` section):
 
 The `test_prelude` is whole-module gated with `#![cfg(any(test, feature = "test"))]` and lives separately from the production `prelude`. The production `slicer_sdk::prelude::*` stays test-free and is what `use slicer_sdk::prelude::*;` brings into scope inside module source files; the test helpers below come in via `use slicer_sdk::test_prelude::*;` from test modules only.
 
+Integration-test binaries that reference `slicer_sdk::test_support` must be
+declared as `[[test]]` targets with `required-features = ["test"]`. `cfg(test)`
+on an integration-test source does not enable the linked SDK feature, so bare
+runs may omit these binaries.
+
 ### Mock Host
 
 ```rust
@@ -1107,6 +1129,7 @@ Two new read-only accessors are available on `SliceRegionView` from packet 104 o
 ### SliceRegionView accessors (packet 107)
 
 - `overhang_quartile_polygons(&self) -> &[QuartileBand]` — returns the per-layer overhang quartile bands for this region, host-pre-filtered so the module only sees bands relevant to its region; returns an empty slice when no overhang data exists for the layer. Populated by the same host populator as `overhang_areas()`, from `SurfaceClassificationIR.overhang_quartile_polygons` keyed by `global_layer_index` (`crates/slicer-wasm-host/src/marshal/in_.rs`). Backed by the WIT `quartile-band` record and the `overhang-quartile-polygons` function on `slice-region-view` (`crates/slicer-schema/wit/deps/ir-types.wit`). Mapped into the guest `SliceRegionView` by the `#[slicer_module]` macro adapter (`crates/slicer-macros/src/lib.rs`) alongside `overhang_areas`, `bridge_areas`, `is_bridge`, `bridge_orientation_deg`, and `surface_group` — all available to WASM guests today.
+- The host marshaller first selects `region.object_id` from the outer map and then `global_layer_index` from the inner map. The WIT accessor exposes only that resulting region-filtered slice.
 - `prev_layer_boundary(&self) -> &[ExPolygon]` — returns the previous layer's slice boundary contours for this region; returns an empty slice when no previous-layer boundary is available. Backed by the WIT `prev-layer-boundary: func() -> list<ex-polygon>` accessor on `slice-region-view`.
 
 ---

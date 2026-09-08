@@ -184,3 +184,11 @@ intent, not today's runtime path — re-derive the bridged/unbridged set by
 grepping `crates/slicer-sdk/src/host.rs` for `target_arch = "wasm32"` before
 quoting it. The batch forms in this ADR are the planned mechanism for moving
 those calls host-side.
+
+## Amendment 2026-09-08 — packet 200 wired the singular WASM arms
+
+The 2026-08-05 status above is superseded. Packet 200 wired the seven singular
+wasm32 arms (the three mesh queries, three polygon operations, and `now_us`) and
+migrated the `classic-perimeters` offset/clip consumers onto the SDK wrappers.
+The DEV-094 closure row records the completed work, and ADR-0055 records the
+resulting fuel and wall-clock evidence.

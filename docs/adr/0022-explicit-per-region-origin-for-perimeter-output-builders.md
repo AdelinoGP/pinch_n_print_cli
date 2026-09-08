@@ -133,3 +133,10 @@ bug class and deferred.
   `variant_chain` that creates the dispatch scenario this bug surfaces on.
 - Packet 95 (TASK-245/246, paint-segmentation OrcaSlicer parity port) —
   introduced per-color region splitting.
+
+## Amendment — 2026-09-08 (packet 205c)
+
+Packet 205c extended the explicit-origin builder pattern to support output and
+replaced the flat support representation with per-region support output. The
+original support-stage exclusion is superseded; support now carries the origin
+semantics required by the native and WASM dispatch paths.

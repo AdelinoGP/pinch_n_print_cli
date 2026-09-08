@@ -82,7 +82,7 @@ DEV-127, dependent on a future WIT-interface pattern-services design).
 ## Future-Reviewer Notes
 
 - **Do not re-suggest extracting patterns to `slicer_core::patterns`.** This was the first instinct during the design exploration and was rejected for the multi-language module promise. If the project's stance on language portability changes, revisit; otherwise the extraction is the wrong direction.
-- **Do not re-suggest making `raft-default` a renderer.** The synthesizer-only shape is load-bearing for the no-duplication goal.
+- **Do not re-suggest making `raft-default` a renderer or duplicating renderer logic.** The synthesizer-only shape and generic host hatch boundary are load-bearing; raft-default owns deterministic raft footprint geometry and invokes the generic host hatch service to produce fill polygons, but does not perform extrusion-path, flow, speed, or role rendering.
 - **Do not re-suggest a separate `Layer::Raft` stage with its own renderer claim.** This was considered and rejected — adding a per-fill-type stage for every fill type would proliferate stages without solving the duplication problem.
 
 ## References
@@ -99,3 +99,8 @@ The original Decision 5 clause is:
 > 5. **Pattern variety** is provided by whichever `Layer::Infill` module(s) declare `claim:raft-fill` in their manifest. v1 ships with `rectilinear-infill` declaring the claim (matches OrcaSlicer's default `raft_pattern = "rectilinear"`). Users who want grid / honeycomb / lightning raft swap the claim to a different infill module.
 
 Packet 240b reassigns the `claim:raft-fill` holder to `com.core.raft-default`; the module remains the default raft pattern provider while preserving the existing `Layer::Infill` role/claim contract. AD-240B-1 records that the guest→`SlicedRegion.raft_fill` transport and emitter were verified missing and absorbed into this packet.
+
+The raft-default module owns deterministic raft footprint geometry and invokes
+the generic host hatch service to produce fill polygons. It still does not
+perform extrusion-path, flow, speed, or role rendering; those remain the
+renderer boundary.

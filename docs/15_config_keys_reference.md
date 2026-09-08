@@ -335,10 +335,24 @@ qualification runs in the ShellClassification prepass
 arm only emits the authored centerlines.
 
 **Note — `support_interface_bottom_layers`:** the key remains user-visible with
-default `-1`, but bottom interface layers are not yet implemented; `support-planner`
-emits one typed code-`1003` warning (via `SupportGeometryOutput::push_diagnostic`,
-packet 118) before the layer loop when the value is not `-1`. See
-`docs/specs/_OLD/support-modules-orca-port.md` (archived spec).
+default `-1`. Negative values mirror the configured top-interface count; positive
+values request bottom-interface geometry emitted as structural
+`SupportPlanIR` interface regions. Code `1003` is retired.
+
+**Note — `dont_filter_internal_bridges`:** the manifest remains a boolean
+compatibility surface: `false` maps to canonical `ibfDisabled` (full filtering,
+expansion multiplier 3), while `true` maps to `ibfNofilter` (bypass of the
+area/partial gate, expansion multiplier 1).
+
+**Note — `bridge_line_width` and spacing:** for rectilinear infill, a zero
+`bridge_line_width` falls back to `nozzle_diameter`; bridge extrusion spacing is
+that diameter plus `0.05 mm`, distinct from `resolve_role_width`.
+
+**Note — `wave-overhangs` factors:** `speed_factor` is
+`wave_overhang_print_speed / bridge_speed`; `flow_factor` is
+`wave_overhang_flow_mm3_per_mm / (nozzle_diameter × effective_layer_height)`.
+Ratios outside the emitter's representable range are rejected rather than
+silently clamped.
 
 ### `seam_mode` values
 

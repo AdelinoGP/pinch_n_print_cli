@@ -14,6 +14,19 @@ In **test code**, a struct literal of a **watched type** must contain a `..`
 rest (any base: `Default::default()`, a fixture call) **OR** an inline waiver
 comment with a mandatory reason.
 
+### 1.1. Checker CLI contract
+
+Run `cargo xtask check-literals [--report] [PATH...]`. Positional paths use
+component-aware workspace-relative prefix matching, so a path matches itself
+or descendants but not a similarly named component. Output is sorted by
+workspace-relative path and line, with forward-slash separators. Each
+violation is printed as
+`<ws-relative-path>:<line>: exhaustive literal of watched type \`<Name>\``;
+the final summary is
+`check-literals: <N> violation(s) in <M> file(s) (watchlist: <K> types)`.
+Exit code 0 means no violations (and is also used by `--report`), 1 means
+violations in enforce mode, and 2 means invalid usage such as an unknown flag.
+
 ```rust
 // OK — functional record update from Default
 let p = Point3WithWidth { x: 1.0, y: 2.0, z: 3.0, ..Default::default() };
@@ -30,6 +43,10 @@ code is a violation. `cargo xtask check-literals` enforces this and exits 1 on
 any violation; `--report` prints the same output and always exits 0. The gate is
 **enforced since packet 199**, runs as the `check-literals preflight` in
 `cargo xtask test`, and is required before committing.
+
+Operationally, `cargo xtask test` performs the workspace-wide enforce scan
+before the guest-freshness check. `cargo xtask test --summary-from` remains
+gate-free because it only summarizes an existing test log.
 
 ## 2. Production-exemption rationale
 
@@ -85,6 +102,16 @@ literal with `..Default::default()` when the type has no safe default or when
 several fields are meaningful together. Host crates consuming it take a
 `slicer-sdk` dev-dependency with `feature = "test"`.
 
+The API provides `print_entity_base(role)`, `wall_loop_base(loop_type,
+boundary_type)`, and `ordered_entity_view_base(role)`. Their explicit enum
+arguments avoid unsafe blanket `Default` implementations, and the returned
+bases are intended for FRU composition.
+
+`SliceRunOptions::default()` is the quiet test baseline. It uses
+`MeshIR::default()` for the current schema version, leaves paths and options
+empty or `None`, and intentionally keeps `progress_events = false` rather
+than using the CLI default.
+
 ## 6. `clippy::needless_update` guidance
 
 When converting a site, **omit default-equal fields** rather than spelling all
@@ -102,6 +129,18 @@ let p = Point3WithWidth { x: 1.0, y: 0.0, z: 0.0, width: 0.0, ..Default::default
 ## 7. Known blind spots
 
 The scanner is syn-based and cannot see through everything. Known gaps:
+
+### 7.1. Scanner scope
+
+The enforced scan covers `crates/*/tests/**`,
+`modules/core-modules/*/tests/**`, `crates/*/benches/**`, and inline
+`#[cfg(test)]` subtrees in `crates/*/src/**`. The tree
+`crates/slicer-wasm-host/test-guests/*/src` is intentionally exempt so its
+WIT adapter shims remain compiler-enforced.
+
+An out-of-line `#[cfg(test)]` module declaration is not followed into its
+separately declared module file; only inline `#[cfg(test)]` subtrees are
+scanned.
 
 1. **Macro range expressions.** A macro token tree with a top-level range
    expression (`field: 0..2`) reads the `..` as an FRU rest, suppressing

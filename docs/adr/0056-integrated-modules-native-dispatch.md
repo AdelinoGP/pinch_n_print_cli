@@ -86,6 +86,11 @@ full citizen of the one existing module model.**
    keep wasmtime, so extension and override work identically there in every
    edition.
 
+The registry contract is that each integrated row uses manifest ID
+`com.core.<name>`, origin label `integrated://<name>`, and a `NativeStageEntry`
+family matching its declared `Layer`, `PrePass`, `Finalization`, or `PostPass`
+stage.
+
 ## Rejected alternatives
 
 - **Embed WASM artifacts in the binary (`include_bytes!`, optionally

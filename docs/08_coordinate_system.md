@@ -251,6 +251,10 @@ distance, an area, or a unitless tolerance. A 1 nm linear threshold is below
 the Pinch 'n Print resolution and cannot be represented exactly as an integer
 unit; it must not be silently relabeled as equivalent to one 100 nm unit.
 
+For external bridge edge differencing, the canonical epsilon is `1e-4` mm,
+exactly one PnP unit. Do not confuse this bridge-specific linear tolerance with
+squared tolerances or with the separate unsupported-span growth.
+
 ---
 
 ## Constant Conversion Table
@@ -307,6 +311,14 @@ dimension. Convert linear distances by `100`, squared distances and areas by
 `10_000`, and leave unitless tolerances unchanged. Keep the resulting
 algorithm-specific constant next to the code that consumes it; do not invent a
 workspace-wide epsilon contract in this document.
+
+### Support-rasterizer porting contract
+
+The `SupportGrid` implementation is the PnP contract reference for support
+rasterization. It uses nonzero winding with any-nonzero coverage, canonical grid
+sizing and boundary margin, then a 3x3 all-set erosion. Seed filling is two-pass
+and block-local (it never crosses a macro-block boundary); `fill_holes` is a
+single pass. The `offset_in_grid` invariant is maintained inside each cell.
 
 ---
 

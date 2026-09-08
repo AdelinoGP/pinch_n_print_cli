@@ -2,7 +2,7 @@
 status: implemented
 packet: 253-build-guests-incremental-and-shared-target
 task_ids:
-  - TASK-531
+  - TASK-560
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
 task_id_note: >
