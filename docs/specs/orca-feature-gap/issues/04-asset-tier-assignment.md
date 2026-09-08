@@ -590,14 +590,14 @@ findings (the one flagged row was a stale-asset artifact).
 | `slow_down_layers` | B | crates/slicer-gcode (per-entity slow-down blend in emit.rs over the feedrate.rs table) — **in packet 291** by ticket 65 |
 
 ### Speed / Jerk (XY)
-| `default_jerk` | B | crates/slicer-gcode (estimator.rs) |
-| `default_junction_deviation` | B | crates/slicer-gcode (estimator.rs) |
-| `infill_jerk` | B | crates/slicer-gcode (estimator.rs) |
-| `initial_layer_jerk` | B | crates/slicer-gcode (estimator.rs) |
-| `inner_wall_jerk` | B | crates/slicer-gcode (estimator.rs) |
-| `outer_wall_jerk` | B | crates/slicer-gcode (estimator.rs) |
-| `top_surface_jerk` | B | crates/slicer-gcode (estimator.rs) |
-| `travel_jerk` | B | crates/slicer-gcode (estimator.rs) |
+| `default_jerk` | B | crates/slicer-gcode (per-entity jerk-selection stage in emit.rs) — **in packet 292** by ticket 66 |
+| `default_junction_deviation` | B | crates/slicer-gcode (per-entity jerk-selection stage in emit.rs) — **in packet 292** by ticket 66 |
+| `infill_jerk` | B | crates/slicer-gcode (per-entity jerk-selection stage in emit.rs) — **in packet 292** by ticket 66 |
+| `initial_layer_jerk` | B | crates/slicer-gcode (per-entity jerk-selection stage in emit.rs) — **in packet 292** by ticket 66 |
+| `inner_wall_jerk` | B | crates/slicer-gcode (per-entity jerk-selection stage in emit.rs) — **in packet 292** by ticket 66 |
+| `outer_wall_jerk` | B | crates/slicer-gcode (per-entity jerk-selection stage in emit.rs) — **in packet 292** by ticket 66 |
+| `top_surface_jerk` | B | crates/slicer-gcode (per-entity jerk-selection stage in emit.rs) — **in packet 292** by ticket 66 |
+| `travel_jerk` | B | crates/slicer-gcode (per-entity jerk-selection stage in emit.rs) — **in packet 292** by ticket 66 |
 
 ### Speed / Other layers speed
 | `internal_solid_infill_speed` | B | crates/slicer-gcode (feedrate.rs) |

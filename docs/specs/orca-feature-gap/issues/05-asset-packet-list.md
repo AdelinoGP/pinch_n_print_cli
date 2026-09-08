@@ -534,9 +534,11 @@ consumed.
 
 **Authored by ticket 65 (2026-09-07): 1 key in, none shed, packet 291.** Tier B held, owner `crates/slicer-gcode` stands but the seam corrected (feedrate.rs is the speed table only — the arm is a per-entity blend in emit.rs over that table); canonical scalarity IS held (coInt scalar — no ticket-125 vector arm); defaults ARE identity (`0`/`1` inert by the `> 1` gate, AC-2 pins it).
 
-### P59 — Speed / Jerk (XY) — emitter (8 keys, Tier B)
+### P59 — Speed / Jerk (XY) — emitter (8 keys, Tier B; packet 292)
 
 `default_jerk`, `default_junction_deviation`, `infill_jerk`, `initial_layer_jerk`, `inner_wall_jerk`, `outer_wall_jerk`, `top_surface_jerk`, `travel_jerk`
+
+**Authored by ticket 66 (2026-09-08): 8 keys in, none shed, packet 292.** Tier B held, owner `crates/slicer-gcode` stands but the seam corrected (estimator.rs does time-math only — the stage is a per-entity jerk-selection stage in emit.rs reusing the existing `set_jerk_xy` / Marlin2-only `set_junction_deviation` arms); canonical scalarity NOT held (all eight `coFloats` per-nozzle vectors — DEV-184(b) scalar-global with first-wins ingest, ticket-125 future); defaults ARE identity (`default_jerk` 0 master gate, AC-2 pins byte-identical — inverse of 289's emitting default).
 
 ### P60 — Speed / Other layers speed — emitter (2 keys, Tier B)
 
