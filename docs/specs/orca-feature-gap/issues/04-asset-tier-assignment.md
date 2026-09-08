@@ -587,7 +587,7 @@ findings (the one flagged row was a stale-asset artifact).
 | `max_volumetric_extrusion_rate_slope_segment_length` | B | crates/slicer-gcode (estimator.rs) |
 
 ### Speed / Initial layer speed
-| `slow_down_layers` | B | crates/slicer-gcode (feedrate.rs) |
+| `slow_down_layers` | B | crates/slicer-gcode (per-entity slow-down blend in emit.rs over the feedrate.rs table) — **in packet 291** by ticket 65 (ticket-63/64 rows below landed concurrently — P56 11-in at 289, P57 3-in at 290) |
 
 ### Speed / Jerk (XY)
 | `default_jerk` | B | crates/slicer-gcode (estimator.rs) |

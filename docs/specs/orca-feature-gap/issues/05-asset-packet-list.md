@@ -528,6 +528,8 @@ consumed.
 
 `slow_down_layers`
 
+**Authored by ticket 65 (2026-09-07): 1 key in, none shed, packet 291.** Tier B held, owner `crates/slicer-gcode` stands but the seam corrected (feedrate.rs is the speed table only — the arm is a per-entity blend in emit.rs over that table); canonical scalarity IS held (coInt scalar — no ticket-125 vector arm); defaults ARE identity (`0`/`1` inert by the `> 1` gate, AC-2 pins it). (P56/P57 rows above landed concurrently — 11-in at 289, 3-in at 290.)
+
 ### P59 — Speed / Jerk (XY) — emitter (8 keys, Tier B)
 
 `default_jerk`, `default_junction_deviation`, `infill_jerk`, `initial_layer_jerk`, `inner_wall_jerk`, `outer_wall_jerk`, `top_surface_jerk`, `travel_jerk`
