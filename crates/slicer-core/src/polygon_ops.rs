@@ -23,6 +23,73 @@ pub struct Line {
     pub end: Point2,
 }
 
+/// Generates deterministic parallel hatch segments clipped to polygon areas.
+/// Coordinates remain in the IR unit system (100 nm); holes are excluded by
+/// the even/odd boundary rule.
+pub fn hatch_areas(areas: &[ExPolygon], spacing_mm: f32, angle_degrees: f32) -> Vec<Line> {
+    let spacing = (spacing_mm.max(0.000001) * 10_000.0) as f64;
+    let angle = f64::from(angle_degrees).to_radians();
+    let (sin, cos) = angle.sin_cos();
+    let rotate = |p: Point2| {
+        (
+            p.x as f64 * cos + p.y as f64 * sin,
+            -(p.x as f64) * sin + p.y as f64 * cos,
+        )
+    };
+    let unrotate = |x: f64, y: f64| Point2 {
+        x: (x * cos - y * sin).round() as i64,
+        y: (x * sin + y * cos).round() as i64,
+    };
+    let rings = areas
+        .iter()
+        .flat_map(|a| std::iter::once(&a.contour).chain(a.holes.iter()));
+    let bounds: Vec<Vec<(f64, f64)>> = rings
+        .filter(|r| r.points.len() >= 3)
+        .map(|r| r.points.iter().copied().map(rotate).collect())
+        .collect();
+    let Some((min_y, max_y)) =
+        bounds
+            .iter()
+            .flat_map(|r| r.iter().map(|p| p.1))
+            .fold(None::<(f64, f64)>, |b, y| {
+                Some(match b {
+                    None => (y, y),
+                    Some((lo, hi)) => (lo.min(y), hi.max(y)),
+                })
+            })
+    else {
+        return Vec::new();
+    };
+    let mut result = Vec::new();
+    let mut y = min_y + spacing;
+    while y < max_y - f64::EPSILON {
+        let mut xs = Vec::new();
+        for ring in &bounds {
+            for edge in ring
+                .windows(2)
+                .chain(std::iter::once(&[ring[ring.len() - 1], ring[0]][..]))
+            {
+                let (x1, y1) = edge[0];
+                let (x2, y2) = edge[1];
+                if (y1 <= y && y < y2) || (y2 <= y && y < y1) {
+                    xs.push(x1 + (y - y1) * (x2 - x1) / (y2 - y1));
+                }
+            }
+        }
+        xs.sort_by(f64::total_cmp);
+        for pair in xs.chunks_exact(2) {
+            if (pair[1] - pair[0]).abs() > f64::EPSILON {
+                result.push(Line {
+                    start: unrotate(pair[0], y),
+                    end: unrotate(pair[1], y),
+                });
+            }
+        }
+        y += spacing;
+    }
+    result
+}
+
 /// Boolean clip operation type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClipOperation {

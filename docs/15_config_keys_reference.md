@@ -152,6 +152,7 @@ is the authoritative catalog of their defaults and ranges.
 | `line_width` | float | `0.4` | [0.1, 2.0] | `infill-linker` |
 | `first_layer_height` | float | `0.3` | [0.01, 1.0] | `layer-planner-default` |
 | `layer_height` | float | `0.2` | [0.01, 1.0] | `layer-planner-default` |
+| `support_raft_layers` | int | `0` | [0.0, 100.0] | `layer-planner-default` |
 | `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `lightning-infill` |
 | `infill_density` | float | `0.2` | [0.0, 1.0] | `lightning-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `lightning-infill` |
@@ -195,6 +196,10 @@ is the authoritative catalog of their defaults and ranges.
 | `retract_mode` | enum | `"gcode"` | — (values: gcode|firmware) | `path-optimization-default` |
 | `retract_speed` | float | `25.0` | — | `path-optimization-default` |
 | `travel_z_hop` | float | `0.0` | — | `path-optimization-default` |
+| `raft_contact_distance` | float | `0.1` | >= 0.0 | `raft-default` |
+| `raft_expansion` | float | `1.5` | >= 0.0 | `raft-default` |
+| `raft_first_layer_expansion` | float | `2.0` | >= 0.0 | `raft-default` |
+| `raft_line_spacing` | float | `0.5` | >= 0.000001 | `raft-default` |
 | `bridge_density` | float_or_percent | `"100%"` | [10.0, 120.0] | `rectilinear-infill` |
 | `bridge_flow` | float | `1.0` | >= 0.0 | `rectilinear-infill` |
 | `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
@@ -248,6 +253,7 @@ is the authoritative catalog of their defaults and ranges.
 | `enable_support` | bool | `true` | — | `traditional-support-planner` |
 | `independent_support_layer_height` | bool | `true` | — | `traditional-support-planner` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `traditional-support-planner` |
+| `support_area_rasterizer` | enum | `"legacy_semantic"` | — (values: agg|legacy_semantic) | `traditional-support-planner` |
 | `support_base_pattern` | string | `"rectilinear"` | — (values: default|rectilinear|rectilinear-grid|honeycomb|lightning|hollow) | `traditional-support-planner` |
 | `support_base_pattern_spacing` | float | `2.5` | [0.1, 10.0] | `traditional-support-planner` |
 | `support_interface_bottom_layers` | int | `-1` | [-1.0, 10.0] | `traditional-support-planner` |

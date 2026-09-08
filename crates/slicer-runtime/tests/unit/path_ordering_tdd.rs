@@ -79,6 +79,7 @@ fn same_object_nearest_neighbor_ordering_is_applied_before_path_optimization() {
                 ..Default::default()
             },
         ],
+        ..Default::default()
     };
 
     let mesh = minimal_mesh("test-object");
@@ -295,6 +296,7 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
                 ..Default::default()
             },
         ],
+        ..Default::default()
     };
 
     let mesh = minimal_mesh("test-object");
@@ -407,6 +409,7 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
                 ..Default::default()
             },
         ],
+        ..Default::default()
     };
 
     let mesh = minimal_mesh("test-object");
@@ -514,6 +517,7 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
                 sparse_infill: vec![path_at(30.0, 0.0), path_at(0.0, 0.0), path_at(15.0, 0.0)],
                 ..Default::default()
             }],
+            ..Default::default()
         }
     }
 
@@ -617,6 +621,7 @@ fn single_or_already_optimal_sequence_is_left_unchanged() {
             sparse_infill: vec![path_at(0.0, 0.0), path_at(10.0, 0.0), path_at(30.0, 0.0)],
             ..Default::default()
         }],
+        ..Default::default()
     };
 
     let mesh = minimal_mesh("test-object");
@@ -721,6 +726,7 @@ fn no_module_proposal_leaves_raw_assembled_order() {
             sparse_infill: vec![path_at(30.0, 0.0), path_at(0.0, 0.0), path_at(10.0, 0.0)],
             ..Default::default()
         }],
+        ..Default::default()
     };
 
     let mesh = minimal_mesh("test-object");

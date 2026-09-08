@@ -69,6 +69,7 @@ fn slice_region_view_contract() {
                 internal_bridge_areas: Vec::new(),
                 bridge_orientation_deg: 0.0,
                 sparse_infill_area: Vec::new(),
+                raft_fill: Vec::new(),
                 held_claims: Vec::new(),
                 overhang_areas: Vec::new(),
                 overhang_quartile_polygons: Vec::new(),
@@ -153,6 +154,7 @@ fn prev_layer_boundary_reaches_live_perimeters_guest_view() {
                 internal_bridge_areas: Vec::new(),
                 bridge_orientation_deg: 0.0,
                 sparse_infill_area: Vec::new(),
+                raft_fill: Vec::new(),
                 held_claims: Vec::new(),
                 overhang_areas: Vec::new(),
                 overhang_quartile_polygons: Vec::new(),
@@ -178,17 +180,10 @@ fn prev_layer_boundary_reaches_live_perimeters_guest_view() {
         assert_eq!(actual.y, expected.y);
     }
     let paint_handle = ctx
-        .push_paint_region_layer_view(
-            // exhaustive: paint-region view fixture supplies every stored field
-            PaintRegionLayerData {
-                layer_index: 0,
-                regions_by_semantic: HashMap::new(),
-                custom_regions: HashMap::new(),
-                support_plan_segments: HashMap::new(),
-                support_plan_entries: HashMap::new(),
-                lightning_tree_segments: HashMap::new(),
-            },
-        )
+        .push_paint_region_layer_view(PaintRegionLayerData {
+            layer_index: 0,
+            ..Default::default()
+        })
         .expect("paint resource");
     let output_handle = ctx
         .push_perimeter_output_builder()

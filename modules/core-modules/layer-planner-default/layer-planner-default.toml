@@ -44,6 +44,15 @@ max     = 1.0
 display = "First Layer Height"
 group   = "Layer Planning"
 
+[config.schema.support_raft_layers]
+type    = "int"
+default = 0
+min     = 0
+max     = 100
+display = "Raft Layers"
+description = "PnP's support_raft_layers key; consumed by layer planning to emit the raft band proposals."
+group   = "Layer Planning"
+
 [config.overridable-per-region]
 keys = []
 

@@ -607,11 +607,17 @@ support paths.
   dispatch normally.
 - **Host aggregation as the sole multi-writer merge point.** The host is the
   only place that merges output from multiple family writers. Aggregation
-  assigns each body to a deterministic routing cell, so the merged result is
-  reproducible regardless of which family produced which body.
+  merges on declared identity (`family_id`, `global_layer_index`, `object_id`,
+  `region_id`, `anchor_z`) and checks each entry's ownership against
+  `family_assignments` plus the producing module's `support-family:<id>` claim,
+  default-deny. Ownership is therefore a pure function of the entry and the
+  assignments, so the merged result is reproducible regardless of which family
+  produced which body and independent of plan arrival order.
 - **Complete-body validation.** A complete body is validated against the
-  exact-Z occupancy and routing cells (see the host `exact_z_query` service in
-  `crates/slicer-wasm-host/src/exact_z_query.rs`). An invalid complete body is
+  exact-Z occupancy and a maximum body extent bound (`MAX_BODY_EXTENT_UNITS`,
+  `1 << 20` units on each axis; see the host `exact_z_query` service in
+  `crates/slicer-wasm-host/src/exact_z_query.rs`). The extent bound is a pure
+  check — it neither assigns nor partitions. An invalid complete body is
   dropped, not clipped or replaced by a fallback filler.
 - **Structured unmet diagnostics with degraded continuation.** A declined or
   unroutable candidate surfaces a structured unmet diagnostic and the pipeline

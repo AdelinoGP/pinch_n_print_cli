@@ -95,6 +95,7 @@ fn layer_at(index: u32, z: f32) -> GlobalLayer {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
+        is_raft: false,
     }
 }
 

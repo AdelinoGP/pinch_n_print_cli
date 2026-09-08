@@ -2,13 +2,13 @@
 
 #![allow(missing_docs)]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigValue, ConfigView, GlobalLayer, IndexedTriangleSet,
     LayerPlanIR, MeshIR, ObjectLayerRef, ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan,
-    SemVer, SupportPlanIR, Transform3d,
+    SemVer, SupportAnalysisIR, SupportPlanIR, Transform3d,
 };
 use slicer_runtime::{
     bind_module_config_view, build_wasm_instance_pool, execute_prepass_with_builtins, Blackboard,
@@ -165,7 +165,7 @@ fn bundle(engine: &Arc<WasmEngine>, values: HashMap<String, ConfigValue>) -> Tes
         "SupportGeometryIR.entries".into(),
     ])
     .ir_writes(vec!["SupportPlanIR.entries".into()])
-    .claims(vec!["support-planner".into()])
+    .claims(vec!["support-planner".into(), "support-family:tree".into()])
     .min_host_version(semver())
     .min_ir_schema(semver())
     .max_ir_schema(SemVer {
@@ -187,6 +187,7 @@ fn bundle(engine: &Arc<WasmEngine>, values: HashMap<String, ConfigValue>) -> Tes
         .unwrap(),
     );
     let module = CompiledModuleBuilder::new(loaded.id().to_string())
+        .claims(loaded.claims().to_vec())
         .config_view(Arc::new(ConfigView::from_map(values)))
         .build();
     TestModuleBundle {
@@ -203,6 +204,14 @@ fn run(values: HashMap<String, ConfigValue>) -> SupportPlanIR {
     let mut blackboard = Blackboard::new(Arc::new(mesh()), 0);
     blackboard.commit_layer_plan(Arc::new(layer_plan)).unwrap();
     blackboard.commit_region_map(Arc::new(region_map)).unwrap();
+    // These config-surface tests intentionally bypass SliceIR; provide the
+    // ownership row required by the default-deny support-family merge.
+    blackboard
+        .commit_support_analysis(Arc::new(SupportAnalysisIR {
+            family_assignments: BTreeMap::from([(("plate".to_string(), 0), "tree".to_string())]),
+            ..Default::default()
+        }))
+        .unwrap();
     let (module, handles) = bundle(&engine, values).into_module_and_handles();
     let plan = ExecutionPlan {
         prepass_stages: vec![CompiledStage {

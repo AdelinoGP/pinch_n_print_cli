@@ -825,6 +825,7 @@ fn infill_ir_two_regions() -> slicer_ir::InfillIR {
                 ..Default::default()
             },
         ],
+        ..Default::default()
     }
 }
 

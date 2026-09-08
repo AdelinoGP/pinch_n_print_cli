@@ -55,6 +55,7 @@ interface host-services {
     enum wall-sequence { inner-outer, outer-inner, inner-outer-inner }
     clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
     offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type, arc-tolerance-mm: f32, miter-limit: option<f32>) -> list<ex-polygon>;
+    hatch-areas:      func(areas: list<ex-polygon>, spacing-mm: f32, angle-degrees: f32) -> list<polygon>;
     simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
 
     // ── Batched forms ────────────────────────────────────────────────────

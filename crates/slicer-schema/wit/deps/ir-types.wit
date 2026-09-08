@@ -6,9 +6,10 @@ interface ir-handles {
 
     type object-id = string;
     type region-id = string;
-    // Signed because raft entries committed by `PrePass::SupportGeometry`
-    // carry negative `global_layer_index`. Layer-module exports always
-    // pass non-negative values; host conversion sites use `as u32` /
+    // Signed for historical reasons. The positive raft band occupies
+    // non-negative indices `0..support_raft_layers-1`, followed by model
+    // layers. Negative values identify deterministic off-grid support rows,
+    // not raft layers. Host conversion sites use `as u32` /
     // `as i32` at the boundary to round-trip into u32-keyed IR types.
     type layer-idx = s32;
 
@@ -39,6 +40,17 @@ interface ir-handles {
         capabilities: list<string>,
         provenance: list<string>,
         decline-reason: option<support-plan-view-decline-reason>,
+    }
+
+    // Local mirror of the prepass `RaftPlan` config record. Declared here
+    // rather than imported across worlds: `ir-handles` is imported by the
+    // prepass package, so importing back would risk a world-satisfaction
+    // failure. Mirrors `support-plan-entry-view` above, same reason.
+    record raft-plan-view {
+        raft-layers: u32,
+        raft-first-layer-density: f32,
+        base-raft-layers: u32,
+        interface-raft-layers: u32,
     }
 
     /// The declared Z extent of anchored work, in canonical 100 nm units.
@@ -148,6 +160,9 @@ interface ir-handles {
         internal-bridge-areas: func() -> list<ex-polygon>;
         bridge-orientation-deg: func() -> f32;
         sparse-infill-area: func() -> list<ex-polygon>;
+        // Rust binding: raft_fill. Raft-substrate fill polygons; non-empty only
+        // on layers inside the positive-offset raft band (packet 240a).
+        raft-fill: func() -> list<ex-polygon>;
         held-claims: func() -> list<string>;
         overhang-areas: func() -> list<ex-polygon>;
         overhang-quartile-polygons: func() -> list<quartile-band>;
@@ -202,6 +217,9 @@ interface ir-handles {
         top-solid-fill: func() -> list<ex-polygon>;
         bottom-solid-fill: func() -> list<ex-polygon>;
         bridge-areas: func() -> list<ex-polygon>;
+        // Rust binding: raft_fill. Mirrored from slice-region-view.raft-fill
+        // (packet 240a).
+        raft-fill: func() -> list<ex-polygon>;
         // Host-computed tool index: variant-chain material tool →
         // RegionMapIR extensions["extruder"] → DEFAULT_TOOL(0).
         tool-index: func() -> u32;
@@ -231,6 +249,7 @@ interface ir-handles {
         push-sparse-path:  func(path: extrusion-path3d) -> result<_, string>;
         push-solid-path:   func(path: extrusion-path3d) -> result<_, string>;
         push-ironing-path: func(path: extrusion-path3d) -> result<_, string>;
+        push-raft-fill:    func(polygons: list<ex-polygon>) -> result<_, string>;
         set-current-origin: func(object-id: string, region-id: string) -> result<_, string>;
     }
 
@@ -302,5 +321,13 @@ interface ir-handles {
             -> list<support-plan-entry-view>;
         lightning-tree-segments: func(object-id: object-id, region-id: region-id)
             -> list<list<point3-with-width>>;
+        /// Configuration-only raft plan for this print, projected from
+        /// `SupportPlanIR.raft_plan`. Layer-independent: the same value is
+        /// returned on every layer. `none` when no raft was planned.
+        raft-plan: func() -> option<raft-plan-view>;
+        /// True when this layer belongs to the positive-offset raft band
+        /// (`GlobalLayer.is_raft`). A `Layer::Infill` guest has no other way
+        /// to tell a raft layer from a model layer.
+        is-raft: func() -> bool;
     }
 }

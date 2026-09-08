@@ -25,7 +25,9 @@ use slicer_core::algos::mesh_analysis::{execute_mesh_analysis, MeshAnalysisError
 use slicer_core::algos::support_geometry::SupportGeometryBuiltinError;
 use slicer_wasm_host::{
     exact_z_query::ExactZQueryService,
-    support_aggregation::aggregate_support_plan_irs_degrading_with_attributed_diagnostics,
+    support_aggregation::{
+        aggregate_support_plan_irs_degrading_with_attributed_diagnostics, SupportPlanProducer,
+    },
     CompiledModuleLive, PrepassStageInput, PrepassStageRunner, WasmComponent, WasmInstancePool,
 };
 
@@ -265,6 +267,11 @@ fn execute_prepass_with_instrumentation_collecting(
         // audit, in which case the diagnostic must stay unattributed rather
         // than be pinned on some other module.
         let mut support_plan_audits: Vec<Option<usize>> = Vec::new();
+        // Also index-parallel with `support_plans`: the manifest identity of
+        // the module that wrote plan `i`. Support-region ownership is a
+        // declared property checked at the merge point, so the aggregate needs
+        // the producing module's id and claims, not just the plan contents.
+        let mut support_plan_producers: Vec<SupportPlanProducer> = Vec::new();
 
         instrumentation.on_stage_start(&stage.stage_id, None);
         for module in &stage.modules {
@@ -352,6 +359,10 @@ fn execute_prepass_with_instrumentation_collecting(
                 };
                 support_plans.push((*plan).clone());
                 support_plan_audits.push(None);
+                support_plan_producers.push(SupportPlanProducer {
+                    module_id: module.module_id().to_string(),
+                    claims: module.claims().to_vec(),
+                });
             } else if let Err(e) =
                 commit_stage_output(&stage.stage_id, module.module_id(), blackboard, output)
             {
@@ -413,6 +424,7 @@ fn execute_prepass_with_instrumentation_collecting(
             let (plan, diagnostics) =
                 aggregate_support_plan_irs_degrading_with_attributed_diagnostics(
                     support_plans,
+                    support_plan_producers,
                     &exact_z,
                     blackboard.support_analysis().map(Arc::as_ref),
                 );

@@ -369,6 +369,8 @@ pub(crate) fn execute_per_layer_with_committed_anchored_events_instrumented(
     let mut layers = layers;
     append_same_z_entities(&mut layers, plan, anchored_entities)?;
     let mut collections = execute_anchored_event_collections(plan, anchored_entities)?;
+    producer_collections
+        .retain(|collection| !global_layer_is_raft(plan, collection.anchor_global_layer_index));
     collections.append(&mut producer_collections);
     collections.sort_by_key(|collection| collection.anchor_global_layer_index);
     let mut committed = Vec::with_capacity(layers.len() + collections.len());
@@ -544,6 +546,7 @@ fn append_same_z_entities(
     for entity in entities
         .iter()
         .filter(|entity| matches!(route_of(entity, plan), AnchoredRoute::SameZLayerEntity))
+        .filter(|entity| !global_layer_is_raft(plan, entity.anchor_global_layer_index))
     {
         validate_anchored_entity(entity).map_err(|message| {
             LayerExecutionError::AnchoredGeometry {
@@ -563,6 +566,12 @@ fn append_same_z_entities(
             .push(anchored_entity_to_print_entity(entity, topo_order));
     }
     Ok(())
+}
+
+fn global_layer_is_raft(plan: &ExecutionPlan, global_layer_index: u32) -> bool {
+    plan.global_layers
+        .iter()
+        .any(|layer| layer.index == global_layer_index && layer.is_raft)
 }
 
 /// Convert one [`slicer_ir::AnchoredEntity`] into the `PrintEntity` that
@@ -1117,6 +1126,7 @@ fn execute_single_layer_inner(
         let (ordered_entities, support_entity_identities) =
             assemble_ordered_entities_with_support_identities(
                 layer.index,
+                layer.is_raft,
                 arena.perimeter(),
                 arena.infill(),
                 arena.support(),
@@ -1291,6 +1301,7 @@ fn prestage_layer_collection_if_path_optimization(
     let (ordered_entities, support_entity_identities) =
         assemble_ordered_entities_with_support_identities(
             layer.index,
+            layer.is_raft,
             arena.perimeter(),
             arena.infill(),
             arena.support(),
@@ -2143,6 +2154,7 @@ fn dominant_tool_index(flags: &[WallFeatureFlags]) -> Option<u64> {
 /// optimizer may permute entities without needing to rewrite attribution.
 pub fn assemble_ordered_entities_with_support_identities(
     global_layer_index: u32,
+    global_layer_is_raft: bool,
     perimeter: Option<&PerimeterIR>,
     infill: Option<&InfillIR>,
     support: Option<&SupportIR>,
@@ -2282,228 +2294,290 @@ pub fn assemble_ordered_entities_with_support_identities(
         None
     };
 
-    if let Some(perim) = perimeter {
-        for region in &perim.regions {
-            // Pre-compute the per-region config-extensions "extruder" fallback
-            // (packet 68 / AC-2): when no paint-derived tool exists for a wall,
-            // a modifier-volume config delta stamped into
-            // `RegionPlan.config.extensions["extruder"]` selects the tool.
-            // Paint-derived tools (`dominant_tool_index`) still win.
-            let base_key = RegionKey {
-                global_layer_index,
-                object_id: region.object_id.clone(),
-                region_id: region.region_id,
-                variant_chain: Vec::new(),
-            };
-            let modifier_tool: Option<u64> = region_map.and_then(|rm| {
-                if rm.entries.contains_key(&base_key) {
-                    rm.config_for(&base_key)
-                        .extensions
-                        .get("extruder")
-                        .and_then(|v| match v {
-                            ConfigValue::Int(n) if *n >= 0 => Some(*n as u64),
-                            _ => None,
-                        })
-                } else {
-                    None
-                }
-            });
-            // Per Step 19 Fix 2: look up the source SlicedRegion's
-            // Material/ToolIndex by the region's (object_id, region_id). This
-            // wins over modifier-tool but yields to a paint-pipeline-emitted
-            // per-point Material tool (forward compat: paint v2 doesn't write
-            // segment_annotations[Material] today).
-            let variant_tool: Option<u64> = variant_tool_by_region
-                .get(&(region.object_id.clone(), region.region_id))
-                .copied();
-            for wl in &region.walls {
-                let paint_tool = dominant_tool_index(&wl.feature_flags);
-                // MMU topology closure: prefer `variant_tool` (the
-                // per-region paint-derived tool, looked up from the source
-                // `SlicedRegion`'s variant chain) over the spatial fallback.
-                // The previous chain (`paint.or(spatial).or(variant)`) let
-                // the spatial fallback re-attribute a per-color region's
-                // walls to whichever per-color cell the wall's FIRST vertex
-                // happened to land in — producing walls that escape their
-                // own per-color cell when the first vertex sits on an
-                // adjacent cell's bisector.
-                //
-                // The spatial fallback is reserved for the LIFO-touch case
-                // (when a PerimeterRegion was emitted with the wrong region
-                // id by the guest): when `variant_tool` is None for this
-                // (object_id, region_id) — i.e. the region has no material
-                // variant chain (BASE) or the SDK adapter lost the origin
-                // (untagged) — fall through to spatial classification. BASE
-                // regions are explicitly excluded: their walls are the
-                // full-model outer outline, never a per-color cell wall,
-                // and reattributing them to a per-color tool produces
-                // per-color headers that escape their own per-color cells
-                // (MMU topology closure).
-                let region_key = (region.object_id.clone(), region.region_id);
-                let region_is_base = base_region_keys.contains(&region_key);
-                let region_is_tagged = variant_tool_by_region.contains_key(&region_key);
-                // Spatial fallback: when the host's per-region bucketing
-                // collapsed all wall_loops under a single PerimeterRegion
-                // (SDK adapter LIFO touch — see comment on `painted_regions`
-                // above), classify each wall by its first vertex's containing
-                // painted SlicedRegion. This restores per-wall tool identity
-                // in the gcode without a WIT/SDK redesign.
-                let spatial_tool: Option<u64> = wl
-                    .path
-                    .points
-                    .first()
-                    .and_then(|p| lookup_tool_by_point_mm(p.x, p.y));
-                let resolved_tool = paint_tool
-                    .or(variant_tool)
-                    .or(if region_is_base || region_is_tagged {
-                        None
-                    } else {
-                        spatial_tool
-                    })
-                    .or(modifier_tool)
-                    .unwrap_or(DEFAULT_TOOL);
-                let entity_key = RegionKey {
+    if !global_layer_is_raft {
+        if let Some(perim) = perimeter {
+            for region in &perim.regions {
+                // Pre-compute the per-region config-extensions "extruder" fallback
+                // (packet 68 / AC-2): when no paint-derived tool exists for a wall,
+                // a modifier-volume config delta stamped into
+                // `RegionPlan.config.extensions["extruder"]` selects the tool.
+                // Paint-derived tools (`dominant_tool_index`) still win.
+                let base_key = RegionKey {
                     global_layer_index,
                     object_id: region.object_id.clone(),
-                    // Pure region IDENTITY (restored — packet 125 had overwritten
-                    // this with the tool). Postpass back-refs key on this.
                     region_id: region.region_id,
                     variant_chain: Vec::new(),
                 };
-                let role = wl.path.role.clone();
-                push(
-                    wl.path.clone(),
-                    role,
-                    resolved_tool as u32,
-                    entity_key,
-                    None,
-                    &mut support_entity_identities,
-                    &mut out,
-                );
+                let modifier_tool: Option<u64> = region_map.and_then(|rm| {
+                    if rm.entries.contains_key(&base_key) {
+                        rm.config_for(&base_key)
+                            .extensions
+                            .get("extruder")
+                            .and_then(|v| match v {
+                                ConfigValue::Int(n) if *n >= 0 => Some(*n as u64),
+                                _ => None,
+                            })
+                    } else {
+                        None
+                    }
+                });
+                // Per Step 19 Fix 2: look up the source SlicedRegion's
+                // Material/ToolIndex by the region's (object_id, region_id). This
+                // wins over modifier-tool but yields to a paint-pipeline-emitted
+                // per-point Material tool (forward compat: paint v2 doesn't write
+                // segment_annotations[Material] today).
+                let variant_tool: Option<u64> = variant_tool_by_region
+                    .get(&(region.object_id.clone(), region.region_id))
+                    .copied();
+                for wl in &region.walls {
+                    let paint_tool = dominant_tool_index(&wl.feature_flags);
+                    // MMU topology closure: prefer `variant_tool` (the
+                    // per-region paint-derived tool, looked up from the source
+                    // `SlicedRegion`'s variant chain) over the spatial fallback.
+                    // The previous chain (`paint.or(spatial).or(variant)`) let
+                    // the spatial fallback re-attribute a per-color region's
+                    // walls to whichever per-color cell the wall's FIRST vertex
+                    // happened to land in — producing walls that escape their
+                    // own per-color cell when the first vertex sits on an
+                    // adjacent cell's bisector.
+                    //
+                    // The spatial fallback is reserved for the LIFO-touch case
+                    // (when a PerimeterRegion was emitted with the wrong region
+                    // id by the guest): when `variant_tool` is None for this
+                    // (object_id, region_id) — i.e. the region has no material
+                    // variant chain (BASE) or the SDK adapter lost the origin
+                    // (untagged) — fall through to spatial classification. BASE
+                    // regions are explicitly excluded: their walls are the
+                    // full-model outer outline, never a per-color cell wall,
+                    // and reattributing them to a per-color tool produces
+                    // per-color headers that escape their own per-color cells
+                    // (MMU topology closure).
+                    let region_key = (region.object_id.clone(), region.region_id);
+                    let region_is_base = base_region_keys.contains(&region_key);
+                    let region_is_tagged = variant_tool_by_region.contains_key(&region_key);
+                    // Spatial fallback: when the host's per-region bucketing
+                    // collapsed all wall_loops under a single PerimeterRegion
+                    // (SDK adapter LIFO touch — see comment on `painted_regions`
+                    // above), classify each wall by its first vertex's containing
+                    // painted SlicedRegion. This restores per-wall tool identity
+                    // in the gcode without a WIT/SDK redesign.
+                    let spatial_tool: Option<u64> = wl
+                        .path
+                        .points
+                        .first()
+                        .and_then(|p| lookup_tool_by_point_mm(p.x, p.y));
+                    let resolved_tool = paint_tool
+                        .or(variant_tool)
+                        .or(if region_is_base || region_is_tagged {
+                            None
+                        } else {
+                            spatial_tool
+                        })
+                        .or(modifier_tool)
+                        .unwrap_or(DEFAULT_TOOL);
+                    let entity_key = RegionKey {
+                        global_layer_index,
+                        object_id: region.object_id.clone(),
+                        // Pure region IDENTITY (restored — packet 125 had overwritten
+                        // this with the tool). Postpass back-refs key on this.
+                        region_id: region.region_id,
+                        variant_chain: Vec::new(),
+                    };
+                    let role = wl.path.role.clone();
+                    push(
+                        wl.path.clone(),
+                        role,
+                        resolved_tool as u32,
+                        entity_key,
+                        None,
+                        &mut support_entity_identities,
+                        &mut out,
+                    );
+                }
             }
         }
     }
 
-    if let Some(inf) = infill {
-        for region in &inf.regions {
-            // Per Step 19 Fix 2: derive tool from the SlicedRegion variant
-            // chain when available; otherwise fall back to `region_id`.
-            let variant_tool: Option<u64> = variant_tool_by_region
-                .get(&(region.object_id.clone(), region.region_id))
-                .copied();
-            // Per-path spatial fallback (same reasoning as the wall loop).
-            // Infill paths are likely emitted in a single guest batch and
-            // need per-path tool resolution when host bucketing collapsed.
-            let infill_region_key = (region.object_id.clone(), region.region_id);
-            let infill_region_is_tagged = variant_tool_by_region.contains_key(&infill_region_key);
-            let mut infill_push = |path: &slicer_ir::ExtrusionPath3D,
-                                   role: slicer_ir::ExtrusionRole,
-                                   acc: &mut Vec<PrintEntity>| {
-                let spatial_tool: Option<u64> = path
+    if !global_layer_is_raft {
+        if let Some(inf) = infill {
+            for region in &inf.regions {
+                // Per Step 19 Fix 2: derive tool from the SlicedRegion variant
+                // chain when available; otherwise fall back to `region_id`.
+                let variant_tool: Option<u64> = variant_tool_by_region
+                    .get(&(region.object_id.clone(), region.region_id))
+                    .copied();
+                // Per-path spatial fallback (same reasoning as the wall loop).
+                // Infill paths are likely emitted in a single guest batch and
+                // need per-path tool resolution when host bucketing collapsed.
+                let infill_region_key = (region.object_id.clone(), region.region_id);
+                let infill_region_is_tagged =
+                    variant_tool_by_region.contains_key(&infill_region_key);
+                let mut infill_push =
+                    |path: &slicer_ir::ExtrusionPath3D,
+                     role: slicer_ir::ExtrusionRole,
+                     acc: &mut Vec<PrintEntity>| {
+                        let spatial_tool: Option<u64> = path
+                            .points
+                            .first()
+                            .and_then(|p| lookup_tool_by_point_mm(p.x, p.y));
+                        // A guest-authored per-path tool wins outright when it names a
+                        // configured tool: it is the most specific statement of intent
+                        // available, the same way a paint-derived tool already beats
+                        // the region default in the wall loop above. Out of range (or
+                        // absent) it is ignored and the host resolves as it always has
+                        // — silently, never an error.
+                        //
+                        // Authority note: `tool_index` reaching this point has ALREADY
+                        // been validated. The authoritative two-sided permission grant
+                        // (module discloses `claim:authored-coloring` AND a fill claim
+                        // it holds is listed in `fill_authored_coloring`) and the strip
+                        // of every ungranted or out-of-range value live at the
+                        // marshal/commit boundary, in `convert_infill_output`
+                        // (`crates/slicer-wasm-host/src/marshal/out.rs`, see
+                        // `authored_coloring_granted`). This site only consumes an
+                        // already-validated value; the range filter below is
+                        // defence-in-depth, not the enforcement point.
+                        let authored_tool: Option<u64> = path
+                            .tool_index
+                            .filter(|t| *t < support_tools.tool_count)
+                            .map(u64::from);
+                        // MMU topology closure: prefer `variant_tool` over the
+                        // spatial fallback for tagged regions, matching the wall-loop
+                        // resolver above.
+                        let resolved_tool = authored_tool
+                            .or(variant_tool)
+                            .or(if infill_region_is_tagged {
+                                None
+                            } else {
+                                spatial_tool
+                            })
+                            .unwrap_or(DEFAULT_TOOL);
+                        let key = RegionKey {
+                            global_layer_index,
+                            object_id: region.object_id.clone(),
+                            // Pure region IDENTITY (restored — see wall-loop note above).
+                            region_id: region.region_id,
+                            variant_chain: Vec::new(),
+                        };
+                        push(
+                            path.clone(),
+                            role,
+                            resolved_tool as u32,
+                            key,
+                            None,
+                            &mut support_entity_identities,
+                            acc,
+                        );
+                    };
+                for path in &region.sparse_infill {
+                    infill_push(path, path.role.clone(), &mut out);
+                }
+                for path in &region.solid_infill {
+                    infill_push(path, path.role.clone(), &mut out);
+                }
+                for path in &region.ironing {
+                    infill_push(path, path.role.clone(), &mut out);
+                }
+                for path in &region.internal_bridge_infill {
+                    infill_push(path, path.role.clone(), &mut out);
+                }
+            }
+        }
+    }
+
+    if let Some(slice_ir) = slice {
+        for slice_region in &slice_ir.regions {
+            for polygon in &slice_region.raft_fill {
+                let mut points: Vec<Point3WithWidth> = polygon
+                    .contour
                     .points
-                    .first()
-                    .and_then(|p| lookup_tool_by_point_mm(p.x, p.y));
-                // A guest-authored per-path tool wins outright when it names a
-                // configured tool: it is the most specific statement of intent
-                // available, the same way a paint-derived tool already beats
-                // the region default in the wall loop above. Out of range (or
-                // absent) it is ignored and the host resolves as it always has
-                // — silently, never an error.
-                //
-                // Authority note: `tool_index` reaching this point has ALREADY
-                // been validated. The authoritative two-sided permission grant
-                // (module discloses `claim:authored-coloring` AND a fill claim
-                // it holds is listed in `fill_authored_coloring`) and the strip
-                // of every ungranted or out-of-range value live at the
-                // marshal/commit boundary, in `convert_infill_output`
-                // (`crates/slicer-wasm-host/src/marshal/out.rs`, see
-                // `authored_coloring_granted`). This site only consumes an
-                // already-validated value; the range filter below is
-                // defence-in-depth, not the enforcement point.
-                let authored_tool: Option<u64> = path
-                    .tool_index
-                    .filter(|t| *t < support_tools.tool_count)
-                    .map(u64::from);
-                // MMU topology closure: prefer `variant_tool` over the
-                // spatial fallback for tagged regions, matching the wall-loop
-                // resolver above.
-                let resolved_tool = authored_tool
-                    .or(variant_tool)
-                    .or(if infill_region_is_tagged {
-                        None
-                    } else {
-                        spatial_tool
+                    .iter()
+                    .map(|point| Point3WithWidth {
+                        x: point.x as f32 / 10_000.0,
+                        y: point.y as f32 / 10_000.0,
+                        z: slice_ir.z,
+                        width: 0.4,
+                        flow_factor: 1.0,
+                        overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
+                        overhang_distance_mm: None,
                     })
-                    .unwrap_or(DEFAULT_TOOL);
+                    .collect();
+                if points.len() != 2 {
+                    if let Some(first) = points.first().copied() {
+                        if points.last() != Some(&first) {
+                            points.push(first);
+                        }
+                    }
+                }
+                if points.len() < 2 {
+                    continue;
+                }
+                let path = ExtrusionPath3D {
+                    points,
+                    role: ExtrusionRole::RaftInfill,
+                    speed_factor: 1.0,
+                    tool_index: None,
+                    order_lock: None,
+                };
                 let key = RegionKey {
                     global_layer_index,
-                    object_id: region.object_id.clone(),
-                    // Pure region IDENTITY (restored — see wall-loop note above).
-                    region_id: region.region_id,
+                    object_id: slice_region.object_id.clone(),
+                    region_id: slice_region.region_id,
                     variant_chain: Vec::new(),
                 };
                 push(
-                    path.clone(),
-                    role,
-                    resolved_tool as u32,
+                    path,
+                    ExtrusionRole::RaftInfill,
+                    DEFAULT_TOOL as u32,
                     key,
                     None,
                     &mut support_entity_identities,
-                    acc,
+                    &mut out,
                 );
-            };
-            for path in &region.sparse_infill {
-                infill_push(path, path.role.clone(), &mut out);
-            }
-            for path in &region.solid_infill {
-                infill_push(path, path.role.clone(), &mut out);
-            }
-            for path in &region.ironing {
-                infill_push(path, path.role.clone(), &mut out);
-            }
-            for path in &region.internal_bridge_infill {
-                infill_push(path, path.role.clone(), &mut out);
             }
         }
     }
 
-    if let Some(sup) = support {
-        for entry in &sup.entries {
-            let key = RegionKey {
-                global_layer_index,
-                object_id: entry.object_id.clone(),
-                region_id: entry.region_id,
-                variant_chain: Vec::new(),
-            };
-            // Canonical (OrcaSlicer `GCode.cpp::process_layer` / `ToolOrdering`)
-            // selects the interface extruder per EXTRUSION ROLE of the path
-            // being emitted, not per aggregate entry. Entry role stays
-            // authoritative when it is explicit; when it is the default
-            // `SupportBody` (which is also what an untagged marshal fallback
-            // produces, F-28), fall back to the per-path role so an interface
-            // or ironing path still lands on the interface tool.
-            let entry_tool = match entry.role {
-                slicer_ir::SupportRole::TopInterface
-                | slicer_ir::SupportRole::BottomInterface
-                | slicer_ir::SupportRole::Ironing => Some(support_tools.interface_tool),
-                slicer_ir::SupportRole::SupportBody => None,
-                _ => Some(support_tools.support_tool),
-            };
-            for path in &entry.paths {
-                let tool = entry_tool.unwrap_or(match path.role {
-                    slicer_ir::ExtrusionRole::SupportInterface
-                    | slicer_ir::ExtrusionRole::Ironing => support_tools.interface_tool,
-                    _ => support_tools.support_tool,
-                });
-                push(
-                    path.clone(),
-                    path.role.clone(),
-                    tool,
-                    key.clone(),
-                    Some(entry),
-                    &mut support_entity_identities,
-                    &mut out,
-                );
+    if !global_layer_is_raft {
+        if let Some(sup) = support {
+            for entry in &sup.entries {
+                let key = RegionKey {
+                    global_layer_index,
+                    object_id: entry.object_id.clone(),
+                    region_id: entry.region_id,
+                    variant_chain: Vec::new(),
+                };
+                // Canonical (OrcaSlicer `GCode.cpp::process_layer` / `ToolOrdering`)
+                // selects the interface extruder per EXTRUSION ROLE of the path
+                // being emitted, not per aggregate entry. Entry role stays
+                // authoritative when it is explicit; when it is the default
+                // `SupportBody` (which is also what an untagged marshal fallback
+                // produces, F-28), fall back to the per-path role so an interface
+                // or ironing path still lands on the interface tool.
+                let entry_tool = match entry.role {
+                    slicer_ir::SupportRole::TopInterface
+                    | slicer_ir::SupportRole::BottomInterface
+                    | slicer_ir::SupportRole::Ironing => Some(support_tools.interface_tool),
+                    slicer_ir::SupportRole::SupportBody => None,
+                    _ => Some(support_tools.support_tool),
+                };
+                for path in &entry.paths {
+                    let tool = entry_tool.unwrap_or(match path.role {
+                        slicer_ir::ExtrusionRole::SupportInterface
+                        | slicer_ir::ExtrusionRole::Ironing => support_tools.interface_tool,
+                        _ => support_tools.support_tool,
+                    });
+                    push(
+                        path.clone(),
+                        path.role.clone(),
+                        tool,
+                        key.clone(),
+                        Some(entry),
+                        &mut support_entity_identities,
+                        &mut out,
+                    );
+                }
             }
         }
     }
@@ -2769,7 +2843,11 @@ fn execute_anchored_event_collections_with_mode_and_feedrate(
     };
     // Same-plane support belongs to the ordinary model layer. Anchored
     // collections contain only physically distinct events below that plane.
-    for entity in entities {
+    let anchored_entities = entities
+        .iter()
+        .filter(|entity| !global_layer_is_raft(plan, entity.anchor_global_layer_index))
+        .collect::<Vec<_>>();
+    for entity in &anchored_entities {
         validate_anchored_entity(entity).map_err(|message| {
             LayerExecutionError::AnchoredGeometry {
                 local_id: entity.local_id,
@@ -2777,8 +2855,8 @@ fn execute_anchored_event_collections_with_mode_and_feedrate(
             }
         })?;
     }
-    let anchored_entities = entities
-        .iter()
+    let anchored_entities = anchored_entities
+        .into_iter()
         .filter(|entity| matches!(route_of(entity, plan), AnchoredRoute::AnchoredCollection));
     let anchored_entities = anchored_entities.collect::<Vec<_>>();
     let invoked: Vec<(slicer_ir::AnchoredEntity, bool, bool)> = if force_parallel
@@ -3358,6 +3436,26 @@ pub(crate) fn apply(
             let mut ir = ir;
             let next = arena.infill().map(next_global_infill_tag).unwrap_or(0);
             remap_infill_order_locks_from(&mut ir, next)?;
+            // Raft transport (packet 240b): the delivered raft polygons commit
+            // onto SliceIR (SlicedRegion.raft_fill) for the matching regions,
+            // regardless of arena InfillIR merge history, before the path-IR
+            // merge — the raft module's footprint seed and emitted fill both
+            // ride SliceIR.
+            if !ir.raft_regions.is_empty() {
+                if let Some(mut slice) = arena.take_slice() {
+                    for raft_region in &ir.raft_regions {
+                        if let Some(slice_region) = slice.regions.iter_mut().find(|candidate| {
+                            candidate.object_id == raft_region.object_id
+                                && candidate.region_id == raft_region.region_id
+                        }) {
+                            slice_region.raft_fill.extend(raft_region.polygons.clone());
+                        }
+                    }
+                    arena
+                        .set_slice(slice)
+                        .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
+                }
+            }
             let existing = arena.take_infill();
             if let Some(mut existing) = existing {
                 merge_infill_ir(&mut existing, ir);
@@ -3839,6 +3937,7 @@ fn merge_infill_ir(existing: &mut InfillIR, incoming: InfillIR) {
             None => existing.regions.push(new_region),
         }
     }
+    existing.raft_regions.extend(incoming.raft_regions);
 }
 
 /// Per-layer host dispatch filter (packet 92).
@@ -3887,17 +3986,19 @@ mod tests {
                 requesting_feature: String::new(),
                 source_plan_entry: String::new(),
             },
-            // exhaustive: fixture pins every Point3WithWidth field
-            path_points: vec![slicer_ir::Point3WithWidth {
-                x: 0.0,
-                y: 0.0,
-                z: 0.2,
-                width,
-                flow_factor,
-                overhang_quartile: None,
-                dist_to_top_mm: 0.0,
-                overhang_distance_mm: None,
-            }],
+            path_points: vec![
+                // exhaustive: fixture pins every Point3WithWidth field
+                slicer_ir::Point3WithWidth {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.2,
+                    width,
+                    flow_factor,
+                    overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
+                },
+            ],
             role: slicer_ir::ExtrusionRole::SupportMaterial,
         }
     }
@@ -3963,6 +4064,7 @@ mod tests {
 
         let entities = super::assemble_ordered_entities_with_support_identities(
             0,
+            false,
             None,
             None,
             Some(&support),
@@ -4028,6 +4130,7 @@ mod tests {
 
         let entities = super::assemble_ordered_entities_with_support_identities(
             0,
+            false,
             None,
             None,
             Some(&support),
@@ -4138,6 +4241,7 @@ mod tests {
         let infill = InfillIR {
             schema_version,
             global_layer_index: 0,
+            raft_regions: Vec::new(),
             regions: vec![InfillRegion {
                 object_id: "obj".to_string(),
                 region_id: IDENTITY,
@@ -4151,6 +4255,7 @@ mod tests {
         // no support — all four resolvers will return None at both sites.
         let entities = super::assemble_ordered_entities_with_support_identities(
             0,
+            false,
             Some(&perimeter),
             Some(&infill),
             None, // support

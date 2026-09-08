@@ -101,6 +101,7 @@ pub(crate) fn perimeter_source_regions(slice: &slicer_ir::SliceIR) -> Vec<slicer
             restore!(sparse_infill_area);
             restore!(internal_solid_fill);
             restore!(internal_bridge_areas);
+            restore!(raft_fill);
         }
     }
     regions

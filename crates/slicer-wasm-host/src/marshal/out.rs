@@ -424,6 +424,7 @@ pub fn convert_infill_output(
         .iter()
         .map(convert_extrusion_path)
         .collect::<Result<_, _>>()?;
+    let raft_fill = collected.raft_fill.clone();
 
     let any_tagged = collected.sparse_path_origins.iter().any(Option::is_some)
         || collected.solid_path_origins.iter().any(Option::is_some)
@@ -478,6 +479,25 @@ pub fn convert_infill_output(
     let mut regions = bucket.into_regions();
     enforce_authored_coloring(&mut regions, authored);
 
+    fn mint_raft_region(o: &OriginId) -> slicer_ir::slice_ir::InfillRaftRegion {
+        slicer_ir::slice_ir::InfillRaftRegion {
+            object_id: o.object_id.clone(),
+            region_id: o.region_id,
+            polygons: Vec::new(),
+        }
+    }
+    let any_raft_tagged = collected.raft_fill_origins.iter().any(Option::is_some);
+    let mut raft_bucket = OriginBucket::new(any_tagged || any_raft_tagged, mint_raft_region);
+    raft_bucket
+        .drain(
+            "raft_fill",
+            raft_fill,
+            &collected.raft_fill_origins,
+            |r, polygons| r.polygons.extend(wit_to_ir_expolygons(&polygons)),
+        )
+        .map_err(|e| infill_untagged_msg(e, "raft_fill"))?;
+    let raft_regions = raft_bucket.into_regions();
+
     Ok(slicer_ir::InfillIR {
         schema_version: slicer_ir::SemVer {
             major: 1,
@@ -486,6 +506,7 @@ pub fn convert_infill_output(
         },
         global_layer_index: layer_index,
         regions,
+        raft_regions,
     })
 }
 

@@ -107,6 +107,7 @@ fn layer_plan_alpha_beta() -> LayerPlanIR {
                 ],
                 has_nonplanar: false,
                 is_sync_layer: false,
+                is_raft: false,
             },
             // exhaustive: GlobalLayer fixture intentionally specifies every field.
             GlobalLayer {
@@ -115,6 +116,7 @@ fn layer_plan_alpha_beta() -> LayerPlanIR {
                 active_regions: vec![active_region("obj_alpha", 1)],
                 has_nonplanar: false,
                 is_sync_layer: false,
+                is_raft: false,
             },
         ],
         object_participation: HashMap::new(),

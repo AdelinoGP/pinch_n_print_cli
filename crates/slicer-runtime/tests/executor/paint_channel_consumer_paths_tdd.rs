@@ -97,6 +97,7 @@ fn build_layer_plan(object_id: &str, layer_count: u32) -> Arc<LayerPlanIR> {
                 }],
                 has_nonplanar: false,
                 is_sync_layer: false,
+                is_raft: false,
             }
         })
         .collect();

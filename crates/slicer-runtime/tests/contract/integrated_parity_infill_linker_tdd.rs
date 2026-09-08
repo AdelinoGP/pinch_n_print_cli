@@ -89,6 +89,7 @@ fn infill() -> InfillIR {
             sparse_infill: vec![segment(1.0, 3.0), segment(3.0, 5.0), segment(5.0, 7.0)],
             ..Default::default()
         }],
+        ..Default::default()
     }
 }
 

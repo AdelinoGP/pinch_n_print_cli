@@ -75,6 +75,7 @@ pub fn structured_support_identity() {
 
     let (entities, identities) = assemble_ordered_entities_with_support_identities(
         3,
+        false,
         None,
         None,
         Some(committed),

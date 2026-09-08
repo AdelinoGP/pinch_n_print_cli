@@ -265,6 +265,29 @@ pub fn build_native_layer_request(
     module: &CompiledModuleLive<'_>,
     held_claims_map: &HashMap<(String, String), Vec<String>>,
 ) -> NativeLayerRequest {
+    build_native_layer_request_with_raft(
+        stage_export,
+        layer_index,
+        input,
+        module,
+        held_claims_map,
+        false,
+    )
+}
+
+/// Variant of [`build_native_layer_request`] that also carries the current
+/// layer's `GlobalLayer.is_raft` onto the paint view, mirroring the wasm leg's
+/// `paint-region-layer-view.is-raft` accessor. `dispatch_layer_call` calls
+/// this one; without it the native `PaintRegionLayerView::is_raft` would
+/// compile and silently return `false` on every layer.
+pub fn build_native_layer_request_with_raft(
+    stage_export: &'static str,
+    layer_index: u32,
+    input: &LayerStageInput<'_>,
+    module: &CompiledModuleLive<'_>,
+    held_claims_map: &HashMap<(String, String), Vec<String>>,
+    is_raft: bool,
+) -> NativeLayerRequest {
     // Ticket 19: support carriers for planned bodies with no slice geometry
     // on this layer (see `dispatch::support_carrier_regions`).
     let carriers: Vec<slicer_ir::SlicedRegion> = if stage_export == "Layer::Support" {
@@ -367,6 +390,7 @@ pub fn build_native_layer_request(
         .as_ref()
         .map(|_| PaintRegionLayerView::with_paint_regions(layer_index, std::sync::Arc::new(())))
         .unwrap_or_else(|| PaintRegionLayerView::new(layer_index));
+    paint = paint.with_is_raft(is_raft);
     if let Some(ir) = input.lightning_tree_ir.as_ref() {
         paint = paint.with_lightning_tree_ir(std::sync::Arc::clone(ir));
     }
@@ -778,9 +802,13 @@ pub fn commit_native_prepass_response_with_inputs(
                     index: index as u32,
                     z: proposal.z,
                     active_regions,
+                    is_raft: proposal.is_raft,
                     ..Default::default()
                 });
             }
+            crate::marshal::in_::validate_raft_prefix_contiguity(
+                &global_layers.iter().map(|l| l.is_raft).collect::<Vec<_>>(),
+            )?;
             Ok(slicer_core::PrepassStageOutput::LayerPlan(Arc::new(
                 slicer_ir::LayerPlanIR {
                     global_layers,
@@ -1121,6 +1149,12 @@ fn collect_infill(builder: &InfillOutputBuilder) -> InfillOutputCollected {
         sparse_path_origins: builder.sparse_path_origins().iter().map(origin).collect(),
         solid_path_origins: builder.solid_path_origins().iter().map(origin).collect(),
         ironing_path_origins: builder.ironing_path_origins().iter().map(origin).collect(),
+        raft_fill: builder
+            .raft_fill()
+            .iter()
+            .map(|polygons| ir_to_wit_expolygons(polygons))
+            .collect(),
+        raft_fill_origins: builder.raft_fill_origins().iter().map(origin).collect(),
     }
 }
 

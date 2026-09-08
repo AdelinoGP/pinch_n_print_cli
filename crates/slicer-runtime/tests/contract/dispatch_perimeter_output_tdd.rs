@@ -249,6 +249,7 @@ fn empty_perimeter_output_does_not_populate_arena() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
+        is_raft: false,
     };
 
     fx.run_layer(&layer)
@@ -368,6 +369,7 @@ fn real_perimeter_region_data_visible_through_wall_postprocess_dispatch() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
+        is_raft: false,
     };
 
     fx.run_layer(&layer)

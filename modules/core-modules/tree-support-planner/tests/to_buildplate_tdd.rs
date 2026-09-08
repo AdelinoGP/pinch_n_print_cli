@@ -34,7 +34,8 @@ use slicer_ir::{ConfigKey, ConfigValue, ConfigView, ExPolygon, Point2, Polygon};
 use slicer_sdk::prepass_builders::SupportGeometryOutput;
 use slicer_sdk::prepass_types::{
     LayerPlanView, LayerPlanViewEntry, MeshObjectView, RegionSegmentationView,
-    RegionSegmentationViewEntry, SupportGeometryView, SupportGeometryViewEntry,
+    RegionSegmentationViewEntry, SupportAnalysisView, SupportFamilyAssignment, SupportGeometryView,
+    SupportGeometryViewEntry,
 };
 use slicer_sdk::traits::PrepassModule;
 
@@ -53,6 +54,17 @@ fn box_outline(min: f32, max: f32) -> ExPolygon {
             ],
         },
         holes: vec![],
+    }
+}
+
+fn tree_analysis(object_id: &str) -> SupportAnalysisView {
+    SupportAnalysisView {
+        family_assignments: vec![SupportFamilyAssignment {
+            object_id: object_id.to_string(),
+            region_id: "0".to_string(),
+            family_id: "tree".to_string(),
+        }],
+        ..Default::default()
     }
 }
 
@@ -154,10 +166,19 @@ fn contact_xy_outside_footprint_sets_to_buildplate_true() {
             outlines: vec![small_footprint.clone()],
         }],
     };
+    let analysis = tree_analysis("ac2");
 
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &analysis,
+            &sg,
+            &mut output,
+            &ConfigView::new(),
+        )
         .expect("run_support_geometry");
 
     let entries = output.entries();
@@ -264,10 +285,19 @@ fn unreachable_buildplate_node_pruned() {
         });
     }
     let sg = SupportGeometryView { entries };
+    let analysis = tree_analysis("ac3");
 
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &analysis,
+            &sg,
+            &mut output,
+            &ConfigView::new(),
+        )
         .expect("run_support_geometry");
 
     // The whole column is erased: no layer may carry planned tree geometry.
@@ -363,10 +393,18 @@ fn buildplate_only_rejects_to_model_contacts() {
             })
             .collect(),
     };
-
+    let analysis = tree_analysis("ac4");
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &analysis,
+            &sg,
+            &mut output,
+            &ConfigView::new(),
+        )
         .expect("run_support_geometry");
 
     let entries = output.entries();
@@ -407,10 +445,11 @@ fn default_config_does_not_reject_to_model_contacts() {
     let planner = SupportPlanner::from_config(&config).expect("from_config");
 
     // Single-triangle plate: the contact at (2.67, 1.33) is the lone
-    // contact at layer 8. The footprint covers that centroid ⇒
-    // to_buildplate = false after the implementation. The default
-    // config admits the contact; the origin tip is emitted on layer 8
-    // even though the contact lies inside collision_polys.
+    // contact over the overhang at layer 8. The footprint keyed at the
+    // first real support layer (layer 6, see below) covers that centroid ⇒
+    // to_buildplate = false after the implementation. The default config
+    // admits the contact; the origin tip is emitted on layer 6 even though
+    // the contact lies inside collision_polys.
     let vertices = vec![
         [0.0, 0.0, 0.0],
         [0.0, 0.0, 1.8],
@@ -427,38 +466,51 @@ fn default_config_does_not_reject_to_model_contacts() {
     let lp = make_layer_plan(10, 0.0, 0.2);
     let rs = make_region_segmentation("ac-n1", 10);
 
-    // Footprint at the contact's layer (8) covers the centroid (2.67, 1.33).
-    // No footprint at other layers — the propagation is unblocked.
+    // Footprint on the first real support layer contains the centroid
+    // (2.67, 1.33), but is tight enough that the branch is not wholly
+    // swallowed by model collision carving. No footprint exists below it.
     let covering_box = ExPolygon {
         contour: Polygon {
             points: vec![
-                Point2::from_mm(0.0, 0.0),
-                Point2::from_mm(10.0, 0.0),
-                Point2::from_mm(10.0, 10.0),
-                Point2::from_mm(0.0, 10.0),
+                Point2::from_mm(2.0, 1.0),
+                Point2::from_mm(3.0, 1.0),
+                Point2::from_mm(3.0, 2.0),
+                Point2::from_mm(2.0, 2.0),
             ],
         },
         holes: vec![],
     };
     let sg = SupportGeometryView {
         entries: vec![SupportGeometryViewEntry {
-            global_support_layer_index: 8,
+            // The overhang is on layer 8. With the default one-layer top gap,
+            // the virtual contact is layer 7 and the first real node is layer 6.
+            global_support_layer_index: 6,
             object_id: "ac-n1".to_string(),
             region_id: "0".to_string(),
             outlines: vec![covering_box.clone()],
         }],
     };
 
+    let analysis = tree_analysis("ac-n1");
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &analysis,
+            &sg,
+            &mut output,
+            &ConfigView::new(),
+        )
         .expect("run_support_geometry");
 
     let entries = output.entries();
     assert!(
         !entries.is_empty(),
         "AC-N1: default config must admit a to_model contact (centroid inside \
-         footprint at the contact's layer). Expected non-empty plan, got {} \
+         footprint at the first real support layer, layer 6). Expected \
+         non-empty plan, got {} \
          entries. diagnostics={:?}",
         entries.len(),
         output.diagnostics(),
@@ -532,10 +584,19 @@ fn to_model_node_with_collision_not_pruned_by_new_rule() {
         });
     }
     let sg = SupportGeometryView { entries };
+    let analysis = tree_analysis("ac-n2");
 
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::new())
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &analysis,
+            &sg,
+            &mut output,
+            &ConfigView::new(),
+        )
         .expect("run_support_geometry");
 
     // The column must survive: `support_on_build_plate_only` is off, so a

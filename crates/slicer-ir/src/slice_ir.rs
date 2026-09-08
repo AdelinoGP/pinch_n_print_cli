@@ -226,9 +226,15 @@ pub const CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION: SemVer = SemVer {
 /// `#[serde(default)]` on the new optional fields preserves backward
 /// compatibility with 4.6.0 fixtures that predate these types.
 /// Minor bump to 4.8.0 adds the typed `InternalBridgeInfill` extrusion role.
+/// Minor bump to 4.9.0 (packet 240a) adds two additive raft-substrate fields:
+/// `GlobalLayer.is_raft` (marks the positive-offset raft band occupying global
+/// layer indices `0..support_raft_layers-1`) and `SlicedRegion.raft_fill` (the
+/// per-region raft fill polygons). Both carry `#[serde(default)]`, so
+/// serialized 4.8.0 fixtures still deserialize with `is_raft = false` and an
+/// empty `raft_fill`.
 pub const CURRENT_SLICE_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 4,
-    minor: 8,
+    minor: 9,
     patch: 0,
 };
 
@@ -1058,6 +1064,14 @@ pub struct GlobalLayer {
     pub has_nonplanar: bool,
     /// True if multiple objects with different layer heights align at this Z
     pub is_sync_layer: bool,
+    /// True if this global layer belongs to the raft band.
+    ///
+    /// Raft layers occupy the contiguous global index prefix `0..N-1` where
+    /// `N = support_raft_layers`, and model layers shift to `N..`. Layer
+    /// indices remain `u32`; raft-ness is carried explicitly by this flag and
+    /// must never be inferred from the index.
+    #[serde(default)]
+    pub is_raft: bool,
 }
 
 /// The declared Z extent of an anchored entity, in canonical 100 nm units.
@@ -1363,14 +1377,18 @@ pub enum SupportPlanDeclineReason {
 /// to emit their own printable output. The plan is universal across support
 /// families and carries no family-specific branch geometry.
 ///
-/// `global_layer_index` uses a signed integer to support raft prefix layers:
-/// raft entries carry negative indices (`-1, -2, ..., -raft_layers`) so raft
-/// always sorts before model layers (which use `0, 1, 2, ...`).
+/// `global_layer_index` is `i32` for historical reasons. The raft band uses
+/// non-negative indices: raft layers occupy `0..support_raft_layers-1` and
+/// model layers start at `support_raft_layers`, so raft still sorts before
+/// model layers. Independent support rows may use deterministic negative
+/// synthetic indices; those are off-grid support identities, not raft layers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SupportPlanEntry {
     /// Global (inter-object) layer index this entry applies to.
-    /// Negative values (`-1`, `-2`, ...) are reserved for raft prefix layers.
-    /// Non-negative values (`0`, `1`, ...) refer to model layers.
+    /// Remains `i32` for historical reasons. Raft layers occupy
+    /// `0..support_raft_layers-1`; model layers start at
+    /// `support_raft_layers`. Deterministic negative values are reserved for
+    /// off-grid support rows, not the raft band.
     pub global_layer_index: i32,
     /// Object the branches belong to.
     pub object_id: ObjectId,
@@ -1960,6 +1978,12 @@ pub struct SlicedRegion {
     /// host-only — qualified internal-bridge-over-infill areas; never mirrored into module views.
     #[serde(default)]
     pub internal_bridge_areas: Vec<ExPolygon>,
+    /// Raft-substrate fill polygons for this region (packet 240a). Non-empty
+    /// only on layers inside the positive-offset raft band — global layer
+    /// indices `0..support_raft_layers-1`, the layers whose `GlobalLayer`
+    /// carries `is_raft = true`. Empty on every model layer.
+    #[serde(default)]
+    pub raft_fill: Vec<ExPolygon>,
 }
 
 /// Slice IR
@@ -2725,6 +2749,17 @@ pub struct InfillRegion {
     pub internal_bridge_infill: Vec<ExtrusionPath3D>,
 }
 
+/// Raft-fill polygon group attributed to one source region.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct InfillRaftRegion {
+    /// Object ID this raft group belongs to.
+    pub object_id: ObjectId,
+    /// Region ID this raft group belongs to.
+    pub region_id: RegionId,
+    /// Raft-fill polygons emitted for the region.
+    pub polygons: Vec<ExPolygon>,
+}
+
 /// Infill IR
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InfillIR {
@@ -2734,6 +2769,9 @@ pub struct InfillIR {
     pub global_layer_index: u32,
     /// Infill regions in this layer
     pub regions: Vec<InfillRegion>,
+    /// Raft-fill polygon groups, retained separately from path infill.
+    #[serde(default)]
+    pub raft_regions: Vec<InfillRaftRegion>,
 }
 
 impl Default for InfillIR {
@@ -2742,6 +2780,7 @@ impl Default for InfillIR {
             schema_version: CURRENT_INFILL_IR_SCHEMA_VERSION,
             global_layer_index: 0,
             regions: Vec::new(),
+            raft_regions: Vec::new(),
         }
     }
 }

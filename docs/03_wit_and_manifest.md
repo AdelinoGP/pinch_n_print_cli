@@ -287,6 +287,18 @@ Notable records/methods worth surfacing (not obvious from the resource names):
   `set-current-origin: func(object-id: string, region-id: string) -> result<_, string>`,
   which tags the support region currently being iterated so buffered per-region pushes
   are attributed correctly (packet 205c; see the `begin_region` SDK method).
+- `slice-region-view` and `perimeter-region-view` both expose
+  `raft-fill: func() -> list<ex-polygon>` (packet 240a), mirroring
+  `SlicedRegion.raft_fill`. It is a pure carrier: no core module populates
+  `raft_fill` yet (packet 240b owns population), so today both accessors return
+  an empty list on every layer.
+- `paint-region-layer-view` exposes `is-raft: func() -> bool` and
+  `raft-plan: func() -> option<raft-plan-view>` (packet 240a).
+  `raft-plan-view` is declared **locally** in `ir-types.wit` — there is no
+  cross-world import — and mirrors `RaftPlan`'s four fields: `raft-layers: u32`,
+  `raft-first-layer-density: f32`, `base-raft-layers: u32`,
+  `interface-raft-layers: u32`. Both accessors are threaded through the host,
+  the macro guest shim, and the SDK on both the wasm and the native leg.
 
 Two contract points that the file alone does not state are the ID
 canonicalization rule and the wall-loop flag invariant below.
@@ -500,6 +512,20 @@ per-stage package `slicer:prepass-seam-planning@1.0.0`, whose `run` takes
 `objects`, `layer-plan`, `output`, `config`, and `region-input` (see the
 on-disk WIT).
 
+### `PrePass::LayerPlanning` raft prefix (Normative — packet 240a)
+
+`layer-proposal`
+(`crates/slicer-schema/wit/deps/prepass-layer-planning/prepass-layer-planning.wit`)
+carries `is-raft-prefix: bool`, set on **both** harvest legs and harvested into
+`GlobalLayer.is_raft`. It marks membership of the positive raft offset band —
+global layer indices `0..support_raft_layers-1`, with model layers shifted to
+`support_raft_layers..`. The band must be a contiguous prefix: a non-contiguous
+raft prefix is rejected by the shared helper `validate_raft_prefix_contiguity`
+(`crates/slicer-wasm-host/src/marshal/in_.rs`). `com.core.layer-planner-default`
+emits the band from its declared `support_raft_layers` config key
+(`type = "int"`, default `0`). Full semantics: the "Raft substrate" section of
+`docs/02_ir_schemas.md`.
+
 ### Support-plan output seam (Normative — Packet 119)
 
 The support-geometry stage package carries branch entries and one optional
@@ -535,8 +561,10 @@ Field and variant notes (match the on-disk file in
   bindgen-generated structs follow this order; do not reorder.
 - The `severity-level` enum has exactly five variants; the WIT order is
   `trace, debug, info, warn, error` (lowest verbosity first).
-- `layer: option<s32>` is signed so negative raft prefix layer indices can be
-  expressed; `None` for prepass-global diagnostics.
+- `layer: option<s32>` remains signed for historical compatibility with
+  layer-scoped support diagnostics and off-grid support identities; the
+  positive raft band itself uses non-negative indices. `None` means
+  prepass-global diagnostics.
 - `code: u32` is module-allocated. The support-planner reserves
   `1000..=1999`; the host does not enforce a range (out-of-range codes pass
   through unchanged).
@@ -704,7 +732,7 @@ requires = []                     # claim slots that MUST be held by another mod
 | `claim:bottom-fill`       | Held by the module producing `BottomSolidInfill` extrusions.             |
 | `claim:bridge-fill`       | Held by the module producing `BridgeInfill` extrusions.                  |
 | `claim:sparse-fill`       | Held by the module producing `SparseInfill` extrusions.                  |
-| `claim:raft-fill`         | Reserved by the SDK's `RaftInfill` role mapping (packet 124; ADR-0009); no current core manifest declares it. |
+| `claim:raft-fill`         | Held by `com.core.raft-default` under the SDK's `RaftInfill` role mapping (packet 240b; ADR-0009). |
 | `claim:ironing`           | Held by the module producing `Ironing` extrusions (`top-surface-ironing`). |
 | `claim:authored-coloring` | Capability claim a module discloses to request per-path tool authorship (`ExtrusionPath3D.tool_index`; ADR-0058). Disclosure alone grants nothing: the grant is two-sided, and also requires the fill-role claim the module holds for the region to be listed in that region's `fill_authored_coloring` config key. Ungranted — or out of range against `tool-count` — the authored value is silently stripped to `None` at the infill commit boundary and the host resolves the region tool as before. |
 

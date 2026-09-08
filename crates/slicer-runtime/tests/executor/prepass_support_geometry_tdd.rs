@@ -23,7 +23,7 @@
 
 #![allow(missing_docs)]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -31,7 +31,8 @@ use slicer_ir::PrepassRunnerError;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigValue, ConfigView, GlobalLayer, IndexedTriangleSet,
     LayerPlanIR, MeshIR, ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan, SemVer,
-    SupportGeometryIR, SupportPlanEntry, SupportPlanIR, SurfaceClassificationIR, Transform3d,
+    SupportAnalysisIR, SupportGeometryIR, SupportPlanEntry, SupportPlanIR, SurfaceClassificationIR,
+    Transform3d,
 };
 use slicer_runtime::{
     build_wasm_instance_pool, dedup_same_claim_modules_for_test, execute_prepass,
@@ -195,6 +196,18 @@ fn identity4() -> [f64; 16] {
 }
 
 fn loaded_support_planner_module(id: &str, wasm_path: PathBuf) -> LoadedModule {
+    loaded_support_planner_module_with_family_claim(id, wasm_path, false)
+}
+
+fn loaded_support_planner_module_with_family_claim(
+    id: &str,
+    wasm_path: PathBuf,
+    family_claim: bool,
+) -> LoadedModule {
+    let mut claims = vec!["support-planner".into()];
+    if family_claim {
+        claims.push("support-family:tree".into());
+    }
     LoadedModuleBuilder::new(
         id,
         semver(0, 1, 0),
@@ -210,7 +223,7 @@ fn loaded_support_planner_module(id: &str, wasm_path: PathBuf) -> LoadedModule {
         "SupportGeometryIR.entries".into(),
     ])
     .ir_writes(vec!["SupportPlanIR.entries".into()])
-    .claims(vec!["support-planner".into()])
+    .claims(claims)
     .min_host_version(semver(0, 1, 0))
     .min_ir_schema(semver(1, 0, 0))
     .max_ir_schema(semver(2, 0, 0))
@@ -231,7 +244,11 @@ fn compile_support_planner(engine: &Arc<WasmEngine>) -> TestModuleBundle {
             .compile_component(&bytes)
             .expect("support-planner.wasm must compile"),
     );
-    let loaded = loaded_support_planner_module("com.core.tree-support-planner", wasm_path);
+    let loaded = loaded_support_planner_module_with_family_claim(
+        "com.core.tree-support-planner",
+        wasm_path,
+        true,
+    );
     let pool = Arc::new(
         build_wasm_instance_pool(
             loaded.id(),
@@ -245,6 +262,7 @@ fn compile_support_planner(engine: &Arc<WasmEngine>) -> TestModuleBundle {
         .expect("instance pool must build"),
     );
     let module = CompiledModuleBuilder::new(loaded.id().to_string())
+        .claims(loaded.claims().to_vec())
         .config_view(Arc::new(ConfigView::from_map(default_planner_config_map())))
         .build();
     TestModuleBundle {
@@ -355,6 +373,13 @@ fn blackboard_with_layer_plan(mesh: MeshIR) -> Blackboard {
         ..Default::default()
     }))
     .expect("commit_region_map must succeed");
+    // The live support merge is default-deny. This fixture bypasses SliceIR
+    // and therefore seeds the host's region ownership explicitly.
+    bb.commit_support_analysis(Arc::new(SupportAnalysisIR {
+        family_assignments: BTreeMap::from([(("plate".to_string(), 0), "tree".to_string())]),
+        ..Default::default()
+    }))
+    .expect("commit_support_analysis must succeed");
     bb
 }
 

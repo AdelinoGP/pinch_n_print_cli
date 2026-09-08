@@ -9,30 +9,12 @@ use std::collections::{HashMap, HashSet};
 use crate::exact_z_query::ExactZQueryService;
 use crate::support_territory::TerritoryClipper;
 
-/// Edge length of one deterministic host routing cell, in canonical
-/// coordinate units. Routing cells partition feasible space into a fixed grid
-/// and bound the territory a single support body may claim: a body must fit
-/// within one cell-sized envelope, and the grid cell containing its centroid
-/// is its stable routing identity for same-family union.
-const ROUTING_CELL_SIZE: i64 = 1 << 20;
-
-/// Deterministic routing cell territory assigned to one support body. The
-/// cell is derived purely from body geometry (the grid cell containing the
-/// body centroid), so assignment is stable regardless of plan ordering.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct RoutingCell {
-    x: i64,
-    y: i64,
-}
-
-impl RoutingCell {
-    fn from_centroid(cx: i64, cy: i64) -> Self {
-        Self {
-            x: cx.div_euclid(ROUTING_CELL_SIZE),
-            y: cy.div_euclid(ROUTING_CELL_SIZE),
-        }
-    }
-}
+/// Maximum envelope a single support body may span on either axis, in
+/// canonical coordinate units. A body wider or taller than this has escaped
+/// the territory one body is permitted to claim and is rejected by
+/// [`in_routing_cell`]. It is purely an extent bound: it does not partition
+/// space, and it takes no part in deciding which entries merge.
+const MAX_BODY_EXTENT_UNITS: i64 = 1 << 20;
 
 /// Inputs to the single host multi-writer support merge point.
 pub struct SupportAggregationInput<'a> {
@@ -44,48 +26,81 @@ pub struct SupportAggregationInput<'a> {
     /// (ticket 19). `None`, or an analysis without territory, keeps the
     /// territory-free cross-family guard for every layer.
     pub territory: Option<&'a SupportAnalysisIR>,
+    /// Identity of the module that produced each plan, index-parallel to
+    /// `plans`. Ownership is a declared property, so the merge point needs to
+    /// know *who* wrote a plan, not merely what the plan says about itself.
+    pub producers: Vec<SupportPlanProducer>,
 }
 
-/// What aggregation does when two *different* families claim one
-/// `(global_layer_index, object_id, region_id)` identity.
+/// The module behind one entry of [`SupportAggregationInput::plans`].
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SupportPlanProducer {
+    /// Manifest module id, used to name the trespasser in diagnostics.
+    pub module_id: String,
+    /// Claim strings declared by that module's manifest. A support family may
+    /// only be written by a module holding `support-family:<family_id>`.
+    pub claims: Vec<String>,
+}
+
+/// What aggregation does when an entry trespasses on a region it does not own.
 ///
-/// Packet 223 made this unconditionally fatal, which every infallible caller
-/// then turned into a total loss of the aggregate (`unwrap_or_else` yields an
-/// empty result, and the prepass mapped it to a fatal module error). Callers
-/// that must keep printing choose [`FamilyConflictPolicy::Degrade`]; the one
-/// caller that must refuse to publish keeps [`FamilyConflictPolicy::Fail`].
+/// Packet 223 made conflicts unconditionally fatal, which every infallible
+/// caller then turned into a total loss of the aggregate (`unwrap_or_else`
+/// yields an empty result, and the prepass mapped it to a fatal module error).
+/// Callers that must keep printing choose [`FamilyConflictPolicy::Degrade`];
+/// the one caller that must refuse to publish keeps
+/// [`FamilyConflictPolicy::Fail`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FamilyConflictPolicy {
-    /// Retain the first-*arriving* claimant, record a
-    /// [`DuplicateSupportPlanEntry`] (surfaced as diagnostic code 1202), and
-    /// mark the aggregate degraded.
+    /// Drop the trespassing entry, record an [`OwnershipViolation`] (surfaced
+    /// as diagnostic code 1206), and mark the aggregate degraded.
     #[default]
     Degrade,
     /// Abort with [`SupportAggregationError`], publishing nothing.
     Fail,
 }
 
-// ORDERING ASYMMETRY (deliberate; no OrcaSlicer basis for either half).
-//
-// Two different orders are live in this function and they disagree:
-//
-//   * `Fail` computes its `SupportAggregationError` payload from the SORTED
-//     entry list, so `expected_family_id` is whichever family sorts first
-//     under `compare_entries` (which keys on `body_ids.iter().min()`, so e.g.
-//     "traditional-body" < "tree-body").
-//   * `Degrade` retains the first entry in PLAN-ARRIVAL order -- the
-//     `(plan_index, entry_index)` ordinal captured before the sort -- because
-//     "the first writer to claim a region owns it" is the only rule that is
-//     stable against a body being renamed.
-//
-// Neither order is derived from canonical OrcaSlicer behaviour; canonical has
-// no multi-family merge point at all. They are kept apart because
-// `mismatched_family_fatal` (slicer-runtime `tests/integration/
-// support_family_routing.rs`) pins the sorted-order payload while the two
-// degrade tests pin arrival-order retention. Do NOT unify them without first
-// amending `mismatched_family_fatal`.
-//
-// The sort itself remains, and is now purely for output determinism.
+/// Why one entry was refused ownership of the region it wrote.
+///
+/// Default-deny: an entry is published only when a `family_assignments` row
+/// names its family as the region's owner AND its producer holds that family's
+/// claim. Everything else — including a host-internal producer/plan length
+/// mismatch — denies.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OwnershipReason {
+    /// No `family_assignments` row exists for `(object_id, region_id)`, so the
+    /// region has no owner and nobody may write it.
+    NoAssignment,
+    /// The region is owned by a different family than the entry declares.
+    WrongFamily {
+        /// Family the host assigned the region to.
+        owner: String,
+    },
+    /// The producing module never declared the family's claim.
+    MissingClaim {
+        /// Claim string the producer would have had to hold.
+        required: String,
+    },
+}
+
+/// One entry refused publication because it does not own its region.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OwnershipViolation {
+    /// Layer the trespassing entry was written for.
+    pub global_layer_index: i32,
+    /// Object the trespassing entry was written for.
+    pub object_id: String,
+    /// Region the trespassing entry was written for.
+    pub region_id: u64,
+    /// Family the trespassing entry declared.
+    pub family_id: String,
+    /// Module that produced the plan carrying the entry.
+    pub module_id: String,
+    /// Why ownership was refused.
+    pub reason: OwnershipReason,
+    /// Index into `plans` of the producing plan.
+    pub plan_index: usize,
+}
 
 /// Structured unmet demand diagnostic emitted when a body is dropped.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -146,26 +161,52 @@ pub struct SupportAggregationResult {
     /// Bodies trimmed to their family's support territory (ticket 19).
     pub clipped: Vec<ClippedSupportBody>,
     /// Duplicate identities rejected in deterministic input order.
+    ///
+    /// **Currently unreachable by construction — nothing in this crate pushes
+    /// to it.** The only site that populated it was the cross-family
+    /// arrival-order arbitration branch removed by packet 241b. It is retained
+    /// (with diagnostic code `1202`) as a tripwire for a future writer, not as
+    /// a live signal: an empty `duplicates` proves nothing today, so do not
+    /// read `duplicates.is_empty()` as evidence that duplicates were checked.
+    ///
+    /// It is deliberately NOT repopulated from a post-union
+    /// `(global_layer_index, object_id, region_id)` scan: `region_id` is not
+    /// unique per plane, and `union_same_family_entries` keys on `anchor_z` as
+    /// well, so same-family entries that legitimately share a dispatch layer
+    /// while carrying distinct physical planes would all read as duplicates.
+    /// No key over the post-union survivors distinguishes that legitimate case
+    /// from a real duplicate without reintroducing the cross-family
+    /// arbitration this packet deleted.
     pub duplicates: Vec<DuplicateSupportPlanEntry>,
+    /// Entries dropped because they do not own the region they wrote.
+    pub ownership_violations: Vec<OwnershipViolation>,
     /// Raft metadata merged from all family plans.
     pub raft_plan: Option<RaftPlan>,
     /// Structured diagnostics for rejected bodies and declined demands.
     pub diagnostics: Vec<SupportRoutingDiagnostics>,
 }
 
-/// Fatal identity conflict between support families.
+/// Fatal support-region ownership violation.
+///
+/// Under [`FamilyConflictPolicy::Fail`] the first trespass aborts the merge and
+/// nothing is published. The payload is the trespass itself: which entry wrote
+/// which region, which module produced it, and why it was refused. It no longer
+/// describes an arrival-order collision between two writers, because arrival
+/// order no longer decides anything — ownership is declared up front.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SupportAggregationError {
-    /// Colliding layer identity.
+    /// Layer the trespassing entry was written for.
     pub global_layer_index: i32,
-    /// Colliding object identity.
+    /// Object the trespassing entry was written for.
     pub object_id: String,
-    /// Colliding region identity.
+    /// Region the trespassing entry was written for.
     pub region_id: u64,
-    /// Family selected by the first writer.
-    pub expected_family_id: String,
-    /// Family attempting the conflicting write.
-    pub conflicting_family_id: String,
+    /// Family the trespassing entry declared.
+    pub family_id: String,
+    /// Module that produced the plan carrying the entry.
+    pub module_id: String,
+    /// Why ownership was refused.
+    pub reason: OwnershipReason,
 }
 
 /// A duplicate `(layer, object, region)` identity found during aggregation.
@@ -251,20 +292,86 @@ pub fn try_aggregate_support_plans(
     try_aggregate_support_plans_with_policy(input, FamilyConflictPolicy::Fail)
 }
 
+/// Decide whether one entry is allowed to write the region it names.
+///
+/// Ownership is declared, never raced for: the host's `family_assignments` map
+/// names the owning family of every `(object_id, region_id)`, and only a module
+/// holding that family's `support-family:<id>` claim may act for it. There is
+/// no fallback — a region with no assignment row has no owner, so a wholly
+/// absent `territory` denies every entry.
+///
+/// This mirrors the policy shape of `enforce_authored_coloring`
+/// (`crates/slicer-wasm-host/src/marshal/out.rs`): default-deny in policy, but
+/// never in silence — every refusal is reported by the caller.
+// The `Err` payload is the violation report itself; boxing it would buy
+// nothing on a path taken once per rejected entry and would obscure the
+// refusal at every call site.
+#[allow(clippy::result_large_err)]
+fn check_ownership(
+    entry: &SupportPlanEntry,
+    plan_index: usize,
+    input: &SupportAggregationInput<'_>,
+) -> Result<(), OwnershipViolation> {
+    let producer = input.producers.get(plan_index);
+    let module_id = producer
+        .map(|producer| producer.module_id.clone())
+        .unwrap_or_default();
+    let required_claim = format!("support-family:{}", entry.family_id);
+    let owner = input
+        .territory
+        .and_then(|analysis| {
+            analysis
+                .family_assignments
+                .get(&(entry.object_id.clone(), entry.region_id))
+        })
+        .cloned();
+    let reason = match owner {
+        None => Some(OwnershipReason::NoAssignment),
+        Some(owner) if owner != entry.family_id => Some(OwnershipReason::WrongFamily { owner }),
+        Some(_) => match producer {
+            // A missing producer is a host-side construction invariant, not a
+            // module fault; it denies like any unclaimed write rather than
+            // publishing something whose author is unknown.
+            Some(producer) if producer.claims.contains(&required_claim) => None,
+            _ => Some(OwnershipReason::MissingClaim {
+                required: required_claim,
+            }),
+        },
+    };
+    match reason {
+        None => Ok(()),
+        Some(reason) => Err(OwnershipViolation {
+            global_layer_index: entry.global_layer_index,
+            object_id: entry.object_id.clone(),
+            region_id: entry.region_id,
+            family_id: entry.family_id.clone(),
+            module_id,
+            reason,
+            plan_index,
+        }),
+    }
+}
+
 /// Aggregate family plans under an explicit [`FamilyConflictPolicy`].
 ///
-/// See the ORDERING ASYMMETRY note above: the `Fail` error payload is computed
-/// from the sorted entry list, while `Degrade` retention follows plan-arrival
-/// order.
+/// Ownership is checked first, before any validation: an entry that does not
+/// own its region never reaches the rest of the pipeline. The check is a pure
+/// function of `(entry, family_assignments, producer claims)`, so its outcome
+/// does not depend on the order the plans arrive in.
 pub fn try_aggregate_support_plans_with_policy(
     input: SupportAggregationInput<'_>,
     conflict_policy: FamilyConflictPolicy,
 ) -> Result<SupportAggregationResult, SupportAggregationError> {
+    // Producers are index-parallel to plans by construction at every call site;
+    // a mismatch is a host bug, and it denies rather than publishing anything
+    // unowned (see `check_ownership`).
+    debug_assert_eq!(
+        input.plans.len(),
+        input.producers.len(),
+        "every support plan must carry its producer identity"
+    );
     let mut result = SupportAggregationResult::default();
     let mut identities = HashMap::new();
-    // Arrival ordinal `(plan_index, entry_index)`, captured BEFORE the total
-    // sort below. Under `Degrade` this -- not sort position -- decides which
-    // family owns a contested identity.
     let mut entries = input
         .plans
         .iter()
@@ -272,61 +379,36 @@ pub fn try_aggregate_support_plans_with_policy(
         .flat_map(|(plan_index, plan)| {
             plan.entries
                 .iter()
-                .enumerate()
-                .map(move |(entry_index, entry)| ((plan_index, entry_index), entry.clone()))
+                .map(move |entry| (plan_index, entry.clone()))
         })
         .collect::<Vec<_>>();
-    let mut arrival_owners: HashMap<(i32, String, u64), ((usize, usize), String)> = HashMap::new();
-    for (arrival, entry) in &entries {
-        let identity = (
-            entry.global_layer_index,
-            entry.object_id.clone(),
-            entry.region_id,
-        );
-        match arrival_owners.get(&identity) {
-            Some((incumbent, _)) if incumbent <= arrival => {}
-            _ => {
-                arrival_owners.insert(identity, (*arrival, entry.family_id.clone()));
-            }
-        }
-    }
+    // Purely for output determinism: ownership no longer depends on order.
     entries.sort_by(|left, right| compare_entries(&left.1, &right.1));
-    for plan in input.plans {
-        result.raft_plan = merge_raft_plans(result.raft_plan.take(), plan.raft_plan);
+    for plan in &input.plans {
+        result.raft_plan = merge_raft_plans(result.raft_plan.take(), plan.raft_plan.clone());
     }
-    for (_arrival, entry) in entries {
+    for (plan_index, entry) in entries {
         let identity = (
             entry.global_layer_index,
             entry.object_id.clone(),
             entry.region_id,
         );
-        match conflict_policy {
-            FamilyConflictPolicy::Fail => {
-                if let Some(first_family_id) = identities.get(&identity).cloned() {
-                    if first_family_id != entry.family_id {
-                        return Err(SupportAggregationError {
-                            global_layer_index: identity.0,
-                            object_id: identity.1.clone(),
-                            region_id: identity.2,
-                            expected_family_id: first_family_id,
-                            conflicting_family_id: entry.family_id.clone(),
-                        });
-                    }
+        if let Err(violation) = check_ownership(&entry, plan_index, &input) {
+            match conflict_policy {
+                FamilyConflictPolicy::Fail => {
+                    return Err(SupportAggregationError {
+                        global_layer_index: violation.global_layer_index,
+                        object_id: violation.object_id,
+                        region_id: violation.region_id,
+                        family_id: violation.family_id,
+                        module_id: violation.module_id,
+                        reason: violation.reason,
+                    })
                 }
-            }
-            FamilyConflictPolicy::Degrade => {
-                if let Some((_, owner_family_id)) = arrival_owners.get(&identity) {
-                    if owner_family_id != &entry.family_id {
-                        result.degraded = true;
-                        result.duplicates.push(DuplicateSupportPlanEntry {
-                            global_layer_index: identity.0,
-                            object_id: identity.1.clone(),
-                            region_id: identity.2,
-                            first_family_id: owner_family_id.clone(),
-                            duplicate_family_id: entry.family_id.clone(),
-                        });
-                        continue;
-                    }
+                FamilyConflictPolicy::Degrade => {
+                    result.degraded = true;
+                    result.ownership_violations.push(violation);
+                    continue;
                 }
             }
         }
@@ -363,7 +445,7 @@ pub fn try_aggregate_support_plans_with_policy(
     }
     // Validation is a *per-body* gate and runs only here, before union.
     // Re-running it on merged groups was a category error: a merged group is by
-    // construction not one planner-emitted body, so the per-body routing-cell
+    // construction not one planner-emitted body, so the per-body max-body-extent
     // territory bound does not apply to it, and two legitimately same-`body_id`
     // entries far apart on the plate were dropped wholesale once their union
     // envelope exceeded one cell. Canonical support-island merging (`union_` in
@@ -535,7 +617,13 @@ fn validate_entry(entry: &SupportPlanEntry, exact_z: &ExactZQueryService) -> Opt
         )
         .map(|query| {
             if !in_routing_cell(entry) {
-                Some("body rejected: routing-cell collision")
+                // Per-body extent-bound violation: the body's own bbox spans
+                // more than `MAX_BODY_EXTENT_UNITS` on an axis. This is not a
+                // cell assignment and nothing collides. The string is pinned
+                // verbatim by assertions in
+                // `crates/slicer-runtime/tests/integration/support_family_routing.rs`,
+                // so renaming it must land together with those.
+                Some("body rejected: max-body-extent violation")
             } else if entry.roles.iter().any(|role| {
                 role.regions
                     .iter()
@@ -584,29 +672,27 @@ fn merge_raft_plans(current: Option<RaftPlan>, incoming: Option<RaftPlan>) -> Op
     }
 }
 
-/// Combine validated entries that are owned by one family and route through
-/// the same body/cell. The first entry supplies scalar attribution; geometry,
-/// body identities, and demands are accumulated without duplicates.
+/// Combine validated entries that one family contributed to a single DECLARED
+/// support region. The merge key is the declared identity
+/// `(family_id, global_layer_index, object_id, region_id, anchor_z)` -- never
+/// where the geometry happens to sit, so two contributions to one region merge
+/// no matter how far apart their bodies are. The first entry supplies scalar
+/// attribution; geometry, body identities, and demands are accumulated without
+/// duplicates.
 fn union_same_family_entries(entries: &mut Vec<SupportPlanEntry>) {
     let mut merged: Vec<SupportPlanEntry> = Vec::new();
-    // Routing identity of each merged group, snapshotted when the group is
-    // created. Recomputing it from `merged[index]` mid-loop let a group's cell
-    // drift as it absorbed members, making the result order-sensitive.
-    let mut group_cells: Vec<Option<RoutingCell>> = Vec::new();
     for entry in entries.drain(..) {
-        let entry_cell = routing_cell(&entry);
-        let matching = merged.iter().enumerate().position(|(index, existing)| {
+        let matching = merged.iter().position(|existing| {
             existing.family_id == entry.family_id
-                    && existing.global_layer_index == entry.global_layer_index
-                    && existing.object_id == entry.object_id
-                    // Independent support rows share the dispatch layer but
-                    // intentionally carry distinct physical planes.
-                    && existing.anchor_z == entry.anchor_z
-                    && (same_body(existing, &entry) || group_cells[index] == entry_cell)
+                && existing.global_layer_index == entry.global_layer_index
+                && existing.object_id == entry.object_id
+                && existing.region_id == entry.region_id
+                // Independent support rows share the dispatch layer but
+                // intentionally carry distinct physical planes.
+                && existing.anchor_z == entry.anchor_z
         });
         let Some(index) = matching else {
             merged.push(entry);
-            group_cells.push(entry_cell);
             continue;
         };
         let existing = &mut merged[index];
@@ -633,127 +719,25 @@ fn union_same_family_entries(entries: &mut Vec<SupportPlanEntry>) {
     *entries = merged;
 }
 
-fn same_body(left: &SupportPlanEntry, right: &SupportPlanEntry) -> bool {
-    left.body_ids
-        .iter()
-        .any(|body| right.body_ids.contains(body))
-}
-
-fn routing_cell(entry: &SupportPlanEntry) -> Option<RoutingCell> {
-    let regions: Vec<&ExPolygon> = entry
-        .roles
-        .iter()
-        .flat_map(|role| role.regions.iter())
-        .collect();
-    body_bounds(&regions).map(|(minx, maxx, miny, maxy)| {
-        RoutingCell::from_centroid((minx + maxx) / 2, (miny + maxy) / 2)
-    })
-}
-
 fn dedup_sorted(values: &mut Vec<String>) {
     let mut unique = HashSet::new();
     values.retain(|value| unique.insert(value.clone()));
     values.sort();
 }
 
-/// Validate one harvested writer result before it is handed to the runtime
-/// blackboard. Declined entries are diagnostics only, never renderer input.
-pub fn aggregate_support_plan_ir(
-    plan: SupportPlanIR,
-    exact_z: &ExactZQueryService,
-) -> Result<SupportPlanIR, SupportAggregationError> {
-    let aggregate = try_aggregate_support_plans(SupportAggregationInput {
-        plans: vec![plan.clone()],
-        exact_z,
-        territory: None,
-    })?;
-    Ok(SupportPlanIR {
-        schema_version: plan.schema_version,
-        entries: aggregate.retained,
-        raft_plan: aggregate.raft_plan,
-    })
-}
-
-/// Production support harvest result, including host-owned degraded diagnostics.
-pub fn aggregate_support_plan_ir_with_diagnostics(
-    plan: SupportPlanIR,
-    exact_z: &ExactZQueryService,
-) -> (SupportPlanIR, Vec<slicer_ir::Diagnostic>) {
-    try_aggregate_support_plan_ir_with_diagnostics(plan, exact_z).unwrap_or_else(|error| {
-        (
-            SupportPlanIR::default(),
-            vec![slicer_ir::Diagnostic {
-                severity: slicer_ir::DiagnosticSeverity::Error,
-                code: 1204,
-                layer: None,
-                object_id: None,
-                message: format!("support family routing mismatch: {error:?}"),
-            }],
-        )
-    })
-}
-
-/// Fallible form used by the runtime prepass commit seam.
-pub fn try_aggregate_support_plan_ir_with_diagnostics(
-    plan: SupportPlanIR,
-    exact_z: &ExactZQueryService,
-) -> Result<(SupportPlanIR, Vec<slicer_ir::Diagnostic>), SupportAggregationError> {
-    try_aggregate_support_plan_irs_with_diagnostics(vec![plan], exact_z)
-}
-
-/// Aggregate all harvested family plans at the host multi-writer seam.
-pub fn aggregate_support_plan_irs_with_diagnostics(
-    plans: Vec<SupportPlanIR>,
-    exact_z: &ExactZQueryService,
-) -> (SupportPlanIR, Vec<slicer_ir::Diagnostic>) {
-    try_aggregate_support_plan_irs_with_diagnostics(plans, exact_z).unwrap_or_else(|error| {
-        (
-            SupportPlanIR::default(),
-            vec![slicer_ir::Diagnostic {
-                severity: slicer_ir::DiagnosticSeverity::Error,
-                code: 1204,
-                layer: None,
-                object_id: None,
-                message: format!("support family routing mismatch: {error:?}"),
-            }],
-        )
-    })
-}
-
-/// Fallible aggregation used when a caller must prevent publication on error.
-///
-/// Keeps [`FamilyConflictPolicy::Fail`]: a cross-family identity conflict is
-/// reported as `Err` and nothing is published.
-pub fn try_aggregate_support_plan_irs_with_diagnostics(
-    plans: Vec<SupportPlanIR>,
-    exact_z: &ExactZQueryService,
-) -> Result<(SupportPlanIR, Vec<slicer_ir::Diagnostic>), SupportAggregationError> {
-    aggregate_support_plan_irs_with_policy(plans, exact_z, FamilyConflictPolicy::Fail)
-}
-
-/// Degrading aggregation used by the runtime prepass commit seam.
-///
-/// A cross-family identity conflict retains the first-arriving family, emits
-/// diagnostic code 1202, and still publishes every other entry, instead of
-/// discarding the whole aggregate.
-pub fn aggregate_support_plan_irs_degrading_with_diagnostics(
-    plans: Vec<SupportPlanIR>,
-    exact_z: &ExactZQueryService,
-) -> (SupportPlanIR, Vec<slicer_ir::Diagnostic>) {
-    aggregate_support_plan_irs_with_policy(plans, exact_z, FamilyConflictPolicy::Degrade)
-        .unwrap_or_else(|error| {
-            // Unreachable under `Degrade`, which never returns `Err`.
-            (
-                SupportPlanIR::default(),
-                vec![slicer_ir::Diagnostic {
-                    severity: slicer_ir::DiagnosticSeverity::Error,
-                    code: 1204,
-                    layer: None,
-                    object_id: None,
-                    message: format!("support family routing mismatch: {error:?}"),
-                }],
-            )
-        })
+/// Human-readable form of an ownership refusal, for diagnostic messages.
+fn describe_ownership_reason(reason: &OwnershipReason) -> String {
+    match reason {
+        OwnershipReason::NoAssignment => {
+            "no support family owns this region (no family_assignments row)".to_string()
+        }
+        OwnershipReason::WrongFamily { owner } => {
+            format!("region is owned by family '{owner}'")
+        }
+        OwnershipReason::MissingClaim { required } => {
+            format!("producer does not hold claim '{required}'")
+        }
+    }
 }
 
 /// Degrading aggregation that preserves per-plan attribution for every
@@ -765,17 +749,26 @@ pub fn aggregate_support_plan_irs_degrading_with_diagnostics(
 /// that takes the committed support analysis, whose `support_territory`
 /// (ticket 19) clips cross-family bodies instead of rejecting them; the
 /// other wrappers serve territory-free callers and pass `None`.
+///
+/// `producers` is index-parallel to `plans` and carries the manifest identity
+/// of the module behind each plan. It is a required argument rather than a
+/// defaulted one on purpose: ownership is default-deny, so a caller that
+/// cannot name its producers would silently publish nothing.
 pub fn aggregate_support_plan_irs_degrading_with_attributed_diagnostics(
     plans: Vec<SupportPlanIR>,
+    producers: Vec<SupportPlanProducer>,
     exact_z: &ExactZQueryService,
     territory: Option<&SupportAnalysisIR>,
 ) -> (SupportPlanIR, Vec<AttributedDiagnostic>) {
-    aggregate_support_plan_irs_with_policy_attributed(
-        plans,
-        exact_z,
-        territory,
-        FamilyConflictPolicy::Degrade,
-    )
+    {
+        aggregate_support_plan_irs_with_policy_attributed(
+            plans,
+            producers,
+            exact_z,
+            territory,
+            FamilyConflictPolicy::Degrade,
+        )
+    }
     .unwrap_or_else(|error| {
         // Unreachable under `Degrade`, which never returns `Err`.
         (
@@ -794,24 +787,14 @@ pub fn aggregate_support_plan_irs_degrading_with_attributed_diagnostics(
     })
 }
 
-fn aggregate_support_plan_irs_with_policy(
+/// Attributed aggregation with explicit producer identities.
+///
+/// `producers` is index-parallel to `plans`; it is what lets the merge point
+/// enforce support-region ownership and what lets an ownership diagnostic name
+/// the offending module directly instead of guessing it from a family id.
+pub fn aggregate_support_plan_irs_with_policy_attributed(
     plans: Vec<SupportPlanIR>,
-    exact_z: &ExactZQueryService,
-    conflict_policy: FamilyConflictPolicy,
-) -> Result<(SupportPlanIR, Vec<slicer_ir::Diagnostic>), SupportAggregationError> {
-    let (plan, attributed) =
-        aggregate_support_plan_irs_with_policy_attributed(plans, exact_z, None, conflict_policy)?;
-    Ok((
-        plan,
-        attributed
-            .into_iter()
-            .map(|entry| entry.diagnostic)
-            .collect(),
-    ))
-}
-
-fn aggregate_support_plan_irs_with_policy_attributed(
-    plans: Vec<SupportPlanIR>,
+    producers: Vec<SupportPlanProducer>,
     exact_z: &ExactZQueryService,
     territory: Option<&SupportAnalysisIR>,
     conflict_policy: FamilyConflictPolicy,
@@ -825,6 +808,7 @@ fn aggregate_support_plan_irs_with_policy_attributed(
             plans: plans.clone(),
             exact_z,
             territory,
+            producers,
         },
         conflict_policy,
     )?;
@@ -896,6 +880,32 @@ fn aggregate_support_plan_irs_with_policy_attributed(
             ),
         },
     }));
+    // Ownership refusals carry their producing plan index with them, so this is
+    // the one diagnostic family that never has to invert a family or body id
+    // back to a plan: the trespasser is named exactly.
+    diagnostics.extend(
+        aggregate
+            .ownership_violations
+            .iter()
+            .map(|violation| AttributedDiagnostic {
+                plan_index: Some(violation.plan_index),
+                diagnostic: slicer_ir::Diagnostic {
+                    severity: slicer_ir::DiagnosticSeverity::Warn,
+                    code: 1206,
+                    layer: Some(violation.global_layer_index),
+                    object_id: Some(violation.object_id.clone()),
+                    message: format!(
+                        "support region not owned by writer: family='{}', object='{}', region={}, layer={}, module='{}': {}",
+                        violation.family_id,
+                        violation.object_id,
+                        violation.region_id,
+                        violation.global_layer_index,
+                        violation.module_id,
+                        describe_ownership_reason(&violation.reason)
+                    ),
+                },
+            }),
+    );
     // Ticket 19: territory clips are expected where two families meet across
     // a modifier boundary. Info, not Warn: nothing is unmet.
     diagnostics.extend(aggregate.clipped.iter().map(|clipped| AttributedDiagnostic {
@@ -966,13 +976,21 @@ pub fn aggregate_declined_support_plans(plans: &[SupportPlanIR]) -> DeclinedSupp
     result
 }
 
-/// True when a body fits inside *some* routing-cell-sized territory, i.e. its
-/// envelope is no larger than one cell on either axis. Routing cells bound how
-/// much territory a single body may claim; the body is assigned to the cell
-/// that contains it rather than being measured against the absolute grid, so a
-/// small body that merely straddles a grid line (notably x = 0 or y = 0, which
-/// are cell boundaries) keeps its territory. Only bodies genuinely larger than
-/// one cell exceed their permitted territory and are rejected.
+/// True when a single body's own envelope spans no more than
+/// [`MAX_BODY_EXTENT_UNITS`] (`1 << 20` units) on each axis.
+///
+/// This is a **pure per-body extent bound**, not a partitioning scheme. It
+/// assigns the body to nothing, it compares the body against no grid and
+/// against no other body, and it takes no part in deciding which entries
+/// merge. Only the width and height of this one body's own bounding box are
+/// measured, so absolute position is irrelevant: a body straddling x = 0 or
+/// y = 0 is treated exactly like the same body translated anywhere else. A
+/// body is rejected only when it is genuinely larger than the maximum extent
+/// one support body is permitted to claim.
+///
+/// The name is retained deliberately (packet 224's RC-14 record and the
+/// traditional planner's `merge_region_identity_entries` doc comment both
+/// refer to it) even though no routing cell exists.
 ///
 /// `saturating_sub` is deliberate: a malformed guest plan can place `minx`
 /// near `i64::MIN`, and a plain subtraction would panic in debug builds.
@@ -985,7 +1003,8 @@ fn in_routing_cell(entry: &SupportPlanEntry) -> bool {
     let Some((minx, maxx, miny, maxy)) = body_bounds(&regions) else {
         return true;
     };
-    maxx.saturating_sub(minx) <= ROUTING_CELL_SIZE && maxy.saturating_sub(miny) <= ROUTING_CELL_SIZE
+    maxx.saturating_sub(minx) <= MAX_BODY_EXTENT_UNITS
+        && maxy.saturating_sub(miny) <= MAX_BODY_EXTENT_UNITS
 }
 
 /// Envelope union across all role regions of a support body.

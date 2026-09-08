@@ -19,7 +19,8 @@ use slicer_sdk::prepass_types::{
 use slicer_sdk::traits::PrepassModule;
 use slicer_wasm_host::exact_z_query::ExactZQueryService;
 use slicer_wasm_host::support_aggregation::{
-    aggregate_declined_support_plans, aggregate_support_plan_irs_with_diagnostics,
+    aggregate_declined_support_plans, aggregate_support_plan_irs_with_policy_attributed,
+    FamilyConflictPolicy, SupportPlanProducer,
 };
 use tree_support_planner::{
     body_overlaps_occupancy, build_roles, interface_adjusted_radius, tapered_radius,
@@ -190,6 +191,21 @@ fn regions(object_id: &str) -> RegionSegmentationView {
     }
 }
 
+/// Packet 241b W3c: support-region ownership is default-deny. A region with
+/// no `SupportFamilyAssignment` row has no owner, so the tree planner emits
+/// nothing for it. Every fixture that expects tree output must therefore
+/// carry an explicit `family_id = "tree"` row per region it exercises.
+fn tree_assignments(object_id: &str, region_ids: &[&str]) -> Vec<SupportFamilyAssignment> {
+    region_ids
+        .iter()
+        .map(|region_id| SupportFamilyAssignment {
+            object_id: object_id.into(),
+            region_id: (*region_id).into(),
+            family_id: "tree".into(),
+        })
+        .collect()
+}
+
 fn overhang(object_id: &str, x: f32, y: f32, size: f32) -> MeshObjectView {
     MeshObjectView {
         object_id: object_id.into(),
@@ -233,15 +249,19 @@ fn run_planner(
         .expect("from_config");
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry(
+        .run_support_geometry_with_analysis(
             &[object.clone()],
             &layer_plan(),
             &regions(&object.object_id),
+            &SupportAnalysisView {
+                family_assignments: tree_assignments(&object.object_id, &["0"]),
+                ..Default::default()
+            },
             &geometry,
             &mut output,
             &ConfigView::new(),
         )
-        .expect("run_support_geometry");
+        .expect("run_support_geometry_with_analysis");
     output
 }
 
@@ -334,6 +354,7 @@ fn run_blocked_planner() -> SupportGeometryOutput {
                     blocked: true,
                     ..Default::default()
                 }],
+                family_assignments: tree_assignments("declined", &["0"]),
                 ..Default::default()
             },
             &SupportGeometryView::default(),
@@ -389,6 +410,7 @@ fn distributed_contacts() {
                 geometry: vec![candidate_region.clone()],
                 ..Default::default()
             }],
+            family_assignments: tree_assignments("distributed", &["0"]),
             ..Default::default()
         },
         1.0,
@@ -597,6 +619,7 @@ fn branch_angle_scales_the_per_layer_lateral_move() {
                             ..Default::default()
                         },
                     ],
+                    family_assignments: tree_assignments("angle", &["0"]),
                     ..Default::default()
                 },
                 &SupportGeometryView::default(),
@@ -748,10 +771,14 @@ fn base_interface_band_attributed_in_plan_roles() {
     let planner = tree_support_planner::SupportPlanner::from_config(&config).unwrap();
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry(
+        .run_support_geometry_with_analysis(
             &[object.clone()],
             &layer_plan(),
             &regions(&object.object_id),
+            &SupportAnalysisView {
+                family_assignments: tree_assignments(&object.object_id, &["0"]),
+                ..Default::default()
+            },
             &SupportGeometryView::default(),
             &mut output,
             &ConfigView::new(),
@@ -825,6 +852,7 @@ fn anchored_heights_and_termination() {
                     ..Default::default()
                 },
             ],
+            family_assignments: tree_assignments("anchored", &["0"]),
             ..Default::default()
         },
     );
@@ -960,6 +988,7 @@ fn enabled_independent_height_produces_free_floating_anchor_z() {
             geometry: vec![demand_region],
             ..Default::default()
         }],
+        family_assignments: tree_assignments("indep", &["0"]),
         ..Default::default()
     };
     // The default planner already carries `independent_support_layer_height
@@ -1074,6 +1103,7 @@ fn run_multi_layer_demand_on_plan(
                 ..Default::default()
             },
         ],
+        family_assignments: tree_assignments("coarse", &["0"]),
         ..Default::default()
     };
     let planner = tree_support_planner::SupportPlanner::from_config(&planner_config_full_with(
@@ -1316,10 +1346,14 @@ fn run_near_distinct_interface_fixture() -> SupportGeometryOutput {
     near_plan.layers[6].z = 1.4;
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry(
+        .run_support_geometry_with_analysis(
             &[object.clone()],
             &near_plan,
             &regions(&object.object_id),
+            &SupportAnalysisView {
+                family_assignments: tree_assignments(&object.object_id, &["0"]),
+                ..Default::default()
+            },
             &SupportGeometryView::default(),
             &mut output,
             &ConfigView::new(),
@@ -1343,10 +1377,14 @@ fn coarse_pitch_preserves_lone_interface_bracket() {
     .unwrap();
     let mut output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry(
+        .run_support_geometry_with_analysis(
             &[object.clone()],
             &layer_plan(),
             &regions(&object.object_id),
+            &SupportAnalysisView {
+                family_assignments: tree_assignments(&object.object_id, &["0"]),
+                ..Default::default()
+            },
             &SupportGeometryView::default(),
             &mut output,
             &ConfigView::new(),
@@ -1632,10 +1670,7 @@ fn staggered_region_runs_do_not_pair_across_region_boundaries() {
                 ..Default::default()
             },
         ],
-        // Let the planner's native tree fallback assign only regions present in
-        // segmentation; explicit assignments would stamp one region's template
-        // into every layer of the other region.
-        family_assignments: vec![],
+        family_assignments: tree_assignments(&object.object_id, &["0", "1"]),
         ..Default::default()
     };
     let segmentation = RegionSegmentationView {
@@ -1760,6 +1795,7 @@ fn coarse_same_region_sources_keep_geometry_and_membership() {
                 ..Default::default()
             },
         ],
+        family_assignments: tree_assignments(&object.object_id, &["0"]),
         ..Default::default()
     };
     let planner = tree_support_planner::SupportPlanner::from_config(&planner_config_full_with(
@@ -1891,6 +1927,7 @@ fn run_mixed_source_tree_fixture() -> SupportGeometryOutput {
                 ..Default::default()
             },
         ],
+        family_assignments: tree_assignments(&object.object_id, &["0"]),
         ..Default::default()
     };
     let layers = LayerPlanView {
@@ -2327,9 +2364,9 @@ fn invalid_body_rejected() {
         "colliding demand must emit no body/interface polygons"
     );
 
-    // The host gate owns routing-cell validation. This complete body crosses
+    // The host gate owns max-body-extent validation. This complete body crosses
     // the 1 << 20-unit cell boundary and must not be clipped or filled.
-    // Genuinely oversized: one unit wider AND taller than ROUTING_CELL_SIZE
+    // Genuinely oversized: one unit wider AND taller than MAX_BODY_EXTENT_UNITS
     // (1 << 20), so it fits in no cell-sized territory wherever it is placed.
     // (Before packet 224 this fixture was a 1_000-unit body parked across the
     // x = 1 << 20 grid line, which pinned the absolute-grid defect rather than
@@ -2389,15 +2426,42 @@ fn invalid_body_rejected() {
         ..Default::default()
     };
     let exact_z = ExactZQueryService::new(Arc::new(validation_mesh()));
-    let (aggregated, diagnostics) =
-        aggregate_support_plan_irs_with_diagnostics(vec![plan], &exact_z);
+    // Packet 241b: the merge point is default-deny on support-region
+    // ownership, so the max-body-extent gate is only reachable for an entry the
+    // host actually assigned to this family and whose producer claims it.
+    // Without the territory + producer below the entry is rejected earlier
+    // with `NoAssignment`, and this fixture would stop testing routing cells.
+    let mut territory = slicer_ir::SupportAnalysisIR::default();
+    territory
+        .family_assignments
+        .insert(("object-a".to_string(), 9), "tree".to_string());
+    let producer = SupportPlanProducer {
+        module_id: "com.core.tree-support-planner".into(),
+        claims: vec!["support-planner".into(), "support-family:tree".into()],
+    };
+    let (aggregated, diagnostics) = aggregate_support_plan_irs_with_policy_attributed(
+        vec![plan],
+        vec![producer],
+        &exact_z,
+        Some(&territory),
+        FamilyConflictPolicy::Fail,
+    )
+    .expect("attributed aggregation");
     assert!(
         aggregated.entries.is_empty(),
         "complete crossing body is dropped"
     );
-    assert!(diagnostics.iter().any(|diagnostic| {
-        diagnostic.message.contains("spans-cell") && diagnostic.message.contains("routing-cell")
-    }));
+    assert!(
+        diagnostics.iter().any(|attributed| {
+            attributed.diagnostic.message.contains("spans-cell")
+                && attributed.diagnostic.message.contains("max-body-extent")
+        }),
+        "expected a max-body-extent rejection naming the body; got {:?}",
+        diagnostics
+            .iter()
+            .map(|attributed| (attributed.diagnostic.code, attributed.diagnostic.message.clone()))
+            .collect::<Vec<_>>()
+    );
     assert!(aggregated
         .entries
         .iter()
@@ -2630,5 +2694,347 @@ fn foreign_territory_bars_tree_roles_and_skeleton() {
                 );
             }
         }
+    }
+}
+
+#[test]
+fn empty_family_assignments_emit_nothing() {
+    // Packet 241b W3c: support-region ownership is default-deny at the
+    // producer as well as at the host merge point. With a POPULATED region
+    // map but NO `family_assignments` rows, no region is owned by any family,
+    // so this planner must emit nothing — no self-default onto its own
+    // configured `support_family`.
+    let planner = tree_support_planner::SupportPlanner::from_config(&planner_config(true))
+        .expect("from_config");
+    // Mesh-less object so only the analysis candidate path contributes
+    // contacts; the fallback under test lived on that path.
+    let object = MeshObjectView {
+        object_id: "unowned".into(),
+        vertices: vec![],
+        triangles: vec![],
+        paint_layers: vec![],
+    };
+    let candidate_region = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(0.0, 0.0),
+                Point2::from_mm(4.0, 0.0),
+                Point2::from_mm(4.0, 4.0),
+                Point2::from_mm(0.0, 4.0),
+            ],
+        },
+        holes: vec![],
+    };
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry_with_analysis(
+            &[object.clone()],
+            &layer_plan(),
+            // Populated region map: region "0" exists on every layer.
+            &regions(&object.object_id),
+            &SupportAnalysisView {
+                candidates: vec![SupportAnalysisCandidate {
+                    id: 1,
+                    object_id: "unowned".into(),
+                    region_id: "0".into(),
+                    global_layer_index: 8,
+                    z_units: slicer_ir::mm_to_units(1.8),
+                    geometry: vec![candidate_region],
+                    ..Default::default()
+                }],
+                family_assignments: vec![],
+                ..Default::default()
+            },
+            &SupportGeometryView::default(),
+            &mut output,
+            &ConfigView::new(),
+        )
+        .expect("run_support_geometry_with_analysis");
+    assert!(
+        output.entries().is_empty(),
+        "no family assignment row means no owner: the tree planner must emit \
+         nothing rather than self-defaulting to its configured family (got {} entries)",
+        output.entries().len()
+    );
+}
+
+#[test]
+fn declined_identity_is_not_re_emitted_as_a_planned_entry() {
+    // Packet 241b Task B. `SupportPlanIR::duplicate_region_identity` rejects
+    // two entries sharing `(global_layer_index, object_id, region_id)`.
+    //
+    // The 239c off-grid path does NOT produce such a pair: this planner emits
+    // at most one entry per `(object, region, layer)` (every body on a layer
+    // is unioned into a single `tree-body-<object>-<layer>` record), and the
+    // clones that share an intermediate plane's synthetic index always differ
+    // in `region_id`. The reachable collision is elsewhere: a blocked
+    // candidate publishes a declined record straight to `output`, bypassing
+    // `entries_in_order`, and the assignment-driven region pass then planned
+    // the same identity again. Region "9" here is assigned to tree but absent
+    // from segmentation, and its blocked candidate sits on layer 6 -- a layer
+    // the column also reaches. The finer-than-grid support pitch keeps the
+    // off-grid interpolation in the fixture as well.
+    let object = overhang("dup-probe", 0.0, 0.0, 12.0);
+    let square = |x: f32| ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(x, 1.0),
+                Point2::from_mm(x + 2.0, 1.0),
+                Point2::from_mm(x + 2.0, 3.0),
+                Point2::from_mm(x, 3.0),
+            ],
+        },
+        holes: vec![],
+    };
+    let analysis = SupportAnalysisView {
+        candidates: vec![
+            SupportAnalysisCandidate {
+                id: 301,
+                object_id: object.object_id.clone(),
+                region_id: "0".into(),
+                global_layer_index: 8,
+                z_units: slicer_ir::mm_to_units(1.8),
+                geometry: vec![square(1.0)],
+                ..Default::default()
+            },
+            SupportAnalysisCandidate {
+                id: 302,
+                object_id: object.object_id.clone(),
+                region_id: "9".into(),
+                global_layer_index: 6,
+                z_units: slicer_ir::mm_to_units(1.4),
+                geometry: vec![square(8.0)],
+                blocked: true,
+                ..Default::default()
+            },
+        ],
+        family_assignments: tree_assignments(&object.object_id, &["0", "9"]),
+        ..Default::default()
+    };
+    let planner = tree_support_planner::SupportPlanner::from_config(&planner_config_full_with(
+        true,
+        5.0,
+        45.0,
+        &[("support_layer_height_mm", ConfigValue::Float(0.1))],
+    ))
+    .unwrap();
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry_with_analysis(
+            &[object.clone()],
+            &layer_plan(),
+            &regions(&object.object_id),
+            &analysis,
+            &SupportGeometryView::default(),
+            &mut output,
+            &ConfigView::new(),
+        )
+        .expect("run_support_geometry_with_analysis");
+
+    // The duplicate scan below is vacuously green on an empty stream, so pin
+    // that the run actually produced the situation under test first: the
+    // planner emitted entries, the blocked candidate's declined record for
+    // region "9" on layer 6 WAS emitted, and the assignment-driven pass planned
+    // real (non-declined) entries that could collide with it.
+    assert!(
+        !output.entries().is_empty(),
+        "the planner must emit entries for this fixture; an empty stream would          make the duplicate scan vacuous"
+    );
+    assert!(
+        output.entries().iter().any(|entry| {
+            entry.region_id == "9"
+                && entry.global_layer_index == 6
+                && entry.decline_reason == Some(SupportPlanDeclineReason::Blocked)
+        }),
+        "the blocked candidate must publish a declined record at (6, \"9\");          full stream={:?}",
+        output
+            .entries()
+            .iter()
+            .map(|entry| (
+                entry.global_layer_index,
+                entry.region_id.clone(),
+                entry.decline_reason
+            ))
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        output
+            .entries()
+            .iter()
+            .any(|entry| entry.decline_reason.is_none()),
+        "the assignment-driven pass must plan at least one non-declined entry"
+    );
+
+    let mut seen = std::collections::BTreeSet::new();
+    let duplicates: Vec<_> = output
+        .entries()
+        .iter()
+        .filter(|entry| {
+            !seen.insert((
+                entry.global_layer_index,
+                entry.object_id.clone(),
+                entry.region_id.clone(),
+            ))
+        })
+        .map(|entry| {
+            (
+                entry.global_layer_index,
+                entry.region_id.clone(),
+                entry.anchor_z,
+                entry.body_ids.clone(),
+            )
+        })
+        .collect();
+    assert!(
+        duplicates.is_empty(),
+        "two entries share (global_layer_index, object_id, region_id) \
+         {duplicates:?}; full stream={:?}",
+        output
+            .entries()
+            .iter()
+            .map(|entry| (
+                entry.global_layer_index,
+                entry.region_id.clone(),
+                entry.anchor_z,
+                entry.body_ids.clone()
+            ))
+            .collect::<Vec<_>>()
+    );
+}
+
+/// DEV-170 (packet 241b): the coarse tree-support path must publish at most
+/// one row per `(global_layer_index, object_id, region_id)`.
+///
+/// Two coarse candidates of the SAME region that came from DIFFERENT source
+/// layers can fall inside one `CANONICAL_EPSILON_MM` grouping. They then
+/// receive the same synthetic `global_layer_index` and `anchor_z`, while the
+/// guest-side `synthesized_seen` key -- which carries the SOURCE layer, not
+/// the emitted one -- still sees them as distinct. Both used to be pushed,
+/// producing exactly the shape `SupportPlanIR::duplicate_region_identity`
+/// rejects at the host commit seam. The host's `union_same_family_entries`
+/// folded the pair, so the defect was invisible downstream; this test pins
+/// the PRODUCER contract instead.
+///
+/// The fixture packs the layer plan at one canonical unit (1e-4 mm) per
+/// layer and sets the support pitch to the same 1e-4 mm, which is the only
+/// way to make the coarse step land at or below `CANONICAL_EPSILON_MM`
+/// (the step is always ~= the pitch, and the pitch must be >= the largest
+/// covered layer gap for the coarse branch to engage at all).
+#[test]
+fn coarse_epsilon_group_emits_one_row_per_region_identity() {
+    let object = overhang("dev170-coarse-identity", 0.0, 0.0, 4.0);
+    let square = |x: f32| ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(x, 1.0),
+                Point2::from_mm(x + 2.0, 1.0),
+                Point2::from_mm(x + 2.0, 3.0),
+                Point2::from_mm(x, 3.0),
+            ],
+        },
+        holes: vec![],
+    };
+    let packed_plan = LayerPlanView {
+        layers: (0..10)
+            .map(|i| LayerPlanViewEntry {
+                global_layer_index: i,
+                z: 0.5 + i as f32 * 0.0001,
+                effective_layer_height: 0.2,
+            })
+            .collect(),
+    };
+    let analysis = SupportAnalysisView {
+        candidates: vec![
+            SupportAnalysisCandidate {
+                id: 170,
+                object_id: object.object_id.clone(),
+                region_id: "0".into(),
+                global_layer_index: 3,
+                z_units: slicer_ir::mm_to_units(0.5003),
+                geometry: vec![square(-100.0)],
+                ..Default::default()
+            },
+            SupportAnalysisCandidate {
+                id: 171,
+                object_id: object.object_id.clone(),
+                region_id: "0".into(),
+                global_layer_index: 8,
+                z_units: slicer_ir::mm_to_units(0.5008),
+                geometry: vec![square(100.0)],
+                ..Default::default()
+            },
+        ],
+        family_assignments: tree_assignments(&object.object_id, &["0"]),
+        ..Default::default()
+    };
+    let planner = tree_support_planner::SupportPlanner::from_config(&planner_config_full_with(
+        true,
+        5.0,
+        45.0,
+        &[
+            ("support_layer_height_mm", ConfigValue::Float(0.0001)),
+            ("support_interface_top_layers", ConfigValue::Int(1)),
+        ],
+    ))
+    .unwrap();
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry_with_analysis(
+            &[object],
+            &packed_plan,
+            &regions("dev170-coarse-identity"),
+            &analysis,
+            &SupportGeometryView::default(),
+            &mut output,
+            &ConfigView::new(),
+        )
+        .unwrap();
+
+    let synthesized: Vec<_> = output
+        .entries()
+        .iter()
+        .filter(|entry| entry.global_layer_index < 0)
+        .collect();
+    assert!(
+        !synthesized.is_empty(),
+        "fixture must reach the coarse synthesis branch"
+    );
+    let mut rows_by_identity =
+        std::collections::BTreeMap::<(i32, String, String), Vec<(i64, Vec<String>)>>::new();
+    for entry in output.entries() {
+        rows_by_identity
+            .entry((
+                entry.global_layer_index,
+                entry.object_id.clone(),
+                entry.region_id.clone(),
+            ))
+            .or_default()
+            .push((entry.anchor_z, entry.body_ids.clone()));
+    }
+    let duplicates: Vec<_> = rows_by_identity
+        .iter()
+        .filter(|(_, rows)| rows.len() > 1)
+        .collect();
+    assert!(
+        duplicates.is_empty(),
+        "the producer must not publish two rows sharing one (global_layer_index, object_id, region_id) triple: {duplicates:?}"
+    );
+
+    // Merging, not dropping: every source body that reached a coarse plane
+    // must still be named by the row that survived on it.
+    let bodies: std::collections::BTreeSet<&str> = output
+        .entries()
+        .iter()
+        .flat_map(|entry| entry.body_ids.iter().map(String::as_str))
+        .collect();
+    for expected in [
+        "tree-body-dev170-coarse-identity-2",
+        "tree-body-dev170-coarse-identity-3",
+        "tree-body-dev170-coarse-identity-4",
+    ] {
+        assert!(
+            bodies.contains(expected),
+            "coarse merge must not drop body membership; missing {expected} in {bodies:?}"
+        );
     }
 }

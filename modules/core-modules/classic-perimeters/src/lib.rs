@@ -388,10 +388,14 @@ impl LayerModule for ClassicPerimeters {
                 continue;
             }
             let top_shell = region.top_shell_index();
-            // Top/bottom surfaces use the canonical larger overlap. Layer zero
-            // is always bottom-surface context; a region at top-shell depth zero
-            // is the topmost top-surface context.
-            let overlap_key = if layer_index == 0 || top_shell == Some(0) {
+            // Top/bottom surfaces use the canonical larger overlap. The
+            // object's bottom layer is always bottom-surface context; under the
+            // positive-offset raft band that is global index `raft_layers`
+            // (`support_raft_layers`, 0 without a raft) — the same
+            // object-bottom discriminator DEV-124 established for the wall
+            // clamp above, not the physical plate layer. A region at top-shell
+            // depth zero is the topmost top-surface context.
+            let overlap_key = if layer_index == raft_layers || top_shell == Some(0) {
                 "top_bottom_infill_wall_overlap"
             } else {
                 "infill_wall_overlap"

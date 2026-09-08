@@ -15,6 +15,7 @@ fn default_layer() -> GlobalLayer {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
+        is_raft: false,
     }
 }
 
@@ -375,6 +376,7 @@ fn real_perimeter_region_data_visible_through_infill_postprocess_dispatch() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
+        is_raft: false,
     };
 
     fx.run_layer(&layer).unwrap();

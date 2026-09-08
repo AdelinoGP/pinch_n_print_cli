@@ -152,6 +152,7 @@ pub struct SliceRegionViewBuilder {
     internal_bridge_areas: Vec<ExPolygon>,
     bridge_orientation_deg: f32,
     sparse_infill_area: Vec<ExPolygon>,
+    raft_fill: Vec<ExPolygon>,
     surface_group: Option<SurfaceGroup>,
     overhang_areas: Vec<ExPolygon>,
     overhang_quartile_polygons: Vec<QuartileBand>,
@@ -193,6 +194,7 @@ impl SliceRegionViewBuilder {
             internal_bridge_areas: Vec::new(),
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
+            raft_fill: Vec::new(),
             surface_group: None,
             overhang_areas: Vec::new(),
             overhang_quartile_polygons: Vec::new(),
@@ -401,6 +403,14 @@ impl SliceRegionViewBuilder {
         self
     }
 
+    /// Set the raft-substrate fill polygons (packet 240a; default empty).
+    /// Mirrors [`SliceRegionView::set_raft_fill`].
+    #[must_use]
+    pub fn raft_fill(mut self, polygons: Vec<ExPolygon>) -> Self {
+        self.raft_fill = polygons;
+        self
+    }
+
     /// Set the resolved surface group (non-planar-surface consumers, P108).
     /// Mirrors [`SliceRegionView::set_surface_group`].
     #[must_use]
@@ -466,6 +476,7 @@ impl SliceRegionViewBuilder {
             tmp.set_internal_bridge_areas(self.internal_bridge_areas);
             tmp.set_bridge_orientation_deg(self.bridge_orientation_deg);
             tmp.set_sparse_infill_area(self.sparse_infill_area);
+            tmp.set_raft_fill(self.raft_fill);
             tmp.set_surface_group(self.surface_group);
             tmp.set_overhang_areas(self.overhang_areas);
             tmp.set_overhang_quartile_polygons(self.overhang_quartile_polygons);
@@ -608,6 +619,7 @@ pub struct PerimeterRegionViewBuilder {
     top_solid_fill: Vec<ExPolygon>,
     bottom_solid_fill: Vec<ExPolygon>,
     bridge_areas: Vec<ExPolygon>,
+    raft_fill: Vec<ExPolygon>,
     tool_index: u32,
     wall_source_region_id: Option<u64>,
 }
@@ -635,6 +647,7 @@ impl PerimeterRegionViewBuilder {
             top_solid_fill: Vec::new(),
             bottom_solid_fill: Vec::new(),
             bridge_areas: Vec::new(),
+            raft_fill: Vec::new(),
             tool_index: 0,
             wall_source_region_id: None,
         }
@@ -791,6 +804,13 @@ impl PerimeterRegionViewBuilder {
         self
     }
 
+    /// Set the raft-substrate fill polygons (packet 240a; default empty).
+    #[must_use]
+    pub fn raft_fill(mut self, polygons: Vec<ExPolygon>) -> Self {
+        self.raft_fill = polygons;
+        self
+    }
+
     /// Set the top-shell solid-fill polygons (ADR-0028; default empty).
     #[must_use]
     pub fn top_solid_fill(mut self, polygons: Vec<ExPolygon>) -> Self {
@@ -838,6 +858,7 @@ impl PerimeterRegionViewBuilder {
         view.set_seam_candidates(self.seam_candidates);
         view.set_resolved_seam(None);
         view.set_sparse_infill_area(self.sparse_infill_area);
+        view.set_raft_fill(self.raft_fill);
         view.set_top_solid_fill(self.top_solid_fill);
         view.set_bottom_solid_fill(self.bottom_solid_fill);
         view.set_bridge_areas(self.bridge_areas);

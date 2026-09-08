@@ -126,6 +126,24 @@ max     = 10.0
 display = "Support Base Pattern Spacing"
 group   = "Support"
 
+# Packet 241: selects the support-area propagation path. `agg` runs the
+# canonical `SupportGridPattern` AGG rasterization; `legacy_semantic` is the
+# pre-241 propagate-without-growth behaviour.
+#
+# `legacy_semantic` is the DEFAULT and `agg` ships OPT-IN. A faithful port of
+# canonical `seed_fill_block` (`SupportMaterial.cpp`) block-snaps the carry to a
+# macro-block extent, which PnP's demand model cannot absorb: it prints support
+# where nothing was demanded, crosses the foreign-territory bar, and keeps the
+# carry non-empty when occupancy closes every route so the structured
+# `SupportPlanDeclineReason::NoRoute` (diagnostic `code: 1203`) never fires.
+# See DEV-166.
+[config.schema.support_area_rasterizer]
+type    = "enum"
+values  = ["agg", "legacy_semantic"]
+default = "legacy_semantic"
+display = "Support Area Rasterizer"
+group   = "Support"
+
 [config.schema.line_width]
 type    = "float"
 default = 0.4
@@ -141,5 +159,10 @@ keys = []
 keys = []
 
 [hints]
+# Packet 241 (TASK-426) measurement, release `pnp_cli slice --instrument-stderr`
+# on `resources/regression_wedge.stl` (200 layers, wasm guest tier), median of
+# 5 runs of the single `PrePass::SupportGeometry` `module_complete` event:
+# `agg` (default) 31 ms total = 0.16 ms/layer; `legacy_semantic` 9 ms total =
+# 0.05 ms/layer. Both are well under this hint, so it is left unchanged.
 estimated-ms-per-layer = 5
 layer-parallel-safe    = false

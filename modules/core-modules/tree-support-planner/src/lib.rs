@@ -2013,7 +2013,17 @@ impl SupportPlanner {
         // an independent compatibility input for collision avoidance below.
         let mut arena = NodeArena::default();
         let mut contacts_by_layer: Vec<Vec<NodeId>> = vec![Vec::new(); num_layers as usize];
-        let mut fallback_family_emitted = false;
+        // Region ids the RegionMap carries for this object on *any* layer.
+        // Family assignments are per `(object, region)`, not per layer, so an
+        // assigned region that segmentation already carries must take its
+        // layer presence from segmentation; widening it below would stamp one
+        // region's column onto every layer of the object (packet 241b).
+        let segmented_region_ids: std::collections::BTreeSet<&str> = region_segmentation
+            .entries
+            .iter()
+            .filter(|entry| entry.object_id == obj.object_id)
+            .flat_map(|entry| entry.region_ids.iter().map(String::as_str))
+            .collect();
         let base_radius = MIN_BRANCH_RADIUS.max(self.tree_support_branch_diameter / 2.0);
         // Canonical builds `grid_points` once per object over the whole-object
         // bounding box, rotated 22 degrees (F-35).
@@ -2175,12 +2185,26 @@ impl SupportPlanner {
         // populated. This preserves the prior behavior for an absent or
         // partial SupportAnalysisView while consuming host candidates when
         // available.
+        // Blocked records go straight to `output`, never through
+        // `entries_in_order`, so the family-assignment stamping pass below
+        // cannot see them. Remember their identities or that pass will stamp
+        // a second entry onto the same
+        // `(global_layer_index, object_id, region_id)` triple, which
+        // `SupportPlanIR::duplicate_region_identity` rejects at the host
+        // commit seam.
+        let mut declined_identities: std::collections::BTreeSet<(String, i32, String)> =
+            std::collections::BTreeSet::new();
         for candidate in support_analysis.candidates.iter().filter(|candidate| {
             candidate.object_id == obj.object_id
                 && candidate.blocked
-                && candidate_family(candidate, support_analysis, &self.support_family).as_deref()
+                && candidate_family(candidate, support_analysis).as_deref()
                     == Some("tree")
         }) {
+            declined_identities.insert((
+                obj.object_id.clone(),
+                candidate.global_layer_index as i32,
+                candidate.region_id.clone(),
+            ));
             let _ = output.push_support_plan_entry(slicer_sdk::prepass_types::SupportPlanEntry {
                 global_layer_index: candidate.global_layer_index as i32,
                 object_id: obj.object_id.clone(),
@@ -2200,7 +2224,7 @@ impl SupportPlanner {
         for candidate in support_analysis.candidates.iter().filter(|candidate| {
             candidate.object_id == obj.object_id
                 && !candidate.blocked
-                && candidate_family(candidate, support_analysis, &self.support_family).as_deref()
+                && candidate_family(candidate, support_analysis).as_deref()
                     == Some("tree")
                 && candidate
                     .geometry
@@ -3499,6 +3523,10 @@ impl SupportPlanner {
                             assignment.object_id == obj.object_id
                                 && canonical_support_family_alias(Some(&assignment.family_id))
                                     == "tree"
+                                // Only regions segmentation does not carry at
+                                // all (host-minted modifier sub-regions).
+                                && !segmented_region_ids
+                                    .contains(assignment.region_id.as_str())
                         })
                         .map(|assignment| assignment.region_id.clone()),
                 );
@@ -3507,27 +3535,36 @@ impl SupportPlanner {
                 for region_id in regions_for_this {
                     // No self-default: a region the host did not assign to this
                     // family is not this planner's to plan. See `candidate_family`.
-                    let assignments_empty = support_analysis.family_assignments.is_empty();
-                    let Some(support_family) = (if assignments_empty {
-                        Some(canonical_support_family_alias(Some(&self.support_family)))
-                    } else {
-                        support_analysis
-                            .family_assignments
-                            .iter()
-                            .find(|assignment| {
-                                assignment.object_id == obj.object_id
-                                    && assignment.region_id == *region_id
-                            })
-                            .map(|assignment| {
-                                canonical_support_family_alias(Some(&assignment.family_id))
-                            })
-                    }) else {
+                    let Some(support_family) = support_analysis
+                        .family_assignments
+                        .iter()
+                        .find(|assignment| {
+                            assignment.object_id == obj.object_id
+                                && assignment.region_id == *region_id
+                        })
+                        .map(|assignment| {
+                            canonical_support_family_alias(Some(&assignment.family_id))
+                        })
+                    else {
                         continue;
                     };
                     if support_family != "tree" {
                         continue;
                     }
-                    fallback_family_emitted |= assignments_empty;
+                    // A blocked candidate already published a declined record
+                    // for this identity. Emitting a planned entry as well
+                    // would put two entries on the same
+                    // `(global_layer_index, object_id, region_id)` triple,
+                    // which `SupportPlanIR::duplicate_region_identity`
+                    // rejects at the host commit seam — and would contradict
+                    // the decline besides.
+                    if declined_identities.contains(&(
+                        obj.object_id.clone(),
+                        current_global_layer_index as i32,
+                        region_id.clone(),
+                    )) {
+                        continue;
+                    }
                     let model_occupancy: Vec<ExPolygon> = inflate_model_occupancy(
                         &support_analysis
                             .model_occupancy
@@ -3688,18 +3725,28 @@ impl SupportPlanner {
         // Family assignments can cover regions absent from either the
         // segmentation projection or the candidate geometry path. Stamp each
         // object/layer from one deterministic successful entry, without
-        // replacing a blocked candidate record.
+        // replacing a blocked candidate record. Only regions segmentation
+        // does not carry at all are stamped: an assignment is per
+        // `(object, region)` and carries no layer extent, so stamping a
+        // segmented region here would copy one region's column onto every
+        // layer of the object (packet 241b).
         let mut templates: std::collections::BTreeMap<(String, i32), SupportPlanEntry> =
             std::collections::BTreeMap::new();
         let mut covered_regions: std::collections::BTreeSet<(String, i32, String)> =
-            std::collections::BTreeSet::new();
+            declined_identities;
         for entry in &entries_in_order {
+            // Coverage is "this (object, layer, region) already has an
+            // entry", which includes blocked/declined records: stamping over
+            // one would publish two entries sharing
+            // `(global_layer_index, object_id, region_id)` and trip
+            // `SupportPlanIR::duplicate_region_identity` at the host commit
+            // seam. Only *successful* entries may serve as a template.
+            covered_regions.insert((
+                entry.object_id.clone(),
+                entry.global_layer_index,
+                entry.region_id.clone(),
+            ));
             if entry.decline_reason.is_none() && entry.skeleton.is_some() {
-                covered_regions.insert((
-                    entry.object_id.clone(),
-                    entry.global_layer_index,
-                    entry.region_id.clone(),
-                ));
                 templates
                     .entry((entry.object_id.clone(), entry.global_layer_index))
                     .or_insert_with(|| entry.clone());
@@ -3712,6 +3759,7 @@ impl SupportPlanner {
                 .filter(|assignment| {
                     assignment.object_id == object_id
                         && canonical_support_family_alias(Some(&assignment.family_id)) == "tree"
+                        && !segmented_region_ids.contains(assignment.region_id.as_str())
                 })
                 .map(|assignment| assignment.region_id.clone())
                 .collect();
@@ -4013,20 +4061,49 @@ impl SupportPlanner {
                         })
                         .map(|(index, _)| index as u32)
                         .unwrap_or(0);
+                    // DEV-170: one emitted row per `(global_layer_index,
+                    // object_id, region_id)` is the PRODUCER's contract.
+                    // Candidates in one EPSILON group all receive this
+                    // group's `global_layer_index` / `anchor_z`, so two
+                    // candidates of the same region that came from
+                    // DIFFERENT source layers used to be published as two
+                    // rows sharing one region identity -- the exact shape
+                    // `SupportPlanIR::duplicate_region_identity` rejects.
+                    // `synthesized_seen` did not catch it because its key
+                    // carries the *source* layer, not the emitted one.
+                    // Merge them here instead of dropping either: losing a
+                    // body would be a worse defect than the duplicate. The
+                    // merge deliberately mirrors the host's
+                    // `union_same_family_entries`, which is what folded the
+                    // pair downstream until now, so committed output is
+                    // unchanged.
+                    let mut region_slots =
+                        std::collections::BTreeMap::<(String, String), usize>::new();
                     for (_, source_global_layer_index, mut clone) in
                         coarse_candidates[first..=last].iter().cloned()
                     {
                         clone.global_layer_index = global_layer_index;
                         clone.anchor_layer_index = anchor_layer_index;
                         clone.anchor_z = plane;
-                        if synthesized_seen.insert((
+                        if !synthesized_seen.insert((
                             source_global_layer_index,
                             clone.object_id.clone(),
                             clone.region_id.clone(),
                             clone.body_ids.clone(),
                             clone.anchor_z,
                         )) {
-                            interpolated.push(clone);
+                            continue;
+                        }
+                        let region_identity = (clone.object_id.clone(), clone.region_id.clone());
+                        match region_slots.get(&region_identity) {
+                            Some(index) => merge_synthesized_region_row(
+                                &mut interpolated[*index],
+                                clone,
+                            ),
+                            None => {
+                                region_slots.insert(region_identity, interpolated.len());
+                                interpolated.push(clone);
+                            }
                         }
                     }
                     first = last + 1;
@@ -4136,17 +4213,43 @@ impl SupportPlanner {
                 .push_support_plan_entry(entry)
                 .map_err(|e| ModuleError::fatal(1, format!("push_support_plan failed: {e}")))?;
         }
-        if fallback_family_emitted {
-            let _ = output.push_diagnostic(Diagnostic {
-                severity: DiagnosticSeverity::Warn,
-                code: 1004,
-                layer: None,
-                object_id: Some(obj.object_id.clone()),
-                message: "support-planner: no family assignments; using configured support family"
-                    .to_string(),
-            });
-        }
         Ok(())
+    }
+}
+
+/// DEV-170: fold `incoming` into `existing`, which already occupies this
+/// physical plane for the same `(object_id, region_id)`.
+///
+/// Membership is unioned, never dropped: a synthesized coarse row stands for
+/// every source body that reached its plane. The field-by-field behaviour is
+/// deliberately identical to the host's `union_same_family_entries`
+/// (`crates/slicer-wasm-host/src/support_aggregation.rs`) -- including its
+/// first-wins treatment of `skeleton` -- so moving the fold from the host to
+/// the producer leaves committed plans byte-identical.
+fn merge_synthesized_region_row(existing: &mut SupportPlanEntry, incoming: SupportPlanEntry) {
+    existing.demand_ids.extend(incoming.demand_ids);
+    existing.body_ids.extend(incoming.body_ids);
+    for incoming_role in incoming.roles {
+        match existing
+            .roles
+            .iter_mut()
+            .find(|role| role.role == incoming_role.role)
+        {
+            Some(role) => role.regions.extend(incoming_role.regions),
+            None => existing.roles.push(incoming_role),
+        }
+    }
+    existing.capabilities.extend(incoming.capabilities);
+    existing.provenance.extend(incoming.provenance);
+    for values in [
+        &mut existing.demand_ids,
+        &mut existing.body_ids,
+        &mut existing.capabilities,
+        &mut existing.provenance,
+    ] {
+        let mut unique = std::collections::HashSet::new();
+        values.retain(|value| unique.insert(value.clone()));
+        values.sort();
     }
 }
 
@@ -4665,17 +4768,15 @@ fn canonical_support_family_alias(value: Option<&str>) -> String {
 /// Resolve the canonical support family for a candidate from the host's
 /// per-region family assignments.
 ///
-/// Returns the planner's configured family only when the host supplied no
-/// assignments at all. When assignments exist, an unmatched region remains
-/// unassigned so another family can own it.
+/// Ownership is default-deny (packet 241b W3c): a region with no assignment
+/// row has no owner, so this returns `None` and the candidate is not planned.
+/// There is deliberately no self-default onto the planner's configured
+/// `support_family` — that would let this planner claim regions the host
+/// never assigned to it, and the host merge point would drop them anyway.
 fn candidate_family(
     candidate: &SupportAnalysisCandidate,
     analysis: &SupportAnalysisView,
-    fallback: &str,
 ) -> Option<String> {
-    if analysis.family_assignments.is_empty() {
-        return Some(canonical_support_family_alias(Some(fallback)));
-    }
     analysis
         .family_assignments
         .iter()

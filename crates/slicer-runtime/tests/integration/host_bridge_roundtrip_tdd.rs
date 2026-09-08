@@ -127,6 +127,7 @@ fn blackboard(mesh: MeshIR) -> Blackboard {
             active_regions: regions(),
             has_nonplanar: false,
             is_sync_layer: false,
+            is_raft: false,
         })
         .collect();
     let mut participation = HashMap::new();

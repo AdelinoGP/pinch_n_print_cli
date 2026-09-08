@@ -297,6 +297,27 @@ fn shell_classification_top_and_bottom_layers_for_single_object_cuboid() {
 }
 
 #[test]
+fn shell_classification_anchors_bottom_shell_at_first_non_raft_layer() {
+    let mesh = cuboid_mesh("cube", 1.4);
+    let mut plan = make_plan(7, 0.2, "cube");
+    plan.global_layers[0].is_raft = true;
+    plan.global_layers[1].is_raft = true;
+    let region_map = make_region_map(&plan, 2, 2);
+    let mut bb = seeded_blackboard(mesh, plan, region_map);
+
+    commit_slice_builtin(&mut bb).expect("PrePass::Slice");
+    commit_shell_classification_builtin(&mut bb).expect("PrePass::ShellClassification");
+
+    let slices = bb.slice_ir().expect("classified slice_ir present");
+    assert_eq!(slices[0].regions[0].bottom_shell_index, None);
+    assert_eq!(slices[1].regions[0].bottom_shell_index, None);
+    assert_eq!(slices[2].regions[0].bottom_shell_index, Some(0));
+    assert!(!slices[2].regions[0].bottom_solid_fill.is_empty());
+    assert_eq!(slices[3].regions[0].bottom_shell_index, Some(1));
+    assert_eq!(slices[6].regions[0].top_shell_index, Some(0));
+}
+
+#[test]
 fn shell_classification_apply_opening_suppresses_sliver_in_top_solid_fill() {
     // Sliver-suppression regression for A3.
     //

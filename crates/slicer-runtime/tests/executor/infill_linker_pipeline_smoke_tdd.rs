@@ -75,6 +75,7 @@ fn infill_ir() -> InfillIR {
             ],
             ..Default::default()
         }],
+        ..Default::default()
     }
 }
 

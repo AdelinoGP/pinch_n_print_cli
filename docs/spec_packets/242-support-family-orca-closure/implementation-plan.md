@@ -5,24 +5,27 @@
 - Work one atomic step at a time; map every step to grouped task IDs.
 - Use TDD, then implementation, then the narrowest falsifying validation.
 - Every field below is a context-budget contract and must be filled independently; never write "see Step 1".
-- Every cargo invocation tees combined output to `target/test-output.log`; results are read from
+- Every `cargo test` invocation tees combined output to `target/test-output.log`; results are read from
   the file, never re-run for more output.
 - Before attributing any guest/parity/module-dispatch failure:
   `cargo xtask build-guests --check` (exit 0 fresh / 1 stale → rebuild / 3 infra).
 
 ## Steps
 
-### Step 1: Register TASK-429..440 and amend TASK-335 in docs/07
+### Step 1: Register TASK-538..549 and amend TASK-335 in docs/07
 
-- Task IDs: `TASK-429`
+- Task IDs: `TASK-538`
 - Objective: allocate this packet's twelve rows in `docs/07_implementation_status.md` and amend
   the TASK-335 row to record "closes at packet 242 (this packet); see
   docs/spec_packets/242-support-family-orca-closure/". TASK-335's final `[x]` flip happens in
   Step 8 only after the gate evidence exists.
-- Precondition: re-derive the next free ID immediately before writing (`grep -oE "TASK-[0-9]{3}"
-  docs/07_implementation_status.md | sort -u | tail -1` → must be ≤ TASK-428; if it exceeds
-  TASK-428 because another packet registered first, stop and re-map IDs before proceeding).
-- Postcondition: twelve open rows TASK-429..TASK-440 attributed to packet 242 exist; TASK-335 row
+- Precondition: re-derive the numeric tip immediately before writing with
+  `grep -oE 'TASK-[0-9]{3}' docs/07_implementation_status.md | sort -Vu | tail -1`. It was
+  `TASK-537` on 2026-09-07, making TASK-538..TASK-549 the then-next contiguous range. Verify
+  absence with `grep -oE 'TASK-(53[8-9]|54[0-9])' docs/07_implementation_status.md | sort -Vu`.
+  If the tip moved or any proposed ID appears, stop, allocate a fresh contiguous range, and update
+  all five packet files before registration.
+- Postcondition: twelve open rows TASK-538..TASK-549 attributed to packet 242 exist; TASK-335 row
   carries the pending-closure pointer; no other row changed.
 - Files allowed to read, with ranges when over 300 lines:
   - `docs/07_implementation_status.md` - tail range only (last ~80 lines of the task ledger),
@@ -33,7 +36,7 @@
   - every other doc, packet dir, and source file
 - Blast-radius discipline: n/a (doc rows, no struct/schema change).
 - Expected sub-agent dispatches:
-  - Question: "Insert twelve open rows TASK-429..TASK-440 attributed to packet
+  - Question: "Insert twelve open rows TASK-538..TASK-549 attributed to packet
     242-support-family-orca-closure and append the pending-closure sentence to the TASK-335
     row"; scope: `docs/07_implementation_status.md`; return: FACT (row IDs inserted + amended
     line excerpt).
@@ -42,22 +45,30 @@
   - `docs/specs/support-families-anchored-entities-plan.md` - §14 rule 2 (fresh ID allocation).
 - OrcaSlicer refs: none.
 - Verification:
-  - `rg -q 'TASK-429' docs/07_implementation_status.md && rg -q 'TASK-440' docs/07_implementation_status.md && rg -q 'TASK-335' docs/07_implementation_status.md && echo STEP1_REGISTERED`
+  - `rg -q 'TASK-538' docs/07_implementation_status.md && rg -q 'TASK-549' docs/07_implementation_status.md && rg -q 'TASK-335' docs/07_implementation_status.md && echo STEP1_REGISTERED`
 - Exit condition: FACT confirms all thirteen rows (12 new + 1 amended) present.
 
 ### Step 2: Cross-packet disposition pre-audit (read-only)
 
-- Task IDs: `TASK-430`
+- Task IDs: `TASK-539`
 - Objective: produce the disposition FACT table — for each G-row its routing destination and the
   owner packet's closure state; for DEV-141..146 their current DEVIATION_LOG state; for each of
   the eight divergence sections the consuming packet. This step decides nothing; it feeds
   Steps 3-5.
-- Precondition: all seven dependency packets implemented (activation gate).
-- Postcondition: one FACT table covering G-01..G-24 × {owner, candidate verdict}, six deviation
-  states, eight divergence verdicts — recorded in the working notes, not yet in design.md.
+- Precondition: every dependency in `packet.spec.md`'s frontmatter (237, 238a, 238b, 238c,
+  239a, 239b, 239c, 239d, 240a, 240b, 241) is `implemented` — verify per-dep with
+  `grep '^status:' docs/spec_packets/<dep>/packet.spec.md`, never from prose (activation gate).
+  Verify 241b is also `implemented` and docs/07 records packet 241 AC-N2 restored green; 241's
+  historical human-override red is not the current closure state.
+- Postcondition: one FACT table covering every live `| G-NN |` register row (count re-derived,
+  not quoted) × {owner, candidate verdict}, six deviation
+  states (currently Open for DEV-141..144 and Closed-implemented for DEV-145..146, but re-derived
+  here), eight divergence verdicts, and both 240b upstream findings — recorded in working notes,
+  not yet in design.md.
 - Files allowed to read, with ranges when over 300 lines:
-  - `docs/specs/support-parity-gap-register.md` - full read (~70 lines)
-  - `docs/spec_packets/237..241` packet dirs - delegated per-packet FACT surveys
+  - `docs/specs/support-parity-gap-register.md` - full read (short file)
+  - `docs/spec_packets/{237,238a,238b,238c,239a,239b,239c,239d,240a,240b,241,241b}-*` packet dirs -
+    delegated per-packet FACT surveys
 - Files allowed to edit (at most 3): none (read-only step).
 - Files explicitly out of bounds:
   - `docs/DEVIATION_LOG.md` body beyond the DEV-141..146 rows (ranged grep reads only)
@@ -67,23 +78,31 @@
 - Context cost: `M`
 - Authoritative docs:
   - `docs/specs/support-families-anchored-entities-plan.md` - §10 (supersession), §12 briefs of
-    the seven packets (what each was supposed to close).
+    the eleven dependency packets (what each was supposed to close).
 - OrcaSlicer refs: none.
 - Verification:
-  - `test "$(grep -cE '^\| G-[0-9]+ ' docs/specs/support-parity-gap-register.md)" -eq 24 && echo PREAUDIT_INPUT_COMPLETE`
+  - `test "$(grep -cE '^\| G-[0-9]+ ' docs/specs/support-parity-gap-register.md)" -gt 0 && grep -cE '^\| G-[0-9]+ ' docs/specs/support-parity-gap-register.md && echo PREAUDIT_INPUT_COMPLETE` (prints the live row total the FACT table must cover; no frozen count)
 - Exit condition: FACT table complete; every row has an owner + candidate verdict. Falsifying
   exit: any routed destination missing its implementation → `[BLOCK]`, route back, do not write
   a fake CLOSED.
 
 ### Step 3: Write the gap-register disposition ledger and mirror tokens
 
-- Task IDs: `TASK-431`, `TASK-432`
-- Objective: author `design.md ## Gap Register Disposition Ledger (242)` with 24 tokened rows,
-  then mirror each token into the corresponding register evidence cell.
+- Task IDs: `TASK-540`, `TASK-541`
+- Objective: author `design.md ## Gap Register Disposition Ledger (242)` with one tokened row per
+  live `| G-NN |` register row (total re-derived from the register, never a literal), ADD the
+  fifth `Disposition` column to `docs/specs/support-parity-gap-register.md` — header
+  `| # | Gap | Evidence | Destination | Disposition |` plus the matching separator row — mirror
+  each token into that new final cell, and re-point the register's prose framing (which still
+  names packet 224 as the closing packet) at packet 242.
 - Precondition: Step 2 table complete.
-- Postcondition: AC-8 and AC-N3 commands pass; tokens follow the grammar
+- Postcondition: AC-8 and AC-N3 commands pass; the register table has five columns and every
+  `| G-NN |` row ends with its token cell; tokens follow the grammar
   `[CLOSED <packet> <date>]` / `[WAIVED <date>: <justification>]` / `[CARRIED -> <owner>:
-  <reason>]`; G-14/G-15/G-20 carry explicit waiver/register-only tokens.
+  <reason>]`; G-14/G-15/G-20 carry explicit waiver/register-only tokens. The ledger also points
+  to `design.md ## 240b Upstream-Finding Dispositions`: support/raft-plane interleave is blocking
+  absent fix or written human waiver; harvested model-plane DATA is non-blocking only with
+  band-suppression evidence.
 - Files allowed to read, with ranges when over 300 lines:
   - `docs/specs/support-parity-gap-register.md` - full read
 - Files allowed to edit (at most 3):
@@ -100,12 +119,13 @@
 - OrcaSlicer refs: none.
 - Verification:
   - AC-8 command verbatim (`packet.spec.md`) - FACT pass/fail with both counts printed.
-- Exit condition: both counts equal 24 and equal each other. Falsifying exit: a row whose true
+- Exit condition: both counts are equal and non-zero (the total is whatever the register
+  currently holds; do not compare against a remembered number). Falsifying exit: a row whose true
   state is open → route back / `[BLOCK]`; writing CLOSED without owner evidence is forbidden.
 
 ### Step 4: Deviation and divergence dispositions
 
-- Task IDs: `TASK-433`, `TASK-434`
+- Task IDs: `TASK-542`, `TASK-543`
 - Objective: author `design.md ## Deviation Dispositions` (six lines, verbs CLOSED/CARRIED set
   by auditing 238b/238c outcomes) and `## Divergence Dispositions` (eight DISPOSITIONED lines).
 - Precondition: Step 2 audits; 238b/238c actually landed their DEV corrections.
@@ -133,7 +153,7 @@
 
 ### Step 5: Absorbed-218 e2e support-marker test (red-first)
 
-- Task IDs: `TASK-435`, `TASK-436`
+- Task IDs: `TASK-544`, `TASK-545`
 - Objective: add `gcode_support_type_markers_render_alongside_layer_images` to
   `crates/pnp-cli/tests/visual_debug_gcode_renderer_tdd.rs`: inline G-code carrying
   `;TYPE:Support` and `;TYPE:Support interface` segments beside `;TYPE:Outer wall`, driven
@@ -157,7 +177,7 @@
   renderer edit happens, run `cargo clippy --workspace --all-targets -- -D warnings` in-step.
 - Expected sub-agent dispatches:
   - Only on red: the visual_debug_gcode FACT dispatch from `design.md`.
-- Context cost: `S` (green path) / `M` (renderer fix needed)
+- Context cost: `M` (includes the conditional renderer diagnosis; still bounded to two files)
 - Authoritative docs:
   - `docs/19_visual_debug.md` - delegated summary if manifest fields are unclear.
 - OrcaSlicer refs: none (markers verified against `emit.rs`, in-tree).
@@ -168,19 +188,27 @@
 
 ### Step 6: Re-prove the inherited suite and write the two inspection records
 
-- Task IDs: `TASK-437`, `TASK-438`
+- Task IDs: `TASK-546`, `TASK-547`
 - Objective: render the four bundles (two PnP model-source requests + two standalone-Orca
   requests against FRESH references), run the eight-name suite with asserted count, then write
   `design.md ## Matched-Height Inspection Record (242)` and `## Differential Inspection Record
   (242)` plus the `## TASK-163b and TASK-335 Disposition` re-confirmation — per family × five
-  axes, each verdict naming layer + tap (E2), including 239's branch outcome note ([FWD] in
-  design.md).
-- Precondition: fresh references under `tmp/` verified by direct listing (T1);
+  axes, each verdict naming layer + tap (E2), the landed 239c CONSISTENT outcome, and
+  `design.md ## 240b Upstream-Finding Dispositions`.
+- Precondition: the four fresh references `tmp/p242-orca-tree.gcode`,
+  `tmp/p242-orca-normal.gcode`, `tmp/p242-orca-tree-raft.gcode`, and
+  `tmp/p242-orca-normal-raft.gcode`, their four patched `.3mf` inputs, their `.gcode.3mf`
+  intermediates, and the four `tmp/p242-vd-{pnp,orca}-{tree,normal}.json` requests are verified
+  by direct listing (T1). Generate via 240b's `Metadata/project_settings.config` patch + headless
+  `--export-3mf` + `Metadata/plate_1.gcode` extraction recipe;
   `cargo xtask build-guests --check` exit 0.
 - Postcondition: AC-1, AC-2, AC-3, AC-4, AC-6 commands pass; records name source, layer, tap,
-  verdict per family.
+  verdict per family. The support-branch/raft-plane interleave is fixed or explicitly
+  human-waived; harvested band DATA is recorded as non-emitting.
 - Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-runtime/tests/integration/support_family_closure.rs` - full read
+  - `crates/slicer-runtime/tests/integration/support_family_closure.rs` - very long; ranged or
+    delegated reads only (locate each case by symbol name; the cases are `pub fn`s wrapped by
+    `#[test]` shims in `crates/slicer-runtime/tests/integration/main.rs`)
   - 224 design.md - §Orca reference profile + §Orca Inspection Checklist ranges (delegated SUMMARY)
 - Files allowed to edit (at most 3):
   - `docs/spec_packets/242-support-family-orca-closure/design.md`
@@ -205,9 +233,9 @@
 
 ### Step 7: Supersessions — records and the 224 flip
 
-- Task IDs: `TASK-439`
+- Task IDs: `TASK-548`
 - Objective: author `requirements.md ## Supersession Records (242)` (213/TASK-329 with the
-  degenerate-disk exclusion; 215→240, 216→220/224+238c residue, 217→220/224, 218→242 absorption
+  degenerate-disk exclusion; 215→240a/240b, 216→220/224+238c residue, 217→220/224, 218→242 absorption
   mapping; 224 itself) and flip
   `docs/spec_packets/224-support-family-orca-closure/packet.spec.md` YAML to
   `status: superseded` + `superseded_by: 242-support-family-orca-closure`.
@@ -236,8 +264,8 @@
 
 ### Step 8: Closure ceremony — whole-suite green run and human-gate record
 
-- Task IDs: `TASK-440`
-- Objective: run `cargo xtask test --summary --workspace -- --no-fail-fast` (E5), confirm every
+- Task IDs: `TASK-549`
+- Objective: run `cargo xtask test --workspace --summary` (E5), confirm every
   binary green from `target/test-output.log`, re-dispatch every pipe-suffixed AC command once,
   then fill the Human Validation Gate checklist artifacts and present for sign-off. Flip
   TASK-335's docs/07 row to closed ONLY when the gate signs.
@@ -261,12 +289,14 @@
     reference freshness precondition.
 - OrcaSlicer refs: none.
 - Verification:
-  - `cargo xtask test --summary --workspace -- --no-fail-fast` - FACT PASS/FAIL from
+  - `cargo xtask test --workspace --summary` - FACT PASS/FAIL from
     `target/test-output.log` (never re-run for more output; use
     `cargo xtask test --summary-from target/test-output.log` to re-digest).
 - Exit condition: digest PASS + all prior AC FACTs still standing. Falsifying exit: any failing
   binary → attribute per E4/T4/T5 rules; a real regression routes back to its owning packet and
-  this packet stays open. The gate does NOT close on a red suite under any waiver.
+  this packet stays open. The gate does NOT close on a red suite under any waiver. In particular,
+  a red `instrument_stderr_is_superset_of_core` remains red even though its known cause is JSONL
+  newline interleaving; route the atomic-newline-write fix to its owner.
 
 ## Per-Step Budget Roll-Up
 
@@ -299,4 +329,5 @@ Split before activation if aggregate cost exceeds M or any step is L.
 - Record remaining packet-local risk.
 - Confirm context stayed at or below 150k standard, or at/below 300k only with a logged swarm ESCALATION; otherwise record a packet-authoring lesson.
 
-All `cargo check`, `cargo clippy`, and `cargo test` invocations in gate and verification commands must use `--all-targets` so the test, bench, and example targets compile.
+Workspace `cargo check` and `cargo clippy` gates use `--all-targets`; narrow `cargo test`
+commands use their real named bucket/standalone targets and assert a non-zero pass count.

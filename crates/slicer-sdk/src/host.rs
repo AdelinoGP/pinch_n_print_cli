@@ -27,6 +27,8 @@ use std::cell::RefCell;
 use std::sync::OnceLock;
 use std::time::Instant;
 
+#[cfg(target_arch = "wasm32")]
+use slicer_ir::Point2;
 use slicer_ir::{BoundingBox3, ExPolygon, Point3, Polygon};
 
 #[cfg(target_arch = "wasm32")]
@@ -56,6 +58,7 @@ package slicer:common {
         object-bounds: func(object-id: object-id) -> bounding-box3;
         clip-polygons: func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
         offset-polygons: func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type, arc-tolerance-mm: f32, miter-limit: option<f32>) -> list<ex-polygon>;
+        hatch-areas: func(areas: list<ex-polygon>, spacing-mm: f32, angle-degrees: f32) -> list<polygon>;
         simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
         now-us: func() -> u64;
         tool-count: func() -> u32;
@@ -65,6 +68,7 @@ package slicer:common {
 world sdk-host-services {
     import slicer:common/host-services;
 }
+
 "#,
         world: "sdk-host-services",
         generate_all,
@@ -127,6 +131,41 @@ world sdk-host-services {
             super::OffsetJoinType::Round => W::Round,
             super::OffsetJoinType::Square => W::Square,
         }
+    }
+}
+
+/// Generates open, parallel hatch lines clipped to polygon areas.
+#[must_use]
+pub fn hatch_areas(areas: &[ExPolygon], spacing_mm: f32, angle_degrees: f32) -> Vec<Polygon> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        slicer_core::polygon_ops::hatch_areas(areas, spacing_mm, angle_degrees)
+            .into_iter()
+            .map(|l| Polygon {
+                points: vec![l.start, l.end],
+            })
+            .collect()
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let areas = areas
+            .iter()
+            .map(__sdk_host_services_import::to_wit_expolygon)
+            .collect::<Vec<_>>();
+        __sdk_host_services_import::slicer::common::host_services::hatch_areas(
+            &areas,
+            spacing_mm,
+            angle_degrees,
+        )
+        .into_iter()
+        .map(|p| Polygon {
+            points: p
+                .points
+                .into_iter()
+                .map(|p| Point2 { x: p.x, y: p.y })
+                .collect(),
+        })
+        .collect()
     }
 }
 
