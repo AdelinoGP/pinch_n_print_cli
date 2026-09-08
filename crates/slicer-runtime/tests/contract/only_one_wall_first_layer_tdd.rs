@@ -97,7 +97,7 @@ fn non_first_layer_respects_wall_count() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// DEV-124 — the clamp follows the raft, not layer zero
+// The clamp follows the raft, not layer zero
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Same as `config_4_walls` but with a raft configured.
@@ -125,7 +125,7 @@ fn classic_wall_count_at(layer_index: u32, config: &ConfigView) -> usize {
     output.wall_loops().len()
 }
 
-/// DEV-124: with `support_raft_layers = 3`, layer 0 is raft — it must keep the
+/// With `support_raft_layers = 3`, layer 0 is raft — it must keep the
 /// full wall count — and layer 3 is the first printed object layer, which is
 /// where the clamp belongs. Before the fix this was exactly inverted.
 #[test]
@@ -135,18 +135,18 @@ fn classic_clamp_follows_raft_layers_not_layer_zero() {
     assert_eq!(
         classic_wall_count_at(0, &config),
         4,
-        "DEV-124: layer 0 under a 3-layer raft is not the first printed layer \
+        "layer 0 under a 3-layer raft is not the first printed layer \
          and must keep the configured wall count"
     );
     assert_eq!(
         classic_wall_count_at(3, &config),
         1,
-        "DEV-124: layer 3 == support_raft_layers is the first printed layer and \
+        "layer 3 == support_raft_layers is the first printed layer and \
          must be clamped to one wall"
     );
 }
 
-/// DEV-124 regression guard: with no raft (the default), the clamp must still
+/// Regression guard: with no raft (the default), the clamp must still
 /// fire on layer 0 exactly as before. This pins that the fix is a no-op for
 /// every existing no-raft profile.
 #[test]
@@ -155,11 +155,11 @@ fn classic_clamp_unchanged_when_no_raft_configured() {
     assert_eq!(
         classic_wall_count_at(0, &config),
         1,
-        "DEV-124: with raft_layers = 0 the clamp must still fire on layer 0"
+        "with raft_layers = 0 the clamp must still fire on layer 0"
     );
     assert_eq!(
         classic_wall_count_at(1, &config),
         4,
-        "DEV-124: with raft_layers = 0 layer 1 must keep the configured count"
+        "with raft_layers = 0 layer 1 must keep the configured count"
     );
 }

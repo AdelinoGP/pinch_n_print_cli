@@ -1888,7 +1888,7 @@ fn coarse_same_region_sources_keep_geometry_and_membership() {
                     .iter()
                     .filter(|entry| { entry.anchor_z == synthesized.anchor_z })
                     .count(),
-            "entries sharing a physical plane must share its DEV-163 identity"
+            "entries sharing a physical plane must share its identity"
         );
     }
 }
@@ -2902,7 +2902,7 @@ fn declined_identity_is_not_re_emitted_as_a_planned_entry() {
     );
 }
 
-/// DEV-170 (packet 241b): the coarse tree-support path must publish at most
+/// The coarse tree-support path must publish at most
 /// one row per `(global_layer_index, object_id, region_id)`.
 ///
 /// Two coarse candidates of the SAME region that came from DIFFERENT source

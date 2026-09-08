@@ -73,7 +73,7 @@ fn support_commit_retains_ordinary_paths_and_anchored_proposal() {
             points: vec![
                 // Fixture pins every transported Point3WithWidth field so a
                 // future transport widening (missing width/flow) fails this
-                // test instead of silently defaulting (E=0 class, DEV-161).
+                // test instead of silently defaulting missing transport fields.
                 // exhaustive: all 9 fields intentional, reason above.
                 Point3WithWidth {
                     x: 0.0,

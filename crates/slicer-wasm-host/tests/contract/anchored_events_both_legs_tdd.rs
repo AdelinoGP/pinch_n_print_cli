@@ -110,7 +110,7 @@ fn native_support_postprocess_preserves_geometry_and_anchored_events() {
         .set_anchored_event_collection(input.clone())
         .expect("set anchored collection");
     // Pins the whole NativeLayerResponse shape; the support arm must carry
-    // BOTH payloads (ordinary output + anchored collection), per DEV-162.
+    // BOTH payloads (ordinary output + anchored collection).
     // exhaustive: arms intentional; both-payload commit pinned.
     let response = NativeLayerResponse {
         infill: None,

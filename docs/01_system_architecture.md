@@ -1129,7 +1129,7 @@ The host instantiates exactly one WASM instance for finalization modules regardl
 and projects each planner target onto the final wall geometry. The default
 `seam_mode` for both modules is **`aligned`**, matching OrcaSlicer's canonical
 `spAligned` default (see `docs/adr/0046-aligned-seam-in-seam-planning-prepass.md`
-amendment recorded as `D-283-ADR-0046-AMENDED` in `docs/DEVIATION_LOG.md`).
+amendment recorded in the ADR itself).
 
 The `aligned` mode performs **continuous projection** rather than vertex-only
 snap: when the planner's target does not coincide with an existing wall-loop

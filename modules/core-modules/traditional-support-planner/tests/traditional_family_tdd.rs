@@ -1290,7 +1290,7 @@ fn coarse_same_region_sources_keep_distinct_body_membership() {
     // The two columns carry disjoint geometry (`contact_region` at 0..4mm,
     // `obstacle_region` at 10..14mm), so their union area is their sum. The
     // expected value is taken from the fixture polygons rather than from
-    // another planned row: DEV-169 removed the single-membership grid row at
+    // another planned row: the single-membership grid row was removed at
     // z=6000 this previously borrowed as body 1's stand-in (it now merges with
     // the intermediate row that lands on that same plane). The asserted value
     // is unchanged - each fixture polygon is 4mm x 4mm, which is exactly the
@@ -2614,7 +2614,7 @@ fn merge_rejects_anchor_z_layer_index_disagreement() {
     );
 }
 
-/// DEV-169: a 239c intermediate plane can land exactly on a grid plane that a
+/// A 239c intermediate plane can land exactly on a grid plane that a
 /// grid row of the SAME `(object_id, region_id)` still occupies, because the
 /// support-step decimation removes one body's grid row at that plane while a
 /// different body's row survives there. That is one physical plane of one
@@ -2711,7 +2711,7 @@ fn coarse_intermediate_plane_on_occupied_grid_plane_publishes_one_entry() {
     );
 }
 
-/// W4 direction 2, now enforced LITERALLY (DEV-169): within one plan,
+/// W4 direction 2, now enforced literally: within one plan,
 /// `(object_id, region_id, anchor_z)` determines `global_layer_index`. Packet
 /// 241b had to scope this by index space, because the coarse path could hand a
 /// grid row and a synthesized row the same plane; the producer no longer does

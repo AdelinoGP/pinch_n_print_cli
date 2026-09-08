@@ -712,12 +712,12 @@ fn modifier_split_rejects_existing_child_identity_collision() {
 }
 
 // ---------------------------------------------------------------------------
-// DEV-130 — the footprint binds to BASE, never to a painted variant that
+// The footprint binds to BASE, never to a painted variant that
 // happens to be emitted first
 // ---------------------------------------------------------------------------
 
 /// `split_modifier_footprints` locates the parent region with a `position(...)`
-/// scan over the already-emitted prefix. Before DEV-130 that scan matched on
+/// scan over the already-emitted prefix. Before this fix that scan matched on
 /// `object_id` and "not a footprint" only, so on an object carrying BOTH paint
 /// variants and a modifier volume it bound to whichever region was emitted
 /// first — which can be a painted variant. The minted sub-region id encodes its
@@ -762,12 +762,12 @@ fn modifier_split_binds_to_base_not_painted_variant() {
         .regions
         .iter()
         .find(|r| slicer_ir::modifier_base_region_id(r.region_id) == Some(0))
-        .expect("DEV-130: a BASE modifier sub-region must still be minted");
+        .expect("a BASE modifier sub-region must still be minted");
 
     assert_eq!(
         slicer_ir::modifier_base_region_id(sub.region_id),
         Some(0),
-        "DEV-130: minted sub-region must encode BASE (region_id 0) as its parent, \
+        "minted sub-region must encode BASE (region_id 0) as its parent, \
          not the painted variant (region_id 7) that precedes it in emission order"
     );
 

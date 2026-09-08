@@ -255,7 +255,7 @@ impl LayerModule for ClassicPerimeters {
         // `wall_count + extra_perimeters`.
         let extra_perimeters = _config.get_int("extra_perimeters").unwrap_or(0).max(0) as u32;
         let base_wall_count = base_wall_count + extra_perimeters;
-        // alternate_extra_wall (DEV-125): canonical `process_classic` and
+        // alternate_extra_wall: canonical `process_classic` and
         // `process_arachne` (`PerimeterGenerator.cpp`) carry a byte-identical
         // guard `alternate_extra_wall && layer_id % 2 == 1 && !m_spiral_vase &&
         // sparse_infill_density > 0` that does `loop_number++`. `loop_number`
@@ -322,7 +322,7 @@ impl LayerModule for ClassicPerimeters {
         let only_one_wall_first_layer = _config
             .get_bool("only_one_wall_first_layer")
             .unwrap_or(false);
-        // DEV-124: canonical `process_classic` (`PerimeterGenerator.cpp`) gates
+        // Canonical `process_classic` (`PerimeterGenerator.cpp`) gates
         // the single-wall clamp on `this->layer_id == object_config->raft_layers`
         // — the first *printed* layer, which is 0 only when no raft is
         // configured. PnP's equivalent of canonical `raft_layers` is
@@ -392,7 +392,7 @@ impl LayerModule for ClassicPerimeters {
             // object's bottom layer is always bottom-surface context; under the
             // positive-offset raft band that is global index `raft_layers`
             // (`support_raft_layers`, 0 without a raft) — the same
-            // object-bottom discriminator DEV-124 established for the wall
+            // object-bottom discriminator established for the wall
             // clamp above, not the physical plate layer. A region at top-shell
             // depth zero is the topmost top-surface context.
             let overlap_key = if layer_index == raft_layers || top_shell == Some(0) {

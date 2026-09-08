@@ -179,7 +179,7 @@ const CLASSIC_FALLBACKS: &[(&str, CodeFallback)] = &[
     ("wall_count", Int(3)),       // from_config `_ => 3`
     ("extra_perimeters", Int(0)), // unwrap_or(0)
     ("extra_perimeters_on_overhangs", Bool(false)),
-    // DEV-125: the two safety conjuncts of the `alternate_extra_wall` gate in
+    // The two safety conjuncts of the `alternate_extra_wall` gate in
     // `run_perimeters`. Registered here so the reads are live rather than
     // dropped by `ConfigView::from_declared`; both mirror the arachne module's
     // own registration and read-site fallbacks.
@@ -218,7 +218,7 @@ const CLASSIC_FALLBACKS: &[(&str, CodeFallback)] = &[
     ("perimeter_arc_tolerance", Float(0.0125)),
     ("only_one_wall_top", Bool(false)),
     ("only_one_wall_first_layer", Bool(false)),
-    // DEV-124: PnP's name for canonical `raft_layers`; the first PRINTED layer.
+    // PnP's name for canonical `raft_layers`; the first PRINTED layer.
     ("support_raft_layers", Int(0)), // get_int(..).unwrap_or(0)
     ("smaller_perimeter_line_width", Float(0.25)),
     ("smaller_perimeter_threshold_mm", Float(0.8)),
@@ -305,7 +305,7 @@ const ARACHNE_FALLBACKS: &[(&str, CodeFallback)] = &[
     ("sparse_infill_density", Float(20.0)),
     ("only_one_wall_top", Bool(false)),
     ("only_one_wall_first_layer", Bool(false)),
-    // DEV-124: PnP's name for canonical `raft_layers`; the first PRINTED layer.
+    // PnP's name for canonical `raft_layers`; the first PRINTED layer.
     ("support_raft_layers", Int(0)), // get_int(..).unwrap_or(0)
     // mm; squared at the read site; fallback defaults.smallest_line_segment_squared
     // = 0.0025 mm^2 = (0.05mm)^2. Was a 0.5 (10x) lie until this guard landed.

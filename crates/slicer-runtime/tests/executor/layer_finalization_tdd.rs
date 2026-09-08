@@ -164,7 +164,7 @@ fn finalization_executor_accepts_duplicate_layer_indices() {
         &mut layers,
         &Default::default(),
     );
-    // Packet 197 originally rejected duplicates. Since 2026-08-30, DEV-160
+    // Packet 197 originally rejected duplicates. Since 2026-08-30, duplicates are
     // permits them because ADR-0059 requires a solo synthesized row to adopt
     // its upper model layer's index; the preceding test still rejects reversals.
     assert_eq!(result, Ok(()));

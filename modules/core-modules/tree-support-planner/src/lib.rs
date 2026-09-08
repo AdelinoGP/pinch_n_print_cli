@@ -4061,7 +4061,7 @@ impl SupportPlanner {
                         })
                         .map(|(index, _)| index as u32)
                         .unwrap_or(0);
-                    // DEV-170: one emitted row per `(global_layer_index,
+                    // One emitted row per `(global_layer_index,
                     // object_id, region_id)` is the PRODUCER's contract.
                     // Candidates in one EPSILON group all receive this
                     // group's `global_layer_index` / `anchor_z`, so two
@@ -4217,7 +4217,7 @@ impl SupportPlanner {
     }
 }
 
-/// DEV-170: fold `incoming` into `existing`, which already occupies this
+/// Fold `incoming` into `existing`, which already occupies this
 /// physical plane for the same `(object_id, region_id)`.
 ///
 /// Membership is unioned, never dropped: a synthesized coarse row stands for

@@ -290,7 +290,7 @@ fn wall_count_zero() {
     );
 }
 
-/// DEV-125 — `alternate_extra_wall` adds exactly one wall on odd layers.
+/// `alternate_extra_wall` adds exactly one wall on odd layers.
 ///
 /// Canonical `process_classic` (`PerimeterGenerator.cpp`) does `loop_number++`
 /// under `alternate_extra_wall && layer_id % 2 == 1 && !m_spiral_vase &&
@@ -328,7 +328,7 @@ fn alternate_extra_wall_adds_one_wall_on_odd_layers() {
     );
 }
 
-/// DEV-125 — the two safety conjuncts must actually gate the bump. They are
+/// the two safety conjuncts must actually gate the bump. They are
 /// only live because `spiral_vase` / `sparse_infill_density` are declared in
 /// `classic-perimeters.toml`; an undeclared key is dropped by
 /// `ConfigView::from_declared` and would silently read its fallback.

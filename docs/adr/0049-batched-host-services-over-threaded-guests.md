@@ -177,7 +177,7 @@ must not add a direct `slicer-core` dependency to use them (packet
 `117_support-planner-geometric-correctness` adopted the SDK wrapper for exactly
 this reason). As of this amendment the wrappers still run clipper2 **inside the
 sandbox** on `wasm32`: only `log*` has gained its `wasm32` bridge arm since the
-2026-07-25 partial remediation (DEV-094); the three mesh queries, the three
+2026-07-25 partial remediation; the three mesh queries, the three
 polygon ops, and `now_us` remain unbridged. "Delegates to host-side Clipper2" in
 `docs/05_module_sdk.md` §Host Service Wrappers describes the WIT-declared
 intent, not today's runtime path — re-derive the bridged/unbridged set by

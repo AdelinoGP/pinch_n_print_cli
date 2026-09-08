@@ -728,7 +728,7 @@ fn resolve_contact_params(
         // Object-bottom boundary. This is the ONLY `ResolvedConfig` bridge
         // into `SupportContactParams`, so without this read the raft-aware
         // predicates in `detect_support_contacts` would ride at their default
-        // and the conversion would be inert (the DEV-124 failure mode).
+        // and the conversion would be inert.
         raft_layers: extension_u32(config, "support_raft_layers").unwrap_or(0),
     }
 }

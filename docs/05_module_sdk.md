@@ -886,7 +886,7 @@ path in this contract may drop, skip, or fail to emit a region's wall
 loop. The default `seam_mode` is `"aligned"` in both `seam-placer.toml`
 and `seam-planner-default.toml` (matching OrcaSlicer's `spAligned`); see
 `docs/adr/0046-aligned-seam-in-seam-planning-prepass.md` amendment
-recorded as `D-283-ADR-0046-AMENDED` in `docs/DEVIATION_LOG.md`. The
+recorded in the amendment to `docs/adr/0046-aligned-seam-in-seam-planning-prepass.md`. The
 default applies to both manifests simultaneously; a mismatch is a bug.
 
 **T-082 audit — seam-placer's tolerance for sparse/empty candidate lists.**

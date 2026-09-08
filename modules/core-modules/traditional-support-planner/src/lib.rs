@@ -1355,12 +1355,12 @@ fn packet239d_coarse_planes(below_units: i64, above_units: i64, pitch_mm: f64) -
 /// midpoint 6000, where body 1's grid row still sits.
 ///
 /// Minting a synthesized index there would publish TWO entries for one physical
-/// plane of one region - the shape DEV-169 flagged. It is not two identities:
+/// plane of one region. It is not two identities:
 /// `SupportPlanIR` admits one entry per `(global_layer_index, object_id,
 /// region_id)`, and one region at one plane is one support region. Adopting the
 /// grid row's index lets `merge_region_identity_entries` fold the pair, which is
 /// exactly what the neighbouring planes in that fixture already do when both
-/// body columns reach them on the grid. Per the DEV-170 precedent on the tree
+/// body columns reach them on the grid. As in the tree
 /// planner, the resolution is a MERGE, never a new fatal invariant.
 ///
 /// Declined rows are excluded: a decline records a candidate that was never
@@ -1400,7 +1400,7 @@ fn next_intermediate_plane_index(
 ///
 /// This is the producer-side invariant, deliberately retained: **one
 /// `SupportPlanEntry` exists per support-region identity, and the producer is
-/// what guarantees it.** It is the DEV-167 fix. The 2026-09-03 grilling
+/// what guarantees it.** It is the producer-side fix. The 2026-09-03 grilling
 /// REVERSED the earlier plan to delete this function once the host merged on
 /// declared identity - a host that merges correctly is a convenience, never
 /// this planner's safety net, and the two are not interchangeable (the host
@@ -1435,7 +1435,7 @@ fn next_intermediate_plane_index(
 ///   `global_layer_index` (one plane claiming two layer indices).
 ///
 /// The second rule was scoped by index space in packet 241b and is UNSCOPED
-/// again as of DEV-169 for the strict helper. It was scoped because the coarse
+/// again for the strict helper. It was scoped because the coarse
 /// path could put a grid row and a synthesized intermediate row on one
 /// `anchor_z`; that was a producer defect, not legitimate output, and it is
 /// fixed at the producer by `grid_index_at_plane`. Every entry is born with a
@@ -1505,7 +1505,7 @@ fn merge_region_identity_entries_with_plane_aliases(
     // The two directions of the layer-index <-> plane correspondence, each
     // recording the first witness so a disagreement can name both sides.
     let mut plane_of_layer: BTreeMap<(i32, String, String), i64> = BTreeMap::new();
-    // Unscoped (DEV-169): every entry is born with a grid index, and the only
+    // Unscoped: every entry is born with a grid index, and the only
     // negative indices come from `next_intermediate_plane_index`, whose two
     // call sites both defer to `grid_index_at_plane` first. So a plane is owned
     // by a grid index or by one minted index, never both.

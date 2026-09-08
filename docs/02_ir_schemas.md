@@ -678,7 +678,7 @@ record, defined alongside `SliceIR` in `crates/slicer-ir/src/slice_ir.rs`.
   be inferred from the index — read `is_raft`.
 - `GlobalLayer.index` still equals that layer's position in
   `LayerPlanIR.global_layers`. The positional-consumer contract is **upheld**,
-  not repaired; DEV-124's remedy — gating the single-wall clamp on
+  not repaired; the remedy — gating the single-wall clamp on
   `layer_index == support_raft_layers` in `run_perimeters`
   (`modules/core-modules/classic-perimeters/src/lib.rs`) and its arachne twin —
   continues to hold unchanged under the band.
@@ -712,8 +712,7 @@ model layer too high once `support_raft_layers > 0`. This is recorded as a
 finalization gate (`crates/slicer-runtime/src/layer_finalization.rs`) enforces
 monotonic `global_layer_index`, not monotonic Z, so it does not require the
 shift. An earlier revision of packet 240a specified a signed negative band
-(`-N..-1`) plus a `u32` → `i32` index migration; that revision was withdrawn
-— see DEV-172 in `docs/DEVIATION_LOG.md`.
+(`-N..-1`) plus a `u32` → `i32` index migration; that revision was withdrawn.
 
 ### Modifier sub-regions
 

@@ -40,7 +40,7 @@ because "profile" is already overloaded by cargo build profiles and the fuel
   config-dir and exe-dir tiers only); the flags compose.
 - Disjointness invariant: an edition's staged external set and its integrated
   set never intersect (ADR-0056 consequence).
-- Delivery phases: (1) DEV-094 batched host bridges — perf for all editions,
+- Delivery phases: (1) batched host bridges — perf for all editions,
   no edition machinery; (2) integration infrastructure + Hybrid pilot with
   parity gates; (3) Integrated edition, xtask edition support, CI artifacts;
   (4) platform builds (aarch64 matrix, iOS AOT, browser research) — deferred.
