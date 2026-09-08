@@ -516,19 +516,23 @@ consumed.
 
 **Re-sized by ticket 62 (2026-09-07): 5 ratios + small-area pair in, one key returned, packet 288 authored.** `reduce_crossing_wall` (perimeter-avoiding travel enable) is returned to the queue as unimplemented with the missing planner named (no avoidance planner in tree — ticket-61 detour precedent; no new ticket). `set_other_flow_ratios` shed to P54 by ticket 61 — 9→8 there; P55 8→7+1 with a backward FORWARD-DEP on draft packet 287's gate (referenced, never redeclared). No queue-count change.
 
-### P56 — Speed / Acceleration — emitter (11 keys, Tier B)
+### P56 — Speed / Acceleration — emitter (11 keys, Tier B; packet 289)
 
 `accel_to_decel_enable`, `accel_to_decel_factor`, `bridge_acceleration`, `default_acceleration`, `initial_layer_acceleration`, `inner_wall_acceleration`, `internal_solid_infill_acceleration`, `outer_wall_acceleration`, `sparse_infill_acceleration`, `top_surface_acceleration`, `travel_acceleration`
 
-### P57 — Speed / Advanced (Speed) — emitter (3 keys, Tier B)
+**Authored by ticket 63 (2026-09-07): all 11 keys in, none shed, packet 289.** Tier B held, owner `crates/slicer-gcode` stands (all canonical reads emission-time; unwired `set_acceleration`/`set_travel_acceleration` reused, never forked); scalar-global is a recorded simplification (DEV-181(b) — canonical declares nine keys per-nozzle vector, model stays with ticket 125).
+
+### P57 — Speed / Advanced (Speed) — emitter (3 keys, Tier B; packet 290)
 
 `extrusion_rate_smoothing_external_perimeter_only`, `max_volumetric_extrusion_rate_slope`, `max_volumetric_extrusion_rate_slope_segment_length`
 
-### P58 — Speed / Initial layer speed — emitter (1 keys, Tier B)
+**Authored by ticket 64 (2026-09-07): all 3 keys in, none shed, packet 290.** Tier B held, owner `crates/slicer-gcode` stands but the seam corrected (estimator.rs does time-math only — the stage is a post-entity-loop retime over `GCodeIR` moves); canonical scalarity IS held (all three scalar in `GCodeConfig` — no ticket-125 vector arm, unlike packets 276/277/279–289); defaults ARE identity (slope `0` = stage does not exist, AC-2 pins it).
+
+### P58 — Speed / Initial layer speed — emitter (1 keys, Tier B; packet 291)
 
 `slow_down_layers`
 
-**Authored by ticket 65 (2026-09-07): 1 key in, none shed, packet 291.** Tier B held, owner `crates/slicer-gcode` stands but the seam corrected (feedrate.rs is the speed table only — the arm is a per-entity blend in emit.rs over that table); canonical scalarity IS held (coInt scalar — no ticket-125 vector arm); defaults ARE identity (`0`/`1` inert by the `> 1` gate, AC-2 pins it). (P56/P57 rows above landed concurrently — 11-in at 289, 3-in at 290.)
+**Authored by ticket 65 (2026-09-07): 1 key in, none shed, packet 291.** Tier B held, owner `crates/slicer-gcode` stands but the seam corrected (feedrate.rs is the speed table only — the arm is a per-entity blend in emit.rs over that table); canonical scalarity IS held (coInt scalar — no ticket-125 vector arm); defaults ARE identity (`0`/`1` inert by the `> 1` gate, AC-2 pins it).
 
 ### P59 — Speed / Jerk (XY) — emitter (8 keys, Tier B)
 

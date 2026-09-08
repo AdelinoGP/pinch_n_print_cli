@@ -569,25 +569,25 @@ findings (the one flagged row was a stale-asset artifact).
 | `top_solid_infill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 288** by ticket 62 |
 
 ### Speed / Acceleration
-| `accel_to_decel_enable` | B | crates/slicer-gcode (estimator.rs) |
-| `accel_to_decel_factor` | B | crates/slicer-gcode (estimator.rs) |
-| `bridge_acceleration` | B | crates/slicer-gcode (estimator.rs) |
-| `default_acceleration` | B | crates/slicer-gcode (estimator.rs) |
-| `initial_layer_acceleration` | B | crates/slicer-gcode (estimator.rs) |
-| `inner_wall_acceleration` | B | crates/slicer-gcode (estimator.rs) |
-| `internal_solid_infill_acceleration` | B | crates/slicer-gcode (estimator.rs) |
-| `outer_wall_acceleration` | B | crates/slicer-gcode (estimator.rs) |
-| `sparse_infill_acceleration` | B | crates/slicer-gcode (estimator.rs) |
-| `top_surface_acceleration` | B | crates/slicer-gcode (estimator.rs) |
-| `travel_acceleration` | B | crates/slicer-gcode (estimator.rs) |
+| `accel_to_decel_enable` | B | crates/slicer-gcode (per-entity accel selection + flavor M204/SET_VELOCITY_LIMIT) — **in packet 289** by ticket 63 |
+| `accel_to_decel_factor` | B | crates/slicer-gcode (per-entity accel selection + flavor M204/SET_VELOCITY_LIMIT) — **in packet 289** by ticket 63 |
+| `bridge_acceleration` | B | crates/slicer-gcode (per-entity accel selection + flavor M204/SET_VELOCITY_LIMIT) — **in packet 289** by ticket 63 |
+| `default_acceleration` | B | crates/slicer-gcode (per-entity accel selection + flavor M204/SET_VELOCITY_LIMIT) — **in packet 289** by ticket 63 |
+| `initial_layer_acceleration` | B | crates/slicer-gcode (per-entity accel selection + flavor M204/SET_VELOCITY_LIMIT) — **in packet 289** by ticket 63 |
+| `inner_wall_acceleration` | B | crates/slicer-gcode (per-entity accel selection + flavor M204/SET_VELOCITY_LIMIT) — **in packet 289** by ticket 63 |
+| `internal_solid_infill_acceleration` | B | crates/slicer-gcode (per-entity accel selection + flavor M204/SET_VELOCITY_LIMIT) — **in packet 289** by ticket 63 |
+| `outer_wall_acceleration` | B | crates/slicer-gcode (per-entity accel selection + flavor M204/SET_VELOCITY_LIMIT) — **in packet 289** by ticket 63 |
+| `sparse_infill_acceleration` | B | crates/slicer-gcode (per-entity accel selection + flavor M204/SET_VELOCITY_LIMIT) — **in packet 289** by ticket 63 |
+| `top_surface_acceleration` | B | crates/slicer-gcode (per-entity accel selection + flavor M204/SET_VELOCITY_LIMIT) — **in packet 289** by ticket 63 |
+| `travel_acceleration` | B | crates/slicer-gcode (per-entity accel selection + flavor M204/SET_VELOCITY_LIMIT) — **in packet 289** by ticket 63 |
 
 ### Speed / Advanced (Speed)
-| `extrusion_rate_smoothing_external_perimeter_only` | B | crates/slicer-gcode (estimator.rs) |
-| `max_volumetric_extrusion_rate_slope` | B | crates/slicer-gcode (estimator.rs) |
-| `max_volumetric_extrusion_rate_slope_segment_length` | B | crates/slicer-gcode (estimator.rs) |
+| `extrusion_rate_smoothing_external_perimeter_only` | B | crates/slicer-gcode (post-loop smoothing stage over `GCodeIR` moves) — **in packet 290** by ticket 64 |
+| `max_volumetric_extrusion_rate_slope` | B | crates/slicer-gcode (post-loop smoothing stage over `GCodeIR` moves) — **in packet 290** by ticket 64 |
+| `max_volumetric_extrusion_rate_slope_segment_length` | B | crates/slicer-gcode (post-loop smoothing stage over `GCodeIR` moves) — **in packet 290** by ticket 64 |
 
 ### Speed / Initial layer speed
-| `slow_down_layers` | B | crates/slicer-gcode (per-entity slow-down blend in emit.rs over the feedrate.rs table) — **in packet 291** by ticket 65 (ticket-63/64 rows below landed concurrently — P56 11-in at 289, P57 3-in at 290) |
+| `slow_down_layers` | B | crates/slicer-gcode (per-entity slow-down blend in emit.rs over the feedrate.rs table) — **in packet 291** by ticket 65 |
 
 ### Speed / Jerk (XY)
 | `default_jerk` | B | crates/slicer-gcode (estimator.rs) |
