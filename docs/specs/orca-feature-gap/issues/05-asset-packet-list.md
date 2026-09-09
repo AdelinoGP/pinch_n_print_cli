@@ -662,7 +662,9 @@ are the feature's core semantic, so no substitute clamp). **Re-filed as
 
 `bottom_shell_thickness`, `top_shell_thickness`
 
-### P75 — Quality / Bridging — bridge-over-infill (3 keys, Tier B)
+### P75 — Quality / Bridging — bridge-over-infill (3 keys, Tier B; already live, no packet)
+
+**Closed by ticket 82 (2026-09-09): all 3 keys live, none shed, no packet.** The feature landed off-map as bridge-parity packets 233/234/234a (`implemented`); the decision points are the host seam (prepass `gate_internal_bridge_sites` qualification + `InfillPostProcess` anchored construction), not a guest module. `dont_filter_internal_bridges` (bool false = `ibfDisabled`) drives the multiplier 3/1 + partial-gate bypass; `internal_bridge_angle` (0.0 = automatic, [0,180]) drives the `determine_bridging_angle` override arm; `enable_extra_bridge_layer` (bool false = `eblDisabled`) drives the carrier-free duplicate pass. No queue-count change.
 
 `dont_filter_internal_bridges`, `enable_extra_bridge_layer`, `internal_bridge_angle`
 

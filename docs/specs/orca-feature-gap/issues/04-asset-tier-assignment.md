@@ -109,7 +109,7 @@ source-missing `*_filament_id` siblings).
 | Quality / Wall generator — Arachne | A | arachne-perimeters | `min_feature_size` in Arachne/WallToolPaths.cpp |
 | Quality / Line width | B | support-planner | `support_line_width` in Flow.cpp / TreeSupport.cpp (support flow) |
 | Quality / Overhangs | B | slice-prepass | canonical `PrintObjectSlice.cpp::apply_conical_overhang` |
-| Quality / Bridging | B (split) | pattern keys (2) → infill modules; bridge-over-infill (3) → slicing stage; bridge-angle + flow (2) → perimeters/emitter; perimeter (1) → classic/arachne | canonical `Fill.cpp::Layer::make_fills`, `PrintObject.cpp::bridge_over_infill`, `GCode::_extrude`, `PerimeterGenerator::process_no_bridge`, `LayerRegion.cpp` |
+| Quality / Bridging | B (split) | pattern keys (2) → infill modules; bridge-over-infill (3) → host prepass qualification + InfillPostProcess construction seam; bridge-angle + flow (2) → perimeters/emitter; perimeter (1) → classic/arachne | canonical `Fill.cpp::Layer::make_fills`, `PrintObject.cpp::bridge_over_infill`, `GCode::_extrude`, `PerimeterGenerator::process_no_bridge`, `LayerRegion.cpp` |
 | Quality / Precision | C/B | new modules: elefant-foot (2), polyhole (3), contour-compensation (2); `enable_arc_fitting` → emitter; `precise_z_height` → layer-planner; `resolution` → emitter/generation-time (re-adjudicated in ticket 105) | canonical `PrintObject::slice` transforms; arc fitting is G2/G3 emission; z-height is layer-z generation |
 | Others / Fuzzy Skin | A | fuzzy-skin | canonical `Feature/FuzzySkin/FuzzySkin.cpp::apply_fuzzy_skin` |
 | Others / Brim, Skirt | A | skirt-brim | canonical `Brim.cpp::make_brim`, `Print.cpp::_make_skirt`, `GCode.cpp::generate_skirt` |
@@ -485,9 +485,9 @@ findings (the one flagged row was a stale-asset artifact).
 | `bridge_angle` | B | classic-perimeters + arachne-perimeters (LayerRegion.cpp + PerimeterGenerator.cpp) |
 | `bridge_density` | B | infill modules — **live** (ticket 34, direct implementation): divides bridge line spacing in `RectilinearInfill::run_infill` and `wave-overhangs`' fallback fill. `max` corrected 120→125 against the oracle. Not read by `gyroid-infill` (ticket 127); bare-number spelling misread (ticket 128) |
 | `counterbore_hole_bridging` | B | classic-perimeters + arachne-perimeters |
-| `dont_filter_internal_bridges` | B | bridge-over-infill (slicing stage, PrintObject.cpp) |
-| `enable_extra_bridge_layer` | B | bridge-over-infill (slicing stage, PrintObject.cpp) |
-| `internal_bridge_angle` | B | bridge-over-infill (slicing stage, PrintObject.cpp) |
+| `dont_filter_internal_bridges` | B | bridge-over-infill (host prepass qualification + InfillPostProcess construction seam, PrintObject.cpp) — **live** (ticket 82, no packet: multiplier 3/1 + partial-gate bypass in `gate_internal_bridge_sites` + short-line filter in the construction arm; bool `false` = canonical `ibfDisabled`) |
+| `enable_extra_bridge_layer` | B | bridge-over-infill (host prepass qualification + InfillPostProcess construction seam, PrintObject.cpp) — **live** (ticket 82, no packet: carrier-free duplicate pass in `gate_internal_bridge_sites`; bool `false` = canonical `eblDisabled`) |
+| `internal_bridge_angle` | B | bridge-over-infill (host prepass qualification + InfillPostProcess construction seam, PrintObject.cpp) — **live** (ticket 82, no packet: `angle_override` into `determine_bridging_angle`; default 0.0 = canonical automatic; range [0, 180] matches) |
 | `internal_bridge_density` | B | infill modules — **live** (ticket 34, direct implementation): internal-bridge twin of `bridge_density`, selected off `is_internal_bridge` in both bridge-fill holders. Not read by `gyroid-infill` (ticket 127) |
 | `internal_bridge_flow` | B | infill modules — **live** (ticket 57, no packet: already landed by ticket 34's direct implementation in both bridge-fill holders + host harvest; owner corrected from `crates/slicer-gcode` — the emitter must not scale, `flow_factor` already carries it) |
 | `thick_internal_bridges` | B | infill modules — **live** (ticket 34, direct implementation): selects `canonical_bridging_flow`'s round-thread spacing for internal bridges in both bridge-fill holders. Canonical's second read site (`Print::validate`'s `allow_thin_bridge_width`) is config-range validation, deferred to ticket 113 |
