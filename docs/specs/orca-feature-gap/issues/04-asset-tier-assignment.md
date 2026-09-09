@@ -606,10 +606,10 @@ findings (the one flagged row was a stale-asset artifact).
 ### Strength / Advanced (Strength)
 | `align_infill_direction_to_model` | B | infill modules |
 | `detect_narrow_internal_solid_infill` | B | infill modules |
-| `ensure_vertical_shell_thickness` | B | object-level solid-fill planning (PrintObject.cpp) |
-| `extra_solid_infills` | B | object-level solid-fill planning (PrintObject.cpp) |
-| `infill_combination` | B | object-level infill planning (PrintObject.cpp) |
-| `infill_combination_max_layer_height` | B | object-level infill planning (PrintObject.cpp) |
+| `ensure_vertical_shell_thickness` | B | object-level solid-fill planning (PrintObject.cpp) — **in packet 299** by ticket 80 |
+| `extra_solid_infills` | B | object-level solid-fill planning (PrintObject.cpp) — **in packet 299** by ticket 80 |
+| `infill_combination` | B | object-level infill planning (PrintObject.cpp) — **in packet 299** by ticket 80 |
+| `infill_combination_max_layer_height` | B | object-level infill planning (PrintObject.cpp) — **in packet 299** by ticket 80 |
 | `minimum_sparse_infill_area` | B | infill modules — **live** (ticket 35, direct implementation): small sparse islands convert to internal solid fill in the host `PrePass::ShellClassification` prepass, measured pre-wall-inset (strictly conservative). Islands land in the dedicated `internal_solid_fill` bucket (five-way fill partition; emitted as `InternalSolidInfill` by the `claim:top-fill` holders) |
 
 ### Strength / Infill

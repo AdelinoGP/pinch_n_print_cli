@@ -652,7 +652,9 @@ are the feature's core semantic, so no substitute clamp). **Re-filed as
 
 `tree_support_angle_slow`, `tree_support_auto_brim`, `tree_support_branch_angle_organic`, `tree_support_branch_diameter_organic`, `tree_support_branch_distance_organic`, `tree_support_brim_width`, `tree_support_tip_diameter`, `tree_support_top_rate`
 
-### P73 — Strength / Advanced (Strength) — object-level planning (4 keys, Tier B)
+### P73 — Strength / Advanced (Strength) — object-level planning (4 keys, Tier B; packet 299)
+
+**Authored by ticket 80 (2026-09-09): all 4 keys in, none shed, packet 299.** Tier B held; the owner is a seam, not a module — host prepass `commit_shell_classification_builtin` (vertical shells, extra-solid layers, sparse grouping) plus the rectilinear sparse emitter (grouped-height arm, walls keep original height). Canonical default `ensure_all` makes vertical shells newly active at default (one intended output change, AC-pinned). Summed height rides a net-new `SlicedRegion.combined_infill_height` field + view accessor; DEV-190 (no `stInternalVoid` tri-typing; `interface_shells` gate is P76's; reslice-invalidation rides 124). No queue-count change.
 
 `ensure_vertical_shell_thickness`, `extra_solid_infills`, `infill_combination`, `infill_combination_max_layer_height`
 
