@@ -30,7 +30,7 @@ off-grid support work survives finalization and postpass into G-code.
 Packet `239-support-independent-layer-z` is superseded. Its central premise — that the
 anchored-event substrate "already carries everything needed" and only two blockers stand in the
 way — was measured false during its `/swarm` run and replaced by
-`docs/specs/support-independent-layer-z-split-plan.md`, whose findings F1–F9 are the plan of
+`docs/specs/_OLD/support-independent-layer-z-split-plan.md`, whose findings F1–F9 are the plan of
 record. This packet is the first of that plan's three successors and inherits 239's reserved
 `TASK-399..TASK-408` range.
 

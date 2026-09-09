@@ -30,7 +30,7 @@ TASK-335 here and only here, and pass the final human differential gate.
 Packet 224-support-family-orca-closure closed prematurely twice (2026-08-17 retracted; the
 2026-08-20 close left a zero-match `--exact` filter, a deleted-but-recreated negative test, and
 two vacuous evidence tests, all amended in-session). Its amended ACs, the gap register
-(`docs/specs/support-parity-gap-register.md`), the parity audit, and
+(`docs/specs/_OLD/support-parity-gap-register.md`), the parity audit, and
 `docs/spec_packets/224-support-family-orca-closure/handoffs/orca-divergences.md` are inherited
 by this packet, which supersedes 224 and closes the sequence for real: the eleven dependency
 packets named in `packet.spec.md`'s frontmatter (237, 238a, 238b, 238c, 239a, 239b, 239c, 239d,

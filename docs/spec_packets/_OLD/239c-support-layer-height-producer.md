@@ -30,7 +30,7 @@ PnP has no support-layer Z independent of object-layer Z. Gap-register row `G-02
 this since the support-family audit, and the superseded packet `239-support-independent-layer-z`
 tried to close it host-side only. A `/swarm` run on 2026-08-28 measured 239's central premise
 as false and split it into three packets
-(`docs/specs/support-independent-layer-z-split-plan.md`). Two of its nine findings are this
+(`docs/specs/_OLD/support-independent-layer-z-split-plan.md`). Two of its nine findings are this
 packet's problem statement:
 
 - **F8 — support Z is structurally grid-bound.** `modules/core-modules/tree-support/src/lib.rs`

@@ -13,7 +13,7 @@ Convert every `cargo xtask check-literals` violation in `slicer-ir`, `slicer-cor
 
 ## Problem Statement
 
-Queue row #3 of `docs/specs/struct-literal-churn-gate-plan.md`. The plan's measured churn (165-file sweep in `a579fc18` after `Point3WithWidth` gained a field) comes from exhaustive watched-type literals in test code. Packets 194/195 built the gate and the FRU bases; this packet is the first of three area sweeps: drive `cargo xtask check-literals` to zero violations for `slicer-ir`, `slicer-core`, and `slicer-gcode` without changing what any test asserts. It is one coherent slice because the three crates form the IR-to-G-code data spine, share the same fixture decisions (see `design.md`), and their combined violation surface is the smallest of the three sweep areas.
+Queue row #3 of `docs/specs/_OLD/struct-literal-churn-gate-plan.md`. The plan's measured churn (165-file sweep in `a579fc18` after `Point3WithWidth` gained a field) comes from exhaustive watched-type literals in test code. Packets 194/195 built the gate and the FRU bases; this packet is the first of three area sweeps: drive `cargo xtask check-literals` to zero violations for `slicer-ir`, `slicer-core`, and `slicer-gcode` without changing what any test asserts. It is one coherent slice because the three crates form the IR-to-G-code data spine, share the same fixture decisions (see `design.md`), and their combined violation surface is the smallest of the three sweep areas.
 
 ## Architecture Constraints
 

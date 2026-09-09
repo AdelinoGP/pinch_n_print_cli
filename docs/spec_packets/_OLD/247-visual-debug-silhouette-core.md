@@ -16,7 +16,7 @@ Add the `silhouette` visualization kind (schema 1.2.0) to `pnp_cli visual-debug`
 
 ## Problem Statement
 
-`pnp_cli visual-debug` renders only top-down XY views. Tree-support defects — branch tapering, interface-band placement/count, raft/base structure — are vertical: invisible from above and currently diagnosable only from IR JSON or G-code text. The approved plan (`docs/specs/visual-debug-silhouette-side-views-plan.md`, reviewed 2026-08-27) defines a `silhouette` visualization kind (schema 1.2.0) that composites selected layers into one X–Z or Y–Z image per (tap, view) via mathematically exact interval projection. This packet is queue row #1 (plan §4.7 steps 1+2): the tracer over the simplest slab source plus the motivating support-plan use case, carrying every foundation later rows build on — the schema gate, the mixing ban, the composite render path, model-wide Z framing, and the 1.2.0 manifest shape.
+`pnp_cli visual-debug` renders only top-down XY views. Tree-support defects — branch tapering, interface-band placement/count, raft/base structure — are vertical: invisible from above and currently diagnosable only from IR JSON or G-code text. The approved plan (`docs/specs/_OLD/visual-debug-silhouette-side-views-plan.md`, reviewed 2026-08-27) defines a `silhouette` visualization kind (schema 1.2.0) that composites selected layers into one X–Z or Y–Z image per (tap, view) via mathematically exact interval projection. This packet is queue row #1 (plan §4.7 steps 1+2): the tracer over the simplest slab source plus the motivating support-plan use case, carrying every foundation later rows build on — the schema gate, the mixing ban, the composite render path, model-wide Z framing, and the 1.2.0 manifest shape.
 
 ## Architecture Constraints
 

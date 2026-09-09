@@ -30,7 +30,7 @@ measured before any emitter change is made.
 
 ## Problem Statement
 
-G-02 (`docs/specs/support-parity-gap-register.md`, destination
+G-02 (`docs/specs/_OLD/support-parity-gap-register.md`, destination
 **239-support-independent-layer-z**): PnP has no support-layer Z independent of
 object-layer Z. The anchored-event substrate (packets 219–223) already carries everything
 needed — planar and Z-spanning entity contracts, deterministic committed event ordering,
