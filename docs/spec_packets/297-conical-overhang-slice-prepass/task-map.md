@@ -1,0 +1,9 @@
+# Task Map: 297-conical-overhang-slice-prepass
+
+Queue packet from the wayfinder map "Close the OrcaSlicer FFF feature gap"; authored under map ticket 78. Single-task packet (no backlog slice); this crosswalk exists for the S0 structural gate and records the map provenance.
+
+| docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| `TASK-000` (queue packet, `task_ids: []`) | Steps 1–6 | `docs/01_system_architecture.md` (prepass ownership; rule-4 trigger test does not fire); `docs/08_coordinate_system.md` (mm↔unit boundaries); `docs/DEVIATION_LOG.md` (zero new rows — angle bounds are GUI hints, bool spelling rides 132) | `crates/slicer-ir/src/resolved_config.rs` (3 `cli` fields + emissions) + `crates/slicer-core/src/algos/conical_overhang.rs` (new kernel) + `crates/slicer-runtime/src/builtins/conical_overhang_producer.rs` (new) + `crates/slicer-runtime/src/prepass.rs` (1 registration) + 3 new test files (`slicer-ir`, `slicer-core`, executor bucket) | `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` (`PrintObjectConfig` defaults) + `OrcaSlicerDocumented/src/libslic3r/PrintObjectSlice.cpp` (`PrintObject::apply_conical_overhang` pass shape) | M | P71: Tier B held, owner confirmed `slice-prepass` → host prepass cluster (kernel beside `overhang_annotation`, producer beside its sibling); membership 3/3, all wired, declaration-only 0; canonical per-object shape held via existing overlay (explicitly not ticket 125's tool axis); `== 90.0` early-return mirrored, no range validation (no deviation); CONFIG_BLOCK honest side-effect only (rides 132); no queue-count change; no new fog, nothing out of scope. |
+
+Copy costs from `implementation-plan.md`. Split before activation if any row is L or aggregate exceeds M.
