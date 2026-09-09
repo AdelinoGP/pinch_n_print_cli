@@ -1,7 +1,7 @@
 # Dragon Curve Community Module — Packet Queue Plan
 
 Approved by the user 2026-08-13. Governing design spec:
-`docs/specs/community-modules-dragon-curve-infill.md` (grilling complete).
+`docs/specs/_OLD/community-modules-dragon-curve-infill.md` (grilling complete).
 
 This plan decomposes that spec into 4 spec packets, authored in dependency order
 by subagents and independently preflighted by reviewer subagents. The

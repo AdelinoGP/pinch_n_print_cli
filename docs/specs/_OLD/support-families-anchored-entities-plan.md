@@ -17,11 +17,11 @@ mistakes previous agent sessions made; each is stated so it cannot be repeated.
 Sources:
 
 - `docs/adr/0059-support-families-and-anchored-entities.md`
-- `docs/specs/support-parity-gap-register.md` (G-01..G-24)
+- `docs/specs/_OLD/support-parity-gap-register.md` (G-01..G-24)
 - `docs/spec_packets/_OLD/224-support-family-orca-closure.md` (compacted packet:
   ~20 recorded-not-fixed divergence rows; HANDOFF-224-s6; F-1..F-49 parity audit)
 - The 2026-08-12 plan (predecessor), `docs/specs/support-generation-remediation-plan.md`,
-  `docs/specs/support-generation-defect-verified-findings.md`
+  `docs/specs/_OLD/support-generation-defect-verified-findings.md`
 
 ## 1. Why this rewrite
 

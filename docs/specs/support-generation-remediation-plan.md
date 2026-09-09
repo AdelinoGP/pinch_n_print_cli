@@ -1,7 +1,7 @@
 # Support Generation Remediation — Approved Plan
 
 Status: approved (2026-08-11, grill-with-docs session)
-Source: `docs/specs/support-generation-defect-verified-findings.md` (verified accurate).
+Source: `docs/specs/_OLD/support-generation-defect-verified-findings.md` (verified accurate).
 
 ## Problem
 

@@ -164,7 +164,7 @@ three successors. Its `design.md` already carries correction entry PC-1 (recordi
 `visual_debug.rs` scope note, both added during the swarm run; that history is preserved, not
 deleted. Each successor carries `supersedes: 239-support-independent-layer-z`.
 
-Gap register: `docs/specs/support-parity-gap-register.md` row **G-02** currently names
+Gap register: `docs/specs/_OLD/support-parity-gap-register.md` row **G-02** currently names
 destination `239-support-independent-layer-z` and must be re-pointed across the three
 successors. A new row **G-27** should record the newly discovered defect — the anchored-event
 substrate is production-dead (F5, F6, F7) — which was not previously registered anywhere.

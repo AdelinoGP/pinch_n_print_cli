@@ -313,7 +313,7 @@ fn blocked_planned_region_generates_zero_support() {
 // `planned_region_renders_regardless_of_eligibility_flag` already asserts that
 // `needs_support=false` still yields support, so the enforcer annotation added
 // no signal. The gap is registered in
-// `docs/specs/support-parity-gap-register.md` (needs_support row).
+// `docs/specs/_OLD/support-parity-gap-register.md` (needs_support row).
 
 /// Test 8: Blocker overrides `needs_support=true`.
 #[test]

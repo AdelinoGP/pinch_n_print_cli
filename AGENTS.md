@@ -32,7 +32,7 @@ Benchmark commands and the HTML slicer report (`--report`) are rarely needed —
 
 ## Community Modules
 
-Real community modules are authored in forks as pinned submodules and are never added to this repository. The committed dragon-curve module is a labeled example only, not a community module shipped from this repository. See `docs/14_submodule_programming_languages.md` and `docs/specs/community-modules-dragon-curve-infill.md` for the programming and example details.
+Real community modules are authored in forks as pinned submodules and are never added to this repository. The committed dragon-curve module is a labeled example only, not a community module shipped from this repository. See `docs/14_submodule_programming_languages.md` and `docs/specs/_OLD/community-modules-dragon-curve-infill.md` for the programming and example details.
 
 ## Test Discipline
 

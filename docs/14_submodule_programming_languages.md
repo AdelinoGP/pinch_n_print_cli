@@ -8,7 +8,7 @@ project supports and what this project's host actually requires.
 community module, or assessing whether a proposed module language can satisfy a
 PnP **stage contract**. Paired with `docs/03_wit_and_manifest.md` (WIT worlds and
 manifest) and `docs/05_module_sdk.md` (the Rust SDK surface).
-See `docs/specs/community-modules-dragon-curve-infill.md` for the first community
+See `docs/specs/_OLD/community-modules-dragon-curve-infill.md` for the first community
 module and its Go/MoonBit feasibility probes.
 
 ---
@@ -103,7 +103,7 @@ the original (2026-08-11) probes found neither loadable-and-correct in `pnp_cli`
 (Go: WASI blocker; MoonBit: string-encoding mismatch). Those verdicts are
 **superseded** for the Dragon Curve module by the accommodating-host
 re-measurement below (packet 225a, 2026-08-13). The design lives in
-`docs/specs/community-modules-dragon-curve-infill.md`, but that spec may be
+`docs/specs/_OLD/community-modules-dragon-curve-infill.md`, but that spec may be
 archived — this doc is the **living record**, so verdicts live here (below), not
 in the spec. No new language is enabled in the host until a probe proves the
 component loads and runs correctly under `pnp_cli`.
