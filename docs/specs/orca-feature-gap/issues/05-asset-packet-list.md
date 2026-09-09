@@ -617,6 +617,15 @@ ticket for the key is 143, not 71.
 
 `min_layer_height`
 
+**Re-sized by ticket 75 (2026-09-09): not authorable as a standalone packet.**
+The key is live in canonical (per-nozzle `coFloats`, default `{0.07}`) but its
+only live consumer is the variable-layer-height envelope the port lacks
+(uniform planner, no per-extruder vector model — the max-side sibling of ticket
+69/141, minus the tower consumer). **Re-filed as
+[ticket 144](144-author-packet-p68-min-layer-height-refiled.md), blocked on
+06 + 125** (fold candidate with 141 at claim time — same envelope). The
+authoring ticket for the key is 144, not 75.
+
 ### P69 — Others / Special mode — layer-planner (2 keys, Tier B)
 
 `print_sequence`, `slicing_mode`
