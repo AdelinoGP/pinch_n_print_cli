@@ -634,6 +634,14 @@ authoring ticket for the key is 144, not 75.
 
 `precise_z_height`
 
+**Re-sized by ticket 77 (2026-09-09): not authorable as a standalone packet.**
+The key is live in canonical (coBool, default false, per-object) but its
+last-5-layer redistribution clamps every adjusted height to the min/max
+envelope the port lacks (uniform planner, no min/max keys — the clamp bounds
+are the feature's core semantic, so no substitute clamp). **Re-filed as
+[ticket 145](145-author-packet-p70-precise-z-height-refiled.md), blocked on
+141 + 144.** The authoring ticket for the key is 145, not 77.
+
 ### P71 — Quality / Overhangs — slice-prepass (3 keys, Tier B)
 
 `make_overhang_printable`, `make_overhang_printable_angle`, `make_overhang_printable_hole_size`

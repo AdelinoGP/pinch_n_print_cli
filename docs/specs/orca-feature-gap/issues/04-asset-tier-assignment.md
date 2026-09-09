@@ -520,7 +520,7 @@ findings (the one flagged row was a stale-asset artifact).
 | `hole_to_polyhole` | C | new polyhole module |
 | `hole_to_polyhole_threshold` | C | new polyhole module |
 | `hole_to_polyhole_twisted` | C | new polyhole module |
-| `precise_z_height` | B | layer-planner (Slicing.cpp generate_object_layers) |
+| `precise_z_height` | B | layer-planner (Slicing.cpp generate_object_layers) — **blocked, unimplemented** by ticket 77: live coBool (default false, per-object) whose last-5-layer redistribution clamps every adjusted height to the min/max envelope the port lacks (no ticket-27 hazard — `layer-planner-default`'s `generate_object_layers` is the direct analog); user ruling (grilled 2026-09-09) waits for the real envelope rather than a substitute clamp; re-filed as ticket 145, blocked on 141 + 144 |
 | `resolution` | B | crates/slicer-gcode / generation-time simplify — re-adjudicated in ticket 105 (canonical `PerimeterGenerator.cpp` `ex.simplify_p`, `Brim.cpp`, `Fill.cpp`, `GCodeWriter.cpp` arc density; the host's emit-time per-role `gcode_resolution` is not the same decision point) |
 | `xy_contour_compensation` | C | new contour-compensation module |
 | `xy_hole_compensation` | C | new contour-compensation module |
