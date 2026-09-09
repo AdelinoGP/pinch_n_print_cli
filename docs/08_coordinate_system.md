@@ -99,11 +99,51 @@ Conventions:
   transform paths. 3MF transforms are baked per-axis into mesh and paint data;
   host consumers apply the full transform for `ObjectMesh` values that retain
   one.
-- **Floor validation:** when `validate_world_z_floor` in
-  `crates/slicer-model-io/src/loader.rs` returns
-  `ModelLoadError::WorldZBelowFloor` because the computed world-space `z_min`
-  is below `0.0 mm`, the validator rejects the object. It does not perform an
-  automatic floor adjustment.
+- **Bed placement:** bare meshes are placed onto the plate at load. `pnp_cli
+  slice` calls `place_bare_mesh_on_bed`
+  (`crates/slicer-model-io/src/loader.rs`) for **STL and OBJ only**, which
+  drops the model so its world `z_min` is `0.0 mm` and centres its XY bounding
+  box on the `bed_shape` centre. **3MF is excluded** — it carries authored
+  plate placement that must survive. See the Bed Placement section below.
+
+## Bed Placement (Normative)
+
+An STL or OBJ has **no plate coordinate system**. Its coordinates are whatever
+the authoring tool emitted, so they may sit anywhere relative to the printer
+bed — arbitrarily far from the origin, and partly or wholly below `z = 0`.
+Nothing downstream corrects for this: `assemble_object` stores an identity
+transform, and the prepass slices those vertices as-is.
+
+`place_bare_mesh_on_bed` therefore runs at load for bare meshes, applying
+OrcaSlicer's two placement primitives together:
+
+- `ModelObject::ensure_on_bed` (`Model.cpp`) with `allow_negative_z = false`,
+  i.e. `z_offset = -min_z`. Canonical's CLI applies this unconditionally to
+  every object loaded from an STL or 3MF (`OrcaSlicer.cpp`).
+- `Model::center_instances_around_point` (`Model.cpp`), shifting the model's XY
+  bounding-box centre onto the bed centre. Canonical gates this behind its
+  `center` option because its GUI carries authored placement; a bare mesh has
+  none, so placement is the default here.
+
+Rules:
+
+- **Applies to STL and OBJ only.** A 3MF's authored placement is preserved
+  untouched.
+- **Rigid-body.** All objects receive the same translation, so multi-object
+  scenes keep their relative arrangement.
+- **Bed geometry comes from `bed_shape`** (`ResolvedConfig`), an interleaved
+  `[x0, y0, x1, y1, ...]` mm polygon defaulting to a 250 x 250 square. When it
+  cannot describe a plate, placement is skipped with a warning rather than
+  guessed at.
+- **Fit is warned, not enforced.** `bed_overflow_mm` reports how far the placed
+  footprint spills past the plate; `pnp_cli` prints a warning and slices
+  anyway, because `bed_shape` may simply be unconfigured.
+
+**Why this is normative rather than cosmetic:** without placement, a model
+authored below the plate is silently truncated at `z = 0`. A real case measured
+in this repo: a 2.46 M-triangle model at `z ∈ [-75.7, 23.5]` sliced to 116
+layers of its top 23 mm and reported success. Placed, the same model slices 495
+layers of its full 99 mm height.
 
 ## F-Token Formatting Convention (Normative)
 
@@ -211,6 +251,10 @@ distance, an area, or a unitless tolerance. A 1 nm linear threshold is below
 the Pinch 'n Print resolution and cannot be represented exactly as an integer
 unit; it must not be silently relabeled as equivalent to one 100 nm unit.
 
+For external bridge edge differencing, the canonical epsilon is `1e-4` mm,
+exactly one PnP unit. Do not confuse this bridge-specific linear tolerance with
+squared tolerances or with the separate unsupported-span growth.
+
 ---
 
 ## Constant Conversion Table
@@ -267,6 +311,14 @@ dimension. Convert linear distances by `100`, squared distances and areas by
 `10_000`, and leave unitless tolerances unchanged. Keep the resulting
 algorithm-specific constant next to the code that consumes it; do not invent a
 workspace-wide epsilon contract in this document.
+
+### Support-rasterizer porting contract
+
+The `SupportGrid` implementation is the PnP contract reference for support
+rasterization. It uses nonzero winding with any-nonzero coverage, canonical grid
+sizing and boundary margin, then a 3x3 all-set erosion. Seed filling is two-pass
+and block-local (it never crosses a macro-block boundary); `fill_holes` is a
+single pass. The `offset_in_grid` invariant is maintained inside each cell.
 
 ---
 

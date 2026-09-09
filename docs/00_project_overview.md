@@ -129,7 +129,7 @@ Precedence rule for conflicts:
 
 ## Repository Structure
 
-```
+```text
 pinch_n_print_cli/
 ├── crates/
 │   ├── slicer-runtime/       # Library: pipeline execution, blackboard, run_slice() API (no binary)
@@ -146,8 +146,10 @@ pinch_n_print_cli/
 │   ├── slicer-schema/        # Canonical stage/WIT mapping and WIT contract
 │   │   └── wit/              #   The single canonical WIT source (root.wit and deps/)
 │   └── slicer-helpers/       # Pre-pipeline mesh ops (repair, decimate, STEP import)
+│   └── slicer-integrated-modules/ # Core modules compiled for native dispatch (integrated edition)
 ├── modules/
-│   └── core-modules/         # Built-in module crates and guest components
+│   ├── core-modules/         # Built-in module crates and guest components
+│   └── community-modules/    # Labeled example(s) only (dragon-curve); real community modules live in forks
 ├── xtask/                    # Dev tooling: build-guests, dist, test, gen-config-docs, check-deviations, compact-specs
 ├── resources/                # STL / 3MF / OBJ test fixtures
 └── docs/                     # This documentation set
@@ -178,6 +180,7 @@ identity elsewhere. Renames change this table once, not every citing doc.
 | `slicer-macros` | `crates/slicer-macros/` | Proc-macros (`#[slicer_module]`, `#[module_test]`). |
 | `slicer-schema` | `crates/slicer-schema/` | Canonical stage/WIT mapping and the WIT contract under `crates/slicer-schema/wit/`; scheduler owns manifest parsing. |
 | `slicer-helpers` | `crates/slicer-helpers/` | Pre-pipeline mesh ops (repair, decimate, STEP import). |
+| `slicer-integrated-modules` | `crates/slicer-integrated-modules/` | Core modules compiled for native dispatch in the integrated edition (one optional feature per module). |
 | `xtask` | `xtask/` | Dev tooling (`build-guests`, `dist`, `test`, `gen-config-docs`, `check-deviations`, `compact-specs`). |
 
 > **Packet 69 rename (history):** the former `slicer-host` library crate was
@@ -201,7 +204,7 @@ requirements and notable lockfile resolutions.
 | WASM runtime  | wasmtime                                | 47.0.3 workspace requirement; 47.0.3 in `Cargo.lock`                   |
 | WIT tooling   | wit-bindgen                             | 0.60.0 workspace requirement and primary lockfile resolution           |
 | Parallelism   | rayon                                   | 1.80 workspace requirement; 1.10 in runtime/core/wasm-host; 1.11.0 lock |
-| Geometry      | clipper2-rust                           | 1.0.3                                                                    |
+| Geometry      | clipper2-rust                           | 1.1.0                                                                    |
 | Serialization | serde + postcard                        | 1.0.228, 1.1.3                                                          |
 | Config format | TOML (manifests), JSON (runtime config) | —                                                                       |
 | Testing       | cargo test                              | —                                                                       |
@@ -238,7 +241,7 @@ Operational governance (rollout checklist, compatibility policy, release-blockin
 | <!-- VERIFY: docs/12 defines this bound, but the named Benchy reference fixture is not materialized; current evidence uses `regression_wedge.stl`. --> Slicing a 50-layer benchy (0.2mm layers) | < 10 seconds                  |
 | <!-- VERIFY: No current source or gate document provides an evidence source for this per-layer target. --> Per-layer overhead (host scheduler, IR views) | < 5ms per layer               |
 | <!-- VERIFY: No current source or gate document provides an evidence source for these WASM boundary targets. --> WASM boundary crossing cost (warm instance, p50) | < 0.5ms per module invocation |
-| WASM boundary crossing cost (warm instance, p95) | < 1ms per module invocation   |
+| <!-- VERIFY: No current gate document sets a p95 WASM-boundary target; p95 exists only as a slicer-report statistic (see `crates/slicer-runtime/src/report/render.rs`). --> WASM boundary crossing cost (warm instance, p95) | < 1ms per module invocation   |
 | <!-- VERIFY: docs/12 defines the RSS bound, but current instrumentation cannot measure WASM-inclusive peak RSS. --> Peak memory for a 500-layer model | < 512 MB                      |
 | <!-- VERIFY: No current source or gate document defines this 20-second / 20-module target. --> Module load + validation at startup | < 20s for 20 modules          |
 

@@ -105,6 +105,7 @@ default = 0
 min     = 0
 max     = 20
 display = "Support Raft Layers"
+description = "Number of raft layers; consumed by push_raft_plan to emit the raft plan band."
 group   = "Support"
 
 [config.schema.raft_first_layer_density]
@@ -113,6 +114,7 @@ default = 0.4
 min     = 0.0
 max     = 1.0
 display = "Raft First Layer Density"
+description = "Raft first-layer density; consumed by push_raft_plan as RaftPlan."
 group   = "Support"
 
 [config.schema.base_raft_layers]
@@ -121,6 +123,7 @@ default = 1
 min     = 0
 max     = 20
 display = "Base Raft Layers"
+description = "Base raft layer count; consumed by push_raft_plan as RaftPlan."
 group   = "Support"
 
 [config.schema.interface_raft_layers]
@@ -129,6 +132,7 @@ default = 0
 min     = 0
 max     = 20
 display = "Interface Raft Layers"
+description = "Interface raft layer count; consumed by push_raft_plan as RaftPlan."
 group   = "Support"
 
 [config.schema.support_interface_top_layers]

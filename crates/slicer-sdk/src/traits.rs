@@ -54,6 +54,7 @@ pub struct PaintRegionLayerView {
     support_plan: Option<Arc<SupportPlanIR>>,
     slice_ir: Option<Arc<SliceIR>>,
     lightning_tree_ir: Option<Arc<LightningTreeIR>>,
+    is_raft: bool,
 }
 
 impl PaintRegionLayerView {
@@ -65,6 +66,7 @@ impl PaintRegionLayerView {
             support_plan: None,
             slice_ir: None,
             lightning_tree_ir: None,
+            is_raft: false,
         }
     }
 
@@ -77,6 +79,7 @@ impl PaintRegionLayerView {
             support_plan: None,
             slice_ir: None,
             lightning_tree_ir: None,
+            is_raft: false,
         }
     }
 
@@ -84,6 +87,15 @@ impl PaintRegionLayerView {
     #[doc(hidden)]
     pub fn with_support_plan(mut self, support_plan: Arc<SupportPlanIR>) -> Self {
         self.support_plan = Some(support_plan);
+        self
+    }
+
+    /// Mark this layer as belonging to the positive-offset raft band
+    /// (host-only). Copied from `GlobalLayer.is_raft`; never inferred from the
+    /// layer index.
+    #[doc(hidden)]
+    pub fn with_is_raft(mut self, is_raft: bool) -> Self {
+        self.is_raft = is_raft;
         self
     }
 
@@ -144,6 +156,22 @@ impl PaintRegionLayerView {
     /// Returns the full committed support plan, if any.
     pub fn support_plan(&self) -> Option<&Arc<SupportPlanIR>> {
         self.support_plan.as_ref()
+    }
+
+    /// Returns the print-wide raft plan carried on the committed
+    /// `SupportPlanIR`, if any. Layer-independent: the same value is returned
+    /// on every layer.
+    pub fn raft_plan(&self) -> Option<&slicer_ir::RaftPlan> {
+        self.support_plan
+            .as_ref()
+            .and_then(|plan| plan.raft_plan.as_ref())
+    }
+
+    /// Whether this layer belongs to the positive-offset raft band
+    /// (`GlobalLayer.is_raft`). A `Layer::Infill` module has no other way to
+    /// tell a raft layer from a model layer.
+    pub fn is_raft(&self) -> bool {
+        self.is_raft
     }
 
     /// Returns structural support entries for the `(layer, object_id,

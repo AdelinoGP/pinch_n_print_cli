@@ -8,23 +8,23 @@ deliberate divergence is recorded in `docs/DEVIATION_LOG.md`.
 
 ## Context
 
-OrcaSlicer uses gyroid for **sparse infill only** (`src/libslic3r/Fill/Fill.cpp:926`).
+OrcaSlicer uses gyroid for **sparse infill only** (`src/libslic3r/Fill/Fill.cpp`).
 Top, bottom, and internal-solid shells use a separate pattern (default
 `ipMonotonic` or `ipRectilinear`, selected via `top_surface_pattern` /
-`bottom_surface_pattern` / `internal_solid_infill_pattern` at `Fill.cpp:941-959`).
+`bottom_surface_pattern` / `internal_solid_infill_pattern` at `Fill.cpp`).
 Bridge areas use bridge-flow rectilinear. The gyroid wave geometry is not
 applied to solid shells.
 
-The PnP `gyroid-infill` module's `src/lib.rs` (lines 180-210) contains an
+The PnP `gyroid-infill` module's `emit_polys` block in `modules/core-modules/gyroid-infill/src/lib.rs` contains an
 `emit_polys` block that emits gyroid waves for **all four** fill roles: sparse,
 top solid, bottom solid, and bridge. However, the module's manifest
-(`gyroid-infill.toml:21`) declares **only `claim:sparse-fill`**. Because
-`SliceRegionView::should_emit(role)` (crates/slicer-sdk/src/views.rs:466-482)
+(`gyroid-infill.toml`) declares **only `claim:sparse-fill`**. Because
+`SliceRegionView::should_emit(role)` (crates/slicer-sdk/src/views.rs)
 gates emission on the held-claim set, and the manifest only claims sparse, the
 top/bottom/bridge emission code is **dead** — `should_emit(TopSolidInfill)` etc.
 return `false` at runtime. The host's per-role fill-holder dispatch
 (`ResolvedConfig.{top,bottom,bridge}_fill_holder`, all defaulting to
-`"rectilinear-infill"` per `crates/slicer-ir/src/resolved_config.rs:624-630`)
+`"rectilinear-infill"` per `crates/slicer-ir/src/resolved_config.rs`)
 routes solid shells to rectilinear-infill, never to gyroid.
 
 So as of 2026-07-01, gyroid-infill emits only sparse — matching OrcaSlicer's
@@ -44,7 +44,7 @@ divergence from OrcaSlicer, not a port bug.
    - `claim:bridge-fill`
    
    The manifest's `claims.holds` list becomes all four. This makes the existing
-   top/bottom/bridge emission code in `src/lib.rs:180-210` actually fire when
+   top/bottom/bridge emission code in `modules/core-modules/gyroid-infill/src/lib.rs` actually fire when
    the user configures the module as the holder for those roles.
 
 2. **The user opts in via fill-holder config.** The default config keeps
@@ -90,7 +90,7 @@ divergence from OrcaSlicer, not a port bug.
   knowing this when they opt in.
 - The module now holds four claims, so the dispatcher's per-region claim
   resolution can route any of the four roles to it. The
-  `docs/04_host_scheduler.md:378` rule that "a single module may hold multiple
+  `docs/04_host_scheduler.md` rule that "a single module may hold multiple
   fill-role claims" already permits this; no scheduler change is needed.
 
 **Trade-offs we explicitly accept**:
@@ -116,10 +116,10 @@ divergence from OrcaSlicer, not a port bug.
 
 - `docs/adr/0025-infill-linker-as-raw-emit-post-pass.md` — Architecture A (modules emit raw; the gyroid rewrite follows this).
 - `docs/DEVIATION_LOG.md` — this deliberate divergence.
-- `modules/core-modules/gyroid-infill/gyroid-infill.toml:21` — current single claim.
-- `modules/core-modules/gyroid-infill/src/lib.rs:180-210` — existing multi-role emission (currently dead).
-- `crates/slicer-sdk/src/views.rs:466-482` — `should_emit` held-claim gate.
-- `crates/slicer-ir/src/resolved_config.rs:624-630` — default fill-holder config.
+- `modules/core-modules/gyroid-infill/gyroid-infill.toml` — current single claim.
+- `modules/core-modules/gyroid-infill/src/lib.rs` — existing multi-role emission (currently dead).
+- `crates/slicer-sdk/src/views.rs` — `should_emit` held-claim gate.
+- `crates/slicer-ir/src/resolved_config.rs` — default fill-holder config.
 - `crates/slicer-ir/tests/fill_holder_cli_binding_tdd.rs` — fill-holder CLI binding tests.
-- OrcaSlicer `src/libslic3r/Fill/Fill.cpp:926-959` — OrcaSlicer's sparse-only gyroid + separate solid pattern selection.
-- `docs/04_host_scheduler.md:378` — "a single module may hold multiple fill-role claims."
+- OrcaSlicer `src/libslic3r/Fill/Fill.cpp` — OrcaSlicer's sparse-only gyroid + separate solid pattern selection.
+- `docs/04_host_scheduler.md` — "a single module may hold multiple fill-role claims."

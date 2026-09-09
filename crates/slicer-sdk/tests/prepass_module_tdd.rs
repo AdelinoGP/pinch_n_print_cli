@@ -236,6 +236,7 @@ fn test_08_layer_proposal_has_required_fields() {
     let proposal = LayerProposal {
         z: 0.2,
         active_regions: vec![region],
+        is_raft: false,
     };
 
     assert!((proposal.z - 0.2).abs() < 1e-6);
@@ -266,6 +267,7 @@ fn test_08b_layer_proposal_constructor() {
     let proposal = LayerProposal {
         z: 0.4,
         active_regions: regions,
+        is_raft: false,
     };
 
     assert!((proposal.z - 0.4).abs() < 1e-6);
@@ -282,6 +284,7 @@ fn test_09_layer_plan_output_push_layer() {
     let proposal = LayerProposal {
         z: 0.2,
         active_regions: vec![],
+        is_raft: false,
     };
 
     let result = output.push_layer(proposal);
@@ -489,6 +492,7 @@ fn test_14b_prelude_types_are_constructible() {
     let _layer = LayerProposal {
         z: 0.0,
         active_regions: vec![],
+        is_raft: false,
     };
     let _mesh_output = MeshAnalysisOutput::new();
     let _layer_output = LayerPlanOutput::new();

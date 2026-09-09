@@ -12,7 +12,7 @@ as before. When granted, the per-path tool overrides the region-resolved tool
 
 ## Status
 Accepted (Dragon Curve community module; spec:
-`docs/specs/community-modules-dragon-curve-infill.md`).
+`docs/specs/_OLD/community-modules-dragon-curve-infill.md`).
 
 ## Considered Options
 - **Field on `extrusion-path3d` (chosen).** Survives the infill linker, which

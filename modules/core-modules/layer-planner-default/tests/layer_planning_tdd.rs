@@ -146,6 +146,29 @@ fn test_initial_layer_print_height_respected() {
     );
 }
 
+#[test]
+fn test_model_layers_start_above_raft_band() {
+    let config = ConfigViewBuilder::new()
+        .float("layer_height", 0.2)
+        .float("initial_layer_print_height", 0.2)
+        .int("support_raft_layers", 2)
+        .float("object_height:obj-1", 1.0)
+        .build();
+    let module = DefaultLayerPlanner::from_config(&config).unwrap();
+    let mut output = LayerPlanOutput::new();
+
+    module
+        .run_layer_planning(&["obj-1".to_string()], &mut output, &config)
+        .expect("should succeed");
+
+    let layers = output.layers();
+    assert_eq!(layers.len(), 7);
+    assert!(layers[0].is_raft);
+    assert!(layers[1].is_raft);
+    assert!(!layers[2].is_raft);
+    assert!((layers[2].z - 0.6).abs() < 1e-4);
+}
+
 // =============================================================================
 // Test 3: Multi-object, same layer height
 // =============================================================================

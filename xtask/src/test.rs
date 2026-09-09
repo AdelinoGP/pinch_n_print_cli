@@ -139,10 +139,13 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
         return 1;
     }
 
+    // ONE invocation context for both halves of the gate: `xtask test` probes
+    // the toolchain and parses the canonical WIT set once, not once per phase.
+    let inv = build_guests::Invocation::new(ws_root);
     if let Some(code) = handle_guest_freshness_with(
         ws_root,
-        || build_guests::check_command(ws_root),
-        |stale| build_guests::build_stale_command(ws_root, stale),
+        || build_guests::check_command_in(ws_root, &inv),
+        |stale| build_guests::build_stale_command(ws_root, stale, &inv),
     ) {
         return code;
     }

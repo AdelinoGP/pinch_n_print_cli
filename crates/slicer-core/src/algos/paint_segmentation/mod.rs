@@ -252,7 +252,7 @@ fn register_paint_variant_region_id(
 /// MUST NOT skip them when the mesh has no facet/stroke paint.
 /// True for the seam-painting semantics, which must NOT drive region splitting.
 ///
-/// DEV-123: canonical keeps the two channels strictly apart —
+/// Canonical keeps the two channels strictly apart —
 /// `multi_material_segmentation_by_painting` (`MultiMaterialSegmentation.cpp`)
 /// partitions regions from `mmu_segmentation_facets` only, while seam paint is
 /// consumed by `gather_enforcers_blockers` (`SeamPlacer.cpp`) as a per-candidate
@@ -278,7 +278,7 @@ fn mesh_has_any_paint(mesh: &slicer_ir::MeshIR) -> bool {
     for obj in &mesh.objects {
         if let Some(pd) = &obj.paint_data {
             for layer in &pd.layers {
-                // DEV-123: seam paint must not admit a mesh into the MMU cell
+                // Seam paint must not admit a mesh into the MMU cell
                 // decomposition. Admitting one was a shipped defect — for
                 // `resources/cube_cilindrical_modifier.3mf` the lowest painted
                 // seam facet sits at z in (0.4, 0.5], so the kernel ran on every
@@ -690,7 +690,7 @@ pub fn execute_paint_segmentation(
             'outer: for obj in &mesh.objects {
                 let Some(pd) = &obj.paint_data else { continue };
                 for layer in &pd.layers {
-                    // DEV-123: a seam-painted layer must not become the dominant
+                    // A seam-painted layer must not become the dominant
                     // semantic — on a seam-only mesh that labelled the entire
                     // cell decomposition `seam_enforcer`.
                     if is_seam_paint_semantic(&layer.semantic) {
@@ -1322,7 +1322,7 @@ pub fn execute_paint_segmentation(
                             continue;
                         }
                     }
-                    // DEV-123: seam paint never partitions regions.
+                    // Seam paint never partitions regions.
                     if is_seam_paint_semantic(&layer.semantic) {
                         continue;
                     }
@@ -1342,7 +1342,7 @@ pub fn execute_paint_segmentation(
                 // their own semantic/value (overriding the layer semantic when they
                 // differ, matching `extract_stroke_data` in painted_line_collection prep).
                 for stroke in &layer.strokes {
-                    // DEV-123: seam paint never partitions regions.
+                    // Seam paint never partitions regions.
                     if is_seam_paint_semantic(&stroke.semantic) {
                         continue;
                     }

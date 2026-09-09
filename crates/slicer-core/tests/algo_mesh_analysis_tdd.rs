@@ -221,3 +221,119 @@ fn default_config_matches_explicit_default() {
 
     assert_eq!(a, b);
 }
+
+/// A quad-based body with an overhang ledge above it: the non-overhang facets
+/// sit under the overhang in XY, so the region is support-eligible.
+fn overhang_above_body_mesh() -> MeshIR {
+    MeshIR {
+        schema_version: sv(1, 0, 0),
+        objects: vec![ObjectMesh {
+            id: "overhang-above-body".to_string(),
+            mesh: IndexedTriangleSet {
+                vertices: vec![
+                    // Flat body at z = 0.
+                    p3(0.0, 0.0, 0.0),
+                    p3(10.0, 0.0, 0.0),
+                    p3(10.0, 10.0, 0.0),
+                    p3(0.0, 10.0, 0.0),
+                    // Ledge above it. Wound so the normal points down and
+                    // tilts ~26.6 deg from straight down: inside the 45 deg
+                    // overhang threshold, outside the bottom-surface epsilon.
+                    p3(2.0, 2.0, 5.0),
+                    p3(2.0, 8.0, 8.0),
+                    p3(8.0, 2.0, 5.0),
+                ],
+                indices: vec![0, 1, 2, 0, 2, 3, 4, 5, 6],
+            },
+            transform: identity_transform(),
+            config: ObjectConfig {
+                data: HashMap::new(),
+            },
+            modifier_volumes: vec![],
+            paint_data: None,
+            ..Default::default()
+        }],
+        build_volume: build_volume(),
+    }
+}
+
+/// Regression (packet: mesh-analysis footprint): `needs_support` must stay true
+/// when the body lies beneath the overhang in XY.
+///
+/// This used to be answered by unioning every non-overhang facet and reading
+/// bounding boxes off the result. `region_needs_support` now proves the same
+/// predicate from a single overlapping facet bbox. Asserting the outcome keeps
+/// the fast path honest.
+#[test]
+fn overhang_over_body_is_support_eligible() {
+    let ir = execute_mesh_analysis(&overhang_above_body_mesh()).expect("analysis should succeed");
+    let obj = ir
+        .per_object
+        .get("overhang-above-body")
+        .expect("object present");
+
+    assert_eq!(obj.overhang_regions.len(), 1);
+    assert!(
+        obj.overhang_regions[0].needs_support,
+        "overhang above the body must remain support-eligible"
+    );
+}
+
+/// Regression: the footprint decision must not scale with an exact polygon
+/// union over every non-overhang facet.
+///
+/// Before the fix `classify_object` unioned all non-overhang facets on every
+/// run; on a 3DBenchy that was 203,649 facets and 22.0 s (measured). A mesh
+/// this size is trivial for the bbox path and pathological for the union path,
+/// so a generous wall-clock bound separates them without being flaky.
+#[test]
+fn support_eligibility_does_not_union_every_facet() {
+    let mut vertices = Vec::new();
+    let mut indices = Vec::new();
+
+    // A fan of many thin, mutually overlapping body facets - the shape that
+    // makes an exact union expensive.
+    let fan = 4_000u32;
+    vertices.push(p3(0.0, 0.0, 0.0));
+    for i in 0..fan {
+        let a = (i as f32) * 0.37;
+        vertices.push(p3(a.cos() * 20.0, a.sin() * 20.0, 0.0));
+        vertices.push(p3((a + 0.2).cos() * 20.0, (a + 0.2).sin() * 20.0, 0.0));
+        indices.extend_from_slice(&[0, i * 2 + 1, i * 2 + 2]);
+    }
+    // One overhang facet above the fan.
+    let base = vertices.len() as u32;
+    vertices.push(p3(-5.0, -5.0, 6.0));
+    vertices.push(p3(5.0, -5.0, 6.0));
+    vertices.push(p3(5.0, 5.0, 5.0));
+    indices.extend_from_slice(&[base, base + 2, base + 1]);
+
+    let mesh = MeshIR {
+        schema_version: sv(1, 0, 0),
+        objects: vec![ObjectMesh {
+            id: "fan".to_string(),
+            mesh: IndexedTriangleSet { vertices, indices },
+            transform: identity_transform(),
+            config: ObjectConfig {
+                data: HashMap::new(),
+            },
+            modifier_volumes: vec![],
+            paint_data: None,
+            ..Default::default()
+        }],
+        build_volume: build_volume(),
+    };
+
+    let started = std::time::Instant::now();
+    let ir = execute_mesh_analysis(&mesh).expect("analysis should succeed");
+    let elapsed = started.elapsed();
+
+    assert!(
+        ir.per_object.contains_key("fan"),
+        "object should be classified"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_secs(10),
+        "mesh analysis took {elapsed:?}; the exact-union footprint path has likely returned"
+    );
+}

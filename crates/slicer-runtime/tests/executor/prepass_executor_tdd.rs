@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -9,8 +9,8 @@ use slicer_ir::PrepassRunnerError;
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, ExPolygon, GlobalLayer, LayerPlanIR, MeshIR,
     ModuleInvocation, ObjectLayerRef, ObjectMesh, ObjectSurfaceData, Point2, Point3, RegionKey,
-    RegionMapIR, RegionPlan, SemVer, SupportGeometryIR, SupportPlanEntry, SupportPlanIR,
-    SurfaceClassificationIR, Transform3d,
+    RegionMapIR, RegionPlan, SemVer, SupportAnalysisIR, SupportGeometryIR, SupportPlanEntry,
+    SupportPlanIR, SurfaceClassificationIR, Transform3d,
 };
 use slicer_runtime::{
     build_wasm_instance_pool, execute_prepass, Blackboard, BlackboardError, BlackboardPrepassSlot,
@@ -130,6 +130,14 @@ fn support_geometry_aggregates_family_outputs_before_one_final_commit() {
     blackboard
         .commit_region_map(Arc::new(region_map_fixture()))
         .unwrap();
+    // Support-plan aggregation is default-deny: the synthetic family outputs
+    // below need the same host ownership and claim metadata as live planners.
+    blackboard
+        .commit_support_analysis(Arc::new(SupportAnalysisIR {
+            family_assignments: BTreeMap::from([(("cube".into(), 1), "tree".into())]),
+            ..Default::default()
+        }))
+        .unwrap();
     blackboard.commit_slice_ir(Arc::new(Vec::new())).unwrap();
     blackboard
         .commit_support_geometry(Arc::new(SupportGeometryIR::default()))
@@ -168,10 +176,13 @@ fn support_geometry_aggregates_family_outputs_before_one_final_commit() {
         .expect("the aggregate must be committed once after both planners run");
     assert_eq!(committed.entries.len(), 1);
     assert_eq!(committed.entries[0].family_id, "tree");
+    // Ownership is checked before cross-family duplicate detection. The
+    // traditional writer is therefore refused as the wrong-family trespasser
+    // (1206), while the tree-owned entry is retained.
     assert!(audits[1]
         .diagnostics
         .iter()
-        .any(|diagnostic| diagnostic.code == 1202));
+        .any(|diagnostic| diagnostic.code == 1206));
 }
 
 #[test]
@@ -363,11 +374,17 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         .ir_write_mask(IrAccessMask {
             paths: binding.module.ir_writes().to_vec(),
         })
+        .claims(binding.module.claims().to_vec())
         .config_view(Arc::clone(&binding.config_view))
         .build()
 }
 
 fn loaded_module(id: &str, stage: &str) -> slicer_runtime::LoadedModule {
+    let claims = match id {
+        "com.example.tree" => vec![String::from("support-family:tree")],
+        "com.example.traditional" => vec![String::from("support-family:traditional")],
+        _ => Vec::new(),
+    };
     let ir_reads = match stage {
         "PrePass::MeshAnalysis" => vec![String::from("MeshIR.objects")],
         "PrePass::LayerPlanning" => vec![
@@ -395,6 +412,7 @@ fn loaded_module(id: &str, stage: &str) -> slicer_runtime::LoadedModule {
     )
     .ir_reads(ir_reads)
     .ir_writes(ir_writes)
+    .claims(claims)
     .min_host_version(semver(0, 1, 0))
     .min_ir_schema(semver(1, 0, 0))
     .max_ir_schema(semver(2, 0, 0))

@@ -42,6 +42,9 @@ pub struct DefaultLayerPlanner {
     layer_height: f64,
     /// First layer height in mm. `f64` for the same reason as `layer_height`.
     initial_layer_print_height: f64,
+    /// Number of raft layers (`support_raft_layers`). Raft layers occupy the
+    /// contiguous global index prefix `0..N-1`; model layers shift to `N..`.
+    raft_layers: u32,
 }
 
 #[slicer_module]
@@ -63,9 +66,22 @@ impl PrepassModule for DefaultLayerPlanner {
             })
             .unwrap_or(layer_height);
 
+        // `support_raft_layers` is an integer key, declared in
+        // `layer-planner-default.toml` under `[config.schema]` so a missing
+        // declaration cannot silently default it away.
+        let raft_layers = config
+            .get("support_raft_layers")
+            .and_then(|v| match v {
+                ConfigValue::Int(i) => Some(*i),
+                _ => None,
+            })
+            .unwrap_or(0)
+            .max(0) as u32;
+
         Ok(Self {
             layer_height,
             initial_layer_print_height,
+            raft_layers,
         })
     }
 
@@ -122,8 +138,43 @@ impl PrepassModule for DefaultLayerPlanner {
             return Err(ModuleError::fatal(4, "no objects with positive height"));
         }
 
+        // Raft band: exactly `support_raft_layers` proposals, all flagged
+        // `is_raft`, pushed BEFORE any model proposal so the raft occupies the
+        // contiguous global index prefix `0..N-1`. Z is computed in `f64` with a
+        // single `as f32` cast at push time, matching `generate_object_layers`.
+        for i in 0..self.raft_layers {
+            let z_f64 = self.initial_layer_print_height + (i as f64) * self.layer_height;
+            let effective_lh = if i == 0 {
+                self.initial_layer_print_height
+            } else {
+                self.layer_height
+            };
+            // At least one active region per raft layer: without it the host's
+            // `derive_layer_output_envelope_from_input` falls back to a
+            // hardcoded height instead of the raft's own.
+            let regions = vec![RegionLayerProposal {
+                object_id: plans[0].object_id.clone(),
+                region_id: "0".to_string(),
+                effective_layer_height: effective_lh as f32,
+                is_catchup: false,
+                catchup_z_bottom: 0.0,
+            }];
+            output
+                .push_layer(LayerProposal {
+                    z: z_f64 as f32,
+                    active_regions: regions,
+                    is_raft: true,
+                })
+                .map_err(|e| ModuleError::fatal(5, e))?;
+        }
+
         // Merge layer sequences
-        let merged = merge_layer_sequences(&plans, self.initial_layer_print_height);
+        let raft_top = if self.raft_layers == 0 {
+            0.0
+        } else {
+            self.initial_layer_print_height + (self.raft_layers as f64 - 1.0) * self.layer_height
+        };
+        let merged = merge_layer_sequences(&plans, raft_top);
 
         // Push proposals to output
         for layer in merged {
@@ -131,6 +182,7 @@ impl PrepassModule for DefaultLayerPlanner {
                 .push_layer(LayerProposal {
                     z: layer.z,
                     active_regions: layer.regions,
+                    is_raft: false,
                 })
                 .map_err(|e| ModuleError::fatal(5, e))?;
         }
@@ -208,7 +260,7 @@ struct MergedLayer {
 /// (`generate_object_layers`); this function mirrors that, casting to
 /// `f32` only here (equivalent to OrcaSlicer's `float(print_z)` at
 /// `slice_facet`'s `slice_z` parameter, `TriangleMeshSlicer.cpp:158`).
-fn generate_object_layers(plan: &ObjectPlan) -> Vec<f32> {
+fn generate_object_layers(plan: &ObjectPlan, raft_top: f64) -> Vec<f32> {
     let mut layers = Vec::new();
     let first = plan.initial_layer_print_height;
     let step = plan.layer_height;
@@ -219,7 +271,7 @@ fn generate_object_layers(plan: &ObjectPlan) -> Vec<f32> {
         if z_f64 > height + 1e-6 {
             break;
         }
-        layers.push(z_f64 as f32);
+        layers.push((raft_top + z_f64) as f32);
         n += 1;
     }
     layers
@@ -229,10 +281,7 @@ fn generate_object_layers(plan: &ObjectPlan) -> Vec<f32> {
 ///
 /// For objects with different layer heights, this inserts sync layers at LCM intervals
 /// and catch-up layers where needed.
-fn merge_layer_sequences(
-    plans: &[ObjectPlan],
-    _initial_layer_print_height: f64,
-) -> Vec<MergedLayer> {
+fn merge_layer_sequences(plans: &[ObjectPlan], raft_top: f64) -> Vec<MergedLayer> {
     if plans.is_empty() {
         return Vec::new();
     }
@@ -243,14 +292,14 @@ fn merge_layer_sequences(
         .all(|p| (p.layer_height - plans[0].layer_height).abs() < 1e-6);
 
     if all_same_height {
-        return merge_same_height(plans);
+        return merge_same_height(plans, raft_top);
     }
 
-    merge_different_heights(plans)
+    merge_different_heights(plans, raft_top)
 }
 
 /// Merge layers for objects that all share the same layer height.
-fn merge_same_height(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
+fn merge_same_height(plans: &[ObjectPlan], raft_top: f64) -> Vec<MergedLayer> {
     // Find max height across all objects
     let max_height = plans.iter().map(|p| p.height).fold(0.0f64, f64::max);
 
@@ -261,14 +310,16 @@ fn merge_same_height(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
 
     let mut n: u32 = 0;
     loop {
-        let z_f64 = first_z_f64 + (n as f64) * lh_f64;
-        if z_f64 > max_height + 1e-6 {
+        let base_z_f64 = first_z_f64 + (n as f64) * lh_f64;
+        if base_z_f64 > max_height + 1e-6 {
             break;
         }
+        let z_f64 = raft_top + base_z_f64;
+        // Single terminal `as f32` cast: the Z is computed entirely in `f64`.
         let z = z_f64 as f32;
         let regions: Vec<RegionLayerProposal> = plans
             .iter()
-            .filter(|p| z_f64 <= p.height + 1e-6)
+            .filter(|p| base_z_f64 <= p.height + 1e-6)
             .map(|p| {
                 let effective_lh = if layers.is_empty() {
                     p.initial_layer_print_height
@@ -298,9 +349,12 @@ fn merge_same_height(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
 /// At every global Z plane (union of all objects' native layers), every active
 /// object participates. Objects without a native layer at that Z get a catch-up
 /// layer bridging from their last participated Z to the current one.
-fn merge_different_heights(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
+fn merge_different_heights(plans: &[ObjectPlan], raft_top: f64) -> Vec<MergedLayer> {
     // Generate per-object Z sequences
-    let object_zs: Vec<Vec<f32>> = plans.iter().map(generate_object_layers).collect();
+    let object_zs: Vec<Vec<f32>> = plans
+        .iter()
+        .map(|plan| generate_object_layers(plan, raft_top))
+        .collect();
 
     // Collect all unique Z values, sorted
     let mut all_zs: Vec<f32> = object_zs.iter().flatten().copied().collect();
@@ -314,9 +368,10 @@ fn merge_different_heights(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
     for &z in &all_zs {
         let mut regions = Vec::new();
         let z_f64 = z as f64;
+        let base_z_f64 = z_f64 - raft_top;
 
         for (i, plan) in plans.iter().enumerate() {
-            if z_f64 > plan.height + 1e-6 {
+            if base_z_f64 > plan.height + 1e-6 {
                 continue;
             }
 

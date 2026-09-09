@@ -168,7 +168,7 @@ round-trip was undetected.
 **The postpass path differs (clarified during the 115 implementation):**
 `convert_postpass_role` was a WIT→WIT field-identity cast — the postpass role
 type *is* the layer role type post-remap — not a WIT→IR converter. The postpass
-WIT→IR recovery always occurred downstream at `marshal/out.rs:539` via
+WIT→IR recovery always occurred downstream at `convert_extrusion_role` in `crates/slicer-wasm-host/src/marshal/out.rs` via
 `convert_extrusion_role`, so postpass never lost the typed role;
 `convert_postpass_role` was a redundant cast. Packet 115 deletes it for
 consistency (one recovering converter), with no postpass behaviour change.
@@ -183,9 +183,18 @@ behaviour changes inside the refactor.
 
 **Update (packet 115, landed):** the fix shipped. The two lossy variants
 (`finalization_role_wit_to_ir`, `convert_postpass_role`) were deleted from
-`marshal/leaf.rs`; the finalization (`host.rs`) and postpass call sites now route
+`crates/slicer-wasm-host/src/marshal/leaf.rs`; the finalization (`host.rs`) and postpass call sites now route
 through the single recovering `convert_extrusion_role` (the postpass path recovers
-downstream at `marshal/out.rs:539`). Regression coverage added: a `marshal::leaf`
+downstream at `crates/slicer-wasm-host/src/marshal/leaf.rs`). Regression coverage added: a `marshal::leaf`
 round-trip unit test and a finalization dispatch contract test
 (`finalization_role_round_trip`) that was confirmed RED before the fix and GREEN
 after.
+
+## Amendment (docs review): superseded point-in-time details
+
+- The single recovering `convert_extrusion_role` now lives in
+  `crates/slicer-wasm-host/src/marshal/leaf.rs` (verified against current
+  source; the packet-115 call-site comments in `host.rs` confirm the end-state).
+- The Verification gate `grep -c 'bindgen!' .../host.rs stays 4` is superseded:
+  per-stage WIT packages (packets 163/164, ADR-0045) repointed host `bindgen!`
+  mods per stage, so the current count is 23. The gate held at packet-113 time.

@@ -177,10 +177,18 @@ must not add a direct `slicer-core` dependency to use them (packet
 `117_support-planner-geometric-correctness` adopted the SDK wrapper for exactly
 this reason). As of this amendment the wrappers still run clipper2 **inside the
 sandbox** on `wasm32`: only `log*` has gained its `wasm32` bridge arm since the
-2026-07-25 partial remediation (DEV-094); the three mesh queries, the three
+2026-07-25 partial remediation; the three mesh queries, the three
 polygon ops, and `now_us` remain unbridged. "Delegates to host-side Clipper2" in
 `docs/05_module_sdk.md` §Host Service Wrappers describes the WIT-declared
 intent, not today's runtime path — re-derive the bridged/unbridged set by
 grepping `crates/slicer-sdk/src/host.rs` for `target_arch = "wasm32"` before
 quoting it. The batch forms in this ADR are the planned mechanism for moving
 those calls host-side.
+
+## Amendment 2026-09-08 — packet 200 wired the singular WASM arms
+
+The 2026-08-05 status above is superseded. Packet 200 wired the seven singular
+wasm32 arms (the three mesh queries, three polygon operations, and `now_us`) and
+migrated the `classic-perimeters` offset/clip consumers onto the SDK wrappers.
+The DEV-094 closure row records the completed work, and ADR-0055 records the
+resulting fuel and wall-clock evidence.

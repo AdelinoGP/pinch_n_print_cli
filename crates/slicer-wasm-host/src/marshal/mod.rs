@@ -6,6 +6,7 @@ pub mod native;
 /// Origin tracking for WIT output buckets — [`OriginId`], [`OriginBucket`], and [`MarshalError`].
 pub mod origin;
 pub mod out;
+pub mod prepared;
 
 pub use accumulators::{
     AnchoredEventsCollected, GcodeCommandCollected, GcodeOutputCollected, InfillOutputCollected,
@@ -27,6 +28,7 @@ pub use leaf::{
     wit_to_ir_expolygons,
 };
 pub use origin::{MarshalError, OriginBucket, OriginId};
+pub use prepared::{prepare_perimeter_source_regions, prepare_regions, prepare_slice_regions};
 // harvest_*_from functions are pub(crate) in in_.rs and accessed directly by dispatch.rs
 // via `use crate::marshal::in_::harvest_*_from` — not re-exported at the marshal:: level.
 pub use out::{
@@ -99,6 +101,7 @@ pub(crate) fn perimeter_source_regions(slice: &slicer_ir::SliceIR) -> Vec<slicer
             restore!(sparse_infill_area);
             restore!(internal_solid_fill);
             restore!(internal_bridge_areas);
+            restore!(raft_fill);
         }
     }
     regions

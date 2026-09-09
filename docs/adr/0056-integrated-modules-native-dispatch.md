@@ -31,7 +31,7 @@ single-threaded clipper2 executing *inside* guests — `classic-perimeters`
 measured at 90% of per-layer module CPU, roughly 39% of it polygon ops
 (ADR-0055), and `support-planner`'s prepass time is 98% geometry (ADR-0049) —
 and a guest cannot spawn threads (ADR-0049). Slice-time performance is
-therefore chiefly the batched host-service workstream (DEV-094), which
+therefore chiefly the batched host-service workstream, which
 benefits every edition and community modules without any edition split. Native
 compilation of modules is chiefly a **deployment and portability** decision,
 not the perf lever.
@@ -77,7 +77,7 @@ full citizen of the one existing module model.**
 5. **Single-threaded module logic on both paths (default).** An integrated
    module does not use internal parallelism by default — that would diverge
    from its wasm twin. Parallelism comes from batched host services
-   (ADR-0049 / DEV-094) and host-side layer fan-out. Per-module internal
+   (ADR-0049) and host-side layer fan-out. Per-module internal
    parallelism is a later, per-module decision requiring a deterministic
    merge.
 6. **No-wasm builds.** On targets where wasmtime cannot ship, the wasm host is
@@ -85,6 +85,11 @@ full citizen of the one existing module model.**
    loud per-module diagnostic naming the reason. Desktop/SBC builds always
    keep wasmtime, so extension and override work identically there in every
    edition.
+
+The registry contract is that each integrated row uses manifest ID
+`com.core.<name>`, origin label `integrated://<name>`, and a `NativeStageEntry`
+family matching its declared `Layer`, `PrePass`, `Finalization`, or `PostPass`
+stage.
 
 ## Rejected alternatives
 
@@ -98,7 +103,7 @@ full citizen of the one existing module model.**
   special case — precisely the "second path" ADR-0033 warned about.
 - **Hand-written native ports of module logic.** Permanent parity liability
   between two implementations of every hot algorithm.
-- **Bridges only, no integration.** Completing DEV-094 delivers the
+- **Bridges only, no integration.** Completing the batched host-service bridges delivers the
   performance but neither single-file deployment nor wasm-less platforms.
 
 ## Consequences

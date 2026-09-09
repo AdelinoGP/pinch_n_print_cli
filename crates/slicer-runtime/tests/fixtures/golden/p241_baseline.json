@@ -1,0 +1,19 @@
+{
+  "fixture_model": "tests/fixtures/support-family/SupportAdversarial.stl",
+  "fixture_config": "tests/fixtures/support-family/orca-matched-config.json",
+  "support_type": "normal(auto)",
+  "rasterizer_mode": "legacy_semantic",
+  "fixture_justification": "The original 30x20 mm SupportTest.stl box measures 0 penetration events / 0 penetrated area / 0 abrupt column drops under the legacy rasterizer, so AC-7's strict 'fewer drops' gate cannot be measured against it. SupportAdversarial.stl (adversarial_mesh, regenerable via p241_generate_adversarial_fixture) carries three roofed slots that narrow abruptly mid-stack and whose far end is a roof-outline (demand) edge rather than a clearance edge; the legacy semantic prints the slot sliver exactly to the roof edge and drops it in mid-air when the slot closes, while the SupportGridPattern expansion_to_slice extraction grows that free end onto the lower slot's end wall (a model landing). stepped_pocket_mesh, the earlier fully-enclosed variant, measures 3 drops in BOTH modes (every sliver edge is a clearance edge, which neither mode moves) and is kept in the test file for reference. The baseline is recorded in legacy_semantic mode.",
+  "support_object_xy_distance_mm": 0.35,
+  "layer_count": 33,
+  "support_body_layer_count": 26,
+  "occupied_layer_count": 33,
+  "wall": {
+    "penetration_events": 0,
+    "penetrated_area": 0.0
+  },
+  "columns": {
+    "abrupt_drops": 3,
+    "total_support_area": 225789129333.0
+  }
+}

@@ -950,6 +950,7 @@ fn non_bridge_region_has_empty_bridge_areas() {
         }],
         has_nonplanar: false,
         is_sync_layer: false,
+        is_raft: false,
     };
 
     let slice_ir = execute_prepass_slice_single_layer(&mesh_ir, &layer, Some(&analysis), None)
@@ -1010,6 +1011,7 @@ fn invalid_bridge_excluded_from_slice_areas() {
         }],
         has_nonplanar: false,
         is_sync_layer: false,
+        is_raft: false,
     };
 
     let slice_ir = execute_prepass_slice_single_layer(&mesh_ir, &layer, Some(&result), None)
@@ -1185,6 +1187,7 @@ fn flat_bridge_span_over_gap_flagged_via_layer_diff() {
         }],
         has_nonplanar: false,
         is_sync_layer: false,
+        is_raft: false,
     };
 
     // This layer's cross-section: the full beam. The previous layer: two end
@@ -1286,6 +1289,7 @@ fn solid_box_bottom_layers_not_flagged_as_flat_bridge() {
             }],
             has_nonplanar: false,
             is_sync_layer: false,
+            is_raft: false,
         };
         let cache = PrepassSliceCache {
             raw_polygons: &footprint,

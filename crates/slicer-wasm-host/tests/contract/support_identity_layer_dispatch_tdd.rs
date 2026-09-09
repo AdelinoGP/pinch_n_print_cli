@@ -110,6 +110,8 @@ fn support_layer_dispatch_joins_plan_identity() {
         perimeter: None,
         layer_collection: None,
         surface_classification: None,
+        prepared_regions: None,
+        prepared_perimeter_source_regions: None,
         infill: None,
     };
     let module_id = "support-dispatch-fixture".to_string();

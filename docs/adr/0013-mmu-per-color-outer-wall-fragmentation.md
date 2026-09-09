@@ -10,11 +10,11 @@ OrcaSlicer's multi-material (MMU) painted perimeters are produced by a **geometr
 
 Source-grounded evidence (OrcaSlicer):
 
-- `MultiMaterialSegmentation.cpp:523` — per-color ExPolygon emission from the leftmost-arc walk; each color's cell is a standalone closed region.
-- `MultiMaterialSegmentation.cpp:547-548` — adjacent per-color cells share the bisector as a common boundary edge; the partition is non-overlapping (a single shared `used_arcs` flag consumes each interior arc exactly once).
-- `MultiMaterialSegmentation.cpp:2224-2225` — segmented per-color expolygons are assigned to per-color `LayerRegion`s (the intersection/steal that enforces the partition).
-- `PerimeterGenerator.cpp:1599-1629` — each per-color region independently offsets its full contour inward by `ext_perimeter_width/2` (`offset_ex(expolygon, -ext_perimeter_width/2)`); no cross-region coordination.
-- `PerimeterGenerator.hpp:35` — the generator operates on a single region's surfaces; one independent pass per `LayerRegion`.
+- `MultiMaterialSegmentation.cpp` — per-color ExPolygon emission from the leftmost-arc walk; each color's cell is a standalone closed region.
+- `MultiMaterialSegmentation.cpp` — adjacent per-color cells share the bisector as a common boundary edge; the partition is non-overlapping (a single shared `used_arcs` flag consumes each interior arc exactly once).
+- `MultiMaterialSegmentation.cpp` — segmented per-color expolygons are assigned to per-color `LayerRegion`s (the intersection/steal that enforces the partition).
+- `PerimeterGenerator.cpp` — each per-color region independently offsets its full contour inward by `ext_perimeter_width/2` (`offset_ex(expolygon, -ext_perimeter_width/2)`); no cross-region coordination.
+- `PerimeterGenerator.hpp` — the generator operates on a single region's surfaces; one independent pass per `LayerRegion`.
 
 This packet (P105) supersedes the earlier revision of this ADR, whose Decision section was based on a **flawed geometric mental model**. The prior model assumed two adjacent colors' outer walls would *coincide spatially* along the shared bisector, requiring one side to "own" the edge and the other to "skip" it (a per-edge `bisector_edge_skip_mask`, lower-color-ID owns). That assumption is wrong: each color offsets its contour **half a line-width inward from its own side** of the shared bisector. The two resulting walls are **parallel and separated by ~one line-width** — they never coincide, so there is nothing to deduplicate. Both sides trace independently, exactly as OrcaSlicer does.
 
@@ -43,13 +43,13 @@ If a future seam-placement or role-distinction packet needs per-edge bisector me
 
 ## Rejected alternatives
 
-- **Union-trace (P96 `external_contour`).** Rejected: traces a single merged outer wall, printing multi-color models as if monochrome. Diverges from OrcaSlicer, which offsets each region independently (`PerimeterGenerator.cpp:1599-1629`). Retired by this revision.
-- **Per-edge skip mask / single-owner bisector (prior revision of this ADR).** Rejected: based on a geometrically wrong premise that adjacent colors' walls coincide at the bisector. OrcaSlicer offsets each color half-width inward from opposite sides (`PerimeterGenerator.cpp:1599-1629`); the walls are parallel and ~one line-width apart, never coincident — there is no edge to own or skip. OrcaSlicer contains no such mechanism (`MultiMaterialSegmentation.cpp:523/547-548/2224-2225` — partition only, no ownership/skip/dedup).
+- **Union-trace (P96 `external_contour`).** Rejected: traces a single merged outer wall, printing multi-color models as if monochrome. Diverges from OrcaSlicer, which offsets each region independently (`PerimeterGenerator.cpp`). Retired by this revision.
+- **Per-edge skip mask / single-owner bisector (prior revision of this ADR).** Rejected: based on a geometrically wrong premise that adjacent colors' walls coincide at the bisector. OrcaSlicer offsets each color half-width inward from opposite sides (`PerimeterGenerator.cpp`); the walls are parallel and ~one line-width apart, never coincident — there is no edge to own or skip. OrcaSlicer contains no such mechanism (`MultiMaterialSegmentation.cpp` — partition only, no ownership/skip/dedup).
 - **Recompute the partition (or any mask) in the guest.** Rejected: guest WASM cannot perform boolean polygon ops; the partition is host-computed in paint segmentation and consumed as independent per-color regions.
 
 ## Future reviewers
 
-- Do **not** re-introduce a skip mask, per-edge ownership, or any tie-break mechanism without **source-grounded evidence overriding** `MultiMaterialSegmentation.cpp:523/547-548/2224-2225` and `PerimeterGenerator.cpp:1599-1629`. The earlier skip-mask revision was retired precisely because it had no basis in OrcaSlicer source.
+- Do **not** re-introduce a skip mask, per-edge ownership, or any tie-break mechanism without **source-grounded evidence overriding** `MultiMaterialSegmentation.cpp` and `PerimeterGenerator.cpp`. The earlier skip-mask revision was retired precisely because it had no basis in OrcaSlicer source.
 - Do **not** re-suggest the union-trace simplification ("just trace the outer contour once"). It fails MMU parity and was deliberately retired. If a non-parity simplified mode is ever wanted, expose it as an opt-in config gate, not the default.
 - Per-edge bisector metadata may be added later **only when a concrete consumer (seam placement, role distinction) exists** — do not ship the infrastructure speculatively.
 

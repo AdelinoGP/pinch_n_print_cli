@@ -113,7 +113,9 @@ Everything else in the port matches canonical verbatim (see §4).
   compared by `legacy_zero_matches_golden`
   (`crates/slicer-runtime/tests/e2e/slicing_precision_integration_tdd.rs`);
   re-bless via env `BLESS_GOLDEN=1`. Currently 0 `;TYPE:Internal Bridge` sections
-  (post-234a re-bless; flood-era had 94).
+  (post-234a re-bless; flood-era had 94). *(Retired 2026-08-25: the test header
+  records the golden's removal in favor of contract-level checks; the file no
+  longer exists.)*
 - `enable_extra_bridge_layer` EXISTS in-tree, read by
   `modules/core-modules/rectilinear-infill/src/lib.rs`.
 
@@ -277,7 +279,7 @@ Format: **Decision** / Rejected alternatives (reasons) / Evidence / Risks.
 - Rejected: strictly-site-parity fence (leaves the known ~30–35% extruded-length
   deficit open); middle path (venue + bottom-anchor constant only — muddier fence,
   splits cohesive mechanics).
-- Evidence: F4 definition (`docs/specs/bridge-parity-plan.md` §F4) + canonical
+- Evidence: F4 definition (`docs/specs/_OLD/bridge-parity-plan.md` §F4) + canonical
   machinery inventory (§0.2).
 - Risks: two independently-testable risk classes (selection vs coverage) coupled in
   one packet; largest review surface — mitigations: strict S1→S6 ordering with

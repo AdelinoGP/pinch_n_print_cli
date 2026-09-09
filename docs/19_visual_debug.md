@@ -139,6 +139,10 @@ interface bands sit". Read it as a projection, not a section.
 | `"front"`  | X–Z   | X (default when `view` is omitted) |
 | `"side"`   | Y–Z   | Y |
 
+Silhouette projections use the existing Projector transform for the selected
+horizontal axis and Z; the silhouette renderer must not define a second
+world-to-pixel transform.
+
 An unknown `view` value is rejected, and `view` on a non-silhouette
 visualization is rejected. An explicit `view` key under a declared `"1.0.0"` or
 `"1.1.0"` schema is **hard-rejected naming `"1.2.0"`** — it is never silently
@@ -216,6 +220,10 @@ conflicting demands for one base filename are rejected. A seams request whose
 pipeline committed no seam plan fails closed with an error naming the seam plan
 — never a silently glyph-less image.
 
+For clarity, silhouette `options.overlays` is rejected as `InvalidOverlays`,
+while `diagnostic_overlay` seams and silhouette `composited_overlays` use
+`OverlayUnsupportedOnGcode` where applicable.
+
 **Visibility caveat:** the fixed red glyph can blend into similar hues in a
 tool-colored palette (glyph color is identical across role and tool palettes by
 design — the legend does not fork per palette). The isolated form is the
@@ -252,6 +260,14 @@ that is selection, not loss. This E-inversion is **testable mainly against itsel
 G-code source's parser-based one, and is anchored externally by the emitter
 round-trip test. Images are
 `PostPass__GCodeEmit_silhouette_{view}[_tool].png`.
+
+LayerFinalization projects each consecutive `Point3WithWidth` pair and inflates
+its horizontal interval by each endpoint's width/2; paths with fewer than two
+points and travel moves draw nothing. Role paint order is non-support roles
+ascending by role name, then `SupportMaterial`, `SupportBaseInterface`, and
+`SupportInterface` last. The captured `GCodeIR` is emitted with the model
+source's resolved configuration, including `filament_diameter`, so E-derived
+widths reflect the request rather than emitter defaults.
 
 ### Manifest Shape
 
@@ -346,10 +362,10 @@ Nothing is ever inferred or inflated: sub-pixel bands are **not** inflated to a
 minimum pixel width, and every omission is either a named warning or a named
 rejection.
 
-- **W1 — raft.** `SupportPlanIR` entries with a negative `global_layer_index`
-  are skipped; the warning names the count and the dropped index range. Raft
-  prefix layers have no slab in the layer schedule and so are not drawn. Tracked
-  as an open deviation in `docs/DEVIATION_LOG.md`.
+- **W1 — raft.** Raft entries are identified by the explicit `is_raft` marker
+  and use positive indices in `0..support_raft_layers-1`. Negative indices are
+  off-grid support rows, not raft layers; the warning names any such skipped
+  rows. Tracked as an open deviation in `docs/DEVIATION_LOG.md`.
 - **W2 — coarse support geometry.** Non-empty coarse `SupportGeometryIR.entries`
   are skipped; the warning names the count. Emit-schedule entries span multiple
   model layers (the `u32::MAX` sentinel denotes intermediate layers) and cannot
@@ -403,6 +419,16 @@ against the previous accepted marker, or which has no `;Z:` marker at all, is
 and it does **not** advance the carried marker. A W3 warning names the layer
 index and the Z values (or the marker's absence). A guessed slab is the
 misleading-image failure mode, so the layer is dropped instead.
+
+The first `;Z:` marker is accepted only when finite and greater than zero;
+otherwise W3 applies and no slab is created. Unclassified intervals are painted
+gray `[128,128,128]` before role/tool classes. Successful fallback-width renders
+emit warnings naming the cause, count, and limitation. Repeated unsupported
+constructs retain the first occurrence and line; duplicates collapse into one
+count-bearing summary ordered by first occurrence. A warning is emitted when
+vertical data is below 1% of canvas height; axes remain uniformly scaled.
+Source parse failures identify valid `source.kind` values and explain that
+visualization entries use `type`.
 
 **Widths are flow-derived, per move.** Each extruding move's width comes from
 inverting our emitter's rectangular extrusion model:
@@ -530,6 +556,20 @@ the structural `SupportPlanIR` (support body / interface roles with family
 attribution) before `tree-support` renders it. Inspect the family's plan tap
 alongside the final `Layer::Support` output to compare planned vs. emitted
 geometry for a given region.
+
+`PrePass::SupportAnalysis` is a host blackboard stage, not a visual-debug tap.
+Inspect its `SupportAnalysisIR` evidence through the documented blackboard and
+readback mechanism alongside `PrePass::SupportGeometry`.
+
+Typed visual-debug captures serialize `internal_bridge_areas` despite its
+host-only WIT status. Where applicable, renderers expose
+`internal_solid_fill` and `internal_bridge_areas` as distinct geometry
+overlays.
+
+Packet 224's closure reconciliation (2026-09-08) records declared-but-unread keys only
+after re-derivation against manifest sources, with each confirmed key linked
+to its owning follow-on packet. It also explicitly records or resolves the
+tree-support manifest `line_width` versus source `support_line_width` mismatch.
 
 Packet 334 adds cross-family routing diagnostics: overlapping demands from
 different families are reported with their family, body, demand, and rejection

@@ -312,7 +312,10 @@ pub fn orca_type_label(role: &ExtrusionRole) -> &'static str {
         ExtrusionRole::Ironing => ";TYPE:Ironing",
         ExtrusionRole::Custom(_) => ";TYPE:Custom",
         ExtrusionRole::GapFill => ";TYPE:Gap infill",
-        ExtrusionRole::RaftInfill => ";TYPE:Raft",
+        // Orca labels raft band material as support. Interface-band raft
+        // labeling remains a deferred refinement until the plan exposes that
+        // distinction separately from `RaftInfill`.
+        ExtrusionRole::RaftInfill => ";TYPE:Support",
     }
 }
 

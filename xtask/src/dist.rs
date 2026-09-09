@@ -12,6 +12,8 @@ pub(crate) struct DistArgs {
     pub edition: Option<String>,
     pub debug: bool,
     pub plan_only: bool,
+    /// `--force-guests`: rebuild every guest instead of only the stale ones.
+    pub force_guests: bool,
 }
 
 pub(crate) fn parse_dist_args(args: &[String]) -> Result<DistArgs, String> {
@@ -19,6 +21,7 @@ pub(crate) fn parse_dist_args(args: &[String]) -> Result<DistArgs, String> {
         edition: None,
         debug: false,
         plan_only: false,
+        force_guests: false,
     };
     let mut i = 0;
     while i < args.len() {
@@ -36,6 +39,10 @@ pub(crate) fn parse_dist_args(args: &[String]) -> Result<DistArgs, String> {
             }
             "--plan" => {
                 parsed.plan_only = true;
+                i += 1;
+            }
+            "--force-guests" => {
+                parsed.force_guests = true;
                 i += 1;
             }
             other => return Err(format!("unknown flag '{other}' for dist")),
@@ -207,7 +214,7 @@ pub(crate) fn dist_command(ws_root: &Path, args: &DistArgs) -> i32 {
     let profile = if args.debug { "debug" } else { "release" };
 
     println!("xtask dist: building guest WASMs...");
-    let code = build_guests::build_command(ws_root);
+    let code = build_guests::build_command(ws_root, args.force_guests);
     if code != 0 {
         return code;
     }
@@ -455,6 +462,24 @@ mod tests {
             .expect_err("--edition without a value must fail");
         assert!(err.contains("--edition"));
         assert!(parse_dist_args(&strings(&["--nope"])).is_err());
+    }
+
+    #[test]
+    fn dist_args_parse_force_guests() {
+        let forced =
+            parse_dist_args(&strings(&["--force-guests"])).expect("--force-guests parses");
+        assert!(forced.force_guests);
+
+        let defaults = parse_dist_args(&strings(&[])).expect("empty args parse");
+        assert!(
+            !defaults.force_guests,
+            "dist must default to the incremental guest build"
+        );
+
+        let combined = parse_dist_args(&strings(&["--edition", "hybrid", "--force-guests"]))
+            .expect("--force-guests composes with other flags");
+        assert_eq!(combined.edition.as_deref(), Some("hybrid"));
+        assert!(combined.force_guests);
     }
 
     #[test]

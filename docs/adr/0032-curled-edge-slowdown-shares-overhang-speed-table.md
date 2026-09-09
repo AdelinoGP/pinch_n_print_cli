@@ -53,7 +53,7 @@ adding a WIT field, an IR schema-version bump, and marshal fan-out across every 
 construction site would be speculative work against a need that doesn't exist.
 
 The curl-height formula itself (`estimate_curled_up_height`, ported from
-`SupportSpotsGenerator.cpp:199-236`) and the cross-layer proximity lookup are implemented directly in
+`SupportSpotsGenerator.cpp`) and the cross-layer proximity lookup are implemented directly in
 `overhang-classifier-default`, extending it rather than adding a sibling `FinalizationModule` — one
 module computing curl, merging it with `overhang_quartile`, and emitting a single `SetSpeedFactor`
 mutation per entity sidesteps any question of how two different `FinalizationModule`s' mutations on

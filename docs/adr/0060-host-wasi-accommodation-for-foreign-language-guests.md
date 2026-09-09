@@ -1,6 +1,6 @@
 # Host WASI accommodation for foreign-language guests
 
-The 225 feasibility gate measured candidates against the slicer-only linker (no WASI), which confounded the measurement: Go and C++ failed because their toolchains always link WASI, not because the languages cannot produce working components. The gate's purpose — and PNP's goal — is to allow modules to be authored in other languages, so the host will be extended with WASI preview2 (wasmtime-wasi, default-deny capabilities) in a follow-up packet, and the gate re-measures candidates (Go, C++, a MoonBit retry, AssemblyScript) against the accommodating host. Packet 225 stays open with its records as production-fit evidence; the final verdict is deferred to the follow-up packet.
+The 225 feasibility gate measured candidates against the slicer-only linker (no WASI), which confounded the measurement: Go and C++ failed because their toolchains always link WASI, not because the languages cannot produce working components. Packet 225a completed the follow-up accommodation and re-measurement against a WASI preview2 host with default-deny capabilities. Packet 225 is closed; the 225a records govern language selection, while the original slicer-only records remain production-fit evidence.
 
 **Status:** accepted
 

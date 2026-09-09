@@ -194,6 +194,7 @@ fn infill_ir(tool_index: Option<u32>) -> slicer_ir::InfillIR {
             }],
             ..Default::default()
         }],
+        ..Default::default()
     }
 }
 

@@ -274,6 +274,7 @@ fn layer_world_builder_commit_preserves_entities_tool_changes_and_z_hops() {
             active_regions: Vec::new(),
             has_nonplanar: false,
             is_sync_layer: false,
+            is_raft: false,
         }]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),

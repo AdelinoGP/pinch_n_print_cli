@@ -8,7 +8,7 @@ project supports and what this project's host actually requires.
 community module, or assessing whether a proposed module language can satisfy a
 PnP **stage contract**. Paired with `docs/03_wit_and_manifest.md` (WIT worlds and
 manifest) and `docs/05_module_sdk.md` (the Rust SDK surface).
-See `docs/specs/community-modules-dragon-curve-infill.md` for the first community
+See `docs/specs/_OLD/community-modules-dragon-curve-infill.md` for the first community
 module and its Go/MoonBit feasibility probes.
 
 ---
@@ -27,10 +27,11 @@ Today the only shipped guest language is **Rust**:
 - The `#[slicer_module]` macro (`crates/slicer-macros`) emits a `wit_bindgen::generate!`
   call gated behind `#[cfg(target_arch = "wasm32")]`, plus the component export
   shims.
-- Guests are built for **`wasm32-unknown-unknown`** — deliberately **no WASI**.
+- Rust guests are built for **`wasm32-unknown-unknown`** — deliberately **no WASI**.
   `crates/slicer-sdk/src/host.rs` records "Guests build for `wasm32-unknown-unknown`
-  (no WASI)"; the host (wasmtime, `crates/slicer-wasm-host`) supplies the WIT world
-  directly.
+  (no WASI)". The current host policy supplies the PnP interfaces plus default-deny
+  WASI preview2 support; guests receive no ambient capabilities (no preopens, env,
+  args, or network).
 - The SDK surface (`slicer-sdk` builders, views, config-resolution helpers,
   error handling) is a **Rust crate**. Community modules in the temporary workflow
   re-declare the WIT types they need rather than depending on the SDK as a crate.
@@ -38,7 +39,8 @@ Today the only shipped guest language is **Rust**:
 The consequence for other languages: **wit-bindgen language support is necessary
 but not sufficient.** A non-Rust module must also reproduce the SDK's host-service
 interaction in that language (push paths into builders, read region/config views)
-and emit a component importable by the wasmtime host without WASI.
+and emit a component importable by the wasmtime host under its current capability
+policy.
 
 ---
 
@@ -53,7 +55,7 @@ writing. "Generator" = wit-bindgen emits bindings for that language.
 | **C** | Yes (`wit-bindgen c`) | `wasm32-wasip1` via WASI SDK clang | `wasm-tools component new` | Possible; needs wasip1→component and manual host-service calls (no SDK). |
 | **C++ (C++-17+)** | Yes (`wit-bindgen` cpp crate) | `wasm32-wasip1` via WASI SDK | `wasm-tools component new` | Possible; same caveats as C. |
 | **C# (.NET)** | Yes (`wit-bindgen csharp`) | `wasi-wasm` RID, native-aot, `componentize-dotnet` | `dotnet publish` | Possible; heavier toolchain, native-aot GC into the module. |
-| **Go** | Yes (`wit-bindgen-go`) | `GOOS`/`GOARCH` wasm — **only `js/wasm` and `wasip1/wasm`** (no `wasm32-unknown-unknown`) | `wasm-tools component new` | **Verdict (2026-08-11): NOT loadable by `pnp_cli`.** Component builds & validates, but always imports WASI preview2 (host has none). ~20× size, ~6× dispatch, ~3× memory. See §Community-module context. |
+| **Go** | Yes (`wit-bindgen-go`) | `GOOS`/`GOARCH` wasm — **only `js/wasm` and `wasip1/wasm`** (no `wasm32-unknown-unknown`) | `wasm-tools component new` | **Verdict (2026-08-11): NOT loadable by `pnp_cli`.** Its wasip1 build imports WASI preview2; the current host provides that surface default-deny, but the probe's export wiring still fails to compile. ~20× size, ~6× dispatch, ~3× memory. See §Community-module context. |
 | **TinyGo** | Deprecated (was `go.bytecodealliance.org`) | — | — | Do not use; migrate to Go. |
 | **MoonBit** | Yes (`wit-bindgen moonbit`) | `moon build --target wasm` (bare core module) | `wasm-tools component embed` + `component new` | **Verdict (2026-08-11): loadable & dispatchable, but NOT correct.** Every string crossing the boundary is corrupted (MoonBit UTF-16 vs Rust host UTF-8, neither configurable). 4.5× smaller, ~1.7× faster dispatch. See §Community-module context. |
 | **Java** | **Removed** (TeaVM-WASI unmaintained) | — | — | Not supported. |
@@ -82,10 +84,10 @@ A PnP module must do three things beyond having bindings:
    read region/config views, resolve per-region config, report errors. In Rust this
    is the SDK; in any other language it is hand-written in that language against
    the generated bindings.
-3. **Load in the wasmtime host without WASI.** This project targets
-   `wasm32-unknown-unknown`; languages whose toolchains assume `wasip1` (C/C++ via
-   WASI SDK, C# RID, Go wasip1/2) must componentize and be adapted so the component
-   imports only the PnP world.
+3. **Load in the wasmtime host under the current capability policy.** Rust targets
+   `wasm32-unknown-unknown`, while languages whose toolchains assume `wasip1`
+   (C/C++ via WASI SDK, C# RID, Go wasip1/2) may import the host's default-deny
+   WASI preview2 surface, but receive no ambient capabilities beyond the PnP world.
 
 Rust remains the only language with first-class support because it is the only
 language for which `slicer-sdk` + `#[slicer_module]` exist. Every other language is
@@ -101,12 +103,25 @@ the original (2026-08-11) probes found neither loadable-and-correct in `pnp_cli`
 (Go: WASI blocker; MoonBit: string-encoding mismatch). Those verdicts are
 **superseded** for the Dragon Curve module by the accommodating-host
 re-measurement below (packet 225a, 2026-08-13). The design lives in
-`docs/specs/community-modules-dragon-curve-infill.md`, but that spec may be
+`docs/specs/_OLD/community-modules-dragon-curve-infill.md`, but that spec may be
 archived — this doc is the **living record**, so verdicts live here (below), not
 in the spec. No new language is enabled in the host until a probe proves the
 component loads and runs correctly under `pnp_cli`.
 
 The committed `modules/community-modules/dragon-curve/` is a labeled example only; real community modules are authored in forks as pinned submodules and never added to this repository.
+
+The older packet-225 probe discussion below retains its no-WASI host assumption as
+historical evidence; it is superseded for selection by packet 225a's accommodating
+host policy.
+
+**Labeled example.** `com.example.dragon-curve` is a `Layer::Infill` sparse-fill
+example using four rotated dragon instances, hole exclusion, deterministic
+per-dragon coloring, and color-map wrapping to the tool count.
+
+**Maintenance.** The committed Dragon Curve component is built manually, outside
+workspace guest discovery and CI, with a hand-maintained WIT snapshot. Its artifact
+is not expected to be bit-reproducible; determinism of emitted segments remains the
+relevant invariant.
 
 ### Go probe — verdict (2026-08-11): not loadable
 
@@ -125,7 +140,10 @@ the WASI-free, runtime-free pure-wasm module this contract needs.
   `wasm32-unknown-unknown` — so its wasip1 runtime always links WASI preview1,
   and `--adapt` rewrites that into a full set of **WASI preview2** imports. The
   host (`crates/slicer-wasm-host`) has zero WASI support, so the blocker is
-  fundamental, not a build-flag fix.
+  fundamental, not a build-flag fix. (At probe time. Packet 225a later added
+  host-side WASI accommodation per ADR-0060 — "slicer interfaces + WASI with
+  default-deny capabilities" — and Go still fails on toolchain grounds alone;
+  see "Re-measurement" below.)
 - **No "pure wasm" option.** Stock Go always embeds its runtime (67+ `runtime.*`
   symbols; the wit-bindgen-go glue depends on `runtime.Pinner`/`runtime.AddCleanup`,
   which come from the runtime). TinyGo is runtime-light but doesn't support those
@@ -183,6 +201,10 @@ locked priority order — **MoonBit, AssemblyScript, C++, Go** — with the winn
 being the first candidate whose record shows `RESULT: LOADABLE_AND_CORRECT`
 (Rust if none).
 
+Probe governance: missing tools and an unclean or unconfirmed AssemblyScript fork
+are blockers, not candidate failures. Only successfully built, hashed, terminal
+records participate in the fixed-priority selection.
+
 - **MoonBit — LOADABLE_AND_CORRECT.** The earlier trap turned out to be a
   fixture packaging error (the probe's `build.sh` copied `main.mbt` into the
   wrong package), not a toolchain defect; with the fixture fixed the component
@@ -200,6 +222,9 @@ being the first candidate whose record shows `RESULT: LOADABLE_AND_CORRECT`
   imports rejected by `go:wasmimport` on all viable Go toolchains, so an
   export-wired build cannot even compile. Record:
   `docs/feasibility-probes/go-text-postprocess.md`.
+
+When a candidate record contains multiple probe rounds, selection uses its terminal
+(last) `RESULT`; earlier rounds remain historical evidence.
 
 **Dragon Curve authoring language: MoonBit**
 

@@ -40,6 +40,7 @@ fn infill(paths: Vec<ExtrusionPath3D>) -> InfillIR {
             sparse_infill: paths,
             ..Default::default()
         }],
+        ..Default::default()
     }
 }
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed (lands with `docs/specs/raft-default-module.md`).
+Accepted
 
 ## Context
 
@@ -23,7 +23,7 @@ helpers undermines the WASM-Component architecture's reason for existing.
 Option (2) is honest but invites permanent duplication across three+ modules
 of the same scan-line math.
 
-Option (3) was uncovered during codebase exploration of `crates/slicer-sdk/src/views.rs:347-359`,
+Option (3) was uncovered during codebase exploration of `crates/slicer-sdk/src/views.rs`,
 which already implements per-role per-claim dispatch:
 
 ```rust
@@ -51,7 +51,7 @@ Raft rendering uses the existing `Layer::Infill` role/claim pattern:
 
 1. **`ExtrusionRole::RaftInfill`** is added as a new variant in `crates/slicer-ir/src/slice_ir.rs`'s `ExtrusionRole` enum.
 2. **`claim:raft-fill`** is added to the `should_emit` mapping in `crates/slicer-sdk/src/views.rs`.
-3. **`SliceRegionView` (or a sibling carrier per `raft-default-module.md` Carrier choice)** carries `raft_fill: Vec<ExPolygon>` polygon inputs on the layers where raft applies.
+3. **`SliceRegionView` (or a sibling carrier per the packet 240b carrier choice)** carries `raft_fill: Vec<ExPolygon>` polygon inputs on the layers where raft applies.
 4. **`raft-default`** is a synthesizer module — it reads `SupportPlanIR.raft_plan` (emitted by `support-planner`) and populates the raft polygon carriers. It contains zero pattern algorithms.
 5. **Pattern variety** is provided by whichever `Layer::Infill` module(s) declare `claim:raft-fill` in their manifest. v1 ships with `rectilinear-infill` declaring the claim (matches OrcaSlicer's default `raft_pattern = "rectilinear"`). Users who want grid / honeycomb / lightning raft swap the claim to a different infill module.
 6. **Each existing infill module gains a small dispatch addition** (10-15 lines) mirroring the existing `TopSolidInfill` / `BottomSolidInfill` handling. The module's existing fill function is called with the raft polygon and the role tag changes; no pattern math is duplicated.
@@ -82,12 +82,25 @@ DEV-127, dependent on a future WIT-interface pattern-services design).
 ## Future-Reviewer Notes
 
 - **Do not re-suggest extracting patterns to `slicer_core::patterns`.** This was the first instinct during the design exploration and was rejected for the multi-language module promise. If the project's stance on language portability changes, revisit; otherwise the extraction is the wrong direction.
-- **Do not re-suggest making `raft-default` a renderer.** The synthesizer-only shape is load-bearing for the no-duplication goal.
+- **Do not re-suggest making `raft-default` a renderer or duplicating renderer logic.** The synthesizer-only shape and generic host hatch boundary are load-bearing; raft-default owns deterministic raft footprint geometry and invokes the generic host hatch service to produce fill polygons, but does not perform extrusion-path, flow, speed, or role rendering.
 - **Do not re-suggest a separate `Layer::Raft` stage with its own renderer claim.** This was considered and rejected — adding a per-fill-type stage for every fill type would proliferate stages without solving the duplication problem.
 
 ## References
 
-- `docs/specs/raft-default-module.md`.
-- `crates/slicer-sdk/src/views.rs:330-359` — existing role/claim dispatch.
-- `crates/slicer-ir/src/slice_ir.rs:1463-1492` — `ExtrusionRole` enum.
+- `docs/spec_packets/_OLD/240b-support-raft-module.md`.
+- `crates/slicer-sdk/src/views.rs` — existing role/claim dispatch.
+- `crates/slicer-ir/src/slice_ir.rs` — `ExtrusionRole` enum.
 - OrcaSlicer `src/libslic3r/Support/SupportCommon.cpp::generate_raft_base` — reference behavior.
+
+## Amendment — 2026-09-05 (packet 240b)
+
+The original Decision 5 clause is:
+
+> 5. **Pattern variety** is provided by whichever `Layer::Infill` module(s) declare `claim:raft-fill` in their manifest. v1 ships with `rectilinear-infill` declaring the claim (matches OrcaSlicer's default `raft_pattern = "rectilinear"`). Users who want grid / honeycomb / lightning raft swap the claim to a different infill module.
+
+Packet 240b reassigns the `claim:raft-fill` holder to `com.core.raft-default`; the module remains the default raft pattern provider while preserving the existing `Layer::Infill` role/claim contract. AD-240B-1 records that the guest→`SlicedRegion.raft_fill` transport and emitter were verified missing and absorbed into this packet.
+
+The raft-default module owns deterministic raft footprint geometry and invokes
+the generic host hatch service to produce fill polygons. It still does not
+perform extrusion-path, flow, speed, or role rendering; those remain the
+renderer boundary.

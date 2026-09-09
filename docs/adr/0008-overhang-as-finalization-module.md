@@ -4,6 +4,14 @@
 
 Accepted
 
+> **Placement superseded by ADR-0031** (packets 106/107): classification moved
+> to the `PrePass::OverhangAnnotation` host built-in, which stamps per-vertex
+> `overhang_quartile` + `overhang_distance_mm` at prepass time (see
+> `docs/adr/0031-overhang-classification-at-prepass.md`). `overhang-classifier-default`
+> remains a `PostPass::LayerFinalization` module but now only *applies* speed
+> factors from prepass-stamped data — it no longer owns the classification
+> algorithm. Retained as the record of the no-new-stage decision, which stands.
+
 ## Context
 
 The overhang-classification algorithm (originally in `slicer-core/src/algos/overhang_classifier.rs`) was a host-only path called directly by `slicer-gcode`'s emit function. This baked overhang-feedrate selection into the host serializer, leaving zero swap-point for users who want different overhang behavior.

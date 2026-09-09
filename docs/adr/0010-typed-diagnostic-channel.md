@@ -3,13 +3,16 @@
 ## Status
 
 Accepted. Landed via packet `118_support-planner-typed-diagnostics` (closed 2026-07-19).
+Code `1003` was retired by the later support-family/renderer migration; codes
+`1001` and `1002` remain.
 The typed channel ships as `support-geometry-output.push-diagnostic` (a method on the
 scoped prepass output resource, not a standalone world import); the host drains it into
 `ModuleAccessAudit.diagnostics` via `PrepassStageRunner::last_diagnostics`. The three
 original call sites emit typed records: code `1001` (max-branches cap, one merged warning
 per affected global layer), code `1002` (`node-clamped-out`), and code `1003`
 (`support_interface_bottom_layers` not-implemented, planner-owned, read from the preserved
-config key and emitted once before the layer loop when the value is not `-1`). See
+config key and emitted once before the layer loop when the value is not `-1`; this code was
+later retired by the support-family/renderer migration). See
 `docs/07_implementation_status.md` TASK-163b-diagnostic.
 
 ## Context
@@ -41,6 +44,10 @@ typed channel:
 All three shipped via packet 118 with the codes `1001` / `1002` / `1003` as
 described in Status above; packet 116 removed the dead `support_interface_bottom_layers`
 Rust state and emits no warning itself.
+
+Code `1003` was subsequently retired by the later support-family/renderer
+migration (DEV-129 closure). Codes `1001` and `1002` remain; the typed
+`Diagnostic` channel decision is unchanged.
 
 A typed channel is the right place to land this for all three call sites at
 once, and to give future module-emitted diagnostics a structured home.
@@ -123,3 +130,8 @@ was considered. Rejected because:
 - `docs/specs/support-modules-orca-port.md` §B7, §D11.
 - `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit` — target WIT file.
 - `CLAUDE.md` "WIT/Type Changes Checklist" — rebuild ceremony.
+
+> Note (docs review): the `world-prepass` tier world was retired by packet 164
+> per ADR-0045; the per-stage versioned packages under
+> `crates/slicer-schema/wit/deps/` are now authoritative. The tier-world path
+> above is historical.

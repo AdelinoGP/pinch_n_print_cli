@@ -18,7 +18,7 @@ At packet 119's design-time, all three were marked `[BLOCK]` because the public 
 
 Three pieces of evidence changed during the packet's implementation:
 
-- The planner computes `PlannedSupportNode.dist_to_top: u32` in `modules/core-modules/support-planner/src/lib.rs`, uses it in `tapered_radius`, and now copies it into `Point3WithWidth.dist_to_top_mm` while `plan_for_object` emits branch points. OrcaSlicer's analogous public per-node value is `SupportNode::dist_mm_to_top` (`TreeSupport.hpp`). The PnP field is a per-point contract addition, not a claim of numerical parity.
+- The planner computes `PlannedSupportNode.dist_to_top: u32` in `modules/core-modules/tree-support-planner/src/lib.rs` (renamed from `modules/core-modules/support-planner/src/lib.rs`), uses it in `tapered_radius`, and now copies it into `Point3WithWidth.dist_to_top_mm` while `plan_for_object` emits branch points. OrcaSlicer's analogous public per-node value is `SupportNode::dist_mm_to_top` (`TreeSupport.hpp`). The PnP field is a per-point contract addition, not a claim of numerical parity.
 - The planner emits no raft geometry. `run_support_geometry` emits the configuration-only `RaftPlan` through `SupportGeometryOutput::push_raft_plan`; packet 124 (`124_support-plan-raft-plan-and-raftinfill-role`) owns actual raft geometry.
 - OrcaSlicer's raft is synthesized by `SupportCommon::generate_raft_base` and related support-material generation paths (`SupportCommon.cpp` and `SupportMaterial.cpp`); there is no single Orca `RaftPlan` struct. The PnP `raft_plan` field is a seam projection, not a direct port.
 
@@ -67,7 +67,7 @@ The packet's three `[BLOCK]` items are closed: `TASK-260` becomes `TASK-290` (re
 - `docs/specs/support-modules-orca-port.md` §C1, §C5, §C6 — source-plan invariants and the current raft seam.
 - `docs/07_implementation_status.md` — existing `TASK-260` gyroid-infill row and packet 119's `TASK-290` row.
 - `crates/slicer-ir/src/slice_ir.rs` — `Point3WithWidth`, `RaftPlan`, `SupportPlanIR`, and `CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION`.
-- `modules/core-modules/support-planner/src/lib.rs` — `PlannedSupportNode`, `run_support_geometry`, `plan_for_object`, and `tapered_radius`.
+- `modules/core-modules/tree-support-planner/src/lib.rs` (renamed from `modules/core-modules/support-planner/src/lib.rs` by the support-family split; all symbols below resolve there) — `PlannedSupportNode`, `run_support_geometry`, `plan_for_object`, and `tapered_radius`.
 - Canonical OrcaSlicer `SupportNode::dist_mm_to_top` (`TreeSupport.hpp`) — per-node distance analogue.
 - Canonical OrcaSlicer `SupportCommon::generate_raft_base` (`SupportCommon.cpp`) — raft synthesis reference; Orca has no single `RaftPlan` struct.
 - Packet 124 `124_support-plan-raft-plan-and-raftinfill-role/packet.spec.md` — owner of raft geometry.

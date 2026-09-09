@@ -83,6 +83,29 @@ pub fn build_wall_flags(
         }
     }
 
+    // Most regions carry no effective paint annotations.  In that case the
+    // reprojection path below cannot change the seeded defaults or boundary
+    // fallback, so avoid walking every wall vertex and every original edge.
+    let has_effective_annotation =
+        if let (Some(_), Some(orig_polys)) = (inset_ring_points, original_polygons) {
+            has_effective_annotation_for_polygons(segment_annotations, orig_polys.len())
+        } else {
+            has_effective_annotation_for_poly(segment_annotations, poly_idx)
+        };
+    if !has_effective_annotation {
+        // This also avoids the former empty-ring panic when `num_points > 0`.
+        // Production callers reject empty wall paths; this defensive behavior
+        // is intentionally limited to the annotation-free early-return case.
+        return (
+            flags,
+            if is_outer {
+                WallBoundaryType::ExteriorSurface
+            } else {
+                WallBoundaryType::Interior
+            },
+        );
+    }
+
     // Determine which annotation source to use for each flag slot. Reprojection
     // is used whenever the caller supplies wall-vertex/original-polygon geometry,
     // regardless of `is_outer`: classic's outer wall withholds this geometry (its
@@ -215,6 +238,37 @@ pub fn build_wall_flags(
     };
 
     (flags, boundary_type)
+}
+
+fn has_effective_annotation_for_poly(
+    segment_annotations: &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+    poly_idx: usize,
+) -> bool {
+    let material = segment_annotations
+        .get(&PaintSemantic::Material)
+        .and_then(|per_poly| per_poly.get(poly_idx))
+        .is_some_and(|values| {
+            values
+                .iter()
+                .any(|value| matches!(value, Some(PaintValue::ToolIndex(_))))
+        });
+    let fuzzy = segment_annotations
+        .get(&PaintSemantic::FuzzySkin)
+        .and_then(|per_poly| per_poly.get(poly_idx))
+        .is_some_and(|values| {
+            values
+                .iter()
+                .any(|value| matches!(value, Some(PaintValue::Flag(true))))
+        });
+    material || fuzzy
+}
+
+fn has_effective_annotation_for_polygons(
+    segment_annotations: &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+    polygon_count: usize,
+) -> bool {
+    (0..polygon_count)
+        .any(|poly_idx| has_effective_annotation_for_poly(segment_annotations, poly_idx))
 }
 
 /// Find the nearest original contour vertex to `p` across all `original_polygons`.

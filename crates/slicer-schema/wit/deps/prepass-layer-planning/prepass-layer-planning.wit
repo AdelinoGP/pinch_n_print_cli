@@ -9,7 +9,13 @@ interface layer-planning-types {
         effective-layer-height: f32,
         is-catchup: bool, catchup-z-bottom: f32,
     }
-    record layer-proposal { z: f32, active-regions: list<region-layer-proposal> }
+    /// One proposed global layer. `is-raft-prefix` marks the layer as part of
+    /// the raft band, which must form a contiguous prefix of the push sequence.
+    record layer-proposal {
+        z: f32,
+        active-regions: list<region-layer-proposal>,
+        is-raft-prefix: bool,
+    }
 
     resource layer-plan-output {
         push-layer: func(proposal: layer-proposal) -> result<_, string>;

@@ -382,6 +382,25 @@ pub fn sliced_region_to_data(
     surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
     global_layer_index: u32,
 ) -> SliceRegionData {
+    sliced_region_to_data_with_prepared(
+        region,
+        z,
+        held_claims,
+        surface_classification,
+        global_layer_index,
+        None,
+    )
+}
+
+/// Convert a region while consuming arena-prepared derived fields when present.
+pub fn sliced_region_to_data_with_prepared(
+    region: &slicer_ir::SlicedRegion,
+    z: f32,
+    held_claims: Vec<String>,
+    surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
+    global_layer_index: u32,
+    prepared: Option<&slicer_ir::PreparedRegionData>,
+) -> SliceRegionData {
     let view = slicer_sdk::views::SliceRegionView::from_ir(region, z, held_claims);
     let segment_annotations: Vec<SegmentAnnotationsEntry> = region
         .segment_annotations
@@ -411,22 +430,37 @@ pub fn sliced_region_to_data(
 
     // Resolve the surface group from SurfaceClassificationIR if available.
     let surface_group: Option<crate::host::layer::slicer::ir_handles::ir_handles::SurfaceGroup> =
-        region.nonplanar_surface.and_then(|sg_id| {
-            surface_classification
-                .and_then(|sc| sc.per_object.get(&region.object_id))
-                .and_then(|obj| obj.surface_groups.iter().find(|g| g.id == sg_id))
-                .map(
-                    |g| crate::host::layer::slicer::ir_handles::ir_handles::SurfaceGroup {
-                        id: g.id,
-                        facet_indices: g.facet_indices.clone(),
-                        z_min: g.z_min,
-                        z_max: g.z_max,
-                        area_mm2: g.area_mm2,
-                        printable: g.printable,
-                        shell_count: g.shell_count,
-                    },
-                )
-        });
+        prepared
+            .and_then(|p| p.surface_group.as_ref())
+            .map(
+                |g| crate::host::layer::slicer::ir_handles::ir_handles::SurfaceGroup {
+                    id: g.id,
+                    facet_indices: g.facet_indices.clone(),
+                    z_min: g.z_min,
+                    z_max: g.z_max,
+                    area_mm2: g.area_mm2,
+                    printable: g.printable,
+                    shell_count: g.shell_count,
+                },
+            )
+            .or_else(|| {
+                region.nonplanar_surface.and_then(|sg_id| {
+                    surface_classification
+                        .and_then(|sc| sc.per_object.get(&region.object_id))
+                        .and_then(|obj| obj.surface_groups.iter().find(|g| g.id == sg_id))
+                        .map(
+                            |g| crate::host::layer::slicer::ir_handles::ir_handles::SurfaceGroup {
+                                id: g.id,
+                                facet_indices: g.facet_indices.clone(),
+                                z_min: g.z_min,
+                                z_max: g.z_max,
+                                area_mm2: g.area_mm2,
+                                printable: g.printable,
+                                shell_count: g.shell_count,
+                            },
+                        )
+                })
+            });
 
     // Clip this layer's overhang quartile bands to this region's own polygon
     // area. AC-1 requires bands to be exactly pre-filtered to the region's
@@ -441,58 +475,78 @@ pub fn sliced_region_to_data(
     let region_bbox = expolygons_bbox(&region.polygons);
     let overhang_quartile_polygons: Vec<
         crate::host::layer::slicer::ir_handles::ir_handles::QuartileBand,
-    > = surface_classification
-        .and_then(|sc| {
-            sc.overhang_quartile_polygons
-                .get(&region.object_id)
-                .and_then(|by_layer| by_layer.get(&global_layer_index))
-        })
-        .map(|bands| {
-            bands
+    > = prepared
+        .map(|p| {
+            p.overhang_quartile_polygons
                 .iter()
-                .filter_map(|band| {
-                    let prefiltered: Vec<slicer_ir::ExPolygon> = band
-                        .polygons
+                .map(
+                    |band| crate::host::layer::slicer::ir_handles::ir_handles::QuartileBand {
+                        quartile: band.quartile,
+                        polygons: ir_to_wit_expolygons(&band.polygons),
+                    },
+                )
+                .collect()
+        })
+        .unwrap_or_else(|| {
+            surface_classification
+                .and_then(|sc| {
+                    sc.overhang_quartile_polygons
+                        .get(&region.object_id)
+                        .and_then(|by_layer| by_layer.get(&global_layer_index))
+                })
+                .map(|bands| {
+                    bands
                         .iter()
-                        .filter(|poly| match region_bbox {
-                            Some(rb) => bbox_overlaps(rb, poly),
-                            None => false,
-                        })
-                        .cloned()
-                        .collect();
-                    if prefiltered.is_empty() {
-                        return None;
-                    }
-                    let clipped: Vec<slicer_ir::ExPolygon> =
-                        slicer_core::polygon_ops::intersection_ex(&prefiltered, &region.polygons);
-                    if clipped.is_empty() {
-                        None
-                    } else {
-                        Some(
+                        .filter_map(|band| {
+                            let prefiltered: Vec<slicer_ir::ExPolygon> = band
+                                .polygons
+                                .iter()
+                                .filter(|poly| match region_bbox {
+                                    Some(rb) => bbox_overlaps(rb, poly),
+                                    None => false,
+                                })
+                                .cloned()
+                                .collect();
+                            if prefiltered.is_empty() {
+                                return None;
+                            }
+                            let clipped: Vec<slicer_ir::ExPolygon> =
+                                slicer_core::polygon_ops::intersection_ex(
+                                    &prefiltered,
+                                    &region.polygons,
+                                );
+                            if clipped.is_empty() {
+                                None
+                            } else {
+                                Some(
                             crate::host::layer::slicer::ir_handles::ir_handles::QuartileBand {
                                 quartile: band.quartile,
                                 polygons: ir_to_wit_expolygons(&clipped),
                             },
                         )
-                    }
+                            }
+                        })
+                        .collect()
                 })
-                .collect()
-        })
-        .unwrap_or_default();
+                .unwrap_or_default()
+        });
     let overhang_areas: Vec<crate::host::layer::slicer::types::geometry::ExPolygon> =
         overhang_quartile_polygons
             .iter()
             .flat_map(|band| band.polygons.clone())
             .collect();
-    let prev_layer_boundary: Vec<crate::host::layer::slicer::types::geometry::ExPolygon> =
-        surface_classification
-            .and_then(|sc| {
-                sc.prev_layer_boundaries
-                    .get(&region.object_id)
-                    .and_then(|by_layer| by_layer.get(&global_layer_index))
-            })
-            .map(|polygons| ir_to_wit_expolygons(polygons))
-            .unwrap_or_default();
+    let prev_layer_boundary: Vec<crate::host::layer::slicer::types::geometry::ExPolygon> = prepared
+        .map(|p| ir_to_wit_expolygons(&p.prev_layer_boundary))
+        .unwrap_or_else(|| {
+            surface_classification
+                .and_then(|sc| {
+                    sc.prev_layer_boundaries
+                        .get(&region.object_id)
+                        .and_then(|by_layer| by_layer.get(&global_layer_index))
+                })
+                .map(|polygons| ir_to_wit_expolygons(polygons))
+                .unwrap_or_default()
+        });
 
     SliceRegionData {
         object_id: view.object_id().clone(),
@@ -504,7 +558,10 @@ pub fn sliced_region_to_data(
         variant_chain,
         has_nonplanar: view.has_nonplanar(),
         segment_annotations,
-        needs_support: view.derive_needs_support(surface_classification),
+        needs_support: prepared.map_or_else(
+            || view.derive_needs_support(surface_classification),
+            |p| p.needs_support,
+        ),
         top_shell_index: view.top_shell_index(),
         bottom_shell_index: view.bottom_shell_index(),
         top_solid_fill: ir_to_wit_expolygons(view.top_solid_fill()),
@@ -515,6 +572,7 @@ pub fn sliced_region_to_data(
         internal_bridge_areas: ir_to_wit_expolygons(view.internal_bridge_areas()),
         bridge_orientation_deg: view.bridge_orientation_deg(),
         sparse_infill_area: ir_to_wit_expolygons(view.sparse_infill_area()),
+        raft_fill: ir_to_wit_expolygons(view.raft_fill()),
         held_claims: view.held_claims().to_vec(),
         overhang_areas,
         overhang_quartile_polygons,
@@ -581,6 +639,7 @@ pub fn perimeter_region_to_data(region: &slicer_ir::PerimeterRegion) -> Perimete
         bottom_solid_fill: Vec::new(),
         internal_solid_fill: Vec::new(),
         bridge_areas: Vec::new(),
+        raft_fill: Vec::new(),
         tool_index: 0,
         wall_source_region_id: None,
         // Note: width and flow_factor are intentionally discarded here;
@@ -621,6 +680,30 @@ pub fn perimeter_region_to_data(region: &slicer_ir::PerimeterRegion) -> Perimete
 //
 // These are the pure projection cores extracted from dispatch.rs's harvest_*
 // wrapper functions (which keep the HostExecutionContext unwrapping).
+
+/// Reject a raft band that is not a contiguous prefix of the push sequence.
+///
+/// Raft layers occupy global indices `0..N-1`; a raft-marked proposal pushed
+/// after any model proposal is a contract violation, and the error names the
+/// offending push position. Shared by both harvest legs (the WASM
+/// `harvest_layer_plan_ir_from` and the native
+/// `commit_native_prepass_response_with_inputs`) so their diagnostics are
+/// byte-identical.
+pub(crate) fn validate_raft_prefix_contiguity(is_raft_flags: &[bool]) -> Result<(), String> {
+    let mut seen_model_layer = false;
+    for (position, &is_raft) in is_raft_flags.iter().enumerate() {
+        if is_raft {
+            if seen_model_layer {
+                return Err(format!(
+                    "layer-plan-output: is-raft-prefix must be contiguous at the front of the push sequence; push position {position} is raft-marked but follows a non-raft layer"
+                ));
+            }
+        } else {
+            seen_model_layer = true;
+        }
+    }
+    Ok(())
+}
 
 /// Pure core of `harvest_layer_plan_ir`: `LayerProposal`s → `LayerPlanIR`.
 pub(crate) fn harvest_layer_plan_ir_from(
@@ -691,8 +774,11 @@ pub(crate) fn harvest_layer_plan_ir_from(
             active_regions,
             has_nonplanar: false,
             is_sync_layer: false,
+            is_raft: proposal.is_raft_prefix,
         });
     }
+
+    validate_raft_prefix_contiguity(&global_layers.iter().map(|l| l.is_raft).collect::<Vec<_>>())?;
 
     Ok(LayerPlanIR {
         global_layers,
@@ -1036,6 +1122,7 @@ mod tests {
                 is_catchup: false,
                 catchup_z_bottom: 0.0,
             }],
+            is_raft_prefix: false,
         };
 
         let error = harvest_layer_plan_ir_from(vec![proposal])
@@ -1054,10 +1141,131 @@ mod tests {
                 is_catchup: false,
                 catchup_z_bottom: 0.0,
             }],
+            is_raft_prefix: false,
         };
 
         harvest_layer_plan_ir_from(vec![proposal])
             .expect("an ordinary module-authored id is valid without modifier children");
+    }
+
+    /// A push sequence expressed once, replayed onto both harvest legs.
+    /// Each tuple is `(z, is_raft)` in push order.
+    const RAFT_PUSH_SEQUENCE: &[(f32, bool)] =
+        &[(0.30, true), (0.60, true), (0.80, false), (1.00, false)];
+
+    fn wit_proposals(seq: &[(f32, bool)]) -> Vec<LayerProposal> {
+        seq.iter()
+            .map(|&(z, is_raft)| LayerProposal {
+                z,
+                active_regions: vec![RegionLayerProposal {
+                    object_id: "object-a".into(),
+                    region_id: "1".into(),
+                    effective_layer_height: 0.2,
+                    is_catchup: false,
+                    catchup_z_bottom: 0.0,
+                }],
+                is_raft_prefix: is_raft,
+            })
+            .collect()
+    }
+
+    fn native_response(seq: &[(f32, bool)]) -> slicer_sdk::native::NativePrepassResponse {
+        let mut output = slicer_sdk::prepass_builders::LayerPlanOutput::new();
+        for &(z, is_raft) in seq {
+            output
+                .push_layer(slicer_sdk::prepass_types::LayerProposal {
+                    z,
+                    active_regions: vec![slicer_sdk::prepass_types::RegionLayerProposal {
+                        object_id: "object-a".into(),
+                        region_id: "1".into(),
+                        effective_layer_height: 0.2,
+                        is_catchup: false,
+                        catchup_z_bottom: 0.0,
+                    }],
+                    is_raft,
+                })
+                .expect("push_layer");
+        }
+        // exhaustive: layer-planning-only native response; every other stage slot is None
+        slicer_sdk::native::NativePrepassResponse {
+            mesh_analysis: None,
+            layer_plan: Some(output),
+            paint_segmentation: None,
+            seam_planning: None,
+            support_geometry: None,
+        }
+    }
+
+    fn native_markers(seq: &[(f32, bool)]) -> Result<Vec<(u32, bool)>, String> {
+        let response = native_response(seq);
+        let out = crate::marshal::native::commit_native_prepass_response_with_inputs(
+            &response,
+            "PrePass::LayerPlanning",
+            None,
+            None,
+            None,
+        )?;
+        match out {
+            slicer_core::PrepassStageOutput::LayerPlan(plan) => Ok(plan
+                .global_layers
+                .iter()
+                .map(|l| (l.index, l.is_raft))
+                .collect()),
+            _ => Err("native leg returned a non-layer-plan stage output".to_string()),
+        }
+    }
+
+    fn wit_markers(seq: &[(f32, bool)]) -> Result<Vec<(u32, bool)>, String> {
+        let plan = harvest_layer_plan_ir_from(wit_proposals(seq))?;
+        Ok(plan
+            .global_layers
+            .iter()
+            .map(|l| (l.index, l.is_raft))
+            .collect())
+    }
+
+    /// AC-2: both harvest legs copy `is-raft-prefix` onto `GlobalLayer.is_raft`
+    /// and leave index assignment at `0..` in push order, so the same push
+    /// sequence yields identical `(index, is_raft)` pairs on either leg.
+    #[test]
+    fn raft_marker_identical_on_both_legs() {
+        let expected: Vec<(u32, bool)> = RAFT_PUSH_SEQUENCE
+            .iter()
+            .enumerate()
+            .map(|(i, &(_, is_raft))| (i as u32, is_raft))
+            .collect();
+
+        let wit = wit_markers(RAFT_PUSH_SEQUENCE).expect("WIT leg harvests a raft-prefixed plan");
+        let native =
+            native_markers(RAFT_PUSH_SEQUENCE).expect("native leg commits a raft-prefixed plan");
+
+        assert_eq!(wit, expected, "WIT leg (index, is_raft) pairs");
+        assert_eq!(native, expected, "native leg (index, is_raft) pairs");
+        assert_eq!(wit, native, "both legs must agree on (index, is_raft)");
+    }
+
+    /// AC-N1: a raft-marked proposal pushed AFTER a model proposal is rejected
+    /// on both legs, with an error naming the offending push position.
+    #[test]
+    fn noncontiguous_raft_band_rejected() {
+        // Push position 2 is raft-marked but follows a non-raft layer.
+        let bad: &[(f32, bool)] = &[(0.30, true), (0.60, false), (0.80, true)];
+
+        let wit_err = wit_markers(bad).expect_err("WIT leg must reject a non-contiguous raft band");
+        let native_err =
+            native_markers(bad).expect_err("native leg must reject a non-contiguous raft band");
+
+        for (leg, err) in [("wit", &wit_err), ("native", &native_err)] {
+            assert!(
+                err.contains("push position 2"),
+                "{leg} leg error must name the offending push position, got: {err}"
+            );
+            assert!(
+                err.contains("is-raft-prefix"),
+                "{leg} leg error must name the offending field, got: {err}"
+            );
+        }
+        assert_eq!(wit_err, native_err, "both legs must report the same error");
     }
 }
 

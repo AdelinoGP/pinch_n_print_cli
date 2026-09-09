@@ -175,6 +175,7 @@ fn split_regions_by_modifier_footprints(
             split_field!(sparse_infill_area);
             split_field!(internal_solid_fill);
             split_field!(internal_bridge_areas);
+            split_field!(raft_fill);
             working.regions[base_index].polygons =
                 difference(&working.regions[base_index].polygons, &footprint);
             let identity = (object_id.clone(), sub.region_id, sub.variant_chain.clone());

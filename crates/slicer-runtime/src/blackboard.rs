@@ -9,9 +9,9 @@ use slicer_ir::slice_ir::SupportAnalysisIR;
 use slicer_ir::{
     ActiveRegion, BlackboardError, BlackboardPrepassSlot, ExPolygon, InfillIR, LayerAnnotation,
     LayerArenaError, LayerArenaSlot, LayerCollectionIR, LayerPlanIR, LightningTreeIR, MeshIR,
-    ObjectMesh, PerimeterIR, Point2, Point3, Polygon, RegionKey, RegionMapIR, RegionPlan,
-    RetractMode, SeamPlanIR, SliceIR, SlicedRegion, SupportGeometryIR, SupportGeometryKey,
-    SupportIR, SupportPlanIR, SurfaceClassificationIR, ToolChange, ZHop,
+    ObjectMesh, PerimeterIR, Point2, Point3, Polygon, PreparedRegionData, RegionKey, RegionMapIR,
+    RegionPlan, RetractMode, SeamPlanIR, SliceIR, SlicedRegion, SupportGeometryIR,
+    SupportGeometryKey, SupportIR, SupportPlanIR, SurfaceClassificationIR, ToolChange, ZHop,
 };
 
 /// Structured diagnostic emitted when a cross-family support body is dropped
@@ -555,6 +555,8 @@ fn estimated_lightning_tree_ir_bytes(ir: &LightningTreeIR) -> u64 {
 #[derive(Debug, Default)]
 pub struct LayerArena {
     slice: Option<SliceIR>,
+    prepared_regions: Option<Vec<PreparedRegionData>>,
+    prepared_perimeter_source_regions: Option<Vec<PreparedRegionData>>,
     perimeter: Option<PerimeterIR>,
     infill: Option<InfillIR>,
     support: Option<SupportIR>,
@@ -592,7 +594,10 @@ impl LayerArena {
 
     /// Stage `SliceIR` in the arena.
     pub fn set_slice(&mut self, ir: SliceIR) -> Result<(), LayerArenaError> {
-        set_arena_slot(&mut self.slice, ir, LayerArenaSlot::Slice)
+        set_arena_slot(&mut self.slice, ir, LayerArenaSlot::Slice)?;
+        self.prepared_regions = None;
+        self.prepared_perimeter_source_regions = None;
+        Ok(())
     }
 
     /// Borrow the staged `SliceIR`, if present.
@@ -603,7 +608,58 @@ impl LayerArena {
 
     /// Take ownership of the staged `SliceIR`, if present.
     pub fn take_slice(&mut self) -> Option<SliceIR> {
+        self.prepared_regions = None;
+        self.prepared_perimeter_source_regions = None;
         self.slice.take()
+    }
+
+    /// Prepare and borrow derived data for the slice's ordinary regions.
+    ///
+    /// Repeated calls reuse the arena-owned allocation until the slice lifecycle
+    /// invalidates it. Returns `None` when no slice is staged.
+    pub fn ensure_prepared_regions(
+        &mut self,
+        surface_classification: Option<&SurfaceClassificationIR>,
+    ) -> Option<&[PreparedRegionData]> {
+        if self.prepared_regions.is_none() {
+            let slice = self.slice.as_ref()?;
+            self.prepared_regions = Some(slicer_wasm_host::marshal::prepare_slice_regions(
+                slice,
+                surface_classification,
+            ));
+        }
+        self.prepared_regions.as_deref()
+    }
+
+    /// Borrow prepared ordinary-region data without computing it.
+    #[must_use]
+    pub fn prepared_regions(&self) -> Option<&[PreparedRegionData]> {
+        self.prepared_regions.as_deref()
+    }
+
+    /// Prepare and borrow derived data for reconstructed wall-owning regions.
+    ///
+    /// Repeated calls reuse the arena-owned allocation until the slice lifecycle
+    /// invalidates it. Returns `None` when no slice is staged.
+    pub fn ensure_prepared_perimeter_source_regions(
+        &mut self,
+        surface_classification: Option<&SurfaceClassificationIR>,
+    ) -> Option<&[PreparedRegionData]> {
+        if self.prepared_perimeter_source_regions.is_none() {
+            let slice = self.slice.as_ref()?;
+            self.prepared_perimeter_source_regions =
+                Some(slicer_wasm_host::marshal::prepare_perimeter_source_regions(
+                    slice,
+                    surface_classification,
+                ));
+        }
+        self.prepared_perimeter_source_regions.as_deref()
+    }
+
+    /// Borrow prepared perimeter-source data without computing it.
+    #[must_use]
+    pub fn prepared_perimeter_source_regions(&self) -> Option<&[PreparedRegionData]> {
+        self.prepared_perimeter_source_regions.as_deref()
     }
 
     /// Stage `PerimeterIR` in the arena.
@@ -752,6 +808,8 @@ impl LayerArena {
     /// `LayerCollectionIR` by `layer_executor` before this is called.
     pub fn reset(&mut self) {
         self.slice = None;
+        self.prepared_regions = None;
+        self.prepared_perimeter_source_regions = None;
         self.perimeter = None;
         self.infill = None;
         self.support = None;

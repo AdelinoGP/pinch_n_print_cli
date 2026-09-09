@@ -32,6 +32,10 @@ pub struct InfillOutputCollected {
     pub solid_path_origins: Vec<Option<OriginId>>,
     /// Origin tags parallel to `ironing_paths`.
     pub ironing_path_origins: Vec<Option<OriginId>>,
+    /// Raft-fill polygon groups emitted by the guest, one entry per push.
+    pub raft_fill: Vec<Vec<ExPolygon>>,
+    /// Origin tags parallel to `raft_fill`.
+    pub raft_fill_origins: Vec<Option<OriginId>>,
 }
 
 // ---------------------------------------------------------------------------

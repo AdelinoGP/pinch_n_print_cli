@@ -85,6 +85,9 @@ predicates = "3"
 [dev-dependencies.rectilinear-infill]
 path = "../../modules/core-modules/rectilinear-infill"
 
+[dev-dependencies.raft-default]
+path = "../../modules/core-modules/raft-default"
+
 [dev-dependencies.wave-overhangs]
 path = "../../modules/core-modules/wave-overhangs"
 

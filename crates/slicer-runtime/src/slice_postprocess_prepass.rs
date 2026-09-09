@@ -124,6 +124,13 @@ pub fn commit_shell_classification_builtin(
         .region_map()
         .ok_or(ShellClassificationError::RegionMapNotCommitted)?
         .clone();
+    let raft_layer_indices: HashSet<u32> = blackboard
+        .layer_plan()
+        .into_iter()
+        .flat_map(|plan| &plan.global_layers)
+        .filter(|layer| layer.is_raft)
+        .map(|layer| layer.index)
+        .collect();
 
     let mut new_vec: Vec<SliceIR> = old_arc.as_ref().clone();
 
@@ -131,7 +138,7 @@ pub fn commit_shell_classification_builtin(
     // (object, region) pair appears. Slices retain their `global_layer_index`
     // ordering by construction (built per the layer plan), so iteration order
     // is already plan-order.
-    let timelines = build_region_timelines(&new_vec);
+    let timelines = build_region_timelines(&new_vec, &raft_layer_indices);
 
     // Per-region computation produces a Vec<(slice_idx, RegionUpdate)> tagged
     // with (object_id, region_id). Reads are against the immutable `new_vec`
@@ -208,10 +215,12 @@ pub fn commit_shell_classification_builtin(
                 .extend(region.infill_areas.iter().cloned());
         }
     }
-    for slice in &mut new_vec {
+    // Each slice reads only the immutable lower-layer maps and mutates its own
+    // regions, so the axis is embarrassingly parallel.
+    new_vec.par_iter_mut().for_each(|slice| {
+        let global_layer_index = slice.global_layer_index;
         for region in &mut slice.regions {
-            let lower_layer_slices = slice
-                .global_layer_index
+            let lower_layer_slices = global_layer_index
                 .checked_sub(1)
                 .filter(|lower_index| {
                     object_layers
@@ -228,7 +237,7 @@ pub fn commit_shell_classification_builtin(
             // + RAW lower contours, overwriting the Slice-stage heuristic.
             update_external_bridge_orientation(region, lower_layer_slices);
         }
-    }
+    });
 
     // Packet 234a: qualify internal-bridge sites against the committed layer
     // below and author anchored bridge centerlines per region. Runs after the
@@ -260,6 +269,19 @@ struct RegionEdit {
     object_id: ObjectId,
     region_id: RegionId,
     update: RegionUpdate,
+}
+
+/// One layer that survived `gate_internal_bridge_sites`' qualification phase,
+/// carrying the geometry that phase needed to compute. Splitting qualification
+/// from commit is what lets the former run over the layer axis in parallel.
+struct LayerPrep {
+    timeline_position: usize,
+    slice_idx: usize,
+    layer_index: u32,
+    print_z: f32,
+    target_flow_height: f32,
+    qualify_spacing_mm: f32,
+    unsupported: Vec<ExPolygon>,
 }
 
 #[derive(Default)]
@@ -367,7 +389,7 @@ fn compute_region_updates(
     // never a neighbour's. Rayon's ordered `collect` keeps the produced order
     // equal to plan order, and each `slice_idx` is produced by exactly one
     // iteration, so the resulting map is identical to the previous sequential
-    // build. This is the dominant cost of the stage — two `difference` calls
+    // build. This pass performs two `difference` calls
     // and up to four round-join `offset`s (via `apply_opening`) per layer, on
     // full-layer geometry.
     let pass1: Vec<(usize, RegionUpdate)> = timeline
@@ -572,7 +594,7 @@ fn resolve_opening_radius(
 
 /// Packet 234a — canonical `bridge_over_infill` gather port (the support-math
 /// functions landed in `slicer_core::algos::bridge_over_infill`). For each
-/// region timeline, qualifies the upper layer's `top_solid_fill` surfaces
+/// region timeline, qualifies the upper layer's `internal_solid_fill` surfaces
 /// against the committed layer below and authors anchored internal-bridge
 /// polygons into `SlicedRegion::internal_bridge_areas` for the same-layer
 /// InfillPostProcess arm to construct and emit. Extends `bridge_areas` with the qualified
@@ -580,8 +602,9 @@ fn resolve_opening_radius(
 /// `bridge_areas` from the sparse zone at Perimeters commit) keeps module
 /// sparse infill out of the gated area.
 ///
-/// Sequential by construction: only this prepass legally sees every committed
-/// layer; per-layer stage arms run under rayon with private arenas. Config
+/// Qualification runs in parallel, followed by ordered serial commits that
+/// can read earlier layers' bridge areas. Only this prepass legally sees every
+/// committed layer; per-layer stage arms run with private arenas. Config
 /// resolves through `region_map.config_for(...).extensions`, mirroring how
 /// undeclared module keys are routed there by the host resolver (same keys the
 /// old arm read from the module config view).
@@ -716,46 +739,51 @@ fn gate_internal_bridge_sites(
         // filter is relaxed in any way (ibfLimited / ibfNofilter).
         let expansion_multiplier: f64 = if nofilter { 1.0 } else { 3.0 };
 
-        for &slice_idx in timeline {
+        // Ascending print_z for this timeline, resolved once. Both bridge-depth
+        // windows below are expressed against it, so neither has to materialise
+        // the layers it will not read.
+        let timeline_zs: Vec<f32> = timeline.iter().map(|&idx| slices[idx].z).collect();
+
+        // Phase A — qualification. Every step below reads only committed
+        // geometry (`slices`, and the two lower-layer maps built before this
+        // loop), and touches no field that phase B writes, so the layer axis is
+        // independent here even though the commit phase that follows is not.
+        // `unsupported_span_areas` alone is four full-layer clipper ops per
+        // layer and was the stage's largest serial block.
+        let slices_ro: &[SliceIR] = slices;
+        let preps: Vec<LayerPrep> = timeline
+            .par_iter()
+            .enumerate()
+            .filter_map(|(timeline_position, &slice_idx)| {
             // The first layer has no lower layer — nothing can span it.
-            let Some(lower_index) =
-                slices[slice_idx]
-                    .global_layer_index
-                    .checked_sub(1)
-                    .filter(|lower_index| {
-                        object_layers
-                            .get(object_id)
-                            .is_some_and(|layers| layers.contains(lower_index))
-                    })
-            else {
-                continue;
-            };
-            let Some(lower_fills) = lower_layer_polygons.get(&(object_id.clone(), lower_index))
-            else {
-                continue;
-            };
+            let lower_index = slices_ro[slice_idx]
+                .global_layer_index
+                .checked_sub(1)
+                .filter(|lower_index| {
+                    object_layers
+                        .get(object_id)
+                        .is_some_and(|layers| layers.contains(lower_index))
+                })?;
+            let lower_fills = lower_layer_polygons.get(&(object_id.clone(), lower_index))?;
             let empty_solids: Vec<ExPolygon> = Vec::new();
             let lower_solids = lower_layer_solids
                 .get(&(object_id.clone(), lower_index))
                 .unwrap_or(&empty_solids);
-            let layer_index = slices[slice_idx].global_layer_index;
-            let print_z = slices[slice_idx].z;
-            let timeline_position = timeline
-                .iter()
-                .position(|&candidate| candidate == slice_idx)
-                .unwrap_or(0);
-            let target_flow_height = slices[slice_idx]
+            let layer_index = slices_ro[slice_idx].global_layer_index;
+            let print_z = slices_ro[slice_idx].z;
+            let candidate = slices_ro[slice_idx]
                 .regions
                 .iter()
                 .find(|candidate| {
                     candidate.object_id == *object_id && candidate.region_id == *region_id
-                })
-                .and_then(|_candidate| {
+                });
+            let target_flow_height = candidate
+                .and_then(|candidate| {
                     let key = RegionKey {
                         global_layer_index: layer_index,
                         object_id: object_id.clone(),
                         region_id: *region_id,
-                        variant_chain: _candidate.variant_chain.clone(),
+                        variant_chain: candidate.variant_chain.clone(),
                     };
                     let key = if region_map.entries.contains_key(&key) {
                         key
@@ -789,10 +817,78 @@ fn gate_internal_bridge_sites(
                     layer_index,
                     print_z
                 );
-                continue;
+                return None;
             };
+            // Both early-outs below are hoisted ahead of the depth gather and
+            // its offsets. They decide the layer entirely from geometry already
+            // in hand, and on ordinary models they reject the large majority of
+            // layer-visits (see DEV-148's skip histogram) — running them last
+            // meant paying for two full-layer `offset`s per rejected layer and
+            // throwing the result away. Guard order is preserved so the skip
+            // histogram is unchanged.
+            if candidate.is_none_or(|candidate| candidate.internal_solid_fill.is_empty())
+            {
+                log::debug!(
+                    "internal bridge skip object={} region={} layer={} print_z={} reason=internal_solid_fill_empty",
+                    object_id,
+                    region_id,
+                    layer_index,
+                    print_z
+                );
+                return None;
+            }
+            let unsupported = slicer_core::algos::bridge_over_infill::unsupported_span_areas(
+                lower_fills,
+                lower_solids,
+                qualify_spacing_mm,
+                expansion_multiplier,
+            );
+            if unsupported.is_empty() {
+                log::debug!(
+                    "internal bridge skip object={} region={} layer={} print_z={} reason=unsupported_empty",
+                    object_id,
+                    region_id,
+                    layer_index,
+                    print_z
+                );
+                return None;
+            }
+            Some(LayerPrep {
+                timeline_position,
+                slice_idx,
+                layer_index,
+                print_z,
+                target_flow_height,
+                qualify_spacing_mm,
+                unsupported,
+            })
+            })
+            .collect();
+
+        // Phase B — commit. Serial by necessity: `lower_candidates` reads the
+        // `internal_bridge_areas` that earlier layers of this same pass wrote.
+        for LayerPrep {
+            timeline_position,
+            slice_idx,
+            layer_index,
+            print_z,
+            target_flow_height,
+            qualify_spacing_mm,
+            unsupported,
+        } in preps
+        {
+            // `gather_areas_w_depth` reads at most a one-flow-height suffix, so
+            // materialise only that window: building a `BridgeDepthLayer` clones
+            // five polygon sets per layer, and doing it for the whole stack below
+            // made this loop quadratic in layer count.
+            let depth_start = slicer_core::algos::bridge_over_infill::depth_window_start(
+                &timeline_zs[..=timeline_position],
+                timeline_position,
+                target_flow_height,
+                slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
+            );
             let depth_layers: Vec<slicer_core::algos::bridge_over_infill::BridgeDepthLayer> =
-                timeline[..=timeline_position]
+                timeline[depth_start..=timeline_position]
                     .iter()
                     .filter_map(|&lower_idx| {
                         let lower = slices[lower_idx].regions.iter().find(|candidate| {
@@ -826,9 +922,16 @@ fn gate_internal_bridge_sites(
                 target_flow_height,
                 slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
             );
+            // Same reasoning as `depth_start`: the callee keeps only layers at or
+            // above `print_z - target_flow_height`.
+            let filled_start = slicer_core::algos::bridge_over_infill::filled_window_start(
+                &timeline_zs[..timeline_position],
+                print_z,
+                target_flow_height,
+            );
             let lower_candidates: Vec<
                 slicer_core::algos::bridge_over_infill::BridgeCandidateLayer,
-            > = timeline[..timeline_position]
+            > = timeline[filled_start..timeline_position]
                 .iter()
                 .filter_map(|&lower_idx| {
                     let lower = slices[lower_idx].regions.iter().find(|candidate| {
@@ -855,49 +958,13 @@ fn gate_internal_bridge_sites(
                 OffsetJoinType::Miter,
                 0.0,
             );
-            let internal_unsupported_area = if deep_infill_area.is_empty() {
-                Vec::new()
-            } else {
-                offset(
-                    &deep_infill_area,
-                    -(4.5 * qualify_spacing_mm),
-                    OffsetJoinType::Miter,
-                    0.0,
-                )
-            };
             let Some(region) = find_region_mut(&mut slices[slice_idx], object_id, *region_id)
             else {
                 continue;
             };
-            if region.internal_solid_fill.is_empty() {
-                log::debug!(
-                    "internal bridge skip object={} region={} layer={} print_z={} reason=internal_solid_fill_empty",
-                    object_id,
-                    region_id,
-                    layer_index,
-                    print_z
-                );
-                continue;
-            }
             // Canonical gather arithmetic: closing of lower fills shrunk by
             // mult*spacing minus grown lower solids (Step 1 port), then the
             // per-surface gates with the expand(4*spacing) clip.
-            let unsupported = slicer_core::algos::bridge_over_infill::unsupported_span_areas(
-                lower_fills,
-                lower_solids,
-                qualify_spacing_mm,
-                expansion_multiplier,
-            );
-            if unsupported.is_empty() {
-                log::debug!(
-                    "internal bridge skip object={} region={} layer={} print_z={} reason=unsupported_empty",
-                    object_id,
-                    region_id,
-                    layer_index,
-                    print_z
-                );
-                continue;
-            }
             let mut qualified: Vec<ExPolygon> = Vec::new();
             for surface in &region.internal_solid_fill {
                 let expanded_candidate = offset(
@@ -924,6 +991,18 @@ fn gate_internal_bridge_sites(
                     qualified.extend(polys);
                 }
             }
+            // Only the surviving candidates are filtered against this erosion,
+            // so an empty candidate set skips the offset entirely.
+            let internal_unsupported_area = if qualified.is_empty() || deep_infill_area.is_empty() {
+                Vec::new()
+            } else {
+                offset(
+                    &deep_infill_area,
+                    -(4.5 * qualify_spacing_mm),
+                    OffsetJoinType::Miter,
+                    0.0,
+                )
+            };
             qualified.retain(|polygon| {
                 !intersection(std::slice::from_ref(polygon), &internal_unsupported_area).is_empty()
             });
@@ -971,9 +1050,18 @@ fn gate_internal_bridge_sites(
     }
 }
 
-fn build_region_timelines(slices: &[SliceIR]) -> HashMap<(ObjectId, RegionId), Vec<usize>> {
+fn build_region_timelines(
+    slices: &[SliceIR],
+    raft_layer_indices: &HashSet<u32>,
+) -> HashMap<(ObjectId, RegionId), Vec<usize>> {
     let mut timelines: HashMap<(ObjectId, RegionId), Vec<usize>> = HashMap::new();
     for (idx, slice) in slices.iter().enumerate() {
+        // Raft layers may reference the model's regions so the raft module can
+        // key its output, but they are not part of the model's shell timeline.
+        // In particular, they must not consume the bottom-shell depth budget.
+        if raft_layer_indices.contains(&slice.global_layer_index) {
+            continue;
+        }
         for region in &slice.regions {
             timelines
                 .entry((region.object_id.clone(), region.region_id))
@@ -1218,6 +1306,82 @@ mod tests {
     }
 
     /// The parallel passes must not let worker scheduling reach the output.
+    #[test]
+    fn internal_bridge_gate_is_thread_count_independent_with_mixed_skips() {
+        let mut snapshot: Vec<_> = (0..8)
+            .map(|i| slice_with(i, vec![rect(0.0, 20.0)]))
+            .collect();
+        // L1, L3 and L7 bridge over sparse layers. L4 is solid but fully
+        // supported by L3; L2 has neither a solid candidate nor unsupported
+        // area, exercising the overlapping early-out conditions as well.
+        for index in [1, 3, 4, 7] {
+            snapshot[index].regions[0].internal_solid_fill = vec![rect(0.0, 20.0)];
+        }
+        let mut region_map = RegionMapIR::default();
+        let config = region_map.intern_config(slicer_ir::ResolvedConfig {
+            sparse_infill_density: 0.2,
+            line_width: 0.4,
+            ..Default::default()
+        });
+        for slice in &snapshot {
+            region_map.entries.insert(
+                RegionKey {
+                    global_layer_index: slice.global_layer_index,
+                    object_id: "o".into(),
+                    region_id: 0,
+                    variant_chain: Vec::new(),
+                },
+                slicer_ir::RegionPlan {
+                    config,
+                    ..Default::default()
+                },
+            );
+        }
+        let timelines = build_region_timelines(&snapshot, &HashSet::new());
+        let object_layers = HashMap::from([("o".into(), (0..8).collect())]);
+        let lower_fills = snapshot
+            .iter()
+            .map(|slice| {
+                (
+                    ("o".into(), slice.global_layer_index),
+                    slice.regions[0].infill_areas.clone(),
+                )
+            })
+            .collect();
+        let run = |threads| {
+            let mut slices = snapshot.clone();
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap()
+                .install(|| {
+                    gate_internal_bridge_sites(
+                        &mut slices,
+                        &timelines,
+                        &region_map,
+                        &object_layers,
+                        &lower_fills,
+                    );
+                });
+            let qualified: Vec<_> = slices
+                .iter()
+                .filter(|slice| !slice.regions[0].internal_bridge_areas.is_empty())
+                .map(|slice| slice.global_layer_index)
+                .collect();
+            assert_eq!(
+                qualified,
+                vec![1, 3, 7],
+                "qualification must not be vacuous"
+            );
+            serde_json::to_vec(&slices).expect("serialize gated slices")
+        };
+        let serial = run(1);
+        for _ in 0..4 {
+            assert_eq!(serial, run(4), "worker scheduling changed bridge output");
+        }
+    }
+
+    /// The parallel shell passes must not let worker scheduling reach the output.
     #[test]
     fn repeated_runs_are_identical() {
         let snapshot: Vec<SliceIR> = (0..24u32)

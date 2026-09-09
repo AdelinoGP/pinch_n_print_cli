@@ -15,7 +15,9 @@ use slicer_ir::{
 };
 use slicer_wasm_host::{
     exact_z_query::ExactZQueryService,
-    support_aggregation::{try_aggregate_support_plans, SupportAggregationInput},
+    support_aggregation::{
+        try_aggregate_support_plans, SupportAggregationInput, SupportPlanProducer,
+    },
     support_territory::SUPPORT_TERRITORY_CLEARANCE_KEY,
 };
 
@@ -99,6 +101,52 @@ fn plan(entry: SupportPlanEntry) -> SupportPlanIR {
     }
 }
 
+/// Ownership at the merge point is default-deny: a region with no
+/// `family_assignments` row has no owner, so a fixture that expects its entries
+/// to be RETAINED must state who owns what. This grants every entry's
+/// `(object_id, region_id)` to that entry's own family -- the "no contested
+/// region" baseline these overlap fixtures implicitly assumed before ownership
+/// was declared. It publishes no `support_territory`, so the territory clipper
+/// stays disarmed and the legacy overlap guard is exercised unchanged.
+fn family_assignments_for(entries: &[SupportPlanEntry]) -> SupportAnalysisIR {
+    SupportAnalysisIR {
+        family_assignments: entries
+            .iter()
+            .map(|entry| {
+                (
+                    (entry.object_id.clone(), entry.region_id),
+                    entry.family_id.clone(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>(),
+        ..SupportAnalysisIR::default()
+    }
+}
+
+/// One producer per plan, holding the `support-family:<id>` claim for every
+/// family that plan writes. Index-parallel to `plans` by construction.
+fn producers_for(plans: &[SupportPlanIR]) -> Vec<SupportPlanProducer> {
+    plans
+        .iter()
+        .map(|plan| SupportPlanProducer {
+            module_id: "test.support-writer".into(),
+            claims: plan
+                .entries
+                .iter()
+                .map(|entry| format!("support-family:{}", entry.family_id))
+                .collect(),
+        })
+        .collect()
+}
+
+/// Every entry across `plans`, in plan order.
+fn all_entries(plans: &[SupportPlanIR]) -> Vec<SupportPlanEntry> {
+    plans
+        .iter()
+        .flat_map(|plan| plan.entries.iter().cloned())
+        .collect()
+}
+
 /// Two flat triangles, one per object. A coplanar triangle has no cross-section
 /// at any Z, so `occupancy` is empty and `validate_entry`'s exact-Z rejection
 /// cannot fire: these tests isolate the cross-family overlap guard.
@@ -138,25 +186,28 @@ fn exact_z(object_ids: &[&str]) -> ExactZQueryService {
 #[test]
 fn different_objects_choosing_different_families_both_survive_xy_overlap() {
     let exact_z = exact_z(&["object-a", "object-b"]);
+    let plans = vec![
+        plan(entry(
+            "tree",
+            "tree-body",
+            "object-a",
+            0,
+            polygon(100, 100, 300, 300),
+        )),
+        plan(entry(
+            "traditional",
+            "normal-body",
+            "object-b",
+            0,
+            polygon(200, 200, 400, 400),
+        )),
+    ];
+    let owned = family_assignments_for(&all_entries(&plans));
     let result = try_aggregate_support_plans(SupportAggregationInput {
-        plans: vec![
-            plan(entry(
-                "tree",
-                "tree-body",
-                "object-a",
-                0,
-                polygon(100, 100, 300, 300),
-            )),
-            plan(entry(
-                "traditional",
-                "normal-body",
-                "object-b",
-                0,
-                polygon(200, 200, 400, 400),
-            )),
-        ],
+        producers: producers_for(&plans),
+        plans,
         exact_z: &exact_z,
-        territory: None,
+        territory: Some(&owned),
     })
     .expect("structured aggregation");
 
@@ -179,25 +230,34 @@ fn different_objects_choosing_different_families_both_survive_xy_overlap() {
 #[test]
 fn different_layers_of_one_object_both_survive_xy_overlap() {
     let exact_z = exact_z(&["object"]);
+    let mut tree = entry(
+        "tree",
+        "tree-body",
+        "object",
+        0,
+        polygon(100, 100, 300, 300),
+    );
+    tree.region_id = 0;
+    let mut traditional = entry(
+        "traditional",
+        "normal-body",
+        "object",
+        7,
+        polygon(200, 200, 400, 400),
+    );
+    // `family_assignments` is keyed `(object_id, region_id)` and is
+    // layer-independent, so two families on one object must name two regions.
+    // The overlap guard this test exercises is scoped to
+    // `(global_layer_index, object_id)` and ignores `region_id`, so splitting
+    // the regions leaves the property under test untouched.
+    traditional.region_id = 1;
+    let plans = vec![plan(tree), plan(traditional)];
+    let owned = family_assignments_for(&all_entries(&plans));
     let result = try_aggregate_support_plans(SupportAggregationInput {
-        plans: vec![
-            plan(entry(
-                "tree",
-                "tree-body",
-                "object",
-                0,
-                polygon(100, 100, 300, 300),
-            )),
-            plan(entry(
-                "traditional",
-                "normal-body",
-                "object",
-                7,
-                polygon(200, 200, 400, 400),
-            )),
-        ],
+        producers: producers_for(&plans),
+        plans,
         exact_z: &exact_z,
-        territory: None,
+        territory: Some(&owned),
     })
     .expect("structured aggregation");
 
@@ -234,10 +294,13 @@ fn different_anchor_planes_on_one_dispatch_layer_both_survive() {
     );
     intermediate.anchor_z = 21_000;
 
+    let plans = vec![plan(lower), plan(intermediate)];
+    let owned = family_assignments_for(&all_entries(&plans));
     let result = try_aggregate_support_plans(SupportAggregationInput {
-        plans: vec![plan(lower), plan(intermediate)],
+        producers: producers_for(&plans),
+        plans,
         exact_z: &exact_z,
-        territory: None,
+        territory: Some(&owned),
     })
     .expect("structured aggregation");
 
@@ -274,10 +337,15 @@ fn same_object_same_layer_cross_family_overlap_without_territory_still_rejected(
         polygon(200, 200, 400, 400),
     );
     traditional.region_id = 1;
+    let plans = vec![plan(tree), plan(traditional)];
+    // Both regions are legitimately owned by their writers; what is absent is
+    // published `support_territory`, so nothing can arbitrate the overlap.
+    let owned = family_assignments_for(&all_entries(&plans));
     let result = try_aggregate_support_plans(SupportAggregationInput {
-        plans: vec![plan(tree), plan(traditional)],
+        producers: producers_for(&plans),
+        plans,
         exact_z: &exact_z,
-        territory: None,
+        territory: Some(&owned),
     })
     .expect("structured aggregation");
 
@@ -337,8 +405,10 @@ fn same_object_same_layer_cross_family_overlap_with_territory_is_clipped() {
         )]),
         ..SupportAnalysisIR::default()
     };
+    let plans = vec![plan(tree), plan(traditional)];
     let result = try_aggregate_support_plans(SupportAggregationInput {
-        plans: vec![plan(tree), plan(traditional)],
+        producers: producers_for(&plans),
+        plans,
         exact_z: &exact_z,
         territory: Some(&analysis),
     })
@@ -434,8 +504,10 @@ fn territory_on_another_layer_does_not_disarm_the_guard() {
         )]),
         ..SupportAnalysisIR::default()
     };
+    let plans = vec![plan(tree), plan(traditional)];
     let result = try_aggregate_support_plans(SupportAggregationInput {
-        plans: vec![plan(tree), plan(traditional)],
+        producers: producers_for(&plans),
+        plans,
         exact_z: &exact_z,
         territory: Some(&analysis),
     })

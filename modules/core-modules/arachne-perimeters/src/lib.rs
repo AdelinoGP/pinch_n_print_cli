@@ -479,7 +479,7 @@ impl LayerModule for ArachnePerimeters {
         // is_initial_layer; both flags are kept distinct so downstream flag
         // derivation (is_top_or_bottom_layer = is_bottom_layer ||
         // is_topmost_layer, G10) can be wired later — and both fire on layer 0.
-        // DEV-124: canonical `process_arachne` (`PerimeterGenerator.cpp`) sets
+        // Canonical `process_arachne` (`PerimeterGenerator.cpp`) sets
         // `is_bottom_layer = (this->layer_id == object_config->raft_layers)` —
         // the first *printed* layer, which is 0 only when no raft is configured.
         // PnP's equivalent of canonical `raft_layers` is `support_raft_layers`
@@ -569,7 +569,7 @@ impl LayerModule for ArachnePerimeters {
         // in the OverhangRestricted / LimitedBeadingStrategy logic). Placed
         // after the `alternate_extra_wall` block above so the clamp wins.
         //
-        // DEV-124: the gate is `is_bottom_layer` alone, matching canonical's
+        // The gate is `is_bottom_layer` alone, matching canonical's
         // `if (is_bottom_layer && only_one_wall_first_layer) loop_number = 0;`.
         // The former `params.is_initial_layer ||` disjunct was a PnP addition:
         // with no raft the two flags are identical (both `layer_index == 0`), so

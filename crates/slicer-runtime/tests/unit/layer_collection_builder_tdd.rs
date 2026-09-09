@@ -684,6 +684,7 @@ fn macro_drain_invokes_host_get_ordered_entities_exactly_once() {
                 active_regions: Vec::new(),
                 has_nonplanar: false,
                 is_sync_layer: false,
+                is_raft: false,
             },
         ]),
         ..Default::default()

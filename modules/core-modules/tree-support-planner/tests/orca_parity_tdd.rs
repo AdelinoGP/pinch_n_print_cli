@@ -1414,13 +1414,16 @@ fn contact_count_follows_overhang_area_not_triangle_count() {
     let region_small = make_region_segmentation("small", 11);
     let region_large = make_region_segmentation("large", 11);
     let support_geometry = SupportGeometryView { entries: vec![] };
+    let small_analysis = tree_analysis("small");
+    let large_analysis = tree_analysis("large");
 
     let mut small_output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry(
+        .run_support_geometry_with_analysis(
             &[overhang_plate_fixture("small")],
             &layer_plan,
             &region_small,
+            &small_analysis,
             &support_geometry,
             &mut small_output,
             &ConfigView::new(),
@@ -1434,10 +1437,11 @@ fn contact_count_follows_overhang_area_not_triangle_count() {
     }
     let mut large_output = SupportGeometryOutput::new();
     planner
-        .run_support_geometry(
+        .run_support_geometry_with_analysis(
             &[large],
             &layer_plan,
             &region_large,
+            &large_analysis,
             &support_geometry,
             &mut large_output,
             &ConfigView::new(),

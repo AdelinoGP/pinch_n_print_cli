@@ -7,7 +7,7 @@ use slicer_ir::{ModuleId, SemVer, StageId};
 use crate::dag::ModuleNode;
 use crate::manifest::{DiagnosticLevel, LoadedModule};
 
-/// The four fill-role claim IDs registered by packet 37.
+/// The four configured fill-role claim IDs registered by the scheduler.
 pub const FILL_CLAIM_IDS: &[&str] = &[
     "claim:top-fill",
     "claim:bottom-fill",
@@ -34,7 +34,7 @@ pub struct FillHolders<'a> {
 
 impl<'a> FillHolders<'a> {
     /// Returns the configured module ID for the given fill claim, or `None` if
-    /// the claim is not one of the four fill-role claims.
+    /// the claim is not one of the configured fill-role claims.
     pub fn holder_for(&self, claim: &str) -> Option<&str> {
         match claim {
             "claim:top-fill" => Some(self.top),
@@ -74,15 +74,19 @@ pub fn module_id_matches_holder(module_id: &str, holder: &str) -> bool {
 ///
 /// Inputs:
 /// - `module_id` — short module name (e.g. `"rectilinear-infill"`). Matched
-///   case-sensitively against `holders.holder_for(claim)`.
+///   case-sensitively against `holders.holder_for(claim)`, except for
+///   `claim:raft-fill`, which is held by the module that declares it.
 /// - `declared` — raw `[claims].holds` array from the module manifest. Entries
 ///   that are not in `FILL_CLAIM_IDS` (e.g. `"infill-generator"`) are ignored
-///   for fill-role purposes; only the four fill claims gate emission.
+///   for fill-role purposes; `claim:raft-fill` is optional and manifest-
+///   declared, while the four configured fill claims gate emission.
 /// - `holders` — global (or per-region) configured holder per claim.
 ///
 /// Output: the subset of declared fill-role claims that this module actually
 /// holds in this scope. An empty slice means "this module holds nothing for
 /// fill roles" — the SDK's `should_emit` convention then suppresses emission.
+/// The optional `claim:raft-fill` claim is accepted from its declaring module;
+/// the global conflict pass enforces that it has at most one holder.
 ///
 /// Note: the empty-set "holds all" convention applied at the SDK boundary is
 /// driven by whether `held_claims` was *populated at all*; this resolver is the
@@ -94,11 +98,14 @@ pub fn resolve_held_claims(
 ) -> Vec<String> {
     declared
         .iter()
-        .filter(|claim| FILL_CLAIM_IDS.contains(&claim.as_str()))
         .filter(|claim| {
-            holders
-                .holder_for(claim)
-                .is_some_and(|h| module_id_matches_holder(module_id, h))
+            FILL_CLAIM_IDS.contains(&claim.as_str()) || claim.as_str() == "claim:raft-fill"
+        })
+        .filter(|claim| {
+            claim.as_str() == "claim:raft-fill"
+                || holders
+                    .holder_for(claim)
+                    .is_some_and(|h| module_id_matches_holder(module_id, h))
         })
         .cloned()
         .collect()
@@ -410,6 +417,12 @@ pub enum DagValidationPass {
     /// Pass 2.
     GlobalClaimConflicts,
     /// Pass 3.
+    ///
+    /// Production constructs only `ConflictScope::Global` claim holders and has no
+    /// region ids available at startup, so this pass always runs on an empty set.
+    /// Per-region claim uniqueness for support is enforced instead at the
+    /// support-plan commit seam — host aggregation in
+    /// `crates/slicer-wasm-host/src/support_aggregation.rs`.
     PerRegionClaimConflicts,
     /// Pass 4.
     IncompatibilityDeclarations,

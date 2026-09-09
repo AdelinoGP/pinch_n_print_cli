@@ -1,7 +1,7 @@
 # Support Generation Remediation — Approved Plan
 
 Status: approved (2026-08-11, grill-with-docs session)
-Source: `docs/specs/support-generation-defect-verified-findings.md` (verified accurate).
+Source: `docs/specs/_OLD/support-generation-defect-verified-findings.md` (verified accurate).
 
 ## Problem
 
@@ -18,7 +18,7 @@ root causes (RC-1..RC-4) plus expanded scope (raft geometry, interface layers,
 - **RC-2** — traditional-support and tree-support fallback fillers fill the whole
   region polygon, never clipped to `overhang_areas()`.
 - **RC-3** — `needs_support` hardcoded `true` at the WIT boundary
-  (`crates/slicer-wasm-host/src/marshal/in_.rs:410`); `SlicedRegion` has no field.
+  (`crates/slicer-wasm-host/src/marshal/in_.rs`); `SlicedRegion` has no field.
 - **RC-4** — `tapered_radius` returns 0 at `dist_to_top == 0`; zero-width contact tips.
 
 ## Design decisions (resolved)
@@ -56,10 +56,10 @@ source-adjudicated + structural invariants + human-authored gcode visual-debug
 
 | # | packet slug | goal (one sentence) | task ids | depends on | status | packet dir |
 |---|-------------|---------------------|----------|------------|--------|------------|
-| 1 | support-planner-defect-fix | Fix RC-1 (lone-node vertical columns) and RC-4 (tip-radius floor) in the support-planner. | TASK-322 | - | superseded | docs/spec_packets/213-support-planner-defect-fix/ |
-| 2 | support-fallback-overhang-clip | Fix RC-2 (clip fallback fill to overhang_areas) and RC-3 (needs_support = has overhang) in the fallback fillers and marshalling boundary. | TASK-323 | - | superseded | docs/spec_packets/214-support-fallback-overhang-clip/ |
-| 3 | raft-geometry | Add a new raft-generator module (Layer::Infill, claim:raft-fill per ADR-0009) emitting full raft geometry (object footprint + margin, first/base/interface pattern) as SupportIR.raft_paths, and migrate IR layer-index fields (LayerPlanIR/SliceIR/SupportIR) from u32 to i32 for negative raft prefix layers. | TASK-324 | #1 | absorbed | docs/spec_packets/240-support-raft/ |
-| 4 | support-interface-layers | Refactor interface layers to planner-plans/module-generates and implement bottom interface layers, removing the code-1003 warning. | TASK-325 | #1 | absorbed | docs/spec_packets/238c-support-renderer-flow-interfaces/ |
+| 1 | support-planner-defect-fix | Fix RC-1 (lone-node vertical columns) and RC-4 (tip-radius floor) in the support-planner. | TASK-322 | - | superseded | docs/spec_packets/_OLD/213-support-planner-defect-fix.md |
+| 2 | support-fallback-overhang-clip | Fix RC-2 (clip fallback fill to overhang_areas) and RC-3 (needs_support = has overhang) in the fallback fillers and marshalling boundary. | TASK-323 | - | superseded | docs/spec_packets/_OLD/214-support-fallback-overhang-clip.md |
+| 3 | raft-geometry | Add a new raft-generator module (Layer::Infill, claim:raft-fill per ADR-0009) emitting full raft geometry (object footprint + margin, first/base/interface pattern) as SupportIR.raft_paths, and migrate IR layer-index fields (LayerPlanIR/SliceIR/SupportIR) from u32 to i32 for negative raft prefix layers. | TASK-324 | #1 | absorbed | docs/spec_packets/_OLD/240a-support-raft-substrate.md + .../240b-support-raft-module/ |
+| 4 | support-interface-layers | Refactor interface layers to planner-plans/module-generates and implement bottom interface layers, removing the code-1003 warning. | TASK-325 | #1 | absorbed | docs/spec_packets/_OLD/238c-support-renderer-flow-interfaces.md |
 | 5 | support-type-variants | Implement the 4-variant support model (tree/classic × auto/manual) via a planner mode flag, keeping the 2-way module split. | TASK-326 | #1 | absorbed | none |
-| 6 | support-gcode-e2e | Add visual-debug gcode-mode end-to-end verification that fixed support flows to final G-code with correct roles. | TASK-327 | #1,#2,#3,#4 | superseded | docs/spec_packets/242-support-family-orca-closure/ |
+| 6 | support-gcode-e2e | Add visual-debug gcode-mode end-to-end verification that fixed support flows to final G-code with correct roles. | TASK-327 | #1,#2,#3,#4 | superseded | docs/spec_packets/_OLD/242-support-family-orca-closure.md |
 | 7 | organic-tree-engine | Port the organic tree engine (canonical `TreeSupport3D.cpp`, ~4200 lines, plus its `TreeModelVolumes` avoidance model) so `support_style=default/organic` on tree types can run the canonical engine and retire the DEV-156 Strong alias. | TASK-441 | #4 | queued | none |

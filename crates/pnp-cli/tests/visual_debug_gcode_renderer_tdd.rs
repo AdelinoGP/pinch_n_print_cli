@@ -403,6 +403,105 @@ G1 X10 Y0 E3.0 F1200
     }
 }
 
+#[test]
+fn gcode_support_type_markers_render_alongside_layer_images() {
+    let gcode = "\
+;LAYER_CHANGE
+;Z:0.2
+G1 Z0.2 F600
+M82
+;TYPE:Outer wall
+G1 X0 Y0 F3000
+G1 X10 Y0 E1.0 F1200
+;TYPE:Support
+G1 X10 Y10 E2.0
+;TYPE:Support interface
+G1 X0 Y10 E3.0
+;TYPE:Outer wall
+G1 X0 Y0 E4.0
+";
+    let tmp = TempDir::new().expect("tempdir");
+    let gcode_path = write_gcode(tmp.path(), "support.gcode", gcode);
+    let output = tmp.path().join("bundle");
+
+    let parsed = parse_gcode(gcode);
+    let layer = parsed
+        .layers
+        .iter()
+        .find(|layer| layer.layer_index == 0)
+        .expect("support fixture layer should be parsed");
+    let extrusion_roles: Vec<&str> = layer
+        .segments
+        .iter()
+        .filter(|segment| segment.is_extrusion)
+        .map(|segment| segment.role.as_str())
+        .collect();
+    assert!(
+        extrusion_roles.contains(&"Outer wall")
+            && extrusion_roles.contains(&"Support")
+            && extrusion_roles.contains(&"Support interface"),
+        "the layer must retain every marker family on its extrusion segments; got {extrusion_roles:?}"
+    );
+
+    let req = gcode_request(
+        gcode_path,
+        vec![0],
+        vec!["final_gcode"],
+        vec![VisualizationSpec::Name("filament_lines".to_string())],
+        1,
+        None,
+    );
+
+    let manifest_path = run_visual_debug(req, &output, false)
+        .expect("support and support-interface markers should render");
+    let manifest = manifest_at(&manifest_path);
+    let images = manifest["images"].as_array().expect("images array");
+    let image = images
+        .iter()
+        .find(|image| image["layer_index"] == 0 && image["visualization"] == "filament_lines")
+        .expect("the support-marked layer must produce a filament-lines image");
+    let png_path = image["png_path"].as_str().expect("png_path is a string");
+    let bytes = fs::read(output.join(png_path)).expect("the rendered PNG must exist");
+
+    // Keep geometry and all other roles fixed, but erase the support markers.
+    // A renderer that ignores ;TYPE: comments would produce identical pixels;
+    // role-sensitive rendering must preserve a visible distinction.
+    let control_gcode = gcode
+        .replace(";TYPE:Support interface", ";TYPE:Outer wall")
+        .replace(";TYPE:Support", ";TYPE:Outer wall");
+    let control_path = write_gcode(tmp.path(), "support-control.gcode", &control_gcode);
+    let control_output = tmp.path().join("bundle-control");
+    let control_manifest_path = run_visual_debug(
+        gcode_request(
+            control_path,
+            vec![0],
+            vec!["final_gcode"],
+            vec![VisualizationSpec::Name("filament_lines".to_string())],
+            1,
+            None,
+        ),
+        &control_output,
+        false,
+    )
+    .expect("the control layer should render");
+    let control_manifest = manifest_at(&control_manifest_path);
+    let control_image = control_manifest["images"]
+        .as_array()
+        .expect("control images array")
+        .iter()
+        .find(|image| image["layer_index"] == 0 && image["visualization"] == "filament_lines")
+        .expect("the control layer must produce a filament-lines image");
+    let control_png_path = control_image["png_path"]
+        .as_str()
+        .expect("control png_path is a string");
+    let control_bytes = fs::read(control_output.join(control_png_path))
+        .expect("the control rendered PNG must exist");
+    assert_ne!(
+        bytes, control_bytes,
+        "support/interface markers must affect the rendered layer image alongside outer-wall moves"
+    );
+}
+
 // ─────────────────────────────── AC-5 ────────────────────────────────────────
 
 #[test]

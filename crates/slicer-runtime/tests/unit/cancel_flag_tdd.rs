@@ -128,6 +128,7 @@ fn one_layer_plan() -> ExecutionPlan {
                 active_regions: Vec::new(),
                 has_nonplanar: false,
                 is_sync_layer: false,
+                is_raft: false,
             }
         }]),
         ..Default::default()

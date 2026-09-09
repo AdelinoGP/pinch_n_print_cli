@@ -17,15 +17,17 @@ fn schema_version_is_current() {
     // `SlicedRegion.external_contour` field + its WIT accessor; see the docs/02
     // Contract note for why removal ships minor here), and 4.7.0 (packet 112 —
     // additive `ExtrusionLine`/`ExtrusionJunction` IR), and 4.8.0 (packet 233 —
-    // additive `InternalBridgeInfill`). This pin tracks the live constant.
+    // additive `InternalBridgeInfill`), and 4.9.0 (packet 240a — additive
+    // `GlobalLayer.is_raft` + `SlicedRegion.raft_fill`). This pin tracks the
+    // live constant.
     assert_eq!(
         CURRENT_SLICE_IR_SCHEMA_VERSION,
         SemVer {
             major: 4,
-            minor: 8,
+            minor: 9,
             patch: 0
         },
-        "CURRENT_SLICE_IR_SCHEMA_VERSION must track the live constant (4.8.0)"
+        "CURRENT_SLICE_IR_SCHEMA_VERSION must track the live constant (4.9.0)"
     );
 }
 

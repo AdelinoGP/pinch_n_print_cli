@@ -24,7 +24,7 @@ Additionally, the xtask is invoked from the agentic build hook. Hook latency mat
 - Artefact output paths are per-tree conventions, stable across the packet lifetime:
   - core-modules: `modules/core-modules/<dir>/<dir>.wasm`
   - test-guests:  `crates/slicer-wasm-host/test-guests/<crate-name>.component.wasm`
-- Freshness is computed by comparing the artefact's mtime against the latest mtime of: `crates/slicer-schema/wit/**/*.wit` + `crates/slicer-{macros,sdk,ir,schema}/{src,Cargo.toml}` + per-guest sources. `slicer-core` and `slicer-helpers` are explicitly NOT tracked (the former is optional per guest; the latter is host-only).
+- [Historical] Freshness was originally computed from an artefact-mtime list of WIT and shared crate paths; the current rule is the packet-231 per-guest dependency closure and artifact-verified WIT check recorded in the amendment below.
 - The xtask crate's `Cargo.toml` declares only `walkdir` and `toml` as deps. It MUST NOT depend on `slicer-runtime`, `slicer-wasm-host`, `wasmtime`, `pyo3`, `truck-stepio`, or `meshopt`.
 
 ## Consequences
@@ -69,3 +69,8 @@ package-qualified declarations against canonical — disagrees; WIT staleness no
 longer rebuilds all guests. The Consequences claim that touching `slicer-core`
 avoids a rebuild storm is superseded. The `shared_crates` / mtime language is
 retained as historical record.
+
+The closure walks path dependencies from normal, target-specific, and
+build-dependency tables, includes optional path dependencies, excludes
+dev-dependencies, and canonicalizes and deduplicates manifests with cycle
+protection.

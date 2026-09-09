@@ -108,7 +108,7 @@ vocabulary) and in the authoritative contract docs (`docs/02_ir_schemas.md`,
 ### Inputs
 
 - One overhanging object printed with `enable_support = true`.
-- Module set installs both `support-planner` (PrePass) and `tree-support`
+- Module set installs both `tree-support-planner` (PrePass) and `tree-support`
   (Layer::Support). `traditional-support` is not installed for this scenario.
 - `tree-support.toml` declares `SupportPlanIR` as a manifest read.
 
@@ -116,26 +116,27 @@ vocabulary) and in the authoritative contract docs (`docs/02_ir_schemas.md`,
 
 1. `PrePass::MeshAnalysis` populates `SurfaceClassificationIR` (host built-in).
 2. `PrePass::LayerPlanning` commits `LayerPlanIR`.
-3. `PrePass::SupportGeometry` runs the `support-planner`; the host built-in commits `SupportGeometryIR` first, then guests emit `SupportPlanIR` via `run-support-geometry`:
+3. `PrePass::SupportGeometry` runs the tree-family planner; the host built-in commits `SupportGeometryIR` first, then the `tree-support-planner` guest emits `SupportPlanIR` via `run-support-geometry`:
    - `detect_overhangs` extracts contact points from overhang/bridge facets and
      `SupportEnforcer` paint regions (drops contacts inside `SupportBlocker`).
    - Top-down propagation (per-layer Prim MST merge-then-move, in
-     `modules/core-modules/support-planner/src/lib.rs`) produces
+     `modules/core-modules/tree-support-planner/`) produces
      `SupportPlanIR.entries` keyed by `(global_layer_index, object_id, region_id)`.
 4. Per-layer rayon tier runs.
 5. `Layer::Support` for the `tree-support` module looks up
    `SupportPlanIR.entries` matching the current `(layer, object, region)`:
    - When entries exist: emit their `branch_segments` directly with
-     `ExtrusionRole::SupportMaterial`, skip the grid-MST filler.
-   - When no entries exist: fall back to the per-layer grid-MST filler
-     (byte-identical to packet 26 baseline).
+     `ExtrusionRole::SupportMaterial`; a missing entry means the demand was
+     declined and nothing is emitted for that region (no fallback filler is
+     synthesized — see the executed support chain in
+     `01_system_architecture.md`).
 
 ### Expected outcomes
 
 - The committed `SupportIR.support_paths` for the planner-driven layers match
   the planner's `branch_segments` byte-for-byte (≤ 1e-4 mm tolerance).
 - Without a `support-planner` module installed, the same `tree-support`
-  module emits identical paths to the pre-planner baseline.
+  module emits no support paths for the region (degraded absence, not filler).
 - Re-running the planner on the same fixture yields byte-identical
   `SupportPlanIR` (deterministic node ordering and MST tie-break).
 
@@ -144,11 +145,16 @@ vocabulary) and in the authoritative contract docs (`docs/02_ir_schemas.md`,
 - Empty overhangs + no enforcer paint → `SupportPlanIR.entries` is empty and
   the planner returns `Ok(())` (no `ModuleError`).
 - `PrePass::SupportGeometry` scheduled before `LayerPlanIR` is committed →
-  `PrepassExecutionError::MissingRequiredPrepass { slot: LayerPlan }` aborts
+  `BlackboardError::MissingRequiredPrepass { slot: BlackboardPrepassSlot::LayerPlan }`
+  (`crates/slicer-runtime/src/blackboard.rs`) aborts
   the prepass before any module runs.
-- Two modules declaring `holds = ["support-planner"]` on the same stage →
-  alphabetical first-winner dedup keeps one and emits a `DiagnosticLevel::Info`
-  diagnostic naming the dropped module.
+- Two planner candidates (e.g. `tree-support-planner` and
+  `traditional-support-planner`) both survive load: support-family claims are
+  not deduplicated at load time. Per-region dispatch
+  (`module_claims_match_active_region` in
+  `crates/slicer-scheduler/src/execution_plan.rs`) picks the planner/renderer
+  pair matching the region's resolved `support_family`; a region whose family
+  has no complete pair produces no plan (degraded, not aborted).
 
 ---
 

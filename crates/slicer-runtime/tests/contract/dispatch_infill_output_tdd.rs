@@ -241,6 +241,7 @@ fn full_pipeline_with_typed_layer_dispatch() {
             active_regions: Vec::new(),
             has_nonplanar: false,
             is_sync_layer: false,
+            is_raft: false,
         }]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
@@ -330,6 +331,7 @@ fn full_pipeline_multi_tier_with_typed_layer() {
             active_regions: Vec::new(),
             has_nonplanar: false,
             is_sync_layer: false,
+            is_raft: false,
         }]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
@@ -386,6 +388,7 @@ fn guest_infill_output_committed_to_arena() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
+        is_raft: false,
     };
 
     fx.run_layer(&layer)
@@ -424,6 +427,7 @@ fn output_commitment_deterministic_across_repeated_runs() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
+        is_raft: false,
     };
 
     let mut results = Vec::new();
@@ -520,6 +524,7 @@ fn end_to_end_pipeline_commits_guest_output_to_arena() {
                 active_regions: Vec::new(),
                 has_nonplanar: false,
                 is_sync_layer: false,
+                is_raft: false,
             },
             // exhaustive: boundary fixture preserves explicit test data
             GlobalLayer {
@@ -528,6 +533,7 @@ fn end_to_end_pipeline_commits_guest_output_to_arena() {
                 active_regions: Vec::new(),
                 has_nonplanar: false,
                 is_sync_layer: false,
+                is_raft: false,
             },
         ]),
         region_plans: Arc::new(HashMap::new()),
@@ -591,6 +597,7 @@ fn infill_output_correct_when_slice_regions_present() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
+        is_raft: false,
     };
 
     fx.run_layer(&layer).unwrap();
@@ -629,6 +636,7 @@ fn empty_perimeter_input_valid_for_infill_postprocess() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
+        is_raft: false,
     };
     // Do not stage any perimeter IR.
 
@@ -663,6 +671,7 @@ fn stage_without_perimeter_input_does_not_see_perimeter_state() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
+        is_raft: false,
     };
 
     fx.run_layer(&layer).unwrap();
@@ -691,6 +700,7 @@ fn failed_commit_does_not_leak_into_next_call() {
         active_regions: Vec::new(),
         has_nonplanar: false,
         is_sync_layer: false,
+        is_raft: false,
     };
 
     // First call: infill (produces output)

@@ -13,6 +13,7 @@ pub mod entity_id;
 pub mod feedrate;
 pub mod paint_policy;
 pub mod polygon_predicate;
+pub mod prepared_regions;
 pub mod region_split_registry;
 pub mod resolved_config;
 pub mod slice_ir;
@@ -22,6 +23,7 @@ pub mod validation;
 pub use entity_id::LayerEntityIdGen;
 pub use feedrate::FeedrateConfig;
 pub use polygon_predicate::{point_in_contour_winding, point_in_polygon_winding};
+pub use prepared_regions::PreparedRegionData;
 pub use resolved_config::{
     classify_declared_key, is_declared_float_or_percent_key, parse_orca_point_string,
     ConfigResolutionError, DeclaredKeyKind, ResolvedConfig,
@@ -121,6 +123,7 @@ pub use slice_ir::{
     Polygon,
     PrintEntity,
     PrintMetadata,
+    QuartileBand,
 
     RaftPlan,
     RegionId,

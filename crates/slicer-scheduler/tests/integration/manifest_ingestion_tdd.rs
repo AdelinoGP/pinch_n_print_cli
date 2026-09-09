@@ -545,19 +545,20 @@ fn core_modules_directory_is_discoverable_and_all_load() {
     let report = load_modules_from_roots(&[core_modules_root])
         .expect("all core module manifests should load without errors");
 
-    // We expect exactly 23 core modules as of 2026-08-30: packet 97 deleted the dead
+    // We expect exactly 24 core modules as of 2026-09-06: packet 97 deleted the dead
     // mesh-segmentation WASM-guest module (21 -> 20), packet 108 deleted the fake
     // iterative-inset `arachne-perimeters` module (20 -> 19; the former
     // `classic-perimeters` was the sole perimeter generator until real Arachne landed),
     // packet 112 re-added `arachne-perimeters` as a real module backed by the true Arachne
     // BeadingStrategy pipeline via the host-service bridge (19 -> 20), packet 133 added
     // the real `infill-linker` guest (20 -> 21), packet 222 added the
-    // `traditional-support-planner` guest (21 -> 22), and packet 246 added the
-    // real `wave-overhangs` bridge-fill module (22 -> 23).
+    // `traditional-support-planner` guest (21 -> 22), packet 246 added the
+    // real `wave-overhangs` bridge-fill module (22 -> 23), and packet 240b added the
+    // real `raft-default` guest (23 -> 24).
     assert_eq!(
         report.modules.len(),
-        23,
-        "expected 23 core modules, got {}: {:?}",
+        24,
+        "expected 24 core modules, got {}: {:?}",
         report.modules.len(),
         report.modules.iter().map(|m| m.id()).collect::<Vec<_>>()
     );
@@ -766,13 +767,16 @@ fn core_modules_all_have_placeholder_wasm_flag_set() {
         "com.core.skirt-brim",
         "com.core.top-surface-ironing",
         "com.core.infill-linker",
-        "com.core.wave-overhangs",
         "com.core.wipe-tower",
         "com.core.overhang-classifier-default",
         // packet 244b wave-overhang bridge fill shipped a real component-model
         // .wasm (see modules/core-modules/wave-overhangs/), so it is
         // non-placeholder like the other bridge modules above.
         "com.core.wave-overhangs",
+        // packet 240b raft-default ships a real component-model .wasm
+        // (see modules/core-modules/raft-default/), rebuilt by
+        // `cargo xtask build-guests`.
+        "com.core.raft-default",
     ];
 
     for module in &report.modules {

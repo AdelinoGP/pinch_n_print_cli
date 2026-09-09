@@ -59,8 +59,12 @@ Compatibility decisions must use all four dimensions:
 - Additive fields/variants: minor bumps.
 - Rename/remove/type change: major bump. Adding a parameter to an existing WIT
   export is a type change, hence major — packet 130 shipped `prior-infill` on
-  `run-infill-postprocess` as `1.1.0` before this was caught, and it is now
-  `2.0.0`.
+  `run-infill-postprocess` by bumping the `world-layer` tier world 1.0.0 →
+  2.0.0. That version is historical: packet 164 replaced the tier worlds with
+  fresh per-stage packages, all cut at `@1.0.0` (today
+  `slicer:layer-infill-postprocess@1.0.0` — see
+  `docs/03_wit_and_manifest.md`). The rule survives the reset: the next
+  parameter added to a per-stage export costs that package a major bump.
 - **WIT world versions are advisory.** They are erased from guest binaries at
   compile time, so no check anywhere compares them; they document intent in the
   `.wit` `package` line only. Do not treat a minor world bump as a compatibility
@@ -184,6 +188,8 @@ No gate decision may be marked `PASS` if `DEVIATION_LOG.md` contains open critic
 
 - Architecture Acceptance Gate result recorded in implementation status.
 - No unresolved critical deviations.
+- CI runs `cargo xtask check-literals` workspace-wide in enforce mode; any
+  failure blocks acceptance.
 - **Packets that modify seam-candidate generation, perimeter emission, or wall-loop content MUST include the executor test bucket (`cargo test -p slicer-runtime --test executor`) in their closure §Verification commands**, in addition to the named integration/unit tests targeting the packet's own ACs. A narrow-scope closure gate can miss regressions in fixture-driven executor tests (e.g. `cube_4color`) that exercise the same emission path. <!-- VERIFY: the specific historical attribution ("added retroactively after packet 108's closure gate missed 13 broken `cube_4color` executor tests") is not recoverable from current sources — packet 108's archived spec (`docs/spec_packets/_OLD/108_perimeter-special-modes-and-seam.md`) does not record executor-bucket failures, and no other doc names the count. The rule itself stands on the verified principle that executor-bucket tests exercise the same emission paths a narrow closure gate skips. -->
 - Scenario traces from `10_scenario_traces.md` validated against current implementation.
 - Compatibility matrix checks executed on representative module set.
@@ -201,4 +207,12 @@ Rules:
 - **Regeneration instructions stay in the closure-log.** They are NOT inlined into source comments (would bloat the artefact); they ARE referenced from the related test file with a one-line pointer.
 - **Verification gate.** Before any fixture is replaced, regenerate it from the documented procedure and confirm SHA equivalence. If the fixture must change shape (new feature, new geometry), pin a NEW SHA in the closure-log along with a rationale; do not silently update the old one.
 
+Packet 241 governs `SupportAdversarial.stl` and `p241_baseline.json`. Its
+closure evidence must record each fixture's canonical SHA-256, the regeneration
+procedure, and the measured feature-inventory block.
+
 Recorded as a contract because Packet 90's investigation surfaced that fixture-regeneration practice had drifted across packets; future fixture authoring follows this rule by default.
+
+For modules with both native and WASM dispatch paths, determinism also requires
+identical input and configuration to produce byte-identical module output and
+ordering on both paths.

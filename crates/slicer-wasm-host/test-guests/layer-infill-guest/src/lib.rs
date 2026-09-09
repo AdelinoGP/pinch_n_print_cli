@@ -99,7 +99,62 @@ impl Guest for Component {
                 .push_sparse_path(&witness)
                 .expect("push lightning witness failed");
         }
+        // Raft reads (packet 240a AC-7). Both witnesses are emitted only when
+        // the accessor reports raft state, so every non-raft fixture keeps its
+        // existing sparse-path shape.
+        if paint.is_raft() {
+            output
+                .push_sparse_path(&witness_path(240.0, 1.0, 0.0, 1.0, z))
+                .expect("push is-raft witness failed");
+        }
+        if let Some(raft) = paint.raft_plan() {
+            output
+                .push_sparse_path(&witness_path(
+                    241.0,
+                    raft.raft_layers as f32,
+                    raft.raft_first_layer_density,
+                    raft.base_raft_layers as f32,
+                    z,
+                ))
+                .expect("push raft-plan witness failed");
+            output
+                .push_sparse_path(&witness_path(
+                    242.0,
+                    raft.interface_raft_layers as f32,
+                    0.0,
+                    1.0,
+                    z,
+                ))
+                .expect("push raft-plan interface witness failed");
+        }
         Ok(())
+    }
+}
+
+/// Single-point witness path: `width` tags the witness, `x`/`y`/`flow_factor`
+/// carry the payload back to the host-side assertion.
+fn witness_path(
+    width: f32,
+    x: f32,
+    y: f32,
+    flow_factor: f32,
+    z: f32,
+) -> slicer::types::geometry::ExtrusionPath3d {
+    slicer::types::geometry::ExtrusionPath3d {
+        points: vec![slicer::types::geometry::Point3WithWidth {
+            overhang_distance_mm: None,
+            x,
+            y,
+            z,
+            width,
+            flow_factor,
+            overhang_quartile: None,
+            dist_to_top_mm: 0.0,
+        }],
+        role: slicer::types::geometry::ExtrusionRole::SparseInfill,
+        speed_factor: 1.0,
+        tool_index: None,
+        order_lock: None,
     }
 }
 

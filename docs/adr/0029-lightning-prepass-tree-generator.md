@@ -13,22 +13,22 @@ The 2026-07-01 grilling expanded the infill-parity roadmap to full OrcaSlicer li
 parity. The canonical algorithm cannot live in a per-layer `Layer::Infill` module:
 
 - OrcaSlicer's `FillLightning::Generator` is constructed **once per PrintObject**
-  (`OrcaSlicerDocumented/src/libslic3r/Fill/FillLightning.cpp:145`, `build_generator`) and its
+  (`OrcaSlicerDocumented/src/libslic3r/Fill/FillLightning.cpp`, `build_generator`) and its
   constructor runs `generateInitialInternalOverhangs` then `generateTrees`
-  (`Fill/Lightning/Generator.cpp:189-190`). `generateTrees` (`Generator.cpp:342`) makes **two
+  (`Fill/Lightning/Generator.cpp`). `generateTrees` (`Generator.cpp`) makes **two
   full top-down passes over ALL layers** — first collecting `infill_outlines`, then growing
   trees with `propagateToNextLayer` — before any single layer's fill can be produced. Per-layer
   fill only *samples* the finished structure via `getTreesForLayer`.
 - The PnP `Layer::Infill` hook receives one layer's `SliceRegionView` slice per invocation with
   no inter-layer state. The current `lightning-infill` module is a 512-LOC single-layer
   approximation (grid samples + nearest-boundary 2-point branches,
-  `modules/core-modules/lightning-infill/src/lib.rs:234,265`) — not the canonical algorithm,
+  `modules/core-modules/lightning-infill/src/lib.rs`) — not the canonical algorithm,
   and self-linking in violation of ADR-0025 (tracked as a transitional gap).
 - PnP already has the exact pattern for whole-object cross-layer analysis: a PrePass stage
   sees the full committed `SliceIR`, runs host-side, and emits a dedicated IR consumed by
   per-layer modules downstream — `PrePass::SupportGeometry` → `SupportPlanIR`
-  (`crates/slicer-core/src/algos/support_geometry.rs:93`,
-  `crates/slicer-ir/src/slice_ir.rs:1046`), likewise `PrePass::SeamPlanning` → `SeamPlanIR`.
+  (`crates/slicer-core/src/algos/support_geometry.rs`,
+  `crates/slicer-ir/src/slice_ir.rs`), likewise `PrePass::SeamPlanning` → `SeamPlanIR`.
 
 ## Decision
 
@@ -88,11 +88,11 @@ parity. The canonical algorithm cannot live in a per-layer `Layer::Infill` modul
 - `docs/adr/0025-infill-linker-as-raw-emit-post-pass.md` (+ 2026-07-01 amendment).
 - `docs/specs/lightning-infill-parity.md` — the phase plan for packets 137–140.
 - `docs/DEVIATION_LOG.md` — the lightning transitional gap (closes at packet 140).
-- `OrcaSlicerDocumented/src/libslic3r/Fill/FillLightning.cpp:145` — `build_generator` (per-object).
-- `OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Generator.cpp:189-190,342` — constructor + `generateTrees` all-layers passes.
-- `crates/slicer-core/src/algos/support_geometry.rs:93` — the host-producer pattern being copied.
-- `crates/slicer-ir/src/slice_ir.rs:1046` — `SupportPlanIR` (IR-shape precedent).
-- `modules/core-modules/lightning-infill/src/lib.rs:234,265` — current stub + self-link site.
+- `OrcaSlicerDocumented/src/libslic3r/Fill/FillLightning.cpp` — `build_generator` (per-object).
+- `OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Generator.cpp` — constructor + `generateTrees` all-layers passes.
+- `crates/slicer-core/src/algos/support_geometry.rs` — the host-producer pattern being copied.
+- `crates/slicer-ir/src/slice_ir.rs` — `SupportPlanIR` (IR-shape precedent).
+- `modules/core-modules/lightning-infill/src/lib.rs` — current stub + self-link site.
 
 ## Amendment — 2026-08-05 (packets 137–140)
 

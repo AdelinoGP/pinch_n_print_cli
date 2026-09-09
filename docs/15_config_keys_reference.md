@@ -152,6 +152,7 @@ is the authoritative catalog of their defaults and ranges.
 | `line_width` | float | `0.4` | [0.1, 2.0] | `infill-linker` |
 | `initial_layer_print_height` | float | `0.2` | [0.01, 1.0] | `layer-planner-default` |
 | `layer_height` | float | `0.2` | [0.01, 1.0] | `layer-planner-default` |
+| `support_raft_layers` | int | `0` | [0.0, 100.0] | `layer-planner-default` |
 | `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `lightning-infill` |
 | `initial_layer_line_width` | float | `0.0` | [0.0, 2.0] | `lightning-infill` |
 | `line_width` | float | `0` | [0.0, 2.0] | `lightning-infill` |
@@ -201,6 +202,10 @@ is the authoritative catalog of their defaults and ranges.
 | `retraction_length` | float | `0.8` | — | `path-optimization-default` |
 | `retraction_speed` | float | `30.0` | — | `path-optimization-default` |
 | `z_hop` | float | `0.4` | [0.0, 5.0] | `path-optimization-default` |
+| `raft_contact_distance` | float | `0.1` | >= 0.0 | `raft-default` |
+| `raft_expansion` | float | `1.5` | >= 0.0 | `raft-default` |
+| `raft_first_layer_expansion` | float | `2.0` | >= 0.0 | `raft-default` |
+| `raft_line_spacing` | float | `0.5` | >= 0.000001 | `raft-default` |
 | `bridge_density` | float_or_percent | `"100%"` | [10.0, 125.0] | `rectilinear-infill` |
 | `bridge_flow` | float | `1.0` | >= 0.0 | `rectilinear-infill` |
 | `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
@@ -255,6 +260,7 @@ is the authoritative catalog of their defaults and ranges.
 | `enable_support` | bool | `false` | — | `traditional-support-planner` |
 | `independent_support_layer_height` | bool | `true` | — | `traditional-support-planner` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `traditional-support-planner` |
+| `support_area_rasterizer` | enum | `"legacy_semantic"` | — (values: agg|legacy_semantic) | `traditional-support-planner` |
 | `support_base_pattern_spacing` | float | `2.5` | [0.1, 10.0] | `traditional-support-planner` |
 | `support_interface_bottom_layers` | int | `-1` | [-1.0, 10.0] | `traditional-support-planner` |
 | `support_interface_top_layers` | int | `2` | [0.0, 10.0] | `traditional-support-planner` |
@@ -343,10 +349,24 @@ qualification runs in the ShellClassification prepass
 arm only emits the authored centerlines.
 
 **Note — `support_interface_bottom_layers`:** the key remains user-visible with
-default `-1`, but bottom interface layers are not yet implemented; `support-planner`
-emits one typed code-`1003` warning (via `SupportGeometryOutput::push_diagnostic`,
-packet 118) before the layer loop when the value is not `-1`. See
-`docs/specs/_OLD/support-modules-orca-port.md` (archived spec).
+default `-1`. Negative values mirror the configured top-interface count; positive
+values request bottom-interface geometry emitted as structural
+`SupportPlanIR` interface regions. Code `1003` is retired.
+
+**Note — `dont_filter_internal_bridges`:** the manifest remains a boolean
+compatibility surface: `false` maps to canonical `ibfDisabled` (full filtering,
+expansion multiplier 3), while `true` maps to `ibfNofilter` (bypass of the
+area/partial gate, expansion multiplier 1).
+
+**Note — `bridge_line_width` and spacing:** for rectilinear infill, a zero
+`bridge_line_width` falls back to `nozzle_diameter`; bridge extrusion spacing is
+that diameter plus `0.05 mm`, distinct from `resolve_role_width`.
+
+**Note — `wave-overhangs` factors:** `speed_factor` is
+`wave_overhang_print_speed / bridge_speed`; `flow_factor` is
+`wave_overhang_flow_mm3_per_mm / (nozzle_diameter × effective_layer_height)`.
+Ratios outside the emitter's representable range are rejected rather than
+silently clamped.
 
 ### `seam_position` values
 
@@ -782,7 +802,7 @@ contract.
 
 ## Override namespaces
 
-Two structural namespaces are recognised at runtime (see
+Three structural namespaces are recognised at runtime (see
 `docs/02_ir_schemas.md` IR 5 "Config Key Namespaces" and IR 3 "Config
 Precedence Rules").
 
@@ -790,11 +810,12 @@ Precedence Rules").
 |---|---|---|
 | `object_config:<object_id>:<key>` | 35a | Per-object override for a single `ObjectId`. |
 | `paint_config:<semantic>:<key>` | 51 | Per-paint-semantic override; applies during `PrePass::RegionMapping`. |
+| `tool_config:<tool_index>:<key>` | 125 | Per-tool/extruder override keyed by integer `tool_index`; applied last (highest precedence) by `resolve_per_tool_configs` (`crates/slicer-scheduler/src/config_resolution.rs`). |
 
 Precedence (lowest → highest):
 
 ```
-global < object_config:<id>:<key> < paint_config:<semantic>:<key>
+global < object_config:<id>:<key> < paint_config:<semantic>:<key> < tool_config:<idx>:<key>
 ```
 
 `PaintSemantic` serialisation for `<semantic>`: `material`, `fuzzy_skin`,
@@ -952,13 +973,13 @@ Defaults and source-of-truth live in
 
 **`wall_loops`** — OrcaSlicer's user-facing per-region perimeter count (renamed from PnP's `wall_count`, wayfinder ticket 102). `arachne-perimeters` translates it to `max_bead_count = 2 × wall_loops` (Orca `Arachne/WallToolPaths.cpp:525`) when `max_bead_count` is not explicitly set; an explicit `max_bead_count` still wins. Closes G1's sibling `wall_loops` gap and the AC-1 acceptance criterion.
 
-**`wall_direction`** — OrcaSlicer `wall_direction` (`coEnum`, `PrintConfig.cpp:2188-2198`, default `CounterClockwise`). Contour (`ExteriorSurface`) loops are forced CCW or CW per this key; hole loops are always wound opposite the contour (`PerimeterGenerator.cpp:527-545`). Closes G1.
+**`wall_direction`** — OrcaSlicer `wall_direction` (`coEnum`, `PrintConfig.cpp`, default `CounterClockwise`). Contour (`ExteriorSurface`) loops are forced CCW or CW per this key; hole loops are always wound opposite the contour (`PerimeterGenerator.cpp`). Closes G1.
 
 **`only_one_wall_first_layer`** — OrcaSlicer `only_one_wall_first_layer` (`coBool`, `PrintConfig.cpp:1513-1517`). On layer 0 the perimeter generator forces `loop_number = 0` — a single outer wall — regardless of `wall_loops` (`PerimeterGenerator.cpp:2137-2139`). Also registered on `classic-perimeters` (see the "Walls (packet 104)" table above). Closes G2.
 
-**`overhang_reverse_threshold`** — OrcaSlicer `overhang_reverse_threshold` (`coFloatOrPercent`, `PerimeterGenerator.cpp:68-77`). Advisory companion to `overhang_reverse` / `overhang_reverse_internal_only` (see "Overhangs (packet 149)" above): when `0`, overhang detection treats every overhang as steep and reverses wall direction on odd layers. Closes G7.
+**`overhang_reverse_threshold`** — OrcaSlicer `overhang_reverse_threshold` (`coFloatOrPercent`, `PerimeterGenerator.cpp`). Advisory companion to `overhang_reverse` / `overhang_reverse_internal_only` (see "Overhangs (packet 149)" above): when `0`, overhang detection treats every overhang as steep and reverses wall direction on odd layers. Closes G7.
 
-**`wall_maximum_resolution`** / **`wall_maximum_deviation`** — OrcaSlicer `wall_maximum_resolution` / `wall_maximum_deviation` (`coFloat`, `PrintConfig.cpp:7242-7263`, upstream defaults `0.5` mm / `0.025` mm; PnP manifest defaults state the CODE fallbacks `0.05` mm / `0.005` mm per the reconcile guard — the code-vs-upstream default divergence is logged as `D-168-ARACHNE-SIMPLIFY-FALLBACKS-TIGHTER-THAN-CANONICAL`). These REPLACE `meshfix_maximum_resolution` / `meshfix_maximum_deviation` for the Arachne wall path (Orca `WallToolPaths.cpp:487-503,702-719`); they are wired directly (no `min()`/merge) into `ArachneParams.smallest_line_segment_squared` / `allowed_error_distance_squared` as mm² (squared). The third upstream tolerance `meshfix_maximum_extrusion_area_deviation` is a distinct parameter and intentionally NOT replaced here. Closes G9.
+**`wall_maximum_resolution`** / **`wall_maximum_deviation`** — OrcaSlicer `wall_maximum_resolution` / `wall_maximum_deviation` (`coFloat`, `PrintConfig.cpp`, upstream defaults `0.5` mm / `0.025` mm; PnP manifest defaults state the CODE fallbacks `0.05` mm / `0.005` mm per the reconcile guard — the code-vs-upstream default divergence is logged as `D-168-ARACHNE-SIMPLIFY-FALLBACKS-TIGHTER-THAN-CANONICAL`). These REPLACE `meshfix_maximum_resolution` / `meshfix_maximum_deviation` for the Arachne wall path (Orca `WallToolPaths.cpp`); they are wired directly (no `min()`/merge) into `ArachneParams.smallest_line_segment_squared` / `allowed_error_distance_squared` as mm² (squared). The third upstream tolerance `meshfix_maximum_extrusion_area_deviation` is a distinct parameter and intentionally NOT replaced here. Closes G9.
 
 ---
 
@@ -1004,7 +1025,7 @@ Keys registered on `arachne-perimeters` for the `slicer_core::beading` `BeadingS
 
 **`inner_wall_line_width` / `outer_wall_line_width`** (on `arachne-perimeters`) — `float_or_percent` keys with default `0` (the auto sentinel, matching upstream `coFloatOrPercent` default `0`), mirroring the classic-perimeters keys. The module derives its two beading targets from them: `optimal_width` (struct field; canonical `bead_width_x` = `perimeter_flow.scaled_spacing()`, i.e. the INNER wall) from `inner_wall_line_width`, and `preferred_bead_width_outer` (struct field; canonical `bead_width_0` = `ext_perimeter_flow.scaled_spacing()`, i.e. the OUTER wall) from `outer_wall_line_width`, converting width → Flow spacing via `line_width_to_spacing` before feeding the strategy stack and converting back at emission (`VariableWidth.cpp::thick_polyline_to_multi_path`). The former config keys `optimal_width`/`preferred_bead_width_outer` — Arachne-internal knobs exposed as user config — are RETIRED per ADR-0043 because they shadowed the wall widths. The `ArachneParams` STRUCT fields keep the canonical names; only the config keys are gone.
 
-**`detect_thin_wall`** — OrcaSlicer `detect_thin_wall` (`PrintConfig.cpp:6299-6305`, `coBool`, upstream default `false`, label "Detect thin wall", tooltip "Detect thin wall which can't contain two line width. And use single line to print."). Gates whether `WideningBeadingStrategy` is wrapped into the `BeadingStrategyFactory::create_stack` composition at all — maps to the internal Arachne `print_thin_walls` parameter passed into `BeadingStrategyFactory::makeStrategy`. `false` (the default, matching upstream exactly) means `WideningBeadingStrategy` is **absent from the stack entirely**, not merely a no-op — the same absent-vs-no-op convention already used for `OuterWallInsetBeadingStrategy`/`outer_wall_offset`.
+**`detect_thin_wall`** — OrcaSlicer `detect_thin_wall` (`PrintConfig.cpp`, `coBool`, upstream default `false`, label "Detect thin wall", tooltip "Detect thin wall which can't contain two line width. And use single line to print."). Gates whether `WideningBeadingStrategy` is wrapped into the `BeadingStrategyFactory::create_stack` composition at all — maps to the internal Arachne `print_thin_walls` parameter passed into `BeadingStrategyFactory::makeStrategy`. `false` (the default, matching upstream exactly) means `WideningBeadingStrategy` is **absent from the stack entirely**, not merely a no-op — the same absent-vs-no-op convention already used for `OuterWallInsetBeadingStrategy`/`outer_wall_offset`.
 
 ---
 

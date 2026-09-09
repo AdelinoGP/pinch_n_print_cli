@@ -47,3 +47,11 @@ paths out of untagged fill of the same region.
   polygon of its own.
 - Locked paths bypass linking/clipping/simplification in the linker, optimizer,
   and emitter, consistent with ADR-0062.
+
+## Amendment 2026-09-08 — packet 246 wave-overhangs anchor-depth default
+
+`wave-overhangs` uses the deliberate PnP default `min(3 mm, bridge extrusion
+spacing × (wall_count + 1)) + base_spacing`: the canonical-auto value from the
+Decision above plus one `base_spacing`, recorded as an accepted deviation in
+`docs/DEVIATION_LOG.md`. The canonical-auto value without the addition remains
+the reference divergence point.

@@ -32,8 +32,8 @@ to describe what a module imports and exports.
 
 The canonical source lives under `crates/slicer-schema/wit/` in an umbrella layout where
 `root.wit` is the anchor package and `deps/` holds the shared dependency packages plus one
-directory for each versioned stage package. The delivered surface has 15 versioned stage
-packages: 8 layer, 4 prepass, 2 postpass, and 1 finalization. `PrePass::PaintSegmentation`
+directory for each versioned stage package. The delivered surface has 16 versioned stage
+packages: 9 layer, 4 prepass, 2 postpass, and 1 finalization. `PrePass::PaintSegmentation`
 is host-built-in and has no WIT package. The shared prepass view records live in the flat,
 unversioned `slicer:prepass-types` dependency:
 
@@ -54,6 +54,7 @@ crates/slicer-schema/wit/
     layer-support/layer-support.wit                                          # package slicer:layer-support@1.0.0
     layer-support-postprocess/layer-support-postprocess.wit                  # package slicer:layer-support-postprocess@1.0.0
     layer-path-optimization/layer-path-optimization.wit                      # package slicer:layer-path-optimization@1.0.0
+    layer-anchored-events/layer-anchored-events.wit                            # package slicer:layer-anchored-events@1.0.0
     prepass-mesh-analysis/prepass-mesh-analysis.wit                          # package slicer:prepass-mesh-analysis@1.0.0
     prepass-layer-planning/prepass-layer-planning.wit                        # package slicer:prepass-layer-planning@1.0.0
     prepass-seam-planning/prepass-seam-planning.wit                          # package slicer:prepass-seam-planning@1.0.0
@@ -179,7 +180,7 @@ What actually enforces compatibility today:
 | Guard | Catches |
 |---|---|
 | wasmtime typed instantiation (`crates/slicer-wasm-host/src/dispatch.rs`) | Structural export/signature mismatch, at first dispatch |
-| `cargo xtask build-guests --check` | Stale in-tree guest (artifact verification — decodes embedded WIT world and compares against canonical) |
+| `cargo xtask build-guests --check` | Stale in-tree guest (artifact verification — decodes embedded WIT world and compares against canonical), and guest-lockfile divergence within a semver-compatibility line (remedy: `--sync-locks`) |
 | `[compatibility]` min/max-ir-schema (`crates/slicer-scheduler/src/validation.rs`) | IR range, fatal at startup |
 
 The package version is therefore load-bearing for `bindgen!`/`generate!` resolution and
@@ -275,6 +276,9 @@ Notable records/methods worth surfacing (not obvious from the resource names):
 - `slice-region-view` exposes `prev-layer-boundary: func() -> list<ex-polygon>`,
   returning the previous layer's slice boundary contours for the current
   region.
+- `internal-solid-fill` is exposed in the canonical region WIT type and SDK
+  view as `internal_solid_fill`. `internal_bridge_areas` remains host-only and
+  is not part of WIT.
 - `slice-region-view` and `perimeter-region-view` expose
   `config: func() -> config-view`, providing a per-region config accessor for
   resolved settings inside each region loop. Packet 131 bumps the then-monolithic `world-layer`
@@ -287,6 +291,28 @@ Notable records/methods worth surfacing (not obvious from the resource names):
   `set-current-origin: func(object-id: string, region-id: string) -> result<_, string>`,
   which tags the support region currently being iterated so buffered per-region pushes
   are attributed correctly (packet 205c; see the `begin_region` SDK method).
+- `slice-region-view` and `perimeter-region-view` both expose
+  `raft-fill: func() -> list<ex-polygon>` (packet 240a), mirroring
+  `SlicedRegion.raft_fill`. The `raft-default` module writes raft polygons through
+  `infill-output-builder::push-raft-fill`; the host commits them to
+  `SlicedRegion.raft_fill`, and these accessors return the committed polygons on
+  applicable raft layers. Layers without committed raft fill return an empty list.
+- `paint-region-layer-view` exposes `is-raft: func() -> bool` and
+  `raft-plan: func() -> option<raft-plan-view>` (packet 240a).
+  `raft-plan-view` is declared **locally** in `ir-types.wit` — there is no
+  cross-world import — and mirrors `RaftPlan`'s four fields: `raft-layers: u32`,
+  `raft-first-layer-density: f32`, `base-raft-layers: u32`,
+  `interface-raft-layers: u32`. Both accessors are threaded through the host,
+  the macro guest shim, and the SDK on both the wasm and the native leg.
+
+### Infill output builder raft fill (Normative — packet 240b)
+
+`infill-output-builder` exposes the additive
+`push-raft-fill(polygons: list<ex-polygon>) -> result<_, string>` method. Each
+call is correlated with the current region by `set-current-origin`; the host
+and SDK native leg mirror the same builder contract. The host delivers the
+polygons into the per-region `SlicedRegion.raft_fill` carrier without a
+`SliceIR` schema-version bump.
 
 Two contract points that the file alone does not state are the ID
 canonicalization rule and the wall-loop flag invariant below.
@@ -322,6 +348,8 @@ imports live in `crates/slicer-schema/wit/deps/common.wit`, package
     tools/filaments for the current print (minimum 1), so a module can
     range-check an authored per-path tool index before emitting it. SDK
     wrapper: `slicer_sdk::host::tool_count()`.
+  - `offset-polygons` and `offset-request` carry `arc-tolerance-mm: f32` in
+    millimeters; the value is passed through unchanged.
 - `module-errors` — the shared `module-error` record. Every world imports it as
   `slicer:common/module-errors.{module-error}` rather than redefining it.
 - `profiling` — the optional fuel-based profiling marks and scope registration
@@ -365,7 +393,7 @@ from region top/bottom metadata**:
 
 ## Per-stage layer WIT packages
 
-The eight layer stages each have one versioned package, one world, and one exported
+The nine layer stages each have one versioned package, one world, and one exported
 `run` function. A module implements only the package selected by its `[stage] id`:
 
 | Stage | Source package | Package identity |
@@ -378,6 +406,7 @@ The eight layer stages each have one versioned package, one world, and one expor
 | `Layer::Support` | `deps/layer-support/layer-support.wit` | `slicer:layer-support@1.0.0` |
 | `Layer::SupportPostProcess` | `deps/layer-support-postprocess/layer-support-postprocess.wit` | `slicer:layer-support-postprocess@1.0.0` |
 | `Layer::PathOptimization` | `deps/layer-path-optimization/layer-path-optimization.wit` | `slicer:layer-path-optimization@1.0.0` |
+| `Layer::AnchoredEvents` | `deps/layer-anchored-events/layer-anchored-events.wit` | `slicer:layer-anchored-events@1.0.0` |
 
 Read the on-disk package for each stage's exact parameter list and return type. The
 `layer-infill` package includes the paint view required for committed lightning tree
@@ -402,7 +431,7 @@ region_id↔tool split. The `path-optimization` guest reads it (via SDK
 `OrderedEntityView.tool_index`) to cluster entities by tool — **not**
 `region-key.region-id`, which is now a pure region identity.
 
-`set-entity-order` accepts `(entity-index, reverse-direction)` tuples. Setting `reverse-direction = true` flips the path's point order at apply time. Host rejects entries that reference unknown `entity-index` values or include duplicates; either condition produces a `BuilderError::InvalidEntityOrder` diagnostic.
+`set-entity-order` accepts `(entity-index, reverse-direction)` tuples. Setting `reverse-direction = true` flips the path's point order at apply time. Host rejects entries that reference unknown `entity-index` values or include duplicates; either condition produces an `Err(string)` diagnostic with no mutation.
 
 PathOptimization output contract restricts builder usage to this resource and the existing `push-tool-change` / `push-comment` / `push-raw` methods. `push-move` / `push-retract` / `push-unretract` / `push-fan-speed` / `push-temperature` remain rejected at the host boundary (see Path Optimization Output Contract below).
 
@@ -420,6 +449,11 @@ The SDK exposes the corresponding anchored collection builder API in
 ordering remain authoritative: a collection is committed as one event, and
 the additive WIT records do not change the existing layer collection schema
 version or ordinary builder contract.
+
+One ordered-event collection proposal is allowed per dispatch. A second
+proposal rejects the dispatch without committing the first; no proposal yields
+no commit and leaves the arena unchanged. The wasm and native dispatch legs
+must produce equal `LayerStageCommit::AnchoredEvents` values.
 
 ### `lightning-tree-segments` read-view (packet 137)
 
@@ -454,8 +488,8 @@ stays `None` and the method returns an empty `Vec<list<point3-with-width>>`
 — the per-layer `Layer::Infill` module (packet 140) emits no paths for that
 layer; there is no stub fallback (matches `docs/02_ir_schemas.md`, and the
 packet-140 deletion of the old single-layer stub). Non-lightning prints
-therefore see a zero-cost, no-op view; the wedge byte-identity canary
-(`wedge_per_region_config_delivery_byte_identical`) pins the default-config
+therefore see a zero-cost, no-op view; the wedge structural canary
+(`wedge_per_region_config_delivery_structural_canary`) pins the default-config
 slice through the new stage.
 
 **SDK accessor:** `PaintRegionLayerView::lightning_tree_segments_for(object_id, region_id)`
@@ -500,6 +534,20 @@ per-stage package `slicer:prepass-seam-planning@1.0.0`, whose `run` takes
 `objects`, `layer-plan`, `output`, `config`, and `region-input` (see the
 on-disk WIT).
 
+### `PrePass::LayerPlanning` raft prefix (Normative — packet 240a)
+
+`layer-proposal`
+(`crates/slicer-schema/wit/deps/prepass-layer-planning/prepass-layer-planning.wit`)
+carries `is-raft-prefix: bool`, set on **both** harvest legs and harvested into
+`GlobalLayer.is_raft`. It marks membership of the positive raft offset band —
+global layer indices `0..support_raft_layers-1`, with model layers shifted to
+`support_raft_layers..`. The band must be a contiguous prefix: a non-contiguous
+raft prefix is rejected by the shared helper `validate_raft_prefix_contiguity`
+(`crates/slicer-wasm-host/src/marshal/in_.rs`). `com.core.layer-planner-default`
+emits the band from its declared `support_raft_layers` config key
+(`type = "int"`, default `0`). Full semantics: the "Raft substrate" section of
+`docs/02_ir_schemas.md`.
+
 ### Support-plan output seam (Normative — Packet 119)
 
 The support-geometry stage package carries branch entries and one optional
@@ -507,7 +555,10 @@ configuration-only raft plan through the same output resource:
 
 **Source of truth:** `crates/slicer-schema/wit/deps/prepass-support-geometry/prepass-support-geometry.wit`.
 It declares `support-plan-entry`, `raft-plan`, and the
-`support-geometry-output` resource with the three push methods.
+`support-geometry-output` resource with three push methods:
+ `push-support-plan-entry`, `push-raft-plan`, and
+ `push-diagnostic`. The host harvests the new base-interface role into
+ `SupportPlanIR`.
 
 `push-raft-plan` may be called at most once per support-geometry invocation.
 The host harvests it into `SupportPlanIR.raft_plan: Option<RaftPlan>`; no call
@@ -535,8 +586,10 @@ Field and variant notes (match the on-disk file in
   bindgen-generated structs follow this order; do not reorder.
 - The `severity-level` enum has exactly five variants; the WIT order is
   `trace, debug, info, warn, error` (lowest verbosity first).
-- `layer: option<s32>` is signed so negative raft prefix layer indices can be
-  expressed; `None` for prepass-global diagnostics.
+- `layer: option<s32>` remains signed for historical compatibility with
+  layer-scoped support diagnostics and off-grid support identities; the
+  positive raft band itself uses non-negative indices. `None` means
+  prepass-global diagnostics.
 - `code: u32` is module-allocated. The support-planner reserves
   `1000..=1999`; the host does not enforce a range (out-of-range codes pass
   through unchanged).
@@ -607,8 +660,7 @@ layer views, the output builder, and a config view; the
 config, and local types.
 
 Host validation: the host validates that `entity-id` in `modify-entity`
-resolves to a real entity within `layer`; unknown IDs are rejected with
-`BuilderError::UnknownEntity`. The closure-based API from packet 40 is
+resolves to a real entity within `layer`; unknown IDs are rejected with an `Err(string)` diagnostic and no mutation. The closure-based API from packet 40 is
 superseded by the enum-based mutation API so the contract is fully
 serialisable across the WIT boundary.
 
@@ -643,6 +695,10 @@ requires `[module].id`/`version`, `[stage].id`, `[ir-access].reads`/`writes`,
 `hints.layer-parallel-safe`. `[config.schema]` and `[[region_split]]` are
 optional; their field entries and declarations are parsed when present. Other
 TOML keys are tolerated but are not stored by the manifest loader.
+
+The sibling module manifest is a build-relevant declaration input: `[stage].id`
+drives stage expectation, and `[config.schema]` controls the keys forwarded
+through `ConfigView`, so freshness tooling must charge edits to it.
 
 Full annotated example for a TPMS infill module:
 
@@ -681,8 +737,9 @@ writes = ["InfillIR.regions.sparse_infill"]
 
 # ── Claims ───────────────────────────────────────────────────────────────────
 [claims]
-holds    = ["infill-generator"]   # exclusive slot; one module per region
+holds    = ["claim:sparse-fill"]   # exclusive per-role slot; one module per region (packet 37; the blanket `infill-generator` claim is deprecated — see Known claim IDs)
 requires = []                     # claim slots that MUST be held by another module
+```
 
 ### Known claim IDs
 
@@ -704,7 +761,7 @@ requires = []                     # claim slots that MUST be held by another mod
 | `claim:bottom-fill`       | Held by the module producing `BottomSolidInfill` extrusions.             |
 | `claim:bridge-fill`       | Held by the module producing `BridgeInfill` extrusions.                  |
 | `claim:sparse-fill`       | Held by the module producing `SparseInfill` extrusions.                  |
-| `claim:raft-fill`         | Reserved by the SDK's `RaftInfill` role mapping (packet 124; ADR-0009); no current core manifest declares it. |
+| `claim:raft-fill`         | Held by `com.core.raft-default` under the SDK's `RaftInfill` role mapping (packet 240b; ADR-0009). |
 | `claim:ironing`           | Held by the module producing `Ironing` extrusions (`top-surface-ironing`). |
 | `claim:authored-coloring` | Capability claim a module discloses to request per-path tool authorship (`ExtrusionPath3D.tool_index`; ADR-0058). Disclosure alone grants nothing: the grant is two-sided, and also requires the fill-role claim the module holds for the region to be listed in that region's `fill_authored_coloring` config key. Ungranted — or out of range against `tool-count` — the authored value is silently stripped to `None` at the infill commit boundary and the host resolves the region tool as before. |
 
@@ -780,6 +837,7 @@ fill-role emission**; test fixtures that bypass `dispatch_layer_call` must set
 the claims they intend to exercise. Production dispatch populates the set
 authoritatively, so `should_emit` returns the configured truth in real runs.
 
+```toml
 # ── Compatibility ─────────────────────────────────────────────────────────────
 [compatibility]
 incompatible-with = []            # module IDs or globs that cannot coexist in same region
@@ -960,12 +1018,12 @@ regardless of mode. The enum is `RetractMode` in
 
 #### Packet 52 — per-role speed schema
 
-The following 25 keys form the per-role speed family. All speed keys are `float` (unit `mm/s`); acceleration keys are `float` (unit `mm/s²`). One representative block is shown; the rest share the same shape.
+The per-role speed family is the `[speeds]` table in `docs/config/host-keys.toml` (all `float`, unit `mm/s`): the emitter starts from `FeedrateConfig::default()` and overlays configured keys via `from_raw_config`, so absent keys keep the table default. The blocks below show manifest-declaration shape only — each declaring manifest sets its own schema defaults. One representative block is shown; the rest share the same shape.
 
 ```toml
 [config.schema.outer_wall_speed]
 type    = "float"
-default = 50.0
+default = 60.0
 min     = 1.0
 unit    = "mm/s"
 display = "Outer wall speed"
@@ -973,14 +1031,14 @@ group   = "Speed"
 
 [config.schema.inner_wall_speed]
 type    = "float"
-default = 80.0
+default = 60.0
 min     = 1.0
 unit    = "mm/s"
 display = "Inner wall speed"
 group   = "Speed"
 ```
 
-Complete key list: `outer_wall_speed`, `inner_wall_speed`, `internal_solid_infill_speed`, `top_surface_speed`, `gap_infill_speed`, `sparse_infill_speed`, `bridge_speed`, `support_speed`, `support_interface_speed`, `travel_speed`, `first_layer_speed`, `first_layer_infill_speed`, `first_layer_travel_speed`, `initial_layer_print_height_speed_factor`, `ironing_speed`, `overhang_speed`, `small_perimeter_speed`, `external_perimeter_speed`, `solid_infill_speed`, `top_solid_infill_speed`, `bottom_solid_infill_speed`, `default_acceleration`, `outer_wall_acceleration`, `inner_wall_acceleration`, `infill_acceleration`.
+Complete key list: the `[speeds]` table in `docs/config/host-keys.toml` (26 keys). Top/bottom solid roles reuse `top_surface_speed` / `bottom_surface_speed` at emit (role dispatch in `crates/slicer-gcode/src/emit.rs`); there are no separate `top_solid_infill_speed` / `bottom_solid_infill_speed` keys and no acceleration keys.
 
 After packet 52, every emitted move carries an F-token (`F<feedrate>`); the emitter does not elide F for unchanged feedrates.
 
@@ -1494,9 +1552,7 @@ reads = ["SliceIR.regions.segment_annotations"]
      so the per-semantic dotted read paths `PaintRegionIR.FuzzySkin` / `.SupportEnforcer`
      / `.SupportBlocker` / `.Material` / `.Custom.<id>` no longer exist and were removed
      from this section. HOWEVER, `PaintRegionIR` survives as the ir-access
-     read-attribution NAME for the `PaintRegionLayerView` WIT accessor: the host stamps
-     `runtime_reads.push("PaintRegionIR")` when a guest reads paint regions per layer
-     (`crates/slicer-wasm-host/src/host.rs`), and the ir-access contract mandates
+     read-attribution NAME for the `PaintRegionLayerView` WIT accessor <!-- VERIFY: no `runtime_reads.push("PaintRegionIR")` call site exists in `crates/slicer-wasm-host/src/`; confirm where the host stamps this attribution -->: the ir-access contract mandates
      `Layer::Perimeters => reads ["SliceIR", "PaintRegionIR"]`
      (`crates/slicer-scheduler/tests/contract/core_module_ir_access_contract_tdd.rs`).
      The `classic-perimeters` / `arachne-perimeters` manifests declaring
@@ -1706,23 +1762,68 @@ guests against `crates/slicer-schema/wit/`.
 | `sdk-postpass-text-guest`      | `PostPass::TextPostProcess`   | Macro-only text-postprocess witness                                                              |
 | `path-optimization-multi-read` | `Layer::PathOptimization`     | Asserts the macro `get-ordered-entities`-call-once cache contract; counterpart to the host counter `HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS` |
 
+The tables above name the primary witnesses. The directory also holds dispatch-coverage guests (`dispatch-layer-*`), roundtrip guests (`*-roundtrip-guest`), an echo guest (`infill-postprocess-echo-guest`), and diagnostic/bridge guests (`sdk-host-bridge-guest`, `sdk-support-diagnostic-guest`, `support-anchored-reach-guest`, `prepass-layer-planning-guest`); the on-disk listing under `crates/slicer-wasm-host/test-guests/` is authoritative for the full set.
+
 ### Build & Freshness Contract (Normative)
 
 Each guest is built with `cargo build --target wasm32-unknown-unknown --release`
 followed by `wasm-tools component new` to produce the `.component.wasm` artifact.
+Every guest of both trees builds into the single shared target directory
+`<ws_root>/target/guests` (real layout
+`target/guests/wasm32-unknown-unknown/release/`), so dependency compilation is
+reused across guests. Per-guest `[workspace]` sentinels are retained; guests
+remain separate workspaces.
 
-- `cargo xtask build-guests` — build any stale guests.
+- `cargo xtask build-guests` — consults the freshness check and rebuilds **only
+  the guests it reports stale**; a clean tree is a no-op. An infrastructure
+  error (exit `3`) aborts and never falls back to a full rebuild.
+- `cargo xtask build-guests --force` — unconditional full rebuild of every
+  discovered guest, the pre-packet-253 behaviour; skips the freshness check
+  entirely.
 - `cargo xtask build-guests --check` — verify only; decodes each
   `.component.wasm` artifact and compares its embedded WIT world against the
   canonical WIT for its stage, answering freshness by exit code: `0` fresh,
   `1` stale (embedded world drift), `3` infrastructure error when
-  `wasm-tools` is unavailable.
+  `wasm-tools` is unavailable. The check has a second staleness source:
+  **guest-lockfile divergence**, where two guest lockfiles resolve different
+  versions of the same crate within one semver-compatibility line. It prints one
+  deterministic line per diverging crate naming `--sync-locks` as the remedy, and
+  it folds into exit `1`, never exit `3`. Semver-major coexistence inside a
+  single lock (syn 1.x alongside 2.x) is not divergence.
+- `cargo xtask build-guests --sync-locks` — regenerates every guest lockfile in
+  one pass. It skips guests that are members of the root workspace (those
+  without their own `[workspace]` sentinel), because `cargo generate-lockfile`
+  there would clobber the ROOT `Cargo.lock`; those guests resolve against the
+  root workspace lock, and their own committed lockfiles are vestigial and are
+  excluded from divergence analysis.
+- `cargo xtask build-guests --list` — list the discovered guests without
+  building.
+
+Shared-crate Cargo.toml inputs, including `crates/slicer-sdk/Cargo.toml`, may
+trigger guest staleness even when the edit is guest-inert. After such an edit,
+run `cargo xtask build-guests` and then `cargo xtask build-guests --check`.
+
+Artifact verification compares the resolved stage export with canonical
+declarations in both directions; non-exported stage and shared interfaces are
+checked as embedded subsets, and embedded packages outside `root:component`,
+the five shared packages, and the resolved stage package are rejected. An
+empty or unreadable canonical WIT set, or an embedded WIT parse failure, is an
+infrastructure error and never a fresh result.
+
+Artifact-derived stage resolution is cross-checked against core guests'
+manifest `[stage].id`; test guests without manifests use artifact resolution
+as their sole stage resolver, and mismatches are stale.
 
 There are two independent gates that enforce freshness, each with its own owner and rule:
 
-- **xtask artifact gate** (`cargo xtask build-guests --check` in `xtask/src/build_guests.rs`): artifact verification as above; the fingerprint covers code inputs only, derived per guest from its Cargo path-dependency closure.
+- **xtask artifact gate** (`cargo xtask build-guests --check` in `xtask/src/build_guests.rs`): artifact verification as above; the fingerprint covers code inputs only, derived per guest from its Cargo path-dependency closure (dependencies, target-specific dependencies, and build-dependencies; never `dev-dependencies`). Version probes (`rustc -vV`, `wasm-tools --version`) and the canonical-WIT parse are memoized once per invocation rather than once per guest. This gate also carries the lock-convergence check described above.
 
-- **host-side contract test** (`crates/slicer-runtime/tests/contract/guest_fixture_freshness_tdd.rs`): independent of xtask and unaffected by packets 229–231. It hardcodes its own guest list (`GUESTS`, 8 entries measured 2026-08-19), applies its own mtime rule (a guest's `src/lib.rs` newer than its artifact is stale), and fails when an expected `.component.wasm` is missing, an artifact is suspiciously small (< 100 bytes — i.e. not a real component), or the mtime rule is violated. The test `build_script_check_mode_reports_freshness` in that file currently asserts nothing — it early-returns when `test-guests/build-test-guests.sh` is absent (which it is), and is documented in `docs/spec_packets/232-freshness-gate-docs/requirements.md` §"Reported, not fixed" rather than fixed here. See that section (heading `## Reported, not fixed`).
+The freshness sidecar uses format/version `v2-`. It is written last, only after
+verification succeeds, and is invalidated on failed verification. Complete v2
+inputs are the workspace `Cargo.toml`, guest `Cargo.lock`, `rustc -vV`,
+`wasm-tools --version`, and the per-guest code-input closure.
+
+- **host-side contract test** (`crates/slicer-runtime/tests/contract/guest_fixture_freshness_tdd.rs`): independent of xtask and unaffected by packets 229–231. It hardcodes its own guest list (`GUESTS`, 8 entries measured 2026-08-19), applies its own mtime rule (a guest's `src/lib.rs` newer than its artifact is stale), and fails when an expected `.component.wasm` is missing, an artifact is suspiciously small (< 100 bytes — i.e. not a real component), or the mtime rule is violated. The test `build_script_check_mode_reports_freshness` in that file currently asserts nothing — it early-returns when `test-guests/build-test-guests.sh` is absent (which it is). Packet context lives in `docs/spec_packets/_OLD/232-freshness-gate-docs.md`. See that section (heading `## Reported, not fixed`).
 
 Prerequisites for rebuilding (`rustup target add wasm32-unknown-unknown`
 and `cargo install wasm-tools`) are required only when modifying a guest.

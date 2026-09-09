@@ -97,6 +97,7 @@ fn build_layer_plan(object_id: &str, layer_count: u32) -> Arc<LayerPlanIR> {
                 }],
                 has_nonplanar: false,
                 is_sync_layer: false,
+                is_raft: false,
             }
         })
         .collect();
@@ -657,7 +658,7 @@ fn paint_channel_supports_strokes_reach_consumer() {
 /// cube_cilindrical_modifier.3mf has 1 object (12 tris) with
 /// PaintLayer Custom("seam_enforcer"): 3 facet_values + 2706 sub-facet strokes.
 ///
-/// # Seam paint must NOT partition regions (DEV-123)
+/// # Seam paint must NOT partition regions
 ///
 /// Canonical keeps the channels apart: `multi_material_segmentation_by_painting`
 /// (`MultiMaterialSegmentation.cpp`) partitions regions from
@@ -729,13 +730,13 @@ fn paint_channel_seam_strokes_do_not_partition_regions() {
          Seam-placer uses geometric SeamCandidate scores only."
     );
 
-    // DEV-123: seam paint must NOT mint a variant region. Canonical routes it to
+    // Seam paint must NOT mint a variant region. Canonical routes it to
     // `gather_enforcers_blockers` (`SeamPlacer.cpp`) as a per-candidate score;
     // partitioning on it minted a spurious `seam_enforcer` region with its own
     // walls and notched the matching geometry out of BASE.
     assert!(
         !has_seam_variant_chain,
-        "DEV-123: Custom(\"seam_enforcer\") paint from cube_cilindrical_modifier.3mf \
+        "Custom(\"seam_enforcer\") paint from cube_cilindrical_modifier.3mf \
          must NOT reach any SlicedRegion.variant_chain — seam painting is a \
          seam-placer hint and never partitions regions.\n\
          facet_value_count={facet_value_count}, stroke_count={stroke_count}."

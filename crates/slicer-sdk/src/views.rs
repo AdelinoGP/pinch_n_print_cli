@@ -65,6 +65,10 @@ pub struct SliceRegionView {
     /// holder emits over a disjoint canonical polygon. See
     /// `crates/slicer-runtime/src/region_partition.rs`.
     sparse_infill_area: Vec<ExPolygon>,
+    /// Raft-substrate fill polygons (packet 240a). Non-empty only on layers
+    /// inside the positive-offset raft band (global layer indices
+    /// `0..support_raft_layers-1`); empty on every model layer.
+    raft_fill: Vec<ExPolygon>,
     /// Claim IDs held by the module that produced this region.
     /// Modules may only emit fill paths for roles they hold; empty means
     /// the module holds no fill claims for this region (suppresses all fill
@@ -118,6 +122,7 @@ impl Default for SliceRegionView {
             internal_bridge_areas: Vec::new(),
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
+            raft_fill: Vec::new(),
             held_claims: Vec::new(),
             overhang_areas: Vec::new(),
             overhang_quartile_polygons: Vec::new(),
@@ -152,6 +157,7 @@ impl SliceRegionView {
             internal_bridge_areas: region.internal_bridge_areas.clone(),
             bridge_orientation_deg: region.bridge_orientation_deg,
             sparse_infill_area: region.sparse_infill_area.clone(),
+            raft_fill: region.raft_fill.clone(),
             held_claims,
             ..Self::default()
         }
@@ -305,6 +311,12 @@ impl SliceRegionView {
     #[doc(hidden)]
     pub fn set_sparse_infill_area(&mut self, sparse_infill_area: Vec<ExPolygon>) {
         self.sparse_infill_area = sparse_infill_area;
+    }
+
+    /// Override the raft-substrate fill polygons (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_raft_fill(&mut self, raft_fill: Vec<ExPolygon>) {
+        self.raft_fill = raft_fill;
     }
 
     /// Override the resolved surface group (host-only, for testing).
@@ -529,6 +541,12 @@ impl SliceRegionView {
         &self.sparse_infill_area
     }
 
+    /// Returns the raft-substrate fill polygons for this region. Non-empty
+    /// only inside the positive-offset raft band (packet 240a).
+    pub fn raft_fill(&self) -> &[ExPolygon] {
+        &self.raft_fill
+    }
+
     /// Override the held-claims set (host-only, for testing).
     ///
     /// Modules only emit fill paths for roles they hold. Empty means the
@@ -686,6 +704,9 @@ pub struct PerimeterRegionView {
     internal_solid_fill: Vec<ExPolygon>,
     /// Per-layer expanded bridge polygons (empty if not a bridge region) (ADR-0028).
     bridge_areas: Vec<ExPolygon>,
+    /// Raft-substrate fill polygons mirrored from the corresponding
+    /// `SliceRegionView` (packet 240a).
+    raft_fill: Vec<ExPolygon>,
     /// Host-computed tool index: variant-chain material tool →
     /// `RegionMapIR.extensions["extruder"]` → `DEFAULT_TOOL(0)`
     /// (ADR-0028 §Amendment 2026-07-01).
@@ -752,6 +773,12 @@ impl PerimeterRegionView {
     #[doc(hidden)]
     pub fn set_sparse_infill_area(&mut self, sparse_infill_area: Vec<ExPolygon>) {
         self.sparse_infill_area = sparse_infill_area;
+    }
+
+    /// Override the raft-substrate fill polygons (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_raft_fill(&mut self, raft_fill: Vec<ExPolygon>) {
+        self.raft_fill = raft_fill;
     }
 
     /// Override the top solid fill (host-only, for testing).
@@ -824,6 +851,12 @@ impl PerimeterRegionView {
     /// partition, mirrored from the corresponding `SliceRegionView`.
     pub fn sparse_infill_area(&self) -> &[ExPolygon] {
         &self.sparse_infill_area
+    }
+
+    /// Returns the raft-substrate fill polygons mirrored from the
+    /// corresponding `SliceRegionView` (packet 240a).
+    pub fn raft_fill(&self) -> &[ExPolygon] {
+        &self.raft_fill
     }
 
     /// Returns the polygon-precise top-shell solid-fill areas.

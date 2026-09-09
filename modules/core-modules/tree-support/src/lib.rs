@@ -906,7 +906,7 @@ mod tests {
     /// traditional renderer pins. With the key absent from the
     /// raw config map (as here) the in-code fallback stays the legacy −1.0
     /// mirror-top sentinel, so bottom == top; in production the manifest
-    /// default 0.5 (DEV-145) is host-injected and yields a 0.907 mm bottom
+    /// default 0.5 is host-injected and yields a 0.907 mm bottom
     /// pitch instead.
     #[test]
     fn interface_pitch_adds_flow_spacing() {

@@ -129,6 +129,9 @@ fn branch_points_carry_finite_nonnegative_dist_to_top_mm() {
 
 #[test]
 fn enabled_raft_config_is_emitted_as_raft_plan() {
+    // The live positive band deliberately overlaps raft/model Z values. This
+    // fixture must complete support planning as well as expose the config, so
+    // it guards the traditional planner's duplicate-Z identity merge.
     let ctx = support_wedge::prepare_wedge_context_with_overrides(
         true,
         &[

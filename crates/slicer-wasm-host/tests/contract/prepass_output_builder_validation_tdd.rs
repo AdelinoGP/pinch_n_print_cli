@@ -101,6 +101,7 @@ fn valid_layer_proposal() -> LayerProposal {
             effective_layer_height: 0.2,
             ..region_layer_proposal_base()
         }],
+        is_raft_prefix: false,
     }
 }
 
@@ -301,6 +302,7 @@ fn layer_plan_push_layer_z_is_nan() {
     let bad = LayerProposal {
         z: f32::NAN,
         active_regions: vec![],
+        is_raft_prefix: false,
     };
     let result = prepass_layer_planning::HostLayerPlanOutput::push_layer(&mut ctx, handle, bad);
     let inner = result.unwrap();
@@ -322,6 +324,7 @@ fn layer_plan_push_layer_z_is_negative() {
     let bad = LayerProposal {
         z: -0.1,
         active_regions: vec![],
+        is_raft_prefix: false,
     };
     let result = prepass_layer_planning::HostLayerPlanOutput::push_layer(&mut ctx, handle, bad);
     let inner = result.unwrap();
@@ -346,6 +349,7 @@ fn layer_plan_push_layer_region_effective_layer_height_nan() {
             effective_layer_height: f32::NAN,
             ..region_layer_proposal_base()
         }],
+        is_raft_prefix: false,
     };
     let result = prepass_layer_planning::HostLayerPlanOutput::push_layer(&mut ctx, handle, bad);
     let inner = result.unwrap();
@@ -370,6 +374,7 @@ fn layer_plan_push_layer_region_effective_layer_height_zero() {
             effective_layer_height: 0.0,
             ..region_layer_proposal_base()
         }],
+        is_raft_prefix: false,
     };
     let result = prepass_layer_planning::HostLayerPlanOutput::push_layer(&mut ctx, handle, bad);
     let inner = result.unwrap();
