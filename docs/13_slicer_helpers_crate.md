@@ -62,6 +62,7 @@ crates/slicer-helpers/
     ├── lib.rs               — public API surface; re-exports from sub-modules
     ├── repair.rs            — mesh manifold repair
     ├── decimate.rs          — QEM mesh decimation
+    ├── split.rs             — connected-component splitting (`mesh convert`)
     └── import/
         ├── mod.rs           — shared import utilities, unit conversion
         └── step.rs          — STEP/STP → MeshIR pipeline
@@ -74,6 +75,7 @@ crates/slicer-helpers/
 └── tests/
     ├── repair_tdd.rs
     ├── decimate_tdd.rs
+    ├── split_tdd.rs
     └── import_step_tdd.rs
 ```
 

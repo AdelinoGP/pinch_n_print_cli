@@ -49,10 +49,10 @@ edition = "2021"
 crate-type = ["cdylib"]   # required for WASM component output
 
 [dependencies]
-slicer-sdk = "1.0"
+slicer-sdk = "0.1"
 
 [dev-dependencies]
-slicer-sdk = { version = "1.0", features = ["test"] }
+slicer-sdk = { version = "0.1", features = ["test"] }
 
 [profile.release]
 opt-level = "s"    # optimize for size in WASM output

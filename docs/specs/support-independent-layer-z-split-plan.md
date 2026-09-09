@@ -129,10 +129,10 @@ until then a row reaching `generated` means authored and preflight-clean, not im
 
 | # | packet slug | goal (one sentence) | task ids | depends on | status | packet dir |
 |---|-------------|---------------------|----------|------------|--------|------------|
-| 1 | `239a-anchored-host-seams` | Give the host an anchored-entity input seam, switch all three non-anchored `execute_per_layer*` call sites to the committed anchored variant, and lower `CommittedLayerEvent::Anchored` into off-grid print rows using the canonical `\|dz\| <= EPSILON` merge rule. | TASK-399..TASK-408 | - | closed | `docs/spec_packets/239a-anchored-host-seams/` |
-| 2 | `239b-anchored-wit-contract` | Wire the orphaned `ir-types.wit` anchored records into a real world/interface with host lift/lower glue and SDK drain glue, so a guest module can round-trip an `ordered-event-collection`. | TASK-508..TASK-514 | - | closed | `docs/spec_packets/239b-anchored-wit-contract/` |
-| 3 | `239c-support-layer-height-producer` | Declare `independent_support_layer_height`, decouple support Z from `LayerPlanView`, emit off-grid support rows from the support modules, and settle the measure-first `height_delta` verdict. | TASK-515..TASK-522 | #1, #2 | implemented 2026-08-31 (human gate signed; 402/402 suite green) | `docs/spec_packets/239c-support-layer-height-producer/` |
-| 4 | `239d-support-coarse-floating-planes` | Derive free-floating pitch-spaced coarse support planes in both support planners so the coarse direction (support pitch >= object gap) stops degenerating to the object grid. | TASK-523..TASK-530 | #3 | implemented 2026-09-02 (all steps complete; nominal 0.45 artifacts and supplied references present; human gate `APPROVED`; `REFS-PRESENT`) | `docs/spec_packets/239d-support-coarse-floating-planes/` |
+| 1 | `239a-anchored-host-seams` | Give the host an anchored-entity input seam, switch all three non-anchored `execute_per_layer*` call sites to the committed anchored variant, and lower `CommittedLayerEvent::Anchored` into off-grid print rows using the canonical `\|dz\| <= EPSILON` merge rule. | TASK-399..TASK-408 | - | closed | `docs/spec_packets/_OLD/239a-anchored-host-seams.md` |
+| 2 | `239b-anchored-wit-contract` | Wire the orphaned `ir-types.wit` anchored records into a real world/interface with host lift/lower glue and SDK drain glue, so a guest module can round-trip an `ordered-event-collection`. | TASK-508..TASK-514 | - | closed | `docs/spec_packets/_OLD/239b-anchored-wit-contract.md` |
+| 3 | `239c-support-layer-height-producer` | Declare `independent_support_layer_height`, decouple support Z from `LayerPlanView`, emit off-grid support rows from the support modules, and settle the measure-first `height_delta` verdict. | TASK-515..TASK-522 | #1, #2 | implemented 2026-08-31 (human gate signed; 402/402 suite green) | `docs/spec_packets/_OLD/239c-support-layer-height-producer.md` |
+| 4 | `239d-support-coarse-floating-planes` | Derive free-floating pitch-spaced coarse support planes in both support planners so the coarse direction (support pitch >= object gap) stops degenerating to the object grid. | TASK-523..TASK-530 | #3 | implemented 2026-09-02 (all steps complete; nominal 0.45 artifacts and supplied references present; human gate `APPROVED`; `REFS-PRESENT`) | `docs/spec_packets/_OLD/239d-support-coarse-floating-planes.md` |
 
 ### Seam decision (approved 2026-08-28)
 
@@ -159,7 +159,7 @@ range; #2 and #3 mint fresh above the `docs/07_implementation_status.md` high-wa
 
 ## Disposition of packet 239
 
-`docs/spec_packets/239-support-independent-layer-z/` moves to `status: superseded`, naming all
+`docs/spec_packets/_OLD/239-support-independent-layer-z.md` moves to `status: superseded`, naming all
 three successors. Its `design.md` already carries correction entry PC-1 (recording F1) and the
 `visual_debug.rs` scope note, both added during the swarm run; that history is preserved, not
 deleted. Each successor carries `supersedes: 239-support-independent-layer-z`.

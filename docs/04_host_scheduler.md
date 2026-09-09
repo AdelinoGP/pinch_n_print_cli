@@ -26,7 +26,7 @@ anyone debugging why a module was rejected or ordered a certain way.
 > - `crates/slicer-scheduler/src/dag.rs` — intra-stage DAG construction.
 > - `crates/slicer-scheduler/src/dag_cli.rs` — `pnp_cli dag` introspection.
 > - `crates/slicer-scheduler/src/config_resolution.rs` — config merge.
-> - `crates/slicer-scheduler/src/stage_order.rs` — canonical `STAGE_ORDER`.
+> - `crates/slicer-scheduler/src/stage_order.rs` — stage-order helpers derived from the canonical list (the list itself lives in `execution_plan.rs`).
 > - `crates/slicer-scheduler/src/module_search_path.rs` — manifest discovery.
 > - `crates/slicer-scheduler/src/instrumentation.rs` — planning side (`EdgeReason`,
 >   `SerialEdge`, `compute_serial_edges_for_stage`).
@@ -53,12 +53,12 @@ anyone debugging why a module was rejected or ordered a certain way.
 > Scheduler-no-wasmtime invariant (Packet 85): `slicer-scheduler` declares
 > no dep on `slicer-wasm-host`, `slicer-runtime`, or `wasmtime`. Verify
 > with `cargo tree -p slicer-scheduler --edges normal | grep wasmtime`
-> (must be empty). This is what enables the ~6.8k LOC of planning logic
+> (must be empty). This is what enables the ~7.9k LOC of planning logic
 > to be unit-tested without instantiating any WASM component.
 
-The scheduler has four phases, all completing before a single layer is sliced. Phases 1–3 are pure data transformation — no WASM executes until Phase 4.
+The scheduler has four phases. Phases 1–3 are pure data transformation that complete before a single layer is sliced — no WASM executes until Phase 4.
 
-```
+```text
 Phase 1: Manifest Ingestion     (parse all .toml files)
 Phase 2: DAG Construction       (build intra-stage dependency graphs)
 Phase 3: DAG Validation         (claim conflicts, cycles, version checks)
@@ -163,7 +163,7 @@ Examples:
 - `LayerCollectionIR.skirt-brim` — the `skirt-brim` field of `LayerCollectionIR` (written by skirt-brim finalization modules)
 - `PerimeterIR.walls` — wall loop array within each perimeter region
 
-Wildcards are not supported in this version. Each dot-terminated path is matched literally against runtime access audit paths generated at the WIT boundary.
+Wildcards are not supported in this version. Each dot-separated path is matched literally against runtime access audit paths generated at the WIT boundary.
 
 Why sub-field specificity matters: declaring `PerimeterIR` as a whole grants access to every field in the struct, preventing other modules from writing non-overlapping sub-fields in the same stage without a claim conflict. Narrow declarations like `PerimeterIR.resolved-seam` let modules operate on non-overlapping fields within the same IR type without mutual exclusion.
 
@@ -335,8 +335,7 @@ filter at dispatch time using this set; the granularity is per-(module
   it. This is the safe default; missing the run would silently drop
   output, missing the skip wastes a no-op call.
 
-The filter helper is `module_invocation_allowed_on_layer(...)` (called
-from `module_invocation_allowed_on_layer` in `crates/slicer-runtime/src/layer_executor.rs`). Filter cost is `O(|regions| × |S|)` per
+The filter helper is `module_invocation_allowed_on_layer(...)` in `crates/slicer-runtime/src/layer_executor.rs`, consulted at per-layer dispatch. Filter cost is `O(|regions| × |S|)` per
 dispatch decision; the `region_split_semantics` HashSet keeps the
 inner check at O(1).
 
@@ -659,14 +658,14 @@ difference is important when designing modules that share IR fields.
 |----------------------|------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|
 | **What it detects**  | Two modules both intend to be the primary generator of a feature | Two modules both write the same IR field with no ordering between them                                                   |
 | **Granularity**      | One claim name per feature category (coarse)                     | Per IR access path (fine)                                                                                                |
-| **Caught at**        | Startup, validation pass 1–2                                     | Startup, validation pass 6b                                                                                              |
+| **Caught at**        | Startup, validation pass 1–2                                     | Startup, validation pass 8                                                                                              |
 | **Typical cause**    | User enables two infill modules simultaneously                   | Developer adds a new PostProcess module that overwrites a field another module already modifies                          |
 | **Resolution**       | Region overrides; disable one module                             | Declare `incompatible-with`, OR have one module read the field it will overwrite (establishing ordering), OR use a claim |
 | **Runtime fallback** | None — fatal startup error                                       | None — fatal startup error                                                                                               |
 
 A claim conflict always implies a write conflict on the claim's primary output
 field. A write conflict does not always imply a claim conflict — two
-PostProcess modules that both transform `PerimeterIR.walls.path` may both
+PostProcess modules that both transform `PerimeterIR.regions.walls` may both
 legitimately run, but only if one reads the other's output first.
 
 ### Composable Multi-Writer Patterns (Normative)
@@ -687,15 +686,13 @@ To avoid tight coupling while keeping determinism:
 | **Meaning** | A module writes a field no downstream module reads. The write has no effect on the output. Likely a manifest declaration error. | Two modules write the same field with no ordering. The result is non-deterministic. Always a bug. |
 | **Common cause** | Module updated its implementation but forgot to update its manifest `ir-access.writes` | Two independently developed PostProcess modules targeting the same output field without knowing about each other |
 
-Summary of Changes
-
 ### Topological Sort (Kahn's Algorithm)
 
 ```rust
 pub fn topological_sort(
     nodes: &[ModuleNode],
 ) -> Result<Vec<ModuleId>, Vec<ModuleId>> {
-    let mut in_degree: HashMap<ModuleId, usize> = nodes.iter()
+    let mut in_degree: BTreeMap<ModuleId, usize> = nodes.iter()
         .map(|n| (n.module_id.clone(), 0usize))
         .collect();
 
@@ -724,7 +721,7 @@ pub fn topological_sort(
     if sorted.len() == nodes.len() {
         Ok(sorted)
     } else {
-        let visited: HashSet<_> = sorted.iter().cloned().collect();
+        let visited: BTreeSet<_> = sorted.iter().cloned().collect();
         Err(nodes.iter()
             .map(|n| n.module_id.clone())
             .filter(|id| !visited.contains(id))
@@ -732,7 +729,7 @@ pub fn topological_sort(
     }
 }
 
-/// Validation pass 7: detect write conflicts within a stage.
+/// Validation pass 8: detect write conflicts within a stage.
 ///
 /// A write conflict exists when modules A and B both write field F in the
 /// same stage, and there is no directed path A→B or B→A in the stage DAG.
@@ -825,7 +822,7 @@ fn compute_reachability(
 
 > This section owns how `RegionMapIR` is **built and bounded**. The struct shape
 > and field semantics (`RegionPlan`, `RegionKey`, config-key namespaces, override
-> precedence) are defined in `docs/02_ir_schemas.md` IR 5; `docs/01_system_architecture.md`
+> precedence) are defined in `docs/02_ir_schemas.md` IR 4; `docs/01_system_architecture.md`
 > describes why the stage exists.
 
 `PrePass::RegionMapping` is host-built-in and precomputes per-region execution context so Tier 2 has no config or claim resolution overhead.
@@ -847,14 +844,14 @@ kernel uses it to:
 1. Determine which paint semantics are opted-in per region (filter
    `MeshIR.objects[].paint_data.layers` against the keyset).
 2. Drive cross-product expansion of `variant_chain` per `(layer,
-   ActiveRegion)` — see `docs/02_ir_schemas.md` IR 5 § Config Interner.
+   ActiveRegion)` — see `docs/02_ir_schemas.md` IR 4 § Config Interner.
 3. Detect Scalar paint values defensively: any `PaintValue::Scalar`
    encountered in a region-split path becomes
    `RegionMappingError::ScalarInRegionSplitFacetValue` (Packet 93 guard, the
    manifest validator from Packet 92 normally catches it first).
 
 `enumerate_canonical_chains` produces chains deterministically in
-BTreeMap (semantic-name) order with `PaintValue` ordered as
+canonical `(priority, name)` semantic order (`canonical_variant_chain_order`), with `PaintValue` ordered as
 `Flag < ToolIndex(0) < ToolIndex(1) < … < Custom(s_lex)`. This order
 is contract — test fixtures and integration tests lock it.
 
@@ -862,7 +859,7 @@ is contract — test fixtures and integration tests lock it.
 `1_000` in Packet 93 to accommodate worst-realistic envelopes of 16
 colors × 1000 layers × 16 regions × ~3 modifier subtypes). Overflow
 surfaces `RegionMappingError::CapExceeded` naming
-`top_contributor_object_id` so callers can diagnose which object
+the top contributor's `(object_id, region_count, layer_count)` so callers can diagnose which object
 exploded the cross-product.
 
 **Cross-crate dependency:** `slicer-core` depends on `slicer-scheduler`
@@ -906,7 +903,7 @@ fn build_region_map(
             }
 
             entries.insert(key, RegionPlan {
-                config: region.resolved_config.clone(),
+                config: interned ConfigId, // Packet 91: index into RegionMapIR.configs, not a cloned ResolvedConfig (see 02 IR 4)
                 stage_modules,
             });
         }
@@ -924,13 +921,14 @@ fn build_region_map(
 Per-layer execution must not rescan global config or claims. Region activation is O(1) lookup by `(global_layer_index, module_id)` into precomputed RegionMap indexes.
 
 ```rust
+// Illustrative — the real method is `ExecutionPlan::resolve_active_regions`
+// in `crates/slicer-scheduler/src/execution_plan.rs`.
 fn resolve_active_regions(
+    plan: &ExecutionPlan,
     layer: &GlobalLayer,
-    module: &CompiledModule,
-    blackboard: &Blackboard,
-) -> &[ActiveRegionRef] {
-    blackboard.region_map
-        .module_region_index
+    module: &CompiledModuleStatic,
+) -> &[ActiveRegion] {
+    plan.module_region_index
         .get(&(layer.index, module.module_id.clone()))
         .map(Vec::as_slice)
         .unwrap_or(&[])
@@ -953,8 +951,8 @@ region-level overlay.
 
 ### PrePass Config-View Plumbing (Normative — Packet 73)
 
-Every PrePass export (`layer-planning`, `seam-planning`,
-`support-geometry`, `paint-segmentation`) receives a `config-view`
+Every module-implementable PrePass export (`mesh-analysis`, `layer-planning`,
+`seam-planning`, `support-geometry`) receives a `config-view`
 parameter providing read-only access to declared config keys, normalised
 across stages by Packet 73 (the `support-geometry` runner was the final
 holdout). Modules declaring no `[config.schema]` receive an empty
@@ -1117,17 +1115,22 @@ decouples the dispatcher (which lives in `slicer-wasm-host`) from
 runtime-owned aggregates (which stay in `slicer-runtime`):
 
 ```rust
+// Illustrative shape — the authoritative definitions are `LayerStageInput`,
+// `PrepassStageInput`, `FinalizationStageInput`, and `PostpassStageInput` in
+// `crates/slicer-wasm-host/src/binding.rs`. Every field is an `Option` borrow
+// (or `Arc`) projected from the Blackboard / `LayerArena` before dispatch;
+// representative fields of `LayerStageInput`:
 pub struct LayerStageInput<'a> {
-    pub stage_id:    StageId,
-    pub layer_index: u32,
-    pub region:      &'a ActiveRegion,
-    pub slice:       &'a SliceIR,
-    pub perimeter:   Option<&'a PerimeterIR>,
-    // … other field-level borrows the dispatcher reads
+    pub mesh:                     Arc<MeshIR>,
+    pub seam_plan:                Option<Arc<SeamPlanIR>>,
+    pub support_plan:             Option<Arc<SupportPlanIR>>,
+    pub region_map:               Option<Arc<RegionMapIR>>,
+    pub slice:                    Option<&'a SliceIR>,
+    pub perimeter:                Option<&'a PerimeterIR>,
+    pub surface_classification:   Option<&'a SurfaceClassificationIR>,
+    // … further per-stage optional borrows (infill, layer_collection,
+    //     prepared regions, lightning tree); see `binding.rs`.
 }
-
-// PrepassStageInput<'a>, FinalizationStageInput<'a>,
-// PostpassStageInput<'a> follow the same pattern.
 ```
 
 Dispatch is provenance-routed: `CompiledModuleLive.native_entry` decides
@@ -1176,27 +1179,23 @@ CompiledModuleStatic` alias. See ADR-0005 and ADR-0007.
 
 `PostPass::LayerFinalization` admits multiple modules in the same
 stage (e.g. `overhang-classifier-default` + `part-cooling` +
-`skirt-brim` + `wipe-tower`). Modules execute SEQUENTIALLY, ordered by
-their claims' topological sort. Two modules MUST NOT claim the same
-role (claim conflict → DAG validation failure). Example role split:
+`skirt-brim` + `wipe-tower`). Modules execute SEQUENTIALLY in stage-DAG topological order (manifest `requires` edges). Two modules MUST NOT hold the same claim (claim conflict → DAG validation failure). Example split:
 
-| Module                        | Holds claim                       |
-|-------------------------------|-----------------------------------|
-| `overhang-classifier-default` | `overhang-speed-factor`           |
-| `part-cooling`                | `layer-cooling`                   |
-| `skirt-brim`                  | `skirt`, `brim`                   |
-| `wipe-tower`                  | `wipe-tower`, `prime-tower`       |
-| `top-surface-ironing`         | `ironing` (`PostPass::Finalization` since packet 38-rev1) |
+| Module                        | Orders after (`[compatibility].requires`)              |
+|-------------------------------|--------------------------------------------------------|
+| `overhang-classifier-default` | — (no requirements; holds no claim)                    |
+| `part-cooling`                | — (no requirements; holds no claim)                    |
+| `skirt-brim`                  | — (no requirements; holds no claim)                    |
+| `wipe-tower`                  | `skirt-brim`, `part-cooling`, `top-surface-ironing` (holds no claim) |
 
-A finalization module is permitted to be unconditionally `layer_parallel_safe = false` (enforced by Phase 2 DAG construction); modules in the same stage execute in dependency order without any mutual-exclusion machinery. `wipe-tower`'s manifest declares `[compatibility].requires = ["skirt-brim", "part-cooling", "top-surface-ironing"]` to force itself last.
+A finalization module is permitted to be unconditionally `layer_parallel_safe = false` (enforced by Phase 2 DAG construction); modules in the same stage execute in dependency order without any mutual-exclusion machinery. `wipe-tower`'s manifest declares `[compatibility].requires = ["skirt-brim", "part-cooling", "top-surface-ironing"]` to force itself last. Top-surface ironing is not a finalization module: it runs at `Layer::Infill`, gated on `top_solid_fill` and ordered after infill via compatibility `requires` (packet 38-rev1's finalization placement was superseded).
 
 ### Model Loading — 3MF Sidecar Parse Order (Normative — Packet 56)
 
-Inside `load_3mf` the host opens the 3MF ZIP archive, calls
-`parse_3mf_model_xml`, and then invokes
-`parse_3mf_sidecar(&mut zip)` BEFORE the `ZipArchive` is dropped.
-The resulting `HashMap<u32, ObjectSidecarInfo>` is threaded through
-`parse_3mf_model_xml` to `resolve_object` as an additional parameter
+Inside `load_3mf` the host opens the 3MF ZIP archive and calls
+`parse_3mf_sidecar(&mut zip)` BEFORE the `ZipArchive` is dropped, then
+parses the model XML with the sidecar threaded through:
+`parse_3mf_model_xml(&xml_bytes, &sidecar, ...)` feeds `resolve_object`
 (unused in Packet 56 — branched only in Packets 56b/56c). Missing
 sidecar files return an empty map silently; malformed XML returns an
 empty map plus a `log::warn!` on the `slicer_model_io::sidecar` target.
@@ -1214,7 +1213,7 @@ Modifier parts (3MF `Metadata/model_settings.config`) are routed into `MeshIR.ob
 Negative-part subtract is a **per-layer host stage** inserted inside
 `run_paint_annotation` (`crates/slicer-runtime/src/layer_executor.rs`), after `arena.take_slice()`
 returns the layer's `SliceIR` and BEFORE the paint annotation loop
-begins. This insertion point is binding (see proposed ADR-0012):
+begins. This insertion point is binding:
 
 - Earlier designs put the subtract in a prepass phase-0 built-in or in
   `crates/slicer-runtime/src/pipeline.rs`; both were infeasible because `Vec<SliceIR>` is
@@ -1273,13 +1272,17 @@ must not run their own ad-hoc presence checks for these slots.
 
 | Stage                              | Required Slots                                                            |
 |------------------------------------|---------------------------------------------------------------------------|
+| `PrePass::MeshAnalysis`            | — (no prerequisites)                                                      |
 | `PrePass::LayerPlanning`           | `SurfaceClassification`                                                   |
-| `PrePass::OverhangAnnotation`      | reads `SliceIR` (+ `LayerPlanIR`, `SurfaceClassificationIR`); writes `overhang_quartile_polygons` into `SurfaceClassificationIR`. Runs after `PrePass::Slice`. |
+| `PrePass::Slice`                   | `SurfaceClassification`, `LayerPlan`, `RegionMap`                         |
+| `PrePass::OverhangAnnotation`      | `SurfaceClassification`, `LayerPlan` — reads the committed `SliceIR` and writes `overhang_quartile_polygons` into `SurfaceClassificationIR`. Runs after `PrePass::Slice`. |
+| `PrePass::ShellClassification`     | `SurfaceClassification`, `LayerPlan`, `RegionMap`, `SliceIR`              |
 | `PrePass::SeamPlanning`            | `LayerPlan`, `SliceIR`, `RegionMap` — reads the committed `LayerPlan` plus per-region `SliceIR` geometry and annotations (projected via `SeamPlanningView`, packet 178); writes `SeamPlanIR`. Dispatch occurs only after these products are committed. |
-| `PrePass::PaintSegmentation`       | `SliceIR`, `RegionMap`; produces split `SliceIR` via `replace_slice_ir`  |
+| `PrePass::PaintSegmentation`       | — (empty; ordered by execution sequence after `ShellClassification`). Reads the committed `SliceIR`; produces split `SliceIR` via `replace_slice_ir`. |
 | `PrePass::RegionMapping`           | `LayerPlan`                                                               |
-| `PrePass::SupportAnalysis`         | `SliceIR`, `LayerPlan`, `SurfaceClassification`, `RegionMap`              |
-| `PrePass::SupportGeometry`         | `MeshIR`, `LayerPlan`, `RegionMap`, `SupportGeometry` (committed by the host built-in within this stage before the guest runs) |
+| `PrePass::SupportAnalysis`         | `SliceIR`                                                                 |
+| `PrePass::SupportGeometry`         | `SurfaceClassification`, `LayerPlan`, `RegionMap`, `SliceIR`, `SupportGeometry` (the last committed by the host built-in within this stage before the guest runs) |
+| `PrePass::LightningTreeGen`        | `SurfaceClassification`, `LayerPlan`, `RegionMap`, `SliceIR`              |
 
 A stage scheduled before its prerequisites are committed produces
 `PrepassExecutionError::MissingRequiredPrepass { stage_id, slot }` and aborts
@@ -1307,16 +1310,16 @@ geometry falls back to `0°`.
 
 #### Precision-Key Touch Points (packet 60)
 
-`Layer::Slice` (host-built-in): reads `slice_closing_radius` from `ResolvedConfig`; this key is consumed by `slicer_core::triangle_mesh_slicer` to close open contours at the slice plane.
+`PrePass::Slice` (host-built-in): reads `slice_closing_radius` from `ResolvedConfig`; this key is consumed by `slicer_core::triangle_mesh_slicer` to close open contours at the slice plane.
 
 `PostPass::GCodeEmit` (host-built-in): reads seven precision keys from `ResolvedConfig` (see `docs/02_ir_schemas.md` "Polyline simplification and precision" subsection). Key routing:
 - `gcode_resolution`, `infill_resolution`, `support_resolution`, `min_segment_length`, `gcode_xy_decimals` — consumed inside `DefaultGCodeEmitter` during G-code serialization.
 - `perimeter_arc_tolerance` — read by perimeter modules at module-load time and threaded into every `slicer_core::polygon_ops::offset(...)` call.
-- `slice_closing_radius` — consumed by `slicer_core::triangle_mesh_slicer` at the host-built-in `Layer::Slice` stage (see above).
+- `slice_closing_radius` — consumed by `slicer_core::triangle_mesh_slicer` at the host-built-in `PrePass::Slice` stage (see above).
 
 #### Layer::PaintRegionAnnotation Stage (packet 64)
 
-`Layer::PaintRegionAnnotation` sits between `Layer::Slice` and `Layer::SlicePostProcess` in the per-layer stage order. The host handler `run_paint_annotation` (`crates/slicer-runtime/src/layer_executor.rs`) is a **no-op stub** since packet 95: `PrePass::PaintSegmentation` writes `segment_annotations` (and per-variant geometry) directly into the committed `SliceIR` during prepass. The stage boundary is retained for plan wiring; any WASM module claiming `Layer::PaintRegionAnnotation` in its manifest runs instead of the host built-in, providing a full override contract. When no module claims the stage, the host built-in (no-op) handles it.
+`Layer::PaintRegionAnnotation` sits first in the per-layer stage order, ahead of `Layer::SlicePostProcess`. The host handler `run_paint_annotation` (`crates/slicer-runtime/src/layer_executor.rs`) is a **no-op stub** since packet 95: `PrePass::PaintSegmentation` writes `segment_annotations` (and per-variant geometry) directly into the committed `SliceIR` during prepass. The stage boundary is retained for plan wiring; any WASM module claiming `Layer::PaintRegionAnnotation` in its manifest runs instead of the host built-in, providing a full override contract. When no module claims the stage, the host built-in (no-op) handles it.
 
 The annotation loop processes contour points in **parallel chunks of
 32** (`par_chunks(32)`, rayon). Results are byte-identical to serial
@@ -1335,7 +1338,7 @@ multi-thread utilisation is exposed via report wall-clock timing
 `DeterministicConflict` Timing (Normative — Packet 64): overlapping
 `Custom` paint regions with equal `paint_order` are detected at
 `PrePass::PaintSegmentation` time and surfaced as a fatal prepass
-error (`PaintSegmentationError::DeterministicConflict`). This is a
+error (`SlicePostProcessPaintAnnotationError::DeterministicConflict`). This is a
 correctness improvement over the pre-Packet-64 path where the same
    conflict failed per-layer at query time.
 
@@ -1414,7 +1417,7 @@ Finalization ordering guarantees:
 - Module B always sees the fully committed output of module A.
 - If two modules insert at the same position, order is deterministic by module execution order.
 
-Top-surface ironing is performed at `PostPass::LayerFinalization` (not at `Layer::InfillPostProcess`) so the module sees the full layer sequence and can detect the topmost-layer index via the multi-layer `top_solid_layers` window (packet 38-rev1). The module appends `Ironing`-role entities via the finalization builder; ordering uses the role's default priority `900` (Ironing prints last on its layer).
+Top-surface ironing runs at `Layer::Infill`, gated on `top_solid_fill` and ordered after infill via compatibility `requires` (packet 38-rev1's `PostPass::LayerFinalization` placement was superseded). The module emits `Ironing`-role entities; the role's `default_priority()` is 6000 (Ironing prints last on its layer).
 
 #### Post-Finalization Travel Reconciliation (packet 20)
 
@@ -1506,6 +1509,8 @@ execution** (inside the per-layer rayon closure, where a set flag returns
 ### Error Handling Policy
 
 ```rust
+// Pseudocode — illustrates the Error Handling Policy below; `LayerErrorAction`
+// is not a source type. See the normative behavior list after this snippet.
 pub enum LayerErrorAction {
     ContinueDegraded,
     Abort(SlicerError),
@@ -1546,7 +1551,7 @@ Normative behavior:
 - `fatal=false` continues with pre-stage IR for that module only; downstream stages process degraded state.
 - Every non-fatal or fatal module error must emit a structured progress event (`module_error`).
 - Slice result metadata must include `degraded=true` if any non-fatal error occurred.
-- An absent compiled component is always fatal: load rejects it via `LiveModuleLoadError::Component`, and dispatch rejects it via the phase-appropriate fatal error in `dispatch.rs`. The previous graceful-stage-skip behavior and the placeholder-skip affordance documented in `manifest.rs` are retired.
+- An absent compiled component is always fatal: load rejects it via `LiveModuleLoadError::Component`, and dispatch rejects it via the phase-appropriate fatal error in `dispatch.rs`. Placeholder (≤8-byte) stubs likewise fail live loading with a structured diagnostic naming the module (see `placeholder_wasm_is_skipped_with_structured_warning_diagnostic` in `crates/slicer-runtime/tests/integration/live_module_loading_tdd.rs`); a slice never proceeds without the module's component.
 
 #### Non-Fatal → FatalModule Host Limitation (Open — packet 180)
 
@@ -1687,7 +1692,7 @@ Field derivation:
   `LayerCollectionIR.z` values: `height_i = z_{i+1} - z_i`. The first layer
   uses `z_0` directly. The **terminal layer falls back to the last non-zero
   delta** (`height_N = height_{N-1}`) — never zero, because OrcaSlicer
-  post-processors reject zero-height comments.
+  post-processors reject zero-height comments. <!-- VERIFY: the terminal-layer fallback (`height_N = height_{N-1}`) was not found in `crates/slicer-gcode/src/emit.rs`; confirm the fallback site or drop the sentence. -->
 
 `ExtrusionRole` → `;TYPE:` label mapping (host-canonical, OrcaSlicer parity):
 
@@ -1695,7 +1700,7 @@ Field derivation:
 |------------------------|---------------------|
 | `OuterWall`            | `Outer wall`        |
 | `InnerWall`            | `Inner wall`        |
-| `ThinWall`             | `Thin wall`         |
+| `ThinWall`             | `Inner wall`         |
 | `TopSolidInfill`       | `Top surface`       |
 | `BottomSolidInfill`    | `Bottom surface`    |
 | `SparseInfill`         | `Sparse infill`     |
@@ -1707,7 +1712,11 @@ Field derivation:
 | `WipeTower`            | `Prime tower`       |
 | `PrimeTower`           | `Prime tower`       |
 | `Ironing`              | `Ironing`           |
-| `Custom(s)`            | `s` verbatim        |
+| `GapFill`             | `Gap infill`        |
+| `InternalSolidInfill` | `Internal solid infill` |
+| `InternalBridgeInfill`| `Internal Bridge`   |
+| `RaftInfill`          | `Support`           |
+| `Custom(_)`            | `Custom`            |
 
 `SupportBaseInterface` uses the same `Support interface` label as
 `SupportInterface`; `;TYPE:` markers therefore prove interface-family
@@ -1716,7 +1725,7 @@ be asserted at the IR role or represented by a distinct marker.
 
 Modules that attempt to emit any of these strings via `Raw(text)` are accepted
 (the escape hatch is intentional) but doing so duplicates the host-emitted
-markers and is logged as a `MUDDIED_GCODE_PREAMBLE` warning.
+markers and is logged as a `MUDDIED_GCODE_PREAMBLE` warning. <!-- VERIFY: no `MUDDIED_GCODE_PREAMBLE` symbol exists in `slicer-gcode`; confirm the warning name or drop the clause. -->
 
 ### Deferred Tool-Change Queue (packet 19)
 
@@ -1774,28 +1783,34 @@ pub fn execute_postpass(
 ```rust
 pub struct Blackboard {
     // Immutable after loading
-    pub mesh_ir: Arc<MeshIR>,
+    mesh_ir: Arc<MeshIR>,
 
-    // Written by PrePass, immutable during per-layer
-    pub surface_class: Arc<SurfaceClassificationIR>,
-    pub layer_plan:    Arc<LayerPlanIR>,
-    pub region_map:    Arc<RegionMapIR>,
+    // Written by PrePass (each Option slot committed once), immutable during per-layer
+    surface_classification: Option<Arc<SurfaceClassificationIR>>,
+    layer_plan:             Option<Arc<LayerPlanIR>>,
+    seam_plan:              Option<Arc<SeamPlanIR>>,
+    support_plan:           Option<Arc<SupportPlanIR>>,
+    region_map:             Option<Arc<RegionMapIR>>,
+    slice_ir:               Option<Arc<Vec<SliceIR>>>,
+    support_geometry:       Option<Arc<SupportGeometryIR>>,
+    support_analysis:       Option<Arc<SupportAnalysisIR>>,
+    lightning_tree_ir:      Option<Arc<LightningTreeIR>>,
 
     // Written by per-layer (one slot per layer, written once, read after join)
-    pub layer_outputs: Vec<Option<LayerCollectionIR>>,
+    layer_outputs: Option<Vec<Option<LayerCollectionIR>>>,
 }
 ```
 
 The authoritative definition is `Blackboard` in
 `crates/slicer-runtime/src/blackboard.rs`; per-layer slots are
-`Vec<Option<LayerCollectionIR>>` (not a `SlotVec` type — that name does not
+`Option<Vec<Option<LayerCollectionIR>>>` (not a `SlotVec` type — that name does not
 exist in the codebase).
 
 ---
 
 ## Full Lifecycle
 
-```
+```text
 startup
   ├─ scan module directories → parse all .toml manifests
   ├─ build intra-stage DAGs
@@ -1817,11 +1832,11 @@ slice command
     │    ├─ PrePassOverhangAnnotation    → SurfaceClassificationIR (overhang_quartile_polygons, from SliceIR) → Blackboard  (after Slice)
     │    ├─ PrePassShellClassification   → SliceIR (shell indices, solid fill) → Blackboard
     │    ├─ PrePassPaintSegmentation     → SliceIR (per-variant regions)       → Blackboard
-    │    └─ PrePassSupportGeometry       → SupportGeometryIR+SupportPlanIR      → Blackboard  (guest optional)
+    │    ├─ PrePassSupportAnalysis       → SupportAnalysisIR                   → Blackboard
+    │    ├─ PrePassSupportGeometry       → SupportGeometryIR+SupportPlanIR      → Blackboard  (guest optional)
   │    └─ PrePassLightningTreeGen      → LightningTreeIR                      → Blackboard  (only when sparse_fill_holder = lightning-infill)
   ├─ execute_per_layer()  [rayon::par_iter]
   │    └─ per layer (parallel):
-  │         ├─ LayerSlice              (host-built-in)
   │         ├─ LayerPaintRegionAnnotation  (host-built-in; WASM override)
   │         ├─ LayerSlicePostProcess
   │         ├─ LayerPerimeters
@@ -1829,6 +1844,8 @@ slice command
   │         ├─ LayerInfill
   │         ├─ LayerInfillPostProcess
   │         ├─ LayerSupport
+  │         ├─ LayerSupportPostProcess
+  │         ├─ LayerAnchoredEvents
   │         └─ LayerPathOptimization
   │              └─ writes complete LayerCollectionIR into Blackboard layer_outputs[layer_idx]
   │                 (written once per slot; no mutex required)
@@ -1841,5 +1858,5 @@ slice command
        ├─ PostPassGCodeEmit         (host-built-in serializer)
        ├─ PostPassGCodePostProcess  (optional modules)
        └─ PostPassTextPostProcess   (optional, last resort)
-       └─ write .gcode / .bgcode file
+       └─ write the .gcode file
 ```

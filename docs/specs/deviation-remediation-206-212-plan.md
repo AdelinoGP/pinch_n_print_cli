@@ -164,7 +164,7 @@ its per-module fallback table, and that is part of the blast radius.
 
 | # | packet slug | goal (one sentence) | task ids | depends on | status | packet dir |
 |---|-------------|---------------------|----------|------------|--------|------------|
-| 1 | 206-seam-paint-delivery | Feed seam paint to the already-ported seam placer, fix the support-paint substring leak, and wire arachne's missing bias call. | TASK-322 | - | **generated** | `docs/spec_packets/206-seam-paint-delivery/` |
+| 1 | 206-seam-paint-delivery | Feed seam paint to the already-ported seam placer, fix the support-paint substring leak, and wire arachne's missing bias call. | TASK-322 | - | **generated** | `docs/spec_packets/_OLD/206-seam-paint-delivery.md` |
 
 > **Row #1 PREFLIGHT PASS** (independent reviewer, round 3; 0 blockers, 0 high). Two
 > fix rounds were needed. Round 1 fixed AC-7's import regex, which failed against
@@ -180,7 +180,7 @@ its per-module fallback table, and that is part of the blast radius.
 > also cites `seam_paint_boxes` as living in `classic-perimeters/src/lib.rs` and T-083
 > names `classic-perimeters` alone — both go stale from this packet and no bullet or AC
 > pins them.
-| 2 | 207-paint-segmentation-per-region-shell-config | Resolve shell params per painted `variant_chain` instead of from the dead `configs[0]` placeholder. | TASK-323 | #1 | **generated** | `docs/spec_packets/207-paint-segmentation-per-region-shell-config/` |
+| 2 | 207-paint-segmentation-per-region-shell-config | Resolve shell params per painted `variant_chain` instead of from the dead `configs[0]` placeholder. | TASK-323 | #1 | **generated** | `docs/spec_packets/_OLD/207-paint-segmentation-per-region-shell-config.md` |
 
 > **Row #2 PREFLIGHT PASS** (independent reviewer, final round; 0 blockers, 0 high,
 > no defect classes). Two fix rounds. Round 1 replaced a FALSIFIED granularity
@@ -205,7 +205,7 @@ its per-module fallback table, and that is part of the blast radius.
 > pre-authorizes the same golden re-blessing this packet performs — a citation
 > gap, not a contradiction.
 | 3 | 208-wall-flag-path-clip | SUPERSEDED — deferred by user decision 2026-08-07; the mechanism is inert, revisit only after a Material/FuzzySkin `segment_annotations` writer exists (packets 206/207). | TASK-324 | - | superseded | - |
-| 4 | 209-scanline-pattern-service | RE-SCOPED 2026-08-07: reconcile the **three** drifted scan-line copies in place so they agree on one canonical behaviour; **no shared kernel, no extraction**. Each copy keeps its own implementation; the duplication itself is left to a future WIT pattern-services packet. | TASK-325 | - | **generated** | `docs/spec_packets/209-scanline-pattern-service/` |
+| 4 | 209-scanline-pattern-service | RE-SCOPED 2026-08-07: reconcile the **three** drifted scan-line copies in place so they agree on one canonical behaviour; **no shared kernel, no extraction**. Each copy keeps its own implementation; the duplication itself is left to a future WIT pattern-services packet. | TASK-325 | - | **generated** | `docs/spec_packets/_OLD/209-scanline-pattern-service.md` |
 
 > **Row #4 PREFLIGHT PASS** (independent reviewer, decisive round; 0 blockers,
 > 0 high; **19/19 ACs executed**; zero exit-status swallowing; no PCRE use; no
@@ -271,7 +271,7 @@ its per-module fallback table, and that is part of the blast radius.
 > half-fixed. The correctness driver is the vertex test — rectilinear uses a
 > half-open `scan_y < lo \|\| scan_y >= hi` while support and ironing use
 > strictly-between, which can drop or double-count a scan line at a vertex.
-| 5 | 210a-support-planner-coord-t | Owns DEV-128: migrate support-planner tree-node geometry from f32 mm to scaled-integer coord_t, and — in the one and only rewrite of `smooth_branches` — extract the sub-chain gap walk into `split_column_into_chains` for #5b to consume. Re-split from the merged 210 (210+211) by user decision 2026-08-07 after the reviewer ruled SIZE: must decompose. **SUPERSEDED 2026-08-12** by the support-families sequence: the planner is split/renamed into `tree-support-planner` (packet 221) and DEV-128's integer-coordinate work is absorbed there only where valid; structural `SupportPlanIR` migration (packet 220) supersedes the assumed emission boundary. Directory retained for provenance; do not implement. | TASK-326 | - | superseded | `docs/spec_packets/210a-support-planner-coord-t/` |
+| 5 | 210a-support-planner-coord-t | Owns DEV-128: migrate support-planner tree-node geometry from f32 mm to scaled-integer coord_t, and — in the one and only rewrite of `smooth_branches` — extract the sub-chain gap walk into `split_column_into_chains` for #5b to consume. Re-split from the merged 210 (210+211) by user decision 2026-08-07 after the reviewer ruled SIZE: must decompose. **SUPERSEDED 2026-08-12** by the support-families sequence: the planner is split/renamed into `tree-support-planner` (packet 221) and DEV-128's integer-coordinate work is absorbed there only where valid; structural `SupportPlanIR` migration (packet 220) supersedes the assumed emission boundary. Directory retained for provenance; do not implement. | TASK-326 | - | superseded | `docs/spec_packets/_OLD/210a-support-planner-coord-t.md` |
 
 > **Row #5 PREFLIGHT PASS** (independent reviewer, decisive round; 0 blockers,
 > 0 high; 17/17 ACs executed; zero exit-status swallowing; no defect classes).
@@ -304,7 +304,7 @@ its per-module fallback table, and that is part of the blast radius.
 > by name (its catch-all line still covers it); and AC-8 clause (c) would go blind
 > to an already-committed regeneration if the work were done directly on `master`,
 > though Step 4's ordering makes it fire while the tree is dirty.
-| 5b | 210b-support-interface-bottom-layers | Owns DEV-129: on #5's migrated shape, implement bottom-interface (floor) bands replacing the warn-only code-1003 stub — canonical's `< 0 ⇒ use the top count` fallback, model-landing detection against the per-layer collision cache, and upward scan-line densification. Adds a second caller to #5's `split_column_into_chains`; never reopens `smooth_branches`. TASK-327 is revived (it was folded into TASK-326 by the 2026-08-07 merge, restored by the same day's re-split). **SUPERSEDED 2026-08-12** by the support-families sequence: bottom-interface becomes a standard role in structural `SupportPlanIR` (packet 220) and both family planners (packets 221/222) emit interface polygons; the code-1003 stub is retired by the family-contract migration. Directory retained for provenance; do not implement. | TASK-327 (revived) | #5 (must be **implemented and merged**, not merely generated) | superseded | `docs/spec_packets/210b-support-interface-bottom-layers/` |
+| 5b | 210b-support-interface-bottom-layers | Owns DEV-129: on #5's migrated shape, implement bottom-interface (floor) bands replacing the warn-only code-1003 stub — canonical's `< 0 ⇒ use the top count` fallback, model-landing detection against the per-layer collision cache, and upward scan-line densification. Adds a second caller to #5's `split_column_into_chains`; never reopens `smooth_branches`. TASK-327 is revived (it was folded into TASK-326 by the 2026-08-07 merge, restored by the same day's re-split). **SUPERSEDED 2026-08-12** by the support-families sequence: bottom-interface becomes a standard role in structural `SupportPlanIR` (packet 220) and both family planners (packets 221/222) emit interface polygons; the code-1003 stub is retired by the family-contract migration. Directory retained for provenance; do not implement. | TASK-327 (revived) | #5 (must be **implemented and merged**, not merely generated) | superseded | `docs/spec_packets/_OLD/210b-support-interface-bottom-layers.md` |
 
 > **Row #5b PREFLIGHT PASS** (independent reviewer, decisive round; 0 blockers,
 > 0 high; 17/17 ACs executed; zero exit-status swallowing; no defect classes).
@@ -328,10 +328,10 @@ its per-module fallback table, and that is part of the blast radius.
 > note in AC-12b telling the runner to check `rg --version | rg pcre2` before
 > treating a red as a code defect. Not applied — the packet had already passed and
 > further edits would need another review round.
-| 6 | 211-support-interface-bottom-layers | SUPERSEDED — absorbed into #5 by user decision 2026-08-07. Both packets rewrote `smooth_branches` (`modules/core-modules/support-planner/src/lib.rs`) and neither planned for the other's edit: #5 retyped its sub-chain gap walk to an integer Laplacian, #6 extracted that same walk into `split_column_into_chains`. Directory retained for provenance; do not implement or delete. | TASK-327 (folded into TASK-326 by the merge, then REVIVED for #5b by the re-split — register it against #5b, not here) | #5 | superseded | `docs/spec_packets/211-support-interface-bottom-layers/` (frozen) |
-| 7 | 212-extra-perimeters-parity | Reconcile extra_perimeters across both generators and against canonical's per-Surface model. | TASK-328 | - | generated | `docs/spec_packets/212-extra-perimeters-parity/` |
+| 6 | 211-support-interface-bottom-layers | SUPERSEDED — absorbed into #5 by user decision 2026-08-07. Both packets rewrote `smooth_branches` (`modules/core-modules/support-planner/src/lib.rs`) and neither planned for the other's edit: #5 retyped its sub-chain gap walk to an integer Laplacian, #6 extracted that same walk into `split_column_into_chains`. Directory retained for provenance; do not implement or delete. | TASK-327 (folded into TASK-326 by the merge, then REVIVED for #5b by the re-split — register it against #5b, not here) | #5 | superseded | `docs/spec_packets/_OLD/211-support-interface-bottom-layers.md` (frozen) |
+| 7 | 212-extra-perimeters-parity | Reconcile extra_perimeters across both generators and against canonical's per-Surface model. | TASK-328 | - | generated | `docs/spec_packets/_OLD/212-extra-perimeters-parity.md` |
 
-> **Row #7 is DONE — do not regenerate or overwrite `docs/spec_packets/212-extra-perimeters-parity/`.**
+> **Row #7 is DONE — do not regenerate or overwrite `docs/spec_packets/_OLD/212-extra-perimeters-parity.md`.**
 > All five files written (`packet.spec.md`, `requirements.md`, `design.md`,
 > `implementation-plan.md`, `task-map.md`); preflight S0–S8 PASS.
 >

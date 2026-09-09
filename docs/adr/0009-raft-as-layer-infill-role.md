@@ -87,7 +87,7 @@ DEV-127, dependent on a future WIT-interface pattern-services design).
 
 ## References
 
-- `docs/spec_packets/240b-support-raft-module/`.
+- `docs/spec_packets/_OLD/240b-support-raft-module.md`.
 - `crates/slicer-sdk/src/views.rs:330-359` — existing role/claim dispatch.
 - `crates/slicer-ir/src/slice_ir.rs:1463-1492` — `ExtrusionRole` enum.
 - OrcaSlicer `src/libslic3r/Support/SupportCommon.cpp::generate_raft_base` — reference behavior.

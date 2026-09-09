@@ -266,6 +266,13 @@ and carries the exact path coordinates.
 
 ## 9. Files touched by the fix (expected, re-verify at implementation time)
 
+*(Historical plan list: packet 213 was SUPERSEDED 2026-08-12 by the
+support-families sequence, and `modules/core-modules/support-planner/` was
+renamed to `modules/core-modules/tree-support-planner/` — resolve the
+`support-planner` paths below to the `tree-support-planner` tree. RC-3 is
+fixed in current code: `needs_support` is derived per region, not
+unconditional.)*
+
 - `modules/core-modules/support-planner/src/lib.rs` — lone-node emission
   (RC-1), tip-width floor (RC-4).
 - `modules/core-modules/traditional-support/src/lib.rs` — overhang clip

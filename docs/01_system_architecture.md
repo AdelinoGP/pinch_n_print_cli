@@ -88,17 +88,18 @@ Eleven `PrePass::*` stages are declared in the following scheduler order. The re
 `PrePass::MeshSegmentation` is not among them: `split_triangle_strokes` in
 `crates/slicer-model-io/src/loader.rs` already normalizes sub-facet paint
 strokes at load time. `SeamPlanning` and `SupportGeometry`'s guest half run only when a
-corresponding module is loaded; the rest always run.
+corresponding module is loaded; `LightningTreeGen` additionally commits only
+for the lightning sparse-fill holder (see below); the rest always run.
 
 ```text
 1. PrePass::MeshAnalysis
 2. PrePass::LayerPlanning
 3. PrePass::SeamPlanning         (guest; runs when a seam-planner module is loaded)
-4. PrePass::RegionMapping        (host-built-in; cross-product variant expansion)
-5. PrePass::Slice                (host-built-in; produces SliceIR)
-6. PrePass::OverhangAnnotation   (host-built-in; runs AFTER Slice — derives overhang from the committed SliceIR)
-7. PrePass::ShellClassification  (host-built-in; annotates the committed SliceIR)
-8. PrePass::PaintSegmentation    (host-built-in; reads the annotated SliceIR, writes via replace_slice_ir)
+4. PrePass::PaintSegmentation    (host-built-in; validated here, executes after ShellClassification — reads the annotated SliceIR, writes via replace_slice_ir)
+5. PrePass::RegionMapping        (host-built-in; cross-product variant expansion)
+6. PrePass::Slice                (host-built-in; produces SliceIR)
+7. PrePass::OverhangAnnotation   (host-built-in; runs AFTER Slice — derives overhang from the committed SliceIR)
+8. PrePass::ShellClassification  (host-built-in; annotates the committed SliceIR)
 9. PrePass::SupportAnalysis      (host-built-in; shared host-owned support analysis)
 10. PrePass::SupportGeometry      (host-built-in always runs; guest optional)
 11. PrePass::LightningTreeGen     (host-built-in; commits only for lightning sparse fill)
@@ -119,7 +120,7 @@ dispatch but only after those products are committed.
 
 Stages 1–2 are the classic mesh-analysis and layer-planning pipeline.
 `PrePass::SeamPlanning` (stage 3) is a guest stage claimed by
-`seam-planner-default`. `PrePass::RegionMapping` (stage 4) performs
+`seam-planner-default`. `PrePass::RegionMapping` (stage 5) performs
 
 `PrePass::SeamPlanning` reads per-region `SliceIR` polygons via `SeamPlanningView` to compute the active-region `SeamPlanIR`.
 
@@ -132,15 +133,16 @@ active `(global_layer_index, object_id, region_id, variant_chain)` key.
 
 cross-product expansion: each `(layer, object, active_region)` is split into one
 `RegionPlan` per canonical **variant chain** (see §"Variant-Chain Region
-Splitting" below). `PrePass::Slice` (stage 5) then produces `SliceIR`.
-`PrePass::OverhangAnnotation` (stage 6) runs **after Slice** and populates
+Splitting" below). `PrePass::Slice` (stage 6) then produces `SliceIR`.
+`PrePass::OverhangAnnotation` (stage 7) runs **after Slice** and populates
 per-layer quartile band polygons into `SurfaceClassificationIR` by diffing
 consecutive-layer `SliceIR` footprints (OrcaSlicer's `detect_overhangs_for_lift`
 shape) — never re-slicing the mesh — so Tier 2 consumers can read pre-classified
 overhang data without cross-layer access. `PrePass::ShellClassification`
-(stage 7) refines the freshly committed `SliceIR` with shell indices and
-polygon-precise top/bottom solid fill. `PrePass::PaintSegmentation` (stage 8)
-runs after ShellClassification — it needs the annotated `SliceIR` — and writes
+(stage 8) refines the freshly committed `SliceIR` with shell indices and
+polygon-precise top/bottom solid fill. `PrePass::PaintSegmentation` (stage 4
+in validation order)
+executes after ShellClassification — it needs the annotated `SliceIR` — and writes
 per-variant polygons back via `replace_slice_ir`. `PaintRegionIR` is deleted.
 Seam paint is delivery-only: it does not participate in MMU or cell
 decomposition. Seam-only inputs must still pass through the annotation writer
@@ -274,7 +276,8 @@ PrePass::SupportGeometry  [host built-in always runs; guest optional]
            resolution so the top distance is honored precisely. Runs after
            `execute_prepass` so `LayerPlanIR` is always committed first.
            Phase 2 — when a `support-planner` guest is loaded, the host invokes
-           it via the WIT export `run-support-geometry` after Phase 1's
+           it via the WIT `support-geometry` interface's `run` function
+(`slicer:prepass-support-geometry@1.0.0`) after Phase 1's
            `SupportGeometryIR` is on the blackboard. The guest performs
            multi-layer organic tree-support planning: walks layers top-to-bottom,
            extracts contact points from overhang/bridge facets and SupportEnforcer
@@ -676,7 +679,7 @@ This phase has no module-visible surface; it is a host built-in tucked between `
 
 #### Ironing Relocation (packet 38-rev1)
 
-Top-surface ironing is performed at `PostPass::LayerFinalization` (packet 38-rev1), not at `Layer::InfillPostProcess`. The relocation gives the ironing module the full-layer-sequence visibility needed to detect topmost-layer indices via the multi-layer `top_solid_layers` window.
+Top-surface ironing runs at `Layer::Infill`, gated on `top_solid_fill` and ordered after infill via compatibility `requires`. Packet 38-rev1 had placed it at `PostPass::LayerFinalization` (not `Layer::InfillPostProcess`); that placement was superseded by the move to `Layer::Infill`.
 
 #### Part Cooling Fan Modulation (packet 53)
 
@@ -741,7 +744,7 @@ declares reads/writes that contradict this table, the manifest is incorrect.
 | `PrePass::RegionMapping` (host-built-in) | `LayerPlanIR`, loaded modules, resolved config                     | `RegionMapIR`                                                       |
 | `PrePass::SupportAnalysis`              | `SliceIR`, `LayerPlanIR`, `SurfaceClassificationIR`, `RegionMapIR` | `SupportAnalysisIR` (host-owned, immutable, cached exact-Z results) |
 | `PrePass::SupportGeometry` (optional)   | `MeshIR`, `LayerPlanIR`, `RegionMapIR`, `SupportGeometryIR`        | `SupportGeometryIR` (host-committed), `SupportPlanIR` (guest-emitted) |
-| `Layer::Slice`                           | `MeshIR`, `LayerPlanIR`                                            | `SliceIR`                                                           |
+| `PrePass::Slice` (host-built-in)            | `MeshIR`, `LayerPlanIR`                                            | `SliceIR`                                                           |
 | `Layer::PaintRegionAnnotation` (host no-op) | `SliceIR` (current layer)                                      | none (reserved boundary; a WASM module claiming the stage runs instead of the host built-in) |
 | `Layer::SlicePostProcess`                | `SliceIR`, `PaintRegionLayerView`                                  | `SliceIR` (polygon edits)                                           |
 | `Layer::Perimeters`                      | `SliceIR`, `PaintRegionLayerView`                                  | `PerimeterIR` (`feature_flags`, seam candidates, boundary metadata) |
@@ -863,8 +866,8 @@ The runtime emitter is implemented in
 The frontend can also query the loaded modules' config schemas (one entry per
 module, per field — `{key, type, values, default, display, group}`). The CLI
 subcommand and JSON shape are implemented in `crates/pnp-cli/src/main.rs`
-(`ConfigSchema` subcommand) and documented in `03_wit_and_manifest.md`
-under "Manifest config schema query".
+(`module config-schema` subcommand) and documented in `03_wit_and_manifest.md`
+§ "Module Manifest Schema (TOML)".
 
 #### CLI Output Lifecycle and Cancellation (packet 174)
 

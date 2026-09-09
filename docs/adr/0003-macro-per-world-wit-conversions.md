@@ -2,6 +2,12 @@
 
 Status: accepted
 
+> **Mechanism note (ADR-0045, packets 163/164):** the "per-world" unit below is
+> now per *stage package* — the macro routes by `StageGlueKind` (see
+> `crates/slicer-macros/src/lib.rs`), not four tier worlds. The decision itself
+> stands: conversions are still generated inside each guest and still cannot be
+> hoisted into a shared crate, for the reasons given.
+
 ADR-0002 unified cross-world WIT type *identity on the host* (`wit_host.rs`) by
 remapping each world's `bindgen!` onto the layer world's `slicer:types/geometry`,
 deleting the duplicate host-side converters. This ADR records the analogous —

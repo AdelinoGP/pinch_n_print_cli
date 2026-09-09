@@ -99,7 +99,9 @@ issues dir). Queue amendments: 04's tier table +2 rows (A 118→119, B 223→224
 
 ## Update after 03
 
-The alias map's content now exists: 25 adjudicated renames and 34
+The alias map's content now exists: 25 adjudicated renames (26 with
+`ironing_spacing_mm`, which this ticket files below — see the map's
+workstream count) and 34
 Pinch-specific keys, in [`03-asset-scoped-gap.md`](./03-asset-scoped-gap.md).
 This ticket is unblocked, and 03 widened it — the problem is not only
 Orca↔Pinch drift but **internal** inconsistency:

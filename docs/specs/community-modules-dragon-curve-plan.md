@@ -11,10 +11,10 @@ orchestrator authors no packet files.
 
 | # | packet slug | goal (one sentence) | task ids | depends on | status | packet dir |
 |---|-------------|---------------------|----------|------------|--------|------------|
-| 1 | 225-dragon-curve-feasibility-gate | Bump wit-bindgen 0.60.0 + wasmtime 47.0.3 and re-run the Go/MoonBit feasibility probes, recording verdicts in docs/14. | TASK-336 | - | generated | docs/spec_packets/225-dragon-curve-feasibility-gate/ |
-| 2 | 226-authored-coloring-carrier | Land the per-path `tool-index` WIT carrier plus the two-sided authored-coloring grant, tool-count query, linker tool-equality guard, and DEV-135 deviation row. | TASK-337 | #1 | generated | docs/spec_packets/226-authored-coloring-carrier/ |
-| 3 | 227-dragon-curve-community-module | Author the dragon-curve community module (dragon tiling + deterministic color mapping) at `modules/community-modules/dragon-curve/` with manifest, config schema, banner README, build script, and manual slice test doc. | TASK-338 | #1, #2 | generated | docs/spec_packets/227-dragon-curve-community-module/ |
-| 4 | 228-community-module-docs-banner | Land the social-rule docs: CLAUDE.md community-module instruction, docs/ labeled-example note, and docs/07 backlog rows for all four tasks. | TASK-339 | #3 | generated | docs/spec_packets/228-community-module-docs-banner/ |
+| 1 | 225-dragon-curve-feasibility-gate | Bump wit-bindgen 0.60.0 + wasmtime 47.0.3 and re-run the Go/MoonBit feasibility probes, recording verdicts in docs/14. | TASK-336 | - | generated | docs/spec_packets/_OLD/225-dragon-curve-feasibility-gate.md |
+| 2 | 226-authored-coloring-carrier | Land the per-path `tool-index` WIT carrier plus the two-sided authored-coloring grant, tool-count query, linker tool-equality guard, and DEV-135 deviation row. | TASK-337 | #1 | generated | docs/spec_packets/_OLD/226-authored-coloring-carrier.md |
+| 3 | 227-dragon-curve-community-module | Author the dragon-curve community module (dragon tiling + deterministic color mapping) at `modules/community-modules/dragon-curve/` with manifest, config schema, banner README, build script, and manual slice test doc. | TASK-338 | #1, #2 | generated | docs/spec_packets/_OLD/227-dragon-curve-community-module.md |
+| 4 | 228-community-module-docs-banner | Land the social-rule docs: CLAUDE.md community-module instruction, docs/ labeled-example note, and docs/07 backlog rows for all four tasks. | TASK-339 | #3 | generated | docs/spec_packets/_OLD/228-community-module-docs-banner.md |
 
 Packet status on emission: `draft` (all four). No packet may set `active`.
 

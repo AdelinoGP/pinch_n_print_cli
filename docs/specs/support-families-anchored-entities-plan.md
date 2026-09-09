@@ -18,10 +18,8 @@ Sources:
 
 - `docs/adr/0059-support-families-and-anchored-entities.md`
 - `docs/specs/support-parity-gap-register.md` (G-01..G-24)
-- `docs/spec_packets/224-support-family-orca-closure/handoffs/orca-divergences.md` (~20 rows,
-  recorded-not-fixed)
-- `docs/spec_packets/224-support-family-orca-closure/handoffs/HANDOFF-224-s6.md`
-- `docs/spec_packets/224-support-family-orca-closure/parity-audit.md` (F-1..F-49)
+- `docs/spec_packets/_OLD/224-support-family-orca-closure.md` (compacted packet:
+  ~20 recorded-not-fixed divergence rows; HANDOFF-224-s6; F-1..F-49 parity audit)
 - The 2026-08-12 plan (predecessor), `docs/specs/support-generation-remediation-plan.md`,
   `docs/specs/support-generation-defect-verified-findings.md`
 
@@ -31,7 +29,7 @@ The 2026-08-12 queue (packets 219–224) was implemented on branch `parity/suppo
 but closure consumed ~80 remediation commits (squashed into 4 commits: `bab79c5c`, `55211648`,
 `6b03d0b8` + docs `a644abee`). Packets 219–223 are `implemented`; packet 224 remains `draft`
 with `TASK-335` unchecked. The remediation produced a precisely measured remainder: the gap
-register (G-01..G-24), five unnumbered stubs under `docs/spec_packets/stubs/`, the divergence
+register (G-01..G-24), five unnumbered stubs under `docs/spec_packets/stubs/` (consumed into numbered packets 239a–d; the stubs directory no longer exists), the divergence
 record `orca-divergences.md`, six open deviations (DEV-141..DEV-146, renumbered from
 DEV-135..140 after a mainline collision), and four never-implemented drafts (215/216/217/218).
 
@@ -307,6 +305,9 @@ Owned work:
   Give the fixture real occupancy/avoidance/collision inputs; classify drift, then rebless
   `resources/golden/benchy_tree_support_regression_endpoints.txt` /
   `..._branch_count.txt` via `SUPPORT_PLANNER_REGEN_GOLDEN=1` (E3).
+  *(Superseded: the tripwire was replaced by structural invariants in
+  `modules/core-modules/tree-support-planner/tests/orca_parity_tdd.rs`, which
+  records why the golden files were retired; `resources/golden/` does not exist.)*
 - **G-21 validator.** `validate_startup_dag` (`crates/slicer-scheduler/src/validation.rs`,
   `GlobalClaimConflicts`/`WriteConflicts`) still enforces the pre-221 single-holder rule; every
   full-directory slice emits four `ClaimConflict` advisories (`support-generator`,
@@ -549,6 +550,8 @@ Known traps: T1, T4, T5, T6, T7, T8.
   `modules/core-modules/traditional-support/src/interface_regularize.rs` → one shared
   implementation. (DEV-127 records the broader three-copy scan-line drift including
   `rectilinear-infill` — this packet owns only the support-side pair.)
+  *(Landed by packet 238c: both copies deleted, shared logic now in
+  `crates/slicer-core/src/support_regularize.rs`.)*
 - **DEV-145 correction.** `support_bottom_interface_spacing` is canonical (see §10); change
   the default from −1.0 (mirror-top) to canonical 0.5 mm and correct the DEV row. Manifests:
   `modules/core-modules/traditional-support/traditional-support.toml`,
@@ -584,10 +587,10 @@ Known traps: T1, T4, T5.
 > Split at preflight. The substrate half (the `GlobalLayer.is_raft` marker and
 > its WIT marking, the positive raft band emission, the object-bottom predicate
 > audit, the `SlicedRegion.raft_fill` carrier, the `raft-plan` read accessor) is
-> `docs/spec_packets/240a-support-raft-substrate`; the consumer half
+> `docs/spec_packets/_OLD/240a-support-raft-substrate.md`; the consumer half
 > (`com.core.raft-default`, the `generate_raft_base` port, the raft keys,
 > the ADR-0009 amendment, the human gate) is
-> `docs/spec_packets/240b-support-raft-module`. 240b hard-depends on 240a.
+> `docs/spec_packets/_OLD/240b-support-raft-module.md`. 240b hard-depends on 240a.
 
 - **All of 215's scope + G-06** (canonical reference `SupportCommon.cpp::generate_raft_base`;
   rafts occupy a **positive offset band** — global layer indices `0..N-1` where
@@ -773,14 +776,14 @@ the column records what was allocated.
 
 | # | packet slug | goal (one sentence) | task ids | depends on | status | packet dir |
 |---|-------------|---------------------|----------|------------|--------|------------|
-| 1 | support-stabilization | AC-8 per-region ruling, G-23 tripwire rebless, G-21/G-22/G-24 hygiene, delete drafts 215–218, accept ADR-0059, branch fully green. | TASK-344..TASK-352 | - | generated | docs/spec_packets/236-support-stabilization |
-| 2 | support-analysis-parity | Canonical-faithful host analysis: real `needs_support` signal (G-17), enforcers under auto, five missing `detect_overhangs` steps. | TASK-353..TASK-362 | #1 | generated | docs/spec_packets/237-support-analysis-parity |
-| 3 | support-pattern-config-keys | Declare/wire pattern/expansion/bottom-z/line-width config surface with canonical semantics and reconciled transports. | TASK-363..TASK-368 | #1 | generated | docs/spec_packets/238a-support-pattern-config-keys |
-| 4 | tree-planner-canonical-fidelity | Tree planner algorithms to canonical fidelity (top-Z gap, smoothing, roles, circles, keying, moves, styles); size DEV-128. | TASK-369..TASK-380 | #3 | generated | docs/spec_packets/238b-tree-planner-canonical-fidelity |
-| 5 | support-renderer-flow-interfaces | Renderer flow/density/interface semantics: hollow walls, density scale, radius caps, roof/floor counts, base-interface role. | TASK-381..TASK-398 | #4 | generated | docs/spec_packets/238c-support-renderer-flow-interfaces |
-| 6 | support-independent-layer-z | Support-layer Z independent of object-layer Z, against fresh enabled-feature Orca references. | TASK-399..TASK-408 | #5 | generated | docs/spec_packets/239-support-independent-layer-z |
-| 7a | support-raft-substrate | `GlobalLayer.is_raft` marker + WIT marking, positive raft band emission, object-bottom predicate audit, `raft_fill` carrier, `raft-plan` + `is-raft` read accessors. | TASK-409..TASK-413, TASK-533..TASK-536 | #1 | generated | docs/spec_packets/240a-support-raft-substrate |
-| 7b | support-raft-module | `raft-default` synthesizer, `claim:raft-fill`, `generate_raft_base` port, raft keys, ADR-0009 amendment, human gate. 240a + 240b done; human sign-off remains open. | TASK-414..TASK-418, TASK-537 | #7a | generated (implemented; 240a + 240b done) | docs/spec_packets/240b-support-raft-module |
-| 8 | support-agg-rasterizer | Port the canonical AGG rasterizer as config-selectable mode, canonical by default (Rulings 7/8). | TASK-419..TASK-428 | #5 | generated | docs/spec_packets/241-support-agg-rasterizer |
-| 9 | support-family-orca-closure | Close the sequence: register closure, invariant suite, matched-height inspection, e2e `;TYPE:` evidence, TASK-335 disposition, final human gate. | TASK-429..TASK-440 | #2,#3,#4,#5,#6,#7,#8 | generated | docs/spec_packets/242-support-family-orca-closure |
-| 10 | support-plan-ownership-seam | Region ownership enforced at the host support-plan merge point: declared-identity union key, default-deny check against `family_assignments` + producer claim, arrival order deleted, DEV-167 closed, packet-239 tests restored. | TASK-531 | #9, packet 241 | generated (implemented) | docs/spec_packets/241b-support-plan-ownership-seam |
+| 1 | support-stabilization | AC-8 per-region ruling, G-23 tripwire rebless, G-21/G-22/G-24 hygiene, delete drafts 215–218, accept ADR-0059, branch fully green. | TASK-344..TASK-352 | - | generated | docs/spec_packets/_OLD/236-support-stabilization.md |
+| 2 | support-analysis-parity | Canonical-faithful host analysis: real `needs_support` signal (G-17), enforcers under auto, five missing `detect_overhangs` steps. | TASK-353..TASK-362 | #1 | generated | docs/spec_packets/_OLD/237-support-analysis-parity.md |
+| 3 | support-pattern-config-keys | Declare/wire pattern/expansion/bottom-z/line-width config surface with canonical semantics and reconciled transports. | TASK-363..TASK-368 | #1 | generated | docs/spec_packets/_OLD/238a-support-pattern-config-keys.md |
+| 4 | tree-planner-canonical-fidelity | Tree planner algorithms to canonical fidelity (top-Z gap, smoothing, roles, circles, keying, moves, styles); size DEV-128. | TASK-369..TASK-380 | #3 | generated | docs/spec_packets/_OLD/238b-tree-planner-canonical-fidelity.md |
+| 5 | support-renderer-flow-interfaces | Renderer flow/density/interface semantics: hollow walls, density scale, radius caps, roof/floor counts, base-interface role. | TASK-381..TASK-398 | #4 | generated | docs/spec_packets/_OLD/238c-support-renderer-flow-interfaces.md |
+| 6 | support-independent-layer-z | Support-layer Z independent of object-layer Z, against fresh enabled-feature Orca references. | TASK-399..TASK-408 | #5 | generated | docs/spec_packets/_OLD/239-support-independent-layer-z.md |
+| 7a | support-raft-substrate | `GlobalLayer.is_raft` marker + WIT marking, positive raft band emission, object-bottom predicate audit, `raft_fill` carrier, `raft-plan` + `is-raft` read accessors. | TASK-409..TASK-413, TASK-533..TASK-536 | #1 | generated | docs/spec_packets/_OLD/240a-support-raft-substrate.md |
+| 7b | support-raft-module | `raft-default` synthesizer, `claim:raft-fill`, `generate_raft_base` port, raft keys, ADR-0009 amendment, human gate. 240a + 240b done; human sign-off remains open. | TASK-414..TASK-418, TASK-537 | #7a | generated (implemented; 240a + 240b done) | docs/spec_packets/_OLD/240b-support-raft-module.md |
+| 8 | support-agg-rasterizer | Port the canonical AGG rasterizer as config-selectable mode, canonical by default (Rulings 7/8). | TASK-419..TASK-428 | #5 | generated | docs/spec_packets/_OLD/241-support-agg-rasterizer.md |
+| 9 | support-family-orca-closure | Close the sequence: register closure, invariant suite, matched-height inspection, e2e `;TYPE:` evidence, TASK-335 disposition, final human gate. | TASK-429..TASK-440 | #2,#3,#4,#5,#6,#7,#8 | generated | docs/spec_packets/_OLD/242-support-family-orca-closure.md |
+| 10 | support-plan-ownership-seam | Region ownership enforced at the host support-plan merge point: declared-identity union key, default-deny check against `family_assignments` + producer claim, arrival order deleted, DEV-167 closed, packet-239 tests restored. | TASK-531 | #9, packet 241 | generated (implemented) | docs/spec_packets/_OLD/241b-support-plan-ownership-seam.md |

@@ -10,6 +10,11 @@
 > that file's generated **Deviations from OrcaSlicer** table (produced by
 > `cargo xtask gen-config-docs`). Do not treat the `Default` column here as
 > Pinch 'n Print's value.
+>
+> Do not treat the `In Codebase` (✅/❌) column as coverage evidence either:
+> it is hand-maintained and measured wrong on 66 of 574 keys (see
+> `docs/specs/orca-feature-gap/issues/01-verified-gap-inventory.md`). Size
+> coverage work off that ticket's asset, never off this column.
 
 ---
 

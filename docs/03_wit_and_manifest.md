@@ -32,8 +32,8 @@ to describe what a module imports and exports.
 
 The canonical source lives under `crates/slicer-schema/wit/` in an umbrella layout where
 `root.wit` is the anchor package and `deps/` holds the shared dependency packages plus one
-directory for each versioned stage package. The delivered surface has 15 versioned stage
-packages: 8 layer, 4 prepass, 2 postpass, and 1 finalization. `PrePass::PaintSegmentation`
+directory for each versioned stage package. The delivered surface has 16 versioned stage
+packages: 9 layer, 4 prepass, 2 postpass, and 1 finalization. `PrePass::PaintSegmentation`
 is host-built-in and has no WIT package. The shared prepass view records live in the flat,
 unversioned `slicer:prepass-types` dependency:
 
@@ -54,6 +54,7 @@ crates/slicer-schema/wit/
     layer-support/layer-support.wit                                          # package slicer:layer-support@1.0.0
     layer-support-postprocess/layer-support-postprocess.wit                  # package slicer:layer-support-postprocess@1.0.0
     layer-path-optimization/layer-path-optimization.wit                      # package slicer:layer-path-optimization@1.0.0
+    layer-anchored-events/layer-anchored-events.wit                            # package slicer:layer-anchored-events@1.0.0
     prepass-mesh-analysis/prepass-mesh-analysis.wit                          # package slicer:prepass-mesh-analysis@1.0.0
     prepass-layer-planning/prepass-layer-planning.wit                        # package slicer:prepass-layer-planning@1.0.0
     prepass-seam-planning/prepass-seam-planning.wit                          # package slicer:prepass-seam-planning@1.0.0
@@ -430,7 +431,7 @@ region_id↔tool split. The `path-optimization` guest reads it (via SDK
 `OrderedEntityView.tool_index`) to cluster entities by tool — **not**
 `region-key.region-id`, which is now a pure region identity.
 
-`set-entity-order` accepts `(entity-index, reverse-direction)` tuples. Setting `reverse-direction = true` flips the path's point order at apply time. Host rejects entries that reference unknown `entity-index` values or include duplicates; either condition produces a `BuilderError::InvalidEntityOrder` diagnostic.
+`set-entity-order` accepts `(entity-index, reverse-direction)` tuples. Setting `reverse-direction = true` flips the path's point order at apply time. Host rejects entries that reference unknown `entity-index` values or include duplicates; either condition produces an `Err(string)` diagnostic with no mutation.
 
 PathOptimization output contract restricts builder usage to this resource and the existing `push-tool-change` / `push-comment` / `push-raw` methods. `push-move` / `push-retract` / `push-unretract` / `push-fan-speed` / `push-temperature` remain rejected at the host boundary (see Path Optimization Output Contract below).
 
@@ -487,8 +488,8 @@ stays `None` and the method returns an empty `Vec<list<point3-with-width>>`
 — the per-layer `Layer::Infill` module (packet 140) emits no paths for that
 layer; there is no stub fallback (matches `docs/02_ir_schemas.md`, and the
 packet-140 deletion of the old single-layer stub). Non-lightning prints
-therefore see a zero-cost, no-op view; the wedge byte-identity canary
-(`wedge_per_region_config_delivery_byte_identical`) pins the default-config
+therefore see a zero-cost, no-op view; the wedge structural canary
+(`wedge_per_region_config_delivery_structural_canary`) pins the default-config
 slice through the new stage.
 
 **SDK accessor:** `PaintRegionLayerView::lightning_tree_segments_for(object_id, region_id)`
@@ -554,8 +555,8 @@ configuration-only raft plan through the same output resource:
 
 **Source of truth:** `crates/slicer-schema/wit/deps/prepass-support-geometry/prepass-support-geometry.wit`.
 It declares `support-plan-entry`, `raft-plan`, and the
-`support-geometry-output` resource with the four push methods:
- `push-support-plan-entry`, `push-base-interface-path`, `push-raft-plan`, and
+`support-geometry-output` resource with three push methods:
+ `push-support-plan-entry`, `push-raft-plan`, and
  `push-diagnostic`. The host harvests the new base-interface role into
  `SupportPlanIR`.
 
@@ -659,8 +660,7 @@ layer views, the output builder, and a config view; the
 config, and local types.
 
 Host validation: the host validates that `entity-id` in `modify-entity`
-resolves to a real entity within `layer`; unknown IDs are rejected with
-`BuilderError::UnknownEntity`. The closure-based API from packet 40 is
+resolves to a real entity within `layer`; unknown IDs are rejected with an `Err(string)` diagnostic and no mutation. The closure-based API from packet 40 is
 superseded by the enum-based mutation API so the contract is fully
 serialisable across the WIT boundary.
 
@@ -737,8 +737,9 @@ writes = ["InfillIR.regions.sparse_infill"]
 
 # ── Claims ───────────────────────────────────────────────────────────────────
 [claims]
-holds    = ["infill-generator"]   # exclusive slot; one module per region
+holds    = ["claim:sparse-fill"]   # exclusive per-role slot; one module per region (packet 37; the blanket `infill-generator` claim is deprecated — see Known claim IDs)
 requires = []                     # claim slots that MUST be held by another module
+```
 
 ### Known claim IDs
 
@@ -826,6 +827,7 @@ fill-role emission**; test fixtures that bypass `dispatch_layer_call` must set
 the claims they intend to exercise. Production dispatch populates the set
 authoritatively, so `should_emit` returns the configured truth in real runs.
 
+```toml
 # ── Compatibility ─────────────────────────────────────────────────────────────
 [compatibility]
 incompatible-with = []            # module IDs or globs that cannot coexist in same region
@@ -1006,12 +1008,12 @@ regardless of mode. The enum is `RetractMode` in
 
 #### Packet 52 — per-role speed schema
 
-The following 25 keys form the per-role speed family. All speed keys are `float` (unit `mm/s`); acceleration keys are `float` (unit `mm/s²`). One representative block is shown; the rest share the same shape.
+The per-role speed family is the `[speeds]` table in `docs/config/host-keys.toml` (all `float`, unit `mm/s`): the emitter starts from `FeedrateConfig::default()` and overlays configured keys via `from_raw_config`, so absent keys keep the table default. The blocks below show manifest-declaration shape only — each declaring manifest sets its own schema defaults. One representative block is shown; the rest share the same shape.
 
 ```toml
 [config.schema.outer_wall_speed]
 type    = "float"
-default = 50.0
+default = 60.0
 min     = 1.0
 unit    = "mm/s"
 display = "Outer wall speed"
@@ -1019,14 +1021,14 @@ group   = "Speed"
 
 [config.schema.inner_wall_speed]
 type    = "float"
-default = 80.0
+default = 60.0
 min     = 1.0
 unit    = "mm/s"
 display = "Inner wall speed"
 group   = "Speed"
 ```
 
-Complete key list: `outer_wall_speed`, `inner_wall_speed`, `internal_solid_infill_speed`, `top_surface_speed`, `gap_infill_speed`, `sparse_infill_speed`, `bridge_speed`, `support_speed`, `support_interface_speed`, `travel_speed`, `first_layer_speed`, `first_layer_infill_speed`, `first_layer_travel_speed`, `initial_layer_print_height_speed_factor`, `ironing_speed`, `overhang_speed`, `small_perimeter_speed`, `external_perimeter_speed`, `solid_infill_speed`, `top_solid_infill_speed`, `bottom_solid_infill_speed`, `default_acceleration`, `outer_wall_acceleration`, `inner_wall_acceleration`, `infill_acceleration`.
+Complete key list: the `[speeds]` table in `docs/config/host-keys.toml` (26 keys). Top/bottom solid roles reuse `top_surface_speed` / `bottom_surface_speed` at emit (role dispatch in `crates/slicer-gcode/src/emit.rs`); there are no separate `top_solid_infill_speed` / `bottom_solid_infill_speed` keys and no acceleration keys.
 
 After packet 52, every emitted move carries an F-token (`F<feedrate>`); the emitter does not elide F for unchanged feedrates.
 
@@ -1540,9 +1542,7 @@ reads = ["SliceIR.regions.segment_annotations"]
      so the per-semantic dotted read paths `PaintRegionIR.FuzzySkin` / `.SupportEnforcer`
      / `.SupportBlocker` / `.Material` / `.Custom.<id>` no longer exist and were removed
      from this section. HOWEVER, `PaintRegionIR` survives as the ir-access
-     read-attribution NAME for the `PaintRegionLayerView` WIT accessor: the host stamps
-     `runtime_reads.push("PaintRegionIR")` when a guest reads paint regions per layer
-     (`crates/slicer-wasm-host/src/host.rs`), and the ir-access contract mandates
+     read-attribution NAME for the `PaintRegionLayerView` WIT accessor <!-- VERIFY: no `runtime_reads.push("PaintRegionIR")` call site exists in `crates/slicer-wasm-host/src/`; confirm where the host stamps this attribution -->: the ir-access contract mandates
      `Layer::Perimeters => reads ["SliceIR", "PaintRegionIR"]`
      (`crates/slicer-scheduler/tests/contract/core_module_ir_access_contract_tdd.rs`).
      The `classic-perimeters` / `arachne-perimeters` manifests declaring
@@ -1752,6 +1752,8 @@ guests against `crates/slicer-schema/wit/`.
 | `sdk-postpass-text-guest`      | `PostPass::TextPostProcess`   | Macro-only text-postprocess witness                                                              |
 | `path-optimization-multi-read` | `Layer::PathOptimization`     | Asserts the macro `get-ordered-entities`-call-once cache contract; counterpart to the host counter `HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS` |
 
+The tables above name the primary witnesses. The directory also holds dispatch-coverage guests (`dispatch-layer-*`), roundtrip guests (`*-roundtrip-guest`), an echo guest (`infill-postprocess-echo-guest`), and diagnostic/bridge guests (`sdk-host-bridge-guest`, `sdk-support-diagnostic-guest`, `support-anchored-reach-guest`, `prepass-layer-planning-guest`); the on-disk listing under `crates/slicer-wasm-host/test-guests/` is authoritative for the full set.
+
 ### Build & Freshness Contract (Normative)
 
 Each guest is built with `cargo build --target wasm32-unknown-unknown --release`
@@ -1811,7 +1813,7 @@ verification succeeds, and is invalidated on failed verification. Complete v2
 inputs are the workspace `Cargo.toml`, guest `Cargo.lock`, `rustc -vV`,
 `wasm-tools --version`, and the per-guest code-input closure.
 
-- **host-side contract test** (`crates/slicer-runtime/tests/contract/guest_fixture_freshness_tdd.rs`): independent of xtask and unaffected by packets 229–231. It hardcodes its own guest list (`GUESTS`, 8 entries measured 2026-08-19), applies its own mtime rule (a guest's `src/lib.rs` newer than its artifact is stale), and fails when an expected `.component.wasm` is missing, an artifact is suspiciously small (< 100 bytes — i.e. not a real component), or the mtime rule is violated. The test `build_script_check_mode_reports_freshness` in that file currently asserts nothing — it early-returns when `test-guests/build-test-guests.sh` is absent (which it is), and is documented in `docs/spec_packets/232-freshness-gate-docs/requirements.md` §"Reported, not fixed" rather than fixed here. See that section (heading `## Reported, not fixed`).
+- **host-side contract test** (`crates/slicer-runtime/tests/contract/guest_fixture_freshness_tdd.rs`): independent of xtask and unaffected by packets 229–231. It hardcodes its own guest list (`GUESTS`, 8 entries measured 2026-08-19), applies its own mtime rule (a guest's `src/lib.rs` newer than its artifact is stale), and fails when an expected `.component.wasm` is missing, an artifact is suspiciously small (< 100 bytes — i.e. not a real component), or the mtime rule is violated. The test `build_script_check_mode_reports_freshness` in that file currently asserts nothing — it early-returns when `test-guests/build-test-guests.sh` is absent (which it is). Packet context lives in `docs/spec_packets/_OLD/232-freshness-gate-docs.md`. See that section (heading `## Reported, not fixed`).
 
 Prerequisites for rebuilding (`rustup target add wasm32-unknown-unknown`
 and `cargo install wasm-tools`) are required only when modifying a guest.

@@ -70,10 +70,10 @@ special-casing, so the typed field wins.
 
 | # | packet slug | goal (one sentence) | task ids | depends on | status | packet dir |
 |---|-------------|---------------------|----------|------------|--------|------------|
-| 1 | object-scoped-overhang-annotation | Make both overhang annotation maps object-scoped with a major `SurfaceClassificationIR` bump. | TASK-353 | - | generated | docs/spec_packets/243-object-scoped-overhang-annotation/ |
-| 2 | order-locked-extrusion-sequences | Land the generic order-lock carrier, namespace, SDK allocator, and host enforcement. | TASK-354 | #1 | generated | docs/spec_packets/244-order-locked-extrusion-sequences/ |
-| 3 | lock-aware-infill-consumers | Make the infill linker, path optimizer, and G-code emission honor locked sequences. | TASK-355 | #2 | generated | docs/spec_packets/245-lock-aware-infill-consumers/ |
-| 4 | wave-overhang-bridge-fill | Ship the wave bridge-fill module with internal-bridge exclusion and rectilinear fallback. | TASK-356 | #3 | generated | docs/spec_packets/246-wave-overhang-bridge-fill/ |
+| 1 | object-scoped-overhang-annotation | Make both overhang annotation maps object-scoped with a major `SurfaceClassificationIR` bump. | TASK-353 | - | generated | docs/spec_packets/_OLD/243-object-scoped-overhang-annotation.md |
+| 2 | order-locked-extrusion-sequences | Land the generic order-lock carrier, namespace, SDK allocator, and host enforcement. | TASK-354 | #1 | generated | docs/spec_packets/_OLD/244-order-locked-extrusion-sequences.md |
+| 3 | lock-aware-infill-consumers | Make the infill linker, path optimizer, and G-code emission honor locked sequences. | TASK-355 | #2 | generated | docs/spec_packets/_OLD/245-lock-aware-infill-consumers.md |
+| 4 | wave-overhang-bridge-fill | Ship the wave bridge-fill module with internal-bridge exclusion and rectilinear fallback. | TASK-356 | #3 | generated | docs/spec_packets/_OLD/246-wave-overhang-bridge-fill.md |
 
 ---
 

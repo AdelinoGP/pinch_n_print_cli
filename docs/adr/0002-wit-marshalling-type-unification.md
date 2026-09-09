@@ -2,6 +2,16 @@
 
 **Status:** accepted (packet 75, Phase 3 / TASK-218)
 
+> **Superseded as a mechanism by ADR-0045** (per-stage versioned interfaces,
+> packets 163/164): the four tier worlds (`world-layer`, `world-prepass`,
+> `world-finalization`, `world-postpass`) and `wit_host.rs` no longer exist —
+> each versioned stage package now gets its own `bindgen!` module remapped
+> onto the canonical shared type set (see `crates/slicer-wasm-host/src/host.rs`
+> and `docs/adr/0045-per-stage-versioned-interfaces-over-monolithic-tier-worlds.md`).
+> Retained as the record of the type-identity decision and the `with:`-remap
+> technique that the per-stage migration reuses. The "fifth world" guidance in
+> Consequences below no longer applies; add a per-stage package instead.
+
 The slicer host links four wit-bindgen worlds — layer, prepass, finalization,
 postpass — that all `use slicer:types/geometry` and `slicer:config/config-types`
 from the same shared WIT packages. Each `bindgen!` invocation previously

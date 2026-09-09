@@ -21,7 +21,7 @@ The Rust types under `crates/slicer-ir/src/` are the normative implementation of
 - `crates/slicer-ir/src/entity_id.rs` — `LayerEntityIdGen` and stable-id contract.
 - `crates/slicer-ir/src/validation.rs` — `validate_travel_anchors`.
 
-Every IR struct carries `schema_version: SemVer`. The host enforces compatibility at module load time.
+Every IR struct carries `schema_version: SemVer`. The host enforces compatibility at module load time. The IR numbers are not contiguous: this document defines no IR 1 or IR 5.
 
 ## ⚠️ **Coordinate System**
 
@@ -69,7 +69,10 @@ WIT bridge rule:
 
 Bounds and overflow policy:
 
-- `GlobalLayer.index` must be `< 100_000`; host rejects plans above this budget.
+- `GlobalLayer.index` must be `< 100_000`; the host rejects plans above this
+  budget (`MAX_LAYER_INDEX` and `ExecutionPlanError::LayerIndexBudgetExceeded`
+  in `crates/slicer-scheduler/src/execution_plan.rs`, enforced by
+  `build_execution_plan`).
 - Region IDs are minted deterministically from a base ID plus a
   per-variant-chain hash (`paint_variant_region_id` in
   `crates/slicer-core/src/algos/paint_segmentation/mod.rs`) or a
@@ -202,7 +205,7 @@ coordinates directly into `Point3 { x, y, z }` — see
 `decode_strokes_for_channel` in `crates/slicer-model-io/src/loader.rs`).
 The dominant state for a subdivided facet is determined by leaf-area
 majority across the decoded sub-tree and written into `facet_values[i]`.
-Downstream stages may consume either source: `Layer::Slice` reads
+Downstream stages may consume either source: `PrePass::Slice` reads
 `facet_values` for whole-triangle paint decisions; `Layer::SlicePostProcess`
 may consult `strokes` when sub-facet boundary accuracy matters.
 
@@ -434,6 +437,8 @@ geometry, while each quartile band carries a quartile number and polygons.
 **Lifetime:** Blackboard (immutable after PrePass)  
 **Critical:** This is the authoritative Z-plane sequence. Every downstream stage derives its Z from here.
 
+**Current schema_version: 1.0.0** (authoritative source: `CURRENT_LAYER_PLAN_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`).
+
 `LayerPlanIR`, `GlobalLayer`, `ActiveRegion`, `NonPlanarShellRef`,
 `ObjectLayerRef`, `WallGenerator`, and `SupportType` are defined in
 `crates/slicer-ir/src/slice_ir.rs`. `LayerPlanIR.global_layers` is the
@@ -575,7 +580,7 @@ Config keys follow a structured namespace convention used in `ResolvedConfig` an
   1. **Painted/material tools — at `RegionMapping`** (`region_mapping.rs`): the variant-chain cross-product splits a painted region into one `RegionPlan` per `("material", ToolIndex(n))` chain, and the `tool_config:<n>:<key>` overlay is applied to that chain at **highest precedence** (see below). This delivers per-tool **geometry** (`line_width`, etc.) for painted/MMU tools **without any pipeline reordering** — the tool is already known from the paint. (Verified end-to-end: `algo_region_mapping_tdd::region_mapping_applies_per_tool_config_overlay_to_painted_tool` → `classic_perimeters_tdd::per_region_line_width_sets_emitted_wall_width`.)
   2. **Every tool — at G-code emit** (`emit.rs`): emit-time settings (e.g. `retract_length`) are overlaid by the entity's resolved `tool_index`, the one place *every* entity's tool is known.
 
-  **Still out of scope:** per-tool *geometry* for **non-painted** tools (spatial / modifier-extruder / `DEFAULT_TOOL` fallback), whose tool is resolved *after* perimeter generation in `assemble_ordered_entities` (`layer_executor.rs:597,747-751`); that would require moving tool resolution before the perimeter stages (a pipeline-ordering change). OrcaSlicer itself has no per-filament line-width — its per-tool *width* variation comes from the per-extruder `nozzle_diameter` vector (a base, selected by the region's extruder index) when width is a percentage; our explicit `tool_config:<n>:line_width` is a superset.
+  **Still out of scope:** per-tool *geometry* for **non-painted** tools (spatial / modifier-extruder / `DEFAULT_TOOL` fallback), whose tool is resolved *after* perimeter generation in `assemble_ordered_entities` (`crates/slicer-runtime/src/layer_executor.rs`); that would require moving tool resolution before the perimeter stages (a pipeline-ordering change). OrcaSlicer itself has no per-filament line-width — its per-tool *width* variation comes from the per-extruder `nozzle_diameter` vector (a base, selected by the region's extruder index) when width is a percentage; our explicit `tool_config:<n>:line_width` is a superset.
 
 **Override precedence** (lowest → highest):
 
@@ -623,43 +628,43 @@ depths, shell/bridge fill polygons, and its paint `variant_chain`. The removed
 
 `SlicedRegion.internal_solid_fill: Vec<ExPolygon>` is a `#[serde(default)]` dense-interior polygon carrier authored by shell classification. `SlicedRegion.internal_bridge_areas: Vec<ExPolygon>` is a `#[serde(default)]` host-only qualification carrier, populated by host qualification and consumed by the host/module seam; both fields are additive, region-owned, and preserved through region partition/restore.
 
-/// ### Post-`Layer::Perimeters` invariant: four canonical fill polygons
-///
-/// After the host runs `sync_perimeter_infill_areas_into_slice` at
-/// `Layer::Perimeters` commit (see
-/// `crates/slicer-runtime/src/region_partition.rs`):
-///
-/// 1. **`bridge_areas`** is claimed directly from the gated
-///    `SlicedRegion.bridge_areas` (post-unsupported-span gate, packet 234) and
-///    may extend beyond the wall-inset polygon — at a ceiling layer the
-///    perimeter module's infill area can be empty (the whole cross-section is
-///    top surface) and the canonical bridge site must survive.
-///    **`bottom_solid_fill`**, **`top_solid_fill`**, and
-///    **`sparse_infill_area`** are pairwise disjoint subsets of the
-///    corresponding `PerimeterIR.regions[i].infill_areas` (the wall-inset
-///    polygon). All four sets remain pairwise disjoint from each other via the
-///    precedence dedup (`bottom`/`top`/`sparse` are differenced against the
-///    bridge claim in `sync_perimeter_infill_areas_into_slice`).
-/// 2. Precedence on overlap is strict: `bridge > bottom > top > sparse`
-///    (OrcaSlicer `PrintObject::prepare_infill` parity).
-///    An unsupported span is the bridge candidate after subtracting ungrown
-///    committed lower-layer contours. This is a pure gate: it does not expand
-///    the candidate or grow the result, and repeated application is invariant.
-/// 3. The pre-perimeter values of `top_solid_fill` / `bottom_solid_fill` /
-///    `bridge_areas` (committed by `PrePass::ShellClassification` and
-///    `PrePass::MeshAnalysis`) live unchanged on the **Blackboard**'s
-///    `Arc<Vec<SliceIR>>`; the per-layer arena copy is the one that gets
-///    clipped + deduped. This preserves the read-only Blackboard contract.
-/// 4. A `SliceIR` region with no matching `PerimeterIR.regions` entry is
-///    skipped silently (used by the region_split work in packets 92–95 where
-///    variant regions share wall geometry with their base region).
+### Post-`Layer::Perimeters` invariant: four canonical fill polygons
 
-/// Each fill claim holder (`claim:sparse-fill`, `claim:top-fill`,
-/// `claim:bottom-fill`, `claim:bridge-fill`; see `docs/03_wit_and_manifest.md`)
-/// emits over exactly one of these polygons with zero polygon math. Exception:
-/// order-locked paths (ADR-0063) are self-clipping and may extend into
-/// neighboring fill domains; the linker differences untagged fill of the same
-/// region by their swept footprint instead of clipping them.
+After the host runs `sync_perimeter_infill_areas_into_slice` at
+`Layer::Perimeters` commit (see
+`crates/slicer-runtime/src/region_partition.rs`):
+
+1. **`bridge_areas`** is claimed directly from the gated
+   `SlicedRegion.bridge_areas` (post-unsupported-span gate, packet 234) and
+   may extend beyond the wall-inset polygon — at a ceiling layer the
+   perimeter module's infill area can be empty (the whole cross-section is
+   top surface) and the canonical bridge site must survive.
+   **`bottom_solid_fill`**, **`top_solid_fill`**, and
+   **`sparse_infill_area`** are pairwise disjoint subsets of the
+   corresponding `PerimeterIR.regions[i].infill_areas` (the wall-inset
+   polygon). All four sets remain pairwise disjoint from each other via the
+   precedence dedup (`bottom`/`top`/`sparse` are differenced against the
+   bridge claim in `sync_perimeter_infill_areas_into_slice`).
+2. Precedence on overlap is strict: `bridge > bottom > top > sparse`
+   (OrcaSlicer `PrintObject::prepare_infill` parity).
+   An unsupported span is the bridge candidate after subtracting ungrown
+   committed lower-layer contours. This is a pure gate: it does not expand
+   the candidate or grow the result, and repeated application is invariant.
+3. The pre-perimeter values of `top_solid_fill` / `bottom_solid_fill` /
+   `bridge_areas` (committed by `PrePass::ShellClassification` and
+   `PrePass::MeshAnalysis`) live unchanged on the **Blackboard**'s
+   `Arc<Vec<SliceIR>>`; the per-layer arena copy is the one that gets
+   clipped + deduped. This preserves the read-only Blackboard contract.
+4. A `SliceIR` region with no matching `PerimeterIR.regions` entry is
+   skipped silently (used by the region_split work in packets 92–95 where
+   variant regions share wall geometry with their base region).
+
+Each fill claim holder (`claim:sparse-fill`, `claim:top-fill`,
+`claim:bottom-fill`, `claim:bridge-fill`; see `docs/03_wit_and_manifest.md`)
+emits over exactly one of these polygons with zero polygon math. Exception:
+order-locked paths (ADR-0063) are self-clipping and may extend into
+neighboring fill domains; the linker differences untagged fill of the same
+region by their swept footprint instead of clipping them.
 
 Internal-bridge candidates difference sparse-infill input by already-claimed
 `bridge_areas` before generating internal bridge polygons.
@@ -824,7 +829,7 @@ distance to the previous-layer boundary; `None` means no boundary measurement.
 `ExtrusionPath3D` carries a fourth field, `tool_index: Option<u32>`, declared
 `#[serde(default)]` and positioned after `speed_factor`. It mirrors the
 `tool-index: option<u32>` member of the `extrusion-path3d` WIT record in
-`crates/slicer-schema/wit/deps/types.wit` (the `slicer:types/geometry` package is
+`crates/slicer-schema/wit/deps/types.wit` (the `slicer:types` package (`geometry` interface) is
 deliberately left unversioned per ADR-0044 — no version tax).
 
 Semantics:
@@ -933,6 +938,8 @@ while seam-first geometry is represented by the first point of the wall path.
 
 **Stage:** Output of `Layer::Infill`, mutated by `Layer::InfillPostProcess`
 
+**Current schema_version: 1.0.0** (authoritative source: `CURRENT_INFILL_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`).
+
 `InfillIR` and `InfillRegion` are defined in
 `crates/slicer-ir/src/slice_ir.rs`. Each layer carries region-scoped sparse,
 solid, and ironing extrusion paths.
@@ -1001,6 +1008,8 @@ own/foreign territory trim rule.
 
 **Stage:** Output of `PrePass::SupportGeometry` — coarse outline prepass results,
 committed before `SupportPlanIR` within the same stage.
+
+**Current schema_version: 1.0.0** (authoritative source: `CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`).
 
 **Producer:** The host built-in commits `SupportGeometryIR` first within
 `PrePass::SupportGeometry`, ahead of any `support-planner` module's
@@ -1267,12 +1276,12 @@ channels.
 The `diagnostics` field has the following contract:
 
 - **FIFO ordering.** The host (`WasmRuntimeDispatcher::dispatch_prepass_call`
-  in `crates/slicer-wasm-host/src/host.rs`) drains the per-call thread-local
+  in `crates/slicer-wasm-host/src/dispatch.rs`) drains the per-call thread-local
   diagnostic stash once and pushes the entries onto `ModuleAccessAudit.diagnostics`
   in the order the guest emitted them. The order is preserved end-to-end:
   guest `push-diagnostic` → `HostExecutionContext.diagnostics` →
   `PrepassStageRunner::last_diagnostics` → `ModuleAccessAudit.diagnostics`.
-- **Not used by scheduler validation.** Pass 11 (`ModuleAccessAuditValidation`)
+- **Not used by scheduler validation.** Pass 11 (`UndeclaredAccess`)
   compares only `runtime_reads` and `runtime_writes`. `diagnostics` is
   surfaced for the host's own log/metrics pipeline; it does not influence
   startup validation outcomes.
@@ -1368,12 +1377,12 @@ the view lookup below is region-scoped, not object-scoped.
 
 The host exposes the IR to a `Layer::Infill` guest via the
 `lightning-tree-segments` method on the `paint-region-layer-view` WIT resource
-(`crates/slicer-schema/wit/deps/ir-types.wit:206`; the guest exports the
+(`crates/slicer-schema/wit/deps/ir-types.wit`; the guest exports the
 `slicer:layer-infill@1.0.0` package's `infill` interface, whose `run` function
 receives the `paint: paint-region-layer-view` argument). The guest looks up the per-layer
 `tree_edge_segments` matching `(object_id, region_id, layer_index)` via the SDK's
 `PaintRegionLayerView::lightning_tree_segments_for(object_id, region_id)`
-accessor (`crates/slicer-sdk/src/traits.rs:196-212`). When no `LightningTreeIR` is
+accessor (`crates/slicer-sdk/src/traits.rs`). When no `LightningTreeIR` is
 committed (skip-when-no-lightning-holder), the accessor returns an empty
 `Vec` and the module emits no paths for that layer; there is no non-lightning
 fallback.
@@ -1457,7 +1466,7 @@ it, but must not reorder across physical event boundaries. An
 `CapabilityDerivedEventClosure` describes the stages required by the declared
 capabilities, and `AnchoredEventRuntimeHooks` covers path optimization,
 cooling accounting, and time accounting. These types are additive beside the
-layer IR; `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` remains `1.2.0`.
+layer IR; `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` remains `1.4.0`.
 
 At host emission, planar anchored collections are lowered into ordinary
 `LayerCollectionIR` rows at declared Z. A collection merges with an object row
@@ -1578,6 +1587,8 @@ import it (it is `#[cfg(any(test, feature = "test"))]`-gated under
 ## IR 11 — GCodeIR
 
 **Stage:** Output of `PostPass::GCodeEmit`, mutated by `PostPass::GCodePostProcess`
+
+**Current schema_version: 1.0.0** (authoritative source: `CURRENT_GCODE_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`).
 
 The canonical definitions of `GCodeIR`, `GCodeCommand`, `RetractMode`,
 and `PrintMetadata` live in `crates/slicer-ir/src/slice_ir.rs`. The

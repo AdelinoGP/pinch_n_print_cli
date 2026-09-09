@@ -786,7 +786,7 @@ contract.
 
 ## Override namespaces
 
-Two structural namespaces are recognised at runtime (see
+Three structural namespaces are recognised at runtime (see
 `docs/02_ir_schemas.md` IR 5 "Config Key Namespaces" and IR 3 "Config
 Precedence Rules").
 
@@ -794,11 +794,12 @@ Precedence Rules").
 |---|---|---|
 | `object_config:<object_id>:<key>` | 35a | Per-object override for a single `ObjectId`. |
 | `paint_config:<semantic>:<key>` | 51 | Per-paint-semantic override; applies during `PrePass::RegionMapping`. |
+| `tool_config:<tool_index>:<key>` | 125 | Per-tool/extruder override keyed by integer `tool_index`; applied last (highest precedence) by `resolve_per_tool_configs` (`crates/slicer-scheduler/src/config_resolution.rs`). |
 
 Precedence (lowest → highest):
 
 ```
-global < object_config:<id>:<key> < paint_config:<semantic>:<key>
+global < object_config:<id>:<key> < paint_config:<semantic>:<key> < tool_config:<idx>:<key>
 ```
 
 `PaintSemantic` serialisation for `<semantic>`: `material`, `fuzzy_skin`,
