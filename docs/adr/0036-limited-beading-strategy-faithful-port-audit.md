@@ -20,16 +20,16 @@ an architectural fix in
 surplus to `left_over`, symmetry mirror) and `::optimal_bead_count` (cap at
 `max_bead_count + 1`). A faithful-port audit against the canonical
 `F:\slicerProject\OrcaSlicerDocumented\src\libslic3r\Arachne\BeadingStrategy\LimitedBeadingStrategy.cpp`
-verified the architectural fix as faithful to `LimitedBeadingStrategy.cpp:64-127`,
+verified the architectural fix as faithful to `LimitedBeadingStrategy.cpp`,
 but surfaced:
 
-- One introduced bug (the `0.01` scale error at `limited.rs:185`, now corrected
-  to `0.01 * UNITS_PER_MM` per the convention in `beading/distributed.rs:199` and
-  `arachne/generate_toolpaths.rs:230`).
+- One introduced bug (the `0.01` scale error in `crates/slicer-core/src/beading/limited.rs`, now corrected
+  to `0.01 * UNITS_PER_MM` per the convention in `crates/slicer-core/src/beading/distributed.rs` and
+  `crates/slicer-core/src/arachne/generate_toolpaths.rs`).
 - Two pre-existing divergences the session did NOT touch: the missing under-cap
-  center sentinel (`LimitedBeadingStrategy.cpp:73-82`, now ported) and the wrong
+  center sentinel (`LimitedBeadingStrategy.cpp`, now ported) and the wrong
   over-cap sentinel position using centerline instead of inner edge
-  (`LimitedBeadingStrategy.cpp:118-131`, now corrected).
+  (`LimitedBeadingStrategy.cpp`, now corrected).
 - A separate fabricated spine subdivision in
   `crates/slicer-core/src/skeletal_trapezoidation/graph.rs::from_polygons_with_beading`
   that was REVERTED per ADR-0034 (graph-construction faithfulness).
@@ -82,8 +82,8 @@ lines 116-117 does not apply.
 - If the PnP `f64` type is ever changed to an integer `coord_t`-equivalent type,
   the half-bead-width sentinel-position formula must replicate the C++
   `+ width/2` integer-division hazard explicitly. The C++ comment at
-  `LimitedBeadingStrategy.cpp:116-117` documents this.
+  `LimitedBeadingStrategy.cpp` documents this.
 - If a future performance concern makes the symmetric-mirror loop
-  (`LimitedBeadingStrategy.cpp:109-110`) redundant for some parent strategy,
+  (`LimitedBeadingStrategy.cpp`) redundant for some parent strategy,
   that tradeoff must be recorded as a new ADR revising this one — not silently
   reintroduced as an unreviewed simplification.

@@ -140,7 +140,10 @@ the WASI-free, runtime-free pure-wasm module this contract needs.
   `wasm32-unknown-unknown` — so its wasip1 runtime always links WASI preview1,
   and `--adapt` rewrites that into a full set of **WASI preview2** imports. The
   host (`crates/slicer-wasm-host`) has zero WASI support, so the blocker is
-  fundamental, not a build-flag fix.
+  fundamental, not a build-flag fix. (At probe time. Packet 225a later added
+  host-side WASI accommodation per ADR-0060 — "slicer interfaces + WASI with
+  default-deny capabilities" — and Go still fails on toolchain grounds alone;
+  see "Re-measurement" below.)
 - **No "pure wasm" option.** Stock Go always embeds its runtime (67+ `runtime.*`
   symbols; the wit-bindgen-go glue depends on `runtime.Pinner`/`runtime.AddCleanup`,
   which come from the runtime). TinyGo is runtime-light but doesn't support those

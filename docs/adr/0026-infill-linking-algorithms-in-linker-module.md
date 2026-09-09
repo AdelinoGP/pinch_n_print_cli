@@ -31,10 +31,10 @@ Infill-specific linking algorithms live **inside the infill-linker module**
 (`modules/core-modules/infill-linker/src/lib.rs` and its submodules), NOT in
 `slicer-core`. Specifically:
 
-- `connect_infill` (port of FillBase.cpp:1497-2201)
-- `chain_or_connect_infill` (port of FillBase.cpp:2201-2300)
-- `BoundaryInfillGraph` (arc-length boundary parametrization, FillBase.cpp:1530-1620)
-- `remove_short_polylines` (FillGyroid.cpp:356-359)
+- `connect_infill` (port of FillBase.cpp)
+- `chain_or_connect_infill` (port of FillBase.cpp)
+- `BoundaryInfillGraph` (arc-length boundary parametrization, FillBase.cpp)
+- `remove_short_polylines` (FillGyroid.cpp)
 - The infill overlap offset application (`INFILL_OVERLAP_OVER_SPACING = 0.45`)
 
 `slicer-core` gains **only** `clip_polylines` — a generic Clipper2
@@ -111,5 +111,5 @@ generation helpers.
 
 - `docs/adr/0025-infill-linker-as-raw-emit-post-pass.md` — Architecture A decision.
 - `crates/slicer-core/src/polygon_ops.rs` — generic geometry precedent.
-- `crates/slicer-core/src/lib.rs:26` — `pub mod polygon_ops` (not `host-algos`-gated; available on wasm32).
-- OrcaSlicer `src/libslic3r/Fill/FillBase.cpp:1497-2300` — `connect_infill` source.
+- `crates/slicer-core/src/lib.rs` — `pub mod polygon_ops` (not `host-algos`-gated; available on wasm32).
+- OrcaSlicer `src/libslic3r/Fill/FillBase.cpp` — `connect_infill` source.

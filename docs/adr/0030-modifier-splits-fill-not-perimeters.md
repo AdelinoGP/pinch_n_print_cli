@@ -18,15 +18,15 @@ including the wall-less shared arc — with no walls generated at the modifier b
 As of 2026-07-01, this use case is non-functional end-to-end in PnP, verified in code:
 
 - The loader parses modifier volumes into `ObjectMesh.modifier_volumes`
-  (`crates/slicer-model-io/src/loader.rs:547-622`, `sidecar.rs:15`) — ingestion works.
+  (`crates/slicer-model-io/src/loader.rs`, `crates/slicer-model-io/src/sidecar.rs`) — ingestion works.
 - But `stamp_modifier_config_deltas` applies modifier config **globally per object** — the
   only in-use `ModifierScope` variant is `AllFeatures`, with an explicit "no bbox/polygon
-  overlap check" comment (`crates/slicer-core/src/algos/region_mapping.rs:266-268,615-624`).
-- No geometric split exists: `prepass_slice.rs:286` slices only the solid mesh; modifier
+  overlap check" comment (`crates/slicer-core/src/algos/region_mapping.rs`).
+- No geometric split exists: `crates/slicer-core/src/algos/prepass_slice.rs` slices only the solid mesh; modifier
   meshes are never intersected with the cross-section.
 - Even with a split, per-region config could not reach a module: the dispatch builds ONE
   global `ConfigView` from the FIRST `RegionKey` matching the layer index
-  (`crates/slicer-wasm-host/src/dispatch.rs:1633-1637`) — which is also a latent
+  (`crates/slicer-wasm-host/src/dispatch.rs`) — which is also a latent
   wrong-config bug for painted multi-region layers.
 
 ## Decision
@@ -94,7 +94,7 @@ As of 2026-07-01, this use case is non-functional end-to-end in PnP, verified in
 - `docs/adr/0028-infill-postprocess-contract-prior-ir-and-partitioned-polygons.md` §Amendment
   2026-07-01 — `wall-source-region-id` field.
 - `docs/specs/modifier-region-infill.md` — the phase plan (M1/M2/M3).
-- `crates/slicer-core/src/algos/region_mapping.rs:266-268,615-624` — global stamping (retired).
-- `crates/slicer-wasm-host/src/dispatch.rs:1633-1637` — first-match ConfigView (retired).
-- `crates/slicer-model-io/src/loader.rs:547-622` — modifier-volume ingestion (kept).
+- `crates/slicer-core/src/algos/region_mapping.rs` — global stamping (retired).
+- `crates/slicer-wasm-host/src/dispatch.rs` — first-match ConfigView (retired).
+- `crates/slicer-model-io/src/loader.rs` — modifier-volume ingestion (kept).
 - `crates/slicer-runtime/src/region_partition.rs` — partition site gaining the split.

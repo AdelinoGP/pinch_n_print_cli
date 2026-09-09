@@ -127,3 +127,7 @@ Additional packet 179 behavior:
 The consumption side is now **continuous projection onto final wall geometry**: `seam-placer` projects the planner's target onto the nearest point of the final wall loop, inserting a point into the segment when the target is not on a vertex, interpolating `feature_flags` and `width_profile` at the inserted point, and re-closing the loop. When no `SeamPlanIR` entry matches a region, the module emits a non-fatal `ModuleError` identifying the missing `(layer, object, region_id, variant_chain)` key and applies canonical local candidate selection as a **degraded fallback**, preserving all walls.
 
 Retired by this amendment: the Decision bullet's "**snaps it to the nearest of its own seam candidates** (unlimited snap radius, falling back to the nearest wall vertex when no candidate exists...)" — the vertex-only snap was replaced by continuous projection. The `aligned` default change (amended 2026-07-22 per packet 180) is unaffected by this amendment.
+
+> Note (docs review): the `world-prepass` tier world referenced in the Decision
+> was retired by packet 164 per ADR-0045; the per-stage versioned packages under
+> `crates/slicer-schema/wit/deps/` are now authoritative.

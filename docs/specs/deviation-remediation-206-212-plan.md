@@ -74,7 +74,7 @@ its follow-up TASK-270 was reused for the visual-debug renderer (packet 160); th
 packet should correct it.
 
 **PACKET 5 (210) — DEV-128 support-planner f32 → coord_t.** `Pt { x: f32, y: f32 }`
-and ~113 f32 sites in `modules/core-modules/support-planner/src/lib.rs`; canonical
+and ~113 f32 sites in `modules/core-modules/support-planner/src/lib.rs` (post support-family split: `modules/core-modules/tree-support-planner/src/lib.rs`; see ADR-0059); canonical
 `SupportNode::position` is `Point` (`coord_t`, i64). CRITICAL: PnP's unit is
 100 nm, not canonical's 1 nm — divide canonical constants by 100
 (`docs/08_coordinate_system.md`). Trigger is invariant-2 (collision-free) failures
@@ -82,7 +82,8 @@ on dense large-XY models.
 
 **PACKET 6 (211) — DEV-129 support_interface_bottom_layers.** Currently warn-only
 (code-1003 in `TreeSupportPlanner`'s prepass), pinned by
-`modules/core-modules/support-planner/tests/diagnostics_tdd.rs` AC-6/AC-N3, which
+`modules/core-modules/support-planner/tests/diagnostics_tdd.rs` (post split:
+`modules/core-modules/tree-support-planner/tests/diagnostics_tdd.rs`) AC-6/AC-N3, which
 MUST be rewritten to the new contract, never weakened. Blocker to solve in design:
 `PlannedSupportNode` carries only `dist_to_top`; there is no `dist_to_bottom` and
 no notion of where a branch lands on model geometry below, which is exactly what a

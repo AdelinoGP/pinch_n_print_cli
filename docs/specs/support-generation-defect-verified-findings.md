@@ -58,7 +58,8 @@ else `com.core.traditional-support`). Absent key → traditional-support.
 ### RC-1 — Planner: lone propagated nodes emit nothing (primary defect)
 
 `plan_for_object`'s emission loop
-(`modules/core-modules/support-planner/src/lib.rs`, the `for layer_rev in
+(`modules/core-modules/support-planner/src/lib.rs` — post support-family split:
+`modules/core-modules/tree-support-planner/src/lib.rs` — the `for layer_rev in
 (0..top).rev()` loop) emits `branch_segments` only for:
 
 - MST edges between two surviving nodes (the `for (a_idx, b_idx, _) in
@@ -127,7 +128,7 @@ is ignored for eligibility.
 
 ### RC-4 — Zero-width contact tips
 
-`tapered_radius` (`modules/core-modules/support-planner/src/lib.rs:1298`)
+`tapered_radius` (`tapered_radius` in `modules/core-modules/tree-support-planner/src/lib.rs`; formerly `support-planner`, renamed by the support-family split)
 returns 0 at `dist_to_top == 0` (tip). Fresh contact tips are emitted as
 zero-width segments (the lone-contact arm, `width = tapered_radius(...) * 2.0`
 = 0). Consequence: the visual-debug `filled_areas` render of
@@ -243,7 +244,7 @@ and carries the exact path coordinates.
    grid-MST paths (the fallback), proving `SupportPlanIR` was empty there.
    `target/vd-tree5` — layer 124 shows a cyan diagonal branch (the contact
    segment) and `filled_areas` fails with the zero-width error (RC-4).
-4. Reproduce RC-3: `crates/slicer-wasm-host/src/marshal/in_.rs:410` is
+4. Reproduce RC-3: `crates/slicer-wasm-host/src/marshal/in_.rs` sets
    `needs_support: true` unconditionally; `SlicedRegion` has no
    `needs_support` field.
 5. Orca ground truth: `target/vd-gcode-n2` — support lattice appears at

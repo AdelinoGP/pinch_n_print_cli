@@ -8,17 +8,17 @@ Lands with the infill-parity effort; companion to ADR-0025.
 ## Context
 
 The `Layer::InfillPostProcess` stage exists in `STAGE_ORDER`
-(`crates/slicer-scheduler/src/execution_plan.rs:33`) and the
+(`crates/slicer-scheduler/src/execution_plan.rs`) and the
 `run_infill_postprocess` trait hook exists
-(`crates/slicer-sdk/src/traits.rs:374-393`), but the stage is currently a
+(`crates/slicer-sdk/src/traits.rs`), but the stage is currently a
 no-op for all shipping modules. Two contract gaps make it unusable as the home
 for the infill linker (ADR-0025):
 
 **Gap 1 — the builder is empty and the commit replaces.**
-`crates/slicer-wasm-host/src/dispatch.rs:435-454` creates a **fresh empty**
+`crates/slicer-wasm-host/src/dispatch.rs` creates a **fresh empty**
 `InfillOutputBuilder` for `Layer::InfillPostProcess` — it does not pass the
 paths already emitted by `Layer::Infill`. And
-`crates/slicer-runtime/src/layer_executor.rs:1151-1156`
+`crates/slicer-runtime/src/layer_executor.rs`
 (`LayerStageCommit::InfillPostProcess`) **discards** the existing `InfillIR`
 (`take_infill()` with `_`) and replaces it wholesale with whatever the
 post-process module emits. So a post-process module cannot read what
@@ -28,12 +28,12 @@ impossible under this contract.
 
 **Gap 2 — `PerimeterRegionView` lacks the partitioned fill polygons.**
 `run_infill_postprocess` receives `&[PerimeterRegionView]`
-(`crates/slicer-sdk/src/traits.rs:388`). `PerimeterRegionView`
-(`crates/slicer-sdk/src/views.rs:490+`) carries `wall_loops`, `infill_areas`
+(`crates/slicer-sdk/src/traits.rs`). `PerimeterRegionView`
+(`crates/slicer-sdk/src/views.rs`) carries `wall_loops`, `infill_areas`
 (the raw wall-inset polygon, pre-partition), `seam_candidates`, and
 `resolved_seam` — but NOT `sparse_infill_area`, `top_solid_fill`,
 `bottom_solid_fill`, or `bridge_areas`. Those four partitioned polygons live
-only on `SliceRegionView` (views.rs:19-483), which `run_infill` receives but
+only on `SliceRegionView` (`crates/slicer-sdk/src/views.rs`), which `run_infill` receives but
 `run_infill_postprocess` does not. A linker that needs to re-clip connected
 paths against the partitioned boundary cannot see the boundary.
 
@@ -70,7 +70,7 @@ The implementation picks one. Both require a WIT schema bump on
 
 ### Change 2 — `PerimeterRegionView` carries the four partitioned fill polygons
 
-`PerimeterRegionView` (`crates/slicer-sdk/src/views.rs:490+`) gains four
+`PerimeterRegionView` (`crates/slicer-sdk/src/views.rs`) gains four
 `Vec<ExPolygon>` fields mirroring `SliceRegionView`:
 - `sparse_infill_area`
 - `top_solid_fill`
@@ -78,7 +78,7 @@ The implementation picks one. Both require a WIT schema bump on
 - `bridge_areas`
 
 The host populates them at dispatch time
-(`crates/slicer-wasm-host/src/dispatch.rs:435-454`) by copying from the
+(`crates/slicer-wasm-host/src/dispatch.rs`) by copying from the
 corresponding `SliceIR` region. The `perimeter-region-view` WIT resource
 (`crates/slicer-schema/wit/deps/ir-types.wit`) gains the four fields. The
 `PerimeterRegionViewBuilder` test fixture
@@ -86,7 +86,7 @@ corresponding `SliceIR` region. The `perimeter-region-view` WIT resource
 
 ### Change 3 — `LayerStageCommit::InfillPostProcess` merges, not replaces
 
-`crates/slicer-runtime/src/layer_executor.rs:1151-1156` changes from
+`crates/slicer-runtime/src/layer_executor.rs` changes from
 "discard-and-replace" to "merge" — the linker's emitted paths merge into the
 existing `InfillIR` (or, under Option 1a where the builder was pre-populated,
 the linker's output *is* the merged set, so replace is correct). The exact
@@ -139,14 +139,14 @@ binding for the implementing packets:
 1. **Option 1b selected.** `run_infill_postprocess` gains a `prior-infill` input parameter;
    the `InfillOutputBuilder` stays write-only. The parameter shape **mirrors `InfillIR`'s
    region buckets** (`InfillRegion { object_id, region_id, sparse_infill, solid_infill,
-   ironing }`, `crates/slicer-ir/src/slice_ir.rs:1821,1836`) so region attribution comes free
+   ironing }`, `crates/slicer-ir/src/slice_ir.rs`) so region attribution comes free
    from the IR structure — no per-path origin field is needed.
 
 2. **Change 3 resolved: the commit stays replace, with a full re-emit contract.** The
    postprocess module emits the COMPLETE replacement `InfillIR`, including buckets it did not
    transform (e.g. `ironing` passes through by re-emit; testable as paths-in == paths-out).
    This is safe because a stage with zero registered modules never produces a commit — the
-   prior `InfillIR` is preserved (`crates/slicer-runtime/src/layer_executor.rs:330`; the
+   prior `InfillIR` is preserved (`crates/slicer-runtime/src/layer_executor.rs`; the
    replace at 1151-1156 fires only when a module actually ran). That preservation behavior is
    pinned by a negative acceptance criterion in the contract packet.
 
@@ -155,14 +155,14 @@ binding for the implementing packets:
    - `tool-index` — host-computed at dispatch: variant-chain material tool →
      `RegionMapIR.extensions["extruder"]` → `DEFAULT_TOOL(0)`. Needed because tool is
      otherwise resolved per-entity only after this stage
-     (`crates/slicer-runtime/src/layer_executor.rs:590-775`).
+     (`crates/slicer-runtime/src/layer_executor.rs`).
    - `wall-source-region-id: option<region-id>` — `none` = the region owns its walls;
      `some(base)` = the region shares the base region's walls (derived from the absence of a
-     per-variant PerimeterIR entry, `crates/slicer-runtime/src/region_partition.rs:35-44`;
+     per-variant PerimeterIR entry, `crates/slicer-runtime/src/region_partition.rs`;
      later also populated for modifier sub-regions per ADR-0030).
    Both fields exist for the linker's wall-sharing-group connection predicate (ADR-0025
    §Amendment). Per-region *config* remains invisible at this stage
-   (`crates/slicer-wasm-host/src/dispatch.rs:1629-1645` — a single global `ConfigView`);
+   (`crates/slicer-wasm-host/src/dispatch.rs` — a single global `ConfigView`);
    the linker deliberately uses path-level observables (`speed_factor`, endpoint widths)
    instead of config for compatibility checks.
 
@@ -176,7 +176,7 @@ binding for the implementing packets:
   hooks.** One hook that reads prior and writes new is the right granularity.
   Splitting introduces ordering complexity with no benefit.
 - **The `InfillPostProcess` commit-merge (Change 3) is not the same as the
-  `Infill` commit-merge** (`layer_executor.rs:1139-1150`, which merges multiple
+  `Infill` commit-merge** (`layer_executor.rs`, which merges multiple
   `Layer::Infill` modules' disjoint outputs). The post-process merge is
   "linker output supersedes the raw segments it linked." If this proves
   confusing, a future ADR can separate the two commit semantics explicitly.
@@ -185,13 +185,13 @@ binding for the implementing packets:
 
 - `docs/adr/0025-infill-linker-as-raw-emit-post-pass.md` — Architecture A (why the linker needs this).
 - `docs/adr/0026-infill-linking-algorithms-in-linker-module.md` — algorithm home.
-- `crates/slicer-scheduler/src/execution_plan.rs:33` — `Layer::InfillPostProcess` in `STAGE_ORDER`.
-- `crates/slicer-sdk/src/traits.rs:374-393` — `run_infill_postprocess` trait hook.
-- `crates/slicer-wasm-host/src/dispatch.rs:435-454` — current dispatch (empty builder).
-- `crates/slicer-runtime/src/layer_executor.rs:1139-1156` — `Infill` merge vs `InfillPostProcess` replace.
-- `crates/slicer-sdk/src/views.rs:490+` — `PerimeterRegionView` (lacks fill polygons).
-- `crates/slicer-sdk/src/views.rs:19-483` — `SliceRegionView` (has the four fill polygons).
-- `crates/slicer-schema/wit/deps/world-layer/world-layer.wit:25` — WIT signature.
+- `crates/slicer-scheduler/src/execution_plan.rs` — `Layer::InfillPostProcess` in `STAGE_ORDER`.
+- `crates/slicer-sdk/src/traits.rs` — `run_infill_postprocess` trait hook.
+- `crates/slicer-wasm-host/src/dispatch.rs` — current dispatch (empty builder).
+- `crates/slicer-runtime/src/layer_executor.rs` — `Infill` merge vs `InfillPostProcess` replace.
+- `crates/slicer-sdk/src/views.rs` — `PerimeterRegionView` (lacks fill polygons).
+- `crates/slicer-sdk/src/views.rs` — `SliceRegionView` (has the four fill polygons).
+- `crates/slicer-schema/wit/deps/world-layer/world-layer.wit` — WIT signature (tier world; retired by packet 164 per ADR-0045 — the per-stage packages under `crates/slicer-schema/wit/deps/` are now authoritative).
 - `crates/slicer-schema/wit/deps/ir-types.wit` — `perimeter-region-view` resource (target of the field addition).
 - `CLAUDE.md` "WIT/Type Changes Checklist" — rebuild ceremony.
 - `docs/adr/0002-wit-marshalling-type-unification.md` — prior WIT schema bump precedent.

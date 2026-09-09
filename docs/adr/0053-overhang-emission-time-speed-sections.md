@@ -298,6 +298,11 @@ Also considered and rejected earlier in the analysis:
   the `host-services` count above.
 - `docs/spec_packets/_OLD/190-smoothed-overhang-speed.md` §Open Questions — where the three
   options were put to the maintainer; `[BLOCK-1]`, `[BLOCK-2]`, `[BLOCK-3]`.
+
+> Note (docs review): the `world-layer` / `world-finalization` tier-world paths
+> cited in-body were retired by packet 164 per ADR-0045; the per-stage
+> versioned packages under `crates/slicer-schema/wit/deps/` are now
+> authoritative.
 - `docs/spec_packets/_OLD/191-overhang-add-intersections.md` §Option-(C) Contingency — the
   three places 191 changes shape under this ruling.
 - `crates/slicer-core/src/algos/overhang_annotation.rs` — `annotate_overhangs`,

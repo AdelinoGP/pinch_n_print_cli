@@ -10,8 +10,8 @@ two containment defects found in the first implementation and closed since.
 
 OrcaSlicer's infill pipeline links disjoint scan-line segments into continuous
 multi-point polylines **inside each fill class**, in `_fill_surface_single` →
-`connect_infill` (FillBase.cpp:1497-2201) and `chain_or_connect_infill`
-(FillBase.cpp:2201-2300). Every fill pattern (rectilinear, gyroid, grid,
+`connect_infill` (FillBase.cpp) and `chain_or_connect_infill`
+(FillBase.cpp). Every fill pattern (rectilinear, gyroid, grid,
 triangles, …) carries its own linking pass. Cross-region / cross-pattern
 travel is handled later, at the G-code entity-ordering layer
 (`fill_surface_extrusion` → `ExtrusionEntityCollection` sorting), which reorders
@@ -20,11 +20,11 @@ whole already-linked entities but does not break or re-connect paths.
 The initial PnP infill-parity plan proposed mirroring this: each infill module
 calls a shared `connect_infill` from `slicer-core::infill_ops` before pushing to
 `InfillOutputBuilder`. A gap analysis surfaced that the existing
-`Layer::InfillPostProcess` stage (`crates/slicer-scheduler/src/execution_plan.rs:33`,
-`crates/slicer-wasm-host/src/dispatch.rs:435-454`) receives `PerimeterRegionView`
+`Layer::InfillPostProcess` stage (`crates/slicer-scheduler/src/execution_plan.rs`,
+`crates/slicer-wasm-host/src/dispatch.rs`) receives `PerimeterRegionView`
 (which lacks the partitioned fill polygons) and a **fresh empty**
 `InfillOutputBuilder` — and that
-`LayerStageCommit::InfillPostProcess` (`crates/slicer-runtime/src/layer_executor.rs:1151-1156`)
+`LayerStageCommit::InfillPostProcess` (`crates/slicer-runtime/src/layer_executor.rs`)
 **discards** the prior `InfillIR` and replaces it wholesale with whatever the
 post-process module emits. A post-process linker therefore cannot, under the
 current contract, read what `Layer::Infill` emitted.
@@ -166,13 +166,13 @@ Two claims in this ADR were sharpened by the 2026-07-01 grilling against the cod
 1. **"Globally-optimal cross-region connection" is scoped to wall-sharing groups.** Code
    evidence showed extruded cross-region connection is physically invalid in the general case:
    perimeter walls are generated along every normal shared region boundary (each paint-variant
-   region gets its own full wall loops, `crates/slicer-core/src/algos/prepass_slice.rs:244` +
+   region gets its own full wall loops, `crates/slicer-core/src/algos/prepass_slice.rs` +
    the paint-segmentation region rebuild), tool identity is resolved per-entity only after
-   `Layer::InfillPostProcess` (`crates/slicer-runtime/src/layer_executor.rs:590-775`), and
+   `Layer::InfillPostProcess` (`crates/slicer-runtime/src/layer_executor.rs`), and
    per-region config is invisible at the stage
-   (`crates/slicer-wasm-host/src/dispatch.rs:1629-1645`). Cross-region connection is therefore
+   (`crates/slicer-wasm-host/src/dispatch.rs`). Cross-region connection is therefore
    restricted to **wall-sharing groups** — regions with no walls between them (paint
-   virtual-variants sharing base walls, `region_partition.rs:35-44`, and modifier sub-regions
+   virtual-variants sharing base walls, `crates/slicer-runtime/src/region_partition.rs`, and modifier sub-regions
    per ADR-0030) — under the predicate: same object-id, same tool-index, same role, same
    wall-sharing group, path-compatible (equal `speed_factor`, endpoint widths within epsilon).
    Two linking branches:
@@ -499,12 +499,12 @@ no single-side anchoring in PnP today.
 - `docs/adr/0026-infill-linking-algorithms-in-linker-module.md` — algorithm home.
 - `docs/adr/0027-gyroid-multi-role-fill-holder.md` — gyroid solid-shell scope.
 - `docs/adr/0028-infill-postprocess-contract-prior-ir-and-partitioned-polygons.md` — contract change.
-- `crates/slicer-scheduler/src/execution_plan.rs:19-41` — `STAGE_ORDER` (includes `Layer::InfillPostProcess`).
-- `crates/slicer-wasm-host/src/dispatch.rs:435-454` — current `run_infill_postprocess` dispatch (empty builder).
-- `crates/slicer-runtime/src/layer_executor.rs:1151-1156` — `InfillPostProcess` replace-commit.
+- `crates/slicer-scheduler/src/execution_plan.rs` — `STAGE_ORDER` (includes `Layer::InfillPostProcess`).
+- `crates/slicer-wasm-host/src/dispatch.rs` — current `run_infill_postprocess` dispatch (empty builder).
+- `crates/slicer-runtime/src/layer_executor.rs` — `InfillPostProcess` replace-commit.
 - `crates/slicer-runtime/src/region_partition.rs` — wall-inset partition (no overlap applied).
-- `crates/slicer-sdk/src/traits.rs:374-393` — `run_infill_postprocess` trait hook.
-- `crates/slicer-schema/wit/deps/world-layer/world-layer.wit:25` — WIT signature.
+- `crates/slicer-sdk/src/traits.rs` — `run_infill_postprocess` trait hook.
+- `crates/slicer-schema/wit/deps/world-layer/world-layer.wit` — WIT signature (tier world; retired by packet 164 per ADR-0045 — the per-stage packages under `crates/slicer-schema/wit/deps/` are now authoritative).
 - OrcaSlicer `Fill::connect_infill` / `Fill::chain_or_connect_infill` — per-fill linking, the reference being diverged from.
 - `docs/DEVIATION_LOG.md` — the lightning-infill transitional inconsistency,
   the two containment holes recorded in the 2026-07-24 amendment (closed),

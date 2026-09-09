@@ -18,7 +18,7 @@ root causes (RC-1..RC-4) plus expanded scope (raft geometry, interface layers,
 - **RC-2** — traditional-support and tree-support fallback fillers fill the whole
   region polygon, never clipped to `overhang_areas()`.
 - **RC-3** — `needs_support` hardcoded `true` at the WIT boundary
-  (`crates/slicer-wasm-host/src/marshal/in_.rs:410`); `SlicedRegion` has no field.
+  (`crates/slicer-wasm-host/src/marshal/in_.rs`); `SlicedRegion` has no field.
 - **RC-4** — `tapered_radius` returns 0 at `dist_to_top == 0`; zero-width contact tips.
 
 ## Design decisions (resolved)

@@ -23,7 +23,7 @@ helpers undermines the WASM-Component architecture's reason for existing.
 Option (2) is honest but invites permanent duplication across three+ modules
 of the same scan-line math.
 
-Option (3) was uncovered during codebase exploration of `crates/slicer-sdk/src/views.rs:347-359`,
+Option (3) was uncovered during codebase exploration of `crates/slicer-sdk/src/views.rs`,
 which already implements per-role per-claim dispatch:
 
 ```rust
@@ -88,8 +88,8 @@ DEV-127, dependent on a future WIT-interface pattern-services design).
 ## References
 
 - `docs/spec_packets/_OLD/240b-support-raft-module.md`.
-- `crates/slicer-sdk/src/views.rs:330-359` — existing role/claim dispatch.
-- `crates/slicer-ir/src/slice_ir.rs:1463-1492` — `ExtrusionRole` enum.
+- `crates/slicer-sdk/src/views.rs` — existing role/claim dispatch.
+- `crates/slicer-ir/src/slice_ir.rs` — `ExtrusionRole` enum.
 - OrcaSlicer `src/libslic3r/Support/SupportCommon.cpp::generate_raft_base` — reference behavior.
 
 ## Amendment — 2026-09-05 (packet 240b)

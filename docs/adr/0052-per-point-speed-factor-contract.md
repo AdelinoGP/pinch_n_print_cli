@@ -259,6 +259,10 @@ amendment to make, not this one's.
 - `crates/slicer-ir/src/slice_ir.rs` — `Point3WithWidth`, `LayerCollectionIR`,
   `TravelMove`, `TravelRetract`.
 
+> Note (docs review): the `world-finalization` tier-world paths cited in-body
+> were retired by packet 164 per ADR-0045; the per-stage versioned packages
+> under `crates/slicer-schema/wit/deps/` are now authoritative.
+
 ## Amendment — 2026-08-05 (packet 189)
 
 ### Retired clause (verbatim, Consequences)

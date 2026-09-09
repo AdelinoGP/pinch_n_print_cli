@@ -130,3 +130,8 @@ was considered. Rejected because:
 - `docs/specs/support-modules-orca-port.md` §B7, §D11.
 - `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit` — target WIT file.
 - `CLAUDE.md` "WIT/Type Changes Checklist" — rebuild ceremony.
+
+> Note (docs review): the `world-prepass` tier world was retired by packet 164
+> per ADR-0045; the per-stage versioned packages under
+> `crates/slicer-schema/wit/deps/` are now authoritative. The tier-world path
+> above is historical.

@@ -70,6 +70,8 @@ Phase 4: Execution              (PrePass → Per-Layer parallel → PostPass)
 ## Phase 1 — Manifest Ingestion
 
 ```rust
+// Simplified sketch — field visibility and accessors elided. The authoritative
+// definition is `LoadedModule` in `crates/slicer-scheduler/src/manifest.rs`.
 pub struct LoadedModule {
     pub id:                    ModuleId,
     pub version:               SemVer,
@@ -88,6 +90,8 @@ pub struct LoadedModule {
     pub overridable_per_layer: Vec<String>, // from manifest [config.overridable-per-layer].keys
     pub layer_parallel_safe:   bool,
     pub wasm_path:             PathBuf,
+    pub provenance:            ModuleProvenance, // External | Integrated (packet 85/ADR-0056)
+    pub region_splits:         Vec<RegionSplitDeclaration>, // from manifest [[region_split]] (packet 92)
     pub placeholder_wasm:     bool,        // ≤8-byte stub; inert for dispatch (packet 181)
 }
 ```
@@ -176,6 +180,9 @@ Ingestion does **not** validate that a declared path exists in the IR schema —
 Unknown or misspelled stage identifiers are fatal and must not be silently ignored.
 
 ```rust
+// Simplified sketch of the StageIdValidation pass. The real
+// `validate_stage_ids` in `crates/slicer-scheduler/src/validation.rs`
+// accumulates into a `DagValidationReport` instead of returning `Result`.
 fn validate_stage_ids(module: &LoadedModule) -> Result<(), SchedulerError> {
     if STAGE_ORDER.contains(&module.stage) {
         Ok(())

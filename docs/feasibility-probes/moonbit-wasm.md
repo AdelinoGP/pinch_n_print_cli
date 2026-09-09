@@ -94,7 +94,7 @@ Root cause (fundamental, not a workaround gap):
   tutorial mandates `--encoding utf16`). Embedding with `--encoding utf8` still
   emits UTF-16 bytes.
 - wit-bindgen rust 0.57.1 (pnp_cli's host) **hard-codes `StringEncoding::UTF8`**
-  (`wit-bindgen-rust-0.57.1/src/lib.rs:991`); there is no UTF-16 host option.
+  (`StringEncoding::UTF8` in `wit-bindgen-rust-0.57.1/src/lib.rs`); there is no UTF-16 host option.
 - Neither side is configurable with the current toolchain, so the mismatch is
   unavoidable. Because the infill contract is string-heavy, the module cannot
   read its config (falls back to defaults) or emit correct output → **cannot
@@ -215,7 +215,7 @@ authoritative record of the verdict.
   wasmtime dispatch/instantiation overhead, not end-to-end slicing throughput.
 - The UTF-16/UTF-8 mismatch was confirmed empirically (garbled config key and
   log text) and by source inspection of wit-bindgen rust 0.57.1
-  (`StringEncoding::UTF8` at `src/lib.rs:991`); MoonBit's UTF-16-only ABI is
+  (`StringEncoding::UTF8` in `wit-bindgen-rust-0.57.1/src/lib.rs`); MoonBit's UTF-16-only ABI is
   asserted from the official component tutorial (`--encoding utf16`) and the
   utf8-embed test still emitting UTF-16 bytes.
 - A future MoonBit UTF-8 ABI or wit-bindgen UTF-16 host option would change the
