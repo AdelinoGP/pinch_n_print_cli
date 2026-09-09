@@ -646,7 +646,9 @@ are the feature's core semantic, so no substitute clamp). **Re-filed as
 
 `make_overhang_printable`, `make_overhang_printable_angle`, `make_overhang_printable_hole_size`
 
-### P72 — Support / Tree supports — tree-support (8 keys, Tier B)
+### P72 — Support / Tree supports — tree-support (8 keys, Tier B; packet 298)
+
+**Authored by ticket 79 (2026-09-09): all 8 keys in, none shed, packet 298.** Tier B held, owners stand (planner `PrePass::SupportGeometry` + renderer `Layer::Support`); the six organic params are organic-engine-only reads (DEV-156 substitution preserved) and the two brim keys' classic reader was never built locally. Explicit-organic gate (DEV-189 scoping divergence — default/grid/snug-on-tree keep classic params); canonical scalarity held (no ticket-125 arm); no range rejection (saturate); `Print.cpp` validations ride 124; no padding edits. No queue-count change.
 
 `tree_support_angle_slow`, `tree_support_auto_brim`, `tree_support_branch_angle_organic`, `tree_support_branch_diameter_organic`, `tree_support_branch_distance_organic`, `tree_support_brim_width`, `tree_support_tip_diameter`, `tree_support_top_rate`
 
