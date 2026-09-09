@@ -337,7 +337,7 @@ findings (the one flagged row was a stale-asset artifact).
 | `wiping_volumes_extruders` | X | out of scope — dead in canonical |
 
 ### Multimaterial / Multimaterial advanced
-| `interface_shells` | B | classic-perimeters (shell planning, PrintObject.cpp) |
+| `interface_shells` | B | classic-perimeters (shell planning, PrintObject.cpp) — **in packet 301** by ticket 83 |
 | `interlocking_beam` | C | new interlocking module |
 | `interlocking_beam_layer_count` | C | new interlocking module |
 | `interlocking_beam_width` | C | new interlocking module |

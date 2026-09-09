@@ -666,7 +666,9 @@ are the feature's core semantic, so no substitute clamp). **Re-filed as
 
 `dont_filter_internal_bridges`, `enable_extra_bridge_layer`, `internal_bridge_angle`
 
-### P76 — Multimaterial / Multimaterial advanced — classic-perimeters (1 keys, Tier B)
+### P76 — Multimaterial / Multimaterial advanced — classic-perimeters (1 keys, Tier B; packet 301)
+
+**Authored by ticket 83 (2026-09-09): the 1 key in, none shed, packet 301.** Tier B held; the owner is a seam, not a module — host prepass `commit_shell_classification_builtin` (Pass-1 neighbour-source gate: same-timeline at `true`, collective all-timelines union at the canonical `false` default). Defaults are identity on single-body prints (one timeline: union equals own polys, AC-pinned); the `to_config_map` arm shadows the frozen padding twin, whose true spelling rides 132. DEV-192 (spiral-conjunct + vertical-merge + perimeter-mask + reslice non-borrows). No queue-count change.
 
 `interface_shells`
 
