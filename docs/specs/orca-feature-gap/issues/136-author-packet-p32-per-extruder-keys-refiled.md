@@ -76,4 +76,13 @@ Authoring obligations:
 Resolved when the packet is authored, preflighted, and its directory linked
 here — or when a later ruling rules the per-extruder family out of scope.
 
+Fold candidate: [142](./142-author-packet-p63-extruder-ams-count-refiled.md)
+(`extruder_ams_count`, P63) shares this ticket's grouping subject (its capacity
+feeds the same `FilamentGroup.cpp` scorer as `master_extruder_id`) and the same
+125 blocker — consider folding it in at claim time before taking a new packet
+number. Second fold candidate:
+[143](./143-author-packet-p64-nozzle-volume-type-tool-ordering-refiled.md)
+(`nozzle_volume_type`, P64) — per-extruder nozzle-list + unprintable-volume
+arms of the same grouping subject, same 06 + 125 blocker.
+
 ## Answer

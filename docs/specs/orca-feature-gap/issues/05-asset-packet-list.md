@@ -540,37 +540,78 @@ consumed.
 
 **Authored by ticket 66 (2026-09-08): 8 keys in, none shed, packet 292.** Tier B held, owner `crates/slicer-gcode` stands but the seam corrected (estimator.rs does time-math only — the stage is a per-entity jerk-selection stage in emit.rs reusing the existing `set_jerk_xy` / Marlin2-only `set_junction_deviation` arms); canonical scalarity NOT held (all eight `coFloats` per-nozzle vectors — DEV-184(b) scalar-global with first-wins ingest, ticket-125 future); defaults ARE identity (`default_jerk` 0 master gate, AC-2 pins byte-identical — inverse of 289's emitting default).
 
-### P60 — Speed / Other layers speed — emitter (2 keys, Tier B)
+### P60 — Speed / Other layers speed — emitter (2 keys, Tier B; packet 293)
 
 `internal_solid_infill_speed`, `small_perimeter_speed`
 
-### P61 — Support / Support ironing — emitter (1 keys, Tier B)
+**Authored by ticket 67 (2026-09-08): 2 keys in, none shed, packet 293.** Tier B held, owner `crates/slicer-gcode` stands (all canonical reads emission-side in `GCode` speed selection / `extrude_loop`; machine-gcode-emit sweep is the wrong seam; rectilinear parse is dead input, not a decision point); canonical scalarity NOT held (both per-nozzle vectors — DEV-185(b) scalar-global, ticket-125 future); defaults ARE near-identity (internal-solid 100 == shadowed sparse 100, threshold 0 silences the gate — AC-2 pins F-identical + exactly +1 twin config line).
+
+### P61 — Support / Support ironing — emitter (1 key folded, Tier B)
 
 `support_air_filtration`
+
+**Folded into draft packet 253 by ticket 68 (2026-09-08, ticket-35 precedent): not authored separately.** The key is an operator on exactly the header/footer exhaust emission packet 253 builds (canonical's outer `if (m_config.support_air_filtration.value)` wraps both `M106 P3` writes in `GCode::_do_export`); owner corrected `crates/slicer-gcode` → `machine-gcode-emit` (all canonical reads header/footer-side). Packet 253 gains one declaration + one AC-8 arm + one negative (AC-N1b); no packet number taken, no queue-count change.
 
 ### P62 — Cooling / Notes — tool-ordering (1 keys, Tier B)
 
 `max_layer_height`
 
+**Re-sized by ticket 69 (2026-09-08): not authorable as a standalone packet.**
+The key is live in canonical (`coFloats` vector, `0` = auto → `0.75 ×
+nozzle_diameter[i]`) but every consumer rides a missing subsystem — tower
+partitions (sequences after ticket 122's body), skirt intermediate marking,
+slicing min/max envelope — and the port has no per-extruder vector model
+(ticket 125). **Re-filed as
+[ticket 141](141-author-packet-p62-max-layer-height-tool-ordering-refiled.md),
+blocked on 122 + 125.** The authoring ticket for the key is 141, not 69.
+
 ### P63 — Extruder / Nozzle / Extruder geometry / mapping — tool-ordering (1 keys, Tier B)
 
 `extruder_ams_count`
+
+**Re-sized by ticket 70 (2026-09-08): not authorable as a standalone packet.**
+The key is live in canonical (machine-inventory `coStrings`, default `{}`) but
+its only slicing consumers feed the absent filament-grouping scorer (same
+subject as ticket 136's `master_extruder_id`), and the port has no
+per-extruder vector model (ticket 125). **Re-filed as
+[ticket 142](142-author-packet-p63-extruder-ams-count-refiled.md), blocked on
+06 + 125** (consider folding with 136 at claim time — same subject, same
+blocker). The authoring ticket for the key is 142, not 70.
 
 ### P64 — Extruder / Nozzle / Nozzle — tool-ordering (1 keys, Tier B)
 
 `nozzle_volume_type`
 
-### P65 — Multimaterial / Flush options — tool-ordering (3 keys, Tier B)
+**Re-sized by ticket 71 (2026-09-08): not authorable as a standalone packet.**
+The key is live in canonical (per-extruder `coEnums`, default `nvtStandard`)
+but every live slicing consumer feeds the absent multi-nozzle filament-grouping
+engine (`build_nozzle_groups` / `build_default_nozzle_list` nozzle list +
+`add_volume_type_limits` unprintable marking — same subject as ticket 136's
+`master_extruder_id` and ticket 142's `extruder_ams_count`), and the port has
+no per-extruder vector model (ticket 125). **Re-filed as
+[ticket 143](143-author-packet-p64-nozzle-volume-type-tool-ordering-refiled.md), blocked on
+06 + 125** (consider folding with 136 and/or 142 at claim time — same subject,
+same blocker; the sibling `default_nozzle_volume_type`, ticket 89 / P82, stays
+separate — config-resolution preset plumbing, not grouping). The authoring
+ticket for the key is 143, not 71.
+
+### P65 — Multimaterial / Flush options — tool-ordering (3 keys, Tier B; packet 294)
 
 `flush_into_infill`, `flush_into_objects`, `flush_into_support`
 
-### P66 — Quality / Layer height — tool-ordering (3 keys, Tier B)
+**Authored by ticket 72 (2026-09-08): 3 keys in, none shed, packet 294.** Tier B held, owner corrected `tool-ordering` → `wipe-tower` (ordering ignores config and owns sequence only; the purge decision point is wipe-tower's — ticket-27/39/40 precedent); canonical per-object shape NOT held (DEV-186(a) scalar-global, object-config axis is the named future, explicitly not ticket 125); filament-assignment vetoes named non-borrow (DEV-186(b)); bridge roles never count (DEV-186(c)); order untouched (DEV-186(d)).
+
+### P66 — Quality / Layer height — tool-ordering (3 keys, Tier B; packet 295)
 
 `first_layer_print_sequence`, `other_layers_print_sequence`, `other_layers_print_sequence_nums`
 
-### P67 — Support / Support filament — tool-ordering (1 keys, Tier B)
+**Authored by ticket 73 (2026-09-08): 3 keys in, none shed, packet 295.** Tier B held, owner corrected `tool-ordering` → `crates/slicer-gcode` emission stage (no `ToolOrdering` module exists here; per-layer tool order is owned by host emission — ticket-27/39/40 precedent); canonical `coInts` shape NOT held (DEV-187(a) float-list + rounding, explicitly not ticket 125's axis); grouping-record ranges NOT held (DEV-187(b)); area-ordered first-layer base NOT held (DEV-187(c)); bounds enforced (DEV-187(d)); locked entities pinned (ADR-0062 conformance); defaults inert.
+
+### P67 — Support / Support filament — tool-ordering (1 key, Tier B)
 
 `support_interface_not_for_body`
+
+**Closed by ticket 74 (2026-09-08): direct implementation, no packet.** Tier B re-sized to direct at claim time — the decision point already exists (ticket-38 `SupportToolSelection` runtime seam); owner corrected `tool-ordering` → `slicer-runtime` entity assembly (no `ToolOrdering` module exists — ticket-27/39/40 precedent). No packet number taken.
 
 ### P68 — Cooling / Notes — layer-planner (1 keys, Tier B)
 

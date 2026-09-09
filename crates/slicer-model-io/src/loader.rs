@@ -892,7 +892,7 @@ fn object_metadata_to_config_data(
                     out.insert(key.clone(), coerce_string_to_config_value(key, value));
                 }
             }
-            "enable_support" | "support_type" => {
+            "enable_support" | "support_type" | "support_interface_not_for_body" => {
                 out.insert(key.clone(), coerce_string_to_config_value(key, value));
             }
             "wall_loops"

@@ -185,14 +185,14 @@ findings (the one flagged row was a stale-asset artifact).
 | `full_fan_speed_layer` | A | part-cooling (emission-time cooling) |
 | `internal_bridge_fan_speed` | A | part-cooling (emission-time cooling) |
 | `ironing_fan_speed` | A | part-cooling (emission-time cooling) |
-| `max_layer_height` | B | tool-ordering (ToolOrdering.cpp calc_max_layer_height) |
+| `max_layer_height` | B | tool-ordering (ToolOrdering.cpp calc_max_layer_height) — **blocked, unimplemented** by ticket 69: per-extruder `coFloats` vector (`0` = auto → `0.75 × nozzle_diameter[i]`) whose every live consumer rides a missing subsystem — tower partitions (purge-only tower, no partitions/idle layers/marking; sequences after ticket 122), skirt intermediate marking (skirt emits first-N-layers by count), slicing min/max envelope (uniform layer steps, no variable profile; canonical's own adaptive switch commented out); `Print.cpp::object_skirt_offset` is a named non-borrow (offset never reaches skirt gen — ticket 32; its live caller is ticket 124's validator). No per-extruder vector model (`nozzle_diameter` is an `extensions` scalar); re-filed as ticket 141, blocked on 122 + 125 |
 | `min_layer_height` | B | layer-planner (Slicing.cpp min_layer_height_from_nozzle) |
 | `overhang_fan_threshold` | A | part-cooling (emission-time cooling) |
 | `reduce_fan_stop_start_freq` | A | part-cooling (emission-time cooling) |
 | `support_material_interface_fan_speed` | A | part-cooling (emission-time cooling) |
 
 ### Extruder / Nozzle / Extruder geometry / mapping
-| `extruder_ams_count` | B | tool-ordering (ToolOrdering.cpp calc_max_group_size) |
+| `extruder_ams_count` | B | tool-ordering (ToolOrdering.cpp calc_max_group_size) — **blocked, unimplemented** by ticket 70: machine-inventory `coStrings` (per-extruder `"<slots>#<count>"` tokens, default `{}`) whose live reads all sit in `build_filament_group_context` (group-slot capacity + machine filament inventory, `has_filament_switcher` override) feeding the absent `FilamentGroup.cpp` grouping scorer (ticket-39 `master_extruder_id` subject); `Print.cpp` gate entry is invalidation bookkeeping, `PrintApply`/`PresetBundle` are GUI/preset plumbing; zero tree occurrences, no per-extruder vector model; re-filed as ticket 142, blocked on 06 + 125 |
 | `extruder_colour` | B | **covered** (ticket 39): canonical's only pipeline read is the CONFIG_BLOCK alias to `filament_colour` (`GCode::append_full_config`); the port emits the directive in HEADER_BLOCK + CONFIG_BLOCK with the authored palette when supplied |
 | `extruder_offset` | B | — **blocked, unimplemented** by ticket 39: per-extruder XY offsets at emission (`GCode::point_to_gcode`, `WipeTowerIntegration::post_process_wipe_tower_moves` toolchange bridge move); the port has no offset term and no per-extruder vector model; re-filed as ticket 136, blocked on ticket 125 |
 | `extruder_type` | B | — **blocked, unimplemented** by ticket 39: per-extruder bowden/direct feeding `ToolOrdering.cpp::build_filament_group_context` and `Print::update_filament_maps_to_config`; no such machinery in the tree; re-filed as ticket 136, blocked on ticket 125 |
@@ -221,7 +221,7 @@ findings (the one flagged row was a stale-asset artifact).
 | `nozzle_hrc` | B | — **blocked, unimplemented** by ticket 41: canonical's reads are all in `GCodeProcessor` (`apply_config` both overloads copy the scalar to every extruder; `update_slice_warnings` compares vs per-filament `required_nozzle_HRC` with the `Print::get_hrc_by_nozzle_type` fallback → non-fatal `NOZZLE_HRC_CHECKER` warning); the port has no warning-list seam and the comparison needs the per-tool axis; re-filed as ticket 137, blocked on ticket 125 |
 | `nozzle_type` | B | — **blocked, unimplemented** by ticket 41: `coEnums` per-extruder vector (default `{ntUndefine}`), canonical's only role is the fallback-HRC source on the same `update_slice_warnings` path; no tree decision point; re-filed as ticket 137, blocked on ticket 125 |
 | `nozzle_volume` | B | — **blocked, unimplemented** by ticket 41: `coFloats` per-extruder vector whose only behavioural effect is Elegoo-`M6211` flush attribution (`process_filaments` remaining-volume reset + `process_elegoo_M6211` statistics, ignored on non-Elegoo); no Elegoo seam and no per-tool ingestion in tree; re-filed as ticket 137, blocked on ticket 125 (vendor-scope ruling rides the re-file) |
-| `nozzle_volume_type` | B | tool-ordering (ToolOrdering.cpp + MultiNozzleUtils.cpp) |
+| `nozzle_volume_type` | B | — **blocked, unimplemented** by ticket 71: per-extruder `coEnums` machine-inventory key (default `nvtStandard`), every live slicing consumer inside the absent multi-nozzle grouping subject (`ToolOrdering.cpp::build_nozzle_groups` / `build_default_nozzle_list` nozzle list + `add_volume_type_limits` unprintable-volume marking, feeding the `FilamentGroup.cpp` scorer — same subject as tickets 136/142); no grouping engine, no `NozzleGroupInfo`/`NozzleInfo` model, no per-extruder vector model in tree; re-filed as ticket 143, blocked on 06 + 125 (fold candidate with 136/142; sibling `default_nozzle_volume_type` stays ticket 89/P82) |
 | `required_nozzle_HRC` | B | — **blocked, unimplemented** by ticket 41: `coInts` per-filament vector, the requirement side of canonical's `update_slice_warnings` HRC comparison; needs the per-tool axis (today `extract_float_or_first` keeps element 0); re-filed as ticket 137, blocked on ticket 125 |
 
 ### Extruder / Nozzle / Pressure advance
@@ -328,9 +328,9 @@ findings (the one flagged row was a stale-asset artifact).
 ### Multimaterial / Flush options
 | `filament_flush_temp` | B | machine-gcode-emit placeholder seam — **live** (ticket 47, direct implementation): scalar-global `ResolvedConfig` field (canonical default 0) + manifest row, published as-is through the module's generic `[key]` substitution into custom templates; per-tool via `tool_config:<idx>:` axis, Orca vector ingest rides 125. Owner re-derived from `crates/slicer-gcode` (ticket-27 hazard — canonical's reads are all `GCode.cpp` placeholder publication, and this tree's substitution lives in the module). Divergences in `DEV-171` (scalar not per-filament, 0 with no Tier D fallback, raw names not canonical's plural derived names) |
 | `filament_flush_volumetric_speed` | B | machine-gcode-emit placeholder seam — **live** (ticket 47, direct implementation, same seam): scalar-global `ResolvedConfig` field (canonical default 0.0, max 200) + manifest row; same owner note and `DEV-171` |
-| `flush_into_infill` | B | tool-ordering (ToolOrdering.cpp) |
-| `flush_into_objects` | B | tool-ordering (ToolOrdering.cpp) |
-| `flush_into_support` | B | tool-ordering (ToolOrdering.cpp) |
+| `flush_into_infill` | B | wipe-tower — **packet 294** (ticket 72): tier-table `tool-ordering` owner corrected — ordering ignores config and owns sequence only; the purge decision point is `WipeTower::purge_volume_for` |
+| `flush_into_objects` | B | wipe-tower — **packet 294** (ticket 72, same owner correction) |
+| `flush_into_support` | B | wipe-tower — **packet 294** (ticket 72, same owner correction) |
 | `flush_multiplier` | B | wipe-tower — **live** (ticket 30, direct implementation): scales `flush_volumes_matrix` entries in `WipeTower::purge_volume_for`. Scalar, not canonical's per-extruder `coFloats` (blocked on ticket 118); divergences in `DEV-169` |
 | `flush_volumes_matrix` | B | wipe-tower — **live** (ticket 30, direct implementation): flat row-major `N*N` per-pair purge volumes driving the purge-box depth and prime length in `WipeTower::generate_purge_paths`; falls back to `prime_volume` when unset; divergences in `DEV-169` |
 | `flush_volumes_vector` | X | out of scope — preset-management metadata (03 class) |
@@ -499,10 +499,10 @@ findings (the one flagged row was a stale-asset artifact).
 | `ironing_type` | B | top-surface-ironing + support-surface-ironing | (ticket 07 reclassification — enum modes unexpressible via the shared `ironing_enabled` bool; mode-selection logic) |
 
 ### Quality / Layer height
-| `first_layer_print_sequence` | B | tool-ordering (ToolOrdering.cpp) |
+| `first_layer_print_sequence` | B | `crates/slicer-gcode` (emission stage; packet 295) |
 | `first_layer_sequence_choice` | X | out of scope — dead alternate spelling |
-| `other_layers_print_sequence` | B | tool-ordering (ToolOrdering.cpp) |
-| `other_layers_print_sequence_nums` | B | tool-ordering (ToolOrdering.cpp) |
+| `other_layers_print_sequence` | B | `crates/slicer-gcode` (emission stage; packet 295) |
+| `other_layers_print_sequence_nums` | B | `crates/slicer-gcode` (emission stage; packet 295) |
 | `other_layers_sequence_choice` | X | out of scope — dead alternate spelling |
 
 ### Quality / Line width
@@ -600,8 +600,8 @@ findings (the one flagged row was a stale-asset artifact).
 | `travel_jerk` | B | crates/slicer-gcode (per-entity jerk-selection stage in emit.rs) — **in packet 292** by ticket 66 |
 
 ### Speed / Other layers speed
-| `internal_solid_infill_speed` | B | crates/slicer-gcode (feedrate.rs) |
-| `small_perimeter_speed` | B | crates/slicer-gcode (feedrate.rs) |
+| `internal_solid_infill_speed` | B | crates/slicer-gcode (internal-solid reseat in `resolve_feedrate` over the feedrate.rs table) — **in packet 293** by ticket 67 |
+| `small_perimeter_speed` | B | crates/slicer-gcode (loop-length-gated small-loop `F` override at the per-entity site) — **in packet 293** by ticket 67 |
 
 ### Strength / Advanced (Strength)
 | `align_infill_direction_to_model` | B | infill modules |
@@ -675,10 +675,10 @@ findings (the one flagged row was a stale-asset artifact).
 ### Support / Support filament
 | `support_filament` | B | support-planner |
 | `support_interface_filament` | B | support-planner |
-| `support_interface_not_for_body` | B | tool-ordering (ToolOrdering.cpp) |
+| `support_interface_not_for_body` | B | slicer-runtime entity assembly (`assemble_ordered_entities_with_support_identities` over `SupportToolSelection`) — **live** (ticket 74, direct implementation): tier-table `tool-ordering` owner corrected — no `ToolOrdering` module exists here; canonical's `ToolOrdering::collect_extruders` + `GCode::process_layer` fallback maps to the runtime's support/interface tool resolution (ticket-38 seam). Scalar coBool default true; `WipingExtrusions::mark_wiping_extrusions` arm named non-borrow (no port analogue) |
 
 ### Support / Support ironing
-| `support_air_filtration` | B | crates/slicer-gcode (air-filtration emission) |
+| `support_air_filtration` | B | machine-gcode-emit (printer-level master enable on packet 253's header/footer exhaust emission) — **folded into packet 253** by ticket 68 (ticket-35 precedent: operator on a decision another packet builds; owner corrected — canonical's reads are `_do_export` header/footer, not a host-emitter speed) |
 | `support_ironing_pattern` | ~~A~~ → **returned to queue, unimplemented** | support-surface-ironing (holder seam absent) | (ticket 22: algorithm-selecting enum over `InfillPattern` — canonical `Fill::new_from_type(support_params.ironing_pattern)`. Holder-only under Authoring rule 4 / grilling Q3(a), so it is never declared as an input key. This port has no support-ironing claim, no holder key, and no concentric filler; standing that seam up is Tier C, not the Tier A this row assumed. Missing feature: **support-ironing filler selection through a claim seam, shipping at least canonical's default `rectilinear` as a holder**. Scope it with packet `260b-support-interface-fill-claim-holders`.) |
 | `support_ironing` | A | support-surface-ironing | (ticket 07 reclassification — independent bool so support ironing no longer rides the shared `ironing_enabled`) |
 

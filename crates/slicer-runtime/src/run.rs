@@ -45,9 +45,47 @@ where
         Some(ConfigValue::List(items)) => u32::try_from(items.len()).unwrap_or(u32::MAX).max(1),
         _ => 1,
     };
+    // Canonical `support_interface_not_for_body` (`PrintConfig.cpp` coBool,
+    // default true; `ToolOrdering::collect_extruders` + `GCode::process_layer`
+    // in `ToolOrdering.cpp` / `GCode.cpp`). Bool wins; Int/String spellings
+    // are honoured so an explicit false never silently decays to the default.
+    let support_interface_not_for_body = match config_source.get("support_interface_not_for_body") {
+        Some(ConfigValue::Bool(b)) => *b,
+        Some(ConfigValue::Int(v)) => *v != 0,
+        Some(ConfigValue::String(s)) if s.eq_ignore_ascii_case("true") || s == "1" => true,
+        Some(ConfigValue::String(s)) if s.eq_ignore_ascii_case("false") || s == "0" => false,
+        _ => true,
+    };
+    let support_tool = rebase("support_filament");
+    let interface_tool = rebase("support_interface_filament");
+    // Only an explicitly configured interface filament engages the gate
+    // (canonical `process_layer` arms on a configured interface extruder; a
+    // default profile must never change tool assignment). When the gate is
+    // on, the body collides with the interface tool, and another tool
+    // exists, advance the body to the smallest configured tool that is not
+    // the interface tool. This is the PnP simplification of canonical's
+    // `get_next_extruder` flush-volume ordering (no flush matrix exists here)
+    // and deliberately ignores the `WipingExtrusions::mark_wiping_extrusions`
+    // override arm, which has no port analogue (named non-borrow).
+    let interface_explicit = matches!(
+        config_source.get("support_interface_filament"),
+        Some(ConfigValue::Int(v)) if *v >= 1
+    );
+    let support_tool = if support_interface_not_for_body
+        && interface_explicit
+        && support_tool == interface_tool
+        && tool_count > 1
+    {
+        (0..tool_count)
+            .find(|t| *t != interface_tool)
+            .unwrap_or(support_tool)
+    } else {
+        support_tool
+    };
     crate::layer_executor::SupportToolSelection {
-        support_tool: rebase("support_filament"),
-        interface_tool: rebase("support_interface_filament"),
+        support_tool,
+        interface_tool,
+        support_interface_not_for_body,
         tool_count,
         feature_filaments: parse_feature_filament_selection(&config_source, tool_count),
     }
@@ -1458,6 +1496,78 @@ mod tests {
         let selection = parse_support_tool_selection(&extreme);
         assert_eq!(selection.support_tool, 0);
         assert_eq!(selection.interface_tool, 0);
+    }
+
+    #[test]
+    fn support_interface_not_for_body_defaults_true_and_advances_colliding_body() {
+        // Absent key means canonical default true; a default profile never
+        // changes assignment (both tools 0, single tool).
+        let absent = HashMap::<String, ConfigValue>::new();
+        let selection = parse_support_tool_selection(&absent);
+        assert!(selection.support_interface_not_for_body);
+        assert_eq!(selection.support_tool, 0);
+
+        // Explicit false is honoured (all spellings) and never advances.
+        for value in [
+            ConfigValue::Bool(false),
+            ConfigValue::Int(0),
+            ConfigValue::String("false".to_string()),
+            ConfigValue::String("0".to_string()),
+        ] {
+            let mut cfg = HashMap::new();
+            cfg.insert(
+                "filament_density".to_string(),
+                ConfigValue::List(vec![ConfigValue::Float(1.24), ConfigValue::Float(1.24)]),
+            );
+            cfg.insert("support_filament".to_string(), ConfigValue::Int(2));
+            cfg.insert(
+                "support_interface_filament".to_string(),
+                ConfigValue::Int(2),
+            );
+            cfg.insert("support_interface_not_for_body".to_string(), value);
+            let selection = parse_support_tool_selection(&cfg);
+            assert!(!selection.support_interface_not_for_body);
+            assert_eq!(selection.support_tool, 1);
+            assert_eq!(selection.interface_tool, 1);
+        }
+
+        // Default true with an explicitly configured colliding interface and
+        // another tool available advances the body to the smallest
+        // non-interface tool.
+        let mut colliding = HashMap::new();
+        colliding.insert(
+            "filament_density".to_string(),
+            ConfigValue::List(vec![ConfigValue::Float(1.24), ConfigValue::Float(1.24)]),
+        );
+        colliding.insert("support_filament".to_string(), ConfigValue::Int(2));
+        colliding.insert(
+            "support_interface_filament".to_string(),
+            ConfigValue::Int(2),
+        );
+        let selection = parse_support_tool_selection(&colliding);
+        assert!(selection.support_interface_not_for_body);
+        assert_eq!(selection.interface_tool, 1);
+        assert_eq!(selection.support_tool, 0);
+
+        // No advancement when the interface was never explicitly configured,
+        // even on a multi-tool machine with colliding tools.
+        let mut implicit = HashMap::new();
+        implicit.insert(
+            "filament_density".to_string(),
+            ConfigValue::List(vec![ConfigValue::Float(1.24), ConfigValue::Float(1.24)]),
+        );
+        let selection = parse_support_tool_selection(&implicit);
+        assert_eq!(selection.support_tool, 0);
+
+        // No advancement on a single-tool machine.
+        let mut single = HashMap::new();
+        single.insert("support_filament".to_string(), ConfigValue::Int(2));
+        single.insert(
+            "support_interface_filament".to_string(),
+            ConfigValue::Int(2),
+        );
+        let selection = parse_support_tool_selection(&single);
+        assert_eq!(selection.support_tool, 1);
     }
 
     #[test]

@@ -786,6 +786,14 @@ pub struct SupportToolSelection {
     pub support_tool: u32,
     /// Filament index used for interface paths.
     pub interface_tool: u32,
+    /// Canonical `support_interface_not_for_body` (`PrintConfig.cpp` coBool,
+    /// default true): when true and the interface filament is explicitly
+    /// configured, a support-body fallback that would land on the interface
+    /// tool advances to the smallest configured tool that is not the
+    /// interface tool. False permits the body to share the interface tool.
+    /// Parsed in `crate::run::parse_support_tool_selection`; runtime-only
+    /// like the support selectors, never a module-manifest key.
+    pub support_interface_not_for_body: bool,
     /// Number of configured tools/filaments, minimum 1. Used to range-check a
     /// guest-authored [`slicer_ir::ExtrusionPath3D::tool_index`]: an authored
     /// index is honored only when it is `< tool_count`.
@@ -804,6 +812,7 @@ impl Default for SupportToolSelection {
         Self {
             support_tool: 0,
             interface_tool: 0,
+            support_interface_not_for_body: true,
             tool_count: 1,
             feature_filaments: FeatureFilamentSelection::default(),
         }
@@ -4061,6 +4070,105 @@ mod tests {
         .0;
 
         assert!(entities.iter().all(|entity| entity.tool_index == 0));
+    }
+
+    #[test]
+    fn support_interface_not_for_body_moves_colliding_body_off_interface_tool() {
+        fn path(role: slicer_ir::ExtrusionRole) -> slicer_ir::ExtrusionPath3D {
+            let point = slicer_ir::Point3WithWidth {
+                x: 1.0,
+                y: 1.0,
+                z: 0.2,
+                width: 0.4,
+                flow_factor: 1.0,
+                overhang_quartile: None,
+                overhang_distance_mm: None,
+                ..Default::default()
+            };
+            // exhaustive: this test intentionally pins the path defaults.
+            slicer_ir::ExtrusionPath3D {
+                points: vec![point, point],
+                role,
+                speed_factor: 1.0,
+                tool_index: None,
+                order_lock: None,
+            }
+        }
+
+        let support = slicer_ir::SupportIR {
+            entries: vec![
+                slicer_ir::SupportEntry {
+                    paths: vec![path(slicer_ir::ExtrusionRole::SupportMaterial)],
+                    ..Default::default()
+                },
+                slicer_ir::SupportEntry {
+                    paths: vec![path(slicer_ir::ExtrusionRole::SupportInterface)],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        // Two tools; both selectors collide on tool 1. Default true advances
+        // the body to tool 0 while the interface stays on tool 1.
+        let mut colliding = std::collections::HashMap::new();
+        colliding.insert(
+            "filament_density".to_string(),
+            slicer_ir::ConfigValue::List(vec![
+                slicer_ir::ConfigValue::Float(1.24),
+                slicer_ir::ConfigValue::Float(1.24),
+            ]),
+        );
+        colliding.insert(
+            "support_filament".to_string(),
+            slicer_ir::ConfigValue::Int(2),
+        );
+        colliding.insert(
+            "support_interface_filament".to_string(),
+            slicer_ir::ConfigValue::Int(2),
+        );
+        let gated = crate::run::parse_support_tool_selection(&colliding);
+        let entities = super::assemble_ordered_entities_with_support_identities(
+            0,
+            None,
+            None,
+            Some(&support),
+            None,
+            None,
+            gated,
+        )
+        .0;
+        assert_eq!(
+            entities
+                .iter()
+                .map(|entity| entity.tool_index)
+                .collect::<Vec<_>>(),
+            vec![0, 1]
+        );
+
+        // Explicit false permits the body to share the interface tool.
+        colliding.insert(
+            "support_interface_not_for_body".to_string(),
+            slicer_ir::ConfigValue::Bool(false),
+        );
+        let ungated = crate::run::parse_support_tool_selection(&colliding);
+        let entities = super::assemble_ordered_entities_with_support_identities(
+            0,
+            None,
+            None,
+            Some(&support),
+            None,
+            None,
+            ungated,
+        )
+        .0;
+        assert_eq!(
+            entities
+                .iter()
+                .map(|entity| entity.tool_index)
+                .collect::<Vec<_>>(),
+            vec![1, 1]
+        );
     }
     use slicer_ir::LayerStageOutput;
 

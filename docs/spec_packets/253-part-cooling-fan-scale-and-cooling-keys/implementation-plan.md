@@ -39,9 +39,9 @@
 ### Step 2: Manifest re-key to percent + the new key declarations in both owners
 
 - Task IDs: none (queue packet P01).
-- Objective: make `part-cooling` declare its 15 P01 keys (2 re-keyed to percent, 13 new) plus the role base-speed keys Step 7 reads, and make `machine-gcode-emit` declare the 4 header/footer keys plus the supporting `chamber_temperature`. The four header/footer keys are declared **only** in `machine-gcode-emit` — `part-cooling` never reads them, and declaring them there would be the declaration-only disposition the map prohibits. Update both modules' schema test expectations (AC-1, AC-1b).
+- Objective: make `part-cooling` declare its 15 P01 keys (2 re-keyed to percent, 13 new) plus the role base-speed keys Step 7 reads, and make `machine-gcode-emit` declare the 4 header/footer keys plus the supporting `chamber_temperature` plus the folded `support_air_filtration` (P61, ticket 68). The five header/footer keys are declared **only** in `machine-gcode-emit` — `part-cooling` never reads them, and declaring them there would be the declaration-only disposition the map prohibits. Update both modules' schema test expectations (AC-1, AC-1b, AC-N1b).
 - Precondition: Step 1 complete.
-- Postcondition: both manifests parse (`read_config_schema`); `part-cooling` declares 21 cooling keys plus its speed block and `machine-gcode-emit` declares 19; schema tests updated to those lists; module source still compiles (it reads 4 keys, two of which changed scale — see Step 3 before running behavioural tests that assert S-values from defaults).
+- Postcondition: both manifests parse (`read_config_schema`); `part-cooling` declares 21 cooling keys plus its speed block and `machine-gcode-emit` declares 20 (14 + 4 header/footer + folded `support_air_filtration` + supporting `chamber_temperature`); schema tests updated to those lists (AC-1b's 20-count plus AC-N1b's bool rejection); module source still compiles (it reads 4 keys, two of which changed scale — see Step 3 before running behavioural tests that assert S-values from defaults).
 - Files allowed to read, with ranges when over 300 lines:
   - `modules/core-modules/part-cooling/part-cooling.toml` - full (89 lines)
   - `modules/core-modules/machine-gcode-emit/machine-gcode-emit.toml` - `[config.schema]` section only (delegated LOCATIONS for its line range first)
@@ -213,9 +213,9 @@
 ### Step 8: Header/footer emission in `machine-gcode-emit`
 
 - Task IDs: none (queue packet P01).
-- Objective: synthesize the canonical chamber-temperature and exhaust-fan lines at the `PrintStart` and `PrintEnd` injection sites (AC-1b, AC-8, AC-8b, AC-8c), including the `custom_gcode_sets_temperature` suppression check.
-- Precondition: Step 2 complete (the five keys are declared in `machine-gcode-emit.toml`). Independent of Steps 3-7 — it touches a different crate and may run in parallel with them.
-- Postcondition: with both bools false (the defaults) the emitted stream is byte-identical to today's; with them on, the four lines appear in canonical order — `M191` before the rendered start template, `M106 P3` last in the start group, `M141 S0` then `M106 P3` after the rendered end template.
+- Objective: synthesize the canonical chamber-temperature and exhaust-fan lines at the `PrintStart` and `PrintEnd` injection sites (AC-1b, AC-8, AC-8b, AC-8c, AC-N1b), including the `custom_gcode_sets_temperature` suppression check and the folded `support_air_filtration` master gate.
+- Precondition: Step 2 complete (the six keys are declared in `machine-gcode-emit.toml`). Independent of Steps 3-7 — it touches a different crate and may run in parallel with them.
+- Postcondition: with both bools false (the defaults) the emitted stream is byte-identical to today's; with them on, the four lines appear in canonical order — `M191` before the rendered start template, `M106 P3` last in the start group, `M141 S0` then `M106 P3` after the rendered end template. With folded `support_air_filtration = false` no `P3` line appears at either end at any `activate_air_filtration` value (AC-8's new arm); with it `true` (the default) both emissions behave exactly as before.
 - Files allowed to read, with ranges when over 300 lines:
   - `modules/core-modules/machine-gcode-emit/src/lib.rs` - located by symbol: `INJECTION_POINTS`, `InjectionSite`, `run_gcode_postprocess`, `substitute_placeholders`, `site_lookup`, `reemit_command` (the existing non-template `Raw` write, the `ExtrusionMode` to `M82`/`M83` bridge).
   - `crates/slicer-sdk/src/postpass_builders.rs` - `GcodeOutputBuilder` push methods available for a synthesized `Raw` line.
@@ -233,7 +233,7 @@
 - OrcaSlicer refs:
   - `GCodeWriter.cpp::set_exhaust_fan`, `GCodeWriter.cpp::set_chamber_temperature`, `GCode.cpp::_do_export`, `GCode.cpp::custom_gcode_sets_temperature` - delegated per the dispatch above.
 - Verification:
-  - `cargo test -p machine-gcode-emit --test exhaust_and_chamber_emission_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` - AC-1b, AC-8, AC-8b, AC-8c; FACT
+  - `cargo test -p machine-gcode-emit --test exhaust_and_chamber_emission_tdd 2>&1 | tee target/test-output.log | grep -E "^test result"` - AC-1b, AC-8, AC-8b, AC-8c, AC-N1b; FACT
   - `cargo test -p machine-gcode-emit 2>&1 | tee target/test-output.log | grep -E "^test result"` - default-stream regression pin; FACT
   - `cargo xtask build-guests --check; echo "exit=$?"` - fresh after source edit
 - Exit condition: all three green, and the default-config stream is provably unchanged (the negative half of AC-8/AC-8b).
