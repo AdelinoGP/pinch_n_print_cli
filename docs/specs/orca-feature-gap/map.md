@@ -1380,6 +1380,7 @@ gap set; the 407→410 step is ticket 46's three source-missing
     column held (host export orchestration) — no ticket-27 correction needed. No packet
     number, no queue-count change. 04 and 05 rows annotate the direct landing; **P86
     (ticket 93) is the queue head — the first Tier-C (new-module) packet.**
+  - [93 — Author packet P86 — Quality / Precision — new: elefant-foot](issues/93-author-packet-p86-quality-precision-new-elefant-foot.md) — **Tier C held, owner confirmed and sharpened, packet authored, no re-file.** Both keys live in canonical under one primary consumer, `PrintObject::slice_volumes` (`PrintObjectSlice.cpp`): `raft_layers == 0` gate, `layer_id < layers` guard, `elfoot = efc - (efc / layers) * layer_id` taper, feeding the **width-limited variable inward offset** `elephant_foot_compensation` (`ElephantFootCompensation.cpp`) — not a uniform offset; it throttles the shrink where the contour is narrower than `min_contour_width` so thin features survive. Defaults coFloat `0.`/min `0` and coInt `1`/min `1`. Zero-occurrence here (sole hit is the `ORCA_CONFIG_PADDING` twin, rule 2 not evidence). Owner `new elefant-foot module` **confirmed** and sharpened to stage **`Layer::SlicePostProcess`** — which exists in `STAGE_ORDER`, merges into committed `SliceIR`, and **carries zero production modules today**; `elefant-foot` is its first occupant, with the ungated kernel beside `bridge_over_infill` in `slicer-core::algos` (the `gyroid-infill` guest-links-slicer-core precedent). Deliberately **not** packet 297's host-prepass shape: 297 needed the layer above, this reads only the layer's own footprint. Packet `docs/spec_packets/303-elefant-foot-slice-postprocess/` authored (`draft`), **preflight PASS** (S0–S8, tree-verified): no WIT/IR/host-service change, rule 4 does not fire (`[claims]` empty), zero declaration-only keys, five *re-declared* keys reaching the decision point (`support_raft_layers` gate + four width keys feeding `resolve_role_width`/`line_width_to_spacing`) which are **not** queue keys — no queue-count change, target stays 409. No range rejection beyond canonical `min` (the GUI `> 1` mm clamp is a ticket-113 GUI hint); CONFIG_BLOCK side-effect only, padding twin untouched (rides 132). One new deviation row, three clauses (later mutation seam; `lslices_elfoot_uncompensated` non-borrow; substituted 2D acceleration structure) — ID re-derived at write time. **The preflight sweep caught three authoring defects before closure**: canonical's `SCALED_EPSILON` implied reusable when this tree's is a file-private `i128` in `smooth_outward.rs`; a gate command whose desired no-match exit read as failure; and Step 6 naming `xtask/src/editions.rs` as an edit surface when core modules are discovered dynamically and `dist/editions.toml` names only the natively-integrated `hybrid` three. Two neighbouring canonical keys examined and left out (see fog). Ordering obligation handed to P88/ticket 95: canonical runs `_shrink_contour_holes` on the same expolygons *before* EFC. No code change.
 
 ## Not yet specified
 
@@ -1539,6 +1540,31 @@ gap set; the 407→410 step is ticket 46's three source-missing
   `ResolvedConfig` fields or an extensions mechanism + `travel_point_*` schema
   on `machine-gcode-emit`). Fog until packet 256's implementation lands; the
   re-file should fold into or sequence after it.
+
+- **`brim_use_efc_outline` is unblocked on one axis and still blocked on the other.**
+  Surfaced by ticket 93. The key is currently `shed-to-queue` in
+  [`key-correction-inventory.md`](issues/key-correction-inventory.md) as a packet-257
+  rule-1 violation. It needs two things: elephant-foot geometry to exist, and the brim
+  to follow the object contour. Packet 303 supplies the first. The second is ticket
+  12's recorded bbox-vs-contour divergence — `skirt-brim`'s `generate_brim_entities`
+  builds loops from a **bounding box**, so the object outline (compensated or not)
+  never reaches the brim. Consequence: packet 303 deliberately stores no
+  uncompensated footprint (canonical's `lslices_elfoot_uncompensated`) and **no
+  observable behaviour differs** because of it. Owner stays `skirt-brim` per ticket
+  04. Fog until brim follows the real contour; the re-file should fold into or
+  sequence after whatever packet does that.
+
+- **The gap source is missing at least one live canonical key.** Surfaced by ticket
+  93: `elefant_foot_layers_density` (coPercent, min 50, max 100, default 100) is read
+  by `Fill.cpp` to densify solid infill across the same layer band the elephant-foot
+  compensation covers, and is toggled beside `elefant_foot_compensation` in
+  `ConfigManipulation.cpp` — but it appears **nowhere** in
+  `docs/ORCA_CONFIG_REFERENCE.md`, so it is not in the 409-key queue and no packet can
+  legitimately scope it. This is a *completeness* defect in the gap source, distinct
+  from the known *accuracy* defect in its ✅/❌ column (ticket 01 measured that one).
+  Belongs to [ticket 123](issues/123-audit-gap-source-key-set-completeness.md), which is on
+  the frontier and unblocked; if 123 confirms a class of missing keys rather than a
+  one-off, the queue count itself moves. Fog until 123 reports.
 
 ## Out of scope
 
