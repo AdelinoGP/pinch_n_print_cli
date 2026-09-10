@@ -713,6 +713,13 @@ order rather than by completion order. The correctness contract that lets guest
 parallelism coexist with byte-comparison baselines: without it, a threaded module
 produces run-to-run variation indistinguishable from a regression.
 
+### Lock convergence
+The property that all guest lockfiles resolve the same version of any shared
+crate within a semver-compatibility line. Divergence is reported by
+`cargo xtask build-guests --check` as staleness (exit `1`), one deterministic
+line per diverging crate, and is repaired by `--sync-locks`. Semver-major
+coexistence inside one lock is not divergence.
+
 ## Flagged ambiguities
 
 ### "region"
@@ -843,6 +850,21 @@ authoring-language dimension, not where the module ships from.
 ### Artifact-verified freshness
 The property that a guest artifact's embedded WIT world matches the canonical WIT for its stage, established by decoding the artifact (`wasm-tools component wit`) and comparing declarations package-qualified, rather than by fingerprinting WIT input files. The fingerprint covers code inputs only; WIT staleness is answered by the artifact itself.
 
+### Test-quality gate
+The `cargo xtask check-test-quality` static check over test code, companion to
+the struct-literal gate in `docs/21_data_defaults_and_fixtures.md`. It flags the
+mechanically detectable false-green patterns (R1–R8 in
+`docs/22_test_quality.md`); a legitimate pattern is exempted by an inline
+`// test-quality: <reason>` waiver, which itself documents why the pattern is
+correct. Ships in report mode; enforce mode activates per ADR-0065.
+
+### Earn-their-keep review
+The retirement standard of ADR-0064: a test survives only if a reviewer can
+name the specific regression input that would slip through if it were deleted.
+Applied by the test-quality remediation program to every audited test;
+retire-if-unjustified, with compile witnesses and protected parity evidence as
+the two carve-outs.
+
 ### Shared guest target
 The single cargo target directory `<ws_root>/target/guests` (real layout
 `target/guests/wasm32-unknown-unknown/release/`) into which every guest of both
@@ -858,4 +880,60 @@ crate within a semver-compatibility line. Divergence is reported by
 `cargo xtask build-guests --check` as staleness (exit `1`), one deterministic
 line per diverging crate, and is repaired by `--sync-locks`. Semver-major
 coexistence inside one lock is not divergence.
+
+### False green
+A test that passes without exercising the behavior its name claims to verify —
+through a self-referential expectation, a loop over an empty population, a
+silently skipped fixture, or an assertion about the test's own scaffolding
+rather than production output. A false green is worse than a missing test: a
+missing test is a known hole, while a false green is a hole that reports itself
+as coverage. Green means "the assertion executed and held", never "the behavior
+is covered".
+_Avoid_: fake test, vanity test, coverage theater.
+
+### Compile witness
+A test whose value is that an expression compiles, links, or is exported —
+protecting the existence of an API surface (a re-export, a constructor, a trait
+impl, a WIT export) rather than any runtime behavior. It carries no meaningful
+runtime assertion, and deleting its body can delete the only use of an API that
+Cargo would otherwise type-check. A legitimate but weak form of coverage: it
+must be marked as a witness (waived under the test-quality gate) and can never
+substitute for behavioral coverage of the same surface.
+_Avoid_: smoke test (when behavior is claimed), API test.
+
+### Production oracle
+The independent source from which a test derives its expected value: a
+documented contract, an analytic derivation, or a recorded independent
+reference. The production function under test is not a valid oracle for itself,
+and neither is a test-local mirror of its algorithm. Legitimate exception: an
+encode/decode roundtrip pair, where the two directions are different functions
+and the assertion is that they invert each other. A second, distinct
+legitimate pattern is a determinism pin — calling the same function twice with
+identical inputs and comparing the results — which claims stability, not
+correctness, and never substitutes for an independent expectation.
+_Avoid_: self-test, mirror.
+
+### Loud skip
+The discipline governing fixture-dependent coverage: a test that cannot obtain
+its fixture must fail loudly, or be explicitly gated behind a feature or
+environment marker that excludes it from default runs. A silent early return on
+a missing fixture converts a coverage hole into a permanently green test.
+_Avoid_: soft skip, graceful degradation (of a test).
+
+### Negative control
+A deliberately corrupted input run against a shared comparator, detector, or
+oracle to prove that the oracle can fail. Distinct from a negative test of
+production behavior: a negative control tests the test infrastructure. A
+comparator with no demonstrated negative control may be incapable of detecting
+the very defect it exists to catch.
+_Avoid_: negative test (when the production rejection path is what's tested).
+
+### Roster check
+An assertion over a hand-maintained enumeration of names (fields, stages,
+passes, variants) that cannot detect an addition it never listed. Contrast with
+derived discovery, where the expected set is read from an authority (schema,
+manifest, registry) at use time. A count pin can be a legitimate contract when
+it pins a documented wire format or schema version; an incidental roster is a
+false-green vector because it stays green while the real set drifts.
+_Avoid_: census (of production symbols), inventory assertion.
 
