@@ -14,20 +14,22 @@ Perimeter generation repeatedly scans region-specific geometry for distance, sig
 ## In Scope
 
 - Add `crates/slicer-core/src/perimeter_spatial.rs` with four separate trees in one immutable per-region context: f64 distance edges, neutral-X f64 sign intervals, neutral-X f64 quartile intervals, and outward-rounded f64 bridge boxes over integer coordinates.
-- Preserve independent `signed_distance_to_boundary`, `expolygon_to_path3d`, `point_in_any_polygon`, and `point_in_polygon_winding` legacy evaluation, including conversion domains, signed zero, ties, strict bridge boundaries, holes, closure repeats, widths, flags, and normalization.
+- Add `crates/slicer-core/build.rs` (new; the crate has none today) whose only job is `cargo::rustc-check-cfg=cfg(pnp_perimeter_spatial_accelerated)`, so the reserved cfg is declared for `unexpected_cfgs` under the `-D warnings` gate. `slicer-core` uses `[lints] workspace = true`, so a crate-local `[lints.rust]` table is not an option.
+- Preserve independent `signed_distance_to_boundary`, `expolygon_to_path3d`, `point_in_any_polygon`, and `point_in_polygon_winding` legacy evaluation, including conversion domains (endpoints pass through `units_to_mm` f32 before f64 promotion; the winding predicate divides `i64` units by `10_000.0` directly), signed zero, ties, strict bridge boundaries, holes, closure repeats, widths, flags, and normalization.
 - Build one context outside all repeated Classic and Arachne passes, including nonplanar Classic shell handling and Arachne's only-one-wall-top second pass; no cross-region cache or WIT/IR/scheduler/public execution-context change.
 - Implement nearest-envelope seed, exact legacy re-evaluation, `D.next_up().sqrt().next_up().next_up()` radius, outward/inclusive envelope queries, `total_cmp` plus source ordinal reduction, and full legacy fallback for nonfinite/exceptional/structurally small inputs.
 - Implement bridge global-span/query-extent checked-u128 guard before pruning, with original source-order scan when the guard fails.
-- Add non-default feature-gated scoped native controls and diagnostics, real dispatch capture through `PerimeterCapturingLayerStageRunner`, and separate WASM self-baselines; no public context fields, global production counters, or native-vs-WASM oracle.
+- Add the non-default `perimeter-spatial-test-support` feature on `slicer-core` (scoped, thread-bound native controls and diagnostics with no production counters), a same-named forwarding feature on `slicer-runtime` (`perimeter-spatial-test-support = ["slicer-core/perimeter-spatial-test-support"]`) so the `integration` test binary can enable it, an always-compiled no-op diagnostics entry point in `slicer-core` that `slicer-wasm-host`'s `push_slice_regions` calls for prepared-region capture, native in-process capture through `LayerStageRunner::run_stage` + `__slicer_native_entry()`, WASM capture through `PerimeterCapturingLayerStageRunner`, and separate native/WASM self-baselines; no public context fields, global production counters, or native-vs-WASM oracle.
 - Add the owned `RUSTC` shim and explicit policy grammar, toolchain identity, rejection latch, cfg injection only for canonical core library/unit tests, controlled debug profile, isolated cache/publication metadata, mode-aware guest freshness, and explicit accelerated entry points for build-guests, dist, and xtask test.
-- Add committed synthetic/existing fixtures and readable versioned postcard provenance with explicit integer coordinates and float bits; local Benchy/base artifacts remain under `tmp/rtree_query_corpus/` and are not committed.
-- Add the serialized acceptance runner/validator for supports-off Benchy, tree-support Benchy, and original tree-support base: warmup 1, ABBA then BAAB, four measured samples, 12 threads, CPU and process-wall ratios, exactness first, and KEEP only when both strict inequalities pass for every generator/workload.
+- Add committed synthetic/existing fixtures and readable versioned postcard provenance with explicit integer coordinates and float bits; local Benchy/base artifacts remain under `tmp/rtree_query_corpus/` (absent today; user-prepared) and are not committed.
+- Add the serialized acceptance runner/validator as tracked files under `resources/perimeter-acceptance/` (`tmp/` is gitignored, so nothing there can be "committed"): `run-acceptance.ps1` (new) plus `run_bench.ps1`, a byte-identical tracked copy of the untracked `tmp/alloc-bench/run_bench.ps1` (verified with `cmp` at copy time; the `tmp/` original is not edited). Campaign: supports-off Benchy, tree-support Benchy, and original tree-support base; warmup 1, ABBA then BAAB, four measured samples, 12 threads, CPU and process-wall ratios, exactness first, six cells, and KEEP only when both strict inequalities pass for every cell.
 
 ## Out of Scope
 
 - WIT, IR, scheduler, manifest contract, public `HostExecutionContext`, or `LayerStageInput` changes.
 - Replacing or sharing the legacy evaluator with new pruning logic; tolerances, golden-only tests, or native-vs-WASM comparisons.
 - Cross-region indexing, production timing counters, automatic retries after overlap, automatic commits, or quiet relaxation of the acceptance bar.
+- A repo-wide `rust-toolchain.toml` pin (the driver verifies identity at run time instead).
 - Editing `docs/07_implementation_status.md` during packet authoring.
 
 ## Authoritative Docs
@@ -36,6 +38,7 @@ Perimeter generation repeatedly scans region-specific geometry for distance, sig
 - `docs/21_data_defaults_and_fixtures.md` - delegated fixture/literal rules.
 - `docs/07_implementation_status.md` - delegated TASK-561 row lookup.
 - `docs/19_visual_debug.md`, `docs/17_agent_debugging.md` - delegated pipeline evidence context.
+- `docs/23_controlled_perimeter_builds.md` - created by this packet (Step 10); policy grammar, mode rules, corpus layout.
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations
@@ -55,14 +58,14 @@ This packet is an optimization, not a parity port; the canonical reference (Orca
 - **Exactness, not goldens.** Every accelerated query result must equal the independent legacy evaluator bitwise (f32 bits, signed zero, source ordinal, `distance + 0.5 * width`, strict bridge boundaries). Tolerance comparisons are forbidden.
 - **Both modes exercised.** Focused tests must prove the accelerated path ran (nonzero accelerated counters, more-than-leaf records present) and that disabling the mode exercises the complete legacy path on identical inputs.
 - **Fallback is observable.** Nonfinite, guard-failed, and small-set inputs must demonstrate the complete legacy scan (counters or injected fault), not silently produce a plausible answer.
-- **WASM self-baseline.** WASM module output is compared against its own preserved baseline on identical deterministic inputs; native-vs-WASM comparison is not an oracle.
+- **Self-baselines per mode.** Native indexed, native legacy, and WASM outputs are each compared against their own preserved baseline on identical deterministic inputs (AC-5); native-vs-WASM comparison is not an oracle.
 - **No behavioral parity claim against OrcaSlicer** is made by this packet; canonical reads are delegated per the snippet above and used only as design precedent.
 
 ## Acceptance Summary
 
 Reference, never copy, criteria from `packet.spec.md`.
 
-- Positive: `AC-1` through `AC-4`.
+- Positive: `AC-1` through `AC-5` (AC-3N is the both-modes-exercised companion of AC-3).
 - Negative: `AC-N1` through `AC-N3`.
 - Cross-packet impact: none; TASK-561 is one pending backlog row.
 
@@ -70,25 +73,30 @@ Reference, never copy, criteria from `packet.spec.md`.
 
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
-| `cargo test -p slicer-core --features host-algos --test perimeter_spatial_tdd -- exact_queries_match_legacy --nocapture 2>&1 | tee target/test-output.log` | Exact scalar and bitwise query parity | FACT pass/fail; failure SNIPPETS <=20 lines |
-| `cargo test -p slicer-core --features host-algos --test perimeter_spatial_tdd -- accelerated_mode_exercised_not_vacuous --nocapture 2>&1 | tee target/test-output.log` | Both modes exercised; no silent fallback | FACT pass/fail |
-| `cargo test -p xtask --bin xtask -- accelerated_policy_rejection_latch --nocapture 2>&1 | tee target/test-output.log` | Driver policy rejection and latch | FACT pass/fail |
-| `cargo xtask test --summary -p slicer-runtime --test integration -- perimeter_spatial_capture_and_nonvacuity` | Real pipeline capture and pass reuse | FACT pass/fail |
-| `cargo test -p slicer-runtime --test integration -- overlap_is_inconclusive_and_never_keep --nocapture 2>&1 | tee target/test-output.log` | Validator decision logic on synthetic rows | FACT pass/fail |
+| `cargo test -p slicer-core --features host-algos,perimeter-spatial-test-support --test perimeter_spatial_tdd -- exact_queries_match_legacy --nocapture 2>&1 \| tee target/test-output.log` | Exact scalar and bitwise query parity (AC-1) | FACT pass/fail; failure SNIPPETS <=20 lines |
+| `cargo test -p slicer-core --features host-algos,perimeter-spatial-test-support --test perimeter_spatial_tdd -- accelerated_mode_exercised_not_vacuous --nocapture 2>&1 \| tee target/test-output.log` | Both modes exercised; no silent fallback (AC-3N) | FACT pass/fail |
+| `cargo test -p slicer-core --features host-algos,perimeter-spatial-test-support --test perimeter_spatial_tdd -- fallback_paths_are_nonvacuous --nocapture 2>&1 \| tee target/test-output.log` | Observable legacy fallback (AC-N2) | FACT pass/fail |
+| `cargo test -p slicer-runtime --features perimeter-spatial-test-support --test integration -- perimeter_spatial_capture_and_nonvacuity --nocapture 2>&1 \| tee target/test-output.log` | Native in-process pass reuse and capture (AC-2) | FACT pass/fail |
+| `cargo xtask test --summary -p slicer-runtime --features perimeter-spatial-test-support --test integration -- perimeter_spatial_self_baseline --nocapture 2>&1 \| tee target/test-output.log` | Native and WASM self-baselines with dispatch capture (AC-5; needs fresh guests) | FACT pass/fail |
+| `cargo test -p xtask --bin xtask -- accelerated_policy_rejection_latch --nocapture 2>&1 \| tee target/test-output.log` | Driver policy rejection and latch (AC-N1) | FACT pass/fail |
+| `cargo test -p xtask --bin xtask -- accelerated_mode_freshness --nocapture 2>&1 \| tee target/test-output.log` | Mode-aware freshness and artifact isolation (AC-3) | FACT pass/fail |
+| `cargo test -p slicer-runtime --test integration -- overlap_is_inconclusive_and_never_keep --nocapture 2>&1 \| tee target/test-output.log` | Validator decision logic on synthetic rows (AC-N3) | FACT pass/fail |
+| `pwsh -NoProfile -File resources/perimeter-acceptance/run-acceptance.ps1 -DryRun 2>&1 \| tee target/test-output.log` | Schedule/validator dry-run without corpus (Step 10) | FACT exit 0 + JSON status |
 | `cargo xtask build-guests --check` | Ordinary artifact/WIT/lock freshness baseline | FACT exit 0/1/3 |
 | `cargo check --workspace --all-targets` | Compile all targets | FACT pass/fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Required lint gate | FACT pass/fail |
-| `pwsh -NoProfile -File tmp/perimeter-acceptance/run-acceptance.ps1 -Workload <workload> -ExpectedGenerator <gen>` | Serialized exactness/performance campaign per workload | JSON status KEEP/DROP/inconclusive; tee target/test-output.log |
+| `cargo xtask check-literals` | Struct-literal churn gate | FACT pass/fail |
+| `pwsh -NoProfile -File resources/perimeter-acceptance/run-acceptance.ps1 -Campaign` | Serialized six-cell exactness/performance campaign (AC-4; corpus required) | JSON status KEEP/DROP/inconclusive; tee target/test-output.log |
 
 Every test invocation tees to `target/test-output.log`; failure detail is read from that log, never re-run.
 
-Accelerated artifact validation must additionally invoke the explicit accelerated `--check` mode; ordinary `cargo xtask build-guests --check` cannot silently validate accelerated artifacts.
+Accelerated artifact validation must additionally invoke the explicit accelerated `--check` mode (`cargo xtask build-guests --accelerated --check`); ordinary `cargo xtask build-guests --check` cannot silently validate accelerated artifacts.
 
 ## Step Completion Expectations
 
 The indexed path is never the oracle; all region contexts are immutable and single-owner per invocation; the acceptance lane is serialized by the coordinator, while bounded reports may be delegated without concurrent heavy builds. A negative campaign outcome stops advancement and reports the result rather than retaining a falsely implemented optimization.
 
-Accelerated xtask entry points use an explicit `--accelerated` flag (not a cargo feature) on `cargo xtask build-guests --accelerated`, `cargo xtask dist --accelerated`, and `cargo xtask test --accelerated`; the shim sets `RUSTC` and the reserved cfg is never ambient. The core test-support feature is `perimeter-spatial-test-support` (see design.md Code Change Surface); it is used only by focused test targets, never in timing/dist production artifacts.
+Accelerated xtask entry points use an explicit `--accelerated` flag (not a cargo feature) on `cargo xtask build-guests --accelerated`, `cargo xtask dist --accelerated`, and `cargo xtask test --accelerated`; the shim sets `RUSTC` and the reserved cfg is never ambient. The core test-support feature is `perimeter-spatial-test-support` on `slicer-core`, forwarded by a same-named feature on `slicer-runtime` (see design.md Code Change Surface); it is used only by focused test targets, never in timing/dist production artifacts.
 
 ## Context Discipline Notes
 
