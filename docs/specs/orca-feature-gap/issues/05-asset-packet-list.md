@@ -719,6 +719,8 @@ are the feature's core semantic, so no substitute clamp). **Re-filed as
 
 ### P84 — Others / G-code output — host-export (1 keys, Tier B)
 
+**Closed by [ticket 91](91-author-packet-p84-others-g-code-output-host-export.md) (2026-09-10) by direct implementation — no packet** (re-sized at claim time: one host key + a line-prefix rewrite, no new module/IR/WIT/seam). `gcode_add_line_number` is a `[host_runtime]` key read at the `crates/slicer-runtime` export seam and applied as the last export step to `SliceOutcome::gcode_text` (every line of the whole artifact prefixed `N<line> ` from 1); default `false` = byte-identical. Tier-B owner confirmed as written. No queue-count change.
+
 `gcode_add_line_number`
 
 ### P85 — Others / Post-processing Scripts — host-export (1 keys, Tier B)

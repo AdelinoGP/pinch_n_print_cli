@@ -183,6 +183,11 @@ fn host_runtime_keys_match_constants() {
         slicer_runtime::pipeline::DEFAULT_THUMBNAIL_PATH,
         "host-keys.toml thumbnail_path != pipeline::DEFAULT_THUMBNAIL_PATH"
     );
+    assert_eq!(
+        t["gcode_add_line_number"]["default"].as_bool().unwrap(),
+        slicer_runtime::run::DEFAULT_GCODE_ADD_LINE_NUMBER,
+        "host-keys.toml gcode_add_line_number != run::DEFAULT_GCODE_ADD_LINE_NUMBER"
+    );
 }
 
 #[test]

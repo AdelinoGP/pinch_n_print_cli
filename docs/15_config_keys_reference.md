@@ -450,6 +450,7 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `support_top_z_distance` | float | `0.2` | >= 0 | `resolved_config.rs::ResolvedConfig` |
 | `top_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:top-fill (packet 37)) | `resolved_config.rs::ResolvedConfig` |
 | `top_shell_layers` | int | `3` | [1, 10] (deviates from OrcaSlicer's 4) | `resolved_config.rs::ResolvedConfig` |
+| `gcode_add_line_number` | bool | `false` | — (prefix every exported G-code line with N<line> (canonical PostProcessor.cpp::gcode_add_line_number); false = byte-identical output (wayfinder ticket 91 / P84)) | `run.rs::DEFAULT_GCODE_ADD_LINE_NUMBER` |
 | `thumbnail_path` | string | `""` | — (absent/empty = no THUMBNAIL_BLOCK; CLI --thumbnail overrides (packet 55)) | `pipeline.rs::DEFAULT_THUMBNAIL_PATH` |
 | `use_relative_e_distances` | bool | `true` | — (false selects M82; serializer issues G92 E0 on mode change (packet 54)) | `run.rs::DEFAULT_USE_RELATIVE_E_DISTANCES` |
 | `wall_generator` | string | `"classic"` | — (values classic or arachne; selects the perimeter-generator claim holder (com.core.classic-perimeters vs com.core.arachne-perimeters) at module-load time, before ResolvedConfig exists (packet 112 Step 10)) | `slicer-scheduler::execution_plan::DEFAULT_WALL_GENERATOR` |

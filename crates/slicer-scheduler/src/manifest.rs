@@ -1609,6 +1609,20 @@ const HOST_RUNTIME_KEYS: &[(&str, &str, &str, &str, HostKeyMeta)] = &[
         crate::execution_plan::DEFAULT_WALL_GENERATOR,
         HostKeyMeta::NONE,
     ),
+    (
+        "gcode_add_line_number",
+        "bool",
+        slicer_ir::resolved_config::SCOPE_PRINT,
+        "false",
+        HostKeyMeta {
+            display: Some("Add line number"),
+            description: Some(
+                "Prefix every exported G-code line with its 1-based line number (`N<line> `), matching OrcaSlicer's G-code output post-processor.",
+            ),
+            group: Some("Others"),
+            ..HostKeyMeta::NONE
+        },
+    ),
 ];
 
 /// Preset scope of a module-manifest config field.

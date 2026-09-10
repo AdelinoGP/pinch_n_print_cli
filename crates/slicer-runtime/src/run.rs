@@ -5,6 +5,15 @@
 /// (`[host_runtime]`) and locked by `gcode_emit::host_keys_doc_lock`.
 pub const DEFAULT_USE_RELATIVE_E_DISTANCES: bool = true;
 
+/// Default for the `gcode_add_line_number` host config key when the user does
+/// not set it. Canonical declares it `coBool` default `0` (`PrintConfig.cpp`)
+/// and its only behavioural read is the export-time post-processor
+/// `gcode_add_line_number` (`PostProcessor.cpp`). Read straight from the
+/// CLI/JSON config source at this crate's export seam — no `ResolvedConfig`
+/// field — so it is mirrored in `docs/config/host-keys.toml`
+/// (`[host_runtime]`) and locked by the `host_keys_doc_lock` test.
+pub const DEFAULT_GCODE_ADD_LINE_NUMBER: bool = false;
+
 use std::path::PathBuf;
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
 use std::time::Instant;
@@ -1019,6 +1028,15 @@ pub fn run_slice_with_collector(
         Some(ConfigValue::Bool(b)) => *b,
         _ => DEFAULT_USE_RELATIVE_E_DISTANCES,
     };
+    // Canonical `gcode_add_line_number` (`PrintConfig.cpp` coBool default 0).
+    // `extract_bool` also accepts an `Int` 0/1, the hand-written-JSON spelling
+    // `is_declared_bool_key` cannot classify; an absent or mistyped value keeps
+    // the default, matching the sibling read above.
+    let gcode_add_line_number = match config_source.get("gcode_add_line_number") {
+        Some(value) => slicer_ir::resolved_config::extract_bool("gcode_add_line_number", value)
+            .unwrap_or(DEFAULT_GCODE_ADD_LINE_NUMBER),
+        None => DEFAULT_GCODE_ADD_LINE_NUMBER,
+    };
     let nozzle_diameter_mm = match config_source.get("nozzle_diameter") {
         Some(ConfigValue::Float(value)) => *value as f32,
         Some(ConfigValue::Int(value)) => *value as f32,
@@ -1182,12 +1200,42 @@ pub fn run_slice_with_collector(
     }
     emit_end_of_slice_events(&channel.sink, &channel.slice_id, wallclock_ms, stats);
 
+    // Canonical applies `gcode_add_line_number` to the exported artifact after
+    // the file is written (`BackgroundSlicingProcess.cpp` calls the
+    // post-processor on the finished file). Here the artifact is
+    // `SliceOutcome::gcode_text`, so the rewrite is the last export step and
+    // both the `--output` file and the stdout path receive it. Off by default,
+    // so the emitted bytes are unchanged.
+    let gcode_text = if gcode_add_line_number {
+        add_line_numbers(&pipeline_output.gcode_text)
+    } else {
+        pipeline_output.gcode_text
+    };
+
     Ok(SliceOutcome {
-        gcode_text: pipeline_output.gcode_text,
+        gcode_text,
         layer_count,
         wallclock_ms,
         profile: profile_summary,
     })
+}
+
+/// Canonical `gcode_add_line_number` (`PostProcessor.cpp`): prefix **every**
+/// exported line with `N<line> `, numbered from 1 in file order. Canonical
+/// rewrites the exported file line by line, so the whole artifact is covered
+/// (header, comments, and CONFIG_BLOCK included) and the result ends with a
+/// newline. The port emits `\n`-only G-code, so [`str::lines`] reproduces
+/// canonical's `std::getline` split exactly.
+fn add_line_numbers(text: &str) -> String {
+    let mut out = String::new();
+    for (index, line) in text.lines().enumerate() {
+        out.push('N');
+        out.push_str(&(index + 1).to_string());
+        out.push(' ');
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
 }
 
 /// Assembled scheduler/runtime context after prepass execution, ready for a
@@ -1385,7 +1433,7 @@ pub fn prepare_prepass_context(
 #[cfg(test)]
 mod tests {
     use super::{
-        emit_host_support_diagnostics, parse_feature_filament_selection,
+        add_line_numbers, emit_host_support_diagnostics, parse_feature_filament_selection,
         parse_support_tool_selection, resolve_support_line_width_mm,
     };
     use slicer_ir::resolved_config::ResolvedFloatOrPercent;
@@ -1393,6 +1441,20 @@ mod tests {
     use slicer_scheduler::validation::ModuleAccessAudit;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn add_line_numbers_prefixes_every_line_from_one() {
+        // Canonical `gcode_add_line_number`: every line — comments, commands,
+        // and blanks alike — prefixed `N<line> ` from 1, newline-terminated.
+        assert_eq!(
+            add_line_numbers("; header\nG1 X0 Y0\n\nG1 X1\n"),
+            "N1 ; header\nN2 G1 X0 Y0\nN3 \nN4 G1 X1\n"
+        );
+        // An unterminated final line gains a newline, matching canonical's
+        // `getline` + `"\n"` write loop; empty input stays empty.
+        assert_eq!(add_line_numbers("G28"), "N1 G28\n");
+        assert_eq!(add_line_numbers(""), "");
+    }
 
     #[test]
     fn support_line_width_resolution_handles_mm_percent_and_auto() {

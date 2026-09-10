@@ -407,7 +407,7 @@ findings (the one flagged row was a stale-asset artifact).
 ### Others / G-code output
 | `exclude_object` | B | crates/slicer-gcode (flavor.rs) |
 | `filename_format` | B | crates/slicer-gcode (flavor.rs) |
-| `gcode_add_line_number` | B | host export orchestration (crates/slicer-runtime; GUI post-processor in canonical) |
+| `gcode_add_line_number` | B | host export orchestration (crates/slicer-runtime; GUI post-processor in canonical) — **landed directly, ticket 91** |
 | `gcode_comments` | B | crates/slicer-gcode (flavor.rs) |
 | `gcode_flavor` | B | crates/slicer-gcode (flavor.rs) |
 | `gcode_label_objects` | B | crates/slicer-gcode (flavor.rs) |
