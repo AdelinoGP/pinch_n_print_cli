@@ -308,3 +308,121 @@ to a subagent returning `FACT pass/fail`.
 | runtime | open | — | — | — | — |
 | cli | open | — | — | — | — |
 | final (PARITY + promotion) | open | — | — | — | — |
+
+## Packet Queue
+
+The user approved the core-wave queue below and generation/preflight of its first
+entry on 2026-09-09. For this batch, the user explicitly approved plan wave/item
+IDs instead of `TASK-###` mappings; this plan is the packets' `backlog_source`.
+Each packet remains `draft` unless separately approved for activation. Generated
+packets contain `packet.spec.md`, `requirements.md`, `design.md`,
+`implementation-plan.md`, and `task-map.md` under `docs/spec_packets/<slug>/`.
+
+Dependencies below serialize packet generation within the core wave; they do
+not assert that preceding packets have been implemented or export new APIs.
+`generated` means authored and independently `PREFLIGHT PASS`, not implemented.
+The implementation progress ledger in §7 remains separate.
+
+| # | packet slug | goal (one sentence) | task ids | depends on | status | packet dir |
+|---|-------------|---------------------|----------|------------|--------|------------|
+| 1 | core-flow-consolidation | Consolidate the flow tests in `flow_tdd.rs`, preserve every distinct case, and strengthen the wider-bead oracle. | core/DUP-CORE (flow); core/RETIRE (flow); core/DUP-CORE-strengthen (wider-bead) | - | generated | docs/spec_packets/core-flow-consolidation/ |
+| 2 | core-dup-merges | Replaced by the bridge, region, support, wall, geometry, and beading slices in rows #3–#8. | core/DUP-CORE (excluding flow) | #1 | superseded | - |
+| 3 | core-bridge-dup-merge | Merge the identical supported-bridge case while retaining the unsupported-span and ungated-candidate guards. | core/DUP-CORE (bridge) | #1 | generated | docs/spec_packets/core-bridge-dup-merge/ |
+| 4 | core-region-mapping-dup-merges | Consolidate cross-product cases while preserving exact chain sets, cardinality, and ordering coverage. | core/DUP-CORE (region mapping) | #3 | generated | docs/spec_packets/core-region-mapping-dup-merges/ |
+| 5 | core-support-dup-merges | Consolidate overhang and support-schedule cases while preserving exact layer, area, and schedule assertions. | core/DUP-CORE (support overhang; support geometry) | #4 | pending | - |
+| 6 | core-wall-sequence-dup-merges | Consolidate wall-order cases while preserving all modes and the two-wall sandwich input. | core/DUP-CORE (wall sequence) | #5 | pending | - |
+| 7 | core-geometry-dup-review | Combine related distance assertions and retain the distinct endpoint witness unless a case-preserving merge is established. | core/DUP-CORE (segment path; point-to-segment distance) | #6 | pending | - |
+| 8 | core-beading-threshold-review | Document and preserve the distinct default, propagation, and clamp threshold cases. | core/DUP-CORE (beading factory) | #7 | pending | - |
+| 9 | core-strengthen | Strengthen the remaining core weak-oracle tests, including vertical-flow correction. | core/DUP-CORE-strengthen (excluding wider-bead) | #8 | pending | - |
+| 10 | core-retire | Resolve the remaining core retirement candidates against the earn-their-keep standard. | core/RETIRE (excluding flow) | #9 | pending | - |
+| 11 | core-paint | Repair paint driver, graph, and prune assertions and justify dependency probes. | core/PAINT | #10 | pending | - |
+| 12 | core-brittle | Replace or justify the core timing guards while preserving meaningful performance protection. | core/BRITTLE | #11 | pending | - |
+| 13 | core-cross | Review SDK/core wrapper coverage while retaining protection for distinct implementations. | core/CROSS | #12 | pending | - |
+| 14 | core-parity | Add the core parity assertions named in §5.1 while preserving exact canonical pins. | core/PARITY | #13 | pending | - |
+
+The user subsequently requested the next packet and approved replacing
+`core-dup-merges` with rows #3–#8 on 2026-09-09. The replacement separates
+independent edit surfaces and preserves the distinct endpoint and beading
+threshold witnesses rather than presuming that each audit candidate is
+redundant. No `core-dup-merges` packet directory was authored. The next approved
+generation target is `core-bridge-dup-merge`, after the flow packet passes
+preflight: status `draft`, downstream context S, the standard five packet
+documents, and test-only source scope
+`crates/slicer-core/tests/bridge_false_site_gating_tdd.rs`.
+
+### Approved first-packet boundary
+
+`core-flow-consolidation` owns the test code in
+`crates/slicer-core/src/flow.rs` and `crates/slicer-core/tests/flow_tdd.rs`.
+The approved single test home is `crates/slicer-core/tests/flow_tdd.rs`, including
+the distinct bridge-flow cases currently inline. Production behavior changes
+and other core tests are excluded. In particular,
+`flow_correction_stays_positive_for_vertical_input`
+(`crates/slicer-core/src/lib.rs`) belongs to `core-strengthen`.
+Its downstream context estimate is S. The whole program is L; the initial
+approval covered the first packet, and the continuation approval above adds
+generation of the bridge slice. Later entries remain queued for resumption.
+
+### Resume and dependency exports
+
+Resume at the first `pending` row whose dependencies are `generated`, rechecking
+the tree and the preceding packet's exports before authoring. Reassess each
+pending packet's S/M context cost during grounding and obtain approval for any
+scope-changing split. Remaining design choices, including timing-guard
+replacement mechanisms and dependency-probe dispositions, are resolved at that
+packet's write gate rather than assumed here.
+
+After the core queue is exhausted, decompose the remaining crate waves from
+§§4–5 in their existing order and approve their packet queue. The core-wave
+queue does not mark any later wave complete.
+
+`core-flow-consolidation` passed independent `spec-review --preflight` on
+2026-09-09: S0–S8, AC commands, and Doc Impact all PASS. Source verification
+confirmed the full survivor-case union. Independent synthetic checks of `AC-7`
+(`docs/spec_packets/core-flow-consolidation/packet.spec.md`) accepted a valid
+partial ledger row and rejected empty-row-plus-queue, completed-core, and
+wrong-column cases. The user authorized one extra correction round beyond the
+initial two-round limit to resolve the ledger-check and ownership findings;
+those findings are now resolved. This is an authoring preflight result, not an
+implementation acceptance result; the packet remains `draft`.
+
+`core-bridge-dup-merge` passed independent `spec-review --preflight` on
+2026-09-09 after one correction round: the round-1 S5 blocker and AC-command
+finding were the author's seven-test census premise (the target file has six
+`#[test]` fns pre-edit, five post-merge), corrected to 6 → 5 with `-eq 5`
+assertions throughout; the round-2 re-run returned S0–S8, AC commands, and Doc
+Impact all PASS with 0 blockers and 0 high findings. The packet's §5.1
+premise held at authoring: `fully_supported_candidate_rejected_zero_bridge_area`
+(lines 58–64 at generation time) is textually identical to the survivor
+`solid_underneath_span_produces_no_bridge_area` apart from its name. This is an
+authoring preflight result, not an implementation acceptance result; the packet
+remains `draft`.
+
+`core-region-mapping-dup-merges` passed independent `spec-review --preflight` on
+2026-09-09 (round 1: 4 blockers / 2 highs — a falsified premise claiming the
+AC-3 enumeration wording was candidate-unique when the survivor's doc comment
+already carries `Verifies SET membership of the enumerated chains.`, a 14-vs-13
+helper-count error, symbol paths placing `enumerate_canonical_chains` under
+`crates/slicer-core/src/**` when it lives in `crates/slicer-ir/src/region_split_registry.rs`,
+and a trailing-newline snippet mismatch, plus two under-proving AC commands;
+round 2 re-run returned S0–S8, AC commands, and Doc Impact all PASS with 0
+blockers and 0 highs). At authoring time the target file held 24 `#[test]` fns;
+the packet's premise held: both absorbed tests are strict assertion subsets of
+`region_mapping_two_semantics_produces_cross_product_cardinality` (one
+count-only, one set-only) on an identical fixture, and only the AC-4 formula
+prose `entries.len() == layers × active_regions × ∏(1 + K_i)` is candidate-unique.
+This is an authoring preflight result, not an implementation acceptance result;
+the packet remains `draft`.
+
+Dependency exports from `core-flow-consolidation`: none (no new production API).
+Dependency exports from `core-bridge-dup-merge`: none (test-only merge; no new
+production API; no new test files). Dependency exports from
+`core-region-mapping-dup-merges`: none (test-only merge; no new production API;
+no new test files). The next eligible pending entry is `core-support-dup-merges`
+(row #5, depends on #4, now generated); its scope is the approved §5.1
+support-overhang/support-geometry slice, but its packet directory has not been
+authored. Resume generation from that entry using this plan. The §7
+implementation ledger remains open; no source or test changes were implemented
+during packet generation.
+
+Commit this plan's queue update together with the generated packet directory.
