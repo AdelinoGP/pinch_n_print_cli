@@ -3,7 +3,7 @@
 Type: task
 Status: open
 Assignee: —
-Blocked by: 06, 89
+Blocked by: 06, 96
 Map: ../map.md
 
 ## Question
@@ -17,7 +17,7 @@ Authoring obligations:
 - Apply 02's parity-evidence standard — canonical function-read + invariant tests; `OrcaSlicerDocumented/` is readable, not runnable; unverifiable behaviour surfaces to the human first, never blocks.
 - Packet number + status: derive from disk at authoring time per ticket 06's rule — ledger facts (next free number, `status: draft` vs `active`) are never frozen.
 - Scaffold the new module via `pnp_cli module new`; new surface gated per repo rules.
-- **Conforms to the interlocking ADR + module scaffold authored by ticket 89** — do not re-decide the seam or the ADR.
+- **Conforms to the interlocking ADR + module scaffold authored by ticket 96** — do not re-decide the seam or the ADR.
 
 Resolved when the packet is authored, preflighted, and its directory linked here.
 
