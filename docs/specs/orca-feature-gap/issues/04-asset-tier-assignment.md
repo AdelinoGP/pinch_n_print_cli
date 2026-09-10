@@ -52,11 +52,13 @@ coBools in `PrintConfigDef::init_fff_params`, resolved via `get_at` /
 
 Keys ruled out by the reviews and the human: dead-in-canonical (OrcaSlicer
 itself never reads them in the pipeline), preset-management (matching
-ticket 03's ruling), and dead alternate spellings. 12 keys; the scoped
-target is now **409** (403 + ticket 07's two reclassified ironing keys +
-ticket 99's two fan-scale reclassifications + ticket 46's three
+ticket 03's ruling), and dead alternate spellings. 11 keys at 04's closure;
+the scoped target earns its 12th at ticket 89 (`default_nozzle_volume_type`,
+preset-management) — see Tier counts and the `default_nozzle_volume_type`
+row; the arithmetic at HEAD is 403 + ticket 07's two reclassified ironing
+keys + ticket 99's two fan-scale reclassifications + ticket 46's three
 source-missing `*_filament_id` siblings − ticket 89's preset-management
-`default_nozzle_volume_type`).
+`default_nozzle_volume_type` = **409**.
 
 ### Special rulings
 
@@ -89,8 +91,8 @@ source-missing `*_filament_id` siblings − ticket 89's preset-management
 | B | 228 | new logic in an existing owner (incl. `ironing_type` +1 from 07; `fan_max_speed`/`fan_min_speed` +2 from 99; `top/bottom_surface_filament_id` + `inner_wall_filament_id` +3 from 46; − ticket 89's `default_nozzle_volume_type` to X) |
 | C | 15 | new granular modules (Precision 8, interlocking 6, mmu-segmented-region 2, minus precise_z_height folded into layer-planner) |
 | D | 47 | deferred — per-filament config model (58 minus 11 global keys now assignable) |
-| X | 11 | out of scope (dead-in-canonical 6+2, preset-management 3) |
-| **in scope** | **410** | |
+| X | 12 | out of scope (dead-in-canonical 6+2, preset-management 4 — 11 at 04's closure + ticket 89's `default_nozzle_volume_type`) |
+| **in scope** | **409** (410 at 04's closure − ticket 89) | |
 
 ## Owner map (verified + five times adversarially reviewed)
 
@@ -316,8 +318,8 @@ findings (the one flagged row was a stale-asset artifact).
 | `nozzle_temperature_range_low` | D | deferred (per-filament config model) |
 
 ### Multimaterial / Filament for Features
-| `filament_map` | B | config-resolution (Print.cpp get_filament_maps, print-level) |
-| `filament_map_mode` | B | config-resolution (Print.cpp get_filament_map_mode, global) |
+| `filament_map` | B | — **blocked, unimplemented** by ticket 90: the grouping engine's manual input *and* auto-mode write-back output (`Extruder::extruder_id`, `Print::get_extruder_id` / `get_filament_maps`, the `fmmManual` / `fmmNozzleManual` direct wraps + multi-nozzle verification throw in `ToolOrdering::get_recommended_filament_maps`); every live read resolves a filament slot onto a per-extruder / nozzle inventory this port lacks (scalar `nozzle_diameter`, no nozzle list, no grouping scorer, no result table); zero tree occurrences; re-filed as ticket 147, blocked on ticket 125 |
+| `filament_map_mode` | B | — **blocked, unimplemented** by ticket 90: the grouping dispatch (`Print::get_filament_map_mode` / `is_dynamic_group_reorder`, the static/dynamic branch + `map_mode < fmmManual` write-back gate, the Flush/Match/manual/nozzle-manual/TPU dispatch inside `ToolOrdering::get_recommended_filament_maps` — `coEnum` over `FilamentMapMode`, default `fmmAutoForFlush`); zero tree occurrences; re-filed as ticket 147, blocked on ticket 125 |
 | `solid_infill_filament` → `internal_solid_filament_id` | B | runtime entity assembly (`assemble_ordered_entities_with_support_identities`, `crates/slicer-runtime/src/layer_executor.rs`) — **live** (ticket 46, direct implementation): canonical coInt 0=Default/inherit adopted as the declared name; explicit 1..N rebased to 0-based and clamped to tool count, resolved per entity by role below all paint-derived tools |
 | `sparse_infill_filament` → `sparse_infill_filament_id` | B | runtime entity assembly — **live** (ticket 46, direct implementation, same seam) |
 | `wall_filament` → `outer_wall_filament_id` | B | runtime entity assembly — **live** (ticket 46, direct implementation, same seam) |

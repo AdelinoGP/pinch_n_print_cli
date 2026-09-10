@@ -713,6 +713,8 @@ are the feature's core semantic, so no substitute clamp). **Re-filed as
 
 ### P83 — Multimaterial / Filament for Features — config-resolution (2 keys, Tier B)
 
+**Re-filed by ticket 90 (2026-09-10) as [ticket 147](147-author-packet-p83-filament-map-refiled.md), blocked on 125** (the ticket-28/39 shape): both keys are the grouping engine's input (the map) and dispatch selector (the mode), and every live slicing consumer resolves a filament slot onto a per-extruder / nozzle inventory this port does not have (scalar `nozzle_diameter`, no nozzle list, no grouping scorer, no result table); zero tree occurrences; a packet today would be 100% declaration-only (rule 1). The authoring ticket for the keys is 147, not 90. No queue-count change.
+
 `filament_map`, `filament_map_mode`
 
 ### P84 — Others / G-code output — host-export (1 keys, Tier B)
