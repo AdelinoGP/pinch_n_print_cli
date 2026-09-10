@@ -701,6 +701,8 @@ are the feature's core semantic, so no substitute clamp). **Re-filed as
 
 ### P81 — Extruder / Nozzle / Extruder geometry / mapping — config-resolution (5 keys, Tier B)
 
+**Re-filed by ticket 88 (2026-09-10) as [ticket 146](146-author-packet-p81-variant-identity-refiled.md), blocked on 125** (the ticket-28/39 shape): all five are per-extruder / per-filament-variant / per-process-variant vector keys whose live consumers (`get_filament_config_indx` / `get_nozzle_config_index` / `update_filament_self_index_cache`, `Print.cpp`) resolve a vector slot onto a printer inventory this port does not have; zero tree occurrences; a packet today would be 100% declaration-only (rule 1). The authoring ticket for the keys is 146, not 88. No queue-count change.
+
 `extruder_variant_list`, `filament_extruder_variant`, `filament_self_index`, `print_extruder_id`, `print_extruder_variant`
 
 ### P82 — Extruder / Nozzle / Nozzle — config-resolution (1 keys, Tier B)
