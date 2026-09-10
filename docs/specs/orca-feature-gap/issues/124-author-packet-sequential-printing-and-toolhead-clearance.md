@@ -36,6 +36,13 @@ ticket owns the feature; the keys follow it.
 - From [86](./86-author-packet-p79-printer-machine-print-volume-print-orchestration.md)
   (P79): `extruder_clearance_radius`, `extruder_clearance_height_to_rod`,
   `extruder_clearance_height_to_lid`.
+- From [87](./87-author-packet-p80-quality-walls-and-surfaces-print-orchestration.md)
+  (P80, **dissolved** 2026-09-10): `extruder` — canonical's per-object/volume tool
+  assignment (`apply_to_print_region_config` + `normalize_fdm`, `PrintObject.cpp`;
+  fans out onto the six `*_filament_id` selectors ticket 46 already resolves at
+  this port's runtime entity-assembly seam). Read ticket 87's answer for the
+  grounding and the named non-borrows (shared-object cache predicate,
+  `auto_assign_extruders`, GUI arms); it is not restated here.
 
 Re-derive membership from disk at authoring time; do not freeze it from here.
 Adjacent keys that this feature *may* pull in — `skirt_type == stPerObject` (left

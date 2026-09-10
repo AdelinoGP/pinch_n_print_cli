@@ -105,7 +105,7 @@ source-missing `*_filament_id` siblings).
 | Quality / Seam | A/B | **crates/slicer-gcode** (16) + seam-placer (1) | canonical `GCode::extrude_loop` clipping + `GCodeProcessor.cpp`; only `staggered_inner_seams` in SeamPlacer.cpp |
 | Quality / Ironing | A | top-surface-ironing + support-surface-ironing | canonical `Fill.cpp::Layer::make_ironing` |
 | Quality / Layer height | B | tool-ordering | canonical `ToolOrdering.cpp::apply_first_layer_order`; 2 keys out of scope (dead spellings) |
-| Quality / Walls and surfaces | B | crates/slicer-gcode (flow scaling, travel, ordering) + print/orchestration (`extruder`) | canonical `GCode::_extrude` mm3_per_mm scaling, `AvoidCrossingPerimeters.cpp`, `Print.cpp` per-object extruder |
+| Quality / Walls and surfaces | B | crates/slicer-gcode (flow scaling, travel, ordering) + ticket 124 (`extruder` — **P80 dissolved, folded into 124** by ticket 87, 2026-09-10: canonical's `extruder` assigns objects/volumes to tools and normalises onto the six `*_filament_id` selectors (`apply_to_print_region_config` + `normalize_fdm`, `PrintObject.cpp`; ticket 46's runtime seam already resolves those), so a standalone packet would be declaration-only (rule 1); the per-object identity the assignment needs is 124's sequential-printing feature) | canonical `GCode::_extrude` mm3_per_mm scaling, `AvoidCrossingPerimeters.cpp`, `Print.cpp` per-object extruder |
 | Quality / Wall generator — Arachne | A | arachne-perimeters | `min_feature_size` in Arachne/WallToolPaths.cpp |
 | Quality / Line width | B | support-planner | `support_line_width` in Flow.cpp / TreeSupport.cpp (support flow) |
 | Quality / Overhangs | B | slice-prepass | canonical `PrintObjectSlice.cpp::apply_conical_overhang` |
@@ -549,7 +549,7 @@ findings (the one flagged row was a stale-asset artifact).
 
 ### Quality / Walls and surfaces
 | `bottom_solid_infill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 287** by ticket 61 |
-| `extruder` | B | print/orchestration (per-object extruder assignment) |
+| `extruder` | B | — **P80 dissolved, folded into ticket 124** by ticket 87 (2026-09-10): canonical's `extruder` (coInt, 0 = inherit) assigns objects/volumes to tools and normalises onto the six `*_filament_id` selectors (`apply_to_print_region_config`, `PrintObject.cpp`, plus `normalize_fdm` / `auto_assign_extruders` / 3MF/Model bookkeeping); this port already resolves those six per entity at runtime (ticket 46) and carries per-object `extruder` metadata only as `ResolvedConfig.extensions` — a standalone packet would be declaration-only (rule 1); the per-object identity the assignment needs is 124's sequential-printing feature |
 | `first_layer_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 287** by ticket 61 |
 | `gap_fill_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 287** by ticket 61 |
 | `inner_wall_flow_ratio` | B | crates/slicer-gcode (emission flow scaling) — **in packet 287** by ticket 61 |

@@ -693,7 +693,9 @@ are the feature's core semantic, so no substitute clamp). **Re-filed as
 
 `extruder_clearance_height_to_lid`, `extruder_clearance_height_to_rod`, `extruder_clearance_radius`
 
-### P80 — Quality / Walls and surfaces — print-orchestration (1 keys, Tier B)
+### P80 — Quality / Walls and surfaces — print-orchestration (1 key, Tier B)
+
+**Dissolved by ticket 87 (2026-09-10); the single key folded into [ticket 124](124-author-packet-sequential-printing-and-toolhead-clearance.md)** (the ticket-32 note's instruction shape, confirmed — no "why not"): canonical's `extruder` assigns objects/volumes to tools and normalises onto the six `*_filament_id` selectors (`apply_to_print_region_config` + `normalize_fdm`, `PrintObject.cpp` — ticket 46's runtime seam already resolves those here), so a standalone packet would be 100% declaration-only (rule 1). The per-object identity the assignment needs is 124's sequential-printing feature. The authoring ticket for the key is 124, not 87. No queue-count change.
 
 `extruder`
 
