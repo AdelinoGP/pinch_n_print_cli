@@ -130,11 +130,25 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
         test_args.extend(libtest_args);
     }
 
-    // Step 1: check-literals preflight, then freshness check.
+    // Step 1: check-literals preflight, then the test-quality gate (report
+    // mode until the remediation program's final wave flips enforce —
+    // ADR-0065; `TEST_QUALITY_ENFORCED` is the single promotion point), then
+    // freshness check.
     let literals_code = check_literals_preflight(ws_root);
     if literals_code != 0 {
         eprintln!(
             "xtask test: check-literals preflight failed; fix violations or add reasoned waivers (docs/21_data_defaults_and_fixtures.md), then re-run."
+        );
+        return 1;
+    }
+    let test_quality_code = crate::check_test_quality::run(
+        ws_root,
+        !crate::check_test_quality::TEST_QUALITY_ENFORCED,
+        &[],
+    );
+    if test_quality_code != 0 {
+        eprintln!(
+            "xtask test: check-test-quality preflight failed; fix findings or add reasoned waivers (docs/22_test_quality.md), then re-run."
         );
         return 1;
     }
@@ -668,7 +682,8 @@ mod tests {
     }
 
     fn guest_spec(name: &str) -> crate::build_guests::GuestSpec {
-        crate::build_guests::GuestSpec { // exhaustive: 7-field GuestSpec (AC-9/10/N4 fixtures)
+        crate::build_guests::GuestSpec {
+            // exhaustive: 7-field GuestSpec (AC-9/10/N4 fixtures)
             crate_name: name.to_string(),
             lib_name: name.replace('-', "_"),
             manifest_path: std::path::PathBuf::from(format!("{name}/Cargo.toml")),
@@ -727,7 +742,10 @@ mod tests {
             },
         );
 
-        assert_eq!(code, None, "successful stale rebuild must return None (continue)");
+        assert_eq!(
+            code, None,
+            "successful stale rebuild must return None (continue)"
+        );
         assert_eq!(*seen.borrow(), stale_names);
     }
 
@@ -746,7 +764,10 @@ mod tests {
         );
 
         assert_ne!(code, Some(0));
-        assert!(code.is_some(), "failed rebuild must abort with non-zero code");
+        assert!(
+            code.is_some(),
+            "failed rebuild must abort with non-zero code"
+        );
     }
     #[test]
     fn pnp_cli_rebuild_closure_always_runs_even_when_binary_is_newer() {
@@ -755,10 +776,8 @@ mod tests {
         use std::thread;
         use std::time::Duration;
 
-        let ws_root = std::env::temp_dir().join(format!(
-            "xtask-pnp-cli-always-runs-{}",
-            std::process::id()
-        ));
+        let ws_root =
+            std::env::temp_dir().join(format!("xtask-pnp-cli-always-runs-{}", std::process::id()));
         // Touch ClosureCache::len so cargo clippy -D warnings stays green
         // (build_guests.rs defines len but it is otherwise unused until future steps).
         let _ = crate::build_guests::ClosureCache::new().len();
@@ -783,9 +802,7 @@ mod tests {
         std::fs::write(&bin_path, b"fake binary").expect("write binary");
         thread::sleep(Duration::from_millis(50));
         assert!(bin_path.is_file(), "binary fixture must exist");
-        let bin_mtime = std::fs::metadata(&bin_path)
-            .and_then(|m| m.modified())
-            .ok();
+        let bin_mtime = std::fs::metadata(&bin_path).and_then(|m| m.modified()).ok();
         let src_mtime = std::fs::metadata(src_dir.join("main.rs"))
             .and_then(|m| m.modified())
             .ok();
@@ -813,5 +830,4 @@ mod tests {
         assert_eq!(outcome.code, 0);
         assert!(outcome.failure_detail.is_none());
     }
-
 }

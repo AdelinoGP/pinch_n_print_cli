@@ -1,6 +1,7 @@
 mod build_guests;
 mod check_deviations;
 mod check_literals;
+mod check_test_quality;
 mod compact_specs;
 mod dist;
 mod editions;
@@ -32,6 +33,10 @@ SUBCOMMANDS:
     check-literals          Enforce exhaustive watched-type literal policy.
     check-literals --report Report watched-type literal violations without failing.
     check-literals [PATHS...]  Restrict literal checking to workspace-relative paths.
+    check-test-quality      False-green gate over test code (R1–R8, docs/22).
+                            Report mode until the remediation program's final
+                            wave flips enforce mode (ADR-0065); `--report`
+                            forces exit 0 regardless. [PATHS...] restrict scope.
     gen-config-docs           Regenerate the generated tables in docs/15 from manifests + host-keys.toml.
     gen-config-docs --check   Exit 1 if doc 15's generated tables are stale.
     dist                  Build pnp_cli + core-module WASMs and stage them under
@@ -141,6 +146,23 @@ fn main() -> ExitCode {
             }
             let ws = build_guests::workspace_root();
             ExitCode::from(check_literals::run(&ws, report, &filters) as u8)
+        }
+        Some("check-test-quality") => {
+            let mut report = false;
+            let mut filters = Vec::new();
+            for arg in &args[1..] {
+                if arg == "--report" {
+                    report = true;
+                } else if arg.starts_with("--") {
+                    eprintln!("xtask: unknown flag '{arg}' for check-test-quality\n");
+                    eprintln!("{USAGE}");
+                    return ExitCode::from(2);
+                } else {
+                    filters.push(arg.clone());
+                }
+            }
+            let ws = build_guests::workspace_root();
+            ExitCode::from(check_test_quality::run(&ws, report, &filters) as u8)
         }
         Some("dist") => match dist::parse_dist_args(&args[1..]) {
             Ok(parsed) => {
