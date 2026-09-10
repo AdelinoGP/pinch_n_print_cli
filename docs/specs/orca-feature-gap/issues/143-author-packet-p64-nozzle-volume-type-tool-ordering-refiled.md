@@ -74,11 +74,11 @@ Authoring obligations:
   the key (Authoring rule 1). (06 resolved at ticket 71's claim time and rides
   125 transitively.)
 - Per-key re-derive the owner from the *tree's* seams at claim time (ticket 27's
-  hazard); "tool-ordering" names a canonical file, not a tree module — consider
-  folding with tickets 136 and/or 142, which own the same grouping subject and
-  blocker, before taking a new packet number. The sibling
-  `default_nozzle_volume_type` (ticket 89, P82) stays separate — it is
-  config-resolution preset plumbing, not tool-ordering grouping.
+hazard); "tool-ordering" names a canonical file, not a tree module — consider
+folding with tickets 136 and/or 142, which own the same grouping subject and
+blocker, before taking a new packet number. The sibling
+`default_nozzle_volume_type` ruled out of scope by ticket 89 (P82) —
+preset-management, not grouping — is not a fold candidate.
 - Use `/spec-packet-generator`; gate is `/spec-review <packet> --preflight`.
 - Apply ticket 02's parity-evidence standard; `OrcaSlicerDocumented/` is
   readable, not runnable.

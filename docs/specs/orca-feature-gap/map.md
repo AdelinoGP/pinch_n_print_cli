@@ -91,12 +91,14 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
   this class of key.** Not enumerated. Before asserting a default matches, check
   whether the key has a `ResolvedConfig` field and compare *that*
   (2026-09-01 grilling, Q11).
-- **The scoped target is 410 queue keys** (03's 415 minus 04's 11 rulings plus
-  07's 2 reclassified ironing keys plus 99's 2 fan-scale keys — minus ticket
-  12's dead-in-canonical `brim_ears` ruling: **407**; the 406→407 step is
-  ticket 105's re-adjudication of `resolution` out of the rename pool into the
-  gap set; the 407→410 step is ticket 46's three source-missing
-  `*_filament_id` siblings; per-key tier table in
+- **The scoped target is 409 queue keys** (03's 415 minus 04's 11 rulings plus
+07's 2 reclassified ironing keys plus 99's 2 fan-scale keys — minus ticket
+12's dead-in-canonical `brim_ears` ruling: **407**; the 406→407 step is
+ticket 105's re-adjudication of `resolution` out of the rename pool into the
+gap set; the 407→410 step is ticket 46's three source-missing
+`*_filament_id` siblings; the 410→409 step is ticket 89 ruling P82's
+`default_nozzle_volume_type` out of scope as preset-management machinery
+(`default_bed_type` precedent); per-key tier table in
   [`04-asset-tier-assignment.md`](issues/04-asset-tier-assignment.md), packet
   list in [`05-asset-packet-list.md`](issues/05-asset-packet-list.md). Size
   packets off those, never off the reference's ❌ column.
@@ -1328,7 +1330,7 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
 
   - [70 — Author packet P63 — Extruder / Nozzle / Extruder geometry / mapping — tool-ordering](issues/70-author-packet-p63-extruder-nozzle-extruder-geometry-mapping-tool-ordering.md) — **re-sized at claim time: not authorable now, re-filed, no packet, no code change** (the ticket-28/39 shape). `extruder_ams_count` is a machine-inventory `coStrings` key (per-extruder `"<slots>#<count>"` tokens, default `{}`) whose live reads all sit in `ToolOrdering.cpp::build_filament_group_context` (group-slot capacity via `FilamentGroupUtils::calc_max_group_size` + machine filament inventory, `has_filament_switcher` override) feeding the absent `FilamentGroup.cpp` grouping scorer — the same subject as ticket 136's `master_extruder_id`; the `Print.cpp` gate entry is invalidation bookkeeping and `PrintApply`/`PresetBundle` are GUI/preset plumbing. Zero tree occurrences, no per-extruder vector model. **Re-filed as [142](issues/142-author-packet-p63-extruder-ams-count-refiled.md), blocked on 06 + 125** (fold candidate with 136 at claim time). 04/05 rows annotated; no queue-count change.
 
-  - [71 — Author packet P64 — Extruder / Nozzle / Nozzle — tool-ordering](issues/71-author-packet-p64-extruder-nozzle-nozzle-tool-ordering.md) — **re-sized at claim time: not authorable now, re-filed, no packet, no code change** (the ticket-28/39 shape). `nozzle_volume_type` is a per-extruder `coEnums` machine-inventory key (default `nvtStandard`) whose live slicing reads all sit in the absent multi-nozzle grouping subject — `ToolOrdering.cpp::build_nozzle_groups` / `build_default_nozzle_list` nozzle-list builds plus the `add_volume_type_limits` unprintable-volume marking — feeding the same absent `FilamentGroup.cpp` scorer as tickets 136/142 (legacy migration spelling, `is_using_different_extruders` dirty-check, `update_values_to_printer_extruders` preset reshaping, `GCode.cpp` placeholder publication, gcode.3mf serialization, and `bbs_3mf.cpp` project IO are named non-borrows). Zero tree occurrences, no grouping engine, no per-extruder vector model. **Re-filed as [143](issues/143-author-packet-p64-nozzle-volume-type-tool-ordering-refiled.md), blocked on 06 + 125** (fold candidate with 136/142 at claim time; sibling `default_nozzle_volume_type`, ticket 89/P82, stays separate — config-resolution preset plumbing). 04/05 rows annotated; 136 carries the second fold pointer; no queue-count change.
+  - [71 — Author packet P64 — Extruder / Nozzle / Nozzle — tool-ordering](issues/71-author-packet-p64-extruder-nozzle-nozzle-tool-ordering.md) — **re-sized at claim time: not authorable now, re-filed, no packet, no code change** (the ticket-28/39 shape). `nozzle_volume_type` is a per-extruder `coEnums` machine-inventory key (default `nvtStandard`) whose live slicing reads all sit in the absent multi-nozzle grouping subject — `ToolOrdering.cpp::build_nozzle_groups` / `build_default_nozzle_list` nozzle-list builds plus the `add_volume_type_limits` unprintable-volume marking — feeding the same absent `FilamentGroup.cpp` scorer as tickets 136/142 (legacy migration spelling, `is_using_different_extruders` dirty-check, `update_values_to_printer_extruders` preset reshaping, `GCode.cpp` placeholder publication, gcode.3mf serialization, and `bbs_3mf.cpp` project IO are named non-borrows). Zero tree occurrences, no grouping engine, no per-extruder vector model. **Re-filed as [143](issues/143-author-packet-p64-nozzle-volume-type-tool-ordering-refiled.md), blocked on 06 + 125** (fold candidate with 136/142 at claim time; sibling `default_nozzle_volume_type` ruled out of scope by ticket 89/P82 — preset-management). 04/05 rows annotated; 136 carries the second fold pointer; no queue-count change.
 
   - [72 — Author packet P65 — Multimaterial / Flush options — tool-ordering](issues/72-author-packet-p65-multimaterial-flush-options-tool-ordering.md) — **authored as packet 294** (`docs/spec_packets/294-flush-into-purge-reuse-wipe-tower/`, `draft`), preflight **PASS** (S0–S8 clean; S2's one `DEV-186` hit re-verified as the packet's own files, absent from the log; S5/S6 verified against the tree with shape notes). Tier B held, owner stands but corrected (`tool-ordering` → `wipe-tower` — ordering ignores config and owns sequence only; the purge decision point is wipe-tower's; ticket-27/39/40 precedent), membership held 3-in with **no code change**: all three live in canonical and zero-occurrence here (no tree read, no padding twin, no prior packet) — so the packet declares all three scalar-global bools on `wipe-tower.toml` (canonical defaults `false`/`false`/`true`) and builds the per-toolchange wiping-volume subtraction in the depth path behind the grab-length clamp (bed-bounds follows via the same helper). Canonical per-object shape NOT held (DEV-186(a) scalar-global; object-config axis is the named future, explicitly not ticket 125); filament-assignment vetoes named non-borrow (DEV-186(b)); bridge roles never count (DEV-186(c)); order untouched (DEV-186(d)). No `ResolvedConfig`/host-keys/CONFIG_BLOCK change (honest absence, AC-N1). Packet number `293` → `294` derived from disk; DEV-186 first collision-free (LOG max 171, drafts 172–185). 04 tier rows corrected (owner + packet pointer) + 05 P65 annotated (3-in at 294); no queue-count change; no new fog, nothing out of scope.
 
@@ -1524,17 +1526,20 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
   pellet-extruder hardware (2), plater / GUI state (6). Per-key list and class
   assignment in [`03-asset-scoped-gap.md`](issues/03-asset-scoped-gap.md).
   *Physical* filament keys and auto-set flags were explicitly kept in scope.
-- **11 more keys ruled out by ticket 04's adversarial reviews** (user
-  ruling, dead-in-canonical / preset-management classes) —
-  dead-in-canonical (OrcaSlicer never reads them in the pipeline):
-  `enable_timelapse` (superseded by `timelapse_type`), `allow_mix_temp`,
-  `wiping_volumes_extruders`, `tree_support_with_infill` (obsolete in
-  canonical's IGNORE set), `first_layer_sequence_choice` /
-  `other_layers_sequence_choice` (dead alternate spellings),
-  `support_chamber_temp_control` (GUI-only); preset-management (matching 03's
-  class): `printer_technology`, `printer_variant`, `flush_volumes_vector`,
-  `default_bed_type`. Per-key rows in
-  [`04-asset-tier-assignment.md`](issues/04-asset-tier-assignment.md).
+- **12 keys ruled out** — 11 by ticket 04's adversarial reviews (user
+ruling, dead-in-canonical / preset-management classes) plus ticket 89's
+`default_nozzle_volume_type` (claim-time rule-3 ruling, preset-management) —
+dead-in-canonical (OrcaSlicer never reads them in the pipeline):
+`enable_timelapse` (superseded by `timelapse_type`), `allow_mix_temp`,
+`wiping_volumes_extruders`, `tree_support_with_infill` (obsolete in
+canonical's IGNORE set), `first_layer_sequence_choice` /
+`other_layers_sequence_choice` (dead alternate spellings),
+`support_chamber_temp_control` (GUI-only); preset-management (matching 03's
+class): `printer_technology`, `printer_variant`, `flush_volumes_vector`,
+`default_bed_type`; plus ticket 89's `default_nozzle_volume_type`
+(preset-management — `PresetBundle` seeding / GUI-plate composition only,
+`default_bed_type` precedent, claim-time ruling not user ruling). Per-key rows in
+[`04-asset-tier-assignment.md`](issues/04-asset-tier-assignment.md).
 - **Retiring the hand-maintained ❌ column of `docs/ORCA_CONFIG_REFERENCE.md`**
   (07 ruling) — replacing it with generated presence flags + a `--check` gate
   is tooling hygiene, not a queue prerequisite: the queue never reads the

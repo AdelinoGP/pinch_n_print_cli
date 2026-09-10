@@ -592,8 +592,8 @@ engine (`build_nozzle_groups` / `build_default_nozzle_list` nozzle list +
 no per-extruder vector model (ticket 125). **Re-filed as
 [ticket 143](143-author-packet-p64-nozzle-volume-type-tool-ordering-refiled.md), blocked on
 06 + 125** (consider folding with 136 and/or 142 at claim time — same subject,
-same blocker; the sibling `default_nozzle_volume_type`, ticket 89 / P82, stays
-separate — config-resolution preset plumbing, not grouping). The authoring
+same blocker; the sibling `default_nozzle_volume_type` ruled out of scope by
+ticket 89 / P82 — preset-management, not grouping). The authoring
 ticket for the key is 143, not 71.
 
 ### P65 — Multimaterial / Flush options — tool-ordering (3 keys, Tier B; packet 294)
@@ -706,6 +706,8 @@ are the feature's core semantic, so no substitute clamp). **Re-filed as
 `extruder_variant_list`, `filament_extruder_variant`, `filament_self_index`, `print_extruder_id`, `print_extruder_variant`
 
 ### P82 — Extruder / Nozzle / Nozzle — config-resolution (1 keys, Tier B)
+
+**Dissolved by ticket 89 (2026-09-10) as out of scope — preset-management, not slicing config** (the ticket-04 `default_bed_type` precedent under Authoring rule 3): `default_nozzle_volume_type` is the printer-profile side of the default/current pair and every canonical read is `PresetBundle` seeding / GUI-plate volume-map composition, with zero slicing-pipeline decision points. The authoring ticket for nothing — no re-file. Queue target 410 → 409.
 
 `default_nozzle_volume_type`
 

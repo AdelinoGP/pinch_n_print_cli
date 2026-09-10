@@ -52,10 +52,11 @@ coBools in `PrintConfigDef::init_fff_params`, resolved via `get_at` /
 
 Keys ruled out by the reviews and the human: dead-in-canonical (OrcaSlicer
 itself never reads them in the pipeline), preset-management (matching
-ticket 03's ruling), and dead alternate spellings. 11 keys; the scoped
-target is now **410** (403 + ticket 07's two reclassified ironing keys +
+ticket 03's ruling), and dead alternate spellings. 12 keys; the scoped
+target is now **409** (403 + ticket 07's two reclassified ironing keys +
 ticket 99's two fan-scale reclassifications + ticket 46's three
-source-missing `*_filament_id` siblings).
+source-missing `*_filament_id` siblings − ticket 89's preset-management
+`default_nozzle_volume_type`).
 
 ### Special rulings
 
@@ -85,7 +86,7 @@ source-missing `*_filament_id` siblings).
 | Tier | keys | meaning |
 |---:|---:|---|
 | A | 119 | plumbing into an existing decision point (incl. `support_ironing`, +1 from ticket 07) |
-| B | 229 | new logic in an existing owner (incl. `ironing_type` +1 from 07; `fan_max_speed`/`fan_min_speed` +2 from 99; `top/bottom_surface_filament_id` + `inner_wall_filament_id` +3 from 46) |
+| B | 228 | new logic in an existing owner (incl. `ironing_type` +1 from 07; `fan_max_speed`/`fan_min_speed` +2 from 99; `top/bottom_surface_filament_id` + `inner_wall_filament_id` +3 from 46; − ticket 89's `default_nozzle_volume_type` to X) |
 | C | 15 | new granular modules (Precision 8, interlocking 6, mmu-segmented-region 2, minus precise_z_height folded into layer-planner) |
 | D | 47 | deferred — per-filament config model (58 minus 11 global keys now assignable) |
 | X | 11 | out of scope (dead-in-canonical 6+2, preset-management 3) |
@@ -216,7 +217,7 @@ findings (the one flagged row was a stale-asset artifact).
 | `start_end_points` | B | — **blocked, unimplemented** by ticket 40: canonical's only read site is `get_path_of_change_filament` (`GCode.cpp`), which computes the `travel_point_*` placeholders for `change_filament_gcode` from `start_end_points` + `bed_exclude_area` + object bounding boxes — and returns the safe default path when `bed_exclude_area.size() != 4`. `bed_exclude_area` is packet 256's scope (authored, not implemented), so wiring this key alone would be declaration-only (Authoring rule 1); the path computation also needs object bounding boxes at a seam that reaches the postpass substitution (new `ResolvedConfig` fields or extensions + `travel_point_*` schema on `machine-gcode-emit`). Missing feature: the filament-change travel path. Re-file when packet 256's implementation lands |
 
 ### Extruder / Nozzle / Nozzle
-| `default_nozzle_volume_type` | B | config-resolution (PresetBundle.cpp) |
+| `default_nozzle_volume_type` | X | out of scope — preset-management (ticket 89): the printer-profile side of the default/current pair; every canonical read is `PresetBundle` seeding / GUI-plate volume-map composition (`load_selections`, `reset_default_nozzle_volume_type`, `get_default_nozzle_volume_types_for_filaments`), zero slicing-pipeline decision points (`default_bed_type` precedent) |
 | `nozzle_height` | B | skirt-brim (Print.cpp skirt/draft-shield height) |
 | `nozzle_hrc` | B | — **blocked, unimplemented** by ticket 41: canonical's reads are all in `GCodeProcessor` (`apply_config` both overloads copy the scalar to every extruder; `update_slice_warnings` compares vs per-filament `required_nozzle_HRC` with the `Print::get_hrc_by_nozzle_type` fallback → non-fatal `NOZZLE_HRC_CHECKER` warning); the port has no warning-list seam and the comparison needs the per-tool axis; re-filed as ticket 137, blocked on ticket 125 |
 | `nozzle_type` | B | — **blocked, unimplemented** by ticket 41: `coEnums` per-extruder vector (default `{ntUndefine}`), canonical's only role is the fallback-HRC source on the same `update_slice_warnings` path; no tree decision point; re-filed as ticket 137, blocked on ticket 125 |
