@@ -1,4 +1,4 @@
-# 138 — Author packet P38 (re-filed) — bed-temperature formula / bed-type selection — emitter
+# 138 — Author packet P38 + P78 (re-filed) — bed-temperature formula / bed-type selection + multi-bed gate — emitter
 
 Type: task
 Status: open
@@ -16,9 +16,19 @@ on [126](./126-overlay-resolved-field-narrowing.md)) lands.**
 **Read ticket 45's answer before starting** — it holds the per-key canonical
 grounding, and is not restated here.
 
-Keys (2, all of P38):
+**Folded in from [ticket 85](./85-author-packet-p78-filament-bed-temperature-print-orchestration.md)
+(P78, 2026-09-10):** `support_multi_bed_types` (`PrintConfig.cpp` `coBool`
+default `false`; the `is_BBL_printer() || support_multi_bed_types` gate on the
+`Print::validate` filament-vs-plate compatibility arm) is the *gate* over this
+ticket's *subject* (`curr_bed_type` → plate vector → zero-check) and must author
+with it — a standalone P78 packet would be declaration-only (rule 1).
+**Read ticket 85's answer before starting** too — it holds that key's canonical
+grounding. Re-derive membership from disk at authoring time; do not freeze it
+from here.
 
-`bed_temperature_formula`, `curr_bed_type`
+Keys (3, all of P38 + all of P78):
+
+`bed_temperature_formula`, `curr_bed_type`, `support_multi_bed_types`
 
 Per-key canonical decision points (oracle: `PrintConfig.cpp` / `GCode.cpp` /
 `GCodeProcessor.cpp` / `Print.cpp` / `ModelArrange.cpp`, all selection over

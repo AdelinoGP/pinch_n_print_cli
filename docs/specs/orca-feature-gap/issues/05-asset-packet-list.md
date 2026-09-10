@@ -382,7 +382,7 @@ taken for them, no new ticket — the future claim packets them.
 
 `retract_before_wipe`, `retract_when_changing_layer`, `retraction_distances_when_cut`, `retraction_distances_when_ec`, `retraction_minimum_travel`, `travel_slope`, `use_firmware_retraction`, `wipe`, `wipe_distance`, `z_hop_types`, `z_offset`
 
-### P38 — Filament / Bed temperature — emitter (2 keys, Tier B)
+### P38 — Filament / Bed temperature — emitter (2 keys, Tier B; +P78 gate → 3 keys on ticket 138)
 
 `bed_temperature_formula`, `curr_bed_type`
 
@@ -393,7 +393,8 @@ vector pairs (all zero-occurrence) — so a packet today would be 100%
 declaration-only (rule 1). **Re-filed as
 [ticket 138](138-author-packet-p38-bed-temperature-selection-refiled.md),
 blocked on ticket 125** (the per-tool config model ruling, itself gated on
-126). The authoring ticket for both keys is 138, not 45.
+126). **Ticket 85 (2026-09-10) folded P78's `support_multi_bed_types` into 138**
+(the gate over `curr_bed_type`'s subject — 138 now carries 3 keys). The authoring ticket for all three keys is 138, not 45/85.
 
 ### P39 — Multimaterial / Filament for Features — emitter (6 keys, Tier B)
 
@@ -674,15 +675,21 @@ are the feature's core semantic, so no substitute clamp). **Re-filed as
 
 `interface_shells`
 
-### P77 — Quality / Bridging — classic-perimeters (2 keys, Tier B)
+### P77 — Quality / Bridging — classic-perimeters (2 keys, Tier B; packet 302)
+
+**Authored by ticket 84 (2026-09-10): the 2 keys in, none shed, packet 302.** Tier B held; the owner is a seam, not a module — host prepass `commit_shell_classification_builtin` (post-detection `bridge_orientation_deg` overwrite at `bridge_angle > 0`, the live `internal_bridge_angle` arm's exact semantics; hole-bearing unsupported-span authoring into `bridge_areas` — whole spans in `sacrificiallayer`, rims only in `partiallybridge`). Defaults are identity (`0` = automatic = pre-packet shape; `none` = off = pre-packet shape, AC-pinned); unknown enum spellings fall back to `none` (the `flat_bridge_closing_join` precedent); neither key has a padding twin (honest absence, rides 132). DEV-193 (relative-angle + align-offset + slice-union + reslice non-borrows). No queue-count change.
 
 `bridge_angle`, `counterbore_hole_bridging`
 
 ### P78 — Filament / Bed temperature — print-orchestration (1 keys, Tier B)
 
+**Folded by ticket 85 (2026-09-10) into [ticket 138](138-author-packet-p38-bed-temperature-selection-refiled.md)** (now P38+P78, 3 keys): `support_multi_bed_types` is the gate over 138's subject (`curr_bed_type` plate selection) — a standalone packet would be declaration-only (rule 1). The authoring ticket for the key is 138, not 85.
+
 `support_multi_bed_types`
 
 ### P79 — Printer / Machine / Print volume — print-orchestration (3 keys, Tier B)
+
+**Dissolved by ticket 86 (2026-09-10); all three keys folded into [ticket 124](124-author-packet-sequential-printing-and-toolhead-clearance.md)** (the ticket-32 note's instruction, confirmed — no "why not"): the keys' only slicing meaning is the sequential validator 124 owns (mode + `nozzle_height` already carried there), so a standalone packet would be declaration-only (rule 1). The TimelapsePosPicker rod/radius reads are a separable non-borrow (no picker seam in this tree). The authoring ticket for the keys is 124, not 86. No queue-count change.
 
 `extruder_clearance_height_to_lid`, `extruder_clearance_height_to_rod`, `extruder_clearance_radius`
 

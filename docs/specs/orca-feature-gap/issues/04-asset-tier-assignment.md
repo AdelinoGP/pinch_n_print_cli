@@ -267,7 +267,7 @@ findings (the one flagged row was a stale-asset artifact).
 | `supertack_plate_temp` | D | deferred (per-filament config model) |
 | `supertack_plate_temp_initial_layer` | D | deferred (per-filament config model) |
 | `support_chamber_temp_control` | X | out of scope — no pipeline consumer (GUI only, dead-in-canonical) |
-| `support_multi_bed_types` | B | print/orchestration (Print.cpp validate) |
+| `support_multi_bed_types` | B | — **blocked, unimplemented** by ticket 85: gate over the absent plate-selection domain (`is_BBL_printer() \|\| support_multi_bed_types` on `Print::validate`'s filament-vs-plate arm, `get_bed_temp_key(curr_bed_type)` vector lookup over six Tier D plate pairs); folded into ticket 138 with P38's `curr_bed_type`, blocked on ticket 125 |
 | `textured_cool_plate_temp` | D | deferred (per-filament config model) |
 | `textured_cool_plate_temp_initial_layer` | D | deferred (per-filament config model) |
 | `textured_plate_temp` | D | deferred (per-filament config model) |
@@ -456,9 +456,9 @@ findings (the one flagged row was a stale-asset artifact).
 
 ### Printer / Machine / Print volume
 | `bed_exclude_area` | A | wipe-tower (bed_shape) + crates/slicer-gcode (printable_height) |
-| `extruder_clearance_height_to_lid` | B | print/orchestration (Print.cpp arrangement) |
-| `extruder_clearance_height_to_rod` | B | print/orchestration (Print.cpp arrangement) |
-| `extruder_clearance_radius` | B | print/orchestration (Print.cpp arrangement) |
+| `extruder_clearance_height_to_lid` | B | — **folded into ticket 124** by ticket 86: validator input (`sequential_print_clearance_valid`, `Print.cpp`; canonical default 120, min 0), zero-occurrence in tree; the TimelapsePosPicker rod/radius reads are a separable non-borrow (no picker seam in this tree) |
+| `extruder_clearance_height_to_rod` | B | — **folded into ticket 124** by ticket 86: validator input (`sequential_print_clearance_valid`; canonical default 40, min 0), zero-occurrence in tree; the TimelapsePosPicker rod/radius reads are a separable non-borrow |
+| `extruder_clearance_radius` | B | — **folded into ticket 124** by ticket 86: validator input (horizontal hull-inflation arm + `extruder_clearance_max_radius` legacy alias; canonical default 40, min 0), zero-occurrence in tree; the TimelapsePosPicker radius read is a separable non-borrow |
 | `extruder_printable_area` | B | wipe-tower (multi-extruder shared print bed) — **returned to queue, unimplemented** by ticket 26: per-extruder polygon group, inert single-extruder; canonical's only behaviour path is `Print::get_extruder_shared_printable_polygon` → `WipeTower::set_shared_print_bed`; **adopted by ticket 119** (ticket 28), blocked on ticket 118 — `nozzle_diameter` is a scalar `f32` in `ResolvedConfig`, this port has no per-extruder vector model |
 | `extruder_printable_height` | B | wipe-tower (multi-extruder last-layer validity) — **returned to queue, unimplemented** by ticket 26: per-extruder float vector, inert single-extruder; canonical's only behaviour path is `WipeTower::is_valid_last_layer`, gated on `m_is_multi_extruder`; **adopted by ticket 119** (ticket 28), blocked on ticket 118 — no per-extruder vector model in this port |
 | `printable_height` | A | **implemented** by ticket 26 (2026-09-03): `ResolvedConfig::printable_height` → `validate_printable_height` (`crates/slicer-model-io/src/loader.rs`), called from `run_slice`; emitted from resolved config, shadowing the padding literal. Default 250.0 is a recorded deviation from canonical's 100.0 |
@@ -482,9 +482,9 @@ findings (the one flagged row was a stale-asset artifact).
 | `time_cost` | B | crates/slicer-gcode (estimator.rs) |
 
 ### Quality / Bridging
-| `bridge_angle` | B | classic-perimeters + arachne-perimeters (LayerRegion.cpp + PerimeterGenerator.cpp) |
+| `bridge_angle` | B | classic-perimeters + arachne-perimeters (LayerRegion.cpp + PerimeterGenerator.cpp) — **in packet 302** by ticket 84 |
 | `bridge_density` | B | infill modules — **live** (ticket 34, direct implementation): divides bridge line spacing in `RectilinearInfill::run_infill` and `wave-overhangs`' fallback fill. `max` corrected 120→125 against the oracle. Not read by `gyroid-infill` (ticket 127); bare-number spelling misread (ticket 128) |
-| `counterbore_hole_bridging` | B | classic-perimeters + arachne-perimeters |
+| `counterbore_hole_bridging` | B | classic-perimeters + arachne-perimeters — **in packet 302** by ticket 84 |
 | `dont_filter_internal_bridges` | B | bridge-over-infill (host prepass qualification + InfillPostProcess construction seam, PrintObject.cpp) — **live** (ticket 82, no packet: multiplier 3/1 + partial-gate bypass in `gate_internal_bridge_sites` + short-line filter in the construction arm; bool `false` = canonical `ibfDisabled`) |
 | `enable_extra_bridge_layer` | B | bridge-over-infill (host prepass qualification + InfillPostProcess construction seam, PrintObject.cpp) — **live** (ticket 82, no packet: carrier-free duplicate pass in `gate_internal_bridge_sites`; bool `false` = canonical `eblDisabled`) |
 | `internal_bridge_angle` | B | bridge-over-infill (host prepass qualification + InfillPostProcess construction seam, PrintObject.cpp) — **live** (ticket 82, no packet: `angle_override` into `determine_bridging_angle`; default 0.0 = canonical automatic; range [0, 180] matches) |
