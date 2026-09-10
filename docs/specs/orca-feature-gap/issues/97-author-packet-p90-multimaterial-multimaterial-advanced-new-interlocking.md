@@ -26,7 +26,7 @@ Resolved when the packet is authored, preflighted, and its directory linked here
 **Dissolved into ticket 96's packet — not authored separately.**
 
 All three of this ticket's keys are carried by
-[`docs/spec_packets/306-interlocking-beams-slice-prepass/`](../../../spec_packets/306-interlocking-beams-slice-prepass/),
+[`docs/spec_packets/306-interlocking-beams-slice-postprocess/`](../../../spec_packets/306-interlocking-beams-slice-postprocess/),
 authored under ticket 96, `status: draft`, preflight PASS.
 
 The 3+3 split cannot be implemented as two packets. Canonical's P89 enabling gate reads
