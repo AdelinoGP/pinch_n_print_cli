@@ -107,6 +107,10 @@ In test code, a struct literal of a watched type (a `pub` struct with ≥5 named
 
 `cargo xtask check-literals` enforces this (exit 1 on violations); `--report` mode lists violations and exits 0. This gate is **enforced since packet 199**, is required before committing, and runs as the `cargo xtask test` `check-literals preflight`.
 
+### Test-quality gate and authoring standard (MUST follow)
+
+Test code is also governed by `docs/22_test_quality.md`: a test may only claim what it can falsify. The recurring false-green patterns (self-referential oracle, success-only assertion, vacuous loop, hand-maintained roster, source-grep assertion, silent fixture skip, scaffolding self-assertion, decorative assert) are listed in `docs/22_test_quality.md`; the mechanically detectable subset is enforced by `cargo xtask check-test-quality` (R1/R3/R6/R8 implemented; R2/R4/R5/R7 review-guided until later waves; waiver `// test-quality: <reason>` naming the protected surface/contract/gate). Retire-if-unjustified is the standard for existing tests (ADR-0064). The gate ships in **report mode** until the test-quality remediation program's final wave flips enforce mode (ADR-0065); until then, before committing, run `cargo xtask check-test-quality --report` and fix or waive findings in the code you touched.
+
 ## Coordinate System Hazard
 
 **1 unit = 100 nm (10⁻⁴ mm)**, NOT 1 nm like OrcaSlicer. Divide OrcaSlicer constants by 100. Use `Point2::from_mm(x, y)` / `mm_to_units()`. Full porting checklist in `docs/08_coordinate_system.md`.
