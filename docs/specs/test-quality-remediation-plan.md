@@ -329,12 +329,12 @@ The implementation progress ledger in §7 remains separate.
 | 2 | core-dup-merges | Replaced by the bridge, region, support, wall, geometry, and beading slices in rows #3–#8. | core/DUP-CORE (excluding flow) | #1 | superseded | - |
 | 3 | core-bridge-dup-merge | Merge the identical supported-bridge case while retaining the unsupported-span and ungated-candidate guards. | core/DUP-CORE (bridge) | #1 | generated | docs/spec_packets/core-bridge-dup-merge/ |
 | 4 | core-region-mapping-dup-merges | Consolidate cross-product cases while preserving exact chain sets, cardinality, and ordering coverage. | core/DUP-CORE (region mapping) | #3 | generated | docs/spec_packets/core-region-mapping-dup-merges/ |
-| 5 | core-support-dup-merges | Consolidate overhang and support-schedule cases while preserving exact layer, area, and schedule assertions. | core/DUP-CORE (support overhang; support geometry) | #4 | pending | - |
-| 6 | core-wall-sequence-dup-merges | Consolidate wall-order cases while preserving all modes and the two-wall sandwich input. | core/DUP-CORE (wall sequence) | #5 | pending | - |
-| 7 | core-geometry-dup-review | Combine related distance assertions and retain the distinct endpoint witness unless a case-preserving merge is established. | core/DUP-CORE (segment path; point-to-segment distance) | #6 | pending | - |
-| 8 | core-beading-threshold-review | Document and preserve the distinct default, propagation, and clamp threshold cases. | core/DUP-CORE (beading factory) | #7 | pending | - |
-| 9 | core-strengthen | Strengthen the remaining core weak-oracle tests, including vertical-flow correction. | core/DUP-CORE-strengthen (excluding wider-bead) | #8 | pending | - |
-| 10 | core-retire | Resolve the remaining core retirement candidates against the earn-their-keep standard. | core/RETIRE (excluding flow) | #9 | pending | - |
+| 5 | core-support-dup-merges | Consolidate overhang and support-schedule cases while preserving exact layer, area, and schedule assertions. | core/DUP-CORE (support overhang; support geometry) | #4 | generated | docs/spec_packets/core-support-dup-merges/ |
+| 6 | core-wall-sequence-dup-merges | Consolidate wall-order cases while preserving all modes and the two-wall sandwich input. | core/DUP-CORE (wall sequence) | #5 | generated | docs/spec_packets/core-wall-sequence-dup-merges/ |
+| 7 | core-geometry-dup-review | Combine related distance assertions and retain the distinct endpoint witness unless a case-preserving merge is established. | core/DUP-CORE (segment path; point-to-segment distance) | #6 | generated | docs/spec_packets/core-geometry-dup-review/ |
+| 8 | core-beading-threshold-review | Preserve and document the distinct default, propagation, and clamp threshold cases, adding a contrasting full-stack propagation input. | core/DUP-CORE (beading factory) | #7 | generated | docs/spec_packets/core-beading-threshold-review/ |
+| 9 | core-strengthen | Strengthen the remaining core weak-oracle tests, including vertical-flow correction. | core/DUP-CORE-strengthen (excluding wider-bead) | #8 | generated | docs/spec_packets/core-strengthen/ |
+| 10 | core-retire | Retire the two unfalsifiable core tests and re-home the slice-closing-radius no-op intent as a real contrast pair in the gated prepass target. | core/RETIRE (excluding flow) | #9 | generated | docs/spec_packets/core-retire/ |
 | 11 | core-paint | Repair paint driver, graph, and prune assertions and justify dependency probes. | core/PAINT | #10 | pending | - |
 | 12 | core-brittle | Replace or justify the core timing guards while preserving meaningful performance protection. | core/BRITTLE | #11 | pending | - |
 | 13 | core-cross | Review SDK/core wrapper coverage while retaining protection for distinct implementations. | core/CROSS | #12 | pending | - |
@@ -414,15 +414,274 @@ prose `entries.len() == layers × active_regions × ∏(1 + K_i)` is candidate-u
 This is an authoring preflight result, not an implementation acceptance result;
 the packet remains `draft`.
 
+`core-support-dup-merges` passed independent `spec-review --preflight` on
+2026-09-10 after one correction round: round 1 returned 4 HIGH findings (missing
+implementation-time §7 `core`-row ledger update with anchored six-column parser
+AC; AC-2's RC-1 rationale grep scoped to the whole file instead of the extracted
+survivor body; AC-4 assertion fragments searched globally instead of per
+extracted function body; AC-N1 asserting count-plus-one-name instead of the
+complete ordered 18-name roster). The round-2 re-run returned S0–S8, AC
+commands, and Doc Impact all PASS with 0 blockers, 0 highs, and one low
+informational finding (a stale line-count in a requirements.md context note),
+corrected in place. Grounded premises: the overhang target holds 19 `#[test]`
+fns pre-edit, and `coplanar_step_does_not_hide_the_contact` is a strict
+assertion subset of `overhang_is_detected_once_at_the_step_layer` on the same
+`pillar_then_cap()` fixture — subsumed by the exact `vec![3_usize]` layer pin
+and the `2.0 * 8.0 * 4.0` expanded-back area witness — so only the RC-1
+rationale comment migrates; the integration target holds 3 tests and the inline
+`#[cfg(test)]` module in `crates/slicer-core/src/algos/support_geometry.rs`
+holds 2 (`support_geometry_emits_for_2_layer_fixture`,
+`build_emit_schedule_two_objects_per_object_semantics`), consolidated into the
+integration file with `empty_plan_produces_empty_support` integration-only.
+This is an authoring preflight result, not an implementation acceptance result;
+the packet remains `draft`.
+
 Dependency exports from `core-flow-consolidation`: none (no new production API).
 Dependency exports from `core-bridge-dup-merge`: none (test-only merge; no new
 production API; no new test files). Dependency exports from
 `core-region-mapping-dup-merges`: none (test-only merge; no new production API;
-no new test files). The next eligible pending entry is `core-support-dup-merges`
-(row #5, depends on #4, now generated); its scope is the approved §5.1
-support-overhang/support-geometry slice, but its packet directory has not been
-authored. Resume generation from that entry using this plan. The §7
-implementation ledger remains open; no source or test changes were implemented
-during packet generation.
+no new test files). Dependency exports from `core-support-dup-merges`: none
+(test-only merge; no new production API; no new test files). Dependency exports
+from `core-wall-sequence-dup-merges`: none (test-only merge; no new production
+API; no new test files). Dependency exports from `core-geometry-dup-review`:
+none (test-only merges in existing targets; no new production API or test files).
+Dependency exports from `core-beading-threshold-review`: none (test-only
+strengthening in an existing target; no new production API or test files).
+
+`core-wall-sequence-dup-merges` passed independent `spec-review --preflight` on
+2026-09-10 (round 1: S0–S8, AC commands, and Doc Impact all PASS; the
+authoring agent additionally ran AC-5, AC-6's gate shape, AC-2/AC-3/AC-4
+extract plumbing, and AC-N1's roster/subset logic against the pre-edit tree and
+corrected three command defects before commit: AC-2/AC-3 per-slot greps made
+newline-robust because `outer_inner_reversed_order` splits two `assert_eq!`
+calls across lines, AC-1/AC-2 `! rg` negation guards converted to explicit
+`if rg -q ...; then exit 1` guards because this environment's bash 5.3 (Cygwin)
+does not abort under `set -e` after a failed negated command, and AC-3's
+`N == 2` doc-comment grep scoped to the extracted survivor body). Grounded
+premises at authoring time: the TDD file held 5 `#[test]` fns pre-edit and the
+inline module held 4 (`inner_outer_is_canonical_no_reorder`,
+`outer_inner_reverses`, `inner_outer_inner_sandwich`,
+`inner_outer_inner_with_two_walls_swaps_outer_and_first_inner`); the three
+absorbed pairs construct the identical `[Outer(0), Inner(1), Inner(2)]`
+fixture and each TDD survivor additionally asserts loop types, so each is a
+strict superset; the inline module's distinct case is the N==2 sandwich swap.
+The target is ungated (census `required: []`, no `required-features`), unlike
+the four prior core-wave packets. This is an authoring preflight result, not an
+implementation acceptance result; the packet remains `draft`.
+
+On 2026-09-10 the user approved generation and independent preflight of
+`core-geometry-dup-review` with both case-preserving folds: move the distinct
+(2.0 mm, 0.75 mm) segment input into the existing integration roster with exact
+endpoint checks, and consolidate the midpoint distance tests while retaining
+both API calls and both independent squared-distance oracles. The approved
+packet status is `draft`, downstream context S, with the standard five packet
+documents.
+
+`core-geometry-dup-review` passed independent `spec-review --preflight` on
+2026-09-10 after two correction rounds: S0–S8, AC commands, and Doc Impact all
+PASS. Corrections fixed the fully qualified unit-test filter, failure-status
+propagation, behavioral acceptance commands, exact endpoint and projection
+witnesses, and the section/column-scoped ledger checker. Independent synthetic
+checks accepted a valid partial ledger row with prior content and rejected
+queue-only evidence, misplaced or missing fields, invalid states, duplicate
+core rows, incomplete feature flags, and incomplete remaining-gap entries.
+This is an authoring preflight result; the packet remains `draft` and no Cargo
+tests or implementation acceptance gates ran. The §7 implementation ledger
+remains open; no source or test changes were implemented during generation.
+
+On 2026-09-10 the user approved generation and independent preflight of
+`core-beading-threshold-review`, status `draft`, downstream context S, with the
+standard five packet documents. The approved scope retains all three threshold
+tests and their existing inputs, records their distinct KEEP rationales, and
+adds a contrasting full-stack propagation case: `min_output_width = 3000`,
+`preferred_bead_width_outer = 5000`, `optimal_width = 4000`, with independent
+expected split/add thresholds `0.20` and `0.75`. This additive strengthening
+extends the original preserve-and-document goal with explicit user approval.
+Implementation edits are confined to test code in
+`crates/slicer-core/tests/beading/factory.rs` and the §7 `core` ledger row.
+`core-beading-threshold-review` passed independent `spec-review --preflight` on
+2026-09-10: S0–S8, AC commands, and Doc Impact all PASS. Corrections replaced
+source-text pseudo-oracles with runtime behavior criteria, matched the real
+suffixed §7 Ledger heading, and kept only the packet-level gates in the packet
+contract while retaining the full verification matrix in `requirements.md`.
+Independent synthetic checks accepted accumulated core evidence in a temporary
+copy of the real plan and rejected wrong-column, missing-field, invalid-state,
+queue-only, incomplete-feature, incomplete-gap, and duplicate-row cases.
+The packet remains `draft`; no Cargo or implementation acceptance gates ran.
+
+On 2026-09-10 the user approved generation and independent preflight of
+`core-strengthen`, status `draft`, downstream context S, with the standard five
+packet documents. The approved test-only scope keeps the existing test names
+and strengthens the independent bridge-angle expectation, exact vertical-flow
+fallback, analytic triangle-crossing endpoints, and boolean-operation areas,
+bounds, and distinct results. Boolean assertions avoid vertex-order pins.
+The four source-test surfaces are divided into implementation steps respecting
+the per-step edit cap, with a separate §7 `core` ledger update. The wider-bead
+oracle remains owned by `core-flow-consolidation`.
+
+The `core-strengthen` artifacts were authored before the user paused generation
+for handoff. The preflight before that pause returned `PREFLIGHT BLOCKED`:
+after correcting library-test filters and replacing a synthetic-only ledger
+AC with a real-state predicate, the remaining finding was that AC-5 accepted
+an unrelated feature-qualified test target as validation evidence. A final
+automatic correction was dispatched to bind that evidence to the packet's
+actual polygon test target/filter, and the author reported it complete but
+unreviewed.
+
+`core-strengthen` passed independent `spec-review --preflight` on 2026-09-10
+after one correction round: S0-S8, AC commands, and Doc Impact all PASS, 0
+blockers and 0 highs at re-run. The AC-5 target-binding correction was
+confirmed fixed — an unrelated feature-qualified target is now rejected — but
+the corrected lookahead `(?=$|[\s;&|])` also rejected a representative command
+written as a markdown code span, which is the style every existing §7
+Validation cell uses; the natural in-style write-up would therefore have failed
+a correct implementation. The lookahead was widened to `(?=$|[\s;&|\x60])`
+(escaped so no literal backtick breaks the AC's own code span) and the prose in
+all four affected packet documents was updated to say so. Re-verified after the
+fix: the predicate still rejects the real unimplemented `core` row, and across
+twelve synthetic controls it accepts the backticked house-style command, the
+bare command, and both trailing-flag variants, while rejecting an unrelated
+target, a missing `--features host-algos`, a truncated invocation, a
+trailing-suffix filter name, state `done`, a dropped oracle token, a duplicate
+`core` row, and a valid row placed outside the §7 span.
+
+Grounded premises re-derived against the tree during that preflight:
+`bridge_over_infill_tdd` carries an explicit `[[test]]` stanza with no
+`required-features` and `polygon_ops_tdd` is auto-discovered (census records
+`required: []` for both), while `algos::paint_segmentation` is
+`#[cfg(feature = "host-algos")]`, so the feature is load-bearing only for the
+two triangle filters and harmless elsewhere. The analytic oracles were traced
+to source rather than assumed: `determine_bridging_angle` returns degrees via
+`to_degrees().rem_euclid(180.0).max(0.001)` and yields exactly `90.0` for the
+horizontal-anchor case; `triangle_z_intersection` produces `(5.0,0.0)`/
+`(2.5,5.0)` and `(0.0,0.0)`/`(7.5,5.0)` for the two crossing fixtures;
+`flow_correction(0.0,0.0,1.0)` returns exactly `1.0` through the
+`planar_length <= f32::EPSILON` branch; and the four boolean areas, bounds, and
+component counts follow from the two overlapping squares at 10^4 units/mm.
+`shape_signature` is live, not dead — it backs
+`result_order_is_deterministic_for_same_input` in the same file, a determinism
+pin under `docs/22_test_quality.md` §3. This is an authoring preflight result,
+not an implementation acceptance result; no Cargo test, check, or clippy gate
+ran, and the packet remains `draft`.
+
+Dependency exports from `core-strengthen`: none (test-only strengthening; no
+new production API, test file, or test target).
+
+On 2026-09-10 the user approved the `core-retire` write gate after grounding,
+with status `draft` and the standard five packet documents. Three dispositions
+were approved:
+
+1. `clip_operation_variants_are_distinct`
+   (inline `tests` module of `crates/slicer-core/src/polygon_ops.rs`) is
+   **retired**. It is `assert_ne!(ClipOperation::Union, ClipOperation::Difference)`
+   over a fieldless enum with a derived `PartialEq`, so discriminant inequality
+   holds for every possible compilation and no production defect can falsify it
+   (`docs/22_test_quality.md` §2.8, gate rule R1, whose legitimate-form column
+   reads "none - retire instead"). Its surviving coverage is queue row #9's
+   strengthened `boolean_ops_produce_expected_presence_for_overlapping_squares`,
+   which pins per-operation areas, bounds, component counts, and pairwise
+   distinction and therefore fails on a swapped match arm in `clip_polygons`.
+   The named regression input is recorded with the retirement.
+
+2. `slice_closing_radius_zero_is_noop`
+   (`crates/slicer-core/tests/triangle_mesh_slicer_tdd.rs`) is **retired and
+   re-homed**, not merely deleted. Its body sets `let r = 0.0_f32` and branches
+   on `if r > 0.0`, which is statically false, so it asserts
+   `polygons.clone() == polygons` and never calls `apply_slice_closing_radius`;
+   deleting the real gate in `crates/slicer-core/src/algos/prepass_slice.rs`
+   leaves it green. It is not salvageable as a compile witness because
+   `slice_closing_radius_fuses_gap_within_two_r` in the same file already
+   carries that surface. The NEG-3 intent moves to the existing
+   `host-algos`-gated target `crates/slicer-core/tests/algo_prepass_slice_tdd.rs`
+   (`required-features = ["host-algos"]`, census row present), which already
+   drives `execute_prepass_slice_single_layer`. Rewriting in place was rejected:
+   `triangle_mesh_slicer_tdd` is ungated (census `required: []`), so importing
+   the gated `prepass_slice` module would break the default-feature build, and
+   gating the whole file would silently compile its other tests to zero under a
+   bare `cargo test -p slicer-core` — the false-green hazard AGENTS.md names.
+
+3. The moved test is a **contrast pair**, approved over a sentinel-only move.
+   The gate reads `slice_closing_radius` from `RegionMapIR` via
+   `rm.config_for(&key)` and takes the `(0.0_f32, OffsetJoinType::Miter)`
+   else-branch when `region_map` is `None`, so the r=0 case needs no new
+   plumbing but the r>0 case requires a constructed `RegionMapIR` that no test
+   in that target builds today. Sentinel-only was rejected because deleting the
+   guard degrades to `apply_slice_closing_radius(raw, 0.0)`, an
+   `offset(+0)`/`offset(-0)` round-trip that may be geometrically identical —
+   which would have rebuilt a false green in the act of removing one. The
+   contrast pair asserts both branches through the real prepass path and raises
+   the packet's context cost from S to M.
+
+Census reconciliation for this packet is **both**: reconcile now at function
+granularity and flag the census scope gap. The move is a clean target-level
+delta (`triangle_mesh_slicer_tdd` -1, `algo_prepass_slice_tdd` +1, both with
+census rows), while the `polygon_ops.rs` retirement is invisible to the
+discovery census, which enumerates integration-test targets only — the
+similarly named `polygon_ops_tdd` row is a different file. The packet records
+before/after `#[test]` counts for both edited files in the §7 `core` row and
+names the census's target-only scope as a program-level remaining gap for the
+final wave, since extending
+`docs/specs/test-quality-remediation-census.json` to cover lib targets would
+mutate a committed artifact every remaining wave depends on.
+
+`core-retire` passed independent `spec-review --preflight` on 2026-09-10 after
+two correction rounds, the protocol maximum. Round 1 returned 0 blockers and 2
+highs, both authoring defects: the packet asserted that a bare
+`cargo test -p slicer-core` would compile the gated target "to zero tests and
+still print `ok`", which is the `#![cfg(feature = ...)]` mechanism, not the
+`required-features` one — `algo_prepass_slice_tdd` carries no inner cfg
+attribute, so Cargo skips the target outright and an explicit
+`--test algo_prepass_slice_tdd` fails with `requires the features: host-algos`
+(confirmed by probe); and the watched-struct analysis was wrong in both
+directions, claiming `ResolvedConfig` is watched when
+`docs/21_data_defaults_and_fixtures.md` §7.1 names it as a scanner blind spot
+because macro-generated definitions are invisible to the syn watchlist, while
+omitting `ObjectMesh` (7 named `pub` fields), which the packet's own new fixture
+constructs and which would therefore have failed `cargo xtask check-literals`.
+
+Round 2 returned 0 blockers and 1 high, disclosed by the reviewer as its own
+round-1 miss rather than a regression: AC-4's `rg -q 'slice_closing_radius = 0\.0'`
+pin was broken in both directions. Because `0.0` is a prefix of `0.04`, a file
+containing only the positive arm satisfied it, making the criterion unfalsifiable
+for the defect it named — the exact failure class this packet exists to retire —
+and because it required `=`, it rejected the field-init FRU form that the
+packet's own `design.md` mandates. Replaced with
+`slice_closing_radius\s*[:=]\s*0\.0(_?f32)?\s*[,;]`, which accepts the
+field-init, assignment, and `f32`-suffixed zero forms and rejects any
+positive-only file. The round-3 verification re-derived the pin from the AC text
+against 19 independent probe files plus an in-situ rustfmt-shaped test and
+returned S0-S8, AC commands, and Doc Impact all PASS with 0 blockers and 0 highs.
+
+Grounded premises re-derived during authoring: `clip_operation_variants_are_distinct`
+and `slice_closing_radius_zero_is_noop` each occur exactly once under `crates/`;
+the three edited sites hold 21, 12, and 6 `#[test]` fns pre-edit and 20, 11, and
+7 post-edit; `execute_prepass_slice_single_layer_impl` hard-codes
+`variant_chain: Vec::new()` in its lookup key and `debug_assert!(false, ...)` on
+a miss, so a mismatched key panics rather than falling back; `config_for` panics
+via `.expect`; `is_modifier_namespace_id` tests bit 63, so `region_id: 0` is
+safe; `ResolvedConfig::default().slice_closing_radius` is `0.049`, not `0.0`, so
+the gate-off arm must pin zero explicitly; and `RegionMapIR::default()`
+pre-seeds `configs[0]` with that default. AC-N1 pins ordered surviving rosters
+for all three edited sites, and the reviewer confirmed each against the tree in
+file order and exercised three negative controls (collateral deletion, wrong
+append position, retired name left behind). This is an authoring preflight
+result, not an implementation acceptance result; no Cargo test, check, clippy,
+or `check-literals` gate ran, and the packet remains `draft`.
+
+A stated falsifiability limit is recorded in the packet's `design.md` rather than
+papered over: the r>0 arm catches an inverted gate, a hard-coded radius, and
+broken `ResolvedConfig` plumbing, but whether a pure guard deletion is caught
+depends on whether Clipper's `offset(+0)`/`offset(-0)` round-trip perturbs the
+contour, which is unmeasured.
+
+Dependency exports from `core-retire`: none (test-only retirement and re-homing;
+no new production API, test file, or test target; the target-scoped census in
+`docs/specs/test-quality-remediation-census.json` is unchanged because no target
+is added or removed).
+
+Resume at the first eligible pending queue row, re-deriving its dependency
+status and exports. The next target is row #11 `core-paint`
+(core/PAINT), whose dependency #10 is now `generated`; its dispositions and
+write gate have not been approved, and no packet artifacts were authored for it.
 
 Commit this plan's queue update together with the generated packet directory.

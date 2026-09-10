@@ -1,0 +1,10 @@
+# Task Map: core-support-dup-merges
+
+The user-approved plan wave/item IDs are used directly; no `TASK-###` mapping is authorized or required. This file is the docs/07-style crosswalk owner for the two approved §5.1 support sub-items without editing `docs/07_implementation_status.md`.
+
+| Approved program task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| `core/DUP-CORE (support overhang)` | Steps 1 and 3 | `docs/specs/test-quality-remediation-plan.md` §5.1, §6, and §7; `docs/22_test_quality.md`; ADR-0064; `docs/08_coordinate_system.md` | Step 1: `crates/slicer-core/tests/support_overhang_detection_tdd.rs` absorbs `coplanar_step_does_not_hide_the_contact` into `overhang_is_detected_once_at_the_step_layer`, preserving exact layer, area, tolerance, and RC-1 rationale; Step 3: §7 `core` ledger row only | `OrcaSlicerDocumented/src/libslic3r/Support/SupportMaterial.cpp` delegated `detect_overhangs` confirmation | `S` | Accounts for `19 → 18` and records partial evidence; no other overhang test, production code, or Packet Queue change. |
+| `core/DUP-CORE (support geometry)` | Steps 2 and 3 | `docs/specs/test-quality-remediation-plan.md` §5.1, §6, and §7; `docs/22_test_quality.md`; ADR-0064; `docs/02_ir_schemas.md` §IR 9a | Step 2: `crates/slicer-core/tests/algo_support_geometry_tdd.rs` retains three integration survivors and adds richer schedule diagnostics while `crates/slicer-core/src/algos/support_geometry.rs` loses only the two-test `#[cfg(test)]` module; Step 3: §7 `core` ledger row only | None; pre-existing PnP schedule behavior | `S` | Accounts for integration `3 → 3` and inline `2 → 0`, preserves exact cases, and records partial evidence without a Packet Queue change. |
+
+This crosswalk owns only the approved support-overhang/support-geometry portions of `core/DUP-CORE`. It does not imply closure of wall-sequence, geometry, beading, strengthen, retire, paint, brittle, cross, parity, or the whole `slicer-core` wave, and it exports no symbols to later packets.
