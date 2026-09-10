@@ -62,7 +62,11 @@ fn fmt_scalar(v: &toml::Value) -> Option<String> {
             };
             Some(format!("\"{capped}\""))
         }
-        toml::Value::Array(_) => Some("[…]".to_string()),
+        toml::Value::Array(items) => Some(if items.is_empty() {
+            "[]".to_string()
+        } else {
+            "[…]".to_string()
+        }),
         _ => None,
     }
 }
@@ -179,6 +183,10 @@ fn infer_type(v: &toml::Value) -> &'static str {
         toml::Value::Float(_) => "float",
         toml::Value::Boolean(_) => "bool",
         toml::Value::String(_) => "string",
+        // List-valued host rows (`[host_runtime.post_process]`): the element
+        // type is not recoverable from the TOML shape alone, so the row reads
+        // `list` rather than the declared wire type.
+        toml::Value::Array(_) => "list",
         _ => "?",
     }
 }

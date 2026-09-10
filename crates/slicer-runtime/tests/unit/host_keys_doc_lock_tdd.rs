@@ -188,6 +188,21 @@ fn host_runtime_keys_match_constants() {
         slicer_runtime::run::DEFAULT_GCODE_ADD_LINE_NUMBER,
         "host-keys.toml gcode_add_line_number != run::DEFAULT_GCODE_ADD_LINE_NUMBER"
     );
+    let post_process: Vec<&str> = t["post_process"]["default"]
+        .as_array()
+        .expect("[host_runtime.post_process] default must be a list")
+        .iter()
+        .map(|entry| {
+            entry
+                .as_str()
+                .expect("post_process entries must be strings")
+        })
+        .collect();
+    assert_eq!(
+        post_process,
+        slicer_runtime::run::DEFAULT_POST_PROCESS,
+        "host-keys.toml post_process != run::DEFAULT_POST_PROCESS"
+    );
 }
 
 #[test]

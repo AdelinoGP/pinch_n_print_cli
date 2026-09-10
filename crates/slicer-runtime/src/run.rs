@@ -14,7 +14,18 @@ pub const DEFAULT_USE_RELATIVE_E_DISTANCES: bool = true;
 /// (`[host_runtime]`) and locked by the `host_keys_doc_lock` test.
 pub const DEFAULT_GCODE_ADD_LINE_NUMBER: bool = false;
 
-use std::path::PathBuf;
+/// Default for the `post_process` host config key when the user does not set
+/// it: no scripts, so the exported artifact is byte-identical. Canonical
+/// declares it `coStrings` default `{}` (`PrintConfig.cpp`) and runs the listed
+/// commands at export time (`PostProcessor.cpp::run_post_process_scripts`).
+/// Read straight from the CLI/JSON config source at this crate's export seam —
+/// no `ResolvedConfig` field — so it is mirrored in
+/// `docs/config/host-keys.toml` (`[host_runtime]`) and locked by the
+/// `host_keys_doc_lock` test.
+pub const DEFAULT_POST_PROCESS: &[&str] = &[];
+
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
 use std::time::Instant;
 
@@ -632,7 +643,22 @@ pub fn run_slice_with_collector(
 
     // Seed model-derived config (e.g. the 3MF project's filament_colour) as
     // defaults: only fill keys the user did not set explicitly via --config.
+    //
+    // `post_process` is deliberately excluded. It names host commands to run
+    // against the exported artifact, and a 3MF carries the full print config in
+    // `project_settings.config`, so honouring it from a model file would let a
+    // downloaded model execute arbitrary commands on the slicing machine.
+    // Canonical runs the model's value; only an explicit `--config` value is
+    // honoured here (deliberate divergence, DEV-197).
     for (key, value) in &opts.config_overrides {
+        if key == "post_process" {
+            if !config_source.contains_key(key) {
+                eprintln!(
+                    "warning: ignoring post_process from model metadata; set it in the slice config file instead"
+                );
+            }
+            continue;
+        }
         config_source
             .entry(key.clone())
             .or_insert_with(|| value.clone());
@@ -1037,6 +1063,18 @@ pub fn run_slice_with_collector(
             .unwrap_or(DEFAULT_GCODE_ADD_LINE_NUMBER),
         None => DEFAULT_GCODE_ADD_LINE_NUMBER,
     };
+    // Canonical `post_process` (`PrintConfig.cpp` coStrings): commands run
+    // against the exported artifact after the file exists
+    // (`PostProcessor.cpp::run_post_process_scripts`). Each script rewrites the
+    // file in place, so the export must produce one — a stdout-only run has no
+    // file to hand them, and silently skipping configured scripts is worse than
+    // saying so.
+    let post_process_scripts = parse_post_process_scripts(&config_source)?;
+    if !post_process_scripts.is_empty() && opts.output_path.is_none() {
+        return Err(SliceRunError(
+            "post_process requires an output file: the configured scripts rewrite the exported G-code in place, so this run needs --output".to_string(),
+        ));
+    }
     let nozzle_diameter_mm = match config_source.get("nozzle_diameter") {
         Some(ConfigValue::Float(value)) => *value as f32,
         Some(ConfigValue::Int(value)) => *value as f32,
@@ -1200,16 +1238,27 @@ pub fn run_slice_with_collector(
     }
     emit_end_of_slice_events(&channel.sink, &channel.slice_id, wallclock_ms, stats);
 
-    // Canonical applies `gcode_add_line_number` to the exported artifact after
-    // the file is written (`BackgroundSlicingProcess.cpp` calls the
-    // post-processor on the finished file). Here the artifact is
-    // `SliceOutcome::gcode_text`, so the rewrite is the last export step and
-    // both the `--output` file and the stdout path receive it. Off by default,
-    // so the emitted bytes are unchanged.
-    let gcode_text = if gcode_add_line_number {
-        add_line_numbers(&pipeline_output.gcode_text)
-    } else {
+    // Canonical's export steps, in canonical order
+    // (`BackgroundSlicingProcess::finalize_gcode`): the configured
+    // `post_process` scripts rewrite the exported artifact first, then
+    // `gcode_add_line_number` numbers it. Both work on the artifact rather than
+    // the file the caller writes, so the `--output` file and the stdout path
+    // receive identical bytes; both are off by default, so the emitted bytes of
+    // a config that sets neither key are unchanged.
+    let gcode_text = if post_process_scripts.is_empty() {
         pipeline_output.gcode_text
+    } else {
+        let output_path = opts.output_path.as_ref().ok_or_else(|| {
+            SliceRunError(
+                "post_process requires an output file: the configured scripts rewrite the exported G-code in place, so this run needs --output".to_string(),
+            )
+        })?;
+        run_post_process_scripts(&pipeline_output.gcode_text, output_path, &post_process_scripts)?
+    };
+    let gcode_text = if gcode_add_line_number {
+        add_line_numbers(&gcode_text)
+    } else {
+        gcode_text
     };
 
     Ok(SliceOutcome {
@@ -1236,6 +1285,176 @@ fn add_line_numbers(text: &str) -> String {
         out.push('\n');
     }
     out
+}
+
+/// Parse the `post_process` host config key from the raw CLI/JSON config
+/// source: the canonical `coStrings` spelling (`["cmd1", "cmd2"]`) and the
+/// single-command string form.
+///
+/// Entries come back unsplit: canonical splits each one on `\r`/`\n` at run
+/// time (one entry may pack several commands), so that split lives in
+/// [`run_post_process_scripts`].
+fn parse_post_process_scripts(
+    config_source: &std::collections::HashMap<String, ConfigValue>,
+) -> Result<Vec<String>, SliceRunError> {
+    match config_source.get("post_process") {
+        None => Ok(Vec::new()),
+        Some(ConfigValue::String(script)) => Ok(vec![script.clone()]),
+        Some(ConfigValue::List(items)) => items
+            .iter()
+            .enumerate()
+            .map(|(index, item)| match item {
+                ConfigValue::String(script) => Ok(script.clone()),
+                _ => Err(SliceRunError(format!(
+                    "post_process entry {index} must be a string"
+                ))),
+            })
+            .collect(),
+        Some(_) => Err(SliceRunError(
+            "post_process must be a string or a list of strings".to_string(),
+        )),
+    }
+}
+
+/// Run the configured `post_process` scripts over a working copy of the
+/// exported artifact and return the rewritten text.
+///
+/// Canonical (`PostProcessor.cpp::run_post_process_scripts`) hands each script
+/// a file path — for a file export, `<output>.pp`, a copy next to the artifact
+/// — and treats a non-zero exit or a file the script deleted as fatal. The port
+/// keeps that shape: the caller writes `output_path` itself, so the scripts
+/// work on the sibling `<output>.pp` working copy and the result is folded back
+/// into the artifact both export paths carry.
+fn run_post_process_scripts(
+    text: &str,
+    output_path: &Path,
+    scripts: &[String],
+) -> Result<String, SliceRunError> {
+    let working_copy = post_process_working_copy_path(output_path);
+    if let Some(parent) = working_copy.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                SliceRunError(format!(
+                    "failed to create the output directory for post-processing: {e}"
+                ))
+            })?;
+        }
+    }
+    std::fs::write(&working_copy, text).map_err(|e| {
+        SliceRunError(format!(
+            "failed to write the post-processing working copy {}: {e}",
+            working_copy.display()
+        ))
+    })?;
+
+    let rewritten = (|| -> Result<String, SliceRunError> {
+        for entry in scripts {
+            for script in entry.split(['\r', '\n']) {
+                let script = script.trim();
+                if script.is_empty() {
+                    continue;
+                }
+                run_post_process_script(script, &working_copy, output_path)?;
+            }
+        }
+        std::fs::read_to_string(&working_copy).map_err(|e| {
+            SliceRunError(format!(
+                "post-processing left {} unreadable: {e}",
+                working_copy.display()
+            ))
+        })
+    })();
+
+    // Canonical removes the copy on failure and the caller removes it on
+    // success; here both happen in one place.
+    let _ = std::fs::remove_file(&working_copy);
+    rewritten
+}
+
+/// Canonical names a file export's working copy `<path>.pp`
+/// (`PostProcessor.cpp::run_post_process_scripts`), so scripts never touch the
+/// file the caller keeps.
+fn post_process_working_copy_path(output_path: &Path) -> PathBuf {
+    let mut path = output_path.as_os_str().to_os_string();
+    path.push(".pp");
+    PathBuf::from(path)
+}
+
+/// Run one configured command with the working-copy path appended as the final
+/// argument, mirroring canonical's `run_script`: `$SHELL -c "<script> '<path>'"`
+/// on POSIX, `cmd /C` on Windows. `SLIC3R_PP_HOST` /
+/// `SLIC3R_PP_OUTPUT_NAME` carry the post-process values canonical exports to
+/// the script's environment.
+fn run_post_process_script(
+    script: &str,
+    working_copy: &Path,
+    output_path: &Path,
+) -> Result<(), SliceRunError> {
+    #[cfg(windows)]
+    let mut command = {
+        use std::os::windows::process::CommandExt;
+        let mut command = Command::new("cmd");
+        // `raw_arg` keeps the command line verbatim: the entry is a command
+        // line, and the working-copy path is appended as one quoted argument.
+        command
+            .raw_arg("/C")
+            .raw_arg(format!("{script} \"{}\"", working_copy.display()));
+        command
+    };
+    #[cfg(not(windows))]
+    let mut command = {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        let mut command = Command::new(shell);
+        command
+            .arg("-c")
+            .arg(format!("{script} {}", shell_quote(working_copy)));
+        command
+    };
+
+    let output = command
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::piped())
+        .env("SLIC3R_PP_HOST", "File")
+        .env("SLIC3R_PP_OUTPUT_NAME", output_path)
+        .output()
+        .map_err(|e| SliceRunError(format!("failed to start post-processing script {script}: {e}")))?;
+
+    if !output.status.success() {
+        let code = output.status.code().unwrap_or(-1);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let mut message = format!(
+            "Post-processing script {script} on file {} failed.\nError code: {code}",
+            working_copy.display()
+        );
+        if !stderr.is_empty() {
+            message.push_str(&format!("\nOutput:\n{stderr}"));
+        }
+        return Err(SliceRunError(message));
+    }
+    if !working_copy.exists() {
+        return Err(SliceRunError(format!(
+            "Post-processing script {script} failed.\nThe script deleted or renamed {} instead of modifying it in place.",
+            working_copy.display()
+        )));
+    }
+    Ok(())
+}
+
+/// Quote `path` for a POSIX shell (`'` becomes `'\''`), the escaping canonical
+/// `run_script` applies to the path it appends.
+#[cfg(not(windows))]
+fn shell_quote(path: &Path) -> String {
+    let mut quoted = String::from("'");
+    for character in path.to_string_lossy().chars() {
+        if character == '\'' {
+            quoted.push_str("'\\''");
+        } else {
+            quoted.push(character);
+        }
+    }
+    quoted.push('\'');
+    quoted
 }
 
 /// Assembled scheduler/runtime context after prepass execution, ready for a
@@ -1434,7 +1653,8 @@ pub fn prepare_prepass_context(
 mod tests {
     use super::{
         add_line_numbers, emit_host_support_diagnostics, parse_feature_filament_selection,
-        parse_support_tool_selection, resolve_support_line_width_mm,
+        parse_post_process_scripts, parse_support_tool_selection, resolve_support_line_width_mm,
+        run_post_process_scripts,
     };
     use slicer_ir::resolved_config::ResolvedFloatOrPercent;
     use slicer_ir::{ConfigValue, Diagnostic, DiagnosticSeverity};
@@ -1454,6 +1674,136 @@ mod tests {
         // `getline` + `"\n"` write loop; empty input stays empty.
         assert_eq!(add_line_numbers("G28"), "N1 G28\n");
         assert_eq!(add_line_numbers(""), "");
+    }
+
+    /// Script text that appends `marker` to the file path the runner appends as
+    /// its final argument, in each platform shell's spelling.
+    #[cfg(windows)]
+    fn appending_script(marker: &str) -> String {
+        format!("echo {marker}>>")
+    }
+
+    #[cfg(not(windows))]
+    fn appending_script(marker: &str) -> String {
+        format!("printf '{marker}\\n' >>")
+    }
+
+    #[test]
+    fn post_process_scripts_parse_string_list_and_reject_other_shapes() {
+        let mut source = HashMap::new();
+        assert!(
+            parse_post_process_scripts(&source).unwrap().is_empty(),
+            "an absent key means no scripts"
+        );
+
+        source.insert(
+            "post_process".to_string(),
+            ConfigValue::String("run-me.sh".to_string()),
+        );
+        assert_eq!(
+            parse_post_process_scripts(&source).unwrap(),
+            vec!["run-me.sh".to_string()]
+        );
+
+        source.insert(
+            "post_process".to_string(),
+            ConfigValue::List(vec![
+                ConfigValue::String("first.sh".to_string()),
+                ConfigValue::String("second.sh".to_string()),
+            ]),
+        );
+        assert_eq!(
+            parse_post_process_scripts(&source).unwrap(),
+            vec!["first.sh".to_string(), "second.sh".to_string()]
+        );
+
+        source.insert("post_process".to_string(), ConfigValue::Bool(true));
+        assert!(
+            parse_post_process_scripts(&source).is_err(),
+            "a non-list, non-string value must be rejected"
+        );
+
+        source.insert(
+            "post_process".to_string(),
+            ConfigValue::List(vec![ConfigValue::Int(3)]),
+        );
+        assert!(
+            parse_post_process_scripts(&source).is_err(),
+            "a non-string list entry must be rejected"
+        );
+    }
+
+    #[test]
+    fn post_process_scripts_rewrite_the_working_copy_and_clean_up() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let output = dir.path().join("artifact.gcode");
+
+        // One entry packing two commands across a newline, wrapped in blank
+        // lines: canonical splits each entry on `\r`/`\n` and skips the empties.
+        let scripts = vec![format!(
+            "\n{}\n{}\n",
+            appending_script("POST_PROCESSED"),
+            appending_script("SECOND_LINE")
+        )];
+
+        let rewritten = run_post_process_scripts("G1 X0 Y0\n", &output, &scripts)
+            .expect("the working-copy rewrite must succeed");
+
+        let mut lines = rewritten.lines();
+        assert_eq!(lines.next(), Some("G1 X0 Y0"));
+        assert_eq!(lines.next(), Some("POST_PROCESSED"));
+        assert_eq!(
+            lines.next(),
+            Some("SECOND_LINE"),
+            "one entry's newline-separated commands must run in order"
+        );
+        assert_eq!(lines.next(), None);
+
+        assert!(
+            !dir.path().join("artifact.gcode.pp").exists(),
+            "the working copy must not survive the run"
+        );
+        assert!(
+            !output.exists(),
+            "the runner works on the copy; writing `output` stays the caller's job"
+        );
+    }
+
+    #[test]
+    fn post_process_script_failure_is_fatal_and_removes_the_working_copy() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let output = dir.path().join("artifact.gcode");
+        let scripts = vec!["definitely-not-a-real-command-pnp-92".to_string()];
+
+        let error = run_post_process_scripts("G1 X0 Y0\n", &output, &scripts)
+            .expect_err("a script that cannot run must fail the slice");
+        assert!(
+            error.0.contains("definitely-not-a-real-command-pnp-92"),
+            "the failure must name the script, got: {}",
+            error.0
+        );
+        assert!(
+            !dir.path().join("artifact.gcode.pp").exists(),
+            "a failed run must not leave the working copy behind"
+        );
+    }
+
+    #[test]
+    fn post_process_script_deleting_the_artifact_is_fatal() {
+        #[cfg(windows)]
+        let scripts = vec!["del".to_string()];
+        #[cfg(not(windows))]
+        let scripts = vec!["rm".to_string()];
+
+        let dir = tempfile::tempdir().expect("temp dir");
+        let output = dir.path().join("artifact.gcode");
+        let error = run_post_process_scripts("G1 X0 Y0\n", &output, &scripts)
+            .expect_err("a script that deletes the artifact must fail the slice");
+        assert!(
+            error.0.contains("deleted"),
+            "the failure must say the artifact was deleted, got: {}",
+            error.0
+        );
     }
 
     #[test]

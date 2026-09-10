@@ -414,7 +414,7 @@ findings (the one flagged row was a stale-asset artifact).
 | `reduce_infill_retraction` | B | crates/slicer-gcode (flavor.rs) |
 
 ### Others / Post-processing Scripts
-| `post_process` | B | host export orchestration (crates/slicer-runtime) |
+| `post_process` | B | host export orchestration (crates/slicer-runtime) — **landed directly, ticket 92** |
 
 ### Others / Skirt
 | `draft_shield` | A | skirt-brim |

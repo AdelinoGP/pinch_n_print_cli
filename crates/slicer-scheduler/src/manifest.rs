@@ -1623,6 +1623,21 @@ const HOST_RUNTIME_KEYS: &[(&str, &str, &str, &str, HostKeyMeta)] = &[
             ..HostKeyMeta::NONE
         },
     ),
+    (
+        "post_process",
+        "string-list",
+        slicer_ir::resolved_config::SCOPE_PRINT,
+        // `Vec<String>::wire_default` joins with `,`; the empty list is `""`.
+        "",
+        HostKeyMeta {
+            display: Some("Post-processing scripts"),
+            description: Some(
+                "Commands run against the exported G-code in order, after slicing; each is passed the working-copy file path as its final argument and may rewrite it in place.",
+            ),
+            group: Some("Others"),
+            ..HostKeyMeta::NONE
+        },
+    ),
 ];
 
 /// Preset scope of a module-manifest config field.

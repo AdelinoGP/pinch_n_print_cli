@@ -1359,6 +1359,28 @@ gap set; the 407→410 step is ticket 46's three source-missing
 
   - [91 — Author packet P84 — Others / G-code output — host-export](issues/91-author-packet-p84-others-g-code-output-host-export.md) — **closed by direct implementation, no packet** (the "Author packet" title is a rotted ledger fact; re-sized at claim time). `gcode_add_line_number` (`coBool` default `0`) is **in scope** under rule 3: its only behavioural canonical read is the export-time post-processor `gcode_add_line_number` (`PostProcessor.cpp`, called from `BackgroundSlicingProcess.cpp`) — live behaviour, not a tooltip / preset / IGNORE read site — and ticket 04's `host export orchestration` (`crates/slicer-runtime`) owner stands. Landed as a `[host_runtime]` key read at the export seam and applied as the last export step to `SliceOutcome::gcode_text`: every line of the whole artifact prefixed `N<line> ` from 1, newline-terminated; default `false` = byte-identical output. Host config schema + doc 15 updated (55 → 56 host keys). Three tests (helper unit, doc-lock, real-slice e2e). Two observations recorded, neither created here: enabling the key adds its CONFIG_BLOCK line (extensions bucket) and displaces one count-bounded padding row (block held at the ≥96 floor), and `build-guests --check` carries a **pre-existing** 5-crate guest-lock divergence at HEAD (reproduces with these changes stashed). No packet number, no queue-count change.
 
+  - [92 — Author packet P85 — Others / Post-processing Scripts — host-export](issues/92-author-packet-p85-others-post-processing-scripts-host-export.md)
+    — **closed by direct implementation, no packet** — the second host-export key in a
+    row, at the seam ticket 91 built. `post_process` is a `[host_runtime]`
+    `string-list` key read from the CLI/JSON config source; the configured commands
+    run on the sibling `<output>.pp` working copy (canonical's own File-host name) and
+    the rewritten text is folded back into `SliceOutcome::gcode_text`, with
+    `gcode_add_line_number` applied afterwards — canonical's order in
+    `BackgroundSlicingProcess::finalize_gcode` (scripts, then numbering), which is why
+    this ticket had to compose the two keys rather than bolt the scripts on after the
+    numbering. Empty default = byte-identical output; a run with no output file
+    (stdout) fails loudly instead of skipping configured scripts. **Deliberate
+    divergence: a `post_process` carried in *model* metadata (a 3MF's
+    `project_settings.config`) is refused with a warning** — canonical would run it,
+    which lets a downloaded model execute arbitrary host commands; only an explicit
+    `--config` value is honoured. Filed as **DEV-197** with the three unported
+    mechanism clauses (`SLIC3R_<KEY>` environment export, `.output_name` rename
+    sidecar + `slicing_pipeline_plugin` step, canonical's Windows
+    `CommandLineToArgvW`/`CreateProcess` launch semantics). The tier table's owner
+    column held (host export orchestration) — no ticket-27 correction needed. No packet
+    number, no queue-count change. 04 and 05 rows annotate the direct landing; **P86
+    (ticket 93) is the queue head — the first Tier-C (new-module) packet.**
+
 ## Not yet specified
 
 - **The time-lapse gate has two open clauses waiting on other work.** Surfaced by

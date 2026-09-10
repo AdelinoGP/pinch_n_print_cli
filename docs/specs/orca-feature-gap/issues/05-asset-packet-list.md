@@ -725,6 +725,8 @@ are the feature's core semantic, so no substitute clamp). **Re-filed as
 
 ### P85 — Others / Post-processing Scripts — host-export (1 keys, Tier B)
 
+**Closed by [ticket 92](92-author-packet-p85-others-post-processing-scripts-host-export.md) (2026-09-10) by direct implementation — no packet** (re-sized at claim time: one host key + a shell-out at the export seam, no new module/IR/WIT/seam). `post_process` is a `[host_runtime]` `string-list` key read at the `crates/slicer-runtime` export seam; the configured commands run against the `<output>.pp` working copy and the rewritten text is folded back into `SliceOutcome::gcode_text`, before `gcode_add_line_number` (canonical order). Tier-B owner confirmed as written. Model-supplied values are refused (DEV-197 (a)). No queue-count change.
+
 `post_process`
 
 ## Tier C — 6 packets

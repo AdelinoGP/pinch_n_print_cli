@@ -67,7 +67,173 @@ fn run_slice_against_wedge_returns_nonempty_gcode() {
     );
 }
 
-/// Wayfinder ticket 91 / P84: the host-export key `gcode_add_line_number`
+/// Wayfinder ticket 92 / P85: the host-export key `post_process` (canonical
+/// `coStrings` default `{}`) runs the configured commands against the exported
+/// artifact. Each command is handed the `<output>.pp` working copy — canonical
+/// `PostProcessor.cpp::run_post_process_scripts`'s File-host name — and the
+/// rewritten text is what both export paths carry. Canonical applies them
+/// before `gcode_add_line_number`, so a line a script appends is numbered too.
+#[test]
+fn post_process_scripts_rewrite_the_exported_artifact() {
+    let root = workspace_root();
+
+    let model = root.join("resources").join("regression_wedge.stl");
+    let module_dir = root.join("modules").join("core-modules");
+
+    assert!(
+        model.exists(),
+        "regression_wedge.stl must exist at {}",
+        model.display()
+    );
+    assert!(
+        module_dir.exists(),
+        "core-modules directory must exist at {}",
+        module_dir.display()
+    );
+
+    let mesh =
+        std::sync::Arc::new(slicer_model_io::load_model(&model).expect("model load must succeed"));
+    let dir = tempfile::tempdir().expect("temp dir");
+    let output = dir.path().join("post_process.gcode");
+
+    // A command that appends `marker` to the path the runner appends as its
+    // final argument, in each platform shell's spelling.
+    #[cfg(windows)]
+    let appending_script = |marker: &str| format!("echo {marker}>>");
+    #[cfg(not(windows))]
+    let appending_script = |marker: &str| format!("printf '{marker}\\n' >>");
+
+    // Baseline: the key is absent, so the artifact carries no marker and no
+    // working copy is created. `run_slice` still does not write `output` —
+    // that stays the caller's job.
+    let baseline = run_slice(SliceRunOptions {
+        mesh: std::sync::Arc::clone(&mesh),
+        model_label: model.to_string_lossy().into_owned(),
+        module_dirs: vec![module_dir.clone()],
+        no_default_module_paths: true,
+        output_path: Some(output.clone()),
+        ..Default::default()
+    })
+    .expect("baseline run_slice must succeed against wedge + core-modules");
+    assert!(
+        !baseline.gcode_text.contains("POST_PROCESSED"),
+        "an absent post_process key must leave the artifact unchanged"
+    );
+    assert!(
+        !output.exists(),
+        "run_slice must not write the caller's output file"
+    );
+
+    // With the key set: the script rewrites the working copy, and the rewritten
+    // text is what the artifact carries.
+    let scripts_config = dir.path().join("post_process.json");
+    std::fs::write(
+        &scripts_config,
+        serde_json::json!({ "post_process": [appending_script("POST_PROCESSED")] }).to_string(),
+    )
+    .expect("write the post_process config");
+    let rewritten = run_slice(SliceRunOptions {
+        mesh: std::sync::Arc::clone(&mesh),
+        model_label: model.to_string_lossy().into_owned(),
+        config_path: Some(scripts_config),
+        module_dirs: vec![module_dir.clone()],
+        no_default_module_paths: true,
+        output_path: Some(output.clone()),
+        ..Default::default()
+    })
+    .expect("run_slice with a post_process script must succeed");
+    assert_eq!(
+        rewritten.gcode_text.lines().last(),
+        Some("POST_PROCESSED"),
+        "the configured script's output must land in the exported artifact"
+    );
+    assert!(
+        !dir.path().join("post_process.gcode.pp").exists(),
+        "the working copy must not survive the export"
+    );
+
+    // Both export keys at once: canonical's order is scripts first, then
+    // numbering, so the appended line is numbered as well.
+    let both_config = dir.path().join("post_process_and_numbers.json");
+    std::fs::write(
+        &both_config,
+        serde_json::json!({
+            "post_process": [appending_script("POST_PROCESSED")],
+            "gcode_add_line_number": true,
+        })
+        .to_string(),
+    )
+    .expect("write the combined config");
+    let numbered = run_slice(SliceRunOptions {
+        mesh,
+        model_label: model.to_string_lossy().into_owned(),
+        config_path: Some(both_config),
+        module_dirs: vec![module_dir],
+        no_default_module_paths: true,
+        output_path: Some(output),
+        ..Default::default()
+    })
+    .expect("run_slice with both export keys must succeed");
+    let marker_line = numbered
+        .gcode_text
+        .lines()
+        .last()
+        .expect("the artifact must have a last line");
+    assert!(
+        marker_line.starts_with('N') && marker_line.ends_with("POST_PROCESSED"),
+        "the script must run before the line-number rewrite, got last line {marker_line:?}"
+    );
+    for (index, line) in numbered.gcode_text.lines().enumerate() {
+        assert!(
+            line.starts_with(&format!("N{} ", index + 1)),
+            "line {} must be numbered, got {line:?}",
+            index + 1
+        );
+    }
+}
+
+/// A `post_process` value carried by *model* metadata (a 3MF's project
+/// settings, ingested as `SliceRunOptions::config_overrides`) is refused: the
+/// key names host commands, and a downloaded model must not be able to arm
+/// them. Canonical runs the model's value — deliberate divergence, DEV-197.
+#[test]
+fn post_process_from_model_metadata_is_ignored() {
+    let root = workspace_root();
+
+    let model = root.join("resources").join("regression_wedge.stl");
+    let module_dir = root.join("modules").join("core-modules");
+    assert!(model.exists(), "regression_wedge.stl must exist");
+    assert!(module_dir.exists(), "core-modules directory must exist");
+
+    let mesh =
+        std::sync::Arc::new(slicer_model_io::load_model(&model).expect("model load must succeed"));
+    let dir = tempfile::tempdir().expect("temp dir");
+    let output = dir.path().join("from_model.gcode");
+
+    #[cfg(windows)]
+    let script = "echo FROM_MODEL>>".to_string();
+    #[cfg(not(windows))]
+    let script = "printf 'FROM_MODEL\\n' >>".to_string();
+
+    let outcome = run_slice(SliceRunOptions {
+        mesh,
+        model_label: model.to_string_lossy().into_owned(),
+        module_dirs: vec![module_dir],
+        no_default_module_paths: true,
+        output_path: Some(output),
+        config_overrides: std::collections::HashMap::from([(
+            "post_process".to_string(),
+            ConfigValue::List(vec![ConfigValue::String(script)]),
+        )]),
+        ..Default::default()
+    })
+    .expect("a model-supplied post_process must not fail the slice, only be ignored");
+
+    assert!(
+        !outcome.gcode_text.contains("FROM_MODEL"),
+        "a model-supplied post_process must not run"
+    );
+}
 /// (canonical `coBool` default `0`) prefixes every exported line with `N<line> `
 /// at the export seam. Default `false` leaves the artifact byte-identical;
 /// `true` numbers the whole artifact contiguously from 1 without disturbing any
