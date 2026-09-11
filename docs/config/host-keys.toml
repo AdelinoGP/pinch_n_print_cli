@@ -48,6 +48,7 @@ overhang_4_4_speed         = { default = 0.0,   range = ">= 0", note = "0 = no o
 # Host-registered keys carried on ResolvedConfig (packet 35, 60).
 # Consumer: crates/slicer-ir/src/resolved_config.rs `ResolvedConfig::default()`.
 [resolved_config]
+silent_mode           = { default = false, note = "select the stealth variant of every configured machine_max_* pair for the time estimator (canonical GCodeProcessor stealth estimator); false = byte-identical output (wayfinder ticket 117)" }
 top_shell_layers        = { default = 3,      range = "[1, 10]", note = "deviates from OrcaSlicer's 4" }
 bottom_shell_layers     = { default = 3,      range = "[1, 10]" }
 gcode_resolution        = { default = 0.0125, range = ">= 0", note = "D-P tolerance for walls / brim" }

@@ -179,6 +179,13 @@ A → B: both build new emitter logic (canonical `GCode::print_machine_envelope`
 and `GCodeWriter::enable_power_loss_recovery`). P18 becomes a mixed A/B packet;
 packet counts are now 17 A, 68 B, 6 C.)
 
+**`silent_mode` landed directly via [ticket 117](./117-silent-mode-per-variant-machine-limit-model.md)
+(2026-09-11, no packet):** the per-variant model it was returned for now
+exists — the ten `machine_max_*` fields are `Option<MachineLimitPair>`
+keeping both stride-2 entries, and `silent_mode` (canonical default `false`)
+selects the stealth entry in `EstimatorLimits::from_config`. P18's packet
+stays 3 keys; this key closes alongside it.
+
 ### P19 — Printer / Machine / Print volume — emitter (1 key implemented, 2 returned)
 
 `printable_height` — **implemented directly** (no packet) by ticket 26 on

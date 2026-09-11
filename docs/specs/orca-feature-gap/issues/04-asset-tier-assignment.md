@@ -471,7 +471,7 @@ findings (the one flagged row was a stale-asset artifact).
 | `disable_m73` | A | crates/slicer-gcode (consumed in emit.rs) + declare in machine-gcode-emit manifest | (packet 267: declared in machine-gcode-emit.toml; gate already live) |
 | `emit_machine_limits_to_gcode` | B | crates/slicer-gcode (envelope emission) | (packet 267 re-tier: new emitter logic — canonical `GCode::print_machine_envelope`) |
 | `enable_power_loss_recovery` | B | crates/slicer-gcode (recovery emission) | (packet 267 re-tier: new emitter logic — canonical `GCodeWriter::enable_power_loss_recovery`) |
-| `silent_mode` | — | returned to queue, unimplemented | (packet 267 ruling: needs a per-variant machine-limit model — canonical reads stride-2 normal/stealth `machine_max_*` pairs; PnP's scalar `Option<f32>` fields have no variant dimension. Follow-up ticket 117.) |
+| `silent_mode` | B | crates/slicer-gcode (estimator variant selection) | **live** (ticket 117, direct implementation, 2026-09-11): `ResolvedConfig::silent_mode` (canonical default false) selects the stealth entry of every `machine_max_*` pair in `EstimatorLimits::from_config`; the ten fields are now `Option<MachineLimitPair>` keeping both stride-2 entries. Envelope keeps the normal entry (canonical parity; forward-dep on draft packet 267). Flavor-agnostic selection is DEV-200 (canonical gates on Marlin flavors). |
 
 ### Printer / Machine / Print volume
 | `bed_exclude_area` | A | wipe-tower (bed_shape) + crates/slicer-gcode (printable_height) |

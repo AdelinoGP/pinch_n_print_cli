@@ -61,6 +61,7 @@ fn resolved_bool(c: &ResolvedConfig, key: &str) -> Option<bool> {
         "bridge_no_support" => c.bridge_no_support,
         "support_critical_regions_only" => c.support_critical_regions_only,
         "support_remove_small_overhang" => c.support_remove_small_overhang,
+        "silent_mode" => c.silent_mode,
         _ => return None,
     })
 }

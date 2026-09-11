@@ -268,7 +268,13 @@ impl ResolvedConfig {
             m.insert("smoothificator_adaptive".into(), ConfigValue::Bool(v));
         }
         // Machine kinematic limits + filament density (Option fields: absent → key omitted,
-        // so unset configs leave CONFIG_BLOCK bytes unchanged).
+        // so unset configs leave CONFIG_BLOCK bytes unchanged). A pair whose
+        // variants are equal (the scalar spelling, the common case) emits as
+        // the bare normal value, keeping the historical single-value spelling
+        // byte-stable; a pair with a distinct stealth variant emits as the
+        // canonical comma-separated `coFloats` pair so the stealth value
+        // round-trips. `silent_mode` is intentionally omitted — host-only
+        // estimator control like `disable_m73` (P18 precedent).
         for (key, v) in [
             (
                 "machine_max_acceleration_extruding",
@@ -287,8 +293,18 @@ impl ResolvedConfig {
             ("machine_max_jerk_z", self.machine_max_jerk_z),
             ("machine_max_jerk_e", self.machine_max_jerk_e),
         ] {
-            if let Some(v) = v {
-                m.insert(key.into(), ConfigValue::Float(f64::from(v)));
+            if let Some(pair) = v {
+                if pair.normal.to_bits() == pair.stealth.to_bits() {
+                    m.insert(key.into(), ConfigValue::Float(f64::from(pair.normal)));
+                } else {
+                    m.insert(
+                        key.into(),
+                        ConfigValue::List(vec![
+                            ConfigValue::Float(f64::from(pair.normal)),
+                            ConfigValue::Float(f64::from(pair.stealth)),
+                        ]),
+                    );
+                }
             }
         }
         // `filament_density` is Orca `coFloats` — one entry per filament — so
@@ -830,16 +846,8 @@ pub fn extract_float_list(
 /// `coFloats` list.
 ///
 /// Used by keys OrcaSlicer declares as `coFloats` but this port models as one
-/// scalar, in two shapes:
+/// scalar, in one shape:
 ///
-/// - machine *time modes* (`machine_max_*` kinematic limits): `[normal,
-///   stealth]` — not per-extruder values (see the `AxisDefault` table in
-///   canonical `PrintConfig::PrintConfig`, whose second entry is the silent
-///   variant). Every canonical consumer that wants one scalar reads index 0:
-///   `GCode::print_machine_envelope` and `Print`'s motion-ability check both
-///   take the front element, and `GCodeProcessor`'s limit getters index by
-///   `ETimeMode`, whose `Normal` discriminant is 0. Index 0 is taken and any
-///   trailing modes ignored.
 /// - per-filament / per-extruder vectors modelled as a scalar-global subset
 ///   (`filament_diameter`, `pressure_advance`,
 ///   `filament_flush_volumetric_speed`): canonical reads per filament via
@@ -849,6 +857,12 @@ pub fn extract_float_list(
 ///   discarded, matching the `filament_diameter` precedent. This is a
 ///   documented scalar-subset divergence (DEV-169 (c) / DEV-170 (a) /
 ///   DEV-171 (a) precedent), not a canonical-equivalent read.
+///
+/// (The machine *time modes* — the `machine_max_*` kinematic limits, a
+/// `[normal, stealth]` pair per printer variant per canonical
+/// `printer_options_with_variant_2` — used to be a second shape here.
+/// Wayfinder ticket 117 moved them to [`extract_machine_limit_pair`], which
+/// keeps both entries; this extractor no longer serves them.)
 ///
 /// Values reach us as `List` because a real project's `project_settings.config`
 /// stores them as JSON arrays of *strings* (e.g. `["9","9"]`), so list elements
@@ -886,10 +900,10 @@ pub fn extract_float_or_first(
     }
 
     match value {
-        // Index 0 is canonical "normal" mode for the machine-limit keys, and
-        // the first filament for the per-filament scalar-subset keys (see the
-        // doc comment above); trailing entries are variants this port does not
-        // model.
+        // Index 0 is the first filament for the per-filament scalar-subset
+        // keys (see the doc comment above); trailing entries are variants
+        // this port does not model. (Machine-limit keys keep both modes via
+        // `extract_machine_limit_pair` and never reach this arm.)
         ConfigValue::List(items) => match items.first() {
             Some(first) => scalar(&format!("{key}[0]"), first),
             None => Err(ConfigResolutionError::TypeMismatch {
@@ -899,6 +913,78 @@ pub fn extract_float_or_first(
             }),
         },
         other => scalar(key, other),
+    }
+}
+
+/// Extract a stride-2 `(normal, stealth)` [`MachineLimitPair`] from an Orca
+/// `coFloats` machine-limit value.
+///
+/// Used by the ten `machine_max_*` keys canonical declares in
+/// `printer_options_with_variant_2` (`PrintConfig.cpp`). Element coercion
+/// mirrors [`extract_float_or_first`]'s scalar (`Float`, `Int`, or a numeric
+/// `String`, as a real project's `project_settings.config` stores them — e.g.
+/// `resources/cube_4color.3mf` carries `"machine_max_jerk_x": ["9","9"]`):
+///
+/// - scalar → both entries (hand-written configs keep working);
+/// - one-element list → both entries;
+/// - two-or-more-element list → the first pair; trailing entries are further
+///   printer variants this port does not model (single-extruder scalar-subset,
+///   DEV-169 (c) precedent).
+///
+/// An unparseable element or an empty list is a hard error, as with
+/// [`extract_float_or_first`]. A `Bool` is rejected — see [`extract_float`].
+#[doc(hidden)]
+pub fn extract_machine_limit_pair(
+    key: &str,
+    value: &ConfigValue,
+) -> Result<MachineLimitPair, ConfigResolutionError> {
+    fn scalar(key: &str, value: &ConfigValue) -> Result<f32, ConfigResolutionError> {
+        match value {
+            ConfigValue::Float(f) => Ok(*f as f32),
+            ConfigValue::Int(i) => Ok(*i as f32),
+            ConfigValue::String(s) => {
+                s.trim()
+                    .parse::<f32>()
+                    .map_err(|_| ConfigResolutionError::TypeMismatch {
+                        key: key.to_string(),
+                        expected: "Float",
+                        actual: "String".to_string(),
+                    })
+            }
+            other => Err(ConfigResolutionError::TypeMismatch {
+                key: key.to_string(),
+                expected: "Float",
+                actual: variant_name(other),
+            }),
+        }
+    }
+
+    match value {
+        ConfigValue::List(items) => match items.as_slice() {
+            [] => Err(ConfigResolutionError::TypeMismatch {
+                key: key.to_string(),
+                expected: "non-empty List",
+                actual: "empty List".to_string(),
+            }),
+            [single] => {
+                let v = scalar(&format!("{key}[0]"), single)?;
+                Ok(MachineLimitPair {
+                    normal: v,
+                    stealth: v,
+                })
+            }
+            [first, second, ..] => Ok(MachineLimitPair {
+                normal: scalar(&format!("{key}[0]"), first)?,
+                stealth: scalar(&format!("{key}[1]"), second)?,
+            }),
+        },
+        other => {
+            let v = scalar(key, other)?;
+            Ok(MachineLimitPair {
+                normal: v,
+                stealth: v,
+            })
+        }
     }
 }
 
@@ -1198,6 +1284,46 @@ impl<T: HostWireField> HostWireField for Option<T> {
     const WIRE_TYPE: &'static str = T::WIRE_TYPE;
     fn wire_default(&self) -> Option<String> {
         self.as_ref().and_then(HostWireField::wire_default)
+    }
+}
+
+/// A stride-2 `(normal, stealth)` machine-limit pair (wayfinder ticket 117).
+///
+/// Canonical declares every `machine_max_*` key as `coFloats` in
+/// `printer_options_with_variant_2` (`PrintConfig.cpp`): one
+/// `(normal, silent)` pair per printer variant, indexed by
+/// `PrintEstimatedStatistics::ETimeMode` (`GCodeProcessor.cpp`
+/// `get_option_value`). This port is single-extruder scalar-subset (the
+/// `flush_multiplier` DEV-169 (c) precedent), so it keeps the first pair only
+/// and drops trailing extruders' pairs. A scalar spelling (`500`, `"500"`)
+/// means "both modes" and duplicates into both entries, so hand-written
+/// CLI/JSON configs keep working unchanged.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MachineLimitPair {
+    /// Normal-mode value (canonical index 0): the emitted envelope and the
+    /// default estimate.
+    pub normal: f32,
+    /// Stealth-mode value (canonical index 1): selected by `silent_mode`.
+    pub stealth: f32,
+}
+
+impl MachineLimitPair {
+    /// Select the active variant: `stealth` when `silent_mode` is set, else
+    /// `normal`.
+    #[must_use]
+    pub fn select(&self, silent_mode: bool) -> f32 {
+        if silent_mode {
+            self.stealth
+        } else {
+            self.normal
+        }
+    }
+}
+
+impl HostWireField for MachineLimitPair {
+    const WIRE_TYPE: &'static str = "float-list";
+    fn wire_default(&self) -> Option<String> {
+        Some(format!("{},{}", self.normal, self.stealth))
     }
 }
 
@@ -2172,26 +2298,42 @@ declare_resolved_config! {
     };
 
     // Machine kinematic limits (time estimator; optional — absent keys stay None)
+    //
+    // Each limit is a stride-2 `(normal, stealth)` pair (wayfinder ticket 117):
+    // canonical declares these keys as `coFloats` in
+    // `printer_options_with_variant_2` (`PrintConfig.cpp`), one pair per
+    // printer variant. `silent_mode` selects the stealth entry for the time
+    // estimator; the emitted envelope keeps the normal entry (canonical
+    // `GCode::print_machine_envelope` reads `values[extruder * stride]`).
+    /// Silent mode (OrcaSlicer: `silent_mode`, `coBool` default false,
+    /// `comDevelop`-gated). When true, the time estimator consumes the
+    /// stealth variant of every configured `machine_max_*` pair instead of
+    /// the normal variant (canonical `GCodeProcessor::apply_config` enables
+    /// the stealth time estimator). Default false is byte-identical to today
+    /// on every seam. Host-only estimator control like `disable_m73` (P18
+    /// precedent): read from the typed field directly, never emitted into the
+    /// CONFIG_BLOCK.
+    cli "silent_mode" silent_mode: bool = false => extract_bool;
     /// Maximum acceleration while extruding, in mm/s² (optional).
-    cli_opt @printer "machine_max_acceleration_extruding" machine_max_acceleration_extruding: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_acceleration_extruding" machine_max_acceleration_extruding: Option<MachineLimitPair> = None => extract_machine_limit_pair;
     /// Maximum acceleration for travel moves, in mm/s² (optional).
-    cli_opt @printer "machine_max_acceleration_travel" machine_max_acceleration_travel: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_acceleration_travel" machine_max_acceleration_travel: Option<MachineLimitPair> = None => extract_machine_limit_pair;
     /// Maximum X-axis speed in mm/s (optional).
-    cli_opt @printer "machine_max_speed_x" machine_max_speed_x: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_speed_x" machine_max_speed_x: Option<MachineLimitPair> = None => extract_machine_limit_pair;
     /// Maximum Y-axis speed in mm/s (optional).
-    cli_opt @printer "machine_max_speed_y" machine_max_speed_y: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_speed_y" machine_max_speed_y: Option<MachineLimitPair> = None => extract_machine_limit_pair;
     /// Maximum Z-axis speed in mm/s (optional).
-    cli_opt @printer "machine_max_speed_z" machine_max_speed_z: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_speed_z" machine_max_speed_z: Option<MachineLimitPair> = None => extract_machine_limit_pair;
     /// Maximum extruder (E-axis) speed in mm/s (optional).
-    cli_opt @printer "machine_max_speed_e" machine_max_speed_e: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_speed_e" machine_max_speed_e: Option<MachineLimitPair> = None => extract_machine_limit_pair;
     /// Maximum X-axis jerk in mm/s (optional).
-    cli_opt @printer "machine_max_jerk_x" machine_max_jerk_x: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_jerk_x" machine_max_jerk_x: Option<MachineLimitPair> = None => extract_machine_limit_pair;
     /// Maximum Y-axis jerk in mm/s (optional).
-    cli_opt @printer "machine_max_jerk_y" machine_max_jerk_y: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_jerk_y" machine_max_jerk_y: Option<MachineLimitPair> = None => extract_machine_limit_pair;
     /// Maximum Z-axis jerk in mm/s (optional).
-    cli_opt @printer "machine_max_jerk_z" machine_max_jerk_z: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_jerk_z" machine_max_jerk_z: Option<MachineLimitPair> = None => extract_machine_limit_pair;
     /// Maximum extruder (E-axis) jerk in mm/s (optional).
-    cli_opt @printer "machine_max_jerk_e" machine_max_jerk_e: Option<f32> = None => extract_float_or_first;
+    cli_opt @printer "machine_max_jerk_e" machine_max_jerk_e: Option<MachineLimitPair> = None => extract_machine_limit_pair;
 
     /// Filament density in g/cm³ (optional).
     /// Filament density in g/cm³, one entry per filament (Orca `coFloats`).
@@ -2287,26 +2429,67 @@ impl PartialEq for ResolvedConfig {
                 == other.mmu_segmented_region_interlocking_depth.to_bits()
             && self.mmu_segmented_region_interlocking_beam
                 == other.mmu_segmented_region_interlocking_beam
-            && self.machine_max_acceleration_extruding.map(f32::to_bits)
-                == other.machine_max_acceleration_extruding.map(f32::to_bits)
-            && self.machine_max_acceleration_travel.map(f32::to_bits)
-                == other.machine_max_acceleration_travel.map(f32::to_bits)
-            && self.machine_max_speed_x.map(f32::to_bits)
-                == other.machine_max_speed_x.map(f32::to_bits)
-            && self.machine_max_speed_y.map(f32::to_bits)
-                == other.machine_max_speed_y.map(f32::to_bits)
-            && self.machine_max_speed_z.map(f32::to_bits)
-                == other.machine_max_speed_z.map(f32::to_bits)
-            && self.machine_max_speed_e.map(f32::to_bits)
-                == other.machine_max_speed_e.map(f32::to_bits)
-            && self.machine_max_jerk_x.map(f32::to_bits)
-                == other.machine_max_jerk_x.map(f32::to_bits)
-            && self.machine_max_jerk_y.map(f32::to_bits)
-                == other.machine_max_jerk_y.map(f32::to_bits)
-            && self.machine_max_jerk_z.map(f32::to_bits)
-                == other.machine_max_jerk_z.map(f32::to_bits)
-            && self.machine_max_jerk_e.map(f32::to_bits)
-                == other.machine_max_jerk_e.map(f32::to_bits)
+            && self.silent_mode == other.silent_mode
+            && self
+                .machine_max_acceleration_extruding
+                .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+                == other
+                    .machine_max_acceleration_extruding
+                    .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            && self
+                .machine_max_acceleration_travel
+                .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+                == other
+                    .machine_max_acceleration_travel
+                    .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            && self
+                .machine_max_speed_x
+                .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+                == other
+                    .machine_max_speed_x
+                    .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            && self
+                .machine_max_speed_y
+                .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+                == other
+                    .machine_max_speed_y
+                    .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            && self
+                .machine_max_speed_z
+                .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+                == other
+                    .machine_max_speed_z
+                    .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            && self
+                .machine_max_speed_e
+                .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+                == other
+                    .machine_max_speed_e
+                    .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            && self
+                .machine_max_jerk_x
+                .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+                == other
+                    .machine_max_jerk_x
+                    .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            && self
+                .machine_max_jerk_y
+                .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+                == other
+                    .machine_max_jerk_y
+                    .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            && self
+                .machine_max_jerk_z
+                .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+                == other
+                    .machine_max_jerk_z
+                    .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            && self
+                .machine_max_jerk_e
+                .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+                == other
+                    .machine_max_jerk_e
+                    .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
             && self
                 .filament_density
                 .iter()
@@ -2397,20 +2580,37 @@ impl std::hash::Hash for ResolvedConfig {
             .to_bits()
             .hash(state);
         self.mmu_segmented_region_interlocking_beam.hash(state);
+        self.silent_mode.hash(state);
         self.machine_max_acceleration_extruding
-            .map(f32::to_bits)
+            .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
             .hash(state);
         self.machine_max_acceleration_travel
-            .map(f32::to_bits)
+            .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
             .hash(state);
-        self.machine_max_speed_x.map(f32::to_bits).hash(state);
-        self.machine_max_speed_y.map(f32::to_bits).hash(state);
-        self.machine_max_speed_z.map(f32::to_bits).hash(state);
-        self.machine_max_speed_e.map(f32::to_bits).hash(state);
-        self.machine_max_jerk_x.map(f32::to_bits).hash(state);
-        self.machine_max_jerk_y.map(f32::to_bits).hash(state);
-        self.machine_max_jerk_z.map(f32::to_bits).hash(state);
-        self.machine_max_jerk_e.map(f32::to_bits).hash(state);
+        self.machine_max_speed_x
+            .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            .hash(state);
+        self.machine_max_speed_y
+            .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            .hash(state);
+        self.machine_max_speed_z
+            .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            .hash(state);
+        self.machine_max_speed_e
+            .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            .hash(state);
+        self.machine_max_jerk_x
+            .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            .hash(state);
+        self.machine_max_jerk_y
+            .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            .hash(state);
+        self.machine_max_jerk_z
+            .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            .hash(state);
+        self.machine_max_jerk_e
+            .map(|p| (p.normal.to_bits(), p.stealth.to_bits()))
+            .hash(state);
         for density in &self.filament_density {
             density.to_bits().hash(state);
         }
@@ -2435,7 +2635,7 @@ mod machine_limit_config_tests {
         "machine_max_jerk_e",
     ];
 
-    fn field(cfg: &ResolvedConfig, key: &str) -> Option<f32> {
+    fn field(cfg: &ResolvedConfig, key: &str) -> Option<MachineLimitPair> {
         match key {
             "machine_max_acceleration_extruding" => cfg.machine_max_acceleration_extruding,
             "machine_max_acceleration_travel" => cfg.machine_max_acceleration_travel,
@@ -2451,6 +2651,10 @@ mod machine_limit_config_tests {
         }
     }
 
+    fn pair(normal: f32, stealth: f32) -> Option<MachineLimitPair> {
+        Some(MachineLimitPair { normal, stealth })
+    }
+
     #[test]
     fn absent_machine_limit_keys_are_none_and_omitted_from_config_map() {
         let cfg = ResolvedConfig::default();
@@ -2459,6 +2663,14 @@ mod machine_limit_config_tests {
             assert_eq!(field(&cfg, key), None, "{key} default must be None");
             assert!(!map.contains_key(key), "{key} must be omitted when None");
         }
+        assert!(
+            !cfg.silent_mode,
+            "silent_mode default must be false (byte-identical estimator)"
+        );
+        assert!(
+            !map.contains_key("silent_mode"),
+            "silent_mode is host-only and must never reach the config map"
+        );
     }
 
     #[test]
@@ -2470,10 +2682,16 @@ mod machine_limit_config_tests {
                 .apply_cli_key(key, &ConfigValue::Float(v))
                 .expect("type check");
             assert!(applied, "{key} must be a recognized CLI-bound field");
-            assert_eq!(field(&cfg, key), Some(v as f32), "{key} value must apply");
+            let f = v as f32;
+            assert_eq!(
+                field(&cfg, key),
+                pair(f, f),
+                "{key} scalar must duplicate into both modes"
+            );
         }
         let map = cfg.to_config_map();
         for (i, key) in KEYS.iter().enumerate() {
+            // Equal variants keep the historical single-value spelling.
             let expected = f64::from(10.0_f32 + i as f32);
             assert_eq!(
                 map.get(*key),
@@ -2486,12 +2704,15 @@ mod machine_limit_config_tests {
     /// Orca writes `machine_max_*` as `coFloats`, and a real project's
     /// `project_settings.config` stores them as JSON arrays of strings — e.g.
     /// `resources/cube_4color.3mf` carries `"machine_max_jerk_x": ["9","9"]`.
-    /// Before this was handled, every such slice aborted with `TypeMismatch`
-    /// (`expected Float value, got List`), which crashed all four painted /
-    /// modifier e2e fixtures. The two entries are machine *time modes*
-    /// (normal, stealth), so index 0 is the value canonical consumers use.
+    /// Before list ingestion existed, every such slice aborted with
+    /// `TypeMismatch` (`expected Float value, got List`), which crashed all
+    /// four painted / modifier e2e fixtures. The two entries are machine
+    /// *time modes* (normal, stealth): both are kept, and `silent_mode`
+    /// selects the stealth entry for the time estimator (wayfinder ticket 117;
+    /// the envelope keeps the normal entry, canonical
+    /// `GCode::print_machine_envelope`).
     #[test]
-    fn machine_limit_accepts_orca_string_list_and_takes_normal_mode() {
+    fn machine_limit_accepts_orca_string_list_and_keeps_both_modes() {
         let mut cfg = ResolvedConfig::default();
         let applied = cfg
             .apply_cli_key(
@@ -2505,8 +2726,8 @@ mod machine_limit_config_tests {
         assert!(applied, "machine_max_jerk_x must be a recognized field");
         assert_eq!(
             field(&cfg, "machine_max_jerk_x"),
-            Some(9.0),
-            "index 0 is normal mode; the stealth entry must be ignored"
+            pair(9.0, 5.0),
+            "index 0 is normal mode, index 1 is stealth mode"
         );
     }
 
@@ -2518,11 +2739,78 @@ mod machine_limit_config_tests {
             &ConfigValue::List(vec![ConfigValue::Int(120), ConfigValue::Int(60)]),
         )
         .expect("numeric list must be accepted");
-        assert_eq!(field(&cfg, "machine_max_speed_e"), Some(120.0));
+        assert_eq!(field(&cfg, "machine_max_speed_e"), pair(120.0, 60.0));
 
         cfg.apply_cli_key("machine_max_speed_x", &ConfigValue::Float(500.0))
             .expect("bare scalar must still be accepted");
-        assert_eq!(field(&cfg, "machine_max_speed_x"), Some(500.0));
+        assert_eq!(field(&cfg, "machine_max_speed_x"), pair(500.0, 500.0));
+    }
+
+    #[test]
+    fn machine_limit_single_element_list_duplicates_into_both_modes() {
+        let mut cfg = ResolvedConfig::default();
+        cfg.apply_cli_key(
+            "machine_max_speed_z",
+            &ConfigValue::List(vec![ConfigValue::String("12".to_string())]),
+        )
+        .expect("single-element list must be accepted");
+        assert_eq!(field(&cfg, "machine_max_speed_z"), pair(12.0, 12.0));
+    }
+
+    /// Multi-extruder presets carry one pair per printer variant; this port is
+    /// single-extruder scalar-subset (DEV-169 (c) precedent), so trailing
+    /// pairs are dropped and the first pair wins.
+    #[test]
+    fn machine_limit_longer_list_keeps_first_pair_only() {
+        let mut cfg = ResolvedConfig::default();
+        cfg.apply_cli_key(
+            "machine_max_speed_x",
+            &ConfigValue::List(vec![
+                ConfigValue::Int(500),
+                ConfigValue::Int(250),
+                ConfigValue::Int(400),
+                ConfigValue::Int(200),
+            ]),
+        )
+        .expect("longer list must be accepted");
+        assert_eq!(field(&cfg, "machine_max_speed_x"), pair(500.0, 250.0));
+    }
+
+    /// A pair with distinct variants emits as the canonical comma-separated
+    /// `coFloats` pair, so the stealth value round-trips through the config
+    /// map instead of being silently dropped.
+    #[test]
+    fn machine_limit_distinct_variants_emit_pair_in_config_map() {
+        let mut cfg = ResolvedConfig::default();
+        cfg.apply_cli_key(
+            "machine_max_jerk_x",
+            &ConfigValue::List(vec![ConfigValue::Float(9.0), ConfigValue::Float(5.0)]),
+        )
+        .expect("pair list must be accepted");
+        assert_eq!(
+            cfg.to_config_map().get("machine_max_jerk_x"),
+            Some(&ConfigValue::List(vec![
+                ConfigValue::Float(9.0),
+                ConfigValue::Float(5.0)
+            ])),
+            "distinct variants must emit as a pair"
+        );
+    }
+
+    #[test]
+    fn silent_mode_parses_bool_and_selects_variant() {
+        let mut cfg = ResolvedConfig::default();
+        let applied = cfg
+            .apply_cli_key("silent_mode", &ConfigValue::Bool(true))
+            .expect("type check");
+        assert!(applied, "silent_mode must be a recognized CLI-bound field");
+        assert!(cfg.silent_mode, "silent_mode must apply");
+        let pair = MachineLimitPair {
+            normal: 12.0,
+            stealth: 6.0,
+        };
+        assert_eq!(pair.select(false), 12.0);
+        assert_eq!(pair.select(true), 6.0);
     }
 
     /// Accepting Orca's list shape must not turn into accepting rubbish:
@@ -2538,6 +2826,17 @@ mod machine_limit_config_tests {
             )
             .is_err(),
             "a non-numeric string must not be silently accepted"
+        );
+        assert!(
+            cfg.apply_cli_key(
+                "machine_max_jerk_y",
+                &ConfigValue::List(vec![
+                    ConfigValue::Float(9.0),
+                    ConfigValue::String("fast".to_string())
+                ]),
+            )
+            .is_err(),
+            "a non-numeric stealth entry must not be silently accepted"
         );
         assert!(
             cfg.apply_cli_key("machine_max_jerk_z", &ConfigValue::List(vec![]))

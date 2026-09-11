@@ -542,6 +542,7 @@ For closed deviations and their closure detail, read the log directly.
 - **D-240B-ADR-0009-AMENDED** (Accepted — packet 240b: ADR-0009 amendment and AD-240B-1 absorption recorded.) — Packet 240b amends ADR-0009: Decision-5 claim ownership is reassigned to com.core.raft-default, and AD-240B-1 absorbs the transport/emitter responsibility into…
 - **D-233-INTERNAL-BRIDGE-QUALIFICATION-COVERAGE** (Open — packet 233: superseded acceptance criteria explicitly retained as unresolved coverage.) — Packet 233 supersedes the earlier acceptance criteria for internal-bridge qualification.
 - **D-246-WAVE-OVERHANG-ANCHOR-DEPTH-DEFAULT** (Accepted — packet 246: deliberate PnP anchor-depth default deviation.) — Wave-overhangs deliberately use the PnP anchor-depth default min(3mm, spacing × (wall_count + 1)) + base_spacing, rather than canonical's auto reference; the d…
+- **DEV-200** (Open — 2026-09-11: intended divergence, user-grilled Q3 (wayfinder ticket 117). Verified by `silent_mode_true_uses_stealth_variant` / `silent_mode_false_uses_normal_variant` (`crates/slicer-gcode/tests/estimator.rs`).) — silent_mode selects the stealth machine-limit variant flavor-agnostically, where canonical gates it on Marlin flavors.
 <!-- END GENERATED: open-deviations -->
 
 

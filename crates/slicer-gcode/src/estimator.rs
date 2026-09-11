@@ -61,27 +61,60 @@ impl Default for EstimatorLimits {
 impl EstimatorLimits {
     /// Builds limits from a `ResolvedConfig`, falling back per-field to
     /// [`EstimatorLimits::default`] for any key the config leaves `None`.
+    ///
+    /// When `silent_mode` is set, every configured `machine_max_*` pair
+    /// contributes its stealth variant instead of its normal variant
+    /// (wayfinder ticket 117; canonical `GCodeProcessor::apply_config`
+    /// enables the stealth time estimator). This selection is deliberately
+    /// flavor-agnostic: canonical gates it on Marlin/Marlin2
+    /// (`init_gcode_processor`, `apply_config`), but this estimator seam
+    /// carries no flavor — see DEV-200.
     pub fn from_config(cfg: &ResolvedConfig) -> Self {
         let d = Self::default();
+        let silent = cfg.silent_mode;
         Self {
             max_acceleration: cfg
                 .machine_max_acceleration_extruding
+                .map(|p| p.select(silent))
                 .unwrap_or(d.max_acceleration),
             max_acceleration_travel: cfg
                 .machine_max_acceleration_travel
+                .map(|p| p.select(silent))
                 .unwrap_or(d.max_acceleration_travel),
             max_speed_xy: cfg
                 .machine_max_speed_x
+                .map(|p| p.select(silent))
                 .unwrap_or(d.max_speed_xy)
-                .min(cfg.machine_max_speed_y.unwrap_or(d.max_speed_xy)),
-            max_speed_z: cfg.machine_max_speed_z.unwrap_or(d.max_speed_z),
-            max_speed_e: cfg.machine_max_speed_e.unwrap_or(d.max_speed_e),
+                .min(
+                    cfg.machine_max_speed_y
+                        .map(|p| p.select(silent))
+                        .unwrap_or(d.max_speed_xy),
+                ),
+            max_speed_z: cfg
+                .machine_max_speed_z
+                .map(|p| p.select(silent))
+                .unwrap_or(d.max_speed_z),
+            max_speed_e: cfg
+                .machine_max_speed_e
+                .map(|p| p.select(silent))
+                .unwrap_or(d.max_speed_e),
             jerk_xy: cfg
                 .machine_max_jerk_x
+                .map(|p| p.select(silent))
                 .unwrap_or(d.jerk_xy)
-                .min(cfg.machine_max_jerk_y.unwrap_or(d.jerk_xy)),
-            jerk_z: cfg.machine_max_jerk_z.unwrap_or(d.jerk_z),
-            jerk_e: cfg.machine_max_jerk_e.unwrap_or(d.jerk_e),
+                .min(
+                    cfg.machine_max_jerk_y
+                        .map(|p| p.select(silent))
+                        .unwrap_or(d.jerk_xy),
+                ),
+            jerk_z: cfg
+                .machine_max_jerk_z
+                .map(|p| p.select(silent))
+                .unwrap_or(d.jerk_z),
+            jerk_e: cfg
+                .machine_max_jerk_e
+                .map(|p| p.select(silent))
+                .unwrap_or(d.jerk_e),
         }
     }
 }
