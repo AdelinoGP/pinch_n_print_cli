@@ -249,6 +249,23 @@ _Avoid_: Support generator, support filler
 The layer-independent half of a support family that converts its strategy geometry into printable support paths for one layer.
 _Avoid_: Support planner, support generator
 
+### Layer preparation
+A layer module's whole-print planning capability, used to prepare information
+for its own later layer processing.
+
+### Prepared layer plan
+Immutable information produced by a layer module's **layer preparation** and
+consumed privately by that same module. Its meaning and format belong to the
+owning module.
+
+### Prepared plan piece
+A named portion of a **prepared layer plan**. The owning module defines the
+piece's meaning and how it relates to the rest of its plan.
+
+### Prepared plan projection
+Diagnostic geometry supplied by the owner of a **prepared layer plan** for
+visual inspection of that plan alongside other pipeline stages.
+
 ### Degraded success
 A slice that finishes despite one or more non-fatal module failures. The result
 is usable but flagged as degraded, and every failure is reported — never silent.
@@ -936,4 +953,3 @@ manifest, registry) at use time. A count pin can be a legitimate contract when
 it pins a documented wire format or schema version; an incidental roster is a
 false-green vector because it stays green while the real set drifts.
 _Avoid_: census (of production symbols), inventory assertion.
-
