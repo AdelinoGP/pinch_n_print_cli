@@ -126,7 +126,6 @@ fn object_bottom_predicates_are_raft_aware() {
         &below,
         &[],
         &SupportContactParams {
-            support_sharp_tails: true,
             ..raft_aware_params(45.0, RAFT_LAYERS)
         },
     );
@@ -143,7 +142,6 @@ fn object_bottom_predicates_are_raft_aware() {
             &below,
             &[],
             &SupportContactParams {
-                support_sharp_tails: true,
                 ..raft_aware_params(45.0, raft_index)
             },
         );

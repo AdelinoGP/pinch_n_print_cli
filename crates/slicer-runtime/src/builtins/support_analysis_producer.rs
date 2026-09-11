@@ -182,8 +182,9 @@ pub fn commit_support_analysis_builtin(
                                 lower_index,
                             ),
                             bridge_polygons: bridge_polygons.clone(),
-                            // `layer_id` is trivially available here; the other
-                            // new knobs ride neutral from `base_params` (OFF).
+                            // `layer_id` is trivially available here;
+                            // `enforce_support_layers` still rides neutral from
+                            // `base_params` (see `resolve_contact_params`).
                             // Clone (not move) the base because this `Fn` closure
                             // may run multiple times under rayon.
                             layer_id: *layer_index,
@@ -735,13 +736,26 @@ fn resolve_contact_params(
         // `ResolvedConfig::to_config_map`.
         bridge_no_support: config.bridge_no_support,
         bridge_polygons: Vec::new(),
-        support_sharp_tails: false,
+        // Sharp-tail detection is no longer a knob: canonical froze it ON
+        // (`g_config_support_sharp_tails`, `libslic3r.h`) and retired the key
+        // into `PrintConfigDef::handle_legacy`'s obsolete-key `ignore` set, so
+        // `detect_support_contacts` gates on its own
+        // `SHARP_TAIL_OBJECT_BOTTOM_EXCEPTION` constant and there is nothing to
+        // source here.
+        //
+        // `enforce_support_layers` IS a live config key
+        // (`ResolvedConfig::enforce_support_layers`, canonical `coInt`) and is
+        // the one audit survivor still severed: packet 265 (P13, ticket 20,
+        // `status: draft`) specifies the read, so the window in
+        // `detect_support_contacts` rides at 0 regardless of the profile.
+        // `bridge_no_support` is NOT severed — the flag below is wired and the
+        // commit loop supplies per-region `bridge_polygons` from
+        // `SlicedRegion::bridge_areas` (P30, `e7404ff1`).
         enforce_support_layers: 0,
         layer_id: 0,
-        // Object-bottom boundary. This is the ONLY `ResolvedConfig` bridge
-        // into `SupportContactParams`, so without this read the raft-aware
-        // predicates in `detect_support_contacts` would ride at their default
-        // and the conversion would be inert.
+        // Object-bottom boundary. Without this read the raft-aware predicates
+        // in `detect_support_contacts` would ride at their default and the
+        // conversion would be inert.
         raft_layers: extension_u32(config, "support_raft_layers").unwrap_or(0),
     }
 }

@@ -232,10 +232,6 @@ impl ResolvedConfig {
             "support_object_first_layer_gap".into(),
             ConfigValue::Float(f64::from(self.support_object_first_layer_gap)),
         );
-        m.insert(
-            "support_sharp_tails".into(),
-            ConfigValue::Bool(self.support_sharp_tails),
-        );
         // Wayfinder ticket 50 (P43): `machine-gcode-emit` reads this through
         // its manifest-declared schema to skip the first `change_filament_gcode`
         // injection; the host serializer reads the field directly. Canonical
@@ -2042,12 +2038,6 @@ declare_resolved_config! {
      cli "support_remove_small_overhang" support_remove_small_overhang: bool = true => extract_bool;
      /// Gap between the object and support on its first layer in millimeters.
      cli "support_object_first_layer_gap" support_object_first_layer_gap: f32 = 0.2 => extract_float;
-     /// Whether sharp support tails are enabled.
-     cli "support_sharp_tails" support_sharp_tails: bool = true => extract_bool @ {
-        display: Some("Support sharp tails"),
-        description: Some("Keep pointed support tails instead of trimming them."),
-        group: Some("Support"),
-    };
 
     // Non-planar (module-contributed)
     /// Maximum non-planar angle in degrees (optional).
@@ -2269,7 +2259,6 @@ impl PartialEq for ResolvedConfig {
             && self.support_remove_small_overhang == other.support_remove_small_overhang
             && self.support_object_first_layer_gap.to_bits()
                 == other.support_object_first_layer_gap.to_bits()
-            && self.support_sharp_tails == other.support_sharp_tails
             && self.nonplanar_max_angle_deg.map(|f| f.to_bits())
                 == other.nonplanar_max_angle_deg.map(|f| f.to_bits())
             && self.nonplanar_shell_count == other.nonplanar_shell_count
@@ -2383,7 +2372,6 @@ impl std::hash::Hash for ResolvedConfig {
         self.support_critical_regions_only.hash(state);
         self.support_remove_small_overhang.hash(state);
         self.support_object_first_layer_gap.to_bits().hash(state);
-        self.support_sharp_tails.hash(state);
         self.nonplanar_max_angle_deg
             .map(|f| f.to_bits())
             .hash(state);

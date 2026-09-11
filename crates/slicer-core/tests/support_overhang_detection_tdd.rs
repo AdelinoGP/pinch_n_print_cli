@@ -148,14 +148,13 @@ fn sharp_tail_profile() -> Vec<ExPolygon> {
 }
 
 #[test]
-fn sharp_tails_add_first_layer_contacts_when_enabled() {
+fn sharp_tails_add_object_bottom_contacts() {
     let profile = sharp_tail_profile();
     let contacts = detect_support_contacts(
         &profile,
         &[rect(0.0, 0.0, 4.0, 4.0)],
         &[],
         &SupportContactParams {
-            support_sharp_tails: true,
             layer_id: 0,
             ..params(45.0, 0.2)
         },
@@ -164,8 +163,17 @@ fn sharp_tails_add_first_layer_contacts_when_enabled() {
     assert!(!contacts.is_empty());
 }
 
+/// Ticket 115 flipped this assertion deliberately. Sharp-tail detection used
+/// to ride OFF here because `SupportContactParams::support_sharp_tails`
+/// defaulted to `false`; canonical has no such knob --- `libslic3r.h` freezes
+/// `g_config_support_sharp_tails = true` and `PrintConfigDef::handle_legacy`
+/// ignores the retired key --- so the port now gates on the
+/// `SHARP_TAIL_OBJECT_BOTTOM_EXCEPTION` constant and the same input yields
+/// contacts. This is
+/// the geometry change the ticket exists to make; the input is unchanged so
+/// the pair of tests brackets it.
 #[test]
-fn sharp_tails_disabled_by_default_emits_none() {
+fn sharp_tails_are_frozen_on_and_emit_at_object_bottom() {
     let profile = sharp_tail_profile();
     let contacts = detect_support_contacts(
         &profile,
@@ -177,7 +185,11 @@ fn sharp_tails_disabled_by_default_emits_none() {
         },
     );
 
-    assert!(contacts.is_empty());
+    assert!(
+        !contacts.is_empty(),
+        "sharp-tail detection is frozen ON: a pointed object-bottom profile \
+         must emit a contact even with wholly default params"
+    );
 }
 
 #[test]
@@ -445,6 +457,19 @@ fn threshold_angle_is_clamped_to_eighty_nine_degrees() {
     );
 }
 
+/// Params for an **ordinary** (non-object-bottom) layer on the plain-difference
+/// branch. Ticket 115 froze the object-bottom exception ON, and that exception
+/// suppresses the tiny-spot filter, so a test that means to exercise the filter
+/// must sit above the object's bottom layer. `layer_id: 1` with the default
+/// `raft_layers: 0` and `enforce_support_layers: 0` leaves the plain-difference
+/// branch selected and the exception off.
+fn ordinary_layer_plain_difference_params() -> SupportContactParams {
+    SupportContactParams {
+        layer_id: 1,
+        ..plain_difference_params()
+    }
+}
+
 #[test]
 fn tiny_spots_are_filtered_out() {
     // F-25 step 4: `if (diff_polygons.empty() || offset(diff_polygons, -0.1 * fw).empty()) continue;`
@@ -452,14 +477,45 @@ fn tiny_spots_are_filtered_out() {
     // dropped wholesale, while a 1mm ledge survives.
     let (lower, tiny) = pillar_with_ledge(0.02);
     let (_, printable) = pillar_with_ledge(1.0);
+    let params = ordinary_layer_plain_difference_params();
 
     assert!(
-        detect_support_contacts(&tiny, &lower, &[], &plain_difference_params()).is_empty(),
+        detect_support_contacts(&tiny, &lower, &[], &params).is_empty(),
         "a sub-line-width contact must be filtered out entirely"
     );
     assert!(
-        !detect_support_contacts(&printable, &lower, &[], &plain_difference_params()).is_empty(),
+        !detect_support_contacts(&printable, &lower, &[], &params).is_empty(),
         "a 1mm ledge is well above the tiny-spot threshold and must survive"
+    );
+}
+
+/// The other half of ticket 115's geometry change, and the reason the test above
+/// had to move off the object bottom.
+///
+/// Canonical never reaches the tiny-spot `continue` on the object's bottom
+/// layer: `detect_overhangs` (`SupportMaterial.cpp`) takes its unconditional
+/// `layer_id == 0` branch there, sets the whole slice as the overhang set, and
+/// the per-region loop carrying the `offset(diff_polygons, -0.1 * fw).empty()`
+/// test belongs to the *other* branch. Freezing the exception ON is what makes
+/// this port agree; before ticket 115 the same input was filtered away.
+#[test]
+fn object_bottom_layer_is_exempt_from_the_tiny_spot_filter() {
+    let (lower, tiny) = pillar_with_ledge(0.02);
+    let ordinary = ordinary_layer_plain_difference_params();
+    let object_bottom = plain_difference_params();
+    assert_eq!(
+        object_bottom.layer_id, object_bottom.raft_layers,
+        "fixture guard: these params must sit on the object's bottom layer"
+    );
+
+    assert!(
+        detect_support_contacts(&tiny, &lower, &[], &ordinary).is_empty(),
+        "control: the same ledge one layer up is filtered away"
+    );
+    assert!(
+        !detect_support_contacts(&tiny, &lower, &[], &object_bottom).is_empty(),
+        "the object's bottom layer is exempt from the tiny-spot filter, so the \
+         0.02mm ledge must survive there"
     );
 }
 

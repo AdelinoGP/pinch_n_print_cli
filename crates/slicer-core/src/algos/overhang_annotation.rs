@@ -188,8 +188,6 @@ pub struct SupportContactParams {
     pub bridge_no_support: bool,
     /// Bridge polygons identified by the host for this layer.
     pub bridge_polygons: Vec<ExPolygon>,
-    /// Transitional opt-in for canonical sharp-tail contacts.
-    pub support_sharp_tails: bool,
     /// Force plain differences for the first support layers.
     pub enforce_support_layers: u32,
     /// Zero-based current **global** layer index.
@@ -228,13 +226,39 @@ impl Default for SupportContactParams {
             xy_expansion_mm: 0.0,
             bridge_no_support: false,
             bridge_polygons: Vec::new(),
-            support_sharp_tails: false,
             enforce_support_layers: 0,
             layer_id: 0,
             raft_layers: 0,
         }
     }
 }
+
+/// The object-bottom overhang exception, frozen ON (wayfinder ticket 115).
+///
+/// Sharp-tail handling is not a user knob in canonical and is no longer one
+/// here. `libslic3r.h` declares `static constexpr bool
+/// g_config_support_sharp_tails = true` under the comment "some global const
+/// config which user can not change, but developer can", and
+/// `PrintConfigDef::handle_legacy` (`PrintConfig.cpp`) lists
+/// `support_sharp_tails` in its obsolete-key `ignore` set, so a profile that
+/// still sets it is discarded before it reaches the pipeline. This constant is
+/// the developer-only edit point that replaces the retired key.
+///
+/// **What it gates here is canonical's `layer_id == 0` branch, not canonical's
+/// `g_config_support_sharp_tails` branch.** The two are easy to conflate, so:
+///
+/// * Canonical `detect_overhangs` (`SupportMaterial.cpp`) takes an unconditional
+///   `layer_id == 0` branch in which the whole slice becomes the overhang set
+///   and the per-region tiny-spot `continue` is never reached. The gate below
+///   reproduces that branch at the object's bottom layer, narrowed to fire only
+///   when the region carries a pointed (three-point) contour --- which is also
+///   why `sharp_tail_enabled` suppresses the tiny-spot filter downstream.
+/// * Canonical's `g_config_support_sharp_tails` test sits in the *other* branch
+///   (`else if (auto_normal_support)`), where it appends per-`raw_slices`
+///   sharp-tail overhangs to `diff_polygons` on **ordinary** layers using an
+///   `overlaps` / `area_thresh_well_supported` test. That is **not modelled**
+///   here; see the "Not modelled" section of [`detect_support_contacts`].
+const SHARP_TAIL_OBJECT_BOTTOM_EXCEPTION: bool = true;
 
 /// Canonical `SUPPORT_SURFACES_OFFSET_PARAMETERS` is
 /// `ClipperLib::jtSquare, 0.` -- every offset in the support-contact pipeline
@@ -323,6 +347,15 @@ fn lower_layer_offset_mm(params: &SupportContactParams) -> f32 {
 ///
 /// `buildplate_covered`.
 ///
+/// Canonical's **ordinary-layer** sharp-tail append --- the
+/// `g_config_support_sharp_tails` block inside `detect_overhangs`'
+/// `else if (auto_normal_support)` branch, which walks `layerm->raw_slices`,
+/// classifies a slice as a sharp tail when it does not `overlaps` the eroded
+/// lower layer and its area is below `area_thresh_well_supported`, and appends
+/// the result to `diff_polygons`. This stage has no `raw_slices` equivalent and
+/// no accumulated `sharp_tails_height`, so only the object-bottom branch is
+/// reproduced (see [`SHARP_TAIL_OBJECT_BOTTOM_EXCEPTION`]).
+///
 /// # Returns
 ///
 /// The contact polygons for this region, or an empty `Vec` when the region is
@@ -385,7 +418,8 @@ pub fn detect_support_contacts(
     // even when the ordinary lower-layer offset consumes their tiny footprint.
     // The object's bottom layer is global index `raft_layers` (0 without a
     // raft); under a raft this must not fire on the raft itself.
-    let sharp_tail_enabled = params.support_sharp_tails && params.layer_id == params.raft_layers;
+    let sharp_tail_enabled =
+        SHARP_TAIL_OBJECT_BOTTOM_EXCEPTION && params.layer_id == params.raft_layers;
     if sharp_tail_enabled {
         let has_sharp_tail = region_polygons
             .iter()

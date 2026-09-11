@@ -446,7 +446,6 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `support_object_first_layer_gap` | float | `0.2` | >= 0 | `resolved_config.rs::ResolvedConfig` |
 | `support_remove_small_overhang` | bool | `true` | — | `resolved_config.rs::ResolvedConfig` |
 | `support_resolution` | float | `0.0375` | >= 0 (D-P tolerance for support / interface) | `resolved_config.rs::ResolvedConfig` |
-| `support_sharp_tails` | bool | `true` | — | `resolved_config.rs::ResolvedConfig` |
 | `support_threshold_angle` | float | `30.0` | [0, 90] (overhang angle above which support is generated; canonical OrcaSlicer `support_threshold_angle` default (coInt 30). Legacy alias `support_overhang_angle` still resolves.) | `resolved_config.rs::ResolvedConfig` |
 | `support_threshold_overlap` | float | `50.0` | >= 0 (default is 50%) | `resolved_config.rs::ResolvedConfig` |
 | `support_top_z_distance` | float | `0.2` | >= 0 | `resolved_config.rs::ResolvedConfig` |
