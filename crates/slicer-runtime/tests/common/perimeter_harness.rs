@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use super::pipeline_config_base;
+use slicer_core::perimeter_spatial::diagnostics::RegionCaptureRecord;
 use slicer_gcode::{DefaultGCodeEmitter, DefaultGCodeSerializer};
 use slicer_ir::{ConfigValue, GlobalLayer, LayerStageCommit, ModuleId, PerimeterIR, StageId};
 use slicer_runtime::pipeline::{run_pipeline_with_raw_config, PipelineStageRunners};
@@ -261,6 +262,35 @@ pub fn run_pipeline_capturing_perimeters(
         .collect();
     captured.sort_by_key(|perimeter| perimeter.global_layer_index);
     Ok(captured)
+}
+
+/// Run the real pipeline and expose the prepared-region records captured by
+/// the WASM dispatch path alongside the final perimeters.
+#[cfg(feature = "perimeter-spatial-test-support")]
+pub fn run_pipeline_capturing_perimeters_with_regions(
+    mesh_path: &Path,
+    config_path: &Path,
+    module_dirs: &[PathBuf],
+    wall_generator: WallGenerator,
+) -> Result<(Vec<PerimeterIR>, Vec<RegionCaptureRecord>), PerimeterHarnessError> {
+    let (perimeters, _counters, records) =
+        slicer_core::perimeter_spatial::diagnostics::with_capture(true, false, || {
+            run_pipeline_capturing_perimeters(mesh_path, config_path, module_dirs, wall_generator)
+        });
+    perimeters.map(|perimeters| (perimeters, records))
+}
+
+/// Run the real pipeline and return no diagnostic records when test support is
+/// not enabled.
+#[cfg(not(feature = "perimeter-spatial-test-support"))]
+pub fn run_pipeline_capturing_perimeters_with_regions(
+    mesh_path: &Path,
+    config_path: &Path,
+    module_dirs: &[PathBuf],
+    wall_generator: WallGenerator,
+) -> Result<(Vec<PerimeterIR>, Vec<RegionCaptureRecord>), PerimeterHarnessError> {
+    run_pipeline_capturing_perimeters(mesh_path, config_path, module_dirs, wall_generator)
+        .map(|perimeters| (perimeters, Vec::new()))
 }
 
 #[derive(Debug, Clone)]

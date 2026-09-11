@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use wasmtime::component::Resource;
 
+use slicer_core::perimeter_spatial::diagnostics::{observe_prepared_region, RegionCaptureRecord};
 use slicer_ir::{
     is_modifier_namespace_id as ir_is_modifier_namespace_id, GCodeCommand, GlobalLayer,
     LayerCollectionIR, RetractMode, StageId,
@@ -2207,6 +2208,17 @@ fn push_slice_regions(
         if region.region_id == slicer_ir::MODIFIER_FOOTPRINT_REGION_ID {
             continue;
         }
+        observe_prepared_region(RegionCaptureRecord {
+            layer_index: layer.index as usize,
+            region_ordinal: index,
+            contour_count: region.polygons.len(),
+            hole_count: region
+                .polygons
+                .iter()
+                .map(|polygon| polygon.holes.len())
+                .sum(),
+            bridge_count: region.bridge_areas.len(),
+        });
         let held_claims = store
             .data()
             .held_claims_for(&region.object_id, &region.region_id.to_string())

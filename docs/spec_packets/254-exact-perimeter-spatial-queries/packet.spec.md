@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 254-exact-perimeter-spatial-queries
 task_ids:
   - TASK-561

@@ -1780,6 +1780,14 @@ remain separate workspaces.
   deterministic line per diverging crate naming `--sync-locks` as the remedy, and
   it folds into exit `1`, never exit `3`. Semver-major coexistence inside a
   single lock (syn 1.x alongside 2.x) is not divergence.
+- `cargo xtask build-guests --accelerated --check` — verify accelerated guest
+  artifacts under the mode-distinct namespace `target/guests-accelerated/`,
+  with the same exit-code semantics (`0` fresh, `1` stale, `3` infrastructure
+  error) and the accelerated policy/toolchain identity. It never accepts an
+  opposite-mode artifact: a clean ordinary artifact is not evidence that the
+  accelerated artifact is fresh, and vice versa. `cargo xtask build-guests
+  --accelerated` rebuilds only the stale accelerated guests; `--accelerated
+  --force` is the unconditional accelerated rebuild.
 - `cargo xtask build-guests --sync-locks` — regenerates every guest lockfile in
   one pass. It skips guests that are members of the root workspace (those
   without their own `[workspace]` sentinel), because `cargo generate-lockfile`

@@ -7,6 +7,13 @@ use std::process::Command;
 use crate::build_guests::{self, GuestSpec, GuestTree};
 use crate::editions;
 
+const ORDINARY_DIST_NAMESPACE: &str = "dist";
+const ACCELERATED_DIST_NAMESPACE: &str = "dist-accelerated";
+const ACCELERATED_HOST_TARGET_NAMESPACE: &str = "dist-host-accelerated";
+const ACCELERATED_GUEST_NAMESPACE: &str = "guests-accelerated";
+const ACCELERATED_METADATA_FILE: &str = "build-metadata.toml";
+const TEST_SUPPORT_FEATURE: &str = "perimeter-spatial-test-support";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DistArgs {
     pub edition: Option<String>,
@@ -14,6 +21,7 @@ pub(crate) struct DistArgs {
     pub plan_only: bool,
     /// `--force-guests`: rebuild every guest instead of only the stale ones.
     pub force_guests: bool,
+    pub accelerated: bool,
 }
 
 pub(crate) fn parse_dist_args(args: &[String]) -> Result<DistArgs, String> {
@@ -22,6 +30,7 @@ pub(crate) fn parse_dist_args(args: &[String]) -> Result<DistArgs, String> {
         debug: false,
         plan_only: false,
         force_guests: false,
+        accelerated: false,
     };
     let mut i = 0;
     while i < args.len() {
@@ -43,6 +52,10 @@ pub(crate) fn parse_dist_args(args: &[String]) -> Result<DistArgs, String> {
             }
             "--force-guests" => {
                 parsed.force_guests = true;
+                i += 1;
+            }
+            "--accelerated" => {
+                parsed.accelerated = true;
                 i += 1;
             }
             other => return Err(format!("unknown flag '{other}' for dist")),
@@ -76,6 +89,14 @@ fn stem_of(spec: &GuestSpec) -> Option<String> {
 }
 
 pub(crate) fn plan_edition(ws_root: &Path, edition: &str) -> Result<DistPlan, String> {
+    plan_edition_for_mode(ws_root, edition, false)
+}
+
+fn plan_edition_for_mode(
+    ws_root: &Path,
+    edition: &str,
+    accelerated: bool,
+) -> Result<DistPlan, String> {
     let editions = editions::load_editions(ws_root)?;
     let spec = editions.get(edition).ok_or_else(|| {
         let available = editions
@@ -115,11 +136,20 @@ pub(crate) fn plan_edition(ws_root: &Path, edition: &str) -> Result<DistPlan, St
 
     Ok(DistPlan {
         edition: edition.to_owned(),
-        out_dir: ws_root.join("target").join("dist").join(edition),
+        out_dir: dist_output_dir(ws_root, edition, accelerated),
         cargo_features,
         integrated,
         external_stage,
     })
+}
+
+fn dist_output_dir(ws_root: &Path, edition: &str, accelerated: bool) -> PathBuf {
+    let namespace = if accelerated {
+        ACCELERATED_DIST_NAMESPACE
+    } else {
+        ORDINARY_DIST_NAMESPACE
+    };
+    ws_root.join("target").join(namespace).join(edition)
 }
 
 pub(crate) fn assert_staging_disjoint(
@@ -177,10 +207,31 @@ pub(crate) fn verify_integrated_feature_coverage(
 }
 
 pub(crate) fn preflight_edition(ws_root: &Path, edition: &str) -> Result<DistPlan, String> {
-    let plan = plan_edition(ws_root, edition)?;
+    preflight_edition_for_mode(ws_root, edition, false)
+}
+
+fn preflight_edition_for_mode(
+    ws_root: &Path,
+    edition: &str,
+    accelerated: bool,
+) -> Result<DistPlan, String> {
+    let plan = if accelerated {
+        plan_edition_for_mode(ws_root, edition, true)?
+    } else {
+        plan_edition(ws_root, edition)?
+    };
     let available = pnp_cli_integrated_features(ws_root)?;
     verify_integrated_feature_coverage(&plan.edition, &plan.integrated, &available)?;
     assert_staging_disjoint(&plan.edition, &plan.integrated, &plan.external_stems())?;
+    if plan
+        .cargo_features
+        .iter()
+        .any(|feature| feature == TEST_SUPPORT_FEATURE)
+    {
+        return Err(format!(
+            "edition '{edition}': dist output must not enable {TEST_SUPPORT_FEATURE}"
+        ));
+    }
     Ok(plan)
 }
 
@@ -198,7 +249,11 @@ pub(crate) fn print_plan(plan: &DistPlan) {
 
 pub(crate) fn dist_command(ws_root: &Path, args: &DistArgs) -> i32 {
     let edition = args.edition.as_deref().unwrap_or("developer");
-    let plan = match preflight_edition(ws_root, edition) {
+    let plan = match if args.accelerated {
+        preflight_edition_for_mode(ws_root, edition, true)
+    } else {
+        preflight_edition(ws_root, edition)
+    } {
         Ok(plan) => plan,
         Err(e) => {
             eprintln!("xtask dist: {e}");
@@ -213,8 +268,28 @@ pub(crate) fn dist_command(ws_root: &Path, args: &DistArgs) -> i32 {
 
     let profile = if args.debug { "debug" } else { "release" };
 
+    let accelerated_wrapper = if args.accelerated {
+        if let Err(error) = crate::rustc_driver::clear_latch(ws_root) {
+            eprintln!("xtask dist --accelerated: failed to clear driver latch: {error}");
+            return 1;
+        }
+        match crate::rustc_driver::create_shim_wrapper(ws_root) {
+            Ok(path) => Some(path),
+            Err(error) => {
+                eprintln!("xtask dist --accelerated: failed to create shim wrapper: {error}");
+                return 1;
+            }
+        }
+    } else {
+        None
+    };
+
     println!("xtask dist: building guest WASMs...");
-    let code = build_guests::build_command(ws_root, args.force_guests);
+    let code = if args.accelerated {
+        build_guests::accelerated_build_command(ws_root, args.force_guests)
+    } else {
+        build_guests::build_command(ws_root, args.force_guests)
+    };
     if code != 0 {
         return code;
     }
@@ -227,6 +302,37 @@ pub(crate) fn dist_command(ws_root: &Path, args: &DistArgs) -> i32 {
     }
     if !plan.cargo_features.is_empty() {
         cmd.arg("--features").arg(plan.cargo_features.join(","));
+    }
+    let host_target_dir = if args.accelerated {
+        Some(
+            ws_root
+                .join("target")
+                .join(ACCELERATED_HOST_TARGET_NAMESPACE),
+        )
+    } else {
+        None
+    };
+    if let Some(wrapper) = accelerated_wrapper.as_deref() {
+        cmd.env(
+            "CARGO_TARGET_DIR",
+            host_target_dir
+                .as_deref()
+                .expect("accelerated host target directory"),
+        )
+        .env("RUSTC", wrapper)
+        .env(
+            crate::rustc_driver::PNP_XTASK_EXE_ENV,
+            std::env::current_exe().expect("resolve current xtask executable"),
+        )
+        .env(crate::rustc_driver::ACCELERATED_ENV, "1")
+        .env(
+            crate::rustc_driver::ACCELERATED_MODE_ENV,
+            if args.debug {
+                "host-debug"
+            } else {
+                "host-release"
+            },
+        );
     }
     let out = match cmd.output() {
         Ok(o) => o,
@@ -263,7 +369,10 @@ pub(crate) fn dist_command(ws_root: &Path, args: &DistArgs) -> i32 {
     } else {
         "pnp_cli"
     };
-    let bin_src = ws_root.join("target").join(profile).join(bin_name);
+    let bin_src = match host_target_dir.as_deref() {
+        Some(target_dir) => target_dir.join(profile).join(bin_name),
+        None => ws_root.join("target").join(profile).join(bin_name),
+    };
     let bin_dest = dist_dir.join(bin_name);
     if let Err(e) = fs::copy(&bin_src, &bin_dest) {
         eprintln!(
@@ -285,8 +394,12 @@ pub(crate) fn dist_command(ws_root: &Path, args: &DistArgs) -> i32 {
 
     let mut module_count = 0usize;
     for spec in &plan.external_stage {
-        let wasm_src = ws_root.join(&spec.artifact_path);
-        let toml_src = wasm_src.with_extension("toml");
+        let wasm_src = dist_guest_artifact_path(ws_root, spec, args.accelerated);
+        let toml_src = if args.accelerated {
+            ws_root.join(&spec.artifact_path).with_extension("toml")
+        } else {
+            wasm_src.with_extension("toml")
+        };
         let stem = match stem_of(spec) {
             Some(s) => s,
             None => {
@@ -358,12 +471,45 @@ pub(crate) fn dist_command(ws_root: &Path, args: &DistArgs) -> i32 {
         return 1;
     }
 
+    if args.accelerated {
+        if let Err(error) = write_accelerated_metadata(dist_dir, &plan.edition, profile) {
+            eprintln!(
+                "xtask dist: failed to write accelerated metadata in {}: {error}",
+                dist_dir.display()
+            );
+            return 1;
+        }
+    }
+
     println!(
         "xtask dist: edition '{}' staged 1 binary + {module_count} modules into {}",
         plan.edition,
         dist_dir.display()
     );
     0
+}
+
+fn dist_guest_artifact_path(ws_root: &Path, spec: &GuestSpec, accelerated: bool) -> PathBuf {
+    if !accelerated {
+        return ws_root.join(&spec.artifact_path);
+    }
+
+    let relative = spec
+        .artifact_path
+        .strip_prefix(ws_root)
+        .unwrap_or(&spec.artifact_path);
+    ws_root
+        .join("target")
+        .join(ACCELERATED_GUEST_NAMESPACE)
+        .join("artifacts")
+        .join(relative)
+}
+
+fn write_accelerated_metadata(dist_dir: &Path, edition: &str, profile: &str) -> io::Result<()> {
+    let metadata = format!(
+        "mode = \"accelerated\"\nedition = \"{edition}\"\nprofile = \"{profile}\"\nperimeter_spatial_test_support = false\n"
+    );
+    fs::write(dist_dir.join(ACCELERATED_METADATA_FILE), metadata)
 }
 
 #[cfg(test)]
@@ -458,6 +604,7 @@ mod tests {
         assert_eq!(defaults.edition, None);
         assert!(!defaults.debug);
         assert!(!defaults.plan_only);
+        assert!(!defaults.accelerated);
         let err = parse_dist_args(&strings(&["--edition"]))
             .expect_err("--edition without a value must fail");
         assert!(err.contains("--edition"));
@@ -465,9 +612,60 @@ mod tests {
     }
 
     #[test]
+    fn accelerated_entry_points_flag_parses() {
+        let parsed = parse_dist_args(&strings(&["--accelerated", "--edition", "hybrid"]))
+            .expect("accelerated dist flag parses");
+        assert!(parsed.accelerated);
+        assert_eq!(parsed.edition.as_deref(), Some("hybrid"));
+    }
+
+    #[test]
+    fn accelerated_entry_points_dist_never_enables_test_support() {
+        let ws_root = build_guests::workspace_root();
+        let plan = plan_edition_for_mode(&ws_root, "developer", true)
+            .expect("accelerated developer edition plans");
+        assert!(plan
+            .cargo_features
+            .iter()
+            .all(|feature| feature != TEST_SUPPORT_FEATURE));
+        assert!(preflight_edition_for_mode(&ws_root, "developer", true)
+            .expect("accelerated preflight succeeds")
+            .cargo_features
+            .iter()
+            .all(|feature| feature != TEST_SUPPORT_FEATURE));
+    }
+
+    #[test]
+    fn accelerated_entry_points_use_mode_distinct_staging_path() {
+        let ws_root = build_guests::workspace_root();
+        let ordinary = plan_edition(&ws_root, "developer").expect("ordinary plan succeeds");
+        let accelerated =
+            plan_edition_for_mode(&ws_root, "developer", true).expect("accelerated plan succeeds");
+        assert!(ordinary
+            .out_dir
+            .ends_with(Path::new("target").join("dist").join("developer")));
+        assert!(accelerated.out_dir.ends_with(
+            Path::new("target")
+                .join("dist-accelerated")
+                .join("developer")
+        ));
+        assert_ne!(ordinary.out_dir, accelerated.out_dir);
+    }
+
+    #[test]
+    fn accelerated_entry_points_ordinary_mode_unchanged() {
+        let defaults = parse_dist_args(&strings(&[])).expect("ordinary dist defaults parse");
+        assert!(!defaults.accelerated);
+        let ws_root = build_guests::workspace_root();
+        let plan = plan_edition(&ws_root, "developer").expect("ordinary plan succeeds");
+        assert!(plan
+            .out_dir
+            .ends_with(Path::new("target").join("dist").join("developer")));
+    }
+
+    #[test]
     fn dist_args_parse_force_guests() {
-        let forced =
-            parse_dist_args(&strings(&["--force-guests"])).expect("--force-guests parses");
+        let forced = parse_dist_args(&strings(&["--force-guests"])).expect("--force-guests parses");
         assert!(forced.force_guests);
 
         let defaults = parse_dist_args(&strings(&[])).expect("empty args parse");

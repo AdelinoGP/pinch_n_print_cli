@@ -148,6 +148,8 @@ The answer is an **exit code** — `0` (`EXIT_FRESH`) means every artifact is fr
 
 **Prohibited claims unless `--check` was just run and returned clean (exit `0`):** "the wasm rebuild is a separate workstream", "this is unrelated to my changes", "the build scripts are out of scope for this packet", or any equivalent deflection. Treat a stale guest as your bug until `--check` proves otherwise (exit `0`).
 
+**Accelerated mode uses a mode-distinct namespace.** Accelerated guest artifacts live under `target/guests-accelerated/`, not the ordinary `target/guests/`, with their own freshness fingerprints and policy/toolchain identity metadata. They are checked with `cargo xtask build-guests --accelerated --check`, and `cargo xtask build-guests --accelerated` rebuilds only the stale accelerated guests (consulting that same mode-aware check; `--force` remains the unconditional rebuild). Ordinary `cargo xtask build-guests --check` never validates opposite-mode artifacts: a clean ordinary artifact is not evidence that the accelerated artifact is fresh, and vice versa. See `docs/23_controlled_perimeter_builds.md` for the accelerated gate sequence.
+
 ## WIT/Type Changes Checklist
 
 When modifying WIT types or interface definitions:

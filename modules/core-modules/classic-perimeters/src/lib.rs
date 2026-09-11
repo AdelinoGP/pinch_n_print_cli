@@ -24,16 +24,17 @@ use std::collections::HashMap;
 use slicer_core::flow::{
     bridging_flow, line_width_to_spacing, resolve_role_width, RoleWidthContext,
 };
+use slicer_core::perimeter_spatial::{
+    expolygon_to_path3d_indexed, PathAnnotationMode, PerimeterSpatialContext,
+};
 use slicer_core::perimeter_utils::{
-    apply_seam_paint_bias, build_wall_flags, expolygon_to_path3d,
-    generate_sharp_corner_seam_candidates, point_in_any_polygon, seam_paint_boxes,
-    wall_sequence_reorder, WallSequence, BASE_SPEED,
+    apply_seam_paint_bias, build_wall_flags, generate_sharp_corner_seam_candidates,
+    seam_paint_boxes, wall_sequence_reorder, WallSequence, BASE_SPEED,
 };
 use slicer_core::polygon_ops::{
     offset2_ex, opening_ex, remove_small_and_small_holes, OffsetJoinType as CoreJoin,
 };
 use slicer_core::top_surface_split::split_top_surfaces;
-use slicer_ir::slice_ir::QuartileBand;
 use slicer_ir::{
     units_to_mm, variable_width, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D,
     ExtrusionRole, LoopType, PaintSemantic, PaintValue, Polygon, WallLoop, WidthProfile,
@@ -367,6 +368,11 @@ impl LayerModule for ClassicPerimeters {
                 continue;
             }
             let prev_layer_boundary = region.prev_layer_boundary();
+            let spatial_context = PerimeterSpatialContext::new(
+                prev_layer_boundary,
+                region.overhang_quartile_polygons(),
+                region.bridge_areas(),
+            );
             // ── Non-planar shell branch (T-074b/c/d, P108) ──────────────
             // Highest precedence: a region backed by a resolved SurfaceGroup
             // (region.nonplanar_surface.is_some() at the IR level) emits
@@ -383,7 +389,7 @@ impl LayerModule for ClassicPerimeters {
                     inner_wall_line_width,
                     layer_height,
                     output,
-                    prev_layer_boundary,
+                    &spatial_context,
                 )?;
                 continue;
             }
@@ -438,7 +444,6 @@ impl LayerModule for ClassicPerimeters {
                 .iter()
                 .any(|(sem, val)| sem == "fuzzy_skin" && matches!(val, PaintValue::Flag(true)));
             let overhang_areas = region.overhang_areas();
-            let overhang_bands = region.overhang_quartile_polygons();
             if extra_perimeters_on_overhangs && !overhang_areas.is_empty() {
                 // T-077 (P108): one extra wall loop inside the overhang
                 // footprint, base wall count elsewhere. Reuses the
@@ -458,7 +463,6 @@ impl LayerModule for ClassicPerimeters {
                         wall_count + 1,
                         outer_speed_factor,
                         inner_speed_factor,
-                        region.bridge_areas(),
                         bridge_flow_ratio,
                         thick_bridges,
                         region_outer_wall_line_width,
@@ -474,8 +478,7 @@ impl LayerModule for ClassicPerimeters {
                         rid,
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
-                        overhang_bands,
-                        prev_layer_boundary,
+                        &spatial_context,
                     )?;
                 }
                 if !split.non_top_portion.is_empty() {
@@ -490,7 +493,6 @@ impl LayerModule for ClassicPerimeters {
                         wall_count,
                         outer_speed_factor,
                         inner_speed_factor,
-                        region.bridge_areas(),
                         bridge_flow_ratio,
                         thick_bridges,
                         region_outer_wall_line_width,
@@ -506,8 +508,7 @@ impl LayerModule for ClassicPerimeters {
                         rid,
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
-                        overhang_bands,
-                        prev_layer_boundary,
+                        &spatial_context,
                     )?;
                 }
             } else if only_one_wall_top && matches!(top_shell, Some(n) if n > 0) {
@@ -556,7 +557,6 @@ impl LayerModule for ClassicPerimeters {
                         1,
                         outer_speed_factor,
                         inner_speed_factor,
-                        region.bridge_areas(),
                         bridge_flow_ratio,
                         thick_bridges,
                         region_outer_wall_line_width,
@@ -572,8 +572,7 @@ impl LayerModule for ClassicPerimeters {
                         rid,
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
-                        overhang_bands,
-                        prev_layer_boundary,
+                        &spatial_context,
                     )?;
                 }
                 if !split.non_top_portion.is_empty() {
@@ -588,7 +587,6 @@ impl LayerModule for ClassicPerimeters {
                         layer_wall_count,
                         outer_speed_factor,
                         inner_speed_factor,
-                        region.bridge_areas(),
                         bridge_flow_ratio,
                         thick_bridges,
                         region_outer_wall_line_width,
@@ -604,8 +602,7 @@ impl LayerModule for ClassicPerimeters {
                         rid,
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
-                        overhang_bands,
-                        prev_layer_boundary,
+                        &spatial_context,
                     )?;
                 }
             } else {
@@ -620,7 +617,6 @@ impl LayerModule for ClassicPerimeters {
                     wall_count,
                     outer_speed_factor,
                     inner_speed_factor,
-                    region.bridge_areas(),
                     bridge_flow_ratio,
                     thick_bridges,
                     region_outer_wall_line_width,
@@ -636,8 +632,7 @@ impl LayerModule for ClassicPerimeters {
                     rid,
                     medial_axis_enabled,
                     seam_candidate_angle_threshold_deg,
-                    overhang_bands,
-                    prev_layer_boundary,
+                    &spatial_context,
                 )?;
             }
         }
@@ -691,7 +686,6 @@ impl ClassicPerimeters {
         wall_count: u32,
         outer_speed_factor: f32,
         inner_speed_factor: f32,
-        bridge_areas: &[ExPolygon],
         bridge_flow_ratio: f32,
         thick_bridges: bool,
         outer_wall_line_width: f32,
@@ -707,8 +701,7 @@ impl ClassicPerimeters {
         region_id: u64,
         medial_axis_enabled: bool,
         seam_candidate_angle_threshold_deg: f32,
-        overhang_bands: &[QuartileBand],
-        prev_layer_boundary: &[ExPolygon],
+        context: &PerimeterSpatialContext,
     ) -> Result<(), ModuleError> {
         // P109 degeneracy guard: a contour needs >=3 non-collinear vertices
         // (strictly positive enclosed area) to be offsettable. Clipper's polygon
@@ -890,12 +883,12 @@ impl ClassicPerimeters {
             // currently correct for a hole ring. D14 painted-variant fuzzy
             // skin still applies (it's whole-region, not per-vertex).
             let build_ring_wall = |ring: &Polygon, poly_idx: usize, is_contour: bool| {
-                let mut points = expolygon_to_path3d(
+                let mut points = expolygon_to_path3d_indexed(
                     ring,
                     z,
                     bead_flow_width_mm,
-                    overhang_bands,
-                    prev_layer_boundary,
+                    context,
+                    PathAnnotationMode::Planar,
                 );
                 if points.is_empty() {
                     return None;
@@ -929,11 +922,11 @@ impl ClassicPerimeters {
                 };
                 // Per-vertex is_bridge: set for each vertex strictly inside any bridge area.
                 // ring.points has N entries (integer units); feature_flags has N+1
-                // (closing repeat appended by expolygon_to_path3d). The closing repeat is
+                // (closing repeat appended by expolygon_to_path3d_indexed). The closing repeat is
                 // handled by mirror_first_to_last below.
                 for (i, pt) in ring.points.iter().enumerate() {
                     if i < feature_flags.len() {
-                        let is_bridge = point_in_any_polygon(pt, bridge_areas);
+                        let is_bridge = context.is_bridge(pt);
                         feature_flags[i].is_bridge = is_bridge;
                         if is_bridge {
                             points[i].flow_factor = bridging_flow(
@@ -1234,7 +1227,7 @@ impl ClassicPerimeters {
         inner_wall_line_width: f32,
         layer_height: f32,
         output: &mut PerimeterOutputBuilder,
-        prev_layer_boundary: &[ExPolygon],
+        context: &PerimeterSpatialContext,
     ) -> Result<(), ModuleError> {
         // D-105 residual (packet 185): inset consecutive shells by Flow
         // *spacing* (rounded cross-section via `line_width_to_spacing`), not by
@@ -1276,7 +1269,13 @@ impl ClassicPerimeters {
             for poly in &inset_result {
                 // Non-planar shells are an explicitly separate concern (D-3); never
                 // stamp overhang_quartile here.
-                let points = expolygon_to_path3d(&poly.contour, z, width, &[], prev_layer_boundary);
+                let points = expolygon_to_path3d_indexed(
+                    &poly.contour,
+                    z,
+                    width,
+                    context,
+                    PathAnnotationMode::NonPlanarNoQuartile,
+                );
                 if points.is_empty() {
                     continue;
                 }

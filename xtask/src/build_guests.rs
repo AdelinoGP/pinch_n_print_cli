@@ -342,6 +342,9 @@ pub enum BuildError {
         path: PathBuf,
         error: String,
     },
+    AcceleratedPolicyRejected {
+        latch: PathBuf,
+    },
     WasmToolsNotFound,
     /// The built component's embedded WIT world does not match the canonical
     /// WIT, and a forced rebuild did not reconcile it. See `wit_verify`.
@@ -390,6 +393,11 @@ impl fmt::Display for BuildError {
                     path.display()
                 )
             }
+            BuildError::AcceleratedPolicyRejected { latch } => write!(
+                f,
+                "accelerated build rejected: a latched policy rejection was recorded at {}",
+                latch.display()
+            ),
             BuildError::WasmToolsNotFound => {
                 write!(
                     f,
@@ -528,11 +536,9 @@ impl VersionProbes {
 /// still parse it at most once.
 pub struct Invocation {
     probes: VersionProbes,
-    load_canonical: Box<
-        dyn Fn() -> Result<crate::wit_verify::WorldModel, crate::wit_verify::VerifyError>,
-    >,
-    canonical:
-        OnceCell<Result<crate::wit_verify::WorldModel, crate::wit_verify::VerifyError>>,
+    load_canonical:
+        Box<dyn Fn() -> Result<crate::wit_verify::WorldModel, crate::wit_verify::VerifyError>>,
+    canonical: OnceCell<Result<crate::wit_verify::WorldModel, crate::wit_verify::VerifyError>>,
 }
 
 impl Invocation {
@@ -595,23 +601,53 @@ impl Invocation {
 /// the host's. Verifying build *inputs* cannot detect this — only checking the
 /// produced artifact can — so on mismatch we bust the guest workspace's cached
 /// macro artifact, rebuild once, and re-verify before giving up.
+#[allow(dead_code)]
 pub fn build_one(
     spec: &GuestSpec,
     ws_root: &Path,
     canonical: &crate::wit_verify::WorldModel,
     probes: &VersionProbes,
 ) -> Result<(), BuildError> {
-    // 1. Remove sidecar at build start (write-last lifecycle).
-    let metadata_path = fingerprint_metadata_path(ws_root, spec);
-    let _ = fs::remove_file(&metadata_path);
+    build_one_for_mode(spec, ws_root, canonical, probes, GuestBuildMode::Ordinary)
+}
 
-    build_one_inner(spec, ws_root)?;
+fn build_one_for_mode(
+    spec: &GuestSpec,
+    ws_root: &Path,
+    canonical: &crate::wit_verify::WorldModel,
+    probes: &VersionProbes,
+    mode: GuestBuildMode,
+) -> Result<(), BuildError> {
+    let effective = guest_spec_for_mode(ws_root, spec, mode);
+    build_one_effective(&effective, ws_root, canonical, probes, mode)
+}
+
+fn build_one_effective(
+    spec: &GuestSpec,
+    ws_root: &Path,
+    canonical: &crate::wit_verify::WorldModel,
+    probes: &VersionProbes,
+    mode: GuestBuildMode,
+) -> Result<(), BuildError> {
+    // 1. Remove sidecars at build start (write-last lifecycle).
+    let metadata_path = fingerprint_metadata_path_for_mode(ws_root, spec, mode);
+    let identity_path = accelerated_metadata_path(ws_root, spec, mode);
+    let remove_metadata = || {
+        let _ = fs::remove_file(&metadata_path);
+        if let Some(path) = &identity_path {
+            let _ = fs::remove_file(path);
+        }
+    };
+    remove_metadata();
+
+    build_one_inner_for_mode(spec, ws_root, mode)?;
+    ensure_accelerated_session_is_clean(ws_root, mode)?;
 
     let artifact = ws_root.join(&spec.artifact_path);
 
     // Helper to ensure sidecar absent before returning a persistent verification error.
-    let ensure_absent = |p: &Path| {
-        let _ = fs::remove_file(p);
+    let ensure_absent = |_p: &Path| {
+        remove_metadata();
     };
 
     // 3. Resolve stage from freshly built artifact.
@@ -663,19 +699,15 @@ pub fn build_one(
     if drifts.is_empty() {
         // 7. Only on success: write v2- fingerprint.
         let mut cache = ClosureCache::new();
-        let freshness = compute_guest_freshness(spec, ws_root, &mut cache, probes).map_err(|e| BuildError::FingerprintMetadataFailed {
-            guest: spec.crate_name.clone(),
-            path: metadata_path.clone(),
-            error: e.to_string(),
-        })?;
-        if let Some(parent) = metadata_path.parent() {
-            fs::create_dir_all(parent).map_err(|e| BuildError::FingerprintMetadataFailed {
-                guest: spec.crate_name.clone(),
-                path: metadata_path.clone(),
-                error: e.to_string(),
+        let freshness =
+            compute_guest_freshness(spec, ws_root, &mut cache, probes).map_err(|e| {
+                BuildError::FingerprintMetadataFailed {
+                    guest: spec.crate_name.clone(),
+                    path: metadata_path.clone(),
+                    error: e.to_string(),
+                }
             })?;
-        }
-        fs::write(&metadata_path, freshness.fingerprint.as_bytes()).map_err(|e| {
+        write_freshness_metadata(ws_root, spec, mode, &freshness, probes).map_err(|e| {
             BuildError::FingerprintMetadataFailed {
                 guest: spec.crate_name.clone(),
                 path: metadata_path.clone(),
@@ -689,35 +721,32 @@ pub fn build_one(
         "warning: '{}' embedded a stale WIT world; forcing a rebuild",
         spec.crate_name
     );
-    force_rebuild_wit_bindings(spec, ws_root);
-    build_one_inner(spec, ws_root)?;
+    force_rebuild_wit_bindings_for_mode(spec, ws_root, mode);
+    build_one_inner_for_mode(spec, ws_root, mode)?;
+    ensure_accelerated_session_is_clean(ws_root, mode)?;
 
     // Re-resolve after rebuild (artifact may have changed). The canonical model
     // does not depend on the resolved stage, so the memoized one is reused.
     let expect2 = resolve_stage(&artifact, spec, ws_root, &metadata_path)?;
     let drifts = crate::wit_verify::verify_embedded_world(&artifact, canonical, Some(&expect2))
         .map_err(|e| {
-        ensure_absent(&metadata_path);
-        BuildError::EmbeddedWorldUndecodable {
-            guest: spec.crate_name.clone(),
-            reason: e.to_string(),
-        }
-    })?;
+            ensure_absent(&metadata_path);
+            BuildError::EmbeddedWorldUndecodable {
+                guest: spec.crate_name.clone(),
+                reason: e.to_string(),
+            }
+        })?;
     if drifts.is_empty() {
         let mut cache = ClosureCache::new();
-        let freshness = compute_guest_freshness(spec, ws_root, &mut cache, probes).map_err(|e| BuildError::FingerprintMetadataFailed {
-            guest: spec.crate_name.clone(),
-            path: metadata_path.clone(),
-            error: e.to_string(),
-        })?;
-        if let Some(parent) = metadata_path.parent() {
-            fs::create_dir_all(parent).map_err(|e| BuildError::FingerprintMetadataFailed {
-                guest: spec.crate_name.clone(),
-                path: metadata_path.clone(),
-                error: e.to_string(),
+        let freshness =
+            compute_guest_freshness(spec, ws_root, &mut cache, probes).map_err(|e| {
+                BuildError::FingerprintMetadataFailed {
+                    guest: spec.crate_name.clone(),
+                    path: metadata_path.clone(),
+                    error: e.to_string(),
+                }
             })?;
-        }
-        fs::write(&metadata_path, freshness.fingerprint.as_bytes()).map_err(|e| {
+        write_freshness_metadata(ws_root, spec, mode, &freshness, probes).map_err(|e| {
             BuildError::FingerprintMetadataFailed {
                 guest: spec.crate_name.clone(),
                 path: metadata_path.clone(),
@@ -727,8 +756,8 @@ pub fn build_one(
         return Ok(());
     }
 
-    // 6. Persistent failure: ensure sidecar absent.
-    ensure_absent(&metadata_path);
+    // 6. Persistent failure: ensure sidecars absent.
+    remove_metadata();
     Err(BuildError::StaleEmbeddedWorld {
         guest: spec.crate_name.clone(),
         mismatches: drifts,
@@ -738,11 +767,67 @@ pub fn build_one(
 /// Cargo profile every guest is built with.
 const GUEST_PROFILE: &str = "release";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GuestBuildMode {
+    Ordinary,
+    Accelerated,
+}
+
+fn ensure_accelerated_session_is_clean(
+    ws_root: &Path,
+    mode: GuestBuildMode,
+) -> Result<(), BuildError> {
+    if mode == GuestBuildMode::Accelerated && crate::rustc_driver::is_latched(ws_root) {
+        Err(BuildError::AcceleratedPolicyRejected {
+            latch: crate::rustc_driver::latch_path(ws_root),
+        })
+    } else {
+        Ok(())
+    }
+}
+
+const ACCELERATED_GUEST_NAMESPACE: &str = "guests-accelerated";
+const ACCELERATED_FINGERPRINT_NAMESPACE: &str = "guest-fingerprints-accelerated";
+
 /// The single target directory shared by every guest workspace, in both
 /// `GuestTree` variants. Living under `<ws_root>/target/` means it inherits the
 /// repo's `**/target/` gitignore rule and the CI `./target` rust-cache.
 fn guest_target_dir(ws_root: &Path) -> PathBuf {
     ws_root.join("target").join("guests")
+}
+
+fn guest_target_dir_for_mode(ws_root: &Path, mode: GuestBuildMode) -> PathBuf {
+    match mode {
+        GuestBuildMode::Ordinary => guest_target_dir(ws_root),
+        GuestBuildMode::Accelerated => ws_root.join("target").join(ACCELERATED_GUEST_NAMESPACE),
+    }
+}
+
+fn guest_artifact_path_for_mode(
+    ws_root: &Path,
+    artifact_path: &Path,
+    mode: GuestBuildMode,
+) -> PathBuf {
+    match mode {
+        GuestBuildMode::Ordinary => artifact_path.to_path_buf(),
+        GuestBuildMode::Accelerated => {
+            let relative = if artifact_path.is_absolute() {
+                artifact_path.strip_prefix(ws_root).unwrap_or(artifact_path)
+            } else {
+                artifact_path
+            };
+            PathBuf::from("target")
+                .join(ACCELERATED_GUEST_NAMESPACE)
+                .join("artifacts")
+                .join(relative)
+        }
+    }
+}
+
+fn guest_spec_for_mode(ws_root: &Path, spec: &GuestSpec, mode: GuestBuildMode) -> GuestSpec {
+    let mut effective = spec.clone();
+    effective.artifact_path = guest_artifact_path_for_mode(ws_root, &spec.artifact_path, mode);
+    effective
 }
 
 /// Map a cargo profile name to the directory name cargo emits under the target
@@ -766,19 +851,42 @@ fn guest_profile_flag(profile: &str) -> Option<&'static str> {
 }
 
 /// Directory holding a guest's intermediate `wasm32-unknown-unknown` output.
+#[allow(dead_code)]
 fn guest_intermediate_dir(ws_root: &Path, profile: &str) -> PathBuf {
-    guest_target_dir(ws_root)
+    guest_intermediate_dir_for_mode(ws_root, profile, GuestBuildMode::Ordinary)
+}
+
+fn guest_intermediate_dir_for_mode(ws_root: &Path, profile: &str, mode: GuestBuildMode) -> PathBuf {
+    guest_target_dir_for_mode(ws_root, mode)
         .join("wasm32-unknown-unknown")
         .join(guest_profile_dir(profile))
 }
 
 /// The `cargo build` command for one guest. `CARGO_TARGET_DIR` is set
 /// unconditionally so all guests share `guest_target_dir`.
+#[allow(dead_code)]
 fn guest_build_cargo_command(spec: &GuestSpec, ws_root: &Path) -> Command {
+    guest_build_cargo_command_for_mode(spec, ws_root, GuestBuildMode::Ordinary)
+}
+
+fn guest_build_cargo_command_for_mode(
+    spec: &GuestSpec,
+    ws_root: &Path,
+    mode: GuestBuildMode,
+) -> Command {
     let mut cmd = Command::new("cargo");
     cmd.current_dir(&spec.guest_dir)
-        .env("CARGO_TARGET_DIR", guest_target_dir(ws_root))
+        .env("CARGO_TARGET_DIR", guest_target_dir_for_mode(ws_root, mode))
         .args(["build", "--target", "wasm32-unknown-unknown"]);
+    if mode == GuestBuildMode::Accelerated {
+        cmd.env("RUSTC", crate::rustc_driver::shim_wrapper_path(ws_root))
+            .env(
+                crate::rustc_driver::PNP_XTASK_EXE_ENV,
+                std::env::current_exe().expect("resolve current xtask executable"),
+            )
+            .env(crate::rustc_driver::ACCELERATED_ENV, "1")
+            .env(crate::rustc_driver::ACCELERATED_MODE_ENV, "guest-release");
+    }
     if let Some(flag) = guest_profile_flag(GUEST_PROFILE) {
         cmd.arg(flag);
     }
@@ -789,8 +897,13 @@ fn guest_build_cargo_command(spec: &GuestSpec, ws_root: &Path) -> Command {
 /// Discard the guest workspace's cached WIT-bearing proc-macro build so the
 /// next `cargo build` genuinely re-expands `#[slicer_module]` against the
 /// canonical WIT currently on disk.
+#[allow(dead_code)]
 fn force_rebuild_wit_bindings(spec: &GuestSpec, ws_root: &Path) {
-    for mut cmd in wit_clean_commands(spec, ws_root) {
+    force_rebuild_wit_bindings_for_mode(spec, ws_root, GuestBuildMode::Ordinary);
+}
+
+fn force_rebuild_wit_bindings_for_mode(spec: &GuestSpec, ws_root: &Path, mode: GuestBuildMode) {
+    for mut cmd in wit_clean_commands_for_mode(spec, ws_root, mode) {
         let _ = cmd.output();
     }
 }
@@ -799,26 +912,44 @@ fn force_rebuild_wit_bindings(spec: &GuestSpec, ws_root: &Path) {
 /// WIT-bearing proc-macro artifacts. They must clean the *same* target
 /// directory the guest build writes to (`guest_target_dir`), otherwise the
 /// stale-WIT recovery path is inert.
+#[allow(dead_code)]
 fn wit_clean_commands(spec: &GuestSpec, ws_root: &Path) -> Vec<Command> {
+    wit_clean_commands_for_mode(spec, ws_root, GuestBuildMode::Ordinary)
+}
+
+fn wit_clean_commands_for_mode(
+    spec: &GuestSpec,
+    ws_root: &Path,
+    mode: GuestBuildMode,
+) -> Vec<Command> {
     ["slicer-macros", "slicer-schema"]
         .into_iter()
         .map(|package| {
             let mut cmd = Command::new("cargo");
             cmd.current_dir(&spec.guest_dir)
-                .env("CARGO_TARGET_DIR", guest_target_dir(ws_root))
+                .env("CARGO_TARGET_DIR", guest_target_dir_for_mode(ws_root, mode))
                 .args(["clean", "-p", package]);
             cmd
         })
         .collect()
 }
 
+#[allow(dead_code)]
 fn build_one_inner(spec: &GuestSpec, ws_root: &Path) -> Result<(), BuildError> {
+    build_one_inner_for_mode(spec, ws_root, GuestBuildMode::Ordinary)
+}
+
+fn build_one_inner_for_mode(
+    spec: &GuestSpec,
+    ws_root: &Path,
+    mode: GuestBuildMode,
+) -> Result<(), BuildError> {
     // Per R5-2/AC-11: build_one_inner no longer writes the sidecar; the write
     // moves to the end of build_one after final verification.
     println!("building: {}", spec.crate_name);
 
     // Step A: cargo build
-    let mut cmd = guest_build_cargo_command(spec, ws_root);
+    let mut cmd = guest_build_cargo_command_for_mode(spec, ws_root, mode);
     let out = cmd.output().map_err(|e| BuildError::CargoFailed {
         guest: spec.crate_name.clone(),
         stderr_tail: format!("failed to spawn cargo: {e}"),
@@ -833,7 +964,7 @@ fn build_one_inner(spec: &GuestSpec, ws_root: &Path) -> Result<(), BuildError> {
     }
 
     // Step B: locate intermediate wasm
-    let intermediate_base = guest_intermediate_dir(ws_root, GUEST_PROFILE);
+    let intermediate_base = guest_intermediate_dir_for_mode(ws_root, GUEST_PROFILE, mode);
     let intermediate = intermediate_base.join(format!("{}.wasm", spec.lib_name));
 
     if !intermediate.exists() {
@@ -908,18 +1039,42 @@ pub enum BuildGuestsFlag {
     Check,
     List,
     SyncLocks,
+    Accelerated,
+    AcceleratedForce,
+    AcceleratedCheck,
     Unknown(String),
 }
 
 /// Parse the arguments following `build-guests` into a mode.
 pub fn parse_build_guests_flag(args: &[String]) -> BuildGuestsFlag {
-    match args.first().map(String::as_str) {
-        None => BuildGuestsFlag::Default,
-        Some("--force") => BuildGuestsFlag::Force,
-        Some("--check") => BuildGuestsFlag::Check,
-        Some("--list") => BuildGuestsFlag::List,
-        Some("--sync-locks") => BuildGuestsFlag::SyncLocks,
-        Some(other) => BuildGuestsFlag::Unknown(other.to_string()),
+    if args.is_empty() {
+        return BuildGuestsFlag::Default;
+    }
+
+    let mut accelerated = false;
+    let mut operation: Option<&str> = None;
+    for arg in args {
+        match arg.as_str() {
+            "--accelerated" if !accelerated => accelerated = true,
+            "--accelerated" => return BuildGuestsFlag::Unknown(args.join(" ")),
+            "--force" | "--check" | "--list" | "--sync-locks" if operation.is_none() => {
+                operation = Some(arg);
+            }
+            _ => return BuildGuestsFlag::Unknown(args.join(" ")),
+        }
+    }
+
+    match (accelerated, operation) {
+        (false, None) => BuildGuestsFlag::Default,
+        (false, Some("--force")) => BuildGuestsFlag::Force,
+        (false, Some("--check")) => BuildGuestsFlag::Check,
+        (false, Some("--list")) => BuildGuestsFlag::List,
+        (false, Some("--sync-locks")) => BuildGuestsFlag::SyncLocks,
+        (true, None) => BuildGuestsFlag::Accelerated,
+        (true, Some("--force")) => BuildGuestsFlag::AcceleratedForce,
+        (true, Some("--check")) => BuildGuestsFlag::AcceleratedCheck,
+        (true, Some(_)) => BuildGuestsFlag::Unknown(args.join(" ")),
+        (false, Some(_)) => BuildGuestsFlag::Unknown(args.join(" ")),
     }
 }
 
@@ -951,6 +1106,42 @@ pub fn build_command(ws_root: &Path, force: bool) -> i32 {
     )
 }
 
+/// Reject an accelerated build result if any compiler invocation latched a
+/// policy rejection, even when a child process swallowed that invocation's
+/// nonzero exit status. Ordinary builds deliberately do not consult the latch.
+pub(crate) fn enforce_accelerated_latch_gate(ws_root: &Path, code: i32) -> i32 {
+    if crate::rustc_driver::is_latched(ws_root) {
+        eprintln!(
+            "xtask build-guests --accelerated: refusing build result because a latched policy rejection was recorded at {}",
+            crate::rustc_driver::latch_path(ws_root).display()
+        );
+        1
+    } else {
+        code
+    }
+}
+
+pub fn accelerated_build_command(ws_root: &Path, force: bool) -> i32 {
+    if let Err(error) = prepare_accelerated_session(ws_root) {
+        eprintln!("xtask build-guests --accelerated: {error}");
+        return 1;
+    }
+
+    let inv = Invocation::new(ws_root);
+    let code = build_command_with(
+        || check_command_in_mode(ws_root, &inv, GuestBuildMode::Accelerated),
+        |stale| build_stale_command_for_mode(ws_root, stale, &inv, GuestBuildMode::Accelerated),
+        || build_all_command_for_mode(ws_root, &inv, GuestBuildMode::Accelerated),
+        force,
+    );
+    enforce_accelerated_latch_gate(ws_root, code)
+}
+
+fn prepare_accelerated_session(ws_root: &Path) -> std::io::Result<()> {
+    crate::rustc_driver::clear_latch(ws_root)?;
+    crate::rustc_driver::create_shim_wrapper(ws_root).map(|_| ())
+}
+
 /// Testable core of `build_command`: the freshness check and the two rebuild
 /// strategies are injected. Mirrors `handle_guest_freshness_with` in
 /// `xtask/src/test.rs`.
@@ -978,6 +1169,10 @@ fn build_command_with(
 /// Takes the caller's invocation context so `--force` costs one toolchain probe
 /// and one canonical-WIT parse, exactly like the freshness-aware default.
 fn build_all_command(ws_root: &Path, inv: &Invocation) -> i32 {
+    build_all_command_for_mode(ws_root, inv, GuestBuildMode::Ordinary)
+}
+
+fn build_all_command_for_mode(ws_root: &Path, inv: &Invocation, mode: GuestBuildMode) -> i32 {
     if !inv.probes().wasm_tools_available() {
         eprintln!("error: {}", BuildError::WasmToolsNotFound);
         return 1;
@@ -1008,7 +1203,7 @@ fn build_all_command(ws_root: &Path, inv: &Invocation) -> i32 {
 
     let mut count = 0usize;
     for spec in &guests {
-        match build_one(spec, ws_root, canonical, inv.probes()) {
+        match build_one_for_mode(spec, ws_root, canonical, inv.probes(), mode) {
             Ok(()) => count += 1,
             Err(e) => {
                 eprintln!("error: {e}");
@@ -1040,8 +1235,15 @@ pub struct FreshnessSnapshot {
 
 #[derive(Debug, Clone)]
 pub enum ClosureError {
-    Unreadable { manifest: PathBuf, reason: String },
-    MissingPathDep { manifest: PathBuf, dep: String, resolved: PathBuf },
+    Unreadable {
+        manifest: PathBuf,
+        reason: String,
+    },
+    MissingPathDep {
+        manifest: PathBuf,
+        dep: String,
+        resolved: PathBuf,
+    },
 }
 
 impl fmt::Display for ClosureError {
@@ -1050,7 +1252,11 @@ impl fmt::Display for ClosureError {
             Self::Unreadable { manifest, reason } => {
                 write!(f, "unreadable manifest {}: {}", manifest.display(), reason)
             }
-            Self::MissingPathDep { manifest, dep, resolved } => {
+            Self::MissingPathDep {
+                manifest,
+                dep,
+                resolved,
+            } => {
                 write!(
                     f,
                     "missing path dep '{}' from {} (resolved {})",
@@ -1072,7 +1278,9 @@ pub struct ClosureCache {
 
 impl ClosureCache {
     pub fn new() -> Self {
-        Self { inner: HashMap::new() }
+        Self {
+            inner: HashMap::new(),
+        }
     }
     pub fn len(&self) -> usize {
         self.inner.len()
@@ -1095,11 +1303,14 @@ fn path_dep_manifests(manifest: &Path) -> Result<Vec<PathBuf>, ClosureError> {
             if let Some(tbl) = val.as_table() {
                 if let Some(path_str) = tbl.get("path").and_then(|v| v.as_str()) {
                     let resolved_dir = parent.join(path_str);
-                    let canonical_dir = resolved_dir.canonicalize().map_err(|_| ClosureError::MissingPathDep {
-                        manifest: manifest.to_path_buf(),
-                        dep: dep_name.clone(),
-                        resolved: resolved_dir.clone(),
-                    })?;
+                    let canonical_dir =
+                        resolved_dir
+                            .canonicalize()
+                            .map_err(|_| ClosureError::MissingPathDep {
+                                manifest: manifest.to_path_buf(),
+                                dep: dep_name.clone(),
+                                resolved: resolved_dir.clone(),
+                            })?;
                     let dep_manifest = canonical_dir.join("Cargo.toml");
                     if !dep_manifest.is_file() {
                         return Err(ClosureError::MissingPathDep {
@@ -1149,7 +1360,10 @@ pub fn guest_closure_input_paths(
     visited.insert(start_canonical);
 
     while let Some(manifest) = queue.pop_front() {
-        let crate_root = manifest.parent().expect("manifest must have parent").to_path_buf();
+        let crate_root = manifest
+            .parent()
+            .expect("manifest must have parent")
+            .to_path_buf();
         result.extend(input_files(&crate_root.join("src"), None));
         let cargo_toml = crate_root.join("Cargo.toml");
         if cargo_toml.is_file() {
@@ -1331,10 +1545,86 @@ fn compute_guest_freshness(
     })
 }
 
+#[allow(dead_code)]
 pub fn fingerprint_metadata_path(ws_root: &Path, spec: &GuestSpec) -> PathBuf {
+    fingerprint_metadata_path_for_mode(ws_root, spec, GuestBuildMode::Ordinary)
+}
+
+fn fingerprint_metadata_path_for_mode(
+    ws_root: &Path,
+    spec: &GuestSpec,
+    mode: GuestBuildMode,
+) -> PathBuf {
+    let namespace = match mode {
+        GuestBuildMode::Ordinary => "guest-fingerprints",
+        GuestBuildMode::Accelerated => ACCELERATED_FINGERPRINT_NAMESPACE,
+    };
     ws_root
-        .join("target/guest-fingerprints")
+        .join("target")
+        .join(namespace)
         .join(format!("{}.fingerprint", spec.crate_name))
+}
+
+fn accelerated_metadata_path(
+    ws_root: &Path,
+    spec: &GuestSpec,
+    mode: GuestBuildMode,
+) -> Option<PathBuf> {
+    (mode == GuestBuildMode::Accelerated).then(|| {
+        ws_root
+            .join("target")
+            .join(ACCELERATED_FINGERPRINT_NAMESPACE)
+            .join(format!("{}.metadata", spec.crate_name))
+    })
+}
+
+fn accelerated_policy_descriptor() -> String {
+    format!(
+        "cfg={};target={};profile=guest-release;release={};commit={};host={};llvm={}",
+        crate::rustc_driver::RESERVED_CFG,
+        crate::rustc_driver::ALLOWED_WASM_TARGET,
+        crate::rustc_driver::ALLOWED_RELEASE,
+        crate::rustc_driver::ALLOWED_COMMIT_HASH,
+        crate::rustc_driver::ALLOWED_HOST,
+        crate::rustc_driver::ALLOWED_LLVM_VERSION,
+    )
+}
+
+fn accelerated_policy_fingerprint() -> String {
+    fingerprint_entries(&[FingerprintEntry {
+        path: "accelerated-policy".to_string(),
+        bytes: accelerated_policy_descriptor().into_bytes(),
+    }])
+}
+
+fn accelerated_build_metadata(probes: &VersionProbes) -> String {
+    format!(
+        "mode=accelerated\npolicy={}\npolicy-fingerprint={}\nrustc-vV={}",
+        accelerated_policy_descriptor(),
+        accelerated_policy_fingerprint(),
+        probes.rustc.trim(),
+    )
+}
+
+fn write_freshness_metadata(
+    ws_root: &Path,
+    spec: &GuestSpec,
+    mode: GuestBuildMode,
+    freshness: &FreshnessSnapshot,
+    probes: &VersionProbes,
+) -> std::io::Result<()> {
+    let fingerprint_path = fingerprint_metadata_path_for_mode(ws_root, spec, mode);
+    if let Some(parent) = fingerprint_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&fingerprint_path, freshness.fingerprint.as_bytes())?;
+    if let Some(identity_path) = accelerated_metadata_path(ws_root, spec, mode) {
+        if let Some(parent) = identity_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(identity_path, accelerated_build_metadata(probes).as_bytes())?;
+    }
+    Ok(())
 }
 
 fn metadata_matches(path: &Path, expected: &str) -> bool {
@@ -1486,16 +1776,47 @@ fn try_parse_artifact_as_wit_text(path: &Path) -> Option<crate::wit_verify::Worl
     crate::wit_verify::world_model_from_text(&text, &path.display().to_string()).ok()
 }
 
-pub fn stale_reason(spec: &GuestSpec, ws_root: &Path, ctx: &mut CheckContext) -> Option<StaleReason> {
-    stale_reason_with(spec, ws_root, ctx, crate::wit_verify::embedded_world_model)
+pub fn stale_reason(
+    spec: &GuestSpec,
+    ws_root: &Path,
+    ctx: &mut CheckContext,
+) -> Option<StaleReason> {
+    stale_reason_for_mode(spec, ws_root, ctx, GuestBuildMode::Ordinary)
+}
+
+fn stale_reason_for_mode(
+    spec: &GuestSpec,
+    ws_root: &Path,
+    ctx: &mut CheckContext,
+    mode: GuestBuildMode,
+) -> Option<StaleReason> {
+    let effective = guest_spec_for_mode(ws_root, spec, mode);
+    stale_reason_with_mode(
+        &effective,
+        ws_root,
+        ctx,
+        mode,
+        crate::wit_verify::embedded_world_model,
+    )
 }
 
 /// Testable core of `stale_reason`. `decode` is the artifact decoder; it is
 /// called at most once per freshness check.
+#[allow(dead_code)]
 fn stale_reason_with(
     spec: &GuestSpec,
     ws_root: &Path,
     ctx: &mut CheckContext,
+    decode: impl FnOnce(&Path) -> Result<crate::wit_verify::WorldModel, crate::wit_verify::VerifyError>,
+) -> Option<StaleReason> {
+    stale_reason_with_mode(spec, ws_root, ctx, GuestBuildMode::Ordinary, decode)
+}
+
+fn stale_reason_with_mode(
+    spec: &GuestSpec,
+    ws_root: &Path,
+    ctx: &mut CheckContext,
+    mode: GuestBuildMode,
     decode: impl FnOnce(&Path) -> Result<crate::wit_verify::WorldModel, crate::wit_verify::VerifyError>,
 ) -> Option<StaleReason> {
     let artifact_path = ws_root.join(&spec.artifact_path);
@@ -1551,9 +1872,11 @@ fn stale_reason_with(
         Err(e) => return Some(StaleReason::Undecodable(e.to_string())),
     };
     let fingerprint_stale = if !metadata_matches(
-        &fingerprint_metadata_path(ws_root, spec),
+        &fingerprint_metadata_path_for_mode(ws_root, spec, mode),
         &freshness.fingerprint,
-    ) {
+    ) || accelerated_metadata_path(ws_root, spec, mode)
+        .is_some_and(|path| !metadata_matches(&path, &accelerated_build_metadata(&ctx.probes)))
+    {
         Some(StaleReason::FingerprintMismatch)
     } else {
         None
@@ -1611,6 +1934,31 @@ pub fn check_command_in(ws_root: &Path, inv: &Invocation) -> CheckOutcome {
     )
 }
 
+pub fn accelerated_check_command(ws_root: &Path) -> CheckOutcome {
+    check_command_in_mode(
+        ws_root,
+        &Invocation::new(ws_root),
+        GuestBuildMode::Accelerated,
+    )
+}
+
+fn check_command_in_mode(ws_root: &Path, inv: &Invocation, mode: GuestBuildMode) -> CheckOutcome {
+    let wasm_tools = inv.probes().wasm_tools_result();
+    let canonical = inv.canonical();
+    let (guests, _skips) = discover_guests(ws_root);
+    let locks = collect_guest_locks(&guests);
+    check_command_core_for_mode(
+        ws_root,
+        wasm_tools,
+        canonical,
+        &guests,
+        &locks,
+        inv.probes(),
+        &mut std::io::stdout(),
+        mode,
+    )
+}
+
 /// Testable core of `check_command`: the wasm-tools result, canonical result,
 /// guest list and output writer are injected. Production `check_command`
 /// gathers them from the real tree and writes to stdout.
@@ -1644,6 +1992,29 @@ fn check_command_core(
     locks: &[(String, Vec<(String, String)>)],
     probes: &VersionProbes,
     out: &mut dyn std::io::Write,
+) -> CheckOutcome {
+    check_command_core_for_mode(
+        ws_root,
+        wasm_tools,
+        canonical,
+        guests,
+        locks,
+        probes,
+        out,
+        GuestBuildMode::Ordinary,
+    )
+}
+
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn check_command_core_for_mode(
+    ws_root: &Path,
+    wasm_tools: Result<String, BuildError>,
+    canonical: Result<&crate::wit_verify::WorldModel, String>,
+    guests: &[GuestSpec],
+    locks: &[(String, Vec<(String, String)>)],
+    probes: &VersionProbes,
+    out: &mut dyn std::io::Write,
+    mode: GuestBuildMode,
 ) -> CheckOutcome {
     // wasm-tools missing => infrastructure error, never staleness (R5-3).
     if let Err(e) = wasm_tools {
@@ -1682,10 +2053,10 @@ fn check_command_core(
 
     let mut stale: Vec<GuestSpec> = Vec::new();
     for spec in guests {
-        if let Some(reason) = stale_reason(spec, ws_root, &mut ctx) {
+        if let Some(reason) = stale_reason_for_mode(spec, ws_root, &mut ctx, mode) {
             let _ = writeln!(out, "STALE: {}", spec.crate_name);
             let _ = writeln!(out, "{}", reason);
-            stale.push(spec.clone());
+            stale.push(guest_spec_for_mode(ws_root, spec, mode));
         }
     }
     let code = if stale.is_empty() && divergences.is_empty() {
@@ -1734,10 +2105,7 @@ fn parse_lock_packages(text: &str) -> Vec<(String, String)> {
 /// numeric leading components is treated as its own line, so it can only ever
 /// diverge against a byte-identical string, and never panics.
 fn compat_line(version: &str) -> String {
-    let core = version
-        .split(['-', '+'])
-        .next()
-        .unwrap_or(version);
+    let core = version.split(['-', '+']).next().unwrap_or(version);
     let mut parts = core.split('.');
     let major = parts.next().and_then(|p| p.parse::<u64>().ok());
     let minor = parts.next().and_then(|p| p.parse::<u64>().ok());
@@ -1914,6 +2282,15 @@ pub fn sync_locks_command(ws_root: &Path) -> i32 {
 /// replays `inv`'s single probe instead of spawning the binary again, and the
 /// canonical world is whatever the check phase already parsed.
 pub fn build_stale_command(ws_root: &Path, stale: &[GuestSpec], inv: &Invocation) -> i32 {
+    build_stale_command_for_mode(ws_root, stale, inv, GuestBuildMode::Ordinary)
+}
+
+fn build_stale_command_for_mode(
+    ws_root: &Path,
+    stale: &[GuestSpec],
+    inv: &Invocation,
+    mode: GuestBuildMode,
+) -> i32 {
     if stale.is_empty() {
         println!("built 0 guest(s)");
         return 0;
@@ -1925,7 +2302,7 @@ pub fn build_stale_command(ws_root: &Path, stale: &[GuestSpec], inv: &Invocation
     build_stale_command_core(
         stale,
         || inv.canonical(),
-        |spec, canonical| build_one(spec, ws_root, canonical, inv.probes()),
+        |spec, canonical| build_one_effective(spec, ws_root, canonical, inv.probes(), mode),
         &mut std::io::stdout(),
     )
 }
@@ -2192,7 +2569,9 @@ mod tests {
         assert!(is_stale(&spec, &temp.0, &mut ctx));
 
         let mut cache = ClosureCache::new();
-        let freshness = compute_guest_freshness(&spec, &temp.0, &mut cache, &VersionProbes::probe()).expect("compute freshness");
+        let freshness =
+            compute_guest_freshness(&spec, &temp.0, &mut cache, &VersionProbes::probe())
+                .expect("compute freshness");
         let metadata_path = fingerprint_metadata_path(&temp.0, &spec);
         fs::create_dir_all(metadata_path.parent().expect("metadata parent"))
             .expect("create metadata directory");
@@ -2222,7 +2601,9 @@ mod tests {
 
     fn fresh_ctx(temp: &TempDir, spec: &GuestSpec) -> CheckContext {
         let mut closure = ClosureCache::new();
-        let freshness = compute_guest_freshness(spec, &temp.0, &mut closure, &VersionProbes::probe()).expect("compute freshness");
+        let freshness =
+            compute_guest_freshness(spec, &temp.0, &mut closure, &VersionProbes::probe())
+                .expect("compute freshness");
         let metadata_path = fingerprint_metadata_path(&temp.0, spec);
         fs::create_dir_all(metadata_path.parent().expect("metadata parent"))
             .expect("create metadata dir");
@@ -2516,7 +2897,13 @@ mod tests {
             &mut out,
         );
         assert!(outcome.stale.is_empty(), "fresh guest must not be stale");
-        assert_eq!(outcome.code, EXIT_FRESH);
+        assert_eq!(
+            outcome.code,
+            EXIT_FRESH,
+            "stale={:?}, output={:?}",
+            outcome.stale,
+            String::from_utf8_lossy(&out)
+        );
         assert_eq!(outcome.code, 0);
         let stdout = String::from_utf8(out).expect("stdout is utf8");
         assert!(
@@ -2649,13 +3036,16 @@ mod tests {
             .expect("canonical must parse");
         let mut closure = ClosureCache::new();
         // Write matching fingerprint so fingerprint is not the reason
-        let freshness = compute_guest_freshness(&spec, &temp.0, &mut closure, &VersionProbes::probe()).expect("compute freshness");
+        let freshness =
+            compute_guest_freshness(&spec, &temp.0, &mut closure, &VersionProbes::probe())
+                .expect("compute freshness");
         let metadata_path = fingerprint_metadata_path(&temp.0, &spec);
         fs::create_dir_all(metadata_path.parent().expect("metadata parent"))
             .expect("create metadata dir");
         fs::write(&metadata_path, &freshness.fingerprint).expect("write fingerprint");
         let mut ctx = CheckContext::new(closure, canonical);
-        let reason = stale_reason(&spec, &temp.0, &mut ctx).expect("drifting artifact must be stale");
+        let reason =
+            stale_reason(&spec, &temp.0, &mut ctx).expect("drifting artifact must be stale");
         assert!(
             !reason.to_string().contains("STALE:"),
             "drift display must not contain STALE:, got {}",
@@ -2734,7 +3124,11 @@ mod tests {
         };
         let mut cache = ClosureCache::new();
         let paths = guest_closure_input_paths(&spec, &mut cache).expect("closure walk");
-        let has = |needle: &str| paths.iter().any(|p| p.to_string_lossy().replace('\\', "/").contains(needle));
+        let has = |needle: &str| {
+            paths
+                .iter()
+                .any(|p| p.to_string_lossy().replace('\\', "/").contains(needle))
+        };
         assert!(has("a/src/lib.rs"), "a src missing: {paths:?}");
         assert!(has("b/src/lib.rs"), "b src missing: {paths:?}");
         assert!(has("a/Cargo.toml"), "a Cargo.toml missing: {paths:?}");
@@ -2778,9 +3172,19 @@ mod tests {
         };
         let mut cache = ClosureCache::new();
         let paths = guest_closure_input_paths(&spec, &mut cache).expect("closure walk");
-        let has = |needle: &str| paths.iter().any(|p| p.to_string_lossy().replace('\\', "/").contains(needle));
-        assert!(has("t/src/lib.rs"), "target cfg(not wasm) dep t missing: {paths:?}");
-        assert!(has("w/src/lib.rs"), "target cfg(wasm) dep w missing: {paths:?}");
+        let has = |needle: &str| {
+            paths
+                .iter()
+                .any(|p| p.to_string_lossy().replace('\\', "/").contains(needle))
+        };
+        assert!(
+            has("t/src/lib.rs"),
+            "target cfg(not wasm) dep t missing: {paths:?}"
+        );
+        assert!(
+            has("w/src/lib.rs"),
+            "target cfg(wasm) dep w missing: {paths:?}"
+        );
         assert!(has("g/src/lib.rs"), "build-dep g missing: {paths:?}");
     }
 
@@ -2788,24 +3192,40 @@ mod tests {
     fn core_guest_closure_reaches_sdk_core_ir_schema_and_parent_manifest() {
         let ws = workspace_root();
         let manifest = ws.join("modules/core-modules/classic-perimeters/wit-guest/Cargo.toml");
-        assert!(manifest.is_file(), "fixture manifest missing: {}", manifest.display());
+        assert!(
+            manifest.is_file(),
+            "fixture manifest missing: {}",
+            manifest.display()
+        );
         let guest_dir = ws.join("modules/core-modules/classic-perimeters/wit-guest");
         let spec = GuestSpec {
             crate_name: "classic-perimeters-guest".to_string(),
             lib_name: "classic_perimeters_guest".to_string(),
             manifest_path: manifest.clone(),
             guest_dir,
-            artifact_path: PathBuf::from("modules/core-modules/classic-perimeters/classic-perimeters.wasm"),
+            artifact_path: PathBuf::from(
+                "modules/core-modules/classic-perimeters/classic-perimeters.wasm",
+            ),
             tree: GuestTree::Core,
             stage_id: None,
         };
         let mut cache = ClosureCache::new();
         let paths = guest_closure_input_paths(&spec, &mut cache).expect("closure walk");
-        let has = |needle: &str| paths.iter().any(|p| p.to_string_lossy().replace('\\', "/").contains(needle));
+        let has = |needle: &str| {
+            paths
+                .iter()
+                .any(|p| p.to_string_lossy().replace('\\', "/").contains(needle))
+        };
         assert!(has("crates/slicer-sdk/src/"), "sdk src missing: {paths:?}");
-        assert!(has("crates/slicer-core/src/"), "core src missing: {paths:?}");
+        assert!(
+            has("crates/slicer-core/src/"),
+            "core src missing: {paths:?}"
+        );
         assert!(has("crates/slicer-ir/src/"), "ir src missing: {paths:?}");
-        assert!(has("crates/slicer-schema/src/"), "schema src missing: {paths:?}");
+        assert!(
+            has("crates/slicer-schema/src/"),
+            "schema src missing: {paths:?}"
+        );
         assert!(
             has("modules/core-modules/classic-perimeters/Cargo.toml"),
             "parent Cargo.toml missing: {paths:?}"
@@ -2816,23 +3236,39 @@ mod tests {
     fn wit_bindgen_only_test_guest_has_an_empty_closure() {
         let ws = workspace_root();
         let manifest = ws.join("crates/slicer-wasm-host/test-guests/prepass-guest/Cargo.toml");
-        assert!(manifest.is_file(), "prepass-guest manifest missing: {}", manifest.display());
+        assert!(
+            manifest.is_file(),
+            "prepass-guest manifest missing: {}",
+            manifest.display()
+        );
         let guest_dir = ws.join("crates/slicer-wasm-host/test-guests/prepass-guest");
         let spec = GuestSpec {
             crate_name: "prepass-guest".to_string(),
             lib_name: "prepass_guest".to_string(),
             manifest_path: manifest,
             guest_dir: guest_dir.clone(),
-            artifact_path: PathBuf::from("crates/slicer-wasm-host/test-guests/prepass-guest.component.wasm"),
+            artifact_path: PathBuf::from(
+                "crates/slicer-wasm-host/test-guests/prepass-guest.component.wasm",
+            ),
             tree: GuestTree::TestGuest,
             stage_id: None,
         };
         let mut cache = ClosureCache::new();
         let paths = guest_closure_input_paths(&spec, &mut cache).expect("closure walk");
-        let has = |needle: &str| paths.iter().any(|p| p.to_string_lossy().replace('\\', "/").contains(needle));
+        let has = |needle: &str| {
+            paths
+                .iter()
+                .any(|p| p.to_string_lossy().replace('\\', "/").contains(needle))
+        };
         // Guest's own src and Cargo.toml must be present.
-        assert!(has("prepass-guest/src/"), "guest own src missing: {paths:?}");
-        assert!(has("prepass-guest/Cargo.toml"), "guest own Cargo.toml missing: {paths:?}");
+        assert!(
+            has("prepass-guest/src/"),
+            "guest own src missing: {paths:?}"
+        );
+        assert!(
+            has("prepass-guest/Cargo.toml"),
+            "guest own Cargo.toml missing: {paths:?}"
+        );
         for banned in [
             "crates/slicer-core/",
             "crates/slicer-sdk/",
@@ -2840,7 +3276,10 @@ mod tests {
             "crates/slicer-schema/",
             "crates/slicer-macros/",
         ] {
-            assert!(!has(banned), "empty closure must not contain {banned}: {paths:?}");
+            assert!(
+                !has(banned),
+                "empty closure must not contain {banned}: {paths:?}"
+            );
         }
     }
 
@@ -2898,16 +3337,38 @@ mod tests {
         sorted.sort();
         sorted.dedup();
         assert_eq!(paths.len(), sorted.len(), "paths must be deduped");
-        let has_a = paths.iter().filter(|p| p.to_string_lossy().replace('\\', "/").contains("a/src/lib.rs")).count();
-        let has_b = paths.iter().filter(|p| p.to_string_lossy().replace('\\', "/").contains("b/src/lib.rs")).count();
+        let has_a = paths
+            .iter()
+            .filter(|p| {
+                p.to_string_lossy()
+                    .replace('\\', "/")
+                    .contains("a/src/lib.rs")
+            })
+            .count();
+        let has_b = paths
+            .iter()
+            .filter(|p| {
+                p.to_string_lossy()
+                    .replace('\\', "/")
+                    .contains("b/src/lib.rs")
+            })
+            .count();
         assert_eq!(has_a, 1, "a must appear exactly once");
         assert_eq!(has_b, 1, "b must appear exactly once");
         let len_after_first = cache.len();
-        assert!(len_after_first >= 2, "cache must hold a and b: len={len_after_first}");
+        assert!(
+            len_after_first >= 2,
+            "cache must hold a and b: len={len_after_first}"
+        );
         // Second guest resolving same subtree must reuse cache (no new manifest read doubles the cache beyond expected).
         let _paths2 = guest_closure_input_paths(&spec2, &mut cache).expect("second walk");
         assert!(cache.len() >= len_after_first, "cache must not shrink");
-        assert!(cache.len() <= len_after_first + 1, "second walk should be cached, len {} vs {}", cache.len(), len_after_first);
+        assert!(
+            cache.len() <= len_after_first + 1,
+            "second walk should be cached, len {} vs {}",
+            cache.len(),
+            len_after_first
+        );
     }
 
     #[test]
@@ -2941,8 +3402,15 @@ mod tests {
         };
         let mut cache = ClosureCache::new();
         let paths = guest_closure_input_paths(&spec, &mut cache).expect("closure");
-        let has = |needle: &str| paths.iter().any(|p| p.to_string_lossy().replace('\\', "/").contains(needle));
-        assert!(has("opt/src/lib.rs"), "optional dep must be included: {paths:?}");
+        let has = |needle: &str| {
+            paths
+                .iter()
+                .any(|p| p.to_string_lossy().replace('\\', "/").contains(needle))
+        };
+        assert!(
+            has("opt/src/lib.rs"),
+            "optional dep must be included: {paths:?}"
+        );
     }
 
     #[test]
@@ -2994,7 +3462,11 @@ mod tests {
         // Parent module dir with its own manifest classic-perimeters.toml
         let module_dir = temp.0.join("my-module");
         fs::create_dir_all(module_dir.join("src")).unwrap();
-        fs::write(module_dir.join("Cargo.toml"), "[package]\nname = \"my-module\"\nversion = \"0.1.0\"\nedition = \"2021\"\n").unwrap();
+        fs::write(
+            module_dir.join("Cargo.toml"),
+            "[package]\nname = \"my-module\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
         fs::write(
             module_dir.join("my-module.toml"),
             "[stage]\nid = \"Layer::Infill\"\n",
@@ -3038,7 +3510,9 @@ mod tests {
         // This will become green only when guest_input_paths charges *.toml under the parent dir.
         let mut ctx_like = {
             let mut closure = ClosureCache::new();
-            let freshness = compute_guest_freshness(&spec, &temp.0, &mut closure, &VersionProbes::probe()).expect("compute freshness");
+            let freshness =
+                compute_guest_freshness(&spec, &temp.0, &mut closure, &VersionProbes::probe())
+                    .expect("compute freshness");
             let meta = fingerprint_metadata_path(&temp.0, &spec);
             fs::create_dir_all(meta.parent().unwrap()).unwrap();
             fs::write(&meta, &freshness.fingerprint).unwrap();
@@ -3046,16 +3520,26 @@ mod tests {
             CheckContext::new(closure, canonical)
         };
         // Before edit: should be fresh (fingerprint matches, artifact decodable)
-        assert!(!is_stale(&spec, &temp.0, &mut ctx_like), "must be fresh before manifest edit");
+        assert!(
+            !is_stale(&spec, &temp.0, &mut ctx_like),
+            "must be fresh before manifest edit"
+        );
         // Mutate module manifest
-        fs::write(module_dir.join("my-module.toml"), "[stage]\nid = \"Layer::Infill\"\n# edited\n").unwrap();
+        fs::write(
+            module_dir.join("my-module.toml"),
+            "[stage]\nid = \"Layer::Infill\"\n# edited\n",
+        )
+        .unwrap();
         let closure2 = ClosureCache::new();
         let mut ctx2 = CheckContext::new(
             closure2,
             crate::wit_verify::world_model_from_text(wit, "canonical.wit").unwrap(),
         );
         // After edit: must be stale — on pre-change code this fails (no charge), which is the expected red signal.
-        assert!(is_stale(&spec, &temp.0, &mut ctx2), "module manifest edit must mark core guest stale");
+        assert!(
+            is_stale(&spec, &temp.0, &mut ctx2),
+            "module manifest edit must mark core guest stale"
+        );
     }
 
     #[test]
@@ -3089,9 +3573,19 @@ mod tests {
         };
         let mut cache = ClosureCache::new();
         let paths = guest_closure_input_paths(&spec, &mut cache).expect("closure");
-        let has = |needle: &str| paths.iter().any(|p| p.to_string_lossy().replace('\\', "/").contains(needle));
-        assert!(!has("dev-only/src/lib.rs"), "dev-dep must be excluded: {paths:?}");
-        assert!(!has("dev-only/Cargo.toml"), "dev-dep manifest must be excluded: {paths:?}");
+        let has = |needle: &str| {
+            paths
+                .iter()
+                .any(|p| p.to_string_lossy().replace('\\', "/").contains(needle))
+        };
+        assert!(
+            !has("dev-only/src/lib.rs"),
+            "dev-dep must be excluded: {paths:?}"
+        );
+        assert!(
+            !has("dev-only/Cargo.toml"),
+            "dev-dep manifest must be excluded: {paths:?}"
+        );
     }
 
     #[test]
@@ -3128,7 +3622,10 @@ mod tests {
         let mut cache = ClosureCache::new();
         let paths_before = guest_closure_input_paths(&spec, &mut cache).expect("closure");
         assert!(
-            paths_before.iter().any(|p| p.to_string_lossy().replace('\\', "/").contains("guest/src/lib.rs")),
+            paths_before.iter().any(|p| p
+                .to_string_lossy()
+                .replace('\\', "/")
+                .contains("guest/src/lib.rs")),
             "guest own src must be charged: {paths_before:?}"
         );
         let mut _ctx = fresh_ctx(&temp, &spec);
@@ -3180,7 +3677,8 @@ mod tests {
             stage_id: None,
         };
         let mut cache = ClosureCache::new();
-        let err = guest_closure_input_paths(&spec_bad, &mut cache).expect_err("unparsable manifest must error");
+        let err = guest_closure_input_paths(&spec_bad, &mut cache)
+            .expect_err("unparsable manifest must error");
         let msg = format!("{err:?} {}", err);
         assert!(
             msg.contains("bad") || msg.contains("Cargo.toml"),
@@ -3205,7 +3703,8 @@ mod tests {
             stage_id: None,
         };
         let mut cache2 = ClosureCache::new();
-        let err2 = guest_closure_input_paths(&spec_missing, &mut cache2).expect_err("missing path dep must error");
+        let err2 = guest_closure_input_paths(&spec_missing, &mut cache2)
+            .expect_err("missing path dep must error");
         let msg2 = format!("{err2:?} {}", err2);
         assert!(
             msg2.contains("does-not-exist") || msg2.contains("nope") || msg2.contains("Cargo.toml"),
@@ -3222,11 +3721,17 @@ mod tests {
         let (guests, _warnings) = discover_guests(&ws_root);
         for spec in guests {
             let mut cache = ClosureCache::new();
-            let paths = guest_closure_input_paths(&spec, &mut cache)
-                .unwrap_or_else(|e| panic!("closure walk failed for {}: {e}", spec.manifest_path.display()));
+            let paths = guest_closure_input_paths(&spec, &mut cache).unwrap_or_else(|e| {
+                panic!(
+                    "closure walk failed for {}: {e}",
+                    spec.manifest_path.display()
+                )
+            });
             for p in &paths {
                 assert!(
-                    !p.to_string_lossy().replace('\\', "/").contains("slicer-model-io"),
+                    !p.to_string_lossy()
+                        .replace('\\', "/")
+                        .contains("slicer-model-io"),
                     "guest {} closure must not reach slicer-model-io, got {}",
                     spec.crate_name,
                     p.display()
@@ -3240,7 +3745,8 @@ mod tests {
     // -----------------------------------------------------------------------
 
     fn build_spec(name: &str) -> GuestSpec {
-        GuestSpec { // exhaustive: 7-field GuestSpec (packet-253 build-core fixtures)
+        GuestSpec {
+            // exhaustive: 7-field GuestSpec (packet-253 build-core fixtures)
             crate_name: name.to_string(),
             lib_name: name.replace('-', "_"),
             manifest_path: PathBuf::from(format!("{name}/Cargo.toml")),
@@ -3283,7 +3789,10 @@ mod tests {
             Some(&[] as &[String]),
             "rebuild_stale must be invoked with an EMPTY slice when nothing is stale"
         );
-        assert!(!all_called.get(), "rebuild_all must never run in default mode");
+        assert!(
+            !all_called.get(),
+            "rebuild_all must never run in default mode"
+        );
     }
 
     #[test]
@@ -3342,9 +3851,18 @@ mod tests {
         );
 
         assert_eq!(all_calls.get(), 1, "rebuild_all must run exactly once");
-        assert_eq!(code, 7, "force mode must return rebuild_all's code verbatim");
-        assert!(!check_called.get(), "force mode must not consult the freshness check");
-        assert!(!stale_called.get(), "force mode must not use the stale-only path");
+        assert_eq!(
+            code, 7,
+            "force mode must return rebuild_all's code verbatim"
+        );
+        assert!(
+            !check_called.get(),
+            "force mode must not consult the freshness check"
+        );
+        assert!(
+            !stale_called.get(),
+            "force mode must not use the stale-only path"
+        );
     }
 
     #[test]
@@ -3370,7 +3888,10 @@ mod tests {
 
         assert_eq!(code, EXIT_INFRA_ERROR);
         assert_eq!(code, 3);
-        assert!(!stale_called.get(), "infra error must not rebuild the stale set");
+        assert!(
+            !stale_called.get(),
+            "infra error must not rebuild the stale set"
+        );
         assert!(
             !all_called.get(),
             "infra error must NEVER fall back to a full rebuild"
@@ -3378,8 +3899,29 @@ mod tests {
     }
 
     #[test]
+    fn accelerated_post_build_latch_gate_rejects_latched_session() {
+        let temp = TempDir::new();
+        assert_eq!(
+            enforce_accelerated_latch_gate(&temp.0, 0),
+            0,
+            "a clean accelerated session must preserve a successful build result"
+        );
+
+        crate::rustc_driver::latch_policy_rejection(&temp.0, "swallowed child rejection")
+            .expect("write policy rejection latch");
+        assert_eq!(
+            enforce_accelerated_latch_gate(&temp.0, 0),
+            1,
+            "a latched accelerated session must reject a successful build result"
+        );
+    }
+
+    #[test]
     fn build_guests_flag_parsing() {
-        assert_eq!(parse_build_guests_flag(&flags(&[])), BuildGuestsFlag::Default);
+        assert_eq!(
+            parse_build_guests_flag(&flags(&[])),
+            BuildGuestsFlag::Default
+        );
         assert_eq!(
             parse_build_guests_flag(&flags(&["--force"])),
             BuildGuestsFlag::Force
@@ -3400,6 +3942,22 @@ mod tests {
             parse_build_guests_flag(&flags(&["--fast"])),
             BuildGuestsFlag::Unknown("--fast".to_string())
         );
+        assert_eq!(
+            parse_build_guests_flag(&flags(&["--accelerated"])),
+            BuildGuestsFlag::Accelerated
+        );
+        assert_eq!(
+            parse_build_guests_flag(&flags(&["--accelerated", "--check"])),
+            BuildGuestsFlag::AcceleratedCheck
+        );
+        assert_eq!(
+            parse_build_guests_flag(&flags(&["--force", "--accelerated"])),
+            BuildGuestsFlag::AcceleratedForce
+        );
+        assert_eq!(
+            parse_build_guests_flag(&flags(&["--accelerated", "--list"])),
+            BuildGuestsFlag::Unknown("--accelerated --list".to_string())
+        );
 
         // Every recognised flag maps to a distinct variant.
         let variants = [
@@ -3408,6 +3966,9 @@ mod tests {
             parse_build_guests_flag(&flags(&["--sync-locks"])),
             parse_build_guests_flag(&flags(&["--check"])),
             parse_build_guests_flag(&flags(&["--list"])),
+            parse_build_guests_flag(&flags(&["--accelerated"])),
+            parse_build_guests_flag(&flags(&["--accelerated", "--force"])),
+            parse_build_guests_flag(&flags(&["--accelerated", "--check"])),
         ];
         for i in 0..variants.len() {
             for j in (i + 1)..variants.len() {
@@ -3430,7 +3991,8 @@ mod tests {
         let guest_dir = temp.0.join(name);
         fs::create_dir_all(guest_dir.join("src")).expect("create guest source directory");
         let manifest_path = guest_dir.join("Cargo.toml");
-        fs::write(&manifest_path, format!("[package]\nname = \"{name}\"\n")).expect("write manifest");
+        fs::write(&manifest_path, format!("[package]\nname = \"{name}\"\n"))
+            .expect("write manifest");
         fs::write(guest_dir.join("src/lib.rs"), "fn main() {}\n").expect("write source");
         let artifact_path = wit_artifact(temp, name, MEMO_WIT);
         GuestSpec {
@@ -3444,6 +4006,126 @@ mod tests {
         }
     }
 
+    #[test]
+    fn accelerated_mode_freshness_accepts_matching_artifact_and_metadata() {
+        let temp = TempDir::new();
+        let spec = memo_guest(&temp, "accelerated-fresh");
+        let accelerated = guest_spec_for_mode(&temp.0, &spec, GuestBuildMode::Accelerated);
+        let artifact = temp.0.join(&accelerated.artifact_path);
+        fs::create_dir_all(artifact.parent().expect("accelerated artifact parent"))
+            .expect("create accelerated artifact directory");
+        fs::write(&artifact, MEMO_WIT).expect("write accelerated artifact");
+
+        let probes = VersionProbes::probe();
+        let mut closure = ClosureCache::new();
+        let freshness = compute_guest_freshness(&spec, &temp.0, &mut closure, &probes)
+            .expect("compute accelerated freshness");
+        write_freshness_metadata(
+            &temp.0,
+            &accelerated,
+            GuestBuildMode::Accelerated,
+            &freshness,
+            &probes,
+        )
+        .expect("write accelerated metadata");
+        let mut verify_closure = ClosureCache::new();
+        let verify_freshness =
+            compute_guest_freshness(&spec, &temp.0, &mut verify_closure, &probes)
+                .expect("recompute accelerated freshness");
+        let stored_fingerprint = fs::read_to_string(fingerprint_metadata_path_for_mode(
+            &temp.0,
+            &accelerated,
+            GuestBuildMode::Accelerated,
+        ))
+        .expect("read accelerated fingerprint");
+        assert_eq!(
+            stored_fingerprint.trim(),
+            verify_freshness.fingerprint,
+            "accelerated fingerprint changed before check"
+        );
+        assert!(metadata_matches(
+            &fingerprint_metadata_path_for_mode(&temp.0, &accelerated, GuestBuildMode::Accelerated),
+            &verify_freshness.fingerprint,
+        ));
+        let identity_path =
+            accelerated_metadata_path(&temp.0, &accelerated, GuestBuildMode::Accelerated)
+                .expect("identity path");
+        assert!(
+            metadata_matches(&identity_path, &accelerated_build_metadata(&probes)),
+            "identity metadata mismatch: {:?}",
+            fs::read_to_string(identity_path)
+        );
+
+        let canonical =
+            crate::wit_verify::world_model_from_text(MEMO_WIT, "canonical.wit").expect("canonical");
+        let mut out = Vec::new();
+        let outcome = check_command_core_for_mode(
+            &temp.0,
+            Ok("wasm-tools test".to_string()),
+            Ok(&canonical),
+            &[spec],
+            &[],
+            &probes,
+            &mut out,
+            GuestBuildMode::Accelerated,
+        );
+
+        assert_eq!(
+            outcome.code,
+            EXIT_FRESH,
+            "stale={:?}, output={:?}",
+            outcome.stale,
+            String::from_utf8_lossy(&out)
+        );
+        assert!(outcome.stale.is_empty());
+        assert!(out.is_empty(), "fresh accelerated check emitted: {out:?}");
+        let metadata_path =
+            accelerated_metadata_path(&temp.0, &accelerated, GuestBuildMode::Accelerated)
+                .expect("accelerated metadata path");
+        let metadata = fs::read_to_string(metadata_path).expect("read accelerated metadata");
+        assert!(metadata.contains("mode=accelerated"));
+        assert!(metadata.contains("policy-fingerprint="));
+        assert!(metadata.contains(probes.rustc.trim()));
+    }
+
+    #[test]
+    fn accelerated_mode_freshness_rejects_absent_opposite_mode_artifact() {
+        let temp = TempDir::new();
+        let spec = memo_guest(&temp, "accelerated-absent");
+        let probes = VersionProbes::probe();
+        let canonical =
+            crate::wit_verify::world_model_from_text(MEMO_WIT, "canonical.wit").expect("canonical");
+        let mut out = Vec::new();
+        let outcome = check_command_core_for_mode(
+            &temp.0,
+            Ok("wasm-tools test".to_string()),
+            Ok(&canonical),
+            std::slice::from_ref(&spec),
+            &[],
+            &probes,
+            &mut out,
+            GuestBuildMode::Accelerated,
+        );
+
+        assert_eq!(outcome.code, EXIT_STALE);
+        assert_eq!(outcome.stale.len(), 1);
+        let text = String::from_utf8(out).expect("utf8 check output");
+        assert!(text.contains("STALE: accelerated-absent"), "output: {text}");
+        assert!(text.contains("artifact missing"), "output: {text}");
+        assert!(
+            temp.0.join(&spec.artifact_path).exists(),
+            "ordinary artifact fixture"
+        );
+        assert!(
+            !temp
+                .0
+                .join(
+                    guest_spec_for_mode(&temp.0, &spec, GuestBuildMode::Accelerated).artifact_path,
+                )
+                .exists(),
+            "ordinary artifact must not satisfy accelerated mode"
+        );
+    }
 
     #[test]
     fn artifact_is_decoded_exactly_once_per_freshness_check() {
@@ -3499,7 +4181,10 @@ mod tests {
         match stale_reason(&spec, &temp.0, &mut ctx) {
             Some(StaleReason::EmbeddedWorldDrift(drifts)) => {
                 assert_eq!(drifts.len(), 1, "one synthetic drift");
-                assert_eq!(drifts[0].kind, crate::wit_verify::DriftKind::MissingStagePackage);
+                assert_eq!(
+                    drifts[0].kind,
+                    crate::wit_verify::DriftKind::MissingStagePackage
+                );
                 assert_eq!(drifts[0].package, "canonical");
             }
             other => panic!("CanonicalEmpty must be synthetic drift, got {other:?}"),
@@ -3517,7 +4202,10 @@ mod tests {
         match stale_reason(&spec, &temp.0, &mut ctx) {
             Some(StaleReason::EmbeddedWorldDrift(drifts)) => {
                 assert_eq!(drifts.len(), 1);
-                assert_eq!(drifts[0].kind, crate::wit_verify::DriftKind::MissingStagePackage);
+                assert_eq!(
+                    drifts[0].kind,
+                    crate::wit_verify::DriftKind::MissingStagePackage
+                );
                 assert!(
                     drifts[0].name.contains("wit/world.wit"),
                     "the drift must carry the loader's reason: {}",
@@ -3614,8 +4302,7 @@ mod tests {
 
         let canonical =
             crate::wit_verify::world_model_from_text(MEMO_WIT, "canonical.wit").expect("canonical");
-        let mut ctx =
-            CheckContext::with_probes(ClosureCache::new(), canonical, probes.clone());
+        let mut ctx = CheckContext::with_probes(ClosureCache::new(), canonical, probes.clone());
 
         for spec in &specs {
             // No sidecar exists, so every guest must reach and fail the
@@ -3755,7 +4442,6 @@ mod tests {
         let text = String::from_utf8(out).expect("utf8 output");
         assert!(text.contains("built 3 guest(s)"), "got {text}");
     }
-
 }
 
 #[cfg(test)]
@@ -3922,10 +4608,7 @@ mod lock_divergence_tests {
     }
 
     fn owned(name: &str, pkgs: &[(&str, &str)]) -> (String, Vec<(String, String)>) {
-        (
-            name.to_string(),
-            parse_lock_packages(&synthetic_lock(pkgs)),
-        )
+        (name.to_string(), parse_lock_packages(&synthetic_lock(pkgs)))
     }
 
     /// Temp scratch dir for the vestigial-lockfile regression tests.
@@ -3969,14 +4652,12 @@ mod lock_divergence_tests {
         }
     }
 
-    const ROOT_MEMBER_MANIFEST: &str =
-        "[package]
+    const ROOT_MEMBER_MANIFEST: &str = "[package]
 name = \"root-member-guest\"
 version = \"0.1.0\"
 edition = \"2021\"
 ";
-    const INDEPENDENT_MANIFEST: &str =
-        "[package]
+    const INDEPENDENT_MANIFEST: &str = "[package]
 name = \"independent-guest\"
 version = \"0.1.0\"
 edition = \"2021\"
@@ -3989,7 +4670,11 @@ edition = \"2021\"
     #[test]
     fn root_workspace_member_guest_is_excluded_from_lock_sync() {
         let temp = LockTempDir::new("sync");
-        let member = temp.guest("root-member-guest", ROOT_MEMBER_MANIFEST, &[("serde", "1.0.1")]);
+        let member = temp.guest(
+            "root-member-guest",
+            ROOT_MEMBER_MANIFEST,
+            &[("serde", "1.0.1")],
+        );
         assert!(
             !guest_owns_lockfile(&member.guest_dir),
             "no [workspace] sentinel => does not own its lockfile"
@@ -4036,7 +4721,11 @@ edition = \"2021\"
     #[test]
     fn independent_workspace_guest_is_synced_and_analysed() {
         let temp = LockTempDir::new("independent");
-        let a = temp.guest("independent-guest", INDEPENDENT_MANIFEST, &[("serde", "1.0.1")]);
+        let a = temp.guest(
+            "independent-guest",
+            INDEPENDENT_MANIFEST,
+            &[("serde", "1.0.1")],
+        );
         let b_dir_manifest = INDEPENDENT_MANIFEST.replace("independent-guest", "independent-b");
         let b = temp.guest("independent-b", &b_dir_manifest, &[("serde", "1.0.2")]);
         assert!(guest_owns_lockfile(&a.guest_dir));
@@ -4046,13 +4735,20 @@ edition = \"2021\"
         let locks = collect_guest_locks(&[a, b]);
         assert_eq!(locks.len(), 2, "both locks must be analysed");
         let div = lock_divergences(&locks);
-        assert_eq!(div.len(), 1, "their real disagreement must still be reported");
+        assert_eq!(
+            div.len(),
+            1,
+            "their real disagreement must still be reported"
+        );
         assert_eq!(div[0].crate_name, "serde");
     }
 
     #[test]
     fn lock_divergence_parser_extracts_name_version_pairs() {
-        let pkgs = parse_lock_packages(&synthetic_lock(&[("serde", "1.0.1"), ("wit-bindgen", "0.30.0")]));
+        let pkgs = parse_lock_packages(&synthetic_lock(&[
+            ("serde", "1.0.1"),
+            ("wit-bindgen", "0.30.0"),
+        ]));
         assert_eq!(
             pkgs,
             vec![
@@ -4070,11 +4766,19 @@ edition = \"2021\"
             owned("guest-c", &[("serde", "1.0.3"), ("anyhow", "1.0.86")]),
         ];
         let div = lock_divergences(&locks);
-        assert_eq!(div.len(), 1, "exactly one diverging crate expected: {div:?}");
+        assert_eq!(
+            div.len(),
+            1,
+            "exactly one diverging crate expected: {div:?}"
+        );
         assert_eq!(div[0].crate_name, "serde");
         assert_eq!(
             div[0].versions,
-            vec!["1.0.1".to_string(), "1.0.2".to_string(), "1.0.3".to_string()],
+            vec![
+                "1.0.1".to_string(),
+                "1.0.2".to_string(),
+                "1.0.3".to_string()
+            ],
             "every distinct version must be named"
         );
     }
@@ -4093,7 +4797,10 @@ edition = \"2021\"
         // A guest that depends on a crate with `default-features = false`
         // still resolves the SAME version; a feature variant is not drift.
         let locks = vec![
-            owned("arachne", &[("slicer-core", "0.1.0"), ("wit-bindgen", "0.30.0")]),
+            owned(
+                "arachne",
+                &[("slicer-core", "0.1.0"), ("wit-bindgen", "0.30.0")],
+            ),
             owned("other", &[("slicer-core", "0.1.0"), ("serde", "1.0.1")]),
         ];
         assert!(lock_divergences(&locks).is_empty());
@@ -4103,8 +4810,14 @@ edition = \"2021\"
     fn lock_divergence_ordering_is_deterministic() {
         // All disagreements are WITHIN a compat line, so all are real drift.
         let locks = vec![
-            owned("g1", &[("zeta", "9.0.0"), ("alpha", "2.0.0"), ("mid", "1.0.0")]),
-            owned("g2", &[("zeta", "9.1.0"), ("alpha", "2.2.0"), ("mid", "1.0.0")]),
+            owned(
+                "g1",
+                &[("zeta", "9.0.0"), ("alpha", "2.0.0"), ("mid", "1.0.0")],
+            ),
+            owned(
+                "g2",
+                &[("zeta", "9.1.0"), ("alpha", "2.2.0"), ("mid", "1.0.0")],
+            ),
             owned("g3", &[("zeta", "9.1.0"), ("alpha", "2.10.0")]),
         ];
         let div = lock_divergences(&locks);
@@ -4112,7 +4825,11 @@ edition = \"2021\"
         assert_eq!(names, vec!["alpha", "zeta"], "crates sorted by name");
         assert_eq!(
             div[0].versions,
-            vec!["2.0.0".to_string(), "2.10.0".to_string(), "2.2.0".to_string()],
+            vec![
+                "2.0.0".to_string(),
+                "2.10.0".to_string(),
+                "2.2.0".to_string()
+            ],
             "versions sorted by version string"
         );
         assert_eq!(
@@ -4234,11 +4951,20 @@ edition = \"2021\"
             &VersionProbes::probe(),
             &mut out,
         );
-        assert_eq!(outcome.code, EXIT_STALE, "divergence is an opinion => EXIT_STALE");
+        assert_eq!(
+            outcome.code, EXIT_STALE,
+            "divergence is an opinion => EXIT_STALE"
+        );
         assert_ne!(outcome.code, EXIT_INFRA_ERROR);
         let text = String::from_utf8(out).expect("utf8");
-        assert!(text.contains("serde"), "must name the diverging crate: {text}");
-        assert!(text.contains("1.0.1") && text.contains("1.0.2"), "must name every version: {text}");
+        assert!(
+            text.contains("serde"),
+            "must name the diverging crate: {text}"
+        );
+        assert!(
+            text.contains("1.0.1") && text.contains("1.0.2"),
+            "must name every version: {text}"
+        );
         assert!(
             text.contains("--sync-locks"),
             "must name --sync-locks as the remedy: {text}"
@@ -4249,5 +4975,4 @@ edition = \"2021\"
             "exactly one line per diverging crate: {text}"
         );
     }
-
 }

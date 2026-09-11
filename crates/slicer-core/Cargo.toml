@@ -7,6 +7,7 @@ authors = ["Pinch 'n Print Team"]
 [features]
 default = []
 host-algos = ["dep:rayon", "dep:boostvoronoi"]
+perimeter-spatial-test-support = []
 # Opt-in only for the synthetic panic regression. Keeping this off the
 # workspace's normal test feature set prevents boostvoronoi diagnostics from
 # leaking into unrelated crates' test harnesses.
@@ -46,6 +47,10 @@ required-features = ["host-algos"]
 [[test]]
 name = "bridge_orientation_tdd"
 required-features = ["host-algos"]
+
+[[test]]
+name = "perimeter_spatial_tdd"
+required-features = ["host-algos", "perimeter-spatial-test-support"]
 
 [[test]]
 name = "algo_support_geometry_tdd"

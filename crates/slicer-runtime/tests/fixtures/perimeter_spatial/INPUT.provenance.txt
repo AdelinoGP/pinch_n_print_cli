@@ -1,0 +1,12 @@
+fixture_format_version=perimeter-spatial-input-v1
+recorded_by=record_perimeter_spatial_fixtures
+mesh=committed support fixture copied verbatim
+mesh_source=tests/fixtures/support-family/SupportAdversarial.stl
+arachne_second_pass_mesh=committed painted perimeter parity fixture copied verbatim
+arachne_second_pass_mesh_source=tests/fixtures/perimeter_parity/cube_4color_arachne/cube_4color.3mf
+config=top_shell_layers=3,bottom_shell_layers=3,only_one_wall_top=true
+coordinates_unit=millimetres
+coordinate_integer_scale=1
+coordinate_provenance=source fixture vertices remain integer-scaled input
+layer_height_f32_bits=0x3f800000
+first_layer_height_f32_bits=0x3f800000

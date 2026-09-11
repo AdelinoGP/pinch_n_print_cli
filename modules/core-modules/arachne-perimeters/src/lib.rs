@@ -64,15 +64,16 @@
 use slicer_core::flow::{
     bridging_flow, flow_to_width, line_width_to_spacing, resolve_role_width, RoleWidthContext,
 };
+use slicer_core::perimeter_spatial::PerimeterSpatialContext;
 use slicer_core::perimeter_utils::{
     apply_seam_paint_bias, build_wall_flags, generate_sharp_corner_seam_candidates,
-    point_in_any_polygon, seam_paint_boxes, wall_sequence_reorder,
+    seam_paint_boxes, wall_sequence_reorder,
 };
 use slicer_core::polygon_ops::{difference_ex, offset2_ex, OffsetJoinType};
 use slicer_ir::{
-    extrusion_line_to_extrusion_path3d, mm_to_units, point_in_polygon_winding, units_to_mm,
-    ConfigView, ExPolygon, ExtrusionLine, ExtrusionRole, LoopType, Point2, Polygon,
-    WallBoundaryType, WallLoop, WidthProfile,
+    extrusion_line_to_extrusion_path3d, mm_to_units, units_to_mm, ConfigView, ExPolygon,
+    ExtrusionLine, ExtrusionRole, LoopType, Point2, Polygon, WallBoundaryType, WallLoop,
+    WidthProfile,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -657,6 +658,11 @@ impl LayerModule for ArachnePerimeters {
                 continue;
             }
             let z = region.z();
+            let spatial_context = PerimeterSpatialContext::new(
+                region.prev_layer_boundary(),
+                region.overhang_quartile_polygons(),
+                region.bridge_areas(),
+            );
 
             // G3 part 2: non-topmost region with a top sub-area. When
             // `only_one_wall_top` is enabled, the region is NOT the exposed top
@@ -696,6 +702,7 @@ impl LayerModule for ArachnePerimeters {
                     nozzle_diameter_mm,
                     bridge_flow_ratio,
                     thick_bridges,
+                    &spatial_context,
                     output,
                 )?;
                 continue;
@@ -721,8 +728,10 @@ impl LayerModule for ArachnePerimeters {
                 };
 
             // Walls are built from the Arachne `ExtrusionLine`s via `build_walls`
-            // (the same path the G3 part-2 second pass uses); `bridge_areas` /
-            // `overhang_bands` are recomputed inside `build_walls` per call.
+            // (the same path the G3 part-2 second pass uses). The immutable
+            // spatial context above is shared by this pass and any second pass;
+            // the region slices retained in `build_walls` only preserve the
+            // existing empty-data gates.
             let mut walls = self.build_walls(
                 &lines,
                 region,
@@ -735,6 +744,7 @@ impl LayerModule for ArachnePerimeters {
                 nozzle_diameter_mm,
                 bridge_flow_ratio,
                 thick_bridges,
+                &spatial_context,
             )?;
             commit_wall_sequence(&mut walls, sequence);
             for wall in walls {
@@ -831,6 +841,7 @@ impl ArachnePerimeters {
         nozzle_diameter_mm: f32,
         bridge_flow_ratio: f32,
         thick_bridges: bool,
+        context: &PerimeterSpatialContext,
     ) -> Result<Vec<WallLoop>, ModuleError> {
         let bridge_areas = region.bridge_areas();
         let overhang_bands = region.overhang_quartile_polygons();
@@ -911,7 +922,7 @@ impl ArachnePerimeters {
             if !bridge_areas.is_empty() && matches!(loop_type, LoopType::Outer | LoopType::Inner) {
                 for i in 0..path.points.len() {
                     let units_pt = ring_pts_units[i];
-                    if point_in_any_polygon(&units_pt, bridge_areas) {
+                    if context.is_bridge(&units_pt) {
                         feature_flags[i].is_bridge = true;
                         // D4/packet 150 step 5: bridge vertices get the
                         // bridging flow factor, whose round-cross-section
@@ -940,13 +951,7 @@ impl ArachnePerimeters {
                 pt.overhang_distance_mm = if prev_layer_boundary.is_empty() {
                     None
                 } else {
-                    Some(
-                        slicer_core::perimeter_utils::signed_distance_to_boundary(
-                            pt.x,
-                            pt.y,
-                            prev_layer_boundary,
-                        ) + 0.5 * pt.width,
-                    )
+                    Some(context.signed_distance_to_boundary(pt.x, pt.y) + 0.5 * pt.width)
                 };
             }
 
@@ -955,15 +960,7 @@ impl ArachnePerimeters {
             // inside a `overhang_quartile_polygons` band's polygon(s).
             if !overhang_bands.is_empty() {
                 for pt in &mut path.points {
-                    pt.overhang_quartile = overhang_bands
-                        .iter()
-                        .filter(|band| {
-                            band.polygons.iter().any(|poly| {
-                                point_in_polygon_winding(poly, pt.x as f64, pt.y as f64, 0.0)
-                            })
-                        })
-                        .map(|band| band.quartile)
-                        .max();
+                    pt.overhang_quartile = context.overhang_quartile(pt.x, pt.y);
                 }
             }
 
@@ -1030,6 +1027,7 @@ impl ArachnePerimeters {
         nozzle_diameter_mm: f32,
         bridge_flow_ratio: f32,
         thick_bridges: bool,
+        context: &PerimeterSpatialContext,
         output: &mut PerimeterOutputBuilder,
     ) -> Result<(), ModuleError> {
         let sequence =
@@ -1102,6 +1100,7 @@ impl ArachnePerimeters {
             nozzle_diameter_mm,
             bridge_flow_ratio,
             thick_bridges,
+            context,
         )?;
 
         // Not-top remainder.
@@ -1136,6 +1135,7 @@ impl ArachnePerimeters {
                 nozzle_diameter_mm,
                 bridge_flow_ratio,
                 thick_bridges,
+                context,
             )?;
             commit_wall_sequence(&mut fb_walls, sequence);
             for w in fb_walls {
@@ -1193,6 +1193,7 @@ impl ArachnePerimeters {
             nozzle_diameter_mm,
             bridge_flow_ratio,
             thick_bridges,
+            context,
         )?;
 
         // Step 7: merge — top single wall + renumbered second-pass inner walls.
