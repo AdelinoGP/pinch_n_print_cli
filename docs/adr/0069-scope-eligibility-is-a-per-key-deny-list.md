@@ -3,6 +3,13 @@
 Status: **Accepted.** Approved in the config-scope design interview; not yet
 implemented.
 
+> **Amendment 2026-09-11 (config-scope resolution revision session).** When a
+> key is declared by several declarers, `denied_scopes` is the **union**
+> across all of them — a scope denied by any declarer is denied. A key denied
+> at a scope is rejected loudly wherever it is stated there; the union rule
+> makes that rejection consistent regardless of which declarer the resolution
+> path consults.
+
 Which config scopes may state a given key is declared per key, on its schema entry,
 as a list of **denied** scopes. A key with no denial is statable at every scope.
 Host and module authors declare it the same way, so a module author has the same

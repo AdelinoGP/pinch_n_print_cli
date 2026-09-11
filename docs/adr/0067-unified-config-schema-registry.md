@@ -3,6 +3,32 @@
 Status: **Accepted.** Approved in the config-scope design interview; not yet
 implemented.
 
+> **Amendment 2026-09-11 (config-scope resolution revision session).** Three
+> additions to the reconciliation rules, settled before implementation:
+>
+> 1. **Claim-exclusive divergence warning.** The alphabetical default
+>    tie-break stands, but when modules that can never both be active (claim
+>    alternatives) declare a shared key with divergent defaults or bounds —
+>    measured example `detect_thin_wall`: `arachne-perimeters` `false` vs
+>    `classic-perimeters` `true` — assembly emits a non-fatal load warning
+>    naming both declarers and both values. The coupling stays deterministic;
+>    it becomes visible rather than silent.
+> 2. **`denied_scopes` unions across declarers** (see ADR-0069's amendment).
+> 3. **Enum domains must agree** across declarers, else load error (same
+>    class as a type conflict); UI metadata (display/group/unit/description/
+>    tags) is advisory only. Every entry retains provenance — the declaring
+>    host channel or module ids — so every diagnostic names contributors.
+>
+> The registry also gains two typed entry fields, validated at assembly:
+> `selector` (the key may be read at load-time claim selection; a selector
+> flag on a per-region-statable key is a load error) and `base-key` (the
+> percent base, `ratio_over`: base must exist, be percent-compatible, and
+> form no cycles). Finally, the registry joins **all** host declaration
+> channels, not only `declare_resolved_config!`: the DSL rows,
+> `FeedrateConfig::SPEED_KEYS`, `HOST_RUNTIME_KEYS`, and module manifests.
+> "Host declarations" in the original text meant the macro; the registry means
+> the whole universe.
+
 Config keys were declared in two places that nothing joined: `declare_resolved_config!`
 (`crates/slicer-ir/src/resolved_config.rs`) declares the host's fields, and each
 module's `[config.schema.<key>]` manifest table declares its own. Ingestion could

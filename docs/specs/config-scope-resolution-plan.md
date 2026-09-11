@@ -1,13 +1,19 @@
 # Config Scope and Resolution — Approved Plan
 
-Status: approved (2026-09-11, grill session)
-Source: architecture review of the config pipeline, this session. Every count and
+Status: approved; revised 2026-09-11 after a two-axis code review and a
+design-interview revision session. The revision decisions that amend governance
+are recorded in the Amendment sections of **ADR-0067**, **ADR-0068** and
+**ADR-0069** (ADR-0070 is unchanged). This revised file is the
+packet-generation source — `/spec-packet-generator` reads this file, not the
+review session that produced it.
+Source: architecture review of the config pipeline. Every count and
 divergence below was measured against a clean `master` working tree at review
 time; all are **ledger facts** — re-derive before acting on any of them.
 
-Governing ADRs authored with this plan: **ADR-0067** (one config schema registry),
-**ADR-0068** (config scope is a wire encoding), **ADR-0069** (scope eligibility is a
-per-key deny list), **ADR-0070** (typed modifier kind; `ModifierScope` removed).
+Governing ADRs authored with this plan: **ADR-0067** (one config schema
+registry), **ADR-0068** (config scope is a wire encoding), **ADR-0069**
+(scope eligibility is a per-key deny list), **ADR-0070** (typed modifier kind;
+`ModifierScope` removed).
 Vocabulary: `CONTEXT.md` — **config scope**, **scope delta**, **config schema
 registry**, **scope eligibility**, **authored value**, **automatic value**,
 **layer range**, **modifier kind**.
@@ -46,6 +52,8 @@ keys. No committed test observes any of it.
   `apply_cli_key`, which sees only the host half — so every module-owned key is
   `Undeclared` and falls to the `Bool` heuristic. The manifest already declares the
   type; the coercion never asks it.
+  *Revision note: "host declarations" is wider than the DSL macro — see Registry
+  below for the full channel list.*
 
 - **RC-2 — Scope is a string prefix, so precedence is call order.**
   `object_config:<id>:<key>`, `paint_config:<semantic>:<key>`,
@@ -146,105 +154,312 @@ Recorded so future reviews do not re-open them:
 
 ## Design decisions (resolved)
 
-**Registry** — One **config schema registry** assembled per run at module load,
-joining host declarations and every loaded module's manifest (ADR-0067). Type must
-agree across declarers or it is a load error; bounds intersect and the intersection
-is reported; a default comes from the host declaration where the host declares the
-key, otherwise from the alphabetically-first declaring module id. The 48 module
-default declarations for host-owned keys stay as documentation with a load warning.
-**Automatic values** expand inside the registry, so no consuming module ever reads
-a placeholder. Order becomes: discover modules → assemble registry → type config →
-select claim holders, which removes the raw pre-resolution read of `wall_generator`,
-`spiral_vase`, `support_type` and `support_family`.
+### Registry — one schema registry, every declaration channel
 
-**Ingestion** — Adapters parse; the registry types. The prefixed flat key stays the
-wire format so a flat OrcaSlicer-shaped sidecar remains a drop-in, and is decoded
-exactly once into a typed **config scope** (ADR-0068). Namespace prefixes are
-stripped before classification. Keys no declaration recognises warn with near-miss
-suggestions and are dropped rather than carried. No alias mechanism is introduced —
-key naming belongs to the orca-feature-gap rename workstream, which runs after this
-plan.
+One **config schema registry** assembled per run at module load (ADR-0067). The
+registry joins **four** declaration channels — RC-1's "host declarations" is
+wider than `declare_resolved_config!`:
 
-**Resolution** — One module, two entry points: a Z-grid query that
-`PrePass::LayerPlanning` calls, and the scope-stack resolve that
-`PrePass::RegionMapping` calls. Scope layers are **scope deltas**, so absence is
-absence and the diff-against-`Default` rule disappears along with the 41-field
-ceiling. Lives in a new crate, `slicer-config`, depending on `slicer-ir` and
-`slicer-scheduler` — also the natural place to close the open ADR-0019 dependency.
+1. the `declare_resolved_config!` DSL rows (`ResolvedConfig::host_config_keys`,
+   `crates/slicer-ir/src/resolved_config.rs`);
+2. `FeedrateConfig::SPEED_KEYS` (`crates/slicer-ir/src/feedrate.rs`);
+3. `HOST_RUNTIME_KEYS` (`crates/slicer-scheduler/src/manifest.rs`) —
+   `use_relative_e_distances`, `thumbnail_path`, `wall_generator`;
+4. every loaded module's `[config.schema.<key>]` manifest table.
 
-**Eligibility** — Per-key `denied_scopes` on the schema entry, authored by host and
-module authors alike; absent means statable at every scope (ADR-0069).
-`[config.overridable-per-region]` and `[config.overridable-per-layer]` are deleted
-along with their `ingest_manifest` requirement.
+A key the host actually reads but no channel declares must be impossible; the
+packet-1 census test enforces this (see Testing). The registry carries each
+key's type, default, bounds, **scope eligibility**, **selector** marking,
+percent **base-key**, and declaration provenance. Automatic values are *not*
+expanded here — see Expansion. Assembly order: discover modules → assemble
+registry → type config → select claim holders (selector keys only — see Claim
+selection).
 
-**Extensions** — `ResolvedConfig.extensions` splits: module-declared keys keep a
-home but become typed and bounds-checked; genuinely undeclared keys are dropped
-after warning.
+### Crate topology and shared types
 
-**Guests** — `ConfigView` has one meaning, always resolved. `bind_module_config_view`
-stops reading raw `config_source`. Every declared key is then present with its
-registry default, `None` becomes a real signal, and the 54 `unwrap_or(literal)`
-fallbacks are deleted.
+- `ConfigFieldEntry` and `ConfigSchema` relocate to `slicer-ir`, beside
+  `ConfigValue`/`HostConfigKey`. `slicer-scheduler` re-exports during the
+  transition and keeps `ingest_manifest` TOML parsing plus the
+  `module config-schema` wire rendering, adapted to the relocated types.
+- `AggregatedRegionSplitEntry` relocates to `slicer-ir` and the
+  `slicer-core → slicer-scheduler` dependency is removed, **closing ADR-0019**
+  (folded into packet 1; the ADR's Status line is amended there).
+- New crate `slicer-config` owns registry assembly and resolution and depends
+  on `slicer-ir` **only** — config semantics never depend on orchestration.
+  This supersedes the draft's "`slicer-config` depends on `slicer-scheduler`".
 
-**Modifiers** — Typed **modifier kind** across the IR seam, matched exhaustively at
-the ten sites; deltas route through the registry so they are typed, bounds-checked
-and subject to `denied_scopes`; `ModifierScope` is deleted (ADR-0070, superseding
-the future work named in ADR-0030 §3).
+### Reconciliation rules (multi-declarer keys)
 
-**Layer range** — A first-class scope, ingested from OrcaSlicer's
-`Metadata/layer_config_ranges.xml`. Canonical applies a range two ways —
-`layer_height` re-derives the Z grid via `layer_height_profile_from_ranges`
-(`Slicing.cpp`), every other key overrides `PrintRegionConfig` for intersecting
-regions — which is what the two entry points exist to serve.
+- **Type** must agree across all declarers; disagreement is a load error.
+- **Bounds** intersect, as before, and the intersection is **reported** rather
+  than applied silently (`layer_height` is capped at 1.0 today by one module's
+  declaration, invisibly).
+- **Default**: the host declaration wins where the host declares the key;
+  otherwise the alphabetically-first declaring module id (ADR-0067, kept).
+  **Revision consequence:** when *claim-exclusive* modules (alternatives that
+  can never both be active) declare a shared key with divergent defaults or
+  bounds — measured example `detect_thin_wall`: `arachne-perimeters` `false`
+  vs `classic-perimeters` `true` — assembly emits a non-fatal load warning
+  naming both declarers and both values. The coupling stays deterministic but
+  becomes visible.
+- **`denied_scopes`**: **union** across declarers — a scope denied by any
+  declarer is denied (ADR-0069 amendment).
+- **Enum domains** must agree across declarers, else load error (same class as
+  a type conflict).
+- **UI metadata** (display/group/unit/description/tags) is advisory: host
+  declaration wins, else alphabetically-first declarer; never a load error.
+- Every entry retains **provenance** (declaring host channel or module ids) so
+  every diagnostic names its contributors.
+- The 48 module default declarations for host-owned keys stay as documentation
+  with a load warning.
+- **`base-key`** (the `ratio_over` relationship) is a typed field on the schema
+  entry, validated at assembly: the base key exists, its type is
+  percent-compatible, and the dependency graph is acyclic.
 
-**Type conflicts** — Repaired in this plan, toward canonical:
-`bridge_line_width` and `initial_layer_line_width` become `float_or_percent`
-(canonical declares both `coFloatOrPercent`, `ratio_over = nozzle_diameter`);
-`support_style` becomes `enum` with `tree-support-planner`'s seven-value list. The
-five plain-float readers migrate to `get_abs_value` in the same packet, so no
-percent value is silently dropped.
+### Selector keys and claim selection
+
+- A `selector` flag on the schema entry (a host DSL row flag; module manifests
+  may declare their own selector keys under the same rule). Assembly validates:
+  a key marked `selector` that is also statable per-region is a load error.
+- `wall_generator`, `spiral_vase`: whole-print selectors, readable at load.
+  Startup claim dedup reads only typed selector keys, removing the raw
+  pre-resolution reads.
+- `support_type`, `support_family`: per-region selectors, resolved in the
+  existing region-resolution stage (`module_claims_match_active_region`,
+  `resolve_held_claims`), reading typed values only. Both are **denied at
+  layer-range scope** — stating one in a layer range is a load error, not a
+  silent bypass of load-time selection.
+- Per-region claim selection stays where it is. Startup selection and
+  region-resolved selection are two named lifecycle points, not one.
+
+### Ingestion
+
+Adapters parse; the registry types. The prefixed flat key stays the **wire**
+format (ADR-0068) so a flat OrcaSlicer-shaped sidecar remains a drop-in, and is
+decoded exactly once into a typed **config scope**. Namespace prefixes are
+stripped before classification. Keys no declaration recognises warn with
+near-miss suggestions. **Drop-unknown ships in two steps:** packet 3 lands
+warn-mode (warn and keep); packet 6 flips warn→drop once the census and
+no-drop e2e gates are green (see Testing). No alias mechanism is introduced —
+key naming belongs to the orca-feature-gap rename workstream, which runs after
+this plan.
+
+### Expansion — automatic values in three phases
+
+"Automatic values expand inside the registry" is revised: the registry carries
+declaration and dependency metadata; expansion happens in the phase that owns
+the inputs the derivation needs.
+
+- **Phase A — declaration (registry):** type, default, bounds, base-key,
+  selector, eligibility, provenance. No expansion.
+- **Phase B — resolution (config-only):** after the applicable scope deltas
+  merge, before interning / `ConfigView` delivery, using an explicit
+  `ExpansionContext` (nozzle diameter, tool bases). Covers: `line_width = 0`,
+  `support_line_width = 0`, percent values resolved against their base-key,
+  the speed percent family, and the config-only `-1 = auto` sentinels (e.g.
+  `support_interface_bottom_layers = -1` matching the top-side key).
+- **Phase C — owning stage (context-dependent):** role/first-layer/bridge
+  widths stay in `resolve_role_width` (`crates/slicer-core/src/flow.rs`),
+  reading already-expanded bases so its zero-fallbacks shrink to role
+  dispatch; the volumetric `0 = auto` speed cap lands in the emitter
+  (`crates/slicer-gcode/src/emit.rs`), where the per-move width/height it
+  needs exist.
+
+"Always resolved" means: **no raw placeholder reaches a `ConfigView` consumer
+at its read point.** A stage-context rule is documented as such, never expanded
+with context frozen at load.
+
+### Resolution — one module, two entry points, one precedence matrix
+
+One resolution module in `slicer-config` (replacing the five scattered
+resolvers and `overlay_resolved`): the **Z-grid query** that
+`PrePass::LayerPlanning` calls, and the **scope-stack resolve** that
+`PrePass::RegionMapping` calls. Scope layers are **scope deltas**, so absence
+is absence and the diff-against-`Default` rule disappears along with the
+41-field ceiling.
+
+Total scope order, low → high. The existing relative order of modifier, paint
+semantic and tool is preserved from `docs/02_ir_schemas.md` §Config Key
+Namespaces and `docs/04_host_scheduler.md` §RegionMapping; layer range is the
+one insertion:
+
+```text
+global/print < object < layer range < modifier < paint semantic < tool
+```
+
+- **Layer range** sits above object and below modifier: canonical applies a
+  range by re-deriving the Z grid (`layer_height`) or overriding
+  `PrintRegionConfig` for intersecting regions, while a geometric modifier is
+  the narrower selector.
+- **Same-scope rules:** multiple modifiers — priority ascending,
+  last-writer-wins (existing); multiple paint semantics — lexicographic
+  semantic order (existing); tool last (existing).
+- **Layer-range overlap:** `layer_height` ranges compose into the Z-grid
+  re-derivation with the later-starting range winning within overlap
+  (canonical `layer_height_profile` behavior); two overlapping ranges stating
+  the same non-`layer_height` key with different values is a load error.
+- A key denied at a scope but stated there anyway is rejected loudly
+  (ADR-0069) — never accepted and ignored.
+
+### Layer range — geometry semantics
+
+- Ingested from OrcaSlicer's `Metadata/layer_config_ranges.xml`; a first-class
+  **per-object** scope.
+- Endpoints are world-space Z millimetres as authored, half-open
+  `[min_z, max_z)`, matched against each layer's print Z on the global grid.
+- `layer_height` ranges re-derive the Z grid (canonical
+  `layer_height_profile_from_ranges`, `Slicing.cpp`); every other key
+  overrides the intersecting regions' config through the scope-stack resolve —
+  which is what the two entry points exist to serve.
+- Catch-up layers inherit the range covering their top Z.
+- Selector keys and machine/emitter keys are denied at layer-range scope;
+  stating one there is a load error.
+- Packet 9 verifies the canonical application against a local OrcaSlicer
+  checkout, citing function names only (never line numbers).
+
+### Eligibility
+
+Per-key `denied_scopes` on the schema entry, authored by host and module
+authors alike; absent means statable at every scope (ADR-0069).
+`[config.overridable-per-region]` and `[config.overridable-per-layer]` are
+deleted along with their `ingest_manifest` requirement. The initial
+machine/emitter denials (`bed_shape`, the `machine_max_*` family,
+`gcode_xy_decimals`, `disable_m73`, …) are hand-authored on the host DSL
+declarations, cross-checked by a mechanical derivation (registry keys that no
+sub-print scope can meaningfully reach) and pinned by a drift test: the
+derivation proposes, the author confirms, nothing is silently auto-generated
+at runtime.
+
+### Extensions
+
+`ResolvedConfig.extensions` remains the home for module-declared keys — every
+entry now registry-typed and bounds-checked at ingestion/resolution (an entry
+exists only if the registry declares the key). No new IR field; the interner
+and `Hash` semantics are unchanged. Genuinely undeclared keys are dropped
+after warning (warn-mode in packet 3; the drop flips in packet 6).
+
+### Guests and delivery
+
+- `ConfigView` has one meaning: always resolved. `bind_module_config_view`
+  stops reading raw `config_source`. Every declared key is present with its
+  registry default, `None` becomes a real signal, and the 54
+  `.unwrap_or(literal)` fallbacks across 8 guest modules are deleted.
+- **Layer-planning seam:** `prepass-layer-planning.run` gains one typed
+  per-object resolved record (object height, effective `layer_height`,
+  `first_layer_height`, `support_raft_layers` — scope-resolved host-side) as a
+  new parameter. Adding a parameter is a major package bump
+  (`slicer:prepass-layer-planning@1.0.0` → 2.0.0), accepted once and
+  coordinated via `cargo xtask build-guests`. The guest deletes its
+  `object_height:<id>` / `layer_height:<id>` `format!` sites
+  (`modules/core-modules/layer-planner-default/src/lib.rs`) — the last place
+  a host namespace was formatted across the WIT seam (ADR-0068).
+- **Emission:** `to_config_map` becomes registry-driven with a per-key
+  `config_block` flag on the schema entry. The three `mmu_segmented_region_*`
+  omissions become three explicit flags instead of hand-list logic, and the
+  `CONFIG_BLOCK` byte change they cause is accepted deliberately in the same
+  packet.
+
+### Modifiers
+
+Typed **modifier kind** across the IR seam, matched exhaustively at the ten
+sites; deltas route through the registry so they are typed, bounds-checked
+and subject to `denied_scopes`; `ModifierScope` is deleted (ADR-0070,
+superseding the future work named in ADR-0030 §3). `ModifierVolume.applies_to`
+is removed in the same packet — versioning per Owner decisions below.
+
+### Type conflicts
+
+Repaired in this plan, toward canonical: `bridge_line_width` and
+`initial_layer_line_width` become `float_or_percent` (canonical declares both
+`coFloatOrPercent`, `ratio_over = nozzle_diameter`); `support_style` becomes
+`enum` with `tree-support-planner`'s seven-value list. The five plain-float
+readers migrate to `get_abs_value` semantics in the same packet, so no percent
+value is silently dropped. **`ResolvedConfig` fields stay scalar** (`f32` mm):
+the widening is at the declaration/ingestion layer and expansion output
+remains scalar — no IR field type change.
+
+## Owner decisions (recorded, overriding documented policy)
+
+Two decisions from the 2026-09-11 revision session deliberately take a path a
+documented rule would classify otherwise. They are recorded here as owner
+decisions per the session's explicit instruction, not as DEVIATION_LOG
+entries:
+
+1. **`ConfigFieldEntry.validate` removal ships with a *minor*
+   `CONFIG_SCHEMA_WIRE_VERSION` bump**, although the CLI wire policy
+   (`docs/11_operational_governance_and_acceptance_gate.md`) classifies
+   removal as major. Rationale: the field was never evaluated (RC-9); its only
+   consumer is the in-house fork frontend, re-read in the same change window.
+   The `[[config.cross-validate]]` doc section retires with it.
+2. **`ModifierVolume.applies_to` removal ships as an unconditional *minor*
+   `CURRENT_MESH_IR_SCHEMA_VERSION` bump**, without the P109
+   compatible-removal criteria ceremony. Rationale: no production reader
+   (RC-9; written at 5 sites, always `AllFeatures`). If serialized-fixture
+   parsing breaks in the implementing packet, it escalates rather than
+   shipping broken compat.
 
 ## Cross-cutting requirements
 
-- **Oracle independence is the acceptance shape** (`docs/22_test_quality.md` §2.1,
-  §4). The oracle for this program is the **authored value** in the source document,
-  not a snapshot of current behaviour — a self-captured baseline of today's resolved
-  config is precisely the self-referential oracle §2.1 forbids. The population under
-  test is derived (fixture ∩ registry), never a hand-listed roster (§2.4).
-- **Visual-debug is a gate on every geometry-changing packet** — P3, P4, P5, P8, P9
-  and P10 all move resolved values that reach extrusion. Each carries a
-  `pnp_cli visual-debug` render plus `manifest.json` check in its acceptance criteria,
-  per `docs/19_visual_debug.md`.
-- **Guest freshness**: `cargo xtask build-guests --check` must return exit `0` before
-  any guest, component or module-dispatch failure is attributed to a change here.
-- **Pre-commit gates**: `cargo clippy --workspace --all-targets -- -D warnings` and
-  `cargo xtask check-literals`.
+- **Oracle independence is the acceptance shape** (`docs/22_test_quality.md`
+  §2.1, §4), in three layers — the oracle for this program is the **authored
+  value** in the source document plus independently derived expectations,
+  never a snapshot of current behaviour:
+  1. **Census (packet 1):** every key in every declaration channel appears in
+     the assembled registry, derived from the channels themselves — never a
+     hand-listed roster (§2.4). A registry that omits a declared key fails the
+     census rather than shrinking a fixture population.
+  2. **Ingestion fidelity (packet 2):** for every key a fixture authors that
+     the registry declares **and that no narrower scope restates and no
+     automatic rule expands**, the value reaching the owning module's
+     `ConfigView` equals the authored value — written red on the five
+     divergent keys.
+  3. **Resolution expectations (packets 4/5):** scope and expansion cases
+     assert independently derived expected values (hand-computed from this
+     plan's precedence and expansion rules), never values re-derived from the
+     resolver.
+- **No-drop gate (packet 6):** a no-drop e2e — `resources/cube_4color.3mf`
+  plus a synthesized config exercising one value per census key, asserting
+  zero unrecognised-key warnings — must be green before the warn→drop flip.
+- **Per-packet compatibility checklist:** every packet spec names its IR
+  schema versions touched, WIT package bumps, CLI wire versions, and
+  manifest-schema changes, applying the IR Versioning Contract
+  (`docs/02_ir_schemas.md`) and the compatibility policy (`docs/11`) — with
+  the two owner decisions above excepted.
+- **Visual-debug is a gate on every geometry-changing packet** — packets 3, 4,
+  5, 8, 9 and 10 all move resolved values that reach extrusion. Each carries
+  a `pnp_cli visual-debug` render plus `manifest.json` check in its acceptance
+  criteria, per `docs/19_visual_debug.md`.
+- **Guest freshness**: `cargo xtask build-guests --check` must return exit `0`
+  before any guest, component or module-dispatch failure is attributed to a
+  change here.
+- **Pre-commit gates**: `cargo clippy --workspace --all-targets -- -D warnings`
+  and `cargo xtask check-literals`.
+- **ADR-0019 closure is packet 1's acceptance criterion** (type relocation +
+  transitional re-export + dependency removal + ADR status amendment).
 - **Known-open, deliberately not fixed here**: PnP reads `spiral_vase` while
-  OrcaSlicer writes `spiral_mode`, so spiral-vase claim selection can never fire from
-  a real 3MF. This is a naming defect owned by the orca-feature-gap rename
-  workstream (`docs/specs/orca-feature-gap/map.md` ticket 07), not an alias to add
-  here.
-- **Carried without a decision**: `to_config_map`'s three deliberate omissions exist
-  to keep `CONFIG_BLOCK` bytes stable. Once emission is registry-driven, they need an
-  explicit opt-out marker on the declaration or those bytes change. Resolve during P6.
+  OrcaSlicer writes `spiral_mode`, so spiral-vase claim selection can never
+  fire from a real 3MF. This is a naming defect owned by the orca-feature-gap
+  rename workstream (`docs/specs/orca-feature-gap/map.md` ticket 07), not an
+  alias to add here.
 
 ## Packet Queue
 
-Packet directories use `docs/spec_packets/config-scope-resolution_<NN>_<slug>/` (prefix
-= this plan's file name minus `-plan`, `NN` = zero-padded queue row, per the
-2026-09-11 packet-dir convention). Task ids are **ledger facts**: derive the next
-free one at authoring time (`grep -rhoE 'TASK-[0-9]{3}' docs/ | sort -u | tail -1`),
-never from this table.
+Packet directories use `docs/spec_packets/config-scope-resolution_<NN>_<slug>/`
+(prefix = this plan's file name minus `-plan`, `NN` = zero-padded queue row,
+per the 2026-09-11 packet-dir convention). Task ids are **ledger facts**:
+derive the next free one at authoring time
+(`grep -rhoE 'TASK-[0-9]{3}' docs/ | sort -u | tail -1`), never from this
+table.
 
-| # | packet slug | goal (one sentence) | depends on | status |
-|---|-------------|---------------------|------------|--------|
-| 1 | config-schema-registry | Create `slicer-config`, assemble the config schema registry from host declarations plus loaded manifests with ADR-0067's reconciliation rules, repair the 3 type conflicts and migrate the 5 plain-float readers, and emit the schema document under the `gen-config-docs --check` drift gate. | – | queued |
-| 2 | authored-value-oracle | Add the round-trip fidelity test — for every key a fixture authors that the registry declares, assert the value reaching the owning module's `ConfigView` equals the authored value — written **red**, failing on the five divergent keys. | #1 | queued |
-| 3 | typed-scope-ingestion | Decode the prefixed wire key once into a typed config scope, type every value against the registry, warn on unrecognised keys with near-miss suggestions, and move claim selection onto typed values. Turns #2 green. | #1, #2 | queued |
-| 4 | automatic-value-expansion | Unify the two width-family implementations into the registry and resolve percent-relative values against their `ratio_over` base, so no consumer reads a placeholder and no percent value is discarded. | #1 | queued |
-| 5 | scope-resolution-module | Replace the five scattered resolvers and `overlay_resolved` with one resolution module over scope deltas, exposing the Z-grid query and the scope-stack resolve. | #3, #4 | queued |
-| 6 | resolved-config-view | Give `ConfigView` one meaning (always resolved), split `extensions` into typed module keys versus dropped unknowns, make emission registry-driven, and delete the 54 guest `unwrap_or` literals. | #5 | queued |
-| 7 | scope-eligibility | Add per-key `denied_scopes` to host and module schema entries, author the initial denials for machine- and emitter-level keys, derive the per-object admission set from the registry with declarative transforms, and delete the two inert manifest sections. | #5 | queued |
-| 8 | typed-modifier-kind | Carry modifier kind typed across the IR seam, match exhaustively at the ten sites, route modifier deltas through the registry, and delete `ModifierScope`. | #5, #7 | queued |
-| 9 | layer-range-scope | Ingest `Metadata/layer_config_ranges.xml`, add layer range as a scope wired to both entry points, and author a fixture carrying one. | #5, #7 | queued |
-| 10 | remaining-automatic-values | Implement the speed family's `0 = volumetric auto` fallback and the eight negative `-1 = auto` sentinels. | #4, #5 | queued |
+| # | packet slug | goal | depends on | status |
+|---|-------------|------|------------|--------|
+| 1 | config-schema-registry | Relocate `ConfigFieldEntry`/`ConfigSchema` and `AggregatedRegionSplitEntry` to `slicer-ir` (transitional re-exports; drop `slicer-core → slicer-scheduler`; amend ADR-0019 to Closed), create `slicer-config` (depends on `slicer-ir` only), assemble the registry from all four declaration channels plus manifests under the full reconciliation rules (type agreement, bounds intersection reported, host-then-alphabetical defaults with the claim-exclusive divergence warning, union `denied_scopes`, strict enum agreement, provenance), add and validate the typed `base-key` and `selector` entry fields, retire `ConfigFieldEntry.validate` and the `[[config.cross-validate]]` doc section (minor wire bump per owner decision), repair the 3 type conflicts and migrate the 5 plain-float readers, emit the schema doc under the `gen-config-docs --check` gate, and land the registry census test. | – | queued |
+| 2 | authored-value-oracle | Add the ingestion-fidelity oracle — for every key a fixture authors that the registry declares and that no narrower scope restates and no automatic rule expands, assert the value reaching the owning module's `ConfigView` equals the authored value — written **red**, failing on the five divergent keys. | #1 | queued |
+| 3 | typed-scope-ingestion | Decode the prefixed wire key once into a typed config scope, type every value against the registry, warn on unrecognised keys with near-miss suggestions (warn-mode; unknown keys kept), and move claim selection onto typed selector values. Turns #2 green. | #1, #2 | queued |
+| 4 | automatic-value-expansion | Implement Phase B — the resolution-phase expansion with `ExpansionContext` (nozzle diameter, tool bases): unify the width-family implementations, resolve percent values against their typed base-key, cover the config-only `-1 = auto` sentinels — and shrink `resolve_role_width`'s fallbacks to role dispatch over expanded bases. | #1 | queued |
+| 5 | scope-resolution-module | Replace the five scattered resolvers and `overlay_resolved` with one resolution module over scope deltas, exposing the Z-grid query and the scope-stack resolve under the normative precedence matrix; add the typed per-object resolved record to `prepass-layer-planning.run` (major package bump, accepted once) and delete the guest's `format!` prefix sites; assert independently derived resolution expectations. | #3, #4 | queued |
+| 6 | resolved-config-view | Give `ConfigView` one meaning (always resolved), make `extensions` registry-typed, make emission registry-driven with the per-key `config_block` flag (accepting the `CONFIG_BLOCK` byte change), delete the 54 guest `unwrap_or` literals, land the no-drop e2e, and flip warn→drop for unrecognised keys. | #5 | queued |
+| 7 | scope-eligibility | Author per-key `denied_scopes` on host and module schema entries (hand-authored machine/emitter denials cross-checked by the mechanical derivation and pinned by a drift test), derive the per-object admission set from the registry, and delete the two inert manifest sections. | #5 | queued |
+| 8 | typed-modifier-kind | Carry modifier kind typed across the IR seam, match exhaustively at the ten sites, route modifier deltas through the registry, and delete `ModifierScope` and `ModifierVolume.applies_to` (minor MeshIR bump per owner decision). | #5, #7 | queued |
+| 9 | layer-range-scope | Ingest `Metadata/layer_config_ranges.xml`, add the per-object layer-range scope wired to both entry points under the settled geometry semantics (world-Z, half-open, overlap rules, catch-up inheritance, selector-denial load error), and author a fixture carrying one range. | #5, #7 | queued |
+| 10 | remaining-automatic-values | Implement the remaining Phase C expansions — the speed family's `0 = volumetric auto` fallback in the emitter and any geometry-dependent `-1 = auto` sentinels not covered by #4. | #4, #5 | queued |

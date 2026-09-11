@@ -3,6 +3,29 @@
 Status: **Accepted.** Approved in the config-scope design interview; not yet
 implemented.
 
+> **Amendment 2026-09-11 (config-scope resolution revision session).** The
+> "automatic values expand inside the registry" consequence in ADR-0067
+> conflated declaration with evaluation. Expansion is now three phases:
+>
+> - **Phase A — declaration (registry):** type, default, bounds, base-key,
+>   selector, eligibility, provenance. No expansion.
+> - **Phase B — resolution (config-only):** after applicable scope deltas
+>   merge, before interning / `ConfigView` delivery, using an explicit
+>   `ExpansionContext` (nozzle diameter, tool bases). Covers width/percent
+>   auto-sentinels and config-only `-1 = auto` rules whose inputs are config.
+> - **Phase C — owning stage:** rules needing non-config context expand where
+>   that context exists — role/first-layer/bridge widths in
+>   `slicer-core::flow::resolve_role_width` (reading already-expanded bases),
+>   and the volumetric `0 = auto` speed cap in the G-code emitter, where the
+>   per-move width/height it needs exist.
+>
+> "No consuming module ever reads a placeholder" is retained with the precise
+> reading: **no raw placeholder reaches a `ConfigView` consumer at its read
+> point.** A stage-context rule is documented as such; it is never expanded
+> with context frozen at load. The registry's per-run invariants (single
+> default per key, placeholder never escapes resolution) are unchanged — the
+> invariant's enforcement point is Phase B/C, not the registry struct.
+
 Scope was carried inside the config key text — `object_config:<id>:<key>`,
 `paint_config:<semantic>:<key>`, `tool_config:<idx>:<key>`, `object_height:<id>` —
 re-parsed by `starts_with` at six points in `resolve_global_config` and its

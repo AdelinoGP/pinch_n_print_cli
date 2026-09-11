@@ -251,8 +251,11 @@ _Avoid_: Raw value, input value, user value
 ### Automatic value
 A value that stands for "derive this" rather than for itself — OrcaSlicer's
 `0` line width meaning "compute from nozzle diameter", or `-1` interface layers
-meaning "match the other side". Expanded once during resolution, so no consuming
-module ever reads the placeholder.
+meaning "match the other side". Expanded once during resolution, so no
+consuming module ever reads the placeholder at its read point. Rules needing
+only config expand at the resolution phase; rules needing stage context
+(role, layer state, per-move geometry) expand at the stage that owns that
+context.
 _Avoid_: Sentinel, magic value, zero-means-auto
 
 ### Layer range
