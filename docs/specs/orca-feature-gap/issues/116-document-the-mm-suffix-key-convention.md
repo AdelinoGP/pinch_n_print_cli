@@ -1,8 +1,8 @@
 # 116 — Document the `_mm` suffix as the PnP-provenance key marker
 
 Type: task
-Status: open
-Assignee: —
+Status: resolved
+Assignee: opencode
 Blocked by: —
 Map: ../map.md
 
@@ -66,3 +66,12 @@ rule on its being unimplemented).
 Documentation only; changes no queue count and no behaviour.
 
 ## Answer
+
+**Decided and executed (documentation only; no queue-count or behaviour change).**
+
+1. **Normative home: `CLAUDE.md` § Config Key Naming Convention** (mirrored in `AGENTS.md`, same section) — the only normative key-naming home and the agent-facing audience that keeps getting this wrong. `docs/03_wit_and_manifest.md` cross-refs it from its config-schema preamble.
+2. **Rule as written:** `_mm` = PnP-provenance marker for a PnP-invented dimensional key with no canonical counterpart (keep; membership-by-rule, not frozen — currently `narrow_loop_length_threshold_mm`, `support_branch_merge_distance_mm`, `support_layer_height_mm`, `wave_overhang_anchor_depth_mm`, re-verified in-tree at resolution: exactly those manifests, `support_layer_height_mm` in both planner manifests). `mm3_per_mm` (e.g. `wave_overhang_flow_mm3_per_mm`) is explicitly not the marker — unit spelling, also keep, different reason.
+3. **Future-sweep obligation:** verify a canonical counterpart exists before stripping `_mm`; ticket-104 (`support_top_z_distance_mm` → `support_top_z_distance`) and ticket-106 (`ironing_spacing_mm` → `ironing_spacing`) are the positive precedent, the four above the negative one.
+4. **Not folded in** (per ticket scope): `support_overhang_angle` Q15(b) deletion and `support_branch_merge_distance_mm`'s zero-read-site STUB — both untouched.
+
+Verification: manifest sweep at resolution confirms the four-plus-one membership; no code, manifest, or test changed, so no test gate was run (docs-only).

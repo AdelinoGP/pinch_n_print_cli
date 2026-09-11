@@ -120,6 +120,9 @@ All config key strings in Rust code (host-side and module-side) must use **snake
 
 Module manifest TOML section headers already use snake_case. Runtime key strings must match.
 
+- `_mm` suffix is a PnP-provenance marker: it signals a PnP-invented dimensional key with no canonical OrcaSlicer counterpart. Do not strip it in a rename sweep. Current members (membership-by-rule, not a frozen list): `narrow_loop_length_threshold_mm`, `support_branch_merge_distance_mm`, `support_layer_height_mm`, `wave_overhang_anchor_depth_mm`. A future rename sweep must verify a canonical counterpart exists before stripping `_mm` — positive precedent: `support_top_z_distance_mm` → `support_top_z_distance` and `ironing_spacing_mm` → `ironing_spacing`; these four are the negative precedent.
+- `mm3_per_mm` (e.g. `wave_overhang_flow_mm3_per_mm`) is not this marker: the suffix there spells the unit (mm³/mm). Also keep, different reason.
+
 ## Code Style
 
 - **Never load large JSON fixture files (>1MB) directly.** Re-record via dedicated `record_*` test functions instead. (Confidence: 0.70)

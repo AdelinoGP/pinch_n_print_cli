@@ -993,7 +993,7 @@ test-fixture updates.
 
 ### Configuration keys added by recent packets
 
-The following `[config.schema.<key>]` blocks document config keys introduced after the TPMS annotated example above. Keys follow the snake_case convention throughout (see CLAUDE.md).
+The following `[config.schema.<key>]` blocks document config keys introduced after the TPMS annotated example above. Keys follow the snake_case convention throughout (see CLAUDE.md), including the `_mm` PnP-provenance marker rule there.
 
 #### Packet 34 — retraction mode
 
