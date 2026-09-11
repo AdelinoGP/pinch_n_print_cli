@@ -54,6 +54,11 @@ Why it is blocked:
   partitions, no idle layers, and no `has_wipe_tower` marking. Owned by
   [122](./122-author-packet-prime-tower-body-parity.md). (The key is not in
   ticket 29's census, so it sequences *after* 122 rather than folding into it.)
+  **Update (2026-09-11): 122 resolved as packet
+  [307](../../../spec_packets/307-prime-tower-body-parity/) (`draft`) — the idle-layer
+  and planned-depth subjects this key needs are that packet's Steps 2–3. They
+  exist only once 307 is implemented (off-map), so this subject stays closed
+  until then; re-check 307's status at claim time rather than assuming it.**
 - **Skirt-marking / slicing-envelope subjects** — the port's skirt emits on the
   first N layers by count (no z-gap intermediate marking) and its layer planner
   emits uniform `layer_height` steps (no variable profile to clamp). Whichever
