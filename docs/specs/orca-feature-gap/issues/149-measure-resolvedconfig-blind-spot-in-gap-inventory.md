@@ -40,7 +40,12 @@ It mixes two populations:
 - **Original false negatives** — live in the tree on 2026-08-07 when the asset was
   generated, and still marked absent. Three are proven: `mmu_segmented_region_max_width`,
   `mmu_segmented_region_interlocking_depth` and the beam bool all landed in `b18c00b3`
-  (2026-06-13), two months before the asset.
+  (2026-06-13), two months before the asset. **Ticket 98 (2026-09-10) confirmed the first
+  two against the tree and closed them**: both drive the host built-in
+  `run_phase5_width_limit` with e2e coverage at non-default values, P91 is dissolved, and
+  the queue target dropped 409 → 407. So the blind spot has already cost the queue two
+  keys of phantom work on top of ticket 96's beam bool — evidence for question 2 below,
+  not a substitute for answering it.
 - **Post-generation rot** — landed since, e.g. by the rename workstream (`printable_area`
   arrived with ticket 100, `wall_loops` with ticket 102's neighbourhood). Those are the
   asset ageing normally, not a methodology defect.
@@ -51,7 +56,7 @@ Separating them is `git log -S'<key>' --before=2026-08-07` per key, 30 times.
 
 1. **How many of the 30 were live on 2026-08-07?** Per-key, with the commit that introduced
    each. That is the true size of the blind spot.
-2. **Is the queue count wrong, and by how much?** The map's scoped target is 409. Every
+2. **Is the queue count wrong, and by how much?** The map's scoped target is 407 (409 before ticket 98; re-derive it from the map rather than trusting this line). Every
    original false negative that is also a queue key is a key already implemented and still
    being counted as a gap. `mmu_segmented_region_max_width` and
    `mmu_segmented_region_interlocking_depth` are two such — and they are **ticket 98's

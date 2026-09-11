@@ -146,14 +146,16 @@ implementation (`/swarm`) runs off-map, after; direct implementation does not.
      before concluding the whole pass is host-side.
   4. If two modules would collide on one stage, check narrow dotted write paths
      (`seam-placer`, `part-cooling`, `skirt-brim` all ship them) before re-homing either.
-- **The scoped target is 409 queue keys** (03's 415 minus 04's 11 rulings plus
+- **The scoped target is 407 queue keys** (03's 415 minus 04's 11 rulings plus
 07's 2 reclassified ironing keys plus 99's 2 fan-scale keys — minus ticket
 12's dead-in-canonical `brim_ears` ruling: **407**; the 406→407 step is
 ticket 105's re-adjudication of `resolution` out of the rename pool into the
 gap set; the 407→410 step is ticket 46's three source-missing
 `*_filament_id` siblings; the 410→409 step is ticket 89 ruling P82's
 `default_nozzle_volume_type` out of scope as preset-management machinery
-(`default_bed_type` precedent); per-key tier table in
+(`default_bed_type` precedent); the 409→407 step is ticket 98 finding both
+`mmu_segmented_region_*` keys already live as host built-ins (P91 dissolved);
+per-key tier table in
   [`04-asset-tier-assignment.md`](issues/04-asset-tier-assignment.md), packet
   list in [`05-asset-packet-list.md`](issues/05-asset-packet-list.md). Size
   packets off those, never off the reference's ❌ column.
@@ -463,6 +465,30 @@ gap set; the 407→410 step is ticket 46's three source-missing
   `max`** — a `max` on a speed in a module manifest is a PnP invention, and
   twelve such rows were retired by ticket 113 ([133](issues/133-retire-invented-speed-maxima-on-module-owned-speeds.md)
   carries three more on module-owned speeds).
+- **A shipped parity port can be live, tested, and still silently destroying
+  geometry — "the key drives a behaviour change" is a weaker claim than it
+  looks.** Ticket 98 measured it on Phase 5. `mmu_segmented_region_max_width`
+  has three e2e gates and a full unit suite, and all of them assert only that
+  the toolpath **differs** from the default slice. It does differ — because the
+  pass erodes painted regions and hands the eroded area to nobody, so a
+  `cube_4color` slice at `max_width = 2.0` loses 66% of its sparse infill and
+  55% of its internal solid infill while walls more than double. Canonical does
+  not lose it: its segmented regions are *overrides* on a parent `LayerRegion`
+  covering the whole slice, so the interior falls back to the default filament,
+  whereas this tree's regions are a **partition** and the equivalent fallback
+  has to be written. Two standing consequences:
+  1. **`assert_ne!(default, configured)` is a liveness gate, not a parity
+     gate.** Preflight gate (b) — "a behaviour change at a non-default value" —
+     is satisfied by a pass that corrupts the slice. When a key's decision
+     point is geometric, the AC owes a **conservation or coverage** assertion
+     (total region area, per-layer coverage) on top of the difference
+     assertion.
+  2. **When porting an override model onto a partition model, name where the
+     unclaimed area goes.** Canonical's "the parent keeps whatever no extruder
+     claims" has no counterpart here; it must become an explicit BASE
+     re-derivation. Check this for every canonical pass that *subtracts* from a
+     region set. [150](issues/150-phase5-width-limit-drops-area-instead-of-returning-it-to-base.md)
+     carries the fix.
 - **Skills every session should consult:** `/grilling` and `/domain-modeling`
   for decision tickets; `/spec-packet-generator` for authoring; `/spec-review
   <packet> --preflight` as the authoring gate.
@@ -1444,6 +1470,7 @@ gap set; the 407→410 step is ticket 46's three source-missing
     **Authoring correction, recorded because the failure mode is reusable.** The first revision of this packet sited the *whole* pass as a host prepass built-in and led with "a guest module cannot write slices at all". That is a fact about `PrepassStageOutput` (`crates/slicer-core/src/stage_io.rs`), which has no `SliceIR` variant — it is true of the **prepass** seam only, and says nothing about `Layer::SlicePostProcess`, which has `polygon_updates` for exactly this purpose. A prepass-specific limitation was generalised to "guest modules" and then carried the whole owner correction. The second stated reason, "the algorithm is whole-object, not per-layer", conflated the algorithm's global **analysis** with its per-layer **application**; only the former is global. The user caught both. **Standing lesson: before correcting a tier-table owner away from a module, name the specific stage and check that stage's commit type — do not reason from another stage's limitation.** Tickets 94 and 95 rest on different arguments (a layer-major executor, and prepass consumers reading an uncompensated footprint) and are not disturbed by this correction; but the run of three consecutive module-to-host owner corrections is itself a signal worth watching, because the modular pipeline is the project's stated point and it is hollowed out one defensible-looking packet at a time.
 
     Preflight caught four authoring defects in the first revision — three wrong crate-of-origin citations (`PrepassStageOutput` is in `slicer-core`, `PrepassStageInput` in `slicer-wasm-host`, and `topological_sort` in `crates/slicer-scheduler/src/topology.rs` **not** `validation.rs`; that last one was inherited by copying packet 305's wording, **so 305 carries the same wrong pin**) and one `≤3 files per step` violation — and one more in the re-authored revision: the module manifest originally declared `reads = [..., "InterlockingLatticeIR"]`, but `validate_ir_reads` resolves every declared read against a writer at an **earlier stage** and a host built-in mints no module node, so the read would have been unsatisfiable. `lightning-infill` shows the correct shape: it consumes `LightningTreeIR` through `LayerStageInput` while declaring only `reads = ["SliceIR"]`. No code change.
+  - [98 — Author packet P91 — Multimaterial / Multimaterial advanced — new: mmu-segmented-region](issues/98-author-packet-p91-multimaterial-multimaterial-advanced-new-mmu-segmented-region.md) — **both keys were already live; P91 dissolved, no packet, no module, queue target 409 → 407.** `mmu_segmented_region_max_width` and `mmu_segmented_region_interlocking_depth` are `cli`-bound `ResolvedConfig` fields (both default `0.0`, matching canonical's `coFloat` `0.`) driving the host built-in `run_phase5_width_limit` (`crates/slicer-core/src/algos/paint_segmentation/`) → `width_limit::cut_segmented_layers`, this tree's port of canonical `cut_segmented_layers` (`MultiMaterialSegmentation.cpp`), with e2e coverage at non-default values already shipping (`crates/slicer-runtime/tests/executor/cube_4color_phase5_tdd.rs` AC-5/AC-6/AC-7). Ticket 04's Tier-C "new mmu-segmented-region module" rows contradicted ticket 04's own "ResolvedConfig-only keys" special ruling; both corrected to A. The Tier-A residue — the keys were declared in **no** manifest and **not** in `docs/config/host-keys.toml` — was implemented directly in-session: two `[resolved_config]` rows plus two `resolved_num` arms in `host_keys_doc_lock_tdd.rs`, so the documented defaults are now locked to `ResolvedConfig::default()`, and `gen-config-docs` regenerated doc 15 (57 → 59 host keys). Two canonical divergences recorded as intended rather than gaps: negative values error here where canonical's `> 0.f` caller silently no-ops (the ticket-113 "canonical `min` is a GUI hint" class), and canonical's tooltip promises `interlocking_depth` is ignored when `max_width == 0` or `depth > max_width` while `cut_segmented_layers` implements neither clause — its `interlocking_cut_width` local is dead — so the port matches the code, not the tooltip. **One real defect found and filed as [150](issues/150-phase5-width-limit-drops-area-instead-of-returning-it-to-base.md).**
 
 ## Not yet specified
 

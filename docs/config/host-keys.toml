@@ -68,6 +68,8 @@ support_remove_small_overhang = { default = true }
 support_object_first_layer_gap = { default = 0.2, range = ">= 0" }
 support_sharp_tails     = { default = true }
 gcode_xy_decimals       = { default = 3,      range = "[1, 6]", note = "X / Y / Z token formatting" }
+mmu_segmented_region_max_width = { default = 0.0, range = ">= 0", note = "mm; clips every painted MMU region to a band this wide measured in from the layer outline. 0 disables. Consumed by the host paint-segmentation prepass (`run_phase5_width_limit` -> `cut_segmented_layers`). Canonical default 0." }
+mmu_segmented_region_interlocking_depth = { default = 0.0, range = ">= 0", note = "mm; on EVEN layer indices this depth replaces (never adds to) `mmu_segmented_region_max_width`, giving the interlocking alternation. 0 disables. Canonical default 0. Canonical's tooltip claims the key is ignored when max_width is 0 or when depth > max_width; `cut_segmented_layers` implements neither clause and this port matches the code, not the tooltip." }
 slice_closing_radius    = { default = 0.049,  range = ">= 0", note = "per-layer Clipper2 close" }
 flat_bridge_closing_join = { default = "miter", note = "flat-bridge enclosure closing join: miter (OrcaSlicer parity, default) | square | round (legacy, bit-identical, slow)" }
 top_fill_holder         = { default = "rectilinear-infill", note = "holder of claim:top-fill (packet 37)" }

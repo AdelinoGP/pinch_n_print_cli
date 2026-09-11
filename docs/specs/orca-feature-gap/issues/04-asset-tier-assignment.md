@@ -58,7 +58,8 @@ preset-management) — see Tier counts and the `default_nozzle_volume_type`
 row; the arithmetic at HEAD is 403 + ticket 07's two reclassified ironing
 keys + ticket 99's two fan-scale reclassifications + ticket 46's three
 source-missing `*_filament_id` siblings − ticket 89's preset-management
-`default_nozzle_volume_type` = **409**.
+`default_nozzle_volume_type` − ticket 98's two already-live
+`mmu_segmented_region_*` keys = **407**.
 
 ### Special rulings
 
@@ -68,6 +69,21 @@ source-missing `*_filament_id` siblings − ticket 89's preset-management
   consumed at decision points, but are **not declared in any module
   manifest** — a contract violation. They are Tier A work: declare in the
   owning module's manifest + wire. (User ruling, ticket 04 session.)
+  **This ruling was right and the per-key tier table was wrong** — the table
+  filed the two `mmu_segmented_region_*` keys as Tier C new-module work
+  (P91) anyway. Ticket 98 re-derived them and corrected both rows to A.
+  **Amended by ticket 98 on where "declare" lands:** where the consumer is a
+  host built-in rather than a module (as it is for the two
+  `mmu_segmented_region_*` keys — `run_phase5_width_limit` in
+  `crates/slicer-core/src/algos/paint_segmentation/`), the declaration home is
+  `docs/config/host-keys.toml` `[resolved_config]`, whose stated purpose is
+  host-registered keys in no module manifest and whose
+  `host_keys_doc_lock_tdd.rs` lock test ties each documented default to the
+  live `ResolvedConfig::default()`. Declaring a host built-in's key on an
+  unrelated module manifest would be the map's "re-derive the owner" error
+  (old packet 96 planned exactly that, onto `mesh-segmentation`; it never
+  landed and should not). The remaining three keys in this list are
+  unadjudicated.
 - **Tie-breaker within a tier:** owning module — keeps each owner's diff
   local across the whole queue. (User ruling.)
 - **Decision-point detection:** mechanical proxy (sibling-key read) for the
@@ -347,8 +363,8 @@ findings (the one flagged row was a stale-asset artifact).
 | `interlocking_boundary_avoidance` | C | new interlocking module |
 | `interlocking_depth` | C | new interlocking module |
 | `interlocking_orientation` | C | new interlocking module |
-| `mmu_segmented_region_interlocking_depth` | C | new mmu-segmented-region module (consumed host-side in paint_segmentation) |
-| `mmu_segmented_region_max_width` | C | new mmu-segmented-region module (consumed host-side in paint_segmentation) |
+| `mmu_segmented_region_interlocking_depth` | A | **already live**, re-derived by ticket 98: host built-in `run_phase5_width_limit` (`crates/slicer-core/src/algos/paint_segmentation/`), not a module. This row contradicted this file's own "ResolvedConfig-only keys" special ruling, which was right. Declared in `docs/config/host-keys.toml` `[resolved_config]` by ticket 98; P91 dissolved |
+| `mmu_segmented_region_max_width` | A | **already live**, re-derived by ticket 98: host built-in `run_phase5_width_limit` (`crates/slicer-core/src/algos/paint_segmentation/`), not a module. Declared in `docs/config/host-keys.toml` `[resolved_config]` by ticket 98; P91 dissolved. Parity defect in the shipped pass filed as ticket 150 |
 | `support_object_skip_flush` | B | crates/slicer-gcode (exclude-object emission) — **returned to queue, unimplemented** by ticket 48: both canonical reads (`GCode.cpp` sequential-toolchange + by-layer extrusion loop) are gated on `m_enable_exclude_object` (BBL + non-calib + exclude) and emit `M624` label codes — none of which exists in this tree (P44 / ticket 51 scope); wiring alone would be declaration-only (rule 1). Sequences after (or folds into) P44 when ticket 51 lands |
 
 ### Multimaterial / Ooze prevention
