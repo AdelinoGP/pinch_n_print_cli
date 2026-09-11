@@ -335,8 +335,8 @@ The implementation progress ledger in §7 remains separate.
 | 8 | core-beading-threshold-review | Preserve and document the distinct default, propagation, and clamp threshold cases, adding a contrasting full-stack propagation input. | core/DUP-CORE (beading factory) | #7 | generated | docs/spec_packets/core-beading-threshold-review/ |
 | 9 | core-strengthen | Strengthen the remaining core weak-oracle tests, including vertical-flow correction. | core/DUP-CORE-strengthen (excluding wider-bead) | #8 | generated | docs/spec_packets/core-strengthen/ |
 | 10 | core-retire | Retire the two unfalsifiable core tests and re-home the slice-closing-radius no-op intent as a real contrast pair in the gated prepass target. | core/RETIRE (excluding flow) | #9 | generated | docs/spec_packets/core-retire/ |
-| 11 | core-paint | Repair paint driver, graph, and prune assertions and justify dependency probes. | core/PAINT | #10 | pending | - |
-| 12 | core-brittle | Replace or justify the core timing guards while preserving meaningful performance protection. | core/BRITTLE | #11 | pending | - |
+| 11 | core-paint | Repair paint driver, graph, and prune assertions and justify dependency probes. | core/PAINT | #10 | generated | docs/spec_packets/core-paint/ |
+| 12 | core-brittle | Replace or justify the core timing guards while preserving meaningful performance protection. | core/BRITTLE | #11 | generated | docs/spec_packets/core-brittle/ |
 | 13 | core-cross | Review SDK/core wrapper coverage while retaining protection for distinct implementations. | core/CROSS | #12 | pending | - |
 | 14 | core-parity | Add the core parity assertions named in §5.1 while preserving exact canonical pins. | core/PARITY | #13 | pending | - |
 
@@ -680,8 +680,57 @@ no new production API, test file, or test target; the target-scoped census in
 is added or removed).
 
 Resume at the first eligible pending queue row, re-deriving its dependency
-status and exports. The next target is row #11 `core-paint`
-(core/PAINT), whose dependency #10 is now `generated`; its dispositions and
+status and exports. The next target is row #13 `core-cross`
+(core/CROSS), whose dependency #12 is now `generated`; its dispositions and
 write gate have not been approved, and no packet artifacts were authored for it.
+
+`core-brittle` passed independent `spec-review --preflight` on 2026-09-10 after
+two correction rounds (final re-run via an independent quick-coder reviewer
+after the reviewer lane hit its usage limit; the round-3 verification it
+replaced had already been scoped and aborted without findings). Round 1
+returned 2 blockers and 5 highs, the load-bearing one being that
+`core-retire`'s planned 7th test does not exist in the tree yet
+(`core-retire` is draft, not implemented): fixed with an explicit,
+name-and-shape-reconciled FORWARD-DEP on draft `core-retire`, with AC-N1
+accepting the 6 current roster names optionally followed by exactly that
+name. Round 2 returned 0 blockers and 5 highs (witness/assertion pins too
+weak, hyphen-adjacent token acceptance, over-permissive validation
+lookahead, Doc Impact form): fixed with exact input-const pins, line-anchored
+live-assert pins verified to reject commented-out copies, exact mandated
+`KEEP-review (core-brittle)` marker sentences unified across all five files,
+a both-sides hyphen-exact `qb()`, a flags/backtick-only lookahead, and a
+bullet-list Doc Impact with per-entry greps. The final re-run verified every
+correction against the real tree, including live `cargo test` runs of all
+three AC filters (1 passed each) and the bare-feature 0-passed control, and
+returned S0–S8, AC commands, and Doc Impact all PASS. This is an authoring
+preflight result, not an implementation acceptance result; the packet remains
+`draft`.
+
+Dependency exports from `core-brittle`: none (test-only rationale hardening
+plus ledger row; no new production API, test file, or test target).
+
+`core-paint` passed independent `spec-review --preflight` on 2026-09-10 after
+two correction rounds. Round 1 returned 0 S-blockers and 4 highs (bare-token
+waiver grep, shortened clippy/test-quality gate prefixes, seven-vs-eight and
+ten-vs-nine prose conflicts). Round 2 returned 0 S-blockers and 4 new highs,
+all grounded before the final correction: AC-2 now pins `deleted == true`
+with both endpoints' `arc_indices` empty (verified against `delete_arc` and
+`remove_nodes_with_one_arc`); AC-3 names the fixed `2_147_483_648`
+(`i32::MAX + 1`) input asserting
+`Err(MmuGraphError::CoordinateOverflow(2147483648))` (verified against the
+`to_i32` guard, which runs before the zero-length skip, so `&[]` and
+degenerate in-range segments stay `Ok`); AC-4 requires the waiver in the 8
+lines immediately above the builder probe fn; the plan's `--all-targets`
+blanket was scoped to check/clippy with the `--lib`/`--test` mutual-exclusion
+rationale. A final focused re-review confirmed the last defect (a real
+newline collapsed into the AC-4 predicate by an escape layer, now
+backslash-n in all three files: each predicate compiles and fails
+pre-implementation with `AssertionError`) and returned S0–S8, AC commands,
+and Doc Impact all PASS. This is an authoring preflight result, not an
+implementation acceptance result; the packet remains `draft`.
+
+Dependency exports from `core-paint`: none (test-only strengthening plus one
+new Err test in existing modules; no new production API, test file, or test
+target).
 
 Commit this plan's queue update together with the generated packet directory.
