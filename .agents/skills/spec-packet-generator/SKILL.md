@@ -9,7 +9,7 @@ metadata:
 
 # Spec Packet Generator
 
-Generate packet artifacts only; never implement them. One packet owns one coherent remediation slice under `./docs/spec_packets/<spec-slug>/`.
+Generate packet artifacts only; never implement them. One packet owns one coherent remediation slice under `./docs/spec_packets/<prefix>_<NN>_<packet-name>/`.
 
 ## Context Contract
 
@@ -46,13 +46,15 @@ Parameters:
 
 - `input` (required): rough text, Markdown path, URL, approved plan, or `docs/specs/` plan containing `## Packet Queue`.
 - `task_ids` (optional): `TASK-###` IDs from `docs/07`; infer and confirm when absent.
-- `spec_slug` (optional): kebab-case; derive from approved scope when absent.
-- `output_dir` (optional): defaults to `./docs/spec_packets/<spec_slug>/`.
+- `packet_prefix` (required): kebab-case workstream prefix, the `<prefix>` part of the packet directory. For a `docs/specs/` plan input, derive it from the plan file name minus `-plan` (e.g. `docs/specs/test-quality-remediation-plan.md` → `test-quality-remediation`). The prefix is required even for standalone prompts — a plan file is not a precondition; ask the user via `AskUserQuestion` when absent.
+- `packet_number` (optional): the `<NN>` part of the packet directory, zero-padded to two digits. For plan queues it is the `## Packet Queue` row number (row 12 → `12`; dirs for superseded/unbuilt rows are skipped, so `NN` gaps are expected). For standalone packets it is the next free number among existing `docs/spec_packets/<prefix>_<NN>_*` directories, re-derived at authoring time (start at `01` when the prefix has no packet dirs yet).
+- `packet_name` (optional): kebab-case packet name, the `<packet-name>` part of the directory; derive from approved scope or the queue row slug when absent.
+- `output_dir` (optional): defaults to `./docs/spec_packets/<packet_prefix>_<packet_number>_<packet_name>/`.
 - `status` (optional): defaults to `draft`.
 
 Use `AskUserQuestion` for every unresolved parameter, mapping, scope, status, overwrite, design, or activation decision; batch related questions. Never overwrite an existing packet directory without explicit approval.
 
-Before writing, present the slug, task IDs, goal, in/out scope, files to generate, and downstream context cost (S/M/L). Write only after explicit approval. A batch queue approval is the standing answer unless grounding changes an entry's scope.
+Before writing, present the packet prefix, number, name, task IDs, goal, in/out scope, files to generate, and downstream context cost (S/M/L). Write only after explicit approval. A batch queue approval is the standing answer unless grounding changes an entry's scope.
 
 Default to `status: draft`. Set `active` only on explicit request, with no other active packet and no unresolved blocker, missing negative case, or missing exit criterion. Ambiguity that cannot be resolved remains `[BLOCK]` in `design.md` and prevents activation.
 
@@ -62,12 +64,12 @@ Default to `status: draft`. Set `active` only on explicit request, with no other
 2. **Resolve backlog scope.** Delegate a `LOCATIONS` survey of `docs/07_implementation_status.md` for the smallest contiguous `TASK-###` slice matching the request. Confirm IDs exist. Prefer a tight slice; offer 1-3 choices when ambiguous. If no canonical task applies, stop and ask rather than inventing one.
 3. **Gather authority.** Use `docs/00_project_overview.md` as the normative doc map, then read only relevant ranges of named docs. For parity, delegate a `LOCATIONS` search under `OrcaSlicerDocumented/`; never read OrcaSlicer source directly. Preserve returned paths verbatim in the packet.
 4. **Ground claims.** Treat the plan as claims, not evidence. Verify every load-bearing pre-existing symbol and shape, WIT/IR identifier, prerequisite status, schema version, ADR slot, deviation ID, and new-test target against the tree using bounded FACT/LOCATIONS dispatches. Use verified names and `file:line`. Redesign falsified claims; regain approval if scope changes. Put unresolvable claims only in `[BLOCK]` Open Questions, never as facts. Use `../spec-review/references/preflight-gate.md` for the symbol inventory.
-5. **Approve metadata.** Resolve slug, IDs, goal, scope, output directory, and status; pass the write gate above.
+5. **Approve metadata.** Resolve prefix, packet number, packet name, IDs, goal, scope, output directory, and status; pass the write gate above.
 6. **Author criteria.** Apply the Acceptance Criteria Contract below before writing.
-7. **Generate.** Load each applicable template under `references/templates/`, fill it concretely, and copy applicable snippets exactly. No `[spec-slug]`, `TASK-000`, `TBD`, or placeholder prose may remain.
+7. **Generate.** Load each applicable template under `references/templates/`, fill it concretely, and copy applicable snippets exactly. Fill `[packet-name]` (the `<packet-name>` directory part) and `[packet-dir]` (the full `docs/spec_packets` basename, used for the front-matter `packet:` value). No `[packet-name]`, `[packet-dir]`, `TASK-000`, `TBD`, or placeholder prose may remain.
 8. **Self-review.** Check implementation detail, ownership, snippet integrity, overlap, atomic steps, context costs, and blockers. Revise failures.
 9. **Preflight.** Invoke `spec-review --preflight <packet-dir>` via the Skill tool. Fix `PREFLIGHT BLOCKED` findings and rerun. Only `PREFLIGHT PASS` completes a packet. An unfixable blocker stays verbatim in `design.md`, keeps status `draft`, and is reported.
-10. **Report and activate.** Report generated paths, slug, status, task IDs, governing docs, OrcaSlicer refs, preflight verdict, assumptions/questions, self-review result, and aggregate context cost. If activation is requested, recheck its gate, change only the status, and remind the user that the next commands are `/spec-review <packet> --preflight` then `/swarm <packet>`.
+10. **Report and activate.** Report generated paths, prefix/number/name, status, task IDs, governing docs, OrcaSlicer refs, preflight verdict, assumptions/questions, self-review result, and aggregate context cost. If activation is requested, recheck its gate, change only the status, and remind the user that the next commands are `/spec-review <packet> --preflight` then `/swarm <packet>`.
 
 This skill ends after generation. Never begin implementation.
 
@@ -122,7 +124,7 @@ Snippets under `references/snippets/` are verbatim-or-absent and retain their `<
 
 For multiple packets, read `references/batch-protocol.md` before proceeding.
 
-- Persist the approved plan verbatim at `docs/specs/<slug>-plan.md` and append `## Packet Queue`; if the plan already has a committed home, reference that path. Obtain one approval for the dependency-ordered queue.
+- Persist the approved plan verbatim at `docs/specs/<slug>-plan.md` and append `## Packet Queue`; if the plan already has a committed home, reference that path. The plan file name minus `-plan` is the packet prefix for every directory generated from its queue (`docs/specs/test-quality-remediation-plan.md` → `test-quality-remediation`). Obtain one approval for the dependency-ordered queue.
 - 2-3 packets: author inline, sequentially, through the complete workflow. 4 or more: orchestrate; authoring subagents write packets and independent reviewer subagents run preflight. The orchestrator authors no packet files, checks each `packet.spec.md` against the plan, and never opens `design.md` or `implementation-plan.md`.
 - Resume at the first pending row whose dependencies are generated. Reconstruct dependency exports with bounded SUMMARY dispatches. Blocked dependents stay pending; independent entries may continue.
 - Update each queue row immediately. On budget stop, finish the in-flight packet and leave remaining rows pending. The final report includes the queue, blockers, commit-together reminder, and resume instruction.

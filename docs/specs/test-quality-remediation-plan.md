@@ -316,7 +316,12 @@ entry on 2026-09-09. For this batch, the user explicitly approved plan wave/item
 IDs instead of `TASK-###` mappings; this plan is the packets' `backlog_source`.
 Each packet remains `draft` unless separately approved for activation. Generated
 packets contain `packet.spec.md`, `requirements.md`, `design.md`,
-`implementation-plan.md`, and `task-map.md` under `docs/spec_packets/<slug>/`.
+`implementation-plan.md`, and `task-map.md` under
+`docs/spec_packets/<plan-prefix>_<queue-row-NN>_<slug>/` — i.e. packet
+directories for this plan use the `test-quality-remediation_<NN>_<slug>` scheme
+(prefix = plan file name minus `-plan`, `NN` = zero-padded queue row). The 13
+core-wave dirs generated before that convention was set were renamed to it on
+2026-09-11; legacy packet dirs keep their historical names.
 
 Dependencies below serialize packet generation within the core wave; they do
 not assert that preceding packets have been implemented or export new APIs.
@@ -325,20 +330,20 @@ The implementation progress ledger in §7 remains separate.
 
 | # | packet slug | goal (one sentence) | task ids | depends on | status | packet dir |
 |---|-------------|---------------------|----------|------------|--------|------------|
-| 1 | core-flow-consolidation | Consolidate the flow tests in `flow_tdd.rs`, preserve every distinct case, and strengthen the wider-bead oracle. | core/DUP-CORE (flow); core/RETIRE (flow); core/DUP-CORE-strengthen (wider-bead) | - | generated | docs/spec_packets/core-flow-consolidation/ |
+| 1 | core-flow-consolidation | Consolidate the flow tests in `flow_tdd.rs`, preserve every distinct case, and strengthen the wider-bead oracle. | core/DUP-CORE (flow); core/RETIRE (flow); core/DUP-CORE-strengthen (wider-bead) | - | generated | docs/spec_packets/test-quality-remediation_01_core-flow-consolidation/ |
 | 2 | core-dup-merges | Replaced by the bridge, region, support, wall, geometry, and beading slices in rows #3–#8. | core/DUP-CORE (excluding flow) | #1 | superseded | - |
-| 3 | core-bridge-dup-merge | Merge the identical supported-bridge case while retaining the unsupported-span and ungated-candidate guards. | core/DUP-CORE (bridge) | #1 | generated | docs/spec_packets/core-bridge-dup-merge/ |
-| 4 | core-region-mapping-dup-merges | Consolidate cross-product cases while preserving exact chain sets, cardinality, and ordering coverage. | core/DUP-CORE (region mapping) | #3 | generated | docs/spec_packets/core-region-mapping-dup-merges/ |
-| 5 | core-support-dup-merges | Consolidate overhang and support-schedule cases while preserving exact layer, area, and schedule assertions. | core/DUP-CORE (support overhang; support geometry) | #4 | generated | docs/spec_packets/core-support-dup-merges/ |
-| 6 | core-wall-sequence-dup-merges | Consolidate wall-order cases while preserving all modes and the two-wall sandwich input. | core/DUP-CORE (wall sequence) | #5 | generated | docs/spec_packets/core-wall-sequence-dup-merges/ |
-| 7 | core-geometry-dup-review | Combine related distance assertions and retain the distinct endpoint witness unless a case-preserving merge is established. | core/DUP-CORE (segment path; point-to-segment distance) | #6 | generated | docs/spec_packets/core-geometry-dup-review/ |
-| 8 | core-beading-threshold-review | Preserve and document the distinct default, propagation, and clamp threshold cases, adding a contrasting full-stack propagation input. | core/DUP-CORE (beading factory) | #7 | generated | docs/spec_packets/core-beading-threshold-review/ |
-| 9 | core-strengthen | Strengthen the remaining core weak-oracle tests, including vertical-flow correction. | core/DUP-CORE-strengthen (excluding wider-bead) | #8 | generated | docs/spec_packets/core-strengthen/ |
-| 10 | core-retire | Retire the two unfalsifiable core tests and re-home the slice-closing-radius no-op intent as a real contrast pair in the gated prepass target. | core/RETIRE (excluding flow) | #9 | generated | docs/spec_packets/core-retire/ |
-| 11 | core-paint | Repair paint driver, graph, and prune assertions and justify dependency probes. | core/PAINT | #10 | generated | docs/spec_packets/core-paint/ |
-| 12 | core-brittle | Replace or justify the core timing guards while preserving meaningful performance protection. | core/BRITTLE | #11 | generated | docs/spec_packets/core-brittle/ |
-| 13 | core-cross | Review SDK/core wrapper coverage while retaining protection for distinct implementations. | core/CROSS | #12 | generated | docs/spec_packets/core-cross/ |
-| 14 | core-parity | Add the core parity assertions named in §5.1 while preserving exact canonical pins. | core/PARITY | #13 | generated | docs/spec_packets/core-parity/ |
+| 3 | core-bridge-dup-merge | Merge the identical supported-bridge case while retaining the unsupported-span and ungated-candidate guards. | core/DUP-CORE (bridge) | #1 | generated | docs/spec_packets/test-quality-remediation_03_core-bridge-dup-merge/ |
+| 4 | core-region-mapping-dup-merges | Consolidate cross-product cases while preserving exact chain sets, cardinality, and ordering coverage. | core/DUP-CORE (region mapping) | #3 | generated | docs/spec_packets/test-quality-remediation_04_core-region-mapping-dup-merges/ |
+| 5 | core-support-dup-merges | Consolidate overhang and support-schedule cases while preserving exact layer, area, and schedule assertions. | core/DUP-CORE (support overhang; support geometry) | #4 | generated | docs/spec_packets/test-quality-remediation_05_core-support-dup-merges/ |
+| 6 | core-wall-sequence-dup-merges | Consolidate wall-order cases while preserving all modes and the two-wall sandwich input. | core/DUP-CORE (wall sequence) | #5 | generated | docs/spec_packets/test-quality-remediation_06_core-wall-sequence-dup-merges/ |
+| 7 | core-geometry-dup-review | Combine related distance assertions and retain the distinct endpoint witness unless a case-preserving merge is established. | core/DUP-CORE (segment path; point-to-segment distance) | #6 | generated | docs/spec_packets/test-quality-remediation_07_core-geometry-dup-review/ |
+| 8 | core-beading-threshold-review | Preserve and document the distinct default, propagation, and clamp threshold cases, adding a contrasting full-stack propagation input. | core/DUP-CORE (beading factory) | #7 | generated | docs/spec_packets/test-quality-remediation_08_core-beading-threshold-review/ |
+| 9 | core-strengthen | Strengthen the remaining core weak-oracle tests, including vertical-flow correction. | core/DUP-CORE-strengthen (excluding wider-bead) | #8 | generated | docs/spec_packets/test-quality-remediation_09_core-strengthen/ |
+| 10 | core-retire | Retire the two unfalsifiable core tests and re-home the slice-closing-radius no-op intent as a real contrast pair in the gated prepass target. | core/RETIRE (excluding flow) | #9 | generated | docs/spec_packets/test-quality-remediation_10_core-retire/ |
+| 11 | core-paint | Repair paint driver, graph, and prune assertions and justify dependency probes. | core/PAINT | #10 | generated | docs/spec_packets/test-quality-remediation_11_core-paint/ |
+| 12 | core-brittle | Replace or justify the core timing guards while preserving meaningful performance protection. | core/BRITTLE | #11 | generated | docs/spec_packets/test-quality-remediation_12_core-brittle/ |
+| 13 | core-cross | Review SDK/core wrapper coverage while retaining protection for distinct implementations. | core/CROSS | #12 | generated | docs/spec_packets/test-quality-remediation_13_core-cross/ |
+| 14 | core-parity | Add the core parity assertions named in §5.1 while preserving exact canonical pins. | core/PARITY | #13 | generated | docs/spec_packets/test-quality-remediation_14_core-parity/ |
 
 The user subsequently requested the next packet and approved replacing
 `core-dup-merges` with rows #3–#8 on 2026-09-09. The replacement separates
@@ -379,7 +384,7 @@ queue does not mark any later wave complete.
 `core-flow-consolidation` passed independent `spec-review --preflight` on
 2026-09-09: S0–S8, AC commands, and Doc Impact all PASS. Source verification
 confirmed the full survivor-case union. Independent synthetic checks of `AC-7`
-(`docs/spec_packets/core-flow-consolidation/packet.spec.md`) accepted a valid
+(`docs/spec_packets/test-quality-remediation_01_core-flow-consolidation/packet.spec.md`) accepted a valid
 partial ledger row and rejected empty-row-plus-queue, completed-core, and
 wrong-column cases. The user authorized one extra correction round beyond the
 initial two-round limit to resolve the ledger-check and ownership findings;

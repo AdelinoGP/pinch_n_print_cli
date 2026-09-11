@@ -158,7 +158,7 @@ When modifying WIT types or interface definitions:
 
 ## Spec Packet Workflow
 
-Implementation work is organized into spec packets under `docs/spec_packets/<NN>_<slug>/`, each containing `packet.spec.md`, `requirements.md`, `design.md`, and `implementation-plan.md`. The active packet is the one whose `packet.spec.md` has `status: active` (grep for it). Packets are authored with `/spec-packet-generator`, gated with `/spec-review <packet> --preflight`, and executed with `/swarm <packet>`. Backpressure gates require `cargo build`, the packet's narrow verification commands, and `cargo clippy` to pass before closing; the full `cargo test --workspace` runs only at the packet-close acceptance ceremony (see Test Discipline above).
+Implementation work is organized into spec packets under `docs/spec_packets/<prefix>_<NN>_<packet-name>/` (e.g. `test-quality-remediation_01_core-flow-consolidation/`; legacy dirs keep their historical names), each containing `packet.spec.md`, `requirements.md`, `design.md`, and `implementation-plan.md`. The active packet is the one whose `packet.spec.md` has `status: active` (grep for it). Packets are authored with `/spec-packet-generator`, gated with `/spec-review <packet> --preflight`, and executed with `/swarm <packet>`. Backpressure gates require `cargo build`, the packet's narrow verification commands, and `cargo clippy` to pass before closing; the full `cargo test --workspace` runs only at the packet-close acceptance ceremony (see Test Discipline above).
 
 ## In-Tree Citation Style (MUST follow)
 

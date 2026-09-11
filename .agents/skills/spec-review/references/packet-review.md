@@ -5,7 +5,7 @@ keywords: packet review, acceptance criteria, requirements traceability, design 
 
 # Packet Review (packet scope)
 
-Review a spec packet under `docs/spec_packets/<NN>_<slug>/` against its 5 packet docs and the implementation.
+Review a spec packet under `docs/spec_packets/<prefix>_<NN>_<packet-name>/` (legacy dirs keep historical names) against its 5 packet docs and the implementation.
 
 ## Review modes
 

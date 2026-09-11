@@ -1,4 +1,4 @@
-# Task Map: [spec-slug]
+# Task Map: [packet-name]
 
 Use this crosswalk when a packet spans more than one task ID, reopens prior work, or supersedes an earlier packet. Skip it for a single-task packet unless another explicit mapping need requires it.
 
