@@ -210,7 +210,63 @@ resolved configuration — no remaining fallbacks or overrides left to apply.
 ### Region override
 A configuration or module-selection change applied at the scope of a **region**,
 narrowing or replacing what the object-level config would otherwise specify.
-(Distinct from **Region modifier** — see Flagged ambiguities.)
+One instance of a **config scope** — the region-level one. (Distinct from
+**Region modifier** — see Flagged ambiguities.)
+
+### Config scope
+The level at which a setting is stated: the whole print, one object, a **layer
+range**, a **region modifier**, a **paint semantic**, or a tool. Scopes are
+ordered, and a setting stated at a narrower scope replaces the same setting from
+a wider one. What a scope *is* is independent of how a source document spells it.
+_Avoid_: Config namespace, config level, override tier
+
+### Scope delta
+The set of settings stated at one **config scope** — only those actually
+authored there, never a full configuration with unstated values filled in. The
+absence of a setting from a scope delta is what distinguishes "not stated here"
+from "stated, and equal to the default".
+_Avoid_: Config overlay, partial config, config patch
+
+### Config schema registry
+The single joined declaration of every config key the running slicer
+recognises — those the host declares and those contributed by each loaded
+module — carrying each key's type, default, bounds and **scope eligibility**.
+Assembled per run, because which keys exist depends on which modules loaded.
+_Avoid_: Config schema, key table, config manifest
+
+### Scope eligibility
+Which **config scopes** are permitted to state a given key. Permissive by
+default: a key is statable at every scope unless its declaration denies
+specific ones. A key denied at a scope cannot be stated there at all, rather
+than being accepted and ignored.
+_Avoid_: Overridable-per-region, allow list, override permission
+
+### Authored value
+What a source document states for a setting, as distinct from the **resolved**
+value a module finally reads. The two differ whenever a scope above it restates
+the setting, an **automatic value** expands, or ingestion mistypes it — which
+makes the authored value an oracle independent of the resolution code.
+_Avoid_: Raw value, input value, user value
+
+### Automatic value
+A value that stands for "derive this" rather than for itself — OrcaSlicer's
+`0` line width meaning "compute from nozzle diameter", or `-1` interface layers
+meaning "match the other side". Expanded once during resolution, so no consuming
+module ever reads the placeholder.
+_Avoid_: Sentinel, magic value, zero-means-auto
+
+### Layer range
+A Z span of a single object over which settings are stated, and a **config
+scope** in its own right. Distinct from a **region modifier**, which selects the
+space it covers by geometry rather than by height, and from a **global layer**,
+which is a slicing plane rather than a span.
+_Avoid_: Height range, layer-height modifier, Z range
+
+### Modifier kind
+What a **region modifier** does to the geometry it covers: restate settings over
+it, cut it away, or mark it as requiring or forbidding support. A property of the
+modifier itself, not of the settings it happens to carry.
+_Avoid_: Part subtype, modifier type, modifier scope
 
 ### Claim
 An exclusive capability slot (e.g. generating infill) that exactly one module
