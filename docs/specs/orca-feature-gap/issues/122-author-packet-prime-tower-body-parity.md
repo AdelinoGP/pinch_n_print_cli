@@ -1,8 +1,8 @@
 # 122 — Author packet — prime tower body parity with canonical
 
 Type: task
-Status: open
-Assignee: —
+Status: resolved
+Assignee: wayfinder session (2026-09-11)
 Blocked by: 06, 100
 Map: ../map.md
 
@@ -93,3 +93,79 @@ Resolved when the packet (or packet series) is authored, preflighted, and its
 directory linked here.
 
 ## Answer
+
+**Authored as packet 307** — `docs/spec_packets/307-prime-tower-body-parity/`
+(`status: draft`), preflight **PASS** against the S0–S8 gate. Packet number 307
+and `DEV-201`/`202`/`203` derived from disk at authoring time (max packet 306,
+max DEV-200).
+
+### What the packet builds
+
+The four body classes from ticket 29's census, in `WipeTower2::finish_layer`
+order — inner perimeter of the sparse section, CP EMPTY GRID infill
+(`wipe_tower_bridging` spacing, solid on the adhesion first layer), outer wall
+via packet 255's helpers, first-layer brim via 254a's builder — plus the global
+planning that makes them a structure: backward max-propagation to a tower-wide
+depth, idle-layer entries gated by `wipe_tower_no_sparse_layers`, and the
+`wipe_tower_filament` forced-filament short-circuit with a fatal out-of-range
+validation. `timelapse_type` lands as smooth mode (forced tower, every-layer
+entries, floored + equalised depth, outer-wall-only) together with its
+cross-module clause: the `machine-gcode-emit` suppression condition DEV-168 (d)
+called for, which ticket 31 required to land with the smooth wall.
+
+### Membership: five keys, and nothing re-declared
+
+`wipe_tower_bridging`, `wipe_tower_no_sparse_layers`, `prime_tower_skip_points`
+(the 254a-returned P02 residue), `wipe_tower_filament` (P22, dissolved by
+ticket 29) and `timelapse_type` (P24, dissolved by ticket 31). The packet
+**consumes** the three draft producers rather than folding them: 254a
+(depth model, pitch, brim builder, framework), 254b (interface block), 255
+(wall primitives + rotation) each own their keys and land first; 307's steps
+read their drafted helper names at implementation time (FORWARD-DEPs, landing
+order 254a → 254b → 255 → 307). No new module, no IR/WIT field, no ADR, no
+claim (`[claims]` empty — rule 4 does not fire).
+
+### Authoring finding: the canonical enum spelling is `"0"`/`"1"`
+
+`timelapse_type` is a coEnum whose keys map is
+`s_keys_map_TimelapseType` = `{"0": tlTraditional, "1": tlSmooth}` with the
+comment *"using 0,1 to compatible with old files"* (`PrintConfig.cpp`). The
+port's manifest vocabulary is words (the `printer_structure` precedent), so
+declaring `["traditional", "smooth"]` alone would silently read a real Orca
+3MF's `"1"` as Traditional — the ticket-100 `printable_area` class. The packet
+carries an explicit ingest adapter (AC-14) in both readers instead of a silent
+fallback, and AC-1 records the canonical spelling as the reason.
+
+### One more missing-key instance for ticket 123
+
+`farthest_point_timelapse` (coBool, default false) is declared beside
+`timelapse_type` in `PrintConfigDef::init_fff_params` and read in
+`GCode::process_layer`'s traditional-snapshot arm (inert except on H2C/H2D
+profiles) — and it is absent from `docs/ORCA_CONFIG_REFERENCE.md` like ticket
+93's `elefant_foot_layers_density`. Recorded in the map's Not-yet-specified
+fog for [123](123-audit-gap-source-key-set-completeness.md); no queue-count
+change from this ticket.
+
+### Preflight
+
+All five packet files present and non-empty (S0); no prerequisite claimed
+implemented — the three producer deps are explicit FORWARD-DEPs on `draft`
+packets (S1); `DEV-201`–`203` absent from `docs/DEVIATION_LOG.md` and
+format-conformant, log max `DEV-200` (S2); no hardcoded schema version (S3);
+no new ADR (S4); every pre-existing symbol resolved against the tree —
+`run_finalization`/`from_config`/`generate_purge_paths`/`purge_depth_for`/
+`max_purge_depth`, `push_entity_with_priority`/`insert_entity_at`,
+`run_gcode_postprocess`, `ExtrusionRole::WipeTower`, `ConfigBoundsIndex::check`,
+`bind_module_config_view`, and the four target test binaries (S5); no new
+WIT/IR identifier (S6); the new `wipe_tower_body_tdd.rs` needs no `mod`
+registration (`wipe-tower/tests/` has no aggregator), and 254a's absent
+`wipe_tower_config_schema_tdd.rs` is covered by the packet's contingency step
+(S7); ADR-0062/0063 conform by non-contact (S8). The reviewer-subagent
+preflight dispatch hit a provider usage limit, so the gate was executed
+manually with tree greps behind every row; re-run `/spec-review 307
+--preflight` before activation if the reviewer budget has recovered.
+
+### Status
+
+No code change. **P22 and P24 are now both carried by 307**, and ticket 122 is
+resolved; the queue target is unchanged (all five keys were already in the 407).
