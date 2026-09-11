@@ -300,12 +300,13 @@ impl LayerModule for TopSurfaceIroning {
 
     /// Emits ironing strokes over polygon-precise top solid fill areas.
     ///
-    /// **Note on IR access:** the manifest declares `reads = ["SliceIR", "InfillIR"]`
-    /// for **DAG-ordering purposes only** (so the validator orders this module
-    /// after gyroid/rectilinear/lightning at `Layer::Infill`, resolving what was
-    /// previously an advisory `WriteConflict { orderable: false }`). This impl
-    /// never reads from `InfillIR` at runtime — the ironing polygon comes from
-    /// `SliceRegionView::top_solid_fill()`. See DEV-065 (closed, 2026-06-09).
+    /// **Note on IR access:** the manifest declares `reads = ["SliceIR"]` (it
+    /// writes `InfillIR`) and orders this module after gyroid/rectilinear/
+    /// lightning at `Layer::Infill` via `[compatibility].requires`
+    /// (ExplicitRequires DAG edges), resolving what was previously an advisory
+    /// `WriteConflict { orderable: false }`. This impl never reads from
+    /// `InfillIR` at runtime — the ironing polygon comes from
+    /// `SliceRegionView::top_solid_fill()`.
     fn run_infill(
         &self,
         _layer_index: u32,

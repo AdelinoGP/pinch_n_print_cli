@@ -12,9 +12,9 @@ id = "Layer::Infill"
 [ir-access]
 # Ironing reads `SliceIR.top_solid_fill` for the ironing polygon; it does not
 # read InfillIR. Ordering-after-infill is established via `[compatibility].requires`
-# below (ExplicitRequires DAG edges) — see DEV-065 (2026-06-09) for the
-# rationale (the prior fake `InfillIR` read violated docs/01 §"Module Access
-# Contract" since InfillIR is produced within this same stage).
+# below (ExplicitRequires DAG edges); the prior fake `InfillIR` read violated
+# docs/01 §"Module Access Contract" since InfillIR is produced within this
+# same stage).
 reads  = ["SliceIR"]
 writes = ["InfillIR"]
 

@@ -904,7 +904,7 @@ The full known-claim catalog — including the four fill-role claims
 (`claim:top-fill` … `claim:sparse-fill`), `claim:raft-fill`, `claim:ironing`,
 and `claim:infill-link` — lives in `docs/03_wit_and_manifest.md` § "Known claim
 IDs". The legacy blanket claim `infill-generator` is **deprecated since
-2026-06-09 (DEV-065)**; in-tree infill modules declare the per-role claims
+2026-06-09**; in-tree infill modules declare the per-role claims
 instead. The `perimeter-generator` claim is resolved by the `wall_generator`
 config key (`classic` or `arachne`) rather than by alphabetical first-winner
 dedup — see `docs/04_host_scheduler.md` § "Claim Resolution with Runtime

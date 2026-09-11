@@ -14,7 +14,7 @@ reads  = ["SliceIR"]
 writes = ["InfillIR"]
 
 [claims]
-# Retired the legacy `infill-generator` blanket claim 2026-06-09 (see DEV-065)
+# Retired the legacy `infill-generator` blanket claim 2026-06-09
 # so lightning can coexist with rectilinear/gyroid. Per-region resolution
 # via `ResolvedConfig.sparse_fill_holder` picks the active sparse-fill module.
 holds    = ["claim:sparse-fill"]

@@ -746,7 +746,7 @@ requires = []                     # claim slots that MUST be held by another mod
 | Claim ID                  | Purpose                                                                   |
 |---------------------------|---------------------------------------------------------------------------|
 | `perimeter-generator`     | Held by the module producing wall loops on a given region.                |
-| `infill-generator`        | **Deprecated 2026-06-09 (DEV-065).** Held by the module producing infill paths on a given region. Packet 37's four per-role claims (`claim:top-fill` … `claim:sparse-fill`) supersede this blanket gate. No current core infill manifest declares it. Third-party modules that still declare it continue to load, but cannot coexist with another module holding the same claim (first-winner dedup applies). |
+| `infill-generator`        | **Deprecated 2026-06-09.** Held by the module producing infill paths on a given region. Packet 37's four per-role claims (`claim:top-fill` … `claim:sparse-fill`) supersede this blanket gate. No current core infill manifest declares it. Third-party modules that still declare it continue to load, but cannot coexist with another module holding the same claim (first-winner dedup applies). |
 | `support-generator`       | Held by the module producing support extrusions on a given layer/region.  |
 | `support-planner`         | Held by the PrePass module emitting `SupportPlanIR`.                      |
 | `seam-placer`             | Held by the module placing seam candidates and resolving seam positions.  |

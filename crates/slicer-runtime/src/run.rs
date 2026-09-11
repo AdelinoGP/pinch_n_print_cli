@@ -749,7 +749,7 @@ pub fn run_slice_with_collector(
         // claim:bridge-fill, claim:ironing, etc.). Pre-fix this was an
         // empty Vec which produced startup `MissingDependency` warnings
         // for every fill-role claim — see `docs/specs/infill-fill-partition-plan.md`
-        // Phase A2 and the user-reproducible cube slice in DEV-065 (closed) notes.
+        // Phase A2 (the user-reproducible cube slice that exposed it).
         let claim_holders: Vec<crate::validation::ClaimHolder> = dag_modules
             .iter()
             .flat_map(|m| {

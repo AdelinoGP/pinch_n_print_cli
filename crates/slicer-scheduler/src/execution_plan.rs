@@ -583,7 +583,7 @@ fn dedup_same_claim_modules(
             // active holder. Without this skip, gyroid wins `claim:sparse-fill`
             // alphabetically and rectilinear (which holds all four) is dropped
             // whole, defeating any user config that names rectilinear for
-            // top/bottom/bridge — see DEV-065 and docs/04 §"Validation Passes".
+            // top/bottom/bridge — see docs/04 §"Validation Passes".
             if crate::validation::FILL_CLAIM_IDS.contains(&claim.as_str())
                 || claim == SUPPORT_GENERATOR_CLAIM
                 || (claim == SUPPORT_PLANNER_CLAIM && family_scoped.contains(&module.id))
@@ -1782,7 +1782,7 @@ mod dedup_tests {
 
     #[test]
     fn canonical_benchy_core_modules_keep_all_infill_holders_under_fill_claim_dedup() {
-        // Post-DEV-065: the legacy `infill-generator` claim was retired from
+        // The legacy `infill-generator` claim was retired from
         // every infill manifest in favour of packet-37's four granular
         // fill-role claims (`claim:{top,bottom,bridge,sparse}-fill`). Those
         // are per-region-configurable and intentionally exempt from startup

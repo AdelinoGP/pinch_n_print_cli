@@ -530,7 +530,7 @@ pub const VALID_CONFIG_TYPES: &[&str] = &[
 /// See docs/01 §claim system.
 pub const RECOGNIZED_CLAIMS: &[&str] = &[
     "perimeter-generator",
-    // `infill-generator` retired 2026-06-09 (DEV-065) in favour of packet 37's
+    // `infill-generator` retired 2026-06-09 in favour of packet 37's
     // four granular fill-role claims (`claim:{top,bottom,bridge,sparse}-fill`);
     // those live alongside `claim:ironing` and are not in this allow-list
     // because the `claim:` prefix is reserved for namespaced per-role claims.
