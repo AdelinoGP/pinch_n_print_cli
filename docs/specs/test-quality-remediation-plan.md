@@ -337,8 +337,8 @@ The implementation progress ledger in §7 remains separate.
 | 10 | core-retire | Retire the two unfalsifiable core tests and re-home the slice-closing-radius no-op intent as a real contrast pair in the gated prepass target. | core/RETIRE (excluding flow) | #9 | generated | docs/spec_packets/core-retire/ |
 | 11 | core-paint | Repair paint driver, graph, and prune assertions and justify dependency probes. | core/PAINT | #10 | generated | docs/spec_packets/core-paint/ |
 | 12 | core-brittle | Replace or justify the core timing guards while preserving meaningful performance protection. | core/BRITTLE | #11 | generated | docs/spec_packets/core-brittle/ |
-| 13 | core-cross | Review SDK/core wrapper coverage while retaining protection for distinct implementations. | core/CROSS | #12 | pending | - |
-| 14 | core-parity | Add the core parity assertions named in §5.1 while preserving exact canonical pins. | core/PARITY | #13 | pending | - |
+| 13 | core-cross | Review SDK/core wrapper coverage while retaining protection for distinct implementations. | core/CROSS | #12 | generated | docs/spec_packets/core-cross/ |
+| 14 | core-parity | Add the core parity assertions named in §5.1 while preserving exact canonical pins. | core/PARITY | #13 | generated | docs/spec_packets/core-parity/ |
 
 The user subsequently requested the next packet and approved replacing
 `core-dup-merges` with rows #3–#8 on 2026-09-09. The replacement separates
@@ -680,9 +680,10 @@ no new production API, test file, or test target; the target-scoped census in
 is added or removed).
 
 Resume at the first eligible pending queue row, re-deriving its dependency
-status and exports. The next target is row #13 `core-cross`
-(core/CROSS), whose dependency #12 is now `generated`; its dispositions and
-write gate have not been approved, and no packet artifacts were authored for it.
+status and exports. The core-wave queue (#1–#14) is now fully `generated`
+(except #2, `superseded` by design); the next step is decomposing the
+remaining crate waves from §§4–5 in their existing order and approving their
+packet queue — no rows for those waves exist yet.
 
 `core-brittle` passed independent `spec-review --preflight` on 2026-09-10 after
 two correction rounds (final re-run via an independent quick-coder reviewer
@@ -732,5 +733,67 @@ implementation acceptance result; the packet remains `draft`.
 Dependency exports from `core-paint`: none (test-only strengthening plus one
 new Err test in existing modules; no new production API, test file, or test
 target).
+
+`core-cross` passed independent `spec-review --preflight` on 2026-09-11 with
+0 blockers and 0 gate-check highs on the first review (S0–S8, AC commands, and
+Doc Impact all PASS; run via an independent explore-lane reviewer after the
+reviewer, senior-coder, and debugger lanes hit usage limits — the author was a
+separate quick-coder session). The single HIGH was prose-consistency, not a
+gate failure: `design.md` and `implementation-plan.md` Step 1 said "five"
+markers for `host_wrappers_tdd.rs` while AC-1/AC-3/AC-4 pin seven exact marker
+lines (six on retained tests + one above the new test); corrected in place
+along with the task-map note, with no remaining `five marker`/`6 markers`
+prose in the packet. Grounded premises: the plan's "distinct implementations"
+premise was refined during write-gate grounding — SDK offset wrappers
+(`host.rs` `offset_polygons`/`offset_polygons_with_miter_limit` via
+`offset_polygons_with_optional_miter_limit`, `host_batch.rs`
+`offset_polygons_batch`) delegate to core `polygon_ops::offset` /
+`offset_with_miter_limit` on native (thin-delegate contract, not distinct
+implementations), while SDK `simplify_polygon` (inline collinear-drop) vs core
+`expolygons_simplify` (RDP) and SDK `raycast_z_down`/`object_bounds`
+(`MeshSource` trait path, no core call) vs core
+`AabbTree::bounds`/`raycast_first_hit`/`raycast_all_hits` are genuinely
+distinct pairs; the review finding that `offset_with_miter_limit` has zero
+coverage anywhere is closed by the one new delegate test
+(`offset_polygons_with_miter_limit_clamps_sharp_miter_corners`, 10 mm square
+via `square(0, 100_000)`, `-1.0` mm delta, `Miter`, limit `1.2` vs default
+`2.0`). Downstream context M as approved (cross-crate, four wrapper
+families). This is an authoring preflight result, not an implementation
+acceptance result; the packet remains `draft`.
+
+Dependency exports from `core-cross`: one new test-only symbol —
+`offset_polygons_with_miter_limit_clamps_sharp_miter_corners`
+(`crates/slicer-sdk/tests/host_wrappers_tdd.rs`, `fn ()`, not exported); no
+new production API, file, or test target.
+
+`core-parity` passed independent `spec-review --preflight` on 2026-09-11
+after one correction round (author: quick-coder session; both reviews by
+independent explore-lane sessions). Round 1 returned `PREFLIGHT BLOCKED`
+with 0 blockers and 2 highs, both authoring defects: delegation scopes
+pointing at `OrcaSlicerDocumented/src/...` paths that do not exist in this
+tree (OrcaSlicer is not vendored and no submodule exists — repointed to
+canonical upstream OrcaSlicer GitHub blob URLs pinned at
+`40eab797c6a60a5949c0f92d00798da414c4b44a`, with path corrections verified
+at the pin: `SkeletalTrapezoidationGraph.cpp`/`SkeletalTrapezoidationJoint.hpp`
+at `Arachne/` level, `PostProcessor.cpp` at `src/slic3r/GUI/`,
+`WallToolPaths.cpp` at `src/libslic3r/Arachne/`, file+function style with no
+line numbers), and an arithmetic error in AC-2 (`750_000.0` units claimed as
+`7.5` mm at `UNITS_PER_MM = 10_000` — corrected to `75` mm, consistent with
+the fixture's mid-r-midpoint rationale). The round-2 re-run also folded in
+an exactly-one-`core`-row enforcement in AC-10 (mirroring `core-cross`
+AC-7) and returned S0–S8, AC commands, and Doc Impact all PASS with 0
+blockers and 0 highs. Grounded premises: all nine §5.1 PARITY homes
+verified (beding side table, perpendicular foot, rib-split, node distances,
+dumbbell, odd-cap at-cap branch, junction reachability, local module
+fallback with explicitly no Orca counterpart, postprocess order); the two
+write-gate ambiguities were resolved with on-disk evidence (odd-cap = the
+at-cap odd-centre branch in `beading/limited.rs`, not is-odd line-marking;
+fallback = the local `arachne_params` default contract). Downstream context
+M as approved (nine atomic single-file steps + ledger step). This is an
+authoring preflight result, not an implementation acceptance result; the
+packet remains `draft`.
+
+Dependency exports from `core-parity`: none (test-only additions plus
+ledger row; no new production API, test file, or test target).
 
 Commit this plan's queue update together with the generated packet directory.
