@@ -17,21 +17,21 @@
 
 ## Code Change Surface
 
-- Selected approach: inventory the union of inline and integration cases; move inline-only cases to the integration file; merge exact duplicates by retaining one integration witness with the union of assertions; retain all distinct role and flow-to-width cases; strengthen the wider-bead oracle with an independently computed expected formula.
+- Selected approach: inventory the union of inline and integration cases; move inline-only cases to the integration file; merge exact duplicates by retaining one integration witness with the union of assertions; retain all distinct role and flow-to-width cases; preserve and verify the existing wider-bead independent-formula oracle and strict wider-than-canonical comparison.
 - Exact functions/types/fields/tests: `line_width_to_spacing`, `flow_to_width`, `bridging_flow`, `resolve_role_width`; `NegativeSpacingError::{width_mm,layer_height_mm,spacing_mm}`; `RoleWidthContext`; `ExtrusionRole`; all named flow tests in the requirements matrix.
 - Rejected alternatives: leave inline tests in place (violates single-home boundary); delete overlapping cases without a survivor map (loses distinct regression inputs); change production exports or formulas (outside scope and parity-prohibited); move the vertical correction case (`core-strengthen` ownership).
 
 ## Files in Scope (read + edit)
 
 - `crates/slicer-core/src/flow.rs` - role: current inline test owner; expected change: delete only its `#[cfg(test)] mod tests` block.
-- `crates/slicer-core/tests/flow_tdd.rs` - role: approved single test home; expected change: add/merge all inline cases and strengthen the wider-bead oracle while retaining current role-width cases.
-- `docs/specs/test-quality-remediation-plan.md` §7 only - role: mandatory program bookkeeping; expected change: update only the `core` ledger row with partial flow status, actual validations, surviving coverage, and the remaining `core-bridge-dup-merge` gap.
+- `crates/slicer-core/tests/flow_tdd.rs` - role: approved single test home; expected change: add/merge all inline cases and preserve/verify the existing wider-bead independent-formula oracle and strict wider-than-canonical comparison while retaining current role-width cases.
+- `docs/specs/test-quality-remediation-plan.md` §7 only - role: mandatory program bookkeeping; expected change: update only the `core` ledger row with partial flow status, actual validations, surviving coverage, and a final cell containing `remaining non-flow §5.1 work stays open; next queued gap: core-bridge-dup-merge`.
 
 ## Read-Only Context
 
-- `crates/slicer-core/Cargo.toml` - lines 7–14 and 94–99 only - feature declaration and `flow_tdd` target wiring.
-- `crates/slicer-core/src/flow.rs` - lines 42–275 and 277–400 only - public API, fields, formula/error contract, and inline tests.
-- `crates/slicer-core/tests/flow_tdd.rs` - lines 1–306 only - existing integration cases and fixture helpers.
+- `crates/slicer-core/Cargo.toml` - `[features]` table and complete `[[test]]` stanza named `flow_tdd` only - feature declaration and `flow_tdd` target wiring.
+- `crates/slicer-core/src/flow.rs` - public flow API, fields, formula/error contract, and inline `#[cfg(test)] mod tests` only.
+- `crates/slicer-core/tests/flow_tdd.rs` - complete integration test file and fixture helpers only.
 - `crates/slicer-core/src/lib.rs` - symbol lookup only for `flow_correction_stays_positive_for_vertical_input`; do not edit.
 - `docs/specs/test-quality-remediation-plan.md` - ranges §1, §4, §5.1, §6, §7 Ledger, Packet Queue/boundary only.
 

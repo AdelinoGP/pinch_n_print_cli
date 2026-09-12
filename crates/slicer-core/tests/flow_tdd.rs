@@ -10,7 +10,8 @@
 //! vestigial `nozzle_diameter` parameter is gone.
 
 use slicer_core::flow::{
-    flow_to_width, line_width_to_spacing, resolve_role_width, ExtrusionRole, RoleWidthContext,
+    bridging_flow, flow_to_width, line_width_to_spacing, resolve_role_width, ExtrusionRole,
+    RoleWidthContext,
 };
 
 /// Canonical OrcaSlicer case: width=0.4 mm, layer_height=0.2 mm.
@@ -29,6 +30,7 @@ fn wider_bead_spacing_is_larger_than_canonical() {
     let s = line_width_to_spacing(0.5, 0.2).unwrap();
     let expected = 0.5 - 0.2 * (1.0_f32 - std::f32::consts::PI / 4.0);
     assert!((s - expected).abs() < 1e-4, "expected {expected}, got {s}");
+    assert!(s > 0.4 && s <= 0.5, "got {s}");
     // Sanity: wider bead → wider spacing
     let s_canonical = line_width_to_spacing(0.4, 0.2).unwrap();
     assert!(s > s_canonical, "wider bead must produce wider spacing");
@@ -46,6 +48,15 @@ fn wider_bead_spacing_is_larger_than_canonical() {
 fn width_below_layer_height_still_has_positive_spacing() {
     let s = line_width_to_spacing(0.1, 0.2).unwrap();
     assert!((s - 0.0571).abs() < 1e-3, "expected 0.0571, got {s}");
+
+    // The case the guard actually broke in production: narrow_strip_widening
+    // runs layer_height 1.0mm, so every 0.4mm wall tripped it and the
+    // beading strategy was handed a raw WIDTH where it expects a SPACING.
+    let s = line_width_to_spacing(0.4, 1.0).unwrap();
+    assert!(
+        (s - 0.1854).abs() < 1e-3,
+        "0.4mm width at 1.0mm layer height must yield spacing 0.1854, got {s}"
+    );
 }
 
 /// The error boundary is exactly canonical's throw condition,
@@ -58,6 +69,7 @@ fn spacing_errors_at_the_canonical_threshold() {
     assert_eq!(err.width_mm, boundary);
     assert_eq!(err.layer_height_mm, 0.2);
     assert!(err.spacing_mm <= 0.0);
+    assert!(line_width_to_spacing(boundary * 0.5, 0.2).is_err());
     assert!(line_width_to_spacing(boundary * 1.5, 0.2).unwrap() > 0.0);
 }
 
@@ -68,6 +80,7 @@ fn spacing_errors_at_the_canonical_threshold() {
 #[test]
 fn zero_or_negative_width_errors() {
     assert!(line_width_to_spacing(0.0, 0.2).is_err());
+    assert!(line_width_to_spacing(-1.0, 0.2).is_err());
     assert!(line_width_to_spacing(-0.4, 0.2).is_err());
     assert_eq!(line_width_to_spacing(0.4, 0.0).unwrap(), 0.4);
 }
@@ -102,6 +115,36 @@ fn roundtrip_spacing_to_width_recovers_original() {
         (original_width - recovered).abs() < 1e-4,
         "round-trip failed: original={original_width}, recovered={recovered}"
     );
+}
+
+#[test]
+fn bridging_flow_non_thick_returns_ratio_unchanged() {
+    // Non-thick branch is unchanged by the signature/formula update:
+    // it must still return bridge_flow_ratio verbatim, independent of
+    // nozzle_diameter/bead_width/layer_height.
+    assert_eq!(bridging_flow(1.0, false, 0.4, 0.4, 0.2), 1.0);
+    assert_eq!(bridging_flow(0.85, false, 0.4, 0.4, 0.2), 0.85);
+    assert_eq!(bridging_flow(0.85, false, 0.0, 0.0, 0.0), 0.85);
+}
+
+#[test]
+#[allow(clippy::approx_constant)] // 1.5708 is the OrcaSlicer-derived expected value, not FRAC_PI_2 used intentionally.
+fn bridging_flow_thick_round_cross_section_factor() {
+    // OrcaSlicer sanity case: nozzle=0.4, bridge_flow_ratio=1.0,
+    // bead_width=0.4, layer_height=0.2 -> dmr=0.4 ->
+    // factor = PI*0.16/(4*0.4*0.2) = PI*0.16/0.32 ~= 1.5708.
+    let f = bridging_flow(1.0, true, 0.4, 0.4, 0.2);
+    assert!((f - 1.5708).abs() < 0.01, "got {f}");
+}
+
+#[test]
+fn bridging_flow_thick_degenerate_inputs_fall_back_to_ratio() {
+    // Zero/negative bead_width, layer_height, or nozzle_diameter would
+    // divide by zero / produce NaN under the round-cross-section
+    // formula; fall back to the non-thick ratio instead.
+    assert_eq!(bridging_flow(0.9, true, 0.4, 0.0, 0.2), 0.9);
+    assert_eq!(bridging_flow(0.9, true, 0.4, 0.4, 0.0), 0.9);
+    assert_eq!(bridging_flow(0.9, true, 0.0, 0.4, 0.2), 0.9);
 }
 
 /// Monotonicity: increasing line width → increasing spacing (for fixed
