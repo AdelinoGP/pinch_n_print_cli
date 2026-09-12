@@ -904,6 +904,10 @@ fn y_interval_envelope(a: Point2, b: Point2) -> AABB<[f64; 2]> {
     let expansion = next_up(f64::from_bits(1).sqrt());
     let lower_y = next_down(min_y - expansion);
     let upper_y = next_up(max_y + expansion);
+    // Neutral-X projection: the sign/quartile trees index Y intervals only, so
+    // every record envelope is degenerate in X. Query sites use the same
+    // projection explicitly (`AABB::from_corners(query, query)` with
+    // `query = [0.0, y]`); keep the `0.0` X paired with the query Y here.
     AABB::from_corners([0.0, lower_y], [0.0, upper_y])
 }
 
@@ -936,6 +940,32 @@ fn next_down(value: f64) -> f64 {
         f64::from_bits(bits - 1)
     } else {
         f64::from_bits(bits + 1)
+    }
+}
+
+/// Reduce one `(distance_sq, source_ordinal)` candidate against the current
+/// best using the packet-254 tie rule: strictly smaller squared distance wins;
+/// an exactly equal distance keeps the earlier source edge. The single caller
+/// for the indexed path and the single caller for the test-only legacy oracle
+/// must share this function — an ordering-formula change needs one edit, not
+/// two.
+fn reduce_distance_candidate(
+    best: Option<(f64, usize)>,
+    distance_sq: f64,
+    source_ordinal: usize,
+) -> Option<(f64, usize)> {
+    let replace = match best {
+        None => true,
+        Some((best_distance_sq, best_ordinal)) => {
+            distance_sq.total_cmp(&best_distance_sq) == Ordering::Less
+                || (distance_sq.total_cmp(&best_distance_sq) == Ordering::Equal
+                    && source_ordinal < best_ordinal)
+        }
+    };
+    if replace {
+        Some((distance_sq, source_ordinal))
+    } else {
+        best
     }
 }
 
@@ -974,17 +1004,7 @@ fn indexed_distance(tree: &RTree<DistanceEdgeRecord>, x: f32, y: f32) -> Option<
     for candidate in tree.locate_in_envelope_intersecting(&envelope) {
         count_distance_exact_evaluation();
         let distance_sq = edge_distance_sq(candidate, query_x, query_y);
-        let replace = match best {
-            None => true,
-            Some((best_distance_sq, best_ordinal)) => {
-                distance_sq.total_cmp(&best_distance_sq) == Ordering::Less
-                    || (distance_sq.total_cmp(&best_distance_sq) == Ordering::Equal
-                        && candidate.source_ordinal < best_ordinal)
-            }
-        };
-        if replace {
-            best = Some((distance_sq, candidate.source_ordinal));
-        }
+        best = reduce_distance_candidate(best, distance_sq, candidate.source_ordinal);
     }
     best.map(|(distance_sq, source_ordinal)| (distance_sq.sqrt() as f32, source_ordinal))
 }
@@ -1086,17 +1106,7 @@ fn legacy_distance_ordinal(x: f32, y: f32, boundary: &[ExPolygon]) -> Option<usi
                 let closest_x = a[0] + projection * dx;
                 let closest_y = a[1] + projection * dy;
                 let distance_sq = (query_x - closest_x).powi(2) + (query_y - closest_y).powi(2);
-                let replace = match nearest {
-                    None => true,
-                    Some((best_distance_sq, best_ordinal)) => {
-                        distance_sq.total_cmp(&best_distance_sq) == Ordering::Less
-                            || (distance_sq.total_cmp(&best_distance_sq) == Ordering::Equal
-                                && source_ordinal < best_ordinal)
-                    }
-                };
-                if replace {
-                    nearest = Some((distance_sq, source_ordinal));
-                }
+                nearest = reduce_distance_candidate(nearest, distance_sq, source_ordinal);
                 source_ordinal += 1;
             }
         }

@@ -6,6 +6,7 @@ mod compact_specs;
 mod dist;
 mod editions;
 mod gen_config_docs;
+mod guest_namespaces;
 mod rustc_driver;
 mod sync_agents;
 mod test;

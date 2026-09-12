@@ -500,6 +500,7 @@ mod perimeter_spatial_tests {
                  mesh_source=tests/fixtures/support-family/SupportAdversarial.stl\n\
                  arachne_second_pass_mesh=committed painted perimeter parity fixture copied verbatim\n\
                  arachne_second_pass_mesh_source=tests/fixtures/perimeter_parity/cube_4color_arachne/cube_4color.3mf\n\
+                 bridge_3mf_note=bridge.3mf is a legacy working name retained for fixture-path stability; it holds the general bridge-capable mesh copied from SupportAdversarial.stl, not a distinct bridge-only geometry. arachne_second_pass.3mf is a verbatim copy of the painted cube_4color.3mf parity fixture, used only for the Arachne only-one-wall-top second-pass path\n\
                  config=top_shell_layers=3,bottom_shell_layers=3,only_one_wall_top=true\n\
                  coordinates_unit=millimetres\n\
                  coordinate_integer_scale=1\n\
@@ -562,6 +563,7 @@ mod perimeter_spatial_tests {
              serialization_schema=PerimeterIR\n\
              input=bridge.stl\n\
              config=top_shell_layers=3,bottom_shell_layers=3,only_one_wall_top=true\n\
+             baseline_note=native_indexed and native_legacy baselines are byte-identical on this input by design: the indexed path must reproduce the legacy oracle bit-for-bit (see AC-1), so the two self-baselines pin the same bytes from opposite modes; a future divergence is the regression signal\n\
              coordinates_unit=millimetres\n\
              coordinate_integer_scale=1\n\
              layer_height_f32_bits=0x3f800000\n\
@@ -864,6 +866,11 @@ mod perimeter_spatial_tests {
         assert_eq!(counters.contexts_constructed, region_count);
     }
 
+    // Self-baselines below are determinism pins per docs/22_test_quality.md
+    // §2.1/§3: the same pipeline run twice on identical inputs must produce
+    // identical bytes. They claim stability, not correctness — correctness is
+    // carried by the AC-1 bitwise oracle tests and the AC-2 pruning proofs.
+    // test-quality: determinism pin — same pipeline twice, stability not correctness
     #[test]
     fn perimeter_spatial_self_baseline_native_indexed() {
         let (mesh_path, config_path, module_dirs) = fixture_inputs();
@@ -887,6 +894,7 @@ mod perimeter_spatial_tests {
         );
     }
 
+    // test-quality: determinism pin — same pipeline twice, stability not correctness
     #[test]
     fn perimeter_spatial_self_baseline_native_legacy() {
         let (mesh_path, config_path, module_dirs) = fixture_inputs();
@@ -910,6 +918,7 @@ mod perimeter_spatial_tests {
         );
     }
 
+    // test-quality: determinism pin — same pipeline twice, stability not correctness
     #[test]
     fn perimeter_spatial_self_baseline_wasm() {
         let (mesh_path, config_path, module_dirs) = fixture_inputs();

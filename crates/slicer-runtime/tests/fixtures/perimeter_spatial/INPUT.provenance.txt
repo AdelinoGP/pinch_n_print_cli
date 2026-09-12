@@ -4,6 +4,7 @@ mesh=committed support fixture copied verbatim
 mesh_source=tests/fixtures/support-family/SupportAdversarial.stl
 arachne_second_pass_mesh=committed painted perimeter parity fixture copied verbatim
 arachne_second_pass_mesh_source=tests/fixtures/perimeter_parity/cube_4color_arachne/cube_4color.3mf
+bridge_3mf_note=bridge.3mf is a legacy working name retained for fixture-path stability; it holds the general bridge-capable mesh copied from SupportAdversarial.stl, not a distinct bridge-only geometry. arachne_second_pass.3mf is a verbatim copy of the painted cube_4color.3mf parity fixture, used only for the Arachne only-one-wall-top second-pass path
 config=top_shell_layers=3,bottom_shell_layers=3,only_one_wall_top=true
 coordinates_unit=millimetres
 coordinate_integer_scale=1

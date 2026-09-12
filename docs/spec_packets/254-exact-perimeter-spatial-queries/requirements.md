@@ -4,7 +4,7 @@
 
 - Grouped task IDs: `TASK-561`
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented` (activated 2026-09-11; preflight and user activation cleared, see `packet.spec.md` §Prerequisites and Blockers)
 - Aggregate context cost: `M`
 
 ## Problem Statement

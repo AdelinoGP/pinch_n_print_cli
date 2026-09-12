@@ -277,6 +277,11 @@ fn ranges_overlap(
 }
 
 fn get_cell_decision(cell: &CellSummary) -> &'static str {
+    // Decision table shared with the PowerShell mirror `Get-CellDecision` in
+    // resources/perimeter-acceptance/run-acceptance.ps1. The two
+    // implementations are intentionally duplicated (runner vs gate); change
+    // both together, and `overlap_is_inconclusive_and_never_keep` pins this
+    // table.
     if !cell.exactness_passed || !cell.generator_marker_match {
         return "DROP";
     }

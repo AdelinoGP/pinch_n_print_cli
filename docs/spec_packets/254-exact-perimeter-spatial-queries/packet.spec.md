@@ -24,7 +24,7 @@ This packet covers boundary distance/sign, overhang quartile, and bridge candida
 - Unblocks: implementation of TASK-561 and its controlled KEEP/DROP/inconclusive acceptance campaign.
 - Toolchain: the driver allowlist (design.md) matches the machine that authored this packet (`rustc -vV` on 2026-09-10: 1.96.0, commit `ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96`, LLVM 22.1.2, host `x86_64-pc-windows-msvc`). No `rust-toolchain.toml` pin exists in the repo; the driver re-verifies identity at every invocation and rejects drift rather than relying on a pin.
 - Local corpus: `tmp/rtree_query_corpus/` is **absent today**. It is needed only by AC-4 (Step 12 campaign); Steps 1-11, the runner dry-run, and the validator test are corpus-free. The user prepares the corpus per `docs/23_controlled_perimeter_builds.md` §Corpus before the campaign; its absence blocks AC-4 only, not activation.
-- Activation blockers: none; status intentionally remains `draft` pending packet preflight and user activation.
+- Activation blockers: packet preflight and user activation cleared 2026-09-11 (implementation evidence in commit `52b96334`; AC-4 measured outcome `inconclusive` per contract, user-accepted KEEP per `docs/07_implementation_status.md` TASK-561; no open scope questions).
 
 ## Acceptance Criteria
 

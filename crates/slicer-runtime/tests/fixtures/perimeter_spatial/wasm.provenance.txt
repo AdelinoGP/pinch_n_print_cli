@@ -5,6 +5,7 @@ serialization=postcard
 serialization_schema=PerimeterIR
 input=bridge.stl
 config=top_shell_layers=3,bottom_shell_layers=3,only_one_wall_top=true
+baseline_note=native_indexed and native_legacy baselines are byte-identical on this input by design: the indexed path must reproduce the legacy oracle bit-for-bit (see AC-1), so the two self-baselines pin the same bytes from opposite modes; a future divergence is the regression signal
 coordinates_unit=millimetres
 coordinate_integer_scale=1
 layer_height_f32_bits=0x3f800000

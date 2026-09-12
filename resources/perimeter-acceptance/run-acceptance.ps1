@@ -406,6 +406,11 @@ function Test-RangesOverlap {
 }
 
 function Get-CellDecision {
+    # Decision table shared with the Rust mirror `get_cell_decision` in
+    # crates/slicer-runtime/tests/integration/perimeter_acceptance.rs.
+    # The two implementations are intentionally duplicated (PowerShell runner
+    # vs Rust gate); change both together, and the Rust
+    # `overlap_is_inconclusive_and_never_keep` test pins the table.
     param([Parameter(Mandatory = $true)]$Cell)
     if (-not $Cell.exactness_passed -or -not $Cell.generator_marker_match) { return 'DROP' }
     # Empty/empty is an identical status; empty/set and differing non-empty

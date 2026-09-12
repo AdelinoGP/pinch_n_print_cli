@@ -63,6 +63,39 @@ running acceptance.  The same rule applies to host snapshots: provenance must
 name the actual mode, policy, compiler, guest set, and module directory used
 by both variants.
 
+### In-tree vs fingerprint staleness
+
+`build-guests --check` judges content fingerprints of the shared-target
+artifacts under `target/guests/`; it never compares mtimes.  The
+integrated-parity harness
+(`crates/slicer-runtime/tests/common/integrated_parity_harness.rs::assert_guest_freshness`)
+judges the staged **in-tree** copies
+(`modules/core-modules/*/*.wasm`, gitignored) by newest-source mtime.  A
+clean `--check` (exit `0`) together with a
+`guest artifact is stale: newest-source mtime is newer than artifact mtime`
+test panic is therefore not a contradiction: the fingerprint is current but
+the staged in-tree copy predates its sources (measured 2026-09-12:
+`--check` exit `0` while the in-tree `classic-perimeters.wasm` was ~5.6 h
+older than its `src/lib.rs`).  Remedy: `cargo xtask build-guests --force`
+(refreshes both the shared target and the staged in-tree copies), then
+re-run the failing test.
+
+### Toolchain update procedure
+
+The allowlist (`xtask/src/rustc_driver.rs`: `ALLOWED_RELEASE`,
+`ALLOWED_COMMIT_HASH`, `ALLOWED_HOST`, `ALLOWED_LLVM_VERSION`) intentionally
+fails closed on any rustup update.  To adopt a new toolchain:
+
+1. Run `rustc -vV` and record release, commit hash, host, and LLVM version.
+2. Update the four constants and the policy grammar block above to the new
+   identity.
+3. Re-run the packet-254 verification set: `cargo test -p xtask --bin xtask --
+   accelerated_`, both `build-guests --check` modes, and the AC-1/AC-3N/AC-N2
+   suites.  The `powi(2)`-lowers-to-multiply premise in `design.md`
+   Architecture Constraints must be re-verified for the new compiler before
+   any accelerated acceptance run.
+4. Never widen the allowlist to a range: one exact identity at a time.
+
 ## Acceptance runner modes
 
 `-DryRun` performs no corpus lookup, build, process execution, or timing.  It

@@ -6,13 +6,13 @@ use std::process::Command;
 
 use crate::build_guests::{self, GuestSpec, GuestTree};
 use crate::editions;
+use crate::guest_namespaces::{
+    ACCELERATED_DIST_NAMESPACE, ACCELERATED_GUEST_NAMESPACE,
+    ACCELERATED_HOST_TARGET_NAMESPACE, TEST_SUPPORT_FEATURE,
+};
 
 const ORDINARY_DIST_NAMESPACE: &str = "dist";
-const ACCELERATED_DIST_NAMESPACE: &str = "dist-accelerated";
-const ACCELERATED_HOST_TARGET_NAMESPACE: &str = "dist-host-accelerated";
-const ACCELERATED_GUEST_NAMESPACE: &str = "guests-accelerated";
 const ACCELERATED_METADATA_FILE: &str = "build-metadata.toml";
-const TEST_SUPPORT_FEATURE: &str = "perimeter-spatial-test-support";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DistArgs {
