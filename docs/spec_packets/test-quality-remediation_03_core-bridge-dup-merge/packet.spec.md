@@ -2,7 +2,7 @@
 status: draft
 packet: test-quality-remediation_03_core-bridge-dup-merge
 task_ids:
-  - core/DUP-CORE
+  - core/DUP-CORE (bridge)
 backlog_source: docs/specs/test-quality-remediation-plan.md
 context_cost_estimate: S
 copy_note: Approved core-bridge-dup-merge queue entry; task IDs are program item IDs, not TASK-### mappings.
@@ -34,7 +34,7 @@ Edit only `crates/slicer-core/tests/bridge_false_site_gating_tdd.rs`: delete the
 
 ## Negative Test Cases
 
-- **AC-N1. Given** the fully supported `10×10` span rejection must remain an exact empty result, **when** the surviving rejection witness runs, **then** `region.bridge_areas.is_empty()` is asserted (never weakened to a merely-non-empty or size-reduced check) and the witness passes. | `bash -lc 'set -euo pipefail; mkdir -p target; cargo test -p slicer-core --features host-algos --test bridge_false_site_gating_tdd -- --nocapture 2>&1 | tee target/test-output.log >/dev/null; rg -q "test solid_underneath_span_produces_no_bridge_area \.\.\. ok" target/test-output.log; rg -q -F "assert!(region.bridge_areas.is_empty());" crates/slicer-core/tests/bridge_false_site_gating_tdd.rs'`
+- **AC-N1. Given** the fully supported `10×10` span rejection must remain an exact empty result, **when** `solid_underneath_span_produces_no_bridge_area` runs and its function body is checked, **then** that witness itself asserts `region.bridge_areas.is_empty()` (never weakened to a merely-non-empty or size-reduced check) and passes; an assertion in another function or a comment cannot satisfy the preservation check. | `bash -lc 'set -euo pipefail; mkdir -p target; cargo test -p slicer-core --features host-algos --test bridge_false_site_gating_tdd -- --nocapture 2>&1 | tee target/test-output.log >/dev/null; rg -q "^test solid_underneath_span_produces_no_bridge_area \.\.\. ok$" target/test-output.log; python -c "import re; from pathlib import Path; text=Path(\"crates/slicer-core/tests/bridge_false_site_gating_tdd.rs\").read_text(); text=re.sub(r\"(?s:/\\*.*?\\*/)|//[^\\n]*\", \"\", text); bodies=re.findall(r\"(?ms)^\\s*fn\\s+solid_underneath_span_produces_no_bridge_area\\s*\\(\\s*\\)\\s*\\{(.*?)^\\}\", text); assert len(bodies)==1, \"expected one surviving rejection witness\"; assert re.search(r\"(?m)^\\s*assert\\s*!\\s*\\(\\s*region\\s*\\.\\s*bridge_areas\\s*\\.\\s*is_empty\\s*\\(\\s*\\)\\s*,?\\s*\\)\\s*;\", bodies[0]), \"surviving rejection witness lost its empty assertion\"; print(\"PASS: survivor body retains its empty assertion\")"'`
 
 ## Verification
 
@@ -53,7 +53,7 @@ Edit only `crates/slicer-core/tests/bridge_false_site_gating_tdd.rs`: delete the
 
 ## Doc Impact Statement (Required)
 
-Specific implementation-time documentation impact: `docs/specs/test-quality-remediation-plan.md` §7 Ledger - the implementation worker must update only the `core` ledger row with this bridge slice's partial state, retired/changed symbols (`fully_supported_candidate_rejected_zero_bridge_area` absorbed by `solid_underneath_span_produces_no_bridge_area` in `bridge_false_site_gating_tdd`), surviving coverage, actual validations, and the remaining non-bridge `core-region-mapping-dup-merges` gap; it must not close the core wave or rewrite the queue/other waves. Verification is the AC-5 ledger parser command defined below. This is bookkeeping, not a production contract change.
+none — This test-only duplicate consolidation changes no architecture contract or numbered architecture document; the separate §7 `core` ledger bookkeeping in `docs/specs/test-quality-remediation-plan.md` remains mandatory under AC-5 and its semantic ledger parser.
 
 <!-- snippet: context-discipline -->
 ## Context Discipline Note
