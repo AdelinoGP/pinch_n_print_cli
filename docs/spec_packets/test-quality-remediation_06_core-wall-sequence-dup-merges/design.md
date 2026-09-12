@@ -38,7 +38,7 @@
 - `docs/specs/test-quality-remediation-census.json` - the matching `slicer-core` entry only - target registration with `required: []`; it does not carry function counts.
 - `docs/specs/test-quality-remediation-plan.md` - §§1–4, §5.1 DUP-CORE, §§6–7, and Packet Queue row #6/resume exports only.
 - `docs/22_test_quality.md` §§1–5, ADR-0064, ADR-0065, `docs/01_system_architecture.md` wall-sequence range - contract context only.
-- `OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.cpp` - delegated only; canonical `PerimeterGenerator::process` sequencing behavior named in the `WallSequence` doc comment.
+- `OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.cpp` - delegated only; canonical `PerimeterGenerator::process_classic and PerimeterGenerator::process_arachne` sequencing behavior named in the `WallSequence` doc comment.
 
 ## Out-of-Bounds Files
 
@@ -51,7 +51,7 @@
 ## Expected Sub-Agent Dispatches
 
 - Question: re-derive the two pre-edit source inventories and confirm the survivor relationships have not drifted; scope: the two in-scope Rust files; return: `FACT` with `5`, `4`, the three absorbed names, the migrated name, and the subset relationship; purpose: precondition for Step 1.
-- Question: confirm canonical `PerimeterGenerator::process` wall-emission sequencing (outer-first, reversed, sandwich) without proposing production edits; scope: `OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.cpp`; return: `SUMMARY` ≤200 words; purpose: protect the retained parity order witnesses.
+- Question: confirm canonical `PerimeterGenerator::process_classic and PerimeterGenerator::process_arachne` wall-emission sequencing (outer-first, reversed, sandwich) without proposing production edits; scope: `OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.cpp`; return: `SUMMARY` ≤200 words; purpose: protect the retained parity order witnesses.
 - Question: run the ungated target and the closure gates; scope: `requirements.md` verification matrix; return: `FACT` pass/fail with ≤20 failure lines; purpose: census, behavior, and lint validation.
 
 ## Data and Contract Notes
