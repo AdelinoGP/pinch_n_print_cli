@@ -38,7 +38,7 @@
 - `crates/slicer-core/src/algos/support_geometry.rs` - `build_emit_schedule` / `execute_support_geometry` signatures and the `#[cfg(test)] mod tests` block only - symbol shape and inline-twin disposition.
 - `crates/slicer-core/Cargo.toml` - the `algo_support_geometry_tdd` and `support_overhang_detection_tdd` `[[test]]` stanzas only - required feature.
 - `docs/specs/test-quality-remediation-census.json` - the two matching `slicer-core` entries only - target registration and required features; it does not carry function counts.
-- `docs/specs/test-quality-remediation-plan.md` - §§1–4, §5.1 DUP-CORE, §§6–7, and Packet Queue row #5/resume exports only.
+- `docs/specs/test-quality-remediation-plan.md` - §§1–4, §5.1 DUP-CORE, §§6–7, and the Packet Queue entry for `core-support-dup-merges` plus its resume/continuation exports only.
 - `docs/22_test_quality.md` §§1–5, ADR-0064, ADR-0065, `docs/02_ir_schemas.md` §IR 9a, and the coordinate-system ranges named in `requirements.md` - contract context only.
 - `OrcaSlicerDocumented/src/libslic3r/Support/SupportMaterial.cpp` - delegated only; canonical `detect_overhangs` behavior named in the existing overhang test documentation.
 
@@ -77,7 +77,7 @@
 - A count-only merge can look correct while losing assertion strength. AC-2 and AC-4 pin exact layer, area, entry, empty-plan, and schedule assertions in the surviving integration homes.
 - The external and inline schedule tests have equal operands but different failure diagnostics. Copying `got {a_sched:?}` and `got {b_sched:?}` into the integration survivor preserves the useful union without retaining duplicate registration.
 - Feature-gate blindness can produce a false green. Every behavioral command enables `host-algos` and confirms named discovery before accepting the run.
-- A broad documentation edit could conflate implementation evidence with queue generation. Step 3 permits only the six-cell §7 `core` row and AC-7 anchors parsing to the Ledger section.
+- A broad documentation edit could conflate implementation evidence with queue generation. Step 3 permits only the six-cell §7 `core` row; AC-7 parses the Ledger section and checks only queue header/packet-entry presence, while diff review enforces the no-queue-edit boundary.
 
 ## Context Cost Estimate
 

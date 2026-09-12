@@ -33,7 +33,7 @@
   - Question: run the feature-correct target and static survivor checks below; scope: Step 1 verification; return: `FACT` pass/fail, ≤20 failure lines.
 - Context cost: `S`
 - Authoritative docs:
-  - `docs/specs/test-quality-remediation-plan.md` §1, §4, §5.1 DUP-CORE support-overhang item, §6, and Packet Queue row #5.
+  - `docs/specs/test-quality-remediation-plan.md` §1, §4, §5.1 DUP-CORE support-overhang item, §6, and the Packet Queue entry for `core-support-dup-merges`.
   - `docs/22_test_quality.md` §§1–5 and ADR-0064 - named regression input, independent oracle, and accounted retirement.
   - `docs/08_coordinate_system.md` §The Rule and conversion sections - `Point2::from_mm`, millimeter area, and scaling constraints.
 - OrcaSlicer refs:
@@ -51,7 +51,7 @@
 - Precondition: Fresh inventories find exactly three integration tests (`emits_for_2_layer_fixture`, `build_emit_schedule_two_objects_per_object_semantics`, `empty_plan_produces_empty_support`) and exactly two inline tests (`support_geometry_emits_for_2_layer_fixture`, `build_emit_schedule_two_objects_per_object_semantics`); the emission and schedule pairs have identical fixtures/assertion operands; the inline code is a `#[cfg(test)]` module, not a doc example; the target requires `host-algos`.
 - Postcondition: The integration file still has exactly three tests in the same order and all pass; emission retains successful/non-empty `entries`; schedule retains exact `obj-A == {1,3,5}` and `obj-B == {0..5}` plus both `got` diagnostics; the empty-plan successful-empty-`entries` witness is unchanged; `support_geometry.rs` has zero tests and no `#[cfg(test)] mod tests`; production code is byte-identical.
 - Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-core/tests/algo_support_geometry_tdd.rs` - full 105-line file.
+  - `crates/slicer-core/tests/algo_support_geometry_tdd.rs` - complete integration-test file.
   - `crates/slicer-core/src/algos/support_geometry.rs` - `build_emit_schedule` / `execute_support_geometry` signatures and `#[cfg(test)] mod tests` only.
   - `crates/slicer-core/Cargo.toml` and `docs/specs/test-quality-remediation-census.json` - `algo_support_geometry_tdd` entries only.
 - Files allowed to edit (at most 3):
@@ -68,7 +68,7 @@
   - Question: run the feature-correct target, inline-source census, and closure gates; scope: Step 2 verification; return: `FACT` pass/fail, ≤20 failure lines.
 - Context cost: `S`
 - Authoritative docs:
-  - `docs/specs/test-quality-remediation-plan.md` §1, §4, §5.1 DUP-CORE support-geometry item, §6, and Packet Queue row #5.
+  - `docs/specs/test-quality-remediation-plan.md` §1, §4, §5.1 DUP-CORE support-geometry item, §6, and the Packet Queue entry for `core-support-dup-merges`.
   - `docs/22_test_quality.md` §§1–5 and ADR-0064 - union-preserving consolidation and census accountability.
   - `docs/02_ir_schemas.md` §IR 9a `SupportGeometryIR` - object/layer schedule semantics.
 - OrcaSlicer refs: None; schedule consolidation preserves existing PnP behavior and does not port canonical code.
@@ -86,7 +86,7 @@
 - Task IDs: `core/DUP-CORE (support overhang)`; `core/DUP-CORE (support geometry)`
 - Objective: Update only the §7 `core` ledger row with this packet's absorbed/surviving tests, actual validation classes, retained `partial` state, and `core-wall-sequence-dup-merges` as remaining work.
 - Precondition: Steps 1 and 2 and their feature-correct verification commands pass; no whole-core closure or Packet Queue implementation edit is justified.
-- Postcondition: The sole §7 `core` row has exactly six cells, remains `partial`, records this packet's merge and validations, and names the next remaining core slice; the Packet Queue and every other plan line are unchanged.
+- Postcondition: The sole §7 `core` row has exactly six cells, remains `partial`, records this packet's merge and validations, and names the next remaining core slice. The Packet Queue and every other plan line remain unchanged as an explicit diff-reviewed scope/exit condition; AC-7's parser does not prove that historical non-editing.
 - Files allowed to read, with ranges when over 300 lines:
   - `docs/specs/test-quality-remediation-plan.md` - §7 Ledger table only.
 - Files allowed to edit (at most 3):
@@ -94,16 +94,16 @@
 - Files explicitly out of bounds:
   - The Packet Queue and all plan content outside §7's `core` row; `docs/07_implementation_status.md`; all source/test files completed in Steps 1–2; all sibling packet directories and other docs.
 - Blast-radius discipline:
-  - No code/schema blast radius. The six-column row parser rejects malformed cells and anchors extraction between `## 7. Ledger` and the next `##` heading so queue text cannot satisfy the criterion.
+  - No code/schema blast radius. The six-column row parser rejects malformed cells and anchors extraction between `## 7. Ledger` and the next `##` heading; it proves only the ledger row and the queue header/packet-entry presence checks, not historical queue non-editing.
 - Expected sub-agent dispatches:
-  - Question: verify the proposed diff changes only the §7 `core` row and run AC-7's parser; scope: `docs/specs/test-quality-remediation-plan.md` §7; return: `FACT` pass/fail.
+  - Question: verify the proposed diff changes only the §7 `core` row and run AC-7's parser; scope: `docs/specs/test-quality-remediation-plan.md` §7 plus the diff boundary; return: `FACT` pass/fail.
 - Context cost: `S`
 - Authoritative docs:
   - `docs/specs/test-quality-remediation-plan.md` §4 crate-wave contract and §7 Ledger.
   - `docs/22_test_quality.md` §5 and ADR-0065 - report-mode evidence does not close the full crate wave.
 - OrcaSlicer refs: None; this is evidence bookkeeping.
 - Verification:
-  - `bash -lc 'set -euo pipefail; python -c "from pathlib import Path; t=Path(\"docs/specs/test-quality-remediation-plan.md\").read_text(encoding=\"utf-8\"); s=t.split(\"## 7. Ledger\",1)[1].split(\"\\n## \",1)[0]; rows=[x for x in s.splitlines() if x.startswith(\"|\") and not x.startswith(\"|---\")]; headers=[x for x in rows if x.split(\"|\")[1].strip()==\"Wave\"]; assert len(headers)==1 and [x.strip() for x in headers[0].split(\"|\")[1:-1]]==[\"Wave\",\"State\",\"Retired/changed symbols\",\"Surviving/new coverage\",\"Validation\",\"Remaining gap\"]; core=[x for x in rows if x.split(\"|\")[1].strip()==\"core\"]; assert len(core)==1; c=[x.strip() for x in core[0].split(\"|\")[1:-1]]; assert len(c)==6; wave,state,changed,coverage,validation,gap=c; assert wave==\"core\" and state==\"partial\"; assert all(x in changed for x in (\"core-support-dup-merges\",\"coplanar_step_does_not_hide_the_contact\",\"overhang_is_detected_once_at_the_step_layer\",\"support_geometry_emits_for_2_layer_fixture\",\"build_emit_schedule_two_objects_per_object_semantics\")); assert all(x in coverage for x in (\"overhang_is_detected_once_at_the_step_layer\",\"emits_for_2_layer_fixture\",\"build_emit_schedule_two_objects_per_object_semantics\",\"empty_plan_produces_empty_support\")); assert all(x in validation for x in (\"cargo test\",\"cargo check --workspace --all-targets\",\"cargo clippy --workspace --all-targets -- -D warnings\",\"cargo xtask check-literals\",\"check-test-quality\")); assert \"core-wall-sequence-dup-merges\" in gap; q=t.split(\"## Packet Queue\",1)[1]; qrows=[x for x in q.splitlines() if x.startswith(\"|\") and not x.startswith(\"|---\")]; assert [x.strip() for x in qrows[0].split(\"|\")[1:-1]]==[\"#\",\"packet slug\",\"goal (one sentence)\",\"task ids\",\"depends on\",\"status\",\"packet dir\"]; assert any(\"core-support-dup-merges\" in x for x in qrows); print(\"PASS: anchored core ledger row has six partial-state evidence cells; Packet Queue table intact\")"'` - FACT pass/fail; confirms the anchored six-cell partial ledger evidence.
+  - `bash -lc 'set -euo pipefail; python -c "from pathlib import Path; t=Path(\"docs/specs/test-quality-remediation-plan.md\").read_text(encoding=\"utf-8\"); s=t.split(\"## 7. Ledger\",1)[1].split(\"\\n## \",1)[0]; rows=[x for x in s.splitlines() if x.startswith(\"|\") and not x.startswith(\"|---\")]; headers=[x for x in rows if x.split(\"|\")[1].strip()==\"Wave\"]; assert len(headers)==1 and [x.strip() for x in headers[0].split(\"|\")[1:-1]]==[\"Wave\",\"State\",\"Retired/changed symbols\",\"Surviving/new coverage\",\"Validation\",\"Remaining gap\"]; core=[x for x in rows if x.split(\"|\")[1].strip()==\"core\"]; assert len(core)==1; c=[x.strip() for x in core[0].split(\"|\")[1:-1]]; assert len(c)==6; wave,state,changed,coverage,validation,gap=c; assert wave==\"core\" and state==\"partial\"; assert all(x in changed for x in (\"core-support-dup-merges\",\"coplanar_step_does_not_hide_the_contact\",\"overhang_is_detected_once_at_the_step_layer\",\"support_geometry_emits_for_2_layer_fixture\",\"build_emit_schedule_two_objects_per_object_semantics\")); assert all(x in coverage for x in (\"overhang_is_detected_once_at_the_step_layer\",\"emits_for_2_layer_fixture\",\"build_emit_schedule_two_objects_per_object_semantics\",\"empty_plan_produces_empty_support\")); assert all(x in validation for x in (\"cargo test\",\"cargo check --workspace --all-targets\",\"cargo clippy --workspace --all-targets -- -D warnings\",\"cargo xtask check-literals\",\"check-test-quality\")); assert \"core-wall-sequence-dup-merges\" in gap; q=t.split(\"## Packet Queue\",1)[1]; qrows=[x for x in q.splitlines() if x.startswith(\"|\") and not x.startswith(\"|---\")]; assert [x.strip() for x in qrows[0].split(\"|\")[1:-1]]==[\"#\",\"packet slug\",\"goal (one sentence)\",\"task ids\",\"depends on\",\"status\",\"packet dir\"]; assert any(\"core-support-dup-merges\" in x for x in qrows); print(\"PASS: anchored core ledger row has six partial-state evidence cells; checked only Packet Queue header and core-support-dup-merges entry presence\")"'` - FACT pass/fail; confirms the anchored six-cell partial ledger evidence.
 - Exit condition: Stop with failure if the row claims full core closure, has other than six cells, omits this packet's survivor/validation evidence, omits `core-wall-sequence-dup-merges`, or any Packet Queue/other plan content changes.
 
 ## Per-Step Budget Roll-Up
@@ -123,7 +123,7 @@ Aggregate remains `S`: both steps use pre-grounded symbols, bounded windows, and
 - Exact layer `3`, `64.0 mm² ± 0.1 mm²` area, successful/non-empty/empty `entries`, and `{1,3,5}` / `{0..5}` schedules remain asserted.
 - Touched-scope `cargo xtask check-test-quality --report` reports zero findings; `cargo check --workspace --all-targets`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo xtask check-literals` pass.
 - No sibling-packet file, production body, existing doc beyond the §7 `core` ledger row, or guest artifact changes.
-- The §7 `core` ledger row remains partial and satisfies AC-7; no Packet Queue or other plan content changes.
+- The §7 `core` ledger row remains partial and satisfies AC-7; a diff review confirms no Packet Queue or other plan content changes.
 - `packet.spec.md` is ready for `status: implemented` only after implementation acceptance; packet generation itself leaves it `draft`.
 
 ## Acceptance Ceremony
