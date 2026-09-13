@@ -123,8 +123,12 @@ impl LayerModule for RectilinearInfill {
                 _ => 0.0,
             },
             nozzle_diameter: 0.4,
-            bridge_line_width: width_value("bridge_line_width"),
-            initial_layer_line_width: width_value("initial_layer_line_width"),
+            bridge_line_width: config
+                .get_abs_value("bridge_line_width", 0.4)
+                .unwrap_or(0.0) as f32,
+            initial_layer_line_width: config
+                .get_abs_value("initial_layer_line_width", 0.4)
+                .unwrap_or(0.0) as f32,
             top_surface_line_width: width_value("top_surface_line_width"),
             internal_solid_infill_line_width: width_value("internal_solid_infill_line_width"),
             sparse_infill_line_width: width_value("sparse_infill_line_width"),

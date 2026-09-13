@@ -22,13 +22,13 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
+use slicer_ir::slice_ir::AggregatedRegionSplitEntry;
 use slicer_ir::{
     is_modifier_namespace_id, modifier_sub_region_id, modifier_sub_region_id_fits,
     region_split_registry::enumerate_canonical_chains, ConfigValue, LayerPlanIR, ModifierVolume,
     ModuleInvocation, ObjectId, ObjectMesh, PaintSemantic, PaintValue, RegionKey, RegionMapIR,
     RegionPlan, ResolvedConfig, StageId,
 };
-use slicer_scheduler::region_split::AggregatedRegionSplitEntry;
 
 use crate::algos::paint_segmentation::paint_variant_region_id;
 

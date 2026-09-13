@@ -3532,10 +3532,17 @@ pub(crate) fn apply(
                     let nofilter = config
                         .and_then(|view| view.get_bool("dont_filter_internal_bridges"))
                         .unwrap_or(false);
+                    let nozzle_diameter = value("nozzle_diameter", 0.4);
+                    let bridge_line_width = config
+                        .and_then(|view| {
+                            view.get_abs_value("bridge_line_width", nozzle_diameter as f64)
+                                .map(|value| value as f32)
+                        })
+                        .unwrap_or(0.0);
                     let flow = slicer_core::flow::canonical_bridging_flow(
-                        value("bridge_line_width", 0.0),
+                        bridge_line_width,
                         value("internal_bridge_flow", 1.0),
-                        value("nozzle_diameter", 0.4),
+                        nozzle_diameter,
                     );
                     // Cross-layer harvesting is sourced only from the committed
                     // SliceIR blackboard slot; per-layer arenas remain isolated.

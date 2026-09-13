@@ -55,12 +55,12 @@ is the authoritative catalog of their defaults and ranges.
 |---|---|---|---|---|
 | `alternate_extra_wall` | bool | `false` | — | `arachne-perimeters` |
 | `bridge_flow` | float | `1.0` | >= 0.0 | `arachne-perimeters` |
-| `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `arachne-perimeters` |
+| `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `arachne-perimeters` |
 | `detect_overhang_wall` | bool | `true` | — | `arachne-perimeters` |
 | `detect_thin_wall` | bool | `false` | — | `arachne-perimeters` |
 | `extra_perimeters` | int | `0` | [0.0, 10.0] | `arachne-perimeters` |
 | `extra_perimeters_on_overhangs` | bool | `false` | — | `arachne-perimeters` |
-| `initial_layer_line_width` | float | `0.0` | [0.0, 2.0] | `arachne-perimeters` |
+| `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `arachne-perimeters` |
 | `initial_layer_min_bead_width` | float | `3400` | >= 0.0 | `arachne-perimeters` |
 | `inner_wall_line_width` | float_or_percent | `0` | [0.0, 2.0] | `arachne-perimeters` |
 | `layer_height` | float | `0.2` | [0.01, 1.0] | `arachne-perimeters` |
@@ -136,11 +136,11 @@ is the authoritative catalog of their defaults and ranges.
 | `apply_to_all` | bool | `false` | — | `fuzzy-skin` |
 | `point_distance` | float | `0.5` | [0.01, 5.0] | `fuzzy-skin` |
 | `thickness` | float | `0.3` | [0.0, 2.0] | `fuzzy-skin` |
-| `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `gyroid-infill` |
+| `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `gyroid-infill` |
 | `infill_angle` | float | `45.0` | [0.0, 360.0] | `gyroid-infill` |
 | `infill_density` | float | `0.2` | [0.0, 1.0] | `gyroid-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `gyroid-infill` |
-| `initial_layer_line_width` | float | `0.0` | [0.0, 2.0] | `gyroid-infill` |
+| `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `gyroid-infill` |
 | `internal_solid_infill_line_width` | float | `0.0` | [0.0, 2.0] | `gyroid-infill` |
 | `line_width` | float | `0` | [0.0, 2.0] | `gyroid-infill` |
 | `sparse_infill_line_width` | float | `0.0` | [0.0, 2.0] | `gyroid-infill` |
@@ -153,10 +153,10 @@ is the authoritative catalog of their defaults and ranges.
 | `first_layer_height` | float | `0.3` | [0.01, 1.0] | `layer-planner-default` |
 | `layer_height` | float | `0.2` | [0.01, 1.0] | `layer-planner-default` |
 | `support_raft_layers` | int | `0` | [0.0, 100.0] | `layer-planner-default` |
-| `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `lightning-infill` |
+| `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `lightning-infill` |
 | `infill_density` | float | `0.2` | [0.0, 1.0] | `lightning-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `lightning-infill` |
-| `initial_layer_line_width` | float | `0.0` | [0.0, 2.0] | `lightning-infill` |
+| `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `lightning-infill` |
 | `line_width` | float | `0` | [0.0, 2.0] | `lightning-infill` |
 | `sparse_infill_line_width` | float | `0.0` | [0.0, 2.0] | `lightning-infill` |
 | `bed_temperature_initial_layer_single` | int | `60` | [0.0, 120.0] | `machine-gcode-emit` |
@@ -202,14 +202,14 @@ is the authoritative catalog of their defaults and ranges.
 | `raft_line_spacing` | float | `0.5` | >= 0.000001 | `raft-default` |
 | `bridge_density` | float_or_percent | `"100%"` | [10.0, 120.0] | `rectilinear-infill` |
 | `bridge_flow` | float | `1.0` | >= 0.0 | `rectilinear-infill` |
-| `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
+| `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
 | `bridge_speed` | float | `25.0` | [1.0, 300.0] | `rectilinear-infill` |
 | `dont_filter_internal_bridges` | bool | `false` | — | `rectilinear-infill` |
 | `enable_extra_bridge_layer` | bool | `false` | — | `rectilinear-infill` |
 | `infill_angle` | float | `45.0` | [0.0, 360.0] | `rectilinear-infill` |
 | `infill_density` | float | `0.2` | [0.0, 1.0] | `rectilinear-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `rectilinear-infill` |
-| `initial_layer_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
+| `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
 | `internal_bridge_angle` | float | `0.0` | [0.0, 180.0] | `rectilinear-infill` |
 | `internal_bridge_density` | float_or_percent | `"100%"` | [10.0, 125.0] | `rectilinear-infill` |
 | `internal_bridge_flow` | float | `1.0` | >= 0.0 | `rectilinear-infill` |
@@ -249,7 +249,7 @@ is the authoritative catalog of their defaults and ranges.
 | `support_interface_flow` | percent | `"100%"` | >= 0.0 | `traditional-support` |
 | `support_interface_spacing` | float | `0.4` | [0.0, 2.0] | `traditional-support` |
 | `support_speed` | float | `50.0` | [1.0, 300.0] | `traditional-support` |
-| `support_style` | string | `"default"` | — | `traditional-support` |
+| `support_style` | enum | `"default"` | — (values: default|grid|snug|organic|tree_slim|tree_strong|tree_hybrid) | `traditional-support` |
 | `enable_support` | bool | `true` | — | `traditional-support-planner` |
 | `independent_support_layer_height` | bool | `true` | — | `traditional-support-planner` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `traditional-support-planner` |
@@ -298,7 +298,7 @@ is the authoritative catalog of their defaults and ranges.
 | `tree_support_wall_count` | int | `1` | [1.0, 10.0] | `tree-support-planner` |
 | `bridge_density` | float_or_percent | `"100%"` | [10.0, 120.0] | `wave-overhangs` |
 | `bridge_flow` | float | `1.0` | >= 0.0 | `wave-overhangs` |
-| `bridge_line_width` | float | `0.0` | [0.0, 2.0] | `wave-overhangs` |
+| `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `wave-overhangs` |
 | `bridge_speed` | float | `25.0` | [1.0, 300.0] | `wave-overhangs` |
 | `layer_height` | float | `0.2` | [0.01, 2.0] | `wave-overhangs` |
 | `nozzle_diameter` | float | `0.4` | [0.1, 2.0] | `wave-overhangs` |

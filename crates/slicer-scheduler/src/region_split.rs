@@ -10,23 +10,9 @@
 
 use std::collections::BTreeMap;
 
-use slicer_ir::ModuleId;
+use crate::manifest::{DiagnosticLevel, LoadDiagnostic, LoadedModule};
 
-use crate::manifest::{DiagnosticLevel, LoadDiagnostic, LoadedModule, RegionSplitValueType};
-
-/// One aggregated `[[region_split]]` semantic across all loaded modules.
-///
-/// `declaring_modules` is sorted lexicographically by `ModuleId` for
-/// deterministic presentation in error messages.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AggregatedRegionSplitEntry {
-    /// Dispatch priority; lower value = higher priority.
-    pub priority: u32,
-    /// Value-domain this semantic operates on.
-    pub value_type: RegionSplitValueType,
-    /// Sorted list of module IDs that declared this semantic.
-    pub declaring_modules: Vec<ModuleId>,
-}
+pub use slicer_ir::slice_ir::AggregatedRegionSplitEntry;
 
 /// Aggregate `[[region_split]]` declarations across all loaded modules into a
 /// `BTreeMap<semantic_name, AggregatedRegionSplitEntry>`.

@@ -543,9 +543,6 @@ pub const RECOGNIZED_CLAIMS: &[&str] = &[
     "text-postprocessor",
 ];
 
-/// Recognized severity values for `[[config.cross-validate]]` rules.
-pub const VALID_SEVERITIES: &[&str] = &["error", "warning"];
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -39,6 +39,38 @@ pub type RegionId = u64;
 pub type StageId = String;
 
 // ============================================================================
+// Region-Split Types
+// ============================================================================
+
+/// Value-domain a region-split semantic operates on. `scalar` is
+/// architecturally forbidden (D13); the parser rejects it explicitly via
+/// `LoadErrorKind::ScalarValueTypeNotAllowedInRegionSplit`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RegionSplitValueType {
+    /// Boolean flag (split on/off regions).
+    Flag,
+    /// Tool/extruder index.
+    ToolIndex,
+    /// Arbitrary string label defined by the module.
+    CustomString,
+}
+
+/// One aggregated `[[region_split]]` semantic across all loaded modules.
+///
+/// `declaring_modules` is sorted lexicographically by `ModuleId` for
+/// deterministic presentation in error messages.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AggregatedRegionSplitEntry {
+    /// Dispatch priority; lower value = higher priority.
+    pub priority: u32,
+    /// Value-domain this semantic operates on.
+    pub value_type: RegionSplitValueType,
+    /// Sorted list of module IDs that declared this semantic.
+    pub declaring_modules: Vec<ModuleId>,
+}
+
+// ============================================================================
 // Coordinate System and Basic Types
 // ============================================================================
 

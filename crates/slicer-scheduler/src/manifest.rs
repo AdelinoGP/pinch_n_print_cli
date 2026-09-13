@@ -10,9 +10,12 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use slicer_ir::resolved_config::HostKeyMeta;
+use slicer_ir::resolved_config::HostConfigKey;
 use slicer_ir::{ConfigValue, ModuleId, SemVer, StageId};
 use toml::Value;
+
+pub use slicer_ir::config_schema::{ConfigFieldEntry, ConfigSchema};
+pub use slicer_ir::slice_ir::RegionSplitValueType;
 
 /// Wire-format version for the JSON emitted by [`build_config_schema_json`] and
 /// consumed by `pnp_cli module config-schema`. Semver `"<major>.<minor>.<patch>"`;
@@ -24,12 +27,8 @@ use toml::Value;
 /// entries carry optional display metadata — `display`/`group`/`unit`/
 /// `description`/`min`/`max`/`values`/`advanced` per entry, `null` where
 /// un-annotated. Additive: a wire-1.1.0 consumer ignores the new fields.
-pub const CONFIG_SCHEMA_WIRE_VERSION: &str = "1.2.0";
-
-/// Helper for serde skip_serializing_if on bool.
-fn is_false(b: &bool) -> bool {
-    !*b
-}
+/// 1.3.0 (owner decision 1) removes the retired per-field `validate` field.
+pub const CONFIG_SCHEMA_WIRE_VERSION: &str = "1.3.0";
 
 /// One declared region-split semantic a module cares about. Parsed from
 /// a top-level `[[region_split]]` TOML array entry. See packet 92.
@@ -41,20 +40,6 @@ pub struct RegionSplitDeclaration {
     pub priority: u32,
     /// Value-domain this semantic operates on.
     pub value_type: RegionSplitValueType,
-}
-
-/// Value-domain a region-split semantic operates on. `scalar` is
-/// architecturally forbidden (D13); the parser rejects it explicitly via
-/// `LoadErrorKind::ScalarValueTypeNotAllowedInRegionSplit`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RegionSplitValueType {
-    /// Boolean flag (split on/off regions).
-    Flag,
-    /// Tool/extruder index.
-    ToolIndex,
-    /// Arbitrary string label defined by the module.
-    CustomString,
 }
 
 /// How a module reached the registry (ADR-0056).
@@ -466,73 +451,6 @@ impl LoadedModuleBuilder {
             region_split_semantics: self.region_split_semantics,
         }
     }
-}
-
-/// A single config field entry parsed from a module manifest `[config.schema]`
-/// table entry.
-///
-/// Mirrors the fields defined in `docs/03_wit_and_manifest.md` § Config Field
-/// Types Reference.  The `type` field is required; all others are optional and
-/// serialize as `null` when absent.
-#[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
-pub struct ConfigFieldEntry {
-    /// Field type string — must be one of: `"bool"`, `"int"`, `"float"`,
-    /// `"string"`, `"enum"`, `"float-list"`, `"string-list"`.
-    pub field_type: String,
-    /// Default value as a string representation.
-    pub default: Option<String>,
-    /// Parsed `default` for `"percent"` / `"float_or_percent"` field types,
-    /// retained from `parse_percent_default` rather than discarded
-    /// (packet 185 / DEV-100). `None` for every other field type. Skipped in
-    /// serialization so the config-schema wire shape is unchanged.
-    #[serde(skip)]
-    pub parsed_default: Option<ConfigValue>,
-    /// Minimum for int/float fields.
-    pub min: Option<f64>,
-    /// Maximum for int/float fields.
-    pub max: Option<f64>,
-    /// Step for int/float fields.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub step: Option<f64>,
-    /// UI display name.
-    pub display: Option<String>,
-    /// UI tooltip / description.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    /// UI grouping hint.
-    pub group: Option<String>,
-    /// Unit hint (`"mm"`, `"ratio"`, `"degrees"`, `"mm/s"`, `"ms"`).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub unit: Option<String>,
-    /// Whether this is an advanced setting (hidden by default).
-    #[serde(skip_serializing_if = "is_false")]
-    pub advanced: bool,
-    /// Allowed values for `"enum"` fields.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub values: Option<Vec<String>>,
-    /// Max length for `"string"` fields.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_length: Option<usize>,
-    /// Min list length for list fields.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub min_list_length: Option<usize>,
-    /// Max list length for list fields.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_list_length: Option<usize>,
-    /// Single-field validation expression.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub validate: Option<String>,
-    /// UI taxonomy tags for sub-tab filtering and search. Free-form strings;
-    /// see `docs/03_wit_and_manifest.md` for conventions. Empty by default.
-    #[serde(default)]
-    pub tags: Vec<String>,
-}
-
-/// Full config schema for a module, holding all field entries.
-#[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
-pub struct ConfigSchema {
-    /// Parsed field entries keyed by field name.
-    pub entries: BTreeMap<String, ConfigFieldEntry>,
 }
 
 /// Diagnostic severity emitted during module discovery and ingestion.
@@ -1307,7 +1225,49 @@ fn parse_config_field_entry(
     let max_list_length = table
         .get("max_list_length")
         .and_then(|v| v.as_integer().map(|i| i as usize));
-    let validate = get_string_opt(table, "validate");
+    let selector = table
+        .get("selector")
+        .map(|value| {
+            value.as_bool().ok_or_else(|| {
+                config_field_type_error(manifest_path, field_key, "selector", "a boolean")
+            })
+        })
+        .transpose()?
+        .unwrap_or(false);
+    let base_key = table
+        .get("base_key")
+        .map(|value| {
+            value.as_str().map(String::from).ok_or_else(|| {
+                config_field_type_error(manifest_path, field_key, "base_key", "a string")
+            })
+        })
+        .transpose()?;
+    let denied_scopes = match table.get("denied_scopes") {
+        Some(value) => {
+            let values = value.as_array().ok_or_else(|| {
+                config_field_type_error(
+                    manifest_path,
+                    field_key,
+                    "denied_scopes",
+                    "an array of strings",
+                )
+            })?;
+            values
+                .iter()
+                .map(|item| {
+                    item.as_str().map(String::from).ok_or_else(|| {
+                        config_field_type_error(
+                            manifest_path,
+                            field_key,
+                            "denied_scopes",
+                            "an array of strings",
+                        )
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?
+        }
+        None => Vec::new(),
+    };
     let tags = table
         .get("tags")
         .and_then(|v| v.as_array())
@@ -1334,9 +1294,26 @@ fn parse_config_field_entry(
         max_length,
         min_list_length,
         max_list_length,
-        validate,
         tags,
+        selector,
+        base_key,
+        denied_scopes,
     })
+}
+
+fn config_field_type_error(
+    manifest_path: &Path,
+    field_key: &str,
+    property: &str,
+    expected: &str,
+) -> LoadError {
+    let field = format!("config.schema.{field_key}.{property}");
+    LoadError {
+        path: manifest_path.to_path_buf(),
+        field: Some(field.clone()),
+        kind: LoadErrorKind::Schema,
+        message: format!("manifest field '{field}' must be {expected}"),
+    }
 }
 
 /// Parses and validates a `[config.schema.<key>]` `default` for the
@@ -1568,49 +1545,6 @@ fn known_stage_ids() -> &'static [&'static str] {
     crate::stage_order::known_stage_ids()
 }
 
-/// Config keys read straight from the CLI/JSON config source by host
-/// built-ins, with no `ResolvedConfig` field and no manifest entry
-/// (`docs/config/host-keys.toml` `[host_runtime]`).
-///
-/// Defaults are restated here because their owning constants live in
-/// `slicer-runtime`, which depends on this crate; the lock test
-/// `host_keys_doc_lock_tdd` ties each value back to its owner.
-///
-/// The reachable-annotation note under `[speeds]` applies here too:
-/// `wall_generator` and `use_relative_e_distances` are Orca identity rows, so
-/// `thumbnail_path` is the only one this table annotates.
-const HOST_RUNTIME_KEYS: &[(&str, &str, &str, &str, HostKeyMeta)] = &[
-    // (key, wire type, scope, default, display meta)
-    (
-        "use_relative_e_distances",
-        "bool",
-        slicer_ir::resolved_config::SCOPE_PRINTER,
-        "true",
-        HostKeyMeta::NONE,
-    ),
-    (
-        "thumbnail_path",
-        "string",
-        slicer_ir::resolved_config::SCOPE_PRINTER,
-        "",
-        HostKeyMeta {
-            display: Some("Thumbnail path"),
-            description: Some(
-                "File path the slicer writes its thumbnail plate into; empty disables thumbnails.",
-            ),
-            group: Some("Output"),
-            ..HostKeyMeta::NONE
-        },
-    ),
-    (
-        "wall_generator",
-        "string",
-        slicer_ir::resolved_config::SCOPE_PRINT,
-        crate::execution_plan::DEFAULT_WALL_GENERATOR,
-        HostKeyMeta::NONE,
-    ),
-];
-
 /// Preset scope of a module-manifest config field.
 ///
 /// Always print. A module field describes how a slice is produced, which is a
@@ -1688,8 +1622,21 @@ fn build_host_key_entries() -> Vec<serde_json::Value> {
         );
     }
 
-    for (key, field_type, scope, default, meta) in HOST_RUNTIME_KEYS {
-        push(key, field_type, scope, Some((*default).to_string()), meta);
+    for row in slicer_ir::resolved_config::HOST_RUNTIME_KEYS {
+        let host_key = HostConfigKey {
+            key: row.key,
+            field_type: row.field_type,
+            scope: row.scope,
+            default: Some((row).default.to_string()),
+            meta: row.meta,
+        };
+        push(
+            host_key.key,
+            host_key.field_type,
+            host_key.scope,
+            host_key.default,
+            &host_key.meta,
+        );
     }
 
     out.sort_by(|a, b| a["key"].as_str().cmp(&b["key"].as_str()));
@@ -1712,7 +1659,7 @@ fn build_host_key_entries() -> Vec<serde_json::Value> {
 ///          "step": null, "description": null, "unit": null,
 ///          "advanced": false, "max_length": null,
 ///          "min_list_length": null, "max_list_length": null,
-///          "validate": null, "tags": []}
+///          "tags": []}
 ///       ]
 ///     }
 ///   ]
@@ -1776,7 +1723,6 @@ pub fn build_config_schema_json(modules: &[LoadedModule]) -> serde_json::Value {
                         "max_length": entry.max_length,
                         "min_list_length": entry.min_list_length,
                         "max_list_length": entry.max_list_length,
-                        "validate": entry.validate,
                         "tags": entry.tags,
                         "scope": module_field_scope(),
                     })
@@ -1812,7 +1758,8 @@ fn is_wildcard_config_key(key: &str) -> bool {
 mod tests {
     use super::{
         build_config_schema_json, effective_parallel_safety, parse_semver, ConfigFieldEntry,
-        ConfigSchema, DiagnosticLevel, LoadedModuleBuilder, CONFIG_SCHEMA_WIRE_VERSION,
+        ConfigSchema, DiagnosticLevel, LoadErrorKind, LoadedModuleBuilder,
+        CONFIG_SCHEMA_WIRE_VERSION,
     };
     use slicer_ir::SemVer;
     use std::collections::BTreeMap;
@@ -1895,6 +1842,58 @@ mod tests {
         assert_eq!(module.claims, vec!["perimeter-generator".to_string()]);
         assert_eq!(module.requires_modules, vec!["com.test.helper".to_string()]);
         assert!(module.layer_parallel_safe);
+    }
+
+    #[test]
+    fn config_schema_parser_reads_registry_fields_and_preserves_shorthand_defaults() {
+        let full: toml::Value = toml::from_str(
+            r#"
+type = "float_or_percent"
+default = "25%"
+selector = true
+base_key = "nozzle_diameter"
+denied_scopes = ["object", "layer_range"]
+"#,
+        )
+        .expect("valid config schema table");
+        let entry =
+            super::parse_config_field_entry("bridge_line_width", &full, Path::new("module.toml"))
+                .expect("registry fields should parse");
+
+        assert!(entry.selector);
+        assert_eq!(entry.base_key.as_deref(), Some("nozzle_diameter"));
+        assert_eq!(
+            entry.denied_scopes,
+            vec!["object".to_string(), "layer_range".to_string()]
+        );
+
+        let shorthand = toml::Value::String("int".to_string());
+        let entry =
+            super::parse_config_field_entry("wall_count", &shorthand, Path::new("module.toml"))
+                .expect("shorthand config schema entry should parse");
+        assert!(!entry.selector);
+        assert_eq!(entry.base_key, None);
+        assert!(entry.denied_scopes.is_empty());
+    }
+
+    #[test]
+    fn config_schema_parser_rejects_malformed_registry_field_types() {
+        for (field, source) in [
+            ("selector", "type = \"string\"\nselector = \"true\"\n"),
+            ("base_key", "type = \"float\"\nbase_key = false\n"),
+            (
+                "denied_scopes",
+                "type = \"string\"\ndenied_scopes = [\"object\", 1]\n",
+            ),
+        ] {
+            let value: toml::Value = toml::from_str(source).expect("valid TOML table");
+            let error =
+                super::parse_config_field_entry("test_key", &value, Path::new("module.toml"))
+                    .expect_err("malformed registry field should be rejected");
+            assert_eq!(error.kind, LoadErrorKind::Schema);
+            let expected_field = format!("config.schema.test_key.{field}");
+            assert_eq!(error.field.as_deref(), Some(expected_field.as_str()));
+        }
     }
 
     fn synthetic_module(id: &str, schema: ConfigSchema) -> super::LoadedModule {
@@ -2086,7 +2085,7 @@ mod tests {
             Some(CONFIG_SCHEMA_WIRE_VERSION),
             "top-level schema_version must equal CONFIG_SCHEMA_WIRE_VERSION"
         );
-        assert_eq!(CONFIG_SCHEMA_WIRE_VERSION, "1.2.0");
+        assert_eq!(CONFIG_SCHEMA_WIRE_VERSION, "1.3.0");
         assert!(
             json["schema"].is_array(),
             "top-level 'schema' must always be an array"
@@ -2115,8 +2114,10 @@ mod tests {
                 max_length: None,
                 min_list_length: None,
                 max_list_length: None,
-                validate: Some("density <= 1.0".to_string()),
                 tags: vec!["infill".to_string(), "advanced".to_string()],
+                selector: false,
+                base_key: None,
+                denied_scopes: Vec::new(),
             },
         );
         let module = synthetic_module("com.test.allkeys", ConfigSchema { entries });
@@ -2139,7 +2140,6 @@ mod tests {
             "max_length",
             "min_list_length",
             "max_list_length",
-            "validate",
             "tags",
         ] {
             assert!(
@@ -2154,7 +2154,6 @@ mod tests {
         assert_eq!(field["advanced"], true);
         assert_eq!(field["step"], 0.05);
         assert_eq!(field["description"], "Fraction of solid coverage");
-        assert_eq!(field["validate"], "density <= 1.0");
         assert!(field["values"].is_null());
         assert!(field["max_length"].is_null());
         assert_eq!(field["tags"], serde_json::json!(["infill", "advanced"]));

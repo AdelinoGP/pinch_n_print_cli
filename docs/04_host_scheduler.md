@@ -869,10 +869,7 @@ surfaces `RegionMappingError::CapExceeded` naming
 the top contributor's `(object_id, region_count, layer_count)` so callers can diagnose which object
 exploded the cross-product.
 
-**Cross-crate dependency:** `slicer-core` depends on `slicer-scheduler`
-for the `AggregatedRegionSplitEntry` type. Relocating the type to
-`slicer-ir` to clean up the edge is a deferred follow-up; verify with
-`cargo tree -p slicer-core --edges normal`.
+**Cross-crate dependency:** `AggregatedRegionSplitEntry` is owned by `slicer-ir::slice_ir`; `slicer-core` imports it from `slicer-ir` and no longer has a normal `slicer-scheduler` dependency.
 
 ```rust
 // Illustrative. The real entry point is `execute_region_mapping` in

@@ -822,6 +822,25 @@ pub struct HostConfigKey {
     pub meta: HostKeyMeta,
 }
 
+/// One static host-runtime config key declaration.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HostRuntimeKey {
+    /// Config key name as it appears in the CLI/JSON config source.
+    pub key: &'static str,
+    /// Wire type string, matching the module-manifest vocabulary.
+    pub field_type: &'static str,
+    /// Preset scope for the key.
+    pub scope: &'static str,
+    /// Default rendered as a static string.
+    pub default: &'static str,
+    /// Display metadata for the key.
+    pub meta: HostKeyMeta,
+    /// Whether the key selects a host runtime implementation.
+    pub selector: bool,
+    /// Scopes in which the key may not be overridden.
+    pub denied_scopes: &'static [&'static str],
+}
+
 /// Optional GUI display metadata for one host config key, mirroring the
 /// module-manifest field vocabulary (`display`/`group`/`unit`/`description`/
 /// `min`/`max`/`values`). Declared inline on the `cli`/`cli_opt` DSL rows via
@@ -884,6 +903,53 @@ impl HostKeyMeta {
         advanced: false,
     };
 }
+
+/// Default `wall_generator` value used when the config key is absent.
+pub const DEFAULT_WALL_GENERATOR: &str = "classic";
+
+/// Static config keys read directly by host runtime code.
+pub const HOST_RUNTIME_KEYS: &[HostRuntimeKey] = &[
+    HostRuntimeKey {
+        key: "use_relative_e_distances",
+        field_type: "bool",
+        scope: SCOPE_PRINTER,
+        default: "true",
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "thumbnail_path",
+        field_type: "string",
+        scope: SCOPE_PRINTER,
+        default: "",
+        meta: HostKeyMeta {
+            display: Some("Thumbnail path"),
+            description: Some(
+                "File path the slicer writes its thumbnail plate into; empty disables thumbnails.",
+            ),
+            group: Some("Output"),
+            ..HostKeyMeta::NONE
+        },
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "wall_generator",
+        field_type: "string",
+        scope: SCOPE_PRINT,
+        default: DEFAULT_WALL_GENERATOR,
+        meta: HostKeyMeta::NONE,
+        selector: true,
+        denied_scopes: &[
+            "object",
+            "layer_range",
+            "modifier",
+            "paint_semantic",
+            "tool",
+        ],
+    },
+];
 
 /// Maps a declared Rust field type onto the config-schema wire vocabulary and
 /// renders its default.

@@ -87,7 +87,8 @@ display = "Support Bottom Interface Spacing"
 group   = "Support"
 
 [config.schema.support_style]
-type    = "string"
+type    = "enum"
+values  = ["default", "grid", "snug", "organic", "tree_slim", "tree_strong", "tree_hybrid"]
 default = "default"
 display = "Support Style"
 group   = "Support"

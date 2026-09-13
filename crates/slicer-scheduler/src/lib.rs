@@ -48,12 +48,13 @@ pub use execution_plan::{
 pub use instrumentation::{compute_serial_edges_for_stage, EdgeReason, SerialEdge};
 pub use manifest::{
     build_config_schema_json, load_module_from_paths, load_modules_from_roots,
-    load_modules_from_roots_with_integrated, ConfigFieldEntry, ConfigSchema, DiagnosticLevel,
-    IntegratedModuleRegistration, LoadDiagnostic, LoadError, LoadErrorKind, LoadModulesReport,
-    LoadedModule, LoadedModuleBuilder, ModuleProvenance, RegionSplitDeclaration,
-    RegionSplitValueType,
+    load_modules_from_roots_with_integrated, DiagnosticLevel, IntegratedModuleRegistration,
+    LoadDiagnostic, LoadError, LoadErrorKind, LoadModulesReport, LoadedModule, LoadedModuleBuilder,
+    ModuleProvenance, RegionSplitDeclaration,
 };
+pub use manifest::{ConfigFieldEntry, ConfigSchema, RegionSplitValueType};
 pub use module_search_path::{assemble_search_roots, SLICER_MODULE_PATH_ENV};
+pub use region_split::AggregatedRegionSplitEntry;
 pub use topology::topological_sort;
 pub use validation::{
     resolve_held_claims, validate_startup_dag, AccessKind, ClaimHolder, ConflictScope,

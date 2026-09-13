@@ -856,7 +856,6 @@ max-ir-schema     = "2.0.0"      # exclusive upper bound
   display  = "Infill Density"
   unit     = "ratio"          # UI renders as percentage
   group    = "Pattern"
-  validate = "value > 0.0 && value < 1.0"
 
    [config.schema.multiline_count]
   type    = "int"
@@ -884,16 +883,6 @@ max-ir-schema     = "2.0.0"      # exclusive upper bound
   display  = "Raster Precision (mm)"
   group    = "Advanced"
   advanced = true
-
-# ── Cross-field validation ────────────────────────────────────────────────────
-# <!-- VERIFY: as of this writing, `manifest.rs` does not parse
-#      `[[config.cross-validate]]`; the rule is not enforced at module load.
-#      Treat this section as a forward-looking design item until the parser
-#      and validator catch up. -->
-[[config.cross-validate]]
-rule     = "marching_cell_size >= raster_precision * 10"
-message  = "Marching cell size should be at least 10x the raster precision"
-severity = "warning"    # "error" blocks slicing; "warning" notifies only
 
 # ── Per-region / per-layer override policy ────────────────────────────────────
 [config.overridable-per-region]
@@ -1609,7 +1598,9 @@ set is listed by `slicer_schema::VALID_CONFIG_TYPES`.
 | `description` | string       | UI tooltip / help text.                                          |
 | `group`   | string           | UI grouping hint (becomes a section header in the settings tab). |
 | `advanced` | bool            | Hidden by default; revealed only in advanced view.               |
-| `validate` | string          | Single-field validation expression. See § Validation Expression Language. |
+| `selector` | bool           | Marks a key used to select a module or execution path; selector keys must be unavailable at narrower per-region scopes. |
+| `base_key` | string          | Absolute config key used as the base for `percent` and `float_or_percent` values. |
+| `denied_scopes` | array of strings | Scopes where this key cannot be stated: `global`, `object`, `layer_range`, `modifier`, `paint_semantic`, or `tool`. |
 | `tags`    | array of strings | UI taxonomy tags for sub-tab filtering and search (free-form). Emitted as `[]` when absent. |
 
 #### Tag conventions
@@ -1657,34 +1648,6 @@ and `resolve_global_config` / `resolve_per_object_configs` /
 | `"deg"`   | `X°`               |
 | `"mm/s"`  | `X mm/s`           |
 | `"ms"`    | `X ms`             |
-
----
-
-## Validation Expression Language
-
-Used in `validate` (single field) and `cross-validate.rule` (multi-field). Deliberately restricted — no loops, no I/O, no function calls.
-
-<!-- VERIFY: as of this writing the parser stores `validate`/`cross-validate`
-     strings but does not interpret them at module load. The grammar below is
-     the forward-looking design; do not assume runtime enforcement. The
-     numeric-bounds enforcement above (`min`/`max`) is independent of this
-     grammar and is enforced today by `ConfigBoundsIndex`. -->
-
-
-```text
-Literals:   0, 1.5, true, false, "string"
-References: value (single-field), field-name (cross-validate)
-Operators:  && || ! == != < <= > >= + - * /
-Functions:  min(a,b)  max(a,b)  abs(x)  floor(x)  ceil(x)
-```
-
-Examples:
-
-```toml
-validate = "value >= 0.01 && value <= 10.0"
-rule     = "outer_wall_speed <= inner_wall_speed * 1.5"
-rule     = "min(layer_height, 0.35) == layer_height"
-```
 
 ---
 

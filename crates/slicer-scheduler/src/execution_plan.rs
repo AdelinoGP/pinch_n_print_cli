@@ -227,7 +227,7 @@ pub const SPIRAL_VASE_CONFIG_KEY: &str = "spiral_vase";
 /// Default `wall_generator` value used when the config key is absent.
 /// Keeps every existing golden/regression test slicing with
 /// `classic-perimeters` unchanged (packet 112 Step 10).
-pub const DEFAULT_WALL_GENERATOR: &str = "classic";
+pub use slicer_ir::resolved_config::DEFAULT_WALL_GENERATOR;
 
 const PERIMETER_GENERATOR_CLAIM: &str = "perimeter-generator";
 const CLASSIC_PERIMETERS_MODULE_ID: &str = "com.core.classic-perimeters";

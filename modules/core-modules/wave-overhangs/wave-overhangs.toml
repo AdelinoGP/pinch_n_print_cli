@@ -117,7 +117,8 @@ display = "Bridge Speed"
 group   = "Bridging"
 
 [config.schema.bridge_line_width]
-type    = "float"
+type    = "float_or_percent"
+base_key = "nozzle_diameter"
 default = 0.0
 min     = 0.0
 max     = 2.0

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (Packet 93 / TASK-region-mapping-cross-product). Status includes a follow-up commitment to relocate the type to `slicer-ir` in a future packet.
+Closed — superseded by config-scope-resolution_01_config-schema-registry. `AggregatedRegionSplitEntry` is now owned by `slicer-ir::slice_ir`; scheduler compatibility re-exports remain, and the normal `slicer-core` → `slicer-scheduler` dependency is removed.
 
 ## Context
 

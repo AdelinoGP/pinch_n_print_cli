@@ -57,6 +57,7 @@ group   = "Walls"
 
 [config.schema.initial_layer_line_width]
 type        = "float_or_percent"
+base_key    = "nozzle_diameter"
 default     = 0.0
 min         = 0.0
 max         = 2.0
@@ -67,6 +68,7 @@ group       = "Walls"
 
 [config.schema.bridge_line_width]
 type        = "float_or_percent"
+base_key    = "nozzle_diameter"
 default     = 0.0
 min         = 0.0
 max         = 2.0

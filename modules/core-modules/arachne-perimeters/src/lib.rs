@@ -190,9 +190,11 @@ fn arachne_params_from_config(
         // diverging from classic-perimeters on the absent-key path.
         line_width: config.get_float("line_width").unwrap_or(0.0) as f32,
         nozzle_diameter: nozzle_diameter_mm as f32,
-        bridge_line_width: config.get_float("bridge_line_width").unwrap_or(0.0) as f32,
+        bridge_line_width: config
+            .get_abs_value("bridge_line_width", nozzle_diameter_mm)
+            .unwrap_or(0.0) as f32,
         initial_layer_line_width: config
-            .get_float("initial_layer_line_width")
+            .get_abs_value("initial_layer_line_width", nozzle_diameter_mm)
             .unwrap_or(0.0) as f32,
         outer_wall_line_width: config
             .get_float("outer_wall_line_width")

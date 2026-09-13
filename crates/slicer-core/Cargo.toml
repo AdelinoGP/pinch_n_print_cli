@@ -20,13 +20,13 @@ rstar = "0.12"
 rayon = { version = "1.10", optional = true }
 boostvoronoi = { version = "0.12", optional = true }
 slicer-ir = { path = "../slicer-ir" }
-slicer-scheduler = { path = "../slicer-scheduler" }
 serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 criterion = { workspace = true }
 serde_json = "1"
 slicer-model-io = { path = "../slicer-model-io" }
+slicer-scheduler = { path = "../slicer-scheduler" }
 
 [[bench]]
 name = "polygon_ops"

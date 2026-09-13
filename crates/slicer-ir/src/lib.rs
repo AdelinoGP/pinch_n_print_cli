@@ -7,6 +7,7 @@
 #![warn(unused_imports)]
 #![warn(unused_must_use)]
 
+pub mod config_schema;
 pub mod entity_id;
 /// Feedrate computation and configuration.
 pub mod feedrate;
@@ -19,6 +20,7 @@ pub mod slice_ir;
 pub mod stage_io;
 pub mod validation;
 
+pub use config_schema::{ConfigFieldEntry, ConfigSchema};
 pub use entity_id::LayerEntityIdGen;
 pub use feedrate::FeedrateConfig;
 pub use polygon_predicate::{point_in_contour_winding, point_in_polygon_winding};
@@ -27,6 +29,7 @@ pub use resolved_config::{
     classify_declared_key, is_declared_float_or_percent_key, ConfigResolutionError,
     DeclaredKeyKind, ResolvedConfig,
 };
+pub use slice_ir::{AggregatedRegionSplitEntry, RegionSplitValueType};
 pub use stage_io::{
     BlackboardError, BlackboardPrepassSlot, Diagnostic, DiagnosticSeverity, FinalizationError,
     FinalizationOutput, LayerArenaError, LayerArenaSlot, LayerStageCommit, LayerStageError,

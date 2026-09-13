@@ -78,8 +78,12 @@ impl LayerModule for LightningInfill {
                 // auto-0 sentinel (1.125 × nozzle), not the legacy 0.4 mm.
                 line_width: width("line_width", 0.0),
                 nozzle_diameter: 0.4,
-                bridge_line_width: width("bridge_line_width", 0.0),
-                initial_layer_line_width: width("initial_layer_line_width", 0.0),
+                bridge_line_width: config
+                    .get_abs_value("bridge_line_width", 0.4)
+                    .unwrap_or(0.0) as f32,
+                initial_layer_line_width: config
+                    .get_abs_value("initial_layer_line_width", 0.4)
+                    .unwrap_or(0.0) as f32,
                 sparse_infill_line_width: width("sparse_infill_line_width", 0.0),
                 ..Default::default()
             },

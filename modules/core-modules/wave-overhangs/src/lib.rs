@@ -370,6 +370,10 @@ impl LayerModule for WaveOverhangs {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         let pattern =
             WavePattern::from_str_or_default(cfg_str(config, "wave_overhang_pattern", "smart"));
+        let nozzle_diameter = cfg_float(config, "nozzle_diameter", 0.4);
+        let bridge_line_width = config
+            .get_abs_value("bridge_line_width", nozzle_diameter as f64)
+            .unwrap_or(0.0) as f32;
 
         Ok(Self {
             pattern,
@@ -383,10 +387,10 @@ impl LayerModule for WaveOverhangs {
             print_speed: cfg_float(config, "wave_overhang_print_speed", 2.0),
             anchor_depth_mm: cfg_float(config, "wave_overhang_anchor_depth_mm", 0.0),
             bridge_speed: cfg_float(config, "bridge_speed", 25.0),
-            bridge_line_width: cfg_float(config, "bridge_line_width", 0.0),
+            bridge_line_width,
             bridge_flow: cfg_float(config, "bridge_flow", 1.0),
             bridge_density: cfg_density(config, "bridge_density", 1.0),
-            nozzle_diameter: cfg_float(config, "nozzle_diameter", 0.4),
+            nozzle_diameter,
             wall_count: cfg_u32(config, "wall_count", 3),
             layer_height: cfg_float(config, "layer_height", 0.2),
             // Not a manifest key: printer profiles supply it, and its absence

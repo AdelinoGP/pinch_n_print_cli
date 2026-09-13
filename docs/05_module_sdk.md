@@ -1239,7 +1239,6 @@ pnp_cli module diagnose [--module-dir <PATH>]
     - TOML schema validity
     - Stage ID is a known stage
     - Config field types and ranges
-    - Cross-validate expression syntax
     - Claim names are recognized
 
 pnp_cli module config-schema [--module-dir <PATH>]
