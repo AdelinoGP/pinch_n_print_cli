@@ -120,3 +120,16 @@ fn single_wall_unchanged_for_all_modes() {
         assert_eq!(walls[0].perimeter_index, 42);
     }
 }
+
+/// Edge: N == 2 sandwich input `[Outer(0), Inner(1)]` becomes `[Inner_0, Outer]`.
+#[test]
+fn inner_outer_inner_with_two_walls_swaps_outer_and_first_inner() {
+    let mut walls = vec![
+        make_wall(0, LoopType::Outer, ExtrusionRole::OuterWall),
+        make_wall(1, LoopType::Inner, ExtrusionRole::InnerWall),
+    ];
+    wall_sequence_reorder(&mut walls, WallSequence::InnerOuterInner, &[]);
+    // For N == 2: [Inner_0, Outer].
+    assert_eq!(walls[0].perimeter_index, 1);
+    assert_eq!(walls[1].perimeter_index, 0);
+}
