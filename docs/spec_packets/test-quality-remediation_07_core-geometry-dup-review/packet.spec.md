@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: test-quality-remediation_07_core-geometry-dup-review
 task_ids:
   - core/DUP-CORE (segment path)

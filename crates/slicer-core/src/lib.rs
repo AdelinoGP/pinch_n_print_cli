@@ -314,16 +314,7 @@ fn interpolate_point(start: Point3WithWidth, end: Point3WithWidth, t: f32) -> Po
 
 #[cfg(test)]
 mod tests {
-    use super::{flow_correction, segment_path};
-    use slicer_ir::Point2;
-
-    #[test]
-    fn segment_path_preserves_requested_endpoints() {
-        let points = segment_path(Point2::from_mm(0.0, 0.0), Point2::from_mm(2.0, 0.0), 0.75);
-
-        assert_eq!(points.first(), Some(&Point2::from_mm(0.0, 0.0)));
-        assert_eq!(points.last(), Some(&Point2::from_mm(2.0, 0.0)));
-    }
+    use super::flow_correction;
 
     #[test]
     fn flow_correction_stays_positive_for_vertical_input() {

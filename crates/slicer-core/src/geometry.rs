@@ -187,17 +187,17 @@ mod tests {
     use slicer_ir::Point2;
 
     #[test]
-    fn closest_point_on_segment_midpoint() {
+    fn point_to_segment_distance_squared_matches() {
         let a = Point2 { x: 0, y: 0 };
         let b = Point2 { x: 10_000, y: 0 };
         let p = Point2 { x: 5_000, y: 5_000 };
+        let dsq = point_to_segment_distance_squared(p, a, b);
         let cp = closest_point_on_segment(p, a, b);
-        assert!(
-            (cp.distance_sq - 25_000_000.0_f64).abs() < 2.0,
-            "distance_sq should be 5000^2 = 25_000_000"
-        );
-        assert!((cp.point.x - 5_000).abs() <= 1, "nearest X should be ~5000");
-        assert!(cp.point.y.abs() <= 1, "nearest Y should be ~0");
+        assert!((dsq - 25_000_000.0_f64).abs() < 2.0);
+        assert!((cp.distance_sq - 25_000_000.0_f64).abs() < 2.0);
+        assert!((cp.point.x - 5_000).abs() <= 1);
+        assert!(cp.point.y.abs() <= 1);
+        assert_eq!(dsq, cp.distance_sq);
     }
 
     #[test]
@@ -208,15 +208,6 @@ mod tests {
         let cp = closest_point_on_segment(p, a, b);
         // distance = sqrt(3000^2 + 4000^2) = 5000; distance_sq = 25_000_000
         assert!((cp.distance_sq - 25_000_000.0_f64).abs() < 2.0);
-    }
-
-    #[test]
-    fn point_to_segment_distance_squared_matches() {
-        let a = Point2 { x: 0, y: 0 };
-        let b = Point2 { x: 10_000, y: 0 };
-        let p = Point2 { x: 5_000, y: 5_000 };
-        let dsq = point_to_segment_distance_squared(p, a, b);
-        assert!((dsq - 25_000_000.0_f64).abs() < 2.0);
     }
 
     #[test]

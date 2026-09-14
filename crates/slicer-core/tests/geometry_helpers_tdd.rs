@@ -90,20 +90,25 @@ fn segment_path_never_emits_segments_longer_than_requested_limit_for_known_cases
         (2.5_f32, 0.7_f32),
         (5.0_f32, 2.0_f32),
         (11.25_f32, 3.0_f32),
+        (2.0_f32, 0.75_f32),
     ];
 
     for (length_mm, max_len_mm) in cases {
-        let points = segment_path(
-            Point2::from_mm(0.0, 0.0),
-            Point2::from_mm(length_mm, 0.0),
-            max_len_mm,
-        );
+        let start = Point2::from_mm(0.0, 0.0);
+        let end = Point2::from_mm(length_mm, 0.0);
+        let points = segment_path(start, end, max_len_mm);
 
         assert!(!points.is_empty());
+        assert_eq!(points.first(), Some(&start));
+        assert_eq!(points.last(), Some(&end));
         assert_point2_mm(points[0], 0.0, 0.0);
         assert_point2_mm(*points.last().unwrap(), length_mm, 0.0);
 
         for len in segment_lengths_mm(&points) {
+            assert!(
+                len > 0.0,
+                "zero-length chord for case ({length_mm}, {max_len_mm})"
+            );
             assert!(
                 len <= max_len_mm + EPS,
                 "segment length {len} exceeded limit {max_len_mm}"
