@@ -84,13 +84,15 @@ fn build_emit_schedule_two_objects_per_object_semantics() {
     assert_eq!(
         a_sched,
         [1u32, 3, 5].iter().cloned().collect::<BTreeSet<u32>>(),
-        "obj-A (support_layer_height_mm=0.4, model 0.2mm) must emit at layers {{1,3,5}}"
+        "obj-A (support_layer_height_mm=0.4, model 0.2mm) must emit at layers {{1,3,5}}; \
+         got {a_sched:?}"
     );
 
     assert_eq!(
         b_sched,
         (0u32..6).collect::<BTreeSet<u32>>(),
-        "obj-B (support_layer_height_mm=0.0) must emit at every layer {{0..5}}"
+        "obj-B (support_layer_height_mm=0.0) must emit at every layer {{0..5}}; \
+         got {b_sched:?}"
     );
 }
 

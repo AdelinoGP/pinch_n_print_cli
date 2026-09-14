@@ -262,6 +262,10 @@ fn cantilever_pass_records_wide_overhang_annotations() {
 
 #[test]
 fn overhang_is_detected_once_at_the_step_layer() {
+    // Regression pin for RC-1: facet-based detection filtered facets by
+    // `max_z >= slab_bottom && min_z <= layer.z`, so a step whose downward
+    // facets are coplanar matched at most one layer slab and typically none.
+    // Slice-based detection cannot have that failure mode.
     let layers = pillar_then_cap();
     let contacts = sweep(&layers, &params(45.0, 0.2));
 
@@ -283,19 +287,6 @@ fn overhang_is_detected_once_at_the_step_layer() {
     assert!(
         (got - expected).abs() < 0.1,
         "contact area {got:.3}mm^2 should be the expanded-back overhang {expected:.3}mm^2"
-    );
-}
-
-#[test]
-fn coplanar_step_does_not_hide_the_contact() {
-    // Regression pin for RC-1: facet-based detection filtered facets by
-    // `max_z >= slab_bottom && min_z <= layer.z`, so a step whose downward
-    // facets are coplanar matched at most one layer slab and typically none.
-    // Slice-based detection cannot have that failure mode.
-    let layers = pillar_then_cap();
-    assert!(
-        !sweep(&layers, &params(45.0, 0.2)).is_empty(),
-        "a coplanar step must still register a support contact"
     );
 }
 
