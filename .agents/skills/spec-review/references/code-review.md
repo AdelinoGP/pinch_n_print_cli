@@ -102,7 +102,7 @@ Each smell reads *what it is* → *how to fix*:
 
 ## Automated checks
 
-Run these and include the results in the report. Test selection follows SKILL.md Test discipline — narrowest command that proves the change, never `cargo test --workspace` by default.
+Run these and include the results in the report. Test selection follows SKILL.md Test discipline — narrowest command that proves the change, never `cargo test --workspace` by default. **These commands are one batched dispatch** (one `FACT` line per command, SNIPPETS follow-up only for failures) — they are independent cargo invocations over one shared build cache, so running them one dispatch apiece pays the sub-agent startup cost four times for one warm cache.
 
 - `cargo build --workspace` — any build failure is blocking.
 - `cargo clippy --workspace --all-targets -- -D warnings` — blocking. (`--all-targets` is required: plain `--workspace` skips test/bench targets and has shipped broken test targets before.)

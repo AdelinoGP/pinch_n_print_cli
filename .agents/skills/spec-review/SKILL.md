@@ -2,7 +2,7 @@
 name: spec-review
 description: Adversarial, evidence-based review of a spec packet, this session's work, or a code diff against this repo's architecture contract. Three scopes — packet (`--preflight` authoring gate or full/delta closure review), session (SHIP / DO NOT SHIP audit), code (pre-commit review of changes since a ref). Use when reviewing, auditing, or verifying a packet before closure; "what did I miss", "are we ready to ship", "review my changes", or "review since X".
 type: anthropic-skill
-version: "3.0"
+version: "3.2"
 metadata:
   internal: true
 ---
@@ -54,7 +54,7 @@ Leniency is this skill's historical failure mode; these floors are hard.
 
 ## Context discipline (all scopes)
 
-Reviews are the most context-hostile activity in this repo. **Delegate aggressively or fail before starting** — quality collapses once context fills with raw reads and logs. Budgets are absolute token counts, never window percentages.
+Reviews are the most context-hostile activity in this repo. **Delegate aggressively or fail before starting** — quality collapses once context fills with raw reads and logs. Aggressive means **batched**: several independent facts, symbols, or commands go to one sub-agent (see Sub-agent dispatch contract below); trickling them out one dispatch at a time pays the sub-agent's startup cost per item and wastes the budget this discipline exists to protect. Budgets are absolute token counts, never window percentages.
 
 Hard limits:
 - **120k hard reading budget** (standard). At 120k stop reading; finalize, hand off, or delegate. A caller may grant an **extended budget** — 240k reading, 300k hard stop — for an oversized packet; spend the extra only on more dispatched evidence and a fuller ledger, never on bigger direct reads.
@@ -69,7 +69,18 @@ Checkpoints (standard; extended: 200k / 240k / 300k): **100k** — re-confirm th
 
 Every dispatch specifies: (1) one precise question with a binary or enumerable answer; (2) exact paths/crates/globs the sub-agent may read; (3) a return format — `FACT` (≤5 lines) / `LOCATIONS` (≤20 file:line with 1-line context) / `SNIPPETS` (≤3 verbatim snippets, ≤30 lines each, with file:line) / `SUMMARY` (≤200 words). Reject any reply pasting full build logs.
 
-For verification commands the question is fixed: *"did `<command>` pass? If not, return the failing assertion and ≤20 lines of relevant code."* Return: FACT (pass, quoting the result line) or SNIPPETS (fail).
+**Batch independent work into one dispatch.** One numbered batch may carry several facts, symbols, greps, verification commands, or files, provided they share a reader (same crate, directory, or doc) and share one return format. Each sub-agent pays a fixed startup cost (context assembly, navigation, tool warmup), so N items in one dispatch cost far less than N dispatches. Split only when the items need different return formats, different readers, or one sub-agent's context would fill before the batch completes.
+
+- **One dispatch per review dimension, not per item.** Symbol existence/shape checks (S5), WIT/IR identifiers (S6), design-fidelity constraints, and doc-existence greps each batch into one dispatch per dimension even when they cover dozens of symbols.
+- **Verification commands batch too.** Hand one sub-agent the packet's full command list (all AC commands, or all affected commands in delta mode) and ask for a per-command FACT line. A command that fails gets a focused SNIPPETS follow-up — never a re-dispatch of the whole list. A batch that returns missing items is a **partial return, not a pass**: re-dispatch the omitted tail only (never the passing prefix), or mark each omitted item `[unverified]` — which caps the verdict.
+- **Name the capability the batch needs** — read-only search vs. shell access (`git`, `cargo`, `rg`). A shell-needing batch routed to a read-only worker comes back "no shell" and burns the dispatch: route it to a command-capable worker, or close the items with bounded direct runs.
+- **Per-item dispatches are the exception, and only for:** a single expensive command whose output is unbounded (e.g. `cargo test --workspace`), a re-verification triggered by a disagreement, or an item whose failure would change what the rest of the batch asks. State the reason when you split.
+
+For verification-command batches the question is fixed: *"run every command below — all of them; do not stop after the first few. Return one FACT line per command — `<command>`: PASS (`<result line>`) or FAIL, and for each FAIL the failing assertion plus ≤20 lines of relevant code. If the environment blocks a command (missing tool, no shell), name the command and the blocker instead of omitting it."* Keep the batch under the point where its return outgrows the limit; split a list of 30 commands into two or three, not thirty.
+
+Never batch into a dispatch: items requiring contradictory instructions, an independent re-verification of another sub-agent's claim (SKILL.md re-verify-on-disagreement needs a fresh reader), or anything whose failure mode would invalidate the batch's other answers.
+
+**One wave, one report.** Launch the whole planned dispatch wave before adjudicating anything (parallel where the work is independent). Emit the review report exactly once — after every dispatch has returned or failed. A mid-wave message may note which batches have landed and which are still in flight; it is never a partial report or verdict, and it never re-dispatches work already running. When completions resume you, collect them and continue to the final report. If a dispatch returns empty or partial, resolve it (`[unverified]` rows, tail-only re-dispatch, or bounded direct runs) and keep going. The only ways to end a review with work outstanding are the checkpoint handoff (SKILL.md Context discipline) and a genuinely blocked dispatch you cannot resolve — and both state what is outstanding and emit the partial report in the same message.
 
 ## Test discipline (all scopes)
 

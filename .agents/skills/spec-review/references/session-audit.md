@@ -16,7 +16,7 @@ Critical senior-engineer review of **this session's work** against the spec pack
 
 1. **Identify packet and scope.** Read in full: `packet.spec.md`, `requirements.md`, `design.md`, `implementation-plan.md` (and `task-map.md` only if closure depends on it). Run `git status` and `git diff --stat <main>...HEAD` to enumerate concrete changes.
 
-2. **Build an evidence ledger.** For every AC, requirement, and implementation-plan step, record: spec ref · expected behaviour · `file:line` evidence (or `[unverified]`) · status (Implemented / Partial / Missing). For each AC verification command, either dispatch it to a sub-agent for `FACT pass/fail` (never `cargo test --workspace`), or report `[unverified — command not run]`.
+2. **Build an evidence ledger.** For every AC, requirement, and implementation-plan step, record: spec ref · expected behaviour · `file:line` evidence (or `[unverified]`) · status (Implemented / Partial / Missing). For the AC verification commands, dispatch **one batched run** — the whole command list to one sub-agent, one `FACT pass/fail` line per command (never `cargo test --workspace`) — or report the unrun ones as `[unverified — command not run]`.
 
 3. **Write the report.** Exactly these three sections, in this order, no additions (template in `references/output-format.md`):
 

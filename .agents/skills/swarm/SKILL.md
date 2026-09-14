@@ -2,7 +2,7 @@
 name: swarm
 description: Planner-Worker orchestration to implement or refine an active spec packet under docs/spec_packets/, including OrcaSlicer parity checks.
 type: anthropic-skill
-version: "1.7"
+version: "1.8"
 metadata:
   internal: true
 ---
@@ -293,7 +293,7 @@ Do not replace packet-specific commands with generic workspace tests. Use the ma
 
 > *You did not write this code; review it cold and bias toward finding problems. Burden of proof is on the implementation: an AC without passing dispatched evidence is FAIL, a claim you cannot trace to file:line is [unverified], and any [unverified] load-bearing row caps the verdict at CHANGES REQUESTED. Return the evidence line behind every PASS.*
 
-The planner must reject a review return whose PASS rows carry no evidence — a verdict without evidence is not a review, and re-dispatching is cheaper than closing on a rubber stamp.
+The planner must reject a review return whose PASS rows carry no evidence — a verdict without evidence is not a review, and re-dispatching is cheaper than closing on a rubber stamp. A per-batch status update is likewise not a return: the review worker reports once, after its whole dispatch wave lands. If its session ends with dispatches still in flight, resume that session with "continue to the final report" instead of treating the update as a verdict.
 
 Treat findings in two buckets:
 - **packet-authoring defects**: missing commands, weak acceptance language, unresolved scope, stale task mapping
