@@ -197,6 +197,7 @@ mod tests {
         assert!((cp.distance_sq - 25_000_000.0_f64).abs() < 2.0);
         assert!((cp.point.x - 5_000).abs() <= 1);
         assert!(cp.point.y.abs() <= 1);
+        // test-quality: deliberate dual-API surface — wrapper + delegate both exercised; a split must fail loudly here
         assert_eq!(dsq, cp.distance_sq);
     }
 
