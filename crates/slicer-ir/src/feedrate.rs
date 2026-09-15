@@ -1,4 +1,4 @@
-use crate::resolved_config::HostKeyMeta;
+use crate::resolved_config::{HostKeyMeta, ResolvedFloatOrPercent};
 
 /// `HostKeyMeta::NONE` as a *value*: the FRU base for annotated entries in
 /// [`SPEED_META`].
@@ -21,8 +21,9 @@ pub struct FeedrateConfig {
     pub sparse_infill_speed: f32,
     /// Speed for bridging.
     pub bridge_speed: f32,
-    /// Speed for internal bridging.
-    pub internal_bridge_speed: f32,
+    /// Speed for internal bridging, absolute or as a percentage of
+    /// `bridge_speed`.
+    pub internal_bridge_speed: ResolvedFloatOrPercent,
     /// Speed for support material.
     pub support_speed: f32,
     /// Speed for support interface.
@@ -71,7 +72,10 @@ impl Default for FeedrateConfig {
             bottom_surface_speed: 100.0,
             sparse_infill_speed: 100.0,
             bridge_speed: 25.0,
-            internal_bridge_speed: 37.5,
+            internal_bridge_speed: ResolvedFloatOrPercent {
+                value: 37.5,
+                is_percent: false,
+            },
             support_speed: 80.0,
             support_interface_speed: 80.0,
             gap_infill_speed: 30.0,
@@ -94,25 +98,94 @@ impl Default for FeedrateConfig {
     }
 }
 
+/// A mutable feedrate field exposed through [`SPEED_KEYS`].
+pub trait FeedrateField {
+    /// Return the field's schema wire type.
+    fn wire_type(&self) -> &'static str;
+
+    /// Render the field's default for a host declaration.
+    fn default_string(&self) -> String;
+
+    /// Apply a raw speed value, preserving relative-value state where the
+    /// field supports it.
+    fn apply_raw_value(&mut self, value: ResolvedFloatOrPercent);
+}
+
+impl FeedrateField for f32 {
+    fn wire_type(&self) -> &'static str {
+        "float"
+    }
+
+    fn default_string(&self) -> String {
+        self.to_string()
+    }
+
+    fn apply_raw_value(&mut self, value: ResolvedFloatOrPercent) {
+        if !value.is_percent {
+            *self = value.value as f32;
+        }
+    }
+}
+
+impl FeedrateField for ResolvedFloatOrPercent {
+    fn wire_type(&self) -> &'static str {
+        "float_or_percent"
+    }
+
+    fn default_string(&self) -> String {
+        if self.is_percent {
+            format!("{}%", self.value)
+        } else {
+            self.value.to_string()
+        }
+    }
+
+    fn apply_raw_value(&mut self, value: ResolvedFloatOrPercent) {
+        *self = value;
+    }
+}
+
+/// Resolve internal-bridge speed to millimetres per second.
+///
+/// Relative values use the canonical `bridge_speed` base; absolute values are
+/// returned unchanged.
+#[must_use]
+pub fn resolve_internal_bridge_speed_mm(value: ResolvedFloatOrPercent, bridge_speed: f32) -> f32 {
+    if value.is_percent {
+        value.value as f32 / 100.0 * bridge_speed
+    } else {
+        value.value as f32
+    }
+}
+
 /// Reads a single mm/s speed from a raw config source.
 ///
 /// Accepts a plain `Float`/`Int`, a `List` whose first element is numeric
 /// (Orca stores some per-filament speeds as `coFloats` arrays), and a
-/// non-percent `FloatOrPercent`. Anything else (including a `Percent`, which
+/// `FloatOrPercent`, retaining its percent bit for the one speed field that
+/// resolves against another speed. Anything else (including a `Percent`, which
 /// cannot be resolved without a base here) returns `None` so the caller keeps
 /// its default.
 fn read_speed(
     config: &std::collections::HashMap<String, crate::ConfigValue>,
     key: &str,
-) -> Option<f32> {
-    fn as_number(value: &crate::ConfigValue) -> Option<f32> {
+) -> Option<ResolvedFloatOrPercent> {
+    fn as_number(value: &crate::ConfigValue) -> Option<ResolvedFloatOrPercent> {
         match value {
-            crate::ConfigValue::Float(v) => Some(*v as f32),
-            crate::ConfigValue::Int(v) => Some(*v as f32),
-            crate::ConfigValue::FloatOrPercent {
-                value,
+            crate::ConfigValue::Float(value) => Some(ResolvedFloatOrPercent {
+                value: *value,
                 is_percent: false,
-            } => Some(*value as f32),
+            }),
+            crate::ConfigValue::Int(value) => Some(ResolvedFloatOrPercent {
+                value: *value as f64,
+                is_percent: false,
+            }),
+            crate::ConfigValue::FloatOrPercent { value, is_percent } => {
+                Some(ResolvedFloatOrPercent {
+                    value: *value,
+                    is_percent: *is_percent,
+                })
+            }
             _ => None,
         }
     }
@@ -202,10 +275,12 @@ const _: () = assert!(SPEED_KEYS.len() == SPEED_META.len());
 /// Single source for both directions: [`FeedrateConfig::from_raw_config`]
 /// reads through it, and `module config-schema` reports it as part of the
 /// `host` key universe so the GUI can bind these keys (ticket 02). All are
-/// `float`, mm/s, and print-scoped. [`SPEED_META`] carries the wire 1.2.0
-/// display metadata (SchemaBridgeMap ticket 10) for the speeds rendered as
-/// their own controls rather than bound to an Orca identity row.
-pub const SPEED_KEYS: &[(&str, fn(&mut FeedrateConfig) -> &mut f32)] = &[
+/// print-scoped and use mm/s-compatible values; `internal_bridge_speed` is
+/// `float_or_percent` and resolves against `bridge_speed`. [`SPEED_META`]
+/// carries the wire 1.2.0 display metadata (SchemaBridgeMap ticket 10) for
+/// the speeds rendered as their own controls rather than bound to an Orca
+/// identity row.
+pub const SPEED_KEYS: &[(&str, fn(&mut FeedrateConfig) -> &mut dyn FeedrateField)] = &[
     ("outer_wall_speed", |fc| &mut fc.outer_wall_speed),
     ("inner_wall_speed", |fc| &mut fc.inner_wall_speed),
     ("thin_wall_speed", |fc| &mut fc.thin_wall_speed),
@@ -276,7 +351,7 @@ impl FeedrateConfig {
         let mut fc = Self::default();
         for (key, field) in SPEED_KEYS {
             if let Some(value) = read_speed(config, key) {
-                *field(&mut fc) = value;
+                field(&mut fc).apply_raw_value(value);
             }
         }
         fc

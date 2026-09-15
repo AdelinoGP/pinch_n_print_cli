@@ -164,6 +164,10 @@ const ARACHNE_MANIFEST: &str =
 /// until the by-construction DEFAULTS refactor lands.
 enum CodeFallback {
     Float(f64),
+    FloatOrPercent {
+        value: f64,
+        is_percent: bool,
+    },
     Int(i64),
     Bool(bool),
     Str(&'static str),
@@ -195,7 +199,13 @@ const CLASSIC_FALLBACKS: &[(&str, CodeFallback)] = &[
     ("inner_wall_line_width", Float(0.0)),
     // Packet 185: `float_or_percent`; zero falls back to the resolved role
     // width — the empty-config fallback value is the auto sentinel `0`.
-    ("initial_layer_line_width", Float(0.0)),
+    (
+        "initial_layer_line_width",
+        FloatOrPercent {
+            value: 0.0,
+            is_percent: false,
+        },
+    ),
     ("bridge_line_width", Float(0.0)),
     // Packet 185: `percent` keys. The manifest default (canonical 15%/25%,
     // PrintConfig.cpp) is effective on live slices through schema-default
@@ -281,9 +291,15 @@ const ARACHNE_FALLBACKS: &[(&str, CodeFallback)] = &[
     // `defaults.optimal_width` (0.4 mm), diverging from classic on the
     // absent-key path — corrected 2026-08-03.
     ("line_width", Float(0.0)),
-    // Packet 185: `float` keys; zero falls back to the resolved role width —
+    // Packet 185: `float_or_percent` keys; zero falls back to the resolved role width —
     // the empty-config fallback value is the auto sentinel `0`.
-    ("initial_layer_line_width", Float(0.0)),
+    (
+        "initial_layer_line_width",
+        FloatOrPercent {
+            value: 0.0,
+            is_percent: false,
+        },
+    ),
     ("bridge_line_width", Float(0.0)),
     ("precise_outer_wall", Bool(false)),
     ("wall_sequence", Str("InnerOuter")),
@@ -361,6 +377,20 @@ fn assert_exhaustive_reconcile(module: &str, manifest: &str, table: &[(&str, Cod
                 assert!(
                     (got - v).abs() < 1e-9,
                     "{module}: `{key}` manifest default {got} != code fallback {v}"
+                );
+            }
+            FloatOrPercent { value, is_percent } => {
+                assert!(
+                    !is_percent,
+                    "{module}: `{key}` expected an absolute default"
+                );
+                let got = default
+                    .as_float()
+                    .or_else(|| default.as_integer().map(|i| i as f64))
+                    .unwrap_or_else(|| panic!("{module}: `{key}` default is not numeric"));
+                assert!(
+                    (got - value).abs() < 1e-9,
+                    "{module}: `{key}` manifest default {got} != code fallback {value}"
                 );
             }
             Int(v) => assert_eq!(

@@ -1,6 +1,9 @@
 //! TDD tests for TASK-201 / packet 60 Step 1: 7 new precision keys on `ResolvedConfig`.
 
-use slicer_ir::{resolved_config::ResolvedConfig, ConfigValue};
+use slicer_ir::{
+    resolved_config::{ResolvedConfig, ResolvedFloatOrPercent},
+    ConfigValue,
+};
 
 #[test]
 fn new_precision_keys_have_orca_defaults() {
@@ -47,7 +50,10 @@ fn line_width_defaults_are_auto_sentinels() {
 fn explicit_width_round_trips_with_canonical_initial_layer_name() {
     let cfg = ResolvedConfig {
         line_width: 0.4_f32,
-        initial_layer_line_width: 0.4_f32,
+        initial_layer_line_width: ResolvedFloatOrPercent {
+            value: f64::from(0.4_f32),
+            is_percent: false,
+        },
         ..ResolvedConfig::default()
     };
 
@@ -58,7 +64,10 @@ fn explicit_width_round_trips_with_canonical_initial_layer_name() {
     );
     assert_eq!(
         map.get("initial_layer_line_width"),
-        Some(&ConfigValue::Float(f64::from(0.4_f32)))
+        Some(&ConfigValue::FloatOrPercent {
+            value: f64::from(0.4_f32),
+            is_percent: false,
+        })
     );
     assert!(!map.contains_key("first_layer_line_width"));
 }

@@ -13,7 +13,8 @@ fn feedrate_default_returns_documented_values() {
     assert_eq!(cfg.bottom_surface_speed, 100.0);
     assert_eq!(cfg.sparse_infill_speed, 100.0);
     assert_eq!(cfg.bridge_speed, 25.0);
-    assert_eq!(cfg.internal_bridge_speed, 37.5);
+    assert_eq!(cfg.internal_bridge_speed.value, 37.5);
+    assert!(!cfg.internal_bridge_speed.is_percent);
     assert_eq!(cfg.support_speed, 80.0);
     assert_eq!(cfg.support_interface_speed, 80.0);
     assert_eq!(cfg.gap_infill_speed, 30.0);
@@ -45,7 +46,7 @@ fn feedrate_field_count_is_26() {
     count += cfg.bottom_surface_speed.is_finite() as usize;
     count += cfg.sparse_infill_speed.is_finite() as usize;
     count += cfg.bridge_speed.is_finite() as usize;
-    count += cfg.internal_bridge_speed.is_finite() as usize;
+    count += cfg.internal_bridge_speed.value.is_finite() as usize;
     count += cfg.support_speed.is_finite() as usize;
     count += cfg.support_interface_speed.is_finite() as usize;
     count += cfg.gap_infill_speed.is_finite() as usize;

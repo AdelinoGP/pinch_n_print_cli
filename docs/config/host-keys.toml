@@ -25,7 +25,7 @@ top_surface_speed          = { default = 100.0, range = "> 0" }
 bottom_surface_speed       = { default = 100.0, range = "> 0" }
 sparse_infill_speed        = { default = 100.0, range = "> 0" }
 bridge_speed               = { default = 25.0,  range = "> 0" }
-internal_bridge_speed      = { default = 37.5,  range = "> 0" }
+internal_bridge_speed      = { default = 37.5,  range = "> 0", type = "float_or_percent" }
 support_speed              = { default = 80.0,  range = "> 0" }
 support_interface_speed    = { default = 80.0,  range = "> 0" }
 gap_infill_speed           = { default = 30.0,  range = "> 0" }

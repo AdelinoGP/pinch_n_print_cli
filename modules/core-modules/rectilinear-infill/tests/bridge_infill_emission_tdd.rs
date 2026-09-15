@@ -239,7 +239,7 @@ fn internal_bridge_uses_internal_role_settings() {
         .float("line_width", 0.4)
         .float("bridge_line_width", 0.4)
         .float("bridge_speed", 25.0)
-        .float("internal_bridge_speed", 37.5)
+        .float_or_percent("internal_bridge_speed", 37.5, false)
         .float("internal_bridge_density", 0.5)
         .float("internal_bridge_flow", 0.8)
         .bool("thick_internal_bridges", false)

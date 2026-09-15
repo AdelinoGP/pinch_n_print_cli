@@ -148,9 +148,14 @@ fn host_field_types() -> BTreeMap<String, String> {
             .or_insert_with(|| row.field_type.to_owned());
     }
     for &(key, _) in slicer_ir::feedrate::SPEED_KEYS {
+        let field_type = if key == "internal_bridge_speed" {
+            "float_or_percent"
+        } else {
+            "float"
+        };
         field_types
             .entry(key.to_owned())
-            .or_insert_with(|| "float".to_owned());
+            .or_insert_with(|| field_type.to_owned());
     }
     for row in HOST_RUNTIME_KEYS {
         field_types

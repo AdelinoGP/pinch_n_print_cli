@@ -11,7 +11,7 @@
 
 ## Forward Dependency: Packet 01 Exact Exports
 
-Packet 01 is `active`, not yet a satisfied dependency. Before implementation, reconcile these exact promised exports against its landed code:
+Packet 01 is now `implemented` (landed); this was a forward dependency until its exact registry API landed. These exact promised exports were reconciled against its landed code:
 
 - `slicer_config::ConfigSchemaRegistry` owns a `BTreeMap<String, RegistryEntry>` and provides `keys`, `entry`, `len`, and `is_empty`.
 - `slicer_config::RegistryEntry` is exactly `{ pub key: String, pub field_type: String, pub default: Option<String>, pub min: Option<f64>, pub max: Option<f64>, pub values: Option<Vec<String>>, pub denied_scopes: Vec<String>, pub selector: bool, pub base_key: Option<String>, pub host_meta: Option<slicer_ir::resolved_config::HostKeyMeta>, pub module_meta: Option<slicer_config::ModuleKeyMeta>, pub provenance: Vec<String> }`.
@@ -35,7 +35,7 @@ The oracle projects loaded manifests to `ModuleDeclaration` with `claim_exclusiv
 - **Determinism:** derive keys and module IDs into ordered maps/sets; sort diagnostics by `(key, module_id)`; do not assert filesystem enumeration order.
 - **No vacuity or silent fixture skip:** assert raw values, eligible `(key, owner)` observations, arachne modules, and classic modules are non-empty. Missing fixture parts panic with their exact path/member.
 - **Red means mismatch only:** the principal test accumulates value mismatches and then asserts that collection empty. Infrastructure, registry assembly, plan construction, missing owner, or selector-matrix errors fail earlier or with a distinct diagnostic and do not count as the accepted red state.
-- **Dependency truth:** `zip`, `serde_json`, and `slicer-model-io` already exist under runtime dev-dependencies. Only `slicer-config` is added. No production dependency is authorized.
+- **Dependency truth:** `zip`, `serde_json`, and `slicer-model-io` already exist under runtime dev-dependencies. Only `slicer-config` is added. No production dependency is authorized; the two host/speed retype changes in the Files-in-Scope exception use existing `slicer-ir` types only.
 - **No contract/version changes:** IR schema, WIT package, CLI wire, and manifest schema are untouched. No edited path feeds guest WASM, and no geometry or coordinate conversion is involved.
 - **Literal/test quality:** use FRU for new `ModuleDeclaration` literals if the watched-literal gate requires it; the comparator test carries a `// test-quality:` negative-control waiver naming the shared comparator.
 
@@ -64,12 +64,14 @@ The oracle projects loaded manifests to `ModuleDeclaration` with `claim_exclusiv
 - `crates/slicer-runtime/tests/executor/ingestion_fidelity_oracle_tdd.rs` (new) — oracle, matrix/population/comparator controls, and private helpers.
 - `crates/slicer-runtime/tests/executor/main.rs` — one module registration.
 - `crates/slicer-runtime/Cargo.toml` — one net-new `slicer-config` dev-dependency; existing `zip` unchanged.
+- Doc-generator fallout owned by this packet's Out-of-Scope exception (see `requirements.md`): `xtask/src/gen_config_docs.rs` (optional per-key `type` honored before scalar inference), `docs/config/host-keys.toml` (per-key `type` for `internal_bridge_speed`), and `docs/15_config_keys_reference.md` (generated output — the host-speeds row for `internal_bridge_speed` is regenerated, not hand-edited).
+- Retype fallout owned by this packet's Out-of-Scope exception (see `requirements.md`): `crates/slicer-ir/src/resolved_config.rs` (host `initial_layer_line_width` → `ResolvedFloatOrPercent`: declaration, config-map flatten, `PartialEq`/`Hash`, plus the `resolve_initial_layer_line_width_mm` helper), `crates/slicer-ir/src/feedrate.rs` (`internal_bridge_speed` → `float_or_percent`: `FeedrateField`, `SPEED_KEYS` wire table, `read_speed`, `resolve_internal_bridge_speed_mm`), its wire consumers `crates/slicer-config/src/lib.rs` (`HostChannels::from_live`) and `crates/slicer-scheduler/src/manifest.rs` (`build_host_key_entries`), the reader sites `crates/slicer-core/src/flow.rs`, `crates/slicer-core/src/algos/paint_segmentation/mod.rs`, and `crates/slicer-gcode/src/emit.rs`, typed fixtures in `crates/slicer-ir/tests/{resolved_config_defaults_tdd.rs,feedrate_default_tdd.rs,feedrate_from_raw_config_tdd.rs}` and `modules/core-modules/rectilinear-infill/tests/bridge_infill_emission_tdd.rs` (speed-typed `ConfigViewBuilder` fixture), `crates/slicer-config/tests/registry_census_tdd.rs` (speed-field one-liner), `crates/slicer-config/tests/registry_assembly_tdd.rs` (assembly fallout), `crates/slicer-gcode/tests/gcode_feedrate_emission_tdd.rs`, `crates/slicer-scheduler/tests/integration/config_resolution_tdd.rs`, `crates/slicer-runtime/tests/integration/manifest_default_reconcile_tdd.rs`, `crates/slicer-runtime/tests/unit/host_keys_doc_lock_tdd.rs`, and `crates/slicer-sdk/src/test_support/fixtures.rs` (`ConfigViewBuilder`).
 
 ## Read-Only Context
 
 - Packet-01 `design.md` §Code Change Surface — final exported registry shapes.
 - `prepare_prepass_context` and `PrepassContext` (`crates/slicer-runtime/src/run.rs`) — supplied-map and returned-plan contract; symbol-targeted range only.
-- `dedup_same_claim_modules_with_wall_generator`, `bind_module_config_view`, and `CompiledModuleStatic` (`crates/slicer-scheduler/src/execution_plan.rs`) — selector, filtering, and observation contracts; symbol-targeted ranges only.
+- `dedup_same_claim_modules_with_wall_generator` and `CompiledModuleStatic` (`crates/slicer-scheduler/src/execution_plan.rs`) — selector and observation contracts; symbol-targeted ranges only; `bind_module_config_view` moves to Files in Scope only for retype fallout.
 - `LoadedModule` accessors and `load_modules_from_roots` (`crates/slicer-scheduler/src/manifest.rs`) — schema/owner projection; symbol-targeted ranges only.
 - `read_3mf_project_settings` and `coerce_string_to_config_value` (`crates/slicer-model-io/src/loader.rs`) — delivered-input defect path; symbol-targeted ranges only.
 - `ConfigValue` and `ConfigView` (`crates/slicer-ir/src/slice_ir.rs`) — exact variants/accessor behavior; symbol-targeted ranges only.
@@ -78,8 +80,8 @@ The oracle projects loaded manifests to `ModuleDeclaration` with `claim_exclusiv
 ## Out-of-Bounds Files
 
 - Packet 01, 03, and 04 artifacts; `docs/specs/config-scope-resolution-plan.md`; `docs/07_implementation_status.md` — read-only as bounded authority, never edit.
-- `crates/slicer-model-io/src/**`, `crates/slicer-scheduler/src/**`, `crates/slicer-runtime/src/**`, `crates/slicer-config/src/**`, and `modules/core-modules/**` — production/read-only; no edits.
-- `resources/cube_4color.3mf`, `Cargo.lock`, `target/`, generated code, vendored dependencies, and all unrelated crates — never edit or load broadly.
+- `crates/slicer-scheduler/src/**` except the `build_host_key_entries` retype fallout in `manifest.rs`, `crates/slicer-runtime/src/**`, and `modules/core-modules/**` except the one retyped typed fixture `modules/core-modules/rectilinear-infill/tests/bridge_infill_emission_tdd.rs` — production/read-only; no edits beyond the Files-in-Scope retype fallout list.
+- `resources/cube_4color.3mf`, `target/`, generated code, vendored dependencies, and all unrelated crates — never edit or load broadly (`Cargo.lock` and guest lockfiles change only through the authorized refresh/retype dependency resolution). Exception: the three doc-generator paths named in Files in Scope (`xtask/src/gen_config_docs.rs`, `docs/config/host-keys.toml`, `docs/15_config_keys_reference.md`) are in scope — no other `docs/` or `xtask/src/` file is.
 - `OrcaSlicerDocumented/**` — no parity question exists for this packet.
 
 ## Expected Sub-Agent Dispatches
@@ -91,7 +93,9 @@ The oracle projects loaded manifests to `ModuleDeclaration` with `claim_exclusiv
 
 ## Data and Contract Notes
 
-- IR/manifest contracts: consumed read-only; no schema/version edit.
+- IR/manifest contracts: consumed read-only; no schema/version edit, except the two registry-assembly retype wires named in the Doc Impact Statement (`ResolvedConfig.initial_layer_line_width` → `ResolvedFloatOrPercent`, `FeedrateConfig.internal_bridge_speed` → `ResolvedFloatOrPercent`/`float_or_percent`) — no IR/WIT version constant changes either way.
+- Resolution behavior change: percent-authored `initial_layer_line_width` and `internal_bridge_speed` now carry their percent bit to their resolution helpers (`resolve_initial_layer_line_width_mm` over nozzle diameter, `resolve_internal_bridge_speed_mm` over `bridge_speed`); resolution expectations for scope/expansion stay packets 4/5.
+- Census coverage: `registry_census_tdd`'s speed field-type derivation follows the `SPEED_KEYS` wire table (the `internal_bridge_speed` one-liner), and `registry_assembly_tdd` stays green with the retyped channels.
 - WIT boundary: untouched.
 - Scheduler determinism: both plans use the same module roots and decoded source except the controlled whole-print selector; exact module IDs are the join key between manifest ownership and compiled bindings.
 - Report format: `MISMATCH key=<key> module=<module-id> authored=<quoted-raw> expected=<ConfigValue> delivered=<ConfigValue|None>`; missing owners use the separate `MISSING_MODULE` form.

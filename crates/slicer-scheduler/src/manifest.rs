@@ -1608,16 +1608,16 @@ fn build_host_key_entries() -> Vec<serde_json::Value> {
     let speed_defaults = slicer_ir::FeedrateConfig::default();
     for (index, (key, field)) in slicer_ir::feedrate::SPEED_KEYS.iter().enumerate() {
         let mut probe = speed_defaults.clone();
-        let default = *field(&mut probe);
+        let speed_field = field(&mut probe);
         let meta = slicer_ir::feedrate::SPEED_META
             .get(index)
             .and_then(|m| m.as_ref())
             .unwrap_or(&HostKeyMeta::NONE);
         push(
             key,
-            "float",
+            speed_field.wire_type(),
             slicer_ir::resolved_config::SCOPE_PRINT,
-            Some(default.to_string()),
+            Some(speed_field.default_string()),
             meta,
         );
     }

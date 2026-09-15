@@ -18,6 +18,7 @@
 use std::collections::HashMap;
 
 use slicer_helpers::{drop_short_segments_mm, simplify_polyline_mm};
+use slicer_ir::feedrate::resolve_internal_bridge_speed_mm;
 use slicer_ir::FeedrateConfig;
 use slicer_ir::{
     ExtrusionRole, GCodeCommand, GCodeIR, LayerAnnotationKind, LayerCollectionIR, PrintMetadata,
@@ -154,7 +155,10 @@ impl DefaultGCodeEmitter {
             ExtrusionRole::InternalSolidInfill => self.feedrate_config.sparse_infill_speed,
             ExtrusionRole::SparseInfill => self.feedrate_config.sparse_infill_speed,
             ExtrusionRole::BridgeInfill => self.feedrate_config.bridge_speed,
-            ExtrusionRole::InternalBridgeInfill => self.feedrate_config.internal_bridge_speed,
+            ExtrusionRole::InternalBridgeInfill => resolve_internal_bridge_speed_mm(
+                self.feedrate_config.internal_bridge_speed,
+                self.feedrate_config.bridge_speed,
+            ),
             ExtrusionRole::SupportMaterial => self.feedrate_config.support_speed,
             ExtrusionRole::SupportInterface => self.feedrate_config.support_interface_speed,
             ExtrusionRole::SupportBaseInterface => self.feedrate_config.support_interface_speed,

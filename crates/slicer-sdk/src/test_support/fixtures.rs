@@ -62,6 +62,21 @@ impl ConfigViewBuilder {
         self
     }
 
+    /// Add an absolute or percent-marked float-or-percent key/value pair.
+    #[must_use]
+    pub fn float_or_percent(
+        mut self,
+        key: impl Into<String>,
+        value: f64,
+        is_percent: bool,
+    ) -> Self {
+        self.fields.insert(
+            key.into(),
+            ConfigValue::FloatOrPercent { value, is_percent },
+        );
+        self
+    }
+
     /// Add a boolean key/value pair.
     ///
     /// # Examples

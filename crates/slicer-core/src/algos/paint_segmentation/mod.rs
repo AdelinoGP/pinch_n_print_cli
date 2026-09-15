@@ -1837,7 +1837,10 @@ fn shell_params_from_config(cfg: &slicer_ir::ResolvedConfig) -> ShellParams {
     let ctx = crate::flow::RoleWidthContext {
         line_width: cfg.line_width,
         nozzle_diameter,
-        initial_layer_line_width: cfg.initial_layer_line_width,
+        initial_layer_line_width: slicer_ir::resolved_config::resolve_initial_layer_line_width_mm(
+            cfg.initial_layer_line_width,
+            nozzle_diameter,
+        ),
         outer_wall_line_width: ext_abs_mm(cfg, "outer_wall_line_width", nozzle_diameter)
             .unwrap_or(0.0),
         inner_wall_line_width: ext_abs_mm(cfg, "inner_wall_line_width", nozzle_diameter)

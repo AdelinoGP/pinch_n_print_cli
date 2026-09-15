@@ -6,7 +6,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
-use slicer_ir::{ConfigValue, SemVer};
+use slicer_ir::{resolved_config::ResolvedFloatOrPercent, ConfigValue, SemVer};
 use slicer_scheduler::{
     resolve_global_config, resolve_per_object_configs, resolve_per_tool_configs, ConfigBoundsIndex,
     ConfigFieldEntry, ConfigResolutionError, ConfigSchema, LoadedModuleBuilder,
@@ -255,7 +255,13 @@ fn legacy_first_layer_line_width_alias_resolves() {
     let bounds = ConfigBoundsIndex::empty();
     let resolved = resolve_global_config(&source, &bounds).expect("legacy alias should resolve");
 
-    assert_eq!(resolved.initial_layer_line_width, 0.4);
+    assert_eq!(
+        resolved.initial_layer_line_width,
+        ResolvedFloatOrPercent {
+            value: 0.4,
+            is_percent: false,
+        }
+    );
     assert!(!resolved.extensions.contains_key("first_layer_line_width"));
 }
 

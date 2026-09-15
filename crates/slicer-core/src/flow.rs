@@ -218,7 +218,8 @@ pub struct RoleWidthContext {
     pub nozzle_diameter: f32,
     /// Bridge line width in millimetres.
     pub bridge_line_width: f32,
-    /// First-layer line width in millimetres.
+    /// First-layer line width in millimetres after host-side float-or-percent
+    /// resolution; zero remains the auto sentinel.
     pub initial_layer_line_width: f32,
     /// Outer-wall line width in millimetres.
     pub outer_wall_line_width: f32,

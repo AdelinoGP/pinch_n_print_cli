@@ -124,14 +124,15 @@ impl HostChannels {
             .enumerate()
             .map(|(index, &(key, field))| {
                 let mut probe = speed_defaults.clone();
-                let default = (*field(&mut probe)).to_string();
+                let speed_field = field(&mut probe);
+                let default = speed_field.default_string();
                 let meta = SPEED_META
                     .get(index)
                     .and_then(|maybe_meta| *maybe_meta)
                     .unwrap_or(HostKeyMeta::NONE);
                 HostConfigKey {
                     key,
-                    field_type: "float",
+                    field_type: speed_field.wire_type(),
                     scope: SCOPE_PRINT,
                     default: Some(default),
                     meta,

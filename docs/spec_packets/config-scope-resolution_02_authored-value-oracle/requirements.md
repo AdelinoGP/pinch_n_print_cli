@@ -29,6 +29,11 @@ The first draft could not observe every declared owner: fixture-authored `wall_g
 ## Out of Scope
 
 - No production ingestion fix, coercion change, resolver change, scheduler change, module change, manifest change, WIT/IR change, or fixture edit.
+- Exception owned by this packet — the two blocking registry retypes required for exact live assembly (the registry's strict type agreement cannot assemble while a host channel misdeclares a manifest-declared key; packet 03 still owns the ingestion fix itself; these two retypes are registry-assembly prerequisites owned here):
+  - host `initial_layer_line_width` f32/`float` → `ResolvedFloatOrPercent`/`float_or_percent` (`crates/slicer-ir/src/resolved_config.rs` declaration + config-map flatten + `PartialEq`/`Hash`, the `crates/slicer-core/src/algos/paint_segmentation/mod.rs` reader, and typed fixtures).
+  - speed `internal_bridge_speed` `float` → `float_or_percent` (`crates/slicer-ir/src/feedrate.rs` + the `SPEED_KEYS` wire table + `read_speed` + `crates/slicer-gcode/src/emit.rs` + typed fixtures, including the speed-typed module fixture `modules/core-modules/rectilinear-infill/tests/bridge_infill_emission_tdd.rs`).
+  - plus the `registry_census_tdd` speed-field one-liner follow-through and the guest-lock fingerprint refresh.
+  - doc-generator follow-through for the retyped host-speed row: `xtask/src/gen_config_docs.rs` (optional per-key `type` honored before scalar inference), `docs/config/host-keys.toml` (per-key `type` for `internal_bridge_speed`), and the regenerated host-speeds row in `docs/15_config_keys_reference.md` (`internal_bridge_speed` → `float_or_percent`).
 - No new `zip` declaration: the exact deflate-only `zip = { version = "2", default-features = false, features = ["deflate"] }` entry already exists in `slicer-runtime` dev-dependencies.
 - No new `serde_json` or `slicer-model-io` dependency; both already exist in `slicer-runtime` dev-dependencies.
 - No automatic-value expansion; packet 04 owns expansion and this oracle excludes only authored placeholders that need it.

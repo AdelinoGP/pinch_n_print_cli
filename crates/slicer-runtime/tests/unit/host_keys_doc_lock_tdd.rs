@@ -113,7 +113,7 @@ fn speeds_match_feedrate_default() {
         ("bottom_surface_speed", bottom_surface_speed as f64),
         ("sparse_infill_speed", sparse_infill_speed as f64),
         ("bridge_speed", bridge_speed as f64),
-        ("internal_bridge_speed", internal_bridge_speed as f64),
+        ("internal_bridge_speed", internal_bridge_speed.value),
         ("support_speed", support_speed as f64),
         ("support_interface_speed", support_interface_speed as f64),
         ("gap_infill_speed", gap_infill_speed as f64),

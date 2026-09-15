@@ -392,7 +392,7 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `initial_layer_speed` | float | `30.0` | > 0 | `feedrate.rs::FeedrateConfig` |
 | `initial_layer_travel_speed` | float | `120.0` | > 0 | `feedrate.rs::FeedrateConfig` |
 | `inner_wall_speed` | float | `60.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `internal_bridge_speed` | float | `37.5` | > 0 | `feedrate.rs::FeedrateConfig` |
+| `internal_bridge_speed` | float_or_percent | `37.5` | > 0 | `feedrate.rs::FeedrateConfig` |
 | `ironing_speed` | float | `20.0` | > 0 | `feedrate.rs::FeedrateConfig` |
 | `outer_wall_speed` | float | `60.0` | > 0 | `feedrate.rs::FeedrateConfig` |
 | `overhang_1_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | `feedrate.rs::FeedrateConfig` |

@@ -52,6 +52,7 @@ png = "0.18"
 [dev-dependencies]
 wasmtime = { workspace = true }
 slicer-model-io = { path = "../slicer-model-io" }
+slicer-config = { path = "../slicer-config" }
 witness = { path = "../slicer-wasm-host/test-guests/witness" }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 stl_io = "0.11"

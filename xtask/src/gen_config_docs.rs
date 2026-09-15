@@ -202,7 +202,11 @@ fn host_table_rows(val: &toml::Value, table: &str, owner: &str) -> Result<Vec<Ke
             .to_string();
         rows.push(KeyRow {
             key: key.clone(),
-            ty: infer_type(default_v).to_string(),
+            ty: spec
+                .get("type")
+                .and_then(|v| v.as_str())
+                .unwrap_or_else(|| infer_type(default_v))
+                .to_string(),
             default: fmt_scalar(default_v).unwrap_or_else(|| "—".to_string()),
             default_num: num_of(default_v),
             range,
