@@ -11,8 +11,9 @@ use slicer_core::polygon_ops::{closing_ex, difference};
 use slicer_ir::slice_ir::QuartileBand;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ExPolygon, FacetClass, GlobalLayer, IndexedTriangleSet, MeshIR,
-    ObjectConfig, ObjectMesh, ObjectSurfaceData, Point2, Point3, Polygon, RegionId, SemVer,
-    SlicedRegion, SurfaceClassificationIR, Transform3d,
+    ObjectConfig, ObjectMesh, ObjectSurfaceData, Point2, Point3, Polygon, RegionId, RegionKey,
+    RegionMapIR, RegionPlan, ResolvedConfig, SemVer, SlicedRegion, SurfaceClassificationIR,
+    Transform3d,
 };
 
 fn sv(major: u32, minor: u32, patch: u32) -> SemVer {
@@ -462,5 +463,166 @@ fn prepass_slice_caches_bottom_surface_footprint_across_layers() {
          layer; this smells like a regression to per-layer `bottom_surface_footprint` \
          recomputation, which is what made PrePass::Slice take ~28s (of ~40s total, \
          down from an original ~50s) on 3D Benchy"
+    );
+}
+
+fn two_island_mesh() -> MeshIR {
+    let mut vertices = Vec::with_capacity(16);
+    let mut indices = Vec::with_capacity(36);
+    for (x_min, x_max) in [(0.0_f32, 1.0_f32), (1.05_f32, 2.05_f32)] {
+        let base = vertices.len() as u32;
+        vertices.extend([
+            p3(x_min, 0.0, 0.0),
+            p3(x_max, 0.0, 0.0),
+            p3(x_max, 1.0, 0.0),
+            p3(x_min, 1.0, 0.0),
+            p3(x_min, 0.0, 10.0),
+            p3(x_max, 0.0, 10.0),
+            p3(x_max, 1.0, 10.0),
+            p3(x_min, 1.0, 10.0),
+        ]);
+        for index in [
+            0_u32, 1, 2, 0, 2, 3, // bottom (z=0)
+            4, 6, 5, 4, 7, 6, // top (z=10)
+            0, 4, 5, 0, 5, 1, // front
+            1, 5, 6, 1, 6, 2, // right
+            2, 6, 7, 2, 7, 3, // back
+            3, 7, 4, 3, 4, 0, // left
+        ] {
+            indices.push(base + index);
+        }
+    }
+
+    MeshIR {
+        schema_version: sv(1, 0, 0),
+        objects: vec![ObjectMesh {
+            id: "islands".to_string(),
+            mesh: IndexedTriangleSet { vertices, indices },
+            transform: identity_transform(),
+            config: ObjectConfig {
+                data: HashMap::new(),
+            },
+            modifier_volumes: vec![],
+            paint_data: None,
+            ..Default::default()
+        }],
+        build_volume: build_volume(),
+    }
+}
+
+fn region_map_with_config(config: ResolvedConfig) -> RegionMapIR {
+    let key = RegionKey {
+        global_layer_index: 0,
+        object_id: "islands".to_string(),
+        region_id: 0,
+        variant_chain: Vec::new(),
+    };
+    let mut region_map = RegionMapIR::default();
+    let config = region_map.intern_config(config);
+    region_map.entries.insert(
+        key,
+        RegionPlan {
+            config,
+            ..Default::default()
+        },
+    );
+    region_map
+}
+
+fn expolygon_area_units2(expolygon: &ExPolygon) -> f64 {
+    fn polygon_area_units2(polygon: &Polygon) -> f64 {
+        let points = &polygon.points;
+        if points.len() < 3 {
+            return 0.0;
+        }
+        let twice_area: f64 = points
+            .iter()
+            .enumerate()
+            .map(|(index, point)| {
+                let next = &points[(index + 1) % points.len()];
+                point.x as f64 * next.y as f64 - next.x as f64 * point.y as f64
+            })
+            .sum();
+        twice_area.abs() / 2.0
+    }
+
+    polygon_area_units2(&expolygon.contour)
+        - expolygon.holes.iter().map(polygon_area_units2).sum::<f64>()
+}
+
+fn expolygon_bounds_units(expolygon: &ExPolygon) -> (i64, i64, i64, i64) {
+    let mut points = expolygon.contour.points.iter();
+    let first = points.next().expect("island contour must be non-empty");
+    let mut min_x = first.x;
+    let mut min_y = first.y;
+    let mut max_x = first.x;
+    let mut max_y = first.y;
+    for point in points {
+        min_x = min_x.min(point.x);
+        min_y = min_y.min(point.y);
+        max_x = max_x.max(point.x);
+        max_y = max_y.max(point.y);
+    }
+    (min_x, min_y, max_x, max_y)
+}
+
+fn expected_bounds_units(
+    min_x_mm: f32,
+    min_y_mm: f32,
+    max_x_mm: f32,
+    max_y_mm: f32,
+) -> (i64, i64, i64, i64) {
+    let expected_min = Point2::from_mm(min_x_mm, min_y_mm);
+    let expected_max = Point2::from_mm(max_x_mm, max_y_mm);
+    (
+        expected_min.x,
+        expected_min.y,
+        expected_max.x,
+        expected_max.y,
+    )
+}
+
+#[test]
+fn prepass_slice_closing_radius_gate_applies_only_when_positive() {
+    let mesh = two_island_mesh();
+    let layer = make_global_layer(0, 5.0, "islands");
+
+    let zero_region_map = region_map_with_config(ResolvedConfig {
+        slice_closing_radius: 0.0,
+        ..ResolvedConfig::default()
+    });
+    let zero_radius =
+        execute_prepass_slice_single_layer(&mesh, &layer, None, Some(&zero_region_map))
+            .expect("zero-radius slice must succeed");
+    assert_eq!(zero_radius.regions.len(), 1);
+    let zero_polygons = &zero_radius.regions[0].polygons;
+    assert_eq!(zero_polygons.len(), 2);
+    let mut zero_bounds: Vec<_> = zero_polygons.iter().map(expolygon_bounds_units).collect();
+    zero_bounds.sort_by(|left, right| left.0.partial_cmp(&right.0).expect("finite bounds"));
+    assert_eq!(zero_bounds[0], expected_bounds_units(0.0, 0.0, 1.0, 1.0));
+    assert_eq!(zero_bounds[1], expected_bounds_units(1.05, 0.0, 2.05, 1.0));
+
+    let expected_unit_square = Point2::from_mm(1.0, 1.0);
+    let expected_area_units2 = 2.0 * expected_unit_square.x as f64 * expected_unit_square.y as f64;
+    assert_eq!(expected_area_units2, 200_000_000.0);
+    let actual_area_units2: f64 = zero_polygons.iter().map(expolygon_area_units2).sum();
+    assert_eq!(
+        actual_area_units2, 200_000_000.0,
+        "zero-radius area was {actual_area_units2} unit²"
+    );
+
+    let positive_region_map = region_map_with_config(ResolvedConfig {
+        slice_closing_radius: 0.04,
+        ..ResolvedConfig::default()
+    });
+    let positive_radius =
+        execute_prepass_slice_single_layer(&mesh, &layer, None, Some(&positive_region_map))
+            .expect("positive-radius slice must succeed");
+    assert_eq!(positive_radius.regions.len(), 1);
+    let positive_polygons = &positive_radius.regions[0].polygons;
+    assert_eq!(positive_polygons.len(), 1);
+    assert_eq!(
+        expolygon_bounds_units(&positive_polygons[0]),
+        expected_bounds_units(0.0, 0.0, 2.05, 1.0,)
     );
 }

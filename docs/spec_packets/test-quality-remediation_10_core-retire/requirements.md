@@ -39,7 +39,7 @@ Two `slicer-core` tests carry names that claim behavioral protection their bodie
 - `docs/21_data_defaults_and_fixtures.md` - direct read of §3 watchlist derivation and §4 waiver format.
 - `docs/08_coordinate_system.md` - direct read of the 100 nm unit and `Point2::from_mm`.
 - `docs/adr/0065-test-quality-gate-with-delayed-enforce-mode.md` - direct read; the gate stays report-mode until final-wave promotion.
-- `docs/spec_packets/test-quality-remediation_09_core-strengthen/` - delegated predecessor summary; draft, independently `PREFLIGHT PASS`, with no dependency exports.
+- `docs/spec_packets/test-quality-remediation_09_core-strengthen/` - delegated predecessor summary; implemented, independently `PREFLIGHT PASS`, with no dependency exports.
 
 ## Acceptance Summary
 

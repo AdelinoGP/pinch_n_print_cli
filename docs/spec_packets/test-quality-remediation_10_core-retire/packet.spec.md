@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: test-quality-remediation_10_core-retire
 task_ids:
   - 'core/RETIRE (excluding flow)'
@@ -20,9 +20,9 @@ This packet deletes `clip_operation_variants_are_distinct` from the inline test 
 
 ## Prerequisites and Blockers
 
-- Depends on: `core-strengthen` (`status: draft`, independently `PREFLIGHT PASS`, exporting no symbols, files, fixtures, APIs, or test targets); the dependency serializes packet generation only. AC-1's survivor rationale names `core-strengthen`'s strengthened boolean test as the coverage that makes the retirement safe, but this packet's acceptance never executes that test and does not require it to be implemented first.
+- Depends on: `core-strengthen` (`status: draft` at authoring, now `status: implemented` — packet 09 landed the strengthened boolean test `boolean_ops_produce_expected_presence_for_overlapping_squares` that AC-1's survivor rationale names — independently `PREFLIGHT PASS`, exporting no symbols, files, fixtures, APIs, or test targets); the dependency serializes packet generation only. AC-1's survivor rationale names that strengthened boolean test as the coverage that makes the retirement safe, but this packet's acceptance never executes it and did not require it to be implemented first.
 - Unblocks: queue row #11 `core-paint` packet generation after this packet is generated and independently reviewed.
-- Activation blockers: an explicit activation request is still required; status remains `draft`.
+- Activation and acceptance: explicit activation request granted; implemented 2026-09-14. Independent preflight passed on 2026-09-10 after two correction rounds; the AC-1 through AC-5 and AC-N1 acceptance commands, the packet-level workspace gates, and the §7 ledger predicate then passed against the real plan.
 
 ## Acceptance Criteria
 
@@ -52,7 +52,7 @@ AC-1 through AC-4 and AC-N1 are the full acceptance matrix and must all run; AC-
 - `docs/21_data_defaults_and_fixtures.md` - direct read of the watched-struct literal rule; `ObjectMesh` (7 named `pub` fields) and `ActiveRegion` (8) are watched, so new fixture literals use a `..Default::default()` rest or a reasoned `// exhaustive:` waiver, while `ResolvedConfig` is a documented §7.1 scanner blind spot.
 - `docs/08_coordinate_system.md` - direct read of the 100 nm unit and `Point2::from_mm` for the expected island bounds and areas.
 - `docs/adr/0065-test-quality-gate-with-delayed-enforce-mode.md` - direct read; the quality gate stays report-mode until final-wave promotion.
-- `docs/spec_packets/test-quality-remediation_09_core-strengthen/` - delegated predecessor summary; draft, independently `PREFLIGHT PASS`, exports none.
+- `docs/spec_packets/test-quality-remediation_09_core-strengthen/` - delegated predecessor summary; implemented, independently `PREFLIGHT PASS`, exports none.
 
 ## Doc Impact Statement (Required)
 

@@ -934,11 +934,6 @@ mod tests {
     }
 
     #[test]
-    fn clip_operation_variants_are_distinct() {
-        assert_ne!(ClipOperation::Union, ClipOperation::Difference);
-    }
-
-    #[test]
     fn validate_polygon_simplicity_accepts_simple_square() {
         let square = square_10();
         assert!(validate_polygon_simplicity(&square).is_ok());
