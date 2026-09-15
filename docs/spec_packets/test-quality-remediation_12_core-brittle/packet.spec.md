@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: test-quality-remediation_12_core-brittle
 task_ids:
   - 'core/BRITTLE'
@@ -22,8 +22,8 @@ The test-only edit is limited to the timing tests in `crates/slicer-core/src/alg
 
 ## Prerequisites and Blockers
 
-- Depends on: `core-paint` (row #11, `generated`; test-only and exports no symbols, APIs, or files consumed here).
-- Forward dependency: `core-retire` (`status: draft`) plans `prepass_slice_closing_radius_gate_applies_only_when_positive` in `algo_prepass_slice_tdd.rs` with that exact name and shape; AC-N1 accepts the roster with or without that 7th name (name reconciled with the producer plan).
+- Depends on: `core-paint` (row #11, `implemented`; test-only and exports no symbols, APIs, or files consumed here).
+- Forward dependency: `core-retire` (`status: implemented`) landed `prepass_slice_closing_radius_gate_applies_only_when_positive` in `algo_prepass_slice_tdd.rs` with that exact name and shape; the 7th name landed in the target file as reconciled, and AC-N1 accepts the roster with or without it.
 - Unblocks: `core-cross` (row #13) packet generation only.
 - Activation blockers: none for draft generation; parent owns the independent preflight.
 

@@ -404,6 +404,7 @@ fn flat_bridge_enclosure_closing_avoids_round_arc_explosion() {
     }
 }
 
+// KEEP-review (core-brittle): per-layer footprint-recomputation guard; cached-vs-uncached ratio self-normalizes across machines; 1.5x minimum (measured ~3.5x debug / ~2.3x release).
 #[test]
 fn prepass_slice_caches_bottom_surface_footprint_across_layers() {
     const FACET_COUNT: usize = 800;

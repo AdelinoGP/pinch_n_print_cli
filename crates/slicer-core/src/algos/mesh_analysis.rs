@@ -950,6 +950,7 @@ mod tests {
     /// threshold below leaves ~50x headroom above the batched runtime while
     /// sitting ~7x under the incremental runtime, so it fails fast and
     /// reliably if this ever regresses back to the incremental pattern.
+    // KEEP-review (core-brittle): 118s Benchy regression guard; batched union measured 61ms vs 20.6s incremental (338x); 3s threshold keeps ~50x headroom.
     #[test]
     fn compute_xy_footprint_is_fast_for_thousands_of_disjoint_facets() {
         const FACET_COUNT: usize = 1200;
