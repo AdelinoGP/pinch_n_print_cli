@@ -1069,6 +1069,7 @@ mod tests {
         assert_eq!(result[0].holes.len(), 1, "hole must survive the round trip");
     }
 
+    // KEEP-review (core-cross): core offset counterpart oracle — hole nesting survives the inflate_once tree path; independent of the SDK thin wrapper.
     #[test]
     fn offset_round_trip_preserves_hole_nesting() {
         // 2mm outer square (0,0)-(20000,20000), CCW; 0.8mm hole
@@ -1165,6 +1166,7 @@ mod tests {
         assert!(polys[0].holes.is_empty(), "small hole should be removed");
     }
 
+    // KEEP-review (core-cross): core RDP simplify counterpart, distinct from the SDK inline collinear drop.
     #[test]
     fn expolygons_simplify_preserves_square() {
         let sq = square_10();
