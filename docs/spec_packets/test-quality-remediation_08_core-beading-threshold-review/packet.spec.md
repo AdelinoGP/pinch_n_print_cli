@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: test-quality-remediation_08_core-beading-threshold-review
 task_ids:
   - core/DUP-CORE (beading factory)

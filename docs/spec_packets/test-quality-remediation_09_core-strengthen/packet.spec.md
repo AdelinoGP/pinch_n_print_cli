@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: test-quality-remediation_09_core-strengthen
 task_ids:
   - 'core/DUP-CORE-strengthen (excluding wider-bead)'
@@ -20,9 +20,9 @@ This packet changes only the existing bridge-angle, vertical-flow, triangle-inte
 
 ## Prerequisites and Blockers
 
-- Depends on: `core-beading-threshold-review` (`status: draft`, independently `PREFLIGHT PASS`, and exporting no symbols, files, fixtures, APIs, or test targets); the dependency serializes packet generation only.
+- Depends on: `core-beading-threshold-review` (implemented 2026-09-14; independently `PREFLIGHT PASS`; exports no symbols, files, fixtures, APIs, or test targets); the dependency serializes packet generation only.
 - Unblocks: queue row #10 `core-retire` packet generation after this packet is generated and independently reviewed.
-- Activation blockers: an explicit activation request is still required; status remains `draft`. Independent preflight passed on 2026-09-10 (S0-S8, AC commands, and Doc Impact all PASS) after the AC-5 lookahead was widened to accept a closing code-span backtick; that is an authoring result, not an implementation acceptance result.
+- Activation and acceptance: explicit activation request granted; implemented 2026-09-14. Independent preflight passed on 2026-09-10 (S0-S8, AC commands, and Doc Impact all PASS) after the AC-5 lookahead was widened to accept a closing code-span backtick; the AC-1 through AC-5 acceptance commands and the workspace gates then passed against the real plan.
 
 ## Acceptance Criteria
 
@@ -48,7 +48,7 @@ AC-1 through AC-4 are the full acceptance-test matrix and must all run; AC-5 bin
 - `docs/08_coordinate_system.md` - direct read of Point2 units, mm conversion, and area/coordinate conversion rules.
 - `docs/adr/0064-existing-tests-retire-if-unjustified.md` - direct read of the earn-their-keep regression-input standard.
 - `docs/adr/0065-test-quality-gate-with-delayed-enforce-mode.md` - direct read of report-mode quality-gate expectations.
-- `docs/spec_packets/test-quality-remediation_08_core-beading-threshold-review/` - delegated predecessor summary; draft, independently `PREFLIGHT PASS`, and exports none.
+- `docs/spec_packets/test-quality-remediation_08_core-beading-threshold-review/` - delegated predecessor summary; implemented, independently `PREFLIGHT PASS`, and exports none.
 
 ## Doc Impact Statement (Required)
 

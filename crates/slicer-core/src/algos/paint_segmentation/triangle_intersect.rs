@@ -147,6 +147,16 @@ mod tests {
             5.0,
         );
         assert!(result.is_some());
+        let line = result.unwrap();
+        let expected_start = Point2::from_mm(5.0, 0.0);
+        let expected_end = Point2::from_mm(2.5, 5.0);
+        assert!(
+            (line.start == expected_start && line.end == expected_end)
+                || (line.start == expected_end && line.end == expected_start),
+            "unexpected intersection endpoints: {:?} and {:?}",
+            line.start,
+            line.end
+        );
     }
 
     #[test]
@@ -159,6 +169,16 @@ mod tests {
             5.0,
         );
         assert!(result.is_some());
+        let line = result.unwrap();
+        let expected_start = Point2::from_mm(0.0, 0.0);
+        let expected_end = Point2::from_mm(7.5, 5.0);
+        assert!(
+            (line.start == expected_start && line.end == expected_end)
+                || (line.start == expected_end && line.end == expected_start),
+            "unexpected intersection endpoints: {:?} and {:?}",
+            line.start,
+            line.end
+        );
     }
 
     #[test]

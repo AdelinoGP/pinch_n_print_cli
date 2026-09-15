@@ -62,9 +62,12 @@ fn bridging_angle_histogram_wraps_modulo_180_seam() {
 fn bridging_angle_is_deterministic() {
     let anchors = vec![vec![Point2::from_mm(0.0, 0.0), Point2::from_mm(10.0, 0.0)]];
     let area = vec![vec![Point2::from_mm(0.0, 0.0), Point2::from_mm(4.0, 0.0)]];
-    assert_eq!(
-        determine_bridging_angle(&anchors, &area, 0.0),
-        determine_bridging_angle(&anchors, &area, 0.0)
+    let angle = determine_bridging_angle(&anchors, &area, 0.0);
+    assert_eq!(angle, determine_bridging_angle(&anchors, &area, 0.0));
+    assert!(angle.is_finite());
+    assert!(
+        (angle - 90.0).abs() <= 1e-6,
+        "expected perpendicular bridge angle near 90.0°, got {angle}"
     );
 }
 

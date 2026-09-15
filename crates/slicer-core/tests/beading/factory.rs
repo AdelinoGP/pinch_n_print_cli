@@ -238,6 +238,8 @@ fn factory_matches_orca_reference() {
 /// `optimal_width = 4000`, `preferred_bead_width_outer = 4000`), both clamp
 /// formulas evaluate to `1.0` and saturate at `0.99` — but this test pins the
 /// *seeded* `Default` value, independent of `create_stack`'s recomputation.
+/// KEEP rationale: this public-`Default` seed contract is distinct from the
+/// `create_stack` recomputation and the full-stack propagation contract below.
 #[test]
 fn beading_factory_passes_split_middle_thresholds() {
     let params = BeadingFactoryParams::default();
@@ -259,6 +261,8 @@ fn beading_factory_passes_split_middle_thresholds() {
 /// computed by `create_stack` must forward unchanged through the full
 /// `Limited` top of the stack (`Limited → OuterWallInset → Widening →
 /// Redistribute → Distributed`).
+/// KEEP rationale: this forwarding contract is distinct from public-`Default`
+/// seeding and covers every decorator in the full stack.
 #[test]
 fn beading_factory_threshold_propagates_through_full_stack() {
     let params = BeadingFactoryParams {
@@ -278,6 +282,27 @@ fn beading_factory_threshold_propagates_through_full_stack() {
         "add threshold must forward through the full stack as 0.99; actual={}",
         stack.get_add_middle_threshold()
     );
+
+    let contrasting_params = BeadingFactoryParams {
+        min_output_width: 3000.0,
+        preferred_bead_width_outer: 5000.0,
+        optimal_width: 4000.0,
+        outer_wall_offset: 300.0,
+        print_thin_walls: true,
+        ..Default::default()
+    };
+    let contrasting_stack = BeadingStrategyFactory::create_stack(&contrasting_params);
+
+    assert!(
+        (contrasting_stack.get_split_middle_threshold() - 0.20).abs() < TOLERANCE,
+        "contrasting split threshold must forward as 0.20; actual={}",
+        contrasting_stack.get_split_middle_threshold()
+    );
+    assert!(
+        (contrasting_stack.get_add_middle_threshold() - 0.75).abs() < TOLERANCE,
+        "contrasting add threshold must forward as 0.75; actual={}",
+        contrasting_stack.get_add_middle_threshold()
+    );
 }
 
 /// AC-N1: the canonical `[0.01, 0.99]` clamp bounds must hold exactly. With
@@ -285,6 +310,8 @@ fn beading_factory_threshold_propagates_through_full_stack() {
 /// clamps to the LOWER bound `0.01`, and the add formula `100/4000 = 0.025`
 /// stays unclamped inside the band. With `min_output_width = 100_000.0`, the
 /// split formula `2*100000/4000 - 1 = 49.0` clamps to the UPPER bound `0.99`.
+/// KEEP rationale: this is a separate lower/interior/upper boundary matrix,
+/// not another default-seed or full-stack-forwarding witness.
 #[test]
 fn beading_factory_threshold_clamp_bounds_are_canonical() {
     let params_lo = BeadingFactoryParams {

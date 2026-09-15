@@ -318,6 +318,8 @@ mod tests {
 
     #[test]
     fn flow_correction_stays_positive_for_vertical_input() {
-        assert!(flow_correction(0.0, 0.0, 1.0).is_sign_positive());
+        let value = flow_correction(0.0, 0.0, 1.0);
+        assert!(value.is_finite());
+        assert_eq!(value, 1.0);
     }
 }
