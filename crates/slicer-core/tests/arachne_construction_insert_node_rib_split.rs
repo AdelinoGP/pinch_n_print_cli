@@ -329,7 +329,10 @@ fn apply_transitions_split_position_coincides_on_both_sides() {
     // since the edge is symmetric (v0+v1, v1+v0), they should be at
     // ~the same x. So this assertion may pass. The real test is the
     // distance_to_boundary consistency.
-    let _ = max_deviation_x; // placeholder for the tighter test below
+    assert!(
+        max_deviation_x <= 1.0,
+        "every new split vertex must remain within 1 coordinate unit of 5mm; maximum x deviation was {max_deviation_x}"
+    );
 
     // The F6 signal: the *twin-side* new vertex's distance_to_boundary
     // must equal the *edge-side* new vertex's distance_to_boundary
@@ -369,6 +372,125 @@ fn apply_transitions_split_position_coincides_on_both_sides() {
          independent-insert_node-calls approach never produces a \
          boundary node. See the Arachne parity audit."
     );
+}
+
+#[test]
+fn apply_transitions_split_topology_exact_counts_and_cross_twin_patch() {
+    let mut graph = make_split_target_graph();
+    let n_verts_before = graph.vertices.len();
+    let n_edges_before = graph.edges.len();
+
+    apply_transitions(&mut graph);
+
+    let new_verts: Vec<usize> = (n_verts_before..graph.vertices.len()).collect();
+    assert_eq!(
+        new_verts.len(),
+        3,
+        "one transition must create one shared mid node and two boundary feet"
+    );
+    let mid_nodes: Vec<usize> = new_verts
+        .iter()
+        .copied()
+        .filter(|&i| graph.vertices[i].bead_count == Some(2))
+        .collect();
+    assert_eq!(
+        mid_nodes.len(),
+        1,
+        "exactly one new vertex must be the shared mid node"
+    );
+    let mid_idx = mid_nodes[0];
+    assert_eq!(
+        graph.vertices[mid_idx].distance_to_boundary, 750_000.0,
+        "the shared mid node must carry the transition radius"
+    );
+
+    let foot_nodes: Vec<usize> = new_verts
+        .iter()
+        .copied()
+        .filter(|&i| {
+            graph.vertices[i].distance_to_boundary == 0.0 && graph.vertices[i].bead_count.is_none()
+        })
+        .collect();
+    assert_eq!(
+        foot_nodes.len(),
+        2,
+        "both boundary feet must have distance zero and no bead count"
+    );
+
+    let new_edges: Vec<usize> = (n_edges_before..graph.edges.len()).collect();
+    assert_eq!(
+        new_edges.len(),
+        6,
+        "insert_node must append two split fragments and four rib halves"
+    );
+    let rib_edges: Vec<usize> = new_edges
+        .iter()
+        .copied()
+        .filter(|&i| graph.edges[i].edge_type == EdgeType::EXTRA_VD)
+        .collect();
+    let second_fragments: Vec<usize> = new_edges
+        .iter()
+        .copied()
+        .filter(|&i| graph.edges[i].edge_type == EdgeType::NORMAL)
+        .collect();
+    // Canonical OrcaSlicer `SkeletalTrapezoidationGraph.cpp` :: `insertNode`,
+    // `insertRib`, and `makeRib` name the four rib halves TRANSITION_END. The
+    // local port has only NORMAL and EXTRA_VD, so EXTRA_VD is the local truth.
+    assert_eq!(
+        rib_edges.len(),
+        4,
+        "the four rib halves use local EdgeType::EXTRA_VD; canonical TRANSITION_END maps to this variant"
+    );
+    assert_eq!(
+        second_fragments.len(),
+        2,
+        "the two appended second fragments must remain EdgeType::NORMAL"
+    );
+
+    let rib_pairs: Vec<(usize, usize)> = rib_edges
+        .iter()
+        .copied()
+        .filter_map(|i| {
+            let twin = graph.edges[i].twin;
+            (twin != NO_INDEX && i < twin).then_some((i, twin))
+        })
+        .collect();
+    assert_eq!(
+        rib_pairs.len(),
+        2,
+        "the four EXTRA_VD edges must form two rib pairs"
+    );
+    for (forth, back) in rib_pairs {
+        assert_eq!(graph.edges[forth].twin, back);
+        assert_eq!(graph.edges[back].twin, forth);
+        assert_eq!(graph.edges[forth].edge_type, EdgeType::EXTRA_VD);
+        assert_eq!(graph.edges[back].edge_type, EdgeType::EXTRA_VD);
+    }
+
+    // The two original edges are the first fragments. Their twins must point
+    // across the split to the opposite side's second NORMAL fragments, not
+    // to the same-side rib halves.
+    for first_fragment in [0usize, 1usize] {
+        let second_fragment = graph.edges[first_fragment].twin;
+        assert!(
+            second_fragments.contains(&second_fragment),
+            "first fragment {first_fragment} must be cross-twin linked to a new NORMAL second fragment, got {second_fragment}"
+        );
+        assert_eq!(
+            graph.edges[second_fragment].twin, first_fragment,
+            "cross-twin link must be reciprocal for first fragment {first_fragment}"
+        );
+    }
+
+    let split_x = 5.0 * UNITS_PER_MM;
+    for &vertex_idx in &new_verts {
+        let deviation = (graph.vertices[vertex_idx].position.x - split_x).abs();
+        assert!(
+            deviation <= 1.0,
+            "new vertex {vertex_idx} x={} must be within 1 coordinate unit of 5mm (deviation={deviation})",
+            graph.vertices[vertex_idx].position.x
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

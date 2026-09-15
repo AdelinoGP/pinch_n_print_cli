@@ -32,7 +32,8 @@
 
 #![cfg(feature = "host-algos")]
 
-use slicer_core::skeletal_trapezoidation::SkeletalTrapezoidationGraph;
+use slicer_core::skeletal_trapezoidation::{EdgeType, SkeletalTrapezoidationGraph};
+use slicer_core::voronoi::NO_INDEX;
 use slicer_ir::{ExPolygon, Point2, Polygon, UNITS_PER_MM};
 
 fn p(x: i64, y: i64) -> Point2 {
@@ -61,6 +62,30 @@ fn l_shape() -> ExPolygon {
         p(mm(10.0), mm(20.0)),
         p(0, mm(20.0)),
     ])
+}
+
+fn point_to_segment_distance(px: f64, py: f64, a: Point2, b: Point2) -> f64 {
+    let ax = a.x as f64;
+    let ay = a.y as f64;
+    let bx = b.x as f64;
+    let by = b.y as f64;
+    let dx = bx - ax;
+    let dy = by - ay;
+    let length_squared = dx * dx + dy * dy;
+    let t = if length_squared == 0.0 {
+        0.0
+    } else {
+        (((px - ax) * dx + (py - ay) * dy) / length_squared).clamp(0.0, 1.0)
+    };
+    let cx = ax + t * dx;
+    let cy = ay + t * dy;
+    ((px - cx).powi(2) + (py - cy).powi(2)).sqrt()
+}
+
+fn distance_to_polygon_boundary(px: f64, py: f64, polygon: &[Point2]) -> f64 {
+    (0..polygon.len())
+        .map(|i| point_to_segment_distance(px, py, polygon[i], polygon[(i + 1) % polygon.len()]))
+        .fold(f64::INFINITY, f64::min)
 }
 
 // ---------------------------------------------------------------------------
@@ -201,4 +226,173 @@ fn f5_invariant_unribbed_node_distance_within_input_bbox() {
             diag
         );
     }
+}
+
+#[test]
+fn f5_invariant_node_distances_match_rib_geometry_and_boundary() {
+    let l = l_shape();
+    let graph = SkeletalTrapezoidationGraph::from_polygons(std::slice::from_ref(&l))
+        .expect("L-shape should build a graph");
+    // Canonical OrcaSlicer `SkeletalTrapezoidationGraph.cpp` :: `makeRib`
+    // sets the rib foot to zero and the spine to the perpendicular distance;
+    // its `makeNode` path leaves an un-ribbed node at the joint sentinel.
+    // This Rust port uses NAN for that uncomputed sentinel, but every vertex
+    // in this public L-shape graph must have been resolved by construction.
+    let mut zero_vertices = 0usize;
+    for (vertex_idx, vertex) in graph.vertices.iter().enumerate() {
+        assert!(
+            vertex.distance_to_boundary.is_finite(),
+            "vertex {vertex_idx} must not retain the uncomputed NAN sentinel"
+        );
+        assert!(
+            vertex.distance_to_boundary >= 0.0,
+            "vertex {vertex_idx} distance_to_boundary must be non-negative, got {}",
+            vertex.distance_to_boundary
+        );
+        if vertex.distance_to_boundary == 0.0 {
+            zero_vertices += 1;
+            let boundary_distance = distance_to_polygon_boundary(
+                vertex.position.x,
+                vertex.position.y,
+                &l.contour.points,
+            );
+            assert!(
+                boundary_distance <= 1.0,
+                "zero-distance vertex {vertex_idx} must be a boundary/rib-foot node on an L-shape segment; independent distance was {boundary_distance}"
+            );
+        }
+    }
+    assert!(
+        zero_vertices > 0,
+        "the L-shape must contain at least one boundary/rib-foot vertex"
+    );
+
+    let mut total_rib_pair_count = 0usize;
+    let mut rib_pair_count = 0usize;
+    let mut rib_endpoint_violations = Vec::new();
+    let mut rib_length_violations = Vec::new();
+    for (edge_idx, edge) in graph.edges.iter().enumerate() {
+        if edge.edge_type != EdgeType::EXTRA_VD {
+            continue;
+        }
+        let twin_idx = edge.twin;
+        assert_ne!(
+            twin_idx, NO_INDEX,
+            "every EXTRA_VD half-edge must have its rib twin"
+        );
+        assert!(
+            twin_idx < graph.edges.len(),
+            "EXTRA_VD edge {edge_idx} has out-of-range twin {twin_idx}"
+        );
+        // Pair each lower-index EXTRA_VD half-edge with its recorded twin
+        // exactly once. Do not require reciprocal twin links here: the two
+        // one-sided dangling stubs are measured and asserted below rather
+        // than silently excluded from the F5 total.
+        if edge_idx > twin_idx {
+            continue;
+        }
+        total_rib_pair_count += 1;
+
+        // `start_vertex` is the endpoint exposed by each half-edge. A real
+        // rib has one zero-distance foot and one nonzero-distance spine;
+        // choose the latter independently of forth/back edge ordering.
+        let first_vertex = edge.start_vertex;
+        let second_vertex = graph.edges[twin_idx].start_vertex;
+        if first_vertex == NO_INDEX
+            || second_vertex == NO_INDEX
+            || first_vertex >= graph.vertices.len()
+            || second_vertex >= graph.vertices.len()
+        {
+            let reason = if first_vertex == NO_INDEX {
+                "forth half-edge has NO_INDEX start_vertex (dangling rib stub)"
+            } else if second_vertex == NO_INDEX {
+                "twin half-edge has NO_INDEX start_vertex (dangling rib stub)"
+            } else {
+                "half-edge start_vertex is out of range"
+            };
+            rib_endpoint_violations.push((edge_idx, twin_idx, first_vertex, second_vertex, reason));
+            continue;
+        }
+        let first_distance = graph.vertices[first_vertex].distance_to_boundary;
+        let second_distance = graph.vertices[second_vertex].distance_to_boundary;
+        let (spine_idx, foot_idx) = match (first_distance == 0.0, second_distance == 0.0) {
+            (false, true) => (first_vertex, second_vertex),
+            (true, false) => (second_vertex, first_vertex),
+            _ => panic!(
+                "EXTRA_VD rib pair {edge_idx}<->{twin_idx} must have exactly one zero-distance foot; endpoint distances are {first_distance} and {second_distance}"
+            ),
+        };
+        assert_eq!(
+            graph.vertices[foot_idx].distance_to_boundary, 0.0,
+            "rib foot must carry the zero-distance boundary sentinel"
+        );
+
+        let spine = graph.vertices[spine_idx].position;
+        let foot = graph.vertices[foot_idx].position;
+        // The implementation's oracle is the perpendicular distance from the
+        // spine to the infinite line through the source segment. For an exact
+        // projected foot, that is the Euclidean distance between the spine and
+        // foot endpoints. The public graph stores endpoint positions in its
+        // integer-coordinate representation, so this independently computed
+        // endpoint length exposes any projection/quantization divergence.
+        let rib_length_oracle = ((spine.x - foot.x).powi(2) + (spine.y - foot.y).powi(2)).sqrt();
+        let distance_error =
+            (graph.vertices[spine_idx].distance_to_boundary - rib_length_oracle).abs();
+        if distance_error > 1.0 {
+            rib_length_violations.push((
+                edge_idx,
+                twin_idx,
+                graph.vertices[spine_idx].distance_to_boundary,
+                rib_length_oracle,
+                distance_error,
+            ));
+        }
+        rib_pair_count += 1;
+    }
+    assert_eq!(
+        total_rib_pair_count, 95,
+        "F5 measured total: every lower-index/twin EXTRA_VD relation is counted once"
+    );
+    assert_eq!(
+        rib_pair_count, 93,
+        "F5 measured total: 93 EXTRA_VD relations have two valid vertex endpoints"
+    );
+    assert_eq!(
+        rib_endpoint_violations,
+        vec![
+            // Edge 145 is the dangling forth side (NO_INDEX, twin 146);
+            // edge 146 is its node-97 side but points onward to twin 278.
+            (
+                145,
+                146,
+                NO_INDEX,
+                97,
+                "forth half-edge has NO_INDEX start_vertex (dangling rib stub)"
+            ),
+            // Edge 282 is the dangling forth side (NO_INDEX, twin 283);
+            // edge 283 is its node-142 side but points onward to twin 271.
+            (
+                282,
+                283,
+                NO_INDEX,
+                142,
+                "forth half-edge has NO_INDEX start_vertex (dangling rib stub)"
+            ),
+        ],
+        "F5 malformed EXTRA_VD relations are documented stubs, not real reciprocal rib pairs"
+    );
+    assert_eq!(
+        rib_length_violations,
+        vec![
+            // F5 measured divergence (audit item: "F5 node distances"): the
+            // integer-coordinate foot quantization makes the stored endpoint
+            // length 1.0524414244282525 units shorter than make_rib's
+            // perpendicular infinite-source-line distance for both instances.
+            // Pair 25/26 is nodes 17=(53287,74358), 18=(0,74358).
+            (25, 26, 53288.05244142443, 53287.0, 1.0524414244282525),
+            // Pair 113/114 is nodes 77=(74358,53287), 78=(74357.99999999999,0).
+            (113, 114, 53288.05244142443, 53287.0, 1.0524414244282525),
+        ],
+        "F5 measured rib-distance divergences must remain explicit exceptions"
+    );
 }

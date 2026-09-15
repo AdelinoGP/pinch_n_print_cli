@@ -4,7 +4,7 @@
 
 - Grouped task IDs: `core/PARITY` (plan wave/item IDs replace `TASK-###` per the plan's packet-queue exemption)
 - Backlog source: `docs/specs/test-quality-remediation-plan.md` §5.1 PARITY row + `Packet Queue` row #14
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M` (never L)
 
 ## Problem Statement

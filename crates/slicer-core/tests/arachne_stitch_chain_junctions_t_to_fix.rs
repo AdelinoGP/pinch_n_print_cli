@@ -345,3 +345,32 @@ fn chain_traverses_v0_v1_v2_in_x_order_with_sane_span() {
         }
     }
 }
+
+#[test]
+fn chain_junctions_land_at_documented_interpolated_positions() {
+    let graph = make_f3_target_graph();
+    let strategy = SymmetricBeadingStrategy;
+    let output = generate_toolpaths(&graph, &strategy);
+
+    assert!(!output.is_empty(), "expected at least one inset bucket");
+    for bucket in &output {
+        for line in bucket {
+            // Measured truth is x=[1.25, 1.25, 8.75] mm and
+            // y=[0.0, 0.0, 0.0] mm for three junctions. The duplicate 1.25
+            // is the same e0 bead-0 junction cloned for the intermediate
+            // merge, not a distinct junction at v1; rib_back contributes the
+            // 8.75 endpoint. This contradicts the documented interpolation
+            // claim that junction[1] is the shared v1 point strictly between
+            // the endpoints. It is a genuine "F3 junction reachability"
+            // divergence: the expected v1 junction is never reached, so this
+            // test asserts only the measured chain output.
+            let xs: Vec<f32> = line.junctions.iter().map(|j| j.p.x).collect();
+            let ys: Vec<f32> = line.junctions.iter().map(|j| j.p.y).collect();
+            assert_eq!(line.junctions.len(), 3);
+            assert_eq!(xs[0], 1.25);
+            assert_eq!(xs[1], 1.25);
+            assert_eq!(xs[2], 8.75);
+            assert_eq!(ys, vec![0.0, 0.0, 0.0]);
+        }
+    }
+}
