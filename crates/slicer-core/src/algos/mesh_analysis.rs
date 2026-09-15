@@ -225,12 +225,7 @@ fn classify_object(
             id: 0,
             facet_indices: overhang_facets,
             max_angle_deg: overhang_max_angle,
-            needs_support: region_needs_support(
-                mesh,
-                transform,
-                &region_facets,
-                &xy_footprint,
-            ),
+            needs_support: region_needs_support(mesh, transform, &region_facets, &xy_footprint),
             xy_footprint,
         }]
     };
@@ -700,9 +695,8 @@ fn region_needs_support(
 /// Return whether two polygon sets overlap, rejecting disjoint bounding boxes
 /// before invoking the allocating polygon intersection operation.
 fn footprints_overlap(region_polygons: &[ExPolygon], overhang_footprint: &[ExPolygon]) -> bool {
-    let overlaps_bbox = |a: &ExPolygon, b: &ExPolygon| {
-        bboxes_overlap(expolygon_bbox(a), expolygon_bbox(b))
-    };
+    let overlaps_bbox =
+        |a: &ExPolygon, b: &ExPolygon| bboxes_overlap(expolygon_bbox(a), expolygon_bbox(b));
 
     // NOTE: this is exactly the predicate the function returns. The polygon
     // intersection that used to follow was dead — the `||` arm beneath it
