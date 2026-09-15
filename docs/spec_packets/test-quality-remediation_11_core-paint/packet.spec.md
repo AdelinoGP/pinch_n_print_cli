@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: test-quality-remediation_11_core-paint
 task_ids:
   - 'core/PAINT'

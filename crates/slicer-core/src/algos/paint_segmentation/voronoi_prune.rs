@@ -537,8 +537,11 @@ mod tests {
 
     #[test]
     fn prune_one_arc_preserves_border_nodes() {
-        // Border node 0 connected to interior 1 (sole arc from interior side).
-        // Interior node should be pruned but border arc must not be deleted.
+        // Border node 0 is connected to interior degree-1 node 1.
+        // The interior node's sole arc is flagged deleted; `delete_arc` clears
+        // its index from both endpoint nodes, but removes neither node struct,
+        // so both nodes survive with empty `arc_indices` and the arc remains in
+        // `graph.arcs` in its deleted state.
         let mut nodes: Vec<MmuNode> = (0..2).map(|_| MmuNode::default()).collect();
         let mut arcs: Vec<MmuArc> = Vec::new();
 
@@ -560,15 +563,10 @@ mod tests {
         let mut graph = MMU_Graph::from_parts(nodes, arcs, 1, vec![0]);
         remove_nodes_with_one_arc(&mut graph);
 
-        // Node 1 is interior with degree 1, but the arc is Border — it gets deleted
-        // (degree-1 interior → we delete its arc). But the border node itself
-        // (node 0) is never enqueued.
-        // The arc MAY be deleted because node 1 (interior) had degree 1.
-        // The border node itself just loses the arc from its arc_indices.
-        // Key: no panic, no attempt to delete node 0 as a vertex.
-        // The function should complete without panic.
-        // (border node's arc_indices may be cleared since delete_arc removes from both ends)
-        let _ = &graph.nodes[0]; // still exists
-        let _ = &graph.nodes[1]; // still exists (we don't remove node structs)
+        assert_eq!(graph.nodes.len(), 2, "both node structs should remain");
+        assert_eq!(graph.arcs.len(), 1, "the deleted arc should remain stored");
+        assert!(graph.arcs[ai].deleted, "the sole arc should be deleted");
+        assert!(graph.nodes[0].arc_indices.is_empty());
+        assert!(graph.nodes[1].arc_indices.is_empty());
     }
 }

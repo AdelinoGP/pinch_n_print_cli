@@ -2083,6 +2083,20 @@ mod driver_v2_tests {
         let slice = Arc::new(one_layer_slice_ir());
         let rmap = Arc::new(region_map_with_base_entry());
 
+        assert!(
+            mesh.objects.is_empty(),
+            "fixture must exercise the empty-mesh branch"
+        );
+        assert_eq!(slice.len(), 1, "fixture must contain one layer");
+        assert!(
+            !slice[0].regions.is_empty(),
+            "fixture must contain a region"
+        );
+        assert!(
+            !slice[0].regions[0].polygons.is_empty(),
+            "fixture must contain a polygon"
+        );
+
         let result = execute_paint_segmentation(mesh, slice.clone(), rmap).unwrap();
         // Must be pointer-equal (same Arc content) or structurally equal.
         assert_eq!(
@@ -2092,6 +2106,7 @@ mod driver_v2_tests {
         );
         assert_eq!(result[0].global_layer_index, 0);
         assert_eq!(result[0].regions.len(), slice[0].regions.len());
+        assert_eq!(result[0].regions[0].polygons, slice[0].regions[0].polygons);
     }
 
     /// AC-N2 (2): mesh has objects but no PaintLayer has any Some/strokes → short-circuit.
@@ -2100,6 +2115,21 @@ mod driver_v2_tests {
         let mesh = Arc::new(mesh_with_no_paint());
         let slice = Arc::new(one_layer_slice_ir());
         let rmap = Arc::new(region_map_with_base_entry());
+
+        assert_eq!(mesh.objects.len(), 1, "fixture must contain one object");
+        assert!(
+            mesh.objects[0].paint_data.is_none(),
+            "fixture must contain no paint data"
+        );
+        assert_eq!(slice.len(), 1, "fixture must contain one layer");
+        assert!(
+            !slice[0].regions.is_empty(),
+            "fixture must contain a region"
+        );
+        assert!(
+            !slice[0].regions[0].polygons.is_empty(),
+            "fixture must contain a polygon"
+        );
 
         let result = execute_paint_segmentation(mesh, slice.clone(), rmap).unwrap();
         assert_eq!(result.len(), slice.len());
@@ -2115,8 +2145,28 @@ mod driver_v2_tests {
         let slice = Arc::new(one_layer_slice_ir());
         let rmap = Arc::new(empty_region_map());
 
+        assert_eq!(mesh.objects.len(), 1, "fixture must contain one object");
+        assert!(
+            mesh.objects[0].paint_data.is_some(),
+            "fixture must contain paint data"
+        );
+        assert!(
+            rmap.entries.is_empty(),
+            "fixture must contain no region entries"
+        );
+        assert_eq!(slice.len(), 1, "fixture must contain one layer");
+        assert!(
+            !slice[0].regions.is_empty(),
+            "fixture must contain a region"
+        );
+        assert!(
+            !slice[0].regions[0].polygons.is_empty(),
+            "fixture must contain a polygon"
+        );
+
         let result = execute_paint_segmentation(mesh, slice.clone(), rmap).unwrap();
         assert_eq!(result.len(), slice.len());
+        assert_eq!(result[0].regions.len(), slice[0].regions.len());
         assert_eq!(result[0].regions[0].polygons, slice[0].regions[0].polygons);
     }
 
