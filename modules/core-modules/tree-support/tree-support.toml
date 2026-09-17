@@ -42,10 +42,22 @@ group   = "Support"
 [config.schema.tree_support_wall_count]
 type    = "int"
 default = 1
-min     = 1
+min     = 0
 max     = 10
 display = "Tree Support Wall Count"
 group   = "Support"
+# `min = 0` is required, not a relaxation: canonical OrcaSlicer declares
+# `def->min = 0` for `tree_support_wall_count` (`PrintConfig.cpp`) with the
+# tooltip "range of [0,2]. 0 means auto", and clamps at the consumption site
+# with `std::max(1, config.tree_support_wall_count.value)`
+# (`TreeSupportCommon.hpp`, `TreeSupport.cpp::generate_toolpaths`). Orca
+# serialises `0` into real profiles, so a `min = 1` bound rejects valid data.
+# `max = 10` and `default = 1` are deliberate divergences from canonical
+# (`max = 2`, `default = 0`): the renderer handles any wall count and
+# `tree-support/tests/tree_support_tdd.rs::tree_support_wall_count` pins
+# `render(3) == 3`, so tightening the maximum would make a supported value
+# unreachable. See packet 03 `design.md` for the measured evidence.
+description = "Wall loops for tree support; `0` is canonical OrcaSlicer's \"auto\" sentinel, clamped to 1 at the consumption site."
 
 [config.schema.support_speed]
 type    = "float"

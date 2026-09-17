@@ -4,7 +4,7 @@
 
 - Grouped task IDs: `TASK-564`
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `active`
 - Aggregate context cost: `M`
 
 ## Problem Statement
@@ -71,7 +71,7 @@ Config ingestion currently guesses types before loaded-module schemas are availa
 | `bash -o pipefail -c 'mkdir -p target && cargo test -p slicer-runtime --all-targets --test executor ingestion_fidelity_oracle_tdd -- --nocapture 2>&1 | tee target/test-output.log'` | Packet 02 oracle passes unchanged | FACT pass/fail; SNIPPETS ≤20 lines on failure |
 | `cargo xtask build-guests --check` | Establish guest-artifact freshness before interpreting executor/visual-debug failures | FACT exit 0/1/3 |
 | `bash -o pipefail -c 'mkdir -p target && cargo test -p pnp-cli --all-targets --test config_scope_ingestion_visual_debug_tdd 2>&1 | tee target/test-output.log'` | Real visual-debug bundle survives typed ingestion | FACT pass/fail; SNIPPETS ≤20 lines on failure |
-| `python3 -c "from pathlib import Path; s=Path('docs/02_ir_schemas.md').read_text(); b=s.split('#### Typed config-scope ingestion (TASK-564)',1)[1].split('\n#### ',1)[0]; required=('ConfigScope','ScopeDelta','object_config:','paint_config:','tool_config:','warn','keep','object_height:<id>','packet 05'); missing=[x for x in required if x not in b]; assert not missing, missing"` | Canonical docs record the new boundary and explicit deferral | FACT pass/fail |
+| `python3 -c "from pathlib import Path; s=Path('docs/02_ir_schemas.md').read_text(encoding='utf-8'); b=s.split('#### Typed config-scope ingestion (TASK-564)',1)[1].split('\n#### ',1)[0]; required=('ConfigScope','ScopeDelta','object_config:','paint_config:','tool_config:','warn','keep','object_height:<id>','packet 05'); missing=[x for x in required if x not in b]; assert not missing, missing"` | Canonical docs record the new boundary and explicit deferral | FACT pass/fail |
 | `python3 -c "from pathlib import Path; s=Path('docs/04_host_scheduler.md').read_text(); b=s.split('### Perimeter-generator selection',1)[1].split('\n### Support-generator selection',1)[0]; required=('IngestionOutcome.selector_values','ConfigScope::Global','DEFAULT_WALL_GENERATOR','spiral_vase'); forbidden=('read directly from the raw config source','config_source.get(\"wall_generator\")'); missing=[x for x in required if x not in b]; present=[x for x in forbidden if x in b]; assert not missing and not present, (missing,present)"` | Scheduler docs replace the raw `wall_generator` requirement with the typed global-selector handoff while retaining fallback rules | FACT pass/fail |
 | `cargo check --workspace --all-targets` | Compile all production and test targets | FACT pass/fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Required lint gate | FACT pass/fail |

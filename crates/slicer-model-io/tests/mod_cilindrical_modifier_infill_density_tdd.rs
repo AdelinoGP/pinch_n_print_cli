@@ -58,19 +58,11 @@ fn cube_cilindrical_modifier_loads_object_and_modifier_with_density_overrides() 
                 modifier.config_delta.fields.keys().collect::<Vec<_>>()
             )
         });
-    match modifier_density {
-        ConfigValue::Float(v) => {
-            assert!(
-                (v - 0.40).abs() < 1e-9,
-                "modifier sparse_infill_density should be 0.40, got {}",
-                v
-            );
-        }
-        other => panic!(
-            "modifier sparse_infill_density should be ConfigValue::Float(0.40), got {:?}",
-            other
-        ),
-    }
+    assert_eq!(
+        modifier_density,
+        &ConfigValue::String("40%".to_string()),
+        "modifier sparse_infill_density must preserve the authored percentage string"
+    );
 }
 
 #[test]

@@ -10,6 +10,7 @@ report = []
 perimeter-spatial-test-support = ["slicer-core/perimeter-spatial-test-support"]
 
 [dependencies]
+slicer-config = { path = "../slicer-config" }
 slicer-ir = { path = "../slicer-ir" }
 slicer-core = { path = "../slicer-core", features = ["host-algos"] }
 slicer-sdk = { path = "../slicer-sdk" }

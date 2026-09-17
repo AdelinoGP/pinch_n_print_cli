@@ -11,6 +11,13 @@ use slicer_ir::resolved_config::{
     HostConfigKey, HostKeyMeta, HostRuntimeKey, ResolvedConfig, HOST_RUNTIME_KEYS, SCOPE_PRINT,
 };
 
+pub mod ingestion;
+
+pub use ingestion::{
+    ConfigIngestionError, ConfigIngestor, ConfigScope, IngestionOutcome, IngestionWarning,
+    ScopeDelta, ScopedConfig,
+};
+
 const HOST_PROVENANCE: &str = "host";
 const SPEED_PROVENANCE: &str = "speed";
 const RUNTIME_PROVENANCE: &str = "runtime";

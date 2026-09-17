@@ -3602,6 +3602,7 @@ dependencies = [
  "pnp-cli-locator",
  "serde",
  "serde_json",
+ "slicer-config",
  "slicer-ir",
  "slicer-schema",
  "tempfile",
@@ -3631,6 +3632,7 @@ version = "0.1.0"
 dependencies = [
  "log",
  "rayon",
+ "slicer-config",
  "slicer-core",
  "slicer-ir",
  "slicer-scheduler",

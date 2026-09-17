@@ -270,7 +270,7 @@ is the authoritative catalog of their defaults and ranges.
 | `support_interface_flow` | percent | `"100%"` | >= 0.0 | `tree-support` |
 | `support_interface_spacing` | float | `0.4` | [0.0, 2.0] | `tree-support` |
 | `support_speed` | float | `50.0` | [1.0, 300.0] | `tree-support` |
-| `tree_support_wall_count` | int | `1` | [1.0, 10.0] | `tree-support` |
+| `tree_support_wall_count` | int | `1` | [0.0, 10.0] | `tree-support` |
 | `base_raft_layers` | int | `1` | [0.0, 20.0] | `tree-support-planner` |
 | `enable_support` | bool | `true` | — | `tree-support-planner` |
 | `independent_support_layer_height` | bool | `true` | — | `tree-support-planner` |
@@ -295,7 +295,7 @@ is the authoritative catalog of their defaults and ranges.
 | `tree_support_branch_diameter` | float | `5.0` | [0.5, 20.0] | `tree-support-planner` |
 | `tree_support_branch_diameter_angle` | float | `5.0` | [0.0, 90.0] | `tree-support-planner` |
 | `tree_support_branch_distance` | float | `1.0` | [0.1, 10.0] | `tree-support-planner` |
-| `tree_support_wall_count` | int | `1` | [1.0, 10.0] | `tree-support-planner` |
+| `tree_support_wall_count` | int | `1` | [0.0, 10.0] | `tree-support-planner` |
 | `bridge_density` | float_or_percent | `"100%"` | [10.0, 120.0] | `wave-overhangs` |
 | `bridge_flow` | float | `1.0` | >= 0.0 | `wave-overhangs` |
 | `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `wave-overhangs` |

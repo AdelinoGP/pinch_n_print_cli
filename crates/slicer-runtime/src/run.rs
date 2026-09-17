@@ -9,8 +9,9 @@ use std::path::PathBuf;
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
 use std::time::Instant;
 
+use slicer_config::{IngestionWarning, RegistryWarning, ScopedConfig};
 use slicer_ir::resolved_config::resolve_support_line_width_mm;
-use slicer_ir::{ConfigValue, MeshIR};
+use slicer_ir::{ConfigKey, ConfigValue, MeshIR};
 
 /// Parse Orca-style 1-indexed support filament selections into the runtime's
 /// 0-indexed tool selection. Missing, zero, invalid, and out-of-range values
@@ -53,8 +54,8 @@ where
 }
 
 use crate::config_resolution::{
-    resolve_global_config, resolve_per_object_configs, resolve_per_tool_configs,
-    validate_support_layer_heights, ConfigBoundsIndex,
+    resolve_global_config_scoped, resolve_per_object_configs_scoped,
+    resolve_per_tool_configs_scoped, validate_support_layer_heights, ConfigBoundsIndex,
 };
 use crate::dag::Producer;
 use crate::execution_plan::parse_cli_config_source;
@@ -79,8 +80,73 @@ use slicer_gcode::{
     estimate_print, DefaultGCodeEmitter, DefaultGCodeSerializer, EstimatorLimits, GcodeFlavor,
 };
 use slicer_wasm_host::build_live_execution_plan;
-use slicer_wasm_host::execution_plan_live::load_live_modules_for_plan_with_integrated;
+use slicer_wasm_host::execution_plan_live::load_live_modules_for_plan_manifest_first;
 use slicer_wasm_host::WasmRuntimeDispatcher;
+
+fn typed_global_config(scoped: &ScopedConfig) -> std::collections::HashMap<ConfigKey, ConfigValue> {
+    scoped
+        .global()
+        .into_iter()
+        .flat_map(|delta| delta.iter())
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect()
+}
+
+/// Preserve the retained authored shape so each host key's declared DSL
+/// extractor applies its documented leniency (for example,
+/// `extract_float_or_first` reads index 0 of a per-filament list).
+/// The matching `UntypedValue` warning is still surfaced by
+/// `append_config_startup_diagnostics`, so the fallback remains observable.
+/// Scheduler resolution in this composition root uses the retained
+/// `ScopedConfig` directly. This transitional module/prepass transport is
+/// therefore prefix-free: object, paint, and tool scope prefixes were decoded
+/// by the single manifest-first ingestion and are not forwarded for the
+/// prepass compatibility adapter to decode again.
+fn typed_module_config_source(
+    source: &std::collections::HashMap<ConfigKey, ConfigValue>,
+    typed_global: &std::collections::HashMap<ConfigKey, ConfigValue>,
+) -> std::collections::HashMap<ConfigKey, ConfigValue> {
+    const SCOPED_PREFIXES: [&str; 3] = ["object_config:", "paint_config:", "tool_config:"];
+
+    let mut compatibility: std::collections::HashMap<_, _> = source
+        .iter()
+        .filter(|(key, _)| !SCOPED_PREFIXES.iter().any(|prefix| key.starts_with(prefix)))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+    for (key, value) in typed_global {
+        compatibility.insert(key.clone(), value.clone());
+    }
+    debug_assert!(
+        compatibility
+            .keys()
+            .all(|key| !SCOPED_PREFIXES.iter().any(|prefix| key.starts_with(prefix))),
+        "module/prepass config transport must not contain raw scope prefixes"
+    );
+    compatibility
+}
+
+fn append_config_startup_diagnostics(
+    diagnostics: &mut Vec<crate::manifest::LoadDiagnostic>,
+    registry_warnings: &[RegistryWarning],
+    ingestion_warnings: &[IngestionWarning],
+) {
+    for warning in registry_warnings {
+        diagnostics.push(crate::manifest::LoadDiagnostic {
+            level: crate::manifest::DiagnosticLevel::Warning,
+            path: PathBuf::from("<config-registry>"),
+            field: None,
+            message: format!("{warning:?}"),
+        });
+    }
+    for warning in ingestion_warnings {
+        diagnostics.push(crate::manifest::LoadDiagnostic {
+            level: crate::manifest::DiagnosticLevel::Warning,
+            path: PathBuf::from("<config-ingestion>"),
+            field: None,
+            message: format!("{warning:?}"),
+        });
+    }
+}
 
 fn emit_host_support_diagnostics(
     sink: &RuntimeProgressSink,
@@ -588,7 +654,9 @@ pub fn run_slice_with_collector(
         config_source.insert("slice_has_paint".to_string(), ConfigValue::Bool(true));
     }
 
-    // Seed per-object config from `ObjectMesh.config.data`.
+    // Seed per-object config from `ObjectMesh.config.data` for the single
+    // manifest-first ingestion below. It is retained in `ScopedConfig`; the
+    // raw prefix is stripped from the later module/prepass transport.
     for object in &mesh_ir.objects {
         for (subkey, value) in &object.config.data {
             let key = format!("object_config:{}:{}", object.id, subkey);
@@ -643,7 +711,7 @@ pub fn run_slice_with_collector(
             slicer_integrated_modules::native_entries(),
         )
     };
-    let mut loaded = load_live_modules_for_plan_with_integrated(
+    let manifest_first = load_live_modules_for_plan_manifest_first(
         &search_roots,
         num_cpus_guess(),
         &config_source,
@@ -658,6 +726,17 @@ pub fn run_slice_with_collector(
             search_roots
         ))
     })?;
+    let registry_warnings = manifest_first.registry_warnings;
+    let ingestion_warnings = manifest_first.ingestion.warnings;
+    let scoped_config = manifest_first.ingestion.scoped;
+    let typed_global_config = typed_global_config(&scoped_config);
+    let module_config_source = typed_module_config_source(&config_source, &typed_global_config);
+    let mut loaded = manifest_first.live;
+    append_config_startup_diagnostics(
+        &mut loaded.diagnostics,
+        &registry_warnings,
+        &ingestion_warnings,
+    );
     for diag in &loaded.diagnostics {
         eprintln!(
             "{level:?}: {path}: {msg}",
@@ -827,13 +906,13 @@ pub fn run_slice_with_collector(
 
     let config_bounds = ConfigBoundsIndex::from_modules(loaded.bindings.iter().map(|b| &b.module));
 
-    let default_resolved_config = resolve_global_config(&config_source, &config_bounds)
+    let default_resolved_config = resolve_global_config_scoped(&scoped_config, &config_bounds)
         .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
 
     let object_ids: Vec<&str> = mesh_ir.objects.iter().map(|o| o.id.as_str()).collect();
-    let resolved_configs_map = resolve_per_object_configs(
+    let resolved_configs_map = resolve_per_object_configs_scoped(
         &default_resolved_config,
-        &config_source,
+        &scoped_config,
         &object_ids,
         &config_bounds,
     )
@@ -846,7 +925,7 @@ pub fn run_slice_with_collector(
     // emit time (the entity's tool is only known there). Empty unless the user
     // sets `tool_config:` keys, so default behaviour is unchanged.
     let per_tool_configs_map =
-        resolve_per_tool_configs(&default_resolved_config, &config_source, &config_bounds)
+        resolve_per_tool_configs_scoped(&default_resolved_config, &scoped_config, &config_bounds)
             .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
 
     // Build wasm_handles side-table before consuming bindings.
@@ -875,7 +954,7 @@ pub fn run_slice_with_collector(
     let plan = build_live_execution_plan(
         loaded.sorted_stages,
         loaded.bindings,
-        &config_source,
+        &typed_global_config,
         Arc::new(Vec::new()),
         Arc::new(std::collections::HashMap::new()),
         &mut loaded.diagnostics,
@@ -952,7 +1031,7 @@ pub fn run_slice_with_collector(
         &opts,
         &channel,
         pipeline_config,
-        &config_source,
+        &module_config_source,
         profile.as_ref(),
         #[cfg(feature = "report")]
         dag_snapshot,
@@ -1138,7 +1217,9 @@ pub fn prepare_prepass_context(
         config_source.insert("slice_has_paint".to_string(), ConfigValue::Bool(true));
     }
 
-    // Seed per-object config from `ObjectMesh.config.data` (mirrors `run_slice`).
+    // Seed per-object config from `ObjectMesh.config.data` for the single
+    // manifest-first ingestion below (mirrors `run_slice`). It is retained in
+    // `ScopedConfig`; the raw prefix is stripped from the later transport.
     for object in &mesh_ir.objects {
         for (subkey, value) in &object.config.data {
             let key = format!("object_config:{}:{}", object.id, subkey);
@@ -1160,7 +1241,7 @@ pub fn prepare_prepass_context(
     } else {
         slicer_integrated_modules::native_entries()
     };
-    let mut loaded = load_live_modules_for_plan_with_integrated(
+    let manifest_first = load_live_modules_for_plan_manifest_first(
         &search_roots,
         num_cpus_guess(),
         &config_source,
@@ -1175,15 +1256,35 @@ pub fn prepare_prepass_context(
             search_roots
         ))
     })?;
+    let registry_warnings = manifest_first.registry_warnings;
+    let ingestion_warnings = manifest_first.ingestion.warnings;
+    let scoped_config = manifest_first.ingestion.scoped;
+    let typed_global_config = typed_global_config(&scoped_config);
+    let module_config_source = typed_module_config_source(&config_source, &typed_global_config);
+    let mut loaded = manifest_first.live;
+    append_config_startup_diagnostics(
+        &mut loaded.diagnostics,
+        &registry_warnings,
+        &ingestion_warnings,
+    );
+
+    for diag in &loaded.diagnostics {
+        eprintln!(
+            "{level:?}: {path}: {msg}",
+            level = diag.level,
+            path = diag.path.display(),
+            msg = diag.message,
+        );
+    }
 
     let config_bounds = ConfigBoundsIndex::from_modules(loaded.bindings.iter().map(|b| &b.module));
-    let default_resolved_config = resolve_global_config(&config_source, &config_bounds)
+    let default_resolved_config = resolve_global_config_scoped(&scoped_config, &config_bounds)
         .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
 
     let object_ids: Vec<&str> = mesh_ir.objects.iter().map(|o| o.id.as_str()).collect();
-    let resolved_configs_map = resolve_per_object_configs(
+    let resolved_configs_map = resolve_per_object_configs_scoped(
         &default_resolved_config,
-        &config_source,
+        &scoped_config,
         &object_ids,
         &config_bounds,
     )
@@ -1214,7 +1315,7 @@ pub fn prepare_prepass_context(
     let mut plan = build_live_execution_plan(
         loaded.sorted_stages,
         loaded.bindings,
-        &config_source,
+        &typed_global_config,
         Arc::new(Vec::new()),
         Arc::new(std::collections::HashMap::new()),
         &mut loaded.diagnostics,
@@ -1230,7 +1331,7 @@ pub fn prepare_prepass_context(
         &prepass_runner,
         &resolved_configs_map,
         &default_resolved_config,
-        &config_source,
+        &module_config_source,
         &config_bounds,
         &wasm_handles,
     )

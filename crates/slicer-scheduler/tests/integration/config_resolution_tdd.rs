@@ -124,7 +124,10 @@ fn percent_profile_value_overrides_schema_default() {
 
     assert_eq!(
         resolved.extensions.get("experimental_percent"),
-        Some(&ConfigValue::Percent(75.0)),
+        Some(&ConfigValue::FloatOrPercent {
+            value: 75.0,
+            is_percent: true,
+        }),
         "profile value must win over the parsed schema default"
     );
 }
@@ -160,22 +163,27 @@ fn resolver_per_tool_overrides_global() {
     );
 }
 
-/// Part C: a non-numeric tool index in `tool_config:<idx>:…` is skipped rather
-/// than erroring the whole resolution.
+/// Part C: a non-numeric tool index violates the canonical scoped-key shape.
 #[test]
-fn resolver_per_tool_skips_non_numeric_index() {
+fn resolver_per_tool_rejects_non_numeric_index() {
     let mut source: HashMap<String, ConfigValue> = HashMap::new();
     source.insert(
         "tool_config:bogus:retract_length".to_string(),
         ConfigValue::Float(9.9),
     );
     let bounds = ConfigBoundsIndex::empty();
-    let global = resolve_global_config(&source, &bounds).expect("global resolution");
-    let per_tool =
-        resolve_per_tool_configs(&global, &source, &bounds).expect("per-tool resolution");
-    assert!(
-        per_tool.is_empty(),
-        "non-numeric tool index must be skipped, yielding an empty map"
+    let global = resolve_global_config(&HashMap::new(), &bounds).expect("global resolution");
+
+    // Design rule AC-N1 rejects malformed scope encodings instead of silently skipping them.
+    let error = resolve_per_tool_configs(&global, &source, &bounds)
+        .expect_err("a non-numeric tool index must be rejected");
+    assert_eq!(
+        error,
+        ConfigResolutionError::TypeMismatch {
+            key: "tool_config:bogus:retract_length".to_owned(),
+            expected: "tool_config:<u32>:<key>",
+            actual: "malformed scoped config key".to_owned(),
+        }
     );
 }
 

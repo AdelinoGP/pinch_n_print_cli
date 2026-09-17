@@ -497,23 +497,45 @@ Both `com.core.classic-perimeters` and `com.core.arachne-perimeters` declare
 other. Two modules holding the same non-fill claim would normally be a fatal
 startup conflict, but the `perimeter-generator` claim is resolved *before*
 `validate_startup_dag` runs, at module-load dedup time, by
-`dedup_same_claim_modules_with_wall_generator`
-(`crates/slicer-scheduler/src/execution_plan.rs`, called from
-`crates/slicer-runtime/src/run.rs`). Dedup keeps exactly one holder, so
+`dedup_same_claim_modules_with_typed_wall_generator` (the `ConfigValue`-typed
+twin of `dedup_same_claim_modules_with_wall_generator`; both in
+`crates/slicer-scheduler/src/execution_plan.rs`, called from the
+manifest-first live loaders in
+`crates/slicer-wasm-host/src/execution_plan_live.rs`, which
+`crates/slicer-runtime/src/run.rs` drives). Dedup keeps exactly one holder, so
 `incompatible-with` never has a chance to fire.
 
 Selection rules, in order:
 
-1. **`wall_generator` config key** — read directly from the raw config source
-   at module-load time (before `ResolvedConfig` exists) via
-   `WALL_GENERATOR_CONFIG_KEY` / `DEFAULT_WALL_GENERATOR`. Values: `"classic"`
-   (default) or `"arachne"`. `dedup_same_claim_modules_with_wall_generator`
-   resolves the `perimeter-generator` claim by this key instead of alphabetical
-   order, falling back to `classic` if the preferred module is not among the
-   loaded candidates or the value is unrecognised. This closes
-   the wall-generator selection record (before it, dedup silently kept the
-   alphabetically-first candidate — `arachne-perimeters` — with no way for a
-   user to express intent).
+1. **`wall_generator` typed global selector** — the value arrives as a typed
+   global value decoded once by `slicer-config`'s ingestion
+   (`ConfigIngestor` in `crates/slicer-config/src/ingestion.rs`): the
+   assembled registry marks `wall_generator` as the only current startup
+   claim selector (`selector = true` on its `HOST_RUNTIME_KEYS` row,
+   ordinary host rows carrying `selector = false`, the `spiral_vase`
+   manifest declarations omitting selector metadata so it defaults false,
+   and `support_family` undeclared), so `finish()` derives
+   `IngestionOutcome.selector_values` containing exactly
+   `wall_generator`. Selection reads it from that map — not from the raw
+   config source map — as a `ConfigScope::Global`-scope value via
+   `dedup_same_claim_modules_with_typed_wall_generator`
+   (`crates/slicer-scheduler/src/execution_plan.rs`, called from
+   `load_live_modules_for_plan_manifest_first` /
+   `load_live_modules_for_plan_with_integrated`
+   in `crates/slicer-wasm-host/src/execution_plan_live.rs`). Values:
+   `"classic"` (default) or `"arachne"`; an absent or unrecognised value
+   falls back to `DEFAULT_WALL_GENERATOR`
+   (`crates/slicer-ir/src/resolved_config.rs`, `"classic"`), and when the
+   preferred module is not among the loaded candidates the dedup falls
+   through to its alphabetical default. Because only a registry entry
+   declared `selector = true` enters the selector channel, `spiral_vase` and
+   `support_type` remain ordinary typed global values (read from the global
+   `ScopeDelta`), and undeclared `support_family` is warn-and-kept. This
+   closes the wall-generator selection record (before it, dedup silently
+   kept the alphabetically-first candidate — `arachne-perimeters` — with no
+   way for a user to express intent). The production composition roots
+   thread the same typed ingestion result (`IngestionOutcome`) through plan
+   binding and config resolution (`crates/slicer-runtime/src/run.rs`).
 
 2. **Spiral-vase fallback (packet 151)** — when `spiral_vase = true`, the
    scheduler forces `com.core.classic-perimeters` as the `perimeter-generator`

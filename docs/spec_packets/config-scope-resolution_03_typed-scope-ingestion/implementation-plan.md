@@ -92,6 +92,8 @@
 - Files allowed to edit (at most 3):
   - `crates/slicer-model-io/src/loader.rs`
   - `crates/slicer-model-io/tests/threemf_project_settings_extraction_tdd.rs`
+  - `crates/slicer-model-io/tests/mod_cilindrical_modifier_infill_density_tdd.rs`, `crates/slicer-model-io/tests/threemf_sidecar_classification_tdd.rs` — loader-boundary expectations only, widened after measurement: these assert heuristic coercion of string-authored sidecar values and are stale once the loader is syntax-only. Update them to assert exact string preservation; never weaken them or add skips.
+- End-to-end assertions are explicitly NOT in scope here: any `crates/slicer-runtime/tests/e2e/**` expectation that a string-authored value reaches a module typed must stay untouched and is expected red until Step 5b/7 wire typed ingestion into the production path.
 - Files explicitly out of bounds:
   - `resources/cube_4color.3mf`
   - model geometry/paint loading
@@ -303,7 +305,7 @@
 - OrcaSlicer refs:
   - None.
 - Verification:
-  - `python3 -c "from pathlib import Path; s=Path('docs/02_ir_schemas.md').read_text(); b=s.split('#### Typed config-scope ingestion (TASK-564)',1)[1].split('\n#### ',1)[0]; required=('ConfigScope','ScopeDelta','object_config:','paint_config:','tool_config:','warn','keep','object_height:<id>','packet 05'); missing=[x for x in required if x not in b]; assert not missing, missing"` — FACT pass/fail.
+  - `python3 -c "from pathlib import Path; s=Path('docs/02_ir_schemas.md').read_text(encoding='utf-8'); b=s.split('#### Typed config-scope ingestion (TASK-564)',1)[1].split('\n#### ',1)[0]; required=('ConfigScope','ScopeDelta','object_config:','paint_config:','tool_config:','warn','keep','object_height:<id>','packet 05'); missing=[x for x in required if x not in b]; assert not missing, missing"` — FACT pass/fail.
   - `python3 -c "from pathlib import Path; s=Path('docs/04_host_scheduler.md').read_text(); b=s.split('### Perimeter-generator selection',1)[1].split('\n### Support-generator selection',1)[0]; required=('IngestionOutcome.selector_values','ConfigScope::Global','DEFAULT_WALL_GENERATOR','spiral_vase'); forbidden=('read directly from the raw config source','config_source.get(\"wall_generator\")'); missing=[x for x in required if x not in b]; present=[x for x in forbidden if x in b]; assert not missing and not present, (missing,present)"` — FACT pass/fail.
   - `cargo xtask check-literals` — FACT pass/fail.
   - `cargo xtask check-test-quality --report` — FACT findings/no findings in touched tests.

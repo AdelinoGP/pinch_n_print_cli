@@ -5,6 +5,10 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use slicer_config::{
+    assemble_registry, ConfigIngestionError, ConfigIngestor, ConfigSchemaRegistry, ConfigScope,
+    HostChannels, ModuleDeclaration, ScopedConfig,
+};
 use slicer_ir::{ConfigKey, ConfigValue, PaintSemantic, ResolvedConfig};
 
 use crate::manifest::LoadedModule;
@@ -67,7 +71,7 @@ impl NumericBounds {
 /// must hold simultaneously. If the intersection is empty (`min > max`), the
 /// resulting range is retained and rejects every value â€” a `log::warn!` is
 /// emitted naming the offending modules at construction time.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ConfigBoundsIndex {
     bounds: HashMap<String, NumericBounds>,
     enum_values: HashMap<String, Vec<String>>,
@@ -78,6 +82,13 @@ pub struct ConfigBoundsIndex {
     /// reach the live transport as `Percent` / `FloatOrPercent` values
     /// instead of vanishing at the parser.
     schema_defaults: HashMap<String, ConfigValue>,
+    registry: ConfigSchemaRegistry,
+}
+
+impl Default for ConfigBoundsIndex {
+    fn default() -> Self {
+        Self::empty()
+    }
 }
 
 impl ConfigBoundsIndex {
@@ -88,6 +99,7 @@ impl ConfigBoundsIndex {
             bounds: HashMap::new(),
             enum_values: HashMap::new(),
             schema_defaults: HashMap::new(),
+            registry: assemble_config_registry(&[]),
         }
     }
 
@@ -107,6 +119,15 @@ impl ConfigBoundsIndex {
         I: IntoIterator<Item = &'a LoadedModule>,
     {
         let modules: Vec<&LoadedModule> = modules.into_iter().collect();
+        let declarations = modules
+            .iter()
+            .map(|module| ModuleDeclaration {
+                module_id: module.id().to_owned(),
+                schema: module.config_schema().clone(),
+                claim_exclusive_group: None,
+            })
+            .collect::<Vec<_>>();
+        let registry = assemble_config_registry(&declarations);
         let mut schema_defaults: HashMap<String, ConfigValue> = HashMap::new();
         let mut enum_values: HashMap<String, Vec<String>> = HashMap::new();
         for module in &modules {
@@ -125,7 +146,7 @@ impl ConfigBoundsIndex {
                 }
             }
         }
-        let declarations = modules.into_iter().flat_map(|module| {
+        let bounds_declarations = modules.into_iter().flat_map(|module| {
             let module_id = module.id().to_string();
             module
                 .config_schema()
@@ -146,7 +167,7 @@ impl ConfigBoundsIndex {
                     })
                 })
         });
-        let mut index = Self::from_declarations(declarations);
+        let mut index = Self::from_declarations_with_registry(bounds_declarations, registry);
         index.schema_defaults = schema_defaults;
         index.enum_values = enum_values;
         index
@@ -159,6 +180,13 @@ impl ConfigBoundsIndex {
     /// integration tests so they can construct a bounds index without
     /// fabricating full `LoadedModule` values.
     pub fn from_declarations<I>(declarations: I) -> Self
+    where
+        I: IntoIterator<Item = BoundsDeclaration>,
+    {
+        Self::from_declarations_with_registry(declarations, assemble_config_registry(&[]))
+    }
+
+    fn from_declarations_with_registry<I>(declarations: I, registry: ConfigSchemaRegistry) -> Self
     where
         I: IntoIterator<Item = BoundsDeclaration>,
     {
@@ -198,6 +226,7 @@ impl ConfigBoundsIndex {
             bounds: index,
             enum_values: HashMap::new(),
             schema_defaults: HashMap::new(),
+            registry,
         }
     }
 
@@ -231,6 +260,86 @@ impl ConfigBoundsIndex {
     /// collected by [`ConfigBoundsIndex::from_modules`].
     pub fn schema_defaults(&self) -> impl Iterator<Item = (&String, &ConfigValue)> {
         self.schema_defaults.iter()
+    }
+}
+
+fn assemble_config_registry(declarations: &[ModuleDeclaration]) -> ConfigSchemaRegistry {
+    assemble_registry(declarations, &HostChannels::from_live())
+        .unwrap_or_else(|error| panic!("loaded module config schemas must reconcile: {error}"))
+        .registry
+}
+
+/// Compatibility ingestion for callers that still enter through the legacy
+/// flat-map resolver APIs.
+///
+/// Production composition roots must call the corresponding `*_scoped`
+/// entry points with their retained manifest-first ingestion result, avoiding
+/// this adapter and any second decoding of scope prefixes. This adapter stays
+/// tolerant so legacy callers preserve warn-and-keep behavior for authored
+/// shapes their declarations cannot represent. Absolute-value bounds
+/// enforcement remains in the resolver loop.
+fn ingest_scoped_config(
+    source: &HashMap<ConfigKey, ConfigValue>,
+    bounds: &ConfigBoundsIndex,
+) -> Result<ScopedConfig, ConfigResolutionError> {
+    let mut ingestor = ConfigIngestor::tolerant(&bounds.registry);
+    ingestor
+        .ingest_flat(source)
+        .map_err(|error| map_ingestion_error(error, source))?;
+    Ok(ingestor.finish().scoped)
+}
+
+fn map_ingestion_error(
+    error: ConfigIngestionError,
+    source: &HashMap<ConfigKey, ConfigValue>,
+) -> ConfigResolutionError {
+    match error {
+        ConfigIngestionError::TypeMismatch {
+            key,
+            expected,
+            authored,
+        } => {
+            let actual = source
+                .get(&key)
+                .map_or_else(|| authored.clone(), |value| format!("{value:?}"));
+            ConfigResolutionError::TypeMismatch {
+                key,
+                expected: resolution_type_name(&expected),
+                actual,
+            }
+        }
+        ConfigIngestionError::MalformedScopeKey { wire_key, expected } => {
+            ConfigResolutionError::TypeMismatch {
+                key: wire_key,
+                expected: malformed_scope_shape(&expected),
+                actual: "malformed scoped config key".to_owned(),
+            }
+        }
+    }
+}
+
+fn resolution_type_name(field_type: &str) -> &'static str {
+    match field_type {
+        "bool" => "Bool",
+        "int" => "Int",
+        "float" => "Float",
+        "string" => "String",
+        "enum" => "String",
+        "percent" => "Percent",
+        "float_or_percent" => "FloatOrPercent",
+        "float-list" => "List<Float>",
+        "int-list" => "List<Int>",
+        "string-list" => "List<String>",
+        _ => "registry-declared type",
+    }
+}
+
+fn malformed_scope_shape(expected: &str) -> &'static str {
+    match expected {
+        "object_config:<object_id>:<key>" => "object_config:<object_id>:<key>",
+        "paint_config:<semantic>:<key>" => "paint_config:<semantic>:<key>",
+        "tool_config:<u32>:<key>" => "tool_config:<u32>:<key>",
+        _ => "well-formed scoped config key",
     }
 }
 
@@ -302,14 +411,19 @@ fn check_value(
         // `apply_cli_key`'s TypeMismatch path; numeric bounds don't apply.
         ConfigValue::Bool(_) | ConfigValue::String(_) => Ok(()),
         // `Percent` / `FloatOrPercent` (packet 150) ARE numeric per
-        // `is_numeric_field_type` above, so a module-declared `[min, max]`
-        // for a `percent` / `float_or_percent` key is enforced here against
-        // the raw percent number / literal value. The percent→absolute base
-        // is per-call-site and unknown at this point, so bounds cannot be
-        // applied to the resolved absolute value here — only to the raw
-        // number as declared in config.
-        ConfigValue::Percent(p) => check_scalar(key, *p, bounds, index),
-        ConfigValue::FloatOrPercent { value, .. } => check_scalar(key, *value, bounds, index),
+        // `is_numeric_field_type` above, but only their MIN side is checked
+        // here — see `check_percent_scalar`. A declared `[min, max]` is
+        // expressed in the key's absolute unit (e.g. mm) while a
+        // percent-authored value carries a relative magnitude whose absolute
+        // equivalent is only known at Phase-B expansion, which packet 04 owns.
+        ConfigValue::Percent(p) => check_percent_scalar(key, *p, bounds, index),
+        ConfigValue::FloatOrPercent { value, is_percent } => {
+            if *is_percent {
+                check_percent_scalar(key, *value, bounds, index)
+            } else {
+                check_scalar(key, *value, bounds, index)
+            }
+        }
     }
 }
 
@@ -323,6 +437,40 @@ fn check_scalar(
         && bounds.min.map_or(true, |lo| value >= lo)
         && bounds.max.map_or(true, |hi| value <= hi);
     if in_range {
+        Ok(())
+    } else {
+        Err(ConfigResolutionError::OutOfRange {
+            key: key.to_string(),
+            value,
+            min: bounds.min,
+            max: bounds.max,
+            index,
+        })
+    }
+}
+
+/// Bounds check for a percent-authored value (`Percent`, or
+/// `FloatOrPercent { is_percent: true }`).
+///
+/// Only the **min** side is enforced against the raw magnitude: a negative
+/// percent is invalid regardless of how it expands, so `min` is meaningful in
+/// both the relative and absolute domains. The **max** side is deliberately
+/// NOT enforced here because a declared `[min, max]` is expressed in the key's
+/// absolute unit (e.g. `overhang_reverse_threshold` declares `max = 10.0` mm)
+/// while a percent-authored value carries a relative magnitude whose absolute
+/// equivalent (`50%` × the percent base) is only known once Phase-B expansion
+/// runs — packet 04 owns that. Enforcing an absolute max against a raw
+/// percentage would reject valid Orca values: `resources/cube_4color.3mf`
+/// authors `overhang_reverse_threshold = "50%"`, which would compare `50.0`
+/// against `max = 10.0` mm.
+fn check_percent_scalar(
+    key: &str,
+    value: f64,
+    bounds: &NumericBounds,
+    index: Option<usize>,
+) -> Result<(), ConfigResolutionError> {
+    let satisfies_min = value.is_finite() && bounds.min.map_or(true, |lo| value >= lo);
+    if satisfies_min {
         Ok(())
     } else {
         Err(ConfigResolutionError::OutOfRange {
@@ -391,44 +539,44 @@ pub fn resolve_per_paint_semantic_configs(
     ),
     ConfigResolutionError,
 > {
+    let scoped = ingest_scoped_config(source, bounds)?;
+    resolve_per_paint_semantic_configs_scoped(global, &scoped, present_semantics, bounds)
+}
+
+/// Resolve typed paint-semantic deltas without decoding flat wire keys again.
+pub fn resolve_per_paint_semantic_configs_scoped(
+    global: &ResolvedConfig,
+    scoped: &ScopedConfig,
+    present_semantics: &[PaintSemantic],
+    bounds: &ConfigBoundsIndex,
+) -> Result<
+    (
+        BTreeMap<PaintSemantic, ResolvedConfig>,
+        Vec<UnknownSemanticWarning>,
+    ),
+    ConfigResolutionError,
+> {
     let mut result: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
     let mut warnings: Vec<UnknownSemanticWarning> = Vec::new();
 
-    // Collect all paint_config: keys from the source.
-    const PREFIX: &str = "paint_config:";
-    for (key, value) in source {
-        if let Some(rest) = key.strip_prefix(PREFIX) {
-            // rest is "<semantic>:<sub_key>"
-            if let Some(colon_pos) = rest.find(':') {
-                let semantic_name = &rest[..colon_pos];
-                let sub_key = &rest[colon_pos + 1..];
+    for (scope, delta) in scoped.iter() {
+        let ConfigScope::PaintSemantic(semantic_name) = scope else {
+            continue;
+        };
+        let matched = present_semantics
+            .iter()
+            .find(|semantic| paint_semantic_namespace_key(semantic) == *semantic_name);
 
-                // Try to match semantic_name against a present semantic.
-                let matched = present_semantics
-                    .iter()
-                    .find(|s| paint_semantic_namespace_key(s) == semantic_name);
-
-                match matched {
-                    Some(semantic) => {
-                        // Clone semantic for map key use.
-                        let sem_key = semantic.clone();
-                        let entry = result
-                            .entry(sem_key.clone())
-                            .or_insert_with(|| global.clone());
-                        // Apply this single override key to the entry.
-                        let single: HashMap<String, ConfigValue> =
-                            [(sub_key.to_string(), value.clone())].into();
-                        let updated = apply_overlay(entry, &single, bounds)?;
-                        *entry = updated;
-                    }
-                    None => {
-                        warnings.push(UnknownSemanticWarning {
-                            semantic_name: semantic_name.to_string(),
-                            key: sub_key.to_string(),
-                        });
-                    }
-                }
-            }
+        if let Some(semantic) = matched {
+            result.insert(
+                semantic.clone(),
+                apply_overlay(global, &delta.values, bounds)?,
+            );
+        } else {
+            warnings.extend(delta.iter().map(|(key, _)| UnknownSemanticWarning {
+                semantic_name: semantic_name.clone(),
+                key: key.clone(),
+            }));
         }
     }
 
@@ -455,23 +603,21 @@ pub fn resolve_global_config(
     source: &HashMap<ConfigKey, ConfigValue>,
     bounds: &ConfigBoundsIndex,
 ) -> Result<ResolvedConfig, ConfigResolutionError> {
+    let scoped = ingest_scoped_config(source, bounds)?;
+    resolve_global_config_scoped(&scoped, bounds)
+}
+
+/// Resolve the global delta from an already-decoded typed configuration.
+pub fn resolve_global_config_scoped(
+    scoped: &ScopedConfig,
+    bounds: &ConfigBoundsIndex,
+) -> Result<ResolvedConfig, ConfigResolutionError> {
     let mut cfg = ResolvedConfig::default();
+    let global = scoped.global();
 
-    reject_alias_conflicts(|key| source.contains_key(key))?;
+    reject_alias_conflicts(|key| global.is_some_and(|delta| delta.values.contains_key(key)))?;
 
-    for (key, value) in source {
-        // Skip per-object overlay keys â€” handled by resolve_per_object_configs.
-        if key.starts_with("object_config:") {
-            continue;
-        }
-        // Skip per-paint-semantic overlay keys â€” handled by resolve_per_paint_semantic_configs.
-        if key.starts_with("paint_config:") {
-            continue;
-        }
-        // Skip per-tool overlay keys — handled by resolve_per_tool_configs.
-        if key.starts_with("tool_config:") {
-            continue;
-        }
+    for (key, value) in global.into_iter().flat_map(|delta| delta.iter()) {
         // Skip host-injected object_height keys.
         if key.starts_with("object_height:") {
             continue;
@@ -498,7 +644,9 @@ pub fn resolve_global_config(
     // declared extractor rejects is skipped, not an error — the profile did
     // not supply it).
     for (key, default) in bounds.schema_defaults() {
-        if source.contains_key(key) || cfg.extensions.contains_key(key) {
+        if global.is_some_and(|delta| delta.values.contains_key(key))
+            || cfg.extensions.contains_key(key)
+        {
             continue;
         }
         match cfg.apply_cli_key(canonical_config_key(key.as_str()), default) {
@@ -526,26 +674,25 @@ pub fn resolve_per_object_configs(
     object_ids: &[&str],
     bounds: &ConfigBoundsIndex,
 ) -> Result<BTreeMap<String, ResolvedConfig>, ConfigResolutionError> {
+    let scoped = ingest_scoped_config(source, bounds)?;
+    resolve_per_object_configs_scoped(global, &scoped, object_ids, bounds)
+}
+
+/// Resolve typed object deltas without decoding flat wire keys again.
+pub fn resolve_per_object_configs_scoped(
+    global: &ResolvedConfig,
+    scoped: &ScopedConfig,
+    object_ids: &[&str],
+    bounds: &ConfigBoundsIndex,
+) -> Result<BTreeMap<String, ResolvedConfig>, ConfigResolutionError> {
     let mut result = BTreeMap::new();
 
     for &object_id in object_ids {
-        // Build a per-object sub-map with only the overrides for this object.
-        let prefix = format!("object_config:{object_id}:");
-        let mut per_object_source: HashMap<String, ConfigValue> = HashMap::new();
-        for (key, value) in source {
-            if let Some(sub_key) = key.strip_prefix(&prefix) {
-                per_object_source.insert(sub_key.to_string(), value.clone());
-            }
-        }
-
-        // Start from the global config and apply overrides.
-        let mut per_obj_cfg = global.clone();
-        if !per_object_source.is_empty() {
-            // Merge by running through resolve_global_config with the
-            // per-object sub-map, then selectively apply non-default fields.
-            // Simpler: rebuild from global + per_object_source overlay.
-            per_obj_cfg = apply_overlay(global, &per_object_source, bounds)?;
-        }
+        let scope = ConfigScope::Object(object_id.to_owned());
+        let per_obj_cfg = scoped.delta(&scope).map_or_else(
+            || Ok(global.clone()),
+            |delta| apply_overlay(global, &delta.values, bounds),
+        )?;
 
         result.insert(object_id.to_string(), per_obj_cfg);
     }
@@ -574,27 +721,21 @@ pub fn resolve_per_tool_configs(
     source: &HashMap<ConfigKey, ConfigValue>,
     bounds: &ConfigBoundsIndex,
 ) -> Result<BTreeMap<u32, ResolvedConfig>, ConfigResolutionError> {
-    const PREFIX: &str = "tool_config:";
-    // Group override sub-keys by tool index: "tool_config:<idx>:<sub_key>".
-    let mut per_tool_source: BTreeMap<u32, HashMap<String, ConfigValue>> = BTreeMap::new();
-    for (key, value) in source {
-        if let Some(rest) = key.strip_prefix(PREFIX) {
-            if let Some(colon_pos) = rest.find(':') {
-                let idx_str = &rest[..colon_pos];
-                let sub_key = &rest[colon_pos + 1..];
-                if let Ok(tool_index) = idx_str.parse::<u32>() {
-                    per_tool_source
-                        .entry(tool_index)
-                        .or_default()
-                        .insert(sub_key.to_string(), value.clone());
-                }
-            }
-        }
-    }
+    let scoped = ingest_scoped_config(source, bounds)?;
+    resolve_per_tool_configs_scoped(global, &scoped, bounds)
+}
 
+/// Resolve typed tool deltas without decoding flat wire keys again.
+pub fn resolve_per_tool_configs_scoped(
+    global: &ResolvedConfig,
+    scoped: &ScopedConfig,
+    bounds: &ConfigBoundsIndex,
+) -> Result<BTreeMap<u32, ResolvedConfig>, ConfigResolutionError> {
     let mut result = BTreeMap::new();
-    for (tool_index, sub) in per_tool_source {
-        result.insert(tool_index, apply_overlay(global, &sub, bounds)?);
+    for (scope, delta) in scoped.iter() {
+        if let ConfigScope::Tool(tool_index) = scope {
+            result.insert(*tool_index, apply_overlay(global, &delta.values, bounds)?);
+        }
     }
     Ok(result)
 }
@@ -657,7 +798,7 @@ pub fn validate_support_layer_heights(
 /// prefix) on top of a base [`ResolvedConfig`].
 fn apply_overlay(
     base: &ResolvedConfig,
-    overrides: &HashMap<String, ConfigValue>,
+    overrides: &BTreeMap<String, ConfigValue>,
     bounds: &ConfigBoundsIndex,
 ) -> Result<ResolvedConfig, ConfigResolutionError> {
     // Merge: start from a merged source where declared-field defaults come
@@ -673,12 +814,6 @@ fn apply_overlay(
     reject_alias_conflicts(|key| overrides.contains_key(key))?;
 
     for (key, value) in overrides {
-        // object_config / object_height prefixes won't appear here (already
-        // stripped), but skip them defensively.
-        if key.starts_with("object_config:") || key.starts_with("object_height:") {
-            continue;
-        }
-
         let resolved_key = canonical_config_key(key.as_str());
         bounds.check(resolved_key, value)?;
 

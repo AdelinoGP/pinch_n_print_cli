@@ -19,27 +19,6 @@ use slicer_ir::{
     PaintStroke, PaintValue, Point3, Transform3d,
 };
 
-/// Parse a density value from a 3MF sidecar metadata string.
-///
-/// Accepts plain floats (`"0.4"`) and percent forms (`"40%"`). Returns the
-/// density as a fraction in `[0.0, 1.0]` (i.e. `40%` becomes `0.4`). Values
-/// outside that range, malformed strings, and NaN/inf are rejected (returns
-/// `None` so the caller can log a warning rather than panic).
-fn parse_density_value(raw: &str) -> Option<f64> {
-    let trimmed = raw.trim();
-    let (num_str, is_percent) = if let Some(stripped) = trimmed.strip_suffix('%') {
-        (stripped.trim(), true)
-    } else {
-        (trimmed, false)
-    };
-    let parsed: f64 = num_str.parse().ok()?;
-    let value = if is_percent { parsed / 100.0 } else { parsed };
-    if !value.is_finite() || !(0.0..=1.0).contains(&value) {
-        return None;
-    }
-    Some(value)
-}
-
 /// Detected model file format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelFormat {
@@ -92,7 +71,11 @@ impl fmt::Display for ModelLoadError {
             Self::StlParse(msg) => write!(f, "STL parse error: {msg}"),
             Self::ObjParse(msg) => write!(f, "OBJ parse error: {msg}"),
             Self::ThreeMfParse(msg) => write!(f, "3MF parse error: {msg}"),
-            Self::DuplicateInputBasename { basename, first, second } => write!(
+            Self::DuplicateInputBasename {
+                basename,
+                first,
+                second,
+            } => write!(
                 f,
                 "DUPLICATE_INPUT_BASENAME: two inputs share the file name '{basename}' \
                  ({} and {}). Object ids are derived from the file name, so these would \
@@ -100,10 +83,10 @@ impl fmt::Display for ModelLoadError {
                 first.display(),
                 second.display()
             ),
-            Self::PaintMetadata { reason, byte_offset } => write!(
-                f,
-                "paint metadata error at byte {byte_offset}: {reason}"
-            ),
+            Self::PaintMetadata {
+                reason,
+                byte_offset,
+            } => write!(f, "paint metadata error at byte {byte_offset}: {reason}"),
         }
     }
 }
@@ -680,45 +663,25 @@ fn resolve_object(
                 );
 
                 if let Some(part) = part_info {
-                    // Generic per-part metadata extraction: every key on the
-                    // sidecar's `<part>` flows into the modifier's `config_delta`
-                    // via the same string-coercion heuristic used for
-                    // project/object-level keys. The historical narrow
-                    // allowlist (fuzzy_skin / extruder / matrix) is preserved
-                    // because the coercion helper produces the same typed
-                    // values those branches used to insert by hand.
+                    // Generic per-part metadata extraction: every authored
+                    // string on the sidecar's `<part>` flows into the
+                    // modifier's `config_delta` unchanged. Declared-type
+                    // interpretation belongs to registry-backed ingestion,
+                    // not this syntax-only adapter.
                     for (k, v) in &part.metadata {
-                        if k == "extruder" {
-                            if let Ok(parsed) = v.parse::<i64>() {
-                                let rebased = if parsed >= 1 { parsed - 1 } else { 0 };
-                                config_fields.insert(k.clone(), ConfigValue::Int(rebased));
-                            } else {
-                                log::warn!(
-                                    target: "slicer_model_io::loader",
-                                    "extruder value '{}' on part {} is not a valid integer, skipping",
-                                    v,
-                                    comp.objectid
-                                );
+                        match k.as_str() {
+                            "extruder" => {
+                                if let Some(value) = rebased_extruder(v) {
+                                    config_fields.insert(k.clone(), value);
+                                }
                             }
-                            continue;
-                        }
-                        config_fields.insert(k.clone(), coerce_string_to_config_value(k, v));
-                    }
-                    if let Some(density_str) = part.metadata.get("sparse_infill_density") {
-                        match parse_density_value(density_str) {
-                            Some(v) => {
-                                config_fields.insert(
-                                    "sparse_infill_density".to_string(),
-                                    ConfigValue::Float(v),
-                                );
+                            "enable_support" => {
+                                if let Some(value) = authored_bool(v) {
+                                    config_fields.insert(k.clone(), value);
+                                }
                             }
-                            None => {
-                                log::warn!(
-                                    target: "slicer_model_io::loader",
-                                    "sparse_infill_density value '{}' on part {} is not a valid density, skipping",
-                                    density_str,
-                                    comp.objectid
-                                );
+                            _ => {
+                                config_fields.insert(k.clone(), ConfigValue::String(v.clone()));
                             }
                         }
                     }
@@ -829,18 +792,23 @@ fn resolve_object(
     }
 }
 
-/// Convert recognized object-level sidecar keys to typed `ConfigValue` entries.
+/// Convert recognized object-level sidecar keys to authored `ConfigValue`
+/// entries without interpreting their declared types.
 ///
 /// Extends the original (`extruder` / `enable_support` / `support_type`)
 /// allowlist with the OrcaSlicer per-object keys consumed by PNP. Unknown
 /// keys are dropped after emitting a debug log so they cannot enter the
 /// runtime's per-object config through `object_config:<id>:<key>`.
 ///
-/// `extruder` is special-cased: OrcaSlicer 3MF authors it 1-indexed, while
-/// the runtime expects 0-indexed; values ≥ 1 are rebased, raw `0` stays
-/// `Int(0)`. The support filament selectors use the same rebase convention.
-/// Non-numeric `extruder` values are coerced normally, while invalid numeric
-/// values in the typed allowlist are warned about and dropped.
+/// String-authored values remain strings, including numeric, boolean, and
+/// percent-looking values, except for the three loader-owned conversions:
+/// `extruder` is semantically rebased in both object metadata and modifier
+/// fields, and `enable_support` is converted to `Bool` in both paths. These
+/// are not declared-type guesses: `extruder` is undeclared in every registry
+/// channel, while `enable_support` is read from `ObjectConfig.data` before
+/// registry ingestion runs, so ingestion cannot be the typing authority for
+/// either call site. Registry-backed ingestion owns conversion for all other
+/// keys.
 fn object_metadata_to_config_data(
     metadata: &std::collections::BTreeMap<String, String>,
 ) -> HashMap<String, ConfigValue> {
@@ -849,86 +817,37 @@ fn object_metadata_to_config_data(
         match key.as_str() {
             "name" | "matrix" => {}
             "extruder" => {
-                if let Ok(v) = value.parse::<i64>() {
-                    let rebased = if v >= 1 { v - 1 } else { 0 };
-                    out.insert(key.clone(), ConfigValue::Int(rebased));
-                } else {
-                    out.insert(key.clone(), coerce_string_to_config_value(key, value));
+                if let Some(value) = rebased_extruder(value) {
+                    out.insert(key.clone(), value);
                 }
             }
-            "enable_support" | "support_type" => {
-                out.insert(key.clone(), coerce_string_to_config_value(key, value));
+            "enable_support" => {
+                if let Some(value) = authored_bool(value) {
+                    out.insert(key.clone(), value);
+                }
+            }
+            "support_type" => {
+                out.insert(key.clone(), ConfigValue::String(value.clone()));
             }
             "wall_loops"
             | "top_shell_layers"
             | "bottom_shell_layers"
             | "raft_layers"
             | "support_interface_top_layers"
-            | "support_interface_bottom_layers" => match value.parse::<i64>() {
-                Ok(parsed) => {
-                    out.insert(key.clone(), ConfigValue::Int(parsed));
-                }
-                Err(_) => {
-                    log::warn!(
-                        target: "slicer_model_io::loader",
-                        "invalid integer object metadata value for {key}: {value}"
-                    );
-                }
-            },
-            "support_filament" | "support_interface_filament" => match value.parse::<i64>() {
-                Ok(parsed) => {
-                    let rebased = if parsed >= 1 { parsed - 1 } else { 0 };
-                    out.insert(key.clone(), ConfigValue::Int(rebased));
-                }
-                Err(_) => {
-                    log::warn!(
-                        target: "slicer_model_io::loader",
-                        "invalid filament object metadata value for {key}: {value}"
-                    );
-                }
-            },
+            | "support_interface_bottom_layers"
+            | "support_filament"
+            | "support_interface_filament" => {
+                out.insert(key.clone(), ConfigValue::String(value.clone()));
+            }
             "layer_height"
             | "brim_width"
             | "support_threshold_angle"
             | "support_top_z_distance"
             | "inner_wall_line_width"
             | "outer_wall_line_width"
-            | "sparse_infill_line_width" => match value.parse::<f64>() {
-                Ok(parsed) if parsed.is_finite() => {
-                    out.insert(key.clone(), ConfigValue::Float(parsed));
-                }
-                _ => {
-                    log::warn!(
-                        target: "slicer_model_io::loader",
-                        "invalid float object metadata value for {key}: {value}"
-                    );
-                }
-            },
-            "sparse_infill_density" => {
-                if value.contains('%') {
-                    if parse_density_value(value).is_some() {
-                        out.insert(key.clone(), ConfigValue::String(value.clone()));
-                    } else {
-                        log::warn!(
-                            target: "slicer_model_io::loader",
-                            "invalid density object metadata value for {key}: {value}"
-                        );
-                    }
-                } else if let Ok(parsed) = value.parse::<f64>() {
-                    if parsed.is_finite() {
-                        out.insert(key.clone(), ConfigValue::Float(parsed));
-                    } else {
-                        log::warn!(
-                            target: "slicer_model_io::loader",
-                            "invalid density object metadata value for {key}: {value}"
-                        );
-                    }
-                } else {
-                    log::warn!(
-                        target: "slicer_model_io::loader",
-                        "invalid density object metadata value for {key}: {value}"
-                    );
-                }
+            | "sparse_infill_line_width"
+            | "sparse_infill_density" => {
+                out.insert(key.clone(), ConfigValue::String(value.clone()));
             }
             "seam_position"
             | "sparse_infill_pattern"
@@ -946,6 +865,49 @@ fn object_metadata_to_config_data(
         }
     }
     out
+}
+
+/// Rebase an authored `extruder` index into the zero-based runtime index.
+///
+/// `extruder` is undeclared in every registry channel, and its 1-indexed to
+/// 0-indexed shift is semantic rather than a declared-type coercion, so the
+/// loader must perform it in both per-object config paths.
+fn rebased_extruder(value: &str) -> Option<ConfigValue> {
+    match value.parse::<i64>() {
+        Ok(parsed) => Some(ConfigValue::Int(if parsed >= 1 { parsed - 1 } else { 0 })),
+        Err(_) => {
+            log::warn!(
+                target: "slicer_model_io::loader",
+                "extruder value '{value}' is not a valid integer, skipping"
+            );
+            None
+        }
+    }
+}
+
+/// Convert the authored `enable_support` spelling to a boolean value.
+///
+/// `enable_support` is read from `ObjectConfig.data` before registry ingestion
+/// runs, so ingestion cannot be the typing authority for these two call sites.
+fn authored_bool(value: &str) -> Option<ConfigValue> {
+    let parsed = if value == "1" || value.eq_ignore_ascii_case("true") {
+        Some(true)
+    } else if value == "0" || value.eq_ignore_ascii_case("false") {
+        Some(false)
+    } else {
+        None
+    };
+
+    match parsed {
+        Some(value) => Some(ConfigValue::Bool(value)),
+        None => {
+            log::warn!(
+                target: "slicer_model_io::loader",
+                "enable_support value '{value}' is not a valid boolean, skipping"
+            );
+            None
+        }
+    }
 }
 
 /// One element of the 3MF parse result: the geometry plus its modifier volumes,
@@ -1007,12 +969,10 @@ fn load_3mf(reader: &mut (impl Read + Seek)) -> Result<Vec<ThreeMfPart>, ModelLo
 /// Read ALL project-level configuration from a 3MF's
 /// `Metadata/project_settings.config` (the BambuStudio/OrcaSlicer JSON sidecar).
 ///
-/// OrcaSlicer stores every value in `project_settings.config` as a string,
-/// including numbers and booleans (e.g. `"4"`, `"0"`, `"normal(auto)"`).
-/// Returns a `HashMap<String, ConfigValue>` with all keys present in the file,
-/// with string values coerced to typed `ConfigValue`s via [`coerce_string_to_config_value`]:
-/// integers → `Int`, floats → `Float`, `0`/`1`/`true`/`false` → `Bool`, everything
-/// else → `String`. JSON arrays become `ConfigValue::List` with each element coerced.
+/// String-authored values are retained as `ConfigValue::String` verbatim;
+/// registry-backed ingestion is responsible for interpreting declared types.
+/// Native JSON numbers and booleans retain their native variants, and arrays
+/// become `ConfigValue::List` values.
 ///
 /// Returns `None` when the file is not a readable 3MF, the sidecar is absent,
 /// or the JSON is malformed (logged at `warn`). When the sidecar is absent
@@ -1039,10 +999,10 @@ pub fn read_3mf_project_settings(path: &Path) -> Option<HashMap<String, ConfigVa
 
 /// Parse `project_settings.config` JSON text into a `HashMap<String, ConfigValue>`.
 ///
-/// Every JSON value is converted: string scalars use heuristic type coercion
-/// (see [`coerce_string_to_config_value`]); JSON arrays become
-/// `ConfigValue::List` with each element coerced. Malformed JSON returns an
-/// empty map with a `warn` log (consistent with the rest of the loader).
+/// Every JSON value is converted without assigning declared types: string
+/// scalars stay strings, native JSON shapes retain their variants, and arrays
+/// become lists. Malformed JSON returns an empty map with a `warn` log
+/// (consistent with the rest of the loader).
 pub(crate) fn parse_project_settings_json(text: &str) -> HashMap<String, ConfigValue> {
     let value: serde_json::Value = match serde_json::from_str(text) {
         Ok(v) => v,
@@ -1067,17 +1027,16 @@ pub(crate) fn parse_project_settings_json(text: &str) -> HashMap<String, ConfigV
     };
     let mut out = HashMap::with_capacity(object.len());
     for (key, raw) in object {
-        out.insert(key.clone(), json_to_config_value(&key, &raw));
+        out.insert(key, json_to_config_value(&raw));
     }
     out
 }
 
-/// Convert a `serde_json::Value` to a `ConfigValue`, applying heuristic
-/// string-coercion to scalar string values (OrcaSlicer stores every scalar
-/// as a string in `project_settings.config`).
-fn json_to_config_value(key: &str, raw: &serde_json::Value) -> ConfigValue {
+/// Convert a `serde_json::Value` to a `ConfigValue` without assigning a
+/// declared type to authored strings.
+fn json_to_config_value(raw: &serde_json::Value) -> ConfigValue {
     match raw {
-        serde_json::Value::String(s) => coerce_string_to_config_value(key, s),
+        serde_json::Value::String(s) => ConfigValue::String(s.clone()),
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
                 ConfigValue::Int(i)
@@ -1089,12 +1048,11 @@ fn json_to_config_value(key: &str, raw: &serde_json::Value) -> ConfigValue {
             }
         }
         serde_json::Value::Bool(b) => ConfigValue::Bool(*b),
-        serde_json::Value::Array(items) => ConfigValue::List(
-            items
-                .iter()
-                .map(|item| json_to_config_value(key, item))
-                .collect(),
-        ),
+        serde_json::Value::Array(items) => {
+            // List typing belongs to registry-backed ingestion too; preserve
+            // each element's authored JSON variant, including string items.
+            ConfigValue::List(items.iter().map(json_to_config_value).collect())
+        }
         serde_json::Value::Null | serde_json::Value::Object(_) => {
             // `project_settings.config` should never contain nested objects or
             // nulls; fall back to an empty string so the key still lands in
@@ -1113,80 +1071,6 @@ fn json_type_name(v: &serde_json::Value) -> &'static str {
         serde_json::Value::Array(_) => "array",
         serde_json::Value::Object(_) => "object",
     }
-}
-
-/// Schema-directed coercion of a string to a typed `ConfigValue`.
-///
-/// OrcaSlicer serialises every value in `project_settings.config` as a JSON
-/// string — even numbers and booleans. That makes `"0"` and `"1"` ambiguous:
-/// `enable_support = "1"` is a flag, `wall_loops = "1"` is a count. Where
-/// `ResolvedConfig` declares the key, `slicer_ir::classify_declared_key`
-/// settles it from the declared field type; `"1"` becomes `Bool` for a boolean
-/// field and `Int(1)` for everything else.
-///
-/// Doing this here rather than at consumption is what lets the numeric
-/// extractors stay strict. Guessing `Bool` for every `"0"`/`"1"` used to abort
-/// config resolution on any declared numeric key that happened to hold 0 or 1 —
-/// e.g. `mmu_segmented_region_interlocking_depth = "0"`, which crashed every
-/// slice of `resources/cube_4color.3mf`. Widening the extractors to accept a
-/// `Bool` as 0/1 also clears the crash, but at the cost of letting
-/// `layer_height = true` resolve to a 1 mm layer.
-///
-/// Keys this port does not declare (`enable_arc_fitting` and the rest of
-/// Orca's several-hundred-key surface) have no schema to consult, so they keep
-/// the original `"0"`/`"1"` → `Bool` heuristic. That guess is safe precisely
-/// because it is unreachable by the typed extractors: `apply_cli_key` returns
-/// `Ok(false)` for an undeclared key and the value routes to
-/// `ResolvedConfig::extensions` with its variant intact.
-///
-/// `"true"`/`"false"` are unambiguous and stay `Bool` for any key. Everything
-/// else falls through try-int → try-float → percent-suffixed
-/// float-or-percent (declared float-or-percent keys only) → `String`.
-pub(crate) fn coerce_string_to_config_value(key: &str, s: &str) -> ConfigValue {
-    // Spelled-out booleans are unambiguous regardless of the declared type.
-    if s.eq_ignore_ascii_case("false") {
-        return ConfigValue::Bool(false);
-    }
-    if s.eq_ignore_ascii_case("true") {
-        return ConfigValue::Bool(true);
-    }
-    if s == "0" || s == "1" {
-        match slicer_ir::classify_declared_key(key) {
-            slicer_ir::DeclaredKeyKind::Boolean | slicer_ir::DeclaredKeyKind::Undeclared => {
-                return ConfigValue::Bool(s == "1");
-            }
-            // Fall through to the numeric parse below.
-            slicer_ir::DeclaredKeyKind::NonBoolean => {}
-        }
-    }
-    // Integers (must come before floats — `"0.0"` parses as f64 but `s.parse::<f64>`
-    // rejects `"4"`-style integer strings only when no decimal point is present).
-    if let Ok(i) = s.parse::<i64>() {
-        return ConfigValue::Int(i);
-    }
-    // Floats.
-    if let Ok(f) = s.parse::<f64>() {
-        let f = if f.is_subnormal() { 0.0 } else { f };
-        return ConfigValue::Float(f);
-    }
-    // Percent-suffixed numbers ("50%") are valid `coFloatOrPercent` input —
-    // Orca serialises them as strings, and the typed extractors reject a raw
-    // `String` for float-or-percent keys. Schema-directed: only keys DECLARED
-    // float-or-percent coerce; for every other key (e.g. `bridge_line_width`,
-    // declared plain-float mm here though Orca types it percent-capable) the
-    // string stays a `String` as before, so a percent magnitude can never trip
-    // a millimeter-range bounds check.
-    if let Some(stripped) = s.strip_suffix('%') {
-        if slicer_ir::is_declared_float_or_percent_key(key) {
-            if let Ok(f) = stripped.trim().parse::<f64>() {
-                return ConfigValue::FloatOrPercent {
-                    value: f,
-                    is_percent: true,
-                };
-            }
-        }
-    }
-    ConfigValue::String(s.to_string())
 }
 
 /// Find the 3D model XML path inside a 3MF ZIP archive.
@@ -3093,15 +2977,19 @@ mod tests {
     fn parse_project_settings_json_extracts_filament_colour_as_list() {
         // Regression: the `filament_colour` key (an OrcaSlicer JSON array of
         // hex strings) must come through as `ConfigValue::List` of `String`s,
-        // not as a single semicolon-joined `String`. Downstream consumers
-        // (`serialize.rs::resolve_filament_colour_csv`,
-        // `visual_debug.rs::filament_tool_colors`) accept both shapes; the
-        // generic extractor picks the list form to preserve OrcaSlicer's
-        // typed-array semantics.
+        // not as a single semicolon-joined `String`. String-looking scalar and
+        // list elements are retained verbatim for registry-backed ingestion.
         let json = r##"{
             "default_filament_colour": ["", "", "", ""],
             "filament_colour": ["#FF9B00", "#02BF06", "#1800F2", "#EC0006"],
-            "filament_colour_type": ["1","1","1","1"]
+            "filament_colour_type": ["1","1","1","1"],
+            "authored_integer": "4",
+            "authored_bool": "true",
+            "authored_percent": "50%",
+            "native_integer": 4,
+            "native_float": 0.5,
+            "native_bool": true,
+            "mixed_array": ["0", "1", "50%"]
         }"##;
         let parsed = parse_project_settings_json(json);
         match parsed.get("filament_colour") {
@@ -3117,114 +3005,29 @@ mod tests {
             }
             other => panic!("expected List, got {other:?}"),
         }
-    }
-
-    #[test]
-    fn coerce_string_to_config_value_types() {
-        // OrcaSlicer serialises every value in `project_settings.config` as a
-        // string. Verify the coercion: int → Int, float → Float,
-        // true/false → Bool, everything else → String.
         assert_eq!(
-            coerce_string_to_config_value("wall_loops", "4"),
-            ConfigValue::Int(4)
+            parsed.get("authored_integer"),
+            Some(&ConfigValue::String("4".to_owned()))
         );
         assert_eq!(
-            coerce_string_to_config_value("enable_support", "true"),
-            ConfigValue::Bool(true)
+            parsed.get("authored_bool"),
+            Some(&ConfigValue::String("true".to_owned()))
         );
         assert_eq!(
-            coerce_string_to_config_value("enable_support", "false"),
-            ConfigValue::Bool(false)
+            parsed.get("authored_percent"),
+            Some(&ConfigValue::String("50%".to_owned()))
         );
+        assert_eq!(parsed.get("native_integer"), Some(&ConfigValue::Int(4)));
+        assert_eq!(parsed.get("native_float"), Some(&ConfigValue::Float(0.5)));
+        assert_eq!(parsed.get("native_bool"), Some(&ConfigValue::Bool(true)));
         assert_eq!(
-            coerce_string_to_config_value("layer_height", "0.5"),
-            ConfigValue::Float(0.5)
+            parsed.get("mixed_array"),
+            Some(&ConfigValue::List(vec![
+                ConfigValue::String("0".to_owned()),
+                ConfigValue::String("1".to_owned()),
+                ConfigValue::String("50%".to_owned()),
+            ]))
         );
-        assert_eq!(
-            coerce_string_to_config_value("support_threshold_overlap", "50%"),
-            ConfigValue::FloatOrPercent {
-                value: 50.0,
-                is_percent: true
-            }
-        );
-        // Percent strings for keys NOT declared float-or-percent stay strings
-        // (bridge_line_width is a plain-float mm key here; a coerced 100
-        // would trip its [0, 2] bounds).
-        assert_eq!(
-            coerce_string_to_config_value("bridge_line_width", "100%"),
-            ConfigValue::String("100%".to_string())
-        );
-        assert_eq!(
-            coerce_string_to_config_value("support_style", "normal(auto)"),
-            ConfigValue::String("normal(auto)".to_string())
-        );
-    }
-
-    /// `"0"`/`"1"` is the ambiguous case: identical text, two intended types.
-    /// The declared field type decides, so a numeric key holding 0 or 1 no
-    /// longer arrives as a `Bool` and abort config resolution — and a boolean
-    /// key holding "1" does not arrive as an `Int`.
-    #[test]
-    fn zero_and_one_coerce_by_declared_key_type() {
-        for key in ["enable_support", "wipe_tower_enabled", "disable_m73"] {
-            assert_eq!(
-                slicer_ir::classify_declared_key(key),
-                slicer_ir::DeclaredKeyKind::Boolean,
-                "{key} must be a declared bool key for this test to mean anything"
-            );
-            assert_eq!(
-                coerce_string_to_config_value(key, "0"),
-                ConfigValue::Bool(false),
-                "{key} = \"0\""
-            );
-            assert_eq!(
-                coerce_string_to_config_value(key, "1"),
-                ConfigValue::Bool(true),
-                "{key} = \"1\""
-            );
-        }
-
-        // The regression: every one of these is numeric and legitimately holds
-        // 0 or 1 in a real Orca 3MF. `mmu_segmented_region_interlocking_depth`
-        // is the key that crashed `resources/cube_4color.3mf`.
-        for key in [
-            "wall_count",
-            "top_shell_layers",
-            "bottom_shell_layers",
-            "mmu_segmented_region_interlocking_depth",
-            "mmu_segmented_region_max_width",
-            "layer_height",
-        ] {
-            assert_eq!(
-                slicer_ir::classify_declared_key(key),
-                slicer_ir::DeclaredKeyKind::NonBoolean,
-                "{key} must be a declared non-bool key for this test to mean anything"
-            );
-            assert_eq!(
-                coerce_string_to_config_value(key, "0"),
-                ConfigValue::Int(0),
-                "{key} = \"0\""
-            );
-            assert_eq!(
-                coerce_string_to_config_value(key, "1"),
-                ConfigValue::Int(1),
-                "{key} = \"1\""
-            );
-        }
-
-        // Keys this port does not declare keep the original heuristic — they
-        // route to `extensions` untyped and never reach a typed extractor.
-        for key in ["enable_arc_fitting", "enable_prime_tower"] {
-            assert_eq!(
-                slicer_ir::classify_declared_key(key),
-                slicer_ir::DeclaredKeyKind::Undeclared
-            );
-            assert_eq!(
-                coerce_string_to_config_value(key, "1"),
-                ConfigValue::Bool(true),
-                "{key} = \"1\""
-            );
-        }
     }
 
     #[test]
@@ -3237,10 +3040,11 @@ mod tests {
             env!("CARGO_MANIFEST_DIR"),
             "/../../resources/cube_4color.3mf"
         ));
-        if !path.exists() {
-            // Fixture path differs in some checkouts; skip rather than fail.
-            return;
-        }
+        assert!(
+            path.exists(),
+            "cube_4color.3mf fixture missing: {}",
+            path.display()
+        );
         let sidecar = read_3mf_project_settings(path).expect("project_settings.config present");
         match sidecar.get("filament_colour") {
             Some(ConfigValue::List(items)) => {
@@ -3271,9 +3075,11 @@ mod tests {
             env!("CARGO_MANIFEST_DIR"),
             "/../../resources/cube_4color.3mf"
         ));
-        if !path.exists() {
-            return;
-        }
+        assert!(
+            path.exists(),
+            "cube_4color.3mf fixture missing: {}",
+            path.display()
+        );
         let sidecar = read_3mf_project_settings(path).expect("project_settings.config present");
         match sidecar.get("thumbnails") {
             Some(ConfigValue::String(s)) => {
@@ -3292,9 +3098,11 @@ mod tests {
             env!("CARGO_MANIFEST_DIR"),
             "/../../resources/cube_4color.3mf"
         ));
-        if !path.exists() {
-            return;
-        }
+        assert!(
+            path.exists(),
+            "cube_4color.3mf fixture missing: {}",
+            path.display()
+        );
         let sidecar = read_3mf_project_settings(path).expect("project_settings.config present");
         assert!(
             sidecar.contains_key("extruder_colour"),

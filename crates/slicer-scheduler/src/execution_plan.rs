@@ -365,13 +365,12 @@ pub fn validate_support_family_pairing(
     }
 }
 
-/// Resolve a raw `wall_generator` config value (`config_source.get("wall_generator")`,
-/// e.g. `Some("arachne")`) to the module id it selects for the
+/// Resolve an ingested `wall_generator` selector to the module id it selects for the
 /// `perimeter-generator` claim. Absent (`None`) or unrecognized values fall
 /// back to [`DEFAULT_WALL_GENERATOR`] (`"classic"`).
-fn wall_generator_preferred_module_id(wall_generator: Option<&str>) -> &'static str {
+fn wall_generator_preferred_module_id(wall_generator: Option<&ConfigValue>) -> &'static str {
     match wall_generator {
-        Some("arachne") => ARACHNE_PERIMETERS_MODULE_ID,
+        Some(ConfigValue::String(value)) if value == "arachne" => ARACHNE_PERIMETERS_MODULE_ID,
         _ => CLASSIC_PERIMETERS_MODULE_ID,
     }
 }
@@ -438,11 +437,13 @@ pub fn dedup_same_claim_modules_for_test(
 }
 
 /// Config-aware claim dedup: identical to [`dedup_same_claim_modules_for_test`]
-/// except `wall_generator` (the raw `config_source.get("wall_generator")`
-/// string value, or `None` if the key is absent), `spiral_vase` (the raw
-/// `config_source.get("spiral_vase")` bool value, or `false` if absent) and
-/// `support_type` (the raw `config_source.get("support_type")` string value,
-/// or `None` if the key is absent) are threaded through. Only
+/// except `wall_generator` (the **typed** selector value decoded by
+/// `slicer_config`'s ingestion from the global scope — see
+/// `IngestionOutcome.selector_values` — rendered as a string, or `None` if the
+/// key is absent), `spiral_vase` (the typed global value, or `false` if
+/// absent) and `support_type` (the typed global value, or `None` if absent)
+/// are threaded through. Callers pass values already produced by typed
+/// ingestion; no caller re-reads the raw config source. Only
 /// `wall_generator` / `spiral_vase` affect the outcome, resolving the
 /// `perimeter-generator` claim; when `spiral_vase` is `true`, the classic
 /// perimeter generator is forced for that claim regardless of
@@ -451,7 +452,7 @@ pub fn dedup_same_claim_modules_for_test(
 /// claims are not deduplicated post-packet-221 (see
 /// [`dedup_same_claim_modules_for_test`]'s doc comment). This is the entry
 /// point
-/// `slicer_wasm_host::load_live_modules_for_plan_with_config` (the
+/// `slicer_wasm_host::load_live_modules_for_plan_with_integrated` (the
 /// production live-loader) uses.
 pub fn dedup_same_claim_modules_with_wall_generator(
     modules: &mut Vec<LoadedModule>,
@@ -461,6 +462,27 @@ pub fn dedup_same_claim_modules_with_wall_generator(
     support_type: Option<&str>,
 ) -> Vec<LoadedModule> {
     dedup_same_claim_modules(
+        modules,
+        diagnostics,
+        wall_generator,
+        spiral_vase,
+        support_type,
+    )
+}
+
+/// Claim deduplication seam for a registry-typed `wall_generator` selector.
+///
+/// `wall_generator` should come from [`slicer_config::IngestionOutcome::selector_values`].
+/// `spiral_vase` and `support_type` remain ordinary typed global values rather
+/// than claim selectors.
+pub fn dedup_same_claim_modules_with_typed_wall_generator(
+    modules: &mut Vec<LoadedModule>,
+    diagnostics: &mut Vec<LoadDiagnostic>,
+    wall_generator: Option<&ConfigValue>,
+    spiral_vase: bool,
+    support_type: Option<&str>,
+) -> Vec<LoadedModule> {
+    dedup_same_claim_modules_typed(
         modules,
         diagnostics,
         wall_generator,
@@ -480,6 +502,25 @@ fn dedup_same_claim_modules(
     // `dedup_same_claim_modules_for_test` doc comment. Reading `support_type`
     // in this function would re-introduce the pre-221 mutual exclusion and
     // make one support family undispatchable.
+    _support_type: Option<&str>,
+) -> Vec<LoadedModule> {
+    let wall_generator = wall_generator.map(|value| ConfigValue::String(value.to_owned()));
+    dedup_same_claim_modules_typed(
+        modules,
+        diagnostics,
+        wall_generator.as_ref(),
+        spiral_vase,
+        _support_type,
+    )
+}
+
+fn dedup_same_claim_modules_typed(
+    modules: &mut Vec<LoadedModule>,
+    diagnostics: &mut Vec<LoadDiagnostic>,
+    wall_generator: Option<&ConfigValue>,
+    spiral_vase: bool,
+    // Support selection remains ordinary resolved config and does not enter
+    // the selector channel.
     _support_type: Option<&str>,
 ) -> Vec<LoadedModule> {
     use std::collections::BTreeMap;

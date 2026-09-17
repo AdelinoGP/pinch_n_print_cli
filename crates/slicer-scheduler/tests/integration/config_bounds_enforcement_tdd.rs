@@ -222,8 +222,20 @@ fn rejects_nan_for_numeric_field() {
     let mut source = HashMap::new();
     source.insert("layer_height".to_string(), ConfigValue::Float(f64::NAN));
 
+    // Packet 03 moved non-finite declared-value rejection to the ingestion boundary.
     let err = resolve_global_config(&source, &bounds).expect_err("NaN must reject");
-    assert_out_of_range(err, "layer_height", f64::NAN, None);
+    match err {
+        ConfigResolutionError::TypeMismatch {
+            key,
+            expected,
+            actual,
+        } => {
+            assert_eq!(key, "layer_height");
+            assert_eq!(expected, "Float");
+            assert_eq!(actual, "Float(NaN)");
+        }
+        other => panic!("expected ingestion TypeMismatch, got {other:?}"),
+    }
 }
 
 #[test]
@@ -236,7 +248,18 @@ fn rejects_infinity_for_numeric_field() {
     );
 
     let err = resolve_global_config(&source, &bounds).expect_err("infinity must reject");
-    assert_out_of_range(err, "layer_height", f64::INFINITY, None);
+    match err {
+        ConfigResolutionError::TypeMismatch {
+            key,
+            expected,
+            actual,
+        } => {
+            assert_eq!(key, "layer_height");
+            assert_eq!(expected, "Float");
+            assert_eq!(actual, "Float(inf)");
+        }
+        other => panic!("expected ingestion TypeMismatch, got {other:?}"),
+    }
 }
 
 #[test]

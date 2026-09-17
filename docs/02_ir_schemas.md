@@ -601,6 +601,48 @@ the precedence vote for its semantic; all overlapping semantics
 contribute their `ResolvedConfig` snapshot to `RegionPlan.paint_overrides`
 for audit visibility.
 
+#### Typed config-scope ingestion (TASK-564)
+
+The three scope-carrying wire prefixes above are a **wire encoding**, not an
+internal representation (ADR-0068). `ConfigIngestor`
+(`crates/slicer-config/src/ingestion.rs`) is the single decoder: each flat
+wire key `object_config:<id>:<key>`, `paint_config:<semantic>:<key>`, and
+`tool_config:<u32>:<key>` is decoded at ingestion into a `ConfigScope`
+variant (`Object` / `PaintSemantic` / `Tool` respectively) and its values
+grouped into one `ScopeDelta` per scope. No module and no code outside
+`ConfigIngestor` decodes these prefixes into scopes: modules receive typed
+values, and the scheduler's compatibility resolvers consume the typed
+`ScopedConfig` deltas `ConfigIngestor` produces (`ingest_scoped_config` in
+`crates/slicer-scheduler/src/config_resolution.rs` routes its source map
+back through this one decoder; that re-ingestion is transitional).
+
+Values are typed against the assembled `ConfigSchemaRegistry` —
+registry-directed ingestion is the single typing authority for authored
+value shapes (bounds enforcement stays with the resolver's
+`ConfigBoundsIndex`). `crates/slicer-model-io`'s 3MF adapter is deliberately
+syntax-only: its JSON/sidecar conversions assign no declared type, so
+string-authored sidecar values stay strings until ingestion types them.
+
+A declared key whose authored shape the declaration cannot represent is
+warned about (`IngestionWarning::UntypedValue`) and keeps its authored
+value — loud, never silent. An undeclared key is likewise warned about and
+kept, carrying a nearest-canonical-key suggestion
+(`IngestionWarning::UnrecognizedKey`). This warn-and-keep contract is
+tolerant mode (`ConfigIngestor::tolerant`), the mode every production entry
+point constructs; the strict constructor `ConfigIngestor::new` instead
+rejects such a shape with a fatal `ConfigIngestionError::TypeMismatch`. Two
+classes remain fatal in **both** modes: malformed scope encodings
+(`ConfigIngestionError::MalformedScopeKey`) and non-finite declared numeric
+values.
+
+The dynamic per-object height keys `object_height:<id>` are **not** typed
+scopes yet: they remain recognised global-delta dynamic keys (declared via
+the layer planner's `object_height:*` wildcard) and typed per-object height
+handling is deferred to packet 05. Scope-resolution work beyond ingestion —
+automatic-value expansion, alias tables, and the final unified resolution of
+these deltas — also belongs to later packets and has not landed; only
+ingestion (decode, type, warn) exists today.
+
 ---
 
 ## IR 6 — SliceIR

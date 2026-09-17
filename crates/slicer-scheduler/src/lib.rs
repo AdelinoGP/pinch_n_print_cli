@@ -38,6 +38,7 @@ pub use dag_cli::{
 };
 pub use execution_plan::{
     bind_module_config_view, build_execution_plan, dedup_same_claim_modules_for_test,
+    dedup_same_claim_modules_with_typed_wall_generator,
     dedup_same_claim_modules_with_wall_generator, parse_cli_config_source, select_support_family,
     validate_support_family_pairing, CompiledModuleBuilder, CompiledModuleStatic, CompiledStage,
     ConfigSourceParseError, ExecutionModuleBinding, ExecutionPlan, ExecutionPlanError,

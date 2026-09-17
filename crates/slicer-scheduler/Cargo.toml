@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["Pinch 'n Print Team"]
 
 [dependencies]
+slicer-config = { path = "../slicer-config" }
 slicer-ir = { path = "../slicer-ir" }
 slicer-schema = { path = "../slicer-schema" }
 serde = { workspace = true, features = ["derive"] }
