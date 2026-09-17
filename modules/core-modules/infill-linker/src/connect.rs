@@ -390,20 +390,22 @@ fn nearest_pair_candidates(
         .enumerate()
         .flat_map(|(path_index, path)| {
             let path = path.as_ref()?;
-            let first = boundary_position(graph, path.points.first()?)?;
-            let last = boundary_position(graph, path.points.last()?)?;
-            Some([
-                Endpoint {
-                    path_index,
-                    at_start: true,
-                    position: first,
-                },
-                Endpoint {
-                    path_index,
-                    at_start: false,
-                    position: last,
-                },
-            ])
+            // Canonical admits only on-contour endpoints as T-joints
+            // (boundary_idx_unconnected otherwise); an interior end anchors no
+            // take. A path with one anchored end still contributes that end —
+            // filtering the whole path on either end would also drop every
+            // legitimately clipped path whose far end stops mid-span.
+            let first = boundary_position(graph, path.points.first()?).map(|position| Endpoint {
+                path_index,
+                at_start: true,
+                position,
+            });
+            let last = boundary_position(graph, path.points.last()?).map(|position| Endpoint {
+                path_index,
+                at_start: false,
+                position,
+            });
+            Some([first, last].into_iter().flatten())
         })
         .flatten()
         .collect::<Vec<_>>();
@@ -536,34 +538,112 @@ fn boundary_position(
     point: &slicer_ir::Point3WithWidth,
 ) -> Option<BoundaryPosition> {
     let point = Point2::from_mm(point.x, point.y);
-    graph
-        .rings()
-        .iter()
-        .enumerate()
-        .filter_map(|(ring_index, ring)| {
-            project_on_ring(ring, point).map(|(distance_squared, local_arc)| {
-                (
-                    distance_squared,
-                    BoundaryPosition {
-                        ring_index,
-                        arc_position: ring.pos_of_first_point + local_arc,
-                    },
-                )
-            })
-        })
-        .min_by(
-            |(left_distance, left_position), (right_distance, right_position)| {
-                left_distance
-                    .total_cmp(right_distance)
-                    .then_with(|| left_position.ring_index.cmp(&right_position.ring_index))
-                    .then_with(|| {
-                        left_position
-                            .arc_position
-                            .total_cmp(&right_position.arc_position)
-                    })
-            },
-        )
-        .map(|(_, position)| position)
+    // Canonical FillBase.cpp::create_boundary_infill_graph projects every
+    // infill endpoint onto the boundary graph (`grid.closest_point_signed_
+    // distance` per end) and keys the T-joint to the nearest contour — there
+    // is no on-contour admission gate at all. A clipped scan line ends
+    // ~overlap inside the fill boundary by construction (inset
+    // `(0.5-overlap)*spacing`, e.g. 0.1 mm at defaults), so a tight
+    // epsilon-gate would reject every legitimate endpoint and union linking
+    // across wall-sharing regions would silently stop. The nearest
+    // qualifying ring still wins; what the gate must reject is only the
+    // genuinely ambiguous case — an endpoint strictly inside a HOLE, which
+    // canonical leaves unconnected (`contour_idx ==
+    // boundary_idx_unconnected`) because a connector routed along the hole
+    // ring would drag extrusion across the void the hole reserves. So: admit
+    // the nearest ring unless the point is strictly inside a hole polygon,
+    // in which case admit only that hole's ring when the point sits on it
+    // (within the clip stage's +-2-unit boundary tolerance, plus scan-emit
+    // rounding) and reject otherwise.
+    const ON_RING_TOLERANCE_UNITS_SQUARED: f64 = 16.0;
+    // Strictly-inside-a-hole test up front: hole rings below are found by
+    // `hole_index`, and the point-in-ring test runs on the hole polygon
+    // itself (units space, exact integer arithmetic where it matters).
+    let inside_hole: Option<usize> = graph.rings().iter().enumerate().find_map(
+        |(ring_index, ring)| {
+            (ring.hole_index.is_some() && point_strictly_in_ring(point, &ring.polygon))
+                .then_some(ring_index)
+        },
+    );
+    if let Some(hole_ring) = inside_hole {
+        // Inside a void: only that hole's own ring can anchor, and only when
+        // the point sits on it (a scan line clipped exactly at the hole
+        // edge). Anything deeper has no T-joint anywhere.
+        let ring = &graph.rings()[hole_ring];
+        let (distance_squared, local_arc) = project_on_ring(ring, point)?;
+        if distance_squared > ON_RING_TOLERANCE_UNITS_SQUARED {
+            return None;
+        }
+        return Some(BoundaryPosition {
+            ring_index: hole_ring,
+            arc_position: ring.pos_of_first_point + local_arc,
+        });
+    }
+    let mut best: Option<(f64, BoundaryPosition)> = None;
+    for (ring_index, ring) in graph.rings().iter().enumerate() {
+        let Some((distance_squared, local_arc)) = project_on_ring(ring, point) else {
+            continue;
+        };
+        let position = BoundaryPosition {
+            ring_index,
+            arc_position: ring.pos_of_first_point + local_arc,
+        };
+        let better = best.as_ref().is_none_or(|(best_distance, best_position)| {
+            distance_squared < *best_distance
+                || (distance_squared == *best_distance
+                    && (ring_index, position.arc_position)
+                        < (best_position.ring_index, best_position.arc_position))
+        });
+        if better {
+            best = Some((distance_squared, position));
+        }
+    }
+    best.map(|(_, position)| position)
+}
+
+/// Strict point-in-polygon over a single closed ring (units space).
+/// Boundary-exact points count as inside — the hole-edge scan-line case must
+/// still reach the tolerance check above rather than being treated as void.
+fn point_strictly_in_ring(point: Point2, ring: &slicer_ir::Polygon) -> bool {
+    let pts = &ring.points;
+    let n = pts.len();
+    if n < 3 {
+        return false;
+    }
+    let x = point.x as f64;
+    let y = point.y as f64;
+    // On-edge counts as NOT strictly inside.
+    for i in 0..n {
+        let a = pts[i];
+        let b = pts[(i + 1) % n];
+        let dx = (b.x - a.x) as f64;
+        let dy = (b.y - a.y) as f64;
+        let len2 = dx * dx + dy * dy;
+        if len2 == 0.0 {
+            continue;
+        }
+        let t = ((x - a.x as f64) * dx + (y - a.y as f64) * dy) / len2;
+        if (0.0..=1.0).contains(&t) {
+            let px = a.x as f64 + t * dx;
+            let py = a.y as f64 + t * dy;
+            if (x - px).hypot(y - py) <= 2.0 {
+                return false;
+            }
+        }
+    }
+    let mut inside = false;
+    let mut j = n - 1;
+    for i in 0..n {
+        let xi = pts[i].x as f64;
+        let yi = pts[i].y as f64;
+        let xj = pts[j].x as f64;
+        let yj = pts[j].y as f64;
+        if ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
 }
 
 fn project_on_ring(ring: &BoundaryRing, point: Point2) -> Option<(f64, f64)> {

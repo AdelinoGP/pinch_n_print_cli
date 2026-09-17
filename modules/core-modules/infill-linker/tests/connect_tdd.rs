@@ -204,6 +204,9 @@ fn connector_routes_through_the_reflex_corner_instead_of_chording_the_notch() {
     // reflex corner. A bare chord between them passes through (5.5,5.5), which
     // is outside the L; the contour-routed connector must materialise (4,4).
     let graph = BoundaryInfillGraph::new(&[l_shape()]);
+    // Endpoints sit ON the two contour edges meeting at the reflex corner,
+    // the way clipped scan lines do: (7,4) on the y=4 edge, (4,7) on the x=4
+    // edge. The far ends anchor the paths in the L's two arms.
     let output = connect_infill(
         vec![
             segment((7.0, 1.0), (7.0, 4.0)),
@@ -236,9 +239,19 @@ fn connector_routes_through_the_reflex_corner_instead_of_chording_the_notch() {
 }
 
 #[test]
-fn connector_walks_a_hole_ring_rather_than_cutting_across_it() {
-    // Both joined endpoints project onto the hole ring; the walk between them
-    // passes the hole corner (4,6), which must appear as a real vertex.
+fn outer_ring_connector_never_routes_through_a_hole_ring() {
+    // L0 benchy bottom-fill regression: a hole ring and the outer contour are
+    // separate boundary loops. When one endpoint projects to the outer contour
+    // and the other to a hole, no shared ring exists, so the endpoints must
+    // stay unjoined — routing the walk along the hole ring would drag
+    // extrusion across the void the hole reserves (and a forced outer-ring
+    // walk would swing the long way round the part instead).
+    //
+    // Canonical Fill::connect_infill (FillBase.cpp::create_boundary_infill_graph
+    // + connect_infill) keys every T-joint to one contour_idx and only ever
+    // takes contour runs between joints on the SAME contour; cross-contour
+    // pairs fall through to take_limited stubs or stay separate, never a
+    // full-contour take across the gap.
     let frame = ExPolygon {
         contour: square(10.0).contour,
         holes: vec![Polygon {
@@ -250,37 +263,28 @@ fn connector_walks_a_hole_ring_rather_than_cutting_across_it() {
             ],
         }],
     };
-    let graph = BoundaryInfillGraph::new(&[frame.clone()]);
-    // spacing 0.4 mm → a 4 mm walk budget, which admits only the 2 mm hole-ring
-    // pair and not the 10 mm outer-ring pair.
+    let graph = BoundaryInfillGraph::new(&[frame]);
+    // (0,5)->(3.9,5) ends just outside the hole's left edge; (4.1,5)->(5,5)
+    // starts just inside the hole span. The outer-projected endpoint must not
+    // be spliced to the hole-projected one via either ring.
     let output = connect_infill(
-        vec![
-            segment((0.0, 5.0), (4.0, 5.0)),
-            segment((5.0, 10.0), (5.0, 6.0)),
-        ],
+        vec![segment((0.0, 5.0), (3.9, 5.0)), segment((4.1, 5.0), (5.0, 5.0))],
         &graph,
         AnchorParams {
             anchor_length_mm: 0.0,
-            anchor_length_max_mm: 4.0,
+            anchor_length_max_mm: 50.0,
         },
     );
 
-    assert_eq!(output.len(), 1, "the two lines share the hole ring");
-    let linked = &output[0];
-    assert!(
-        has_vertex(linked, 4.0, 6.0),
-        "connector must materialise the hole corner (4,6); got {:?}",
-        linked.points.iter().map(|p| (p.x, p.y)).collect::<Vec<_>>()
+    assert_eq!(
+        output.len(),
+        2,
+        "outer-anchored and hole-anchored endpoints share no ring and must stay separate; got {:?}",
+        output
+            .iter()
+            .map(|p| p.points.iter().map(|q| (q.x, q.y)).collect::<Vec<_>>())
+            .collect::<Vec<_>>()
     );
-    // Structural: no vertex may land strictly inside the hole.
-    for p in &linked.points {
-        assert!(
-            !(p.x > 4.0 + 1e-3 && p.x < 6.0 - 1e-3 && p.y > 4.0 + 1e-3 && p.y < 6.0 - 1e-3),
-            "linked vertex ({}, {}) is inside the hole — connector cut across it",
-            p.x,
-            p.y
-        );
-    }
 }
 
 #[test]

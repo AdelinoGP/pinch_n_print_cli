@@ -222,6 +222,140 @@ fn sparse_region(region_id: u64, paths: Vec<ExtrusionPath3D>) -> InfillRegion {
     }
 }
 
+fn bridge_path(x_start_mm: f32, x_end_mm: f32, y_mm: f32, width_mm: f32) -> ExtrusionPath3D {
+    let mut made = path(x_start_mm, x_end_mm, y_mm, width_mm);
+    made.role = ExtrusionRole::BridgeInfill;
+    made
+}
+
+fn bridge_region(region_id: u64, bridge: Vec<ExtrusionPath3D>) -> InfillRegion {
+    // exhaustive: this fixture explicitly sets every InfillRegion field used by orchestration.
+    InfillRegion {
+        object_id: "object".to_string(),
+        region_id,
+        sparse_infill: vec![],
+        solid_infill: bridge,
+        ironing: vec![],
+        internal_bridge_infill: Vec::new(),
+    }
+}
+
+fn bridge_view(region_id: u64, area: ExPolygon) -> slicer_sdk::views::PerimeterRegionView {
+    let mut made = PerimeterRegionViewBuilder::new()
+        .object_id("object")
+        .region_id(region_id)
+        .add_infill_area(area.clone())
+        .bridge_areas(vec![area])
+        .wall_source_region_id(None)
+        .tool_index(0)
+        .build();
+    made.set_config(config(0.4, 0.2));
+    made
+}
+
+#[test]
+fn solid_bucket_short_bridge_paths_survive_the_linker() {
+    // L45 benchy regression: the cabin-roof bridge bucket is one 9.45 mm scan
+    // plus 35 degenerate stubs. The stubs legitimately cull, but the long scan
+    // must survive `Layer::InfillPostProcess` as bridge extrusion — today the
+    // zero-width sliver polygons the bridge detector emits collapse the linker
+    // offset boundary and the scan below goes RED.
+    //
+    // Canonical `Fill::connect_infill`
+    // (`src/libslic3r/Fill/FillBase.cpp`) routes the survivor along the bridge
+    // contour instead of deleting it: the emitted paths stay non-empty.
+    let area = square(0.0, 10.0);
+    let mut bridge = vec![bridge_path(0.275, 9.725, 5.0, 0.45)];
+    for index in 0..35 {
+        bridge.push(bridge_path(0.0, 0.02, 0.1 * index as f32, 0.45));
+    }
+    let prior = vec![bridge_region(1, bridge)];
+    let views = vec![bridge_view(1, area)];
+
+    let output = run(&prior, &views);
+    let kept: Vec<&ExtrusionPath3D> = output
+        .solid_paths()
+        .iter()
+        .filter(|path| path.role == ExtrusionRole::BridgeInfill)
+        .collect();
+
+    assert!(
+        !kept.is_empty(),
+        "the 9.45 mm bridge scan must survive the linker; solid bucket is empty"
+    );
+    let longest = kept
+        .iter()
+        .map(|path| {
+            path.points
+                .windows(2)
+                .map(|pair| {
+                    ((pair[1].x - pair[0].x).powi(2) + (pair[1].y - pair[0].y).powi(2)).sqrt()
+                })
+                .sum::<f32>()
+        })
+        .fold(0.0_f32, f32::max);
+    assert!(
+        longest >= 9.0,
+        "surviving bridge extrusion must keep the long scan, got longest {longest:.2} mm"
+    );
+}
+
+#[test]
+fn solid_bucket_ribbon_bridge_boundary_keeps_long_scan() {
+    // L45 benchy production regression: bridge_areas[8] is a 0.0175 mm-wide
+    // ribbon (two near-coincident rails ~175 units apart, joined at shared
+    // cap vertices): a closing run walks out along one rail and returns on
+    // the other, so the ring is a genuine zero-area needle, not a degenerate
+    // quad. The linker's -0.0225 mm overlap inset erases the ribbon (the
+    // inset is wider than the ribbon), and the 9.45 mm scan the band
+    // contains clips away to nothing. Canonical never lets the link stage
+    // delete a fill the emitter produced (`Fill::connect_infill` in
+    // `src/libslic3r/Fill/FillBase.cpp` routes survivors along the contour).
+    //
+    // The ribbon below is the minimal faithful analogue: length 9.45 mm at
+    // the production y (-5.586 mm), width 0.0175 mm, closed at shared cap
+    // vertices exactly like the production ring. The scan sits 9 units
+    // INSIDE the ribbon (production: scan y=-55860, rails at -55982/-55807
+    // i.e. 78/53 units away) because `clip_polylines` pre-inflates the clip
+    // universe by 1 unit and `Point2::from_mm` rounds to the unit grid.
+    let ribbon = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2 { x: -164936, y: -55982 },
+                Point2 { x: -70410, y: -55982 },
+                Point2 { x: -70410, y: -55807 },
+                Point2 { x: -164936, y: -55807 },
+            ],
+        },
+        holes: vec![],
+    };
+    let prior = vec![bridge_region(
+        1,
+        vec![bridge_path(-16.49, -7.04, -5.586, 0.45)],
+    )];
+    let views = vec![bridge_view(1, ribbon)];
+
+    let output = run(&prior, &views);
+    let kept_mm = output
+        .solid_paths()
+        .iter()
+        .filter(|path| path.role == ExtrusionRole::BridgeInfill)
+        .map(|path| {
+            path.points
+                .windows(2)
+                .map(|pair| {
+                    ((pair[1].x - pair[0].x).powi(2) + (pair[1].y - pair[0].y).powi(2)).sqrt()
+                })
+                .sum::<f32>()
+        })
+        .sum::<f32>();
+
+    assert!(
+        kept_mm >= 9.0,
+        "the 9.45 mm bridge scan must survive the overlap inset, kept {kept_mm:.2} mm"
+    );
+}
+
 #[test]
 fn locked_paths_bypass_linking_and_clipping() {
     let mut first = path(-1.0, 4.0, 4.0, 0.4);
