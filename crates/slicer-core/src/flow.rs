@@ -214,7 +214,7 @@ pub fn canonical_bridging_flow(
 pub struct RoleWidthContext {
     /// Base line width in millimetres.
     pub line_width: f32,
-    /// Nozzle diameter in millimetres, used by the automatic fallback.
+    /// Nozzle diameter in millimetres.
     pub nozzle_diameter: f32,
     /// Bridge line width in millimetres.
     pub bridge_line_width: f32,
@@ -236,8 +236,7 @@ pub struct RoleWidthContext {
 /// Resolve the line width for an extrusion role using canonical precedence.
 ///
 /// Bridge and first-layer overrides take precedence over role-specific widths.
-/// A zero role or base line width falls through to the automatic width of
-/// `1.125 * nozzle_diameter`.
+/// A zero role width falls through to the already-expanded base line width.
 pub fn resolve_role_width(
     role: ExtrusionRole,
     first_layer: bool,
@@ -268,9 +267,7 @@ pub fn resolve_role_width(
 
     if role_width > 0.0 {
         role_width
-    } else if context.line_width > 0.0 {
-        context.line_width
     } else {
-        1.125 * context.nozzle_diameter
+        context.line_width
     }
 }

@@ -199,12 +199,11 @@ fn read_speed(
 /// SchemaBridgeMap ticket 10), positionally aligned with [`SPEED_KEYS`].
 ///
 /// `None` means "no metadata": `module config-schema` reports `null` and the
-/// GUI falls back to the raw key name. Only the speeds with no Orca
-/// counterpart are listed — an identity-routed speed renders through Orca's
-/// own definition on the fork, so a label here would never be seen. `min =
-/// 0.0` encodes `docs/config/host-keys.toml`'s speed ranges (`"> 0"`) as an
-/// inclusive floor, because the GUI clamps at `min` rather than rejecting;
-/// the strict inequality stays prose in the toml.
+/// GUI falls back to the raw key name. Identity-routed speeds are listed when
+/// their host wire type needs an explicit override. `min = 0.0` encodes
+/// `docs/config/host-keys.toml`'s speed ranges (`"> 0"`) as an inclusive
+/// floor, because the GUI clamps at `min` rather than rejecting; the strict
+/// inequality stays prose in the toml.
 pub const SPEED_META: [Option<HostKeyMeta>; SPEED_KEY_COUNT] = [
     None, // outer_wall_speed (Orca identity)
     None, // inner_wall_speed (Orca identity)
@@ -259,10 +258,26 @@ pub const SPEED_META: [Option<HostKeyMeta>; SPEED_KEY_COUNT] = [
     None, // initial_layer_infill_speed (Orca identity)
     None, // initial_layer_travel_speed (Orca identity)
     None, // wipe_speed (Orca identity)
-    None, // overhang_1_4_speed (Orca identity)
-    None, // overhang_2_4_speed (Orca identity)
-    None, // overhang_3_4_speed (Orca identity)
-    None, // overhang_4_4_speed (Orca identity)
+    Some(HostKeyMeta {
+        // overhang_1_4_speed
+        wire_type: Some("float_or_percent"),
+        ..HOST_META_NONE
+    }),
+    Some(HostKeyMeta {
+        // overhang_2_4_speed
+        wire_type: Some("float_or_percent"),
+        ..HOST_META_NONE
+    }),
+    Some(HostKeyMeta {
+        // overhang_3_4_speed
+        wire_type: Some("float_or_percent"),
+        ..HOST_META_NONE
+    }),
+    Some(HostKeyMeta {
+        // overhang_4_4_speed
+        wire_type: Some("float_or_percent"),
+        ..HOST_META_NONE
+    }),
     None, // filament_ironing_speed (Orca identity)
 ];
 

@@ -41,6 +41,7 @@ group   = "Support"
 
 [config.schema.support_line_width]
 type    = "float_or_percent"
+base_key = "nozzle_diameter"
 default = 0.0
 min     = 0.0
 # Percent semantics: Orca's `support_line_width` (PrintConfig.cpp, coFloatOrPercent)

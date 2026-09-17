@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use slicer_ir::{ConfigKey, ConfigValue, ConfigView};
 use slicer_ir::{
-    ExPolygon, IndexedTriangleSet, MeshIR, ObjectMesh, Point2, Point3, Polygon,
-    SupportAnalysisIR, SupportPlanDeclineReason, SupportPlanEntry, SupportPlanIR, SupportPlanRole,
+    ExPolygon, IndexedTriangleSet, MeshIR, ObjectMesh, Point2, Point3, Polygon, SupportAnalysisIR,
+    SupportPlanDeclineReason, SupportPlanEntry, SupportPlanIR, SupportPlanRole,
     SupportPlanRoleRegion, Transform3d,
 };
 use slicer_sdk::host::{self, ClipOperation};
@@ -1437,16 +1437,14 @@ fn coarse_source_preference_keeps_mixed_source_memberships() {
         source
             .roles
             .iter()
-            .any(|role| role.role == SupportPlanRole::SupportBody
-                && !role.regions.is_empty()),
+            .any(|role| role.role == SupportPlanRole::SupportBody && !role.regions.is_empty()),
         "membership 1's body-only source geometry must exist at the source plane"
     );
     assert!(
         source
             .roles
             .iter()
-            .any(|role| role.role == SupportPlanRole::BottomInterface
-                && !role.regions.is_empty()),
+            .any(|role| role.role == SupportPlanRole::BottomInterface && !role.regions.is_empty()),
         "membership 2's interface-only source geometry must exist at the source plane"
     );
     let mut union_regions: Vec<ExPolygon> = Vec::new();
@@ -1559,6 +1557,72 @@ fn coarse_lone_interface_survives_as_bracket() {
                 .iter()
                 .all(|role| role.role == SupportPlanRole::SupportBody)
     }));
+}
+
+#[test]
+fn expanded_bottom_interface_layer_count_is_consumed_without_guest_mirroring() {
+    let object = overhang_object("expanded-bottom-count");
+    let analysis = SupportAnalysisView {
+        candidates: vec![SupportAnalysisCandidate {
+            id: 1,
+            object_id: "expanded-bottom-count".into(),
+            region_id: "0".into(),
+            global_layer_index: 8,
+            z_units: slicer_ir::mm_to_units(1.8),
+            geometry: vec![contact_region()],
+            ..Default::default()
+        }],
+        termination_surfaces: vec![SupportAnalysisGeometryEntry {
+            global_support_layer_index: 2,
+            object_id: "expanded-bottom-count".into(),
+            region_id: "0".into(),
+            polygons: vec![contact_region()],
+        }],
+        family_assignments: vec![traditional_assignment("expanded-bottom-count")],
+        ..Default::default()
+    };
+    let base = planner_config(true);
+    let mut values = base
+        .keys()
+        .into_iter()
+        .filter_map(|key| base.get(&key).map(|value| (key, value.clone())))
+        .collect::<HashMap<ConfigKey, ConfigValue>>();
+    values.insert("support_interface_top_layers".into(), ConfigValue::Int(3));
+    values.insert(
+        "support_interface_bottom_layers".into(),
+        ConfigValue::Int(1),
+    );
+
+    let output = run_planner_with_config(ConfigView::from_map(values), object, analysis);
+    let top_count = output
+        .entries()
+        .iter()
+        .filter(|entry| {
+            entry
+                .roles
+                .iter()
+                .any(|role| role.role == SupportPlanRole::TopInterface)
+        })
+        .count();
+    let bottom_count = output
+        .entries()
+        .iter()
+        .filter(|entry| {
+            entry
+                .roles
+                .iter()
+                .any(|role| role.role == SupportPlanRole::BottomInterface)
+        })
+        .count();
+
+    assert_eq!(
+        top_count, 4,
+        "the independently configured top band changed"
+    );
+    assert_eq!(
+        bottom_count, 1,
+        "the host-expanded bottom count must be consumed directly, not mirrored from the top"
+    );
 }
 
 #[test]
@@ -2564,7 +2628,11 @@ fn expolygon_area(poly: &ExPolygon) -> f64 {
         doubled.abs()
     };
     let contour = ring(&poly.contour.points) as f64;
-    let holes: f64 = poly.holes.iter().map(|hole| ring(&hole.points) as f64).sum();
+    let holes: f64 = poly
+        .holes
+        .iter()
+        .map(|hole| ring(&hole.points) as f64)
+        .sum();
     (contour - holes) / 2.0
 }
 

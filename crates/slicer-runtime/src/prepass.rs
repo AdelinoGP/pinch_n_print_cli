@@ -10,6 +10,16 @@ pub use slicer_core::{
 };
 use slicer_ir::{ConfigKey, ConfigValue, ModuleId, ResolvedConfig, StageId, SupportPlanEntry};
 
+/// Registry and machine/tool context required to expand automatic config values.
+///
+/// Production entry points provide this authority. Compatibility entry points
+/// omit it and therefore require their supplied configs to already be expanded.
+#[derive(Clone, Copy)]
+pub(crate) struct ConfigExpansionAuthority<'a> {
+    pub(crate) registry: &'a slicer_config::ConfigSchemaRegistry,
+    pub(crate) context: &'a slicer_config::ExpansionContext,
+}
+
 use crate::builtins::overhang_annotation_producer::{
     commit_overhang_annotation_builtin, OverhangAnnotationBuiltinError,
 };
@@ -107,6 +117,20 @@ pub enum PrepassExecutionError {
         /// Human-readable description of the paint-segmentation failure.
         message: String,
     },
+    /// Resolving an internally rebuilt scoped config failed.
+    ConfigResolution {
+        /// Scope whose overlay could not be resolved.
+        scope: String,
+        /// Stable resolver diagnostic.
+        message: String,
+    },
+    /// Expanding a relative or sentinel automatic value failed.
+    AutomaticValueExpansion {
+        /// Scope whose merged config could not be expanded.
+        scope: String,
+        /// Diagnostic naming both the dependent key and its base key.
+        message: String,
+    },
 }
 
 impl fmt::Display for PrepassExecutionError {
@@ -154,6 +178,12 @@ impl fmt::Display for PrepassExecutionError {
             }
             Self::PaintSegmentation { message } => {
                 write!(f, "built-in PrePass::PaintSegmentation failed: {message}")
+            }
+            Self::ConfigResolution { scope, message } => {
+                write!(f, "config resolution failed for {scope}: {message}")
+            }
+            Self::AutomaticValueExpansion { scope, message } => {
+                write!(f, "automatic value expansion failed for {scope}: {message}")
             }
         }
     }
@@ -548,8 +578,8 @@ pub fn execute_prepass_with_builtins(
 /// Like [`execute_prepass_with_builtins`] but threads per-object resolved configs
 /// into the RegionMapping built-in so region plans carry live config values.
 ///
-/// This is the authoritative implementation; the public wrapper above forwards
-/// to this with empty / default values for backwards compatibility.
+/// This compatibility entry point assumes supplied configs are already expanded.
+/// Production callers use the crate-private authority-bearing variant below.
 pub fn execute_prepass_with_builtins_configured(
     plan: &ExecutionPlan,
     blackboard: &mut Blackboard,
@@ -567,7 +597,7 @@ pub fn execute_prepass_with_builtins_configured(
         ),
     >,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
-    execute_prepass_with_builtins_configured_instr(
+    execute_prepass_with_builtins_configured_instr_authority(
         plan,
         blackboard,
         runner,
@@ -577,6 +607,40 @@ pub fn execute_prepass_with_builtins_configured(
         bounds,
         &NoopInstrumentation,
         wasm_handles,
+        None,
+    )
+}
+
+/// Production configured-prepass path with automatic-value expansion authority.
+pub(crate) fn execute_prepass_with_builtins_configured_authority(
+    plan: &ExecutionPlan,
+    blackboard: &mut Blackboard,
+    runner: &dyn PrepassStageRunner,
+    resolved_configs: &BTreeMap<String, ResolvedConfig>,
+    default_resolved_config: &ResolvedConfig,
+    raw_config_source: &HashMap<ConfigKey, ConfigValue>,
+    bounds: &crate::ConfigBoundsIndex,
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
+    expansion_authority: ConfigExpansionAuthority<'_>,
+) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
+    execute_prepass_with_builtins_configured_instr_authority(
+        plan,
+        blackboard,
+        runner,
+        resolved_configs,
+        default_resolved_config,
+        raw_config_source,
+        bounds,
+        &NoopInstrumentation,
+        wasm_handles,
+        Some(expansion_authority),
     )
 }
 
@@ -611,6 +675,7 @@ pub fn execute_prepass_with_builtins_configured_collecting(
         &NoopInstrumentation,
         wasm_handles,
         Some(&mut harvested),
+        None,
     )?;
     Ok((audits, harvested))
 }
@@ -643,6 +708,39 @@ pub fn execute_prepass_with_builtins_configured_instr(
         ),
     >,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
+    execute_prepass_with_builtins_configured_instr_authority(
+        plan,
+        blackboard,
+        runner,
+        resolved_configs,
+        default_resolved_config,
+        raw_config_source,
+        bounds,
+        instrumentation,
+        wasm_handles,
+        None,
+    )
+}
+
+pub(crate) fn execute_prepass_with_builtins_configured_instr_authority(
+    plan: &ExecutionPlan,
+    blackboard: &mut Blackboard,
+    runner: &dyn PrepassStageRunner,
+    resolved_configs: &BTreeMap<String, ResolvedConfig>,
+    default_resolved_config: &ResolvedConfig,
+    raw_config_source: &HashMap<ConfigKey, ConfigValue>,
+    bounds: &crate::ConfigBoundsIndex,
+    instrumentation: &(dyn PipelineInstrumentation + Sync),
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
+    expansion_authority: Option<ConfigExpansionAuthority<'_>>,
+) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     execute_prepass_with_builtins_configured_instr_collecting(
         plan,
         blackboard,
@@ -654,6 +752,7 @@ pub fn execute_prepass_with_builtins_configured_instr(
         instrumentation,
         wasm_handles,
         None,
+        expansion_authority,
     )
 }
 
@@ -675,6 +774,7 @@ fn execute_prepass_with_builtins_configured_instr_collecting(
         ),
     >,
     harvested_plan_entries: Option<&mut Vec<SupportPlanEntry>>,
+    expansion_authority: Option<ConfigExpansionAuthority<'_>>,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     run_builtin_stage(
         blackboard,
@@ -712,7 +812,7 @@ fn execute_prepass_with_builtins_configured_instr_collecting(
         default_resolved_config: &ResolvedConfig,
         raw_config_source: &HashMap<ConfigKey, ConfigValue>,
         bounds: &crate::ConfigBoundsIndex,
-    ) -> BTreeMap<slicer_ir::PaintSemantic, ResolvedConfig> {
+    ) -> Result<BTreeMap<slicer_ir::PaintSemantic, ResolvedConfig>, PrepassExecutionError> {
         use slicer_ir::PaintSemantic;
         let mesh = blackboard.mesh();
         let mut present: Vec<PaintSemantic> = Vec::new();
@@ -745,7 +845,7 @@ fn execute_prepass_with_builtins_configured_instr_collecting(
             }
         }
         if present.is_empty() {
-            return BTreeMap::new();
+            return Ok(BTreeMap::new());
         }
         let (map, _warnings) =
             slicer_scheduler::config_resolution::resolve_per_paint_semantic_configs(
@@ -754,8 +854,29 @@ fn execute_prepass_with_builtins_configured_instr_collecting(
                 &present,
                 bounds,
             )
-            .unwrap_or_else(|_| (BTreeMap::new(), Vec::new()));
-        map
+            .map_err(|error| PrepassExecutionError::ConfigResolution {
+                scope: "paint semantics".to_string(),
+                message: error.to_string(),
+            })?;
+        Ok(map)
+    }
+
+    fn expand_config(
+        config: &mut ResolvedConfig,
+        authority: ConfigExpansionAuthority<'_>,
+        tool_index: Option<u32>,
+        scope: String,
+    ) -> Result<(), PrepassExecutionError> {
+        slicer_config::expand_automatic_values(
+            authority.registry,
+            config,
+            authority.context,
+            tool_index,
+        )
+        .map_err(|error| PrepassExecutionError::AutomaticValueExpansion {
+            scope,
+            message: error.to_string(),
+        })
     }
 
     // Region-mapping runs after `PrePass::LayerPlanning` (user-or-none),
@@ -792,26 +913,66 @@ fn execute_prepass_with_builtins_configured_instr_collecting(
     // it out of the bracket preserves the stage's wall-clock attribution exactly.
     let region_mapping_should_run =
         blackboard.layer_plan().is_some() && blackboard.region_map().is_none();
-    let paint_semantic_configs = region_mapping_should_run.then(|| {
-        build_paint_semantic_configs(
-            blackboard,
-            default_resolved_config,
+    let region_mapping_configs = if region_mapping_should_run {
+        // Recheck the supplied maps under the same registry/context authority
+        // used by startup, then resolve and expand every map rebuilt here. This
+        // ordering guarantees RegionMapping only interns absolute values.
+        let mut expanded_default = default_resolved_config.clone();
+        let mut expanded_objects = resolved_configs.clone();
+        if let Some(authority) = expansion_authority {
+            expand_config(
+                &mut expanded_default,
+                authority,
+                None,
+                "global scope".to_string(),
+            )?;
+            for (object_id, config) in &mut expanded_objects {
+                expand_config(config, authority, None, format!("object {object_id}"))?;
+            }
+        }
+
+        let mut paint_semantic_configs =
+            build_paint_semantic_configs(blackboard, &expanded_default, raw_config_source, bounds)?;
+        // Per-tool/extruder config overlays (`tool_config:<n>:<key>`). Consumed
+        // by region mapping at highest precedence once the material tool is known.
+        let mut tool_configs = slicer_scheduler::config_resolution::resolve_per_tool_configs(
+            &expanded_default,
             raw_config_source,
             bounds,
         )
-    });
-    // Per-tool/extruder config overlays (`tool_config:<n>:<key>`). Consumed by
-    // region mapping for painted/MMU tools (the tool is known there via the
-    // material variant chain) and applied at highest precedence. Empty unless
-    // the user sets `tool_config:` keys, so default behaviour is unchanged.
-    let tool_configs = region_mapping_should_run.then(|| {
-        slicer_scheduler::config_resolution::resolve_per_tool_configs(
-            default_resolved_config,
-            raw_config_source,
-            bounds,
-        )
-        .unwrap_or_default()
-    });
+        .map_err(|error| PrepassExecutionError::ConfigResolution {
+            scope: "tool configs".to_string(),
+            message: error.to_string(),
+        })?;
+
+        if let Some(authority) = expansion_authority {
+            for (&tool_index, config) in &mut tool_configs {
+                expand_config(
+                    config,
+                    authority,
+                    Some(tool_index),
+                    format!("tool {tool_index}"),
+                )?;
+            }
+            for (semantic, config) in &mut paint_semantic_configs {
+                expand_config(
+                    config,
+                    authority,
+                    None,
+                    format!("paint semantic {semantic:?}"),
+                )?;
+            }
+        }
+
+        Some((
+            expanded_objects,
+            expanded_default,
+            paint_semantic_configs,
+            tool_configs,
+        ))
+    } else {
+        None
+    };
     run_builtin_stage(
         blackboard,
         instrumentation,
@@ -819,17 +980,15 @@ fn execute_prepass_with_builtins_configured_instr_collecting(
         "host:region_mapping",
         |_bb| region_mapping_should_run,
         |bb| {
-            let paint_semantic_configs = paint_semantic_configs
-                .as_ref()
-                .expect("computed whenever region_mapping_should_run is true");
-            let tool_configs = tool_configs
-                .as_ref()
-                .expect("computed whenever region_mapping_should_run is true");
+            let (expanded_objects, expanded_default, paint_semantic_configs, tool_configs) =
+                region_mapping_configs
+                    .as_ref()
+                    .expect("computed whenever region_mapping_should_run is true");
             commit_region_mapping_builtin(
                 plan,
                 bb,
-                resolved_configs,
-                default_resolved_config,
+                expanded_objects,
+                expanded_default,
                 paint_semantic_configs,
                 tool_configs,
             )

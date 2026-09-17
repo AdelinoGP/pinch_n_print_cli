@@ -80,9 +80,8 @@ pub struct TraditionalSupport {
     /// `interface_pitch_mm`).
     top_interface_spacing_mm: f32,
     /// Configured bottom-interface line gap in millimeters (canonical
-    /// `support_bottom_interface_spacing`). Negative mirrors the top value,
-    /// matching OrcaSlicer's `-1 == same as top` convention for the paired
-    /// interface keys.
+    /// `support_bottom_interface_spacing`). Automatic values are expanded by
+    /// the host before this guest sees config.
     bottom_interface_spacing_mm: f32,
     /// Canonical `support_params.support_style != smsGrid` — whether interface
     /// regularization runs the `closing` + `smooth_outward` branch of
@@ -151,7 +150,7 @@ impl LayerModule for TraditionalSupport {
         let bottom_interface_spacing_mm = match config.get("support_bottom_interface_spacing") {
             Some(ConfigValue::Float(s)) => *s as f32,
             Some(ConfigValue::Int(s)) => *s as f32,
-            _ => -1.0,
+            _ => DEFAULT_INTERFACE_SPACING_MM,
         };
 
         // Canonical `SupportParameters` resolves `support_style` against
@@ -476,13 +475,7 @@ impl TraditionalSupport {
             slicer_core::flow::line_width_to_spacing(interface_width, layer_height)
                 .map_err(|error| ModuleError::non_fatal(333, error.to_string()))?;
         let top_gap = self.top_interface_spacing_mm.max(0.0);
-        // Negative mirrors the top gap, per the `-1 == same as top` convention
-        // OrcaSlicer uses for the paired bottom-interface keys.
-        let bottom_gap = if self.bottom_interface_spacing_mm < 0.0 {
-            top_gap
-        } else {
-            self.bottom_interface_spacing_mm
-        };
+        let bottom_gap = self.bottom_interface_spacing_mm.max(0.0);
         let top_density = slicer_core::support_regularize::interface_density(
             interface_width,
             layer_height,
@@ -757,7 +750,7 @@ mod tests {
         assert!((module.base_pattern_spacing_mm - 2.5).abs() < 0.001);
         assert!((module.line_width - 0.4).abs() < 0.001);
         assert!((module.top_interface_spacing_mm - 0.4).abs() < 0.001);
-        assert!(module.bottom_interface_spacing_mm < 0.0);
+        assert!((module.bottom_interface_spacing_mm - 0.4).abs() < 0.001);
     }
 
     /// F-7: the interface pitch is the configured gap **plus** the interface
@@ -776,7 +769,10 @@ mod tests {
         let expected =
             slicer_ir::mm_to_units(0.4 + (0.4 - 0.2 * (1.0 - core::f32::consts::PI / 4.0)));
         assert_eq!(top, expected, "top interface pitch must add flow spacing");
-        assert_eq!(bottom, top, "negative bottom spacing mirrors the top gap");
+        assert_eq!(
+            bottom, top,
+            "expanded default bottom spacing matches the top gap"
+        );
         assert!(
             (slicer_ir::units_to_mm(top) - 0.757).abs() < 0.002,
             "measured Orca pitch is 0.757 mm, got {}",

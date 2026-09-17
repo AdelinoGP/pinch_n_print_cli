@@ -32,11 +32,11 @@ use crate::layer_executor::{
 use crate::{
     compute_serial_edges_from_compiled, execute_layer_finalization,
     execute_layer_finalization_with_instrumentation, execute_postpass,
-    prepass::execute_prepass_with_builtins_configured, Blackboard, ConfigBoundsIndex,
-    ExecutionPlan, FinalizationError, FinalizationStageRunner, GCodeEmitter, GCodeSerializer,
-    LayerExecutionError, LayerProgressSink, LayerStageRunner, ModuleAccessAudit,
-    NoopInstrumentation, NoopLayerProgressSink, Phase, PipelineInstrumentation, PostpassError,
-    PostpassStageRunner, PrepassExecutionError, PrepassStageRunner, TierKind,
+    prepass::{execute_prepass_with_builtins_configured, ConfigExpansionAuthority},
+    Blackboard, ConfigBoundsIndex, ExecutionPlan, FinalizationError, FinalizationStageRunner,
+    GCodeEmitter, GCodeSerializer, LayerExecutionError, LayerProgressSink, LayerStageRunner,
+    ModuleAccessAudit, NoopInstrumentation, NoopLayerProgressSink, Phase, PipelineInstrumentation,
+    PostpassError, PostpassStageRunner, PrepassExecutionError, PrepassStageRunner, TierKind,
 };
 
 /// Injectable stage runners for the pipeline.
@@ -285,13 +285,28 @@ pub fn run_pipeline_with_events(
 /// Identical to [`run_pipeline_with_events`] except `raw_config_source` is
 /// forwarded to the RegionMapping built-in so that `paint_config:<semantic>:*`
 /// keys in the user-supplied config are applied as per-semantic overlays
-/// (AC-4 / production path for MMU paint overrides).
+/// (AC-4 / compatibility path for callers supplying already-expanded configs).
 pub fn run_pipeline_with_raw_config(
     config: PipelineConfig,
     raw_config_source: &HashMap<ConfigKey, ConfigValue>,
     sink: &(dyn LayerProgressSink + Sync),
 ) -> Result<PipelineOutput, PipelineError> {
-    run_pipeline_core(config, raw_config_source, sink, &NoopInstrumentation)
+    run_pipeline_core(config, raw_config_source, sink, &NoopInstrumentation, None)
+}
+
+pub(crate) fn run_pipeline_with_raw_config_authority(
+    config: PipelineConfig,
+    raw_config_source: &HashMap<ConfigKey, ConfigValue>,
+    sink: &(dyn LayerProgressSink + Sync),
+    expansion_authority: ConfigExpansionAuthority<'_>,
+) -> Result<PipelineOutput, PipelineError> {
+    run_pipeline_core(
+        config,
+        raw_config_source,
+        sink,
+        &NoopInstrumentation,
+        Some(expansion_authority),
+    )
 }
 
 /// Execute the full slicing pipeline with bracket-shaped instrumentation
@@ -314,10 +329,27 @@ pub fn run_pipeline_with_instrumentation(
     sink: &(dyn LayerProgressSink + Sync),
     instrumentation: &(dyn PipelineInstrumentation + Sync),
 ) -> Result<PipelineOutput, PipelineError> {
-    run_pipeline_core(config, raw_config_source, sink, instrumentation)
+    run_pipeline_core(config, raw_config_source, sink, instrumentation, None)
 }
 
-/// Shared pipeline body for all four public entry points (packet 76, 1b).
+pub(crate) fn run_pipeline_with_instrumentation_authority(
+    config: PipelineConfig,
+    raw_config_source: &HashMap<ConfigKey, ConfigValue>,
+    sink: &(dyn LayerProgressSink + Sync),
+    instrumentation: &(dyn PipelineInstrumentation + Sync),
+    expansion_authority: ConfigExpansionAuthority<'_>,
+) -> Result<PipelineOutput, PipelineError> {
+    run_pipeline_core(
+        config,
+        raw_config_source,
+        sink,
+        instrumentation,
+        Some(expansion_authority),
+    )
+}
+
+/// Shared pipeline body for the public compatibility and internal production
+/// entry points (packet 76, 1b).
 ///
 /// Runs prepass → per-layer → finalization → postpass with phase brackets and
 /// thumbnail-aware serialization. The public `run_pipeline*` functions are thin
@@ -330,6 +362,7 @@ fn run_pipeline_core(
     raw_config_source: &HashMap<ConfigKey, ConfigValue>,
     sink: &(dyn LayerProgressSink + Sync),
     instrumentation: &(dyn PipelineInstrumentation + Sync),
+    expansion_authority: Option<ConfigExpansionAuthority<'_>>,
 ) -> Result<PipelineOutput, PipelineError> {
     let PipelineConfig {
         mesh_ir,
@@ -375,7 +408,7 @@ fn run_pipeline_core(
         ));
     }
     instrumentation.on_phase_start(Phase::PrePass);
-    let prepass_audits = crate::prepass::execute_prepass_with_builtins_configured_instr(
+    let prepass_audits = crate::prepass::execute_prepass_with_builtins_configured_instr_authority(
         &plan,
         &mut blackboard,
         runners.prepass.as_ref(),
@@ -385,6 +418,7 @@ fn run_pipeline_core(
         &bounds,
         instrumentation,
         &wasm_handles,
+        expansion_authority,
     );
     instrumentation.on_phase_end(Phase::PrePass);
     let prepass_audits = prepass_audits?;

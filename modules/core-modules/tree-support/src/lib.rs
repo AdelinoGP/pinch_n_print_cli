@@ -80,7 +80,8 @@ pub struct TreeSupport {
     /// `support_interface_spacing`). This is the *gap*, not the pitch.
     top_interface_spacing_mm: f32,
     /// Configured bottom-interface line gap in millimeters (canonical
-    /// `support_bottom_interface_spacing`). Negative mirrors the top value.
+    /// `support_bottom_interface_spacing`). Automatic values are expanded by
+    /// the host before this guest sees config.
     bottom_interface_spacing_mm: f32,
     /// Configured gap between adjacent body lines in millimeters.
     base_pattern_spacing_mm: f32,
@@ -113,13 +114,7 @@ impl TreeSupport {
             slicer_core::flow::line_width_to_spacing(interface_width, layer_height)
                 .map_err(|error| ModuleError::non_fatal(333, error.to_string()))?;
         let top_gap = self.top_interface_spacing_mm.max(0.0);
-        // Negative mirrors the top gap, per OrcaSlicer's `-1 == same as top`
-        // convention for the paired bottom-interface keys.
-        let bottom_gap = if self.bottom_interface_spacing_mm < 0.0 {
-            top_gap
-        } else {
-            self.bottom_interface_spacing_mm
-        };
+        let bottom_gap = self.bottom_interface_spacing_mm.max(0.0);
         let body_density = slicer_core::support_regularize::body_density(
             self.line_width,
             layer_height,
@@ -283,7 +278,7 @@ impl LayerModule for TreeSupport {
         let bottom_interface_spacing_mm = match config.get("support_bottom_interface_spacing") {
             Some(ConfigValue::Float(s)) => *s as f32,
             Some(ConfigValue::Int(s)) => *s as f32,
-            _ => -1.0,
+            _ => DEFAULT_INTERFACE_SPACING_MM,
         };
         let base_pattern_spacing_mm = config
             .get_float("support_base_pattern_spacing")
@@ -857,7 +852,7 @@ mod tests {
     /// resolution), so `line_width_to_spacing(0.45, 0.2) = 0.4070796` and the
     /// top pitch is 0.4 + 0.4070796 = 0.807 mm. With the key absent from the
     /// raw config map (as here) the in-code fallback stays the legacy −1.0
-    /// mirror-top sentinel, so bottom == top; in production the manifest
+    /// host-expanded default, so bottom == top; in production the manifest
     /// default 0.5 is host-injected and yields a 0.907 mm bottom
     /// pitch instead.
     #[test]
@@ -871,7 +866,7 @@ mod tests {
         );
         assert_eq!(
             bottom, top,
-            "absent bottom-spacing key falls back to the mirror-top sentinel"
+            "the expanded default bottom spacing matches the top spacing"
         );
         // The interface pitch must not be the body pitch (line_width/density).
         let body_pitch = module.pitches_mm(0.2).unwrap().2;

@@ -163,7 +163,7 @@ pub struct SupportPlanner {
     /// Explicit band below a roof contact rendered as base interface.
     num_top_base_interface_layers: i32,
     /// Number of dense interface layers where branches land on the model.
-    /// `-1` mirrors the top interface count (OrcaSlicer convention).
+    /// Automatic values are expanded by the host before this guest sees config.
     support_interface_bottom_layers: i32,
     /// Line spacing for interface layer dense fill in mm.
     /// When true, contacts whose XY lies inside the object's projected
@@ -1705,7 +1705,7 @@ impl PrepassModule for SupportPlanner {
         let support_interface_bottom_layers = match config.get("support_interface_bottom_layers") {
             Some(ConfigValue::Int(n)) => *n as i32,
             Some(ConfigValue::Float(n)) => *n as i32,
-            _ => -1,
+            _ => 2,
         };
         let support_interface_top_layers = match config.get("support_interface_top_layers") {
             Some(ConfigValue::Int(n)) => *n as i32,
@@ -1892,8 +1892,8 @@ impl PrepassModule for SupportPlanner {
         // `support_interface_bottom_layers` is implemented as of packet 224: it
         // is read in `from_config` into `self.support_interface_bottom_layers`
         // and drives the `BottomInterface` band (canonical `floor_areas`) where
-        // branches land on the model. `-1` mirrors the top interface count,
-        // matching canonical's `number_of_support_interface_bottom_layers`.
+        // branches land on the model. Automatic values have already been
+        // expanded by the host before construction of this guest's ConfigView.
         //
         // This site previously emitted a code 1003 "not yet implemented"
         // warning. That diagnostic is retired because the feature now exists —
@@ -2197,8 +2197,7 @@ impl SupportPlanner {
         for candidate in support_analysis.candidates.iter().filter(|candidate| {
             candidate.object_id == obj.object_id
                 && candidate.blocked
-                && candidate_family(candidate, support_analysis).as_deref()
-                    == Some("tree")
+                && candidate_family(candidate, support_analysis).as_deref() == Some("tree")
         }) {
             declined_identities.insert((
                 obj.object_id.clone(),
@@ -2224,8 +2223,7 @@ impl SupportPlanner {
         for candidate in support_analysis.candidates.iter().filter(|candidate| {
             candidate.object_id == obj.object_id
                 && !candidate.blocked
-                && candidate_family(candidate, support_analysis).as_deref()
-                    == Some("tree")
+                && candidate_family(candidate, support_analysis).as_deref() == Some("tree")
                 && candidate
                     .geometry
                     .iter()
@@ -3202,13 +3200,7 @@ impl SupportPlanner {
             // branch footprint.
             let top_n = self.support_interface_top_layers.max(0) as u32;
             let base_n = self.num_top_base_interface_layers as usize;
-            // `-1` mirrors the top interface count, matching canonical's
-            // `number_of_support_interface_bottom_layers` fallback.
-            let bottom_n = if self.support_interface_bottom_layers < 0 {
-                top_n
-            } else {
-                self.support_interface_bottom_layers.max(0) as u32
-            };
+            let bottom_n = self.support_interface_bottom_layers.max(0) as u32;
             let node_roles: Vec<InterfaceRole> = active_nodes
                 .iter()
                 .map(|id| {
@@ -4096,10 +4088,9 @@ impl SupportPlanner {
                         }
                         let region_identity = (clone.object_id.clone(), clone.region_id.clone());
                         match region_slots.get(&region_identity) {
-                            Some(index) => merge_synthesized_region_row(
-                                &mut interpolated[*index],
-                                clone,
-                            ),
+                            Some(index) => {
+                                merge_synthesized_region_row(&mut interpolated[*index], clone)
+                            }
                             None => {
                                 region_slots.insert(region_identity, interpolated.len());
                                 interpolated.push(clone);
@@ -6663,7 +6654,7 @@ mod tests {
             interface_raft_layers: 0,
             support_interface_top_layers: 2,
             num_top_base_interface_layers: 0,
-            support_interface_bottom_layers: -1,
+            support_interface_bottom_layers: 2,
             support_on_build_plate_only: false,
             support_top_z_distance_mm: DEFAULT_TOP_Z_DISTANCE_MM,
             support_layer_height_mm: 0.0,

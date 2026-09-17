@@ -10,6 +10,7 @@ use slicer_ir::feedrate::{FeedrateConfig, SPEED_KEYS, SPEED_META};
 use slicer_ir::resolved_config::{
     HostConfigKey, HostKeyMeta, HostRuntimeKey, ResolvedConfig, HOST_RUNTIME_KEYS, SCOPE_PRINT,
 };
+use slicer_ir::ConfigValue;
 
 pub mod ingestion;
 
@@ -348,6 +349,286 @@ impl ConfigSchemaRegistry {
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
+}
+
+/// Machine- and tool-specific values used while expanding automatic settings.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ExpansionContext {
+    /// Nozzle diameter in millimetres, or zero when it has not been supplied.
+    pub nozzle_diameter_mm: f64,
+    /// Absolute base values keyed first by tool index, then by config key.
+    pub tool_bases: BTreeMap<u32, BTreeMap<String, f64>>,
+}
+
+/// Failure raised while expanding a relative or automatic configuration value.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExpansionError {
+    /// A relative value's declared base has no merged or contextual value.
+    UnknownBaseKey {
+        /// Key whose value requires expansion.
+        key: String,
+        /// Declared base key that could not be resolved.
+        base_key: String,
+    },
+    /// A sentinel automatic value has no corresponding source value.
+    MissingAutoBase {
+        /// Key whose sentinel value requires expansion.
+        key: String,
+        /// Automatic source key that is absent.
+        base_key: String,
+    },
+    /// A required base is zero, negative, or non-finite.
+    NonPositiveBase {
+        /// Key whose value requires expansion.
+        key: String,
+        /// Base key containing the invalid value.
+        base_key: String,
+        /// Invalid base value.
+        value: f64,
+    },
+}
+
+impl fmt::Display for ExpansionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnknownBaseKey { key, base_key } => {
+                write!(formatter, "unknown base key {base_key} required by {key}")
+            }
+            Self::MissingAutoBase { key, base_key } => {
+                write!(
+                    formatter,
+                    "automatic base key {base_key} required by {key} is missing"
+                )
+            }
+            Self::NonPositiveBase {
+                key,
+                base_key,
+                value,
+            } => write!(
+                formatter,
+                "base key {base_key} required by {key} must be positive and finite, got {value}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ExpansionError {}
+
+const BOTTOM_AUTO_BASES: [(&str, &str); 2] = [
+    (
+        "support_interface_bottom_layers",
+        "support_interface_top_layers",
+    ),
+    (
+        "support_bottom_interface_spacing",
+        "support_interface_spacing",
+    ),
+];
+
+struct ExpansionResolver<'a> {
+    registry: &'a ConfigSchemaRegistry,
+    source: BTreeMap<String, ConfigValue>,
+    context: &'a ExpansionContext,
+    tool_index: Option<u32>,
+    expanded: BTreeMap<String, ConfigValue>,
+    visiting: BTreeSet<String>,
+}
+
+impl ExpansionResolver<'_> {
+    fn expand_key(&mut self, key: &str) -> Result<Option<ConfigValue>, ExpansionError> {
+        if let Some(value) = self.expanded.get(key) {
+            return Ok(Some(value.clone()));
+        }
+        let Some(value) = self.source.get(key).cloned() else {
+            return Ok(None);
+        };
+
+        // Registry construction rejects base-key cycles. The guard also keeps
+        // this API total if a future registry source bypasses that validation.
+        if !self.visiting.insert(key.to_owned()) {
+            return Ok(Some(value));
+        }
+
+        let result = if key == "line_width" && is_plain_zero(&value) {
+            ConfigValue::Float(1.125 * self.required_base(key, "nozzle_diameter")?)
+        } else if key == "support_line_width" && is_plain_zero(&value) {
+            ConfigValue::Float(self.required_base(key, "nozzle_diameter")?)
+        } else if let Some((_, base_key)) = BOTTOM_AUTO_BASES
+            .iter()
+            .find(|(automatic_key, _)| *automatic_key == key && is_plain_minus_one(&value))
+        {
+            self.expand_key(base_key)?
+                .ok_or_else(|| ExpansionError::MissingAutoBase {
+                    key: key.to_owned(),
+                    base_key: (*base_key).to_owned(),
+                })?
+        } else if let Some((percent, base_key)) = percent_magnitude(&value).and_then(|percent| {
+            self.registry
+                .entry(key)
+                .and_then(|entry| entry.base_key.as_deref())
+                .map(|base_key| (percent, base_key.to_owned()))
+        }) {
+            let base = self.required_base(key, &base_key)?;
+            absolute_like(&value, percent / 100.0 * base)
+        } else {
+            value
+        };
+
+        self.visiting.remove(key);
+        self.expanded.insert(key.to_owned(), result.clone());
+        Ok(Some(result))
+    }
+
+    fn required_nozzle(&self, key: &str) -> Result<f64, ExpansionError> {
+        validate_base(key, "nozzle_diameter", self.context.nozzle_diameter_mm)
+    }
+
+    fn required_base(&mut self, key: &str, base_key: &str) -> Result<f64, ExpansionError> {
+        if let Some(value) = self
+            .tool_index
+            .and_then(|tool| self.context.tool_bases.get(&tool))
+            .and_then(|bases| bases.get(base_key))
+            .copied()
+        {
+            return validate_base(key, base_key, value);
+        }
+
+        if let Some(value) = self.expand_key(base_key)? {
+            if let Some(value) = absolute_number(&value) {
+                return validate_base(key, base_key, value);
+            }
+        } else if base_key == "nozzle_diameter" {
+            return self.required_nozzle(key);
+        }
+
+        Err(ExpansionError::UnknownBaseKey {
+            key: key.to_owned(),
+            base_key: base_key.to_owned(),
+        })
+    }
+}
+
+fn percent_magnitude(value: &ConfigValue) -> Option<f64> {
+    match value {
+        ConfigValue::Percent(percent) => Some(*percent),
+        ConfigValue::FloatOrPercent {
+            value,
+            is_percent: true,
+        } => Some(*value),
+        _ => None,
+    }
+}
+
+fn absolute_number(value: &ConfigValue) -> Option<f64> {
+    match value {
+        ConfigValue::Float(value) => Some(*value),
+        ConfigValue::Int(value) => Some(*value as f64),
+        ConfigValue::FloatOrPercent {
+            value,
+            is_percent: false,
+        } => Some(*value),
+        _ => None,
+    }
+}
+
+fn absolute_like(original: &ConfigValue, value: f64) -> ConfigValue {
+    match original {
+        ConfigValue::FloatOrPercent { .. } => ConfigValue::FloatOrPercent {
+            value,
+            is_percent: false,
+        },
+        _ => ConfigValue::Float(value),
+    }
+}
+
+fn is_plain_zero(value: &ConfigValue) -> bool {
+    matches!(value, ConfigValue::Float(value) if *value == 0.0)
+        || matches!(value, ConfigValue::Int(0))
+        || matches!(
+            value,
+            ConfigValue::FloatOrPercent {
+                value,
+                is_percent: false,
+            } if *value == 0.0
+        )
+}
+
+fn is_plain_minus_one(value: &ConfigValue) -> bool {
+    matches!(value, ConfigValue::Float(value) if *value == -1.0)
+        || matches!(value, ConfigValue::Int(-1))
+        || matches!(
+            value,
+            ConfigValue::FloatOrPercent {
+                value,
+                is_percent: false,
+            } if *value == -1.0
+        )
+}
+
+fn validate_base(key: &str, base_key: &str, value: f64) -> Result<f64, ExpansionError> {
+    if value.is_finite() && value > 0.0 {
+        Ok(value)
+    } else {
+        Err(ExpansionError::NonPositiveBase {
+            key: key.to_owned(),
+            base_key: base_key.to_owned(),
+            value,
+        })
+    }
+}
+
+/// Expand relative and sentinel automatic values in a fully merged config.
+///
+/// Expansion is transactional: all replacements are resolved against the
+/// original merged snapshot and committed only after every required base has
+/// been found and validated.
+pub fn expand_automatic_values(
+    registry: &ConfigSchemaRegistry,
+    config: &mut ResolvedConfig,
+    context: &ExpansionContext,
+    tool_index: Option<u32>,
+) -> Result<(), ExpansionError> {
+    let source = config.to_config_map().into_iter().collect();
+    let mut resolver = ExpansionResolver {
+        registry,
+        source,
+        context,
+        tool_index,
+        expanded: BTreeMap::new(),
+        visiting: BTreeSet::new(),
+    };
+
+    let keys: Vec<String> = resolver.source.keys().cloned().collect();
+    for key in keys {
+        resolver.expand_key(&key)?;
+    }
+
+    let mut candidate = config.clone();
+    for (key, expanded) in resolver.expanded {
+        if resolver.source.get(&key) == Some(&expanded) {
+            continue;
+        }
+        if let std::collections::btree_map::Entry::Occupied(mut entry) =
+            candidate.extensions.entry(key.clone())
+        {
+            entry.insert(expanded);
+            continue;
+        }
+        match candidate.apply_cli_key(&key, &expanded) {
+            Ok(true) if key == "support_line_width" => {
+                // The typed field retains float-or-percent provenance when it
+                // is flattened. Shadow it with the normalized literal that
+                // module ConfigViews must receive after expansion.
+                candidate.extensions.insert(key, expanded);
+            }
+            Ok(true) => {}
+            Ok(false) | Err(_) => {
+                candidate.extensions.insert(key, expanded);
+            }
+        }
+    }
+    *config = candidate;
+    Ok(())
 }
 
 #[derive(Debug, Clone)]

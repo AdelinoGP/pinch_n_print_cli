@@ -35,8 +35,8 @@ use slicer_sdk::prelude::*;
 /// Default number of dense interface layers at the top of a support column.
 const DEFAULT_INTERFACE_TOP_LAYERS: i32 = 2;
 /// Default number of dense interface layers at the bottom of a support column.
-/// `-1` means "mirror the top interface count" (OrcaSlicer convention).
-const DEFAULT_INTERFACE_BOTTOM_LAYERS: i32 = -1;
+/// Automatic values are expanded by the host before this guest sees config.
+const DEFAULT_INTERFACE_BOTTOM_LAYERS: i32 = 2;
 /// Default base fill pattern.
 const DEFAULT_BASE_PATTERN: &str = "rectilinear";
 /// Default XY clearance between support and object, matching OrcaSlicer's
@@ -89,7 +89,7 @@ pub struct SupportPlanner {
     /// Number of dense interface layers at the top of each support column.
     support_interface_top_layers: i32,
     /// Number of dense interface layers at the bottom of each support column.
-    /// `-1` mirrors the top interface count.
+    /// Automatic values are expanded by the host before this guest sees config.
     support_interface_bottom_layers: i32,
     /// Base fill pattern recorded on every body entry.
     support_base_pattern: String,
@@ -487,11 +487,7 @@ impl SupportPlanner {
         // obstacle, which is what canonical's per-layer `diff` does.
 
         let top_layers = self.support_interface_top_layers.max(0) as u32;
-        let bottom_layers = if self.support_interface_bottom_layers < 0 {
-            top_layers
-        } else {
-            self.support_interface_bottom_layers.max(0) as u32
-        };
+        let bottom_layers = self.support_interface_bottom_layers.max(0) as u32;
         // G-18: widen the traditional top band only for a raw positive bottom count;
         // see design.md §Plan Corrections item 4.
         let top_interface_layers =

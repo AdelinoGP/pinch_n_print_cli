@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: config-scope-resolution_04_automatic-value-expansion
 task_ids:
   - TASK-565

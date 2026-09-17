@@ -28,22 +28,6 @@ pub struct ResolvedFloatOrPercent {
     pub is_percent: bool,
 }
 
-/// Resolve `support_line_width` to millimetres. A percentage is of the nozzle
-/// diameter; the default `0` is auto and also resolves to the nozzle diameter
-/// (PnP has no flow model).
-pub fn resolve_support_line_width_mm(
-    value: ResolvedFloatOrPercent,
-    nozzle_diameter_mm: f32,
-) -> f32 {
-    if value.is_percent {
-        value.value as f32 / 100.0 * nozzle_diameter_mm
-    } else if value.value == 0.0 {
-        nozzle_diameter_mm
-    } else {
-        value.value as f32
-    }
-}
-
 /// Resolve `initial_layer_line_width` to millimetres. Percentages use the
 /// nozzle diameter as their base; an absolute value, including the zero auto
 /// sentinel, passes through unchanged for the role-width resolver to handle.

@@ -245,6 +245,7 @@ max-ir-schema     = "5.0.0"
 
   [config.schema.inner_wall_line_width]
   type        = "float_or_percent"
+  base_key    = "nozzle_diameter"
   default     = 0
   min         = 0.0
   max         = 2.0
@@ -262,6 +263,7 @@ max-ir-schema     = "5.0.0"
 
   [config.schema.outer_wall_line_width]
   type        = "float_or_percent"
+  base_key    = "nozzle_diameter"
   default     = 0
   min         = 0.0
   max         = 2.0

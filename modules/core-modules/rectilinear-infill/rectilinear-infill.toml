@@ -188,6 +188,7 @@ group   = "Infill"
 
 [config.schema.sparse_infill_line_width]
 type    = "float"
+base_key = "nozzle_diameter"
 default = 0.0
 min     = 0.0
 max     = 2.0
@@ -196,6 +197,7 @@ group   = "Infill"
 
 [config.schema.internal_solid_infill_line_width]
 type    = "float"
+base_key = "nozzle_diameter"
 default = 0.0
 min     = 0.0
 max     = 2.0
@@ -204,6 +206,7 @@ group   = "Infill"
 
 [config.schema.top_surface_line_width]
 type    = "float"
+base_key = "nozzle_diameter"
 default = 0.0
 min     = 0.0
 max     = 2.0

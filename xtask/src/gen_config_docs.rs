@@ -30,6 +30,9 @@ struct KeyRow {
     range: String,
     values: Option<String>,
     owner: String,
+    /// Typed absolute base for percent-authored values
+    /// (`RegistryEntry.base_key`), if the manifest declares one.
+    base_key: Option<String>,
 }
 
 const MOD_BEGIN: &str =
@@ -144,6 +147,10 @@ fn module_rows(ws: &Path) -> Result<Vec<KeyRow>, String> {
                     .collect::<Vec<_>>()
                     .join("|")
             });
+            let base_key = spec
+                .get("base_key")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
             rows.push(KeyRow {
                 key: key.clone(),
                 ty,
@@ -152,6 +159,7 @@ fn module_rows(ws: &Path) -> Result<Vec<KeyRow>, String> {
                 range,
                 values,
                 owner: stem.clone(),
+                base_key,
             });
         }
     }
@@ -212,6 +220,7 @@ fn host_table_rows(val: &toml::Value, table: &str, owner: &str) -> Result<Vec<Ke
             range,
             values: None,
             owner: entry_owner,
+            base_key: None,
         });
     }
     Ok(rows)
@@ -273,18 +282,23 @@ fn render_table(rows: &[KeyRow], with_owner: bool, owner_header: &str) -> String
     let mut s = String::new();
     if with_owner {
         s.push_str(&format!(
-            "| Key | Type | Default | Range | {owner_header} |\n"
+            "| Key | Type | Default | Range | Base key | {owner_header} |\n"
         ));
-        s.push_str("|---|---|---|---|---|\n");
+        s.push_str("|---|---|---|---|---|---|\n");
         for r in rows {
             let range = r
                 .values
                 .as_deref()
                 .map(|values| format!("{} (values: {values})", r.range))
                 .unwrap_or_else(|| r.range.clone());
+            let base = r
+                .base_key
+                .as_deref()
+                .map(|b| format!("base `{b}`"))
+                .unwrap_or_else(|| "—".to_string());
             s.push_str(&format!(
-                "| `{}` | {} | `{}` | {} | `{}` |\n",
-                r.key, r.ty, r.default, range, r.owner
+                "| `{}` | {} | `{}` | {} | {} | `{}` |\n",
+                r.key, r.ty, r.default, range, base, r.owner
             ));
         }
     } else {
@@ -481,6 +495,7 @@ mod tests {
             range: "—".into(),
             values: None,
             owner: "host".into(),
+            base_key: None,
         }];
         let refs: Vec<&KeyRow> = rows.iter().collect();
         let mut orca = BTreeMap::new();
@@ -489,5 +504,49 @@ mod tests {
         assert!(table.contains("top_shell_layers"));
         assert!(table.contains("`3`"));
         assert!(table.contains("`4.0`"));
+    }
+
+    #[test]
+    fn render_table_preserves_base_key() {
+        let rows = [
+            KeyRow {
+                key: "support_line_width".into(),
+                ty: "float_or_percent".into(),
+                default: "0.0".into(),
+                default_num: Some(0.0),
+                range: ">= 0.0".into(),
+                values: None,
+                owner: "tree-support-planner".into(),
+                base_key: Some("nozzle_diameter".into()),
+            },
+            KeyRow {
+                key: "layer_height".into(),
+                ty: "float".into(),
+                default: "0.2".into(),
+                default_num: Some(0.2),
+                range: "—".into(),
+                values: None,
+                owner: "host".into(),
+                base_key: None,
+            },
+        ];
+        let table = render_table(&rows, true, "Module");
+        assert!(table.contains("| Base key |"), "header must carry Base key");
+        let support_line = table
+            .lines()
+            .find(|l| l.contains("`support_line_width`"))
+            .expect("support row present");
+        assert!(
+            support_line.contains("base `nozzle_diameter`"),
+            "populated base_key must render, got: {support_line}"
+        );
+        let plain_line = table
+            .lines()
+            .find(|l| l.contains("`layer_height`"))
+            .expect("plain row present");
+        assert!(
+            plain_line.contains("| — |"),
+            "absent base_key must render as —, got: {plain_line}"
+        );
     }
 }

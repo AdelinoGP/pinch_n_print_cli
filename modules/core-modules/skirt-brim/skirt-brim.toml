@@ -66,7 +66,7 @@ group   = "Skirt/Brim"
 [config.schema.line_width]
 type    = "float"
 default = 0.4
-min     = 0.1
+min     = 0
 max     = 2.0
 display = "Line Width"
 group   = "Skirt/Brim"

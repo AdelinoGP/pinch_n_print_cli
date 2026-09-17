@@ -10,7 +10,7 @@ use slicer_core::algos::overhang_annotation::{
 use slicer_core::algos::paint_segmentation::modifier_volumes::slice_modifier_volumes;
 use slicer_core::polygon_ops::{difference_ex, intersection_ex, offset, union_ex, OffsetJoinType};
 use slicer_ir::mm_to_units;
-use slicer_ir::resolved_config::{resolve_support_line_width_mm, ResolvedFloatOrPercent};
+use slicer_ir::resolved_config::ResolvedFloatOrPercent;
 use slicer_ir::slice_ir::{
     ExPolygon, Point2, Polygon, SupportAnalysisIR, SupportCandidate, SupportCandidateSource,
     SupportGeometryKey, SupportType,
@@ -377,17 +377,11 @@ pub fn commit_support_analysis_builtin(
     blackboard.commit_support_analysis(Arc::new(ir))
 }
 
-/// Clearance base-family bodies keep from foreign territory: the resolved
-/// support line width, so the two families never share an extrusion path.
-/// Mirrors the resolution in `slicer_runtime::run` (percent of, or auto to,
-/// `nozzle_diameter`).
+/// Clearance base-family bodies keep from foreign territory: the already
+/// expanded support line width, so the two families never share an extrusion
+/// path.
 fn support_territory_clearance_mm(config: &ResolvedConfig) -> f32 {
-    let nozzle_diameter_mm = match config.extensions.get("nozzle_diameter") {
-        Some(ConfigValue::Float(value)) => *value as f32,
-        Some(ConfigValue::Int(value)) => *value as f32,
-        _ => 0.4,
-    };
-    resolve_support_line_width_mm(config.support_line_width, nozzle_diameter_mm)
+    config.support_line_width.value as f32
 }
 
 /// Fill `SupportAnalysisIR::support_territory` with the full cross-section of

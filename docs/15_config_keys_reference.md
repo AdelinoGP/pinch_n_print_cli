@@ -51,276 +51,276 @@ per-domain sections lower in this file add prose for these same keys; this table
 is the authoritative catalog of their defaults and ranges.
 
 <!-- BEGIN GENERATED: module-config-keys (cargo xtask gen-config-docs) -->
-| Key | Type | Default | Range | Module |
-|---|---|---|---|---|
-| `alternate_extra_wall` | bool | `false` | — | `arachne-perimeters` |
-| `bridge_flow` | float | `1.0` | >= 0.0 | `arachne-perimeters` |
-| `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `arachne-perimeters` |
-| `detect_overhang_wall` | bool | `true` | — | `arachne-perimeters` |
-| `detect_thin_wall` | bool | `false` | — | `arachne-perimeters` |
-| `extra_perimeters` | int | `0` | [0.0, 10.0] | `arachne-perimeters` |
-| `extra_perimeters_on_overhangs` | bool | `false` | — | `arachne-perimeters` |
-| `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `arachne-perimeters` |
-| `initial_layer_min_bead_width` | float | `3400` | >= 0.0 | `arachne-perimeters` |
-| `inner_wall_line_width` | float_or_percent | `0` | [0.0, 2.0] | `arachne-perimeters` |
-| `layer_height` | float | `0.2` | [0.01, 1.0] | `arachne-perimeters` |
-| `line_width` | float | `0` | [0.0, 2.0] | `arachne-perimeters` |
-| `max_bead_count` | int | `0` | >= 0.0 | `arachne-perimeters` |
-| `min_bead_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
-| `min_central_distance` | float | `0` | >= 0.0 | `arachne-perimeters` |
-| `min_feature_size` | percent | `"25%"` | >= 0.0 | `arachne-perimeters` |
-| `min_length_factor` | float | `0.5` | [0.0, 2.0] | `arachne-perimeters` |
-| `min_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
-| `min_width_top_surface` | float_or_percent | `"0.0"` | >= 0.0 | `arachne-perimeters` |
-| `nozzle_diameter` | float | `0.4` | >= 0.01 | `arachne-perimeters` |
-| `only_one_wall_first_layer` | bool | `false` | — | `arachne-perimeters` |
-| `only_one_wall_top` | bool | `false` | — | `arachne-perimeters` |
-| `outer_wall_line_width` | float_or_percent | `0` | [0.0, 2.0] | `arachne-perimeters` |
-| `outer_wall_offset` | float | `0` | >= 0.0 | `arachne-perimeters` |
-| `overhang_reverse` | bool | `false` | — | `arachne-perimeters` |
-| `overhang_reverse_internal_only` | bool | `false` | — | `arachne-perimeters` |
-| `overhang_reverse_threshold` | float_or_percent | `"0.0"` | [0.0, 10.0] | `arachne-perimeters` |
-| `precise_outer_wall` | bool | `false` | — | `arachne-perimeters` |
-| `seam_candidate_angle_threshold_deg` | float | `30.0` | [0.0, 180.0] | `arachne-perimeters` |
-| `sparse_infill_density` | float | `20.0` | [0.0, 100.0] | `arachne-perimeters` |
-| `spiral_vase` | bool | `false` | — | `arachne-perimeters` |
-| `support_raft_layers` | int | `0` | [0.0, 20.0] | `arachne-perimeters` |
-| `thick_bridges` | bool | `false` | — | `arachne-perimeters` |
-| `wall_count` | int | `3` | >= 1.0 | `arachne-perimeters` |
-| `wall_direction` | string | `"counter_clockwise"` | — | `arachne-perimeters` |
-| `wall_distribution_count` | int | `1` | >= 1.0 | `arachne-perimeters` |
-| `wall_maximum_deviation` | float | `0.005` | [0.0001, 1.0] | `arachne-perimeters` |
-| `wall_maximum_resolution` | float | `0.05` | [0.001, 10.0] | `arachne-perimeters` |
-| `wall_sequence` | string | `"InnerOuter"` | — | `arachne-perimeters` |
-| `wall_transition_angle` | float | `10.0` | [0.0, 180.0] | `arachne-perimeters` |
-| `wall_transition_filter_deviation` | float | `1000` | >= 0.0 | `arachne-perimeters` |
-| `wall_transition_length` | percent | `"100%"` | >= 0.0 | `arachne-perimeters` |
-| `alternate_extra_wall` | bool | `false` | — | `classic-perimeters` |
-| `bridge_flow` | float | `1.0` | >= 0.0 | `classic-perimeters` |
-| `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `classic-perimeters` |
-| `detect_overhang_wall` | bool | `true` | — | `classic-perimeters` |
-| `detect_thin_wall` | bool | `true` | — | `classic-perimeters` |
-| `extra_perimeters` | int | `0` | [0.0, 10.0] | `classic-perimeters` |
-| `extra_perimeters_on_overhangs` | bool | `false` | — | `classic-perimeters` |
-| `filter_out_gap_fill` | float | `0.5` | [0.0, 5.0] | `classic-perimeters` |
-| `gap_fill_medial_axis_on_painted` | bool | `false` | — | `classic-perimeters` |
-| `gap_infill_speed` | float | `30.0` | [1.0, 300.0] | `classic-perimeters` |
-| `infill_wall_overlap` | percent | `"15%"` | — | `classic-perimeters` |
-| `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `classic-perimeters` |
-| `inner_wall_line_width` | float_or_percent | `0` | [0.0, 2.0] | `classic-perimeters` |
-| `inner_wall_speed` | float | `45.0` | [1.0, 300.0] | `classic-perimeters` |
-| `layer_height` | float | `0.2` | [0.01, 2.0] | `classic-perimeters` |
-| `line_width` | float | `0` | [0.0, 2.0] | `classic-perimeters` |
-| `min_width_top_surface` | float_or_percent | `"0.0"` | >= 0.0 | `classic-perimeters` |
-| `narrow_loop_length_threshold_mm` | float | `10.0` | [0.0, 1000.0] | `classic-perimeters` |
-| `nozzle_diameter` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
-| `only_one_wall_first_layer` | bool | `false` | — | `classic-perimeters` |
-| `only_one_wall_top` | bool | `false` | — | `classic-perimeters` |
-| `outer_wall_line_width` | float_or_percent | `0` | [0.0, 2.0] | `classic-perimeters` |
-| `outer_wall_speed` | float | `30.0` | [1.0, 300.0] | `classic-perimeters` |
-| `overhang_reverse` | bool | `false` | — | `classic-perimeters` |
-| `overhang_reverse_internal_only` | bool | `false` | — | `classic-perimeters` |
-| `perimeter_arc_tolerance` | float | `0.0125` | [0.0, 1.0] | `classic-perimeters` |
-| `precise_outer_wall` | bool | `false` | — | `classic-perimeters` |
-| `seam_candidate_angle_threshold_deg` | float | `30.0` | [0.0, 180.0] | `classic-perimeters` |
-| `slice_has_paint` | bool | `false` | — | `classic-perimeters` |
-| `smaller_perimeter_line_width` | float | `0.25` | [0.05, 2.0] | `classic-perimeters` |
-| `smaller_perimeter_threshold_mm` | float | `0.8` | [0.0, 10.0] | `classic-perimeters` |
-| `sparse_infill_density` | float | `20.0` | [0.0, 100.0] | `classic-perimeters` |
-| `spiral_vase` | bool | `false` | — | `classic-perimeters` |
-| `support_raft_layers` | int | `0` | [0.0, 20.0] | `classic-perimeters` |
-| `thick_bridges` | bool | `false` | — | `classic-perimeters` |
-| `top_bottom_infill_wall_overlap` | percent | `"25%"` | — | `classic-perimeters` |
-| `wall_count` | int | `3` | [1.0, 10.0] | `classic-perimeters` |
-| `wall_sequence` | string | `"InnerOuter"` | — | `classic-perimeters` |
-| `apply_to_all` | bool | `false` | — | `fuzzy-skin` |
-| `point_distance` | float | `0.5` | [0.01, 5.0] | `fuzzy-skin` |
-| `thickness` | float | `0.3` | [0.0, 2.0] | `fuzzy-skin` |
-| `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `gyroid-infill` |
-| `infill_angle` | float | `45.0` | [0.0, 360.0] | `gyroid-infill` |
-| `infill_density` | float | `0.2` | [0.0, 1.0] | `gyroid-infill` |
-| `infill_speed` | float | `60.0` | [1.0, 300.0] | `gyroid-infill` |
-| `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `gyroid-infill` |
-| `internal_solid_infill_line_width` | float | `0.0` | [0.0, 2.0] | `gyroid-infill` |
-| `line_width` | float | `0` | [0.0, 2.0] | `gyroid-infill` |
-| `sparse_infill_line_width` | float | `0.0` | [0.0, 2.0] | `gyroid-infill` |
-| `top_surface_line_width` | float | `0.0` | [0.0, 2.0] | `gyroid-infill` |
-| `infill_anchor` | float_or_percent | `"400%"` | [0.0, 1000.0] | `infill-linker` |
-| `infill_anchor_max` | float_or_percent | `20.0` | [0.0, 1000.0] | `infill-linker` |
-| `infill_overlap` | float | `0.45` | [0.0, 1.0] | `infill-linker` |
-| `layer_height` | float | `0.2` | [0.01, 2.0] | `infill-linker` |
-| `line_width` | float | `0.4` | [0.1, 2.0] | `infill-linker` |
-| `first_layer_height` | float | `0.3` | [0.01, 1.0] | `layer-planner-default` |
-| `layer_height` | float | `0.2` | [0.01, 1.0] | `layer-planner-default` |
-| `support_raft_layers` | int | `0` | [0.0, 100.0] | `layer-planner-default` |
-| `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `lightning-infill` |
-| `infill_density` | float | `0.2` | [0.0, 1.0] | `lightning-infill` |
-| `infill_speed` | float | `60.0` | [1.0, 300.0] | `lightning-infill` |
-| `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `lightning-infill` |
-| `line_width` | float | `0` | [0.0, 2.0] | `lightning-infill` |
-| `sparse_infill_line_width` | float | `0.0` | [0.0, 2.0] | `lightning-infill` |
-| `bed_temperature_initial_layer_single` | int | `60` | [0.0, 120.0] | `machine-gcode-emit` |
-| `before_layer_change_gcode` | string | `""` | — | `machine-gcode-emit` |
-| `change_extrusion_role_gcode` | string | `""` | — | `machine-gcode-emit` |
-| `change_filament_gcode` | string | `""` | — | `machine-gcode-emit` |
-| `filament_change_extrusion_role_gcode` | string | `""` | — | `machine-gcode-emit` |
-| `filament_end_gcode` | string | `""` | — | `machine-gcode-emit` |
-| `filament_start_gcode` | string | `""` | — | `machine-gcode-emit` |
-| `layer_change_gcode` | string | `""` | — | `machine-gcode-emit` |
-| `machine_end_gcode` | string | `"PRINT_END"` | — | `machine-gcode-emit` |
-| `machine_start_gcode` | string | `"M190 S[bed_temperature_initial_layer_single]\nM…"` | — | `machine-gcode-emit` |
-| `nozzle_diameter` | float | `0.4` | [0.1, 2.0] | `machine-gcode-emit` |
-| `nozzle_temperature_initial_layer` | int | `215` | [0.0, 300.0] | `machine-gcode-emit` |
-| `process_change_extrusion_role_gcode` | string | `""` | — | `machine-gcode-emit` |
-| `time_lapse_gcode` | string | `""` | — | `machine-gcode-emit` |
-| `bridge_speed` | float | `25.0` | — | `overhang-classifier-default` |
-| `enable_overhang_speed` | bool | `true` | — | `overhang-classifier-default` |
-| `inner_wall_speed` | float | `60.0` | — | `overhang-classifier-default` |
-| `outer_wall_speed` | float | `60.0` | — | `overhang-classifier-default` |
-| `overhang_1_4_speed` | float | `0.0` | — | `overhang-classifier-default` |
-| `overhang_2_4_speed` | float | `0.0` | — | `overhang-classifier-default` |
-| `overhang_3_4_speed` | float | `0.0` | — | `overhang-classifier-default` |
-| `overhang_4_4_speed` | float | `0.0` | — | `overhang-classifier-default` |
-| `slowdown_for_curled_perimeters` | bool | `false` | — | `overhang-classifier-default` |
-| `thin_wall_speed` | float | `30.0` | — | `overhang-classifier-default` |
-| `close_fan_the_first_x_layers` | int | `1` | >= 0.0 | `part-cooling` |
-| `enable_overhang_bridge_fan` | bool | `true` | — | `part-cooling` |
-| `fan_max_speed` | int | `255` | [0.0, 255.0] | `part-cooling` |
-| `fan_min_speed` | int | `51` | [0.0, 255.0] | `part-cooling` |
-| `overhang_fan_speed` | int | `100` | [0.0, 100.0] | `part-cooling` |
-| `slow_down_for_layer_cooling` | bool | `true` | — | `part-cooling` |
-| `slow_down_layer_time` | float | `5.0` | >= 0.0 | `part-cooling` |
-| `slow_down_min_speed` | float | `10.0` | >= 0.0 | `part-cooling` |
-| `path_optimization_emit_layer_markers` | bool | `true` | — | `path-optimization-default` |
-| `retract_length` | float | `0.8` | — | `path-optimization-default` |
-| `retract_mode` | enum | `"gcode"` | — (values: gcode|firmware) | `path-optimization-default` |
-| `retract_speed` | float | `25.0` | — | `path-optimization-default` |
-| `travel_z_hop` | float | `0.0` | — | `path-optimization-default` |
-| `raft_contact_distance` | float | `0.1` | >= 0.0 | `raft-default` |
-| `raft_expansion` | float | `1.5` | >= 0.0 | `raft-default` |
-| `raft_first_layer_expansion` | float | `2.0` | >= 0.0 | `raft-default` |
-| `raft_line_spacing` | float | `0.5` | >= 0.000001 | `raft-default` |
-| `bridge_density` | float_or_percent | `"100%"` | [10.0, 120.0] | `rectilinear-infill` |
-| `bridge_flow` | float | `1.0` | >= 0.0 | `rectilinear-infill` |
-| `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
-| `bridge_speed` | float | `25.0` | [1.0, 300.0] | `rectilinear-infill` |
-| `dont_filter_internal_bridges` | bool | `false` | — | `rectilinear-infill` |
-| `enable_extra_bridge_layer` | bool | `false` | — | `rectilinear-infill` |
-| `infill_angle` | float | `45.0` | [0.0, 360.0] | `rectilinear-infill` |
-| `infill_density` | float | `0.2` | [0.0, 1.0] | `rectilinear-infill` |
-| `infill_speed` | float | `60.0` | [1.0, 300.0] | `rectilinear-infill` |
-| `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
-| `internal_bridge_angle` | float | `0.0` | [0.0, 180.0] | `rectilinear-infill` |
-| `internal_bridge_density` | float_or_percent | `"100%"` | [10.0, 125.0] | `rectilinear-infill` |
-| `internal_bridge_flow` | float | `1.0` | >= 0.0 | `rectilinear-infill` |
-| `internal_bridge_speed` | float_or_percent | `"150%"` | >= 1.0 | `rectilinear-infill` |
-| `internal_solid_infill_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
-| `internal_solid_infill_speed` | float | `60.0` | [1.0, 300.0] | `rectilinear-infill` |
-| `line_width` | float | `0` | [0.0, 2.0] | `rectilinear-infill` |
-| `sparse_infill_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
-| `sparse_infill_speed` | float | `60.0` | [1.0, 300.0] | `rectilinear-infill` |
-| `thick_bridges` | bool | `false` | — | `rectilinear-infill` |
-| `thick_internal_bridges` | bool | `true` | — | `rectilinear-infill` |
-| `top_surface_line_width` | float | `0.0` | [0.0, 2.0] | `rectilinear-infill` |
-| `top_surface_speed` | float | `60.0` | [1.0, 300.0] | `rectilinear-infill` |
-| `seam_mode` | enum | `"aligned"` | — (values: nearest|rear|random|aligned|aligned_back) | `seam-placer` |
-| `seam_mode` | enum | `"aligned"` | — (values: nearest|rear|random|aligned|aligned_back) | `seam-planner-default` |
-| `brim_width` | float | `8.0` | [0.0, 30.0] | `skirt-brim` |
-| `line_width` | float | `0.4` | [0.1, 2.0] | `skirt-brim` |
-| `skirt_brim_enabled` | bool | `true` | — | `skirt-brim` |
-| `skirt_distance` | float | `3.0` | [0.0, 20.0] | `skirt-brim` |
-| `skirt_height` | int | `1` | [1.0, 10.0] | `skirt-brim` |
-| `skirt_loops` | int | `6` | [0.0, 20.0] | `skirt-brim` |
-| `ironing_enabled` | bool | `false` | — | `support-surface-ironing` |
-| `ironing_flow_rate` | float | `100.0` | [1.0, 200.0] | `support-surface-ironing` |
-| `ironing_spacing` | float | `0.1` | [0.01, 1.0] | `support-surface-ironing` |
-| `ironing_speed` | float | `30.0` | [1.0, 300.0] | `support-surface-ironing` |
-| `line_width` | float | `0.4` | [0.1, 2.0] | `support-surface-ironing` |
-| `ironing_enabled` | bool | `false` | — | `top-surface-ironing` |
-| `ironing_flow` | float | `0.1` | [0.01, 1.0] | `top-surface-ironing` |
-| `ironing_pattern` | enum | `"rectilinear"` | — (values: rectilinear) | `top-surface-ironing` |
-| `ironing_spacing_mm` | float | `0.1` | [0.01, 1.0] | `top-surface-ironing` |
-| `ironing_speed` | float | `20.0` | [1.0, 300.0] | `top-surface-ironing` |
-| `enable_support` | bool | `true` | — | `traditional-support` |
-| `line_width` | float | `0.4` | [0.1, 2.0] | `traditional-support` |
-| `support_angle` | float | `60.0` | [0.0, 90.0] | `traditional-support` |
-| `support_base_pattern_spacing` | float | `2.5` | [0.0, 100.0] | `traditional-support` |
-| `support_bottom_interface_spacing` | float | `0.5` | [-1.0, 2.0] | `traditional-support` |
-| `support_interface_flow` | percent | `"100%"` | >= 0.0 | `traditional-support` |
-| `support_interface_spacing` | float | `0.4` | [0.0, 2.0] | `traditional-support` |
-| `support_speed` | float | `50.0` | [1.0, 300.0] | `traditional-support` |
-| `support_style` | enum | `"default"` | — (values: default|grid|snug|organic|tree_slim|tree_strong|tree_hybrid) | `traditional-support` |
-| `enable_support` | bool | `true` | — | `traditional-support-planner` |
-| `independent_support_layer_height` | bool | `true` | — | `traditional-support-planner` |
-| `line_width` | float | `0.4` | [0.1, 2.0] | `traditional-support-planner` |
-| `support_area_rasterizer` | enum | `"legacy_semantic"` | — (values: agg|legacy_semantic) | `traditional-support-planner` |
-| `support_base_pattern` | string | `"rectilinear"` | — (values: default|rectilinear|rectilinear-grid|honeycomb|lightning|hollow) | `traditional-support-planner` |
-| `support_base_pattern_spacing` | float | `2.5` | [0.1, 10.0] | `traditional-support-planner` |
-| `support_interface_bottom_layers` | int | `-1` | [-1.0, 10.0] | `traditional-support-planner` |
-| `support_interface_top_layers` | int | `2` | [0.0, 10.0] | `traditional-support-planner` |
-| `support_layer_height_mm` | float | `0.0` | [0.0, 1.0] | `traditional-support-planner` |
-| `support_object_xy_distance` | float | `0.35` | [0.0, 10.0] | `traditional-support-planner` |
-| `support_overhang_angle` | float | `30.0` | [0.0, 90.0] | `traditional-support-planner` |
-| `support_threshold_angle` | float | `30.0` | [0.0, 90.0] | `traditional-support-planner` |
-| `support_top_z_distance_mm` | float | `0.2` | [0.0, 5.0] | `traditional-support-planner` |
-| `enable_support` | bool | `true` | — | `tree-support` |
-| `line_width` | float | `0.4` | [0.1, 2.0] | `tree-support` |
-| `support_base_pattern_spacing` | float | `2.5` | [0.0, 100.0] | `tree-support` |
-| `support_bottom_interface_spacing` | float | `0.5` | [-1.0, 2.0] | `tree-support` |
-| `support_interface_flow` | percent | `"100%"` | >= 0.0 | `tree-support` |
-| `support_interface_spacing` | float | `0.4` | [0.0, 2.0] | `tree-support` |
-| `support_speed` | float | `50.0` | [1.0, 300.0] | `tree-support` |
-| `tree_support_wall_count` | int | `1` | [0.0, 10.0] | `tree-support` |
-| `base_raft_layers` | int | `1` | [0.0, 20.0] | `tree-support-planner` |
-| `enable_support` | bool | `true` | — | `tree-support-planner` |
-| `independent_support_layer_height` | bool | `true` | — | `tree-support-planner` |
-| `interface_raft_layers` | int | `0` | [0.0, 20.0] | `tree-support-planner` |
-| `line_width` | float | `0.4` | [0.0, 2.0] | `tree-support-planner` |
-| `max_bridge_length` | float | `10.0` | >= 0.0 | `tree-support-planner` |
-| `nozzle_diameter` | float | `0.4` | >= 0.0 | `tree-support-planner` |
-| `num_top_base_interface_layers` | int | `0` | [0.0, 10.0] | `tree-support-planner` |
-| `raft_first_layer_density` | float | `0.4` | [0.0, 1.0] | `tree-support-planner` |
-| `support_branch_merge_distance_mm` | float | `0.8` | >= 0.0 | `tree-support-planner` |
-| `support_interface_bottom_layers` | int | `-1` | [-1.0, 10.0] | `tree-support-planner` |
-| `support_interface_top_layers` | int | `2` | [0.0, 10.0] | `tree-support-planner` |
-| `support_layer_height_mm` | float | `0.0` | [0.0, 1.0] | `tree-support-planner` |
-| `support_line_width` | float_or_percent | `0.0` | [0.0, 1000.0] | `tree-support-planner` |
-| `support_max_branches_per_layer` | int | `1024` | [1.0, 10000.0] | `tree-support-planner` |
-| `support_object_xy_distance` | float | `0.35` | [0.0, 10.0] | `tree-support-planner` |
-| `support_on_build_plate_only` | bool | `false` | — | `tree-support-planner` |
-| `support_raft_layers` | int | `0` | [0.0, 20.0] | `tree-support-planner` |
-| `support_style` | enum | `"default"` | — (values: default|grid|snug|organic|tree_slim|tree_strong|tree_hybrid) | `tree-support-planner` |
-| `support_top_z_distance_mm` | float | `0.2` | [0.0, 5.0] | `tree-support-planner` |
-| `tree_support_branch_angle` | float | `45.0` | [0.0, 75.0] | `tree-support-planner` |
-| `tree_support_branch_diameter` | float | `5.0` | [0.5, 20.0] | `tree-support-planner` |
-| `tree_support_branch_diameter_angle` | float | `5.0` | [0.0, 90.0] | `tree-support-planner` |
-| `tree_support_branch_distance` | float | `1.0` | [0.1, 10.0] | `tree-support-planner` |
-| `tree_support_wall_count` | int | `1` | [0.0, 10.0] | `tree-support-planner` |
-| `bridge_density` | float_or_percent | `"100%"` | [10.0, 120.0] | `wave-overhangs` |
-| `bridge_flow` | float | `1.0` | >= 0.0 | `wave-overhangs` |
-| `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | `wave-overhangs` |
-| `bridge_speed` | float | `25.0` | [1.0, 300.0] | `wave-overhangs` |
-| `layer_height` | float | `0.2` | [0.01, 2.0] | `wave-overhangs` |
-| `nozzle_diameter` | float | `0.4` | [0.1, 2.0] | `wave-overhangs` |
-| `wall_count` | int | `3` | [1.0, 10.0] | `wave-overhangs` |
-| `wave_overhang_anchor_depth_mm` | float | `0.0` | [0.0, 20.0] | `wave-overhangs` |
-| `wave_overhang_flow_mm3_per_mm` | float | `0.15` | [0.02, 1.5] | `wave-overhangs` |
-| `wave_overhang_line_spacing` | float | `0.35` | [0.01, 5.0] | `wave-overhangs` |
-| `wave_overhang_max_iterations` | int | `0` | [0.0, 500.0] | `wave-overhangs` |
-| `wave_overhang_min_length` | float | `0.0` | [0.0, 100.0] | `wave-overhangs` |
-| `wave_overhang_min_new_area` | float | `0.01` | [0.0, 10.0] | `wave-overhangs` |
-| `wave_overhang_minimum_width` | float | `0.7` | [0.0, 10.0] | `wave-overhangs` |
-| `wave_overhang_pattern` | string | `"smart"` | — | `wave-overhangs` |
-| `wave_overhang_perimeter_overlap` | float | `0.1` | [0.0, 5.0] | `wave-overhangs` |
-| `wave_overhang_print_speed` | float | `2.0` | [0.1, 300.0] | `wave-overhangs` |
-| `bed_shape` | float-list | `—` | — | `wipe-tower` |
-| `line_width` | float | `0.4` | [0.1, 2.0] | `wipe-tower` |
-| `retract_length` | float | `2.0` | [0.0, 20.0] | `wipe-tower` |
-| `wipe_tower_enabled` | bool | `true` | — | `wipe-tower` |
-| `wipe_tower_purge_volume` | float | `10.0` | [1.0, 50.0] | `wipe-tower` |
-| `wipe_tower_width` | float | `60.0` | [1.0, 100.0] | `wipe-tower` |
-| `wipe_tower_x` | float | `10.0` | [0.0, 300.0] | `wipe-tower` |
-| `wipe_tower_y` | float | `10.0` | [0.0, 300.0] | `wipe-tower` |
+| Key | Type | Default | Range | Base key | Module |
+|---|---|---|---|---|---|
+| `alternate_extra_wall` | bool | `false` | — | — | `arachne-perimeters` |
+| `bridge_flow` | float | `1.0` | >= 0.0 | — | `arachne-perimeters` |
+| `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `arachne-perimeters` |
+| `detect_overhang_wall` | bool | `true` | — | — | `arachne-perimeters` |
+| `detect_thin_wall` | bool | `false` | — | — | `arachne-perimeters` |
+| `extra_perimeters` | int | `0` | [0.0, 10.0] | — | `arachne-perimeters` |
+| `extra_perimeters_on_overhangs` | bool | `false` | — | — | `arachne-perimeters` |
+| `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `arachne-perimeters` |
+| `initial_layer_min_bead_width` | float | `3400` | >= 0.0 | — | `arachne-perimeters` |
+| `inner_wall_line_width` | float_or_percent | `0` | [0.0, 2.0] | base `nozzle_diameter` | `arachne-perimeters` |
+| `layer_height` | float | `0.2` | [0.01, 1.0] | — | `arachne-perimeters` |
+| `line_width` | float | `0` | [0.0, 2.0] | — | `arachne-perimeters` |
+| `max_bead_count` | int | `0` | >= 0.0 | — | `arachne-perimeters` |
+| `min_bead_width` | float | `4000` | >= 0.0 | — | `arachne-perimeters` |
+| `min_central_distance` | float | `0` | >= 0.0 | — | `arachne-perimeters` |
+| `min_feature_size` | percent | `"25%"` | >= 0.0 | — | `arachne-perimeters` |
+| `min_length_factor` | float | `0.5` | [0.0, 2.0] | — | `arachne-perimeters` |
+| `min_width` | float | `4000` | >= 0.0 | — | `arachne-perimeters` |
+| `min_width_top_surface` | float_or_percent | `"0.0"` | >= 0.0 | — | `arachne-perimeters` |
+| `nozzle_diameter` | float | `0.4` | >= 0.01 | — | `arachne-perimeters` |
+| `only_one_wall_first_layer` | bool | `false` | — | — | `arachne-perimeters` |
+| `only_one_wall_top` | bool | `false` | — | — | `arachne-perimeters` |
+| `outer_wall_line_width` | float_or_percent | `0` | [0.0, 2.0] | base `nozzle_diameter` | `arachne-perimeters` |
+| `outer_wall_offset` | float | `0` | >= 0.0 | — | `arachne-perimeters` |
+| `overhang_reverse` | bool | `false` | — | — | `arachne-perimeters` |
+| `overhang_reverse_internal_only` | bool | `false` | — | — | `arachne-perimeters` |
+| `overhang_reverse_threshold` | float_or_percent | `"0.0"` | [0.0, 10.0] | — | `arachne-perimeters` |
+| `precise_outer_wall` | bool | `false` | — | — | `arachne-perimeters` |
+| `seam_candidate_angle_threshold_deg` | float | `30.0` | [0.0, 180.0] | — | `arachne-perimeters` |
+| `sparse_infill_density` | float | `20.0` | [0.0, 100.0] | — | `arachne-perimeters` |
+| `spiral_vase` | bool | `false` | — | — | `arachne-perimeters` |
+| `support_raft_layers` | int | `0` | [0.0, 20.0] | — | `arachne-perimeters` |
+| `thick_bridges` | bool | `false` | — | — | `arachne-perimeters` |
+| `wall_count` | int | `3` | >= 1.0 | — | `arachne-perimeters` |
+| `wall_direction` | string | `"counter_clockwise"` | — | — | `arachne-perimeters` |
+| `wall_distribution_count` | int | `1` | >= 1.0 | — | `arachne-perimeters` |
+| `wall_maximum_deviation` | float | `0.005` | [0.0001, 1.0] | — | `arachne-perimeters` |
+| `wall_maximum_resolution` | float | `0.05` | [0.001, 10.0] | — | `arachne-perimeters` |
+| `wall_sequence` | string | `"InnerOuter"` | — | — | `arachne-perimeters` |
+| `wall_transition_angle` | float | `10.0` | [0.0, 180.0] | — | `arachne-perimeters` |
+| `wall_transition_filter_deviation` | float | `1000` | >= 0.0 | — | `arachne-perimeters` |
+| `wall_transition_length` | percent | `"100%"` | >= 0.0 | — | `arachne-perimeters` |
+| `alternate_extra_wall` | bool | `false` | — | — | `classic-perimeters` |
+| `bridge_flow` | float | `1.0` | >= 0.0 | — | `classic-perimeters` |
+| `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `classic-perimeters` |
+| `detect_overhang_wall` | bool | `true` | — | — | `classic-perimeters` |
+| `detect_thin_wall` | bool | `true` | — | — | `classic-perimeters` |
+| `extra_perimeters` | int | `0` | [0.0, 10.0] | — | `classic-perimeters` |
+| `extra_perimeters_on_overhangs` | bool | `false` | — | — | `classic-perimeters` |
+| `filter_out_gap_fill` | float | `0.5` | [0.0, 5.0] | — | `classic-perimeters` |
+| `gap_fill_medial_axis_on_painted` | bool | `false` | — | — | `classic-perimeters` |
+| `gap_infill_speed` | float | `30.0` | [1.0, 300.0] | — | `classic-perimeters` |
+| `infill_wall_overlap` | percent | `"15%"` | — | — | `classic-perimeters` |
+| `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `classic-perimeters` |
+| `inner_wall_line_width` | float_or_percent | `0` | [0.0, 2.0] | base `nozzle_diameter` | `classic-perimeters` |
+| `inner_wall_speed` | float | `45.0` | [1.0, 300.0] | — | `classic-perimeters` |
+| `layer_height` | float | `0.2` | [0.01, 2.0] | — | `classic-perimeters` |
+| `line_width` | float | `0` | [0.0, 2.0] | — | `classic-perimeters` |
+| `min_width_top_surface` | float_or_percent | `"0.0"` | >= 0.0 | — | `classic-perimeters` |
+| `narrow_loop_length_threshold_mm` | float | `10.0` | [0.0, 1000.0] | — | `classic-perimeters` |
+| `nozzle_diameter` | float | `0.4` | [0.1, 2.0] | — | `classic-perimeters` |
+| `only_one_wall_first_layer` | bool | `false` | — | — | `classic-perimeters` |
+| `only_one_wall_top` | bool | `false` | — | — | `classic-perimeters` |
+| `outer_wall_line_width` | float_or_percent | `0` | [0.0, 2.0] | base `nozzle_diameter` | `classic-perimeters` |
+| `outer_wall_speed` | float | `30.0` | [1.0, 300.0] | — | `classic-perimeters` |
+| `overhang_reverse` | bool | `false` | — | — | `classic-perimeters` |
+| `overhang_reverse_internal_only` | bool | `false` | — | — | `classic-perimeters` |
+| `perimeter_arc_tolerance` | float | `0.0125` | [0.0, 1.0] | — | `classic-perimeters` |
+| `precise_outer_wall` | bool | `false` | — | — | `classic-perimeters` |
+| `seam_candidate_angle_threshold_deg` | float | `30.0` | [0.0, 180.0] | — | `classic-perimeters` |
+| `slice_has_paint` | bool | `false` | — | — | `classic-perimeters` |
+| `smaller_perimeter_line_width` | float | `0.25` | [0.05, 2.0] | — | `classic-perimeters` |
+| `smaller_perimeter_threshold_mm` | float | `0.8` | [0.0, 10.0] | — | `classic-perimeters` |
+| `sparse_infill_density` | float | `20.0` | [0.0, 100.0] | — | `classic-perimeters` |
+| `spiral_vase` | bool | `false` | — | — | `classic-perimeters` |
+| `support_raft_layers` | int | `0` | [0.0, 20.0] | — | `classic-perimeters` |
+| `thick_bridges` | bool | `false` | — | — | `classic-perimeters` |
+| `top_bottom_infill_wall_overlap` | percent | `"25%"` | — | — | `classic-perimeters` |
+| `wall_count` | int | `3` | [1.0, 10.0] | — | `classic-perimeters` |
+| `wall_sequence` | string | `"InnerOuter"` | — | — | `classic-perimeters` |
+| `apply_to_all` | bool | `false` | — | — | `fuzzy-skin` |
+| `point_distance` | float | `0.5` | [0.01, 5.0] | — | `fuzzy-skin` |
+| `thickness` | float | `0.3` | [0.0, 2.0] | — | `fuzzy-skin` |
+| `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `gyroid-infill` |
+| `infill_angle` | float | `45.0` | [0.0, 360.0] | — | `gyroid-infill` |
+| `infill_density` | float | `0.2` | [0.0, 1.0] | — | `gyroid-infill` |
+| `infill_speed` | float | `60.0` | [1.0, 300.0] | — | `gyroid-infill` |
+| `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `gyroid-infill` |
+| `internal_solid_infill_line_width` | float | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `gyroid-infill` |
+| `line_width` | float | `0` | [0.0, 2.0] | — | `gyroid-infill` |
+| `sparse_infill_line_width` | float | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `gyroid-infill` |
+| `top_surface_line_width` | float | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `gyroid-infill` |
+| `infill_anchor` | float_or_percent | `"400%"` | [0.0, 1000.0] | — | `infill-linker` |
+| `infill_anchor_max` | float_or_percent | `20.0` | [0.0, 1000.0] | — | `infill-linker` |
+| `infill_overlap` | float | `0.45` | [0.0, 1.0] | — | `infill-linker` |
+| `layer_height` | float | `0.2` | [0.01, 2.0] | — | `infill-linker` |
+| `line_width` | float | `0.4` | [0.0, 2.0] | — | `infill-linker` |
+| `first_layer_height` | float | `0.3` | [0.01, 1.0] | — | `layer-planner-default` |
+| `layer_height` | float | `0.2` | [0.01, 1.0] | — | `layer-planner-default` |
+| `support_raft_layers` | int | `0` | [0.0, 100.0] | — | `layer-planner-default` |
+| `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `lightning-infill` |
+| `infill_density` | float | `0.2` | [0.0, 1.0] | — | `lightning-infill` |
+| `infill_speed` | float | `60.0` | [1.0, 300.0] | — | `lightning-infill` |
+| `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `lightning-infill` |
+| `line_width` | float | `0` | [0.0, 2.0] | — | `lightning-infill` |
+| `sparse_infill_line_width` | float | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `lightning-infill` |
+| `bed_temperature_initial_layer_single` | int | `60` | [0.0, 120.0] | — | `machine-gcode-emit` |
+| `before_layer_change_gcode` | string | `""` | — | — | `machine-gcode-emit` |
+| `change_extrusion_role_gcode` | string | `""` | — | — | `machine-gcode-emit` |
+| `change_filament_gcode` | string | `""` | — | — | `machine-gcode-emit` |
+| `filament_change_extrusion_role_gcode` | string | `""` | — | — | `machine-gcode-emit` |
+| `filament_end_gcode` | string | `""` | — | — | `machine-gcode-emit` |
+| `filament_start_gcode` | string | `""` | — | — | `machine-gcode-emit` |
+| `layer_change_gcode` | string | `""` | — | — | `machine-gcode-emit` |
+| `machine_end_gcode` | string | `"PRINT_END"` | — | — | `machine-gcode-emit` |
+| `machine_start_gcode` | string | `"M190 S[bed_temperature_initial_layer_single]\nM…"` | — | — | `machine-gcode-emit` |
+| `nozzle_diameter` | float | `0.4` | [0.1, 2.0] | — | `machine-gcode-emit` |
+| `nozzle_temperature_initial_layer` | int | `215` | [0.0, 300.0] | — | `machine-gcode-emit` |
+| `process_change_extrusion_role_gcode` | string | `""` | — | — | `machine-gcode-emit` |
+| `time_lapse_gcode` | string | `""` | — | — | `machine-gcode-emit` |
+| `bridge_speed` | float | `25.0` | — | — | `overhang-classifier-default` |
+| `enable_overhang_speed` | bool | `true` | — | — | `overhang-classifier-default` |
+| `inner_wall_speed` | float | `60.0` | — | — | `overhang-classifier-default` |
+| `outer_wall_speed` | float | `60.0` | — | — | `overhang-classifier-default` |
+| `overhang_1_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `overhang-classifier-default` |
+| `overhang_2_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `overhang-classifier-default` |
+| `overhang_3_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `overhang-classifier-default` |
+| `overhang_4_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `overhang-classifier-default` |
+| `slowdown_for_curled_perimeters` | bool | `false` | — | — | `overhang-classifier-default` |
+| `thin_wall_speed` | float | `30.0` | — | — | `overhang-classifier-default` |
+| `close_fan_the_first_x_layers` | int | `1` | >= 0.0 | — | `part-cooling` |
+| `enable_overhang_bridge_fan` | bool | `true` | — | — | `part-cooling` |
+| `fan_max_speed` | int | `255` | [0.0, 255.0] | — | `part-cooling` |
+| `fan_min_speed` | int | `51` | [0.0, 255.0] | — | `part-cooling` |
+| `overhang_fan_speed` | int | `100` | [0.0, 100.0] | — | `part-cooling` |
+| `slow_down_for_layer_cooling` | bool | `true` | — | — | `part-cooling` |
+| `slow_down_layer_time` | float | `5.0` | >= 0.0 | — | `part-cooling` |
+| `slow_down_min_speed` | float | `10.0` | >= 0.0 | — | `part-cooling` |
+| `path_optimization_emit_layer_markers` | bool | `true` | — | — | `path-optimization-default` |
+| `retract_length` | float | `0.8` | — | — | `path-optimization-default` |
+| `retract_mode` | enum | `"gcode"` | — (values: gcode|firmware) | — | `path-optimization-default` |
+| `retract_speed` | float | `25.0` | — | — | `path-optimization-default` |
+| `travel_z_hop` | float | `0.0` | — | — | `path-optimization-default` |
+| `raft_contact_distance` | float | `0.1` | >= 0.0 | — | `raft-default` |
+| `raft_expansion` | float | `1.5` | >= 0.0 | — | `raft-default` |
+| `raft_first_layer_expansion` | float | `2.0` | >= 0.0 | — | `raft-default` |
+| `raft_line_spacing` | float | `0.5` | >= 0.000001 | — | `raft-default` |
+| `bridge_density` | float_or_percent | `"100%"` | [10.0, 120.0] | — | `rectilinear-infill` |
+| `bridge_flow` | float | `1.0` | >= 0.0 | — | `rectilinear-infill` |
+| `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `rectilinear-infill` |
+| `bridge_speed` | float | `25.0` | [1.0, 300.0] | — | `rectilinear-infill` |
+| `dont_filter_internal_bridges` | bool | `false` | — | — | `rectilinear-infill` |
+| `enable_extra_bridge_layer` | bool | `false` | — | — | `rectilinear-infill` |
+| `infill_angle` | float | `45.0` | [0.0, 360.0] | — | `rectilinear-infill` |
+| `infill_density` | float | `0.2` | [0.0, 1.0] | — | `rectilinear-infill` |
+| `infill_speed` | float | `60.0` | [1.0, 300.0] | — | `rectilinear-infill` |
+| `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `rectilinear-infill` |
+| `internal_bridge_angle` | float | `0.0` | [0.0, 180.0] | — | `rectilinear-infill` |
+| `internal_bridge_density` | float_or_percent | `"100%"` | [10.0, 125.0] | — | `rectilinear-infill` |
+| `internal_bridge_flow` | float | `1.0` | >= 0.0 | — | `rectilinear-infill` |
+| `internal_bridge_speed` | float_or_percent | `"150%"` | >= 1.0 | — | `rectilinear-infill` |
+| `internal_solid_infill_line_width` | float | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `rectilinear-infill` |
+| `internal_solid_infill_speed` | float | `60.0` | [1.0, 300.0] | — | `rectilinear-infill` |
+| `line_width` | float | `0` | [0.0, 2.0] | — | `rectilinear-infill` |
+| `sparse_infill_line_width` | float | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `rectilinear-infill` |
+| `sparse_infill_speed` | float | `60.0` | [1.0, 300.0] | — | `rectilinear-infill` |
+| `thick_bridges` | bool | `false` | — | — | `rectilinear-infill` |
+| `thick_internal_bridges` | bool | `true` | — | — | `rectilinear-infill` |
+| `top_surface_line_width` | float | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `rectilinear-infill` |
+| `top_surface_speed` | float | `60.0` | [1.0, 300.0] | — | `rectilinear-infill` |
+| `seam_mode` | enum | `"aligned"` | — (values: nearest|rear|random|aligned|aligned_back) | — | `seam-placer` |
+| `seam_mode` | enum | `"aligned"` | — (values: nearest|rear|random|aligned|aligned_back) | — | `seam-planner-default` |
+| `brim_width` | float | `8.0` | [0.0, 30.0] | — | `skirt-brim` |
+| `line_width` | float | `0.4` | [0.0, 2.0] | — | `skirt-brim` |
+| `skirt_brim_enabled` | bool | `true` | — | — | `skirt-brim` |
+| `skirt_distance` | float | `3.0` | [0.0, 20.0] | — | `skirt-brim` |
+| `skirt_height` | int | `1` | [1.0, 10.0] | — | `skirt-brim` |
+| `skirt_loops` | int | `6` | [0.0, 20.0] | — | `skirt-brim` |
+| `ironing_enabled` | bool | `false` | — | — | `support-surface-ironing` |
+| `ironing_flow_rate` | float | `100.0` | [1.0, 200.0] | — | `support-surface-ironing` |
+| `ironing_spacing` | float | `0.1` | [0.01, 1.0] | — | `support-surface-ironing` |
+| `ironing_speed` | float | `30.0` | [1.0, 300.0] | — | `support-surface-ironing` |
+| `line_width` | float | `0.4` | [0.0, 2.0] | — | `support-surface-ironing` |
+| `ironing_enabled` | bool | `false` | — | — | `top-surface-ironing` |
+| `ironing_flow` | float | `0.1` | [0.01, 1.0] | — | `top-surface-ironing` |
+| `ironing_pattern` | enum | `"rectilinear"` | — (values: rectilinear) | — | `top-surface-ironing` |
+| `ironing_spacing_mm` | float | `0.1` | [0.01, 1.0] | — | `top-surface-ironing` |
+| `ironing_speed` | float | `20.0` | [1.0, 300.0] | — | `top-surface-ironing` |
+| `enable_support` | bool | `true` | — | — | `traditional-support` |
+| `line_width` | float | `0.4` | [0.0, 2.0] | — | `traditional-support` |
+| `support_angle` | float | `60.0` | [0.0, 90.0] | — | `traditional-support` |
+| `support_base_pattern_spacing` | float | `2.5` | [0.0, 100.0] | — | `traditional-support` |
+| `support_bottom_interface_spacing` | float | `0.5` | [-1.0, 2.0] | — | `traditional-support` |
+| `support_interface_flow` | percent | `"100%"` | >= 0.0 | — | `traditional-support` |
+| `support_interface_spacing` | float | `0.4` | [0.0, 2.0] | — | `traditional-support` |
+| `support_speed` | float | `50.0` | [1.0, 300.0] | — | `traditional-support` |
+| `support_style` | enum | `"default"` | — (values: default|grid|snug|organic|tree_slim|tree_strong|tree_hybrid) | — | `traditional-support` |
+| `enable_support` | bool | `true` | — | — | `traditional-support-planner` |
+| `independent_support_layer_height` | bool | `true` | — | — | `traditional-support-planner` |
+| `line_width` | float | `0.4` | [0.0, 2.0] | — | `traditional-support-planner` |
+| `support_area_rasterizer` | enum | `"legacy_semantic"` | — (values: agg|legacy_semantic) | — | `traditional-support-planner` |
+| `support_base_pattern` | string | `"rectilinear"` | — (values: default|rectilinear|rectilinear-grid|honeycomb|lightning|hollow) | — | `traditional-support-planner` |
+| `support_base_pattern_spacing` | float | `2.5` | [0.1, 10.0] | — | `traditional-support-planner` |
+| `support_interface_bottom_layers` | int | `-1` | [-1.0, 10.0] | — | `traditional-support-planner` |
+| `support_interface_top_layers` | int | `2` | [0.0, 10.0] | — | `traditional-support-planner` |
+| `support_layer_height_mm` | float | `0.0` | [0.0, 1.0] | — | `traditional-support-planner` |
+| `support_object_xy_distance` | float | `0.35` | [0.0, 10.0] | — | `traditional-support-planner` |
+| `support_overhang_angle` | float | `30.0` | [0.0, 90.0] | — | `traditional-support-planner` |
+| `support_threshold_angle` | float | `30.0` | [0.0, 90.0] | — | `traditional-support-planner` |
+| `support_top_z_distance_mm` | float | `0.2` | [0.0, 5.0] | — | `traditional-support-planner` |
+| `enable_support` | bool | `true` | — | — | `tree-support` |
+| `line_width` | float | `0.4` | [0.0, 2.0] | — | `tree-support` |
+| `support_base_pattern_spacing` | float | `2.5` | [0.0, 100.0] | — | `tree-support` |
+| `support_bottom_interface_spacing` | float | `0.5` | [-1.0, 2.0] | — | `tree-support` |
+| `support_interface_flow` | percent | `"100%"` | >= 0.0 | — | `tree-support` |
+| `support_interface_spacing` | float | `0.4` | [0.0, 2.0] | — | `tree-support` |
+| `support_speed` | float | `50.0` | [1.0, 300.0] | — | `tree-support` |
+| `tree_support_wall_count` | int | `1` | [0.0, 10.0] | — | `tree-support` |
+| `base_raft_layers` | int | `1` | [0.0, 20.0] | — | `tree-support-planner` |
+| `enable_support` | bool | `true` | — | — | `tree-support-planner` |
+| `independent_support_layer_height` | bool | `true` | — | — | `tree-support-planner` |
+| `interface_raft_layers` | int | `0` | [0.0, 20.0] | — | `tree-support-planner` |
+| `line_width` | float | `0.4` | [0.0, 2.0] | — | `tree-support-planner` |
+| `max_bridge_length` | float | `10.0` | >= 0.0 | — | `tree-support-planner` |
+| `nozzle_diameter` | float | `0.4` | >= 0.0 | — | `tree-support-planner` |
+| `num_top_base_interface_layers` | int | `0` | [0.0, 10.0] | — | `tree-support-planner` |
+| `raft_first_layer_density` | float | `0.4` | [0.0, 1.0] | — | `tree-support-planner` |
+| `support_branch_merge_distance_mm` | float | `0.8` | >= 0.0 | — | `tree-support-planner` |
+| `support_interface_bottom_layers` | int | `-1` | [-1.0, 10.0] | — | `tree-support-planner` |
+| `support_interface_top_layers` | int | `2` | [0.0, 10.0] | — | `tree-support-planner` |
+| `support_layer_height_mm` | float | `0.0` | [0.0, 1.0] | — | `tree-support-planner` |
+| `support_line_width` | float_or_percent | `0.0` | [0.0, 1000.0] | base `nozzle_diameter` | `tree-support-planner` |
+| `support_max_branches_per_layer` | int | `1024` | [1.0, 10000.0] | — | `tree-support-planner` |
+| `support_object_xy_distance` | float | `0.35` | [0.0, 10.0] | — | `tree-support-planner` |
+| `support_on_build_plate_only` | bool | `false` | — | — | `tree-support-planner` |
+| `support_raft_layers` | int | `0` | [0.0, 20.0] | — | `tree-support-planner` |
+| `support_style` | enum | `"default"` | — (values: default|grid|snug|organic|tree_slim|tree_strong|tree_hybrid) | — | `tree-support-planner` |
+| `support_top_z_distance_mm` | float | `0.2` | [0.0, 5.0] | — | `tree-support-planner` |
+| `tree_support_branch_angle` | float | `45.0` | [0.0, 75.0] | — | `tree-support-planner` |
+| `tree_support_branch_diameter` | float | `5.0` | [0.5, 20.0] | — | `tree-support-planner` |
+| `tree_support_branch_diameter_angle` | float | `5.0` | [0.0, 90.0] | — | `tree-support-planner` |
+| `tree_support_branch_distance` | float | `1.0` | [0.1, 10.0] | — | `tree-support-planner` |
+| `tree_support_wall_count` | int | `1` | [0.0, 10.0] | — | `tree-support-planner` |
+| `bridge_density` | float_or_percent | `"100%"` | [10.0, 120.0] | — | `wave-overhangs` |
+| `bridge_flow` | float | `1.0` | >= 0.0 | — | `wave-overhangs` |
+| `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `wave-overhangs` |
+| `bridge_speed` | float | `25.0` | [1.0, 300.0] | — | `wave-overhangs` |
+| `layer_height` | float | `0.2` | [0.01, 2.0] | — | `wave-overhangs` |
+| `nozzle_diameter` | float | `0.4` | [0.1, 2.0] | — | `wave-overhangs` |
+| `wall_count` | int | `3` | [1.0, 10.0] | — | `wave-overhangs` |
+| `wave_overhang_anchor_depth_mm` | float | `0.0` | [0.0, 20.0] | — | `wave-overhangs` |
+| `wave_overhang_flow_mm3_per_mm` | float | `0.15` | [0.02, 1.5] | — | `wave-overhangs` |
+| `wave_overhang_line_spacing` | float | `0.35` | [0.01, 5.0] | — | `wave-overhangs` |
+| `wave_overhang_max_iterations` | int | `0` | [0.0, 500.0] | — | `wave-overhangs` |
+| `wave_overhang_min_length` | float | `0.0` | [0.0, 100.0] | — | `wave-overhangs` |
+| `wave_overhang_min_new_area` | float | `0.01` | [0.0, 10.0] | — | `wave-overhangs` |
+| `wave_overhang_minimum_width` | float | `0.7` | [0.0, 10.0] | — | `wave-overhangs` |
+| `wave_overhang_pattern` | string | `"smart"` | — | — | `wave-overhangs` |
+| `wave_overhang_perimeter_overlap` | float | `0.1` | [0.0, 5.0] | — | `wave-overhangs` |
+| `wave_overhang_print_speed` | float | `2.0` | [0.1, 300.0] | — | `wave-overhangs` |
+| `bed_shape` | float-list | `—` | — | — | `wipe-tower` |
+| `line_width` | float | `0.4` | [0.0, 2.0] | — | `wipe-tower` |
+| `retract_length` | float | `2.0` | [0.0, 20.0] | — | `wipe-tower` |
+| `wipe_tower_enabled` | bool | `true` | — | — | `wipe-tower` |
+| `wipe_tower_purge_volume` | float | `10.0` | [1.0, 50.0] | — | `wipe-tower` |
+| `wipe_tower_width` | float | `60.0` | [1.0, 100.0] | — | `wipe-tower` |
+| `wipe_tower_x` | float | `10.0` | [0.0, 300.0] | — | `wipe-tower` |
+| `wipe_tower_y` | float | `10.0` | [0.0, 300.0] | — | `wipe-tower` |
 <!-- END GENERATED: module-config-keys -->
 
 **Note — `dont_filter_internal_bridges`:** since packet 234a the value selects
@@ -382,62 +382,62 @@ same `gen-config-docs --check` code path. Per-role speeds feed
 in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 
 <!-- BEGIN GENERATED: host-speeds (cargo xtask gen-config-docs) -->
-| Key | Type | Default | Range | Source |
-|---|---|---|---|---|
-| `bottom_surface_speed` | float | `100.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `bridge_speed` | float | `25.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `filament_ironing_speed` | float | `0.0` | >= 0 (0 = use ironing_speed) | `feedrate.rs::FeedrateConfig` |
-| `gap_infill_speed` | float | `30.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `initial_layer_infill_speed` | float | `60.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `initial_layer_speed` | float | `30.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `initial_layer_travel_speed` | float | `120.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `inner_wall_speed` | float | `60.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `internal_bridge_speed` | float_or_percent | `37.5` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `ironing_speed` | float | `20.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `outer_wall_speed` | float | `60.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `overhang_1_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | `feedrate.rs::FeedrateConfig` |
-| `overhang_2_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | `feedrate.rs::FeedrateConfig` |
-| `overhang_3_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | `feedrate.rs::FeedrateConfig` |
-| `overhang_4_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | `feedrate.rs::FeedrateConfig` |
-| `prime_tower_speed` | float | `90.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `skirt_speed` | float | `50.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `sparse_infill_speed` | float | `100.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `support_interface_speed` | float | `80.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `support_speed` | float | `80.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `thin_wall_speed` | float | `30.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `top_surface_speed` | float | `100.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `travel_speed` | float | `120.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `travel_speed_z` | float | `0.0` | >= 0 (0 = use travel_speed for Z) | `feedrate.rs::FeedrateConfig` |
-| `wipe_speed` | float | `96.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `wipe_tower_speed` | float | `90.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `bottom_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:bottom-fill (packet 37)) | `resolved_config.rs::ResolvedConfig` |
-| `bottom_shell_layers` | int | `3` | [1, 10] | `resolved_config.rs::ResolvedConfig` |
-| `bridge_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:bridge-fill (packet 37)) | `resolved_config.rs::ResolvedConfig` |
-| `bridge_no_support` | bool | `false` | — | `resolved_config.rs::ResolvedConfig` |
-| `enforce_support_layers` | int | `0` | [0, 5000] | `resolved_config.rs::ResolvedConfig` |
-| `flat_bridge_closing_join` | string | `"miter"` | — (flat-bridge enclosure closing join: miter (OrcaSlicer parity, default) | square | round (legacy, bit-identical, slow)) | `resolved_config.rs::ResolvedConfig` |
-| `gcode_resolution` | float | `0.0125` | >= 0 (D-P tolerance for walls / brim) | `resolved_config.rs::ResolvedConfig` |
-| `gcode_xy_decimals` | int | `3` | [1, 6] (X / Y / Z token formatting) | `resolved_config.rs::ResolvedConfig` |
-| `infill_resolution` | float | `0.04` | >= 0 (D-P tolerance for infill / bridge / top / bottom) | `resolved_config.rs::ResolvedConfig` |
-| `min_segment_length` | float | `0.05` | >= 0 (short-segment dropper) | `resolved_config.rs::ResolvedConfig` |
-| `slice_closing_radius` | float | `0.049` | >= 0 (per-layer Clipper2 close) | `resolved_config.rs::ResolvedConfig` |
-| `sparse_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:sparse-fill (packet 37)) | `resolved_config.rs::ResolvedConfig` |
-| `support_bottom_z_distance` | float | `0.2` | >= 0 | `resolved_config.rs::ResolvedConfig` |
-| `support_critical_regions_only` | bool | `false` | — | `resolved_config.rs::ResolvedConfig` |
-| `support_expansion` | float | `0.0` | >= 0 | `resolved_config.rs::ResolvedConfig` |
-| `support_line_width` | float | `0.0` | >= 0 (float_or_percent; 0 = auto nozzle diameter) | `resolved_config.rs::ResolvedConfig` |
-| `support_object_first_layer_gap` | float | `0.2` | >= 0 | `resolved_config.rs::ResolvedConfig` |
-| `support_remove_small_overhang` | bool | `true` | — | `resolved_config.rs::ResolvedConfig` |
-| `support_resolution` | float | `0.0375` | >= 0 (D-P tolerance for support / interface) | `resolved_config.rs::ResolvedConfig` |
-| `support_sharp_tails` | bool | `true` | — | `resolved_config.rs::ResolvedConfig` |
-| `support_threshold_angle` | float | `30.0` | [0, 90] (overhang angle above which support is generated; canonical OrcaSlicer `support_threshold_angle` default (coInt 30). Legacy alias `support_overhang_angle` still resolves.) | `resolved_config.rs::ResolvedConfig` |
-| `support_threshold_overlap` | float | `50.0` | >= 0 (default is 50%) | `resolved_config.rs::ResolvedConfig` |
-| `support_top_z_distance` | float | `0.2` | >= 0 | `resolved_config.rs::ResolvedConfig` |
-| `top_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:top-fill (packet 37)) | `resolved_config.rs::ResolvedConfig` |
-| `top_shell_layers` | int | `3` | [1, 10] (deviates from OrcaSlicer's 4) | `resolved_config.rs::ResolvedConfig` |
-| `thumbnail_path` | string | `""` | — (absent/empty = no THUMBNAIL_BLOCK; CLI --thumbnail overrides (packet 55)) | `pipeline.rs::DEFAULT_THUMBNAIL_PATH` |
-| `use_relative_e_distances` | bool | `true` | — (false selects M82; serializer issues G92 E0 on mode change (packet 54)) | `run.rs::DEFAULT_USE_RELATIVE_E_DISTANCES` |
-| `wall_generator` | string | `"classic"` | — (values classic or arachne; selects the perimeter-generator claim holder (com.core.classic-perimeters vs com.core.arachne-perimeters) at module-load time, before ResolvedConfig exists (packet 112 Step 10)) | `slicer-scheduler::execution_plan::DEFAULT_WALL_GENERATOR` |
+| Key | Type | Default | Range | Base key | Source |
+|---|---|---|---|---|---|
+| `bottom_surface_speed` | float | `100.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `bridge_speed` | float | `25.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `filament_ironing_speed` | float | `0.0` | >= 0 (0 = use ironing_speed) | — | `feedrate.rs::FeedrateConfig` |
+| `gap_infill_speed` | float | `30.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `initial_layer_infill_speed` | float | `60.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `initial_layer_speed` | float | `30.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `initial_layer_travel_speed` | float | `120.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `inner_wall_speed` | float | `60.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `internal_bridge_speed` | float_or_percent | `37.5` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `ironing_speed` | float | `20.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `outer_wall_speed` | float | `60.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `overhang_1_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | — | `feedrate.rs::FeedrateConfig` |
+| `overhang_2_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | — | `feedrate.rs::FeedrateConfig` |
+| `overhang_3_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | — | `feedrate.rs::FeedrateConfig` |
+| `overhang_4_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | — | `feedrate.rs::FeedrateConfig` |
+| `prime_tower_speed` | float | `90.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `skirt_speed` | float | `50.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `sparse_infill_speed` | float | `100.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `support_interface_speed` | float | `80.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `support_speed` | float | `80.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `thin_wall_speed` | float | `30.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `top_surface_speed` | float | `100.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `travel_speed` | float | `120.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `travel_speed_z` | float | `0.0` | >= 0 (0 = use travel_speed for Z) | — | `feedrate.rs::FeedrateConfig` |
+| `wipe_speed` | float | `96.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `wipe_tower_speed` | float | `90.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `bottom_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:bottom-fill (packet 37)) | — | `resolved_config.rs::ResolvedConfig` |
+| `bottom_shell_layers` | int | `3` | [1, 10] | — | `resolved_config.rs::ResolvedConfig` |
+| `bridge_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:bridge-fill (packet 37)) | — | `resolved_config.rs::ResolvedConfig` |
+| `bridge_no_support` | bool | `false` | — | — | `resolved_config.rs::ResolvedConfig` |
+| `enforce_support_layers` | int | `0` | [0, 5000] | — | `resolved_config.rs::ResolvedConfig` |
+| `flat_bridge_closing_join` | string | `"miter"` | — (flat-bridge enclosure closing join: miter (OrcaSlicer parity, default) | square | round (legacy, bit-identical, slow)) | — | `resolved_config.rs::ResolvedConfig` |
+| `gcode_resolution` | float | `0.0125` | >= 0 (D-P tolerance for walls / brim) | — | `resolved_config.rs::ResolvedConfig` |
+| `gcode_xy_decimals` | int | `3` | [1, 6] (X / Y / Z token formatting) | — | `resolved_config.rs::ResolvedConfig` |
+| `infill_resolution` | float | `0.04` | >= 0 (D-P tolerance for infill / bridge / top / bottom) | — | `resolved_config.rs::ResolvedConfig` |
+| `min_segment_length` | float | `0.05` | >= 0 (short-segment dropper) | — | `resolved_config.rs::ResolvedConfig` |
+| `slice_closing_radius` | float | `0.049` | >= 0 (per-layer Clipper2 close) | — | `resolved_config.rs::ResolvedConfig` |
+| `sparse_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:sparse-fill (packet 37)) | — | `resolved_config.rs::ResolvedConfig` |
+| `support_bottom_z_distance` | float | `0.2` | >= 0 | — | `resolved_config.rs::ResolvedConfig` |
+| `support_critical_regions_only` | bool | `false` | — | — | `resolved_config.rs::ResolvedConfig` |
+| `support_expansion` | float | `0.0` | >= 0 | — | `resolved_config.rs::ResolvedConfig` |
+| `support_line_width` | float | `0.0` | >= 0 (float_or_percent; 0 = auto nozzle diameter) | — | `resolved_config.rs::ResolvedConfig` |
+| `support_object_first_layer_gap` | float | `0.2` | >= 0 | — | `resolved_config.rs::ResolvedConfig` |
+| `support_remove_small_overhang` | bool | `true` | — | — | `resolved_config.rs::ResolvedConfig` |
+| `support_resolution` | float | `0.0375` | >= 0 (D-P tolerance for support / interface) | — | `resolved_config.rs::ResolvedConfig` |
+| `support_sharp_tails` | bool | `true` | — | — | `resolved_config.rs::ResolvedConfig` |
+| `support_threshold_angle` | float | `30.0` | [0, 90] (overhang angle above which support is generated; canonical OrcaSlicer `support_threshold_angle` default (coInt 30). Legacy alias `support_overhang_angle` still resolves.) | — | `resolved_config.rs::ResolvedConfig` |
+| `support_threshold_overlap` | float | `50.0` | >= 0 (default is 50%) | — | `resolved_config.rs::ResolvedConfig` |
+| `support_top_z_distance` | float | `0.2` | >= 0 | — | `resolved_config.rs::ResolvedConfig` |
+| `top_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:top-fill (packet 37)) | — | `resolved_config.rs::ResolvedConfig` |
+| `top_shell_layers` | int | `3` | [1, 10] (deviates from OrcaSlicer's 4) | — | `resolved_config.rs::ResolvedConfig` |
+| `thumbnail_path` | string | `""` | — (absent/empty = no THUMBNAIL_BLOCK; CLI --thumbnail overrides (packet 55)) | — | `pipeline.rs::DEFAULT_THUMBNAIL_PATH` |
+| `use_relative_e_distances` | bool | `true` | — (false selects M82; serializer issues G92 E0 on mode change (packet 54)) | — | `run.rs::DEFAULT_USE_RELATIVE_E_DISTANCES` |
+| `wall_generator` | string | `"classic"` | — (values classic or arachne; selects the perimeter-generator claim holder (com.core.classic-perimeters vs com.core.arachne-perimeters) at module-load time, before ResolvedConfig exists (packet 112 Step 10)) | — | `slicer-scheduler::execution_plan::DEFAULT_WALL_GENERATOR` |
 <!-- END GENERATED: host-speeds -->
 
 `filament_ironing_speed > 0.0` overrides `ironing_speed` for the `Ironing` role.

@@ -28,6 +28,7 @@ fn make_config(
         .float("support_angle", angle)
         .float("support_speed", speed)
         .float("support_line_width", line_width)
+        .float("support_bottom_interface_spacing", 0.4)
         .build()
 }
 
@@ -142,6 +143,7 @@ fn interface_paths(flow: f64) -> Vec<(slicer_ir::ExtrusionPath3D, bool)> {
         .float("support_speed", 50.0)
         .float("support_line_width", 0.4)
         .float("support_interface_flow", flow)
+        .float("support_bottom_interface_spacing", 0.4)
         .build();
     let module = TreeSupport::from_config(&config).unwrap();
     let region = make_square_region(10.0, 0.3);
@@ -370,6 +372,7 @@ fn zero_base_and_interface_spacing_clamp_to_solid_pitch() {
         .bool("enable_support", true)
         .float("support_base_pattern_spacing", 0.0)
         .float("support_interface_spacing", 0.0)
+        .float("support_bottom_interface_spacing", 0.0)
         .float("support_speed", 50.0)
         .float("support_line_width", 0.4)
         .build();
@@ -446,6 +449,7 @@ fn tree_support_wall_count() {
             .float("support_speed", 50.0)
             .float("line_width", 0.4)
             .int("tree_support_wall_count", wall_count)
+            .float("support_bottom_interface_spacing", 0.4)
             .build();
         let module = TreeSupport::from_config(&config).unwrap();
         let region = make_square_region(10.0, 0.3);
@@ -479,6 +483,7 @@ fn extra_wall_count_printed_from_skeleton() {
         .float("support_speed", 50.0)
         .float("support_line_width", 0.4)
         .int("tree_support_wall_count", 1)
+        .float("support_bottom_interface_spacing", 0.4)
         .build();
     let module = TreeSupport::from_config(&config).unwrap();
     // exhaustive: skeleton wall-count fixture; SupportPlanEntry has no Default impl
@@ -600,6 +605,7 @@ fn tree_bodies_render_hollow_concentric_walls() {
         .float("support_speed", 50.0)
         .float("support_line_width", 0.4)
         .int("tree_support_wall_count", 2)
+        .float("support_bottom_interface_spacing", 0.4)
         .build();
     let module = TreeSupport::from_config(&config).unwrap();
     let mut output = SupportOutputBuilder::new();
@@ -628,6 +634,7 @@ fn body_fill_alternates_direction_across_layers() {
         .float("support_base_pattern_spacing", 2.5)
         .float("support_speed", 50.0)
         .float("support_line_width", 0.4)
+        .float("support_bottom_interface_spacing", 0.4)
         .build();
     let module = TreeSupport::from_config(&config).unwrap();
     let mut horizontal = SupportOutputBuilder::new();

@@ -9,8 +9,10 @@ use std::path::PathBuf;
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
 use std::time::Instant;
 
-use slicer_config::{IngestionWarning, RegistryWarning, ScopedConfig};
-use slicer_ir::resolved_config::resolve_support_line_width_mm;
+use slicer_config::{
+    assemble_registry, expand_automatic_values, AssemblyOutcome, ExpansionContext, HostChannels,
+    IngestionWarning, ModuleDeclaration, RegistryWarning, ScopedConfig,
+};
 use slicer_ir::{ConfigKey, ConfigValue, MeshIR};
 
 /// Parse Orca-style 1-indexed support filament selections into the runtime's
@@ -64,9 +66,10 @@ use crate::instrumentation::CompositeInstrumentation;
 use crate::layer_executor::LayerProgressSink;
 use crate::module_search_path::assemble_search_roots;
 use crate::pipeline::{
-    run_pipeline_with_instrumentation, run_pipeline_with_raw_config, PipelineConfig,
-    PipelineStageRunners,
+    run_pipeline_with_instrumentation_authority, run_pipeline_with_raw_config_authority,
+    PipelineConfig, PipelineStageRunners,
 };
+use crate::prepass::ConfigExpansionAuthority;
 use crate::profiling_report::{ProfileAggregator, ProfileSummary};
 use crate::progress_events::{
     JsonLinesEmitter, NullEmitter, ProgressError, ProgressEvent, ProgressEventEmitter,
@@ -123,6 +126,116 @@ fn typed_module_config_source(
         "module/prepass config transport must not contain raw scope prefixes"
     );
     compatibility
+}
+
+fn absolute_config_number(value: &ConfigValue) -> Option<f64> {
+    match value {
+        ConfigValue::Float(value) => Some(*value),
+        ConfigValue::Int(value) => Some(*value as f64),
+        ConfigValue::FloatOrPercent {
+            value,
+            is_percent: false,
+        } => Some(*value),
+        _ => None,
+    }
+}
+
+fn build_expansion_context(
+    global: &slicer_ir::ResolvedConfig,
+    per_tool: &std::collections::BTreeMap<u32, slicer_ir::ResolvedConfig>,
+) -> Result<ExpansionContext, SliceRunError> {
+    let global_values = global.to_config_map();
+    let nozzle_diameter_mm = global_values
+        .get("nozzle_diameter")
+        .and_then(absolute_config_number)
+        .ok_or_else(|| {
+            SliceRunError(
+                "automatic value expansion failed: unknown base key nozzle_diameter required by line_width"
+                    .to_string(),
+            )
+        })?;
+    if !nozzle_diameter_mm.is_finite() || nozzle_diameter_mm <= 0.0 {
+        return Err(SliceRunError(format!(
+            "automatic value expansion failed: base key nozzle_diameter required by line_width must be positive and finite, got {nozzle_diameter_mm}"
+        )));
+    }
+
+    let tool_bases = per_tool
+        .iter()
+        .map(|(&tool_index, config)| {
+            let bases = config
+                .to_config_map()
+                .into_iter()
+                .filter_map(|(key, value)| absolute_config_number(&value).map(|value| (key, value)))
+                .collect();
+            (tool_index, bases)
+        })
+        .collect();
+
+    Ok(ExpansionContext {
+        nozzle_diameter_mm,
+        tool_bases,
+    })
+}
+
+fn expand_config(
+    registry: &slicer_config::ConfigSchemaRegistry,
+    config: &mut slicer_ir::ResolvedConfig,
+    context: &ExpansionContext,
+    tool_index: Option<u32>,
+    scope: &str,
+) -> Result<(), SliceRunError> {
+    expand_automatic_values(registry, config, context, tool_index).map_err(|error| {
+        SliceRunError(format!(
+            "automatic value expansion failed for {scope}: {error}"
+        ))
+    })
+}
+
+/// Expand every already-merged scope map in place: the global default, each
+/// per-object map, and each per-tool map with its tool index so
+/// `ExpansionContext.tool_bases` selects the matching absolute base.
+/// Runs after scope merge and before plan binding, feedrate construction, or
+/// emitter use on every production entry point; the first failure aborts
+/// before any consumer binds a map.
+fn expand_scope_maps(
+    registry: &slicer_config::ConfigSchemaRegistry,
+    default_config: &mut slicer_ir::ResolvedConfig,
+    object_configs: &mut std::collections::BTreeMap<String, slicer_ir::ResolvedConfig>,
+    tool_configs: &mut std::collections::BTreeMap<u32, slicer_ir::ResolvedConfig>,
+    context: &ExpansionContext,
+) -> Result<(), SliceRunError> {
+    expand_config(registry, default_config, context, None, "global scope")?;
+    for (object_id, config) in object_configs.iter_mut() {
+        expand_config(
+            registry,
+            config,
+            context,
+            None,
+            &format!("object {object_id}"),
+        )?;
+    }
+    for (&tool_index, config) in tool_configs.iter_mut() {
+        expand_config(
+            registry,
+            config,
+            context,
+            Some(tool_index),
+            &format!("tool {tool_index}"),
+        )?;
+    }
+    Ok(())
+}
+
+fn overlay_expanded_global(
+    source: &std::collections::HashMap<ConfigKey, ConfigValue>,
+    expanded_global: &slicer_ir::ResolvedConfig,
+) -> std::collections::HashMap<ConfigKey, ConfigValue> {
+    let mut overlaid = source.clone();
+    for (key, value) in expanded_global.to_config_map() {
+        overlaid.insert(key, value);
+    }
+    overlaid
 }
 
 fn append_config_startup_diagnostics(
@@ -387,10 +500,16 @@ fn run_pipeline_fork(
     channel: &ProgressChannel,
     config: PipelineConfig,
     config_source: &std::collections::HashMap<String, ConfigValue>,
+    registry: &slicer_config::ConfigSchemaRegistry,
+    expansion_context: &ExpansionContext,
     profile: Option<&Arc<ProfileAggregator>>,
     #[cfg(feature = "report")] dag_snapshot: Option<crate::report::ReportDagSnapshot>,
 ) -> Result<crate::pipeline::PipelineOutput, SliceRunError> {
     let sink_arc = Arc::clone(&channel.sink);
+    let expansion_authority = ConfigExpansionAuthority {
+        registry,
+        context: expansion_context,
+    };
 
     // Profiling needs the adapter even under `--no-progress-events`: it is the
     // only thing that sees every module bracket. Nothing reaches stderr in that
@@ -444,18 +563,20 @@ fn run_pipeline_fork(
                     report_collector.as_ref()
                         as &dyn crate::instrumentation::PipelineInstrumentation,
                 );
-                run_pipeline_with_instrumentation(
+                run_pipeline_with_instrumentation_authority(
                     config,
                     config_source,
                     sink_arc.as_ref(),
                     &composite,
+                    expansion_authority,
                 )
             } else {
-                run_pipeline_with_instrumentation(
+                run_pipeline_with_instrumentation_authority(
                     config,
                     config_source,
                     sink_arc.as_ref(),
                     report_collector.as_ref(),
+                    expansion_authority,
                 )
             };
             report_alloc::disable();
@@ -471,10 +592,19 @@ fn run_pipeline_fork(
                     .to_string(),
             ));
         }
-        (None, Some(progress_pi)) => {
-            run_pipeline_with_instrumentation(config, config_source, sink_arc.as_ref(), progress_pi)
-        }
-        (None, None) => run_pipeline_with_raw_config(config, config_source, sink_arc.as_ref()),
+        (None, Some(progress_pi)) => run_pipeline_with_instrumentation_authority(
+            config,
+            config_source,
+            sink_arc.as_ref(),
+            progress_pi,
+            expansion_authority,
+        ),
+        (None, None) => run_pipeline_with_raw_config_authority(
+            config,
+            config_source,
+            sink_arc.as_ref(),
+            expansion_authority,
+        ),
     };
 
     result.map_err(|e| {
@@ -726,12 +856,31 @@ pub fn run_slice_with_collector(
             search_roots
         ))
     })?;
-    let registry_warnings = manifest_first.registry_warnings;
+    let loader_registry_warnings = manifest_first.registry_warnings;
     let ingestion_warnings = manifest_first.ingestion.warnings;
     let scoped_config = manifest_first.ingestion.scoped;
     let typed_global_config = typed_global_config(&scoped_config);
     let module_config_source = typed_module_config_source(&config_source, &typed_global_config);
     let mut loaded = manifest_first.live;
+    let module_declarations: Vec<ModuleDeclaration> = loaded
+        .bindings
+        .iter()
+        .map(|binding| ModuleDeclaration {
+            module_id: binding.module.id().to_owned(),
+            schema: binding.module.config_schema().clone(),
+            claim_exclusive_group: None,
+        })
+        .collect();
+    let AssemblyOutcome {
+        registry,
+        warnings: mut registry_warnings,
+    } = assemble_registry(&module_declarations, &HostChannels::from_live())
+        .map_err(|e| SliceRunError(format!("failed to assemble config registry: {e}")))?;
+    for warning in loader_registry_warnings {
+        if !registry_warnings.contains(&warning) {
+            registry_warnings.push(warning);
+        }
+    }
     append_config_startup_diagnostics(
         &mut loaded.diagnostics,
         &registry_warnings,
@@ -906,11 +1055,11 @@ pub fn run_slice_with_collector(
 
     let config_bounds = ConfigBoundsIndex::from_modules(loaded.bindings.iter().map(|b| &b.module));
 
-    let default_resolved_config = resolve_global_config_scoped(&scoped_config, &config_bounds)
+    let mut default_resolved_config = resolve_global_config_scoped(&scoped_config, &config_bounds)
         .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
 
     let object_ids: Vec<&str> = mesh_ir.objects.iter().map(|o| o.id.as_str()).collect();
-    let resolved_configs_map = resolve_per_object_configs_scoped(
+    let mut resolved_configs_map = resolve_per_object_configs_scoped(
         &default_resolved_config,
         &scoped_config,
         &object_ids,
@@ -918,15 +1067,28 @@ pub fn run_slice_with_collector(
     )
     .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
 
-    validate_support_layer_heights(&resolved_configs_map)
-        .map_err(|e| SliceRunError(format!("{e}")))?;
-
     // Per-tool/extruder config overlays (`tool_config:<idx>:<key>`). Applied at
     // emit time (the entity's tool is only known there). Empty unless the user
     // sets `tool_config:` keys, so default behaviour is unchanged.
-    let per_tool_configs_map =
+    let mut per_tool_configs_map =
         resolve_per_tool_configs_scoped(&default_resolved_config, &scoped_config, &config_bounds)
             .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
+
+    let expansion_context =
+        build_expansion_context(&default_resolved_config, &per_tool_configs_map)?;
+    expand_scope_maps(
+        &registry,
+        &mut default_resolved_config,
+        &mut resolved_configs_map,
+        &mut per_tool_configs_map,
+        &expansion_context,
+    )?;
+
+    validate_support_layer_heights(&resolved_configs_map)
+        .map_err(|e| SliceRunError(format!("{e}")))?;
+
+    let expanded_global_source =
+        overlay_expanded_global(&module_config_source, &default_resolved_config);
 
     // Build wasm_handles side-table before consuming bindings.
     let wasm_handles: std::collections::HashMap<
@@ -954,7 +1116,7 @@ pub fn run_slice_with_collector(
     let plan = build_live_execution_plan(
         loaded.sorted_stages,
         loaded.bindings,
-        &typed_global_config,
+        &expanded_global_source,
         Arc::new(Vec::new()),
         Arc::new(std::collections::HashMap::new()),
         &mut loaded.diagnostics,
@@ -970,14 +1132,7 @@ pub fn run_slice_with_collector(
         Some(ConfigValue::Bool(b)) => *b,
         _ => DEFAULT_USE_RELATIVE_E_DISTANCES,
     };
-    let nozzle_diameter_mm = match config_source.get("nozzle_diameter") {
-        Some(ConfigValue::Float(value)) => *value as f32,
-        Some(ConfigValue::Int(value)) => *value as f32,
-        _ => 0.4,
-    };
-    let support_line_width = default_resolved_config.support_line_width;
-    let support_line_width_mm =
-        resolve_support_line_width_mm(support_line_width, nozzle_diameter_mm);
+    let support_line_width_mm = default_resolved_config.support_line_width.value as f32;
 
     // Packet 169 Step 3: capture the estimator inputs the slice_stats event
     // needs before `default_resolved_config` / `per_tool_configs_map` are
@@ -1007,7 +1162,7 @@ pub fn run_slice_with_collector(
                 // speed factors.
                 DefaultGCodeEmitter::new_with_config(
                     concat!("pnp_cli ", env!("CARGO_PKG_VERSION")).into(),
-                    slicer_ir::FeedrateConfig::from_raw_config(&config_source),
+                    slicer_ir::FeedrateConfig::from_raw_config(&expanded_global_source),
                 )
                 .with_resolved_config(default_resolved_config.clone())
                 .with_tool_configs(per_tool_configs_map.clone()),
@@ -1031,7 +1186,9 @@ pub fn run_slice_with_collector(
         &opts,
         &channel,
         pipeline_config,
-        &module_config_source,
+        &expanded_global_source,
+        &registry,
+        &expansion_context,
         profile.as_ref(),
         #[cfg(feature = "report")]
         dag_snapshot,
@@ -1256,12 +1413,31 @@ pub fn prepare_prepass_context(
             search_roots
         ))
     })?;
-    let registry_warnings = manifest_first.registry_warnings;
+    let loader_registry_warnings = manifest_first.registry_warnings;
     let ingestion_warnings = manifest_first.ingestion.warnings;
     let scoped_config = manifest_first.ingestion.scoped;
     let typed_global_config = typed_global_config(&scoped_config);
     let module_config_source = typed_module_config_source(&config_source, &typed_global_config);
     let mut loaded = manifest_first.live;
+    let module_declarations: Vec<ModuleDeclaration> = loaded
+        .bindings
+        .iter()
+        .map(|binding| ModuleDeclaration {
+            module_id: binding.module.id().to_owned(),
+            schema: binding.module.config_schema().clone(),
+            claim_exclusive_group: None,
+        })
+        .collect();
+    let AssemblyOutcome {
+        registry,
+        warnings: mut registry_warnings,
+    } = assemble_registry(&module_declarations, &HostChannels::from_live())
+        .map_err(|e| SliceRunError(format!("failed to assemble config registry: {e}")))?;
+    for warning in loader_registry_warnings {
+        if !registry_warnings.contains(&warning) {
+            registry_warnings.push(warning);
+        }
+    }
     append_config_startup_diagnostics(
         &mut loaded.diagnostics,
         &registry_warnings,
@@ -1278,17 +1454,29 @@ pub fn prepare_prepass_context(
     }
 
     let config_bounds = ConfigBoundsIndex::from_modules(loaded.bindings.iter().map(|b| &b.module));
-    let default_resolved_config = resolve_global_config_scoped(&scoped_config, &config_bounds)
+    let mut default_resolved_config = resolve_global_config_scoped(&scoped_config, &config_bounds)
         .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
 
     let object_ids: Vec<&str> = mesh_ir.objects.iter().map(|o| o.id.as_str()).collect();
-    let resolved_configs_map = resolve_per_object_configs_scoped(
+    let mut resolved_configs_map = resolve_per_object_configs_scoped(
         &default_resolved_config,
         &scoped_config,
         &object_ids,
         &config_bounds,
     )
     .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
+
+    let expansion_context =
+        build_expansion_context(&default_resolved_config, &std::collections::BTreeMap::new())?;
+    expand_scope_maps(
+        &registry,
+        &mut default_resolved_config,
+        &mut resolved_configs_map,
+        &mut std::collections::BTreeMap::new(),
+        &expansion_context,
+    )?;
+    let expanded_global_source =
+        overlay_expanded_global(&module_config_source, &default_resolved_config);
 
     let wasm_handles: std::collections::HashMap<
         slicer_ir::ModuleId,
@@ -1315,7 +1503,7 @@ pub fn prepare_prepass_context(
     let mut plan = build_live_execution_plan(
         loaded.sorted_stages,
         loaded.bindings,
-        &typed_global_config,
+        &expanded_global_source,
         Arc::new(Vec::new()),
         Arc::new(std::collections::HashMap::new()),
         &mut loaded.diagnostics,
@@ -1325,15 +1513,19 @@ pub fn prepare_prepass_context(
     let engine = Arc::clone(&loaded.engine);
     let prepass_runner = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let mut blackboard = crate::Blackboard::new(Arc::clone(&mesh_ir), 0);
-    crate::prepass::execute_prepass_with_builtins_configured(
+    crate::prepass::execute_prepass_with_builtins_configured_authority(
         &plan,
         &mut blackboard,
         &prepass_runner,
         &resolved_configs_map,
         &default_resolved_config,
-        &module_config_source,
+        &expanded_global_source,
         &config_bounds,
         &wasm_handles,
+        ConfigExpansionAuthority {
+            registry: &registry,
+            context: &expansion_context,
+        },
     )
     .map_err(|e| SliceRunError(format!("prepass failed: {e}")))?;
 
@@ -1352,46 +1544,113 @@ pub fn prepare_prepass_context(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        emit_host_support_diagnostics, parse_support_tool_selection, resolve_support_line_width_mm,
-    };
-    use slicer_ir::resolved_config::ResolvedFloatOrPercent;
+    use super::{emit_host_support_diagnostics, parse_support_tool_selection};
     use slicer_ir::{ConfigValue, Diagnostic, DiagnosticSeverity};
     use slicer_scheduler::validation::ModuleAccessAudit;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
     #[test]
-    fn support_line_width_resolution_handles_mm_percent_and_auto() {
-        assert_eq!(
-            resolve_support_line_width_mm(
-                ResolvedFloatOrPercent {
-                    value: 0.42,
-                    is_percent: false
-                },
-                0.4,
-            ),
-            0.42
+    fn expand_scope_maps_uses_tool_index_for_tool_placeholders() {
+        use slicer_config::{assemble_registry, HostChannels, ModuleDeclaration};
+        use slicer_ir::config_schema::{ConfigFieldEntry, ConfigSchema};
+
+        let mut schema = ConfigSchema::default();
+        schema.entries.insert(
+            "nozzle_diameter".to_owned(),
+            ConfigFieldEntry {
+                field_type: "float".to_owned(),
+                ..ConfigFieldEntry::default()
+            },
         );
-        assert_eq!(
-            resolve_support_line_width_mm(
-                ResolvedFloatOrPercent {
-                    value: 50.0,
-                    is_percent: true
-                },
-                0.4,
-            ),
-            0.2
+        schema.entries.insert(
+            "outer_wall_line_width".to_owned(),
+            ConfigFieldEntry {
+                field_type: "float_or_percent".to_owned(),
+                base_key: Some("nozzle_diameter".to_owned()),
+                ..ConfigFieldEntry::default()
+            },
         );
-        assert_eq!(
-            resolve_support_line_width_mm(
-                ResolvedFloatOrPercent {
-                    value: 0.0,
-                    is_percent: false
-                },
-                0.4,
+        let registry = assemble_registry(
+            &[ModuleDeclaration {
+                module_id: "dev.pinch.test.scope-maps".to_owned(),
+                schema,
+                ..ModuleDeclaration::default()
+            }],
+            &HostChannels::from_parts(Vec::new(), Vec::new(), Vec::new()),
+        )
+        .expect("scope-maps fixture registry must be valid")
+        .registry;
+        let context = slicer_config::ExpansionContext {
+            nozzle_diameter_mm: 0.4,
+            tool_bases: std::collections::BTreeMap::from([(
+                1u32,
+                std::collections::BTreeMap::from([("nozzle_diameter".to_owned(), 0.6)]),
+            )]),
+        };
+
+        let mut scoped = slicer_ir::ResolvedConfig::default();
+        scoped.extensions.insert(
+            "outer_wall_line_width".to_owned(),
+            ConfigValue::Percent(150.0),
+        );
+        let mut global = scoped.clone();
+        let mut objects = std::collections::BTreeMap::from([("obj".to_owned(), scoped.clone())]);
+        let mut tools = std::collections::BTreeMap::from([(1u32, scoped)]);
+
+        super::expand_scope_maps(&registry, &mut global, &mut objects, &mut tools, &context)
+            .expect("literal fixture carries every required base");
+
+        let width = |config: &slicer_ir::ResolvedConfig, label: &str| match config
+            .to_config_map()
+            .get("outer_wall_line_width")
+        {
+            Some(ConfigValue::Float(value)) => *value,
+            other => panic!(
+                "{label}: outer_wall_line_width must expand to absolute float, got {other:?}"
             ),
-            0.4
+        };
+        assert!(
+            (width(&global, "global") - 0.6).abs() <= 1e-12,
+            "global must expand 150% of the 0.4 merged base"
+        );
+        assert!(
+            (width(&objects["obj"], "object") - 0.6).abs() <= 1e-12,
+            "object must expand 150% of the 0.4 merged base"
+        );
+        assert!(
+            (width(&tools[&1], "tool 1") - 0.9).abs() <= 1e-12,
+            "tool 1 must expand 150% of its 0.6 tool base; deleting the \
+             per-tool loop would leave the Percent placeholder"
+        );
+    }
+
+    #[test]
+    fn expanded_global_overlay_feeds_feedrate_config() {
+        use super::overlay_expanded_global;
+        // The raw source still carries the unexpanded overhang percent
+        // placeholder; the host-expanded global carries the absolute value.
+        let mut raw = HashMap::new();
+        raw.insert("outer_wall_speed".to_string(), ConfigValue::Float(60.0));
+        raw.insert("overhang_1_4_speed".to_string(), ConfigValue::Percent(25.0));
+        let mut expanded = slicer_ir::ResolvedConfig {
+            outer_wall_speed: 60.0,
+            ..slicer_ir::ResolvedConfig::default()
+        };
+        expanded
+            .extensions
+            .insert("overhang_1_4_speed".to_owned(), ConfigValue::Float(15.0));
+        let overlaid = overlay_expanded_global(&raw, &expanded);
+        let feed = slicer_ir::FeedrateConfig::from_raw_config(&overlaid);
+        assert_eq!(
+            feed.overhang_1_4_speed, 15.0,
+            "the expanded overlay must deliver absolute overhang mm/s"
+        );
+        // Without the overlay the percent placeholder keeps the 0.0 default.
+        let feed_raw = slicer_ir::FeedrateConfig::from_raw_config(&raw);
+        assert_eq!(
+            feed_raw.overhang_1_4_speed, 0.0,
+            "a raw percent placeholder must not leak into the feedrate table"
         );
     }
 

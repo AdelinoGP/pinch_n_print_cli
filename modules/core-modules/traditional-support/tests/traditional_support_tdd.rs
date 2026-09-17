@@ -23,6 +23,7 @@ fn make_config(
         .float("support_angle", angle)
         .float("support_speed", speed)
         .float("line_width", line_width)
+        .float("support_bottom_interface_spacing", 0.4)
         .build()
 }
 
@@ -136,6 +137,7 @@ fn interface_paths(flow: f64) -> Vec<(slicer_ir::ExtrusionPath3D, bool)> {
         .float("support_speed", 50.0)
         .float("line_width", 0.4)
         .float("support_interface_flow", flow)
+        .float("support_bottom_interface_spacing", 0.4)
         .build();
     let module = TraditionalSupport::from_config(&config).unwrap();
     let region = make_square_region(10.0, 0.3);
@@ -521,6 +523,7 @@ fn zero_base_and_interface_spacing_clamp_to_solid_pitch() {
         .bool("enable_support", true)
         .float("support_base_pattern_spacing", 0.0)
         .float("support_interface_spacing", 0.0)
+        .float("support_bottom_interface_spacing", 0.0)
         .float("support_speed", 50.0)
         .float("line_width", 0.4)
         .build();

@@ -79,6 +79,7 @@ group       = "Walls"
 
 [config.schema.outer_wall_line_width]
 type        = "float_or_percent"
+base_key    = "nozzle_diameter"
 default     = 0
 min         = 0.0
 max         = 2.0
@@ -89,6 +90,7 @@ group       = "Walls"
 
 [config.schema.inner_wall_line_width]
 type        = "float_or_percent"
+base_key    = "nozzle_diameter"
 default     = 0
 min         = 0.0
 max         = 2.0

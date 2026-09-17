@@ -35,6 +35,7 @@ fn fixture(
         .float("support_base_pattern_spacing", 2.5)
         .float("support_speed", 50.0)
         .float("line_width", 0.4)
+        .float("support_bottom_interface_spacing", 0.4)
         .build();
     fixture_with_config(config, family, roles)
 }
@@ -171,6 +172,7 @@ fn interface_spacing_config_controls_scan_fill() {
         .float("support_speed", 50.0)
         .float("line_width", 0.4)
         .float("support_interface_spacing", 0.8)
+        .float("support_bottom_interface_spacing", 0.8)
         .build();
     let (config, region, paint) =
         fixture_with_config(wide_config, "traditional", body_and_interface_roles());

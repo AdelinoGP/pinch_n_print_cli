@@ -197,6 +197,62 @@ fn repaired_field<'a>(manifest: &'a RepairedManifest, key: &str) -> &'a ConfigFi
         .unwrap_or_else(|| panic!("{} does not declare {key}", manifest.owner))
 }
 
+fn parse_real_manifest(name: &str, keys: &[&str]) -> (ModuleDeclaration, toml::Value) {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("modules/core-modules")
+        .join(name)
+        .join(format!("{name}.toml"));
+    assert!(path.is_file(), "manifest {} is missing", path.display());
+    let text = fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("cannot read {}: {error}", path.display()));
+    let document: toml::Value = toml::from_str(&text)
+        .unwrap_or_else(|error| panic!("cannot parse {}: {error}", path.display()));
+    let module_id = document
+        .get("module")
+        .and_then(toml::Value::as_table)
+        .and_then(|module| module.get("id"))
+        .and_then(toml::Value::as_str)
+        .unwrap_or_else(|| panic!("manifest {} has no module.id", path.display()))
+        .to_owned();
+    let schema_table = document
+        .get("config")
+        .and_then(toml::Value::as_table)
+        .and_then(|config| config.get("schema"))
+        .and_then(toml::Value::as_table)
+        .unwrap_or_else(|| panic!("manifest {} has no config.schema", path.display()));
+    let schema = keys
+        .iter()
+        .map(|key| {
+            let value = schema_table
+                .get(*key)
+                .unwrap_or_else(|| panic!("manifest {} does not declare {key}", path.display()));
+            ((*key).to_owned(), manifest_field_entry(value, key, &path))
+        })
+        .collect();
+
+    (
+        ModuleDeclaration {
+            module_id,
+            schema: ConfigSchema { entries: schema },
+            claim_exclusive_group: None,
+        },
+        document,
+    )
+}
+
+fn manifest_numeric_default(document: &toml::Value, key: &str) -> Option<f64> {
+    document
+        .get("config")
+        .and_then(toml::Value::as_table)
+        .and_then(|config| config.get("schema"))
+        .and_then(toml::Value::as_table)
+        .and_then(|schema| schema.get(key))
+        .and_then(toml::Value::as_table)
+        .and_then(|field| field.get("default"))
+        .and_then(toml::Value::as_float)
+}
+
 #[test]
 fn repaired_conflicting_keys_agree_across_all_declarers() {
     let manifests = parse_repaired_manifests();
@@ -328,6 +384,130 @@ fn repaired_conflicting_keys_agree_across_all_declarers() {
         assembled_support_style.values.as_ref(),
         Some(&expected_support_values)
     );
+}
+
+#[test]
+fn phase_b_support_line_width_declares_typed_nozzle_base() {
+    let (module, document) = parse_real_manifest(
+        "tree-support-planner",
+        &["support_line_width", "nozzle_diameter"],
+    );
+    assert_eq!(
+        manifest_numeric_default(&document, "support_line_width"),
+        Some(0.0)
+    );
+
+    let module_field = module
+        .schema
+        .entries
+        .get("support_line_width")
+        .expect("support-line-width module declaration");
+    assert_eq!(module_field.field_type, "float_or_percent");
+    assert_eq!(module_field.base_key.as_deref(), Some("nozzle_diameter"));
+
+    let outcome = assemble_registry(&[module], &HostChannels::from_live())
+        .expect("real tree-support manifest must assemble");
+    let entry = outcome
+        .registry
+        .entry("support_line_width")
+        .expect("assembled support-line-width declaration");
+    assert_eq!(entry.field_type, "float_or_percent");
+    assert_eq!(entry.base_key.as_deref(), Some("nozzle_diameter"));
+    assert_eq!(
+        entry
+            .default
+            .as_deref()
+            .and_then(|default| default.parse::<f64>().ok()),
+        Some(0.0)
+    );
+}
+
+#[test]
+fn phase_b_speed_percent_family_declares_typed_outer_wall_base() {
+    const SPEED_KEYS: [&str; 4] = [
+        "overhang_1_4_speed",
+        "overhang_2_4_speed",
+        "overhang_3_4_speed",
+        "overhang_4_4_speed",
+    ];
+    let (module, document) = parse_real_manifest(
+        "overhang-classifier-default",
+        &[
+            "outer_wall_speed",
+            "overhang_1_4_speed",
+            "overhang_2_4_speed",
+            "overhang_3_4_speed",
+            "overhang_4_4_speed",
+        ],
+    );
+    let host = HostChannels::from_live();
+    let outcome = assemble_registry(std::slice::from_ref(&module), &host)
+        .expect("real overhang manifest must assemble");
+
+    for key in SPEED_KEYS {
+        let module_entry = module
+            .schema
+            .entries
+            .get(key)
+            .expect("overhang module declaration");
+        assert_eq!(module_entry.field_type, "float_or_percent", "module {key}");
+        assert_eq!(
+            module_entry.base_key.as_deref(),
+            Some("outer_wall_speed"),
+            "module {key} base"
+        );
+        assert_eq!(
+            manifest_numeric_default(&document, key),
+            Some(0.0),
+            "module {key} default"
+        );
+
+        let host_row = host
+            .speed_keys
+            .iter()
+            .find(|row| row.key == key)
+            .unwrap_or_else(|| panic!("host speed declaration {key}"));
+        assert_eq!(
+            host_row.meta.wire_type,
+            Some("float_or_percent"),
+            "host {key} wire type"
+        );
+        assert_eq!(
+            host_row.meta.wire_type.unwrap_or(host_row.field_type),
+            "float_or_percent",
+            "effective host {key} wire type"
+        );
+        assert_eq!(
+            host_row
+                .default
+                .as_deref()
+                .and_then(|default| default.parse::<f64>().ok()),
+            Some(0.0),
+            "host {key} default"
+        );
+
+        let registry_entry = outcome
+            .registry
+            .entry(key)
+            .expect("assembled overhang declaration");
+        assert_eq!(
+            registry_entry.field_type, "float_or_percent",
+            "registry {key} type"
+        );
+        assert_eq!(
+            registry_entry.base_key.as_deref(),
+            Some("outer_wall_speed"),
+            "registry {key} base"
+        );
+        assert_eq!(
+            registry_entry
+                .default
+                .as_deref()
+                .and_then(|default| default.parse::<f64>().ok()),
+            Some(0.0),
+            "registry {key} default"
+        );
+    }
 }
 
 fn host_key(key: &'static str, field_type: &'static str, default: &str) -> HostConfigKey {

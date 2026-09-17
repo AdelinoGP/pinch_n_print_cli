@@ -20,7 +20,7 @@
 //! - AC-6: `support_interface_bottom_layers=3` → zero code 1003 warnings, and a
 //!   branch landing on the model carries a `BottomInterface` role.
 //! - AC-N1: every layer below cap → zero cap diagnostics.
-//! - AC-N3: `support_interface_bottom_layers=-1` or absent → zero
+//! - AC-N3: host-expanded `support_interface_bottom_layers=2` → zero
 //!   `support_interface_bottom_layers is not yet implemented` diagnostics.
 
 #![allow(missing_docs)]
@@ -318,102 +318,53 @@ fn interface_bottom_layers_is_supported_and_warns_nothing() {
     );
 }
 
-/// `support_interface_bottom_layers = -1` or absent key → zero code 1003
-/// diagnostics.
+/// A host-expanded default `support_interface_bottom_layers = 2` emits zero
+/// code 1003 diagnostics.
 #[test]
 fn interface_bottom_layers_default_emits_no_typed_diagnostic() {
-    // Case 1: explicit -1.
-    {
-        let config = make_planner_config(&[
-            ("enable_support", ConfigValue::Bool(true)),
-            ("support_raft_layers", ConfigValue::Int(0)),
-            ("support_interface_bottom_layers", ConfigValue::Int(-1)),
-            ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
-            (
-                "tree_support_branch_diameter_angle",
-                ConfigValue::Float(5.0),
-            ),
-            ("tree_support_branch_distance", ConfigValue::Float(1.0)),
-            ("tree_support_wall_count", ConfigValue::Int(1)),
-            ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
-        ]);
-        let planner = SupportPlanner::from_config(&config).expect("from_config");
+    let config = make_planner_config(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        ("support_raft_layers", ConfigValue::Int(0)),
+        ("support_interface_bottom_layers", ConfigValue::Int(2)),
+        ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
+        (
+            "tree_support_branch_diameter_angle",
+            ConfigValue::Float(5.0),
+        ),
+        ("tree_support_branch_distance", ConfigValue::Float(1.0)),
+        ("tree_support_wall_count", ConfigValue::Int(1)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
+    ]);
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
 
-        let obj = small_overhang_fixture("ibl-neg");
-        let lp = make_layer_plan(11, 0.0, 0.2);
-        let rs = make_region_segmentation("ibl-neg", 11);
-        let sg = SupportGeometryView { entries: vec![] };
-        let mut output = SupportGeometryOutput::new();
-        planner
-            .run_support_geometry_with_analysis(
-                &[obj],
-                &lp,
-                &rs,
-                &tree_analysis("ibl-neg"),
-                &sg,
-                &mut output,
-                &config,
-            )
-            .expect("run_support_geometry");
-        let count = output
-            .diagnostics()
-            .iter()
-            .filter(|d| {
-                d.message
-                    .contains("support_interface_bottom_layers is not yet implemented")
-            })
-            .count();
-        assert_eq!(
-            count, 0,
-            "AC-N3: support_interface_bottom_layers=-1 must not emit; got {count}"
-        );
-    }
-
-    // Case 2: key absent entirely.
-    {
-        let config = make_planner_config(&[
-            ("enable_support", ConfigValue::Bool(true)),
-            ("support_raft_layers", ConfigValue::Int(0)),
-            ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
-            (
-                "tree_support_branch_diameter_angle",
-                ConfigValue::Float(5.0),
-            ),
-            ("tree_support_branch_distance", ConfigValue::Float(1.0)),
-            ("tree_support_wall_count", ConfigValue::Int(1)),
-            ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
-        ]);
-        let planner = SupportPlanner::from_config(&config).expect("from_config");
-
-        let obj = small_overhang_fixture("ibl-absent");
-        let lp = make_layer_plan(11, 0.0, 0.2);
-        let rs = make_region_segmentation("ibl-absent", 11);
-        let sg = SupportGeometryView { entries: vec![] };
-        let mut output = SupportGeometryOutput::new();
-        planner
-            .run_support_geometry_with_analysis(
-                &[obj],
-                &lp,
-                &rs,
-                &tree_analysis("ibl-absent"),
-                &sg,
-                &mut output,
-                &config,
-            )
-            .expect("run_support_geometry");
-        let count = output
-            .diagnostics()
-            .iter()
-            .filter(|d| {
-                d.message
-                    .contains("support_interface_bottom_layers is not yet implemented")
-            })
-            .count();
-        assert_eq!(
-            count, 0,
-            "AC-N3: support_interface_bottom_layers absent must not emit; got {count}"
-        );
-    }
+    let obj = small_overhang_fixture("ibl-expanded");
+    let lp = make_layer_plan(11, 0.0, 0.2);
+    let rs = make_region_segmentation("ibl-expanded", 11);
+    let sg = SupportGeometryView { entries: vec![] };
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &tree_analysis("ibl-expanded"),
+            &sg,
+            &mut output,
+            &config,
+        )
+        .expect("run_support_geometry");
+    let count = output
+        .diagnostics()
+        .iter()
+        .filter(|d| {
+            d.message
+                .contains("support_interface_bottom_layers is not yet implemented")
+        })
+        .count();
+    assert_eq!(
+        count, 0,
+        "AC-N3: expanded support_interface_bottom_layers must not emit; got {count}"
+    );
 }
 
 #[test]
@@ -503,6 +454,10 @@ fn tree_analysis(object_id: &str) -> SupportAnalysisView {
 
 fn make_planner_config(entries: &[(&str, ConfigValue)]) -> ConfigView {
     let mut map: HashMap<ConfigKey, ConfigValue> = HashMap::new();
+    map.insert(
+        "support_interface_bottom_layers".into(),
+        ConfigValue::Int(2),
+    );
     for (k, v) in entries {
         map.insert((*k).to_string(), v.clone());
     }
@@ -608,17 +563,15 @@ fn cap_overflow_fixture(object_id: &str, n: usize) -> MeshObjectView {
 /// support-to-model contact surface.
 ///
 /// Gates the feature that replaced the retired code 1003 "not yet implemented"
-/// warning. `support_interface_bottom_layers` is left at its `-1` default here
-/// on purpose: canonical mirrors the top interface count when it is negative
-/// (`number_of_support_interface_bottom_layers`), which is the path PnP takes by
-/// default, so it is the path most worth pinning.
+/// warning. The direct fixture supplies the host-expanded bottom count so this
+/// test does not depend on a guest-side resolver oracle.
 #[test]
 fn branch_landing_on_model_emits_bottom_interface() {
     let config = make_planner_config(&[
         ("enable_support", ConfigValue::Bool(true)),
         ("support_raft_layers", ConfigValue::Int(0)),
         ("support_interface_top_layers", ConfigValue::Int(2)),
-        ("support_interface_bottom_layers", ConfigValue::Int(-1)),
+        ("support_interface_bottom_layers", ConfigValue::Int(2)),
         ("support_on_build_plate_only", ConfigValue::Bool(false)),
         ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
         (

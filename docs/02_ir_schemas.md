@@ -486,6 +486,23 @@ must know:
   iteration order is the upside. The `Hash` impl hashes `f32` fields via
   `to_bits()`, which is consistent within one process.
 
+### Phase B automatic-value expansion (Normative)
+
+Config-only automatic values are expanded by `slicer_config::expand_automatic_values`
+after each applicable scope merge (global/default, object, tool, paint-semantic)
+and before `RegionMapIR` interning (`RegionMapIR::intern_config`) or module
+`ConfigView` delivery. Covered placeholders — `line_width = 0`,
+`support_line_width = 0`, percent-authored values whose registry `base_key`
+names a scope-resolved absolute base (including the four `overhang_*_speed`
+percent forms over `outer_wall_speed`), `support_interface_bottom_layers = -1`,
+and `support_bottom_interface_spacing = -1` — never reach the interner or a
+`ConfigView`: a successful expansion leaves no covered placeholder in the
+target map, and a failed expansion commits nothing. Expansion is registry-driven
+via `ExpansionContext` (global nozzle diameter plus per-tool absolute bases);
+only `RegistryEntry.base_key`-typed percentages are expanded. Packet 10 retains
+the emitter-owned volumetric `0 = auto` rule and all geometry-, layer-, flow-,
+or move-dependent `-1` sentinels.
+
 ### Config Precedence Rules
 
 When two sources assign the same key:

@@ -36,6 +36,7 @@ fn fixture(
         .float("support_speed", 50.0)
         .float("line_width", 0.4)
         .int("tree_support_wall_count", 2)
+        .float("support_bottom_interface_spacing", 0.4)
         .build();
     // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     let entry = slicer_ir::SupportPlanEntry {

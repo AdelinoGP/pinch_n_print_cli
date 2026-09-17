@@ -48,25 +48,29 @@ display = "Bridge Speed"
 group   = "Speed"
 
 [config.schema.overhang_1_4_speed]
-type    = "float"
+type    = "float_or_percent"
+base_key = "outer_wall_speed"
 default = 0.0
 display = "Overhang 1/4 Speed"
 group   = "Speed"
 
 [config.schema.overhang_2_4_speed]
-type    = "float"
+type    = "float_or_percent"
+base_key = "outer_wall_speed"
 default = 0.0
 display = "Overhang 2/4 Speed"
 group   = "Speed"
 
 [config.schema.overhang_3_4_speed]
-type    = "float"
+type    = "float_or_percent"
+base_key = "outer_wall_speed"
 default = 0.0
 display = "Overhang 3/4 Speed"
 group   = "Speed"
 
 [config.schema.overhang_4_4_speed]
-type    = "float"
+type    = "float_or_percent"
+base_key = "outer_wall_speed"
 default = 0.0
 display = "Overhang 4/4 Speed"
 group   = "Speed"
