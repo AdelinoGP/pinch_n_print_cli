@@ -90,7 +90,9 @@ keys. No committed test observes any of it.
   guest cannot tell which it holds. 243 of 244 manifest entries declare a default but
   `ConfigBoundsIndex::schema_defaults` threads only the 18 percent-family ones, so
   the 54 `.unwrap_or(literal)` sites across 8 guest modules are load-bearing rather
-  than defensive.
+  than defensive. (The chain-aware census adopted by queue row 6 — config reads
+  through `.map`/`.filter`/`.or_else`/`.and_then` and small wrappers — counts 89
+  sites across 13 guests.)
 
 - **RC-6 — Modifier kind is a magic string and modifier values skip validation.**
   `PartSubtype` (`crates/slicer-model-io/src/sidecar.rs`) is parsed typed, then
@@ -342,8 +344,9 @@ after warning (warn-mode in packet 3; the drop flips in packet 6).
 
 - `ConfigView` has one meaning: always resolved. `bind_module_config_view`
   stops reading raw `config_source`. Every declared key is present with its
-  registry default, `None` becomes a real signal, and the 54
-  `.unwrap_or(literal)` fallbacks across 8 guest modules are deleted.
+  registry default, `None` becomes a real signal, and the 89 config-read
+  `.unwrap_or(literal)` fallbacks across 13 guest modules (queue row 6 census)
+  are deleted.
 - **Layer-planning seam:** `prepass-layer-planning.run` gains one typed
   per-object resolved record (object height, effective `layer_height`,
   `first_layer_height`, `support_raft_layers` — scope-resolved host-side) as a
