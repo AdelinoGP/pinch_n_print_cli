@@ -233,7 +233,21 @@ fields and never includes baked-in defaults.
 
 ### Modifier Resolution Contract
 
-Modifier deltas are merged deterministically during planning:
+The full scope-resolution order is deterministic, from lowest to highest:
+
+```text
+global < object < layer range < modifier < paint semantic < tool
+```
+
+The row-5 resolver implements the typed global/object/modifier/paint/tool path.
+`layer range` is deliberately not a row-5 implementation detail: no Rust
+`LayerRange` exists in row 5. The queued overlap contract is settled for the
+future layer-range scope: an overlapping `layer_height` range is won by the
+later-starting range, while overlapping ranges that state the same
+`non-layer_height` key with conflicting values produce a load error. The queue row 9 owns this future work. Row 9, not row 5, implements and verifies this layer-range overlap handling. The draft row-9 packet records a delegated-canonical observation that overlap retention may instead favor the earlier-starting range; row 9 reconciles that observation against the rule stated here before implementing.
+
+Modifier deltas that are available to the row-5 path are merged deterministically
+during planning:
 
 1. Start with global defaults.
 2. Apply object config.
@@ -242,6 +256,7 @@ Modifier deltas are merged deterministically during planning:
    `crates/slicer-core/src/algos/region_mapping.rs`; a stable priority sort
    with first-loaded tie ownership). There is no separate `load_order` concept.
 4. Apply paint-semantic overlays (`paint_config:`) on top.
+5. Apply the resolved tool overlay last.
 
 For the same key, the last applied value wins. If a later overlay omits a key,
 the previously resolved value remains unchanged (no implicit reset).
@@ -507,12 +522,19 @@ or move-dependent `-1` sentinels.
 
 When two sources assign the same key:
 
-- `modifier` > `object config` > `global default` (modifier resolution itself
-  is specified in § "Modifier Resolution Contract")
+- `global < object < layer range < modifier < paint semantic < tool` (lowest to
+  highest; modifier resolution itself is specified in § "Modifier Resolution
+  Contract")
 - Between overlapping modifiers, higher `priority` wins
 - On equal modifier priority, first-loaded modifier wins
 
 These rules are the single source of truth for runtime-free config resolution in `LayerPlanIR`.
+
+`ResolvedObjectLayerConfig` is the host-side, exactly five-field record emitted
+for layer planning: `object_id: String`, `object_height: f64`,
+`layer_height: f64`, `first_layer_height: f64`, and
+`support_raft_layers: u32`. It carries the resolved per-object planning inputs
+without reintroducing a scoped key prefix across the WIT boundary.
 
 ### Config Float Handling (Normative)
 
@@ -602,7 +624,7 @@ Config keys follow a structured namespace convention used in `ResolvedConfig` an
 **Override precedence** (lowest → highest):
 
 ```text
-global < per_object (object_config:<id>:<key>) < per_paint_semantic (paint_config:<semantic>:<key>) < per_tool (tool_config:<idx>:<key>)
+global < object < layer range < modifier < paint semantic < tool
 ```
 
 Per-tool config is applied **last (highest)**, mirroring OrcaSlicer's filament-override-last model (`PrintApply.cpp` applies the filament preset's overrides on top of print/object/modifier/material). At `RegionMapping` the per-tool overlay runs after the paint overlays for a painted tool's chain; at emit it overlays the global config.
@@ -652,13 +674,11 @@ classes remain fatal in **both** modes: malformed scope encodings
 (`ConfigIngestionError::MalformedScopeKey`) and non-finite declared numeric
 values.
 
-The dynamic per-object height keys `object_height:<id>` are **not** typed
-scopes yet: they remain recognised global-delta dynamic keys (declared via
-the layer planner's `object_height:*` wildcard) and typed per-object height
-handling is deferred to packet 05. Scope-resolution work beyond ingestion —
-automatic-value expansion, alias tables, and the final unified resolution of
-these deltas — also belongs to later packets and has not landed; only
-ingestion (decode, type, warn) exists today.
+The dynamic per-object height keys `object_height:<id>` remain wire inputs, not
+an additional prefixed scope. The row-5 resolution module turns the applicable
+inputs into `ResolvedObjectLayerConfig` for layer planning; no host namespace is
+formatted across that WIT seam. Layer-range ingestion and the overlap behavior
+described above remain explicitly queued for row 9.
 
 ---
 

@@ -9,11 +9,15 @@ use std::path::PathBuf;
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
 use std::time::Instant;
 
+use slicer_config::resolution::{
+    query_z_grid, resolve_scope_stack, ResolutionTarget, ResolvedObjectLayerConfig,
+};
 use slicer_config::{
-    assemble_registry, expand_automatic_values, AssemblyOutcome, ExpansionContext, HostChannels,
+    assemble_registry, AssemblyOutcome, ConfigScope, ExpansionContext, HostChannels,
     IngestionWarning, ModuleDeclaration, RegistryWarning, ScopedConfig,
 };
-use slicer_ir::{ConfigKey, ConfigValue, MeshIR};
+use slicer_ir::{ConfigKey, ConfigValue, MeshIR, PaintSemantic, PaintValue, ResolvedConfig};
+use slicer_sdk::traits::LayerPlanningObject;
 
 /// Parse Orca-style 1-indexed support filament selections into the runtime's
 /// 0-indexed tool selection. Missing, zero, invalid, and out-of-range values
@@ -21,8 +25,8 @@ use slicer_ir::{ConfigKey, ConfigValue, MeshIR};
 ///
 /// Also derives [`SupportToolSelection::tool_count`] from the same raw config
 /// map, using the `filament_density` list length. That is the identical source
-/// `ResolvedConfig.filament_density` is extracted from (`resolve_global_config`
-/// reads this map), and `extract_float_list` preserves element count, so the
+/// `ResolvedConfig.filament_density` is extracted from this same authored map,
+/// and `extract_float_list` preserves element count, so the
 /// value here equals `max(1, ResolvedConfig.filament_density.len())` without
 /// needing a resolved config threaded to this call site.
 ///
@@ -55,10 +59,7 @@ where
     }
 }
 
-use crate::config_resolution::{
-    resolve_global_config_scoped, resolve_per_object_configs_scoped,
-    resolve_per_tool_configs_scoped, validate_support_layer_heights, ConfigBoundsIndex,
-};
+use crate::config_resolution::{validate_support_layer_heights, ConfigBoundsIndex};
 use crate::dag::Producer;
 use crate::execution_plan::parse_cli_config_source;
 #[cfg(feature = "report")]
@@ -95,6 +96,287 @@ fn typed_global_config(scoped: &ScopedConfig) -> std::collections::HashMap<Confi
         .collect()
 }
 
+const RESOLVED_TARGET_PREFIX: &str = "\0resolved-target:";
+const RESOLVED_PAINT_PREFIX: &str = "\0resolved-paint:";
+const RESOLVED_TOOL_PREFIX: &str = "\0resolved-tool:";
+
+fn paint_semantic_name(semantic: &PaintSemantic) -> String {
+    match semantic {
+        PaintSemantic::Material => "material".to_owned(),
+        PaintSemantic::FuzzySkin => "fuzzy_skin".to_owned(),
+        PaintSemantic::SupportEnforcer => "support_enforcer".to_owned(),
+        PaintSemantic::SupportBlocker => "support_blocker".to_owned(),
+        PaintSemantic::Custom(name) => name.clone(),
+    }
+}
+
+fn append_key_part(key: &mut String, value: &str) {
+    use std::fmt::Write as _;
+    let _ = write!(key, "{}:{value}", value.len());
+}
+
+fn resolved_target_key(
+    object_id: &str,
+    modifier_ids: &[String],
+    paint_semantics: &[String],
+    tool_index: Option<u32>,
+) -> String {
+    if modifier_ids.is_empty() && paint_semantics.is_empty() && tool_index.is_none() {
+        return object_id.to_owned();
+    }
+    let mut key = RESOLVED_TARGET_PREFIX.to_owned();
+    append_key_part(&mut key, object_id);
+    key.push('|');
+    for modifier_id in modifier_ids {
+        append_key_part(&mut key, modifier_id);
+        key.push(',');
+    }
+    key.push('|');
+    for semantic in paint_semantics {
+        append_key_part(&mut key, semantic);
+        key.push(',');
+    }
+    key.push('|');
+    if let Some(tool_index) = tool_index {
+        use std::fmt::Write as _;
+        let _ = write!(key, "{tool_index}");
+    }
+    key
+}
+
+fn ordered_subsets(values: &[String]) -> Vec<Vec<String>> {
+    let mut subsets = vec![Vec::new()];
+    for value in values {
+        let additions: Vec<Vec<String>> = subsets
+            .iter()
+            .map(|subset| {
+                let mut next = subset.clone();
+                next.push(value.clone());
+                next
+            })
+            .collect();
+        subsets.extend(additions);
+    }
+    subsets
+}
+
+fn merge_model_scopes(scoped: &mut ScopedConfig, mesh: &MeshIR) {
+    for object in &mesh.objects {
+        let object_delta = scoped
+            .deltas
+            .entry(ConfigScope::Object(object.id.clone()))
+            .or_default();
+        for (key, value) in &object.config.data {
+            object_delta
+                .values
+                .entry(key.clone())
+                .or_insert_with(|| value.clone());
+        }
+
+        for modifier in &object.modifier_volumes {
+            let modifier_delta = scoped
+                .deltas
+                .entry(ConfigScope::Modifier {
+                    object_id: object.id.clone(),
+                    modifier_id: modifier.id.clone(),
+                })
+                .or_default();
+            for (key, value) in &modifier.config_delta.fields {
+                if key == "subtype"
+                    || matches!(value, ConfigValue::String(value) if value.is_empty())
+                    || matches!(value, ConfigValue::List(value) if value.is_empty())
+                {
+                    continue;
+                }
+                modifier_delta
+                    .values
+                    .entry(key.clone())
+                    .or_insert_with(|| value.clone());
+            }
+        }
+    }
+}
+
+struct RuntimeResolvedScopes {
+    default_config: ResolvedConfig,
+    target_configs: std::collections::BTreeMap<String, ResolvedConfig>,
+    tool_configs: std::collections::BTreeMap<u32, ResolvedConfig>,
+    object_layer_configs: Vec<ResolvedObjectLayerConfig>,
+    expansion_context: ExpansionContext,
+}
+
+fn resolve_runtime_scopes(
+    registry: &slicer_config::ConfigSchemaRegistry,
+    scoped: &ScopedConfig,
+    mesh: &MeshIR,
+) -> Result<RuntimeResolvedScopes, SliceRunError> {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    let configured_tools: BTreeSet<u32> = scoped
+        .deltas
+        .keys()
+        .filter_map(|scope| match scope {
+            ConfigScope::Tool(tool_index) => Some(*tool_index),
+            _ => None,
+        })
+        .collect();
+    let seed_context = seed_expansion_context(scoped)?;
+    let preliminary_default = resolve_scope_stack(
+        registry,
+        scoped,
+        &ResolutionTarget::default(),
+        &seed_context,
+    )
+    .map_err(|error| SliceRunError(format!("config resolution failed: {error}")))?;
+    let mut preliminary_tools = BTreeMap::new();
+    for &tool_index in &configured_tools {
+        let target = ResolutionTarget {
+            tool_index: Some(tool_index),
+            ..ResolutionTarget::default()
+        };
+        preliminary_tools.insert(
+            tool_index,
+            resolve_scope_stack(registry, scoped, &target, &seed_context)
+                .map_err(|error| SliceRunError(format!("config resolution failed: {error}")))?,
+        );
+    }
+    let expansion_context = build_expansion_context(&preliminary_default, &preliminary_tools)?;
+    let default_config = resolve_scope_stack(
+        registry,
+        scoped,
+        &ResolutionTarget::default(),
+        &expansion_context,
+    )
+    .map_err(|error| SliceRunError(format!("config resolution failed: {error}")))?;
+
+    let mut tool_configs = BTreeMap::new();
+    for &tool_index in &configured_tools {
+        let target = ResolutionTarget {
+            tool_index: Some(tool_index),
+            ..ResolutionTarget::default()
+        };
+        tool_configs.insert(
+            tool_index,
+            resolve_scope_stack(registry, scoped, &target, &expansion_context)
+                .map_err(|error| SliceRunError(format!("config resolution failed: {error}")))?,
+        );
+    }
+
+    let mut target_configs = BTreeMap::new();
+    for object in &mesh.objects {
+        let mut modifiers: Vec<_> = object
+            .modifier_volumes
+            .iter()
+            .enumerate()
+            .filter(|(_, modifier)| {
+                !matches!(
+                    modifier.config_delta.fields.get("subtype"),
+                    Some(ConfigValue::String(subtype))
+                        if subtype == "support_enforcer" || subtype == "support_blocker"
+                )
+            })
+            .map(|(index, modifier)| {
+                (
+                    modifier.priority,
+                    std::cmp::Reverse(index),
+                    modifier.id.clone(),
+                )
+            })
+            .collect();
+        modifiers.sort_by_key(|(priority, reverse_index, _)| (*priority, *reverse_index));
+        let modifier_ids: Vec<String> = modifiers.into_iter().map(|(_, _, id)| id).collect();
+
+        let mut paint_semantics = BTreeSet::new();
+        let mut painted_tools = BTreeSet::new();
+        if let Some(paint_data) = &object.paint_data {
+            for layer in &paint_data.layers {
+                if layer.facet_values.iter().any(Option::is_some) || !layer.strokes.is_empty() {
+                    paint_semantics.insert(paint_semantic_name(&layer.semantic));
+                }
+                for value in layer.facet_values.iter().flatten() {
+                    if let PaintValue::ToolIndex(tool_index) = value {
+                        painted_tools.insert(*tool_index);
+                    }
+                }
+            }
+        }
+        for modifier in &object.modifier_volumes {
+            match modifier.config_delta.fields.get("subtype") {
+                Some(ConfigValue::String(subtype)) if subtype == "support_enforcer" => {
+                    paint_semantics.insert("support_enforcer".to_owned());
+                }
+                Some(ConfigValue::String(subtype)) if subtype == "support_blocker" => {
+                    paint_semantics.insert("support_blocker".to_owned());
+                }
+                _ => {}
+            }
+        }
+
+        let paint_semantics: Vec<String> = paint_semantics.into_iter().collect();
+        let mut target_tools: Vec<Option<u32>> = vec![None];
+        target_tools.extend(configured_tools.union(&painted_tools).copied().map(Some));
+        for modifiers in ordered_subsets(&modifier_ids) {
+            for paints in ordered_subsets(&paint_semantics) {
+                for &tool_index in &target_tools {
+                    let target = ResolutionTarget {
+                        object_id: object.id.clone(),
+                        modifier_ids: modifiers.clone(),
+                        paint_semantics: paints.clone(),
+                        tool_index,
+                    };
+                    let config = resolve_scope_stack(registry, scoped, &target, &expansion_context)
+                        .map_err(|error| {
+                            SliceRunError(format!("config resolution failed: {error}"))
+                        })?;
+                    target_configs.insert(
+                        resolved_target_key(&object.id, &modifiers, &paints, tool_index),
+                        config,
+                    );
+                }
+            }
+        }
+    }
+
+    for semantic in scoped.deltas.keys().filter_map(|scope| match scope {
+        ConfigScope::PaintSemantic(semantic) => Some(semantic.clone()),
+        _ => None,
+    }) {
+        let target = ResolutionTarget {
+            paint_semantics: vec![semantic.clone()],
+            ..ResolutionTarget::default()
+        };
+        let config = resolve_scope_stack(registry, scoped, &target, &expansion_context)
+            .map_err(|error| SliceRunError(format!("config resolution failed: {error}")))?;
+        target_configs.insert(format!("{RESOLVED_PAINT_PREFIX}{semantic}"), config);
+    }
+    for (&tool_index, config) in &tool_configs {
+        target_configs.insert(
+            format!("{RESOLVED_TOOL_PREFIX}{tool_index}"),
+            config.clone(),
+        );
+    }
+
+    let object_heights = mesh
+        .objects
+        .iter()
+        .filter_map(|object| {
+            object
+                .world_z_extent
+                .map(|(z_min, z_max)| (object.id.clone(), (z_max - z_min) as f64))
+        })
+        .collect();
+    let object_layer_configs = query_z_grid(registry, scoped, &object_heights, &expansion_context)
+        .map_err(|error| SliceRunError(format!("config resolution failed: {error}")))?;
+
+    Ok(RuntimeResolvedScopes {
+        default_config,
+        target_configs,
+        tool_configs,
+        object_layer_configs,
+        expansion_context,
+    })
+}
+
 /// Preserve the retained authored shape so each host key's declared DSL
 /// extractor applies its documented leniency (for example,
 /// `extract_float_or_first` reads index 0 of a per-filament list).
@@ -126,6 +408,29 @@ fn typed_module_config_source(
         "module/prepass config transport must not contain raw scope prefixes"
     );
     compatibility
+}
+
+fn seed_expansion_context(scoped: &ScopedConfig) -> Result<ExpansionContext, SliceRunError> {
+    let nozzle_diameter_mm = scoped
+        .global()
+        .and_then(|delta| delta.values.get("nozzle_diameter"))
+        .and_then(absolute_config_number)
+        .ok_or_else(|| {
+            SliceRunError(
+                "automatic value expansion failed: unknown base key nozzle_diameter required by line_width"
+                    .to_string(),
+            )
+        })?;
+    if !nozzle_diameter_mm.is_finite() || nozzle_diameter_mm <= 0.0 {
+        return Err(SliceRunError(format!(
+            "automatic value expansion failed: base key nozzle_diameter required by line_width must be positive and finite, got {nozzle_diameter_mm}"
+        )));
+    }
+
+    Ok(ExpansionContext {
+        nozzle_diameter_mm,
+        tool_bases: std::collections::BTreeMap::new(),
+    })
 }
 
 fn absolute_config_number(value: &ConfigValue) -> Option<f64> {
@@ -178,6 +483,7 @@ fn build_expansion_context(
     })
 }
 
+#[cfg(test)]
 fn expand_config(
     registry: &slicer_config::ConfigSchemaRegistry,
     config: &mut slicer_ir::ResolvedConfig,
@@ -185,7 +491,7 @@ fn expand_config(
     tool_index: Option<u32>,
     scope: &str,
 ) -> Result<(), SliceRunError> {
-    expand_automatic_values(registry, config, context, tool_index).map_err(|error| {
+    slicer_config::expand_automatic_values(registry, config, context, tool_index).map_err(|error| {
         SliceRunError(format!(
             "automatic value expansion failed for {scope}: {error}"
         ))
@@ -198,6 +504,7 @@ fn expand_config(
 /// Runs after scope merge and before plan binding, feedrate construction, or
 /// emitter use on every production entry point; the first failure aborts
 /// before any consumer binds a map.
+#[cfg(test)]
 fn expand_scope_maps(
     registry: &slicer_config::ConfigSchemaRegistry,
     default_config: &mut slicer_ir::ResolvedConfig,
@@ -236,6 +543,26 @@ fn overlay_expanded_global(
         overlaid.insert(key, value);
     }
     overlaid
+}
+
+fn layer_planning_objects(object_layers: &[ResolvedObjectLayerConfig]) -> Vec<LayerPlanningObject> {
+    object_layers
+        .iter()
+        .map(|object| {
+            let object_id = object.object_id.clone();
+            let object_height = object.object_height;
+            let layer_height = object.layer_height;
+            let first_layer_height = object.first_layer_height;
+            let support_raft_layers = object.support_raft_layers;
+            LayerPlanningObject {
+                object_id,
+                object_height,
+                layer_height,
+                first_layer_height,
+                support_raft_layers,
+            }
+        })
+        .collect()
 }
 
 fn append_config_startup_diagnostics(
@@ -507,8 +834,8 @@ fn run_pipeline_fork(
 ) -> Result<crate::pipeline::PipelineOutput, SliceRunError> {
     let sink_arc = Arc::clone(&channel.sink);
     let expansion_authority = ConfigExpansionAuthority {
-        registry,
-        context: expansion_context,
+        _registry: registry,
+        _context: expansion_context,
     };
 
     // Profiling needs the adapter even under `--no-progress-events`: it is the
@@ -758,17 +1085,6 @@ pub fn run_slice_with_collector(
         );
     }
 
-    // Seed planner-visible per-object world heights.
-    for object in &mesh_ir.objects {
-        let key = format!("object_height:{}", object.id);
-        if config_source.contains_key(&key) {
-            continue;
-        }
-        if let Some((z_min, z_max)) = object.world_z_extent {
-            config_source.insert(key, ConfigValue::Float((z_max - z_min) as f64));
-        }
-    }
-
     // Seed the host-injected `slice_has_paint` gate (classic-perimeters.toml
     // `[config.schema.slice_has_paint]`, "Slice contains painted regions
     // (host-injected)"): the module manifest declares this key expecting the
@@ -782,19 +1098,6 @@ pub fn run_slice_with_collector(
         && !config_source.contains_key("slice_has_paint")
     {
         config_source.insert("slice_has_paint".to_string(), ConfigValue::Bool(true));
-    }
-
-    // Seed per-object config from `ObjectMesh.config.data` for the single
-    // manifest-first ingestion below. It is retained in `ScopedConfig`; the
-    // raw prefix is stripped from the later module/prepass transport.
-    for object in &mesh_ir.objects {
-        for (subkey, value) in &object.config.data {
-            let key = format!("object_config:{}:{}", object.id, subkey);
-            if config_source.contains_key(&key) {
-                continue;
-            }
-            config_source.insert(key, value.clone());
-        }
     }
 
     // MMU wipe-tower auto-enable (diagnose 2026-06-24, gap #3). OrcaSlicer turns
@@ -858,9 +1161,9 @@ pub fn run_slice_with_collector(
     })?;
     let loader_registry_warnings = manifest_first.registry_warnings;
     let ingestion_warnings = manifest_first.ingestion.warnings;
-    let scoped_config = manifest_first.ingestion.scoped;
+    let mut scoped_config = manifest_first.ingestion.scoped;
+    merge_model_scopes(&mut scoped_config, mesh_ir.as_ref());
     let typed_global_config = typed_global_config(&scoped_config);
-    let module_config_source = typed_module_config_source(&config_source, &typed_global_config);
     let mut loaded = manifest_first.live;
     let module_declarations: Vec<ModuleDeclaration> = loaded
         .bindings
@@ -1054,41 +1357,20 @@ pub fn run_slice_with_collector(
     }
 
     let config_bounds = ConfigBoundsIndex::from_modules(loaded.bindings.iter().map(|b| &b.module));
-
-    let mut default_resolved_config = resolve_global_config_scoped(&scoped_config, &config_bounds)
-        .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
-
-    let object_ids: Vec<&str> = mesh_ir.objects.iter().map(|o| o.id.as_str()).collect();
-    let mut resolved_configs_map = resolve_per_object_configs_scoped(
-        &default_resolved_config,
-        &scoped_config,
-        &object_ids,
-        &config_bounds,
-    )
-    .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
-
-    // Per-tool/extruder config overlays (`tool_config:<idx>:<key>`). Applied at
-    // emit time (the entity's tool is only known there). Empty unless the user
-    // sets `tool_config:` keys, so default behaviour is unchanged.
-    let mut per_tool_configs_map =
-        resolve_per_tool_configs_scoped(&default_resolved_config, &scoped_config, &config_bounds)
-            .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
-
-    let expansion_context =
-        build_expansion_context(&default_resolved_config, &per_tool_configs_map)?;
-    expand_scope_maps(
-        &registry,
-        &mut default_resolved_config,
-        &mut resolved_configs_map,
-        &mut per_tool_configs_map,
-        &expansion_context,
-    )?;
-
+    let RuntimeResolvedScopes {
+        default_config: default_resolved_config,
+        target_configs: resolved_configs_map,
+        tool_configs: per_tool_configs_map,
+        object_layer_configs,
+        expansion_context,
+    } = resolve_runtime_scopes(&registry, &scoped_config, mesh_ir.as_ref())?;
     validate_support_layer_heights(&resolved_configs_map)
         .map_err(|e| SliceRunError(format!("{e}")))?;
 
+    let module_config_source = typed_module_config_source(&config_source, &typed_global_config);
     let expanded_global_source =
         overlay_expanded_global(&module_config_source, &default_resolved_config);
+    let layer_planning_objects = layer_planning_objects(&object_layer_configs);
 
     // Build wasm_handles side-table before consuming bindings.
     let wasm_handles: std::collections::HashMap<
@@ -1151,7 +1433,10 @@ pub fn run_slice_with_collector(
         mesh_ir,
         plan,
         runners: PipelineStageRunners {
-            prepass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
+            prepass: Box::new(
+                WasmRuntimeDispatcher::new(Arc::clone(&engine))
+                    .with_layer_planning_objects(layer_planning_objects),
+            ),
             layer: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
             finalization: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
             postpass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
@@ -1351,20 +1636,6 @@ pub fn prepare_prepass_context(
     no_default_module_paths: bool,
     no_integrated_modules: bool,
 ) -> Result<PrepassContext, SliceRunError> {
-    // Seed planner-visible per-object world heights — required for
-    // `layer-planner-default` (and any layer planner) to produce a
-    // non-empty `LayerPlanIR`; without it prepass fails fatally with
-    // "no objects with positive height" (mirrors `run_slice`).
-    for object in &mesh_ir.objects {
-        let key = format!("object_height:{}", object.id);
-        if config_source.contains_key(&key) {
-            continue;
-        }
-        if let Some((z_min, z_max)) = object.world_z_extent {
-            config_source.insert(key, ConfigValue::Float((z_max - z_min) as f64));
-        }
-    }
-
     // Seed the host-injected `slice_has_paint` gate (mirrors `run_slice`):
     // set `true` whenever any object carries paint data, never overriding
     // an explicit user-supplied value.
@@ -1372,19 +1643,6 @@ pub fn prepare_prepass_context(
         && !config_source.contains_key("slice_has_paint")
     {
         config_source.insert("slice_has_paint".to_string(), ConfigValue::Bool(true));
-    }
-
-    // Seed per-object config from `ObjectMesh.config.data` for the single
-    // manifest-first ingestion below (mirrors `run_slice`). It is retained in
-    // `ScopedConfig`; the raw prefix is stripped from the later transport.
-    for object in &mesh_ir.objects {
-        for (subkey, value) in &object.config.data {
-            let key = format!("object_config:{}:{}", object.id, subkey);
-            if config_source.contains_key(&key) {
-                continue;
-            }
-            config_source.insert(key, value.clone());
-        }
     }
 
     let search_roots = assemble_search_roots(module_dirs, no_default_module_paths);
@@ -1415,9 +1673,9 @@ pub fn prepare_prepass_context(
     })?;
     let loader_registry_warnings = manifest_first.registry_warnings;
     let ingestion_warnings = manifest_first.ingestion.warnings;
-    let scoped_config = manifest_first.ingestion.scoped;
+    let mut scoped_config = manifest_first.ingestion.scoped;
+    merge_model_scopes(&mut scoped_config, mesh_ir.as_ref());
     let typed_global_config = typed_global_config(&scoped_config);
-    let module_config_source = typed_module_config_source(&config_source, &typed_global_config);
     let mut loaded = manifest_first.live;
     let module_declarations: Vec<ModuleDeclaration> = loaded
         .bindings
@@ -1454,29 +1712,17 @@ pub fn prepare_prepass_context(
     }
 
     let config_bounds = ConfigBoundsIndex::from_modules(loaded.bindings.iter().map(|b| &b.module));
-    let mut default_resolved_config = resolve_global_config_scoped(&scoped_config, &config_bounds)
-        .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
-
-    let object_ids: Vec<&str> = mesh_ir.objects.iter().map(|o| o.id.as_str()).collect();
-    let mut resolved_configs_map = resolve_per_object_configs_scoped(
-        &default_resolved_config,
-        &scoped_config,
-        &object_ids,
-        &config_bounds,
-    )
-    .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
-
-    let expansion_context =
-        build_expansion_context(&default_resolved_config, &std::collections::BTreeMap::new())?;
-    expand_scope_maps(
-        &registry,
-        &mut default_resolved_config,
-        &mut resolved_configs_map,
-        &mut std::collections::BTreeMap::new(),
-        &expansion_context,
-    )?;
+    let RuntimeResolvedScopes {
+        default_config: default_resolved_config,
+        target_configs: resolved_configs_map,
+        tool_configs: _,
+        object_layer_configs,
+        expansion_context,
+    } = resolve_runtime_scopes(&registry, &scoped_config, mesh_ir.as_ref())?;
+    let module_config_source = typed_module_config_source(&config_source, &typed_global_config);
     let expanded_global_source =
         overlay_expanded_global(&module_config_source, &default_resolved_config);
+    let layer_planning_objects = layer_planning_objects(&object_layer_configs);
 
     let wasm_handles: std::collections::HashMap<
         slicer_ir::ModuleId,
@@ -1511,7 +1757,8 @@ pub fn prepare_prepass_context(
     .map_err(|e| SliceRunError(format!("failed to build execution plan: {e}")))?;
 
     let engine = Arc::clone(&loaded.engine);
-    let prepass_runner = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let prepass_runner = WasmRuntimeDispatcher::new(Arc::clone(&engine))
+        .with_layer_planning_objects(layer_planning_objects);
     let mut blackboard = crate::Blackboard::new(Arc::clone(&mesh_ir), 0);
     crate::prepass::execute_prepass_with_builtins_configured_authority(
         &plan,
@@ -1523,8 +1770,8 @@ pub fn prepare_prepass_context(
         &config_bounds,
         &wasm_handles,
         ConfigExpansionAuthority {
-            registry: &registry,
-            context: &expansion_context,
+            _registry: &registry,
+            _context: &expansion_context,
         },
     )
     .map_err(|e| SliceRunError(format!("prepass failed: {e}")))?;

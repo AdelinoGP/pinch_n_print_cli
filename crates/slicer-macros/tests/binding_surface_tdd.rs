@@ -447,7 +447,7 @@ fn typed_schema_covers_every_world() {
     );
     assert_eq!(
         PrepassLayerPlanningFixture::__slicer_module_schema().stage_export,
-        "slicer:prepass-layer-planning/layer-planning@1.0.0#run"
+        "slicer:prepass-layer-planning/layer-planning@2.0.0#run"
     );
     assert_eq!(
         FinalizationFixture::__slicer_module_schema().tier_id,

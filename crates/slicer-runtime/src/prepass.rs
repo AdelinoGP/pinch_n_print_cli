@@ -16,8 +16,8 @@ use slicer_ir::{ConfigKey, ConfigValue, ModuleId, ResolvedConfig, StageId, Suppo
 /// omit it and therefore require their supplied configs to already be expanded.
 #[derive(Clone, Copy)]
 pub(crate) struct ConfigExpansionAuthority<'a> {
-    pub(crate) registry: &'a slicer_config::ConfigSchemaRegistry,
-    pub(crate) context: &'a slicer_config::ExpansionContext,
+    pub(crate) _registry: &'a slicer_config::ConfigSchemaRegistry,
+    pub(crate) _context: &'a slicer_config::ExpansionContext,
 }
 
 use crate::builtins::overhang_annotation_producer::{
@@ -763,7 +763,7 @@ fn execute_prepass_with_builtins_configured_instr_collecting(
     resolved_configs: &BTreeMap<String, ResolvedConfig>,
     default_resolved_config: &ResolvedConfig,
     raw_config_source: &HashMap<ConfigKey, ConfigValue>,
-    bounds: &crate::ConfigBoundsIndex,
+    _bounds: &crate::ConfigBoundsIndex,
     instrumentation: &(dyn PipelineInstrumentation + Sync),
     wasm_handles: &HashMap<
         ModuleId,
@@ -774,7 +774,7 @@ fn execute_prepass_with_builtins_configured_instr_collecting(
         ),
     >,
     harvested_plan_entries: Option<&mut Vec<SupportPlanEntry>>,
-    expansion_authority: Option<ConfigExpansionAuthority<'_>>,
+    _expansion_authority: Option<ConfigExpansionAuthority<'_>>,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     run_builtin_stage(
         blackboard,
@@ -796,24 +796,24 @@ fn execute_prepass_with_builtins_configured_instr_collecting(
     // PrePass::SupportGeometry moved to the post-RegionMapping / post-Slice
     // phase below, since it now depends on SliceIR (Commit 4 will consume real
     // slice polygons via collect_polygons_at_z; Commit 2 keeps the stub).
-    /// Build per-semantic config overrides for the region-mapping builtin.
-    ///
-    /// Per packet 95 D10/D11: paint semantics present in the mesh are discovered
-    /// by walking each object's `paint_data` (facet_values + strokes) and its
-    /// `modifier_volumes` (support_enforcer / support_blocker subtypes).  The
-    /// `paint_config:<semantic>:<key>` overlays in the raw config source are
-    /// then resolved per-semantic via
-    /// `slicer_scheduler::config_resolution::resolve_per_paint_semantic_configs`.
-    ///
-    /// Unknown-semantic warnings are silently dropped here — they surface at
-    /// manifest-load time per P1b (the scheduler's CLI config resolver).
+    /// Select runtime-pre-resolved per-semantic configs for region-map metadata.
     fn build_paint_semantic_configs(
         blackboard: &Blackboard,
-        default_resolved_config: &ResolvedConfig,
-        raw_config_source: &HashMap<ConfigKey, ConfigValue>,
-        bounds: &crate::ConfigBoundsIndex,
-    ) -> Result<BTreeMap<slicer_ir::PaintSemantic, ResolvedConfig>, PrepassExecutionError> {
+        resolved_configs: &BTreeMap<String, ResolvedConfig>,
+    ) -> BTreeMap<slicer_ir::PaintSemantic, ResolvedConfig> {
         use slicer_ir::PaintSemantic;
+        const RESOLVED_PAINT_PREFIX: &str = "\0resolved-paint:";
+
+        fn semantic_name(semantic: &PaintSemantic) -> &str {
+            match semantic {
+                PaintSemantic::Material => "material",
+                PaintSemantic::FuzzySkin => "fuzzy_skin",
+                PaintSemantic::SupportEnforcer => "support_enforcer",
+                PaintSemantic::SupportBlocker => "support_blocker",
+                PaintSemantic::Custom(name) => name,
+            }
+        }
+
         let mesh = blackboard.mesh();
         let mut present: Vec<PaintSemantic> = Vec::new();
         let mut seen = std::collections::HashSet::new();
@@ -844,39 +844,17 @@ fn execute_prepass_with_builtins_configured_instr_collecting(
                 }
             }
         }
-        if present.is_empty() {
-            return Ok(BTreeMap::new());
-        }
-        let (map, _warnings) =
-            slicer_scheduler::config_resolution::resolve_per_paint_semantic_configs(
-                default_resolved_config,
-                raw_config_source,
-                &present,
-                bounds,
-            )
-            .map_err(|error| PrepassExecutionError::ConfigResolution {
-                scope: "paint semantics".to_string(),
-                message: error.to_string(),
-            })?;
-        Ok(map)
-    }
-
-    fn expand_config(
-        config: &mut ResolvedConfig,
-        authority: ConfigExpansionAuthority<'_>,
-        tool_index: Option<u32>,
-        scope: String,
-    ) -> Result<(), PrepassExecutionError> {
-        slicer_config::expand_automatic_values(
-            authority.registry,
-            config,
-            authority.context,
-            tool_index,
-        )
-        .map_err(|error| PrepassExecutionError::AutomaticValueExpansion {
-            scope,
-            message: error.to_string(),
-        })
+        present
+            .into_iter()
+            .filter_map(|semantic| {
+                let mut key = RESOLVED_PAINT_PREFIX.to_owned();
+                key.push_str(semantic_name(&semantic));
+                resolved_configs
+                    .get(&key)
+                    .cloned()
+                    .map(|config| (semantic, config))
+            })
+            .collect()
     }
 
     // Region-mapping runs after `PrePass::LayerPlanning` (user-or-none),
@@ -914,56 +892,18 @@ fn execute_prepass_with_builtins_configured_instr_collecting(
     let region_mapping_should_run =
         blackboard.layer_plan().is_some() && blackboard.region_map().is_none();
     let region_mapping_configs = if region_mapping_should_run {
-        // Recheck the supplied maps under the same registry/context authority
-        // used by startup, then resolve and expand every map rebuilt here. This
-        // ordering guarantees RegionMapping only interns absolute values.
-        let mut expanded_default = default_resolved_config.clone();
-        let mut expanded_objects = resolved_configs.clone();
-        if let Some(authority) = expansion_authority {
-            expand_config(
-                &mut expanded_default,
-                authority,
-                None,
-                "global scope".to_string(),
-            )?;
-            for (object_id, config) in &mut expanded_objects {
-                expand_config(config, authority, None, format!("object {object_id}"))?;
-            }
-        }
-
-        let mut paint_semantic_configs =
-            build_paint_semantic_configs(blackboard, &expanded_default, raw_config_source, bounds)?;
-        // Per-tool/extruder config overlays (`tool_config:<n>:<key>`). Consumed
-        // by region mapping at highest precedence once the material tool is known.
-        let mut tool_configs = slicer_scheduler::config_resolution::resolve_per_tool_configs(
-            &expanded_default,
-            raw_config_source,
-            bounds,
-        )
-        .map_err(|error| PrepassExecutionError::ConfigResolution {
-            scope: "tool configs".to_string(),
-            message: error.to_string(),
-        })?;
-
-        if let Some(authority) = expansion_authority {
-            for (&tool_index, config) in &mut tool_configs {
-                expand_config(
-                    config,
-                    authority,
-                    Some(tool_index),
-                    format!("tool {tool_index}"),
-                )?;
-            }
-            for (semantic, config) in &mut paint_semantic_configs {
-                expand_config(
-                    config,
-                    authority,
-                    None,
-                    format!("paint semantic {semantic:?}"),
-                )?;
-            }
-        }
-
+        const RESOLVED_TOOL_PREFIX: &str = "\0resolved-tool:";
+        let expanded_default = default_resolved_config.clone();
+        let expanded_objects = resolved_configs.clone();
+        let paint_semantic_configs = build_paint_semantic_configs(blackboard, resolved_configs);
+        let tool_configs = resolved_configs
+            .iter()
+            .filter_map(|(key, config)| {
+                key.strip_prefix(RESOLVED_TOOL_PREFIX)
+                    .and_then(|index| index.parse::<u32>().ok())
+                    .map(|index| (index, config.clone()))
+            })
+            .collect();
         Some((
             expanded_objects,
             expanded_default,

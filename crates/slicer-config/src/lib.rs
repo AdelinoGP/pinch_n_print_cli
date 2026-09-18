@@ -13,10 +13,14 @@ use slicer_ir::resolved_config::{
 use slicer_ir::ConfigValue;
 
 pub mod ingestion;
+pub mod resolution;
 
 pub use ingestion::{
     ConfigIngestionError, ConfigIngestor, ConfigScope, IngestionOutcome, IngestionWarning,
     ScopeDelta, ScopedConfig,
+};
+pub use resolution::{
+    query_z_grid, resolve_scope_stack, ResolutionError, ResolutionTarget, ResolvedObjectLayerConfig,
 };
 
 const HOST_PROVENANCE: &str = "host";

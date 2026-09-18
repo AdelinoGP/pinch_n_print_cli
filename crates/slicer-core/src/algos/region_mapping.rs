@@ -209,167 +209,126 @@ fn cap_exceeded(
     }
 }
 
-/// Apply a paint-semantic `ResolvedConfig` on top of a base `ResolvedConfig`.
-///
-/// For each field in `overlay` that differs from `ResolvedConfig::default()`,
-/// the overlay value is written into `base`. This implements the
-/// global → per_object → per_paint_semantic precedence chain: the paint
-/// overlay wins over the per-object config for any field it explicitly sets.
-fn overlay_resolved(base: ResolvedConfig, overlay: &ResolvedConfig) -> ResolvedConfig {
-    let d = ResolvedConfig::default();
-    let mut r = base;
-    if overlay.layer_height != d.layer_height {
-        r.layer_height = overlay.layer_height;
+const RESOLVED_TARGET_PREFIX: &str = "\0resolved-target:";
+
+fn append_key_part(key: &mut String, value: &str) {
+    use std::fmt::Write as _;
+    let _ = write!(key, "{}:{value}", value.len());
+}
+
+fn resolved_target_key(
+    object_id: &str,
+    modifier_ids: &[String],
+    paint_semantics: &[String],
+    tool_index: Option<u32>,
+) -> String {
+    if modifier_ids.is_empty() && paint_semantics.is_empty() && tool_index.is_none() {
+        return object_id.to_owned();
     }
-    if overlay.line_width != d.line_width {
-        r.line_width = overlay.line_width;
+    let mut key = RESOLVED_TARGET_PREFIX.to_owned();
+    append_key_part(&mut key, object_id);
+    key.push('|');
+    for modifier_id in modifier_ids {
+        append_key_part(&mut key, modifier_id);
+        key.push(',');
     }
-    if overlay.first_layer_height != d.first_layer_height {
-        r.first_layer_height = overlay.first_layer_height;
+    key.push('|');
+    for semantic in paint_semantics {
+        append_key_part(&mut key, semantic);
+        key.push(',');
     }
-    if overlay.initial_layer_line_width != d.initial_layer_line_width {
-        r.initial_layer_line_width = overlay.initial_layer_line_width;
+    key.push('|');
+    if let Some(tool_index) = tool_index {
+        use std::fmt::Write as _;
+        let _ = write!(key, "{tool_index}");
     }
-    if overlay.wall_count != d.wall_count {
-        r.wall_count = overlay.wall_count;
-    }
-    if overlay.outer_wall_speed != d.outer_wall_speed {
-        r.outer_wall_speed = overlay.outer_wall_speed;
-    }
-    if overlay.inner_wall_speed != d.inner_wall_speed {
-        r.inner_wall_speed = overlay.inner_wall_speed;
-    }
-    if overlay.wall_generator != d.wall_generator {
-        r.wall_generator = overlay.wall_generator;
-    }
-    if overlay.arachne_min_feature_size != d.arachne_min_feature_size {
-        r.arachne_min_feature_size = overlay.arachne_min_feature_size;
-    }
-    if overlay.infill_type != d.infill_type {
-        r.infill_type = overlay.infill_type;
-    }
-    if overlay.infill_density != d.infill_density {
-        r.infill_density = overlay.infill_density;
-    }
-    if overlay.infill_angle != d.infill_angle {
-        r.infill_angle = overlay.infill_angle;
-    }
-    if overlay.infill_speed != d.infill_speed {
-        r.infill_speed = overlay.infill_speed;
-    }
-    if overlay.solid_infill_speed != d.solid_infill_speed {
-        r.solid_infill_speed = overlay.solid_infill_speed;
-    }
-    if overlay.top_shell_layers != d.top_shell_layers {
-        r.top_shell_layers = overlay.top_shell_layers;
-    }
-    if overlay.bottom_shell_layers != d.bottom_shell_layers {
-        r.bottom_shell_layers = overlay.bottom_shell_layers;
-    }
-    if overlay.top_fill_holder != d.top_fill_holder {
-        r.top_fill_holder = overlay.top_fill_holder.clone();
-    }
-    if overlay.bottom_fill_holder != d.bottom_fill_holder {
-        r.bottom_fill_holder = overlay.bottom_fill_holder.clone();
-    }
-    if overlay.bridge_fill_holder != d.bridge_fill_holder {
-        r.bridge_fill_holder = overlay.bridge_fill_holder.clone();
-    }
-    if overlay.sparse_fill_holder != d.sparse_fill_holder {
-        r.sparse_fill_holder = overlay.sparse_fill_holder.clone();
-    }
-    if overlay.support_enabled != d.support_enabled {
-        r.support_enabled = overlay.support_enabled;
-    }
-    if overlay.support_type != d.support_type {
-        r.support_type = overlay.support_type;
-    }
-    if overlay.support_threshold_angle != d.support_threshold_angle {
-        r.support_threshold_angle = overlay.support_threshold_angle;
-    }
-    if overlay.nonplanar_max_angle_deg != d.nonplanar_max_angle_deg {
-        r.nonplanar_max_angle_deg = overlay.nonplanar_max_angle_deg;
-    }
-    if overlay.nonplanar_shell_count != d.nonplanar_shell_count {
-        r.nonplanar_shell_count = overlay.nonplanar_shell_count;
-    }
-    if overlay.nonplanar_amplitude != d.nonplanar_amplitude {
-        r.nonplanar_amplitude = overlay.nonplanar_amplitude;
-    }
-    if overlay.smoothificator_target_height != d.smoothificator_target_height {
-        r.smoothificator_target_height = overlay.smoothificator_target_height;
-    }
-    if overlay.smoothificator_adaptive != d.smoothificator_adaptive {
-        r.smoothificator_adaptive = overlay.smoothificator_adaptive;
-    }
-    // Merge extension keys from overlay into base.
-    for (k, v) in &overlay.extensions {
-        r.extensions.insert(k.clone(), v.clone());
-    }
-    r
+    key
+}
+
+fn ordered_modifier_ids(modifier_volumes: &[ModifierVolume]) -> Vec<String> {
+    let mut order: Vec<usize> = (0..modifier_volumes.len()).collect();
+    order.sort_by_key(|&index| (modifier_volumes[index].priority, std::cmp::Reverse(index)));
+    order
+        .into_iter()
+        .map(|index| modifier_volumes[index].id.clone())
+        .collect()
+}
+
+fn resolved_target_config<'a>(
+    resolved_configs: &'a BTreeMap<String, ResolvedConfig>,
+    object_id: &str,
+    modifier_volumes: &[ModifierVolume],
+    chain: &[(String, PaintValue)],
+    tool_index: Option<u32>,
+) -> Option<&'a ResolvedConfig> {
+    let modifier_ids = ordered_modifier_ids(modifier_volumes);
+    let mut paint_semantics: Vec<String> =
+        chain.iter().map(|(semantic, _)| semantic.clone()).collect();
+    paint_semantics.sort();
+    paint_semantics.dedup();
+    resolved_configs.get(&resolved_target_key(
+        object_id,
+        &modifier_ids,
+        &paint_semantics,
+        tool_index,
+    ))
 }
 
 /// Packet 132 (AC-4) — bind a modifier's config delta to the modifier's
 /// minted sub-region `RegionKey` instead of stamping the whole object.
 ///
 /// This returns a `region_id → config` map that keeps the parent region's
-/// config untouched while merging every modifier delta onto a *separate*
-/// config keyed by the minted sub-region id.
+/// config untouched while binding a pre-resolved modifier scope stack to a
+/// *separate* config keyed by the minted sub-region id.
 ///
 /// Concretely, given a base `infill_density = 0.15` and a modifier volume
 /// carrying `infill_density = 0.40`:
 /// * `map[base_region_id]`  → `base_config` (0.15, unchanged)
-/// * `map[sub_region_id]`   → `base_config` + merged modifier deltas (0.40)
-///
-/// The same skip rules as [`modifier_footprint_groups`] apply: modifier
-/// volumes whose subtype is `support_enforcer` / `support_blocker` are
-/// skipped entirely, empty string/list values are skipped, and modifiers are
-/// merged in priority-ascending order (last writer wins) via
-/// [`overlay_resolved`].
+/// * `map[sub_region_id]`   → the runtime-pre-resolved modifier target (0.40)
+fn stamp_pre_resolved_sub_region_configs(
+    base_config: ResolvedConfig,
+    sub_config: ResolvedConfig,
+    base_region_id: u64,
+    sub_region_id: u64,
+) -> BTreeMap<u64, ResolvedConfig> {
+    let mut map = BTreeMap::new();
+    map.insert(base_region_id, base_config);
+    map.insert(sub_region_id, sub_config);
+    map
+}
+
+/// Compatibility adapter for callers that exercise modifier stamping without
+/// the runtime's typed scope resolver. Production region mapping uses
+/// [`stamp_pre_resolved_sub_region_configs`] instead.
 pub fn stamp_modifier_sub_region_configs(
     base_config: ResolvedConfig,
     base_region_id: u64,
     sub_region_id: u64,
     modifier_volumes: &[ModifierVolume],
 ) -> BTreeMap<u64, ResolvedConfig> {
-    // Sort modifier indices by priority ascending so higher-priority writes
-    // last (overlay_resolved is last-writer-wins on the `extensions` map).
-    // Reverse document order for equal priorities so the first-loaded modifier
-    // remains the winner, matching geometry ownership.
-    let mut order: Vec<usize> = (0..modifier_volumes.len()).collect();
-    order.sort_by_key(|&i| (modifier_volumes[i].priority, std::cmp::Reverse(i)));
-
     let mut sub_config = base_config.clone();
-    for idx in order {
-        let mv = &modifier_volumes[idx];
-        // OrcaSlicer parity: skip support_enforcer / support_blocker entirely.
-        if let Some(ConfigValue::String(s)) = mv.config_delta.fields.get("subtype") {
-            if s == "support_enforcer" || s == "support_blocker" {
-                continue;
-            }
-        }
-        let mut overlay = ResolvedConfig::default();
-        for (k, v) in &mv.config_delta.fields {
-            if k == "subtype" {
-                continue;
-            }
-            match v {
-                ConfigValue::String(s) if s.is_empty() => continue,
-                ConfigValue::List(l) if l.is_empty() => continue,
-                _ => {}
-            }
-            overlay.extensions.insert(k.clone(), v.clone());
-        }
-        if overlay.extensions.is_empty() {
+    let mut order: Vec<usize> = (0..modifier_volumes.len()).collect();
+    order.sort_by_key(|&index| (modifier_volumes[index].priority, std::cmp::Reverse(index)));
+    for index in order {
+        let modifier = &modifier_volumes[index];
+        if matches!(
+            modifier.config_delta.fields.get("subtype"),
+            Some(ConfigValue::String(subtype))
+                if subtype == "support_enforcer" || subtype == "support_blocker"
+        ) {
             continue;
         }
-        sub_config = overlay_resolved(sub_config, &overlay);
+        for (key, value) in &modifier.config_delta.fields {
+            if key == "subtype"
+                || matches!(value, ConfigValue::String(value) if value.is_empty())
+                || matches!(value, ConfigValue::List(value) if value.is_empty())
+            {
+                continue;
+            }
+            sub_config.extensions.insert(key.clone(), value.clone());
+        }
     }
-
-    let mut map = BTreeMap::new();
-    map.insert(base_region_id, base_config);
-    map.insert(sub_region_id, sub_config);
-    map
+    stamp_pre_resolved_sub_region_configs(base_config, sub_config, base_region_id, sub_region_id)
 }
 
 /// Slice and group parameter-modifier footprints for one object/layer pair.
@@ -609,23 +568,13 @@ pub fn execute_region_mapping_inner(
     // map to preserve the pre-P93 single-variant flow.
     aggregated_region_split: &BTreeMap<String, AggregatedRegionSplitEntry>,
     objects: &[ObjectMesh],
-    // Host config authority for `RegionPlan.config` (packet 76, 1a). When
-    // `Some((per_object, default))`, each region's base config is taken from
-    // the host's per-object map (falling back to `default`) rather than the
-    // module-emitted `region.resolved_config`; modifier deltas and paint
-    // overlays are then stamped on top in a single pass. When `None`, the
-    // module-emitted `region.resolved_config` is used as the base (preserves
-    // the pre-commit `execute_region_mapping` test/e2e callers).
+    // Host config authority for `RegionPlan.config` (packet 76, 1a). The map
+    // contains runtime-pre-resolved object/modifier/paint/tool target stacks.
+    // When `None`, the module-emitted `region.resolved_config` remains the
+    // compatibility base for `execute_region_mapping` test/e2e callers.
     host_config: Option<(&BTreeMap<String, ResolvedConfig>, &ResolvedConfig)>,
-    // Per-tool/extruder config overlays keyed by `tool_index` (`tool_config:<n>:<key>`,
-    // global-based, resolved by `resolve_per_tool_configs`). For a painted variant
-    // chain carrying `("material", ToolIndex(n))`, the matching `tool_configs[n]` is
-    // overlaid LAST — highest precedence — onto the region's effective config,
-    // mirroring OrcaSlicer's filament-override-last model
-    // (`PrintApply.cpp` applies filament overrides on top of print/object/modifier).
-    // This is the only place a painted region's tool is known before perimeter
-    // generation, so it is where per-tool geometry (e.g. `line_width`) composes.
-    // Pass an empty map to disable (preserves the pre-existing single-config flow).
+    // Standalone compatibility configs. Production target stacks already have
+    // tool-last precedence applied by the runtime resolver.
     tool_configs: &BTreeMap<u32, ResolvedConfig>,
     cap: usize,
 ) -> Result<RegionMapIR, RegionMappingError> {
@@ -787,15 +736,24 @@ pub fn execute_region_mapping_inner(
                                 region_map_out.entries.len() + 1,
                             ));
                         }
-                        let sub_config = stamp_modifier_sub_region_configs(
+                        let modifiers: Vec<ModifierVolume> = mvs.into_iter().cloned().collect();
+                        let resolved_sub_config = host_config
+                            .and_then(|(configs, _)| {
+                                resolved_target_config(
+                                    configs,
+                                    &region.object_id,
+                                    &modifiers,
+                                    &[],
+                                    None,
+                                )
+                            })
+                            .cloned()
+                            .unwrap_or_else(|| base_config.clone());
+                        let sub_config = stamp_pre_resolved_sub_region_configs(
                             base_config.clone(),
+                            resolved_sub_config,
                             region.region_id,
                             sub_id,
-                            // Clone the (usually single-element) group: the
-                            // stamping helper takes `&[ModifierVolume]`, and
-                            // the mint rarely overlaps two modifiers with
-                            // identical cross-sections.
-                            &mvs.into_iter().cloned().collect::<Vec<ModifierVolume>>(),
                         )
                         .remove(&sub_id)
                         .expect(
@@ -854,7 +812,25 @@ pub fn execute_region_mapping_inner(
                 // below. Keeping every parent chain pure prevents a modifier
                 // from leaking outside its footprint, including across paint
                 // variants.
-                let mut effective = base_config.clone();
+                let mut effective = host_config
+                    .and_then(|(configs, _)| {
+                        resolved_target_config(
+                            configs,
+                            &region.object_id,
+                            &[],
+                            &chain,
+                            chain.iter().find_map(|(semantic, value)| {
+                                (semantic == "material").then_some(value).and_then(|value| {
+                                    match value {
+                                        PaintValue::ToolIndex(index) => Some(*index),
+                                        _ => None,
+                                    }
+                                })
+                            }),
+                        )
+                    })
+                    .cloned()
+                    .unwrap_or_else(|| base_config.clone());
                 let mut paint_overrides: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
                 // The chain's painted material tool (if any). Captured here so the
                 // per-tool config can be overlaid LAST (highest precedence), after
@@ -870,7 +846,6 @@ pub fn execute_region_mapping_inner(
                         .find(|sem| &paint_semantic_namespace_key(sem) == sem_name);
                     if let Some(sem_key) = matched_key {
                         if let Some(sem_cfg) = paint_semantic_configs.get(sem_key) {
-                            effective = overlay_resolved(effective, sem_cfg);
                             paint_overrides.insert(sem_key.clone(), sem_cfg.clone());
                         }
                     }
@@ -882,13 +857,13 @@ pub fn execute_region_mapping_inner(
                     }
                 }
 
-                // Per-tool overlay — highest precedence (OrcaSlicer filament-
-                // override-last). Enables per-tool geometry (e.g. `line_width`) for
-                // painted/MMU tools at the one point the tool is known before
-                // perimeter generation. `region_id` stays the pure identity.
-                if let Some(t) = chain_tool_index {
-                    if let Some(tool_cfg) = tool_configs.get(&t) {
-                        effective = overlay_resolved(effective, tool_cfg);
+                // Compatibility callers without the production target map can
+                // still provide a fully resolved tool target.
+                if host_config.is_none() {
+                    if let Some(tool_config) =
+                        chain_tool_index.and_then(|index| tool_configs.get(&index))
+                    {
+                        effective = tool_config.clone();
                     }
                 }
 
@@ -912,33 +887,26 @@ pub fn execute_region_mapping_inner(
                     for (footprint, modifiers) in &modifier_groups {
                         let sub_id =
                             modifier_sub_region_id(parent_region_id, &region.object_id, footprint);
-                        let mut child_config = stamp_modifier_sub_region_configs(
+                        let resolved_child_config = host_config
+                            .and_then(|(configs, _)| {
+                                resolved_target_config(
+                                    configs,
+                                    &region.object_id,
+                                    modifiers,
+                                    &chain,
+                                    chain_tool_index,
+                                )
+                            })
+                            .cloned()
+                            .unwrap_or_else(|| base_config.clone());
+                        let child_config = stamp_pre_resolved_sub_region_configs(
                             base_config.clone(),
+                            resolved_child_config,
                             parent_region_id,
                             sub_id,
-                            modifiers,
                         )
                         .remove(&sub_id)
                         .expect("modifier config helper always emits the child entry");
-
-                        // Modifier precedence is below paint and per-tool
-                        // precedence, matching the parent chain resolution.
-                        for (sem_name, value) in &chain {
-                            let matched_key = paint_semantic_configs
-                                .keys()
-                                .find(|sem| &paint_semantic_namespace_key(sem) == sem_name);
-                            if let Some(sem_key) = matched_key {
-                                if let Some(sem_cfg) = paint_semantic_configs.get(sem_key) {
-                                    child_config = overlay_resolved(child_config, sem_cfg);
-                                }
-                            }
-                            let _ = value;
-                        }
-                        if let Some(t) = chain_tool_index {
-                            if let Some(tool_cfg) = tool_configs.get(&t) {
-                                child_config = overlay_resolved(child_config, tool_cfg);
-                            }
-                        }
 
                         let key = RegionKey {
                             global_layer_index: layer.index,

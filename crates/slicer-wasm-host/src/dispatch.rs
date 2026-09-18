@@ -22,7 +22,7 @@ use slicer_ir::{
 use slicer_scheduler::execution_plan::module_claims_match_active_region;
 use slicer_scheduler::validation::{resolve_held_claims, FillHolders};
 use slicer_sdk::native::{NativePostpassInput, NativeStageEntry};
-use slicer_sdk::traits::{EntityMutation, SortKey};
+use slicer_sdk::traits::{EntityMutation, LayerPlanningObject, SortKey};
 
 use crate::binding::{
     CompiledModuleLive, FinalizationStageInput, LayerStageInput, PostpassStageInput,
@@ -291,6 +291,8 @@ fn convert_gcode_command_to_postpass_wit(
 /// 6. Releases the pool slot (via RAII lease drop)
 pub struct WasmRuntimeDispatcher {
     engine: Arc<WasmEngine>,
+    /// Host-resolved per-object inputs for `PrePass::LayerPlanning`.
+    layer_planning_objects: Arc<[LayerPlanningObject]>,
     /// Accumulated runtime reads from postpass dispatch calls.
     /// Populated by `run_gcode_postprocess` and `run_text_postprocess`,
     /// consumed by `take_runtime_reads`.
@@ -317,11 +319,18 @@ impl WasmRuntimeDispatcher {
     pub fn new(engine: Arc<WasmEngine>) -> Self {
         Self {
             engine,
+            layer_planning_objects: Arc::from([]),
             postpass_runtime_reads: std::cell::RefCell::new(Vec::new()),
             postpass_batch_calls: std::cell::RefCell::new(Vec::new()),
             postpass_profile_marks: std::cell::RefCell::new(Vec::new()),
             postpass_call_fuel: std::cell::RefCell::new(Vec::new()),
         }
+    }
+
+    /// Supply the host-resolved records consumed by `PrePass::LayerPlanning`.
+    pub fn with_layer_planning_objects(mut self, objects: Vec<LayerPlanningObject>) -> Self {
+        self.layer_planning_objects = objects.into();
+        self
     }
 
     /// Build the `wasmtime::Store` for one dispatch call.
@@ -1370,13 +1379,30 @@ impl WasmRuntimeDispatcher {
                 .map_err(mk_inst_err)?;
                 let object_ids: Vec<String> =
                     mesh_ir.objects.iter().map(|o| o.id.clone()).collect();
+                let object_configs =
+                    adapt_layer_planning_object_configs(&self.layer_planning_objects);
+                validate_layer_planning_object_configs(&object_ids, &object_configs).map_err(
+                    |reason| DispatchError {
+                        module_id: module_id.to_string(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::ContextCreation,
+                        reason,
+                    },
+                )?;
                 let output = store
                     .data_mut()
                     .push_layer_plan_output()
                     .map_err(mk_ctx_err)?;
                 let call_result = bindings
                     .slicer_prepass_layer_planning_layer_planning()
-                    .call_run(&mut store, &object_ids, own(output), own(config_handle))
+                    .call_run(
+                        &mut store,
+                        &object_ids,
+                        &object_configs,
+                        own(output),
+                        own(config_handle),
+                    )
                     .map_err(mk_call_err)?;
                 Ok((call_result, store))
             }
@@ -2582,6 +2608,58 @@ fn push_infill_postprocess_regions(
 
 // ── Layer-plan harvest ────────────────────────────────────────────────────
 
+/// Adapt SDK layer-planning records to the versioned WIT record field-for-field.
+pub fn adapt_layer_planning_object_configs(
+    objects: &[LayerPlanningObject],
+) -> Vec<host::prepass_layer_planning::exports::slicer::prepass_layer_planning::layer_planning::ObjectLayerConfig>
+{
+    objects
+        .iter()
+        .map(|object| {
+            let object_id = object.object_id.clone();
+            let object_height = object.object_height;
+            let layer_height = object.layer_height;
+            let first_layer_height = object.first_layer_height;
+            let support_raft_layers = object.support_raft_layers;
+            host::prepass_layer_planning::exports::slicer::prepass_layer_planning::layer_planning::ObjectLayerConfig {
+                object_id,
+                object_height,
+                layer_height,
+                first_layer_height,
+                support_raft_layers,
+            }
+        })
+        .collect()
+}
+
+/// Validate the positional object/config contract for layer-planning v2.
+///
+/// Dispatch calls this before allocating the guest's output resource, so an
+/// omitted config or an ID mismatch cannot be followed by accepted output.
+pub fn validate_layer_planning_object_configs(
+    object_ids: &[String],
+    object_configs: &[host::prepass_layer_planning::exports::slicer::prepass_layer_planning::layer_planning::ObjectLayerConfig],
+) -> Result<(), String> {
+    if object_ids.len() != object_configs.len() {
+        return Err(format!(
+            "layer-planning object/config count mismatch: {} object IDs, {} object configs",
+            object_ids.len(),
+            object_configs.len()
+        ));
+    }
+
+    for (index, (object_id, object_config)) in object_ids.iter().zip(object_configs).enumerate() {
+        if object_id != &object_config.object_id {
+            return Err(format!(
+                "layer-planning object/config ID mismatch at index {index}: expected `{object_id}`, got `{}`",
+                object_config.object_id
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 /// Convert WIT `LayerProposal` records collected by a `PrePass::LayerPlanning`
 /// call into a host-side [`slicer_ir::LayerPlanIR`].
 fn harvest_layer_plan_ir(
@@ -2732,11 +2810,10 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
                     message: "native entry family does not match prepass runner".to_string(),
                 });
             };
-            let response = entry(&crate::marshal::native::build_native_prepass_request(
-                stage_export,
-                &input,
-                module,
-            ))
+            let response = entry(
+                &crate::marshal::native::build_native_prepass_request(stage_export, &input, module),
+                Some(&self.layer_planning_objects),
+            )
             .map_err(|e| slicer_ir::PrepassRunnerError::FatalModule {
                 stage_id: stage_id.clone(),
                 module_id: module.module_id.clone(),

@@ -4,6 +4,7 @@
 //! Tests lock down trait signatures, prepass types, and output builders.
 
 use slicer_sdk::prelude::*;
+use slicer_sdk::traits::LayerPlanningObject;
 use std::collections::HashMap;
 
 // =============================================================================
@@ -341,7 +342,7 @@ impl PrepassModule for LayerPlanningTestModule {
 
     fn run_layer_planning(
         &self,
-        objects: &[ObjectId],
+        objects: &[LayerPlanningObject],
         output: &mut LayerPlanOutput,
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
@@ -357,7 +358,14 @@ impl PrepassModule for LayerPlanningTestModule {
 fn test_11_run_layer_planning_signature_matches_wit() {
     let config = ConfigView::from_map(HashMap::new());
     let module = LayerPlanningTestModule::from_config(&config).unwrap();
-    let objects: Vec<ObjectId> = vec!["obj-1".to_string()];
+    // exhaustive: all fields exercise the typed layer-planning signature.
+    let objects = vec![LayerPlanningObject {
+        object_id: "obj-1".to_string(),
+        object_height: 10.0,
+        layer_height: 0.2,
+        first_layer_height: 0.24,
+        support_raft_layers: 2,
+    }];
     let mut output = LayerPlanOutput::new();
 
     let result = module.run_layer_planning(&objects, &mut output, &config);
@@ -381,15 +389,17 @@ impl PrepassModule for MinimalPrepassModule {
 fn test_12_default_implementations_exist() {
     let config = ConfigView::from_map(HashMap::new());
     let module = MinimalPrepassModule::from_config(&config).unwrap();
-    let objects: Vec<ObjectId> = vec![];
+    let mesh_objects: Vec<ObjectId> = vec![];
+    let layer_planning_objects: Vec<LayerPlanningObject> = vec![];
     let mut mesh_output = MeshAnalysisOutput::new();
     let mut layer_output = LayerPlanOutput::new();
 
     // Both default implementations should succeed
-    let mesh_result = module.run_mesh_analysis(&objects, &mut mesh_output, &config);
+    let mesh_result = module.run_mesh_analysis(&mesh_objects, &mut mesh_output, &config);
     assert!(mesh_result.is_ok());
 
-    let layer_result = module.run_layer_planning(&objects, &mut layer_output, &config);
+    let layer_result =
+        module.run_layer_planning(&layer_planning_objects, &mut layer_output, &config);
     assert!(layer_result.is_ok());
 }
 

@@ -10,20 +10,22 @@
 #![allow(dead_code)]
 
 use crate::common;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use slicer_config::resolution::{query_z_grid, resolve_scope_stack};
+use slicer_config::{ExpansionContext, ResolutionTarget};
 use slicer_ir::{ConfigKey, ConfigValue, RegionKey, RegionPlan};
 use slicer_model_io::load_model;
 use slicer_runtime::pipeline::{
     run_pipeline_with_raw_config, PipelineConfig, PipelineError, PipelineStageRunners,
 };
 use slicer_runtime::{
-    build_live_execution_plan, resolve_global_config, resolve_per_object_configs,
-    ConfigBoundsIndex, DefaultGCodeEmitter, DefaultGCodeSerializer, LoadDiagnostic,
-    NoopLayerProgressSink,
+    build_live_execution_plan, ConfigBoundsIndex, DefaultGCodeEmitter, DefaultGCodeSerializer,
+    LoadDiagnostic, NoopLayerProgressSink,
 };
+use slicer_scheduler::config_resolution::ingest_resolution_config;
 use slicer_wasm_host::WasmRuntimeDispatcher;
 
 use crate::common::wasm_cache;
@@ -104,7 +106,7 @@ fn try_slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> Result<String, Pi
     //       template values and emits M190/PRINT_END correctly.
     //
     //    b) `pipeline_source`: passed to `run_pipeline_with_raw_config` and
-    //       `resolve_global_config`. Uses empty-string sentinels for multiline string
+    //       typed scope resolution. Uses empty-string sentinels for multiline string
     //       keys that were not explicitly supplied by the caller. This prevents the
     //       raw template (M190...) and default "PRINT_END" from being embedded verbatim
     //       in the CONFIG_BLOCK, which would break AC-2 (PRINT_END count) and
@@ -179,16 +181,114 @@ fn try_slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> Result<String, Pi
     // 5. Resolve the global fallback config from the pipeline source.
     //    pipeline_source has int/float defaults and empty-string sentinels â€” no multiline
     //    template values â€” so the CONFIG_BLOCK won't contain M190 or PRINT_END.
-    let default_resolved = resolve_global_config(&pipeline_source, &config_bounds)
-        .expect("resolve_global_config must succeed");
-    let object_ids: Vec<&str> = mesh_ir.objects.iter().map(|o| o.id.as_str()).collect();
-    let resolved_configs_map = resolve_per_object_configs(
-        &default_resolved,
-        &pipeline_source,
-        &object_ids,
-        &config_bounds,
+    let scoped = ingest_resolution_config(&pipeline_source, &config_bounds)
+        .expect("typed config ingestion must succeed");
+    let expansion = ExpansionContext {
+        nozzle_diameter_mm: 0.4,
+        ..ExpansionContext::default()
+    };
+    let default_resolved = resolve_scope_stack(
+        config_bounds.registry(),
+        &scoped,
+        &ResolutionTarget::default(),
+        &expansion,
     )
-    .expect("resolve_per_object_configs must succeed");
+    .expect("global scope resolution must succeed");
+    let resolved_configs_map = mesh_ir
+        .objects
+        .iter()
+        .map(|object| {
+            let target = ResolutionTarget {
+                object_id: object.id.clone(),
+                ..ResolutionTarget::default()
+            };
+            resolve_scope_stack(config_bounds.registry(), &scoped, &target, &expansion)
+                .map(|config| (object.id.clone(), config))
+        })
+        .collect::<Result<_, _>>()
+        .expect("per-object scope resolution must succeed");
+
+    // 5b. Mirror production's `overlay_expanded_global` and
+    //     `overlay_object_layer_planning` onto the plan source: layer-tier
+    //     modules consume the expanded resolved defaults (notably `line_width`)
+    //     and the v2 `PrePass::LayerPlanning` dispatch reads
+    //     `layer_height:<id>`, `first_layer_height`, and `support_raft_layers`
+    //     from the module ConfigView. Production supplies all of these from the
+    //     unified resolver and `query_z_grid` rather than from the authored wire
+    //     config. `or_insert` preserves the real machine-gcode-emit templates
+    //     seeded above and any user override already in `binding_source`.
+    let unexpanded_defaults = slicer_ir::ResolvedConfig::default().to_config_map();
+    for (key, value) in default_resolved.to_config_map() {
+        if unexpanded_defaults.get(&key) != Some(&value) {
+            binding_source.entry(key).or_insert(value);
+        }
+    }
+    let object_heights: BTreeMap<String, f64> = mesh_ir
+        .objects
+        .iter()
+        .filter_map(|object| {
+            object
+                .world_z_extent
+                .map(|(z_min, z_max)| (object.id.clone(), (z_max - z_min) as f64))
+        })
+        .collect();
+    let object_layer_configs = query_z_grid(
+        config_bounds.registry(),
+        &scoped,
+        &object_heights,
+        &expansion,
+    )
+    .expect("typed Z-grid query must succeed");
+    for object in &object_layer_configs {
+        binding_source.insert(
+            format!("object_height:{}", object.object_id),
+            ConfigValue::Float(object.object_height),
+        );
+        binding_source.insert(
+            format!("layer_height:{}", object.object_id),
+            ConfigValue::Float(object.layer_height),
+        );
+    }
+    if let Some(first) = object_layer_configs.first() {
+        if object_layer_configs
+            .iter()
+            .all(|object| object.first_layer_height == first.first_layer_height)
+        {
+            binding_source.insert(
+                "first_layer_height".to_owned(),
+                ConfigValue::Float(first.first_layer_height),
+            );
+        }
+        if object_layer_configs
+            .iter()
+            .all(|object| object.support_raft_layers == first.support_raft_layers)
+        {
+            binding_source.insert(
+                "support_raft_layers".to_owned(),
+                ConfigValue::Int(i64::from(first.support_raft_layers)),
+            );
+        }
+    }
+
+    // Keep the CONFIG_BLOCK-driving pipeline source aligned with the same typed
+    // planning values; string templates stay as the empty sentinels seeded above.
+    for object in &object_layer_configs {
+        pipeline_source.insert(
+            format!("layer_height:{}", object.object_id),
+            ConfigValue::Float(object.layer_height),
+        );
+    }
+    if let Some(first) = object_layer_configs.first() {
+        if object_layer_configs
+            .iter()
+            .all(|object| object.first_layer_height == first.first_layer_height)
+        {
+            pipeline_source.insert(
+                "first_layer_height".to_owned(),
+                ConfigValue::Float(first.first_layer_height),
+            );
+        }
+    }
 
     // 6. Build the execution plan using the binding_source (real defaults for module ConfigViews).
     //    Bindings/sorted_stages are cloned from the cached Arc<LiveModuleLoadOutput>

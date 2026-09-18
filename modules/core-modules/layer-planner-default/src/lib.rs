@@ -11,85 +11,38 @@
 //! Default uniform layer planner for Pinch 'n Print.
 //!
 //! Implements the `PrepassModule` trait for the `PrePass::LayerPlanning` stage.
-//! Computes global Z-plane sequences from object heights and layer-height config.
+//! Computes global Z-plane sequences from typed per-object planning inputs.
 //!
 //! # Algorithm (MVP — uniform layers)
 //!
-//! 1. Read `layer_height` and `first_layer_height` from config
-//! 2. For each object: read height from config key `"object_height:<object_id>"`
-//!    when supplied, otherwise query `host::object_bounds`
+//! 1. Consume each object's resolved planning record
+//! 2. Generate any object-specific raft prefix
 //! 3. Generate layer sequence: first_layer_height, then layer_height increments
 //! 4. For multi-object with different layer heights: compute LCM sync interval
 //! 5. Generate catch-up layers for objects that skip intermediate global layers
 //! 6. Push each layer proposal to output
 
 use slicer_sdk::prelude::*;
+use slicer_sdk::traits::LayerPlanningObject;
 
 /// Default layer planner that produces uniform layer heights.
 ///
-/// Reads `layer_height`, `first_layer_height`, and per-object height keys
-/// from the config view. For multi-object prints with different layer heights,
-/// it synchronizes via LCM intervals and inserts catch-up layers.
-pub struct DefaultLayerPlanner {
-    /// Base layer height in mm. `f64` so the layer-Z formula
-    /// `first + n * step` computes in untainted `f64`, matching OrcaSlicer's
-    /// `coordf_t` (`double`) `print_z += height` loop
-    /// (`Slicing.cpp:859`). The f32 bit pattern of `0.2` is
-    /// `0.20000000298...`; an `f32` round-trip here would re-taint the
-    /// value and drift the formula onto an adjacent `f32` at ~every 10th
-    /// layer (benchy z=18.8 regression). See `extract_f64` in
-    /// `resolved_config.rs` for the full rationale.
-    layer_height: f64,
-    /// First layer height in mm. `f64` for the same reason as `layer_height`.
-    first_layer_height: f64,
-    /// Number of raft layers (`support_raft_layers`). Raft layers occupy the
-    /// contiguous global index prefix `0..N-1`; model layers shift to `N..`.
-    raft_layers: u32,
-}
+/// Consumes resolved per-object values from `LayerPlanningObject`. For
+/// multi-object prints with different layer heights, it synchronizes via LCM
+/// intervals and inserts catch-up layers.
+pub struct DefaultLayerPlanner;
 
 #[slicer_module]
 impl PrepassModule for DefaultLayerPlanner {
-    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let layer_height = config
-            .get("layer_height")
-            .and_then(|v| match v {
-                ConfigValue::Float(f) => Some(*f),
-                _ => None,
-            })
-            .unwrap_or(0.2);
-
-        let first_layer_height = config
-            .get("first_layer_height")
-            .and_then(|v| match v {
-                ConfigValue::Float(f) => Some(*f),
-                _ => None,
-            })
-            .unwrap_or(layer_height);
-
-        // `support_raft_layers` is an integer key, declared in
-        // `layer-planner-default.toml` under `[config.schema]` so a missing
-        // declaration cannot silently default it away.
-        let raft_layers = config
-            .get("support_raft_layers")
-            .and_then(|v| match v {
-                ConfigValue::Int(i) => Some(*i),
-                _ => None,
-            })
-            .unwrap_or(0)
-            .max(0) as u32;
-
-        Ok(Self {
-            layer_height,
-            first_layer_height,
-            raft_layers,
-        })
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
+        Ok(Self)
     }
 
     fn run_layer_planning(
         &self,
-        objects: &[ObjectId],
+        objects: &[LayerPlanningObject],
         output: &mut LayerPlanOutput,
-        config: &ConfigView,
+        _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         if objects.is_empty() {
             return Err(ModuleError::fatal(
@@ -98,36 +51,24 @@ impl PrepassModule for DefaultLayerPlanner {
             ));
         }
 
-        if self.layer_height <= 0.0 {
-            return Err(ModuleError::fatal(2, "layer_height must be positive"));
-        }
-
-        if self.first_layer_height <= 0.0 {
-            return Err(ModuleError::fatal(3, "first_layer_height must be positive"));
-        }
-
         // Build per-object plans
         let mut plans = Vec::new();
-        for obj_id in objects {
-            let height = object_height(config, obj_id)
-                .or_else(|| {
-                    host::object_bounds(obj_id)
-                        .ok()
-                        // `BoundingBox3` stores `Point3.z: f32`; widen to `f64`
-                        // so `ObjectPlan.height` is `f64` (the Z formula's
-                        // termination check compares in `f64`).
-                        .map(|bounds| (bounds.max.z - bounds.min.z) as f64)
-                })
-                .unwrap_or(0.0);
-            if height <= 0.0 {
+        for object in objects {
+            if object.object_height <= 0.0 {
                 continue;
             }
-            let lh = object_layer_height(config, obj_id, self.layer_height);
+            if object.layer_height <= 0.0 {
+                return Err(ModuleError::fatal(2, "layer_height must be positive"));
+            }
+            if object.first_layer_height <= 0.0 {
+                return Err(ModuleError::fatal(3, "first_layer_height must be positive"));
+            }
             plans.push(ObjectPlan {
-                object_id: obj_id.clone(),
-                height,
-                layer_height: lh,
-                first_layer_height: self.first_layer_height,
+                object_id: object.object_id.clone(),
+                height: object.object_height,
+                layer_height: object.layer_height,
+                first_layer_height: object.first_layer_height,
+                raft_layers: object.support_raft_layers,
             });
         }
 
@@ -135,42 +76,18 @@ impl PrepassModule for DefaultLayerPlanner {
             return Err(ModuleError::fatal(4, "no objects with positive height"));
         }
 
-        // Raft band: exactly `support_raft_layers` proposals, all flagged
-        // `is_raft`, pushed BEFORE any model proposal so the raft occupies the
-        // contiguous global index prefix `0..N-1`. Z is computed in `f64` with a
-        // single `as f32` cast at push time, matching `generate_object_layers`.
-        for i in 0..self.raft_layers {
-            let z_f64 = self.first_layer_height + (i as f64) * self.layer_height;
-            let effective_lh = if i == 0 {
-                self.first_layer_height
-            } else {
-                self.layer_height
-            };
-            // At least one active region per raft layer: without it the host's
-            // `derive_layer_output_envelope_from_input` falls back to a
-            // hardcoded height instead of the raft's own.
-            let regions = vec![RegionLayerProposal {
-                object_id: plans[0].object_id.clone(),
-                region_id: "0".to_string(),
-                effective_layer_height: effective_lh as f32,
-                is_catchup: false,
-                catchup_z_bottom: 0.0,
-            }];
+        let raft_top = raft_top(&plans);
+        for layer in merge_raft_sequences(&plans) {
             output
                 .push_layer(LayerProposal {
-                    z: z_f64 as f32,
-                    active_regions: regions,
+                    z: layer.z,
+                    active_regions: layer.regions,
                     is_raft: true,
                 })
                 .map_err(|e| ModuleError::fatal(5, e))?;
         }
 
         // Merge layer sequences
-        let raft_top = if self.raft_layers == 0 {
-            0.0
-        } else {
-            self.first_layer_height + (self.raft_layers as f64 - 1.0) * self.layer_height
-        };
         let merged = merge_layer_sequences(&plans, raft_top);
 
         // Push proposals to output
@@ -186,31 +103,6 @@ impl PrepassModule for DefaultLayerPlanner {
 
         Ok(())
     }
-}
-
-/// Get the per-object layer height override from config, or fall back to default.
-///
-/// Looks for config key `"layer_height:<object_id>"`. If not found, returns `default`.
-pub fn object_layer_height(config: &ConfigView, object_id: &str, default: f64) -> f64 {
-    let key = format!("layer_height:{}", object_id);
-    config
-        .get(&key)
-        .and_then(|v| match v {
-            ConfigValue::Float(f) => Some(*f),
-            _ => None,
-        })
-        .unwrap_or(default)
-}
-
-/// Get the object height from config.
-///
-/// Looks for config key `"object_height:<object_id>"`. Returns `None` if not found.
-pub fn object_height(config: &ConfigView, object_id: &str) -> Option<f64> {
-    let key = format!("object_height:{}", object_id);
-    config.get(&key).and_then(|v| match v {
-        ConfigValue::Float(f) => Some(*f),
-        _ => None,
-    })
 }
 
 /// Information about an object's layer planning parameters.
@@ -229,6 +121,8 @@ struct ObjectPlan {
     layer_height: f64,
     /// First layer height in mm. `f64` — feeds the Z formula.
     first_layer_height: f64,
+    /// Number of raft layers contributed by this object.
+    raft_layers: u32,
 }
 
 /// A merged global layer with per-object participation info.
@@ -238,6 +132,59 @@ struct MergedLayer {
     z: f32,
     /// Regions active at this layer.
     regions: Vec<RegionLayerProposal>,
+}
+
+fn raft_top(plans: &[ObjectPlan]) -> f64 {
+    plans
+        .iter()
+        .filter(|plan| plan.raft_layers > 0)
+        .map(|plan| {
+            plan.first_layer_height + (f64::from(plan.raft_layers) - 1.0) * plan.layer_height
+        })
+        .fold(0.0, f64::max)
+}
+
+fn merge_raft_sequences(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
+    let mut all_zs: Vec<f32> = plans
+        .iter()
+        .flat_map(|plan| {
+            (0..plan.raft_layers).map(|index| {
+                (plan.first_layer_height + f64::from(index) * plan.layer_height) as f32
+            })
+        })
+        .collect();
+    all_zs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    all_zs.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+
+    all_zs
+        .into_iter()
+        .map(|z| {
+            let regions = plans
+                .iter()
+                .filter_map(|plan| {
+                    (0..plan.raft_layers)
+                        .find(|index| {
+                            let object_z = (plan.first_layer_height
+                                + f64::from(*index) * plan.layer_height)
+                                as f32;
+                            (object_z - z).abs() < 1e-6
+                        })
+                        .map(|index| RegionLayerProposal {
+                            object_id: plan.object_id.clone(),
+                            region_id: "0".to_string(),
+                            effective_layer_height: if index == 0 {
+                                plan.first_layer_height as f32
+                            } else {
+                                plan.layer_height as f32
+                            },
+                            is_catchup: false,
+                            catchup_z_bottom: 0.0,
+                        })
+                })
+                .collect();
+            MergedLayer { z, regions }
+        })
+        .collect()
 }
 
 /// Generate uniform Z-plane sequence for a single object.
@@ -284,9 +231,10 @@ fn merge_layer_sequences(plans: &[ObjectPlan], raft_top: f64) -> Vec<MergedLayer
     }
 
     // If all objects have the same layer height, simple merge
-    let all_same_height = plans
-        .iter()
-        .all(|p| (p.layer_height - plans[0].layer_height).abs() < 1e-6);
+    let all_same_height = plans.iter().all(|p| {
+        (p.layer_height - plans[0].layer_height).abs() < 1e-6
+            && (p.first_layer_height - plans[0].first_layer_height).abs() < 1e-6
+    });
 
     if all_same_height {
         return merge_same_height(plans, raft_top);
@@ -422,8 +370,6 @@ mod tests {
     #[test]
     fn from_config_defaults() {
         let config = ConfigView::from_map(HashMap::new());
-        let planner = DefaultLayerPlanner::from_config(&config).unwrap();
-        assert!((planner.layer_height - 0.2).abs() < 1e-6);
-        assert!((planner.first_layer_height - 0.2).abs() < 1e-6);
+        DefaultLayerPlanner::from_config(&config).unwrap();
     }
 }

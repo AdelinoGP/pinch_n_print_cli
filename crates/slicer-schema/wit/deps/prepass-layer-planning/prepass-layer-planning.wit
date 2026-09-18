@@ -1,4 +1,4 @@
-package slicer:prepass-layer-planning@1.0.0;
+package slicer:prepass-layer-planning@2.0.0;
 
 interface layer-planning-types {
     type object-id = string;
@@ -28,8 +28,17 @@ interface layer-planning {
     use slicer:config/config-types.{config-view};
     use slicer:common/module-errors.{module-error};
 
+    record object-layer-config {
+        object-id: string,
+        object-height: f64,
+        layer-height: f64,
+        first-layer-height: f64,
+        support-raft-layers: u32,
+    }
+
     run: func(
         objects: list<object-id>,
+        object-configs: list<object-layer-config>,
         output: layer-plan-output,
         config: config-view,
     ) -> result<_, module-error>;

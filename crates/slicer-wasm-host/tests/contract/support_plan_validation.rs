@@ -243,15 +243,24 @@ fn support_plan_aggregation_diagnoses_duplicate_identity() {
 
     // The host assigned the contested region to `traditional`.
     let owned = SupportAnalysisIR {
-        family_assignments: [((tree.object_id.clone(), tree.region_id), "traditional".to_string())]
-            .into_iter()
-            .collect(),
+        family_assignments: [(
+            (tree.object_id.clone(), tree.region_id),
+            "traditional".to_string(),
+        )]
+        .into_iter()
+        .collect(),
         ..SupportAnalysisIR::default()
     };
 
     let orders = [
-        ("[tree, traditional]", vec![tree.clone(), traditional.clone()]),
-        ("[traditional, tree]", vec![traditional.clone(), tree.clone()]),
+        (
+            "[tree, traditional]",
+            vec![tree.clone(), traditional.clone()],
+        ),
+        (
+            "[traditional, tree]",
+            vec![traditional.clone(), tree.clone()],
+        ),
     ];
     for (order, entries) in orders {
         let plans = entries

@@ -603,6 +603,23 @@ pub trait LayerModule: Sized {
 /// Per docs/03_wit_and_manifest.md (world-prepass.wit), this maps to:
 /// - `export run-mesh-analysis: func(objects, output, config) -> result<_, module-error>;`
 /// - `export run-layer-planning: func(objects, output, config) -> result<_, module-error>;`
+///
+/// One layer-planning input after host-side object-scope resolution.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayerPlanningObject {
+    /// Stable object identifier.
+    pub object_id: ObjectId,
+    /// Object height in millimeters.
+    pub object_height: f64,
+    /// Effective layer height for this object in millimeters.
+    pub layer_height: f64,
+    /// Effective first-layer height for this object in millimeters.
+    pub first_layer_height: f64,
+    /// Number of support raft layers preceding this object's model layers.
+    pub support_raft_layers: u32,
+}
+
+/// Contract for modules that perform print-wide mesh analysis or layer planning.
 pub trait PrepassModule: Sized {
     /// Construct one module value for this stage call.
     ///
@@ -631,12 +648,12 @@ pub trait PrepassModule: Sized {
         Ok(())
     }
 
-    /// Run layer planning for the given objects.
+    /// Run layer planning for the given resolved per-object inputs.
     ///
     /// Per docs/03_wit_and_manifest.md (world-prepass.wit):
     /// ```wit
     /// export run-layer-planning: func(
-    ///     objects: list<object-id>,
+    ///     objects: list<layer-planning-object>,
     ///     output: layer-plan-output,
     ///     config: config-view,
     /// ) -> result<_, module-error>;
@@ -645,7 +662,7 @@ pub trait PrepassModule: Sized {
     /// Default implementation does nothing. Override if your module targets LayerPlanning stage.
     fn run_layer_planning(
         &self,
-        _objects: &[ObjectId],
+        _objects: &[LayerPlanningObject],
         _output: &mut LayerPlanOutput,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {

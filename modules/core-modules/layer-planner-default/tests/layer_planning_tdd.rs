@@ -6,37 +6,13 @@
 use layer_planner_default::DefaultLayerPlanner;
 use slicer_sdk::prelude::*;
 use slicer_sdk::test_prelude::*;
+use slicer_sdk::traits::LayerPlanningObject;
 
 /// Helper: build a ConfigView with the given parameters.
-fn make_config(layer_height: f64, first_layer_height: f64, objects: &[(&str, f64)]) -> ConfigView {
-    objects
-        .iter()
-        .fold(
-            ConfigViewBuilder::new()
-                .float("layer_height", layer_height)
-                .float("first_layer_height", first_layer_height),
-            |b, (id, h)| b.float(format!("object_height:{}", id), *h),
-        )
-        .build()
-}
-
-/// Helper: build config with per-object layer height overrides.
-fn make_lh_config(
-    default_layer_height: f64,
-    first_layer_height: f64,
-    objects: &[(&str, f64, f64)],
-) -> ConfigView {
-    objects
-        .iter()
-        .fold(
-            ConfigViewBuilder::new()
-                .float("layer_height", default_layer_height)
-                .float("first_layer_height", first_layer_height),
-            |b, (id, h, lh)| {
-                b.float(format!("object_height:{}", id), *h)
-                    .float(format!("layer_height:{}", id), *lh)
-            },
-        )
+fn make_config(layer_height: f64, first_layer_height: f64) -> ConfigView {
+    ConfigViewBuilder::new()
+        .float("layer_height", layer_height)
+        .float("first_layer_height", first_layer_height)
         .build()
 }
 
@@ -47,10 +23,17 @@ fn make_lh_config(
 #[test]
 fn test_single_object_uniform_layers() {
     // 1 object, 2mm tall, layer_height=0.2 → 10 layers, ascending Z
-    let config = make_config(0.2, 0.2, &[("obj-1", 2.0)]);
+    let config = make_config(0.2, 0.2);
     let module = DefaultLayerPlanner::from_config(&config).unwrap();
 
-    let objects: Vec<ObjectId> = vec!["obj-1".to_string()];
+    // exhaustive: all fields define this single-object planning fixture.
+    let objects = vec![LayerPlanningObject {
+        object_id: "obj-1".to_string(),
+        object_height: 2.0,
+        layer_height: 0.2,
+        first_layer_height: 0.2,
+        support_raft_layers: 0,
+    }];
     let mut output = LayerPlanOutput::new();
 
     module
@@ -93,10 +76,17 @@ fn test_single_object_uniform_layers() {
 #[test]
 fn test_first_layer_height_respected() {
     // first_layer=0.3, rest=0.2 → layer 0 z=0.3, layer 1 z=0.5, ...
-    let config = make_config(0.2, 0.3, &[("obj-1", 2.0)]);
+    let config = make_config(0.2, 0.3);
     let module = DefaultLayerPlanner::from_config(&config).unwrap();
 
-    let objects: Vec<ObjectId> = vec!["obj-1".to_string()];
+    // exhaustive: all fields define this first-layer-height fixture.
+    let objects = vec![LayerPlanningObject {
+        object_id: "obj-1".to_string(),
+        object_height: 2.0,
+        layer_height: 0.2,
+        first_layer_height: 0.3,
+        support_raft_layers: 0,
+    }];
     let mut output = LayerPlanOutput::new();
 
     module
@@ -148,13 +138,20 @@ fn test_model_layers_start_above_raft_band() {
         .float("layer_height", 0.2)
         .float("first_layer_height", 0.2)
         .int("support_raft_layers", 2)
-        .float("object_height:obj-1", 1.0)
         .build();
     let module = DefaultLayerPlanner::from_config(&config).unwrap();
     let mut output = LayerPlanOutput::new();
+    // exhaustive: all fields define this raft-aware planning fixture.
+    let objects = [LayerPlanningObject {
+        object_id: "obj-1".to_string(),
+        object_height: 1.0,
+        layer_height: 0.2,
+        first_layer_height: 0.2,
+        support_raft_layers: 2,
+    }];
 
     module
-        .run_layer_planning(&["obj-1".to_string()], &mut output, &config)
+        .run_layer_planning(&objects, &mut output, &config)
         .expect("should succeed");
 
     let layers = output.layers();
@@ -172,10 +169,27 @@ fn test_model_layers_start_above_raft_band() {
 #[test]
 fn test_multi_object_same_height() {
     // 2 objects at same 0.2mm layer height, different object heights (1.0 and 2.0)
-    let config = make_config(0.2, 0.2, &[("obj-A", 1.0), ("obj-B", 2.0)]);
+    let config = make_config(0.2, 0.2);
     let module = DefaultLayerPlanner::from_config(&config).unwrap();
 
-    let objects: Vec<ObjectId> = vec!["obj-A".to_string(), "obj-B".to_string()];
+    let objects = vec![
+        // exhaustive: all fields define object A's planning fixture.
+        LayerPlanningObject {
+            object_id: "obj-A".to_string(),
+            object_height: 1.0,
+            layer_height: 0.2,
+            first_layer_height: 0.2,
+            support_raft_layers: 0,
+        },
+        // exhaustive: all fields define object B's planning fixture.
+        LayerPlanningObject {
+            object_id: "obj-B".to_string(),
+            object_height: 2.0,
+            layer_height: 0.2,
+            first_layer_height: 0.2,
+            support_raft_layers: 0,
+        },
+    ];
     let mut output = LayerPlanOutput::new();
 
     module
@@ -227,10 +241,27 @@ fn test_multi_object_same_height() {
 fn test_multi_object_lcm_sync() {
     // Object A at 0.2mm, Object B at 0.3mm → LCM sync at 0.6mm multiples
     // Both objects 1.2mm tall to get clean layer counts
-    let config = make_lh_config(0.2, 0.2, &[("obj-A", 1.2, 0.2), ("obj-B", 1.2, 0.3)]);
+    let config = make_config(0.2, 0.2);
     let module = DefaultLayerPlanner::from_config(&config).unwrap();
 
-    let objects: Vec<ObjectId> = vec!["obj-A".to_string(), "obj-B".to_string()];
+    let objects = vec![
+        // exhaustive: all fields define object A's mixed-height fixture.
+        LayerPlanningObject {
+            object_id: "obj-A".to_string(),
+            object_height: 1.2,
+            layer_height: 0.2,
+            first_layer_height: 0.2,
+            support_raft_layers: 0,
+        },
+        // exhaustive: all fields define object B's mixed-height fixture.
+        LayerPlanningObject {
+            object_id: "obj-B".to_string(),
+            object_height: 1.2,
+            layer_height: 0.3,
+            first_layer_height: 0.2,
+            support_raft_layers: 0,
+        },
+    ];
     let mut output = LayerPlanOutput::new();
 
     module
@@ -279,10 +310,27 @@ fn test_multi_object_lcm_sync() {
 #[test]
 fn test_catch_up_layer_fields() {
     // Object A at 0.2mm, Object B at 0.3mm — catch-up layers need correct fields
-    let config = make_lh_config(0.2, 0.2, &[("obj-A", 1.2, 0.2), ("obj-B", 1.2, 0.3)]);
+    let config = make_config(0.2, 0.2);
     let module = DefaultLayerPlanner::from_config(&config).unwrap();
 
-    let objects: Vec<ObjectId> = vec!["obj-A".to_string(), "obj-B".to_string()];
+    let objects = vec![
+        // exhaustive: all fields define object A's catch-up fixture.
+        LayerPlanningObject {
+            object_id: "obj-A".to_string(),
+            object_height: 1.2,
+            layer_height: 0.2,
+            first_layer_height: 0.2,
+            support_raft_layers: 0,
+        },
+        // exhaustive: all fields define object B's catch-up fixture.
+        LayerPlanningObject {
+            object_id: "obj-B".to_string(),
+            object_height: 1.2,
+            layer_height: 0.3,
+            first_layer_height: 0.2,
+            support_raft_layers: 0,
+        },
+    ];
     let mut output = LayerPlanOutput::new();
 
     module
@@ -336,10 +384,10 @@ fn test_catch_up_layer_fields() {
 
 #[test]
 fn test_empty_objects_error() {
-    let config = make_config(0.2, 0.2, &[]);
+    let config = make_config(0.2, 0.2);
     let module = DefaultLayerPlanner::from_config(&config).unwrap();
 
-    let objects: Vec<ObjectId> = vec![];
+    let objects: Vec<LayerPlanningObject> = vec![];
     let mut output = LayerPlanOutput::new();
 
     let result = module.run_layer_planning(&objects, &mut output, &config);
@@ -355,10 +403,17 @@ fn test_empty_objects_error() {
 
 #[test]
 fn test_zero_layer_height_error() {
-    let config = make_config(0.0, 0.2, &[("obj-1", 2.0)]);
+    let config = make_config(0.0, 0.2);
     let module = DefaultLayerPlanner::from_config(&config).unwrap();
 
-    let objects: Vec<ObjectId> = vec!["obj-1".to_string()];
+    // exhaustive: all fields define the invalid-layer-height fixture.
+    let objects = vec![LayerPlanningObject {
+        object_id: "obj-1".to_string(),
+        object_height: 2.0,
+        layer_height: 0.0,
+        first_layer_height: 0.2,
+        support_raft_layers: 0,
+    }];
     let mut output = LayerPlanOutput::new();
 
     let result = module.run_layer_planning(&objects, &mut output, &config);
@@ -376,10 +431,17 @@ fn test_zero_layer_height_error() {
 fn test_object_participation_map() {
     // 1 object, 2mm tall, 0.2mm layers → 10 layers
     // Each layer should have obj-1 with correct effective_layer_height
-    let config = make_config(0.2, 0.2, &[("obj-1", 2.0)]);
+    let config = make_config(0.2, 0.2);
     let module = DefaultLayerPlanner::from_config(&config).unwrap();
 
-    let objects: Vec<ObjectId> = vec!["obj-1".to_string()];
+    // exhaustive: all fields define this participation-map fixture.
+    let objects = vec![LayerPlanningObject {
+        object_id: "obj-1".to_string(),
+        object_height: 2.0,
+        layer_height: 0.2,
+        first_layer_height: 0.2,
+        support_raft_layers: 0,
+    }];
     let mut output = LayerPlanOutput::new();
 
     module

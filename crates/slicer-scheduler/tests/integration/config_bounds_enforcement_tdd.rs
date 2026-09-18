@@ -6,11 +6,33 @@
 
 use std::collections::HashMap;
 
-use slicer_ir::ConfigValue;
+use slicer_config::{ExpansionContext, ResolutionError, ResolutionTarget};
+use slicer_ir::{ConfigValue, ResolvedConfig};
+use slicer_scheduler::config_resolution::resolve_config;
 use slicer_scheduler::{
-    load_module_from_paths, resolve_global_config, BoundsDeclaration, ConfigBoundsIndex,
-    ConfigResolutionError,
+    load_module_from_paths, BoundsDeclaration, ConfigBoundsIndex, ConfigResolutionError,
 };
+
+fn resolve_global_config(
+    source: &HashMap<String, ConfigValue>,
+    bounds: &ConfigBoundsIndex,
+) -> Result<ResolvedConfig, ConfigResolutionError> {
+    let mut source = source.clone();
+    source
+        .entry("nozzle_diameter".to_string())
+        .or_insert(ConfigValue::Float(0.4));
+
+    match resolve_config(
+        &source,
+        bounds,
+        &ResolutionTarget::default(),
+        &ExpansionContext::default(),
+    ) {
+        Ok(config) => Ok(config),
+        Err(ResolutionError::Application(error)) => Err(error),
+        Err(error) => panic!("bounds fixture failed unified scope resolution: {error}"),
+    }
+}
 
 fn single_module_bounds(key: &str, min: Option<f64>, max: Option<f64>) -> ConfigBoundsIndex {
     ConfigBoundsIndex::from_declarations([BoundsDeclaration {

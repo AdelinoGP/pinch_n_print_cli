@@ -5,16 +5,19 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use super::pipeline_config_base;
+use slicer_config::resolution::{query_z_grid, resolve_scope_stack};
+use slicer_config::{ConfigScope, ExpansionContext, ResolutionTarget};
 use slicer_core::perimeter_spatial::diagnostics::RegionCaptureRecord;
 use slicer_gcode::{DefaultGCodeEmitter, DefaultGCodeSerializer};
 use slicer_ir::{ConfigValue, GlobalLayer, LayerStageCommit, ModuleId, PerimeterIR, StageId};
 use slicer_runtime::pipeline::{run_pipeline_with_raw_config, PipelineStageRunners};
 use slicer_runtime::{
     assemble_search_roots, build_live_execution_plan, load_live_modules_for_plan_with_config,
-    resolve_global_config, resolve_per_object_configs, resolve_per_tool_configs,
     validate_support_layer_heights, CompiledModuleLive, ConfigBoundsIndex, LayerStageError,
     LayerStageInput, NoopLayerProgressSink, WasmComponent, WasmInstancePool, WasmRuntimeDispatcher,
 };
+use slicer_scheduler::config_resolution::ingest_resolution_config;
+use slicer_sdk::traits::LayerPlanningObject;
 
 /// The two values accepted by the production `wall_generator` selector.
 #[derive(Clone, Copy, Debug)]
@@ -124,14 +127,6 @@ pub fn run_pipeline_capturing_perimeters(
     );
 
     for object in &mesh.objects {
-        let key = format!("object_height:{}", object.id);
-        if let std::collections::hash_map::Entry::Vacant(entry) = config_source.entry(key) {
-            if let Some((z_min, z_max)) = object.world_z_extent {
-                entry.insert(ConfigValue::Float((z_max - z_min) as f64));
-            }
-        }
-    }
-    for object in &mesh.objects {
         for (subkey, value) in &object.config.data {
             let key = format!("object_config:{}:{}", object.id, subkey);
             config_source.entry(key).or_insert_with(|| value.clone());
@@ -169,28 +164,54 @@ pub fn run_pipeline_capturing_perimeters(
         load_live_modules_for_plan_with_config(&search_roots, num_cpus_guess(), &config_source)
             .map_err(|e| PerimeterHarnessError(format!("failed to load modules: {e}")))?;
     let config_bounds = ConfigBoundsIndex::from_modules(loaded.bindings.iter().map(|b| &b.module));
-    let default_resolved_config = resolve_global_config(&config_source, &config_bounds)
-        .map_err(|e| PerimeterHarnessError(format!("config resolution failed: {e:?}")))?;
-    let object_ids: Vec<&str> = mesh
+    let scoped = ingest_resolution_config(&config_source, &config_bounds)
+        .map_err(|e| PerimeterHarnessError(format!("config ingestion failed: {e:?}")))?;
+    let expansion = ExpansionContext {
+        nozzle_diameter_mm: 0.4,
+        ..ExpansionContext::default()
+    };
+    let default_resolved_config = resolve_scope_stack(
+        config_bounds.registry(),
+        &scoped,
+        &ResolutionTarget::default(),
+        &expansion,
+    )
+    .map_err(|e| PerimeterHarnessError(format!("config resolution failed: {e:?}")))?;
+    let resolved_configs_map = mesh
         .objects
         .iter()
-        .map(|object| object.id.as_str())
-        .collect();
-    let resolved_configs_map = resolve_per_object_configs(
-        &default_resolved_config,
-        &config_source,
-        &object_ids,
-        &config_bounds,
-    )
-    .map_err(|e| PerimeterHarnessError(format!("per-object config resolution failed: {e:?}")))?;
+        .map(|object| {
+            let target = ResolutionTarget {
+                object_id: object.id.clone(),
+                ..ResolutionTarget::default()
+            };
+            resolve_scope_stack(config_bounds.registry(), &scoped, &target, &expansion)
+                .map(|config| (object.id.clone(), config))
+        })
+        .collect::<Result<BTreeMap<_, _>, _>>()
+        .map_err(|e| {
+            PerimeterHarnessError(format!("per-object config resolution failed: {e:?}"))
+        })?;
     validate_support_layer_heights(&resolved_configs_map).map_err(|e| {
         PerimeterHarnessError(format!("support layer height validation failed: {e:?}"))
     })?;
-    let per_tool_configs_map =
-        resolve_per_tool_configs(&default_resolved_config, &config_source, &config_bounds)
-            .map_err(|e| {
-                PerimeterHarnessError(format!("per-tool config resolution failed: {e:?}"))
-            })?;
+    let per_tool_configs_map = scoped
+        .deltas
+        .keys()
+        .filter_map(|scope| match scope {
+            ConfigScope::Tool(tool_index) => Some(*tool_index),
+            _ => None,
+        })
+        .map(|tool_index| {
+            let target = ResolutionTarget {
+                tool_index: Some(tool_index),
+                ..ResolutionTarget::default()
+            };
+            resolve_scope_stack(config_bounds.registry(), &scoped, &target, &expansion)
+                .map(|config| (tool_index, config))
+        })
+        .collect::<Result<BTreeMap<_, _>, _>>()
+        .map_err(|e| PerimeterHarnessError(format!("per-tool config resolution failed: {e:?}")))?;
     let wasm_handles: HashMap<
         ModuleId,
         (
@@ -212,10 +233,46 @@ pub fn run_pipeline_capturing_perimeters(
             )
         })
         .collect();
+    // Mirror production's expanded-global plan source. Per-object layer-planning
+    // values bypass ConfigView and travel as typed records on the prepass runner.
+    let mut plan_source = config_source.clone();
+    let unexpanded_defaults = slicer_ir::ResolvedConfig::default().to_config_map();
+    for (key, value) in default_resolved_config.to_config_map() {
+        if unexpanded_defaults.get(&key) != Some(&value) {
+            plan_source.entry(key).or_insert(value);
+        }
+    }
+    let object_heights: BTreeMap<String, f64> = mesh
+        .objects
+        .iter()
+        .filter_map(|object| {
+            object
+                .world_z_extent
+                .map(|(z_min, z_max)| (object.id.clone(), (z_max - z_min) as f64))
+        })
+        .collect();
+    let object_layer_configs = query_z_grid(
+        config_bounds.registry(),
+        &scoped,
+        &object_heights,
+        &expansion,
+    )
+    .map_err(|e| PerimeterHarnessError(format!("typed Z-grid query failed: {e:?}")))?;
+    let layer_planning_objects = object_layer_configs
+        .iter()
+        // exhaustive: the harness must forward every typed layer-planning field.
+        .map(|object| LayerPlanningObject {
+            object_id: object.object_id.clone(),
+            object_height: object.object_height,
+            layer_height: object.layer_height,
+            first_layer_height: object.first_layer_height,
+            support_raft_layers: object.support_raft_layers,
+        })
+        .collect();
     let plan = build_live_execution_plan(
         loaded.sorted_stages,
         loaded.bindings,
-        &config_source,
+        &plan_source,
         Arc::new(Vec::new()),
         Arc::new(HashMap::new()),
         &mut loaded.diagnostics,
@@ -235,7 +292,10 @@ pub fn run_pipeline_capturing_perimeters(
         plan,
         // exhaustive: PipelineStageRunners owns the runtime trait-object boundary for this harness.
         PipelineStageRunners {
-            prepass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
+            prepass: Box::new(
+                WasmRuntimeDispatcher::new(Arc::clone(&engine))
+                    .with_layer_planning_objects(layer_planning_objects),
+            ),
             layer: Box::new(capturing_runner),
             finalization: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
             postpass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),

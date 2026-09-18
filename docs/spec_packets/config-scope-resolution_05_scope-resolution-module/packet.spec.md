@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: config-scope-resolution_05_scope-resolution-module
 task_ids:
   - TASK-566
@@ -19,10 +19,10 @@ This packet owns the unified resolver, migration of the existing global/object/m
 
 ## Prerequisites and Blockers
 
-- Depends on: **FORWARD-DEP** packet 03, `config-scope-resolution_03_typed-scope-ingestion` (`status: draft`), for `ConfigScope`, `ScopeDelta`, `ScopedConfig`, `ConfigIngestor`, and `IngestionOutcome`.
-- Depends on: **FORWARD-DEP** packet 04, `config-scope-resolution_04_automatic-value-expansion` (`status: draft`), for `ExpansionContext`, `expand_automatic_values`, and `ExpansionError`.
+- Depends on: packet 03, `config-scope-resolution_03_typed-scope-ingestion` (`status: implemented`), for `ConfigScope`, `ScopeDelta`, `ScopedConfig`, `ConfigIngestor`, and `IngestionOutcome`.
+- Depends on: packet 04, `config-scope-resolution_04_automatic-value-expansion` (`status: implemented`), for `ExpansionContext`, `expand_automatic_values`, and `ExpansionError`.
 - Unblocks: queue rows 6, 7, 8, 9, and 10.
-- Activation blockers: packets 03 and 04 must land, and their implemented exports must be reconciled with the names and shapes consumed here.
+- Activation blockers: cleared — packets 03 and 04 landed (`status: implemented`); Step 1 reconciled their exports with the names/shapes consumed here (all 8 symbols MATCH).
 
 ## Acceptance Criteria
 
@@ -36,7 +36,7 @@ This packet owns the unified resolver, migration of the existing global/object/m
 ## Negative Test Cases
 
 - **AC-N1. Given** a Z-grid query for an object with no positive finite object height, **when** `query_z_grid` runs, **then** it returns `ResolutionError::InvalidObjectHeight { object_id, value }` and emits no partial planning record. | `bash -lc 'set -euo pipefail; mkdir -p target; cargo test -p slicer-config --all-targets --test scope_resolution_tdd invalid_object_height_is_rejected_atomically -- --exact --nocapture 2>&1 | tee target/test-output.log >/dev/null; rg -q "test invalid_object_height_is_rejected_atomically .* ok" target/test-output.log'`
-- **AC-N2. Given** overlapping future layer ranges, **when** this packet's public ordering contract is inspected, **then** it states that later-starting `layer_height` wins inside overlap and conflicting values for the same non-`layer_height` key are a load error, while no Rust `LayerRange` scope or overlap implementation is falsely claimed or introduced before queue row 9. | `python3 -c "from pathlib import Path; s=Path('docs/02_ir_schemas.md').read_text(encoding='utf-8'); required=('later-starting','layer_height','non-layer_height','load error','queue row 9'); missing=[x for x in required if x not in s]; assert not missing, missing; import subprocess; r=subprocess.run(['rg','-n','LayerRange|layer_range|height_range|z_range','crates/slicer-config/src','--glob','*.rs'],capture_output=True,text=True); assert r.returncode==1, r.stdout"`
+- **AC-N2. Given** overlapping future layer ranges, **when** this packet's public ordering contract is inspected, **then** it states that later-starting `layer_height` wins inside overlap and conflicting values for the same non-`layer_height` key are a load error, while no Rust `LayerRange` scope or overlap implementation is falsely claimed or introduced before queue row 9. Exempt: the pre-existing packet-01 denied-scope vocabulary literal in `crates/slicer-config/src/lib.rs` (`ALLOWED_DENIED_SCOPES`/`PER_REGION_SCOPES`), which is data, not a scope implementation. | `python3 -c "from pathlib import Path; s=Path('docs/02_ir_schemas.md').read_text(encoding='utf-8'); required=('later-starting','layer_height','non-layer_height','load error','queue row 9'); missing=[x for x in required if x not in s]; assert not missing, missing; import subprocess; r=subprocess.run(['rg','-n','LayerRange|layer_range|height_range|z_range','crates/slicer-config/src','--glob','*.rs'],capture_output=True,text=True); q=chr(34); new=[l for l in r.stdout.splitlines() if q+'layer_range'+q+',' not in l]; assert not new, new"`
 
 ## Verification
 

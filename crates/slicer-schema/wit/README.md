@@ -24,7 +24,7 @@ wit/
     layer-support-postprocess/layer-support-postprocess.wit              # package slicer:layer-support-postprocess@1.0.0
     layer-path-optimization/layer-path-optimization.wit                  # package slicer:layer-path-optimization@1.0.0
     prepass-mesh-analysis/prepass-mesh-analysis.wit                      # package slicer:prepass-mesh-analysis@1.0.0
-    prepass-layer-planning/prepass-layer-planning.wit                    # package slicer:prepass-layer-planning@1.0.0
+    prepass-layer-planning/prepass-layer-planning.wit                    # package slicer:prepass-layer-planning@2.0.0
     prepass-seam-planning/prepass-seam-planning.wit                      # package slicer:prepass-seam-planning@1.0.0
     prepass-support-geometry/prepass-support-geometry.wit                # package slicer:prepass-support-geometry@1.0.0
     postpass-gcode-postprocess/postpass-gcode-postprocess.wit          # package slicer:postpass-gcode-postprocess@1.0.0

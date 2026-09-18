@@ -56,7 +56,7 @@ crates/slicer-schema/wit/
     layer-path-optimization/layer-path-optimization.wit                      # package slicer:layer-path-optimization@1.0.0
     layer-anchored-events/layer-anchored-events.wit                            # package slicer:layer-anchored-events@1.0.0
     prepass-mesh-analysis/prepass-mesh-analysis.wit                          # package slicer:prepass-mesh-analysis@1.0.0
-    prepass-layer-planning/prepass-layer-planning.wit                        # package slicer:prepass-layer-planning@1.0.0
+    prepass-layer-planning/prepass-layer-planning.wit                        # package slicer:prepass-layer-planning@2.0.0
     prepass-seam-planning/prepass-seam-planning.wit                          # package slicer:prepass-seam-planning@1.0.0
     prepass-support-geometry/prepass-support-geometry.wit                    # package slicer:prepass-support-geometry@1.0.0
     postpass-gcode-postprocess/postpass-gcode-postprocess.wit          # package slicer:postpass-gcode-postprocess@1.0.0
@@ -508,7 +508,7 @@ interface contains the single `run` function:
 | Stage | Source package | Package identity |
 |-------|----------------|------------------|
 | `PrePass::MeshAnalysis` | `deps/prepass-mesh-analysis/prepass-mesh-analysis.wit` | `slicer:prepass-mesh-analysis@1.0.0` |
-| `PrePass::LayerPlanning` | `deps/prepass-layer-planning/prepass-layer-planning.wit` | `slicer:prepass-layer-planning@1.0.0` |
+| `PrePass::LayerPlanning` | `deps/prepass-layer-planning/prepass-layer-planning.wit` | `slicer:prepass-layer-planning@2.0.0` |
 | `PrePass::SeamPlanning` | `deps/prepass-seam-planning/prepass-seam-planning.wit` | `slicer:prepass-seam-planning@1.0.0` |
 | `PrePass::SupportGeometry` | `deps/prepass-support-geometry/prepass-support-geometry.wit` | `slicer:prepass-support-geometry@1.0.0` |
 
@@ -516,6 +516,24 @@ The shared view records (`mesh-object-view`, `paint-value-view`, `paint-stroke-v
 `paint-layer-view`) are defined once in the unversioned flat package
 `deps/prepass-types.wit` (`slicer:prepass-types`). Read each stage package for its exact
 parameters, view records, and imported output resource.
+
+### `PrePass::LayerPlanning` v2 object configuration (Normative — TASK-566)
+
+`slicer:prepass-layer-planning@2.0.0` retains the layer-planning `objects`,
+`output`, and `config` inputs and adds `object-configs:
+list<object-layer-config>`. The `object-layer-config` record has exactly these
+five fields:
+
+| WIT field | Meaning |
+|-----------|---------|
+| `object-id` | Stable object identity for the resolved record. |
+| `object-height` | Resolved object height in millimetres. |
+| `layer-height` | Effective resolved layer height. |
+| `first-layer-height` | Effective resolved first-layer height. |
+| `support-raft-layers` | Resolved number of raft prefix layers. |
+
+The host resolves these values before dispatch; the guest receives the typed
+record rather than reconstructing namespaced keys.
 
 `PrePass::PaintSegmentation` is host-built-in (packet 97; see
 `01_system_architecture.md`) and has no module package or WIT export.

@@ -856,7 +856,29 @@ fn compute_reachability(
 
 `PrePass::RegionMapping` is host-built-in and precomputes per-region execution context so Tier 2 has no config or claim resolution overhead.
 
-During region mapping, modifier volume `config_delta.fields` from every `modifier_volume` attached to a region's parent `ObjectMesh` are stamped into `RegionPlan.config.extensions` via `overlay_resolved` (priority-ascending, last-writer-wins), with `support_enforcer` and `support_blocker` subtypes filtered out for OrcaSlicer parity (canonical `PrintApply.cpp`). Implemented modifier-volume splits (packets 131/132) bind configuration to geometric sub-regions: modifier meshes are sliced per layer during prepass, the cross-sections are intersected with the owning region's partitioned fill polygons at partition time, and each resulting wall-less sub-region carries its own `region_id` + config binding (per-region delivery through the region-view config accessor). The support enforcer/blocker subtypes remain filtered and never produce sub-regions; paint variant-splits remain the other per-region producer.
+### Unified config-resolution entry points (Normative — TASK-566)
+
+The `slicer-config` resolution module exposes two unified entry points, replacing
+the scattered resolvers and `overlay_resolved`:
+
+- `query_z_grid` is called by `PrePass::LayerPlanning` to resolve the inputs
+  that determine the layer Z grid and the typed per-object planning records.
+- `resolve_scope_stack` is called by `PrePass::RegionMapping` to resolve the
+  applicable typed scope deltas for each active region.
+
+During region mapping, modifier volume `config_delta.fields` from every
+`modifier_volume` attached to a region's parent `ObjectMesh` are consumed by
+`resolve_scope_stack` in priority-ascending, last-writer-wins order and stamped
+into `RegionPlan.config.extensions`, with `support_enforcer` and
+`support_blocker` subtypes filtered out for OrcaSlicer parity (canonical
+`PrintApply.cpp`). Implemented modifier-volume splits (packets 131/132) bind
+configuration to geometric sub-regions: modifier meshes are sliced per layer
+during prepass, the cross-sections are intersected with the owning region's
+partitioned fill polygons at partition time, and each resulting wall-less
+sub-region carries its own `region_id` + config binding (per-region delivery
+through the region-view config accessor). The support enforcer/blocker subtypes
+remain filtered and never produce sub-regions; paint variant-splits remain the
+other per-region producer.
 
 ### RegionMapping (Builtin) — `aggregated_region_split` Threading (Normative — Packet 93)
 

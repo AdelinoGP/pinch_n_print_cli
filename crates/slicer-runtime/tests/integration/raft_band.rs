@@ -32,7 +32,7 @@ use slicer_runtime::{
 };
 use slicer_sdk::prepass_builders::LayerPlanOutput;
 use slicer_sdk::prepass_types::LayerProposal;
-use slicer_sdk::traits::PrepassModule;
+use slicer_sdk::traits::{LayerPlanningObject, PrepassModule};
 
 const LAYER_HEIGHT: f64 = 0.2;
 const FIRST_LAYER_HEIGHT: f64 = 0.3;
@@ -57,8 +57,16 @@ fn plan_with_raft_layers(raft_layers: i64) -> Vec<LayerProposal> {
 
     let planner = DefaultLayerPlanner::from_config(&config).expect("planner from_config");
     let mut output = LayerPlanOutput::new();
+    // exhaustive: all layer-planning fields define the raft-band fixture.
+    let objects = [LayerPlanningObject {
+        object_id: OBJECT_ID.to_string(),
+        object_height: OBJECT_HEIGHT,
+        layer_height: LAYER_HEIGHT,
+        first_layer_height: FIRST_LAYER_HEIGHT,
+        support_raft_layers: u32::try_from(raft_layers).expect("non-negative raft count"),
+    }];
     planner
-        .run_layer_planning(&[OBJECT_ID.to_string()], &mut output, &config)
+        .run_layer_planning(&objects, &mut output, &config)
         .expect("layer planning");
     output.layers().to_vec()
 }

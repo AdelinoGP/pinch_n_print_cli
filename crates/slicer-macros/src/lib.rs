@@ -295,7 +295,13 @@ fn generate_slicer_module_impl(
                 Ok(::slicer_sdk::native::NativePrepassResponse { mesh_analysis: Some(output), layer_plan: None, paint_segmentation: None, seam_planning: None, support_geometry: None })
             },
             "run_layer_planning" => quote! {
-                let objects = req.object_ids.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing object ids".to_string()))?;
+                let object_ids = req.object_ids.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing object ids".to_string()))?;
+                let objects = _layer_planning_objects.ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing layer-planning object configs".to_string()))?;
+                if object_ids.len() != objects.len()
+                    || object_ids.iter().zip(objects).any(|(object_id, object)| object_id != &object.object_id)
+                {
+                    return Err(::slicer_sdk::error::ModuleError::fatal(1, "native prepass object ids do not match layer-planning object configs".to_string()));
+                }
                 let module = <#self_ty as ::slicer_sdk::traits::PrepassModule>::from_config(&req.config)?;
                 let mut output = ::slicer_sdk::prepass_builders::LayerPlanOutput::new();
                 <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_layer_planning(&module, objects, &mut output, &req.config)?;
@@ -330,7 +336,10 @@ fn generate_slicer_module_impl(
                 ::slicer_sdk::native::NativeStageEntry::Prepass(Self::__slicer_native_prepass_entry)
             }
             #[cfg(all(not(target_arch = "wasm32"), not(test)))]
-            fn __slicer_native_prepass_entry(req: &::slicer_sdk::native::NativePrepassRequest) -> ::std::result::Result<::slicer_sdk::native::NativePrepassResponse, ::slicer_sdk::error::ModuleError> {
+            fn __slicer_native_prepass_entry(
+                req: &::slicer_sdk::native::NativePrepassRequest,
+                _layer_planning_objects: ::std::option::Option<&[::slicer_sdk::traits::LayerPlanningObject]>,
+            ) -> ::std::result::Result<::slicer_sdk::native::NativePrepassResponse, ::slicer_sdk::error::ModuleError> {
                 #body
             }
         }
@@ -1844,7 +1853,17 @@ fn build_prepass_layer_planning_glue(self_ty: &syn::Type) -> TokenStream2 {
             Ok(m) => m,
             Err(e) => return Err(__slicer_error_out(e)),
         };
-        let sdk_objects: ::std::vec::Vec<::slicer_ir::ObjectId> = _objects.clone();
+        let sdk_objects: ::std::vec::Vec<::slicer_sdk::traits::LayerPlanningObject> =
+            object_configs
+                .into_iter()
+                .map(|object_config| ::slicer_sdk::traits::LayerPlanningObject {
+                    object_id: object_config.object_id,
+                    object_height: object_config.object_height,
+                    layer_height: object_config.layer_height,
+                    first_layer_height: object_config.first_layer_height,
+                    support_raft_layers: object_config.support_raft_layers,
+                })
+                .collect();
         let mut sdk_output = ::slicer_sdk::prepass_builders::LayerPlanOutput::new();
         let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_layer_planning(
             &module, &sdk_objects, &mut sdk_output, &ir_config,
@@ -1884,11 +1903,13 @@ fn build_prepass_layer_planning_glue(self_ty: &syn::Type) -> TokenStream2 {
             use slicer::prepass_layer_planning::layer_planning_types::{
                 LayerPlanOutput, LayerProposal, RegionLayerProposal,
             };
+            use exports::slicer::prepass_layer_planning::layer_planning::ObjectLayerConfig;
             #preamble
             struct __SlicerPrepassLayerPlanningComponent;
             impl exports::slicer::prepass_layer_planning::layer_planning::Guest for __SlicerPrepassLayerPlanningComponent {
                 fn run(
                     _objects: Vec<String>,
+                    object_configs: Vec<ObjectLayerConfig>,
                     output: LayerPlanOutput,
                     config: ConfigView,
                 ) -> Result<(), ModuleError> {

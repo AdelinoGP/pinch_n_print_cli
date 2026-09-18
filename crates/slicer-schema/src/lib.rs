@@ -203,7 +203,7 @@ pub const STAGES: &[StageSpec] = &[
         tier_id: TIER_PREPASS,
         trait_name: "PrepassModule",
         wit_dir: "prepass-layer-planning",
-        wit_package: "slicer:prepass-layer-planning@1.0.0",
+        wit_package: "slicer:prepass-layer-planning@2.0.0",
         wit_interface: "layer-planning",
         wit_world: "layer-planning-module",
     },

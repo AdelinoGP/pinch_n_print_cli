@@ -6,12 +6,14 @@ fn perimeter_spatial_capture_requires_test_support() {
 
 #[cfg(feature = "perimeter-spatial-test-support")]
 mod perimeter_spatial_tests {
-    use std::collections::{BTreeSet, HashMap};
+    use std::collections::{BTreeMap, BTreeSet, HashMap};
     use std::path::{Path, PathBuf};
     use std::sync::{Arc, Mutex};
 
     use arachne_perimeters::ArachnePerimeters;
     use classic_perimeters::ClassicPerimeters;
+    use slicer_config::resolution::{query_z_grid, resolve_scope_stack};
+    use slicer_config::{ConfigScope, ExpansionContext, ResolutionTarget};
     use slicer_core::perimeter_spatial::diagnostics::{
         with_capture, with_context_accounting, ContextAccountingRow, QueryCounters,
         RegionCaptureRecord,
@@ -24,11 +26,11 @@ mod perimeter_spatial_tests {
     use slicer_runtime::pipeline::{run_pipeline_with_raw_config, PipelineStageRunners};
     use slicer_runtime::{
         assemble_search_roots, build_live_execution_plan, load_live_modules_for_plan_with_config,
-        resolve_global_config, resolve_per_object_configs, resolve_per_tool_configs,
         validate_support_layer_heights, CompiledModuleLive, ConfigBoundsIndex, LayerStageError,
         LayerStageInput, NoopLayerProgressSink, WasmComponent, WasmInstancePool,
         WasmRuntimeDispatcher,
     };
+    use slicer_scheduler::config_resolution::ingest_resolution_config;
     use slicer_sdk::native::NativeStageEntry;
 
     use crate::common::integrated_parity_harness::{run_integrated_parity, IntegratedParitySpec};
@@ -293,30 +295,56 @@ mod perimeter_spatial_tests {
         .map_err(|e| PerimeterHarnessError(format!("failed to load modules: {e}")))?;
         let config_bounds =
             ConfigBoundsIndex::from_modules(loaded.bindings.iter().map(|b| &b.module));
-        let default_resolved_config = resolve_global_config(&config_source, &config_bounds)
-            .map_err(|e| PerimeterHarnessError(format!("config resolution failed: {e:?}")))?;
-        let object_ids: Vec<&str> = mesh
+        let scoped = ingest_resolution_config(&config_source, &config_bounds)
+            .map_err(|e| PerimeterHarnessError(format!("config ingestion failed: {e:?}")))?;
+        let expansion = ExpansionContext {
+            nozzle_diameter_mm: 0.4,
+            ..ExpansionContext::default()
+        };
+        let default_resolved_config = resolve_scope_stack(
+            config_bounds.registry(),
+            &scoped,
+            &ResolutionTarget::default(),
+            &expansion,
+        )
+        .map_err(|e| PerimeterHarnessError(format!("config resolution failed: {e:?}")))?;
+        let resolved_configs_map = mesh
             .objects
             .iter()
-            .map(|object| object.id.as_str())
-            .collect();
-        let resolved_configs_map = resolve_per_object_configs(
-            &default_resolved_config,
-            &config_source,
-            &object_ids,
-            &config_bounds,
-        )
-        .map_err(|e| {
-            PerimeterHarnessError(format!("per-object config resolution failed: {e:?}"))
-        })?;
+            .map(|object| {
+                let target = ResolutionTarget {
+                    object_id: object.id.clone(),
+                    ..ResolutionTarget::default()
+                };
+                resolve_scope_stack(config_bounds.registry(), &scoped, &target, &expansion)
+                    .map(|config| (object.id.clone(), config))
+            })
+            .collect::<Result<_, _>>()
+            .map_err(|e| {
+                PerimeterHarnessError(format!("per-object config resolution failed: {e:?}"))
+            })?;
         validate_support_layer_heights(&resolved_configs_map).map_err(|e| {
             PerimeterHarnessError(format!("support layer height validation failed: {e:?}"))
         })?;
-        let per_tool_configs_map =
-            resolve_per_tool_configs(&default_resolved_config, &config_source, &config_bounds)
-                .map_err(|e| {
-                    PerimeterHarnessError(format!("per-tool config resolution failed: {e:?}"))
-                })?;
+        let per_tool_configs_map = scoped
+            .deltas
+            .keys()
+            .filter_map(|scope| match scope {
+                ConfigScope::Tool(tool_index) => Some(*tool_index),
+                _ => None,
+            })
+            .map(|tool_index| {
+                let target = ResolutionTarget {
+                    tool_index: Some(tool_index),
+                    ..ResolutionTarget::default()
+                };
+                resolve_scope_stack(config_bounds.registry(), &scoped, &target, &expansion)
+                    .map(|config| (tool_index, config))
+            })
+            .collect::<Result<BTreeMap<_, _>, _>>()
+            .map_err(|e| {
+                PerimeterHarnessError(format!("per-tool config resolution failed: {e:?}"))
+            })?;
         let wasm_handles: HashMap<
             ModuleId,
             (
@@ -338,10 +366,75 @@ mod perimeter_spatial_tests {
                 )
             })
             .collect();
+
+        // Mirror production's `overlay_expanded_global` and
+        // `overlay_object_layer_planning` for the plan source: layer-tier
+        // modules consume the expanded resolved defaults (notably
+        // `line_width`), and the v2 `PrePass::LayerPlanning` dispatch reads
+        // `layer_height:<id>`, `first_layer_height`, and
+        // `support_raft_layers` from the module ConfigView. Production
+        // supplies both from the unified resolver and `query_z_grid` rather
+        // than from the authored wire config. Only values that expansion
+        // actually changed are overlaid, so manifest defaults
+        // (`wall_count = 3`) are not shadowed by `ResolvedConfig::default()`.
+        let mut plan_source = config_source.clone();
+        let unexpanded_defaults = slicer_ir::ResolvedConfig::default().to_config_map();
+        for (key, value) in default_resolved_config.to_config_map() {
+            if unexpanded_defaults.get(&key) != Some(&value) {
+                plan_source.entry(key).or_insert(value);
+            }
+        }
+        let object_heights: BTreeMap<String, f64> = mesh
+            .objects
+            .iter()
+            .filter_map(|object| {
+                object
+                    .world_z_extent
+                    .map(|(z_min, z_max)| (object.id.clone(), (z_max - z_min) as f64))
+            })
+            .collect();
+        let object_layer_configs = query_z_grid(
+            config_bounds.registry(),
+            &scoped,
+            &object_heights,
+            &expansion,
+        )
+        .map_err(|e| PerimeterHarnessError(format!("typed Z-grid query failed: {e:?}")))?;
+        for object in &object_layer_configs {
+            plan_source.insert(
+                format!("object_height:{}", object.object_id),
+                ConfigValue::Float(object.object_height),
+            );
+            plan_source.insert(
+                format!("layer_height:{}", object.object_id),
+                ConfigValue::Float(object.layer_height),
+            );
+        }
+        if let Some(first) = object_layer_configs.first() {
+            if object_layer_configs
+                .iter()
+                .all(|object| object.first_layer_height == first.first_layer_height)
+            {
+                plan_source.insert(
+                    "first_layer_height".to_owned(),
+                    ConfigValue::Float(first.first_layer_height),
+                );
+            }
+            if object_layer_configs
+                .iter()
+                .all(|object| object.support_raft_layers == first.support_raft_layers)
+            {
+                plan_source.insert(
+                    "support_raft_layers".to_owned(),
+                    ConfigValue::Int(i64::from(first.support_raft_layers)),
+                );
+            }
+        }
+
         let plan = build_live_execution_plan(
             loaded.sorted_stages,
             loaded.bindings,
-            &config_source,
+            &plan_source,
             Arc::new(Vec::new()),
             Arc::new(HashMap::new()),
             &mut loaded.diagnostics,

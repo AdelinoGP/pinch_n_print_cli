@@ -197,8 +197,8 @@ fn commit_stamps_per_object_resolved_config() {
 // `ObjectMesh.config.data["extruder"] = ConfigValue::Int(0)` (for raw
 // `extruder=1` in the 3MF). `run.rs` then lifts each `ObjectMesh.config.data`
 // entry into a `config_source` key of the form `object_config:<obj>:<key>`,
-// which `resolve_per_object_configs` (slicer-scheduler) overlays onto each
-// per-object `ResolvedConfig`. Because `extruder` is not a declared
+// which typed scope resolution overlays onto each per-object `ResolvedConfig`.
+// Because `extruder` is not a declared
 // `ResolvedConfig` field, it must fall through to the `extensions` overflow
 // bucket as `ConfigValue::Int(0)`.
 //
@@ -209,7 +209,10 @@ fn commit_stamps_per_object_resolved_config() {
 
 #[test]
 fn loader_extruder_int_zero_lands_in_extensions() {
-    use slicer_scheduler::{resolve_global_config, resolve_per_object_configs, ConfigBoundsIndex};
+    use slicer_config::resolution::resolve_scope_stack;
+    use slicer_config::{ExpansionContext, ResolutionTarget};
+    use slicer_scheduler::config_resolution::ingest_resolution_config;
+    use slicer_scheduler::ConfigBoundsIndex;
 
     let mut source: HashMap<String, ConfigValue> = HashMap::new();
     // Simulate the `run.rs` lift of `ObjectMesh.config.data["extruder"] = Int(0)`
@@ -218,15 +221,23 @@ fn loader_extruder_int_zero_lands_in_extensions() {
         "object_config:obj-A:extruder".to_string(),
         ConfigValue::Int(0),
     );
+    source.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.4));
 
     let bounds = ConfigBoundsIndex::default();
-    let global = resolve_global_config(&source, &bounds).expect("global resolution must succeed");
-    let per_object = resolve_per_object_configs(&global, &source, &["obj-A"], &bounds)
-        .expect("per-object resolution must succeed");
-
-    let cfg = per_object
-        .get("obj-A")
-        .expect("obj-A must have a per-object resolved config");
+    let scoped = ingest_resolution_config(&source, &bounds).expect("typed ingestion must succeed");
+    let cfg = resolve_scope_stack(
+        bounds.registry(),
+        &scoped,
+        &ResolutionTarget {
+            object_id: "obj-A".to_string(),
+            ..ResolutionTarget::default()
+        },
+        &ExpansionContext {
+            nozzle_diameter_mm: 0.4,
+            ..ExpansionContext::default()
+        },
+    )
+    .expect("per-object resolution must succeed");
 
     assert_eq!(
         cfg.extensions.get("extruder"),
