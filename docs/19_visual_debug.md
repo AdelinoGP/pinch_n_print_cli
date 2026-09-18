@@ -561,8 +561,8 @@ geometry for a given region.
 Inspect its `SupportAnalysisIR` evidence through the documented blackboard and
 readback mechanism alongside `PrePass::SupportGeometry`.
 
-Typed visual-debug captures serialize `internal_bridge_areas` despite its
-host-only WIT status. Where applicable, renderers expose
+Typed visual-debug captures serialize `internal_bridge_areas` and the
+index-aligned `internal_bridge_angles_deg`. Where applicable, renderers expose
 `internal_solid_fill` and `internal_bridge_areas` as distinct geometry
 overlays.
 

@@ -507,10 +507,18 @@ fn infill_postprocess_wall_source() {
     );
 }
 
-// ── AC-4: anchored internal bridge construction ────────────────────────────
+// ── Single internal-bridge producer ────────────────────────────────────────
 
+/// Internal bridges have exactly one producer: the ShellClassification prepass
+/// authors `internal_bridge_areas` (+ per-polygon angles) and the fill module
+/// holding the bridge claim emits them during `Layer::Infill`. The
+/// `Layer::InfillPostProcess` commit must therefore never construct its own
+/// `InternalBridgeInfill` strips, even on a layer whose qualified area is
+/// flanked by walls and a sparse anchor line (the fixture on which the retired
+/// packet-234a arm did construct them). A second producer drew the same area
+/// again at an unrelated angle.
 #[test]
-fn infill_postprocess_constructs_anchored_paths() {
+fn infill_postprocess_never_constructs_internal_bridge_paths() {
     let area = expoly(
         &[(0, 0), (100_000, 0), (100_000, 100_000), (0, 100_000)],
         &[],
@@ -518,6 +526,7 @@ fn infill_postprocess_constructs_anchored_paths() {
     let mut slice = ir_builders::slice_ir::with_ids(&[("obj-0", 0)]).build();
     slice.regions[0].bridge_areas = vec![area.clone()];
     slice.regions[0].internal_bridge_areas = vec![area.clone()];
+    slice.regions[0].internal_bridge_angles_deg = vec![90.0];
     slice.regions[0].sparse_infill_area = vec![area.clone()];
 
     let sparse = path(
@@ -534,9 +543,8 @@ fn infill_postprocess_constructs_anchored_paths() {
         ..Default::default()
     };
 
-    // The bridge area is 10 mm square.  The generic wall-loop fixture uses
-    // unit-spaced points, so expand two wall paths to the area's bottom and
-    // top edges to provide real-scale flanking anchors.
+    // Walls along the area's bottom and top edges: real-scale anchors that
+    // an anchor-driven constructor would bridge between.
     let mut lower_wall = ir_builders::wall_loop().points(2).build();
     lower_wall.path.points[0].x = 0.0;
     lower_wall.path.points[0].y = 0.0;
@@ -564,70 +572,24 @@ fn infill_postprocess_constructs_anchored_paths() {
 
     let committed = fx.arena.infill().expect("postprocess output committed");
     let region = &committed.regions[0];
-    assert!(
-        !region.internal_bridge_infill.is_empty(),
-        "qualified internal bridge area must emit anchored strips"
+    assert_eq!(
+        region.sparse_infill.len(),
+        1,
+        "the echoed module output must be what the stage committed"
     );
     assert!(
-        region
-            .internal_bridge_infill
-            .iter()
-            .all(|p| p.role == ExtrusionRole::InternalBridgeInfill),
-        "all constructed strips must carry the internal bridge role"
+        region.internal_bridge_infill.is_empty(),
+        "InfillPostProcess must not construct internal-bridge strips; got {} paths",
+        region.internal_bridge_infill.len()
     );
-    assert!(
-        region.internal_bridge_infill.iter().all(|p| {
-            p.points.iter().all(|point| {
-                (-0.001..=10.001).contains(&point.x) && (-0.001..=10.001).contains(&point.y)
-            })
-        }),
-        "constructed strips must remain within the qualified area"
-    );
-    assert!(
-        region.internal_bridge_infill.iter().any(|p| {
-            p.points
-                .iter()
-                .any(|point| point.y.abs() <= 0.001 || (point.y - 5.0).abs() <= 0.001)
-        }),
-        "constructed strips must touch a harvested wall or sparse anchor line"
-    );
-
-    let mut empty_slice = ir_builders::slice_ir::with_ids(&[("obj-0", 0)]).build();
-    empty_slice.regions[0].internal_bridge_areas = Vec::new();
-    let mut empty_fx = dispatch_fixture::for_stage("Layer::InfillPostProcess")
-        .with_slice(empty_slice)
-        .with_perimeter(
-            ir_builders::perimeter_ir::with_ids(&[("obj-0", 0)])
-                .walls_with(vec![ir_builders::wall_loop().points(11).build()])
-                .infill(1)
-                .build(),
-        )
-        .build();
-    empty_fx
-        .arena
-        .set_infill(InfillIR {
-            regions: vec![InfillRegion {
-                object_id: "obj-0".into(),
-                region_id: 0,
-                sparse_infill: vec![path(
-                    ExtrusionRole::SparseInfill,
-                    &[(0.0, 5.0, 0.2), (10.0, 5.0, 0.2)],
-                )],
-                ..Default::default()
-            }],
-            ..Default::default()
-        })
-        .expect("stage empty-area prior InfillIR");
-    run_echo_postprocess(&mut empty_fx, &layer, ConfigView::from_map(HashMap::new()));
-    assert!(
-        empty_fx
-            .arena
-            .infill()
-            .expect("empty-area output committed")
-            .regions[0]
-            .internal_bridge_infill
-            .is_empty(),
-        "without qualified internal bridge areas no bridge strips are emitted"
+    let slice_region = &fx.arena.slice().expect("slice stays staged").regions[0];
+    assert_eq!(
+        (
+            slice_region.internal_bridge_areas.clone(),
+            slice_region.internal_bridge_angles_deg.clone()
+        ),
+        (vec![area], vec![90.0]),
+        "the prepass-authored internal-bridge carrier passes through unchanged"
     );
 }
 

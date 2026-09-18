@@ -90,7 +90,13 @@ impl RoleBoundaries {
             ExtrusionRole::SparseInfill => Some(self.sparse.clone()),
             ExtrusionRole::TopSolidInfill => Some(self.top.clone()),
             ExtrusionRole::BottomSolidInfill => Some(self.bottom.clone()),
-            ExtrusionRole::BridgeInfill => Some(self.bridge.clone()),
+            // The host partition folds internal-bridge sites into
+            // `bridge_areas`; canonical `Fill.cpp::group_fills` gives
+            // `erInternalBridgeInfill` its own surface fill, so its connectors
+            // must stay inside that partition rather than the whole fill area.
+            ExtrusionRole::BridgeInfill | ExtrusionRole::InternalBridgeInfill => {
+                Some(self.bridge.clone())
+            }
             // `solid_role` in rectilinear-infill / gyroid-infill relabels a
             // top or bottom shell at depth ≥ 1 as InternalSolidInfill, so its
             // legal area is the union of the two solid-shell polygons.

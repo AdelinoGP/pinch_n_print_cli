@@ -390,6 +390,168 @@ fn nearest_anchor_angle(anchors: &[Vec<Point2>], p: (f64, f64)) -> Option<f64> {
     best.map(|(_, angle, _)| angle)
 }
 
+/// Presort internal-bridge candidates the way canonical
+/// `PrintObject::bridge_over_infill` does before choosing directions: by
+/// bounding-box minimum x, then minimum y; with more than two candidates the
+/// tail is then stable-sorted by squared distance from the first candidate's
+/// bounding-box maximum to each candidate's bounding-box minimum. Neighbouring
+/// candidates therefore meet in a stable order, which is what lets the
+/// collision rule in [`internal_bridge_angles`] hand them one shared angle.
+pub fn presort_bridge_candidates(candidates: &mut [ExPolygon]) {
+    fn extents(polygon: &ExPolygon) -> (i64, i64, i64, i64) {
+        polygon.contour.points.iter().fold(
+            (i64::MAX, i64::MAX, i64::MIN, i64::MIN),
+            |(min_x, min_y, max_x, max_y), p| {
+                (
+                    min_x.min(p.x),
+                    min_y.min(p.y),
+                    max_x.max(p.x),
+                    max_y.max(p.y),
+                )
+            },
+        )
+    }
+    candidates.sort_by(|left, right| {
+        let (a, b) = (extents(left), extents(right));
+        a.0.cmp(&b.0).then(a.1.cmp(&b.1))
+    });
+    if candidates.len() > 2 {
+        let (_, _, origin_x, origin_y) = extents(&candidates[0]);
+        let distance2 = |polygon: &ExPolygon| {
+            let (min_x, min_y, _, _) = extents(polygon);
+            let dx = (origin_x - min_x) as f64;
+            let dy = (origin_y - min_y) as f64;
+            dx * dx + dy * dy
+        };
+        candidates[1..].sort_by(|left, right| distance2(left).total_cmp(&distance2(right)));
+    }
+}
+
+/// Closed boundary polylines used as bridge anchors when no real lower-layer
+/// sparse lines are available: the outlines of `total_fill_area` grown by
+/// `1.3 × spacing` and of `limiting_area` grown by `0.3 × spacing`.
+///
+/// Canonical `PrintObject::bridge_over_infill` builds exactly these
+/// `boundary_plines` and hands them to `determine_bridging_angle` whenever the
+/// sparse-line anchor set is empty. Every ring is closed (first point
+/// repeated), matching canonical `to_polylines(Polygons)`.
+pub fn boundary_anchor_polylines(
+    total_fill_area: &[ExPolygon],
+    limiting_area: &[ExPolygon],
+    spacing_mm: f32,
+) -> Vec<Vec<Point2>> {
+    let mut rings = Vec::new();
+    for (area, factor) in [(total_fill_area, 1.3_f32), (limiting_area, 0.3_f32)] {
+        for polygon in offset(area, factor * spacing_mm, OffsetJoinType::Miter, 0.0) {
+            for ring in std::iter::once(&polygon.contour).chain(polygon.holes.iter()) {
+                if ring.points.len() < 2 {
+                    continue;
+                }
+                let mut points = ring.points.clone();
+                points.push(ring.points[0]);
+                rings.push(points);
+            }
+        }
+    }
+    rings
+}
+
+/// Layer-level inputs for [`internal_bridge_angles`].
+#[derive(Clone, Copy, Debug)]
+pub struct InternalBridgeAngleInputs<'a> {
+    /// Deep sparse infill below, already grown by the clip margin
+    /// (`deep_infill_area` after canonical's `expand(.., 1.5 × spacing)`).
+    pub deep_infill_clip_area: &'a [ExPolygon],
+    /// `deep_infill_area` shrunk by `4.5 × spacing`; parts of a candidate's
+    /// bridge area that do not reach it are discarded.
+    pub internal_unsupported_area: &'a [ExPolygon],
+    /// Current-layer sparse ∪ internal-solid fill (canonical
+    /// `stInternal ∪ stInternalSolid`), before closing and clipping.
+    pub expansion_area: &'a [ExPolygon],
+    /// Current-layer fill area (canonical `fill_expolygons`).
+    pub total_fill_area: &'a [ExPolygon],
+    /// Bridging-flow spacing in millimetres.
+    pub spacing_mm: f32,
+    /// Positive values replace the automatic angle (canonical absolute
+    /// `internal_bridge_angle`).
+    pub override_deg: f32,
+}
+
+/// Choose one bridge line direction (degrees, `[0, 180)`) per internal-bridge
+/// candidate, index-aligned with `candidates`, which callers presort with
+/// [`presort_bridge_candidates`].
+///
+/// Port of the per-candidate direction step in canonical
+/// `PrintObject::bridge_over_infill`: `area_to_be_bridge = expand(candidate,
+/// spacing) ∩ deep_infill_area`, keeping only the parts that reach
+/// `internal_unsupported_area`; `limiting_area = area_to_be_bridge ∪
+/// expansion_area`; the angle comes from `determine_bridging_angle` over the
+/// boundary anchors ([`boundary_anchor_polylines`]); a positive override
+/// replaces it; and a candidate whose `expand(.., 3 × spacing)` meets an
+/// earlier candidate reuses that candidate's angle. Each chosen candidate is
+/// removed from the expansion area seen by later ones, as canonical removes
+/// each bridged area from `expansion_area`.
+///
+/// Canonical anchors on the real lower-layer sparse infill lines and falls back
+/// to the boundary polylines only when there are none. The sparse lines are
+/// generated by a fill module after this host pass runs, so this port always
+/// takes the boundary fallback (recorded in `docs/DEVIATION_LOG.md`).
+pub fn internal_bridge_angles(
+    candidates: &[ExPolygon],
+    inputs: &InternalBridgeAngleInputs<'_>,
+) -> Vec<f32> {
+    let spacing = inputs.spacing_mm;
+    let total_fill_area = closing_ex(
+        inputs.total_fill_area,
+        SCALED_EPSILON_MM,
+        OffsetJoinType::Miter,
+    );
+    let mut expansion_area = intersection(
+        &closing_ex(
+            inputs.expansion_area,
+            SCALED_EPSILON_MM,
+            OffsetJoinType::Miter,
+        ),
+        inputs.deep_infill_clip_area,
+    );
+    let mut angles: Vec<f32> = Vec::with_capacity(candidates.len());
+    for (index, candidate) in candidates.iter().enumerate() {
+        let candidate = std::slice::from_ref(candidate);
+        let mut area: Vec<ExPolygon> = intersection(
+            &offset(candidate, spacing, OffsetJoinType::Miter, 0.0),
+            inputs.deep_infill_clip_area,
+        )
+        .into_iter()
+        .filter(|part| {
+            !intersection(std::slice::from_ref(part), inputs.internal_unsupported_area).is_empty()
+        })
+        .collect();
+        if area.is_empty() {
+            // The caller only passes candidates that reach the unsupported
+            // area, so this is a degenerate clip; sample the candidate itself.
+            area = candidate.to_vec();
+        }
+        let limiting_area = union(&area, &expansion_area);
+        let anchors = boundary_anchor_polylines(&total_fill_area, &limiting_area, spacing);
+        let edges: Vec<Vec<Point2>> = area
+            .iter()
+            .flat_map(|polygon| std::iter::once(&polygon.contour).chain(polygon.holes.iter()))
+            .map(|ring| ring.points.clone())
+            .collect();
+        let mut angle = determine_bridging_angle(&anchors, &edges, inputs.override_deg);
+        let grown = offset(candidate, 3.0 * spacing, OffsetJoinType::Miter, 0.0);
+        if let Some(earlier) = candidates[..index]
+            .iter()
+            .position(|earlier| !intersection(std::slice::from_ref(earlier), &grown).is_empty())
+        {
+            angle = angles[earlier];
+        }
+        angles.push(angle);
+        expansion_area = difference(&expansion_area, candidate);
+    }
+    angles
+}
+
 /// Construct scan strips whose endpoints are supported by anchor geometry.
 pub fn construct_anchored_polygon(
     anchors: &[Vec<Point2>],

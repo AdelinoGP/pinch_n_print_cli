@@ -1300,11 +1300,13 @@ is unnecessary.
 Bridge gating occurs after `PrePass::Slice`, in `ShellClassification`. It uses
 the previous global layer's same-object committed region polygons; when that
 layer is missing, candidates are cleared, while an existing layer with empty
-polygons subtracts nothing. Cross-layer bridge qualification runs only after
-the `ShellClassification` state is committed. Same-layer anchored construction
-then consumes committed `internal_bridge_areas`, wall geometry, and
-`Layer::Infill` sparse polylines in `InfillPostProcess`, preserving the
-deterministic sequential prepass ordering.
+polygons subtracts nothing. Cross-layer internal-bridge qualification runs only
+after the `ShellClassification` shell state is committed, and it is the single
+internal-bridge producer: it writes `internal_bridge_areas`, one bridge angle
+per polygon in `internal_bridge_angles_deg`, and the qualified polygons into
+`bridge_areas` (plus the optional extra-bridge-layer duplicates at the parent
+angle + 90°). The `claim:bridge-fill` holder emits them during `Layer::Infill`;
+the `InfillPostProcess` commit arm constructs no internal-bridge paths.
 
 `ShellClassification` consumes gated bridge areas plus previous-layer
 contours and writes `bridge_orientation_deg` after gating. Empty gated areas

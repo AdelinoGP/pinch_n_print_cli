@@ -116,7 +116,35 @@ fn enabled_duplicates_layer_above() {
             .collect::<Vec<_>>(),
         "duplicate must be the dense-interior overlap directly above the source"
     );
-    println!(
-        "carrier-free angle report: duplicate uses existing anchor-derived construction; canonical perpendicular intent is parent + 90 degrees"
+
+    // Canonical second internal bridge (`PrintObject::bridge_over_infill`'s
+    // extra-layer pass): the layer's cached bridge angle (last internal bridge
+    // on the layer) plus 90 degrees, so the second layer crosses the first.
+    let parent = *enabled[source].regions[0]
+        .internal_bridge_angles_deg
+        .last()
+        .expect("the source layer carries one angle per qualified polygon");
+    let expected = (parent + 90.0).rem_euclid(180.0);
+    let upper = &enabled[source + 1].regions[0];
+    assert_eq!(
+        upper.internal_bridge_angles_deg.len(),
+        upper.internal_bridge_areas.len(),
+        "one angle per internal-bridge polygon on the duplicate layer"
     );
+    let duplicate_angles = &upper.internal_bridge_angles_deg[baseline_count[source + 1]..];
+    assert!(
+        duplicate_angles
+            .iter()
+            .all(|angle| (angle - expected).abs() < 1e-4),
+        "duplicates must cross the parent at {expected} deg (parent {parent}), got {duplicate_angles:?}"
+    );
+    // The duplicates are bridge fill, so they join `bridge_areas`; the
+    // partition then removes them from sparse infill and the fill module
+    // emits them.
+    for duplicate in &upper.internal_bridge_areas[baseline_count[source + 1]..] {
+        assert!(
+            upper.bridge_areas.contains(duplicate),
+            "duplicate internal bridge polygon missing from bridge_areas"
+        );
+    }
 }

@@ -220,10 +220,11 @@ impl LayerModule for RectilinearInfill {
         // Feedrate is resolved by the host from each emitted role. Do not
         // couple sparse, solid, and bridge paths through one scalar.
         let speed_factor = 1.0;
-        // These settings are intentionally owned by the runtime seam: the WIT
-        // infill output has no bridge-postprocess control interface. The host
-        // receives the same resolved ConfigView and applies angle/filter/flow;
-        // extra-layer remains parse-only until a neighboring-layer API exists.
+        // These settings are intentionally owned by the host: its
+        // `PrePass::ShellClassification` internal-bridge gate reads the same
+        // resolved keys and applies the filter, the angle override, and the
+        // extra bridge layer while authoring `internal_bridge_areas` and their
+        // per-polygon angles. This module only emits what the host authored.
         let _host_bridge_settings = (
             self.top_surface_speed,
             self.internal_solid_infill_speed,
@@ -381,39 +382,47 @@ impl LayerModule for RectilinearInfill {
                 }
             }
 
-            // BridgeInfill over bridge_areas at the region's bridge orientation.
+            // BridgeInfill over bridge_areas.
             //
             // `bridge_areas` also carries the qualified internal-bridge sites
             // the host's `gate_internal_bridge_sites` appended (they are
             // mirrored in `internal_bridge_areas`). Those are bridges over
             // sparse infill, not over air: canonical `bridge_over_infill`
             // classifies them `stInternalBridge`, printed at the internal
-            // bridge speed/flow/density and labelled "Internal Bridge". They
-            // were emitted here as external `BridgeInfill`, so a shell layer
-            // sitting on sparse infill printed as one whole-layer external
-            // bridge (SchemaBridgeMap ticket 19, R1). Split the two.
+            // bridge speed/flow/density and labelled "Internal Bridge", each
+            // surface at its own `bridge_angle`. So the external remainder
+            // (`bridge_areas − internal_bridge_areas`) runs at the region's
+            // `bridge_orientation_deg`, and every internal polygon `i` runs at
+            // its host-authored `internal_bridge_angles_deg[i]` (falling back
+            // to `bridge_orientation_deg` when the host sent no angles).
             let internal_bridge_areas = region.internal_bridge_areas();
-            let (external_bridge, internal_bridge): (Vec<ExPolygon>, Vec<ExPolygon>) =
-                if internal_bridge_areas.is_empty() {
-                    (region.bridge_areas().to_vec(), Vec::new())
-                } else {
-                    (
-                        slicer_sdk::host::clip_polygons(
-                            region.bridge_areas(),
-                            internal_bridge_areas,
-                            slicer_sdk::host::ClipOperation::Difference,
-                        ),
-                        slicer_sdk::host::clip_polygons(
-                            region.bridge_areas(),
-                            internal_bridge_areas,
-                            slicer_sdk::host::ClipOperation::Intersection,
-                        ),
-                    )
-                };
-            for (bridge, is_internal_bridge) in [
-                (external_bridge.as_slice(), region.is_internal_bridge()),
-                (internal_bridge.as_slice(), true),
-            ] {
+            let external_bridge = if internal_bridge_areas.is_empty() {
+                region.bridge_areas().to_vec()
+            } else {
+                slicer_sdk::host::clip_polygons(
+                    region.bridge_areas(),
+                    internal_bridge_areas,
+                    slicer_sdk::host::ClipOperation::Difference,
+                )
+            };
+            let mut bridge_groups: Vec<(Vec<ExPolygon>, bool, f32)> = vec![(
+                external_bridge,
+                region.is_internal_bridge(),
+                region.bridge_orientation_deg(),
+            )];
+            for (index, area) in internal_bridge_areas.iter().enumerate() {
+                bridge_groups.push((
+                    slicer_sdk::host::clip_polygons(
+                        region.bridge_areas(),
+                        std::slice::from_ref(area),
+                        slicer_sdk::host::ClipOperation::Intersection,
+                    ),
+                    true,
+                    region.internal_bridge_angle_deg(index),
+                ));
+            }
+            for (bridge, is_internal_bridge, bridge_angle_deg) in bridge_groups {
+                let bridge = bridge.as_slice();
                 if bridge.is_empty() || !region.should_emit(ExtrusionRole::BridgeInfill) {
                     continue;
                 }
@@ -422,8 +431,7 @@ impl LayerModule for RectilinearInfill {
                 } else {
                     ExtrusionRole::BridgeInfill
                 };
-                let deg = region.bridge_orientation_deg() as f64;
-                let rad = deg.to_radians();
+                let rad = (bridge_angle_deg as f64).to_radians();
                 let (bridge_cos_a, bridge_sin_a) = (rad.cos(), rad.sin());
                 let bridge_width = resolve_role_width(
                     ExtrusionRole::BridgeInfill,

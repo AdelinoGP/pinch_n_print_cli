@@ -570,6 +570,7 @@ pub fn sliced_region_to_data_with_prepared(
         is_bridge: view.is_bridge(),
         bridge_areas: ir_to_wit_expolygons(view.bridge_areas()),
         internal_bridge_areas: ir_to_wit_expolygons(view.internal_bridge_areas()),
+        internal_bridge_angles_deg: view.internal_bridge_angles_deg().to_vec(),
         bridge_orientation_deg: view.bridge_orientation_deg(),
         sparse_infill_area: ir_to_wit_expolygons(view.sparse_infill_area()),
         raft_fill: ir_to_wit_expolygons(view.raft_fill()),

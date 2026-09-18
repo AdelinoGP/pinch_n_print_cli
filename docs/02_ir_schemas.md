@@ -608,12 +608,15 @@ for audit visibility.
 **Stage:** Output of `PrePass::Slice`, refined by `PrePass::ShellClassification`
 and `PrePass::PaintSegmentation`, then mutated by `Layer::SlicePostProcess`
 
-**Current schema_version: 4.9.0** (`CURRENT_SLICE_IR_SCHEMA_VERSION` in
+**Current schema_version: 4.10.0** (`CURRENT_SLICE_IR_SCHEMA_VERSION` in
 `crates/slicer-ir/src/slice_ir.rs`). Recent minor bumps: 4.7.0 by P112 —
 additive `ExtrusionJunction` / `ExtrusionLine` types for Arachne variable-width
 walls; 4.8.0 — the typed `InternalBridgeInfill` extrusion role; 4.9.0 by packet
 240a — the additive raft-substrate fields `GlobalLayer.is_raft` and
-`SlicedRegion.raft_fill` (see "Raft substrate" below). The "Reservation Table —
+`SlicedRegion.raft_fill` (see "Raft substrate" below); 4.10.0 — the additive
+per-polygon internal-bridge angle carrier
+`SlicedRegion.internal_bridge_angles_deg` (see "Internal bridge support
+gating" below). The "Reservation Table —
 perimeter parity roadmap (P102–P112)" at the end of this document is
 authoritative for the reserved versions of *that roadmap only*; bumps after
 4.7.0 fall outside it and are documented at their point of use. The doc comment
@@ -626,7 +629,7 @@ optional non-planar surface, effective height, segment paint annotations, shell
 depths, shell/bridge fill polygons, and its paint `variant_chain`. The removed
 `external_contour` field is not part of the current schema.
 
-`SlicedRegion.internal_solid_fill: Vec<ExPolygon>` is a `#[serde(default)]` dense-interior polygon carrier authored by shell classification. `SlicedRegion.internal_bridge_areas: Vec<ExPolygon>` is a `#[serde(default)]` host-only qualification carrier, populated by host qualification and consumed by the host/module seam; both fields are additive, region-owned, and preserved through region partition/restore.
+`SlicedRegion.internal_solid_fill: Vec<ExPolygon>` is a `#[serde(default)]` dense-interior polygon carrier authored by shell classification. `SlicedRegion.internal_bridge_areas: Vec<ExPolygon>` is a `#[serde(default)]` qualification carrier authored by the host's internal-bridge gate and mirrored into module views; `SlicedRegion.internal_bridge_angles_deg: Vec<f32>` (`#[serde(default)]`, schema 4.10.0) is index-aligned with it. All three are additive, region-owned, and preserved through region partition/restore (the two internal-bridge carriers are split and restored polygon by polygon, never unioned, so the pairing survives).
 
 ### Post-`Layer::Perimeters` invariant: four canonical fill polygons
 
@@ -669,16 +672,44 @@ region by their swept footprint instead of clipping them.
 Internal-bridge candidates difference sparse-infill input by already-claimed
 `bridge_areas` before generating internal bridge polygons.
 
-#### Internal bridge support gating (host-only lifecycle)
+#### Internal bridge support gating (single producer)
 
-Construction expands and qualifies candidates, then harvests lower fills and
-clusters compatible spans into `internal_bridge_areas`. When
-`enable_extra_bridge_layer` is enabled, gated duplicates are appended to the
-upper layer's existing host-only carrier; no additional IR carrier is added.
+`PrePass::ShellClassification`'s internal-bridge gate
+(`gate_internal_bridge_sites` in
+`crates/slicer-runtime/src/slice_postprocess_prepass.rs`) is the only
+internal-bridge producer. It qualifies `internal_solid_fill` surfaces against
+the deep sparse infill below, writes the qualified polygons into
+`internal_bridge_areas`, appends them to `bridge_areas` (so the
+Perimeters-commit partition cuts them out of sparse infill), and writes one
+bridge line direction per polygon into `internal_bridge_angles_deg`:
 
-`SlicedRegion.internal_bridge_areas` is an additive existing carrier exposed
-through `slice-region-view`; this accessor does not alter SliceIR schema
-versioning.
+- Candidates are presorted as canonical does (bbox min x, then min y; with
+  more than two, the tail by distance from the first candidate's bbox max).
+- Each angle comes from
+  `slicer_core::algos::bridge_over_infill::internal_bridge_angles`: canonical
+  `determine_bridging_angle` over the outline of
+  `expand(candidate, spacing) ∩ deep_infill_area`, anchored on the boundary
+  polylines of `expand(fill area, 1.3 × spacing)` and
+  `expand(limiting area, 0.3 × spacing)`. Those are canonical's fallback
+  anchors; the real lower-layer sparse lines do not exist yet at prepass time
+  (see `docs/DEVIATION_LOG.md`). A positive `internal_bridge_angle` overrides
+  the angle, and a candidate within `3 × spacing` of an earlier one reuses
+  that one's angle.
+- Angles are in degrees of line direction, the same convention as
+  `bridge_orientation_deg`. An empty vector means "use
+  `bridge_orientation_deg`" for every polygon (pre-4.10.0 fixtures).
+
+When `enable_extra_bridge_layer` is enabled, the dense-interior overlap
+directly above each qualified layer (minus that layer's own internal bridges)
+is appended to the upper layer's `internal_bridge_areas` and `bridge_areas`
+with the canonical second-bridge angle: the layer's last internal-bridge angle
+plus 90°.
+
+The fill module holding `claim:bridge-fill` emits `bridge_areas −
+internal_bridge_areas` at `bridge_orientation_deg`, and each internal polygon
+`i` (clipped to the partitioned `bridge_areas`) as `InternalBridgeInfill` at
+`internal_bridge_angles_deg[i]`. `Layer::InfillPostProcess` constructs no
+internal-bridge paths.
 
 ### Raft substrate (packet 240a — additive, schema 4.9.0)
 

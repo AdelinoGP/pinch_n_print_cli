@@ -248,7 +248,7 @@ fn calicat_internal_bridge_gating_e2e_tdd() {
     println!("combined bridge-labelled extrusion = {combined:.2} mm");
     assert!(
         (24.0..=27.0).contains(&combined),
-        "AC-6: combined bridge-labelled extrusion = {combined:.2} mm, expected the          relabel to conserve it (measured: 25.39 mm before the internal-bridge          split, 25.49 mm after). A large move means geometry was gained or lost,          not relabelled."
+        "AC-6: combined bridge-labelled extrusion = {combined:.2} mm, expected the          relabel to conserve it (measured: 25.39 mm before the internal-bridge          split, 25.49 mm after, 24.95 mm once the duplicate InfillPostProcess          internal-bridge producer was removed: canonical emits each          stInternalBridge surface once, from its fill). A large move means geometry was gained or lost,          not relabelled."
     );
 
     // (3) External-row guard at Z≈3.2: dominant angle within [85°, 95°].

@@ -540,6 +540,80 @@ fn prepass_modifier_overlap_assigns_geometry_to_highest_priority_first() {
     );
 }
 
+/// Internal-bridge polygons carry an index-aligned angle each, so the modifier
+/// split must cut them polygon by polygon and hand every piece its parent's
+/// angle, on the sub-region and on the base remainder alike. The footprint
+/// here cuts both bridges in two on the base side, so a set-wise split would
+/// leave four base pieces paired with two angles.
+#[test]
+fn prepass_modifier_split_carries_internal_bridge_angles() {
+    let object_id = "obj1";
+    let modifier_mesh = modifier_box_mesh(3.0, -1.0, 7.0, 11.0);
+    let lower_bridge = square(0.0, 0.0, 10.0, 4.0);
+    let upper_bridge = square(0.0, 6.0, 10.0, 10.0);
+    let mut base = base_region(object_id, square(0.0, 0.0, 10.0, 10.0));
+    base.internal_bridge_areas = vec![lower_bridge.clone(), upper_bridge.clone()];
+    base.internal_bridge_angles_deg = vec![30.0, 120.0];
+    base.bridge_areas = base.internal_bridge_areas.clone();
+    let mut slice = SliceIR {
+        schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+        global_layer_index: 0,
+        z: 0.5,
+        regions: vec![base],
+    };
+    let mesh = MeshIR {
+        objects: vec![ObjectMesh {
+            id: object_id.to_string(),
+            modifier_volumes: vec![parameter_modifier("m", 1, modifier_mesh)],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    slicer_runtime::region_partition::split_modifier_sub_regions_for_prepass(&mut slice, &mesh)
+        .expect("prepass modifier split must succeed");
+
+    let base = slice
+        .regions
+        .iter()
+        .find(|region| region.region_id == 0)
+        .expect("base region remains");
+    let sub = find_sub_region(&slice).expect("modifier sub-region minted");
+    // A piece's parent is recognisable by its y extent: the lower bridge lies
+    // below y = 5 mm, the upper one above.
+    let expected_angle = |piece: &ExPolygon| {
+        let min_y = piece.contour.points.iter().map(|p| p.y).min().unwrap();
+        if min_y < Point2::from_mm(0.0, 5.0).y {
+            30.0
+        } else {
+            120.0
+        }
+    };
+    for (label, region, pieces) in [("base", base, 4usize), ("sub-region", sub, 2usize)] {
+        assert_eq!(
+            region.internal_bridge_areas.len(),
+            pieces,
+            "{label}: the footprint cuts each bridge into the expected pieces"
+        );
+        assert_eq!(
+            region.internal_bridge_angles_deg.len(),
+            region.internal_bridge_areas.len(),
+            "{label}: one angle per internal-bridge piece"
+        );
+        for (piece, angle) in region
+            .internal_bridge_areas
+            .iter()
+            .zip(&region.internal_bridge_angles_deg)
+        {
+            assert_eq!(
+                *angle,
+                expected_angle(piece),
+                "{label}: every piece keeps its parent bridge's angle"
+            );
+        }
+    }
+}
+
 #[test]
 fn prepass_and_tier2_modifier_splits_produce_identical_regions() {
     let object_id = "obj1";

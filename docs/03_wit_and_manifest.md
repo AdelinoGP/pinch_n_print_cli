@@ -277,8 +277,15 @@ Notable records/methods worth surfacing (not obvious from the resource names):
   returning the previous layer's slice boundary contours for the current
   region.
 - `internal-solid-fill` is exposed in the canonical region WIT type and SDK
-  view as `internal_solid_fill`. `internal_bridge_areas` remains host-only and
-  is not part of WIT.
+  view as `internal_solid_fill`.
+- `slice-region-view` exposes `internal-bridge-areas: func() -> list<ex-polygon>`
+  and `internal-bridge-angles-deg: func() -> list<f32>` (SDK
+  `internal_bridge_areas()` / `internal_bridge_angles_deg()`, plus the
+  `internal_bridge_angle_deg(index)` fallback helper). The angles are
+  index-aligned with the areas, in degrees of line direction (the
+  `bridge-orientation-deg` convention); an empty list means every internal
+  polygon uses `bridge-orientation-deg`. Both are authored by the host's
+  `PrePass::ShellClassification` internal-bridge gate (SliceIR 4.10.0).
 - `slice-region-view` and `perimeter-region-view` expose
   `config: func() -> config-view`, providing a per-region config accessor for
   resolved settings inside each region loop. Packet 131 bumps the then-monolithic `world-layer`

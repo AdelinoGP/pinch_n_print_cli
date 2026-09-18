@@ -232,9 +232,13 @@ pub const CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION: SemVer = SemVer {
 /// per-region raft fill polygons). Both carry `#[serde(default)]`, so
 /// serialized 4.8.0 fixtures still deserialize with `is_raft = false` and an
 /// empty `raft_fill`.
+/// Minor bump to 4.10.0 adds the additive `SlicedRegion.internal_bridge_angles_deg`
+/// carrier (one bridge line direction per `internal_bridge_areas` polygon).
+/// `#[serde(default)]` keeps 4.9.0 fixtures deserializing with an empty
+/// vector, which consumers read as "fall back to `bridge_orientation_deg`".
 pub const CURRENT_SLICE_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 4,
-    minor: 9,
+    minor: 10,
     patch: 0,
 };
 
@@ -1975,15 +1979,36 @@ pub struct SlicedRegion {
     /// dense-interior band (shell band minus depth-0 exposed seed); WIT-mirrored in a later step.
     #[serde(default)]
     pub internal_solid_fill: Vec<ExPolygon>,
-    /// host-only — qualified internal-bridge-over-infill areas; never mirrored into module views.
+    /// Qualified internal-bridge-over-infill areas authored by the host's
+    /// `PrePass::ShellClassification` internal-bridge gate. Mirrored into
+    /// module views (`slice-region-view.internal-bridge-areas`); every polygon
+    /// is also present in `bridge_areas`.
     #[serde(default)]
     pub internal_bridge_areas: Vec<ExPolygon>,
+    /// Bridge line direction in degrees, one per `internal_bridge_areas`
+    /// polygon (index-aligned), in the same convention as
+    /// `bridge_orientation_deg`. Empty means every internal-bridge polygon
+    /// falls back to `bridge_orientation_deg`.
+    #[serde(default)]
+    pub internal_bridge_angles_deg: Vec<f32>,
     /// Raft-substrate fill polygons for this region (packet 240a). Non-empty
     /// only on layers inside the positive-offset raft band — global layer
     /// indices `0..support_raft_layers-1`, the layers whose `GlobalLayer`
     /// carries `is_raft = true`. Empty on every model layer.
     #[serde(default)]
     pub raft_fill: Vec<ExPolygon>,
+}
+
+impl SlicedRegion {
+    /// Bridge line direction (degrees) for internal-bridge polygon `index`:
+    /// the per-polygon `internal_bridge_angles_deg` entry when present, else
+    /// the region-wide `bridge_orientation_deg` fallback.
+    pub fn internal_bridge_angle_deg(&self, index: usize) -> f32 {
+        self.internal_bridge_angles_deg
+            .get(index)
+            .copied()
+            .unwrap_or(self.bridge_orientation_deg)
+    }
 }
 
 /// Slice IR

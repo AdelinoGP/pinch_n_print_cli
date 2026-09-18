@@ -331,8 +331,10 @@ sites are qualified against the committed layer below via
 `9*spacing^2` gate applied; expansion multiplier 3), and `true` maps to canonical
 `ibfNofilter` (bypass of the area/partial gate; expansion multiplier 1). The
 qualification runs in the ShellClassification prepass
-(`crates/slicer-runtime/src/slice_postprocess_prepass.rs`); the InfillPostProcess
-arm only emits the authored centerlines.
+(`crates/slicer-runtime/src/slice_postprocess_prepass.rs`), which also reads
+`internal_bridge_angle`, `bridge_line_width`, `internal_bridge_flow`, and
+`enable_extra_bridge_layer` to author one bridge angle per qualified polygon;
+the `claim:bridge-fill` module emits those polygons at those angles.
 
 **Note — `support_interface_bottom_layers`:** the key remains user-visible with
 default `-1`. Negative values mirror the configured top-interface count; positive

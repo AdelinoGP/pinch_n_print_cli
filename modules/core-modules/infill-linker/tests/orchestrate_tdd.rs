@@ -763,3 +763,114 @@ fn cross_tool_paths_not_compatible_in_orchestrate() {
         cross_tool.max_x_of_first_region_paths
     );
 }
+
+/// Length of `role` paths lying outside `boundary` grown by 0.05 mm.
+fn length_outside_mm(ps: &[ExtrusionPath3D], role: &ExtrusionRole, boundary: &[ExPolygon]) -> f64 {
+    use slicer_core::polygon_ops::{clip_polylines, offset, OffsetJoinType};
+    let len = |pl: &[Point2]| -> f64 {
+        pl.windows(2)
+            .map(|w| ((w[1].x - w[0].x) as f64).hypot((w[1].y - w[0].y) as f64) / 1e4)
+            .sum()
+    };
+    let grown = offset(boundary, 0.05, OffsetJoinType::Miter, 0.0);
+    ps.iter()
+        .filter(|p| &p.role == role)
+        .map(|p| {
+            let pl: Vec<Point2> = p.points.iter().map(|q| Point2::from_mm(q.x, q.y)).collect();
+            let inside: f64 = clip_polylines(&[pl.clone()], &grown).iter().map(|c| len(c)).sum();
+            len(&pl) - inside
+        })
+        .sum()
+}
+
+/// Regression (benchy z=8.0 internal bridge): internal-bridge lines must be
+/// linked inside the bridge partition, never along the whole fill area.
+/// Canonical `Fill.cpp::group_fills` gives `erInternalBridgeInfill` its own
+/// surface fill, so its connectors stay within that surface. Without an
+/// `InternalBridgeInfill` arm the linker fell back to the union boundary and
+/// routed connectors along the curved outer edge, through the sparse area.
+/// The curved, densely-vertexed edges are load-bearing: the connector walks
+/// ring vertices, and a straight-edged boundary never detours.
+#[test]
+fn internal_bridge_paths_stay_in_bridge_partition() {
+    use slicer_core::polygon_ops::difference;
+    let bow = |t: f32| (std::f32::consts::PI * t).sin();
+    let (x0, y0, x1, y1) = (-1.0f32, -1.0f32, 21.0f32, 11.0f32);
+    let mut pts = Vec::new();
+    for i in 0..220 {
+        let t = i as f32 / 220.0;
+        pts.push(Point2::from_mm(x0 + (x1 - x0) * t, y0 - bow(t)));
+    }
+    for i in 0..120 {
+        pts.push(Point2::from_mm(x1, y0 + (y1 - y0) * i as f32 / 120.0));
+    }
+    for i in 0..220 {
+        let t = i as f32 / 220.0;
+        pts.push(Point2::from_mm(x1 - (x1 - x0) * t, y1 + bow(t)));
+    }
+    for i in 0..120 {
+        pts.push(Point2::from_mm(x0, y1 - (y1 - y0) * i as f32 / 120.0));
+    }
+    let inset = ExPolygon {
+        contour: Polygon { points: pts },
+        holes: vec![],
+    };
+    let bridge = vec![square(0.0, 10.0)];
+    let mut view = PerimeterRegionViewBuilder::new()
+        .object_id("0")
+        .region_id(0)
+        .add_infill_area(inset.clone())
+        .sparse_infill_area(difference(&[inset], &bridge))
+        .bridge_areas(bridge.clone())
+        .wall_source_region_id(None)
+        .tool_index(0)
+        .build();
+    view.set_config(
+        ConfigViewBuilder::new()
+            .float("infill_density", 0.2)
+            .float("layer_height", 0.2)
+            .build(),
+    );
+    // 45° internal-bridge scan lines clipped to the 10×10 bridge, 0.5 mm apart.
+    let mut lines = Vec::new();
+    let mut c = -10.0f32;
+    while c < 10.0 {
+        let (lo, hi) = ((-c).max(0.0), (10.0 - c).min(10.0));
+        if hi - lo > 0.3 {
+            let pt = |x: f32| Point3WithWidth {
+                x,
+                y: x + c,
+                z: 0.2,
+                width: 0.45,
+                flow_factor: 1.0,
+                ..Default::default()
+            };
+            lines.push(ExtrusionPath3D {
+                points: vec![pt(lo), pt(hi)],
+                ..extrusion_path3d_base(ExtrusionRole::InternalBridgeInfill)
+            });
+        }
+        c += 0.5 * std::f32::consts::SQRT_2;
+    }
+    // exhaustive: every InfillRegion field is part of the fixture.
+    let prior = vec![InfillRegion {
+        object_id: "0".to_string(),
+        region_id: 0,
+        sparse_infill: vec![],
+        solid_infill: lines,
+        ironing: vec![],
+        internal_bridge_infill: vec![],
+    }];
+    let mut out = InfillOutputBuilder::new();
+    infill_linker::orchestrate::orchestrate_infill(&prior, &[view], 0.45, 0.4, &mut out)
+        .expect("linker must not fail");
+    let outside = length_outside_mm(
+        out.solid_paths(),
+        &ExtrusionRole::InternalBridgeInfill,
+        &bridge,
+    );
+    assert!(
+        outside < 0.05,
+        "{outside:.2} mm of InternalBridgeInfill linked outside the bridge partition"
+    );
+}
