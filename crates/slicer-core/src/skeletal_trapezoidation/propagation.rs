@@ -230,6 +230,56 @@ pub fn generate_transition_mids(
         }
     }
 }
+/// The boundary foot of a rib inserted at `p` on `edge_idx`'s chain, and its
+/// distance from `p`: canonical `SkeletalTrapezoidationGraph::insertRib`'s
+/// `getSource(edge).distance_to_squared(p, &px)`.
+///
+/// `getSource` walks `prev` to the chain's first edge and `next` to its last;
+/// the source "segment" runs from the first edge's `from` (a boundary point)
+/// to the last edge's `to` (a boundary point) — the stretch of outline the
+/// quad was built from. `px` is the closest point of that segment to `p`.
+///
+/// Returns `None` when the chain cannot be resolved; callers keep their
+/// previous fallback in that case.
+fn rib_source_foot(
+    graph: &SkeletalTrapezoidationGraph,
+    edge_idx: usize,
+    p: crate::voronoi::Vertex,
+) -> Option<(crate::voronoi::Vertex, f64)> {
+    let guard = graph.edges.len();
+    let mut from_edge = edge_idx;
+    for _ in 0..guard {
+        let prev = graph.edges.get(from_edge)?.prev;
+        if prev == NO_INDEX {
+            break;
+        }
+        from_edge = prev;
+    }
+    let mut to_edge = edge_idx;
+    for _ in 0..guard {
+        let next = graph.edges.get(to_edge)?.next;
+        if next == NO_INDEX {
+            break;
+        }
+        to_edge = next;
+    }
+    let a = graph.vertices.get(graph.edges.get(from_edge)?.start_vertex)?.position;
+    let b = graph.vertices.get(resolve_to_vertex(graph, to_edge))?.position;
+    let (dx, dy) = (b.x - a.x, b.y - a.y);
+    let len_sq = dx * dx + dy * dy;
+    let t = if len_sq > 0.0 {
+        (((p.x - a.x) * dx + (p.y - a.y) * dy) / len_sq).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let foot = crate::voronoi::Vertex {
+        x: a.x + t * dx,
+        y: a.y + t * dy,
+    };
+    let dist = ((p.x - foot.x).powi(2) + (p.y - foot.y).powi(2)).sqrt();
+    Some((foot, dist))
+}
+
 /// Splits a central half-edge at fractional position `pos`, mirroring
 /// OrcaSlicer's `insertNode`+`insertRib` pair
 /// (`SkeletalTrapezoidationGraph.cpp:615-644` + `:515-595`).
@@ -261,13 +311,12 @@ pub fn generate_transition_mids(
 /// the rib `back` edge's `.prev == NO_INDEX` seeding it as an unprocessed
 /// quad start (matching `make_rib`'s own convention).
 ///
-/// `mid_r` is taken from the caller (the transition-mid's recorded radius)
-/// rather than recomputed via perpendicular-foot projection onto a source
-/// segment: source-segment provenance is not retained past
-/// `from_polygons`, but `transition_mids[i].mid_r` *is* the perpendicular-foot
-/// radius by construction (`generate_transition_mids` computes it as
-/// `strategy.get_transition_thickness(lower_bc) / 2`), so the value is
-/// faithful.
+/// Each side's rib ends on that side's outline: the boundary node sits at
+/// the mid node's closest point on the side's source segment (canonical
+/// `getSource` + `insertRib`, see [`rib_source_foot`]), and the mid node's
+/// `distance_to_boundary` is that projection distance, as canonical sets it.
+/// `mid_r` (the caller's transition radius) is only the fallback for a chain
+/// whose source cannot be resolved.
 ///
 /// Returns the index of the new "second" fragment on the input side (the
 /// edge continuing from the mid node to the input edge's original far
@@ -320,6 +369,25 @@ fn insert_node(
     let p = pos.clamp(0.0, 1.0);
     let mid_pos = interpolate_position(input_start_v.position, input_end_v.position, p);
 
+    // --- Boundary (rib-foot) nodes, one per side --------------------------
+    // Canonical `insertRib` projects the mid node onto each side's source
+    // segment (`getSource`: the chain's first `from` to its last `to`), puts
+    // the rib's boundary node at that foot, and sets the mid node's
+    // `distance_to_boundary` to the projection distance (the twin side's
+    // call runs last, so its distance is the one that sticks). Both feet are
+    // resolved here, before any topology below is rewired.
+    //
+    // The feet used to sit AT the mid node, making every transition rib a
+    // zero-length edge from an R=0 "boundary" node to an R>0 node on top of
+    // it. `generate_junctions` emits nothing on a zero-length edge, so every
+    // quad bounded by such a rib lost its walls once `connect_junctions`
+    // stopped bridging quads (benchy layer 51 hull sides: all three walls
+    // gapped over the 4 -> 5 bead transition).
+    let (foot_in_pos, _) = rib_source_foot(graph, edge_idx, mid_pos).unwrap_or((mid_pos, mid_r));
+    let (foot_twin_pos, twin_dist) =
+        rib_source_foot(graph, twin_idx, mid_pos).unwrap_or((mid_pos, mid_r));
+    let mid_r = if twin_dist > 0.0 { twin_dist } else { mid_r };
+
     // --- Shared mid node (spine split vertex) -----------------------------
     let mid_node = graph.vertices.len();
     graph.vertices.push(STVertex {
@@ -329,16 +397,6 @@ fn insert_node(
         transition_ratio: 0.0,
     });
 
-    // --- Boundary (rib-foot) nodes, one per side --------------------------
-    // OrcaSlicer projects the mid node onto the source segment; we don't
-    // retain source provenance past construction, so the foot sits at the
-    // mid node's own position projected onto the input edge's line (the
-    // medial-axis edge is the bisector of two source segments; the foot on
-    // either source is the mid node itself only when the edge is straight,
-    // which is the common case for transition splits on straight spines).
-    // For the parity tests the key invariant is distance_to_boundary == 0
-    // (a boundary sentinel), not the foot's exact x/y.
-    let foot_in_pos = mid_pos;
     let foot_in = graph.vertices.len();
     graph.vertices.push(STVertex {
         position: foot_in_pos,
@@ -346,7 +404,6 @@ fn insert_node(
         bead_count: None,
         transition_ratio: 0.0,
     });
-    let foot_twin_pos = mid_pos;
     let foot_twin = graph.vertices.len();
     graph.vertices.push(STVertex {
         position: foot_twin_pos,
@@ -536,6 +593,9 @@ fn insert_node_one_sided(
     };
     let p = pos.clamp(0.0, 1.0);
     let mid_pos = interpolate_position(start_v.position, end_v.position, p);
+    // Canonical `insertRib` foot + distance; see `insert_node`.
+    let (foot_pos, dist) = rib_source_foot(graph, edge_idx, mid_pos).unwrap_or((mid_pos, mid_r));
+    let mid_r = if dist > 0.0 { dist } else { mid_r };
 
     let mid_node = graph.vertices.len();
     graph.vertices.push(STVertex {
@@ -546,7 +606,7 @@ fn insert_node_one_sided(
     });
     let foot = graph.vertices.len();
     graph.vertices.push(STVertex {
-        position: mid_pos,
+        position: foot_pos,
         distance_to_boundary: 0.0,
         bead_count: None,
         transition_ratio: 0.0,
@@ -611,299 +671,376 @@ fn insert_node_one_sided(
     second
 }
 
-/// For each edge carrying [`super::graph::STHalfEdge::transition_mids`],
-/// generates corresponding transition ends on the edge's **own** bucket,
-/// sorts them **ascending** by position, then inserts new vertices via
-/// [`insert_node`] — one atomic call per end that splits BOTH the edge and
-/// its twin at the same physical position, producing a single shared
-/// boundary (rib-foot) node.
+/// Canonical `transition_filter_dist` (`WallToolPaths::generate`,
+/// `WallToolPaths.cpp`): `scaled<coord_t>(100.f)`, i.e. 100 mm, in this
+/// crate's 100 nm units. It bounds how far `dissolve_nearby_transitions`
+/// walks the central skeleton looking for a partner transition; in practice
+/// the walk stops much earlier, at the `allowed_filter_deviation` gate or at
+/// the end of the central region.
+pub const TRANSITION_FILTER_DIST_UNITS: f64 = 100.0 * slicer_ir::UNITS_PER_MM;
+
+/// Removes bead-count transitions that would only create a short, marginal
+/// bead-count region, mirroring canonical
+/// `SkeletalTrapezoidation::filterTransitionMids` (`SkeletalTrapezoidation.cpp`).
 ///
-/// Mirrors OrcaSlicer's `applyTransitions`
-/// (`SkeletalTrapezoidation.cpp:1487-1543`): the mirrored ends go onto the
-/// edge's own bucket (not the twin's), sorted ascending (not descending),
-/// and `insertNode` is called once per end (not twice per physical edge).
+/// For each upward central edge carrying mids, the back (highest-position)
+/// mid is paired with the same-`lower_bead_count` mids reachable going up,
+/// and the front mid with those reachable going down
+/// (`TransitionFilter::dissolve_nearby_transitions`). When the walk
+/// succeeds, the region enclosed by the pair is relabelled to the bead count
+/// outside it (`dissolve_bead_count_region`) and the paired mids are removed.
+/// A mid whose transition would run past the end of the central region is
+/// removed too (`filter_end_of_central_transition`).
 ///
-/// # F2 fix (Arachne parity audit)
+/// `transition_filter_dist` is canonical's constant
+/// ([`TRANSITION_FILTER_DIST_UNITS`]); `allowed_filter_deviation` is the
+/// configured `wall_transition_filter_deviation`: the line-width deviation
+/// that dissolving a region may introduce. Both are in slicer units.
 ///
-/// The previous implementation pushed mirrored ends onto the **twin's**
-/// bucket and sorted **descending**, then ran two independent `insert_node`
-/// calls (one on the edge, one on the twin) — producing 2 new vertices
-/// instead of 1 shared boundary node, and physically misaligning the split
-/// positions on the two sides. The faithful implementation consolidates
-/// all ends onto one bucket and lets `insert_node`'s atomic twin-side
-/// split handle both sides in one call.
-///
-/// Filters transition mids by dissolving nearby same-`lower_bead_count` mids
-/// within `transition_filter_dist`, mirroring OrcaSlicer's
-/// `filterTransitionMids` (`SkeletalTrapezoidation.cpp:1007-1076`).
-///
-/// For each edge with transitions, the back (highest-`pos`) and front
-/// (lowest-`pos`) mids are each checked against neighbours on successor
-/// edges (via the `next`/`twin->next` quad chain). When a same-`lower_bead_count`
-/// neighbour is found within `transition_filter_dist` units, it is dissolved
-/// (removed) and the affected bead-count region is re-labelled. If the
-/// dissolve reaches the end of the central region within `filterEndOfCentral`
-/// distance, the end vertex's `bead_count` is updated. Mids that are fully
-/// dissolved away (empty after the pass) cause their edge's transition to be
-/// skipped by `generate_all_transition_ends`.
+/// Mid positions are stored as fractions of the edge length here, where
+/// canonical stores absolute distances from `edge.from`; every distance below
+/// is converted back to units before it is compared.
 pub fn filter_transition_mids(
     graph: &mut SkeletalTrapezoidationGraph,
     strategy: &dyn BeadingStrategy,
+    transition_filter_dist: f64,
+    allowed_filter_deviation: f64,
 ) {
-    let n_edges = graph.edges.len();
-    for edge_idx in 0..n_edges {
-        let edge = match graph.edges.get(edge_idx) {
-            Some(e) => e.clone(),
-            None => continue,
-        };
-        if !edge.central || edge.transition_mids.is_empty() {
+    let filter = TransitionFilter {
+        max_dist: transition_filter_dist,
+        allowed_filter_deviation,
+    };
+    for edge_idx in 0..graph.edges.len() {
+        if graph.edges[edge_idx].transition_mids.is_empty() {
             continue;
         }
-        let _mid_count = edge.transition_mids.len();
+        let twin_idx = graph.edges[edge_idx].twin;
+        let ab_size = edge_length(graph, edge_idx);
 
-        // --- Back dissolve (highest-pos mid, going up toward to-vertex) ---
-        if let Some(back_mid) = edge.transition_mids.last().cloned() {
-            let edge_len = edge_length(graph, edge_idx);
-            if edge_len > 0.0 && edge_len.is_finite() {
-                let traveled = (1.0 - back_mid.pos) * edge_len;
-                let filter_dist =
-                    strategy.get_transition_filter_dist(back_mid.lower_bead_count as usize);
-                // Track neighbours to dissolve
-                let mut to_dissolve_indices: Vec<usize> = Vec::new();
-                let should_dissolve_back = dissolve_nearby_transitions(
-                    graph,
-                    edge_idx,
-                    &back_mid,
-                    traveled,
-                    filter_dist,
-                    true, // going_up
-                    strategy,
-                    &mut to_dissolve_indices,
-                );
-                if should_dissolve_back && !to_dissolve_indices.is_empty() {
-                    for &idx in to_dissolve_indices.iter().rev() {
-                        if let Some(e) = graph.edges.get_mut(idx) {
-                            e.transition_mids.clear();
-                        }
-                    }
-                    if let Some(e) = graph.edges.get_mut(edge_idx) {
-                        if !e.transition_mids.is_empty() {
-                            e.transition_mids.pop();
-                        }
-                    }
-                }
-            }
-        }
-
-        // Re-read edge (may have been modified)
-        let edge_after_back = match graph.edges.get(edge_idx) {
-            Some(e) => e.clone(),
-            None => continue,
-        };
-        if edge_after_back.transition_mids.is_empty() {
-            continue;
-        }
-
-        // --- Front dissolve (lowest-pos mid, going down toward start-vertex via twin) ---
-        if let Some(front_mid) = edge_after_back.transition_mids.first().cloned() {
-            let twin_idx = edge_after_back.twin;
-            if twin_idx != NO_INDEX {
-                let edge_len = edge_length(graph, edge_idx); // original edge length
-                if edge_len > 0.0 && edge_len.is_finite() {
-                    // Canonical passes transitions.front().pos (absolute units from
-                    // edge.from).  In our port pos is a fraction, so:
-                    // traveled = front_mid.pos * edge_len
-                    // (distance from edge.from to the front mid, heading "down")
-                    let traveled = front_mid.pos * edge_len;
-                    let filter_dist =
-                        strategy.get_transition_filter_dist(front_mid.lower_bead_count as usize);
-                    let mut to_dissolve_indices: Vec<usize> = Vec::new();
-                    let should_dissolve_front = dissolve_nearby_transitions(
-                        graph,
-                        twin_idx,
-                        &front_mid,
-                        traveled,
-                        filter_dist,
-                        false, // going_up=false
-                        strategy,
-                        &mut to_dissolve_indices,
-                    );
-                    if should_dissolve_front && !to_dissolve_indices.is_empty() {
-                        for &idx in to_dissolve_indices.iter().rev() {
-                            if let Some(e) = graph.edges.get_mut(idx) {
-                                e.transition_mids.clear();
-                            }
-                        }
-                        // Pop the front mid from the ORIGINAL edge (not the twin)
-                        if let Some(e) = graph.edges.get_mut(edge_idx) {
-                            if !e.transition_mids.is_empty() {
-                                e.transition_mids.remove(0);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Re-read and sort remaining mids
-        if let Some(e) = graph.edges.get_mut(edge_idx) {
-            e.transition_mids
-                .sort_by(|a, b| a.pos.partial_cmp(&b.pos).unwrap_or(Ordering::Equal));
-            e.transition_mids.dedup_by(|a, b| {
-                (a.pos - b.pos).abs() < SNAP_FRAC && a.lower_bead_count == b.lower_bead_count
-            });
-        }
-
-        // Re-read, check assertion
-        let edge_final = match graph.edges.get(edge_idx) {
-            Some(e) => e.clone(),
-            None => continue,
-        };
-        if edge_final.transition_mids.len() >= 2 {
-            debug_assert!(
-                edge_final.transition_mids.first().unwrap().lower_bead_count
-                    <= edge_final.transition_mids.last().unwrap().lower_bead_count,
-                "filter_transition_mids invariant: lower_bead_count must be non-decreasing"
+        // Back: walk up from the highest mid.
+        let back = graph.edges[edge_idx]
+            .transition_mids
+            .last()
+            .cloned()
+            .expect("checked non-empty");
+        let back_dist = (1.0 - back.pos) * ab_size;
+        let back_refs = filter.dissolve_nearby_transitions(graph, edge_idx, &back, back_dist, true);
+        let mut should_dissolve_back = !back_refs.is_empty();
+        if should_dissolve_back {
+            dissolve_bead_count_region(
+                graph,
+                edge_idx,
+                back.lower_bead_count + 1,
+                back.lower_bead_count,
             );
+            erase_mids(graph, &back_refs);
+        }
+        {
+            let bc = back.lower_bead_count as usize;
+            let upper_half_length = (1.0 - strategy.get_transition_anchor_pos(bc))
+                * strategy.get_transitioning_length(bc);
+            should_dissolve_back |= filter_end_of_central_transition(
+                graph,
+                edge_idx,
+                back_dist,
+                upper_half_length,
+                back.lower_bead_count,
+                0,
+            );
+        }
+        if should_dissolve_back {
+            graph.edges[edge_idx].transition_mids.pop();
+        }
+        if graph.edges[edge_idx].transition_mids.is_empty() || twin_idx == NO_INDEX {
+            continue;
+        }
+
+        // Front: walk down (along the twin) from the lowest mid.
+        let front = graph.edges[edge_idx].transition_mids[0];
+        let front_dist = front.pos * ab_size;
+        let front_refs =
+            filter.dissolve_nearby_transitions(graph, twin_idx, &front, front_dist, false);
+        let mut should_dissolve_front = !front_refs.is_empty();
+        if should_dissolve_front {
+            dissolve_bead_count_region(
+                graph,
+                twin_idx,
+                front.lower_bead_count,
+                front.lower_bead_count + 1,
+            );
+            erase_mids(graph, &front_refs);
+        }
+        {
+            let bc = front.lower_bead_count as usize;
+            let lower_half_length =
+                strategy.get_transition_anchor_pos(bc) * strategy.get_transitioning_length(bc);
+            should_dissolve_front |= filter_end_of_central_transition(
+                graph,
+                twin_idx,
+                front_dist,
+                lower_half_length,
+                front.lower_bead_count + 1,
+                0,
+            );
+        }
+        if should_dissolve_front && !graph.edges[edge_idx].transition_mids.is_empty() {
+            graph.edges[edge_idx].transition_mids.remove(0);
         }
     }
 }
 
-/// Recursive collector for dissolving nearby same-`lower_bead_count` transitions.
-/// Walks the quad chain (`next` → `twin->next`) from `edge_idx` accumulating
-/// edges whose transition mids match `origin.lower_bead_count` and lie within
-/// `max_dist` units (adding their cumulative edge length to `traveled`).
-/// Returns `true` if the dissolve should proceed.
-fn dissolve_nearby_transitions(
-    graph: &SkeletalTrapezoidationGraph,
-    edge_idx: usize,
-    origin: &TransitionMiddle,
-    traveled: f64,
-    max_dist: f64,
-    going_up: bool,
-    strategy: &dyn BeadingStrategy,
-    out_indices: &mut Vec<usize>,
-) -> bool {
-    if traveled > max_dist || max_dist <= 0.0 {
-        return false;
+/// `(edge, mid index)` of a mid that `TransitionFilter::dissolve_nearby_transitions`
+/// paired with the origin mid: canonical's `TransitionMidRef`.
+type MidRef = (usize, usize);
+
+/// Removes the referenced mids, highest index first so the remaining indices
+/// stay valid (canonical erases each list iterator in turn).
+fn erase_mids(graph: &mut SkeletalTrapezoidationGraph, refs: &[MidRef]) {
+    let mut refs = refs.to_vec();
+    refs.sort_unstable();
+    refs.dedup();
+    for &(edge_idx, mid_idx) in refs.iter().rev() {
+        if let Some(edge) = graph.edges.get_mut(edge_idx) {
+            if mid_idx < edge.transition_mids.len() {
+                edge.transition_mids.remove(mid_idx);
+            }
+        }
     }
+}
 
-    let edge = match graph.edges.get(edge_idx) {
-        Some(e) => e.clone(),
-        None => return true, // can't walk further, but path so far is OK
+/// The half-edges leaving `edge_idx`'s `to` node, other than its own twin:
+/// canonical's `for (edge = edge_to_start->next; edge && edge !=
+/// edge_to_start->twin; edge = edge->twin->next)`. Capped at the edge count
+/// so a malformed rotation cannot loop forever.
+fn outgoing_edges(graph: &SkeletalTrapezoidationGraph, edge_idx: usize) -> Vec<usize> {
+    let mut out = Vec::new();
+    let Some(start) = graph.edges.get(edge_idx) else {
+        return out;
     };
+    let stop = start.twin;
+    let mut cursor = start.next;
+    while cursor != NO_INDEX && cursor != stop && out.len() <= graph.edges.len() {
+        out.push(cursor);
+        cursor = graph
+            .edges
+            .get(cursor)
+            .and_then(|e| graph.edges.get(e.twin))
+            .map(|t| t.next)
+            .unwrap_or(NO_INDEX);
+    }
+    out
+}
 
-    let mut should_dissolve = true;
+fn vertex_r(graph: &SkeletalTrapezoidationGraph, vertex_idx: usize) -> f64 {
+    graph
+        .vertices
+        .get(vertex_idx)
+        .map(|v| v.distance_to_boundary)
+        .unwrap_or(0.0)
+}
 
-    // Walk successor edges: next → twin->next (stop at edge_to_start->twin)
-    // Canonical: `for (edge = edge_to_start->next; edge && edge != edge_to_start->twin; edge = edge->twin->next)`
-    let stop = edge.twin;
-    let mut cursor = edge.next;
-    while cursor != NO_INDEX && cursor != stop {
-        let succ = match graph.edges.get(cursor).cloned() {
-            Some(e) => e.clone(),
-            None => break,
-        };
-        if !succ.central {
-            // Advance via twin->next to stay on the quad chain
-            let twin = succ.twin;
-            cursor = if twin != NO_INDEX {
-                graph.edges.get(twin).map(|te| te.next).unwrap_or(NO_INDEX)
-            } else {
-                NO_INDEX
-            };
-            continue;
+/// The two thresholds canonical `SkeletalTrapezoidation` keeps as members for
+/// `dissolveNearbyTransitions`.
+struct TransitionFilter {
+    max_dist: f64,
+    allowed_filter_deviation: f64,
+}
+
+/// One pending call of canonical's recursive `dissolveNearbyTransitions`.
+struct DissolveFrame {
+    outgoing: Vec<usize>,
+    next: usize,
+    traveled: f64,
+    edge_to_start: usize,
+    /// Whether this call has collected a mid or spawned a successful branch.
+    produced: bool,
+}
+
+impl TransitionFilter {
+    /// Canonical `dissolveNearbyTransitions`: walks the central skeleton from
+    /// `edge_to_start`'s `to` node, away from where it came from, collecting
+    /// every mid with `origin`'s `lower_bead_count` reached within
+    /// `max_dist`. Any branch that dead-ends, overruns `max_dist`, or reaches a
+    /// node whose radius deviates from `origin.mid_r` by more than
+    /// `allowed_filter_deviation` (in line-width terms) empties the whole
+    /// result: the region is then too long or too different to dissolve.
+    ///
+    /// Canonical recurses once per edge walked; this walks an explicit stack
+    /// of frames instead, because a 100 mm budget over a finely split
+    /// skeleton can nest deeper than a worker thread's stack allows. A branch
+    /// that re-enters a half-edge already on the current path fails. That is
+    /// where canonical's recursion ends up once the loop has used up
+    /// `max_dist`, because a second lap cannot meet a mid the first lap missed.
+    fn dissolve_nearby_transitions(
+        &self,
+        graph: &SkeletalTrapezoidationGraph,
+        edge_to_start: usize,
+        origin: &TransitionMiddle,
+        traveled: f64,
+        going_up: bool,
+    ) -> Vec<MidRef> {
+        if traveled > self.max_dist {
+            return Vec::new();
         }
+        let dissolve_result_is_odd = (origin.lower_bead_count % 2 == 1) == going_up;
+        let mut found: Vec<MidRef> = Vec::new();
+        let mut on_path: BTreeSet<usize> = BTreeSet::new();
+        on_path.insert(edge_to_start);
+        let mut stack = vec![DissolveFrame {
+            outgoing: outgoing_edges(graph, edge_to_start),
+            next: 0,
+            traveled,
+            edge_to_start,
+            produced: false,
+        }];
 
-        let succ_len = edge_length(graph, cursor);
-        if succ_len <= 0.0 || !succ_len.is_finite() {
-            let twin = succ.twin;
-            cursor = if twin != NO_INDEX {
-                graph.edges.get(twin).map(|te| te.next).unwrap_or(NO_INDEX)
-            } else {
-                NO_INDEX
-            };
-            continue;
-        }
-
-        let from_r = graph
-            .vertices
-            .get(succ.start_vertex)
-            .map(|v| v.distance_to_boundary)
-            .unwrap_or(0.0);
-        let to_idx = resolve_to_vertex(graph, cursor);
-        let to_r = graph
-            .vertices
-            .get(to_idx)
-            .map(|v| v.distance_to_boundary)
-            .unwrap_or(0.0);
-        let is_aligned = from_r < to_r; // isUpward()
-        let aligned_idx = if is_aligned { cursor } else { succ.twin };
-        let aligned = match graph.edges.get(aligned_idx).cloned() {
-            Some(e) => e,
-            None => {
-                // Advance
-                let twin = succ.twin;
-                cursor = if twin != NO_INDEX {
-                    graph.edges.get(twin).map(|te| te.next).unwrap_or(NO_INDEX)
-                } else {
-                    NO_INDEX
-                };
+        while let Some(frame) = stack.last_mut() {
+            if frame.next >= frame.outgoing.len() {
+                // Canonical: an empty result from any call aborts the whole
+                // dissolve (`to_be_dissolved_here.empty()` -> clear, return).
+                if !frame.produced {
+                    return Vec::new();
+                }
+                on_path.remove(&frame.edge_to_start);
+                stack.pop();
                 continue;
             }
-        };
+            let edge_idx = frame.outgoing[frame.next];
+            frame.next += 1;
+            let Some(edge) = graph.edges.get(edge_idx) else {
+                continue;
+            };
+            if !edge.central {
+                continue;
+            }
 
-        // Check each transition on the aligned edge
-        let mut seen_match = false;
-        if !aligned.transition_mids.is_empty() {
-            for tm in &aligned.transition_mids {
-                // Compute pos in traveling direction
-                let pos_in_dir = if is_aligned { tm.pos } else { 1.0 - tm.pos };
-                let dist = traveled + pos_in_dir * succ_len;
-                if dist < max_dist && tm.lower_bead_count == origin.lower_bead_count {
-                    out_indices.push(aligned_idx);
-                    seen_match = true;
-                    // Check transition length guard
-                    let trans_len = strategy.get_transitioning_length(tm.lower_bead_count as usize);
-                    if dist < trans_len {
-                        debug_assert!(
-                            going_up != is_aligned || tm.lower_bead_count == 0,
-                            "Consecutive transitions too close together"
-                        );
+            let from_r = vertex_r(graph, edge.start_vertex);
+            let to_r = vertex_r(graph, resolve_to_vertex(graph, edge_idx));
+            let width_deviation = (origin.mid_r - from_r).abs() * 2.0;
+            let line_width_deviation = if dissolve_result_is_odd {
+                width_deviation
+            } else {
+                width_deviation / 2.0
+            };
+            if line_width_deviation > self.allowed_filter_deviation {
+                return Vec::new();
+            }
+
+            let ab_size = edge_length(graph, edge_idx);
+            // Mids live on the upward half-edge only (see
+            // `generate_transition_mids`); an equidistant edge carries none.
+            let is_aligned = from_r < to_r;
+            let aligned_idx = if is_aligned { edge_idx } else { edge.twin };
+            let mut seen_transition_on_this_edge = false;
+            if let Some(aligned) = graph.edges.get(aligned_idx) {
+                for (mid_idx, mid) in aligned.transition_mids.iter().enumerate() {
+                    let pos = if is_aligned { mid.pos } else { 1.0 - mid.pos } * ab_size;
+                    if frame.traveled + pos < self.max_dist
+                        && mid.lower_bead_count == origin.lower_bead_count
+                    {
+                        found.push((aligned_idx, mid_idx));
+                        seen_transition_on_this_edge = true;
                     }
                 }
             }
-        }
+            if seen_transition_on_this_edge {
+                frame.produced = true;
+                continue;
+            }
 
-        // Recurse if no matching transition was found on this edge
-        if should_dissolve && !seen_match {
-            let mut sub_indices: Vec<usize> = Vec::new();
-            let _sub_result = dissolve_nearby_transitions(
-                graph,
-                cursor,
-                origin,
-                traveled + succ_len,
-                max_dist,
-                going_up,
-                strategy,
-                &mut sub_indices,
-            );
-            if sub_indices.is_empty() {
-                should_dissolve = false;
-            } else {
-                out_indices.extend(sub_indices);
+            let next_traveled = frame.traveled + ab_size;
+            if next_traveled > self.max_dist || on_path.contains(&edge_idx) {
+                return Vec::new();
+            }
+            // A failing child aborts everything, so a pushed child that
+            // returns counts as this frame's contribution.
+            frame.produced = true;
+            on_path.insert(edge_idx);
+            stack.push(DissolveFrame {
+                outgoing: outgoing_edges(graph, edge_idx),
+                next: 0,
+                traveled: next_traveled,
+                edge_to_start: edge_idx,
+                produced: false,
+            });
+        }
+        found
+    }
+}
+
+/// Canonical `dissolveBeadCountRegion`: relabels the central region reached
+/// from `edge_to_start`'s `to` node from `from_bead_count` to
+/// `to_bead_count`, stopping at nodes with any other count. Iterative flood
+/// fill (canonical recurses); each node is relabelled at most once, so the
+/// result does not depend on the visiting order.
+fn dissolve_bead_count_region(
+    graph: &mut SkeletalTrapezoidationGraph,
+    edge_to_start: usize,
+    from_bead_count: u32,
+    to_bead_count: u32,
+) {
+    let mut stack = vec![edge_to_start];
+    while let Some(edge_idx) = stack.pop() {
+        let to_v = resolve_to_vertex(graph, edge_idx);
+        match graph.vertices.get_mut(to_v) {
+            Some(v) if v.bead_count == Some(from_bead_count) => {
+                v.bead_count = Some(to_bead_count);
+            }
+            _ => continue,
+        }
+        for next in outgoing_edges(graph, edge_idx) {
+            if graph.edges.get(next).is_some_and(|e| e.central) {
+                stack.push(next);
             }
         }
-
-        // Advance via twin->next
-        let twin = succ.twin;
-        cursor = if twin != NO_INDEX {
-            graph.edges.get(twin).map(|te| te.next).unwrap_or(NO_INDEX)
-        } else {
-            NO_INDEX
-        };
     }
+}
 
+/// Depth cap for [`filter_end_of_central_transition`]. Its walk is bounded by
+/// half a transition length, so the cap only guards degenerate zero-length
+/// cycles, which canonical would walk forever.
+const END_OF_CENTRAL_MAX_DEPTH: usize = 4096;
+
+/// Canonical `filterEndOfCentralTransition`: when the central region ends
+/// within `max_dist` of the mid (half the transition length on that side),
+/// the transition cannot fit. The nodes on the way get
+/// `replacing_bead_count`, and `true` tells the caller to drop the mid.
+fn filter_end_of_central_transition(
+    graph: &mut SkeletalTrapezoidationGraph,
+    edge_to_start: usize,
+    traveled: f64,
+    max_dist: f64,
+    replacing_bead_count: u32,
+    depth: usize,
+) -> bool {
+    if traveled > max_dist || depth > END_OF_CENTRAL_MAX_DEPTH {
+        return false;
+    }
+    let mut is_end_of_central = true;
+    let mut should_dissolve = false;
+    for next in outgoing_edges(graph, edge_to_start) {
+        if graph.edges.get(next).is_some_and(|e| e.central) {
+            let length = edge_length(graph, next);
+            should_dissolve |= filter_end_of_central_transition(
+                graph,
+                next,
+                traveled + length,
+                max_dist,
+                replacing_bead_count,
+                depth + 1,
+            );
+            is_end_of_central = false;
+        }
+    }
+    if is_end_of_central && traveled < max_dist {
+        should_dissolve = true;
+    }
+    if should_dissolve {
+        let to_v = resolve_to_vertex(graph, edge_to_start);
+        if let Some(v) = graph.vertices.get_mut(to_v) {
+            v.bead_count = Some(replacing_bead_count);
+        }
+    }
     should_dissolve
 }
 
@@ -1072,6 +1209,28 @@ fn clear_transition_ends(graph: &mut SkeletalTrapezoidationGraph) {
 /// With explicit ends (from `generate_all_transition_ends`), `is_lower_end`
 /// determines bead count. Falling back to `transition_mids` (legacy callers),
 /// bead count is always `lower_bead_count`.
+///
+/// For each edge carrying [`super::graph::STHalfEdge::transition_mids`],
+/// generates corresponding transition ends on the edge's **own** bucket,
+/// sorts them **ascending** by position, then inserts new vertices via
+/// [`insert_node`] — one atomic call per end that splits BOTH the edge and
+/// its twin at the same physical position, producing a single shared
+/// boundary (rib-foot) node.
+///
+/// Mirrors OrcaSlicer's `applyTransitions`
+/// (`SkeletalTrapezoidation.cpp:1487-1543`): the mirrored ends go onto the
+/// edge's own bucket (not the twin's), sorted ascending (not descending),
+/// and `insertNode` is called once per end (not twice per physical edge).
+///
+/// # F2 fix (Arachne parity audit)
+///
+/// The previous implementation pushed mirrored ends onto the **twin's**
+/// bucket and sorted **descending**, then ran two independent `insert_node`
+/// calls (one on the edge, one on the twin) — producing 2 new vertices
+/// instead of 1 shared boundary node, and physically misaligning the split
+/// positions on the two sides. The faithful implementation consolidates
+/// all ends onto one bucket and lets `insert_node`'s atomic twin-side
+/// split handle both sides in one call.
 pub fn apply_transitions(graph: &mut SkeletalTrapezoidationGraph) {
     let mut per_edge_ends: BTreeMap<usize, Vec<TransitionEnd>> = BTreeMap::new();
     let mut has_explicit_ends = false;
@@ -1280,10 +1439,7 @@ pub fn generate_extra_ribs(
 /// edges at all (every endpoint tied on `distance_to_boundary`) — all
 /// edges sorted ascending by `r_min` (tie-broken by index) and then
 /// *also* reversed, exactly mirroring the single `iter.iter().rev())` this
-/// function used to apply uniformly to whichever list it picked. Factored out
-/// so [`compute_dist_to_bottom_source`] can replay the identical walk (same
-/// order ⇒ same accumulated distances) without duplicating this order/
-/// fallback logic a third time.
+/// function used to apply uniformly to whichever list it picked.
 ///
 /// **Packet 141 (N7) — centrality gate dropped** in the fallback (matching
 /// [`upward_central_edges`] and the corresponding change in
@@ -1350,6 +1506,7 @@ pub fn propagate_beadings_upward(graph: &mut SkeletalTrapezoidationGraph) {
     if graph.beading_propagation.len() != graph.vertices.len() {
         graph.beading_propagation.resize(graph.vertices.len(), None);
     }
+    resize_dist_to_bottom_source(graph);
     for edge_idx in upward_propagation_order(graph) {
         let edge = match graph.edges.get(edge_idx).cloned() {
             Some(e) => e,
@@ -1392,46 +1549,23 @@ pub fn propagate_beadings_upward(graph: &mut SkeletalTrapezoidationGraph) {
         if let Some(slot) = graph.beading_propagation.get_mut(to_v) {
             *slot = Some(from_beading);
         }
+        // `upper_beading.dist_to_bottom_source += length` (canonical
+        // `propagateBeadingsUpward`): the copy remembers how far it has
+        // travelled from the node whose own bead count produced it, which is
+        // what lets `propagate_beadings_downward` overwrite it once it is
+        // farther than the transition distance from that source.
+        let from_dist = graph.beading_dist_to_bottom_source[from_v];
+        graph.beading_dist_to_bottom_source[to_v] = from_dist + edge_length(graph, edge_idx);
     }
 }
 
-/// Width/location-blended `Beading` between `bottom` and `top` per the
-/// upstream `interpolate()` weighting (`SkeletalTrapezoidation.cpp:1883-1885`,
-/// `ratio_of_top` = `dist_to_bottom_source / min(total_dist,
-/// beading_propagation_transition_dist)`).
-///
-/// Blends `total_thickness`, every per-bead `bead_width`, and every per-bead
-/// `toolpath_location` elementwise, matching OrcaSlicer's full
-/// `BeadingPropagation` blend (`SkeletalTrapezoidation.cpp:1890-1894`). The
-/// two `Beading`s must have the same `bead_count`
-/// (`bead_widths.len() == toolpath_locations.len()`) for the elementwise
-/// blend to be well-defined; if they differ, the longer one is truncated to
-/// the shorter so the result is deterministic and never silently expands the
-/// beading.
-///
-/// `ratio_of_top` is clamped to `[0, 1]`. `left_over` is also linearly
-/// blended (consistent with the other scalars — OrcaSlicer's blend does
-/// not distinguish it).
-pub(crate) fn interpolate_bead_propagation(
-    bottom: &Beading,
-    top: &Beading,
-    ratio_of_top: f64,
-) -> Beading {
-    let t = ratio_of_top.clamp(0.0, 1.0);
-    let n = bottom.bead_widths.len().min(top.bead_widths.len());
-    let mut widths = Vec::with_capacity(n);
-    let mut locations = Vec::with_capacity(n);
-    for i in 0..n {
-        let bw = bottom.bead_widths[i] * (1.0 - t) + top.bead_widths[i] * t;
-        let bl = bottom.toolpath_locations[i] * (1.0 - t) + top.toolpath_locations[i] * t;
-        widths.push(bw);
-        locations.push(bl);
-    }
-    Beading {
-        total_thickness: bottom.total_thickness * (1.0 - t) + top.total_thickness * t,
-        bead_widths: widths,
-        toolpath_locations: locations,
-        left_over: bottom.left_over * (1.0 - t) + top.left_over * t,
+/// Sizes [`SkeletalTrapezoidationGraph::beading_dist_to_bottom_source`] to
+/// the vertex count; missing entries read as `0.0`, the value of a freshly
+/// constructed canonical `BeadingPropagation`.
+fn resize_dist_to_bottom_source(graph: &mut SkeletalTrapezoidationGraph) {
+    let n = graph.vertices.len();
+    if graph.beading_dist_to_bottom_source.len() != n {
+        graph.beading_dist_to_bottom_source.resize(n, 0.0);
     }
 }
 
@@ -1488,6 +1622,52 @@ fn interpolate_beading(left: &Beading, ratio_left: f64, right: &Beading) -> Bead
     ret
 }
 
+/// Canonical four-argument `SkeletalTrapezoidation::interpolate(left,
+/// ratio_left_to_whole, right, switching_radius)`: the element-wise blend of
+/// [`interpolate_beading`] (which keeps the thicker beading's bead list), then,
+/// when a bead of `left` that lies inside `switching_radius` has been pushed
+/// outside it by the blend ("one inset disappeared"), a re-blend with the
+/// ratio that puts that bead back on `switching_radius`, plus 0.1.
+fn interpolate_beading_at_switching_radius(
+    left: &Beading,
+    ratio_left_to_whole: f64,
+    right: &Beading,
+    switching_radius: f64,
+) -> Beading {
+    let ret = interpolate_beading(left, ratio_left_to_whole, right);
+    let Some(next_inset_idx) = left
+        .toolpath_locations
+        .iter()
+        .rposition(|&location| switching_radius > location)
+    else {
+        // There is no next inset, because there is only one.
+        return ret;
+    };
+    if next_inset_idx + 1 == left.toolpath_locations.len() {
+        // Canonical: "We cant adjust to fit the next edge because there is
+        // no previous one?!"
+        return ret;
+    }
+    // `ret` follows the thicker of left/right and can hold fewer insets than
+    // `left`; canonical skips the adjustment then. `right` must hold the
+    // inset too, or canonical would read past its end.
+    if next_inset_idx >= ret.toolpath_locations.len()
+        || next_inset_idx >= right.toolpath_locations.len()
+    {
+        return ret;
+    }
+    if ret.toolpath_locations[next_inset_idx] > switching_radius {
+        // One inset disappeared between left and the merged one; solve
+        // f * l + (1 - f) * r = s for f.
+        let l = left.toolpath_locations[next_inset_idx] as f32;
+        let r = right.toolpath_locations[next_inset_idx] as f32;
+        let new_ratio = (switching_radius as f32 - r) / (l - r);
+        let new_ratio = (f64::from(new_ratio) + 0.1).min(1.0);
+        return interpolate_beading(left, new_ratio, right);
+    }
+    ret
+}
+
 /// Populates the [`SkeletalTrapezoidationGraph`] `beading_propagation` side
 /// table for every vertex that carries a `bead_count`, mirroring canonical
 /// `SkeletalTrapezoidation.cpp:1700-1725`.
@@ -1503,6 +1683,7 @@ pub fn populate_beading_propagation(
     if graph.beading_propagation.len() != graph.vertices.len() {
         graph.beading_propagation.resize(graph.vertices.len(), None);
     }
+    let mut own_beadings = Vec::new();
     for (v_idx, v) in graph.vertices.iter().enumerate() {
         let Some(bc) = v.bead_count else {
             continue;
@@ -1533,102 +1714,14 @@ pub fn populate_beading_propagation(
         if let Some(slot) = graph.beading_propagation.get_mut(v_idx) {
             *slot = Some(beading);
         }
+        own_beadings.push(v_idx);
     }
-}
-
-/// Structural set of vertices that receive a *primary* (non-propagated) bead
-/// count: exactly the "to" vertices of upward edges, matching
-/// `bead_count.rs::assign_bead_counts`'s own primary-pass gate ("for each
-/// central edge, assign the bead count at the edge's `to` vertex") — computed
-/// fresh from the graph's *current* edge topology, not from the (already
-/// fully-propagated, hence uninformative) `bead_count` field.
-///
-/// **Packet 141 (N7) — centrality gate dropped.** The previous implementation
-/// filtered on `edge.central`, which (per the same change in
-/// [`upward_central_edges`]) silently excluded rib-foot connections the
-/// canonical `upwardQuadMids` includes.
-///
-/// This also correctly captures every vertex `apply_transitions::insert_node`
-/// creates: splitting a central edge repoints that edge's own "to" (via
-/// `.twin`) to the new split vertex, and `insert_node` always sets
-/// `bead_count: Some(_)` directly on it — so by construction a split vertex
-/// is *also* the "to" vertex of a (now-shrunk) edge in the
-/// post-`apply_transitions` graph this function is always called against,
-/// and is correctly treated as primary/real, not propagated.
-///
-/// Vertices that are never any edge's "to" (rare — only possible for a
-/// vertex with no incoming edge at all) are the genuine gaps
-/// [`propagate_beadings_upward`] exists to fill; used by
-/// [`compute_dist_to_bottom_source`] to know when accumulated distance is
-/// implicitly zero (a real source) versus needs summing along the chain.
-fn primary_source_vertices(graph: &SkeletalTrapezoidationGraph) -> BTreeSet<usize> {
-    let mut set = BTreeSet::new();
-    for edge_idx in 0..graph.edges.len() {
-        let to_v = resolve_to_vertex(graph, edge_idx);
-        if to_v != NO_INDEX {
-            set.insert(to_v);
-        }
+    // A beading computed from the node's own bead count is a fresh canonical
+    // `BeadingPropagation`: `dist_to_bottom_source == 0`.
+    resize_dist_to_bottom_source(graph);
+    for v_idx in own_beadings {
+        graph.beading_dist_to_bottom_source[v_idx] = 0.0;
     }
-    set
-}
-
-/// Recomputes, from the graph's current structure, the accumulated
-/// "distance to bottom source" (`dist_to_bottom_source` in the pre-digested
-/// OrcaSlicer notes) that [`propagate_beadings_upward`] built while filling
-/// gaps — i.e. how far a genuinely gap-filled vertex's copied bead count has
-/// travelled from the nearest real/primary source below it.
-///
-/// # Why this is recomputed rather than passed through directly
-///
-/// [`propagate_beadings_downward`]'s signature is frozen (every existing test
-/// call site invokes it with no extra arguments), so it cannot *receive* the
-/// map [`propagate_beadings_upward`] would have produced. This function
-/// closes that gap by replaying the identical walk
-/// ([`upward_propagation_order`]) using [`primary_source_vertices`] as the
-/// "already had a real bead count" gate — structurally equivalent to
-/// `propagate_beadings_upward`'s own `bead_count.is_some()` gate at the time
-/// it actually ran, because in this crate's simplified (quad-less, rib-less)
-/// topology every central edge's "to" vertex already gets a primary
-/// assignment from `assign_bead_counts`/`apply_transitions` (see
-/// [`primary_source_vertices`]'s doc comment) — "propagated, non-primary" is
-/// the rare gap case, not the rule, so this recomputation is exact for this
-/// crate's graph shape, not merely an approximation.
-///
-/// Vertices absent from the returned map have an implicit distance of `0.0`
-/// (either a genuine primary source, or simply never touched by upward
-/// propagation) — matching upstream's zero-initialized `BeadingPropagation`
-/// for a freshly-created real beading.
-fn compute_dist_to_bottom_source(graph: &SkeletalTrapezoidationGraph) -> BTreeMap<usize, f64> {
-    let primary = primary_source_vertices(graph);
-    let mut dist: BTreeMap<usize, f64> = BTreeMap::new();
-    for edge_idx in upward_propagation_order(graph) {
-        let edge = match graph.edges.get(edge_idx) {
-            Some(e) => e,
-            None => continue,
-        };
-        let from_v = edge.start_vertex;
-        let to_v = resolve_to_vertex(graph, edge_idx);
-        if to_v == NO_INDEX || from_v == NO_INDEX || primary.contains(&to_v) {
-            continue;
-        }
-        let edge_len = edge_length(graph, edge_idx);
-        let edge_len = if edge_len.is_finite() && edge_len > 0.0 {
-            edge_len
-        } else {
-            0.0
-        };
-        let from_dist = if primary.contains(&from_v) {
-            0.0
-        } else {
-            dist.get(&from_v).copied().unwrap_or(0.0)
-        };
-        // `or_insert`: the first edge (in traversal order) that reaches `to_v`
-        // wins, matching `propagate_beadings_upward`'s own "skip if already
-        // has a bead count" gate — once filled, later edges targeting the
-        // same `to_v` are no-ops there too.
-        dist.entry(to_v).or_insert(from_dist + edge_len);
-    }
-    dist
 }
 
 /// Real (non-placeholder) default beading-propagation transition distance,
@@ -1649,15 +1742,15 @@ fn default_beading_propagation_transition_dist() -> f64 {
 }
 
 /// Propagates resolved beadings downward (from higher radius to lower
-/// radius) along central edges, blending via `interpolate()` when the lower
-/// node already carries a beading, using `transition_dist` as the
-/// beading-propagation transition distance (upstream's
-/// `beading_propagation_transition_dist`, in this crate's units).
+/// radius) along NON-central upward edges, blending via canonical
+/// `interpolate()` when the lower node already carries a beading, using
+/// `transition_dist` as the beading-propagation transition distance
+/// (upstream's `beading_propagation_transition_dist`, in this crate's units).
 ///
-/// Mirrors `propagateBeadingsDownward` (L1833-1899). Iterates
-/// `upward_quad_mids` in forward order (descending R) and routes single-edge
-/// propagation from the peak (`edge_to_peak->to`) down to the bottom
-/// (`edge_to_peak->from`).
+/// Mirrors canonical `propagateBeadingsDownward` (`SkeletalTrapezoidation.cpp`).
+/// Iterates the upward edges in forward order (descending R), skips central
+/// ones as canonical does, and routes single-edge propagation from the peak
+/// (`edge_to_peak->to`) down to the bottom (`edge_to_peak->from`).
 ///
 /// # Packet 113c Step 8b fix
 ///
@@ -1690,12 +1783,23 @@ fn default_beading_propagation_transition_dist() -> f64 {
 ///   branch — this gate already existed correctly in the prior
 ///   implementation and is preserved, not part of the bug.
 ///
-/// `dist_to_bottom_source` (accumulated *upward* by
-/// [`propagate_beadings_upward`]) is recomputed here via
-/// [`compute_dist_to_bottom_source`] rather than received directly from that
-/// earlier call — see that function's doc comment for why this is exact,
-/// not an approximation, and why it must be recomputed rather than passed
-/// through (this function's own signature is frozen).
+/// `dist_to_bottom_source` is read from
+/// [`SkeletalTrapezoidationGraph::beading_dist_to_bottom_source`], which
+/// [`populate_beading_propagation`] (0 for own-bead-count beadings) and
+/// [`propagate_beadings_upward`] (`+= length` per copy) fill exactly as
+/// canonical fills the field on each `BeadingPropagation`. The two copy
+/// branches here also copy the top's value, and the merge branch resets it,
+/// as canonical's whole-object assignments do.
+///
+/// It used to be *recomputed* here by replaying the upward walk from a
+/// "primary source" set defined as every vertex that is the `to` of some
+/// edge. After the packet 141 centrality-gate removal that set held nearly
+/// every vertex, so the replay recorded no distances, `ratio_of_top` was
+/// always 0, and an upward-propagated thin beading was never overwritten by
+/// the wider beading from above. On the benchy hull (layer 29, 3 walls) the
+/// 3-bead beading of the 1.5 mm gap between the stern ring hole and the
+/// transom climbed the whole stern spine: the third wall vanished there and
+/// its ring closed across the hull as a straight chord.
 pub fn propagate_beadings_downward_with_transition_dist(
     graph: &mut SkeletalTrapezoidationGraph,
     transition_dist: f64,
@@ -1706,7 +1810,13 @@ pub fn propagate_beadings_downward_with_transition_dist(
         default_beading_propagation_transition_dist()
     };
 
-    let dist_to_bottom_source = compute_dist_to_bottom_source(graph);
+    // Canonical keeps both distances on each node's `BeadingPropagation`;
+    // this pass works on local copies and writes `dist_to_bottom_source`
+    // back at the end. Before this pass every beading's
+    // `dist_from_top_source` is 0 (populate and the upward copy never touch
+    // it), so that map starts empty.
+    resize_dist_to_bottom_source(graph);
+    let mut dist_to_bottom_source: Vec<f64> = graph.beading_dist_to_bottom_source.clone();
 
     let order = upward_central_edges(graph);
     // Fallback for hand-built test graphs with no strictly-upward edges.
@@ -1743,6 +1853,13 @@ pub fn propagate_beadings_downward_with_transition_dist(
             Some(e) => e,
             None => continue,
         };
+        // Canonical `propagateBeadingsDownward(upward_quad_mids, ...)` only
+        // transfers beadings down NON-central edges: both ends of a central
+        // edge carry their own bead count (`updateBeadCount`), so nothing
+        // flows along it.
+        if edge.central {
+            continue;
+        }
         // For a single central edge, the peak is the `to` vertex (higher R),
         // the bottom is the `from` vertex (lower R).
         let peak_v = resolve_to_vertex(graph, edge_idx);
@@ -1793,6 +1910,7 @@ pub fn propagate_beadings_downward_with_transition_dist(
             // empty output for shapes whose medial axis has no central edges
             // (e.g. a square at `wall_transition_angle=10°`). See
             // See the historical centrality-threshold correction in the deviation log.
+            //
             // Side-table write: copy the top vertex's beading verbatim
             // into the bottom vertex's slot when one is available. The
             // `clone` is intentional: we cannot hold an immutable borrow
@@ -1809,6 +1927,9 @@ pub fn propagate_beadings_downward_with_transition_dist(
             ) {
                 *slot = Some(beading);
             }
+            // `propagated_beading = top_beading` copies BOTH distances;
+            // only `dist_from_top_source` then grows by the edge length.
+            dist_to_bottom_source[bottom_v] = dist_to_bottom_source[peak_v];
             dist_from_top_source.insert(bottom_v, top_dist_from_source + edge_len);
             continue;
         }
@@ -1816,7 +1937,7 @@ pub fn propagate_beadings_downward_with_transition_dist(
         // (`bottom_has_beading` is true here — canonical's `else` branch at
         // `SkeletalTrapezoidation.cpp:1636`, which reads the bottom's existing
         // beading from the side table rather than requiring a `bead_count`.)
-        let bottom_dist_to_source = dist_to_bottom_source.get(&bottom_v).copied().unwrap_or(0.0);
+        let bottom_dist_to_source = dist_to_bottom_source[bottom_v];
         let total_dist = top_dist_from_source + edge_len + bottom_dist_to_source;
         let denom = total_dist.min(transition_dist).max(f64::EPSILON);
         // Floor at 0 only -- NOT a symmetric clamp(0,1); the explicit
@@ -1848,6 +1969,7 @@ pub fn propagate_beadings_downward_with_transition_dist(
             ) {
                 *slot = Some(beading);
             }
+            dist_to_bottom_source[bottom_v] = dist_to_bottom_source[peak_v];
             dist_from_top_source.insert(bottom_v, top_dist_from_source + edge_len);
         } else {
             // Side-table write (the audit's "width/location blend" path):
@@ -1859,6 +1981,7 @@ pub fn propagate_beadings_downward_with_transition_dist(
             // entirely in the side table. See the `!hasBeading()` branch
             // comment above for why writing `bead_count` would break
             // emission for non-central-medial-axis shapes.
+            let bottom_r_for_merge = graph.vertices[bottom_v].distance_to_boundary;
             let bottom_beading_clone: Option<Beading> = graph
                 .beading_propagation
                 .get(bottom_v)
@@ -1874,17 +1997,24 @@ pub fn propagate_beadings_downward_with_transition_dist(
                 top_beading_clone.as_ref(),
                 graph.beading_propagation.get_mut(bottom_v),
             ) {
-                *slot = Some(interpolate_bead_propagation(
-                    bottom_beading,
+                // Canonical `interpolate(top_beading.beading, ratio_of_top,
+                // bottom_beading.beading, edge_to_peak->from->R)`: keeps the
+                // thicker beading's bead list (the previous truncating blend
+                // dropped every bead the thinner side lacked).
+                *slot = Some(interpolate_beading_at_switching_radius(
                     top_beading,
                     ratio_of_top,
+                    bottom_beading,
+                    bottom_r_for_merge,
                 ));
             }
-            // Merge branch deliberately does not record `dist_from_top_source`
-            // for `bottom_v` -- see doc comment (upstream: a merged beading is
-            // a fresh `BeadingPropagation`, i.e. distance resets to 0 here).
+            // Upstream: a merged beading is a fresh `BeadingPropagation`, so
+            // BOTH of its distances reset to 0 here.
+            dist_to_bottom_source[bottom_v] = 0.0;
+            dist_from_top_source.remove(&bottom_v);
         }
     }
+    graph.beading_dist_to_bottom_source = dist_to_bottom_source;
 }
 
 /// Frozen no-argument entry point every existing caller/test invokes.

@@ -250,6 +250,22 @@ pub struct SkeletalTrapezoidationGraph {
     /// this via [`SkeletalTrapezoidationGraph::get_beding`] /
     /// [`SkeletalTrapezoidationGraph::get_nearest_beding`].
     pub beading_propagation: Vec<Option<Beading>>,
+    /// Per-vertex `dist_to_bottom_source` (slicer units), parallel to
+    /// `beading_propagation`. Mirrors the field of the same name on
+    /// OrcaSlicer's `BeadingPropagation` (`SkeletalTrapezoidationJoint.hpp`),
+    /// which canonical stores *with* each node's beading: `0` for a beading
+    /// computed from the node's own bead count
+    /// ([`super::propagation::populate_beading_propagation`]), and the
+    /// lower node's value plus the edge length for a beading copied upward
+    /// ([`super::propagation::propagate_beadings_upward`]).
+    /// [`super::propagation::propagate_beadings_downward_with_transition_dist`]
+    /// reads it as the numerator of canonical `propagateBeadingsDownward`'s
+    /// `ratio_of_top`, so a thin beading copied far up a spine is overwritten
+    /// by the wider beading coming down from the top.
+    ///
+    /// An empty or short vector reads as `0.0` for the missing vertices (the
+    /// value of a freshly constructed `BeadingPropagation`).
+    pub beading_dist_to_bottom_source: Vec<f64>,
 }
 
 /// Errors from [`SkeletalTrapezoidationGraph::from_polygons`].
@@ -589,6 +605,7 @@ impl SkeletalTrapezoidationGraph {
                 }
                 side
             },
+            beading_dist_to_bottom_source: vec![0.0; n],
         })
     }
 

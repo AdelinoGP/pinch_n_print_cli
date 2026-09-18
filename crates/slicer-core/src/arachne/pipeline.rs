@@ -61,6 +61,7 @@ use crate::skeletal_trapezoidation::{
     filter_transition_mids, generate_all_transition_ends, generate_extra_ribs,
     generate_transition_mids, populate_beading_propagation, propagate_beadings_upward,
     BeadCountError, CentralityParams, SkeletalTrapezoidationGraph, SktError,
+    TRANSITION_FILTER_DIST_UNITS,
 };
 
 /// Parameters controlling the end-to-end Arachne pipeline.
@@ -92,9 +93,14 @@ pub struct ArachneParams {
     /// Gaussian decay radius (bead-count units, dimensionless) for
     /// `DistributedBeadingStrategy`.
     pub distribution_count: u32,
-    /// Whisker-dissolve length budget (mm) for `filter_central`'s stage 2,
-    /// and (converted to units) `BeadingFactoryParams::transition_filter_dist`
-    /// (a reserved parameter there — see that field's own doc comment).
+    /// The configured `wall_transition_filter_deviation` (mm). Canonical
+    /// `WallToolPaths::generate` passes it to `SkeletalTrapezoidation` as
+    /// `allowed_filter_deviation`: the line-width deviation
+    /// `filter_transition_mids` may introduce when it dissolves a marginal
+    /// bead-count region (the walk distance itself is the fixed
+    /// `TRANSITION_FILTER_DIST_UNITS`, canonical's 100 mm). Also used as the
+    /// whisker-dissolve length budget for `filter_central`'s stage 2, and
+    /// (converted to units) `BeadingFactoryParams::transition_filter_dist`.
     pub transition_filter_dist: f64,
     /// Depth floor (mm) for `filter_central`'s stage 1: an edge whose deepest
     /// endpoint never reaches this distance from the boundary is never
@@ -397,7 +403,16 @@ pub fn run_arachne_pipeline(
     filter_noncentral_regions(&mut graph, strategy.as_ref());
 
     generate_transition_mids(&mut graph, strategy.as_ref());
-    filter_transition_mids(&mut graph, strategy.as_ref());
+    // Canonical `WallToolPaths::generate` hands `SkeletalTrapezoidation` a
+    // fixed `transition_filter_dist` (100 mm) and the configured
+    // `wall_transition_filter_deviation` as `allowed_filter_deviation`; the
+    // latter is what `ArachneParams::transition_filter_dist` carries.
+    filter_transition_mids(
+        &mut graph,
+        strategy.as_ref(),
+        TRANSITION_FILTER_DIST_UNITS,
+        params.transition_filter_dist * UNITS_PER_MM,
+    );
     generate_all_transition_ends(&mut graph, strategy.as_ref());
     apply_transitions(&mut graph);
     generate_extra_ribs(&mut graph, strategy.as_ref());
