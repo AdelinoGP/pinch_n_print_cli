@@ -171,6 +171,18 @@ fn region_order_topological_walk_matches_canonical_open_line_cursor() {
     );
 }
 
+/// The walk returns a permutation of its input: a lone open line (the
+/// deferred seed with nothing to go before it) must still be emitted. It
+/// used to be dropped, deleting the only wall of a strip thinner than two
+/// beads (its single odd centre line).
+#[test]
+fn region_order_single_open_line_is_emitted() {
+    let mut input = vec![line(&[(0.0, 0.0), (0.0, 4.75)], 0, false)];
+    assert_eq!(topological_walk(&input, &[]), vec![0]);
+    reorder_by_region_order(&mut input, false);
+    assert_eq!(input.len(), 1, "reordering must not drop the only line");
+}
+
 #[test]
 fn region_order_topological_walk_with_extra_constraints_4_lines() {
     let input = vec![

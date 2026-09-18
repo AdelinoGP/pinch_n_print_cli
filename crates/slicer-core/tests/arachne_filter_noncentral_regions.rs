@@ -88,8 +88,28 @@ fn dumbbell_single_central_region_inset0_ring_pair() {
     );
 }
 
+/// x-extent (mm) of a line's junctions.
+fn x_extent(line: &ExtrusionLine) -> (f32, f32) {
+    line.junctions
+        .iter()
+        .fold((f32::MAX, f32::MIN), |(lo, hi), j| (lo.min(j.p.x), hi.max(j.p.x)))
+}
+
+// Oracle for the two tests below: OrcaSlicer 2.4.1's CLI slicing each
+// dumbbell outline extruded 1 mm (BBL X1C 0.20mm Standard process, which is
+// Arachne with 2 walls). Its outer wall at z = 0.6 is ONE closed loop spanning
+// both pads for the 1.0 mm-tall neck, and TWO closed loops, one per pad, for
+// the 0.1 mm-tall neck. The per-pad split is the geometry, not
+// `filterNoncentralRegions`: a 0.1 mm neck holds no bead, so each pad's
+// outer wall turns back at the neck mouth.
+//
+// Both tests used to pin the opposite of this oracle (a fragmented wide
+// wall, a single narrow ring). The single narrow ring was the per-domain
+// chain emission drawing a chord through the neck; with canonical
+// `connectJunctions` the pads' walls close on their own.
+
 #[test]
-fn dumbbell_wide_gap_not_dissolved_pins_exact_ring_topology() {
+fn dumbbell_wide_neck_outer_wall_is_one_loop_around_both_pads() {
     let dumbbell = dumbbell_polygon();
     let (lines, _) = run_arachne_pipeline(
         std::slice::from_ref(&dumbbell),
@@ -103,31 +123,18 @@ fn dumbbell_wide_gap_not_dissolved_pins_exact_ring_topology() {
         .iter()
         .map(|line| (line.is_closed, line.junctions.len()))
         .collect();
-    assert_eq!(
-        i0.len(),
-        1,
-        "self-captured wide-gap inset-0 line count: {topology:?}"
+    assert_eq!(i0.len(), 1, "wide-neck inset-0 line count: {topology:?}");
+    assert!(i0[0].is_closed, "wide-neck outer wall must be closed: {topology:?}");
+    // One loop around BOTH pads (pads span x in [-3.5, -0.5] and [0.5, 3.5]).
+    let (lo, hi) = x_extent(i0[0]);
+    assert!(
+        lo < -3.0 && hi > 3.0,
+        "the single outer wall must run around both pads, x-extent [{lo}, {hi}]"
     );
-    // Canonical `filterNoncentralRegions` does NOT dissolve a gap whose
-    // distance is >= max_dist (0.4mm), so this wide gap should remain
-    // fragmented according to `SkeletalTrapezoidation.cpp` ::
-    // `filterNoncentralRegions`.
-    // DIVERGENCE BASELINE: the local implementation currently returns one
-    // closed ring here; retain the exact observed topology until reconciled.
-    // MEASURED EVIDENCE: the two pads' central-region bead counts are 7
-    // (left pad) and 8 (right pad) — differing by exactly 1, so canonical's
-    // ±1-same-bead-count eligibility for dissolution applies — but canonical
-    // dissolves a gap only when its strict `traveled_dist + length <
-    // max_dist` inequality holds, and the fixture's 1.5mm separation is far
-    // above `max_dist` (0.4mm), so canonical does NOT dissolve the gap.
-    // Canonical therefore predicts a fragmented outer wall; the measured
-    // local output is a single closed inset-0 ring with 21 junctions.
-    assert!(i0[0].is_closed);
-    assert_eq!(i0[0].junctions.len(), 21);
 }
 
 #[test]
-fn dumbbell_narrow_gap_dissolves_to_single_closed_ring() {
+fn dumbbell_narrow_neck_gives_each_pad_its_own_outer_wall() {
     let dumbbell = dumbbell_polygon_with_dimensions(0.2, 0.1);
     let (lines, _) = run_arachne_pipeline(
         std::slice::from_ref(&dumbbell),
@@ -141,11 +148,21 @@ fn dumbbell_narrow_gap_dissolves_to_single_closed_ring() {
         .iter()
         .map(|line| (line.is_closed, line.junctions.len()))
         .collect();
-    assert_eq!(i0.len(), 1, "narrow-gap inset-0 line count: {topology:?}");
-    // With gap + neck height = 0.2mm + 0.1mm = 0.3mm, canonical
-    // `filterNoncentralRegions` dissolves the strictly-sub-max_dist gap and
-    // produces one continuous closed ring (`SkeletalTrapezoidation.cpp` ::
-    // `filterNoncentralRegions`).
-    assert!(i0[0].is_closed);
-    assert_eq!(i0[0].junctions.len(), 13);
+    assert_eq!(i0.len(), 2, "narrow-neck inset-0 line count: {topology:?}");
+    assert!(
+        i0.iter().all(|line| line.is_closed),
+        "each pad's outer wall must close on its own: {topology:?}"
+    );
+    // One loop per pad (pads span x in [-3.2, -0.2] and [0.2, 3.2]); neither
+    // may cross the 0.1 mm neck.
+    let mut extents: Vec<(f32, f32)> = i0.iter().map(|line| x_extent(line)).collect();
+    extents.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    assert!(
+        extents[0].0 < -2.5 && extents[0].1 < 0.0,
+        "left loop must stay on the left pad: {extents:?}"
+    );
+    assert!(
+        extents[1].0 > 0.0 && extents[1].1 > 2.5,
+        "right loop must stay on the right pad: {extents:?}"
+    );
 }

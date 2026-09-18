@@ -388,33 +388,26 @@ fn arachne_params_from_config(
 /// Classifies a single [`slicer_ir::ExtrusionLine`] into its `(role,
 /// loop_type)` pair.
 ///
-/// `is_odd` lines (odd-width transition regions, per `ExtrusionLine::is_odd`'s
-/// own doc comment) are treated as gap-fill regardless of `inset_idx`, with
-/// one exception (packet 148, AC-2): an `is_odd` line at `inset_idx == 0`
-/// with `print_thin_walls` enabled is the single widened center-line bead
-/// `WideningBeadingStrategy` produces for a region thinner than one full
-/// bead. OrcaSlicer's own Arachne path assigns this bead no special
-/// thin-wall/gap-fill role at all — the Arachne skeletal-graph algorithm has
-/// no such role; `is_odd` is purely structural, and every emitted
-/// `ExtrusionLine` becomes `erExternalPerimeter`/`erPerimeter` via
-/// `inset_idx == 0` (`PerimeterGenerator.cpp:383-384`); `print_thin_walls`
-/// only gates whether `WideningBeadingStrategy` runs at all. `LoopType::ThinWall`
-/// here is PnP's own IR-level semantic refinement of that same bead — a
-/// deliberate deviation from upstream, not a ported behavior — allowing
-/// downstream consumers (feature-flag/report tooling) to distinguish a
-/// widened thin region from an ordinary outer wall. Deeper odd lines
-/// (`inset_idx > 0`, transition regions between full beads) stay `GapFill`
-/// regardless of `print_thin_walls`; classic-perimeters' `medial_axis`-based
-/// thin-wall gate does not apply here since Arachne's beading strategy
-/// already produces the widened bead directly.
+/// Canonical `PerimeterGenerator.cpp::traverse_extrusions` sets the role from
+/// `inset_idx` alone: `erExternalPerimeter` for inset 0, `erPerimeter`
+/// otherwise. `is_odd` is structural (the centre bead of an odd bead count, an
+/// open line) and never makes a line gap fill, so odd lines keep their wall
+/// role here too. Mapping deeper odd lines to `GapFill` (the former behaviour)
+/// printed real walls with gap-fill role and flow.
+///
+/// One PnP refinement remains (packet 148, AC-2): an `is_odd` line at
+/// `inset_idx == 0` with `print_thin_walls` enabled is the single widened
+/// centre-line bead `WideningBeadingStrategy` produces for a region thinner
+/// than one bead. Canonical prints it as `erExternalPerimeter` like any inset-0
+/// line; `LoopType::ThinWall` / `ExtrusionRole::ThinWall` is PnP's IR-level
+/// label for that same bead, so downstream consumers (feature-flag/report
+/// tooling) can tell a widened thin region from an ordinary outer wall.
 fn classify_line(
     line: &slicer_ir::ExtrusionLine,
     print_thin_walls: bool,
 ) -> (ExtrusionRole, LoopType) {
     if line.is_odd && line.inset_idx == 0 && print_thin_walls {
         (ExtrusionRole::ThinWall, LoopType::ThinWall)
-    } else if line.is_odd {
-        (ExtrusionRole::GapFill, LoopType::GapFill)
     } else if line.inset_idx == 0 {
         (ExtrusionRole::OuterWall, LoopType::Outer)
     } else {
@@ -788,41 +781,50 @@ impl LayerModule for ArachnePerimeters {
                 }
             }
 
-            // Convert inner-contour marker lines to infill area polygons.
-            // Matches canonical WallToolPaths::separateOutInnerContour
-            // (line 905): skip odd lines (centerline single beads), convert
-            // closed even lines to polygons, then union to normalize winding.
-            let infill_candidates: Vec<ExPolygon> = inner_contour
-                .iter()
-                .filter(|line| !line.is_odd && line.is_closed)
-                .map(|line| ExPolygon {
-                    contour: Polygon {
-                        points: line
-                            .junctions
-                            .iter()
-                            .map(|j| Point2 {
-                                x: mm_to_units(j.p.x),
-                                y: mm_to_units(j.p.y),
-                            })
-                            .collect(),
-                    },
-                    holes: Vec::new(),
-                })
-                .collect();
-            if !infill_candidates.is_empty() {
-                let infill_areas = slicer_sdk::host::clip_polygons(
-                    &infill_candidates,
-                    &[],
-                    slicer_sdk::host::ClipOperation::Union,
-                );
-                if !infill_areas.is_empty() {
-                    output.set_infill_areas(infill_areas)?;
-                }
-            }
+            publish_infill_areas(&inner_contour, output)?;
         }
 
         Ok(())
     }
+}
+
+/// Converts inner-contour marker lines to the region's infill area and
+/// publishes it. Matches canonical `WallToolPaths::separateOutInnerContour`:
+/// skip odd lines (centerline single beads), convert closed even lines to
+/// polygons, then union to normalize winding. An empty result publishes
+/// nothing.
+fn publish_infill_areas(
+    inner_contour: &[ExtrusionLine],
+    output: &mut PerimeterOutputBuilder,
+) -> Result<(), ModuleError> {
+    let infill_candidates: Vec<ExPolygon> = inner_contour
+        .iter()
+        .filter(|line| !line.is_odd && line.is_closed)
+        .map(|line| ExPolygon {
+            contour: Polygon {
+                points: line
+                    .junctions
+                    .iter()
+                    .map(|j| Point2 {
+                        x: mm_to_units(j.p.x),
+                        y: mm_to_units(j.p.y),
+                    })
+                    .collect(),
+            },
+            holes: Vec::new(),
+        })
+        .collect();
+    if !infill_candidates.is_empty() {
+        let infill_areas = slicer_sdk::host::clip_polygons(
+            &infill_candidates,
+            &[],
+            slicer_sdk::host::ClipOperation::Union,
+        );
+        if !infill_areas.is_empty() {
+            output.set_infill_areas(infill_areas)?;
+        }
+    }
+    Ok(())
 }
 
 impl ArachnePerimeters {
@@ -1076,7 +1078,7 @@ impl ArachnePerimeters {
         // First contribution: the top sub-area's single wall (inset_idx == 0).
         let mut top_params = *params;
         top_params.max_bead_count = 2;
-        let (top_lines, _) =
+        let (top_lines, top_inner) =
             match slicer_sdk::host::generate_arachne_walls(&top_expolygons, &top_params) {
                 Ok(r) => r,
                 Err(e) => {
@@ -1111,7 +1113,7 @@ impl ArachnePerimeters {
             // `inner_loop_number + 2` walls.
             let mut fb_params = *params;
             fb_params.max_bead_count = base_max_bead_count + 2;
-            let (fb_lines, _) = match slicer_sdk::host::generate_arachne_walls(polygons, &fb_params)
+            let (fb_lines, fb_inner) = match slicer_sdk::host::generate_arachne_walls(polygons, &fb_params)
             {
                 Ok(r) => r,
                 Err(e) => {
@@ -1142,6 +1144,8 @@ impl ArachnePerimeters {
             for w in fb_walls {
                 output.push_wall_loop(w)?;
             }
+            // Canonical: the fallback pass's inner contour is the infill contour.
+            publish_infill_areas(&fb_inner, output)?;
             return Ok(());
         }
 
@@ -1150,9 +1154,9 @@ impl ArachnePerimeters {
         // inset 0.
         let mut second_params = *params;
         second_params.max_bead_count = base_max_bead_count;
-        let mut second_lines =
+        let (mut second_lines, second_inner) =
             match slicer_sdk::host::generate_arachne_walls(&not_top, &second_params) {
-                Ok((lines, _)) => lines,
+                Ok(result) => result,
                 Err(e) => {
                     slicer_sdk::host::log_warn(&format!(
                         "arachne-perimeters: G3p2 second-pass generation failed for region \
@@ -1167,6 +1171,7 @@ impl ArachnePerimeters {
                     for w in top_walls {
                         output.push_wall_loop(w)?;
                     }
+                    publish_infill_areas(&top_inner, output)?;
                     return Ok(());
                 }
             };
@@ -1205,6 +1210,12 @@ impl ArachnePerimeters {
         for w in second_walls {
             output.push_wall_loop(w)?;
         }
+        // Canonical `process_arachne`: `infill_contour = union_ex(top_expolygons,
+        // inner_wall_tool_paths.getInnerContour())`. Here the top sub-area has
+        // its own single wall, so its fill area is that pass's inner contour.
+        let mut inner = top_inner;
+        inner.extend(second_inner);
+        publish_infill_areas(&inner, output)?;
         Ok(())
     }
 }

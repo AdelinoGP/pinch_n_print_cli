@@ -232,3 +232,78 @@ fn wall_inside_top_fill(
     }
     true
 }
+
+/// Regression: the second pass must publish the region's fill area. Canonical
+/// `PerimeterGenerator.cpp::process_arachne` sets
+/// `infill_contour = union_ex(top_expolygons, inner_wall_tool_paths.getInnerContour())`
+/// (or the fallback pass's inner contour when no top area survives). The
+/// second pass used to discard both inner contours and never set
+/// `infill_areas`, so the host partition received an empty wall inset: the
+/// top sub-area and the whole non-top interior got no fill (previously masked
+/// by an unclipped top-fill pass-through that printed over the walls).
+#[test]
+fn only_one_wall_top_second_pass_publishes_infill_areas() {
+    let config = ConfigViewBuilder::new()
+        .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
+        .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
+        .int("max_bead_count", 6)
+        .bool("only_one_wall_top", true)
+        .build();
+    let regions = vec![SliceRegionViewBuilder::new()
+        .object_id("obj-1")
+        .region_id(1)
+        .z(1.0)
+        .add_polygon(square_polygon(0.0, 0.0, SQUARE_SIDE_MM))
+        .top_shell_index(Some(1)) // non-topmost, with an exposed top sub-area
+        .top_solid_fill(vec![square_polygon(0.0, 0.0, 4.0)])
+        .build()];
+    let module = ArachnePerimeters::from_config(&config).unwrap();
+    let mut output = PerimeterOutputBuilder::new();
+    module
+        .run_perimeters(5, &regions, &PaintRegionLayerView::new(5), &mut output, &config)
+        .unwrap();
+    assert!(
+        !output.wall_loops().is_empty(),
+        "the second pass must emit walls"
+    );
+    let infill: Vec<ExPolygon> = output.infill_areas().iter().flatten().cloned().collect();
+    // Region: 20 mm square centred on the origin; top sub-area: 4 mm square
+    // at the centre. Canonical infill contour = top sub-area ∪ inner contour
+    // of the non-top walls (3 x 1 mm walls around the outer edge and around
+    // the top sub-area), so the remainder's fill is a ring with a hole. The top
+    // sub-area's centre and the ring get fill; a point inside the remainder's
+    // walls around the top sub-area does not. `separateOutInnerContour` unions
+    // the contour loops with the even-odd rule, so the ring's hole loop must
+    // cut its hole whatever its winding.
+    for (x, y) in [(0.0f32, 0.0f32), (6.5, 0.0), (-6.5, -6.5)] {
+        assert!(
+            infill.iter().any(|ep| ex_polygon_contains(ep, x, y)),
+            "the second pass must publish a fill area covering ({x}, {y}); got {} polygon(s)",
+            infill.len()
+        );
+    }
+    assert!(
+        !infill.iter().any(|ep| ex_polygon_contains(ep, -4.0, 0.0)),
+        "(-4, 0) lies inside the walls around the top sub-area and must not be fill"
+    );
+}
+
+/// Even-odd point-in-ExPolygon test (contour minus holes).
+fn ex_polygon_contains(ep: &ExPolygon, x_mm: f32, y_mm: f32) -> bool {
+    let p = slicer_ir::Point2::from_mm(x_mm, y_mm);
+    let inside = |pts: &[slicer_ir::Point2]| {
+        let mut c = false;
+        let n = pts.len();
+        for i in 0..n {
+            let (a, b) = (pts[i], pts[(i + 1) % n]);
+            if (a.y > p.y) != (b.y > p.y) {
+                let t = (p.y - a.y) as f64 / (b.y - a.y) as f64;
+                if (p.x as f64) < a.x as f64 + t * (b.x - a.x) as f64 {
+                    c = !c;
+                }
+            }
+        }
+        c
+    };
+    inside(&ep.contour.points) && !ep.holes.iter().any(|h| inside(&h.points))
+}

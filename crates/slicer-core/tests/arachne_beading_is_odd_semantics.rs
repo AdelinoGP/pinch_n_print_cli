@@ -21,9 +21,9 @@
 //! flag is forwarded verbatim across the host boundary
 //! (`slicer-wasm-host/src/host.rs:1818`).
 //!
-//! The fixture is a minimal single-central-edge graph with `bead_count = 2`
-//! (an EVEN count): canonically NO emitted line may be `is_odd`, because
-//! there is no centerline bead.
+//! The fixture is a minimal canonical quad ring whose spine nodes carry
+//! `bead_count = 4` (an EVEN count): canonically NO emitted line may be
+//! `is_odd`, because there is no centerline bead.
 //!
 //! Host-only: gated behind `host-algos`.
 
@@ -87,73 +87,73 @@ impl BeadingStrategy for FixedBeadingStrategy {
     }
 }
 
-/// Minimal single-central-edge domain: v0 (R = 3 mm) -> v1 (R = 1 mm,
-/// `bead_count = Some(2)`), edge 0 central with a non-central twin (edge 1)
-/// so exactly one domain walk emits. The edge is deliberately SHORT (1 mm)
-/// so the emitted per-bead lines are short open polylines — eligible for
-/// `remove_small_lines` removal iff (mis)labelled `is_odd`.
-fn two_bead_single_edge_graph() -> SkeletalTrapezoidationGraph {
-    // Minimal single-central-edge domain with a TRANSITION (the peak and
-    // boundary carry different `bead_count`s) so Step 1's `generate_junctions`
-    // — which resolves the beading at the PEAK and skips no-transition edges
-    // per canonical `SkeletalTrapezoidation.cpp:2024-2027` — actually emits
-    // junctions for this edge. The peak carries `bead_count = Some(4)` (an
-    // even count, larger than 2, so the peak's beading has enough beads that
-    // the in-band emission step (`:2064-2077`) actually emits 2 junctions
-    // for the 1mm edge — both insets 0 and 1 are needed for AC-3 to have
-    // a meaningful "inset-1 line survives `remove_small_lines`" assertion).
-    // The canonical `is_odd` rule (`SkeletalTrapezoidation.cpp:2344-2354`)
-    // requires `bead_count % 2 == 1` at the PEAK for a centerline gap-fill
-    // segment, so an even-count peak guarantees no line is `is_odd` — exactly
-    // what AC-2 / AC-3 assert. The boundary side carries `bead_count =
-    // Some(1)` (odd) to ensure a real transition (peak != boundary); the
-    // transition itself is not the subject of either test, only the peak's
-    // `is_odd` truth is.
-    let v0 = STVertex {
-        position: Vertex { x: 0.0, y: 0.0 },
-        distance_to_boundary: 4.0 * UNITS_PER_MM,
-        bead_count: Some(4),
+/// Minimal canonical quad ring around a short strip (0.2 mm long, 0.6 mm
+/// wide): one flat central spine A -> B at R = 0.3 mm with `bead_count = 4`
+/// (EVEN) at both ends, and four quads, each starting and ending on the
+/// outline, mirroring the chains `from_polygons` builds:
+///
+/// - bottom: `b0 -> A` (rib up), `A -> B` (spine), `B -> b1` (rib down);
+/// - right end: `b1 -> B`, `B -> b2`;
+/// - top: `b2 -> B`, `B -> A` (spine twin), `A -> b3`;
+/// - left end: `b3 -> A`, `A -> b0`.
+///
+/// Each quad's last edge is the twin of the next quad's first edge, so one
+/// `connectJunctions` domain walk closes the ring. The four rising ribs
+/// carry junction fans for beads 0 and 1 (the in-band half of the 4-bead
+/// beading), so every emitted line is a short (< 2 mm) loop fragment of a
+/// real wall — eligible for `remove_small_lines` iff (mis)labelled `is_odd`.
+fn even_bead_strip_ring_graph() -> SkeletalTrapezoidationGraph {
+    let mm = UNITS_PER_MM;
+    let (len, half_width) = (0.2 * mm, 0.3 * mm);
+    let node = |x: f64, y: f64, r: f64, bead_count: Option<u32>| STVertex {
+        position: Vertex { x, y },
+        distance_to_boundary: r,
+        bead_count,
         transition_ratio: 0.0,
     };
-    let v1 = STVertex {
-        position: Vertex {
-            x: 3.0 * UNITS_PER_MM,
-            y: 0.0,
-        },
-        distance_to_boundary: 1.0 * UNITS_PER_MM,
-        bead_count: Some(1),
-        transition_ratio: 0.0,
+    let vertices = vec![
+        node(0.0, half_width, half_width, Some(4)),   // 0: A
+        node(len, half_width, half_width, Some(4)),   // 1: B
+        node(0.0, 0.0, 0.0, None),                    // 2: b0
+        node(len, 0.0, 0.0, None),                    // 3: b1
+        node(len, 2.0 * half_width, 0.0, None),       // 4: b2
+        node(0.0, 2.0 * half_width, 0.0, None),       // 5: b3
+    ];
+    let half_edge = |start_vertex: usize, twin: usize, prev: usize, next: usize, spine: bool| {
+        STHalfEdge {
+            start_vertex,
+            twin,
+            prev,
+            next,
+            central: spine,
+            edge_type: if spine { EdgeType::NORMAL } else { EdgeType::EXTRA_VD },
+            ..STHalfEdge::default()
+        }
     };
-
-    let edge0 = STHalfEdge {
-        start_vertex: 0,
-        twin: 1,
-        next: NO_INDEX,
-        prev: NO_INDEX,
-        central: true,
-        edge_type: EdgeType::NORMAL,
-        ..STHalfEdge::default()
-    };
-    let edge1 = STHalfEdge {
-        start_vertex: 1,
-        twin: 0,
-        next: NO_INDEX,
-        prev: NO_INDEX,
-        central: false,
-        edge_type: EdgeType::NORMAL,
-        ..STHalfEdge::default()
-    };
+    let none = NO_INDEX;
+    let edges = vec![
+        half_edge(2, 9, none, 1, false), // 0: b0 -> A
+        half_edge(0, 5, 0, 2, true),     // 1: A -> B
+        half_edge(1, 3, 1, none, false), // 2: B -> b1
+        half_edge(3, 2, none, 4, false), // 3: b1 -> B
+        half_edge(1, 6, 3, none, false), // 4: B -> b2
+        half_edge(1, 1, 6, 7, true),     // 5: B -> A
+        half_edge(4, 4, none, 5, false), // 6: b2 -> B
+        half_edge(0, 8, 5, none, false), // 7: A -> b3
+        half_edge(5, 7, none, 9, false), // 8: b3 -> A
+        half_edge(0, 0, 8, none, false), // 9: A -> b0
+    ];
 
     SkeletalTrapezoidationGraph {
-        vertices: vec![v0, v1],
-        edges: vec![edge0, edge1],
+        vertices,
+        edges,
         centrality_filtered: true,
         rib: RibData::default(),
         ..Default::default()
     }
 }
 
-/// N4 core: with an EVEN bead count (2), no emitted line is a centerline
+/// N4 core: with an EVEN bead count (4), no emitted line is a centerline
 /// gap-fill line, so canonically every line must have `is_odd == false`
 /// (`ExtrusionLine.hpp:62-70`; `SkeletalTrapezoidation.cpp:2344-2354`
 /// requires `bead_count % 2 == 1`). PNP marks the inset-1 line
@@ -161,7 +161,7 @@ fn two_bead_single_edge_graph() -> SkeletalTrapezoidationGraph {
 /// FAILS on current code.
 #[test]
 fn n4_even_bead_count_lines_are_never_marked_odd() {
-    let graph = two_bead_single_edge_graph();
+    let graph = even_bead_strip_ring_graph();
     let buckets = generate_toolpaths(&graph, &FixedBeadingStrategy);
 
     let mut saw_any_line = false;
@@ -171,7 +171,7 @@ fn n4_even_bead_count_lines_are_never_marked_odd() {
             assert!(
                 !line.is_odd,
                 "line with inset_idx {} is marked is_odd = true, but the region's bead count is \
-                 2 (even) — canonical is_odd means \"centerline bead of an ODD bead count\" \
+                 4 (even) — canonical is_odd means \"centerline bead of an ODD bead count\" \
                  (ExtrusionLine.hpp:62-70), never \"odd-indexed inset\" (finding N4)",
                 line.inset_idx
             );
@@ -191,7 +191,7 @@ fn n4_even_bead_count_lines_are_never_marked_odd() {
 /// current code.
 #[test]
 fn n4_even_inner_wall_survives_remove_small_lines() {
-    let graph = two_bead_single_edge_graph();
+    let graph = even_bead_strip_ring_graph();
     let buckets = generate_toolpaths(&graph, &FixedBeadingStrategy);
     let lines: Vec<_> = buckets.into_iter().flatten().collect();
 

@@ -128,6 +128,16 @@ pub fn topological_walk(lines: &[ExtrusionLine], constraints: &[(usize, usize)])
                     && !(result.is_empty() && seed_line == Some(index))
             })
             .collect::<Vec<_>>();
+        // The seed is only deferred while another line can go first: a
+        // layer whose sole unconstrained line is the open seed must still
+        // emit it (the walk returns a permutation of `lines`). Without this
+        // fallback a lone open line (e.g. the single odd centre bead of a
+        // strip thinner than two beads) was silently dropped.
+        if available_candidates.is_empty() && result.is_empty() {
+            if let Some(seed) = seed_line.filter(|&seed| !processed[seed] && blocked[seed] == 0) {
+                available_candidates.push(seed);
+            }
+        }
         available_candidates
             .sort_by_key(|&index| (lines[index].is_closed, lines[index].inset_idx, index));
         let best_candidate = if result.is_empty() && seed_line.is_some() {

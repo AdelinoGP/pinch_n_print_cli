@@ -139,7 +139,11 @@ fn projects_with_existing_candidates() {
 fn target_on_existing_vertex_does_not_insert() {
     let config = config_with_mode("aligned");
     let module = SeamPlacer::from_config(&config).expect("module init must succeed");
-    let wall = ir_wall(0.2, &[(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)]);
+    // Closed loop (explicit closing repeat): only loops are seam-rotated.
+    let wall = ir_wall(
+        0.2,
+        &[(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0), (0.0, 0.0)],
+    );
     let original_len = wall.path.points.len();
     let regions = vec![aligned_region(vec![wall], Some(ir_point(4.0, 0.0, 0.2)))];
     let mut output = PerimeterOutputBuilder::new();

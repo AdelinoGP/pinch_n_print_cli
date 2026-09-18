@@ -535,9 +535,7 @@ For closed deviations and their closure detail, read the log directly.
 - **D-240B-ADR-0009-AMENDED** (Accepted — packet 240b: ADR-0009 amendment and AD-240B-1 absorption recorded.) — Packet 240b amends ADR-0009: Decision-5 claim ownership is reassigned to com.core.raft-default, and AD-240B-1 absorbs the transport/emitter responsibility into…
 - **D-233-INTERNAL-BRIDGE-QUALIFICATION-COVERAGE** (Open — packet 233: superseded acceptance criteria explicitly retained as unresolved coverage.) — Packet 233 supersedes the earlier acceptance criteria for internal-bridge qualification.
 - **D-246-WAVE-OVERHANG-ANCHOR-DEPTH-DEFAULT** (Accepted — packet 246: deliberate PnP anchor-depth default deviation.) — Wave-overhangs deliberately use the PnP anchor-depth default min(3mm, spacing × (wall_count + 1)) + base_spacing, rather than canonical's auto reference; the d…
-- **DEV-187** (Open — measured baseline pinned by `chain_junctions_land_at_documented_interpolated_positions`; the missing v1 junction is unresolved.) — F3 junction reachability divergence (test-only disclosure; no production change).
 - **DEV-188** (Open — totals and both exception classes pinned explicitly by `f5_invariant_node_distances_match_rib_geometry_and_boundary`.) — F5 rib-pair stubs and foot-quantization delta (test-only disclosure; no production change).
-- **DEV-189** (Open — measured topology pinned by `dumbbell_wide_gap_not_dissolved_pins_exact_ring_topology`; the not-dissolved fragmentation is unresolved.) — Dumbbell wide-gap dissolution divergence (test-only disclosure; no production change).
 <!-- END GENERATED: open-deviations -->
 
 

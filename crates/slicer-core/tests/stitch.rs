@@ -91,3 +91,49 @@ fn stitch_extrusions_preserves_primary() {
         "merged line's far endpoints (100,0) and (120,0) are far apart -- must stay open"
     );
 }
+
+/// An open inset-1 line tracing a full circle of `radius` (first junction
+/// repeated at the end), as `generate_toolpaths` emits each bead of a ring.
+fn circle_line(radius: f32, reverse: bool) -> ExtrusionLine {
+    let n = 48;
+    let mut junctions: Vec<ExtrusionJunction> = (0..=n)
+        .map(|k| {
+            let a = std::f32::consts::TAU * (k % n) as f32 / n as f32;
+            junction(radius * a.cos(), radius * a.sin(), 0.37, 1)
+        })
+        .collect();
+    if reverse {
+        junctions.reverse();
+    }
+    ExtrusionLine {
+        junctions,
+        inset_idx: 1,
+        is_odd: false,
+        is_closed: false,
+    }
+}
+
+/// Canonical `PolylineStitcher::stitch` lets closing a chain on itself
+/// compete with extending it: two concentric even bead loops 0.37 mm apart,
+/// each already meeting itself, are within the 0.407 mm stitch distance of
+/// each other, but each closes on its own (closing distance 0 + 0.01 mm
+/// bias beats 0.37 mm). Joining them instead prints a chord between the two
+/// beads. The two beads of a ring run in opposite directions, so the
+/// even-line reversal gate does not keep them apart.
+#[test]
+fn stitch_closes_each_loop_before_joining_a_parallel_loop() {
+    let outer = circle_line(2.43, false);
+    let inner = circle_line(2.06, true);
+    let result = stitch_extrusions(vec![outer.clone(), inner.clone()], 0.407);
+
+    assert_eq!(result.len(), 2, "expected two loops, got {result:#?}");
+    for (line, expected) in [(&result[0], &outer), (&result[1], &inner)] {
+        let radius = |j: &ExtrusionJunction| j.p.x.hypot(j.p.y);
+        let want = radius(&expected.junctions[0]);
+        assert!(line.is_closed, "each loop closes on itself");
+        assert!(
+            line.junctions.iter().all(|j| (radius(j) - want).abs() < 1e-3),
+            "a loop of radius {want} picked up junctions of the other loop"
+        );
+    }
+}
