@@ -187,8 +187,8 @@ impl Default for ArachneParams {
     /// parity-correct — see that field's own doc comment),
     /// `min_feature_size` = `min_feature_size` (0.1mm, the registered
     /// config default of `1000` units converted to mm), `min_bead_width` =
-    /// `min_bead_width` (0.4mm, the registered config default of `4000`
-    /// units converted to mm) — packet 112, Step 9C.
+    /// 0.34mm (the registered canonical `85%` of the 0.4mm nozzle) — packet
+    /// 112, Step 9C.
     fn default() -> Self {
         Self {
             optimal_width: 0.4,
@@ -201,7 +201,7 @@ impl Default for ArachneParams {
             min_width: 0.4,
             print_thin_walls: false,
             min_feature_size: 0.1,
-            min_bead_width: 0.4,
+            min_bead_width: 0.34,
             wall_transition_length: 0.4,
             wall_transition_angle: 10.0_f64.to_radians(),
             initial_layer_min_bead_width: 0.34,

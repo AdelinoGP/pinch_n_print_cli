@@ -277,9 +277,10 @@ fn arachne_params_from_config(
     let min_feature_size = config
         .get_abs_value("min_feature_size", nozzle_diameter_mm)
         .unwrap_or(defaults.min_feature_size);
+    // `min_bead_width` is canonical `coPercent` of the nozzle diameter
+    // (default 85%), resolved like `min_feature_size`.
     let min_bead_width = config
-        .get_float("min_bead_width")
-        .map(|v| units_to_mm(v as i64) as f64)
+        .get_abs_value("min_bead_width", nozzle_diameter_mm)
         .unwrap_or(defaults.min_bead_width);
     let print_thin_walls = config
         .get_bool("detect_thin_wall")

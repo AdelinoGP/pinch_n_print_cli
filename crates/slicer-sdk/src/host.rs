@@ -883,7 +883,7 @@ impl Default for ArachneParams {
             min_width: 0.4,
             print_thin_walls: false,
             min_feature_size: 0.1,
-            min_bead_width: 0.4,
+            min_bead_width: 0.34,
             wall_transition_length: 0.4,
             wall_transition_angle: 10.0_f64.to_radians(),
             initial_layer_min_bead_width: 0.34,

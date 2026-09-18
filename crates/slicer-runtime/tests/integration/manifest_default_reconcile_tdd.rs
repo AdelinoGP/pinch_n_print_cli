@@ -238,16 +238,18 @@ const CLASSIC_FALLBACKS: &[(&str, CodeFallback)] = &[
 
 /// Transcribed from `arachne-perimeters/src/lib.rs::arachne_params_from_config`
 /// and `run_perimeters`. Fallbacks routed through `ArachneParams::default()`
-/// (mm domain) are stated here in the manifest's domain — e.g. `min_bead_width`
-/// is read via `units_to_mm(v).unwrap_or(defaults.min_bead_width = 0.4mm)`, so
-/// its `unit = "units"` manifest default must be `mm_to_units(0.4) = 4000`.
+/// (mm domain) are stated here in the manifest's domain — e.g.
+/// `wall_transition_filter_deviation` is read via
+/// `units_to_mm(v).unwrap_or(defaults.transition_filter_dist = 0.1mm)`, so its
+/// `unit = "units"` manifest default must be `mm_to_units(0.1) = 1000`.
 const ARACHNE_FALLBACKS: &[(&str, CodeFallback)] = &[
     ("layer_height", Float(0.2)),
     ("nozzle_diameter", Float(0.4)),
     // percent key resolved via get_abs_value against nozzle_diameter; code
     // fallback defaults.min_feature_size = 0.1mm = 25% of the 0.4mm nozzle.
     ("min_feature_size", Str("25%")),
-    ("min_bead_width", Float(4000.0)), // units; defaults.min_bead_width 0.4mm
+    // percent; code fallback defaults.min_bead_width = 0.34mm = 85% of nozzle.
+    ("min_bead_width", Str("85%")),
     ("wall_transition_filter_deviation", Float(1000.0)), // units; defaults.transition_filter_dist 0.1mm
     // percent; code fallback defaults.wall_transition_length = 0.4mm = 100% of nozzle.
     ("wall_transition_length", Str("100%")),
