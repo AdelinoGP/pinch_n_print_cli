@@ -487,10 +487,25 @@ pub struct InternalBridgeAngleInputs<'a> {
 /// `internal_unsupported_area`; `limiting_area = area_to_be_bridge ∪
 /// expansion_area`; the angle comes from `determine_bridging_angle` over the
 /// boundary anchors ([`boundary_anchor_polylines`]); a positive override
-/// replaces it; and a candidate whose `expand(.., 3 × spacing)` meets an
-/// earlier candidate reuses that candidate's angle. Each chosen candidate is
-/// removed from the expansion area seen by later ones, as canonical removes
-/// each bridged area from `expansion_area`.
+/// replaces it; and a candidate whose area-class region grown by
+/// `3 × spacing` meets an earlier candidate's region reuses that candidate's
+/// angle. Each chosen candidate's area is removed from the expansion area seen
+/// by later ones, as canonical removes each bridged area from
+/// `expansion_area`.
+///
+/// # Collision operands
+///
+/// Canonical grows the **constructed** `bridging_area`
+/// (`construct_anchored_polygon(area_to_be_bridge, …)`, after the
+/// `expand(.., spacing)` clip) and intersects each earlier candidate's stored
+/// `new_polys`. This crate does not construct the anchor-grown area (the
+/// qualified polygon is the final geometry; canonical growth beyond the
+/// candidate is DEV-150), so both operands here use `area_to_be_bridge`
+/// itself. That `area` is exactly the object canonical constructs from, and
+/// using it on both sides preserves canonical's detection radius — two
+/// candidates whose qualified polygons are within roughly `5 × spacing`
+/// share one direction. Using the unexpanded raw candidate on either side
+/// (the previous behaviour) shrinks that radius to `3 × spacing`.
 ///
 /// Canonical anchors on the real lower-layer sparse infill lines and falls back
 /// to the boundary polylines only when there are none. The sparse lines are
@@ -515,6 +530,7 @@ pub fn internal_bridge_angles(
         inputs.deep_infill_clip_area,
     );
     let mut angles: Vec<f32> = Vec::with_capacity(candidates.len());
+    let mut bridge_areas: Vec<Vec<ExPolygon>> = Vec::with_capacity(candidates.len());
     for (index, candidate) in candidates.iter().enumerate() {
         let candidate = std::slice::from_ref(candidate);
         let mut area: Vec<ExPolygon> = intersection(
@@ -539,15 +555,19 @@ pub fn internal_bridge_angles(
             .map(|ring| ring.points.clone())
             .collect();
         let mut angle = determine_bridging_angle(&anchors, &edges, inputs.override_deg);
-        let grown = offset(candidate, 3.0 * spacing, OffsetJoinType::Miter, 0.0);
-        if let Some(earlier) = candidates[..index]
+        // Canonical collision check (`expand(bridging_area, 3 × spacing)` vs
+        // each earlier `new_polys`): both operands are the area-class bridging
+        // region, not the raw candidate. See the note above.
+        let grown = offset(&area, 3.0 * spacing, OffsetJoinType::Miter, 0.0);
+        if let Some(earlier) = bridge_areas[..index]
             .iter()
-            .position(|earlier| !intersection(std::slice::from_ref(earlier), &grown).is_empty())
+            .position(|earlier| !intersection(earlier, &grown).is_empty())
         {
             angle = angles[earlier];
         }
         angles.push(angle);
-        expansion_area = difference(&expansion_area, candidate);
+        expansion_area = difference(&expansion_area, &area);
+        bridge_areas.push(area);
     }
     angles
 }

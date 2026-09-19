@@ -693,8 +693,13 @@ bridge line direction per polygon into `internal_bridge_angles_deg`:
   `expand(limiting area, 0.3 × spacing)`. Those are canonical's fallback
   anchors; the real lower-layer sparse lines do not exist yet at prepass time
   (see `docs/DEVIATION_LOG.md`). A positive `internal_bridge_angle` overrides
-  the angle, and a candidate within `3 × spacing` of an earlier one reuses
-  that one's angle.
+  the angle, and a candidate whose area-class bridging region
+  (`expand(candidate, spacing) ∩ deep_infill_area`) grown by `3 × spacing`
+  meets an earlier candidate's region reuses that one's angle. Both collision
+  operands are the area-class region, matching canonical's detection radius
+  (canonical grows the constructed `bridging_area`; this host pass does not
+  construct the anchor-grown area — canonical growth beyond the candidate is
+  DEV-150).
 - Angles are in degrees of line direction, the same convention as
   `bridge_orientation_deg`. An empty vector means "use
   `bridge_orientation_deg`" for every polygon (pre-4.10.0 fixtures).
