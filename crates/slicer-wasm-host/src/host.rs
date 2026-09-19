@@ -2804,6 +2804,7 @@ impl hs::Host for HostExecutionContext {
             print_thin_walls: params.print_thin_walls,
             min_feature_size: params.min_feature_size as f64,
             min_bead_width: params.min_bead_width as f64,
+            layer_height: params.layer_height as f64,
             wall_transition_length: params.wall_transition_length as f64,
             wall_transition_angle: params.wall_transition_angle as f64,
             initial_layer_min_bead_width: params.initial_layer_min_bead_width as f64,

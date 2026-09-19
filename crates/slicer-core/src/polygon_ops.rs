@@ -532,11 +532,17 @@ pub fn difference_ex(subject: &[ExPolygon], clip: &[ExPolygon]) -> Vec<ExPolygon
     difference(subject, clip)
 }
 
-/// OrcaSlicer's default miter limit for its closing/opening helpers
-/// (`ClipperUtils.hpp` `DefaultMiterLimit = 3.`). The plain [`offset`]
-/// wrapper keeps Clipper2's default of 2.0; the morphological helpers use
-/// Orca's value for `Miter` joins so parity call sites match the C++.
-const ORCA_MORPH_MITER_LIMIT: f64 = 3.0;
+/// OrcaSlicer's default miter limit for its offset helpers
+/// (`ClipperUtils.hpp` `DefaultMiterLimit = 3.`), used by every `offset` /
+/// `offset_ex` overload. The plain [`offset`] wrapper keeps Clipper2's default
+/// of 2.0 for historical reasons; Orca-parity call sites pass this value
+/// explicitly through [`offset_with_miter_limit`].
+pub const ORCA_DEFAULT_MITER_LIMIT: f64 = 3.0;
+
+/// Miter limit for the closing/opening morphological helpers — Orca's value
+/// for `Miter` joins, so parity call sites match the C++ (see
+/// [`ORCA_DEFAULT_MITER_LIMIT`] for the provenance).
+const ORCA_MORPH_MITER_LIMIT: f64 = ORCA_DEFAULT_MITER_LIMIT;
 
 /// Arc tolerance (mm) applied to `Round`-join morphological passes — the
 /// pre-existing convention in this module. `Miter`/`Square` joins emit no

@@ -135,6 +135,10 @@ interface host-services {
         print-thin-walls: bool,
         min-feature-size: f32,
         min-bead-width: f32,
+        /// Layer height in millimetres; converts the bead-width spacings back
+        /// to extrusion widths for the canonical middle-threshold
+        /// denominators.
+        layer-height: f32,
         wall-transition-length: f32,
         wall-transition-angle: f32,
         initial-layer-min-bead-width: f32,

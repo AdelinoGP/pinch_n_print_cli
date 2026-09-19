@@ -127,6 +127,13 @@ pub struct ArachneParams {
     /// regime. Feeds `BeadingFactoryParams::min_output_width` (converted to
     /// units). Maps to the `min_bead_width` config key.
     pub min_bead_width: f64,
+    /// Layer height (mm). Feeds `BeadingFactoryParams::layer_height`
+    /// (converted to units), where `create_stack` uses it to convert the
+    /// `optimal_width` / `preferred_bead_width_outer` spacings back to
+    /// extrusion widths for the canonical middle-threshold denominators
+    /// (`WallToolPaths::generate`'s
+    /// `flow(frPerimeter).scaled_width()`-equivalent).
+    pub layer_height: f64,
     /// Transition-ramp length (mm) for `DistributedBeadingStrategy`. Feeds
     /// `BeadingFactoryParams::default_transition_length` (converted to units).
     /// Maps to the `wall_transition_length` config key.
@@ -208,6 +215,9 @@ impl Default for ArachneParams {
             print_thin_walls: false,
             min_feature_size: 0.1,
             min_bead_width: 0.34,
+            // Canonical layer height default (0.2 mm), matching
+            // `layer-planner-default`'s `layer_height`.
+            layer_height: 0.2,
             wall_transition_length: 0.4,
             wall_transition_angle: 10.0_f64.to_radians(),
             initial_layer_min_bead_width: 0.34,
@@ -306,6 +316,10 @@ fn to_beading_factory_params(params: &ArachneParams) -> BeadingFactoryParams {
         print_thin_walls: params.print_thin_walls,
         wall_transition_angle: params.wall_transition_angle,
         initial_layer_min_bead_width: initial_layer_min_output_width,
+        // Canonical `WallToolPaths::generate` converts `bead_width_0` /
+        // `bead_width_x` back to extrusion WIDTHS against this layer height
+        // before forming the middle-threshold denominators.
+        layer_height: params.layer_height * UNITS_PER_MM,
         ..BeadingFactoryParams::default()
     }
 }

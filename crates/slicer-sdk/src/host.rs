@@ -827,6 +827,10 @@ pub struct ArachneParams {
     /// Minimum bead width (mm) the thin-wall decorator clamps its emitted
     /// bead up to. Maps to the `min_bead_width` config key.
     pub min_bead_width: f64,
+    /// Layer height (mm). Used by `create_stack` to convert the bead-width
+    /// spacings back to extrusion widths for the canonical middle-threshold
+    /// denominators.
+    pub layer_height: f64,
     /// Transition-ramp length (mm) for the base distribution strategy. Maps
     /// to the `wall_transition_length` config key.
     pub wall_transition_length: f64,
@@ -884,6 +888,7 @@ impl Default for ArachneParams {
             print_thin_walls: false,
             min_feature_size: 0.1,
             min_bead_width: 0.34,
+            layer_height: 0.2,
             wall_transition_length: 0.4,
             wall_transition_angle: 10.0_f64.to_radians(),
             initial_layer_min_bead_width: 0.34,
@@ -930,6 +935,7 @@ pub fn generate_arachne_walls(
             print_thin_walls: params.print_thin_walls,
             min_feature_size: params.min_feature_size,
             min_bead_width: params.min_bead_width,
+            layer_height: params.layer_height,
             wall_transition_length: params.wall_transition_length,
             wall_transition_angle: params.wall_transition_angle,
             initial_layer_min_bead_width: params.initial_layer_min_bead_width,
@@ -995,6 +1001,7 @@ package slicer:common {
             print-thin-walls: bool,
             min-feature-size: f32,
             min-bead-width: f32,
+            layer-height: f32,
             wall-transition-length: f32,
             wall-transition-angle: f32,
             initial-layer-min-bead-width: f32,
@@ -1074,6 +1081,7 @@ world sdk-arachne {
             print_thin_walls: params.print_thin_walls,
             min_feature_size: params.min_feature_size as f32,
             min_bead_width: params.min_bead_width as f32,
+            layer_height: params.layer_height as f32,
             wall_transition_length: params.wall_transition_length as f32,
             wall_transition_angle: params.wall_transition_angle as f32,
             initial_layer_min_bead_width: params.initial_layer_min_bead_width as f32,
