@@ -156,15 +156,23 @@ fn straddling_ring(band_mm: f64) -> ExPolygon {
 
 /// Bead counts on the central skeleton after `assign_bead_counts` and after
 /// `filter_transition_mids`, running the pipeline's own stage order.
+///
+/// The centrality outer-edge filter is derived from the strategy
+/// (`get_transition_thickness(0) / 2`), matching canonical `updateIsCentral`
+/// and `run_arachne_pipeline`'s `to_centrality_params`. It is deliberately NOT
+/// `wall_transition_filter_deviation` (the value passed to
+/// `filter_transition_mids` below); the two differ whenever the outer width or
+/// `detect_thin_wall` departs from this profile's.
 fn central_bead_counts_around_the_filter(outline: &ExPolygon) -> (BTreeSet<u32>, BTreeSet<u32>) {
     let p = oracle_params();
-    let cleaned = preprocess_input_outline(std::slice::from_ref(outline), &PreprocessParams::default());
+    let cleaned =
+        preprocess_input_outline(std::slice::from_ref(outline), &PreprocessParams::default());
     let mut graph = SkeletalTrapezoidationGraph::from_polygons(&cleaned).expect("graph");
     let strategy = oracle_strategy();
     filter_central(
         &mut graph,
         &CentralityParams::new(
-            p.transition_filter_dist * UNITS_PER_MM,
+            strategy.get_transition_thickness(0) / 2.0,
             p.min_central_distance * UNITS_PER_MM,
         ),
         p.wall_transition_angle,
@@ -227,13 +235,21 @@ fn marginal_bead_count_region_is_dissolved_into_one_count() {
         BTreeSet::from([3, 4]),
         "fixture must straddle the 3->4 transition before filtering"
     );
-    assert_eq!(after, BTreeSet::from([3]), "the marginal 4-bead region must dissolve");
+    assert_eq!(
+        after,
+        BTreeSet::from([3]),
+        "the marginal 4-bead region must dissolve"
+    );
 
     let (lines, _) = run_arachne_pipeline(&[outline], &oracle_params(), false).expect("pipeline");
     let inner = closed_loops(&lines, 1);
     assert_eq!(inner.len(), 1, "one centre loop, got {}", inner.len());
     assert!(inner[0].is_odd, "the centre loop is the odd bead of 3");
-    assert_eq!(closed_loops(&lines, 0).len(), 2, "outer walls on both sides");
+    assert_eq!(
+        closed_loops(&lines, 0).len(),
+        2,
+        "outer walls on both sides"
+    );
 }
 
 /// Straddling it by about 0.15 mm: dissolving the 4-bead half into 3 would
@@ -251,12 +267,19 @@ fn bead_count_region_beyond_the_deviation_limit_is_not_dissolved() {
         BTreeSet::from([3, 4]),
         "fixture must straddle the 3->4 transition before filtering"
     );
-    assert_eq!(after, BTreeSet::from([4]), "the 3-bead half must take the even count");
+    assert_eq!(
+        after,
+        BTreeSet::from([4]),
+        "the 3-bead half must take the even count"
+    );
 
     let (lines, _) = run_arachne_pipeline(&[outline], &oracle_params(), false).expect("pipeline");
     let inner = closed_loops(&lines, 1);
     assert_eq!(inner.len(), 2, "two inner loops, got {}", inner.len());
-    assert!(inner.iter().all(|l| !l.is_odd), "4 beads have no odd centre line");
+    assert!(
+        inner.iter().all(|l| !l.is_odd),
+        "4 beads have no odd centre line"
+    );
 }
 
 /// Oracle bead counts on the outline canonical feeds `WallToolPaths`:
@@ -265,8 +288,9 @@ fn bead_count_region_beyond_the_deviation_limit_is_not_dissolved() {
 #[test]
 fn ring_bead_counts_match_the_oracle() {
     for (thickness, inner_loops, odd) in [(1.3, 1, true), (1.4, 1, true), (1.65, 2, false)] {
-        let (lines, _) = run_arachne_pipeline(&[oracle_outline(thickness)], &oracle_params(), false)
-            .expect("pipeline");
+        let (lines, _) =
+            run_arachne_pipeline(&[oracle_outline(thickness)], &oracle_params(), false)
+                .expect("pipeline");
         let inner = closed_loops(&lines, 1);
         assert_eq!(
             inner.len(),
@@ -278,7 +302,11 @@ fn ring_bead_counts_match_the_oracle() {
             inner.iter().all(|l| l.is_odd == odd),
             "{thickness} mm ring: inner loop odd-ness must be {odd}"
         );
-        assert_eq!(closed_loops(&lines, 0).len(), 2, "{thickness} mm ring: outer walls");
+        assert_eq!(
+            closed_loops(&lines, 0).len(),
+            2,
+            "{thickness} mm ring: outer walls"
+        );
         assert!(
             lines.iter().all(|l| l.inset_idx <= 1),
             "{thickness} mm ring: no bead beyond inset 1"
@@ -297,8 +325,12 @@ fn ring_bead_counts_match_the_oracle() {
 /// radial chord between them.
 #[test]
 fn four_bead_ring_inner_beads_close_as_separate_loops() {
-    let (lines, _) = run_arachne_pipeline(&[ring(RING_OUTER_RADIUS_MM, 1.5, 0.0)], &oracle_params(), false)
-        .expect("pipeline");
+    let (lines, _) = run_arachne_pipeline(
+        &[ring(RING_OUTER_RADIUS_MM, 1.5, 0.0)],
+        &oracle_params(),
+        false,
+    )
+    .expect("pipeline");
     let inner = closed_loops(&lines, 1);
     assert_eq!(inner.len(), 2, "two inner loops, got {}", inner.len());
     for l in inner {

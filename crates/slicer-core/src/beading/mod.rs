@@ -156,7 +156,8 @@ pub trait BeadingStrategy: Send + Sync {
     /// `0.0`; `DistributedBeadingStrategy` overrides it. Canonical has no such
     /// strategy method: `filter_transition_mids` takes the value directly as
     /// its `allowed_filter_deviation`, and the walk distance is the fixed
-    /// `TRANSITION_FILTER_DIST_UNITS`.
+    /// `TRANSITION_FILTER_DIST_UNITS`. NOT the centrality outer-edge filter,
+    /// which canonical derives from [`BeadingStrategy::get_transition_thickness`].
     fn get_transition_filter_dist(&self, lower_bead_count: usize) -> f64 {
         let _ = lower_bead_count;
         0.0

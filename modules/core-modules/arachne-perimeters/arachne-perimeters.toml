@@ -94,7 +94,7 @@ max-ir-schema     = "5.0.0"
   min         = 0
   unit        = "units"
   display     = "Wall transition filter deviation"
-  description = "Margin extending the extrusion-width range to reduce back-and-forth transitions between wall counts. Canonical allowed_filter_deviation: the line-width deviation SkeletalTrapezoidation::filterTransitionMids may introduce when it dissolves a marginal bead-count region (filter_transition_mids in skeletal_trapezoidation/propagation.rs); also read by filter_central in skeletal_trapezoidation/centrality.rs. Carried as ArachneParams::transition_filter_dist. OrcaSlicer coPercent default 25% of nozzle diameter; resolved here against a 0.4mm nozzle."
+  description = "Margin extending the extrusion-width range to reduce back-and-forth transitions between wall counts. Canonical allowed_filter_deviation: the line-width deviation SkeletalTrapezoidation::filterTransitionMids may introduce when it dissolves a marginal bead-count region (filter_transition_mids in skeletal_trapezoidation/propagation.rs). Carried as ArachneParams::transition_filter_dist. OrcaSlicer coPercent default 25% of nozzle diameter; resolved here against a 0.4mm nozzle. NOT the centrality outer-edge filter: canonical derives that from the beading strategy (getTransitionThickness(0) / 2), which the pipeline resolves from the constructed stack."
   group       = "Arachne"
   advanced    = true
 

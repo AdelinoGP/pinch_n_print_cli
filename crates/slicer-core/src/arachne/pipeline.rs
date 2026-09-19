@@ -54,6 +54,7 @@ use crate::arachne::{
     separate_out_inner_contour, simplify_toolpaths, stitch_extrusions,
 };
 use crate::beading::factory::{BeadingFactoryParams, BeadingStrategyFactory};
+use crate::beading::BeadingStrategy;
 use crate::perimeter_utils::WallSequence;
 use crate::skeletal_trapezoidation::propagation::propagate_beadings_downward_with_transition_dist;
 use crate::skeletal_trapezoidation::{
@@ -98,9 +99,11 @@ pub struct ArachneParams {
     /// `allowed_filter_deviation`: the line-width deviation
     /// `filter_transition_mids` may introduce when it dissolves a marginal
     /// bead-count region (the walk distance itself is the fixed
-    /// `TRANSITION_FILTER_DIST_UNITS`, canonical's 100 mm). Also used as the
-    /// whisker-dissolve length budget for `filter_central`'s stage 2, and
-    /// (converted to units) `BeadingFactoryParams::transition_filter_dist`.
+    /// `TRANSITION_FILTER_DIST_UNITS`, canonical's 100 mm). Also forwarded
+    /// (converted to units) to `BeadingFactoryParams::transition_filter_dist`.
+    ///
+    /// NOT the centrality outer-edge filter: canonical derives that from the
+    /// strategy (`getTransitionThickness(0) / 2`) — see `to_centrality_params`.
     pub transition_filter_dist: f64,
     /// Depth floor (mm) for `filter_central`'s stage 1: an edge whose deepest
     /// endpoint never reaches this distance from the boundary is never
@@ -324,17 +327,35 @@ fn to_beading_factory_params(params: &ArachneParams) -> BeadingFactoryParams {
     }
 }
 
-/// Builds a `CentralityParams` from `params`, converting mm -> slicer units.
+/// Builds a `CentralityParams` from `params` and the constructed strategy,
+/// converting mm -> slicer units.
 ///
-/// With the quad/rib topology from Step 1, the outer-edge filter no longer
-/// needs to be artificially weakened to let radial spine edges through; ribs
-/// are filtered by `EdgeType::EXTRA_VD` instead. The user-facing
-/// `transition_filter_dist` therefore maps directly to
-/// `CentralityParams::transition_filter_dist`.
+/// Canonical `SkeletalTrapezoidation::updateIsCentral` derives its outer-edge
+/// filter from the BEADING STRATEGY, not from a config key:
 ///
-fn to_centrality_params(params: &ArachneParams) -> CentralityParams {
+/// ```text
+/// coord_t outer_edge_filter_length = beading_strategy.getTransitionThickness(0) / 2;
+/// ```
+///
+/// `WallToolPaths::generate` constructs the strategy via
+/// `BeadingStrategyFactory::makeStrategy` BEFORE `SkeletalTrapezoidation`, so
+/// the strategy-derived value is what the predicate actually sees. The
+/// configured `wall_transition_filter_deviation` is a DIFFERENT quantity
+/// (canonical's `allowed_filter_deviation`, the line-width deviation
+/// `filterTransitionMids` may introduce) and must not be substituted here:
+/// on the defaults the two coincide only numerically, and they diverge as soon
+/// as the outer width or `detect_thin_wall` changes. With
+/// `WideningBeadingStrategy` present, `getTransitionThickness(0)` is
+/// `min_input_width` (`min_feature_size`), not the default-stack value.
+///
+/// The `min_central_distance` floor is a PnP-internal extra (canonical has no
+/// second predicate term); it keeps its config key and is passed through.
+fn to_centrality_params(
+    params: &ArachneParams,
+    strategy: &dyn BeadingStrategy,
+) -> CentralityParams {
     CentralityParams::new(
-        params.transition_filter_dist * UNITS_PER_MM,
+        strategy.get_transition_thickness(0) / 2.0,
         params.min_central_distance * UNITS_PER_MM,
     )
 }
@@ -405,9 +426,14 @@ pub fn run_arachne_pipeline(
     // reflex-corner-only approximation) is no longer needed here.
     let mut graph = SkeletalTrapezoidationGraph::from_polygons(&cleaned)?;
 
-    let centrality_params = to_centrality_params(&params);
     let beading_params = to_beading_factory_params(&params);
     let strategy = BeadingStrategyFactory::create_stack(&beading_params);
+    // Canonical order (`SkeletalTrapezoidation::generateToolpaths`):
+    // `updateIsCentral` (which derives the outer-edge filter from the
+    // strategy) -> `filterCentral` -> `updateBeadCount` ->
+    // `filterNoncentralRegions`. The strategy therefore has to exist before
+    // the centrality filter runs.
+    let centrality_params = to_centrality_params(&params, strategy.as_ref());
     filter_central(
         &mut graph,
         &centrality_params,
@@ -540,6 +566,93 @@ mod stitch_gap_tests {
             ..ArachneParams::default()
         };
         assert_eq!(stitch_max_gap(&params), 0.0);
+    }
+}
+
+#[cfg(test)]
+mod centrality_outer_filter_tests {
+    use super::*;
+
+    /// Canonical `SkeletalTrapezoidation::updateIsCentral` derives its
+    /// outer-edge filter from the BEADING STRATEGY:
+    ///
+    /// ```text
+    /// coord_t outer_edge_filter_length = beading_strategy.getTransitionThickness(0) / 2;
+    /// ```
+    ///
+    /// NOT from `wall_transition_filter_deviation` (canonical
+    /// `allowed_filter_deviation`, a different quantity consumed by
+    /// `filterTransitionMids`). The two coincide on this crate's defaults
+    /// (both 0.1 mm), so this test drives them APART: with
+    /// `print_thin_walls` on, `WideningBeadingStrategy` short-circuits
+    /// `getTransitionThickness(0)` to `min_input_width`, which is
+    /// `min_feature_size` — well away from the 0.1 mm config value.
+    ///
+    /// A pipeline that fed the config key to `filter_central` would pass the
+    /// second assertion below; the canonical wiring fails it.
+    #[test]
+    fn centrality_outer_filter_follows_the_strategy_not_the_config_key() {
+        let params = ArachneParams {
+            print_thin_walls: true,
+            min_feature_size: 0.3,
+            transition_filter_dist: 0.1,
+            ..ArachneParams::default()
+        };
+        let beading_params = to_beading_factory_params(&params);
+        let strategy = BeadingStrategyFactory::create_stack(&beading_params);
+        let centrality_params = to_centrality_params(&params, strategy.as_ref());
+
+        let strategy_value = strategy.get_transition_thickness(0) / 2.0;
+        let config_value = params.transition_filter_dist * UNITS_PER_MM;
+
+        assert!(
+            (centrality_params.transition_filter_dist - strategy_value).abs() < 1e-9,
+            "centrality outer filter must be `strategy.get_transition_thickness(0) / 2` \
+             (canonical `updateIsCentral`), got {} but the strategy reports {strategy_value}",
+            centrality_params.transition_filter_dist
+        );
+        assert!(
+            (centrality_params.transition_filter_dist - config_value).abs() > 1e-9,
+            "centrality outer filter must NOT be `wall_transition_filter_deviation` \
+             (`ArachneParams::transition_filter_dist`, canonical \
+             `allowed_filter_deviation`); both were {} — the fixture failed to drive \
+             the two apart",
+            centrality_params.transition_filter_dist
+        );
+    }
+
+    /// The same derivation with `print_thin_walls` off must land on
+    /// `Redistribute`'s `case 0` branch (`minimum_variable_line_ratio *
+    /// optimal_width_outer`), not on the config value. This is the branch the
+    /// default stack takes, so it is the one every default-config slice uses.
+    #[test]
+    fn centrality_outer_filter_is_half_the_redistribute_zero_thickness() {
+        let params = ArachneParams {
+            preferred_bead_width_outer: 0.5,
+            transition_filter_dist: 0.9, // deliberately far from the strategy value
+            ..ArachneParams::default()
+        };
+        let beading_params = to_beading_factory_params(&params);
+        let strategy = BeadingStrategyFactory::create_stack(&beading_params);
+        let centrality_params = to_centrality_params(&params, strategy.as_ref());
+
+        let expected = beading_params.minimum_variable_line_ratio
+            * params.preferred_bead_width_outer
+            * UNITS_PER_MM
+            / 2.0;
+        assert!(
+            (centrality_params.transition_filter_dist - expected).abs() < 1e-9,
+            "default-stack centrality filter must be \
+             `minimum_variable_line_ratio * optimal_width_outer / 2` = {expected}, got {}",
+            centrality_params.transition_filter_dist
+        );
+        assert!(
+            (centrality_params.transition_filter_dist
+                - params.transition_filter_dist * UNITS_PER_MM)
+                .abs()
+                > 1e-9,
+            "the configured deviation (0.9 mm) must not reach the centrality filter"
+        );
     }
 }
 

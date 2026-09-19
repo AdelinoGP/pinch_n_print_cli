@@ -196,11 +196,17 @@ fn native_overhang_region(
 /// STALE_DOC: `wall_transition_filter_deviation` IS consumed by compute
 /// (D-143 closed — `ArachneParams.transition_filter_dist` →
 /// `BeadingFactoryParams` → `DistributedBeadingStrategy::get_transition_filter_dist`,
-/// used by `crates/slicer-core/src/skeletal_trapezoidation/centrality.rs:162`
-/// and `propagation.rs:670,719`). The manifest description at
-/// `arachne-perimeters.toml:64` still says "reserved, not yet read by compute".
+/// which canonical `SkeletalTrapezoidation::filterTransitionMids` takes as its
+/// `allowed_filter_deviation`; see `filter_transition_mids` in
+/// `crates/slicer-core/src/skeletal_trapezoidation/propagation.rs`). The
+/// centrality outer-edge filter is a SEPARATE strategy-derived value
+/// (`getTransitionThickness(0) / 2`, canonical `updateIsCentral`), so this key
+/// never feeds `filter_central`. The manifest description at
+/// `arachne-perimeters.toml`'s `[config.schema.wall_transition_filter_deviation]`
+/// previously said "reserved, not yet read by compute".
 ///
-/// OrcaSlicer ref: `PrintConfig.cpp:7180-7193`; `SkeletalTrapezoidation.cpp:820-956`.
+/// OrcaSlicer ref: `PrintConfig.cpp`'s `wall_transition_filter_deviation`
+/// definition; `SkeletalTrapezoidation::filterTransitionMids`.
 #[test]
 fn arachne_parity_stale_doc_wall_transition_filter_deviation_description() {
     let m = manifest();
@@ -219,11 +225,10 @@ fn arachne_parity_stale_doc_wall_transition_filter_deviation_description() {
          expected: the manifest description reflects that the key IS consumed \
          by the compute path (D-143 closed; transition_filter_dist wired \
          through BeadingFactoryParams -> DistributedBeadingStrategy::\
-         get_transition_filter_dist, used by centrality.rs:162 and \
-         propagation.rs:670,719) | got: arachne-perimeters.toml:64's \
-         [config.schema.wall_transition_filter_deviation].description still \
-         reads \"reserved, not yet read by compute\" — stale since D-143 | ref: \
-         PrintConfig.cpp:7180-7193"
+         get_transition_filter_dist, consumed by filter_transition_mids) | \
+         got: [config.schema.wall_transition_filter_deviation].description \
+         still reads \"reserved, not yet read by compute\" — stale since \
+         D-143 | ref: PrintConfig.cpp's wall_transition_filter_deviation definition"
     );
 }
 
