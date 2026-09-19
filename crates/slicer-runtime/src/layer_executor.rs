@@ -3212,7 +3212,10 @@ pub struct StageApplyContext<'a> {
     pub seam_plan: Option<&'a slicer_ir::SeamPlanIR>,
     /// The module's already-resolved config view. No commit arm reads it since
     /// the `Layer::InfillPostProcess` internal-bridge constructor was removed
-    /// (internal bridges are authored by the ShellClassification prepass).
+    /// (internal bridges are authored by the ShellClassification prepass);
+    /// retained as a borrow slot so a future commit arm can read resolved
+    /// module config without re-threading the dispatch context. Callers still
+    /// populate it (see `layer_executor`'s `StageApplyContext` construction).
     pub config_view: Option<&'a slicer_ir::ConfigView>,
     /// Whole-print SliceIR committed by prepass; read-only cross-layer input.
     /// Unread since the same removal; kept as the extensible borrow slot.

@@ -217,14 +217,24 @@ impl LayerModule for RectilinearInfill {
         let cos_a = angle_rad.cos();
         let sin_a = angle_rad.sin();
 
-        // Feedrate is resolved by the host from each emitted role. Do not
-        // couple sparse, solid, and bridge paths through one scalar.
+        // Feedrate is resolved by the host from each emitted role, so these
+        // speed fields are not read here: `crates/slicer-ir/src/feedrate.rs`'s
+        // `FeedrateConfig::from_raw_config` builds the host's feedrate table
+        // from the raw config (`SPEED_KEYS`, which includes
+        // `top_surface_speed` and `sparse_infill_speed` but has no
+        // `internal_solid_infill_speed` entry — `crates/slicer-gcode/src/emit.rs`
+        // routes `InternalSolidInfill` to the sparse speed), and the emitter
+        // consults that table. Do not couple sparse, solid, and bridge paths
+        // through one scalar.
         let speed_factor = 1.0;
-        // These settings are intentionally owned by the host: its
+        // The bridge settings are intentionally owned by the host: its
         // `PrePass::ShellClassification` internal-bridge gate reads the same
         // resolved keys and applies the filter, the angle override, and the
         // extra bridge layer while authoring `internal_bridge_areas` and their
         // per-polygon angles. This module only emits what the host authored.
+        //
+        // The three speed fields are resolved here only so the tuple below
+        // documents that ownership; they are otherwise unused by this module.
         let _host_bridge_settings = (
             self.top_surface_speed,
             self.internal_solid_infill_speed,

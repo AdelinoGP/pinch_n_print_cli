@@ -537,6 +537,8 @@ For closed deviations and their closure detail, read the log directly.
 - **DEV-188** (Open — totals and both exception classes pinned explicitly by `f5_invariant_node_distances_match_rib_geometry_and_boundary`.) — F5 rib-pair stubs and foot-quantization delta (test-only disclosure; no production change).
 - **DEV-190** (Open — 2026-09-18: boundary fallback implemented as the single internal-bridge producer's direction step.) — Internal-bridge directions anchor on boundary polylines, never on the lower layer's sparse lines.
 - **DEV-191** (Open — 2026-09-19: filed during the `fix/perimeters` review's Phase 5; the deferral predates the fallback (both introduced with the initial region-order port, `57191889`). Canonical's no-deferral behaviour verified by reading the loop directly.) — topological_walk defers its seed line, an ordering rule canonical PerimeterGenerator.cpp does not have.
+- **DEV-192** (Open — 2026-09-19: filed during the `fix/perimeters` review's Phase 6; canonical flag semantics verified in `LayerRegion.cpp` / `PerimeterGenerator.cpp`, PnP absence verified by grep.) — relative_bridge_angle is unported; the internal-bridge angle override is always absolute.
+- **DEV-193** (Open — 2026-09-19: filed during the `fix/perimeters` review's Phase 6; canonical consumers enumerated, PnP absence verified by grep across `crates/` and `modules/`.) — align_infill_direction_to_model is unported; PnP carries no model-rotation concept at all.
 <!-- END GENERATED: open-deviations -->
 
 
