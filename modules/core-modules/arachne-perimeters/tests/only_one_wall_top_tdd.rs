@@ -260,7 +260,13 @@ fn only_one_wall_top_second_pass_publishes_infill_areas() {
     let module = ArachnePerimeters::from_config(&config).unwrap();
     let mut output = PerimeterOutputBuilder::new();
     module
-        .run_perimeters(5, &regions, &PaintRegionLayerView::new(5), &mut output, &config)
+        .run_perimeters(
+            5,
+            &regions,
+            &PaintRegionLayerView::new(5),
+            &mut output,
+            &config,
+        )
         .unwrap();
     assert!(
         !output.wall_loops().is_empty(),
@@ -285,6 +291,68 @@ fn only_one_wall_top_second_pass_publishes_infill_areas() {
     assert!(
         !infill.iter().any(|ep| ex_polygon_contains(ep, -4.0, 0.0)),
         "(-4, 0) lies inside the walls around the top sub-area and must not be fill"
+    );
+}
+
+/// Canonical `process_arachne` unions the top sub-area's FULL polygon set into
+/// `infill_contour`:
+///
+/// ```text
+/// infill_contour = union_ex(top_expolygons, inner_wall_tool_paths.getInnerContour());
+/// ```
+///
+/// `top_expolygons` — not the single-wall pass's inner contour. Those differ by
+/// the wall's own width: the inner contour is the top area shrunk by one bead,
+/// so a formula that unioned it would leave the wall band of the top surface
+/// unfilled even though canonical's later `offset2_ex` shrink-expand is
+/// measured from the full area.
+///
+/// The band is measured here as: inside the top sub-area's expanded footprint
+/// (4 mm square + the 0.85 mm `offset2_ex` expansion = 2.85 mm half-side) but
+/// outside the 1 mm bead that the single top wall occupies (so >= 1.85 mm from
+/// the centre). `(2.35, 0)` sits in the middle of it. This point is fill under
+/// the canonical union and NOT fill under an inner-contour-only union, which is
+/// exactly the regression this pins.
+#[test]
+fn only_one_wall_top_infill_contour_includes_the_top_wall_band() {
+    let config = ConfigViewBuilder::new()
+        .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
+        .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
+        .int("max_bead_count", 6)
+        .bool("only_one_wall_top", true)
+        .build();
+    let regions = vec![SliceRegionViewBuilder::new()
+        .object_id("obj-1")
+        .region_id(1)
+        .z(1.0)
+        .add_polygon(square_polygon(0.0, 0.0, SQUARE_SIDE_MM))
+        .top_shell_index(Some(1)) // non-topmost, with an exposed top sub-area
+        .top_solid_fill(vec![square_polygon(0.0, 0.0, 4.0)])
+        .build()];
+    let module = ArachnePerimeters::from_config(&config).unwrap();
+    let mut output = PerimeterOutputBuilder::new();
+    module
+        .run_perimeters(
+            5,
+            &regions,
+            &PaintRegionLayerView::new(5),
+            &mut output,
+            &config,
+        )
+        .unwrap();
+    let infill: Vec<ExPolygon> = output.infill_areas().iter().flatten().cloned().collect();
+
+    // The top wall band: inside `top_expolygons`, outside the top bead.
+    assert!(
+        infill.iter().any(|ep| ex_polygon_contains(ep, 2.35, 0.0)),
+        "canonical `union_ex(top_expolygons, inner_contour)` covers the top \
+         sub-area's wall band; (2.35, 0) must be fill, got {} polygon(s)",
+        infill.len()
+    );
+    // The remainder's inner contour still bounds the far side.
+    assert!(
+        !infill.iter().any(|ep| ex_polygon_contains(ep, -4.0, 0.0)),
+        "the not-top walls must still cut their own band out of the fill"
     );
 }
 

@@ -844,7 +844,7 @@ impl LayerModule for ArachnePerimeters {
                 }
             }
 
-            publish_infill_areas(&inner_contour, output)?;
+            publish_infill_areas(&inner_contour, &[], output)?;
         }
 
         Ok(())
@@ -856,11 +856,18 @@ impl LayerModule for ArachnePerimeters {
 /// skip odd lines (centerline single beads), convert closed even lines to
 /// polygons, then union to normalize winding. An empty result publishes
 /// nothing.
+///
+/// `extra_areas` are unioned into the result before publishing. Canonical
+/// `process_arachne`'s one-wall-top branch sets
+/// `infill_contour = union_ex(top_expolygons, inner_wall_tool_paths.getInnerContour())`
+/// — the top sub-area contributes its FULL polygon set, not the single-wall
+/// pass's inner contour (which is that same area shrunk by the wall's width).
 fn publish_infill_areas(
     inner_contour: &[ExtrusionLine],
+    extra_areas: &[ExPolygon],
     output: &mut PerimeterOutputBuilder,
 ) -> Result<(), ModuleError> {
-    let infill_candidates: Vec<ExPolygon> = inner_contour
+    let mut infill_candidates: Vec<ExPolygon> = inner_contour
         .iter()
         .filter(|line| !line.is_odd && line.is_closed)
         .map(|line| ExPolygon {
@@ -877,6 +884,11 @@ fn publish_infill_areas(
             holes: Vec::new(),
         })
         .collect();
+    // Canonical `union_ex(top_expolygons, inner.getInnerContour())`: the extra
+    // areas join the candidate set BEFORE the winding-normalizing union, so
+    // the single union produces the correct hole structure across both
+    // sources. `extra_areas` are mm-space ExPolygons already in units.
+    infill_candidates.extend_from_slice(extra_areas);
     if !infill_candidates.is_empty() {
         let infill_areas = slicer_sdk::host::clip_polygons(
             &infill_candidates,
@@ -1215,7 +1227,7 @@ impl ArachnePerimeters {
                 output.push_wall_loop(w)?;
             }
             // Canonical: the fallback pass's inner contour is the infill contour.
-            publish_infill_areas(&fb_inner, output)?;
+            publish_infill_areas(&fb_inner, &[], output)?;
             return Ok(());
         }
 
@@ -1242,7 +1254,7 @@ impl ArachnePerimeters {
                     for w in top_walls {
                         output.push_wall_loop(w)?;
                     }
-                    publish_infill_areas(&top_inner, output)?;
+                    publish_infill_areas(&top_inner, &top_expolygons, output)?;
                     return Ok(());
                 }
             };
@@ -1281,12 +1293,14 @@ impl ArachnePerimeters {
         for w in second_walls {
             output.push_wall_loop(w)?;
         }
-        // Canonical `process_arachne`: `infill_contour = union_ex(top_expolygons,
-        // inner_wall_tool_paths.getInnerContour())`. Here the top sub-area has
-        // its own single wall, so its fill area is that pass's inner contour.
-        let mut inner = top_inner;
-        inner.extend(second_inner);
-        publish_infill_areas(&inner, output)?;
+        // Canonical `process_arachne`:
+        // `infill_contour = union_ex(top_expolygons, inner_wall_tool_paths.getInnerContour())`.
+        // The top sub-area contributes its FULL `top_expolygons` set (the
+        // second pass's `infill_contour` operand), not the single-wall pass's
+        // inner contour — that contour is the same area shrunk by the wall's
+        // own width, so unioning it would leave a ring of the top surface
+        // unfilled.
+        publish_infill_areas(&second_inner, &top_expolygons, output)?;
         Ok(())
     }
 }

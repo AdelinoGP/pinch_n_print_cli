@@ -536,6 +536,7 @@ For closed deviations and their closure detail, read the log directly.
 - **D-246-WAVE-OVERHANG-ANCHOR-DEPTH-DEFAULT** (Accepted — packet 246: deliberate PnP anchor-depth default deviation.) — Wave-overhangs deliberately use the PnP anchor-depth default min(3mm, spacing × (wall_count + 1)) + base_spacing, rather than canonical's auto reference; the d…
 - **DEV-188** (Open — totals and both exception classes pinned explicitly by `f5_invariant_node_distances_match_rib_geometry_and_boundary`.) — F5 rib-pair stubs and foot-quantization delta (test-only disclosure; no production change).
 - **DEV-190** (Open — 2026-09-18: boundary fallback implemented as the single internal-bridge producer's direction step.) — Internal-bridge directions anchor on boundary polylines, never on the lower layer's sparse lines.
+- **DEV-191** (Open — 2026-09-19: filed during the `fix/perimeters` review's Phase 5; the deferral predates the fallback (both introduced with the initial region-order port, `57191889`). Canonical's no-deferral behaviour verified by reading the loop directly.) — topological_walk defers its seed line, an ordering rule canonical PerimeterGenerator.cpp does not have.
 <!-- END GENERATED: open-deviations -->
 
 
