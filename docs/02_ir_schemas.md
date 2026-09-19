@@ -704,11 +704,20 @@ bridge line direction per polygon into `internal_bridge_angles_deg`:
   `bridge_orientation_deg`. An empty vector means "use
   `bridge_orientation_deg`" for every polygon (pre-4.10.0 fixtures).
 
-When `enable_extra_bridge_layer` is enabled, the dense-interior overlap
-directly above each qualified layer (minus that layer's own internal bridges)
-is appended to the upper layer's `internal_bridge_areas` and `bridge_areas`
-with the canonical second-bridge angle: the layer's last internal-bridge angle
-plus 90°.
+When `enable_extra_bridge_layer` is enabled, canonical
+`PrintObject::bridge_over_infill`'s extra-layer phase runs against each
+qualified layer and the layer directly above it. The source layer's bridge
+polygons are first shrink-expanded by the solid-infill extrusion **width**
+(removing trivial slivers), then intersected with the upper layer's
+`stInternal ∪ stInternalSolid` surfaces — this IR's sparse claim
+(`infill_areas − top ∪ bottom ∪ external bridge`) plus
+`internal_solid_fill`. The overlap is shrink-expanded again, and the result is
+appended to the upper layer's `internal_bridge_areas` and `bridge_areas` at the
+canonical second-bridge angle: the source layer's last internal-bridge angle
+plus 90°. The converted area leaves the upper layer's dense-interior and
+top-solid claims, matching canonical's surface replacement (canonical emits
+`stSecondInternalBridge` and its own interim workaround reclassifies it to
+`stInternalBridge`; the non-overlapping leftover keeps its original type).
 
 The fill module holding `claim:bridge-fill` emits `bridge_areas −
 internal_bridge_areas` at `bridge_orientation_deg`, and each internal polygon

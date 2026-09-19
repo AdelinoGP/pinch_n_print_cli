@@ -148,3 +148,66 @@ fn enabled_duplicates_layer_above() {
         );
     }
 }
+
+/// Canonical `PrintObject::bridge_over_infill`'s extra-layer pass REPLACES the
+/// converted surface: the overlap leaves `stInternal`/`stInternalSolid` and
+/// becomes the second internal bridge, while the non-overlapping leftover keeps
+/// its original type. This IR has no separate second-bridge surface type, so
+/// the duplicate joins `bridge_areas` (canonical's own interim workaround
+/// reclassifies `stSecondInternalBridge` back to `stInternalBridge`); the
+/// equivalent of "leaves the original class" is that the area must no longer
+/// be claimed as dense interior (`internal_solid_fill`, this IR's
+/// `stInternalSolid` carrier).
+#[test]
+fn converted_second_bridge_leaves_the_dense_interior_claim() {
+    let baseline = run(None);
+    let enabled = run(Some(true));
+    let source = baseline
+        .iter()
+        .map(|slice| slice.regions[0].internal_bridge_areas.len())
+        .position(|count| count > 0)
+        .expect("fixture must qualify a bridge layer");
+    let upper = &enabled[source + 1].regions[0];
+    let baseline_upper_count = baseline[source + 1].regions[0].internal_bridge_areas.len();
+    let duplicates = &upper.internal_bridge_areas[baseline_upper_count..];
+    assert!(
+        !duplicates.is_empty(),
+        "fixture must produce at least one second-bridge duplicate"
+    );
+    for duplicate in duplicates {
+        for dense in &upper.internal_solid_fill {
+            let overlap = slicer_core::polygon_ops::intersection(
+                std::slice::from_ref(duplicate),
+                std::slice::from_ref(dense),
+            );
+            assert!(
+                overlap.is_empty(),
+                "a converted second bridge must not remain in \
+                 internal_solid_fill; overlap area: {overlap:?}"
+            );
+        }
+        // `internal_solid_fill` is a subset of `top_solid_fill`, and
+        // `only_one_wall_top` derives the exposed top as their difference, so
+        // keeping the converted area in the top claim would make it read as
+        // exposed (one wall) instead of the second bridge.
+        for top in &upper.top_solid_fill {
+            let overlap = slicer_core::polygon_ops::intersection(
+                std::slice::from_ref(duplicate),
+                std::slice::from_ref(top),
+            );
+            assert!(
+                overlap.is_empty(),
+                "a converted second bridge must not remain in the top-solid \
+                 claim; overlap area: {overlap:?}"
+            );
+        }
+    }
+    // The fixture's overlap sits inside the dense band, so this test is
+    // non-vacuous only if the duplicate actually meets it — the assertion
+    // above is the falsifier, and this checks the premise.
+    assert!(
+        !upper.internal_solid_fill.is_empty(),
+        "fixture must have a dense interior on the duplicate layer"
+    );
+}
+
