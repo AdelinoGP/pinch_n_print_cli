@@ -96,6 +96,13 @@ pub fn get_region_order(input: &[ExtrusionLine], outer_to_inner: bool) -> Vec<(u
 }
 
 /// Emits line indices in a nearest-first topological order.
+///
+/// Mirrors canonical `traverse_extrusions` (`PerimeterGenerator.cpp`): at each
+/// step every unprocessed, unblocked line is a candidate (no line is excluded
+/// from candidacy), ties break on input order, and `is_closed` lines are
+/// visited last among the candidates for the step. The walk therefore always
+/// returns a full permutation of the input — including the single-line case,
+/// where canonical emits that one line rather than dropping it.
 pub fn topological_walk(lines: &[ExtrusionLine], constraints: &[(usize, usize)]) -> Vec<usize> {
     let mut blocked: Vec<usize> = vec![0; lines.len()];
     let mut blocking: Vec<Vec<usize>> = vec![Vec::new(); lines.len()];
@@ -106,8 +113,6 @@ pub fn topological_walk(lines: &[ExtrusionLine], constraints: &[(usize, usize)])
 
     let mut processed = vec![false; lines.len()];
     let mut result = Vec::with_capacity(lines.len());
-    let seed_line =
-        (constraints.is_empty() && lines.first().is_some_and(|line| !line.is_closed)).then_some(0);
     let mut current_position = if lines.is_empty() {
         Point2 { x: 0.0, y: 0.0 }
     } else if !lines[0].junctions.is_empty() {
@@ -122,36 +127,18 @@ pub fn topological_walk(lines: &[ExtrusionLine], constraints: &[(usize, usize)])
 
     while result.len() < lines.len() {
         let mut available_candidates = (0..lines.len())
-            .filter(|&index| {
-                !processed[index]
-                    && blocked[index] == 0
-                    && !(result.is_empty() && seed_line == Some(index))
-            })
+            .filter(|&index| !processed[index] && blocked[index] == 0)
             .collect::<Vec<_>>();
-        // The seed is only deferred while another line can go first: a
-        // layer whose sole unconstrained line is the open seed must still
-        // emit it (the walk returns a permutation of `lines`). Without this
-        // fallback a lone open line (e.g. the single odd centre bead of a
-        // strip thinner than two beads) was silently dropped.
-        if available_candidates.is_empty() && result.is_empty() {
-            if let Some(seed) = seed_line.filter(|&seed| !processed[seed] && blocked[seed] == 0) {
-                available_candidates.push(seed);
-            }
-        }
         available_candidates
             .sort_by_key(|&index| (lines[index].is_closed, lines[index].inset_idx, index));
-        let best_candidate = if result.is_empty() && seed_line.is_some() {
-            available_candidates.first().copied()
-        } else {
-            available_candidates.into_iter().min_by(|&a, &b| {
-                let distance_a = squared_distance(&lines[a], current_position);
-                let distance_b = squared_distance(&lines[b], current_position);
-                distance_a
-                    .partial_cmp(&distance_b)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-                    .then_with(|| a.cmp(&b))
-            })
-        };
+        let best_candidate = available_candidates.into_iter().min_by(|&a, &b| {
+            let distance_a = squared_distance(&lines[a], current_position);
+            let distance_b = squared_distance(&lines[b], current_position);
+            distance_a
+                .partial_cmp(&distance_b)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.cmp(&b))
+        });
         let Some(best_candidate) = best_candidate else {
             break;
         };

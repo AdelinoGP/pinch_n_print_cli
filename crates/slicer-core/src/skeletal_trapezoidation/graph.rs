@@ -53,8 +53,9 @@
 //! [`STHalfEdge`] stores only `start_vertex` (the "from" vertex); the "to"
 //! vertex is recovered from the edge's twin's `start_vertex` (boostvoronoi's
 //! `edge.vertex1() == edge.twin().vertex0()` convention). The construction sets
-//! `.twin` bidirectionally on every spine and rib edge, so this holds for every
-//! edge in a well-formed closed-polygon graph.
+//! `.twin` bidirectionally on every spine and rib edge. The construction
+//! finalizer removes collapsed tombstones and verifies twin involution, so this
+//! holds for every edge returned by [`SkeletalTrapezoidationGraph::from_polygons`].
 //!
 //! # Sentinel / storage conventions
 //!
@@ -278,6 +279,8 @@ pub enum SktError {
     DegeneratePolygon(String),
     /// The underlying segment Voronoi diagram construction failed.
     Voronoi(VoronoiError),
+    /// Graph construction produced a surviving edge with malformed topology.
+    MalformedTopology(String),
 }
 
 impl fmt::Display for SktError {
@@ -295,6 +298,10 @@ impl fmt::Display for SktError {
                 f,
                 "SkeletalTrapezoidationGraph::from_polygons: voronoi construction failed: {err}"
             ),
+            SktError::MalformedTopology(msg) => write!(
+                f,
+                "SkeletalTrapezoidationGraph::from_polygons: malformed topology: {msg}"
+            ),
         }
     }
 }
@@ -309,8 +316,7 @@ impl From<VoronoiError> for SktError {
 
 /// Duplicates shared boundary start-nodes so each quad traversal has a
 /// unique start, mirroring OrcaSlicer's `separatePointyQuadEndNodes`
-/// (`SkeletalTrapezoidation.cpp:538-542` /
-/// `SkeletalTrapezoidationGraph.cpp`).
+/// (`SkeletalTrapezoidation.cpp` / `SkeletalTrapezoidationGraph.cpp`).
 ///
 /// Iterates all half-edges; for each chain head (`prev == NO_INDEX`), if
 /// its `start_vertex` was already seen, duplicates the vertex and repoints
@@ -362,6 +368,12 @@ fn separate_pointy_quad_end_nodes(vertices: &mut Vec<STVertex>, edges: &mut Vec<
 /// **Pattern B** (finding #7): If both side edges of the quad have
 /// collapsable length, bypass the quad entirely — reconnect the twin of
 /// the start edge to the twin of the end edge, merging the two side nodes.
+///
+/// Collapsed edges are temporarily marked with `start_vertex == NO_INDEX` and
+/// merged-away vertices remain in storage while this routine rewires by stable
+/// index. [`compact_graph_after_collapse`] removes both kinds of tombstone
+/// before the graph is exposed publicly, matching canonical
+/// `collapseSmallEdges`'s physical erasure from its edge and node lists.
 ///
 /// NOTE: incident-edge SET/READ lines are skipped (PNP's `STVertex` has no
 /// `incident_edge` field — documented no-op).
@@ -517,6 +529,152 @@ fn collapse_small_edges(vertices: &mut Vec<STVertex>, edges: &mut Vec<STHalfEdge
     }
 }
 
+/// Removes collapse tombstones, remaps stable indices, and verifies the public
+/// graph topology produced by [`collapse_small_edges`].
+fn compact_graph_after_collapse(
+    vertices: &mut Vec<STVertex>,
+    edges: &mut Vec<STHalfEdge>,
+) -> Result<(), SktError> {
+    let mut edge_remap = vec![NO_INDEX; edges.len()];
+    let mut next_edge_idx = 0usize;
+    for (old_idx, edge) in edges.iter().enumerate() {
+        if edge.start_vertex != NO_INDEX {
+            edge_remap[old_idx] = next_edge_idx;
+            next_edge_idx += 1;
+        }
+    }
+
+    // Validate every surviving reference before mutating either vector. A live
+    // edge pointing into a collapse tombstone cannot be repaired by remapping.
+    for (edge_idx, edge) in edges.iter().enumerate() {
+        if edge.start_vertex == NO_INDEX {
+            continue;
+        }
+        for (field, target) in [
+            ("twin", edge.twin),
+            ("next", edge.next),
+            ("prev", edge.prev),
+        ] {
+            if target != NO_INDEX && (target >= edges.len() || edge_remap[target] == NO_INDEX) {
+                return Err(SktError::MalformedTopology(format!(
+                    "edge {edge_idx} has {field} reference {target} to a removed or missing edge"
+                )));
+            }
+        }
+        if edge.start_vertex >= vertices.len() {
+            return Err(SktError::MalformedTopology(format!(
+                "edge {edge_idx} has out-of-range start_vertex {}",
+                edge.start_vertex
+            )));
+        }
+    }
+
+    edges.retain(|edge| edge.start_vertex != NO_INDEX);
+    for edge in edges.iter_mut() {
+        if edge.twin != NO_INDEX {
+            edge.twin = edge_remap[edge.twin];
+        }
+        if edge.next != NO_INDEX {
+            edge.next = edge_remap[edge.next];
+        }
+        if edge.prev != NO_INDEX {
+            edge.prev = edge_remap[edge.prev];
+        }
+    }
+
+    let mut referenced_vertices = vec![false; vertices.len()];
+    for edge in edges.iter() {
+        referenced_vertices[edge.start_vertex] = true;
+    }
+    let mut vertex_remap = vec![NO_INDEX; vertices.len()];
+    let mut next_vertex_idx = 0usize;
+    for (old_idx, is_referenced) in referenced_vertices.iter().copied().enumerate() {
+        if is_referenced {
+            vertex_remap[old_idx] = next_vertex_idx;
+            next_vertex_idx += 1;
+        }
+    }
+    let mut old_vertex_idx = 0usize;
+    vertices.retain(|_| {
+        let retain = referenced_vertices[old_vertex_idx];
+        old_vertex_idx += 1;
+        retain
+    });
+    for edge in edges.iter_mut() {
+        edge.start_vertex = vertex_remap[edge.start_vertex];
+    }
+
+    let mut post_referenced_vertices = vec![false; vertices.len()];
+    for (edge_idx, edge) in edges.iter().enumerate() {
+        if edge.start_vertex >= vertices.len() {
+            return Err(SktError::MalformedTopology(format!(
+                "edge {edge_idx} has out-of-range compacted start_vertex {}",
+                edge.start_vertex
+            )));
+        }
+        post_referenced_vertices[edge.start_vertex] = true;
+
+        // `twin == NO_INDEX` is a pre-existing construction artifact: cells
+        // whose point-cell range is rejected (outside the polygon) or that are
+        // degenerate are never transferred, so the opposite half-edge of that
+        // raw Voronoi edge is never mirrored and stays twin-less. Compaction
+        // neither creates nor removes that condition; it only validates the
+        // twins that exist.
+        if edge.twin != NO_INDEX {
+            if edge.twin >= edges.len() {
+                return Err(SktError::MalformedTopology(format!(
+                    "edge {edge_idx} has out-of-range twin {} after compaction",
+                    edge.twin
+                )));
+            }
+            if edges[edge.twin].twin != edge_idx {
+                return Err(SktError::MalformedTopology(format!(
+                    "edge {edge_idx} has non-reciprocal twin {} after compaction",
+                    edge.twin
+                )));
+            }
+        }
+        if edge.next != NO_INDEX {
+            if edge.next >= edges.len() {
+                return Err(SktError::MalformedTopology(format!(
+                    "edge {edge_idx} has out-of-range next {} after compaction",
+                    edge.next
+                )));
+            }
+            if edges[edge.next].prev != edge_idx {
+                return Err(SktError::MalformedTopology(format!(
+                    "edge {edge_idx} has inverse-inconsistent next {} after compaction",
+                    edge.next
+                )));
+            }
+        }
+        if edge.prev != NO_INDEX {
+            if edge.prev >= edges.len() {
+                return Err(SktError::MalformedTopology(format!(
+                    "edge {edge_idx} has out-of-range prev {} after compaction",
+                    edge.prev
+                )));
+            }
+            if edges[edge.prev].next != edge_idx {
+                return Err(SktError::MalformedTopology(format!(
+                    "edge {edge_idx} has inverse-inconsistent prev {} after compaction",
+                    edge.prev
+                )));
+            }
+        }
+    }
+    if let Some(vertex_idx) = post_referenced_vertices
+        .iter()
+        .position(|is_referenced| !is_referenced)
+    {
+        return Err(SktError::MalformedTopology(format!(
+            "vertex {vertex_idx} is unreferenced after compaction"
+        )));
+    }
+
+    Ok(())
+}
+
 impl SkeletalTrapezoidationGraph {
     /// Builds a `SkeletalTrapezoidationGraph` from closed input polygons.
     ///
@@ -568,19 +726,8 @@ impl SkeletalTrapezoidationGraph {
         };
         builder.build(&inp);
 
-        // Finalize per-edge radius bounds from the two endpoints' distances.
-        for i in 0..builder.edges.len() {
-            let (r_min, r_max) = edge_radius_bounds(
-                &builder.vertices,
-                builder.edges[i].start_vertex,
-                builder.edge_to[i],
-            );
-            builder.edges[i].r_min = r_min;
-            builder.edges[i].r_max = r_max;
-        }
-
         // N10 construction epilogue (OrcaSlicer
-        // `SkeletalTrapezoidation.cpp:538-546`):
+        // `constructFromPolygons` in `SkeletalTrapezoidation.cpp`):
         // 1. Separate pointy quad end nodes — duplicate shared boundary
         //    start-nodes so each quad traversal has a unique start.
         // 2. Collapse small edges — remove degenerate zero-length edges
@@ -591,6 +738,27 @@ impl SkeletalTrapezoidationGraph {
         // same results for all 6 canonical read sites).
         separate_pointy_quad_end_nodes(&mut builder.vertices, &mut builder.edges);
         collapse_small_edges(&mut builder.vertices, &mut builder.edges);
+        compact_graph_after_collapse(&mut builder.vertices, &mut builder.edges)?;
+
+        // Finalize radius bounds from the compacted endpoints. Collapse can
+        // merge an endpoint, so Builder's pre-collapse `edge_to` side table is
+        // deliberately not used here.
+        for i in 0..builder.edges.len() {
+            let twin = builder.edges[i].twin;
+            let to_vertex = if twin == NO_INDEX {
+                NO_INDEX
+            } else {
+                builder
+                    .edges
+                    .get(twin)
+                    .map(|edge| edge.start_vertex)
+                    .unwrap_or(NO_INDEX)
+            };
+            let (r_min, r_max) =
+                edge_radius_bounds(&builder.vertices, builder.edges[i].start_vertex, to_vertex);
+            builder.edges[i].r_min = r_min;
+            builder.edges[i].r_max = r_max;
+        }
 
         let n = builder.vertices.len();
         Ok(Self {
@@ -1374,8 +1542,10 @@ fn project_onto_infinite_line(p: (f64, f64), a: Point2, b: Point2) -> (f64, f64)
 }
 
 /// Ports `LinearAlg2D::isInsideCorner` / `is_point_inside_polygon_corner`:
-/// is `query_point` inside the polygon corner `A-B-C` (CCW, `B` the shared
-/// vertex)? Used to reject point-cells lying outside the input polygon.
+/// is `query_point` inside the material-side corner `A-B-C` (`B` the shared
+/// vertex)? Rings are oriented so the material lies to the left of each edge;
+/// this means CCW for outer contours and CW for holes. Used to reject
+/// point-cells lying outside the input polygon.
 fn is_point_inside_polygon_corner(a: Point2, b: Point2, c: Point2, query_point: Point2) -> bool {
     let mut bax = (a.x - b.x) as f64;
     let mut bay = (a.y - b.y) as f64;
@@ -1418,7 +1588,8 @@ fn is_point_inside_polygon_corner(a: Point2, b: Point2, c: Point2, query_point: 
 
 /// Flattens polygons into boundary segments plus the ring/provenance side
 /// tables graph construction needs. Errors on any ring with fewer than 3
-/// points.
+/// points. Rings are normalized to the material-left convention expected by
+/// the point-cell corner gate: outer contours are CCW and holes are CW.
 #[allow(clippy::type_complexity)]
 fn flatten_polys(
     polys: &[ExPolygon],
@@ -1427,28 +1598,41 @@ fn flatten_polys(
     let mut rings: Vec<Vec<Point2>> = Vec::new();
     let mut seg_prov: Vec<(usize, usize)> = Vec::new();
     for poly in polys {
-        push_ring(&poly.contour, &mut segments, &mut rings, &mut seg_prov)?;
+        push_ring(
+            &poly.contour,
+            true,
+            &mut segments,
+            &mut rings,
+            &mut seg_prov,
+        )?;
         for hole in &poly.holes {
-            push_ring(hole, &mut segments, &mut rings, &mut seg_prov)?;
+            push_ring(hole, false, &mut segments, &mut rings, &mut seg_prov)?;
         }
     }
     Ok((segments, rings, seg_prov))
 }
 
 /// Pushes one closed ring's segments (and its provenance) into the flattened
-/// tables. Errors if `ring` has fewer than 3 points.
+/// tables. `want_ccw` selects the orientation that leaves the material on the
+/// ring's left side: CCW for an outer contour and CW for a hole. Errors if
+/// `ring` has fewer than 3 points.
 fn push_ring(
     ring: &Polygon,
+    want_ccw: bool,
     segments: &mut Vec<Segment>,
     rings: &mut Vec<Vec<Point2>>,
     seg_prov: &mut Vec<(usize, usize)>,
 ) -> Result<(), SktError> {
-    let pts = &ring.points;
+    let mut pts = ring.points.clone();
     if pts.len() < 3 {
         return Err(SktError::DegeneratePolygon(format!(
             "polygon ring has {} point(s); at least 3 required",
             pts.len()
         )));
+    }
+    let twice_area = signed_twice_area(&pts);
+    if twice_area != 0 && (twice_area > 0) != want_ccw {
+        pts.reverse();
     }
     let ring_id = rings.len();
     for i in 0..pts.len() {
@@ -1459,6 +1643,19 @@ fn push_ring(
     }
     rings.push(pts.clone());
     Ok(())
+}
+
+/// Returns twice the signed area of a closed ring. Positive values denote
+/// counter-clockwise winding in the graph's XY coordinate system.
+fn signed_twice_area(points: &[Point2]) -> i128 {
+    points
+        .iter()
+        .enumerate()
+        .map(|(i, point)| {
+            let next = points[(i + 1) % points.len()];
+            (point.x as i128) * (next.y as i128) - (next.x as i128) * (point.y as i128)
+        })
+        .sum()
 }
 
 /// Minimum clamp margin around an input polygon's bounding box, as a fraction

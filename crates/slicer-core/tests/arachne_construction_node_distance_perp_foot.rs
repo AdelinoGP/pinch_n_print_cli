@@ -32,6 +32,8 @@
 
 #![cfg(feature = "host-algos")]
 
+use std::collections::BTreeMap;
+
 use slicer_core::skeletal_trapezoidation::{EdgeType, SkeletalTrapezoidationGraph};
 use slicer_core::voronoi::NO_INDEX;
 use slicer_ir::{ExPolygon, Point2, Polygon, UNITS_PER_MM};
@@ -270,7 +272,7 @@ fn f5_invariant_node_distances_match_rib_geometry_and_boundary() {
     let mut total_rib_pair_count = 0usize;
     let mut rib_pair_count = 0usize;
     let mut rib_endpoint_violations = Vec::new();
-    let mut rib_length_violations = Vec::new();
+    let mut rib_pairs_by_spine: BTreeMap<usize, Vec<(usize, f64)>> = BTreeMap::new();
     for (edge_idx, edge) in graph.edges.iter().enumerate() {
         if edge.edge_type != EdgeType::EXTRA_VD {
             continue;
@@ -284,10 +286,12 @@ fn f5_invariant_node_distances_match_rib_geometry_and_boundary() {
             twin_idx < graph.edges.len(),
             "EXTRA_VD edge {edge_idx} has out-of-range twin {twin_idx}"
         );
+        assert_eq!(
+            graph.edges[twin_idx].twin, edge_idx,
+            "EXTRA_VD edge {edge_idx} must have a reciprocal twin link"
+        );
         // Pair each lower-index EXTRA_VD half-edge with its recorded twin
-        // exactly once. Do not require reciprocal twin links here: the two
-        // one-sided dangling stubs are measured and asserted below rather
-        // than silently excluded from the F5 total.
+        // exactly once.
         if edge_idx > twin_idx {
             continue;
         }
@@ -329,70 +333,50 @@ fn f5_invariant_node_distances_match_rib_geometry_and_boundary() {
 
         let spine = graph.vertices[spine_idx].position;
         let foot = graph.vertices[foot_idx].position;
-        // The implementation's oracle is the perpendicular distance from the
-        // spine to the infinite line through the source segment. For an exact
-        // projected foot, that is the Euclidean distance between the spine and
-        // foot endpoints. The public graph stores endpoint positions in its
-        // integer-coordinate representation, so this independently computed
-        // endpoint length exposes any projection/quantization divergence.
+        // `make_rib` stores this same f64 expression when the pair is created.
+        // A spine can be shared by multiple pairs, in which case canonical
+        // `makeRib` and this port both leave the last-created pair's value in
+        // the shared vertex (last-writer state).
         let rib_length_oracle = ((spine.x - foot.x).powi(2) + (spine.y - foot.y).powi(2)).sqrt();
-        let distance_error =
-            (graph.vertices[spine_idx].distance_to_boundary - rib_length_oracle).abs();
-        if distance_error > 1.0 {
-            rib_length_violations.push((
-                edge_idx,
-                twin_idx,
-                graph.vertices[spine_idx].distance_to_boundary,
-                rib_length_oracle,
-                distance_error,
-            ));
-        }
+        rib_pairs_by_spine
+            .entry(spine_idx)
+            .or_default()
+            .push((edge_idx.max(twin_idx), rib_length_oracle));
         rib_pair_count += 1;
     }
+    // Measured with:
+    // cargo test -p slicer-core --features host-algos --test arachne_construction_node_distance_perp_foot -- f5_invariant_node_distances_match_rib_geometry_and_boundary --nocapture
     assert_eq!(
-        total_rib_pair_count, 95,
+        total_rib_pair_count, 93,
         "F5 measured total: every lower-index/twin EXTRA_VD relation is counted once"
     );
     assert_eq!(
         rib_pair_count, 93,
-        "F5 measured total: 93 EXTRA_VD relations have two valid vertex endpoints"
+        "F5 measured total: all 93 EXTRA_VD relations have two valid vertex endpoints"
     );
-    assert_eq!(
-        rib_endpoint_violations,
-        vec![
-            // Edge 145 is the dangling forth side (NO_INDEX, twin 146);
-            // edge 146 is its node-97 side but points onward to twin 278.
-            (
-                145,
-                146,
-                NO_INDEX,
-                97,
-                "forth half-edge has NO_INDEX start_vertex (dangling rib stub)"
-            ),
-            // Edge 282 is the dangling forth side (NO_INDEX, twin 283);
-            // edge 283 is its node-142 side but points onward to twin 271.
-            (
-                282,
-                283,
-                NO_INDEX,
-                142,
-                "forth half-edge has NO_INDEX start_vertex (dangling rib stub)"
-            ),
-        ],
-        "F5 malformed EXTRA_VD relations are documented stubs, not real reciprocal rib pairs"
+    assert!(
+        rib_endpoint_violations.is_empty(),
+        "canonical collapseSmallEdges physically erases collapsed edges, so every surviving rib pair must have valid endpoints: {rib_endpoint_violations:?}"
     );
+
+    let mut multiply_ribbed_spine_nodes = 0usize;
+    for (spine_idx, pairs) in rib_pairs_by_spine {
+        if pairs.len() <= 1 {
+            continue;
+        }
+        multiply_ribbed_spine_nodes += 1;
+        let (_, last_created_length) = pairs
+            .iter()
+            .max_by_key(|(highest_edge_idx, _)| highest_edge_idx)
+            .expect("multiply-ribbed spine must have at least two rib pairs");
+        assert_eq!(
+            graph.vertices[spine_idx].distance_to_boundary,
+            *last_created_length,
+            "multiply-ribbed spine vertex {spine_idx} must retain the last-created rib pair's Euclidean length"
+        );
+    }
     assert_eq!(
-        rib_length_violations,
-        vec![
-            // F5 measured divergence (audit item: "F5 node distances"): the
-            // integer-coordinate foot quantization makes the stored endpoint
-            // length 1.0524414244282525 units shorter than make_rib's
-            // perpendicular infinite-source-line distance for both instances.
-            // Pair 25/26 is nodes 17=(53287,74358), 18=(0,74358).
-            (25, 26, 53288.05244142443, 53287.0, 1.0524414244282525),
-            // Pair 113/114 is nodes 77=(74358,53287), 78=(74357.99999999999,0).
-            (113, 114, 53288.05244142443, 53287.0, 1.0524414244282525),
-        ],
-        "F5 measured rib-distance divergences must remain explicit exceptions"
+        multiply_ribbed_spine_nodes, 45,
+        "F5 measured total: 45 spine nodes are shared by multiple EXTRA_VD rib pairs"
     );
 }
