@@ -33,6 +33,12 @@ fn fixture(
 ) -> (ConfigView, SliceRegionView, PaintRegionLayerView) {
     let config = ConfigViewBuilder::new()
         .bool("enable_support", true)
+        // Packet-06 required reads: the host seeds these at manifest
+        // defaults (0.4 nozzle, 0.2 layer height, 2.5 base pattern
+        // spacing), so the fixture seeds the same values.
+        .float("nozzle_diameter", 0.4)
+        .float("layer_height", 0.2)
+        .float("support_base_pattern_spacing", 2.5)
         .float("support_speed", 50.0)
         .float("line_width", 0.4)
         .int("tree_support_wall_count", 2)

@@ -220,7 +220,7 @@ fn resolve_runtime_scopes(
             _ => None,
         })
         .collect();
-    let seed_context = seed_expansion_context(scoped)?;
+    let seed_context = seed_expansion_context(registry, scoped)?;
     let preliminary_default = resolve_scope_stack(
         registry,
         scoped,
@@ -410,17 +410,36 @@ fn typed_module_config_source(
     compatibility
 }
 
-fn seed_expansion_context(scoped: &ScopedConfig) -> Result<ExpansionContext, SliceRunError> {
-    let nozzle_diameter_mm = scoped
+/// Build the seed `ExpansionContext` before any scope stack is resolved.
+///
+/// An authored `nozzle_diameter` always wins. When it is unauthored the
+/// fallback comes from the assembled registry's reconciled default for the
+/// key — never a code literal — so a registry-declared machine default (for
+/// example the 0.4 mm default in seven-plus core-module manifests) reaches
+/// expansion exactly like an authored value would.
+fn seed_expansion_context(
+    registry: &slicer_config::ConfigSchemaRegistry,
+    scoped: &ScopedConfig,
+) -> Result<ExpansionContext, SliceRunError> {
+    let authored = scoped
         .global()
-        .and_then(|delta| delta.values.get("nozzle_diameter"))
-        .and_then(absolute_config_number)
-        .ok_or_else(|| {
+        .and_then(|delta| delta.values.get("nozzle_diameter"));
+    let nozzle_diameter_mm = match authored {
+        // An authored entry is authoritative: a non-absolute authored value
+        // is still a hard error, never a silent fallback.
+        Some(authored) => absolute_config_number(authored).ok_or_else(|| {
             SliceRunError(
                 "automatic value expansion failed: unknown base key nozzle_diameter required by line_width"
                     .to_string(),
             )
-        })?;
+        })?,
+        None => registry_numeric_default(registry, "nozzle_diameter").ok_or_else(|| {
+            SliceRunError(
+                "automatic value expansion failed: unknown base key nozzle_diameter required by line_width"
+                    .to_string(),
+            )
+        })?,
+    };
     if !nozzle_diameter_mm.is_finite() || nozzle_diameter_mm <= 0.0 {
         return Err(SliceRunError(format!(
             "automatic value expansion failed: base key nozzle_diameter required by line_width must be positive and finite, got {nozzle_diameter_mm}"
@@ -431,6 +450,28 @@ fn seed_expansion_context(scoped: &ScopedConfig) -> Result<ExpansionContext, Sli
         nozzle_diameter_mm,
         tool_bases: std::collections::BTreeMap::new(),
     })
+}
+
+/// Render a registry entry's reconciled default as an absolute number.
+///
+/// The registry stores each declaration's default as its wire string; a
+/// numeric key's fallback is that string parsed per the entry's declared field
+/// type. Accepts exactly the shapes [`absolute_config_number`] accepts for an
+/// authored value, so a fallback and an authored entry resolve identically.
+/// Returns `None` when the key is undeclared, carries no default, or declares a
+/// type that cannot supply an absolute number.
+fn registry_numeric_default(
+    registry: &slicer_config::ConfigSchemaRegistry,
+    key: &str,
+) -> Option<f64> {
+    let entry = registry.entry(key)?;
+    let default = entry.default.as_deref()?.trim();
+    match entry.field_type.as_str() {
+        "float" => default.parse::<f64>().ok(),
+        "int" => default.parse::<i64>().ok().map(|value| value as f64),
+        "float_or_percent" => default.parse::<f64>().ok(),
+        _ => None,
+    }
 }
 
 fn absolute_config_number(value: &ConfigValue) -> Option<f64> {
@@ -718,6 +759,13 @@ pub struct SliceOutcome {
     /// Returned as well as emitted on the JSONL stream so `pnp_cli` can print
     /// its ranked table without parsing back the stream it just wrote.
     pub profile: Option<crate::profiling_report::ProfileSummary>,
+    /// Non-fatal ingestion warnings (retained mode) raised while the authored
+    /// configuration was ingested against the assembled registry — e.g.
+    /// [`IngestionWarning::UnrecognizedKey`] for genuinely undeclared keys.
+    /// In retained mode these keys still reach deltas and resolved config; the
+    /// warn-to-drop flip (packet config-scope-resolution_06, Step 6b) consumes
+    /// this list instead of dropping silently (docs/22 §4, AC-5).
+    pub ingestion_warnings: Vec<IngestionWarning>,
 }
 
 /// Error returned by `run_slice`.
@@ -865,6 +913,14 @@ fn run_pipeline_fork(
         None
     };
 
+    // The registry-driven CONFIG_BLOCK projection is computed once and handed
+    // to every arm: the pre-resolved map is the effective config surface, so
+    // the production path never falls back to the legacy raw overlay (which
+    // leaked undeclared extension keys and the four `config_block = false`
+    // keys). `registry` is only borrowed here, so the projection outlives each
+    // call without changing any public signature.
+    let config_block = registry.config_block_map(&config.default_resolved_config);
+
     let result = match (opts.report.as_ref(), progress_pi.as_ref()) {
         #[cfg(feature = "report")]
         (Some(report_path), maybe_progress_pi) => {
@@ -896,6 +952,7 @@ fn run_pipeline_fork(
                     sink_arc.as_ref(),
                     &composite,
                     expansion_authority,
+                    Some(&config_block),
                 )
             } else {
                 run_pipeline_with_instrumentation_authority(
@@ -904,6 +961,7 @@ fn run_pipeline_fork(
                     sink_arc.as_ref(),
                     report_collector.as_ref(),
                     expansion_authority,
+                    Some(&config_block),
                 )
             };
             report_alloc::disable();
@@ -925,12 +983,14 @@ fn run_pipeline_fork(
             sink_arc.as_ref(),
             progress_pi,
             expansion_authority,
+            Some(&config_block),
         ),
         (None, None) => run_pipeline_with_raw_config_authority(
             config,
             config_source,
             sink_arc.as_ref(),
             expansion_authority,
+            Some(&config_block),
         ),
     };
 
@@ -1398,7 +1458,7 @@ pub fn run_slice_with_collector(
     let plan = build_live_execution_plan(
         loaded.sorted_stages,
         loaded.bindings,
-        &expanded_global_source,
+        &default_resolved_config,
         Arc::new(Vec::new()),
         Arc::new(std::collections::HashMap::new()),
         &mut loaded.diagnostics,
@@ -1575,6 +1635,7 @@ pub fn run_slice_with_collector(
         layer_count,
         wallclock_ms,
         profile: profile_summary,
+        ingestion_warnings,
     })
 }
 
@@ -1749,7 +1810,7 @@ pub fn prepare_prepass_context(
     let mut plan = build_live_execution_plan(
         loaded.sorted_stages,
         loaded.bindings,
-        &expanded_global_source,
+        &default_resolved_config,
         Arc::new(Vec::new()),
         Arc::new(std::collections::HashMap::new()),
         &mut loaded.diagnostics,
@@ -2025,5 +2086,92 @@ mod tests {
         assert_eq!(error.code, 1202);
         assert_eq!(error.message, "duplicate support region rejected");
         assert_eq!(error.fatal, false);
+    }
+
+    // ── Step 6a: seed_expansion_context nozzle_diameter fallback ────────────
+
+    /// Registry fixture declaring one module-manifest `nozzle_diameter` with the
+    /// given default — the same channel `assemble_registry` reads from
+    /// `modules/core-modules/*/*.toml` on the live path.
+    fn nozzle_registry(default: Option<&str>) -> slicer_config::ConfigSchemaRegistry {
+        use slicer_config::{HostChannels, ModuleDeclaration};
+        use slicer_ir::config_schema::{ConfigFieldEntry, ConfigSchema};
+
+        let mut schema = ConfigSchema::default();
+        schema.entries.insert(
+            "nozzle_diameter".to_owned(),
+            ConfigFieldEntry {
+                field_type: "float".to_owned(),
+                default: default.map(str::to_owned),
+                ..ConfigFieldEntry::default()
+            },
+        );
+        slicer_config::assemble_registry(
+            &[ModuleDeclaration {
+                module_id: "dev.pinch.test.seed-expansion".to_owned(),
+                schema,
+                ..ModuleDeclaration::default()
+            }],
+            &HostChannels::from_parts(Vec::new(), Vec::new(), Vec::new()),
+        )
+        .expect("seed-expansion fixture registry must be valid")
+        .registry
+    }
+
+    fn global_nozzle(value: Option<f64>) -> slicer_config::ScopedConfig {
+        let mut scoped = slicer_config::ScopedConfig::default();
+        if let Some(value) = value {
+            scoped.deltas.insert(
+                slicer_config::ConfigScope::Global,
+                slicer_config::ScopeDelta {
+                    values: std::collections::BTreeMap::from([(
+                        "nozzle_diameter".to_owned(),
+                        ConfigValue::Float(value),
+                    )]),
+                },
+            );
+        }
+        scoped
+    }
+
+    /// Exit condition 1: an authored value must keep winning over the
+    /// registry default. Deleting the authored branch and always reading the
+    /// registry would resolve 0.4 here and fail this assertion.
+    #[test]
+    fn seed_expansion_context_prefers_authored_nozzle_over_registry_default() {
+        let registry = nozzle_registry(Some("0.4"));
+        let context = super::seed_expansion_context(&registry, &global_nozzle(Some(0.7)))
+            .expect("authored nozzle_diameter must seed the expansion context");
+        assert_eq!(
+            context.nozzle_diameter_mm, 0.7,
+            "an authored nozzle_diameter must win over the registry default"
+        );
+    }
+
+    /// Exit condition 2: the unauthored fallback must be derived from the
+    /// assembled registry, never a pasted 0.4 literal. The fixture declares a
+    /// non-0.4 default (0.55) so a hardcoded literal fails this assertion.
+    #[test]
+    fn seed_expansion_context_falls_back_to_registry_default() {
+        let registry = nozzle_registry(Some("0.55"));
+        let context = super::seed_expansion_context(&registry, &global_nozzle(None))
+            .expect("unauthored nozzle_diameter must fall back to the registry default");
+        assert_eq!(
+            context.nozzle_diameter_mm, 0.55,
+            "the fallback must be the registry-declared default, not a code literal"
+        );
+    }
+
+    /// A registry that declares no default seeds nothing: the missing-base
+    /// error is preserved instead of inventing a value.
+    #[test]
+    fn seed_expansion_context_errors_when_registry_declares_no_default() {
+        let registry = nozzle_registry(None);
+        let error = super::seed_expansion_context(&registry, &global_nozzle(None))
+            .expect_err("absent authored value and absent registry default must error");
+        assert!(
+            error.0.contains("nozzle_diameter"),
+            "the missing-base error must name nozzle_diameter, got {error:?}"
+        );
     }
 }

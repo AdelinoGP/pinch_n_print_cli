@@ -4,11 +4,11 @@ use std::collections::HashMap;
 
 use infill_linker::connect::{chain_or_connect_infill, connect_infill, AnchorParams};
 use infill_linker::graph::BoundaryInfillGraph;
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_ir::{
     ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point2, Point3WithWidth,
     Polygon,
 };
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 fn square(size_mm: f32) -> ExPolygon {
     ExPolygon {
@@ -235,22 +235,42 @@ fn shorter_arc_claims_its_endpoints_before_a_longer_arc() {
 
 #[test]
 fn percent_anchor_resolves_against_flow_spacing_via_get_abs_value() {
-    let percent_view = ConfigView::from_map(HashMap::from([(
-        "infill_anchor".to_string(),
-        ConfigValue::FloatOrPercent {
-            value: 400.0,
-            is_percent: true,
-        },
-    )]));
-    let params = AnchorParams::from_config(Some(&percent_view), 0.3570796);
+    // Packet 06 (AC-3): `infill_anchor_max` is a required read
+    // (`require_abs_value`) once a region config is present, so the fixture
+    // holds it at the manifest default (20.0 mm absolute, per
+    // infill-linker.toml). `infill_anchor` absent-key behavior is what this
+    // test exercises and stays untouched.
+    let percent_view = ConfigView::from_map(HashMap::from([
+        (
+            "infill_anchor".to_string(),
+            ConfigValue::FloatOrPercent {
+                value: 400.0,
+                is_percent: true,
+            },
+        ),
+        (
+            "infill_anchor_max".to_string(),
+            ConfigValue::FloatOrPercent {
+                value: 20.0,
+                is_percent: false,
+            },
+        ),
+    ]));
+    let params = AnchorParams::from_config(Some(&percent_view), 0.3570796).unwrap();
     assert!((params.anchor_length_mm - 1.4283185).abs() < 1e-6);
 
-    let absolute_view = ConfigView::from_map(HashMap::from([(
-        "infill_anchor".to_string(),
-        ConfigValue::Float(8.0),
-    )]));
-    let absolute = AnchorParams::from_config(Some(&absolute_view), 0.3570796);
-    let absolute_with_other_base = AnchorParams::from_config(Some(&absolute_view), 2.0);
+    let absolute_view = ConfigView::from_map(HashMap::from([
+        ("infill_anchor".to_string(), ConfigValue::Float(8.0)),
+        (
+            "infill_anchor_max".to_string(),
+            ConfigValue::FloatOrPercent {
+                value: 20.0,
+                is_percent: false,
+            },
+        ),
+    ]));
+    let absolute = AnchorParams::from_config(Some(&absolute_view), 0.3570796).unwrap();
+    let absolute_with_other_base = AnchorParams::from_config(Some(&absolute_view), 2.0).unwrap();
     assert!((absolute.anchor_length_mm - 8.0).abs() < 1e-6);
     assert!((absolute_with_other_base.anchor_length_mm - 8.0).abs() < 1e-6);
 }

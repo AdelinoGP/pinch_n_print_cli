@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use sdk_layer_infill_guest::SdkLayerInfillModule;
-use slicer_ir::{ConfigValue, RegionKey, RegionPlan};
+use slicer_ir::{ConfigValue, RegionKey, RegionPlan, ResolvedConfig};
 use slicer_model_io::load_model;
 use slicer_runtime::{
     build_live_execution_plan, load_live_modules_for_plan, parse_cli_config_source,
@@ -32,6 +32,25 @@ fn repo_root() -> PathBuf {
         .join("..")
         .canonicalize()
         .expect("repo root canonicalize")
+}
+
+/// Reify a raw source map into the `ResolvedConfig` a production run hands
+/// to `build_live_execution_plan`: `apply_cli_key` takes typed fields, and
+/// undeclared keys (including module-declared and wildcard-seeded keys)
+/// route to `extensions` exactly as the host resolver routes the `Ok(false)`
+/// fall-through (crates/slicer-config/src/resolution.rs). Binding then reads
+/// the merged `to_config_map`.
+fn resolved_from(source: HashMap<String, ConfigValue>) -> ResolvedConfig {
+    let mut resolved = ResolvedConfig::default();
+    for (key, value) in source {
+        if !resolved
+            .apply_cli_key(&key, &value)
+            .expect("test config key must type-check against ResolvedConfig")
+        {
+            resolved.extensions.insert(key, value);
+        }
+    }
+    resolved
 }
 
 fn write_module(root: &Path, stem: &str, manifest: &str) {
@@ -426,12 +445,15 @@ fn live_plan_assigns_declared_read_filtered_config_view_to_every_module() {
     let out =
         load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 1).unwrap();
 
-    // Raw source carries declared keys AND unrelated noise; the bound view
-    // must not expose anything undeclared to the compiled module.
-    let mut source = HashMap::new();
-    source.insert("density".to_string(), ConfigValue::Float(0.35));
-    source.insert("pattern".to_string(), ConfigValue::String("gyroid".into()));
-    source.insert("secret".to_string(), ConfigValue::String("leak".into()));
+    // The raw source carries declared keys AND unrelated noise; reify it the
+    // way the host resolver would (undeclared keys land in `extensions`).
+    // The bound view must not expose anything undeclared to the compiled
+    // module.
+    let source = resolved_from(HashMap::from([
+        ("density".to_string(), ConfigValue::Float(0.35)),
+        ("pattern".to_string(), ConfigValue::String("gyroid".into())),
+        ("secret".to_string(), ConfigValue::String("leak".into())),
+    ]));
 
     let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
     let plan = build_live_execution_plan(
@@ -465,8 +487,11 @@ fn live_plan_end_to_end_with_cli_config_json_respects_declared_reads() {
     let out =
         load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 1).unwrap();
 
-    // Simulate a user `--config` JSON with one declared key and one leaked.
-    let source = parse_cli_config_source(r#"{"density": 0.9, "extra": "nope"}"#).unwrap();
+    // Simulate a user `--config` JSON with one declared key and one leaked,
+    // then reify it into the resolved config a production run hands to
+    // binding.
+    let source =
+        resolved_from(parse_cli_config_source(r#"{"density": 0.9, "extra": "nope"}"#).unwrap());
     let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
     let plan = build_live_execution_plan(
         out.sorted_stages,
@@ -499,7 +524,8 @@ fn live_plan_is_deterministic_across_repeated_loads() {
     );
     write_module(dir.path(), "a", &infill_manifest("com.example.a", &[]));
 
-    let source = HashMap::new();
+    // Empty authored config reifies to the plain default resolved config.
+    let source = ResolvedConfig::default();
     let roots = [PathBuf::from(dir.path())];
 
     let run = || {
@@ -545,12 +571,15 @@ fn live_plan_preserves_seeded_planner_object_height_keys_for_real_core_modules()
         .world_z_extent
         .expect("Benchy fixture should expose cached world_z_extent");
 
-    let mut source = HashMap::new();
     let object_height_key = format!("object_height:{}", object.id);
-    source.insert(
+    // Reify the seeded wildcard key into the resolved config exactly as the
+    // production path would: it is not a `ResolvedConfig` typed field, so it
+    // lands in `extensions`, and binding's `object_height:*` wildcard
+    // expansion must still surface it for the real planner.
+    let source = resolved_from(HashMap::from([(
         object_height_key.clone(),
         ConfigValue::Float((z_max - z_min) as f64),
-    );
+    )]));
 
     let out = crate::common::wasm_cache::cached_live_modules(&[core_modules], 1);
     let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
@@ -815,6 +844,11 @@ fn main_production_entry_path_loads_real_modules_and_calls_live_helpers() {
     // must read the CLI's --config via `parse_cli_config_source`. If any of
     // these vanish, real module bindings no longer flow through
     // `bind_module_config_view` on the production entry path.
+    //
+    // Since Step 4a, `build_live_execution_plan` binds every view from the
+    // fully resolved `ResolvedConfig`, so the guard also pins that run.rs
+    // hands `&default_resolved_config` at that parameter — a raw source map
+    // there would regress the resolved-binding contract.
     let run_src =
         std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/run.rs")).unwrap();
     assert!(
@@ -826,13 +860,16 @@ fn main_production_entry_path_loads_real_modules_and_calls_live_helpers() {
         "run.rs must build the plan via build_live_execution_plan"
     );
     assert!(
-        run_src.contains("parse_cli_config_source"),
-        "run.rs must parse --config through parse_cli_config_source"
+        run_src.contains(
+            "build_live_execution_plan(\n        loaded.sorted_stages,\n        loaded.bindings,\n        &default_resolved_config,"
+        ),
+        "run.rs must hand the resolved config (&default_resolved_config) to \
+         build_live_execution_plan — a raw source map at that parameter \
+         would regress the resolved-binding contract"
     );
     assert!(
-        !run_src
-            .contains("Vec::new(),\n                Vec::new(),\n                &config_source"),
-        "run.rs must no longer pass empty bindings into build_live_execution_plan"
+        run_src.contains("parse_cli_config_source"),
+        "run.rs must parse --config through parse_cli_config_source"
     );
 }
 

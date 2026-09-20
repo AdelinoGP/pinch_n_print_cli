@@ -997,6 +997,13 @@ dispatched Layer-tier modules. The frozen-at-load `module.config_view`
 is retained only for prepass and finalization stages where there is no
 region-level overlay.
 
+The resolved-config-view packet strengthens both legs: the frozen-at-load
+view is bound by `bind_module_config_view` from the fully resolved config, so
+every declared key with a registry default or an authored value is present and
+the load-time view is registry-complete; and the per-region overlay rides on
+the same resolved base, so a region view also contains every declared key —
+authored or seeded default — with the region's overlay applied on top.
+
 ### PrePass Config-View Plumbing (Normative — Packet 73)
 
 Every module-implementable PrePass export (`mesh-analysis`, `layer-planning`,
@@ -1004,8 +1011,14 @@ Every module-implementable PrePass export (`mesh-analysis`, `layer-planning`,
 parameter providing read-only access to declared config keys, normalised
 across stages by Packet 73 (the `support-geometry` runner was the final
 holdout). Modules declaring no `[config.schema]` receive an empty
-`ConfigView`. Config keys are looked up by string name; absent keys
-return `None`. The `support-geometry` runner specifically:
+`ConfigView`. Config keys are looked up by string name; with the
+resolved-config-view packet, resolution seeds every declared key that has a
+registry default, so a declared key is absent from a view only when neither a
+registry default nor an authored value exists (undeclared-absent /
+declared-present): an undeclared key is never visible, and a declared key
+carries its registry default or an authored value. Reads of a declared key
+that is genuinely absent still return `None` (or `Err` from the
+`require_*` accessors). The `support-geometry` runner specifically:
 
 - Now honours `enable_support` (false → planner is invoked but emits
   no plan; was previously discarded by an empty `ConfigView` injection).

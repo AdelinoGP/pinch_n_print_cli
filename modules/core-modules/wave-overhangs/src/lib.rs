@@ -371,9 +371,12 @@ impl LayerModule for WaveOverhangs {
         let pattern =
             WavePattern::from_str_or_default(cfg_str(config, "wave_overhang_pattern", "smart"));
         let nozzle_diameter = cfg_float(config, "nozzle_diameter", 0.4);
-        let bridge_line_width = config
-            .get_abs_value("bridge_line_width", nozzle_diameter as f64)
-            .unwrap_or(0.0) as f32;
+        // Packet 06 (AC-3): `bridge_line_width` is declared
+        // `float_or_percent` with `base_key = "nozzle_diameter"` in the
+        // manifest, so a bound view always holds it; a missing value is a
+        // contract violation, not a fallback.
+        let bridge_line_width =
+            config.require_abs_value("bridge_line_width", nozzle_diameter as f64)? as f32;
 
         Ok(Self {
             pattern,

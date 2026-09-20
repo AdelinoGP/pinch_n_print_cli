@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use slicer_config::resolution::{query_z_grid, resolve_scope_stack};
 use slicer_config::{ExpansionContext, ResolutionTarget};
-use slicer_ir::{ConfigKey, ConfigValue, RegionKey, RegionPlan};
+use slicer_ir::{ConfigKey, ConfigValue, RegionKey, RegionPlan, ResolvedConfig};
 use slicer_model_io::load_model;
 use slicer_runtime::pipeline::{
     run_pipeline_with_raw_config, PipelineConfig, PipelineError, PipelineStageRunners,
@@ -26,6 +26,7 @@ use slicer_runtime::{
     LoadDiagnostic, NoopLayerProgressSink,
 };
 use slicer_scheduler::config_resolution::ingest_resolution_config;
+use slicer_sdk::traits::LayerPlanningObject;
 use slicer_wasm_host::WasmRuntimeDispatcher;
 
 use crate::common::wasm_cache;
@@ -290,14 +291,35 @@ fn try_slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> Result<String, Pi
         }
     }
 
+    // 5c. Positional layer-planning records for the prepass dispatcher, mirroring
+    //     production `layer_planning_objects` (crates/slicer-runtime/src/run.rs):
+    //     `PrePass::LayerPlanning` dispatch validates one positional config per
+    //     mesh object (`validate_layer_planning_object_configs`); a dispatcher
+    //     built without them fails dispatch with a count mismatch.
+    let layer_planning_objects = object_layer_configs
+        .iter()
+        // exhaustive: the harness must forward every typed layer-planning field.
+        .map(|object| LayerPlanningObject {
+            object_id: object.object_id.clone(),
+            object_height: object.object_height,
+            layer_height: object.layer_height,
+            first_layer_height: object.first_layer_height,
+            support_raft_layers: object.support_raft_layers,
+        })
+        .collect();
+
     // 6. Build the execution plan using the binding_source (real defaults for module ConfigViews).
+    //    `binding_source` is reified to a `ResolvedConfig` first: the binding entry point now
+    //    takes the fully resolved config (Step 4a) and reads the merged `to_config_map`
+    //    (`resolved_from` routes the machine-gcode keys and per-object keys through
+    //    `extensions`, so the real template strings survive reification).
     //    Bindings/sorted_stages are cloned from the cached Arc<LiveModuleLoadOutput>
     //    (LiveModuleBinding is Clone; the inner instance_pool/wasm_component are Arc-backed).
     let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
     let plan = build_live_execution_plan(
         loaded.sorted_stages.clone(),
         loaded.bindings.clone(),
-        &binding_source,
+        &resolved_from(binding_source),
         Arc::new(Vec::<slicer_ir::GlobalLayer>::new()),
         Arc::new(HashMap::<RegionKey, RegionPlan>::new()),
         &mut diagnostics,
@@ -331,7 +353,10 @@ fn try_slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> Result<String, Pi
             plan,
             // exhaustive: PipelineStageRunners explicit boundary fixture for this integration test
             PipelineStageRunners {
-                prepass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
+                prepass: Box::new(
+                    WasmRuntimeDispatcher::new(Arc::clone(&engine))
+                        .with_layer_planning_objects(layer_planning_objects),
+                ),
                 layer: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
                 finalization: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
                 postpass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
@@ -355,6 +380,28 @@ fn try_slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> Result<String, Pi
 
 fn slice_default() -> String {
     slice_with_raw(HashMap::new())
+}
+
+/// Reify a raw source map into the `ResolvedConfig` a production run hands
+/// to `build_live_execution_plan` (packet config-scope-resolution Step 4a):
+/// `apply_cli_key` takes typed fields, and undeclared keys — here the
+/// machine-gcode-emit schema keys, `object_height:<id>` / `layer_height:<id>`
+/// per-object keys, and any module-contributed keys — route to `extensions`
+/// exactly as the host resolver routes the `Ok(false)` fall-through
+/// (crates/slicer-config/src/resolution.rs). Binding then reads the merged
+/// `to_config_map`, so the real template strings in `binding_source` still
+/// reach the module ConfigViews.
+fn resolved_from(source: HashMap<ConfigKey, ConfigValue>) -> ResolvedConfig {
+    let mut resolved = ResolvedConfig::default();
+    for (key, value) in source {
+        if !resolved
+            .apply_cli_key(&key, &value)
+            .expect("test config key must type-check against ResolvedConfig")
+        {
+            resolved.extensions.insert(key, value);
+        }
+    }
+    resolved
 }
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

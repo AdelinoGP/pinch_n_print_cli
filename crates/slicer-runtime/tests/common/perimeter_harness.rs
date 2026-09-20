@@ -233,15 +233,10 @@ pub fn run_pipeline_capturing_perimeters(
             )
         })
         .collect();
-    // Mirror production's expanded-global plan source. Per-object layer-planning
-    // values bypass ConfigView and travel as typed records on the prepass runner.
-    let mut plan_source = config_source.clone();
-    let unexpanded_defaults = slicer_ir::ResolvedConfig::default().to_config_map();
-    for (key, value) in default_resolved_config.to_config_map() {
-        if unexpanded_defaults.get(&key) != Some(&value) {
-            plan_source.entry(key).or_insert(value);
-        }
-    }
+    // The global resolved config is the single plan source, mirroring
+    // production (`run.rs` passes `&default_resolved_config` to
+    // `build_live_execution_plan`). Per-object layer-planning values bypass
+    // ConfigView and travel as typed records on the prepass runner.
     let object_heights: BTreeMap<String, f64> = mesh
         .objects
         .iter()
@@ -272,7 +267,7 @@ pub fn run_pipeline_capturing_perimeters(
     let plan = build_live_execution_plan(
         loaded.sorted_stages,
         loaded.bindings,
-        &plan_source,
+        &default_resolved_config,
         Arc::new(Vec::new()),
         Arc::new(HashMap::new()),
         &mut loaded.diagnostics,

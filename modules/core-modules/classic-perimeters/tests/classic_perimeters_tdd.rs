@@ -16,9 +16,50 @@ fn make_square(side_mm: f32) -> ExPolygon {
     square_polygon(0.0, 0.0, side_mm)
 }
 
+/// Baseline builder for `run_perimeters` fixtures (packet 06 5c-prime,
+/// design.md item 11): holds every key the module's classified reads touch on
+/// the tested path — the 27 require_* keys — at the guest's manifest-default
+/// values (classic-perimeters.toml [config.schema]). The wall-width keys hold
+/// the auto sentinel 0 and resolve through the fixture's `line_width` (the
+/// already-expanded base width), matching the pre-migration fallback behavior
+/// exactly. Tests that exercise a specific key add it after this baseline so
+/// their explicit value wins.
+fn baseline_config() -> ConfigViewBuilder {
+    ConfigViewBuilder::new()
+        .float("nozzle_diameter", 0.4)
+        .float("layer_height", 0.2)
+        .float("bridge_line_width", 0.0)
+        .float("initial_layer_line_width", 0.0)
+        .float("outer_wall_line_width", 0.0)
+        .float("inner_wall_line_width", 0.0)
+        .float("seam_candidate_angle_threshold_deg", 30.0)
+        .float("gap_infill_speed", 30.0)
+        .float("filter_out_gap_fill", 0.5)
+        .float("sparse_infill_density", 20.0)
+        .float("bridge_flow", 1.0)
+        .float("smaller_perimeter_line_width", 0.25)
+        .float("smaller_perimeter_threshold_mm", 0.8)
+        .float("narrow_loop_length_threshold_mm", 10.0)
+        .float("min_width_top_surface", 0.0)
+        .float_or_percent("infill_wall_overlap", 15.0, true)
+        .float_or_percent("top_bottom_infill_wall_overlap", 25.0, true)
+        .bool("detect_thin_wall", true)
+        .bool("gap_fill_medial_axis_on_painted", false)
+        .bool("slice_has_paint", false)
+        .bool("precise_outer_wall", false)
+        .bool("alternate_extra_wall", false)
+        .bool("spiral_vase", false)
+        .bool("extra_perimeters_on_overhangs", false)
+        .bool("only_one_wall_top", false)
+        .bool("only_one_wall_first_layer", false)
+        .bool("thick_bridges", false)
+        .int("extra_perimeters", 0)
+        .int("support_raft_layers", 0)
+}
+
 /// Create a config with specified wall_count and line_width.
 fn make_config(wall_count: u32, line_width: f64) -> ConfigView {
-    ConfigViewBuilder::new()
+    baseline_config()
         .int("wall_count", wall_count as i64)
         .float("line_width", line_width)
         .build()
@@ -31,7 +72,7 @@ fn make_speed_config(
     outer_speed: f64,
     inner_speed: f64,
 ) -> ConfigView {
-    ConfigViewBuilder::new()
+    baseline_config()
         .int("wall_count", wall_count as i64)
         .float("line_width", line_width)
         .float("outer_wall_speed", outer_speed)
@@ -117,12 +158,18 @@ fn single_square_two_walls() {
 fn infill_boundary_inset_uses_flow_spacing_not_raw_width() {
     let line_width = 0.8_f32;
     let layer_height = 0.2_f32;
-    let config = ConfigViewBuilder::new()
+    let config = baseline_config()
         .int("wall_count", 1)
         .float("line_width", line_width as f64)
         .float("outer_wall_line_width", line_width as f64)
         .float("inner_wall_line_width", line_width as f64)
         .float("layer_height", layer_height as f64)
+        // This test asserts the infill boundary inset is exactly
+        // spacing-derived; hold the overlap keys at 0.0 (the value the
+        // pre-migration missing-key fallback produced) rather than the
+        // manifest 15%/25% percent defaults.
+        .float("infill_wall_overlap", 0.0)
+        .float("top_bottom_infill_wall_overlap", 0.0)
         .build();
     let module = ClassicPerimeters::from_config(&config).unwrap();
     let regions = vec![make_region(10.0, 0.2)];
@@ -299,7 +346,7 @@ fn wall_count_zero() {
 /// manifest but read nowhere, so every layer emitted the base count.
 #[test]
 fn alternate_extra_wall_adds_one_wall_on_odd_layers() {
-    let config = ConfigViewBuilder::new()
+    let config = baseline_config()
         .int("wall_count", 2)
         .float("line_width", 0.4)
         .bool("alternate_extra_wall", true)
@@ -335,7 +382,7 @@ fn alternate_extra_wall_adds_one_wall_on_odd_layers() {
 #[test]
 fn alternate_extra_wall_suppressed_by_spiral_vase_and_zero_density() {
     let base = |spiral: bool, density: f64| {
-        ConfigViewBuilder::new()
+        baseline_config()
             .int("wall_count", 2)
             .float("line_width", 0.4)
             .bool("alternate_extra_wall", true)
@@ -431,7 +478,7 @@ fn speed_factor_from_config() {
 }
 
 fn make_overlap_config(infill_overlap: f64, top_bottom_overlap: f64) -> ConfigView {
-    ConfigViewBuilder::new()
+    baseline_config()
         .int("wall_count", 1)
         .float("line_width", 0.4)
         .float("outer_wall_line_width", 0.4)
@@ -515,7 +562,7 @@ fn overlap_uses_top_bottom_key_for_topmost_top_shell() {
 
 #[test]
 fn only_one_wall_top_topmost_is_unconditional() {
-    let config = ConfigViewBuilder::new()
+    let config = baseline_config()
         .int("wall_count", 2)
         .float("line_width", 0.4)
         .float("outer_wall_line_width", 0.4)
@@ -543,7 +590,7 @@ fn only_one_wall_top_topmost_is_unconditional() {
 #[test]
 fn only_one_wall_top_non_topmost_uses_min_width_top_surface() {
     let make_config_with_threshold = |threshold| {
-        ConfigViewBuilder::new()
+        baseline_config()
             .int("wall_count", 2)
             .float("line_width", 0.4)
             .float("outer_wall_line_width", 0.4)

@@ -117,9 +117,18 @@ fn contour_stub_lengths(path: &ExtrusionPath3D, input_endpoints: &[(f32, f32)]) 
 }
 
 fn config(line_width: f64, density: f64) -> ConfigView {
+    // Packet 06 (AC-3): `infill_density`, `layer_height`, and
+    // `infill_anchor_max` are required reads once a region config is present,
+    // so every fixture view holds them at manifest-default values
+    // (infill-linker.toml [config.schema]): layer_height 0.2 mm,
+    // infill_anchor_max 20.0 mm absolute. `infill_overlap` and `line_width`
+    // are the keys read on the module-config path, also at defaults.
     ConfigViewBuilder::new()
         .float("line_width", line_width)
         .float("infill_density", density)
+        .float("layer_height", 0.2)
+        .float("infill_overlap", 0.45)
+        .float_or_percent("infill_anchor_max", 20.0, false)
         .build()
 }
 
@@ -132,6 +141,8 @@ fn config_with_anchor(
     ConfigViewBuilder::new()
         .float("line_width", line_width)
         .float("infill_density", density)
+        .float("layer_height", 0.2)
+        .float("infill_overlap", 0.45)
         .float("infill_anchor", anchor_length)
         .float("infill_anchor_max", anchor_max)
         .build()

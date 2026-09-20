@@ -14,6 +14,12 @@ use traditional_support::TraditionalSupport;
 fn config(angle: f64, line_width: f64) -> ConfigView {
     ConfigViewBuilder::new()
         .bool("enable_support", true)
+        // Packet 06: required reads (`nozzle_diameter`,
+        // `support_base_pattern_spacing` in `from_config`; `layer_height` in
+        // `run_support` when the region carries no effective layer height) at
+        // their manifest defaults.
+        .float("nozzle_diameter", 0.4)
+        .float("layer_height", 0.2)
         .float("support_base_pattern_spacing", 1.6429)
         .float("support_angle", angle)
         .float("support_speed", 50.0)

@@ -85,9 +85,10 @@ fn resolver_maps_top_shell_layers() {
     );
 }
 
-/// AC-2: An unknown key is routed to extensions; a known key is still applied.
+/// AC-2: An unknown key is dropped (warn-then-drop) and routes nowhere; a
+/// known key is still applied.
 #[test]
-fn resolver_unknown_key_routes_to_extensions() {
+fn resolver_unknown_key_routes_nowhere() {
     let mut source: HashMap<String, ConfigValue> = HashMap::new();
     source.insert("top_shell_layers".to_string(), ConfigValue::Int(2));
     source.insert(
@@ -100,10 +101,9 @@ fn resolver_unknown_key_routes_to_extensions() {
         resolve(&source, &bounds, &ResolutionTarget::default()).expect("resolution should succeed");
 
     assert_eq!(resolved.top_shell_layers, 2);
-    assert_eq!(
-        resolved.extensions.get("experimental_xyz"),
-        Some(&ConfigValue::String("on".to_string())),
-        "unknown key should land in extensions"
+    assert!(
+        !resolved.extensions.contains_key("experimental_xyz"),
+        "an undeclared key must be dropped, not routed to extensions"
     );
 }
 

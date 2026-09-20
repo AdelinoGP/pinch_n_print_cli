@@ -159,7 +159,7 @@ fn real_registry() -> slicer_config::ConfigSchemaRegistry {
         }
     }
 
-    let modules = manifests
+    let mut modules = manifests
         .into_iter()
         .map(|manifest| ModuleDeclaration {
             module_id: manifest.module_id,
@@ -182,6 +182,35 @@ fn real_registry() -> slicer_config::ConfigSchemaRegistry {
             claim_exclusive_group: None,
         })
         .collect::<Vec<_>>();
+
+    // The flat-wire scope fixture (`flat_wire_keys_decode_once_into_typed_scopes`)
+    // authors Object/Modifier/PaintSemantic wire keys whose sub-keys
+    // (`wall_loops`, `fuzzy_skin_point_dist`) no real core-module manifest
+    // declares. Register them on a synthetic fixture module so warn-then-drop
+    // ingestion retains them and the scoped deltas materialize; the test's
+    // assertions are scope-shape assertions, not output blessings.
+    modules.push(ModuleDeclaration {
+        module_id: "scope-fixture".to_owned(),
+        schema: ConfigSchema {
+            entries: BTreeMap::from([
+                (
+                    "wall_loops".to_owned(),
+                    ConfigFieldEntry {
+                        field_type: "int".to_owned(),
+                        ..Default::default()
+                    },
+                ),
+                (
+                    "fuzzy_skin_point_dist".to_owned(),
+                    ConfigFieldEntry {
+                        field_type: "float".to_owned(),
+                        ..Default::default()
+                    },
+                ),
+            ]),
+        },
+        claim_exclusive_group: None,
+    });
 
     assemble_registry(&modules, &HostChannels::from_live())
         .unwrap_or_else(|error| panic!("real manifest registry failed to assemble: {error:?}"))
@@ -339,7 +368,7 @@ fn registry_types_the_five_authored_value_oracle_divergences() {
 }
 
 #[test]
-fn unknown_key_warns_with_near_miss_and_is_retained() {
+fn unknown_key_warns_with_near_miss_and_is_dropped() {
     let registry = real_registry();
     let authored = HashMap::from([(
         "skrit_loops".to_owned(),
@@ -352,13 +381,13 @@ fn unknown_key_warns_with_near_miss_and_is_retained() {
         .expect("unknown keys remain ingestible");
     let outcome = ingestor.finish();
 
-    assert_eq!(
-        outcome
-            .scoped
-            .global()
-            .and_then(|delta| delta.values.get("skrit_loops")),
-        Some(&ConfigValue::String("1".to_owned()))
-    );
+    // Warn-then-drop: the near-miss key appears in no scope delta.
+    for (scope, delta) in outcome.scoped.iter() {
+        assert!(
+            !delta.values.contains_key("skrit_loops"),
+            "scope {scope:?} must not carry the dropped key"
+        );
+    }
     assert_eq!(
         outcome.warnings,
         vec![IngestionWarning::UnrecognizedKey {

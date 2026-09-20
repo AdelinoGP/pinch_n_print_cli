@@ -104,6 +104,12 @@ pub struct RegistryEntry {
     pub denied_scopes: Vec<String>,
     /// Whether the key is usable during claim selection.
     pub selector: bool,
+    /// Whether the key is omitted from the resolved config block.
+    ///
+    /// Reconciled any-true-wins: a key is omitted if any host row or declaring
+    /// module marks it `config_block = false`. The polarity is deliberate — a
+    /// derived `Default` means "emitted".
+    pub omit_from_config_block: bool,
     /// Key supplying the absolute base for relative values.
     pub base_key: Option<String>,
     /// Metadata supplied by the selected host declaration, if any.
@@ -352,6 +358,43 @@ impl ConfigSchemaRegistry {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+
+    /// Project an effective resolved config into the resolved config block.
+    ///
+    /// A key of `resolved.to_config_map()` is emitted when either:
+    ///
+    /// - it is a registry entry without `omit_from_config_block`; or
+    /// - it is a [`ResolvedConfig::typed_field_keys`] key with no registry
+    ///   entry (today `infill_type`) — typed fields keep emitting because a
+    ///   `plain` row binds to no config key and so has no registry entry.
+    ///
+    /// Retained unknown `extensions` keys are never emitted. The returned map
+    /// is a `BTreeMap`, so emission order is deterministic and never depends on
+    /// hash iteration.
+    #[must_use]
+    pub fn config_block_map(&self, resolved: &ResolvedConfig) -> BTreeMap<String, ConfigValue> {
+        let effective = resolved.to_config_map();
+        let mut block = BTreeMap::new();
+
+        for (key, entry) in &self.entries {
+            if entry.omit_from_config_block {
+                continue;
+            }
+            if let Some(value) = effective.get(key) {
+                block.insert(key.clone(), value.clone());
+            }
+        }
+        for key in ResolvedConfig::typed_field_keys() {
+            if self.entries.contains_key(*key) {
+                continue;
+            }
+            if let Some(value) = effective.get(*key) {
+                block.insert((*key).to_owned(), value.clone());
+            }
+        }
+
+        block
     }
 }
 
@@ -647,6 +690,7 @@ struct Declaration {
     values: Option<Vec<String>>,
     denied_scopes: Vec<String>,
     selector: bool,
+    omit_from_config_block: bool,
     base_key: Option<String>,
     host_meta: Option<HostKeyMeta>,
     module_meta: Option<ModuleKeyMeta>,
@@ -678,6 +722,7 @@ fn host_declaration(row: &HostConfigKey, provenance: &str) -> Declaration {
         values,
         denied_scopes: Vec::new(),
         selector: false,
+        omit_from_config_block: row.meta.omit_from_config_block,
         base_key: None,
         host_meta: Some(row.meta),
         module_meta: None,
@@ -704,7 +749,7 @@ fn runtime_declaration(row: &HostRuntimeKey) -> Declaration {
         module_id: None,
         claim_exclusive_group: None,
         field_type: field_type.to_owned(),
-        default: Some(row.default.to_owned()),
+        default: row.default.map(|value| value.to_owned()),
         min: row.meta.min,
         max: row.meta.max,
         values,
@@ -714,6 +759,7 @@ fn runtime_declaration(row: &HostRuntimeKey) -> Declaration {
             .map(|scope| (*scope).to_owned())
             .collect(),
         selector: row.selector,
+        omit_from_config_block: row.meta.omit_from_config_block,
         base_key: None,
         host_meta: Some(row.meta),
         module_meta: None,
@@ -733,6 +779,7 @@ fn module_declaration(module: &ModuleDeclaration, field: &ConfigFieldEntry) -> D
         values: field.values.clone(),
         denied_scopes: field.denied_scopes.clone(),
         selector: field.selector,
+        omit_from_config_block: field.omit_from_config_block,
         base_key: field.base_key.clone(),
         host_meta: None,
         module_meta: Some(ModuleKeyMeta::from_field(field)),
@@ -1086,6 +1133,9 @@ pub fn assemble_registry(
                 selector: key_declarations
                     .iter()
                     .any(|declaration| declaration.selector),
+                omit_from_config_block: key_declarations
+                    .iter()
+                    .any(|declaration| declaration.omit_from_config_block),
                 base_key: selected_base_key(&key_declarations, &module_declarations),
                 host_meta,
                 module_meta,

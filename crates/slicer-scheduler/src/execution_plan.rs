@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use slicer_ir::{
     ActiveRegion, AnchoredEntity, CapabilityDerivedEventClosure, ConfigKey, ConfigValue,
-    ConfigView, GlobalLayer, ModuleId, RegionKey, RegionPlan, StageId,
+    ConfigView, GlobalLayer, ModuleId, RegionKey, RegionPlan, ResolvedConfig, StageId,
 };
 
 use crate::manifest::DiagnosticLevel;
@@ -50,10 +50,12 @@ pub const STAGE_ORDER: &[&str] = &[
 /// Build the `Arc<ConfigView>` bound for one `LoadedModule` on the live
 /// host/runtime path.
 ///
-/// Pre-filters `source` to the module's declared `config_schema.entries`
-/// keys (the canonical declared-read set per docs/03 §host-boundary
-/// enforcement and docs/02 §pre-filtered config), then freezes the result
-/// behind an `Arc` so downstream consumers cannot mutate the view they see.
+/// The per-module view is pre-filtered from the fully resolved config
+/// (`ResolvedConfig::to_config_map`) to the module's declared
+/// `config_schema.entries` keys (the canonical declared-read set per
+/// docs/03 §host-boundary enforcement and docs/02 §pre-filtered config),
+/// then frozen behind an `Arc` so downstream consumers cannot mutate the
+/// view they see.
 ///
 /// This is the ONLY supported construction path for live-runtime config
 /// views; test fixtures may still use `ConfigView::from_map`, but
@@ -62,8 +64,13 @@ pub const STAGE_ORDER: &[&str] = &[
 #[must_use]
 pub fn bind_module_config_view(
     module: &LoadedModule,
-    source: &HashMap<ConfigKey, ConfigValue>,
+    resolved: &ResolvedConfig,
 ) -> Arc<ConfigView> {
+    // The resolved config is the single source of truth for every module
+    // view: raw source keys that do not surface in `ResolvedConfig`
+    // (declared fields, `to_config_map`'s per-field rendering, and the
+    // `extensions` bucket) are invisible to modules by construction.
+    let source = resolved.to_config_map();
     // Support `prefix:*` wildcard entries in the module's declared
     // config schema so per-object keys (e.g. `object_height:<uuid>`)
     // can be consumed by planners that only know a static schema.
@@ -86,7 +93,10 @@ pub fn bind_module_config_view(
     // Support-family dispatch is a host-level selection shared by the
     // planner and renderers. Its keys are not module-specific tuning knobs,
     // so expose them to paired support modules even when their manifests do
-    // not repeat the common declaration.
+    // not repeat the common declaration. Both keys are read from the
+    // resolved map: `support_type` is a declared `ResolvedConfig` field
+    // (canonical spelling via `to_config_map`), and `support_family`
+    // surfaces through `extensions` when the raw config carries it.
     if module
         .claims()
         .iter()
@@ -99,7 +109,7 @@ pub fn bind_module_config_view(
         }
     }
     Arc::new(ConfigView::from_declared(
-        source,
+        &source,
         effective.iter().map(String::as_str),
     ))
 }
@@ -1753,8 +1763,10 @@ mod dedup_tests {
         // `layer-planner-default.toml` declares `"object_height:*"`, and
         // the bound ConfigView must preserve every matching source key
         // that was explicitly provided to the host/runtime plan builder.
-        use slicer_ir::ConfigValue;
-        use std::collections::HashMap;
+        // After packet 6a the binding reads the fully resolved config, so
+        // the per-object keys must ride through `extensions` (they are not
+        // declared `ResolvedConfig` fields) into `to_config_map`.
+        use slicer_ir::{ConfigValue, ResolvedConfig};
 
         let mut module = loaded("planner", "PrePass::LayerPlanning", &[]);
         module.config_schema.entries.insert(
@@ -1772,13 +1784,21 @@ mod dedup_tests {
             },
         );
 
-        let mut source: HashMap<String, ConfigValue> = HashMap::new();
-        source.insert("object_height:abc".into(), ConfigValue::Float(48.0));
-        source.insert("object_height:xyz".into(), ConfigValue::Float(12.5));
-        source.insert("layer_height".into(), ConfigValue::Float(0.2));
-        source.insert("unrelated_key".into(), ConfigValue::Float(1.0));
+        let mut resolved = ResolvedConfig::default();
+        resolved
+            .extensions
+            .insert("object_height:abc".into(), ConfigValue::Float(48.0));
+        resolved
+            .extensions
+            .insert("object_height:xyz".into(), ConfigValue::Float(12.5));
+        resolved
+            .extensions
+            .insert("layer_height".into(), ConfigValue::Float(0.2));
+        resolved
+            .extensions
+            .insert("unrelated_key".into(), ConfigValue::Float(1.0));
 
-        let view = super::bind_module_config_view(&module, &source);
+        let view = super::bind_module_config_view(&module, &resolved);
         let mut keys: Vec<String> = view.keys().to_vec();
         keys.sort();
         assert_eq!(

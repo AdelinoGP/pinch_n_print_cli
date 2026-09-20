@@ -145,6 +145,12 @@ fn wall_square_with_distances(
 
 fn base_overhang_config() -> ConfigViewBuilder {
     ConfigViewBuilder::new()
+        // Packet-06 required reads: the resolved view always holds every
+        // declared key, so fixtures hold the manifest defaults explicitly.
+        // (`outer_wall_line_width` = 0 is the auto sentinel, which falls
+        // back to `line_width` — matching the pre-required-read behavior.)
+        .bool("enable_overhang_speed", true)
+        .float("outer_wall_line_width", 0.0)
         .float("outer_wall_speed", 60.0)
         .float("inner_wall_speed", 60.0)
         .float("thin_wall_speed", 60.0)
@@ -157,7 +163,9 @@ fn base_overhang_config() -> ConfigViewBuilder {
 }
 
 /// Config with non-zero overhang speeds and the canonical bridge branch.
-/// `enable_overhang_speed` is intentionally absent so its default is tested.
+/// `enable_overhang_speed` is held at its manifest default (`true`):
+/// packet-06 required reads make absence a contract violation, not a
+/// silent default.
 fn overhang_config() -> ConfigView {
     base_overhang_config()
         .bool("slowdown_for_curled_perimeters", false)
@@ -428,6 +436,7 @@ fn all_zero_config_emits_no_mutations() {
         .float("overhang_2_4_speed", 0.0)
         .float("overhang_3_4_speed", 0.0)
         .float("overhang_4_4_speed", 0.0)
+        .bool("enable_overhang_speed", true)
         .build();
     let entity = wall_square_with_quartile_and_distance(1, 0.2, 1, Some(2), Some(0.25));
     let views = two_layer_views(entity);
@@ -443,7 +452,8 @@ fn all_zero_config_emits_no_mutations() {
 #[module_test]
 fn calculate_speed_matches_canonical_interpolation_and_clamps() {
     let cfg = overhang_config();
-    let sections = overhang_classifier_default::build_speed_sections(60.0, PATH_WIDTH, &cfg);
+    let sections =
+        overhang_classifier_default::build_speed_sections(60.0, PATH_WIDTH, &cfg).unwrap();
 
     assert_eq!(sections.len(), 6);
     assert!((sections[0].0 - 0.04).abs() < 1e-6);
@@ -491,7 +501,8 @@ fn calculate_speed_matches_canonical_interpolation_and_clamps() {
 #[module_test]
 fn sixth_speed_section_follows_slowdown_for_curled_perimeters() {
     let false_sections =
-        overhang_classifier_default::build_speed_sections(60.0, PATH_WIDTH, &overhang_config());
+        overhang_classifier_default::build_speed_sections(60.0, PATH_WIDTH, &overhang_config())
+            .unwrap();
     assert_eq!(false_sections.last().unwrap().1, 25.0);
 
     let true_cfg = base_overhang_config()
@@ -499,7 +510,7 @@ fn sixth_speed_section_follows_slowdown_for_curled_perimeters() {
         .bool("slowdown_for_curled_perimeters", true)
         .build();
     let true_sections =
-        overhang_classifier_default::build_speed_sections(60.0, PATH_WIDTH, &true_cfg);
+        overhang_classifier_default::build_speed_sections(60.0, PATH_WIDTH, &true_cfg).unwrap();
     assert_eq!(true_sections.last().unwrap().1, 45.0);
 
     let guarded_cfg = base_overhang_config()
@@ -507,7 +518,7 @@ fn sixth_speed_section_follows_slowdown_for_curled_perimeters() {
         .bool("slowdown_for_curled_perimeters", true)
         .build();
     let guarded_sections =
-        overhang_classifier_default::build_speed_sections(60.0, PATH_WIDTH, &guarded_cfg);
+        overhang_classifier_default::build_speed_sections(60.0, PATH_WIDTH, &guarded_cfg).unwrap();
     assert_eq!(guarded_sections.last().unwrap().1, 60.0);
 }
 
@@ -517,9 +528,9 @@ fn section_speeds_resolve_against_ref_speed_not_original_speed() {
     let original_speed: f32 = 40.0;
     let changed_original_speed: f32 = 100.0;
     let sections_for_original_speed =
-        overhang_classifier_default::build_speed_sections(60.0, PATH_WIDTH, &cfg);
+        overhang_classifier_default::build_speed_sections(60.0, PATH_WIDTH, &cfg).unwrap();
     let sections_for_changed_original_speed =
-        overhang_classifier_default::build_speed_sections(60.0, PATH_WIDTH, &cfg);
+        overhang_classifier_default::build_speed_sections(60.0, PATH_WIDTH, &cfg).unwrap();
 
     assert_eq!(sections_for_original_speed[0].1, 60.0);
     assert_eq!(sections_for_original_speed[5].1, 25.0);
@@ -545,7 +556,7 @@ fn section_speeds_resolve_against_ref_speed_not_original_speed() {
 #[module_test]
 fn speed_sections_flatten_ties_without_removing_entries() {
     let cfg = overhang_config();
-    let sections = overhang_classifier_default::build_speed_sections(60.0, 0.0, &cfg);
+    let sections = overhang_classifier_default::build_speed_sections(60.0, 0.0, &cfg).unwrap();
 
     assert_eq!(
         sections.len(),
@@ -619,7 +630,7 @@ fn interpolated_factor_is_not_a_quartile_value() {
 }
 
 #[module_test]
-fn enable_overhang_speed_false_disables_all_mutations_and_absent_defaults_true() {
+fn enable_overhang_speed_false_disables_all_mutations_and_default_true_emits_them() {
     let disabled_cfg = base_overhang_config()
         .bool("slowdown_for_curled_perimeters", false)
         .bool("enable_overhang_speed", false)
@@ -915,6 +926,8 @@ fn none_distance_takes_the_no_insertion_path() {
         .float("bridge_speed", 25.0)
         .float("line_width", f64::from(PATH_WIDTH))
         .bool("slowdown_for_curled_perimeters", false)
+        .bool("enable_overhang_speed", true)
+        .float("outer_wall_line_width", 0.0)
         .build();
     let upper_points = vec![
         point_with_width(0.0, 0.0, 0.2, 0.2, Some(1), None),

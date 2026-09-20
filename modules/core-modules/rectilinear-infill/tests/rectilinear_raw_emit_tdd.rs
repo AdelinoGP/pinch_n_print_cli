@@ -106,8 +106,49 @@ fn empty_paint_view() -> slicer_sdk::traits::PaintRegionLayerView {
     slicer_sdk::traits::PaintRegionLayerView::new(0)
 }
 
-fn make_config(density: f64, angle: f64, speed: f64, line_width: f64) -> ConfigView {
+/// Baseline builder for `from_config` fixtures (packet 06 5c', item 11):
+/// holds every key the module's classified reads touch on the tested path —
+/// the ten `require_*` reads plus the remaining `from_config` reads — at the
+/// guest's manifest-default values (rectilinear-infill.toml
+/// [config.schema]). Percent-typed keys hold their resolved absolute values
+/// (`bridge_density` "100%" → 1.0 against the identity base;
+/// `internal_bridge_speed` "150%" → 37.5 against bridge_speed 25.0).
+/// `line_width` holds its post-expansion default (1.125 × nozzle_diameter):
+/// the raw manifest default 0 is the auto sentinel the host expands at Phase
+/// B (slicer-config `expand_automatic_values`), and `resolve_role_width` no
+/// longer expands — a raw 0 cancels every emission via the spacing gate.
+/// Tests that exercise a specific key add it after this baseline so their
+/// explicit value wins.
+fn baseline_config() -> ConfigViewBuilder {
     ConfigViewBuilder::new()
+        .float("infill_density", 0.2)
+        .float("infill_angle", 45.0)
+        .float("infill_speed", 60.0)
+        .float("line_width", 0.45)
+        .float("bridge_line_width", 0.0)
+        .float("initial_layer_line_width", 0.0)
+        .float("top_surface_line_width", 0.0)
+        .float("internal_solid_infill_line_width", 0.0)
+        .float("sparse_infill_line_width", 0.0)
+        .float("bridge_density", 1.0)
+        .float("bridge_speed", 25.0)
+        .float("bridge_flow", 1.0)
+        .bool("thick_bridges", false)
+        .float("internal_bridge_density", 1.0)
+        .float("internal_bridge_speed", 37.5)
+        .float("internal_bridge_flow", 1.0)
+        .bool("thick_internal_bridges", true)
+        .float("top_surface_speed", 60.0)
+        .float("internal_solid_infill_speed", 60.0)
+        .float("sparse_infill_speed", 60.0)
+        .bool("dont_filter_internal_bridges", false)
+        .bool("enable_extra_bridge_layer", false)
+        .float("internal_bridge_angle", 0.0)
+        .float("infill_shift_step", 0.0)
+}
+
+fn make_config(density: f64, angle: f64, speed: f64, line_width: f64) -> ConfigView {
+    baseline_config()
         .float("infill_density", density)
         .float("infill_angle", angle)
         .float("infill_speed", speed)
@@ -122,7 +163,7 @@ fn make_config_with_shift(
     line_width: f64,
     shift_mm: f64,
 ) -> ConfigView {
-    ConfigViewBuilder::new()
+    baseline_config()
         .float("infill_density", density)
         .float("infill_angle", angle)
         .float("infill_speed", speed)
@@ -522,7 +563,7 @@ fn solid_spacing_adjusted_for_solid_role() {
     // 10mm width, adjust_solid_spacing(10mm, 0.42mm): count=23, new
     // spacing=round(10/23)=0.4348mm. The adjusted spacing is within the
     // 1.2x cap, so the scan uses 23 evenly spaced lines.
-    let config = ConfigViewBuilder::new()
+    let config = baseline_config()
         .float("infill_density", 0.18)
         .float("infill_angle", 0.0)
         .float("infill_speed", 50.0)
@@ -609,7 +650,7 @@ fn solid_spacing_adjusted_for_solid_role() {
 /// role, rather than sparse-infill density and width.
 #[test]
 fn solid_surfaces_use_full_density_and_role_width() {
-    let config = ConfigViewBuilder::new()
+    let config = baseline_config()
         .float("infill_density", 0.2)
         .float("infill_angle", 0.0)
         .float("infill_speed", 50.0)

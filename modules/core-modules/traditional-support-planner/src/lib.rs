@@ -155,10 +155,12 @@ impl PrepassModule for SupportPlanner {
         // canonical `PrintConfig.cpp` `init_fff_params` (coBool, default
         // true). When true, `plan_candidate` derives free-floating
         // intermediate support planes; when false the plan is byte-identical
-        // to the pre-239c grid-exact behavior.
-        let independent_support_layer_height = config
-            .get_bool("independent_support_layer_height")
-            .unwrap_or(true);
+        // to the pre-239c grid-exact behavior. Required read (packet 06,
+        // AC-3): the key is declared `bool` in the manifest with a seeded
+        // `true` default, so a bound view always holds it and the previous
+        // `.unwrap_or(true)` fallback becomes a hard requirement.
+        let independent_support_layer_height =
+            config.require_bool("independent_support_layer_height")?;
         // `support_overhang_angle` is no longer read here. Contact detection
         // moved to `PrePass::SupportAnalysis`, which consumes that key from the
         // resolved config and hands this planner finished contacts.

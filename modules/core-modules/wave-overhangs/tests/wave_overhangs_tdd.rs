@@ -67,6 +67,11 @@ fn frame_mm(o0: f32, o1: f32, i0: f32, i1: f32) -> ExPolygon {
 fn wave_config(anchor_depth_mm: f32) -> slicer_ir::ConfigView {
     ConfigViewBuilder::new()
         .float("nozzle_diameter", f64::from(NOZZLE_MM))
+        // Packet 06 (AC-3): `bridge_line_width` is a `require_abs_value` read
+        // declared `float_or_percent` over `base_key = "nozzle_diameter"` in
+        // the manifest, so seed it at its manifest-default resolved value
+        // (the nozzle base, 0.4 mm).
+        .float("bridge_line_width", f64::from(NOZZLE_MM))
         .float("layer_height", f64::from(LAYER_HEIGHT_MM))
         .float("bridge_speed", f64::from(BRIDGE_SPEED))
         .float("wave_overhang_print_speed", f64::from(WAVE_SPEED))
@@ -128,6 +133,11 @@ fn run(module: &WaveOverhangs, regions: &[SliceRegionView]) -> InfillOutputBuild
 fn wave_config_auto_anchor() -> slicer_ir::ConfigView {
     ConfigViewBuilder::new()
         .float("nozzle_diameter", f64::from(NOZZLE_MM))
+        // Packet 06 (AC-3): `bridge_line_width` is a `require_abs_value` read
+        // declared `float_or_percent` over `base_key = "nozzle_diameter"` in
+        // the manifest, so seed it at its manifest-default resolved value
+        // (the nozzle base, 0.4 mm).
+        .float("bridge_line_width", f64::from(NOZZLE_MM))
         .float("layer_height", f64::from(LAYER_HEIGHT_MM))
         .float("bridge_speed", f64::from(BRIDGE_SPEED))
         .float("wave_overhang_print_speed", f64::from(WAVE_SPEED))
@@ -215,12 +225,7 @@ fn segment_enters_rect_mm(
         return point_in_rect_mm(ax, ay, x0, y0, x1, y1);
     }
     let (mut t0, mut t1) = (0.0_f32, 1.0_f32);
-    for (p, q) in [
-        (-dx, ax - x0),
-        (dx, x1 - ax),
-        (-dy, ay - y0),
-        (dy, y1 - ay),
-    ] {
+    for (p, q) in [(-dx, ax - x0), (dx, x1 - ax), (-dy, ay - y0), (dy, y1 - ay)] {
         if p == 0.0 {
             if q < 0.0 {
                 return false;
@@ -248,13 +253,7 @@ fn segment_enters_rect_mm(
 }
 
 /// Does any segment of `path` enter the open rectangle?
-fn path_enters_rect_mm(
-    path: &ExtrusionPath3D,
-    x0: f32,
-    y0: f32,
-    x1: f32,
-    y1: f32,
-) -> bool {
+fn path_enters_rect_mm(path: &ExtrusionPath3D, x0: f32, y0: f32, x1: f32, y1: f32) -> bool {
     path.points
         .windows(2)
         .any(|w| segment_enters_rect_mm(w[0].x, w[0].y, w[1].x, w[1].y, x0, y0, x1, y1))
@@ -269,6 +268,11 @@ fn path_enters_rect_mm(
 fn speed_config(wave_speed: f32) -> slicer_ir::ConfigView {
     ConfigViewBuilder::new()
         .float("nozzle_diameter", f64::from(NOZZLE_MM))
+        // Packet 06 (AC-3): `bridge_line_width` is a `require_abs_value` read
+        // declared `float_or_percent` over `base_key = "nozzle_diameter"` in
+        // the manifest, so seed it at its manifest-default resolved value
+        // (the nozzle base, 0.4 mm).
+        .float("bridge_line_width", f64::from(NOZZLE_MM))
         .float("layer_height", f64::from(LAYER_HEIGHT_MM))
         .float("bridge_speed", f64::from(BRIDGE_SPEED))
         .float("wave_overhang_print_speed", f64::from(wave_speed))
@@ -322,7 +326,14 @@ fn point_on_or_in_rect_mm(x: f32, y: f32, x0: f32, y0: f32, x1: f32, y1: f32) ->
 
 #[test]
 fn from_config_resolves_manifest_defaults() {
-    let config = ConfigViewBuilder::new().build();
+    // Packet 06 (AC-3): `bridge_line_width` is a required read
+    // (`require_abs_value`), so even the all-defaults view must seed it at its
+    // manifest-default resolved value (float_or_percent over
+    // `base_key = "nozzle_diameter"` → 0.4 mm). Every other key stays ABSENT
+    // so the defaults this test resolves are still the module's own.
+    let config = ConfigViewBuilder::new()
+        .float("bridge_line_width", f64::from(NOZZLE_MM))
+        .build();
     let module = WaveOverhangs::from_config(&config).expect("defaults must resolve");
 
     assert_eq!(module.pattern(), WavePattern::Smart);
@@ -333,7 +344,11 @@ fn from_config_resolves_manifest_defaults() {
 
 #[test]
 fn from_config_reads_explicit_overrides() {
+    // Packet 06 (AC-3): `bridge_line_width` is a required read, so the
+    // overrides view must carry it at the manifest-default resolved value
+    // (0.4 mm) even though no assertion here targets it.
     let config = ConfigViewBuilder::new()
+        .float("bridge_line_width", f64::from(NOZZLE_MM))
         .string("wave_overhang_pattern", "zigzag")
         .float("wave_overhang_line_spacing", 0.5)
         .int("wave_overhang_max_iterations", 12)
@@ -455,7 +470,10 @@ fn internal_bridge_areas_excluded_from_waves() {
         "internal bridge area must receive unlocked rectilinear fallback"
     );
     for path in internal_fallback {
-        assert!(path.order_lock.is_none(), "internal fallback must be unlocked");
+        assert!(
+            path.order_lock.is_none(),
+            "internal fallback must be unlocked"
+        );
     }
 }
 
@@ -476,7 +494,10 @@ fn fallback_rectilinear_no_silent_drop() {
     let output = run(&module, std::slice::from_ref(&region));
     let paths = output.solid_paths();
 
-    assert!(!paths.is_empty(), "fallback must emit conventional bridge fill");
+    assert!(
+        !paths.is_empty(),
+        "fallback must emit conventional bridge fill"
+    );
     assert!(
         locked(paths).is_empty(),
         "fallback bridge fill must not be order-locked"
@@ -505,7 +526,10 @@ fn fallback_rectilinear_no_silent_drop() {
     );
     for path in paths {
         assert_eq!(path.role, ExtrusionRole::BridgeInfill);
-        assert!((path.speed_factor - 1.0).abs() < 1e-6, "fallback speed factor is 1.0");
+        assert!(
+            (path.speed_factor - 1.0).abs() < 1e-6,
+            "fallback speed factor is 1.0"
+        );
     }
 }
 
@@ -757,7 +781,10 @@ fn deterministic_double_run() {
     let first = run(&module, std::slice::from_ref(&region));
     let second = run(&module, std::slice::from_ref(&region));
 
-    assert!(!first.solid_paths().is_empty(), "expected output to compare");
+    assert!(
+        !first.solid_paths().is_empty(),
+        "expected output to compare"
+    );
     assert_eq!(
         first.solid_paths(),
         second.solid_paths(),
@@ -779,7 +806,13 @@ fn waves_engage_with_default_anchor_depth() {
 
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill(1, std::slice::from_ref(&region), &paint_view(), &mut output, &config)
+        .run_infill(
+            1,
+            std::slice::from_ref(&region),
+            &paint_view(),
+            &mut output,
+            &config,
+        )
         .expect("run_infill must succeed");
 
     let paths = output.solid_paths();
@@ -799,7 +832,6 @@ fn waves_engage_with_default_anchor_depth() {
         );
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // Regression: front-merge seam gap.
@@ -1021,7 +1053,6 @@ fn waves_cover_domain_without_seam_gap() {
     );
 }
 
-
 // ---------------------------------------------------------------------------
 // Deposited-bead containment (packet 246 follow-up)
 //
@@ -1049,8 +1080,9 @@ const MAX_BEAD_OVERFLOW_MM2: f64 = 0.01;
 
 #[test]
 fn wave_bead_footprint_stays_inside_trim_boundary() {
-    use slicer_core::polygon_ops::{difference, intersection, offset, union, union_ex,
-        OffsetJoinType};
+    use slicer_core::polygon_ops::{
+        difference, intersection, offset, union, union_ex, OffsetJoinType,
+    };
 
     let module = WaveOverhangs::from_config(&wave_config(3.0)).expect("config");
     let region = seam_fixture();

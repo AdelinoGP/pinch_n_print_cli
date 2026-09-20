@@ -6,9 +6,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use slicer_ir::{
-    ActiveRegion, BoundingBox3, ConfigValue, ConfigView, GlobalLayer, IndexedTriangleSet,
-    LayerPlanIR, MeshIR, ObjectLayerRef, ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan,
-    SemVer, SupportAnalysisIR, SupportPlanIR, Transform3d,
+    ActiveRegion, BoundingBox3, ConfigValue, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
+    ObjectLayerRef, ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SemVer,
+    SupportAnalysisIR, SupportPlanIR, Transform3d,
 };
 use slicer_runtime::{
     bind_module_config_view, build_wasm_instance_pool, execute_prepass_with_builtins, Blackboard,
@@ -138,6 +138,23 @@ fn config(extra: &[(&str, ConfigValue)]) -> HashMap<String, ConfigValue> {
     values
 }
 
+/// Reify a raw source map into the `ResolvedConfig` a production run hands
+/// to binding: `apply_cli_key` takes typed fields, and undeclared keys route
+/// to `extensions` exactly as the host resolver routes the `Ok(false)`
+/// fall-through (crates/slicer-config/src/resolution.rs).
+fn resolved_from(source: HashMap<String, ConfigValue>) -> ResolvedConfig {
+    let mut resolved = ResolvedConfig::default();
+    for (key, value) in source {
+        if !resolved
+            .apply_cli_key(&key, &value)
+            .expect("test config key must type-check against ResolvedConfig")
+        {
+            resolved.extensions.insert(key, value);
+        }
+    }
+    resolved
+}
+
 fn bundle(engine: &Arc<WasmEngine>, values: HashMap<String, ConfigValue>) -> TestModuleBundle {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -188,7 +205,11 @@ fn bundle(engine: &Arc<WasmEngine>, values: HashMap<String, ConfigValue>) -> Tes
     );
     let module = CompiledModuleBuilder::new(loaded.id().to_string())
         .claims(loaded.claims().to_vec())
-        .config_view(Arc::new(ConfigView::from_map(values)))
+        // Binding routes through the live-path helper exactly like
+        // `build_live_execution_plan` does: the raw map is reified into a
+        // `ResolvedConfig` (undeclared keys land in `extensions`), and the
+        // view is pre-filtered to the module's declared reads.
+        .config_view(bind_module_config_view(&loaded, &resolved_from(values)))
         .build();
     TestModuleBundle {
         module,
@@ -287,6 +308,11 @@ fn independent_support_layer_height_is_declared_and_bound_on_both_planners() {
         "independent_support_layer_height".to_string(),
         ConfigValue::Bool(true),
     )]);
+    // The key is module-declared, not a `ResolvedConfig` typed field, so it
+    // reifies into `extensions` — exactly the `Ok(false)` routing the host
+    // resolver uses — and still surfaces in the bound view because both
+    // planners declare it.
+    let resolved = resolved_from(source);
     for stem in ["tree-support-planner", "traditional-support-planner"] {
         let dir = repo_root.join("modules/core-modules").join(stem);
         let module = slicer_scheduler::manifest::load_module_from_paths(
@@ -303,7 +329,7 @@ fn independent_support_layer_height_is_declared_and_bound_on_both_planners() {
             });
         assert_eq!(entry.field_type, "bool", "{stem} field_type");
         assert_eq!(entry.default.as_deref(), Some("true"), "{stem} default");
-        let view = bind_module_config_view(&module, &source);
+        let view = bind_module_config_view(&module, &resolved);
         assert_eq!(
             view.get_bool("independent_support_layer_height"),
             Some(true),

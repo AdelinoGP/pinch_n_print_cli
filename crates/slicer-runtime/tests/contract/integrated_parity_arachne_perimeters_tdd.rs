@@ -72,10 +72,60 @@ fn module_id() -> slicer_ir::ModuleId {
 
 #[test]
 fn integrated_parity_arachne_perimeters_native_matches_wasm() {
-    let config = Arc::new(ConfigView::from_map(HashMap::from([(
-        "line_width".to_owned(),
-        ConfigValue::Float(0.4),
-    )])));
+    let config = Arc::new(ConfigView::from_map(HashMap::from([
+        // Authored value under test: the wall line width.
+        ("line_width".to_owned(), ConfigValue::Float(0.4)),
+        // Item-11 migration (packet 06 5c): the classified reads in
+        // `run_perimeters`/`arachne_params_from_config` are now `require_*`,
+        // so the view holds every key that path reads, at manifest-default
+        // values (role widths stay 0.0 so `resolve_role_width` falls through
+        // to the authored `line_width` above).
+        ("layer_height".to_owned(), ConfigValue::Float(0.2)),
+        ("nozzle_diameter".to_owned(), ConfigValue::Float(0.4)),
+        ("bridge_line_width".to_owned(), ConfigValue::Float(0.0)),
+        (
+            "initial_layer_line_width".to_owned(),
+            ConfigValue::Float(0.0),
+        ),
+        ("outer_wall_line_width".to_owned(), ConfigValue::Float(0.0)),
+        ("inner_wall_line_width".to_owned(), ConfigValue::Float(0.0)),
+        ("wall_count".to_owned(), ConfigValue::Int(3)),
+        ("extra_perimeters".to_owned(), ConfigValue::Int(0)),
+        ("precise_outer_wall".to_owned(), ConfigValue::Bool(false)),
+        (
+            "wall_sequence".to_owned(),
+            ConfigValue::String("InnerOuter".to_owned()),
+        ),
+        ("support_raft_layers".to_owned(), ConfigValue::Int(0)),
+        ("only_one_wall_top".to_owned(), ConfigValue::Bool(false)),
+        (
+            "wall_direction".to_owned(),
+            ConfigValue::String("counter_clockwise".to_owned()),
+        ),
+        ("alternate_extra_wall".to_owned(), ConfigValue::Bool(false)),
+        ("spiral_vase".to_owned(), ConfigValue::Bool(false)),
+        ("sparse_infill_density".to_owned(), ConfigValue::Float(20.0)),
+        (
+            "only_one_wall_first_layer".to_owned(),
+            ConfigValue::Bool(false),
+        ),
+        ("detect_overhang_wall".to_owned(), ConfigValue::Bool(true)),
+        ("overhang_reverse".to_owned(), ConfigValue::Bool(false)),
+        (
+            "overhang_reverse_internal_only".to_owned(),
+            ConfigValue::Bool(false),
+        ),
+        (
+            "overhang_reverse_threshold".to_owned(),
+            ConfigValue::Float(0.0),
+        ),
+        ("bridge_flow".to_owned(), ConfigValue::Float(1.0)),
+        ("thick_bridges".to_owned(), ConfigValue::Bool(false)),
+        (
+            "seam_candidate_angle_threshold_deg".to_owned(),
+            ConfigValue::Float(30.0),
+        ),
+    ])));
     let bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
     let slice = taper_slice();
     let mut wasm_arena = LayerArena::new();

@@ -12,9 +12,8 @@ use slicer_ir::{
 };
 use slicer_sdk::prelude::{
     host, ClipOperation, DiagnosticSeverity, LayerPlanView, LayerPlanViewEntry, MeshObjectView,
-    OffsetJoinType, RegionSegmentationView, SupportAnalysisCandidate,
-    SupportAnalysisGeometryEntry, SupportAnalysisView, SupportFamilyAssignment,
-    SupportGeometryOutput, SupportGeometryView,
+    OffsetJoinType, RegionSegmentationView, SupportAnalysisCandidate, SupportAnalysisGeometryEntry,
+    SupportAnalysisView, SupportFamilyAssignment, SupportGeometryOutput, SupportGeometryView,
 };
 use slicer_sdk::traits::PrepassModule;
 use traditional_support_planner::agg_raster::{
@@ -51,7 +50,10 @@ fn grid_construction_matches_canonical_formulas() {
     let params = GridParams::from_polygons(&support, spacing_mm, width_mm);
 
     let width_units = mm_to_units(width_mm);
-    assert_eq!(width_units, 4000, "0.4 mm is 4000 PnP units (1 unit = 100 nm)");
+    assert_eq!(
+        width_units, 4000,
+        "0.4 mm is 4000 PnP units (1 unit = 100 nm)"
+    );
 
     // oversampling = clamp(mm_to_units(spacing) / (width_units + 1), 1, 8)
     //              = clamp(20000 / 4001, 1, 8) = 4
@@ -72,7 +74,13 @@ fn grid_construction_matches_canonical_formulas() {
 
     // bbox: extents (0,0)-(100000,100000), offset(1), align_to_grid(20000)
     // pulls the min down to -20000, then a full-pixel margin offset(5000).
-    assert_eq!(params.origin, Point2 { x: -25000, y: -25000 });
+    assert_eq!(
+        params.origin,
+        Point2 {
+            x: -25000,
+            y: -25000
+        }
+    );
 
     // grid_size_raw = ceil(span / pixel_size); span = 105001 - (-25000) = 130001
     assert_eq!(params.grid_size_raw, (27, 27));
@@ -101,11 +109,19 @@ fn grid_construction_matches_canonical_formulas() {
     let (nx, ny) = params.grid_size;
     for c in 0..nx {
         assert_eq!(grid[c], 0, "top row cell {c} must be unset");
-        assert_eq!(grid[(ny - 1) * nx + c], 0, "bottom row cell {c} must be unset");
+        assert_eq!(
+            grid[(ny - 1) * nx + c],
+            0,
+            "bottom row cell {c} must be unset"
+        );
     }
     for r in 0..ny {
         assert_eq!(grid[r * nx], 0, "left column cell {r} must be unset");
-        assert_eq!(grid[r * nx + nx - 1], 0, "right column cell {r} must be unset");
+        assert_eq!(
+            grid[r * nx + nx - 1],
+            0,
+            "right column cell {r} must be unset"
+        );
     }
     // Sanity: the island itself is actually rasterized.
     assert!(grid.iter().any(|&v| v != 0), "island must mark cells");
@@ -146,7 +162,11 @@ fn rasterize_polygons_marks_any_covered_cell() {
     let holed_grid = rasterize_polygons(&holed, &params);
     // Hole spans mm 3..7 => cells 11..=18; cell (14, 14) is strictly interior.
     assert_eq!(at(&holed_grid, 14, 14), 0, "hole interior must be unset");
-    assert_eq!(at(&holed_grid, 6, 14), 1, "solid ring around the hole is set");
+    assert_eq!(
+        at(&holed_grid, 6, 14),
+        1,
+        "solid ring around the hole is set"
+    );
 }
 
 #[test]
@@ -173,7 +193,11 @@ fn dilate_trimming_region_erodes_to_all_set_interior() {
     assert_eq!(out, expected, "solid block erodes by one cell per side");
 
     // A cell with any unset neighbour is cleared.
-    assert_eq!(out[3 * nx + 2], 0, "edge cell of the block has unset neighbours");
+    assert_eq!(
+        out[3 * nx + 2],
+        0,
+        "edge cell of the block has unset neighbours"
+    );
 
     // The outer ring is never written and stays unset, even when input is solid.
     let solid = vec![1u8; 64];
@@ -189,7 +213,11 @@ fn dilate_trimming_region_erodes_to_all_set_interior() {
     // Everything interior of a solid input survives.
     for r in 1..7 {
         for c in 1..7 {
-            assert_eq!(solid_out[r * nx + c], 1, "interior of a solid input survives");
+            assert_eq!(
+                solid_out[r * nx + c],
+                1,
+                "interior of a solid input survives"
+            );
         }
     }
 }
@@ -237,7 +265,11 @@ fn seed_fill_block_closes_gaps_within_a_block_but_not_across_blocks() {
     // directions inside the block.
     for r in 1..=4 {
         for c in 1..=4 {
-            assert_eq!(cell(&grid, c, r), 1, "block 0 cell ({c},{r}) must be filled");
+            assert_eq!(
+                cell(&grid, c, r),
+                1,
+                "block 0 cell ({c},{r}) must be filled"
+            );
         }
     }
     // Block 1 (columns 5..=8) never receives anything: the horizontal steps
@@ -245,7 +277,11 @@ fn seed_fill_block_closes_gaps_within_a_block_but_not_across_blocks() {
     // macro-block boundary.
     for r in 0..SEED_GRID.1 {
         for c in 5..=8 {
-            assert_eq!(cell(&grid, c, r), 0, "block 1 cell ({c},{r}) must stay empty");
+            assert_eq!(
+                cell(&grid, c, r),
+                0,
+                "block 1 cell ({c},{r}) must stay empty"
+            );
         }
     }
     // The one-cell boundary ring is never written.
@@ -271,10 +307,18 @@ fn seed_fill_block_closes_gaps_within_a_block_but_not_across_blocks() {
     );
     for r in 1..=4 {
         for c in 5..=8 {
-            assert_eq!(cell(&grid2, c, r), 1, "block 1 cell ({c},{r}) must be filled");
+            assert_eq!(
+                cell(&grid2, c, r),
+                1,
+                "block 1 cell ({c},{r}) must be filled"
+            );
         }
         for c in 1..=4 {
-            assert_eq!(cell(&grid2, c, r), 0, "block 0 cell ({c},{r}) must stay empty");
+            assert_eq!(
+                cell(&grid2, c, r),
+                0,
+                "block 0 cell ({c},{r}) must stay empty"
+            );
         }
     }
 }
@@ -421,7 +465,10 @@ fn contour_extraction_filters_islands_by_samples() {
         mark(&mut grid, w, 10, r);
     }
 
-    let sample = Point2 { x: 10_500, y: 3_500 }; // centre of cell (10, 3)
+    let sample = Point2 {
+        x: 10_500,
+        y: 3_500,
+    }; // centre of cell (10, 3)
     let sg = SupportGrid::for_test(params, grid, Vec::new());
     let islands = sg.extract_support(0, false, &[sample]);
 
@@ -444,10 +491,22 @@ fn contour_extraction_filters_islands_by_samples() {
     assert_eq!(
         pts,
         vec![
-            Point2 { x: 10_000, y: 2_000 },
-            Point2 { x: 10_000, y: 5_000 },
-            Point2 { x: 11_000, y: 2_000 },
-            Point2 { x: 11_000, y: 5_000 },
+            Point2 {
+                x: 10_000,
+                y: 2_000
+            },
+            Point2 {
+                x: 10_000,
+                y: 5_000
+            },
+            Point2 {
+                x: 11_000,
+                y: 2_000
+            },
+            Point2 {
+                x: 11_000,
+                y: 5_000
+            },
         ],
         "the sub-cell sliver keeps its exact rasterized rectangle"
     );
@@ -502,10 +561,7 @@ fn expansion_is_restricted_inside_the_macro_cell() {
     let mut grid = vec![0u8; params.cell_count()];
     mark(&mut grid, w, 3, 3);
     mark(&mut grid, w, 5, 3);
-    let samples = vec![
-        Point2 { x: 3_500, y: 3_500 },
-        Point2 { x: 5_500, y: 3_500 },
-    ];
+    let samples = vec![Point2 { x: 3_500, y: 3_500 }, Point2 { x: 5_500, y: 3_500 }];
 
     // The in-cell bound is `abs(2 * offset) < pixel_size - 1` (canonical's
     // `-10` orca nm = 0.1 PnP units, rounded up to 1 unit, the strict side).
@@ -547,14 +603,24 @@ fn expansion_is_restricted_inside_the_macro_cell() {
     // `2 * offset < pixel_size` means the displaced corner never reaches the
     // far side of the neighbouring cell.
     for island in &expanded {
-        assert_eq!(island.contour.points.len(), 4, "single-cell island: 4 corners");
+        assert_eq!(
+            island.contour.points.len(),
+            4,
+            "single-cell island: 4 corners"
+        );
         for p in &island.contour.points {
             let dx = (p.x - round_to(p.x, pixel_size)).abs();
             let dy = (p.y - round_to(p.y, pixel_size)).abs();
             assert_eq!(dx, offset, "x displacement is exactly the offset");
             assert_eq!(dy, offset, "y displacement is exactly the offset");
-            assert!(2 * dx < pixel_size, "displacement stays inside the macro cell");
-            assert!(2 * dy < pixel_size, "displacement stays inside the macro cell");
+            assert!(
+                2 * dx < pixel_size,
+                "displacement stays inside the macro cell"
+            );
+            assert!(
+                2 * dy < pixel_size,
+                "displacement stays inside the macro cell"
+            );
         }
     }
 
@@ -594,12 +660,32 @@ fn round_to(v: i64, step: i64) -> i64 {
 // Step 5: `support_area_rasterizer` knob declaration, parse, and rejection.
 // ---------------------------------------------------------------------------
 
-/// A `ConfigView` carrying exactly one `support_area_rasterizer` value.
+/// The manifest-seeded default view: every key `from_config` reads with
+/// `require_*` (packet 06, AC-3), seeded at its manifest default. The
+/// planner's only required read is `independent_support_layer_height`
+/// (manifest: `bool`, default `true`), so fixture configs that only mean to
+/// set other keys must carry this seed too, or `from_config` fails before the
+/// key under test is ever inspected.
+fn seeded_defaults() -> ConfigView {
+    let mut values: HashMap<ConfigKey, ConfigValue> = HashMap::new();
+    values.insert(
+        "independent_support_layer_height".into(),
+        ConfigValue::Bool(true),
+    );
+    ConfigView::from_map(values)
+}
+
+/// A `ConfigView` carrying exactly one `support_area_rasterizer` value (plus
+/// the required-key seeds, so `from_config` reaches the key under test).
 fn rasterizer_config(value: &str) -> ConfigView {
     let mut values: HashMap<ConfigKey, ConfigValue> = HashMap::new();
     values.insert(
         "support_area_rasterizer".into(),
         ConfigValue::String(value.into()),
+    );
+    values.insert(
+        "independent_support_layer_height".into(),
+        ConfigValue::Bool(true),
     );
     ConfigView::from_map(values)
 }
@@ -632,8 +718,8 @@ fn invalid_rasterizer_value_is_rejected_not_defaulted() {
     );
 
     // Both legal values parse to their own mode.
-    let agg = SupportPlanner::from_config(&rasterizer_config("agg"))
-        .expect("`agg` is a legal value");
+    let agg =
+        SupportPlanner::from_config(&rasterizer_config("agg")).expect("`agg` is a legal value");
     assert_eq!(agg.support_area_rasterizer, RasterizerMode::Agg);
     let legacy = SupportPlanner::from_config(&rasterizer_config("legacy_semantic"))
         .expect("`legacy_semantic` is a legal value");
@@ -644,16 +730,15 @@ fn invalid_rasterizer_value_is_rejected_not_defaulted() {
 
     // Absent key defaults to `legacy_semantic`: `agg` ships OPT-IN because the
     // faithful port block-snaps the carry (DEV-166; canonical `seed_fill_block`
-    // in `SupportMaterial.cpp`).
-    let absent = SupportPlanner::from_config(&ConfigView::new())
-        .expect("the key is optional");
+    // in `SupportMaterial.cpp`). The view still carries the required-key seed
+    // so `from_config` reaches the rasterizer key.
+    let absent = SupportPlanner::from_config(&seeded_defaults()).expect("the key is optional");
     assert_eq!(
         absent.support_area_rasterizer,
         RasterizerMode::LegacySemantic,
         "the default is `legacy_semantic`; `agg` is opt-in (DEV-166)"
     );
 }
-
 
 // ---------------------------------------------------------------------------
 // Step 6: propagation routing -- agg by default, legacy selectable.
@@ -716,7 +801,7 @@ fn analysis_fixture(geometry: Vec<ExPolygon>, occupancy: Vec<ExPolygon>) -> Supp
 fn plan_with(mode: Option<&str>, analysis: &SupportAnalysisView) -> SupportGeometryOutput {
     let config = match mode {
         Some(value) => rasterizer_config(value),
-        None => ConfigView::new(),
+        None => seeded_defaults(),
     };
     let planner = SupportPlanner::from_config(&config).expect("planner config is valid");
     let mut output = SupportGeometryOutput::new();
@@ -878,12 +963,7 @@ fn default_config_routes_propagation_through_legacy_semantic() {
             }
             // The trimming difference is not lost in the rasterizer: no part of
             // the printed area may land inside the inflated model occupancy.
-            let clearance = host::offset_polygons(
-                &occupancy,
-                0.35,
-                OffsetJoinType::Miter,
-                0.0,
-            );
+            let clearance = host::offset_polygons(&occupancy, 0.35, OffsetJoinType::Miter, 0.0);
             let overlap = host::clip_polygons(
                 std::slice::from_ref(region),
                 &clearance,
@@ -1137,9 +1217,18 @@ fn agg_propagated_carry_grows_by_at_most_one_macro_block_extent() {
     // `pixel_size` 4167, `oversampling` 6, so one macro block is 25002 units
     // (2.5002 mm). Pinned so a change in the grid arithmetic cannot silently
     // move the bound this test enforces.
-    assert_eq!(params.pixel_size, 4167, "measured pixel_size at 2.5 mm / 0.4 mm");
-    assert_eq!(params.oversampling, 6, "measured oversampling at 2.5 mm / 0.4 mm");
-    assert_eq!(macro_block, 25_002, "one macro block is oversampling * pixel_size");
+    assert_eq!(
+        params.pixel_size, 4167,
+        "measured pixel_size at 2.5 mm / 0.4 mm"
+    );
+    assert_eq!(
+        params.oversampling, 6,
+        "measured oversampling at 2.5 mm / 0.4 mm"
+    );
+    assert_eq!(
+        macro_block, 25_002,
+        "one macro block is oversampling * pixel_size"
+    );
 
     let before = bbox(&carry);
     let after = bbox(&propagated);
@@ -1148,7 +1237,11 @@ fn agg_propagated_carry_grows_by_at_most_one_macro_block_extent() {
     // (20000, 20000)-(80000, 80000), comes back as (1, 1)-(100007, 100007) --
     // it grew by 19999 units on the low sides and 20007 on the high sides,
     // every one of them inside the 25002-unit macro-block bound.
-    assert_eq!(before, (20_000, 20_000, 80_000, 80_000), "pre-grid carry extent");
+    assert_eq!(
+        before,
+        (20_000, 20_000, 80_000, 80_000),
+        "pre-grid carry extent"
+    );
     assert_eq!(
         after,
         (1, 1, 100_007, 100_007),
@@ -1303,8 +1396,14 @@ fn two_candidates_in_one_region_are_published_as_one_entry_per_layer() {
         let first_areas = area_by_layer(&only_first);
         let second_areas = area_by_layer(&only_second);
         assert_eq!(
-            merged_areas.iter().map(|(layer, _)| *layer).collect::<Vec<_>>(),
-            first_areas.iter().map(|(layer, _)| *layer).collect::<Vec<_>>(),
+            merged_areas
+                .iter()
+                .map(|(layer, _)| *layer)
+                .collect::<Vec<_>>(),
+            first_areas
+                .iter()
+                .map(|(layer, _)| *layer)
+                .collect::<Vec<_>>(),
             "{mode}: merging must not change which layers are emitted"
         );
         for ((layer, merged), ((_, alone_first), (_, alone_second))) in merged_areas

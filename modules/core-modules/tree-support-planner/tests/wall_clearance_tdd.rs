@@ -42,6 +42,16 @@ fn planner_config() -> ConfigView {
 
 fn planner_config_with_diameter(branch_diameter: f64) -> ConfigView {
     let mut values: HashMap<ConfigKey, ConfigValue> = HashMap::new();
+    // Packet 06 (AC-3): `nozzle_diameter` is a contract-required read
+    // (`require_float`); a bound view always holds it at the manifest
+    // default (0.4). Seed it so fixture configs behave like a bound view.
+    values.insert(ConfigKey::from("nozzle_diameter"), ConfigValue::Float(0.4));
+    // Also contract-required (`require_bool`), manifest default `true`
+    // (packet 239c): a bound view always holds it.
+    values.insert(
+        ConfigKey::from("independent_support_layer_height"),
+        ConfigValue::Bool(true),
+    );
     values.insert(ConfigKey::from("enable_support"), ConfigValue::Bool(true));
     values.insert(
         ConfigKey::from("support_type"),

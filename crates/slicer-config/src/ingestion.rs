@@ -75,11 +75,11 @@ impl ScopedConfig {
 /// A non-fatal issue encountered while retaining an authored value.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum IngestionWarning {
-    /// The key was not declared by the registry.
+    /// The key was not declared by the registry and was dropped.
     UnrecognizedKey {
         /// The original flat wire key.
         wire_key: String,
-        /// The canonical key retained in the delta.
+        /// The canonical key decoded from the wire key.
         key: String,
         /// The nearest canonical registry key, when sufficiently close.
         suggestion: Option<String>,
@@ -144,7 +144,7 @@ pub struct IngestionOutcome {
     pub scoped: ScopedConfig,
     /// Authored values for registry-declared selectors in the global scope.
     pub selector_values: BTreeMap<ConfigKey, ConfigValue>,
-    /// Non-fatal warnings raised while retaining authored values.
+    /// Non-fatal warnings raised while ingesting authored values.
     pub warnings: Vec<IngestionWarning>,
 }
 
@@ -214,7 +214,10 @@ impl<'registry> ConfigIngestor<'registry> {
         Ok(())
     }
 
-    /// Finish ingestion and return only authored values and derived selectors.
+    /// Finish ingestion and return the accepted authored values and derived selectors.
+    ///
+    /// An undeclared key is absent: it warns and is dropped at preparation,
+    /// never reaching a delta.
     #[must_use]
     pub fn finish(self) -> IngestionOutcome {
         let selector_values = self
@@ -251,11 +254,27 @@ impl<'registry> ConfigIngestor<'registry> {
         wire_key: &str,
         authored: &'value ConfigValue,
     ) -> Result<PendingEntry, ConfigIngestionError> {
-        let Some(entry) = self.registry_entry(&key) else {
+        // A legacy alias of a registry-declared key is not "undeclared": resolve
+        // the authored spelling through the alias table before the
+        // declared-ness check, so it survives ingestion to scheduler-side
+        // canonicalization and both-spellings conflict detection. The
+        // authored spelling is retained in the delta unchanged — rewriting it
+        // here would hide one of the two spellings from
+        // `reject_alias_conflicts`. A truly unknown key still falls through
+        // to the warn-then-drop path below.
+        let canonical_key = canonical_config_key(&key);
+        let entry = self.registry_entry(&key).or_else(|| {
+            (canonical_key != key)
+                .then(|| self.registry_entry(canonical_key))
+                .flatten()
+        });
+        let Some(entry) = entry else {
+            // Warn-then-drop: an undeclared key never reaches a delta, the
+            // resolved config, a bound view, or `CONFIG_BLOCK`.
             return Ok(PendingEntry {
                 scope,
                 key: key.clone(),
-                value: authored.clone(),
+                value: None,
                 warning: Some(IngestionWarning::UnrecognizedKey {
                     wire_key: wire_key.to_owned(),
                     key: key.clone(),
@@ -288,7 +307,7 @@ impl<'registry> ConfigIngestor<'registry> {
         Ok(PendingEntry {
             scope,
             key,
-            value,
+            value: Some(value),
             warning,
         })
     }
@@ -305,11 +324,15 @@ impl<'registry> ConfigIngestor<'registry> {
             if untyped_global {
                 self.untyped_global_keys.insert(entry.key.clone());
             }
-            self.deltas
-                .entry(entry.scope)
-                .or_default()
-                .values
-                .insert(entry.key, entry.value);
+            // An undeclared key carries no value and is dropped here; only its
+            // warning survives.
+            if let Some(value) = entry.value {
+                self.deltas
+                    .entry(entry.scope)
+                    .or_default()
+                    .values
+                    .insert(entry.key, value);
+            }
             if let Some(warning) = entry.warning {
                 self.warnings.push(warning);
             }
@@ -349,7 +372,8 @@ impl<'registry> ConfigIngestor<'registry> {
 struct PendingEntry {
     scope: ConfigScope,
     key: ConfigKey,
-    value: ConfigValue,
+    /// `None` for an undeclared key: warned once, never retained.
+    value: Option<ConfigValue>,
     warning: Option<IngestionWarning>,
 }
 
@@ -392,6 +416,32 @@ fn warning_order(first: &IngestionWarning, second: &IngestionWarning) -> std::cm
             std::cmp::Ordering::Greater
         }
     }
+}
+
+/// Legacy config-key spellings and the canonical key each resolves to.
+///
+/// This table mirrors `CONFIG_KEY_ALIASES` in
+/// `slicer_scheduler::config_resolution` (the scheduler crate depends on this
+/// one, so the table cannot be shared in that direction; keep both tables in
+/// sync when adding an alias). It exists here only to answer the
+/// declared-ness question during ingestion: a legacy spelling of a
+/// registry-declared key is not "undeclared" and must survive to
+/// scheduler-side canonicalization and both-spellings conflict detection
+/// (`reject_alias_conflicts`).
+const CONFIG_KEY_ALIASES: [(&str, &str); 2] = [
+    ("first_layer_line_width", "initial_layer_line_width"),
+    ("support_overhang_angle", "support_threshold_angle"),
+];
+
+/// Resolve a legacy key spelling to its canonical key, mirroring
+/// `slicer_scheduler::config_resolution::canonical_config_key`.
+fn canonical_config_key(key: &str) -> &str {
+    for (legacy, canonical) in CONFIG_KEY_ALIASES {
+        if key == legacy {
+            return canonical;
+        }
+    }
+    key
 }
 
 fn decode_wire_key(wire_key: &str) -> Result<(ConfigScope, ConfigKey), ConfigIngestionError> {

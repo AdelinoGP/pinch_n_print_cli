@@ -6,7 +6,7 @@
 //! All four tests are intentionally FAILING (TDD approach) because the role
 //! logic is not yet implemented in the module.
 
-use slicer_ir::{ConfigView, ExPolygon, ExtrusionRole};
+use slicer_ir::{ExPolygon, ExtrusionRole};
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::prelude::LayerModule;
 use slicer_sdk::test_prelude::*;
@@ -16,6 +16,47 @@ use rectilinear_infill::RectilinearInfill;
 
 fn empty_paint_view() -> slicer_sdk::traits::PaintRegionLayerView {
     slicer_sdk::traits::PaintRegionLayerView::new(0)
+}
+
+/// Baseline builder for `from_config` fixtures (packet 06 5c', item 11):
+/// holds every key the module's classified reads touch on the tested path —
+/// the ten `require_*` reads plus the remaining `from_config` reads — at the
+/// guest's manifest-default values (rectilinear-infill.toml
+/// [config.schema]). Percent-typed keys hold their resolved absolute values
+/// (`bridge_density` "100%" → 1.0 against the identity base;
+/// `internal_bridge_speed` "150%" → 37.5 against bridge_speed 25.0).
+/// `line_width` holds its post-expansion default (1.125 × nozzle_diameter):
+/// the raw manifest default 0 is the auto sentinel the host expands at Phase
+/// B (slicer-config `expand_automatic_values`), and `resolve_role_width` no
+/// longer expands — a raw 0 cancels every emission via the spacing gate.
+/// Tests that exercise a specific key add it after this baseline so their
+/// explicit value wins.
+fn baseline_config() -> ConfigViewBuilder {
+    ConfigViewBuilder::new()
+        .float("infill_density", 0.2)
+        .float("infill_angle", 45.0)
+        .float("infill_speed", 60.0)
+        .float("line_width", 0.45)
+        .float("bridge_line_width", 0.0)
+        .float("initial_layer_line_width", 0.0)
+        .float("top_surface_line_width", 0.0)
+        .float("internal_solid_infill_line_width", 0.0)
+        .float("sparse_infill_line_width", 0.0)
+        .float("bridge_density", 1.0)
+        .float("bridge_speed", 25.0)
+        .float("bridge_flow", 1.0)
+        .bool("thick_bridges", false)
+        .float("internal_bridge_density", 1.0)
+        .float("internal_bridge_speed", 37.5)
+        .float("internal_bridge_flow", 1.0)
+        .bool("thick_internal_bridges", true)
+        .float("top_surface_speed", 60.0)
+        .float("internal_solid_infill_speed", 60.0)
+        .float("sparse_infill_speed", 60.0)
+        .bool("dont_filter_internal_bridges", false)
+        .bool("enable_extra_bridge_layer", false)
+        .float("internal_bridge_angle", 0.0)
+        .float("infill_shift_step", 0.0)
 }
 
 /// Create a minimal rectangular ExPolygon: 10mm x 10mm square from (0,0) to (10,10).
@@ -94,18 +135,13 @@ fn with_rectilinear_claims(mut region: SliceRegionView) -> SliceRegionView {
 // ---------------------------------------------------------------------------
 #[test]
 fn top_surface_region_emits_top_solid_infill() {
-    let module = RectilinearInfill::from_config(&ConfigView::new()).unwrap();
+    let config = baseline_config().build();
+    let module = RectilinearInfill::from_config(&config).unwrap();
     let region = make_test_region(true, false, false);
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(
-            0,
-            &[region],
-            &empty_paint_view(),
-            &mut output,
-            &ConfigView::new(),
-        )
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     let all_paths: Vec<_> = output
@@ -127,18 +163,13 @@ fn top_surface_region_emits_top_solid_infill() {
 // ---------------------------------------------------------------------------
 #[test]
 fn bottom_surface_region_emits_bottom_solid_infill() {
-    let module = RectilinearInfill::from_config(&ConfigView::new()).unwrap();
+    let config = baseline_config().build();
+    let module = RectilinearInfill::from_config(&config).unwrap();
     let region = make_test_region(false, true, false);
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(
-            0,
-            &[region],
-            &empty_paint_view(),
-            &mut output,
-            &ConfigView::new(),
-        )
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     let all_paths: Vec<_> = output
@@ -160,7 +191,8 @@ fn bottom_surface_region_emits_bottom_solid_infill() {
 // ---------------------------------------------------------------------------
 #[test]
 fn bridge_surface_region_emits_bridge_infill_role() {
-    let module = RectilinearInfill::from_config(&ConfigView::new()).unwrap();
+    let config = baseline_config().build();
+    let module = RectilinearInfill::from_config(&config).unwrap();
     // rev1 contract: is_bridge requires non-empty bridge_areas to emit BridgeInfill.
     let region = with_rectilinear_claims(
         SliceRegionViewBuilder::new()
@@ -178,13 +210,7 @@ fn bridge_surface_region_emits_bridge_infill_role() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(
-            0,
-            &[region],
-            &empty_paint_view(),
-            &mut output,
-            &ConfigView::new(),
-        )
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     let all_paths: Vec<_> = output
@@ -218,7 +244,8 @@ fn bridge_surface_region_emits_bridge_infill_role() {
 // ---------------------------------------------------------------------------
 #[test]
 fn bottom_wins_over_top_on_overlap() {
-    let module = RectilinearInfill::from_config(&ConfigView::new()).unwrap();
+    let config = baseline_config().build();
+    let module = RectilinearInfill::from_config(&config).unwrap();
     // Post-host-partition state for a layer-0 region (both shell zones touch
     // it): bottom polygon is populated, top has been subtracted to empty.
     let s = square_polygon(5.0, 5.0, 10.0);
@@ -240,13 +267,7 @@ fn bottom_wins_over_top_on_overlap() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(
-            0,
-            &[region],
-            &empty_paint_view(),
-            &mut output,
-            &ConfigView::new(),
-        )
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     let all_paths: Vec<_> = output
@@ -302,18 +323,13 @@ fn make_shell_region(top_index: Option<u8>, bottom_index: Option<u8>) -> SliceRe
 
 #[test]
 fn deep_top_shell_emits_internal_solid_infill() {
-    let module = RectilinearInfill::from_config(&ConfigView::new()).unwrap();
+    let config = baseline_config().build();
+    let module = RectilinearInfill::from_config(&config).unwrap();
     let region = make_shell_region(Some(1), None);
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(
-            0,
-            &[region],
-            &empty_paint_view(),
-            &mut output,
-            &ConfigView::new(),
-        )
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     let all_paths: Vec<_> = output
@@ -337,18 +353,13 @@ fn deep_top_shell_emits_internal_solid_infill() {
 
 #[test]
 fn deep_bottom_shell_emits_internal_solid_infill() {
-    let module = RectilinearInfill::from_config(&ConfigView::new()).unwrap();
+    let config = baseline_config().build();
+    let module = RectilinearInfill::from_config(&config).unwrap();
     let region = make_shell_region(None, Some(2));
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(
-            0,
-            &[region],
-            &empty_paint_view(),
-            &mut output,
-            &ConfigView::new(),
-        )
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     let all_paths: Vec<_> = output
@@ -375,18 +386,13 @@ fn deep_bottom_shell_emits_internal_solid_infill() {
 // ---------------------------------------------------------------------------
 #[test]
 fn sparse_only_region_does_not_fabricate_surface_fill_roles() {
-    let module = RectilinearInfill::from_config(&ConfigView::new()).unwrap();
+    let config = baseline_config().build();
+    let module = RectilinearInfill::from_config(&config).unwrap();
     let region = make_test_region(false, false, false);
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(
-            0,
-            &[region],
-            &empty_paint_view(),
-            &mut output,
-            &ConfigView::new(),
-        )
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     let all_paths: Vec<_> = output

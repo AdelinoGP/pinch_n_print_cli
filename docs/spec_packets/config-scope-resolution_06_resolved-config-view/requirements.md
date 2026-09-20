@@ -13,7 +13,7 @@
 
 - The load-time binding comes from `bind_module_config_view(module, source)` (`crates/slicer-scheduler/src/execution_plan.rs`) over `expanded_global_source` (`crates/slicer-runtime/src/run.rs`). That map mixes the raw authored source, including unrecognized keys, with a `to_config_map()` overlay.
 - Per-region views come from `ConfigView::from_declared` over the region `ResolvedConfig`'s `to_config_map()` (`crates/slicer-wasm-host/src/dispatch.rs`).
-- Neither source seeds registry defaults. `resolve_scope_stack` starts from `ResolvedConfig::default()` with empty `extensions`, so an unauthored module-declared key is absent from every view. That is why 89 literal fallbacks across 13 guests carry behavior.
+- Neither source seeds registry defaults. `resolve_scope_stack` starts from `ResolvedConfig::default()` with empty `extensions`, so an unauthored module-declared key is absent from every view. That is why 87 literal fallbacks across 13 guests carry behavior.
 
 The remaining problems:
 
@@ -45,9 +45,10 @@ The remaining problems:
   - infill-linker: `infill_density`;
   - rectilinear-infill: `infill_shift_step`;
   - wave-overhangs: `thick_bridges`.
-- **Fallback removal.** Delete the 89 classified config-literal fallbacks, and replace them with `require_*` reads matching each key's registry type.
+- **Fallback removal.** Delete the 87 classified config-literal fallbacks, and replace them with `require_*` reads matching each key's registry type.
 - **No-drop oracle.** Add `SliceOutcome.ingestion_warnings`. Add an independently generated, registry-derived one-value-per-key config and combine it with `resources/cube_4color.3mf` in a no-skip `run_slice` e2e with a withheld-declaration negative control.
 - **Warn-to-drop.** Flip packet 03's warn-and-keep to warn-and-drop only after that e2e is green and every host-consumed key is registered.
+- **Step-6 pre-existing blockers.** Fix, in-packet: the authored-only `nozzle_diameter` lookup in `seed_expansion_context` (`crates/slicer-runtime/src/run.rs`) via a registry-default fallback; the `seam-planner-default` aligned-mode coordinate gap (guest emits planner/inset-boundary coordinates; host escalation untouched); and the two pre-existing stock reds, the Packet-68 stamping red and the NegativeSpacing red, whose exact files the Step 6a-bis diagnosis names.
 - **Docs.** Update the resolved-view, viewer-key, manifest-metadata, and scheduler view-sourcing docs.
 
 ## Out of Scope
@@ -64,7 +65,7 @@ The remaining problems:
 
 ## Authoritative Docs
 
-- `docs/specs/config-scope-resolution-plan.md` — RC-4, RC-5, the "Drop-unknown ships in two steps" paragraph, "Guests and delivery", the no-drop gate, and queue row 6. RC-5 keeps the original 54-site count with a note. Queue row 6 and "Guests and delivery" carry the 89-site chain-aware census this packet uses.
+- `docs/specs/config-scope-resolution-plan.md` — RC-4, RC-5, the "Drop-unknown ships in two steps" paragraph, "Guests and delivery", the no-drop gate, and queue row 6. RC-5 keeps the original 54-site count with a note. Queue row 6 and "Guests and delivery" carry the 87-site chain-aware census this packet uses.
 - `docs/adr/0067-unified-config-schema-registry.md` and `docs/adr/0068-config-scope-is-a-wire-encoding.md` — registry reconciliation/provenance and the typed-ingestion boundary.
 - `docs/02_ir_schemas.md`, `docs/03_wit_and_manifest.md`, `docs/04_host_scheduler.md` — the resolved config, CONFIG_BLOCK viewer-key, manifest, and view-sourcing contracts.
 - `docs/22_test_quality.md` §2.1, §2.4, §2.6, §4 — independent oracle, no hand roster, no silent fixture skip.
@@ -112,7 +113,7 @@ The `cargo test` commands deliberately omit `--all-targets`, because cargo lets 
 - Land metadata, host-key registration, seeding, and validation before any consumer changes.
 - Then land emission, then binding, then guest cleanup. Each guest batch must compile against a complete view.
 - The no-drop oracle must pass in retained/warn mode before the same step flips unknown entries to drop.
-- The census test keeps the baseline 89 count, the per-guest table, and the calibration snippets, so a weakened detector cannot self-certify zero.
+- The census test keeps the baseline 87 count, the per-guest table, and the calibration snippets, so a weakened detector cannot self-certify zero.
 - When the canonical-correct `CONFIG_BLOCK` change alters a fixture or test expectation, rebaseline it by re-deriving the value from the registry, never by pasting a captured literal.
 
 ## Context Discipline Notes

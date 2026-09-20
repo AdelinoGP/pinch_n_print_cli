@@ -8,7 +8,9 @@
 //! UNIT NOTE: all coordinates in this module are f32 **millimetres** (mesh
 //! vertices arrive in mm from `MeshObjectView`), all angles in **radians**.
 //! See `docs/08_coordinate_system.md` — the integer 100 nm system used
-//! elsewhere in the workspace is NOT used here.
+//! elsewhere in the workspace is NOT used here. The one exception is
+//! [`project_point_onto_inset_boundary`], which consumes IR `ExPolygon`s from
+//! the host offset service and converts their ring vertices on entry.
 //!
 //! Determinism: no `HashMap` iteration anywhere. Segments are sorted by
 //! quantized-endpoint keys before chaining, adjacency uses `BTreeMap`, and
@@ -16,6 +18,8 @@
 //! point, so identical input always yields byte-identical output.
 
 use std::collections::BTreeMap;
+
+use slicer_ir::units_to_mm;
 
 /// Point-merge epsilon for chaining plane-section segments. Units: mm.
 /// Points closer than this are treated as identical (quantization cell size).
@@ -281,6 +285,73 @@ pub(crate) fn signed_distance_to_contours(contours: &[Contour], p: [f32; 2]) -> 
     } else {
         min_dist
     }
+}
+
+/// Closest-point projection of `p` (mm) onto segment `a`-`b` (mm).
+///
+/// Returns the projected point, or `None` for a degenerate (zero-length)
+/// segment, where every point is equidistant. Mirrors the
+/// `point_segment_distance` clamp so a projection and a distance query over
+/// the same segment agree.
+// The `#[path]`-included copies of this module in the canonical/exactness test
+// binaries never call the host-inset projection path, so both helpers would
+// otherwise warn as dead code there; production always reaches them through
+// `run_region_planning_entries` (`src/lib.rs`).
+#[cfg_attr(test, allow(dead_code))]
+fn project_point_onto_segment(p: [f32; 2], a: [f32; 2], b: [f32; 2]) -> Option<[f32; 2]> {
+    let ab = [b[0] - a[0], b[1] - a[1]]; // mm
+    let ap = [p[0] - a[0], p[1] - a[1]]; // mm
+    let len2 = ab[0] * ab[0] + ab[1] * ab[1]; // mm^2
+    if len2 <= 0.0 {
+        return None;
+    }
+    let t = ((ap[0] * ab[0] + ap[1] * ab[1]) / len2).clamp(0.0, 1.0);
+    Some([a[0] + t * ab[0], a[1] + t * ab[1]])
+}
+
+/// Project `p` (mm) onto the nearest ring of a planner inset-boundary
+/// `ExPolygon` set.
+///
+/// `insets` arrives from `slicer_sdk::host::offset_polygons`, whose ring
+/// vertices are IR integer units (1 unit = 100 nm), so every vertex is
+/// converted with `units_to_mm` on entry. The projection covers contour and
+/// hole rings alike (a seam on a hole wall is a legitimate planner
+/// position). Degenerate rings are skipped.
+///
+/// The result is what the planner means by a "planner coordinate": a point
+/// that lies **on** the inset boundary the toolpath will actually follow,
+/// rather than on the raw mesh/region boundary the caller supplied.
+#[cfg_attr(test, allow(dead_code))]
+pub(crate) fn project_point_onto_inset_boundary(
+    insets: &[slicer_ir::ExPolygon],
+    p: [f32; 2],
+) -> Option<[f32; 2]> {
+    let mut best: Option<([f32; 2], f32)> = None;
+    for inset in insets {
+        let rings = std::iter::once(&inset.contour).chain(inset.holes.iter());
+        for ring in rings {
+            let n = ring.points.len();
+            if n < 2 {
+                continue;
+            }
+            for i in 0..n {
+                let a_raw = ring.points[i];
+                let b_raw = ring.points[(i + 1) % n];
+                let a = [units_to_mm(a_raw.x), units_to_mm(a_raw.y)];
+                let b = [units_to_mm(b_raw.x), units_to_mm(b_raw.y)];
+                let Some(projected) = project_point_onto_segment(p, a, b) else {
+                    continue;
+                };
+                let dx = projected[0] - p[0];
+                let dy = projected[1] - p[1];
+                let dist_sq = dx * dx + dy * dy;
+                if best.is_none_or(|(_, best_dist_sq)| dist_sq < best_dist_sq) {
+                    best = Some((projected, dist_sq));
+                }
+            }
+        }
+    }
+    best.map(|(projected, _)| projected)
 }
 
 /// Euclidean distance (mm) from point `p` to segment `a`-`b`.

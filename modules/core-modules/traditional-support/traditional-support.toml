@@ -93,6 +93,39 @@ default = "default"
 display = "Support Style"
 group   = "Support"
 
+[config.schema.nozzle_diameter]
+type    = "float"
+default = 0.4
+min     = 0.1
+max     = 2.0
+unit    = "mm"
+display = "Nozzle diameter"
+description = "Typed to match the registry's existing declarers (classic-perimeters, wave-overhangs, machine-gcode-emit, tree-support-planner, arachne-perimeters all declare this key as `float` with default 0.4)."
+group   = "Support"
+
+[config.schema.layer_height]
+type    = "float"
+default = 0.2
+min     = 0.01
+max     = 2.0
+unit    = "mm"
+display = "Layer height"
+description = "Typed to match the registry's existing declarers (layer-planner-default, classic-perimeters, wave-overhangs, arachne-perimeters, infill-linker all declare this key as `float` with default 0.2)."
+group   = "Support"
+
+[config.schema.support_line_width]
+type    = "float_or_percent"
+base_key = "nozzle_diameter"
+default = 0.0
+min     = 0.0
+# Percent semantics: Orca's `support_line_width` (PrintConfig.cpp, coFloatOrPercent)
+# declares min 0 / max 1000 for the percent form, and the bounds check applies
+# to the raw percent number ("80%" -> 80). Typed to match the
+# tree-support-planner declaration of the same key.
+max     = 1000.0
+display = "Support Line Width"
+group   = "Support"
+
 [config.overridable-per-region]
 keys = []
 

@@ -187,7 +187,7 @@ These keys are read by `serialize.rs` / `pipeline.rs` or required by `docs/02_ir
 - `crates/slicer-ir/src/resolved_config.rs`, `crates/slicer-ir/src/config_schema.rs`, `crates/slicer-ir/src/slice_ir.rs` — metadata, runtime-key registration, generated map, `typed_field_keys`, required accessors.
 - `crates/slicer-config/src/lib.rs`, `crates/slicer-config/src/resolution.rs`, `crates/slicer-config/src/ingestion.rs` — reconciliation, `config_block_map`, seeding/validation, warn-to-drop.
 - `crates/slicer-scheduler/src/manifest.rs`, `crates/slicer-scheduler/src/execution_plan.rs` — manifest parse; binding and its in-file tests.
-- `crates/slicer-wasm-host/src/execution_plan_live.rs`, `crates/slicer-runtime/src/run.rs`, `crates/slicer-runtime/src/pipeline.rs` — resolved binding, CONFIG_BLOCK plumbing, `SliceOutcome.ingestion_warnings`.
+- `crates/slicer-wasm-host/src/execution_plan_live.rs`, `crates/slicer-runtime/src/run.rs`, `crates/slicer-runtime/src/pipeline.rs` — resolved binding, CONFIG_BLOCK plumbing, `SliceOutcome.ingestion_warnings`, and the `seed_expansion_context` registry-default fallback for an unauthored `nozzle_diameter`.
 - `crates/slicer-gcode/src/serialize.rs` — string escaping and `filament_diameter` rendering only.
 - `crates/slicer-sdk/src/error.rs` — `From<ConfigReadError>`.
 - New test files, each with a one-line `mod` in its aggregator:
@@ -209,6 +209,9 @@ These keys are read by `serialize.rs` / `pipeline.rs` or required by `docs/02_ir
   - `modules/core-modules/infill-linker/infill-linker.toml`
   - `modules/core-modules/rectilinear-infill/rectilinear-infill.toml`
   - `modules/core-modules/wave-overhangs/wave-overhangs.toml`
+- `modules/core-modules/seam-planner-default/src/` — aligned-mode planner-coordinate fix (Step 6a); the tree's files are `lib.rs`, `contours.rs`, `align.rs`, `comparator.rs`, `visibility.rs`, and the bounded Step 6a diagnosis names the exact edited file(s) before any edit.
+- `crates/slicer-runtime/src/run.rs` — `seed_expansion_context` registry-default fallback (Step 6a).
+- **Stock-red ownership (Step 6a-bis):** the Packet-68 stamping red and the NegativeSpacing red move from pre-existing/unowned to packet-owned. Their exact files are named by the Step 6a-bis diagnosis, never at authoring time; a red whose root cause names an already out-of-bounds file stops Step 6a-bis.
 - `docs/02_ir_schemas.md`, `docs/03_wit_and_manifest.md`, `docs/04_host_scheduler.md`.
 
 ## Read-Only Context
@@ -230,7 +233,7 @@ Unless noted, each returns `LOCATIONS` ≤20.
 
 - Reconcile packet 05's landed resolver signatures, `ScopedConfig` layering, and every `resolve_scope_stack` / `bind_module_config_view` / `build_live_execution_plan` / `run_pipeline_with_*` / `SliceOutcome {` site.
 - Find tests asserting whole-value `ResolvedConfig` equality or empty `extensions` that seeding would change.
-- For the 89 sites, give key, getter, registry `field_type`, and whether the reading guest declares the key. Also list every other undeclared string-literal getter or wrapper read, in per-guest batches.
+- For the 87 sites, give key, getter, registry `field_type`, and whether the reading guest declares the key. Also list every other undeclared string-literal getter or wrapper read, in per-guest batches.
 - Find `HostKeyMeta`, `ConfigFieldEntry`, and `RegistryEntry` struct literals without a `..` rest (≤20 per type).
 - Inventory host production reads of keys that have no registry entry, from any `ScopeDelta` values, `extensions`, raw or expanded source map, or CONFIG_BLOCK map. For each, record current absent-value behavior (synthesized, defaulted, or ignored) to fix its runtime-row default.
 - Run each cargo command. Return `FACT` ≤5 lines, or failure `SNIPPETS` ≤20 lines.
@@ -247,8 +250,10 @@ Unless noted, each returns `LOCATIONS` ≤20.
 ## Locked Assumptions and Invariants
 
 - FORWARD-DEP on packet 05 (draft, in progress). The names and shapes in `packet.spec.md` §Prerequisites match both packet 05's `design.md` and the working tree as of this preflight. Step 1 re-verifies them against the landed tree.
+- `nozzle_diameter = 0.4` is the registry default in seven-plus manifests and is seeded at resolution, but the fix cannot ride seeding alone: `seed_expansion_context` (`crates/slicer-runtime/src/run.rs`) builds its `nozzle_diameter` lookup from the authored source, and that runs before the `resolve_scope_stack` seeding in `crates/slicer-config/src/resolution.rs` (run-time call order in `run.rs`). So the fallback belongs in the expansion-context builder itself, where an authored value still wins and expansion semantics are otherwise untouched. The stock red that exposes this is the Step-6 pre-existing blocker recorded in Step 6a.
+- The seam-planner aligned-mode gap is fixed in the coordinates the guest emits, not in host escalation. `seam-planner-default` emits mesh-corner coordinates on the aligned path; the defect is the emitted value, not the escalation contract, so changing escalation would move every caller and mask the guest defect. The fix edits the guest's planner coordinates and leaves host escalation untouched; the exact files are `modules/core-modules/seam-planner-default/src/{lib.rs,contours.rs,align.rs,comparator.rs,visibility.rs}`, diagnosed in Step 6a before any edit.
 - Packet 05's layer-planning seam removes guest `object_height:<id>` / `layer_height:<id>` reads. If `overlay_object_layer_planning` or a guest wildcard-instance read survives packet 05, binding over the resolved config would drop those instance keys, and Step 1 must stop.
-- The fallback census is exactly 89 across the 13 named guests under AC-3's chain-aware classification. It was verified against HEAD `a85421af` during preflight. A strict "getter immediately followed by `.unwrap_or`" count is lower; do not use it.
+- The fallback census is exactly 87 across the 13 named guests under AC-3's chain-aware classification. It was re-verified during refinement against post-packet-05 HEAD `4558519297e9ce4a269d321252b5c721383ea0fc`; the pre-seam `a85421af` baseline was stale because packet 05's layer-planning seam removed layer-planner-default's guest `object_height:<id>` / `layer_height:<id>` reads, leaving that guest with 0 classified sites. A strict "getter immediately followed by `.unwrap_or`" count is lower; do not use it.
 - Eleven guest:key reads were verified undeclared at preflight. Today they always return `None`, so the guest's literal or helper default runs:
   - overhang-classifier-default: `outer_wall_line_width`, `line_width`;
   - tree-support and traditional-support: `nozzle_diameter`, `layer_height`, `support_line_width` (via `get_abs_value`);

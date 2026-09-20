@@ -1040,7 +1040,95 @@ impl ConfigView {
         keys.into_iter()
             .map(move |k| (k, self.fields.get(k).expect("iter_entries: key vanished")))
     }
+
+    /// Required read: `bool` value, or an error naming `key` if missing /
+    /// other type. Mirrors [`ConfigView::get_bool`] lookup logic exactly;
+    /// use it where a config defect must abort the slice rather than fall
+    /// back silently. The error converts into a fatal `ModuleError` via
+    /// `From<ConfigReadError>` in `slicer-sdk`.
+    pub fn require_bool(&self, key: &str) -> Result<bool, ConfigReadError> {
+        self.get_bool(key)
+            .ok_or_else(|| ConfigReadError::new(key, "bool"))
+    }
+
+    /// Required read: `i64` value, or an error naming `key` if missing /
+    /// other type. Mirrors [`ConfigView::get_int`] lookup logic exactly;
+    /// use it where a config defect must abort the slice rather than fall
+    /// back silently.
+    pub fn require_int(&self, key: &str) -> Result<i64, ConfigReadError> {
+        self.get_int(key)
+            .ok_or_else(|| ConfigReadError::new(key, "int"))
+    }
+
+    /// Required read: `f64` value (including the `FloatOrPercent` literal
+    /// branch, with subnormal normalization), or an error naming `key` if
+    /// missing / other type. Mirrors [`ConfigView::get_float`] lookup
+    /// logic exactly; percent values are NOT resolved here — use
+    /// [`ConfigView::require_abs_value`] for those.
+    pub fn require_float(&self, key: &str) -> Result<f64, ConfigReadError> {
+        self.get_float(key)
+            .ok_or_else(|| ConfigReadError::new(key, "float (or float-or-percent)"))
+    }
+
+    /// Required read: `&str` value, or an error naming `key` if missing /
+    /// other type. Mirrors [`ConfigView::get_string`] lookup logic
+    /// exactly.
+    pub fn require_string(&self, key: &str) -> Result<&str, ConfigReadError> {
+        self.get_string(key)
+            .ok_or_else(|| ConfigReadError::new(key, "string"))
+    }
+
+    /// Required absolute-value read: resolves `percent` /
+    /// `float_or_percent` against `base`, or returns the plain `float`
+    /// unchanged, or an error naming `key` if missing / unresolvable.
+    /// Mirrors [`ConfigView::get_abs_value`] lookup logic exactly (a
+    /// percent of a non-positive `base` is unresolvable and therefore an
+    /// error here).
+    pub fn require_abs_value(&self, key: &str, base: f64) -> Result<f64, ConfigReadError> {
+        self.get_abs_value(key, base)
+            .ok_or_else(|| ConfigReadError::new(key, "percent, float-or-percent, or float"))
+    }
 }
+
+/// Error produced by the `ConfigView::require_*` accessors when a key
+/// visible to the module is missing from the view or holds a value of a
+/// different type than the accessor requires.
+///
+/// The failing key is always named, so the error survives conversion into
+/// a fatal `ModuleError` (`From<ConfigReadError>` in `slicer-sdk`)
+/// without losing the diagnostic.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfigReadError {
+    /// The key whose typed read failed.
+    pub key: String,
+    /// Human description of the type(s) the accessor expected, e.g.
+    /// `"bool"` or `"percent, float-or-percent, or float"`.
+    pub expected: &'static str,
+}
+
+impl ConfigReadError {
+    /// Construct an error for `key`, whose missing / mistyped value is
+    /// described by `expected`.
+    #[must_use]
+    pub fn new(key: &str, expected: &'static str) -> Self {
+        Self {
+            key: key.to_string(),
+            expected,
+        }
+    }
+}
+
+impl std::fmt::Display for ConfigReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "config key '{}' is missing or not of type {}",
+            self.key, self.expected
+        )
+    }
+}
+
+impl std::error::Error for ConfigReadError {}
 
 impl Default for ConfigView {
     fn default() -> Self {

@@ -32,6 +32,7 @@ mod perimeter_spatial_tests {
     };
     use slicer_scheduler::config_resolution::ingest_resolution_config;
     use slicer_sdk::native::NativeStageEntry;
+    use slicer_sdk::traits::LayerPlanningObject;
 
     use crate::common::integrated_parity_harness::{run_integrated_parity, IntegratedParitySpec};
     use crate::common::perimeter_harness::{
@@ -367,23 +368,12 @@ mod perimeter_spatial_tests {
             })
             .collect();
 
-        // Mirror production's `overlay_expanded_global` and
-        // `overlay_object_layer_planning` for the plan source: layer-tier
-        // modules consume the expanded resolved defaults (notably
-        // `line_width`), and the v2 `PrePass::LayerPlanning` dispatch reads
-        // `layer_height:<id>`, `first_layer_height`, and
-        // `support_raft_layers` from the module ConfigView. Production
-        // supplies both from the unified resolver and `query_z_grid` rather
-        // than from the authored wire config. Only values that expansion
-        // actually changed are overlaid, so manifest defaults
-        // (`wall_count = 3`) are not shadowed by `ResolvedConfig::default()`.
-        let mut plan_source = config_source.clone();
-        let unexpanded_defaults = slicer_ir::ResolvedConfig::default().to_config_map();
-        for (key, value) in default_resolved_config.to_config_map() {
-            if unexpanded_defaults.get(&key) != Some(&value) {
-                plan_source.entry(key).or_insert(value);
-            }
-        }
+        // The resolved config is the single plan source, mirroring production
+        // (`run.rs` passes `&default_resolved_config` to
+        // `build_live_execution_plan`). Per-object layer-planning values
+        // bypass ConfigView and travel as typed records on the prepass
+        // runner (`LayerPlanningObject`), so nothing authored is shadowed by
+        // `ResolvedConfig::default()`.
         let object_heights: BTreeMap<String, f64> = mesh
             .objects
             .iter()
@@ -400,41 +390,22 @@ mod perimeter_spatial_tests {
             &expansion,
         )
         .map_err(|e| PerimeterHarnessError(format!("typed Z-grid query failed: {e:?}")))?;
-        for object in &object_layer_configs {
-            plan_source.insert(
-                format!("object_height:{}", object.object_id),
-                ConfigValue::Float(object.object_height),
-            );
-            plan_source.insert(
-                format!("layer_height:{}", object.object_id),
-                ConfigValue::Float(object.layer_height),
-            );
-        }
-        if let Some(first) = object_layer_configs.first() {
-            if object_layer_configs
-                .iter()
-                .all(|object| object.first_layer_height == first.first_layer_height)
-            {
-                plan_source.insert(
-                    "first_layer_height".to_owned(),
-                    ConfigValue::Float(first.first_layer_height),
-                );
-            }
-            if object_layer_configs
-                .iter()
-                .all(|object| object.support_raft_layers == first.support_raft_layers)
-            {
-                plan_source.insert(
-                    "support_raft_layers".to_owned(),
-                    ConfigValue::Int(i64::from(first.support_raft_layers)),
-                );
-            }
-        }
+        let layer_planning_objects = object_layer_configs
+            .iter()
+            // exhaustive: the harness must forward every typed layer-planning field.
+            .map(|object| LayerPlanningObject {
+                object_id: object.object_id.clone(),
+                object_height: object.object_height,
+                layer_height: object.layer_height,
+                first_layer_height: object.first_layer_height,
+                support_raft_layers: object.support_raft_layers,
+            })
+            .collect();
 
         let plan = build_live_execution_plan(
             loaded.sorted_stages,
             loaded.bindings,
-            &plan_source,
+            &default_resolved_config,
             Arc::new(Vec::new()),
             Arc::new(HashMap::new()),
             &mut loaded.diagnostics,
@@ -467,7 +438,10 @@ mod perimeter_spatial_tests {
             plan,
             // exhaustive: PipelineStageRunners owns the runtime trait-object boundary for this harness.
             PipelineStageRunners {
-                prepass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
+                prepass: Box::new(
+                    WasmRuntimeDispatcher::new(Arc::clone(&engine))
+                        .with_layer_planning_objects(layer_planning_objects),
+                ),
                 layer: Box::new(layer_runner),
                 finalization: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
                 postpass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),

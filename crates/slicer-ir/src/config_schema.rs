@@ -73,6 +73,12 @@ pub struct ConfigFieldEntry {
     /// Scopes in which this field is not statable.
     #[serde(default)]
     pub denied_scopes: Vec<String>,
+    /// Whether this field is omitted from the resolved config block.
+    /// Driven by the manifest's `config_block = false`; the default `false`
+    /// here means the field is emitted. Skipped in serialization so the
+    /// config-schema wire shape is unchanged.
+    #[serde(skip)]
+    pub omit_from_config_block: bool,
 }
 
 /// Full config schema for a module, holding all field entries.

@@ -246,7 +246,11 @@ impl LayerModule for TreeSupport {
             _ => BASE_SPEED,
         };
 
-        let nozzle_diameter = config.get_float("nozzle_diameter").unwrap_or(0.4);
+        // Required read (packet 06): `nozzle_diameter` is `float` in the
+        // manifest with a seeded 0.4 default (matching the registry's
+        // existing declarers), so absence is a contract violation, not a
+        // fallback case.
+        let nozzle_diameter = config.require_float("nozzle_diameter")?;
         let line_width = config
             .get_abs_value("support_line_width", nozzle_diameter)
             .or_else(|| config.get_int("support_line_width").map(|v| v as f64))
@@ -280,9 +284,7 @@ impl LayerModule for TreeSupport {
             Some(ConfigValue::Int(s)) => *s as f32,
             _ => DEFAULT_INTERFACE_SPACING_MM,
         };
-        let base_pattern_spacing_mm = config
-            .get_float("support_base_pattern_spacing")
-            .unwrap_or(2.5) as f32;
+        let base_pattern_spacing_mm = config.require_float("support_base_pattern_spacing")? as f32;
 
         Ok(Self {
             enabled,
@@ -321,7 +323,9 @@ impl LayerModule for TreeSupport {
             let layer_height = if region.effective_layer_height() > 0.0 {
                 region.effective_layer_height()
             } else {
-                _config.get_float("layer_height").unwrap_or(0.2) as f32
+                // Required read (packet 06): `layer_height` is `float`
+                // (seeded default 0.2) in the manifest.
+                _config.require_float("layer_height")? as f32
             };
             let (
                 interface_width_mm,
@@ -837,9 +841,26 @@ mod tests {
     use super::*;
     use slicer_ir::Point2;
 
+    /// Packet 06 made `nozzle_diameter`, `layer_height` and
+    /// `support_base_pattern_spacing` required reads (`require_float`) in
+    /// `from_config`/`run_support`. The host seeds these at their manifest
+    /// defaults (0.4 / 0.2 / 2.5), so unit fixtures seed the same values —
+    /// exactly the pre-B4 in-code fallbacks, keeping the assertion constants
+    /// below unchanged.
+    fn seeded_config() -> ConfigView {
+        let mut map = std::collections::HashMap::new();
+        map.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.4));
+        map.insert("layer_height".to_string(), ConfigValue::Float(0.2));
+        map.insert(
+            "support_base_pattern_spacing".to_string(),
+            ConfigValue::Float(2.5),
+        );
+        ConfigView::from_map(map)
+    }
+
     #[test]
     fn from_config_defaults() {
-        let config = ConfigView::from_map(std::collections::HashMap::new());
+        let config = seeded_config();
         let module = TreeSupport::from_config(&config).unwrap();
         assert!(!module.enabled);
         assert!((module.line_width - 0.45).abs() < 0.001);
@@ -857,7 +878,7 @@ mod tests {
     /// pitch instead.
     #[test]
     fn interface_pitch_adds_flow_spacing() {
-        let config = ConfigView::from_map(std::collections::HashMap::new());
+        let config = seeded_config();
         let module = TreeSupport::from_config(&config).unwrap();
         let (_, _, _, top, bottom) = module.pitches_mm(0.2).unwrap();
         assert!(
@@ -883,8 +904,16 @@ mod tests {
         // polygon at a `line_width` pitch, so a body was extruded several times
         // over the same area.
         let mut map = std::collections::HashMap::new();
+        // `tree_support_wall_count` is this test's focus; the packet-06
+        // required keys are seeded alongside at manifest defaults.
         map.insert("enable_support".to_string(), ConfigValue::Bool(true));
         map.insert("tree_support_wall_count".to_string(), ConfigValue::Int(2));
+        map.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.4));
+        map.insert("layer_height".to_string(), ConfigValue::Float(0.2));
+        map.insert(
+            "support_base_pattern_spacing".to_string(),
+            ConfigValue::Float(2.5),
+        );
         let module = TreeSupport::from_config(&ConfigView::from_map(map)).unwrap();
 
         let square = ExPolygon {
@@ -933,6 +962,11 @@ mod tests {
     fn fill_pitch_derives_from_base_spacing() {
         let build = |density: f64| {
             let mut map = std::collections::HashMap::new();
+            // `support_base_pattern_spacing` is this test's focus; the
+            // packet-06 required keys are seeded alongside (the density
+            // insert below overrides the seed, which is the point).
+            map.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.4));
+            map.insert("layer_height".to_string(), ConfigValue::Float(0.2));
             map.insert("enable_support".to_string(), ConfigValue::Bool(true));
             map.insert("tree_support_wall_count".to_string(), ConfigValue::Int(1));
             map.insert(
@@ -973,7 +1007,7 @@ mod tests {
 
     #[test]
     fn narrow_region_gets_one_fill_line_when_pitch_has_no_scan_rows() {
-        let config = ConfigView::from_map(std::collections::HashMap::new());
+        let config = seeded_config();
         let module = TreeSupport::from_config(&config).unwrap();
         let region = ExPolygon {
             contour: slicer_ir::Polygon {

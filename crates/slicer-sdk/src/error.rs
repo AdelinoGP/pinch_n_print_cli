@@ -79,3 +79,13 @@ impl From<&str> for ModuleError {
         }
     }
 }
+
+impl From<slicer_ir::slice_ir::ConfigReadError> for ModuleError {
+    /// A failed required config read (`ConfigView::require_*`) is a config
+    /// defect, so it aborts the slice (fatal) instead of degrading
+    /// silently. The message always names the failing key (see
+    /// `ConfigReadError`'s `Display`).
+    fn from(err: slicer_ir::slice_ir::ConfigReadError) -> Self {
+        Self::fatal(1, err.to_string())
+    }
+}

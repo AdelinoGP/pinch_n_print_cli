@@ -525,7 +525,7 @@ fn host_key(key: &'static str, field_type: &'static str, default: &str) -> HostC
 fn runtime_key(
     key: &'static str,
     field_type: &'static str,
-    default: &'static str,
+    default: Option<&'static str>,
 ) -> HostRuntimeKey {
     let mut row = HOST_RUNTIME_KEYS[0];
     row.key = key;
@@ -843,7 +843,7 @@ fn absent_host_default_remains_absent_when_module_supplies_default() {
 fn provenance_names_every_contributor() {
     let host = host_key("all_sources", "float", "host");
     let speed = host_key("all_sources", "float", "speed");
-    let runtime = runtime_key("all_sources", "float", "runtime");
+    let runtime = runtime_key("all_sources", "float", Some("runtime"));
     let modules = vec![
         module("beta-module", vec![("all_sources", field("float"))], None),
         module("alpha-module", vec![("all_sources", field("float"))], None),

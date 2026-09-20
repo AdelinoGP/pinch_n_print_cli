@@ -1632,7 +1632,10 @@ impl PrepassModule for SupportPlanner {
             Some(ConfigValue::Int(a)) => *a as f32,
             _ => DEFAULT_BRANCH_ANGLE_DEG,
         };
-        let nozzle_diameter = config.get_float("nozzle_diameter").unwrap_or(0.0);
+        // Packet 06 (AC-3): `nozzle_diameter` is declared `float` with a
+        // registry default in the manifest, so a bound view always holds it;
+        // a missing value is a contract violation, not a fallback case.
+        let nozzle_diameter = config.require_float("nozzle_diameter")?;
         let support_line_width_mm = config
             .get_abs_value("support_line_width", nozzle_diameter)
             // Preserve hand-written legacy configs that encode an absolute
@@ -1753,9 +1756,8 @@ impl PrepassModule for SupportPlanner {
         // When true, `plan_for_object` derives free-floating intermediate
         // support planes from `support_layer_height_mm`; when false the plan
         // is byte-identical to the pre-239c grid-exact behavior.
-        let independent_support_layer_height = config
-            .get_bool("independent_support_layer_height")
-            .unwrap_or(true);
+        let independent_support_layer_height =
+            config.require_bool("independent_support_layer_height")?;
         let max_bridge_length_mm = match config.get("max_bridge_length") {
             Some(ConfigValue::Float(length)) if *length > 0.0 => *length as f32,
             Some(ConfigValue::Int(length)) if *length > 0 => *length as f32,

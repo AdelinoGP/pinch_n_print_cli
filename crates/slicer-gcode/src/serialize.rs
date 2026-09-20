@@ -346,14 +346,45 @@ fn serialize_config_block(
     // count toward OrcaSlicer's minimum-keys gate.
     let mut emitted: BTreeSet<String> = BTreeSet::new();
 
+    // OrcaSlicer's `escape_string_cstyle` (`Config.cpp`, reached via
+    // `ConfigOptionString::serialize`) escapes these four characters so string
+    // values survive the `; key = value` footer round-trip through
+    // `ConfigBase::load_from_gcode_file`.
+    let escape_cstyle = |s: &str| -> String {
+        let mut escaped = String::with_capacity(s.len());
+        for c in s.chars() {
+            match c {
+                '\n' => escaped.push_str("\\n"),
+                '\r' => escaped.push_str("\\r"),
+                '\\' => escaped.push_str("\\\\"),
+                '"' => escaped.push_str("\\\""),
+                other => escaped.push(other),
+            }
+        }
+        escaped
+    };
+
     // OrcaSlicer's viewer (ConfigBase::load_from_gcode_file + GCodeProcessor::
     // apply_config) reads ONLY this block. It infers the filament COUNT from the
     // `filament_diameter` array length (ConfigOptionFloats, comma-separated) and
     // applies per-tool colours from `filament_colour` (ConfigOptionStrings,
-    // semicolon-separated) only when its length matches. Emit all three sized to
-    // the tools in use unless the user already supplied them (dumped below).
-    if !raw_config.contains_key("filament_diameter") {
-        let diam = vec!["1.75"; filament_count].join(",");
+    // semicolon-separated) only when its length matches. `filament_diameter` is
+    // therefore always rendered once per tool in use, from the map's effective
+    // value (the schema default `1.75` only when absent) instead of a
+    // hard-coded constant; a per-filament `List` from the map is already
+    // one-entry-per-tool and reaches the block via the passthrough below
+    // (`emitted` dedups it).
+    if !matches!(
+        raw_config.get("filament_diameter"),
+        Some(ConfigValue::List(_))
+    ) {
+        let effective = match raw_config.get("filament_diameter") {
+            Some(ConfigValue::Float(f)) => format!("{f}"),
+            Some(ConfigValue::Int(i)) => format!("{i}"),
+            Some(ConfigValue::String(s)) => escape_cstyle(s),
+            _ => "1.75".to_string(),
+        };
+        let diam = vec![effective.as_str(); filament_count].join(",");
         emit_config_kv(&mut out, &mut emitted, "filament_diameter", &diam);
     }
     if !raw_config.contains_key("filament_colour") {
@@ -412,7 +443,7 @@ fn serialize_config_block(
                     // Strip trailing zeros like "22.0" → "22" not wanted by test, keep "22.0"
                     format!("{f}")
                 }
-                ConfigValue::String(s) => s.clone(),
+                ConfigValue::String(s) => escape_cstyle(s),
                 ConfigValue::Percent(p) => format!("{p}%"),
                 ConfigValue::FloatOrPercent { value, is_percent } => {
                     if *is_percent {
@@ -437,7 +468,7 @@ fn serialize_config_block(
                     let parts: Vec<String> = items
                         .iter()
                         .map(|v| match v {
-                            ConfigValue::String(s) => s.clone(),
+                            ConfigValue::String(s) => escape_cstyle(s),
                             ConfigValue::Float(f) => format!("{f}"),
                             ConfigValue::Int(i) => format!("{i}"),
                             ConfigValue::Bool(b) => i64::from(*b).to_string(),

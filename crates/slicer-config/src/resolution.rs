@@ -7,7 +7,7 @@ use slicer_ir::{ConfigResolutionError, ConfigValue, ResolvedConfig};
 
 use crate::{
     expand_automatic_values, ConfigSchemaRegistry, ConfigScope, ExpansionContext, ExpansionError,
-    ScopeDelta, ScopedConfig,
+    RegistryEntry, ScopeDelta, ScopedConfig,
 };
 
 /// The object-level planning values needed to construct the shared Z grid.
@@ -96,6 +96,7 @@ impl From<ExpansionError> for ResolutionError {
 }
 
 fn apply_delta(
+    registry: &ConfigSchemaRegistry,
     config: &mut ResolvedConfig,
     delta: Option<&ScopeDelta>,
 ) -> Result<(), ResolutionError> {
@@ -105,10 +106,325 @@ fn apply_delta(
 
     for (key, value) in delta.iter() {
         if !config.apply_cli_key(key, value)? {
+            validate_extension(registry, key, value)?;
             config.extensions.insert(key.clone(), value.clone());
         }
     }
     Ok(())
+}
+
+/// Seed every seed-set registry default into the lowest-precedence layer.
+///
+/// A key is seeded only when all four hold:
+///
+/// - its key is exact (`prefix:*` wildcards are never materialized);
+/// - it has a registry default;
+/// - it is not a `selector` (a selector value travels as a selector value, not
+///   as a delta);
+/// - it is not a `declare_resolved_config!` field. Typed fields carry their own
+///   defaults through `ResolvedConfig::default()`, and a seeded extension would
+///   shadow the typed value because `to_config_map` merges `extensions` last.
+///   `apply_cli_key` cannot test this because `plain` rows also return
+///   `Ok(false)`; membership in `ResolvedConfig::typed_field_keys()` is the
+///   authority.
+///
+/// Seeding iterates the registry's `BTreeMap` order and runs before Phase-B
+/// expansion, so a seeded percent default expands exactly like an authored
+/// value.
+fn seed_registry_defaults(
+    registry: &ConfigSchemaRegistry,
+    config: &mut ResolvedConfig,
+) -> Result<(), ResolutionError> {
+    for key in registry.keys() {
+        if key.contains('*') {
+            continue;
+        }
+        let Some(entry) = registry.entry(key) else {
+            continue;
+        };
+        if entry.selector {
+            continue;
+        }
+        if ResolvedConfig::typed_field_keys().contains(&key) {
+            continue;
+        }
+        let Some(default) = entry.default.as_ref() else {
+            continue;
+        };
+        let value = parse_registry_default(entry, default).map_err(|()| {
+            // A declaration the registry cannot render is a manifest defect;
+            // surfacing it keeps registry assembly loud instead of silently
+            // dropping the key from every resolved config.
+            ResolutionError::Application(ConfigResolutionError::TypeMismatch {
+                key: key.to_owned(),
+                expected: render_type_name(&entry.field_type),
+                actual: format!("unrenderable default {default:?}"),
+            })
+        })?;
+        validate_extension(registry, key, &value)?;
+        // The seed enters below every authored scope: `or_insert` keeps an
+        // authored value if one already claimed the slot.
+        config.extensions.entry(key.to_owned()).or_insert(value);
+    }
+    Ok(())
+}
+
+/// Render a registry `default` wire string into the `ConfigValue` its declared
+/// type requires.
+fn parse_registry_default(entry: &RegistryEntry, default: &str) -> Result<ConfigValue, ()> {
+    let trimmed = default.trim();
+    match entry.field_type.as_str() {
+        "bool" => match trimmed {
+            "true" => Ok(ConfigValue::Bool(true)),
+            "false" => Ok(ConfigValue::Bool(false)),
+            _ => Err(()),
+        },
+        "int" => trimmed.parse::<i64>().map(ConfigValue::Int).map_err(|_| ()),
+        "float" => trimmed
+            .parse::<f64>()
+            .map(ConfigValue::Float)
+            .map_err(|_| ()),
+        "string" | "enum" => Ok(ConfigValue::String(default.to_owned())),
+        "percent" => {
+            let magnitude = trimmed.strip_suffix('%').unwrap_or(trimmed);
+            magnitude
+                .trim()
+                .parse::<f64>()
+                .map(ConfigValue::Percent)
+                .map_err(|_| ())
+        }
+        "float_or_percent" => {
+            if let Some(magnitude) = trimmed.strip_suffix('%') {
+                magnitude
+                    .trim()
+                    .parse::<f64>()
+                    .map(|value| ConfigValue::FloatOrPercent {
+                        value,
+                        is_percent: true,
+                    })
+                    .map_err(|_| ())
+            } else {
+                trimmed
+                    .parse::<f64>()
+                    .map(|value| ConfigValue::FloatOrPercent {
+                        value,
+                        is_percent: false,
+                    })
+                    .map_err(|_| ())
+            }
+        }
+        "int-list" => default
+            .split(',')
+            .map(|item| item.trim().parse::<i64>().map(ConfigValue::Int))
+            .collect::<Result<Vec<_>, _>>()
+            .map(ConfigValue::List)
+            .map_err(|_| ()),
+        "float-list" => default
+            .split(',')
+            .map(|item| item.trim().parse::<f64>().map(ConfigValue::Float))
+            .collect::<Result<Vec<_>, _>>()
+            .map(ConfigValue::List)
+            .map_err(|_| ()),
+        "string-list" => Ok(ConfigValue::List(if default.is_empty() {
+            Vec::new()
+        } else {
+            default
+                .split(',')
+                .map(|item| ConfigValue::String(item.to_owned()))
+                .collect()
+        })),
+        _ => Err(()),
+    }
+}
+
+fn render_type_name(field_type: &str) -> &'static str {
+    match field_type {
+        "bool" => "Bool",
+        "int" => "Int",
+        "float" => "Float",
+        "string" | "enum" => "String",
+        "percent" => "Percent",
+        "float_or_percent" => "FloatOrPercent",
+        "int-list" => "List<Int>",
+        "float-list" => "List<Float>",
+        "string-list" => "List<String>",
+        _ => "registry-declared type",
+    }
+}
+
+/// Validate one `extensions` value against its registry declaration.
+///
+/// An undeclared key is retained untyped (the registry cannot type it); a
+/// declared key must match the declared wire type and, for numeric types, its
+/// declared `[min, max]` bounds. Percent-magnitude values check only the `min`
+/// side, mirroring `slicer-scheduler`'s percent bounds rule: an absolute `max`
+/// is expressed in the key's unit while a raw percent magnitude is only
+/// meaningful once Phase B supplies its base.
+fn validate_extension(
+    registry: &ConfigSchemaRegistry,
+    key: &str,
+    value: &ConfigValue,
+) -> Result<(), ResolutionError> {
+    // Registry wildcard entries (`prefix:*`) govern concrete `prefix:<instance>`
+    // keys; the wildcard's declaration types the instance value.
+    let entry = registry.entry(key).or_else(|| {
+        let (base, _) = key.rsplit_once(':')?;
+        registry.entry(&format!("{base}:*"))
+    });
+    let Some(entry) = entry else {
+        return Ok(());
+    };
+
+    match entry.field_type.as_str() {
+        "bool" => match value {
+            ConfigValue::Bool(_) => Ok(()),
+            // `extract_bool` accepts Int 0/1 as boolean; mirror that here.
+            ConfigValue::Int(0 | 1) => Ok(()),
+            other => Err(type_mismatch(key, "Bool", other)),
+        },
+        "int" => match value {
+            ConfigValue::Int(number) => check_extension_scalar(key, *number as f64, entry, None),
+            ConfigValue::Float(number) => {
+                if number.is_finite() && number.fract() == 0.0 {
+                    check_extension_scalar(key, *number, entry, None)
+                } else {
+                    Err(type_mismatch(key, "Int", value))
+                }
+            }
+            other => Err(type_mismatch(key, "Int", other)),
+        },
+        "float" => match value {
+            ConfigValue::Float(number) => check_extension_scalar(key, *number, entry, None),
+            ConfigValue::Int(number) => check_extension_scalar(key, *number as f64, entry, None),
+            other => Err(type_mismatch(key, "Float", other)),
+        },
+        "string" | "enum" => match value {
+            ConfigValue::String(_) => Ok(()),
+            other => Err(type_mismatch(key, "String", other)),
+        },
+        "percent" => match value {
+            ConfigValue::Percent(number) => check_extension_percent(key, *number, entry),
+            other => Err(type_mismatch(key, "Percent", other)),
+        },
+        "float_or_percent" => match value {
+            ConfigValue::FloatOrPercent {
+                value: number,
+                is_percent,
+            } => {
+                if *is_percent {
+                    check_extension_percent(key, *number, entry)
+                } else {
+                    check_extension_scalar(key, *number, entry, None)
+                }
+            }
+            ConfigValue::Float(number) => check_extension_scalar(key, *number, entry, None),
+            ConfigValue::Int(number) => check_extension_scalar(key, *number as f64, entry, None),
+            ConfigValue::Percent(number) => check_extension_percent(key, *number, entry),
+            other => Err(type_mismatch(key, "FloatOrPercent", other)),
+        },
+        "int-list" => match value {
+            ConfigValue::List(items) => {
+                for (index, item) in items.iter().enumerate() {
+                    match item {
+                        ConfigValue::Int(number) => {
+                            check_extension_scalar(key, *number as f64, entry, Some(index))?
+                        }
+                        other => return Err(type_mismatch(key, "Int", other)),
+                    }
+                }
+                Ok(())
+            }
+            other => Err(type_mismatch(key, "List", other)),
+        },
+        "float-list" => match value {
+            ConfigValue::List(items) => {
+                for (index, item) in items.iter().enumerate() {
+                    match item {
+                        ConfigValue::Float(number) => {
+                            check_extension_scalar(key, *number, entry, Some(index))?
+                        }
+                        ConfigValue::Int(number) => {
+                            check_extension_scalar(key, *number as f64, entry, Some(index))?
+                        }
+                        other => return Err(type_mismatch(key, "Float", other)),
+                    }
+                }
+                Ok(())
+            }
+            // A bare scalar is accepted as a one-element list, matching the
+            // extractors' scalar tolerance; the element index is 0.
+            ConfigValue::Float(number) => check_extension_scalar(key, *number, entry, Some(0)),
+            ConfigValue::Int(number) => check_extension_scalar(key, *number as f64, entry, Some(0)),
+            other => Err(type_mismatch(key, "List", other)),
+        },
+        "string-list" => match value {
+            ConfigValue::List(items) => {
+                for item in items {
+                    if !matches!(item, ConfigValue::String(_)) {
+                        return Err(type_mismatch(key, "String", item));
+                    }
+                }
+                Ok(())
+            }
+            ConfigValue::String(_) => Ok(()),
+            other => Err(type_mismatch(key, "List", other)),
+        },
+        _ => Ok(()),
+    }
+}
+
+fn check_extension_scalar(
+    key: &str,
+    value: f64,
+    entry: &RegistryEntry,
+    index: Option<usize>,
+) -> Result<(), ResolutionError> {
+    let in_range = value.is_finite()
+        && entry.min.is_none_or(|min| value >= min)
+        && entry.max.is_none_or(|max| value <= max);
+    if in_range {
+        Ok(())
+    } else {
+        Err(ResolutionError::Application(
+            ConfigResolutionError::OutOfRange {
+                key: key.to_owned(),
+                value,
+                min: entry.min,
+                max: entry.max,
+                index,
+            },
+        ))
+    }
+}
+
+/// Percent-magnitude bounds check: only the `min` side is meaningful before
+/// Phase B supplies the base.
+fn check_extension_percent(
+    key: &str,
+    value: f64,
+    entry: &RegistryEntry,
+) -> Result<(), ResolutionError> {
+    if value.is_finite() && entry.min.is_none_or(|min| value >= min) {
+        Ok(())
+    } else {
+        Err(ResolutionError::Application(
+            ConfigResolutionError::OutOfRange {
+                key: key.to_owned(),
+                value,
+                min: entry.min,
+                max: entry.max,
+                index: None,
+            },
+        ))
+    }
+}
+
+fn type_mismatch(key: &str, expected: &'static str, value: &ConfigValue) -> ResolutionError {
+    ResolutionError::Application(ConfigResolutionError::TypeMismatch {
+        key: key.to_owned(),
+        expected,
+        actual: config_value_name(value).to_owned(),
+    })
 }
 
 /// Resolve all applicable deltas in canonical precedence order, then run Phase B.
@@ -125,8 +441,9 @@ pub fn resolve_scope_stack(
 ) -> Result<ResolvedConfig, ResolutionError> {
     let mut config = ResolvedConfig::default();
 
-    apply_delta(&mut config, scoped.global())?;
+    apply_delta(registry, &mut config, scoped.global())?;
     apply_delta(
+        registry,
         &mut config,
         scoped.delta(&ConfigScope::Object(target.object_id.clone())),
     )?;
@@ -136,6 +453,7 @@ pub fn resolve_scope_stack(
 
     for modifier_id in &target.modifier_ids {
         apply_delta(
+            registry,
             &mut config,
             scoped.delta(&ConfigScope::Modifier {
                 object_id: target.object_id.clone(),
@@ -149,14 +467,21 @@ pub fn resolve_scope_stack(
     paint_semantics.dedup();
     for semantic in paint_semantics {
         apply_delta(
+            registry,
             &mut config,
             scoped.delta(&ConfigScope::PaintSemantic(semantic)),
         )?;
     }
 
     if let Some(tool_index) = target.tool_index {
-        apply_delta(&mut config, scoped.delta(&ConfigScope::Tool(tool_index)))?;
+        apply_delta(
+            registry,
+            &mut config,
+            scoped.delta(&ConfigScope::Tool(tool_index)),
+        )?;
     }
+
+    seed_registry_defaults(registry, &mut config)?;
 
     expand_automatic_values(registry, &mut config, expansion, target.tool_index)?;
     Ok(config)

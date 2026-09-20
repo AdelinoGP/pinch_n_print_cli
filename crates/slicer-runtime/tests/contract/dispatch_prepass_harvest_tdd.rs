@@ -5,9 +5,34 @@ use slicer_ir::{
 use slicer_runtime::{
     Blackboard, CompiledModuleBuilder, CompiledStage, ExecutionPlan, PrepassStageRunner,
 };
+use slicer_sdk::traits::LayerPlanningObject;
 use slicer_wasm_host::WasmRuntimeDispatcher;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+/// Positional layer-planning records for the dispatcher, mirroring production
+/// `layer_planning_objects` (crates/slicer-runtime/src/run.rs): `PrePass::LayerPlanning`
+/// dispatch validates one positional config per mesh object
+/// (`validate_layer_planning_object_configs`); a dispatcher built without them
+/// fails dispatch with a count mismatch even when the module ConfigView carries
+/// the same `object_height:<id>` values.
+fn layer_planning_objects_for(configs: &[(&str, f64, f64, f64)]) -> Vec<LayerPlanningObject> {
+    configs
+        .iter()
+        .map(
+            |(object_id, object_height, layer_height, first_layer_height)| {
+                // exhaustive: the harness must forward every typed layer-planning field.
+                LayerPlanningObject {
+                    object_id: object_id.to_string(),
+                    object_height: *object_height,
+                    layer_height: *layer_height,
+                    first_layer_height: *first_layer_height,
+                    support_raft_layers: 0,
+                }
+            },
+        )
+        .collect()
+}
 
 // Helper to load the layer-planning stage guest.
 fn load_layer_planning_guest() -> Arc<slicer_runtime::WasmComponent> {
@@ -413,7 +438,8 @@ fn layer_planner_default_macro_path_emits_real_proposals() {
             return;
         }
     };
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&wasm_cache::shared_engine()));
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&wasm_cache::shared_engine()))
+        .with_layer_planning_objects(layer_planning_objects_for(&[("obj-1", 2.0, 0.2, 0.2)]));
     let config = layer_planner_config(0.2, 0.2, &[("obj-1", 2.0)]);
     let module = CompiledModuleBuilder::new("com.core.layer-planner-default")
         .config_view(Arc::new(config))
@@ -496,7 +522,8 @@ fn layer_planner_default_macro_path_is_deterministic() {
             return;
         }
     };
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&wasm_cache::shared_engine()));
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&wasm_cache::shared_engine()))
+        .with_layer_planning_objects(layer_planning_objects_for(&[("obj-1", 2.0, 0.2, 0.2)]));
 
     let run_once = || {
         let config = layer_planner_config(0.2, 0.2, &[("obj-1", 2.0)]);

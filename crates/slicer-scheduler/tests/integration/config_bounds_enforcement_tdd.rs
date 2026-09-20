@@ -4,13 +4,15 @@
 //! point variant `TypeMismatch` is rejected (before `apply_cli_key` writes the
 //! value into the macro-generated `ResolvedConfig` field).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::path::PathBuf;
 
 use slicer_config::{ExpansionContext, ResolutionError, ResolutionTarget};
-use slicer_ir::{ConfigValue, ResolvedConfig};
+use slicer_ir::{ConfigValue, ResolvedConfig, SemVer};
 use slicer_scheduler::config_resolution::resolve_config;
 use slicer_scheduler::{
-    load_module_from_paths, BoundsDeclaration, ConfigBoundsIndex, ConfigResolutionError,
+    load_module_from_paths, BoundsDeclaration, ConfigBoundsIndex, ConfigFieldEntry,
+    ConfigResolutionError, ConfigSchema, LoadedModule, LoadedModuleBuilder,
 };
 
 fn resolve_global_config(
@@ -34,13 +36,89 @@ fn resolve_global_config(
     }
 }
 
+/// Field type the bounds fixture declares for `key`, mirroring the
+/// production registry (host `cli` rows for typed `ResolvedConfig` fields,
+/// module manifest `[config.schema]` entries for the rest).
+fn fixture_field_type(key: &str) -> &'static str {
+    match key {
+        "wall_count" => "int",
+        "wall_widths" => "float-list",
+        "min_width_top_surface" => "float_or_percent",
+        _ => "float",
+    }
+}
+
+/// `[config.schema]` entries for a bounds fixture module: `key` with the
+/// declared `[min, max]`, plus `nozzle_diameter` (a plain float). The nozzle
+/// key is production-registered by the perimeter modules but absent from an
+/// empty-module registry, so a fixture that injects `nozzle_diameter` into
+/// the source (see `resolve_global_config`) must register it here too —
+/// under warn-then-drop ingestion an unregistered key never reaches Phase-B
+/// expansion of `line_width`.
+fn fixture_entries(
+    key: &str,
+    min: Option<f64>,
+    max: Option<f64>,
+) -> BTreeMap<String, ConfigFieldEntry> {
+    let mut entries = BTreeMap::new();
+    entries.insert(
+        key.to_string(),
+        ConfigFieldEntry {
+            field_type: fixture_field_type(key).to_string(),
+            min,
+            max,
+            ..Default::default()
+        },
+    );
+    entries.insert(
+        "nozzle_diameter".to_string(),
+        ConfigFieldEntry {
+            field_type: "float".to_string(),
+            ..Default::default()
+        },
+    );
+    entries
+}
+
+fn fixture_module(module_id: &str, entries: BTreeMap<String, ConfigFieldEntry>) -> LoadedModule {
+    LoadedModuleBuilder::new(
+        module_id.to_string(),
+        SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        "Layer::Perimeter",
+        "legacy",
+        PathBuf::from("fixtures/bounds-fixture.wasm"),
+    )
+    .config_schema(ConfigSchema { entries })
+    .build()
+}
+
+/// A fixture module that registers only `nozzle_diameter` (no bounds), used
+/// by tests that need an empty bounds index whose registry still carries the
+/// injected nozzle diameter through warn-then-drop ingestion.
+fn nozzle_only_fixture(module_id: &str) -> LoadedModule {
+    let mut entries = BTreeMap::new();
+    entries.insert(
+        "nozzle_diameter".to_string(),
+        ConfigFieldEntry {
+            field_type: "float".to_string(),
+            ..Default::default()
+        },
+    );
+    fixture_module(module_id, entries)
+}
+
+/// One-module bounds index whose schema declares `key` with the given
+/// `[min, max]` and registers `nozzle_diameter`, so warn-then-drop ingestion
+/// retains the fixture keys and the bounds assertions below actually run.
 fn single_module_bounds(key: &str, min: Option<f64>, max: Option<f64>) -> ConfigBoundsIndex {
-    ConfigBoundsIndex::from_declarations([BoundsDeclaration {
-        key: key.to_string(),
-        min,
-        max,
-        module_id: "test.module".to_string(),
-    }])
+    ConfigBoundsIndex::from_modules([&fixture_module(
+        "test.module",
+        fixture_entries(key, min, max),
+    )])
 }
 
 fn assert_out_of_range(
@@ -287,7 +365,9 @@ fn rejects_infinity_for_numeric_field() {
 #[test]
 fn unknown_key_skips_bounds_check() {
     // Index declares bounds for `layer_height`, but the source carries a
-    // different (undeclared) key, which should pass through unchanged.
+    // different (undeclared) key. Under warn-then-drop the undeclared key is
+    // dropped before bounds checking, so no bounds error may surface and the
+    // key must not reach extensions.
     let bounds = single_module_bounds("layer_height", Some(0.05), Some(1.0));
     let mut source = HashMap::new();
     source.insert(
@@ -295,19 +375,32 @@ fn unknown_key_skips_bounds_check() {
         ConfigValue::Float(-9999.0),
     );
 
-    let resolved =
-        resolve_global_config(&source, &bounds).expect("unrelated key with no schema must pass");
-    assert_eq!(
-        resolved.extensions.get("unrelated_extension"),
-        Some(&ConfigValue::Float(-9999.0))
+    let resolved = resolve_config(
+        &source,
+        &bounds,
+        &ResolutionTarget::default(),
+        // The dropped key leaves no `nozzle_diameter` for Phase-B expansion of
+        // `line_width`, so the expansion context supplies it (the canonical
+        // resolved-config-view fixture does the same).
+        &ExpansionContext {
+            nozzle_diameter_mm: 0.4,
+            ..ExpansionContext::default()
+        },
+    )
+    .expect("an undeclared key must not surface a bounds error");
+    assert!(
+        !resolved.extensions.contains_key("unrelated_extension"),
+        "an undeclared key must be dropped, not kept in extensions"
     );
 }
 
 #[test]
 fn no_bounds_declared_accepts_any_value() {
     // The bounds index is empty (no module declared min/max); no rejection
-    // should occur on any numeric value.
-    let bounds = ConfigBoundsIndex::empty();
+    // should occur on any numeric value. The fixture module only carries the
+    // `nozzle_diameter` registration (no bounds) so the injected nozzle
+    // diameter survives ingestion for Phase-B expansion.
+    let bounds = ConfigBoundsIndex::from_modules([&nozzle_only_fixture("test.module")]);
     let mut source = HashMap::new();
     source.insert("layer_height".to_string(), ConfigValue::Float(-1.0));
 
@@ -351,19 +444,15 @@ fn list_element_out_of_range_reports_index() {
 fn intersection_strictest_min_max_wins() {
     // Module A declares [0, 10]; module B declares [5, 100]; effective
     // range is [5, 10] â€” strictest of each side.
-    let bounds = ConfigBoundsIndex::from_declarations([
-        BoundsDeclaration {
-            key: "wall_count".to_string(),
-            min: Some(0.0),
-            max: Some(10.0),
-            module_id: "mod.a".to_string(),
-        },
-        BoundsDeclaration {
-            key: "wall_count".to_string(),
-            min: Some(5.0),
-            max: Some(100.0),
-            module_id: "mod.b".to_string(),
-        },
+    let bounds = ConfigBoundsIndex::from_modules([
+        &fixture_module(
+            "mod.a",
+            fixture_entries("wall_count", Some(0.0), Some(10.0)),
+        ),
+        &fixture_module(
+            "mod.b",
+            fixture_entries("wall_count", Some(5.0), Some(100.0)),
+        ),
     ]);
 
     let mut below = HashMap::new();

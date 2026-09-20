@@ -38,29 +38,32 @@ use slicer_sdk::traits::{
 /// Core overhang classifier that applies speed-factor mutations to wall entities on overhangs.
 pub struct OverhangClassifierDefault;
 
-/// Config float for `key`, defaulting to 0.0.
-fn speed(config: &ConfigView, key: &str) -> f32 {
-    config.get_float(key).unwrap_or(0.0) as f32
+/// Config float for `key`; required read (packet 06, AC-3): the resolved
+/// view always holds each declared key at its registry type (every speed
+/// key here is `float` in the manifest), so absence is a contract
+/// violation, not a fallback case.
+fn speed(config: &ConfigView, key: &str) -> Result<f32, ModuleError> {
+    Ok(config.require_float(key)? as f32)
 }
 
 /// Base wall speed for `role` (0.0 for non-wall roles).
-fn base_speed(role: &ExtrusionRole, config: &ConfigView) -> f32 {
+fn base_speed(role: &ExtrusionRole, config: &ConfigView) -> Result<f32, ModuleError> {
     match role {
         ExtrusionRole::OuterWall => speed(config, "outer_wall_speed"),
         ExtrusionRole::InnerWall => speed(config, "inner_wall_speed"),
         ExtrusionRole::ThinWall => speed(config, "thin_wall_speed"),
-        _ => 0.0,
+        _ => Ok(0.0),
     }
 }
 
 /// Overhang speed for `quartile` (1..=4), 0.0 otherwise.
-fn overhang_speed(quartile: u8, config: &ConfigView) -> f32 {
+fn overhang_speed(quartile: u8, config: &ConfigView) -> Result<f32, ModuleError> {
     match quartile {
         1 => speed(config, "overhang_1_4_speed"),
         2 => speed(config, "overhang_2_4_speed"),
         3 => speed(config, "overhang_3_4_speed"),
         4 => speed(config, "overhang_4_4_speed"),
-        _ => 0.0,
+        _ => Ok(0.0),
     }
 }
 
@@ -69,11 +72,26 @@ fn overhang_speed(quartile: u8, config: &ConfigView) -> f32 {
 /// `line_width` (matches the resolution convention documented in
 /// `crates/slicer-core/src/algos/overhang_annotation.rs`'s "Config wiring
 /// note").
-fn line_width(config: &ConfigView) -> f32 {
-    config
-        .get_float("outer_wall_line_width")
-        .or_else(|| config.get_float("line_width"))
-        .unwrap_or(0.0) as f32
+///
+/// Required reads (packet 06): `outer_wall_line_width` is declared
+/// `float_or_percent` with `base_key = "nozzle_diameter"` in the manifest
+/// (matching classic-perimeters / arachne-perimeters), so it is read with
+/// `require_abs_value`, NOT `require_float`. Percent-authored values are
+/// host-expanded to absolute before the view is bound
+/// (`expand_automatic_values`, `crates/slicer-config/src/lib.rs`), so the
+/// base argument is inert here — this guest does not declare
+/// `nozzle_diameter` — and a percent that did reach the view is a host
+/// contract violation (fatal), not something to resolve against an unknown
+/// base. The non-percent `0` registry default is the canonical auto
+/// sentinel and falls back to `line_width` (declared `float`; the host
+/// expands the auto sentinel to 1.125 × nozzle before binding).
+fn line_width(config: &ConfigView) -> Result<f32, ModuleError> {
+    let outer_wall = config.require_abs_value("outer_wall_line_width", 0.0)?;
+    if outer_wall > 0.0 {
+        return Ok(outer_wall as f32);
+    }
+    let width = config.require_float("line_width")?;
+    Ok(width as f32)
 }
 
 /// Canonical constructs this list as a stack-local `ConfigOptionPercents
@@ -87,30 +105,27 @@ pub fn build_speed_sections(
     ref_speed: f32,
     path_width: f32,
     config: &ConfigView,
-) -> Vec<(f32, f32)> {
-    let overhang_speed_or_ref = |key: &str| {
-        let configured = speed(config, key);
+) -> Result<Vec<(f32, f32)>, ModuleError> {
+    let overhang_speed_or_ref = |key: &str| -> Result<f32, ModuleError> {
+        let configured = speed(config, key)?;
         if configured < 0.5 {
-            ref_speed
+            Ok(ref_speed)
         } else {
-            configured
+            Ok(configured)
         }
     };
 
-    let sixth_speed = if config
-        .get_bool("slowdown_for_curled_perimeters")
-        .unwrap_or(false)
-    {
-        overhang_speed_or_ref("overhang_4_4_speed")
+    let sixth_speed = if config.require_bool("slowdown_for_curled_perimeters")? {
+        overhang_speed_or_ref("overhang_4_4_speed")?
     } else {
-        speed(config, "bridge_speed")
+        speed(config, "bridge_speed")?
     };
     let speeds = [
         ref_speed,
-        overhang_speed_or_ref("overhang_1_4_speed"),
-        overhang_speed_or_ref("overhang_2_4_speed"),
-        overhang_speed_or_ref("overhang_3_4_speed"),
-        overhang_speed_or_ref("overhang_4_4_speed"),
+        overhang_speed_or_ref("overhang_1_4_speed")?,
+        overhang_speed_or_ref("overhang_2_4_speed")?,
+        overhang_speed_or_ref("overhang_3_4_speed")?,
+        overhang_speed_or_ref("overhang_4_4_speed")?,
         sixth_speed,
     ];
 
@@ -126,7 +141,7 @@ pub fn build_speed_sections(
             sections[i].1 = sections[i - 1].1;
         }
     }
-    sections
+    Ok(sections)
 }
 
 /// Interpolates a smoothed speed from sorted distance/speed sections.
@@ -559,7 +574,10 @@ impl FinalizationModule for OverhangClassifierDefault {
         output: &mut FinalizationOutputBuilder,
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        if !config.get_bool("enable_overhang_speed").unwrap_or(true) {
+        // Required read (packet 06): `enable_overhang_speed` is `bool` in the
+        // manifest with a seeded `true` default, so the previous
+        // `.unwrap_or(true)` fallback becomes a hard requirement.
+        if !config.require_bool("enable_overhang_speed")? {
             return Ok(());
         }
 
@@ -567,10 +585,14 @@ impl FinalizationModule for OverhangClassifierDefault {
         // config keys — see the module doc-comment), so "all overhang bands
         // are zero" already means the whole feature family is off; skipping
         // here also avoids the wasted cross-layer point scan below.
-        if (1..=4).all(|q| overhang_speed(q, config) == 0.0) {
+        let any_overhang_band_nonzero = (1..=4)
+            .try_fold(false, |acc, q| -> Result<bool, ModuleError> {
+                Ok(acc || overhang_speed(q, config)? != 0.0)
+            })?;
+        if !any_overhang_band_nonzero {
             return Ok(());
         }
-        let flow_width = line_width(config);
+        let flow_width = line_width(config)?;
         let dist_limit = 10.0 * flow_width;
 
         // Reference geometry for curl: the previous layer's own OuterWall
@@ -619,7 +641,7 @@ impl FinalizationModule for OverhangClassifierDefault {
             // below, but never enters this speed path.
             if idx > 0 {
                 for entity in layer.ordered_entities() {
-                    let base = base_speed(&entity.role, config);
+                    let base = base_speed(&entity.role, config)?;
                     if base <= 0.0 || entity.path.points.is_empty() {
                         continue;
                     }
@@ -632,10 +654,10 @@ impl FinalizationModule for OverhangClassifierDefault {
                     let min_distances: Vec<f32> = original_points
                         .iter()
                         .map(|point| {
-                            let sections = build_speed_sections(base, point.width, config);
-                            min_distance_from_sections(&sections, base)
+                            let sections = build_speed_sections(base, point.width, config)?;
+                            Ok(min_distance_from_sections(&sections, base))
                         })
-                        .collect();
+                        .collect::<Result<Vec<f32>, ModuleError>>()?;
                     let (new_points, new_distances) = insert_extended_points_with_point_widths(
                         original_points,
                         &distances,
@@ -651,7 +673,7 @@ impl FinalizationModule for OverhangClassifierDefault {
                     for (point_idx, point) in points.iter().enumerate() {
                         let mut extrusion_speed = base;
                         if point.overhang_quartile.is_some() {
-                            let sections = build_speed_sections(base, point.width, config);
+                            let sections = build_speed_sections(base, point.width, config)?;
                             if let Some(distance) = new_distances[point_idx] {
                                 has_distance = true;
                                 let current_speed = calculate_speed(distance, &sections, base);
@@ -661,12 +683,13 @@ impl FinalizationModule for OverhangClassifierDefault {
                                     .and_then(|_| {
                                         new_distances.get(point_idx + 1).copied().flatten()
                                     })
-                                    .map(|next_distance| {
+                                    .map(|next_distance| -> Result<f32, ModuleError> {
                                         let next = &points[point_idx + 1];
                                         let next_sections =
-                                            build_speed_sections(base, next.width, config);
-                                        calculate_speed(next_distance, &next_sections, base)
+                                            build_speed_sections(base, next.width, config)?;
+                                        Ok(calculate_speed(next_distance, &next_sections, base))
                                     })
+                                    .transpose()?
                                     .unwrap_or(base);
                                 extrusion_speed = current_speed.min(next_speed).min(base);
                             }

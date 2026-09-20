@@ -74,6 +74,42 @@ fn live_arachne_layer_one_sandwich_reaches_path_optimizer_unchanged() {
                     "wall_sequence",
                     ConfigValue::String(wall_sequence.to_string()),
                 ),
+                // Required-read baseline (packet 06 5c): classified reads in
+                // run_perimeters/arachne_params_from_config are now
+                // require_*; the view holds every key the path reads at
+                // manifest-default values. line_width holds its
+                // post-expansion default (1.125 x nozzle_diameter = 0.45):
+                // the raw 0 is the auto sentinel expanded at Phase B and
+                // cannot survive the D-162 spacing gate.
+                ("layer_height", ConfigValue::Float(0.2)),
+                ("nozzle_diameter", ConfigValue::Float(0.4)),
+                ("line_width", ConfigValue::Float(0.45)),
+                ("bridge_line_width", ConfigValue::Float(0.0)),
+                ("initial_layer_line_width", ConfigValue::Float(0.0)),
+                ("inner_wall_line_width", ConfigValue::Float(0.0)),
+                ("outer_wall_line_width", ConfigValue::Float(0.0)),
+                ("extra_perimeters", ConfigValue::Int(0)),
+                ("precise_outer_wall", ConfigValue::Bool(false)),
+                ("support_raft_layers", ConfigValue::Int(0)),
+                ("only_one_wall_top", ConfigValue::Bool(false)),
+                (
+                    "wall_direction",
+                    ConfigValue::String("counter_clockwise".to_string()),
+                ),
+                ("alternate_extra_wall", ConfigValue::Bool(false)),
+                ("spiral_vase", ConfigValue::Bool(false)),
+                ("sparse_infill_density", ConfigValue::Float(20.0)),
+                ("only_one_wall_first_layer", ConfigValue::Bool(false)),
+                ("detect_overhang_wall", ConfigValue::Bool(true)),
+                ("overhang_reverse", ConfigValue::Bool(false)),
+                ("overhang_reverse_internal_only", ConfigValue::Bool(false)),
+                ("overhang_reverse_threshold", ConfigValue::Float(0.0)),
+                ("bridge_flow", ConfigValue::Float(1.0)),
+                ("thick_bridges", ConfigValue::Bool(false)),
+                (
+                    "seam_candidate_angle_threshold_deg",
+                    ConfigValue::Float(30.0),
+                ),
             ],
         );
         let path_opt = live_module(

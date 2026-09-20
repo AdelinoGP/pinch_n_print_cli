@@ -32,7 +32,7 @@
      - Sources to cover: `ScopeDelta` values, `extensions`, raw or expanded source maps, the CONFIG_BLOCK map, and the key list in `docs/02_ir_schemas.md` §"CONFIG_BLOCK viewer-key contract".
      - For each key, record its absent-value behavior and the runtime-row type and default (`None` or `Some`) that preserve it.
      - Verified at preflight: `gcode_flavor`, `printer_model`, `filament_colour`, `extruder_colour`, `filament_cost`, `printable_area`, `support_type`, `support_family`, `thumbnails`, `machine_max_acceleration_retracting`, `extruder`.
-  7. The 89 fallback sites, each with its key, getter, registry `field_type`, and whether the reading guest declares the key.
+  7. The 87 fallback sites, each with its key, getter, registry `field_type`, and whether the reading guest declares the key.
   8. Every other undeclared string-literal getter or wrapper read. Verified at preflight: the eleven listed in `design.md`.
   9. The AC-11 discriminating key: a key declared only by a loaded module's manifest, whose default differs from its `ORCA_CONFIG_PADDING` value.
   10. A guest batch table, at most three source files per batch.
@@ -47,7 +47,7 @@
 - Authoritative docs: plan RC-4/RC-5, "Guests and delivery", and queue row 6; the packet 03/05 export contracts.
 - OrcaSlicer refs: none.
 - Verification:
-  - the fallback total is `29+27+10+4+3+3+3+2+2+2+2+1+1 = 89`, with no excluded category counted;
+  - the fallback total is `29+27+10+4+3+3+3+2+0+2+2+1+1 = 87`, with no excluded category counted;
   - item 6 contains at least the eleven verified keys;
   - items 11 and 12 contain at least their verified files;
   - item 8 contains at least the eleven verified reads.
@@ -309,7 +309,7 @@
 ### Step 5: Guest manifest declarations and fallback removal
 
 - Task IDs: `TASK-567`
-- Objective: declare the undeclared reads, then replace all 89 classified fallbacks with typed `require_*` reads. Excluded `unwrap_or` uses stay untouched.
+- Objective: declare the undeclared reads, then replace all 87 classified fallbacks with typed `require_*` reads. Excluded `unwrap_or` uses stay untouched.
 - Precondition: Step 4 green, so views are complete and the accessors are available.
 - Postcondition: AC-3 passes (census zero, calibration and declared-reads green), and `cargo xtask build-guests --check` exits `0`.
 - Files allowed to read: the Step-1-recorded locations and their adjacent function bodies; the `[config.schema]` tables of the six manifests.
@@ -318,7 +318,7 @@
 - OrcaSlicer refs: none.
 - Exit condition: stop if any of these holds:
   - the census is non-zero;
-  - more than the 89 baseline sites changed;
+  - more than the 87 baseline sites changed;
   - an excluded site was edited;
   - a `float_or_percent` key is read with `require_float` without a guaranteed-`Float` justification.
 - Type-agreement check: `registry_census_tdd`'s `projected_module_declarations` overrides manifest types, so it cannot catch a `TypeDisagreement`. Steps 5a and 5b use AC-11 instead. On the real `run_slice` path, `load_live_modules_for_plan_manifest_first` runs `assemble_registry` over every discovered manifest. A disagreement returns `LiveModuleLoadError::Registry` as a `SliceRunError`, and AC-11 requires `run_slice` to return `Ok`.
@@ -377,16 +377,36 @@
   - the negative control passes vacuously;
   - any registry key warns as unknown.
 
-#### Step 6a: No-drop e2e in retained mode
+#### Step 6a: No-drop e2e in retained mode and the Step-6 pre-existing blockers
 
 - Precondition: Step 5 green.
-- Postcondition: `run_slice_with_collector` populates `SliceOutcome.ingestion_warnings` (its only literal is in `run.rs`), and both AC-5 tests pass while unknown keys are still retained.
-- Files allowed to edit (at most 3): `crates/slicer-runtime/src/run.rs`; `crates/slicer-runtime/tests/e2e/resolved_config_view_no_drop_tdd.rs`.
-- Files explicitly out of bounds: ingestion, guests, `resources/cube_4color.3mf` contents.
-- Expected sub-agent dispatches: fixture member check `FACT` ≤5 lines; e2e run `FACT`.
+- Postcondition:
+  - `run_slice_with_collector` populates `SliceOutcome.ingestion_warnings` (its only literal is in `run.rs`), and both AC-5 tests pass while unknown keys are still retained;
+  - `seed_expansion_context` (`crates/slicer-runtime/src/run.rs`) falls back to the registry default `0.4` for an unauthored `nozzle_diameter`; an authored value still wins;
+  - `seam-planner-default` emits planner (inset-boundary) coordinates for the aligned-mode path; the host escalation path is not modified;
+  - the AC-5 population stays registry-derived.
+- Files allowed to edit (at most 3 per substep): `crates/slicer-runtime/src/run.rs`; the diagnosed file(s) among `modules/core-modules/seam-planner-default/src/lib.rs`, `contours.rs`, `align.rs`, `comparator.rs`, `visibility.rs`; `crates/slicer-runtime/tests/e2e/resolved_config_view_no_drop_tdd.rs`. The bounded diagnosis in this step names the exact coordinate-fix file(s) before any edit; if the fix spans more than three files, the remainder goes in an adjacent substep before 6b.
+- Files explicitly out of bounds: ingestion, host-side seam escalation, `resources/cube_4color.3mf` contents, and guest trees other than `seam-planner-default`.
+- Expected sub-agent dispatches: fixture member check `FACT` ≤5 lines; bounded `seam-planner-default` diagnosis `LOCATIONS` ≤20; e2e run `FACT`; guest rebuild and `cargo xtask build-guests --check` exit code.
 - Context cost: `M`
-- Verification: the AC-5 exact command.
-- Exit condition: AC-5 fails, or the population is not registry-derived.
+- Verification: the AC-5 and AC-11 exact commands; `cargo xtask build-guests --check` exits `0` after the `seam-planner-default` edits.
+- Exit condition: stop if any of these holds:
+  - AC-5 or AC-11 fails;
+  - the population is not registry-derived;
+  - the host escalation path was modified instead of the emitted coordinates.
+
+#### Step 6a-bis: Pre-existing stock reds (Packet-68 stamping, NegativeSpacing)
+
+- Precondition: Step 6a green; `cargo xtask build-guests --check` exits `0`.
+- Objective: diagnose and fix the two pre-existing stock reds in-packet. This step records scope intent only; the diagnosis names the exact files before any edit.
+- Postcondition: the Packet-68 stamping red and the NegativeSpacing red are green, and the files that fix them are recorded in the Step-1 inventory format (crate-qualified symbol names).
+- Files allowed to edit (at most 3 per substep): named only by this step's bounded diagnosis; no file may be named at authoring time.
+- Files explicitly out of bounds: the Step 6a edits, ingestion, WIT, and any file unrelated to either red.
+- Expected sub-agent dispatches: red-test reproduction `FACT` with bounded `SNIPPETS` ≤20; diagnosis `LOCATIONS` ≤20 per red.
+- Context cost: `S`
+- Verification: each red's reproducing test passes with a non-zero passed count; the AC-5 and AC-11 exact commands still pass.
+- Exit condition: stop if a red's root cause names a file this packet's out-of-bounds list already excludes, or if a red is explained away instead of reproduced.
+- Ownership note: this is where the two reds move from "pre-existing, unowned" to packet-owned scope.
 
 #### Step 6b: Warn-to-drop flip
 
@@ -444,7 +464,7 @@
 | 3 | M | 3a production emission, 3b CONFIG_BLOCK tests, 3b′ flavor test and wiring e2e |
 | 4 | M | 4a binding, 4b accessors, 4c–4c‴ caller migration, 4d new contract tests and verification |
 | 5 | M | 5a/5b manifests, 5c… ≤3-file guest batches with 5c′ guest-test migrations |
-| 6 | M | 6a no-drop e2e and `ingestion_warnings`, 6b flip, 6b′ retention-assertion inversions |
+| 6 | M | 6a no-drop e2e, `ingestion_warnings`, `seed_expansion_context` fallback, and seam-planner coords; 6a-bis stock reds; 6b flip; 6b′ retention-assertion inversions |
 | 7 | S | docs/gates |
 
 ## Packet Completion Gate

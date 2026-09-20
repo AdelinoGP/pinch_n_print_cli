@@ -33,6 +33,15 @@ fn make_config(density: f64, angle: f64, speed: f64, line_width: f64) -> ConfigV
         .float("infill_angle", angle)
         .float("infill_speed", speed)
         .float("line_width", line_width)
+        // Required-read baseline (packet 06 5c', item 11): the classified
+        // reads in from_config are now require_*; the view must hold every
+        // key those paths read, at manifest-default values. `bridge_line_width`
+        // and `initial_layer_line_width` are contract-required reads
+        // (`require_abs_value` over the fixed 0.4 nozzle base); a bound view
+        // always holds them at their manifest defaults (0.0, the auto
+        // sentinel for `float_or_percent`).
+        .float("bridge_line_width", 0.0)
+        .float("initial_layer_line_width", 0.0)
         .build()
 }
 
@@ -57,11 +66,31 @@ fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
 /// Test 1: Default config values when no fields provided.
 #[test]
 fn from_config_defaults() {
-    let config = ConfigView::from_map(HashMap::new());
+    // Packet 06 (AC-3): `bridge_line_width` / `initial_layer_line_width`
+    // are contract-required reads (`require_abs_value`); a bound view
+    // always holds them at their manifest defaults (0.0, the auto sentinel
+    // the host seeds for `float_or_percent`). Seed them so the empty-view
+    // default probe behaves like a bound view.
+    let mut values = HashMap::new();
+    values.insert(
+        "bridge_line_width".into(),
+        slicer_ir::ConfigValue::Float(0.0),
+    );
+    values.insert(
+        "initial_layer_line_width".into(),
+        slicer_ir::ConfigValue::Float(0.0),
+    );
+    // Packet 04 (TASK-565): the host expands the line_width auto-0 sentinel
+    // (1.125 × nozzle_diameter) before guests see the view, so a bound view
+    // already holds the expanded width (0.45 at the module's fixed 0.4 mm
+    // nozzle). Seed the bound value; the production auto-expansion lives
+    // host-side now.
+    values.insert("line_width".into(), slicer_ir::ConfigValue::Float(0.45));
+    let config = ConfigView::from_map(values);
     let module = GyroidInfill::from_config(&config).unwrap();
     assert!((module.density() - 0.2).abs() < 0.001);
-    // Packet 185 (AC-5): absent line_width resolves to the canonical auto
-    // width 1.125 × nozzle_diameter (0.45 at the fixed 0.4 mm nozzle).
+    // Packet 185 (AC-5): a bound view's line_width resolves to the canonical
+    // auto width 1.125 × nozzle_diameter (0.45 at the fixed 0.4 mm nozzle).
     assert!((module.line_width() - 0.45).abs() < 0.001);
 }
 

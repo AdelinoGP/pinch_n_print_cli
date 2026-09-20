@@ -16,7 +16,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use slicer_ir::{ConfigView, ExtrusionRole, LightningTreeEntry, LightningTreeIR, Point2};
+use slicer_ir::{
+    ConfigValue, ConfigView, ExtrusionRole, LightningTreeEntry, LightningTreeIR, Point2,
+};
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
@@ -45,6 +47,12 @@ fn make_config(density: f64, speed: f64, line_width: f64) -> ConfigView {
     ConfigViewBuilder::new()
         .float("infill_density", density)
         .float("infill_speed", speed)
+        // Packet 06 (AC-3): `bridge_line_width` / `initial_layer_line_width`
+        // are contract-required reads (`require_abs_value` over the fixed
+        // 0.4 mm nozzle base); a bound view always holds them at their
+        // resolved default (0.4 at the module's nozzle base).
+        .float("bridge_line_width", 0.4)
+        .float("initial_layer_line_width", 0.4)
         .float("line_width", line_width)
         .build()
 }
@@ -74,7 +82,22 @@ fn sample_segments() -> Vec<[Point2; 2]> {
 /// Test 1: Default config values when no fields provided.
 #[test]
 fn from_config_defaults() {
-    let config = ConfigView::from_map(HashMap::new());
+    // Bound-view fixture (mirrors the `#[cfg(test)] seeded_config` in
+    // `modules/core-modules/lightning-infill/src/lib.rs`):
+    // Packet 06 (AC-3): `bridge_line_width` / `initial_layer_line_width`
+    // are contract-required reads (`require_abs_value` over the fixed
+    // 0.4 mm nozzle base); a bound view always holds them at their
+    // resolved default (0.4 at the module's nozzle base).
+    let mut values = HashMap::new();
+    values.insert("bridge_line_width".into(), ConfigValue::Float(0.4));
+    values.insert("initial_layer_line_width".into(), ConfigValue::Float(0.4));
+    // Packet 04 (TASK-565): the host expands the line_width auto-0
+    // sentinel (1.125 × nozzle_diameter) before guests see the view, so
+    // a bound view already holds the expanded width (0.45 at the
+    // module's fixed 0.4 mm nozzle). Seed the bound value; the
+    // production auto-expansion lives host-side now.
+    values.insert("line_width".into(), ConfigValue::Float(0.45));
+    let config = ConfigView::from_map(values);
     let module = LightningInfill::from_config(&config).unwrap();
     assert!((module.density() - 0.2).abs() < 0.001);
     // Packet 185 (AC-5): absent line_width resolves to the canonical auto

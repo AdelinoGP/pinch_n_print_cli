@@ -4,7 +4,8 @@
 use std::sync::{Arc, Mutex};
 
 use slicer_ir::{
-    ConfigValue, ExtrusionRole, GlobalLayer, LayerStageCommit, SupportIR, SupportRole,
+    ConfigValue, ExtrusionRole, GlobalLayer, LayerStageCommit, ResolvedConfig, SupportIR,
+    SupportRole,
 };
 use slicer_runtime::{
     build_live_execution_plan, execute_per_layer_with_anchored_events, LayerStageInput,
@@ -17,6 +18,23 @@ use slicer_wasm_host::marshal::convert_native_support_output_with_plan;
 use traditional_support::TraditionalSupport;
 
 use crate::common::support_wedge;
+
+/// Reify a raw source map into the `ResolvedConfig` a production run hands
+/// to binding: `apply_cli_key` takes typed fields, and undeclared keys route
+/// to `extensions` exactly as the host resolver routes the `Ok(false)`
+/// fall-through (crates/slicer-config/src/resolution.rs).
+fn resolved_from(source: std::collections::HashMap<String, ConfigValue>) -> ResolvedConfig {
+    let mut resolved = ResolvedConfig::default();
+    for (key, value) in source {
+        if !resolved
+            .apply_cli_key(&key, &value)
+            .expect("test config key must type-check against ResolvedConfig")
+        {
+            resolved.extensions.insert(key, value);
+        }
+    }
+    resolved
+}
 
 /// The wedge must select the traditional family (via the `normal*` alias) and
 /// retain family attribution through the host SupportPlanIR aggregation
@@ -106,7 +124,7 @@ pub fn traditional_support_family() {
     let mut layer_plan = build_live_execution_plan(
         loaded.sorted_stages.clone(),
         loaded.bindings.clone(),
-        &config_source,
+        &resolved_from(config_source),
         Arc::new(global_layers),
         Arc::new(std::collections::HashMap::new()),
         &mut Vec::new(),

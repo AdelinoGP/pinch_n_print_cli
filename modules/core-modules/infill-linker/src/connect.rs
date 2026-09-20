@@ -14,6 +14,7 @@ use std::cmp::Ordering;
 pub use crate::graph::contour_stub;
 use crate::graph::{contour_connector, BoundaryInfillGraph, BoundaryRing, RingDirection};
 use slicer_ir::{mm_to_units, ExtrusionPath3D, Point2, Point3WithWidth};
+use slicer_sdk::error::ModuleError;
 
 const ENDPOINT_WIDTH_EPSILON: f32 = 0.000001;
 
@@ -40,22 +41,34 @@ impl AnchorParams {
         self.anchor_length_max_mm < Self::DONT_CONNECT_MAX_MM
     }
 
-    #[must_use]
-    pub fn from_config(config: Option<&slicer_ir::ConfigView>, base_spacing_mm: f32) -> Self {
+    /// Resolve anchor lengths from the region config.
+    ///
+    /// Packet 06 (AC-3): `infill_anchor_max` is declared
+    /// `float_or_percent` with a registry default, so a bound view always
+    /// holds it; a missing or mistyped value is a fatal config defect, not
+    /// a fallback case. `infill_anchor` keeps its excluded
+    /// `get_abs_value(..)` + `4.0 * base_spacing` fallback chain, and a
+    /// `None` region config keeps the old default behavior.
+    pub fn from_config(
+        config: Option<&slicer_ir::ConfigView>,
+        base_spacing_mm: f32,
+    ) -> Result<Self, ModuleError> {
         let base_spacing = base_spacing_mm as f64;
         let anchor_length = config
             .and_then(|config| config.get_abs_value("infill_anchor", base_spacing))
             .unwrap_or(4.0 * base_spacing);
         let anchor_length_max = config
-            .and_then(|config| config.get_abs_value("infill_anchor_max", base_spacing))
+            .map(|config| config.require_abs_value("infill_anchor_max", base_spacing))
+            .transpose()
+            .map_err(ModuleError::from)?
             .unwrap_or(20.0);
         let anchor_length = nonnegative_finite_mm(anchor_length);
         let anchor_length_max = nonnegative_finite_mm(anchor_length_max);
 
-        Self {
+        Ok(Self {
             anchor_length_mm: anchor_length.min(anchor_length_max),
             anchor_length_max_mm: anchor_length_max,
-        }
+        })
     }
 }
 

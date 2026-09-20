@@ -1620,6 +1620,16 @@ set is listed by `slicer_schema::VALID_CONFIG_TYPES`.
 | `base_key` | string          | Absolute config key used as the base for `percent` and `float_or_percent` values. |
 | `denied_scopes` | array of strings | Scopes where this key cannot be stated: `global`, `object`, `layer_range`, `modifier`, `paint_semantic`, or `tool`. |
 | `tags`    | array of strings | UI taxonomy tags for sub-tab filtering and search (free-form). Emitted as `[]` when absent. |
+| `config_block` | bool (optional) | Whether the key is emitted in the G-code `CONFIG_BLOCK`. Default `true`: any declaration (host or module manifest) that does not set the flag emits the key whenever the resolved config carries it. A `false` on any declaration wins — reconciliation marks the key `omit_from_config_block` when any host row or declaring module sets it. |
+
+Exactly four keys carry explicit `config_block = false`: `thumbnail_path`, `mmu_segmented_region_max_width`, `mmu_segmented_region_interlocking_depth`, and `mmu_segmented_region_interlocking_beam`. The three `mmu_segmented_region_*` keys are excluded because their emission would change `CONFIG_BLOCK` bytes for every print; `thumbnail_path` is the fork-only runtime key. Emission order is deterministic (`BTreeMap`).
+
+When a `CONFIG_BLOCK` value is a string, the serializer escapes it per
+canonical `escape_string_cstyle` (`ConfigOptionString::serialize`, OrcaSlicer
+`Config.cpp`): a string value in any declaration's key is serialized with
+`\n`, `\r`, `\\`, and `\"` escapes so multi-line values (for example
+`machine_start_gcode`) round-trip on one `; key = value` line through
+OrcaSlicer's `ConfigBase::load_from_gcode_file`.
 
 #### Tag conventions
 

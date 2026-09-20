@@ -137,7 +137,14 @@ fn host_field_types() -> BTreeMap<String, String> {
             .or_insert_with(|| row.field_type.to_owned());
     }
     for &(key, _) in slicer_ir::feedrate::SPEED_KEYS {
-        let field_type = if key == "internal_bridge_speed" {
+        let field_type = if key == "internal_bridge_speed"
+            || matches!(
+                key,
+                "overhang_1_4_speed"
+                    | "overhang_2_4_speed"
+                    | "overhang_3_4_speed"
+                    | "overhang_4_4_speed"
+            ) {
             "float_or_percent"
         } else {
             "float"
@@ -308,17 +315,18 @@ fn typed_wall_generator_selector_claim_selection() {
     assert_eq!(
         global.values.get("support_family"),
         Some(&ConfigValue::String("tree".to_owned())),
-        "undeclared support_family must be retained in the global delta"
+        "registered support_family must be retained in the global delta"
     );
     assert!(!outcome.selector_values.contains_key("support_family"));
-    assert!(outcome.warnings.iter().any(|warning| {
+    let support_family = registry
+        .entry("support_family")
+        .expect("HOST_RUNTIME_KEYS registers support_family");
+    assert_eq!(support_family.field_type, "string");
+    assert!(!support_family.selector);
+    assert!(!outcome.warnings.iter().any(|warning| {
         matches!(
             warning,
-            IngestionWarning::UnrecognizedKey {
-                wire_key,
-                key,
-                ..
-            } if wire_key == "support_family" && key == "support_family"
+            IngestionWarning::UnrecognizedKey { wire_key, .. } if wire_key == "support_family"
         )
     }));
 

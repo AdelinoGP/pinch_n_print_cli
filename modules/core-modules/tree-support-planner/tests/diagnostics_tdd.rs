@@ -458,6 +458,16 @@ fn make_planner_config(entries: &[(&str, ConfigValue)]) -> ConfigView {
         "support_interface_bottom_layers".into(),
         ConfigValue::Int(2),
     );
+    // Packet 06 (AC-3): `nozzle_diameter` is a contract-required read
+    // (`require_float`); a bound view always holds it at the manifest
+    // default (0.4). Seed it so fixture configs behave like a bound view.
+    map.insert("nozzle_diameter".into(), ConfigValue::Float(0.4));
+    // Also contract-required (`require_bool`), manifest default `true`
+    // (packet 239c): a bound view always holds it.
+    map.insert(
+        "independent_support_layer_height".into(),
+        ConfigValue::Bool(true),
+    );
     for (k, v) in entries {
         map.insert((*k).to_string(), v.clone());
     }

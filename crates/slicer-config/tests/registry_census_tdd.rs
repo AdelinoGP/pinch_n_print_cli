@@ -245,13 +245,13 @@ fn assembled_real_registry() -> slicer_config::ConfigSchemaRegistry {
 
 #[test]
 fn host_runtime_rows_are_exact() {
-    assert_eq!(HOST_RUNTIME_KEYS.len(), 3);
+    assert_eq!(HOST_RUNTIME_KEYS.len(), 14);
 
     let relative_e_distances = &HOST_RUNTIME_KEYS[0];
     assert_eq!(relative_e_distances.key, "use_relative_e_distances");
     assert_eq!(relative_e_distances.field_type, "bool");
     assert_eq!(relative_e_distances.scope, "printer");
-    assert_eq!(relative_e_distances.default, "true");
+    assert_eq!(relative_e_distances.default, Some("true"));
     assert_eq!(relative_e_distances.meta, HostKeyMeta::NONE);
     assert!(!relative_e_distances.selector);
     assert!(relative_e_distances.denied_scopes.is_empty());
@@ -260,7 +260,7 @@ fn host_runtime_rows_are_exact() {
     assert_eq!(thumbnail_path.key, "thumbnail_path");
     assert_eq!(thumbnail_path.field_type, "string");
     assert_eq!(thumbnail_path.scope, "printer");
-    assert_eq!(thumbnail_path.default, "");
+    assert_eq!(thumbnail_path.default, Some(""));
     assert!(!thumbnail_path.selector);
     assert!(thumbnail_path.denied_scopes.is_empty());
     assert_eq!(thumbnail_path.meta.display, Some("Thumbnail path"));
@@ -280,7 +280,7 @@ fn host_runtime_rows_are_exact() {
     assert_eq!(wall_generator.key, "wall_generator");
     assert_eq!(wall_generator.field_type, "string");
     assert_eq!(wall_generator.scope, "print");
-    assert_eq!(wall_generator.default, "classic");
+    assert_eq!(wall_generator.default, Some("classic"));
     assert_eq!(wall_generator.meta, HostKeyMeta::NONE);
     assert!(wall_generator.selector);
     assert_eq!(
@@ -294,6 +294,70 @@ fn host_runtime_rows_are_exact() {
         ]
         .as_slice()
     );
+}
+
+/// Packet 06 Step 2a registered eleven host-consumed keys after the three
+/// pre-existing rows. Each carries `default: None` by design (synthesized,
+/// defaulted at the consuming site, or seeded elsewhere), so this pin derives
+/// its expectations from those authored rows rather than restating them as
+/// captured output: the ordered key list is asserted first, then all eleven
+/// rows are checked as typed declarations for the key that list names.
+#[test]
+fn host_runtime_step_2a_rows_are_registered_with_option_defaults() {
+    let registered = HOST_RUNTIME_KEYS
+        .iter()
+        .map(|row| row.key)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        registered,
+        [
+            "use_relative_e_distances",
+            "thumbnail_path",
+            "wall_generator",
+            "gcode_flavor",
+            "printer_model",
+            "filament_colour",
+            "extruder_colour",
+            "filament_cost",
+            "printable_area",
+            "support_type",
+            "support_family",
+            "thumbnails",
+            "machine_max_acceleration_retracting",
+            "extruder",
+        ]
+    );
+
+    let expected = [
+        ("gcode_flavor", "string", "printer"),
+        ("printer_model", "string", "printer"),
+        ("filament_colour", "string-list", "filament"),
+        ("extruder_colour", "string-list", "printer"),
+        ("filament_cost", "string-list", "filament"),
+        ("printable_area", "float-list", "printer"),
+        ("support_type", "string", "print"),
+        ("support_family", "string", "print"),
+        ("thumbnails", "string", "print"),
+        (
+            "machine_max_acceleration_retracting",
+            "float-list",
+            "printer",
+        ),
+        ("extruder", "int", "print"),
+    ];
+    for (offset, (key, field_type, scope)) in expected.iter().enumerate() {
+        let row = &HOST_RUNTIME_KEYS[3 + offset];
+        assert_eq!(row.key, *key);
+        assert_eq!(row.field_type, *field_type, "runtime {key} type");
+        assert_eq!(row.scope, *scope, "runtime {key} scope");
+        assert_eq!(row.default, None, "runtime {key} must stay unseeded");
+        assert_eq!(row.meta, HostKeyMeta::NONE, "runtime {key} meta");
+        assert!(!row.selector, "runtime {key} is not a selector");
+        assert!(
+            row.denied_scopes.is_empty(),
+            "runtime {key} has no denied scopes"
+        );
+    }
 }
 
 #[test]

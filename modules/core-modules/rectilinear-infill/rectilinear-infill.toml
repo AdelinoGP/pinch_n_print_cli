@@ -43,6 +43,12 @@ max     = 1.0
 display = "Infill Density"
 group   = "Infill"
 
+[config.schema.infill_shift_step]
+type    = "float"
+default = 0.0
+display = "Infill Shift Step"
+group   = "Infill"
+
 [config.schema.infill_angle]
 type    = "float"
 default = 45.0

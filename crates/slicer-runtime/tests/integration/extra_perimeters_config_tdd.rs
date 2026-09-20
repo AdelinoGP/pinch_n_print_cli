@@ -145,6 +145,33 @@ fn arachne_config(extra_perimeters: i64) -> ConfigView {
         .float("outer_wall_line_width", BEAD_WIDTH_MM)
         .int("wall_count", 2)
         .int("extra_perimeters", extra_perimeters)
+        // Required-read baseline (packet 06 5c): classified reads in
+        // run_perimeters/arachne_params_from_config are now require_*; the
+        // view holds every key the path reads at manifest-default values.
+        // line_width holds its post-expansion default (1.125 x
+        // nozzle_diameter = 0.45): the raw 0 is the auto sentinel expanded at
+        // Phase B and cannot survive the D-162 spacing gate.
+        .float("layer_height", 0.2)
+        .float("nozzle_diameter", 0.4)
+        .float("line_width", 0.45)
+        .float("bridge_line_width", 0.0)
+        .float("initial_layer_line_width", 0.0)
+        .bool("precise_outer_wall", false)
+        .string("wall_sequence", "InnerOuter")
+        .int("support_raft_layers", 0)
+        .bool("only_one_wall_top", false)
+        .string("wall_direction", "counter_clockwise")
+        .bool("alternate_extra_wall", false)
+        .bool("spiral_vase", false)
+        .float("sparse_infill_density", 20.0)
+        .bool("only_one_wall_first_layer", false)
+        .bool("detect_overhang_wall", true)
+        .bool("overhang_reverse", false)
+        .bool("overhang_reverse_internal_only", false)
+        .float("overhang_reverse_threshold", 0.0)
+        .float("bridge_flow", 1.0)
+        .bool("thick_bridges", false)
+        .float("seam_candidate_angle_threshold_deg", 30.0)
         .build()
 }
 
@@ -207,6 +234,28 @@ fn arachne_explicit_max_bead_count_override_ignores_extra_perimeters() {
         .int("wall_count", 2)
         .int("extra_perimeters", 2)
         .int("max_bead_count", 4)
+        // Required-read baseline (packet 06 5c): see arachne_config.
+        .float("layer_height", 0.2)
+        .float("nozzle_diameter", 0.4)
+        .float("line_width", 0.45)
+        .float("bridge_line_width", 0.0)
+        .float("initial_layer_line_width", 0.0)
+        .bool("precise_outer_wall", false)
+        .string("wall_sequence", "InnerOuter")
+        .int("support_raft_layers", 0)
+        .bool("only_one_wall_top", false)
+        .string("wall_direction", "counter_clockwise")
+        .bool("alternate_extra_wall", false)
+        .bool("spiral_vase", false)
+        .float("sparse_infill_density", 20.0)
+        .bool("only_one_wall_first_layer", false)
+        .bool("detect_overhang_wall", true)
+        .bool("overhang_reverse", false)
+        .bool("overhang_reverse_internal_only", false)
+        .float("overhang_reverse_threshold", 0.0)
+        .float("bridge_flow", 1.0)
+        .bool("thick_bridges", false)
+        .float("seam_candidate_angle_threshold_deg", 30.0)
         .build();
 
     let walls = arachne_wall_count(&config, 0);
@@ -232,6 +281,25 @@ fn arachne_extra_perimeters_composes_with_alternate_extra_wall() {
         .bool("alternate_extra_wall", true)
         .bool("spiral_vase", false)
         .float("sparse_infill_density", 20.0)
+        // Required-read baseline (packet 06 5c): see arachne_config.
+        .float("layer_height", 0.2)
+        .float("nozzle_diameter", 0.4)
+        .float("line_width", 0.45)
+        .float("bridge_line_width", 0.0)
+        .float("initial_layer_line_width", 0.0)
+        .bool("precise_outer_wall", false)
+        .string("wall_sequence", "InnerOuter")
+        .int("support_raft_layers", 0)
+        .bool("only_one_wall_top", false)
+        .string("wall_direction", "counter_clockwise")
+        .bool("only_one_wall_first_layer", false)
+        .bool("detect_overhang_wall", true)
+        .bool("overhang_reverse", false)
+        .bool("overhang_reverse_internal_only", false)
+        .float("overhang_reverse_threshold", 0.0)
+        .float("bridge_flow", 1.0)
+        .bool("thick_bridges", false)
+        .float("seam_candidate_angle_threshold_deg", 30.0)
         .build();
 
     let walls = arachne_wall_count(&config, 1);

@@ -66,6 +66,12 @@ impl std::hash::Hash for ResolvedFloatOrPercent {
     }
 }
 
+/// AC-13 oracle: the hand-written `to_config_map` as it stood before the
+/// [`declare_resolved_config!`] macro generated the production map from the
+/// `cli` / `cli_opt` / `plain` rows. The body below is kept verbatim — same
+/// keys, same renderings, same comments — so the generated map can be
+/// falsified against it.
+#[cfg(test)]
 impl ResolvedConfig {
     /// Flattens this config into a `HashMap<key, ConfigValue>` of effective
     /// slicer settings.
@@ -78,7 +84,7 @@ impl ResolvedConfig {
     /// restrict visibility (e.g. the per-module config view) filter this map to
     /// their declared keys.
     #[must_use]
-    pub fn to_config_map(&self) -> HashMap<String, ConfigValue> {
+    fn legacy_to_config_map(&self) -> HashMap<String, ConfigValue> {
         let mut m: HashMap<String, ConfigValue> = HashMap::new();
         m.insert("layer_height".into(), ConfigValue::Float(self.layer_height));
         m.insert(
@@ -832,8 +838,15 @@ pub struct HostRuntimeKey {
     pub field_type: &'static str,
     /// Preset scope for the key.
     pub scope: &'static str,
-    /// Default rendered as a static string.
-    pub default: &'static str,
+    /// Default rendered as a static string, or `None` when the key has no
+    /// default.
+    ///
+    /// A key registered without a default is not seeded, stays absent unless
+    /// authored, and renders `"default": null` on the `module config-schema`
+    /// wire. Keys the serializer synthesizes when absent (e.g.
+    /// `printer_model`) and `extruder` (a seeded value would change per-region
+    /// tool assignment) deliberately carry none.
+    pub default: Option<&'static str>,
     /// Display metadata for the key.
     pub meta: HostKeyMeta,
     /// Whether the key selects a host runtime implementation.
@@ -887,6 +900,13 @@ pub struct HostKeyMeta {
     /// Whether the control lands in expert mode on the GUI (`true`) or
     /// advanced mode (`false`).
     pub advanced: bool,
+    /// Whether this key is excluded from the G-code `CONFIG_BLOCK`.
+    ///
+    /// Polarity-safe: `false` (the [`HostKeyMeta::NONE`] default) means the key
+    /// is emitted. Marked on the three `mmu_segmented_region_*` rows, whose
+    /// emission would change `CONFIG_BLOCK` bytes for every print (P96 AC-8),
+    /// and on the fork-only `thumbnail_path` runtime row.
+    pub omit_from_config_block: bool,
 }
 
 impl HostKeyMeta {
@@ -902,6 +922,7 @@ impl HostKeyMeta {
         values: &[],
         wire_type: None,
         advanced: false,
+        omit_from_config_block: false,
     };
 }
 
@@ -909,12 +930,19 @@ impl HostKeyMeta {
 pub const DEFAULT_WALL_GENERATOR: &str = "classic";
 
 /// Static config keys read directly by host runtime code.
+///
+/// The first three rows predate packet 06; the remaining rows are the
+/// host-consumed keys whose absence the host previously tolerated only because
+/// ingestion was warn-and-keep and the raw overlay re-injected them. Keys the
+/// serializer synthesizes when absent (`gcode_flavor`, `printer_model`,
+/// `filament_colour`, `extruder_colour`) and `extruder` carry no default so
+/// registration never seeds them.
 pub const HOST_RUNTIME_KEYS: &[HostRuntimeKey] = &[
     HostRuntimeKey {
         key: "use_relative_e_distances",
         field_type: "bool",
         scope: SCOPE_PRINTER,
-        default: "true",
+        default: Some("true"),
         meta: HostKeyMeta::NONE,
         selector: false,
         denied_scopes: &[],
@@ -923,13 +951,14 @@ pub const HOST_RUNTIME_KEYS: &[HostRuntimeKey] = &[
         key: "thumbnail_path",
         field_type: "string",
         scope: SCOPE_PRINTER,
-        default: "",
+        default: Some(""),
         meta: HostKeyMeta {
             display: Some("Thumbnail path"),
             description: Some(
                 "File path the slicer writes its thumbnail plate into; empty disables thumbnails.",
             ),
             group: Some("Output"),
+            omit_from_config_block: true,
             ..HostKeyMeta::NONE
         },
         selector: false,
@@ -939,7 +968,7 @@ pub const HOST_RUNTIME_KEYS: &[HostRuntimeKey] = &[
         key: "wall_generator",
         field_type: "string",
         scope: SCOPE_PRINT,
-        default: DEFAULT_WALL_GENERATOR,
+        default: Some(DEFAULT_WALL_GENERATOR),
         meta: HostKeyMeta::NONE,
         selector: true,
         denied_scopes: &[
@@ -949,6 +978,108 @@ pub const HOST_RUNTIME_KEYS: &[HostRuntimeKey] = &[
             "paint_semantic",
             "tool",
         ],
+    },
+    // Host-consumed keys registered by packet 06 Step 2a. Defaults are `None`
+    // by design: these keys are synthesized, defaulted at the consuming site,
+    // or seeded elsewhere.
+    HostRuntimeKey {
+        key: "gcode_flavor",
+        field_type: "string",
+        scope: SCOPE_PRINTER,
+        default: None,
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "printer_model",
+        field_type: "string",
+        scope: SCOPE_PRINTER,
+        default: None,
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "filament_colour",
+        field_type: "string-list",
+        scope: SCOPE_FILAMENT,
+        default: None,
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "extruder_colour",
+        field_type: "string-list",
+        scope: SCOPE_PRINTER,
+        default: None,
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "filament_cost",
+        field_type: "string-list",
+        scope: SCOPE_FILAMENT,
+        default: None,
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "printable_area",
+        field_type: "float-list",
+        scope: SCOPE_PRINTER,
+        default: None,
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "support_type",
+        field_type: "string",
+        scope: SCOPE_PRINT,
+        default: None,
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "support_family",
+        field_type: "string",
+        scope: SCOPE_PRINT,
+        default: None,
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "thumbnails",
+        field_type: "string",
+        scope: SCOPE_PRINT,
+        default: None,
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "machine_max_acceleration_retracting",
+        field_type: "float-list",
+        scope: SCOPE_PRINTER,
+        default: None,
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "extruder",
+        field_type: "int",
+        scope: SCOPE_PRINT,
+        default: None,
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
     },
 ];
 
@@ -1021,6 +1152,111 @@ impl<T: HostWireField> HostWireField for Option<T> {
     }
 }
 
+/// Maps a declared Rust field type onto the [`ConfigValue`] variant the
+/// macro-generated [`ResolvedConfig::to_config_map`] emits for it.
+///
+/// Sibling of [`HostWireField`] and used for the same reason: the generated map
+/// must render every `cli` / `cli_opt` / `plain` row by the field's own type,
+/// so a new field type is a compile error until it is mapped here.
+///
+/// `None` means "this value has no config-map representation": an empty
+/// numeric list (`filament_density`, Orca `coFloats`) is omitted rather than
+/// emitted as an empty `ConfigValue::List`, preserving the pre-generation map's
+/// bytes for unconfigured filaments.
+#[doc(hidden)]
+pub trait HostMapField {
+    /// The [`ConfigValue`] for this field's effective value, or `None` when the
+    /// value must not appear in the map.
+    fn to_config_value(&self) -> Option<ConfigValue>;
+}
+
+impl HostMapField for f32 {
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        Some(ConfigValue::Float(f64::from(*self)))
+    }
+}
+
+impl HostMapField for f64 {
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        Some(ConfigValue::Float(*self))
+    }
+}
+
+impl HostMapField for u32 {
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        Some(ConfigValue::Int(i64::from(*self)))
+    }
+}
+
+impl HostMapField for bool {
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        Some(ConfigValue::Bool(*self))
+    }
+}
+
+impl HostMapField for String {
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        Some(ConfigValue::String(self.clone()))
+    }
+}
+
+impl HostMapField for Vec<f64> {
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        if self.is_empty() {
+            return None;
+        }
+        Some(ConfigValue::List(
+            self.iter()
+                .map(|value| ConfigValue::Float(*value))
+                .collect(),
+        ))
+    }
+}
+
+impl HostMapField for Vec<String> {
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        Some(ConfigValue::List(
+            self.iter()
+                .map(|value| ConfigValue::String(value.clone()))
+                .collect(),
+        ))
+    }
+}
+
+impl HostMapField for ResolvedFloatOrPercent {
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        Some(ConfigValue::FloatOrPercent {
+            value: self.value,
+            is_percent: self.is_percent,
+        })
+    }
+}
+
+impl HostMapField for WallGenerator {
+    /// Rendered through `Debug`, matching the pre-generation map's rendering of
+    /// this `plain` field.
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        Some(ConfigValue::String(format!("{self:?}")))
+    }
+}
+
+impl HostMapField for InfillType {
+    /// Rendered through `Debug`, matching the pre-generation map's rendering of
+    /// this `plain` field.
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        Some(ConfigValue::String(format!("{self:?}")))
+    }
+}
+
+impl HostMapField for SupportType {
+    /// Rendered through [`SupportType::as_canonical_str`], not `Debug`: the map
+    /// is read back by `canonical_support_family`, whose alias table matches
+    /// `tree*` / `normal*` case-sensitively.
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        Some(ConfigValue::String(self.as_canonical_str().to_string()))
+    }
+}
+
 /// Declare every `ResolvedConfig` field in one place. Each line is one of:
 ///
 /// - `plain <field>: <Ty> = <default>;` — struct field + Default only; the
@@ -1057,10 +1293,15 @@ macro_rules! declare_resolved_config {
             defaults:  { }
             cli_arms:  { }
             host_keys: { }
+            map_arms:  { }
+            typed_keys: { }
             cfg:       __drc_cfg
             key:       __drc_key
             value:     __drc_value
             dflt:      __drc_dflt
+            map:       __drc_map
+            mapval:    __drc_mapval
+            mapped:    __drc_mapped
             input:     { $($t)* }
         );
     };
@@ -1075,10 +1316,15 @@ macro_rules! __drc {
         defaults:  { $($df:tt)* }
         cli_arms:  { $($arm:tt)* }
         host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
         cfg:       $cfg:ident
         key:       $key:ident
         value:     $value:ident
         dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
         input:     { }
     ) => {
         /// Fully merged config produced by the host resolver and consumed by
@@ -1144,6 +1390,46 @@ macro_rules! __drc {
                 let $dflt = ResolvedConfig::default();
                 ::std::vec![ $($hk)* ]
             }
+
+            /// Every declared field, as its effective `key -> ConfigValue`
+            /// map.
+            ///
+            /// Flattens the whole config into the map consumed by G-code
+            /// `CONFIG_BLOCK` emission and the per-region `ConfigView`.
+            /// Generated from the `cli` / `cli_opt` / `plain` rows, so a field
+            /// cannot be declared without appearing here: `cli` and `plain`
+            /// rows always emit; a `cli_opt` row emits only while `Some`; the
+            /// per-type rendering lives in [`HostMapField`]. Module-supplied
+            /// `extensions` keys are merged last and unchanged, so an
+            /// extension can shadow a declared key. Consumers that must
+            /// restrict visibility (e.g. the per-module config view) filter
+            /// this map to their declared keys.
+            #[must_use]
+            pub fn to_config_map(
+                &self,
+            ) -> ::std::collections::HashMap<String, $crate::ConfigValue> {
+                let $cfg: &ResolvedConfig = self;
+                let mut $map: ::std::collections::HashMap<String, $crate::ConfigValue> =
+                    ::std::collections::HashMap::new();
+                $($ma)*
+                // Merge extension keys (module-contributed, already in ConfigValue form).
+                for (k, v) in &$cfg.extensions {
+                    $map.insert(k.clone(), v.clone());
+                }
+                $map
+            }
+
+            /// Every `cli` / `cli_opt` / `plain` declared field key.
+            ///
+            /// Exists because a `plain` row also returns `Ok(false)` from
+            /// [`ResolvedConfig::apply_cli_key`], so probing that method cannot
+            /// separate "typed field" from "undeclared". The registry
+            /// seed-set rule uses membership here to avoid shadowing a typed
+            /// value with a seeded `extensions` default.
+            #[must_use]
+            pub fn typed_field_keys() -> &'static [&'static str] {
+                &[ $($tk)* ]
+            }
         }
     };
 
@@ -1153,10 +1439,15 @@ macro_rules! __drc {
         defaults:  { $($df:tt)* }
         cli_arms:  { $($arm:tt)* }
         host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
         cfg:       $cfg:ident
         key:       $key:ident
         value:     $value:ident
         dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
         input: {
             $(#[$m:meta])*
             plain $field:ident : $ty:ty = $default:expr ;
@@ -1175,10 +1466,22 @@ macro_rules! __drc {
             }
             cli_arms:  { $($arm)* }
             host_keys: { $($hk)* }
+            map_arms: {
+                $($ma)*
+                if let ::core::option::Option::Some($mapped) =
+                    $crate::resolved_config::HostMapField::to_config_value(&$cfg.$field)
+                {
+                    $map.insert(::core::stringify!($field).to_string(), $mapped);
+                }
+            }
+            typed_keys: { $($tk)* ::core::stringify!($field), }
             cfg:       $cfg
             key:       $key
             value:     $value
             dflt:      $dflt
+            map:       $map
+            mapval:    $mapval
+            mapped:    $mapped
             input:     { $($rest)* }
         );
     };
@@ -1191,10 +1494,15 @@ macro_rules! __drc {
         defaults:  { $($df:tt)* }
         cli_arms:  { $($arm:tt)* }
         host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
         cfg:       $cfg:ident
         key:       $key:ident
         value:     $value:ident
         dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
         input: {
             $(#[$m:meta])*
             cli @ $scope:ident $cli_key:literal $field:ident : $ty:ty = $default:expr => $extractor:ident ;
@@ -1208,10 +1516,15 @@ macro_rules! __drc {
             defaults:  { $($df)* }
             cli_arms:  { $($arm)* }
             host_keys: { $($hk)* }
+            map_arms:  { $($ma)* }
+            typed_keys: { $($tk)* }
             cfg:       $cfg
             key:       $key
             value:     $value
             dflt:      $dflt
+            map:       $map
+            mapval:    $mapval
+            mapped:    $mapped
             input: {
                 $(#[$m])*
                 cli @ $scope $cli_key $field : $ty = $default => $extractor @ { } ;
@@ -1227,10 +1540,15 @@ macro_rules! __drc {
         defaults:  { $($df:tt)* }
         cli_arms:  { $($arm:tt)* }
         host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
         cfg:       $cfg:ident
         key:       $key:ident
         value:     $value:ident
         dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
         input: {
             $(#[$m:meta])*
             cli_opt @ $scope:ident $cli_key:literal $field:ident : $ty:ty = $default:expr => $extractor:ident ;
@@ -1244,10 +1562,15 @@ macro_rules! __drc {
             defaults:  { $($df)* }
             cli_arms:  { $($arm)* }
             host_keys: { $($hk)* }
+            map_arms:  { $($ma)* }
+            typed_keys: { $($tk)* }
             cfg:       $cfg
             key:       $key
             value:     $value
             dflt:      $dflt
+            map:       $map
+            mapval:    $mapval
+            mapped:    $mapped
             input: {
                 $(#[$m])*
                 cli_opt @ $scope $cli_key $field : $ty = $default => $extractor @ { } ;
@@ -1263,10 +1586,15 @@ macro_rules! __drc {
         defaults:  { $($df:tt)* }
         cli_arms:  { $($arm:tt)* }
         host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
         cfg:       $cfg:ident
         key:       $key:ident
         value:     $value:ident
         dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
         input: {
             $(#[$m:meta])*
             cli_opt $cli_key:literal $field:ident : $ty:ty = $default:expr => $extractor:ident ;
@@ -1280,10 +1608,15 @@ macro_rules! __drc {
             defaults:  { $($df)* }
             cli_arms:  { $($arm)* }
             host_keys: { $($hk)* }
+            map_arms:  { $($ma)* }
+            typed_keys: { $($tk)* }
             cfg:       $cfg
             key:       $key
             value:     $value
             dflt:      $dflt
+            map:       $map
+            mapval:    $mapval
+            mapped:    $mapped
             input: {
                 $(#[$m])*
                 cli_opt $cli_key $field : $ty = $default => $extractor @ { } ;
@@ -1300,10 +1633,15 @@ macro_rules! __drc {
         defaults:  { $($df:tt)* }
         cli_arms:  { $($arm:tt)* }
         host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
         cfg:       $cfg:ident
         key:       $key:ident
         value:     $value:ident
         dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
         input: {
             $(#[$m:meta])*
             cli @ $scope:ident $cli_key:literal $field:ident : $ty:ty = $default:expr => $extractor:ident @ { $($meta:tt)* } ;
@@ -1340,10 +1678,22 @@ macro_rules! __drc {
                     },
                 },
             }
+            map_arms: {
+                $($ma)*
+                if let ::core::option::Option::Some($mapped) =
+                    $crate::resolved_config::HostMapField::to_config_value(&$cfg.$field)
+                {
+                    $map.insert($cli_key.to_string(), $mapped);
+                }
+            }
+            typed_keys: { $($tk)* $cli_key, }
             cfg:       $cfg
             key:       $key
             value:     $value
             dflt:      $dflt
+            map:       $map
+            mapval:    $mapval
+            mapped:    $mapped
             input:     { $($rest)* }
         );
     };
@@ -1355,10 +1705,15 @@ macro_rules! __drc {
         defaults:  { $($df:tt)* }
         cli_arms:  { $($arm:tt)* }
         host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
         cfg:       $cfg:ident
         key:       $key:ident
         value:     $value:ident
         dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
         input: {
             $(#[$m:meta])*
             cli_opt @ $scope:ident $cli_key:literal $field:ident : $ty:ty = $default:expr => $extractor:ident @ { $($meta:tt)* } ;
@@ -1397,10 +1752,24 @@ macro_rules! __drc {
                     },
                 },
             }
+            map_arms: {
+                $($ma)*
+                if let ::core::option::Option::Some($mapval) = &$cfg.$field {
+                    if let ::core::option::Option::Some($mapped) =
+                        $crate::resolved_config::HostMapField::to_config_value($mapval)
+                    {
+                        $map.insert($cli_key.to_string(), $mapped);
+                    }
+                }
+            }
+            typed_keys: { $($tk)* $cli_key, }
             cfg:       $cfg
             key:       $key
             value:     $value
             dflt:      $dflt
+            map:       $map
+            mapval:    $mapval
+            mapped:    $mapped
             input:     { $($rest)* }
         );
     };
@@ -1412,10 +1781,15 @@ macro_rules! __drc {
         defaults:  { $($df:tt)* }
         cli_arms:  { $($arm:tt)* }
         host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
         cfg:       $cfg:ident
         key:       $key:ident
         value:     $value:ident
         dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
         input: {
             $(#[$m:meta])*
             cli $cli_key:literal $field:ident : $ty:ty = $default:expr => $extractor:ident ;
@@ -1429,10 +1803,15 @@ macro_rules! __drc {
             defaults:  { $($df)* }
             cli_arms:  { $($arm)* }
             host_keys: { $($hk)* }
+            map_arms:  { $($ma)* }
+            typed_keys: { $($tk)* }
             cfg:       $cfg
             key:       $key
             value:     $value
             dflt:      $dflt
+            map:       $map
+            mapval:    $mapval
+            mapped:    $mapped
             input: {
                 $(#[$m])*
                 cli $cli_key $field : $ty = $default => $extractor @ { } ;
@@ -1450,10 +1829,15 @@ macro_rules! __drc {
         defaults:  { $($df:tt)* }
         cli_arms:  { $($arm:tt)* }
         host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
         cfg:       $cfg:ident
         key:       $key:ident
         value:     $value:ident
         dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
         input: {
             $(#[$m:meta])*
             cli $cli_key:literal $field:ident : $ty:ty = $default:expr => $extractor:ident @ { $($meta:tt)* } ;
@@ -1490,10 +1874,22 @@ macro_rules! __drc {
                     },
                 },
             }
+            map_arms: {
+                $($ma)*
+                if let ::core::option::Option::Some($mapped) =
+                    $crate::resolved_config::HostMapField::to_config_value(&$cfg.$field)
+                {
+                    $map.insert($cli_key.to_string(), $mapped);
+                }
+            }
+            typed_keys: { $($tk)* $cli_key, }
             cfg:       $cfg
             key:       $key
             value:     $value
             dflt:      $dflt
+            map:       $map
+            mapval:    $mapval
+            mapped:    $mapped
             input:     { $($rest)* }
         );
     };
@@ -1505,10 +1901,15 @@ macro_rules! __drc {
         defaults:  { $($df:tt)* }
         cli_arms:  { $($arm:tt)* }
         host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
         cfg:       $cfg:ident
         key:       $key:ident
         value:     $value:ident
         dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
         input: {
             $(#[$m:meta])*
             cli_opt $cli_key:literal $field:ident : $ty:ty = $default:expr => $extractor:ident @ { $($meta:tt)* } ;
@@ -1547,10 +1948,24 @@ macro_rules! __drc {
                     },
                 },
             }
+            map_arms: {
+                $($ma)*
+                if let ::core::option::Option::Some($mapval) = &$cfg.$field {
+                    if let ::core::option::Option::Some($mapped) =
+                        $crate::resolved_config::HostMapField::to_config_value($mapval)
+                    {
+                        $map.insert($cli_key.to_string(), $mapped);
+                    }
+                }
+            }
+            typed_keys: { $($tk)* $cli_key, }
             cfg:       $cfg
             key:       $key
             value:     $value
             dflt:      $dflt
+            map:       $map
+            mapval:    $mapval
+            mapped:    $mapped
             input:     { $($rest)* }
         );
     };
@@ -1827,15 +2242,28 @@ declare_resolved_config! {
 
     // MMU segmented region (Phase 5 — width limiting / interlocking)
     /// Maximum width of MMU segmented regions in mm. `0.0` means no limit.
-    cli "mmu_segmented_region_max_width" mmu_segmented_region_max_width: f32 = 0.0 => extract_float;
+    ///
+    /// `omit_from_config_block`: emitting this key would change `CONFIG_BLOCK`
+    /// bytes for every print (P96 AC-8); the block still carries the value for
+    /// consumers through `to_config_map`.
+    cli "mmu_segmented_region_max_width" mmu_segmented_region_max_width: f32 = 0.0 => extract_float @ {
+        omit_from_config_block: true,
+    };
     /// Interlocking depth for MMU segmented regions in mm. `0.0` means no interlocking.
-    cli "mmu_segmented_region_interlocking_depth" mmu_segmented_region_interlocking_depth: f32 = 0.0 => extract_float;
+    ///
+    /// `omit_from_config_block`: see `mmu_segmented_region_max_width`.
+    cli "mmu_segmented_region_interlocking_depth" mmu_segmented_region_interlocking_depth: f32 = 0.0 => extract_float @ {
+        omit_from_config_block: true,
+    };
     /// When true, Phase 5 width-limiting is skipped entirely (OrcaSlicer
     /// interlocking-beam parity). Default `false` matches single-material behaviour.
+    ///
+    /// `omit_from_config_block`: see `mmu_segmented_region_max_width`.
     cli "mmu_segmented_region_interlocking_beam" mmu_segmented_region_interlocking_beam: bool = false => extract_bool @ {
         display: Some("MMU segmented region interlocking beam"),
         description: Some("Skip Phase 5 width limiting entirely (interlocking-beam behaviour)."),
         group: Some("Multimaterial"),
+        omit_from_config_block: true,
     };
 
     // Machine kinematic limits (time estimator; optional — absent keys stay None)
@@ -2205,6 +2633,147 @@ mod machine_limit_config_tests {
             cfg.apply_cli_key("machine_max_jerk_e", &ConfigValue::Bool(true))
                 .is_err(),
             "a bool is not a machine limit"
+        );
+    }
+}
+
+/// AC-13 parity: the macro-generated [`ResolvedConfig::to_config_map`] must
+/// render every key the retired hand map emitted with an identical
+/// [`ConfigValue`], and must additionally emit the declared rows the hand map
+/// never listed. The oracle is [`ResolvedConfig::legacy_to_config_map`].
+#[cfg(test)]
+mod config_map_parity_tests {
+    use super::*;
+
+    /// `ResolvedConfig::default()` plus the three non-default shapes AC-13
+    /// names: a non-empty `filament_density`, a tree `support_type`, and one
+    /// `cli_opt` row set to `Some`.
+    fn non_default_config() -> ResolvedConfig {
+        ResolvedConfig {
+            filament_density: vec![1.24, 1.75],
+            support_type: SupportType::TreeAuto,
+            arachne_min_feature_size: Some(0.25),
+            ..ResolvedConfig::default()
+        }
+    }
+
+    #[test]
+    fn generated_to_config_map_matches_legacy_rendering() {
+        let cases = [
+            ("default", ResolvedConfig::default()),
+            ("non-default", non_default_config()),
+        ];
+        for (label, cfg) in &cases {
+            let generated = cfg.to_config_map();
+            let legacy = cfg.legacy_to_config_map();
+            for (key, value) in &legacy {
+                assert_eq!(
+                    generated.get(key),
+                    Some(value),
+                    "{label}: generated map disagrees with the legacy oracle on {key}"
+                );
+            }
+            // Every key the oracle emitted names a declared typed field, so
+            // the registry seed rule (membership in `typed_field_keys`) can
+            // see it. `extensions` is empty in both cases, so every generated
+            // key must be declared too.
+            for key in legacy.keys() {
+                assert!(
+                    ResolvedConfig::typed_field_keys().contains(&key.as_str()),
+                    "{label}: oracle key {key} is missing from typed_field_keys()"
+                );
+            }
+            for key in generated.keys() {
+                assert!(
+                    ResolvedConfig::typed_field_keys().contains(&key.as_str()),
+                    "{label}: generated key {key} is not a declared field"
+                );
+            }
+        }
+
+        let default_map = ResolvedConfig::default().to_config_map();
+        assert_eq!(
+            default_map.get("support_type"),
+            Some(&ConfigValue::String("normal(auto)".to_string())),
+            "support_type must render through as_canonical_str(), not Debug"
+        );
+        assert_eq!(
+            default_map.get("infill_type"),
+            Some(&ConfigValue::String("Grid".to_string())),
+            "infill_type keeps its current Debug rendering"
+        );
+        assert!(
+            !default_map.contains_key("filament_density"),
+            "filament_density must stay omitted while empty"
+        );
+
+        let non_default_map = non_default_config().to_config_map();
+        assert_eq!(
+            non_default_map.get("support_type"),
+            Some(&ConfigValue::String("tree(auto)".to_string()))
+        );
+        assert_eq!(
+            non_default_map.get("filament_density"),
+            Some(&ConfigValue::List(vec![
+                ConfigValue::Float(1.24),
+                ConfigValue::Float(1.75),
+            ]))
+        );
+        assert_eq!(
+            non_default_map.get("arachne_min_feature_size"),
+            Some(&ConfigValue::Float(0.25)),
+            "a Some cli_opt row must emit"
+        );
+
+        // Representative rows the hand map never listed — one per declaration
+        // form and per field type the generated map must now cover.
+        for key in [
+            "filament_diameter",                      // cli @filament, f32
+            "bed_shape",                              // cli, float-list
+            "fill_authored_coloring",                 // cli, string-list
+            "disable_m73",                            // cli, bool
+            "flat_bridge_closing_join",               // cli, string + metadata
+            "mmu_segmented_region_interlocking_beam", // cli, annotated bool
+            "gcode_resolution",                       // cli, annotated f32
+            "retract_length",                         // cli, f32
+            "wipe_tower_enabled",                     // cli, bool
+        ] {
+            assert!(
+                default_map.contains_key(key),
+                "{key} is a declared cli row and must appear in the generated map"
+            );
+        }
+    }
+
+    /// The `config_block = false` marking is carried by the declaration
+    /// channels, so the registry can filter emission without a second roster.
+    #[test]
+    fn omit_from_config_block_is_marked_on_exactly_the_four_keys() {
+        let mut omitted: Vec<&str> = ResolvedConfig::host_config_keys()
+            .iter()
+            .filter(|row| row.meta.omit_from_config_block)
+            .map(|row| row.key)
+            .collect();
+        omitted.extend(
+            HOST_RUNTIME_KEYS
+                .iter()
+                .filter(|row| row.meta.omit_from_config_block)
+                .map(|row| row.key),
+        );
+        omitted.sort_unstable();
+        assert_eq!(
+            omitted,
+            [
+                "mmu_segmented_region_interlocking_beam",
+                "mmu_segmented_region_interlocking_depth",
+                "mmu_segmented_region_max_width",
+                "thumbnail_path",
+            ],
+            "exactly the four declared keys carry config_block = false"
+        );
+        assert!(
+            !HostKeyMeta::NONE.omit_from_config_block,
+            "the default metadata must emit"
         );
     }
 }

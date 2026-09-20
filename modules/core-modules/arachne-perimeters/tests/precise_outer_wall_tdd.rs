@@ -25,9 +25,8 @@ use slicer_sdk::views::SliceRegionView;
 
 const OUTER_WIDTH_MM: f32 = 0.5;
 const SPACING_WIDTH_MM: f32 = 0.4;
-/// Fixture layer height (mm) — module fallback default, matches
-/// `make_region`'s implicit layer used by `run_perimeters` (no `layer_height`
-/// key set in `make_config`, so the 0.2mm module default applies).
+/// Fixture layer height (mm) — the manifest default for `layer_height`, set
+/// explicitly in `make_config` (the read is now `require_*`; see below).
 const LAYER_HEIGHT_MM: f64 = 0.2;
 /// Expected outer-wall min-x shift (mm) when the gate is satisfied.
 ///
@@ -45,19 +44,49 @@ const TOLERANCE_MM: f32 = 1e-3;
 
 /// Builds a config with distinct `optimal_width`/`preferred_bead_width_outer`
 /// (so the gated offset is nonzero and observable), plus the wall-sequencing
-/// keys under test. `precise_outer_wall`/`wall_sequence` are only set when
-/// `Some`, so callers can exercise the "key absent" default path.
+/// keys under test. `precise_outer_wall`/`wall_sequence` default to their
+/// manifest defaults (false / "InnerOuter") when `None` — item-11 migration
+/// (packet 06): the classified reads are now `require_*`, so the view always
+/// holds the key; "absent" is expressed as the manifest-default value.
 fn make_config(precise_outer_wall: Option<bool>, wall_sequence: Option<&str>) -> ConfigView {
     let mut builder = ConfigViewBuilder::new()
         .int("wall_count", 2)
         .float("inner_wall_line_width", SPACING_WIDTH_MM as f64)
-        .float("outer_wall_line_width", OUTER_WIDTH_MM as f64);
-    if let Some(p) = precise_outer_wall {
-        builder = builder.bool("precise_outer_wall", p);
-    }
-    if let Some(ws) = wall_sequence {
-        builder = builder.string("wall_sequence", ws);
-    }
+        .float("outer_wall_line_width", OUTER_WIDTH_MM as f64)
+        // Required-read baseline (packet 06 5c', item 11): the classified
+        // reads in run_perimeters/arachne_params_from_config are now
+        // require_*; the view holds every key those paths read, at
+        // manifest-default values. line_width holds its post-expansion
+        // default (1.125 x nozzle_diameter): the raw 0 is the auto sentinel
+        // expanded at Phase B and cannot survive the D-162 spacing gate.
+        .float("layer_height", LAYER_HEIGHT_MM)
+        .float("nozzle_diameter", 0.4)
+        .float("line_width", 0.45)
+        .float("bridge_line_width", 0.0)
+        .float("initial_layer_line_width", 0.0)
+        .int("extra_perimeters", 0)
+        .int("support_raft_layers", 0)
+        .bool("only_one_wall_top", false)
+        .string("wall_direction", "counter_clockwise")
+        .bool("alternate_extra_wall", false)
+        .bool("spiral_vase", false)
+        .float("sparse_infill_density", 20.0)
+        .bool("only_one_wall_first_layer", false)
+        .bool("detect_overhang_wall", true)
+        .bool("overhang_reverse", false)
+        .bool("overhang_reverse_internal_only", false)
+        .float("overhang_reverse_threshold", 0.0)
+        .float("bridge_flow", 1.0)
+        .bool("thick_bridges", false)
+        .float("seam_candidate_angle_threshold_deg", 30.0);
+    builder = builder.bool(
+        "precise_outer_wall",
+        precise_outer_wall.unwrap_or(false), // manifest default
+    );
+    builder = builder.string(
+        "wall_sequence",
+        wall_sequence.unwrap_or("InnerOuter"), // manifest default
+    );
     builder.build()
 }
 
@@ -125,23 +154,27 @@ fn precise_outer_wall_insets_outer_wall_by_expected_delta() {
     );
 }
 
-/// AC-N2 (negative, default_off): `precise_outer_wall` unset (default false)
-/// with `wall_sequence="InnerOuter"` must produce the same outer wall
-/// placement as an explicit `precise_outer_wall=false` — i.e. no offset.
+/// AC-N2 (negative, default_off): the manifest default of `precise_outer_wall`
+/// (false — the migrated form of the former "key absent" path) must produce
+/// the same outer wall placement as a non-gated control: `precise_outer_wall
+/// =true` with `wall_sequence="OuterInner"` (the inner-outer gate can never
+/// fire). Comparing against the distinct non-gated control keeps the claim
+/// falsifiable now that the old "absent vs explicit false" distinction
+/// collapsed into a single default-valued view (packet 06 item 11).
 #[test]
 fn precise_outer_wall_default_off_matches_explicit_off() {
     let config_default = make_config(None, Some("InnerOuter"));
-    let config_explicit_off = make_config(Some(false), Some("InnerOuter"));
+    let config_ungated = make_config(Some(true), Some("OuterInner"));
 
     let outer_default = run_and_get_outer_wall(&config_default);
-    let outer_explicit_off = run_and_get_outer_wall(&config_explicit_off);
+    let outer_ungated = run_and_get_outer_wall(&config_ungated);
 
     assert!(
-        (min_x(&outer_default) - min_x(&outer_explicit_off)).abs() < TOLERANCE_MM,
-        "default (key absent) precise_outer_wall must match explicit false: \
-         default min-x={}, explicit-off min-x={}",
+        (min_x(&outer_default) - min_x(&outer_ungated)).abs() < TOLERANCE_MM,
+        "default (manifest-value false) precise_outer_wall must match the \
+         non-gated control: default min-x={}, ungated min-x={}",
         min_x(&outer_default),
-        min_x(&outer_explicit_off)
+        min_x(&outer_ungated)
     );
 }
 

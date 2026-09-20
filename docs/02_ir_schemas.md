@@ -518,6 +518,14 @@ only `RegistryEntry.base_key`-typed percentages are expanded. Packet 10 retains
 the emitter-owned volumetric `0 = auto` rule and all geometry-, layer-, flow-,
 or move-dependent `-1` sentinels.
 
+Module `ConfigView` delivery is **always resolved and registry-complete**
+(normative — resolved-config-view packet): the live binding path
+(`bind_module_config_view` in `crates/slicer-scheduler/src/execution_plan.rs`)
+binds each module's view from `ResolvedConfig::to_config_map()`, never from a
+raw source map, so every declared key with a registry default or an authored
+value is present with its effective value, and an undeclared key is absent
+from the view by construction.
+
 ### Config Precedence Rules
 
 When two sources assign the same key:
@@ -1693,6 +1701,23 @@ the time/motion estimator. The fork therefore supplies the following keys:
 PNP's `ORCA_CONFIG_PADDING` table must never emit keys whose names match
 `*speed*`, `*acceleration*`, `*jerk*`, or `machine_max_*`. These keys are always
 fork-supplied and are never synthesized as padding.
+
+**Block population (normative — resolved-config-view packet):** the block's
+key set is no longer a raw-config dump. `ConfigSchemaRegistry::config_block_map`
+(`crates/slicer-config/src/lib.rs`) projects the effective resolved config:
+a key of `ResolvedConfig::to_config_map()` is emitted when it is a registry
+entry without `omit_from_config_block`, or a
+`ResolvedConfig::typed_field_keys()` key with no registry entry (today
+`infill_type`). The registry's host channel is seeded from
+`HOST_RUNTIME_KEYS` (`crates/slicer-ir/src/resolved_config.rs`) — every key
+the host runtime reads directly — so registered host-consumed keys are
+registered before reconciliation and survive ingestion; `config_block_map`
+runs over the registered `HOST_RUNTIME_KEYS` plus every module manifest's
+`[config.schema]` declarations. Exactly four keys carry
+`config_block = false` (`omit_from_config_block = true`) and are absent from
+the block: the three `mmu_segmented_region_*` keys and `thumbnail_path`.
+String values are escaped per canonical `escape_string_cstyle`
+(`ConfigOptionString::serialize`, OrcaSlicer `Config.cpp`).
 
 **Minimum-key gate (normative — packet 167):** PNP pads `CONFIG_BLOCK` with
 `; key = value` entries until the block holds 96 entries even when `raw_config`

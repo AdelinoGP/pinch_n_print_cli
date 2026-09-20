@@ -160,6 +160,16 @@ fn planner_config_full_with(
         "support_interface_bottom_layers".into(),
         ConfigValue::Int(2),
     );
+    // Packet 06 (AC-3): `nozzle_diameter` is a contract-required read
+    // (`require_float`); a bound view always holds it at the manifest
+    // default (0.4). Seed it so fixture configs behave like a bound view.
+    values.insert("nozzle_diameter".into(), ConfigValue::Float(0.4));
+    // Also contract-required (`require_bool`), manifest default `true`
+    // (packet 239c): a bound view always holds it.
+    values.insert(
+        "independent_support_layer_height".into(),
+        ConfigValue::Bool(true),
+    );
     values.insert(
         "tree_support_branch_angle".into(),
         ConfigValue::Float(branch_angle_deg),
@@ -2496,6 +2506,13 @@ fn non_tree_family_candidates_are_skipped() {
     values.insert(
         "support_interface_bottom_layers".into(),
         ConfigValue::Int(2),
+    );
+    // Contract-required reads (packet 06 AC-3 / 239c): seed manifest
+    // defaults so the fixture behaves like a bound view.
+    values.insert("nozzle_diameter".into(), ConfigValue::Float(0.4));
+    values.insert(
+        "independent_support_layer_height".into(),
+        ConfigValue::Bool(true),
     );
     let config = ConfigView::from_map(values);
 

@@ -658,6 +658,59 @@ fn config_block_fork_keys_never_shadowed() {
     );
 }
 
+/// AC-9: a multi-line `machine_start_gcode` value containing `M190`, a
+/// backslash, and a double quote is emitted on exactly ONE line inside
+/// CONFIG_BLOCK_START..CONFIG_BLOCK_END, escaped per `escape_string_cstyle`
+/// (`\n`, `\\`, `\"`), so no line in the block begins with `M190`.
+#[test]
+fn config_block_escapes_multiline_strings_cstyle() {
+    let mesh_ir = Arc::new(load_model(&stl_fixture_path()).expect("fixture load"));
+    let mut raw: HashMap<ConfigKey, ConfigValue> = HashMap::new();
+    raw.insert(
+        "machine_start_gcode".to_string(),
+        ConfigValue::String("G28 ; home\nM190 S60 ; heat \"bed\"\nG1 Z5 \\ F600".to_string()),
+    );
+    let config = PipelineConfig {
+        ..common::pipeline_config_base(mesh_ir, empty_plan(), default_runners())
+    };
+    let output = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)
+        .expect("pipeline should succeed");
+    let config_region = region_between(
+        &output.gcode_text,
+        "; CONFIG_BLOCK_START",
+        "; CONFIG_BLOCK_END",
+    );
+
+    let value_lines: Vec<&str> = config_region
+        .lines()
+        .filter(|line| line.starts_with("; machine_start_gcode = "))
+        .collect();
+    assert_eq!(
+        value_lines.len(),
+        1,
+        "escaped value must occupy exactly one line: {value_lines:?}"
+    );
+    assert!(
+        value_lines[0].contains("\\nM190 S60"),
+        "newline must be `\\n`-escaped: {:?}",
+        value_lines[0]
+    );
+    assert!(
+        value_lines[0].contains("\\\"bed\\\""),
+        "double quote must be `\\\"`-escaped: {:?}",
+        value_lines[0]
+    );
+    assert!(
+        value_lines[0].contains("\\\\"),
+        "backslash must be `\\\\`-escaped: {:?}",
+        value_lines[0]
+    );
+    assert!(
+        !config_region.lines().any(|line| line.starts_with("M190")),
+        "no line inside CONFIG_BLOCK may begin with M190"
+    );
+}
+
 /// AC-10: THUMBNAIL_BLOCK inner-framed base64 roundtrip matches input file bytes.
 /// The default (no `thumbnails` key) emits a single PNG entry at source
 /// dimensions whose decoded body is the source PNG bytes verbatim.

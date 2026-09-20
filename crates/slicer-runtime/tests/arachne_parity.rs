@@ -105,6 +105,34 @@ fn native_wall_config(wall_count: u32, line_width_mm: f32) -> ConfigView {
         .int("wall_count", wall_count as i64)
         .float("inner_wall_line_width", line_width_mm as f64)
         .float("outer_wall_line_width", line_width_mm as f64)
+        // Required-read baseline (packet 06 5c): classified reads in
+        // run_perimeters/arachne_params_from_config are now require_*; the
+        // view holds every key the path reads at manifest-default values.
+        // line_width holds its post-expansion default (1.125 x
+        // nozzle_diameter = 0.45): the raw 0 is the auto sentinel expanded at
+        // Phase B and cannot survive the D-162 spacing gate.
+        .float("layer_height", 0.2)
+        .float("nozzle_diameter", 0.4)
+        .float("line_width", 0.45)
+        .float("bridge_line_width", 0.0)
+        .float("initial_layer_line_width", 0.0)
+        .int("extra_perimeters", 0)
+        .bool("precise_outer_wall", false)
+        .string("wall_sequence", "InnerOuter")
+        .int("support_raft_layers", 0)
+        .bool("only_one_wall_top", false)
+        .string("wall_direction", "counter_clockwise")
+        .bool("alternate_extra_wall", false)
+        .bool("spiral_vase", false)
+        .float("sparse_infill_density", 20.0)
+        .bool("only_one_wall_first_layer", false)
+        .bool("detect_overhang_wall", true)
+        .bool("overhang_reverse", false)
+        .bool("overhang_reverse_internal_only", false)
+        .float("overhang_reverse_threshold", 0.0)
+        .float("bridge_flow", 1.0)
+        .bool("thick_bridges", false)
+        .float("seam_candidate_angle_threshold_deg", 30.0)
         .build()
 }
 
@@ -117,6 +145,29 @@ fn native_thin_wall_config(detect_thin_wall_on: bool) -> ConfigView {
         .float("inner_wall_line_width", 0.4)
         .float("outer_wall_line_width", 0.4)
         .bool("detect_thin_wall", detect_thin_wall_on)
+        // Required-read baseline (packet 06 5c): see native_wall_config.
+        .float("layer_height", 0.2)
+        .float("nozzle_diameter", 0.4)
+        .float("line_width", 0.45)
+        .float("bridge_line_width", 0.0)
+        .float("initial_layer_line_width", 0.0)
+        .int("extra_perimeters", 0)
+        .bool("precise_outer_wall", false)
+        .string("wall_sequence", "InnerOuter")
+        .int("support_raft_layers", 0)
+        .bool("only_one_wall_top", false)
+        .string("wall_direction", "counter_clockwise")
+        .bool("alternate_extra_wall", false)
+        .bool("spiral_vase", false)
+        .float("sparse_infill_density", 20.0)
+        .bool("only_one_wall_first_layer", false)
+        .bool("detect_overhang_wall", true)
+        .bool("overhang_reverse", false)
+        .bool("overhang_reverse_internal_only", false)
+        .float("overhang_reverse_threshold", 0.0)
+        .float("bridge_flow", 1.0)
+        .bool("thick_bridges", false)
+        .float("seam_candidate_angle_threshold_deg", 30.0)
         .build()
 }
 
@@ -371,6 +422,27 @@ fn arachne_parity_pipeline_bridge_flow_factor_on_overhang() {
         .float("outer_wall_line_width", 0.4)
         .float("bridge_flow", 0.7)
         .bool("thick_bridges", false)
+        // Required-read baseline (packet 06 5c): see native_wall_config.
+        .float("layer_height", 0.2)
+        .float("nozzle_diameter", 0.4)
+        .float("line_width", 0.45)
+        .float("bridge_line_width", 0.0)
+        .float("initial_layer_line_width", 0.0)
+        .int("extra_perimeters", 0)
+        .bool("precise_outer_wall", false)
+        .string("wall_sequence", "InnerOuter")
+        .int("support_raft_layers", 0)
+        .bool("only_one_wall_top", false)
+        .string("wall_direction", "counter_clockwise")
+        .bool("alternate_extra_wall", false)
+        .bool("spiral_vase", false)
+        .float("sparse_infill_density", 20.0)
+        .bool("only_one_wall_first_layer", false)
+        .bool("detect_overhang_wall", true)
+        .bool("overhang_reverse", false)
+        .bool("overhang_reverse_internal_only", false)
+        .float("overhang_reverse_threshold", 0.0)
+        .float("seam_candidate_angle_threshold_deg", 30.0)
         .build();
     let module = ArachnePerimeters::from_config(&config).unwrap();
     let regions = vec![native_bridge_region(10.0, 4.0, 0.2)];
@@ -534,7 +606,7 @@ fn arachne_parity_arachne_path_precise_outer_wall_registered() {
 
     const OUTER_WIDTH_MM: f32 = 0.5;
     const SPACING_WIDTH_MM: f32 = 0.4;
-    const LAYER_HEIGHT_MM: f64 = 0.2; // matches lib.rs's `unwrap_or(0.2)` default (no "layer_height" key set below)
+    const LAYER_HEIGHT_MM: f64 = 0.2; // manifest default, held explicitly below (packet 06 5c)
                                       // Orca-parity precise-outer-wall inset: wall_0_inset =
                                       // -(ext_perimeter_width/2 - ext_perimeter_spacing/2). Because spacing =
                                       // width - layer_height*(1 - PI/4) (line_width_to_spacing), this reduces
@@ -553,6 +625,27 @@ fn arachne_parity_arachne_path_precise_outer_wall_registered() {
             .float("outer_wall_line_width", OUTER_WIDTH_MM as f64)
             .bool("precise_outer_wall", precise_outer_wall)
             .string("wall_sequence", "InnerOuter")
+            // Required-read baseline (packet 06 5c): see native_wall_config.
+            .float("layer_height", LAYER_HEIGHT_MM)
+            .float("nozzle_diameter", 0.4)
+            .float("line_width", 0.45)
+            .float("bridge_line_width", 0.0)
+            .float("initial_layer_line_width", 0.0)
+            .int("extra_perimeters", 0)
+            .int("support_raft_layers", 0)
+            .bool("only_one_wall_top", false)
+            .string("wall_direction", "counter_clockwise")
+            .bool("alternate_extra_wall", false)
+            .bool("spiral_vase", false)
+            .float("sparse_infill_density", 20.0)
+            .bool("only_one_wall_first_layer", false)
+            .bool("detect_overhang_wall", true)
+            .bool("overhang_reverse", false)
+            .bool("overhang_reverse_internal_only", false)
+            .float("overhang_reverse_threshold", 0.0)
+            .float("bridge_flow", 1.0)
+            .bool("thick_bridges", false)
+            .float("seam_candidate_angle_threshold_deg", 30.0)
             .build()
     };
     let run_and_get_outer_wall = |config: &ConfigView| -> slicer_ir::WallLoop {

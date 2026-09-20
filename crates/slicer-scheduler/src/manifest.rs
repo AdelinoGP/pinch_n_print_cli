@@ -1277,6 +1277,17 @@ fn parse_config_field_entry(
                 .collect()
         })
         .unwrap_or_default();
+    // `config_block = false` marks a field as omitted from the resolved
+    // config block; absent means the field is emitted (the default).
+    let config_block = table
+        .get("config_block")
+        .map(|value| {
+            value.as_bool().ok_or_else(|| {
+                config_field_type_error(manifest_path, field_key, "config_block", "a boolean")
+            })
+        })
+        .transpose()?
+        .unwrap_or(true);
 
     Ok(ConfigFieldEntry {
         field_type,
@@ -1298,6 +1309,7 @@ fn parse_config_field_entry(
         selector,
         base_key,
         denied_scopes,
+        omit_from_config_block: !config_block,
     })
 }
 
@@ -1627,7 +1639,7 @@ fn build_host_key_entries() -> Vec<serde_json::Value> {
             key: row.key,
             field_type: row.field_type,
             scope: row.scope,
-            default: Some((row).default.to_string()),
+            default: row.default.map(|value| value.to_owned()),
             meta: row.meta,
         };
         push(
@@ -2118,6 +2130,7 @@ denied_scopes = ["object", "layer_range"]
                 selector: false,
                 base_key: None,
                 denied_scopes: Vec::new(),
+                omit_from_config_block: false,
             },
         );
         let module = synthetic_module("com.test.allkeys", ConfigSchema { entries });

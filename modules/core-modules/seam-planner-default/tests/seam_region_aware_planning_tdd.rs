@@ -141,22 +141,43 @@ fn chosen_position_uses_supplied_layer_z() {
 ///
 /// Both arms are load-bearing: the unpainted arm pins the plain aligned
 /// tie-break so the painted arm proves a *change*, not a coincidence.
+///
+/// The reported `chosen_position` is the planner coordinate — the chosen
+/// vertex projected onto the inset boundary — so each expected value is half
+/// the `scoring_width = 0.4` mm in from the corresponding edge(s), derived
+/// from the fixture's geometry rather than read back from the planner.
 #[test]
 fn seam_paint_moves_planner_resolved_seam() {
+    /// Half of `region()`'s `scoring_width = 0.4`: the distance the planner
+    /// insets the chosen vertex from each supplied edge.
+    const HALF_WIDTH_MM: f32 = 0.2;
+    /// Side length of `polygon(0, 0, 10.0)`.
+    const SIDE_MM: f32 = 10.0;
+    /// Tolerance for the planner's offset round trip (Clipper2 units round to
+    /// 100 nm, and the projection interpolates in f32).
+    const TOL_MM: f32 = 1e-4;
+
     // `region(…, 0.0, …)` supplies polygon(0,0,10): vertices (0,0), (10,0),
-    // (10,10), (0,10). Aligned mode is min-y then min-x.
+    // (10,10), (0,10). Aligned mode is min-y then min-x, so the unpainted
+    // winner is (0,0), reported inset by half the scoring width on both axes.
     let unpainted = SeamPlanningView {
         regions: vec![region(0, 0.2, 0.0, Vec::new())],
     };
     let baseline = run_aligned_planning_entries(&unpainted, false);
-    assert_eq!(
-        (baseline[0].chosen_position.x, baseline[0].chosen_position.y),
-        (0.0, 0.0),
-        "unpainted aligned planning must pick the min-y/min-x vertex"
+    assert!(
+        (baseline[0].chosen_position.x - HALF_WIDTH_MM).abs() < TOL_MM
+            && (baseline[0].chosen_position.y - HALF_WIDTH_MM).abs() < TOL_MM,
+        "unpainted aligned planning must pick the min-y/min-x vertex and report \
+         its inset-boundary projection (half the 0.4 mm scoring width inward on \
+         both axes); got ({}, {})",
+        baseline[0].chosen_position.x,
+        baseline[0].chosen_position.y
     );
 
     // Enforce vertex 2 — (10,10), the vertex the unpainted tie-break ranks
-    // last — so only a live classifier can produce it.
+    // last — so only a live classifier can produce it. Its inset-boundary
+    // projection is half the scoring width inward on both axes.
+    let expected_max_inset = SIDE_MM - HALF_WIDTH_MM;
     let painted = SeamPlanningView {
         regions: vec![SeamPlanningRegionInput {
             segment_annotations: vec![(
@@ -168,11 +189,13 @@ fn seam_paint_moves_planner_resolved_seam() {
     };
     let entries = run_aligned_planning_entries(&painted, false);
 
-    assert_eq!(
-        (entries[0].chosen_position.x, entries[0].chosen_position.y),
-        (10.0, 10.0),
+    assert!(
+        (entries[0].chosen_position.x - expected_max_inset).abs() < TOL_MM
+            && (entries[0].chosen_position.y - expected_max_inset).abs() < TOL_MM,
         "seam_enforcer paint must move the planner's chosen seam to the \
-         enforced vertex"
+         enforced vertex's inset-boundary projection; got ({}, {})",
+        entries[0].chosen_position.x,
+        entries[0].chosen_position.y
     );
     assert!(entries[0]
         .scored_candidates
@@ -184,6 +207,14 @@ fn seam_paint_moves_planner_resolved_seam() {
 /// deprioritise it.
 #[test]
 fn seam_blocker_paint_excludes_vertex_from_planner_candidates() {
+    /// Half of `region()`'s `scoring_width = 0.4` (see
+    /// `seam_paint_moves_planner_resolved_seam`).
+    const HALF_WIDTH_MM: f32 = 0.2;
+    /// Side length of `polygon(0, 0, 10.0)`.
+    const SIDE_MM: f32 = 10.0;
+    /// Tolerance for the planner's offset round trip.
+    const TOL_MM: f32 = 1e-4;
+
     let view = SeamPlanningView {
         regions: vec![SeamPlanningRegionInput {
             // Block vertex 0 — (0,0) — which unpainted planning would choose.
@@ -197,7 +228,11 @@ fn seam_blocker_paint_excludes_vertex_from_planner_candidates() {
 
     let entries = run_aligned_planning_entries(&view, false);
 
-    assert_eq!(entries[0].scored_candidates.len(), 3, "blocked vertex dropped");
+    assert_eq!(
+        entries[0].scored_candidates.len(),
+        3,
+        "blocked vertex dropped"
+    );
     assert!(
         !entries[0]
             .scored_candidates
@@ -205,10 +240,16 @@ fn seam_blocker_paint_excludes_vertex_from_planner_candidates() {
             .any(|candidate| candidate.position.x == 0.0 && candidate.position.y == 0.0),
         "blocked vertex must not appear among the reported candidates"
     );
-    // Next-best under min-y-then-min-x is (10,0).
-    assert_eq!(
-        (entries[0].chosen_position.x, entries[0].chosen_position.y),
-        (10.0, 0.0)
+    // Next-best under min-y-then-min-x is (10,0), reported as its
+    // inset-boundary projection: half the scoring width inward from the right
+    // edge (max-x side) and from the bottom edge.
+    assert!(
+        (entries[0].chosen_position.x - (SIDE_MM - HALF_WIDTH_MM)).abs() < TOL_MM
+            && (entries[0].chosen_position.y - HALF_WIDTH_MM).abs() < TOL_MM,
+        "the surviving min-y/min-x vertex's inset projection must be chosen; \
+         got ({}, {})",
+        entries[0].chosen_position.x,
+        entries[0].chosen_position.y
     );
 }
 

@@ -291,7 +291,14 @@ pub fn run_pipeline_with_raw_config(
     raw_config_source: &HashMap<ConfigKey, ConfigValue>,
     sink: &(dyn LayerProgressSink + Sync),
 ) -> Result<PipelineOutput, PipelineError> {
-    run_pipeline_core(config, raw_config_source, sink, &NoopInstrumentation, None)
+    run_pipeline_core(
+        config,
+        raw_config_source,
+        sink,
+        &NoopInstrumentation,
+        None,
+        None,
+    )
 }
 
 pub(crate) fn run_pipeline_with_raw_config_authority(
@@ -299,6 +306,7 @@ pub(crate) fn run_pipeline_with_raw_config_authority(
     raw_config_source: &HashMap<ConfigKey, ConfigValue>,
     sink: &(dyn LayerProgressSink + Sync),
     expansion_authority: ConfigExpansionAuthority<'_>,
+    config_block: Option<&BTreeMap<String, ConfigValue>>,
 ) -> Result<PipelineOutput, PipelineError> {
     run_pipeline_core(
         config,
@@ -306,6 +314,7 @@ pub(crate) fn run_pipeline_with_raw_config_authority(
         sink,
         &NoopInstrumentation,
         Some(expansion_authority),
+        config_block,
     )
 }
 
@@ -329,7 +338,7 @@ pub fn run_pipeline_with_instrumentation(
     sink: &(dyn LayerProgressSink + Sync),
     instrumentation: &(dyn PipelineInstrumentation + Sync),
 ) -> Result<PipelineOutput, PipelineError> {
-    run_pipeline_core(config, raw_config_source, sink, instrumentation, None)
+    run_pipeline_core(config, raw_config_source, sink, instrumentation, None, None)
 }
 
 pub(crate) fn run_pipeline_with_instrumentation_authority(
@@ -338,6 +347,7 @@ pub(crate) fn run_pipeline_with_instrumentation_authority(
     sink: &(dyn LayerProgressSink + Sync),
     instrumentation: &(dyn PipelineInstrumentation + Sync),
     expansion_authority: ConfigExpansionAuthority<'_>,
+    config_block: Option<&BTreeMap<String, ConfigValue>>,
 ) -> Result<PipelineOutput, PipelineError> {
     run_pipeline_core(
         config,
@@ -345,6 +355,7 @@ pub(crate) fn run_pipeline_with_instrumentation_authority(
         sink,
         instrumentation,
         Some(expansion_authority),
+        config_block,
     )
 }
 
@@ -363,6 +374,7 @@ fn run_pipeline_core(
     sink: &(dyn LayerProgressSink + Sync),
     instrumentation: &(dyn PipelineInstrumentation + Sync),
     expansion_authority: Option<ConfigExpansionAuthority<'_>>,
+    config_block: Option<&BTreeMap<String, ConfigValue>>,
 ) -> Result<PipelineOutput, PipelineError> {
     let PipelineConfig {
         mesh_ir,
@@ -488,6 +500,7 @@ fn run_pipeline_core(
             &mut runners,
             raw_config_source,
             &default_resolved_config,
+            config_block,
             &layer_irs,
             instrumentation,
             &wasm_handles,
@@ -564,6 +577,7 @@ fn run_postpass_with_thumbnail(
     runners: &mut PipelineStageRunners,
     raw_config_source: &HashMap<ConfigKey, ConfigValue>,
     default_resolved_config: &ResolvedConfig,
+    config_block: Option<&BTreeMap<String, ConfigValue>>,
     layer_irs: &[LayerCollectionIR],
     instrumentation: &(dyn PipelineInstrumentation + Sync),
     wasm_handles: &HashMap<
@@ -592,17 +606,30 @@ fn run_postpass_with_thumbnail(
         _ => None,
     };
 
-    // Build the effective config map: resolved defaults as baseline, then overlay
-    // the user-supplied raw config (raw values take precedence).
-    // This ensures CONFIG_BLOCK is non-empty even when raw_config_source is empty
-    // (AC-9 / NEG-4) while still including all user-passed keys (AC-8).
-    // thumbnail_path is an invocation-time routing key consumed above; strip it
-    // so it does not appear in CONFIG_BLOCK.
-    let mut effective_config = resolved_config_to_map(default_resolved_config);
-    for (k, v) in raw_config_source {
-        effective_config.insert(k.clone(), v.clone());
-    }
-    effective_config.remove("thumbnail_path");
+    // Build the effective config map.
+    //
+    // When the caller supplies a pre-resolved `config_block`, it is used
+    // verbatim: the upstream resolver has already performed defaults resolution,
+    // overlay, and removal of invocation-time routing keys such as
+    // `thumbnail_path`.
+    //
+    // Otherwise (legacy path) resolved defaults form the baseline, the
+    // user-supplied raw config is overlaid (raw values take precedence), and
+    // `thumbnail_path` is stripped here so this invocation-time routing key does
+    // not appear in CONFIG_BLOCK. The baseline keeps CONFIG_BLOCK non-empty even
+    // when raw_config_source is empty (AC-9 / NEG-4) while still including all
+    // user-passed keys (AC-8).
+    let effective_config: HashMap<String, ConfigValue> = match config_block {
+        Some(block) => block.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+        None => {
+            let mut legacy_config = resolved_config_to_map(default_resolved_config);
+            for (k, v) in raw_config_source {
+                legacy_config.insert(k.clone(), v.clone());
+            }
+            legacy_config.remove("thumbnail_path");
+            legacy_config
+        }
+    };
 
     // Wrap the serializer with thumbnail support when bytes are present.
     let inner_serializer = std::mem::replace(

@@ -28,6 +28,13 @@ use tree_support::TreeSupport;
 fn enabled_config() -> ConfigView {
     ConfigViewBuilder::new()
         .bool("enable_support", true)
+        // Packet 06: required reads (`nozzle_diameter`,
+        // `support_base_pattern_spacing` in `from_config`; `layer_height` in
+        // `run_support` when the region carries no effective layer height) at
+        // their manifest defaults.
+        .float("nozzle_diameter", 0.4)
+        .float("layer_height", 0.2)
+        .float("support_base_pattern_spacing", 2.5)
         .float("support_angle", 0.0)
         .float("support_speed", 50.0)
         .float("line_width", 0.4)

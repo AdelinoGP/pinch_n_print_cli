@@ -1,8 +1,9 @@
 #![allow(missing_docs)]
 
 use infill_linker::InfillLinker;
-use slicer_ir::{ConfigView, ExtrusionPath3D, ExtrusionRole, InfillRegion, Point3WithWidth};
+use slicer_ir::{ExtrusionPath3D, ExtrusionRole, InfillRegion, Point3WithWidth};
 use slicer_sdk::builders::InfillOutputBuilder;
+use slicer_sdk::test_prelude::ConfigViewBuilder;
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_sdk::traits::LayerModule;
 
@@ -66,7 +67,18 @@ fn prior_infill() -> Vec<InfillRegion> {
 
 #[test]
 fn ironing_passthrough_identical() {
-    let config = ConfigView::new();
+    // Packet 06 (5c-prime item 11): the module config holds every key this
+    // pass-through path reads — `infill_overlap` and `line_width` on the
+    // module-config path, plus the registry-required region keys
+    // (`infill_density`, `layer_height`, `infill_anchor_max`) — at
+    // manifest-default values (infill-linker.toml [config.schema]).
+    let config = ConfigViewBuilder::new()
+        .float("infill_overlap", 0.45)
+        .float("line_width", 0.4)
+        .float("infill_density", 0.2)
+        .float("layer_height", 0.2)
+        .float_or_percent("infill_anchor_max", 20.0, false)
+        .build();
     let module = InfillLinker::from_config(&config).unwrap();
     let prior = prior_infill();
     let mut output = InfillOutputBuilder::new();

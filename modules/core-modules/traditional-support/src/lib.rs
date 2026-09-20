@@ -119,7 +119,11 @@ impl LayerModule for TraditionalSupport {
             _ => 0.4,
         };
 
-        let nozzle_diameter = config.get_float("nozzle_diameter").unwrap_or(0.4);
+        // Required read (packet 06): `nozzle_diameter` is `float` in the
+        // manifest with a seeded 0.4 default (matching the registry's
+        // existing declarers), so absence is a contract violation, not a
+        // fallback case.
+        let nozzle_diameter = config.require_float("nozzle_diameter")?;
         let line_width = config
             .get_abs_value("support_line_width", nozzle_diameter)
             .or_else(|| config.get_int("support_line_width").map(|v| v as f64))
@@ -132,9 +136,7 @@ impl LayerModule for TraditionalSupport {
             })
             .filter(|width| *width > 0.0)
             .unwrap_or(line_width);
-        let base_pattern_spacing_mm = config
-            .get_float("support_base_pattern_spacing")
-            .unwrap_or(2.5) as f32;
+        let base_pattern_spacing_mm = config.require_float("support_base_pattern_spacing")? as f32;
         let interface_flow_percent = match config.get("support_interface_flow") {
             Some(ConfigValue::Float(value)) => *value as f32,
             Some(ConfigValue::Int(value)) => *value as f32,
@@ -213,7 +215,9 @@ impl LayerModule for TraditionalSupport {
             let layer_height = if region.effective_layer_height() > 0.0 {
                 region.effective_layer_height()
             } else {
-                _config.get_float("layer_height").unwrap_or(0.2) as f32
+                // Required read (packet 06): `layer_height` is `float`
+                // (seeded default 0.2) in the manifest.
+                _config.require_float("layer_height")? as f32
             };
             let (
                 interface_width_mm,
@@ -742,9 +746,25 @@ fn rotate_point(x: i64, y: i64, cos_a: f64, sin_a: f64) -> (i64, i64) {
 mod tests {
     use super::*;
 
+    /// Packet 06 made `nozzle_diameter` and `support_base_pattern_spacing`
+    /// required reads (`require_float`) in `from_config`. The host seeds
+    /// these at their manifest defaults (0.4 / 2.5), so unit fixtures seed
+    /// the same values — exactly the pre-B4 in-code fallbacks, keeping the
+    /// assertion constants below unchanged.
+    fn seeded_config() -> ConfigView {
+        let mut map = std::collections::HashMap::new();
+        map.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.4));
+        map.insert("layer_height".to_string(), ConfigValue::Float(0.2));
+        map.insert(
+            "support_base_pattern_spacing".to_string(),
+            ConfigValue::Float(2.5),
+        );
+        ConfigView::from_map(map)
+    }
+
     #[test]
     fn from_config_defaults() {
-        let config = ConfigView::from_map(std::collections::HashMap::new());
+        let config = seeded_config();
         let module = TraditionalSupport::from_config(&config).unwrap();
         assert!(!module.enabled);
         assert!((module.base_pattern_spacing_mm - 2.5).abs() < 0.001);
@@ -759,7 +779,7 @@ mod tests {
     /// 0.2 mm layer height prints a 0.757 mm X pitch.
     #[test]
     fn interface_pitch_adds_flow_spacing() {
-        let config = ConfigView::from_map(std::collections::HashMap::new());
+        let config = seeded_config();
         let module = TraditionalSupport::from_config(&config).unwrap();
         let (_, _, _, top_mm, bottom_mm) = module.pitches_mm(0.2).unwrap();
         let (top, bottom) = (

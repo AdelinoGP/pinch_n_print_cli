@@ -13,7 +13,9 @@ use slicer_config::{
     assemble_registry, ConfigIngestionError, ConfigIngestor, HostChannels, IngestionOutcome,
     ModuleDeclaration, RegistryLoadError, RegistryWarning,
 };
-use slicer_ir::{ConfigKey, ConfigValue, GlobalLayer, ModuleId, RegionKey, RegionPlan, StageId};
+use slicer_ir::{
+    ConfigKey, ConfigValue, GlobalLayer, ModuleId, RegionKey, RegionPlan, ResolvedConfig, StageId,
+};
 use slicer_sdk::native::NativeStageEntry;
 
 use slicer_scheduler::dag::{build_intra_stage_dag, Producer};
@@ -59,11 +61,14 @@ pub struct LiveModuleBinding {
 /// Build the immutable `ExecutionPlan` used by the live host/runtime path.
 ///
 /// For every `LiveModuleBinding`, the per-module `Arc<ConfigView>` is
-/// synthesised via [`bind_module_config_view`] against `config_source`.
+/// synthesised via [`bind_module_config_view`] against `resolved` — the
+/// fully resolved `ResolvedConfig` whose `to_config_map` is the single
+/// source of truth for every module view (packet config-scope-resolution
+/// Step 4a).
 pub fn build_live_execution_plan(
     sorted_stages: Vec<SortedStageModules>,
     modules: Vec<LiveModuleBinding>,
-    config_source: &HashMap<ConfigKey, ConfigValue>,
+    resolved: &ResolvedConfig,
     global_layers: Arc<Vec<GlobalLayer>>,
     region_plans: Arc<HashMap<RegionKey, RegionPlan>>,
     diagnostics: &mut Vec<LoadDiagnostic>,
@@ -71,7 +76,7 @@ pub fn build_live_execution_plan(
     let module_bindings: Vec<ExecutionModuleBinding> = modules
         .into_iter()
         .map(|b| {
-            let config_view = bind_module_config_view(&b.module, config_source);
+            let config_view = bind_module_config_view(&b.module, resolved);
             ExecutionModuleBinding {
                 module: b.module,
                 config_view,

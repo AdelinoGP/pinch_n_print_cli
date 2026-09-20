@@ -145,6 +145,14 @@ fn planner_config_with(
         "support_layer_height_mm".into(),
         ConfigValue::Float(support_layer_height_mm.into()),
     );
+    // Packet 06 (AC-3): `independent_support_layer_height` is a required read
+    // (`require_bool`) in `from_config`, declared `bool` with a `true`
+    // manifest default — seed every fixture view at that default. Tests that
+    // exercise the disabled branch override it to `false` explicitly.
+    values.insert(
+        "independent_support_layer_height".into(),
+        ConfigValue::Bool(true),
+    );
     ConfigView::from_map(values)
 }
 

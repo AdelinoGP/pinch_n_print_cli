@@ -91,11 +91,14 @@ use slicer_sdk::views::SliceRegionView;
 /// own R2 convention for per-object/per-layer overridable keys.
 pub struct ArachnePerimeters;
 
-/// Builds the SDK's [`ArachneParams`] mirror from `config`, falling back to
-/// [`ArachneParams::default`] for any key that is absent or whose type
-/// doesn't match the schema (mirrors `ConfigView::get_float`/`get_int`'s own
-/// strict-type-match, no-fallback convention used throughout
-/// `classic-perimeters`).
+/// Builds the SDK's [`ArachneParams`] mirror from `config`.
+///
+/// Classified config reads use `ConfigView::require_*` (packet 06): a key the
+/// path reads must be present in the resolved view at its registry type, or
+/// the read fails fatally via `ConfigReadError -> ModuleError`. The remaining
+/// reads (keys whose fallback is a computed default rather than a literal)
+/// keep `get_*` + `unwrap_or(ArachneParams::default().<field>)`, matching
+/// `ArachneParams`' pipeline-default semantics.
 ///
 /// 9 of the 13 `arachne-perimeters.toml` config keys now map onto
 /// `ArachneParams` fields (packet 112, Step 9C added `min_feature_size`,
@@ -148,10 +151,11 @@ fn arachne_params_from_config(
     // `layer_height`/`nozzle_diameter` are Z-axis-convention / physical-spec
     // keys (docs/08_coordinate_system.md): stored and read as plain mm floats,
     // never scaled units — no `units_to_mm` conversion, unlike the bead-width
-    // keys below. Defaults mirror layer-planner-default.toml's layer_height
-    // default (0.2mm) and the 0.4mm nozzle convention.
-    let layer_height_mm = config.get_float("layer_height").unwrap_or(0.2);
-    let nozzle_diameter_mm = config.get_float("nozzle_diameter").unwrap_or(0.4);
+    // keys below. Required reads (packet 06): the resolved view always holds
+    // the seeded registry defaults (0.2mm / 0.4mm), so absence is a contract
+    // violation, not a configurable fallback.
+    let layer_height_mm = config.require_float("layer_height")?;
+    let nozzle_diameter_mm = config.require_float("nozzle_diameter")?;
 
     // AC-3: feed Flow SPACING (not raw width) to the beading pipeline.
     // OrcaSlicer constructs `WallToolPaths(outline, bead_width_0, bead_width_x,
@@ -183,25 +187,26 @@ fn arachne_params_from_config(
     // `inner_wall_line_width`. Those keys are retired; the wall-width keys are
     // plain mm (no units_to_mm), same as classic-perimeters reads them.
     let width_context = RoleWidthContext {
-        // Packet 185 (AC-5): absent `line_width` is the canonical auto-0
-        // sentinel, NOT the 0.4 mm legacy default — `resolve_role_width`
-        // routes zero through `auto_extrusion_width` (1.125 × nozzle).
-        // Pre-185 this fell back to `defaults.optimal_width` (0.4 mm),
-        // diverging from classic-perimeters on the absent-key path.
-        line_width: config.get_float("line_width").unwrap_or(0.0) as f32,
+        // Packet 185 (AC-5): the seeded `line_width` default is the auto-0
+        // sentinel expanded by the host (1.125 × nozzle_diameter) before the
+        // view is bound, so the required read below always resolves positive;
+        // `resolve_role_width` routes zero through `auto_extrusion_width`
+        // semantics on the host-expanded value.
+        line_width: config.require_float("line_width")? as f32,
         nozzle_diameter: nozzle_diameter_mm as f32,
         bridge_line_width: config
-            .get_abs_value("bridge_line_width", nozzle_diameter_mm)
-            .unwrap_or(0.0) as f32,
+            .require_abs_value("bridge_line_width", nozzle_diameter_mm)? as f32,
         initial_layer_line_width: config
-            .get_abs_value("initial_layer_line_width", nozzle_diameter_mm)
-            .unwrap_or(0.0) as f32,
+            .require_abs_value("initial_layer_line_width", nozzle_diameter_mm)? as f32,
+        // `outer_wall_line_width` / `inner_wall_line_width` are typed
+        // `float_or_percent` with `base_key = "nozzle_diameter"` in the
+        // manifest (packet 06 locked assumption): read with `require_abs_value`
+        // against the nozzle base, NOT `require_float` — a percent-authored
+        // value must resolve against the registry base.
         outer_wall_line_width: config
-            .get_float("outer_wall_line_width")
-            .unwrap_or(0.0) as f32,
+            .require_abs_value("outer_wall_line_width", nozzle_diameter_mm)? as f32,
         inner_wall_line_width: config
-            .get_float("inner_wall_line_width")
-            .unwrap_or(0.0) as f32,
+            .require_abs_value("inner_wall_line_width", nozzle_diameter_mm)? as f32,
         ..RoleWidthContext::default()
     };
     let optimal_width = {
@@ -236,11 +241,11 @@ fn arachne_params_from_config(
         line_width_to_spacing(preferred_bead_width_outer_raw as f32, layer_height_mm as f32)
             .map_err(|e| ModuleError::fatal(ERR_NEGATIVE_SPACING, e.to_string()))? as f64;
     let max_bead_count_explicit = config.get_int("max_bead_count");
-    let wall_count = config.get_int("wall_count").map(|v| v.max(0) as u32).unwrap_or(3);
+    let wall_count = config.require_int("wall_count")?.max(0) as u32;
     // extra_perimeters (TASK-328): per-region bonus wall count, read with the
-    // byte-identical expression classic-perimeters uses so the two generators
+    // value-identical expression classic-perimeters uses so the two generators
     // cannot drift on clamping/defaulting.
-    let extra_perimeters = config.get_int("extra_perimeters").unwrap_or(0).max(0) as u32;
+    let extra_perimeters = config.require_int("extra_perimeters")?.max(0) as u32;
     // OrcaSlicer has no user-facing max_bead_count; canonical
     // `WallToolPaths::generate` (`WallToolPaths.cpp`) always computes it as
     // `max_bead_count = 2 * inset_count` and it is therefore ALWAYS EVEN.
@@ -328,11 +333,12 @@ fn arachne_params_from_config(
         // value) when the precise-outer-wall gate does not apply, preserving
         // that key's own independent meaning.
         let manual_outer_wall_offset = config.get_float("outer_wall_offset").map(|v| units_to_mm(v as i64) as f64).unwrap_or(defaults.outer_wall_offset);
-        let precise_outer_wall = config.get_bool("precise_outer_wall").unwrap_or(false);
-        let wall_sequence_is_inner_outer = config
-            .get_string("wall_sequence")
-            .map(|s| s == "InnerOuter")
-            .unwrap_or(true); // default wall_sequence is "InnerOuter"
+        let precise_outer_wall = config.require_bool("precise_outer_wall")?;
+        // Required read (packet 06): the resolved view always carries the
+        // seeded `wall_sequence` default "InnerOuter", so the previous
+        // `.map(|s| s == "InnerOuter").unwrap_or(true)` fallback becomes a
+        // hard requirement on the key.
+        let wall_sequence_is_inner_outer = config.require_string("wall_sequence")? == "InnerOuter";
         let outer_wall_offset = if precise_outer_wall && wall_sequence_is_inner_outer {
             -((preferred_bead_width_outer_raw / 2.0) - (preferred_bead_width_outer / 2.0))
         } else {
@@ -477,6 +483,14 @@ impl LayerModule for ArachnePerimeters {
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
         let mut params = arachne_params_from_config(config, layer_index == 0)?;
+        // nozzle_diameter/layer_height (packet 150 step 5): read here (mm,
+        // same config keys + seeded defaults as arachne_params_from_config's
+        // own local reads) so the overhang-reverse-threshold resolution and
+        // the thick_bridges round-cross-section formula below have the
+        // physical-spec inputs they need; ArachneParams does not carry them
+        // back out of that function.
+        let nozzle_diameter_mm = config.require_float("nozzle_diameter")? as f32;
+        let layer_height_mm = config.require_float("layer_height")? as f32;
         // is_bottom_layer keys the classic "first/last layer" threshold (layer 0
         // in object coordinates). PnP historically folded this into
         // is_initial_layer; both flags are kept distinct so downstream flag
@@ -488,11 +502,11 @@ impl LayerModule for ArachnePerimeters {
         // PnP's equivalent of canonical `raft_layers` is `support_raft_layers`
         // (same semantics, same default 0), declared in this manifest so the
         // read is live rather than dropped by `ConfigView::from_declared`.
-        let raft_layers = config.get_int("support_raft_layers").unwrap_or(0).max(0) as u32;
+        let raft_layers = config.require_int("support_raft_layers")?.max(0) as u32;
         let is_bottom_layer = layer_index == raft_layers;
         params.is_initial_layer = layer_index == 0;
         params.is_bottom_layer = is_bottom_layer;
-        let wall_sequence = config.get_string("wall_sequence").unwrap_or("InnerOuter");
+        let wall_sequence = config.require_string("wall_sequence")?;
         params.wall_sequence = match wall_sequence {
             "OuterInner" => WallSequence::OuterInner,
             "InnerOuterInner" => WallSequence::InnerOuterInner,
@@ -516,18 +530,17 @@ impl LayerModule for ArachnePerimeters {
         // loop_number = 0 on the topmost layer). The actual clamp to one emitted
         // wall happens per-region inside the region loop below, because
         // topmost-ness is region metadata, not a layer-wide property.
-        let only_one_wall_top = config.get_bool("only_one_wall_top").unwrap_or(false);
+        let only_one_wall_top = config.require_bool("only_one_wall_top")?;
 
         // wall_direction (packet 151, Step 2 / G1): OrcaSlicer coEnum
         // wall_direction (PrintConfig.cpp:2188-2198, default CounterClockwise)
         // forces contour (ExteriorSurface) winding CCW or CW via
         // make_counter_clockwise/make_clockwise (PerimeterGenerator.cpp:527-545),
-        // holes always opposite. Default "counter_clockwise" must reproduce the
-        // prior default winding (AC-N2); absence from raw config falls back to
-        // CCW so no regression is introduced.
-        let wall_direction = config
-            .get_string("wall_direction")
-            .unwrap_or("counter_clockwise");
+        // holes always opposite. Required read (packet 06): the seeded default
+        // "counter_clockwise" guarantees the prior default winding, so absence
+        // from the resolved view is a contract violation rather than a
+        // fallback case.
+        let wall_direction = config.require_string("wall_direction")?;
         let contour_should_be_ccw = wall_direction != "clockwise";
 
         // alternate_extra_wall (T-149 AC-3): OrcaSlicer adds
@@ -543,9 +556,9 @@ impl LayerModule for ArachnePerimeters {
         // beading-stack's own input cap, not a post-hoc wall-count mutation
         // downstream of it, mirroring how `params.is_initial_layer` is set
         // just above (this function has no access to `layer_index`).
-        let alternate_extra_wall = config.get_bool("alternate_extra_wall").unwrap_or(false);
-        let spiral_vase = config.get_bool("spiral_vase").unwrap_or(false);
-        let sparse_infill_density = config.get_float("sparse_infill_density").unwrap_or(20.0);
+        let alternate_extra_wall = config.require_bool("alternate_extra_wall")?;
+        let spiral_vase = config.require_bool("spiral_vase")?;
+        let sparse_infill_density = config.require_float("sparse_infill_density")?;
         if alternate_extra_wall
             && layer_index % 2 == 1
             && !spiral_vase
@@ -578,9 +591,7 @@ impl LayerModule for ArachnePerimeters {
         // with no raft the two flags are identical (both `layer_index == 0`), so
         // dropping it is a no-op there, but with a raft it would have re-fired
         // the clamp on the raft's own first layer instead of the object's.
-        let only_one_wall_first_layer = config
-            .get_bool("only_one_wall_first_layer")
-            .unwrap_or(false);
+        let only_one_wall_first_layer = config.require_bool("only_one_wall_first_layer")?;
         if only_one_wall_first_layer && is_bottom_layer {
             params.max_bead_count = 2;
         }
@@ -591,39 +602,27 @@ impl LayerModule for ArachnePerimeters {
         // PerimeterGenerator.cpp:68-77). This packet only wires the parity
         // flip (detect_overhang_wall disabled + overhang_reverse enabled);
         // the full steep-overhang threshold detection is out of scope.
-        // Read all three keys (the third is advisory for now).
-        let detect_overhang_wall = config.get_bool("detect_overhang_wall").unwrap_or(true);
-        let overhang_reverse = config.get_bool("overhang_reverse").unwrap_or(false);
-        let _overhang_reverse_internal_only = config
-            .get_bool("overhang_reverse_internal_only")
-            .unwrap_or(false);
-        let _overhang_reverse_threshold = config
-            .get_float("overhang_reverse_threshold")
-            .unwrap_or(0.0);
+        // All three reads are required (packet 06): the resolved view carries
+        // the seeded defaults (detect_overhang_wall=true, overhang_reverse=
+        // false, overhang_reverse_internal_only=false, overhang_reverse_
+        // threshold=0.0), so the previous literal fallbacks become hard
+        // requirements. `overhang_reverse_threshold` is typed
+        // `float_or_percent` in the manifest, so it resolves through
+        // `require_abs_value` (nozzle base) like the other percent-typed keys.
+        let detect_overhang_wall = config.require_bool("detect_overhang_wall")?;
+        let overhang_reverse = config.require_bool("overhang_reverse")?;
+        let _overhang_reverse_internal_only =
+            config.require_bool("overhang_reverse_internal_only")?;
+        let _overhang_reverse_threshold =
+            config.require_abs_value("overhang_reverse_threshold", nozzle_diameter_mm as f64)?;
         // Compose: when detect_overhang_wall==false && overhang_reverse==true,
         // reverse contour winding on odd layers.
         let g7_reverse = !detect_overhang_wall && overhang_reverse && (layer_index % 2 == 1);
 
         // bridge_flow / thick_bridges (packet 149, D4/D-104g): read once per
         // invocation, applied per-vertex below wherever is_bridge is true.
-        let bridge_flow_ratio = config
-            .get_float("bridge_flow")
-            .map(|v| v as f32)
-            .unwrap_or(1.0);
-        let thick_bridges = config.get_bool("thick_bridges").unwrap_or(false);
-        // nozzle_diameter/layer_height (packet 150 step 5): re-read here (mm,
-        // same config keys + defaults as arachne_params_from_config's own
-        // local reads above) so the thick_bridges round-cross-section
-        // formula below has the physical-spec inputs it needs; ArachneParams
-        // does not carry them back out of that function.
-        let nozzle_diameter_mm = config
-            .get_float("nozzle_diameter")
-            .map(|v| v as f32)
-            .unwrap_or(0.4);
-        let layer_height_mm = config
-            .get_float("layer_height")
-            .map(|v| v as f32)
-            .unwrap_or(0.2);
+        let bridge_flow_ratio = config.require_float("bridge_flow")? as f32;
+        let thick_bridges = config.require_bool("thick_bridges")?;
 
         // Per-color (MMU) wiring (P112 Step 10B): `regions` already contains
         // one entry per paint-color cell (see PrePass::PaintSegmentation) plus
@@ -762,9 +761,8 @@ impl LayerModule for ArachnePerimeters {
             // corners must contribute candidates, not just the first
             // island's. Holes are not iterated — contours only, same as
             // classic.
-            let seam_candidate_angle_threshold_deg = config
-                .get_float("seam_candidate_angle_threshold_deg")
-                .unwrap_or(30.0) as f32;
+            let seam_candidate_angle_threshold_deg =
+                config.require_float("seam_candidate_angle_threshold_deg")? as f32;
             for (poly_idx, polygon) in polygons.iter().enumerate() {
                 let mut candidates = generate_sharp_corner_seam_candidates(
                     &polygon.contour,
@@ -1044,12 +1042,13 @@ impl ArachnePerimeters {
         // `diff_ex(infill_contour, upper_slices_clipped)`.
         let mut top_area: Vec<ExPolygon> = exposed_top.to_vec();
 
-        // Step 3: `min_width_top_surface` filter via `get_abs_value` (packet
-        // 150 resolution mechanism). Absolute value, NOT raw float.
+        // Step 3: `min_width_top_surface` filter via `require_abs_value`
+        // (packet 06: `float_or_percent`-typed, resolved against the
+        // perimeter width; the previous `.unwrap_or(0.0)` fallback becomes a
+        // hard requirement on the resolved view's key).
         let perimeter_width_mm = params.preferred_bead_width_outer;
-        let min_width_top = config
-            .get_abs_value("min_width_top_surface", perimeter_width_mm)
-            .unwrap_or(0.0);
+        let min_width_top =
+            config.require_abs_value("min_width_top_surface", perimeter_width_mm)?;
         if min_width_top > 0.0 {
             top_area.retain(|ep| (ex_polygon_min_width_mm(ep) as f64) >= min_width_top);
         }
@@ -1239,6 +1238,16 @@ mod tests {
     /// must equal `wall_maximum_resolution²` (mm²) and `allowed_error_distance_squared`
     /// must equal `wall_maximum_deviation²` (mm²) — NOT the `meshfix_*`-sourced defaults.
     /// Values are plain mm and squared directly (no coordinate ÷100).
+    ///
+    /// Item-11 migration (packet 06): the classified reads in
+    /// `arachne_params_from_config` are now `require_*`, so this view holds
+    /// every key that path reads. The two G9 keys keep this test's authored
+    /// overrides (0.5 / 0.025) so the wiring assertions stay discriminating;
+    /// every other held key sits at its manifest default. `line_width` holds
+    /// its post-expansion default — the raw manifest default 0 is the auto
+    /// sentinel the host expands to `1.125 * nozzle_diameter` at Phase B
+    /// (slicer-config `expand_automatic_values`), and a raw 0 cannot survive
+    /// the D-162 negative-spacing gate.
     #[test]
     fn wall_maximum_resolution_wired() {
         let mut fields: HashMap<ConfigKey, ConfigValue> = HashMap::new();
@@ -1249,6 +1258,23 @@ mod tests {
         fields.insert(
             "wall_maximum_deviation".to_string(),
             ConfigValue::Float(0.025),
+        );
+        fields.insert("layer_height".to_string(), ConfigValue::Float(0.2));
+        fields.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.4));
+        fields.insert("line_width".to_string(), ConfigValue::Float(0.45));
+        fields.insert("bridge_line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert(
+            "initial_layer_line_width".to_string(),
+            ConfigValue::Float(0.0),
+        );
+        fields.insert("outer_wall_line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert("inner_wall_line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert("wall_count".to_string(), ConfigValue::Int(3));
+        fields.insert("extra_perimeters".to_string(), ConfigValue::Int(0));
+        fields.insert("precise_outer_wall".to_string(), ConfigValue::Bool(false));
+        fields.insert(
+            "wall_sequence".to_string(),
+            ConfigValue::String("InnerOuter".to_string()),
         );
         let config = ConfigView::from_map(fields);
         let params = arachne_params_from_config(&config, false).expect("valid config");

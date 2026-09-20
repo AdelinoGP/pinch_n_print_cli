@@ -234,6 +234,57 @@ fn run_real_arachne_guest(layer_index: u32, wall_sequence: &str) {
         "wall_sequence".to_string(),
         ConfigValue::String(wall_sequence.to_string()),
     );
+    // Required-read baseline (packet 06 5c): classified reads in
+    // run_perimeters/arachne_params_from_config are now require_*; the view
+    // holds every key the path reads at manifest-default values. line_width
+    // holds its post-expansion default (1.125 x nozzle_diameter = 0.45): the
+    // raw 0 is the auto sentinel expanded at Phase B and cannot survive the
+    // D-162 spacing gate.
+    config.insert("layer_height".to_string(), ConfigValue::Float(0.2));
+    config.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.4));
+    config.insert("line_width".to_string(), ConfigValue::Float(0.45));
+    config.insert("bridge_line_width".to_string(), ConfigValue::Float(0.0));
+    config.insert(
+        "initial_layer_line_width".to_string(),
+        ConfigValue::Float(0.0),
+    );
+    config.insert("inner_wall_line_width".to_string(), ConfigValue::Float(0.0));
+    config.insert("outer_wall_line_width".to_string(), ConfigValue::Float(0.0));
+    config.insert("wall_count".to_string(), ConfigValue::Int(3));
+    config.insert("extra_perimeters".to_string(), ConfigValue::Int(0));
+    config.insert("precise_outer_wall".to_string(), ConfigValue::Bool(false));
+    config.insert("support_raft_layers".to_string(), ConfigValue::Int(0));
+    config.insert("only_one_wall_top".to_string(), ConfigValue::Bool(false));
+    config.insert(
+        "wall_direction".to_string(),
+        ConfigValue::String("counter_clockwise".to_string()),
+    );
+    config.insert("alternate_extra_wall".to_string(), ConfigValue::Bool(false));
+    config.insert("spiral_vase".to_string(), ConfigValue::Bool(false));
+    config.insert(
+        "sparse_infill_density".to_string(),
+        ConfigValue::Float(20.0),
+    );
+    config.insert(
+        "only_one_wall_first_layer".to_string(),
+        ConfigValue::Bool(false),
+    );
+    config.insert("detect_overhang_wall".to_string(), ConfigValue::Bool(true));
+    config.insert("overhang_reverse".to_string(), ConfigValue::Bool(false));
+    config.insert(
+        "overhang_reverse_internal_only".to_string(),
+        ConfigValue::Bool(false),
+    );
+    config.insert(
+        "overhang_reverse_threshold".to_string(),
+        ConfigValue::Float(0.0),
+    );
+    config.insert("bridge_flow".to_string(), ConfigValue::Float(1.0));
+    config.insert("thick_bridges".to_string(), ConfigValue::Bool(false));
+    config.insert(
+        "seam_candidate_angle_threshold_deg".to_string(),
+        ConfigValue::Float(30.0),
+    );
     let bundle = crate::common::TestModuleBundle {
         module: CompiledModuleBuilder::new(loaded.id().to_string())
             .config_view(Arc::new(slicer_ir::ConfigView::from_map(config)))
