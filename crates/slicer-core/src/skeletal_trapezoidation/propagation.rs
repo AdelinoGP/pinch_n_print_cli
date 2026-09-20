@@ -263,8 +263,14 @@ fn rib_source_foot(
         }
         to_edge = next;
     }
-    let a = graph.vertices.get(graph.edges.get(from_edge)?.start_vertex)?.position;
-    let b = graph.vertices.get(resolve_to_vertex(graph, to_edge))?.position;
+    let a = graph
+        .vertices
+        .get(graph.edges.get(from_edge)?.start_vertex)?
+        .position;
+    let b = graph
+        .vertices
+        .get(resolve_to_vertex(graph, to_edge))?
+        .position;
     let (dx, dy) = (b.x - a.x, b.y - a.y);
     let len_sq = dx * dx + dy * dy;
     let t = if len_sq > 0.0 {
@@ -1217,8 +1223,7 @@ fn clear_transition_ends(graph: &mut SkeletalTrapezoidationGraph) {
 /// its twin at the same physical position, producing a single shared
 /// boundary (rib-foot) node.
 ///
-/// Mirrors OrcaSlicer's `applyTransitions`
-/// (`SkeletalTrapezoidation.cpp:1487-1543`): the mirrored ends go onto the
+/// Mirrors OrcaSlicer's `applyTransitions` (`SkeletalTrapezoidation.cpp`): the mirrored ends go onto the
 /// edge's own bucket (not the twin's), sorted ascending (not descending),
 /// and `insertNode` is called once per end (not twice per physical edge).
 ///

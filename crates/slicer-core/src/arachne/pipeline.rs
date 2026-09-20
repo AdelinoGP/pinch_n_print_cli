@@ -458,9 +458,10 @@ pub fn run_arachne_pipeline(
     generate_extra_ribs(&mut graph, strategy.as_ref());
 
     // Populate the `BeadingPropagation` side table BEFORE the propagation
-    // passes, matching canonical's order (`SkeletalTrapezoidation.cpp:1488-1514`:
-    // the per-node `setBeading(compute(dtb*2, bead_count))` loop runs, THEN
-    // `propagateBeadingsUpward`, THEN `propagateBeadingsDownward`).
+    // passes, matching canonical's order (`SkeletalTrapezoidation.cpp`'s
+    // `propagateBeadingsUpward` then `propagateBeadingsDownward`: the per-node
+    // `setBeading(compute(dtb*2, bead_count))` loop runs, THEN upward
+    // propagation, THEN downward propagation).
     //
     // Order matters and was previously inverted (populate ran last). Canonical
     // computes each node's beading from ITS OWN `bead_count` + thickness, then
