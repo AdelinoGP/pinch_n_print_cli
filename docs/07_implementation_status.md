@@ -539,6 +539,8 @@ For closed deviations and their closure detail, read the log directly.
 - **DEV-191** (Open — 2026-09-19: filed during the `fix/perimeters` review's Phase 5; the deferral predates the fallback (both introduced with the initial region-order port, `57191889`). Canonical's no-deferral behaviour verified by reading the loop directly.) — topological_walk defers its seed line, an ordering rule canonical PerimeterGenerator.cpp does not have.
 - **DEV-192** (Open — 2026-09-19: filed during the `fix/perimeters` review's Phase 6; canonical flag semantics verified in `LayerRegion.cpp` / `PerimeterGenerator.cpp`, PnP absence verified by grep.) — relative_bridge_angle is unported; the internal-bridge angle override is always absolute.
 - **DEV-193** (Open — 2026-09-19: filed during the `fix/perimeters` review's Phase 6; canonical consumers enumerated, PnP absence verified by grep across `crates/` and `modules/`.) — align_infill_direction_to_model is unported; PnP carries no model-rotation concept at all.
+- **DEV-194** (Open — 2026-09-20: filed during the `fix/perimeters` review cleanup; residual documented in `stitch.rs` header comments (Determinism section) since commit `fix(arachne): port canonical PolylineStitcher::stitch driver` but never gate-visible until now.) — The stitcher's tie-break and early-exit candidate order is deterministic where canonical's is hash-grid dependent.
+- **DEV-195** (Open — 2026-09-20: filed during the `fix/perimeters` review cleanup; behaviour landed in `fix(arachne): canonical middle-threshold widths and outline pre-shrink` with re-derived tests and oracle measurements.) — H2/H3 beading denominators and outline pre-shrink are ported but were never filed as landed deviations.
 <!-- END GENERATED: open-deviations -->
 
 
