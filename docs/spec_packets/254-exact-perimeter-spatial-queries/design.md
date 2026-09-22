@@ -63,7 +63,7 @@
 - `crates/slicer-runtime/tests/common/integrated_parity_harness.rs` - `run_integrated_parity` and `IntegratedParitySpec::native_entry` only.
 - `crates/slicer-runtime/tests/contract/integrated_parity_classic_perimeters_tdd.rs` - the `ClassicPerimeters::__slicer_native_entry()` + `LayerStageRunner::run_stage` call shape only.
 - `tmp/alloc-bench/run_bench.ps1` - parameter block only (lines 1-30); copied verbatim, never edited.
-- `tmp/perf-next/DESIGN-DECISIONS.md` - bounded slices 1-371, historical provenance only; the normative contracts live in this packet's own files (see Code Change Surface / Architecture Constraints).
+- `docs/specs/perf-vs-orca/evidence/perf-next/DESIGN-DECISIONS.md` - bounded slices 1-371, historical provenance only; the normative contracts live in this packet's own files (see Code Change Surface / Architecture Constraints).
 - `OrcaSlicerDocumented/**` - delegate only; never load directly.
 
 ## Out-of-Bounds Files
