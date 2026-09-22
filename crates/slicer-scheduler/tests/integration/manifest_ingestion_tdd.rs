@@ -44,12 +44,37 @@ fn valid_manifest_is_normalized_into_loaded_module_runtime_fields() {
         module.requires_modules(),
         &[String::from("com.community.support-prep")]
     );
-    assert_eq!(module.overridable_per_region(), &[String::from("density")]);
-    assert_eq!(module.overridable_per_layer(), &[String::from("density")]);
     assert_eq!(module.min_host_version(), semver(0, 5, 0));
     assert_eq!(module.min_ir_schema(), semver(1, 2, 0));
     assert_eq!(module.max_ir_schema(), semver(2, 0, 0));
     assert!(module.layer_parallel_safe());
+}
+
+#[test]
+fn per_field_denied_scopes_round_trip_through_ingestion() {
+    let fixture = ModuleFixture::new("denied-scopes");
+    let manifest_path = fixture.write_module(
+        "scopes",
+        valid_manifest_toml("com.community.scopes", "Layer::Infill", true).replace(
+            "\n[hints]\n",
+            "\n[config.schema.density]\ntype = \"float\"\ndenied_scopes = [\"region\", \"layer\"]\n\n[hints]\n",
+        ),
+        true,
+    );
+
+    let module = load_module_from_paths(&manifest_path, &manifest_path.with_extension("wasm"))
+        .expect("per-field denied_scopes manifest should load");
+
+    let density = module
+        .config_schema()
+        .entries
+        .get("density")
+        .expect("config.schema.density entry should be parsed");
+    assert_eq!(
+        density.denied_scopes,
+        vec![String::from("region"), String::from("layer"),],
+        "denied_scopes is the sole scope-eligibility authority and must round-trip"
+    );
 }
 
 #[test]
@@ -310,12 +335,6 @@ max-ir-schema = "2.0.0"
 
 [config.schema]
 
-[config.overridable-per-region]
-keys = []
-
-[config.overridable-per-layer]
-keys = []
-
 [hints]
 layer-parallel-safe = true
         "#
@@ -391,12 +410,6 @@ min-ir-schema = "1.2.0"
 max-ir-schema = "2.0.0"
 
 [config.schema]
-
-[config.overridable-per-region]
-keys = ["density"]
-
-[config.overridable-per-layer]
-keys = ["density"]
 
 [hints]
 layer-parallel-safe = {layer_parallel_safe}

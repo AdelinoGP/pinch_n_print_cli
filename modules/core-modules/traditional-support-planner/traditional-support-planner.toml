@@ -152,12 +152,6 @@ max     = 2.0
 display = "Line Width"
 group   = "Support"
 
-[config.overridable-per-region]
-keys = []
-
-[config.overridable-per-layer]
-keys = []
-
 [hints]
 # Packet 241 (TASK-426) measurement, release `pnp_cli slice --instrument-stderr`
 # on `resources/regression_wedge.stl` (200 layers, wasm guest tier), median of

@@ -77,6 +77,9 @@ required = true
 display  = "Bed Shape"
 group    = "Printer"
 description = "Printer bed polygon as [x0, y0, x1, y1, ...] in mm"
+# ADR-0069: printer geometry is consumed once per whole print; no sub-print
+# scope has a consumer that could honour a narrower statement.
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 [config.schema.retract_length]
 type    = "float"
@@ -86,12 +89,8 @@ max     = 20.0
 display = "Retract Length"
 group   = "Wipe Tower"
 description = "Retract length in mm before tool change"
-
-[config.overridable-per-region]
-keys = []
-
-[config.overridable-per-layer]
-keys = []
+# ADR-0069: retraction is per tool, so tool scope stays statable.
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic"]
 
 [hints]
 estimated-ms-per-layer = 10

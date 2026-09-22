@@ -110,12 +110,7 @@ unit        = "mm"
 display     = "Nozzle diameter"
 description = "OrcaSlicer coFloat key nozzle_diameter; exposed here so machine_start_gcode / machine_end_gcode templates can reference [nozzle_diameter] and have it substituted with the effective nozzle diameter. Bounds mirror the classic-perimeters declaration of the same key."
 group       = "Machine G-code"
-
-[config.overridable-per-region]
-keys = []
-
-[config.overridable-per-layer]
-keys = []
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic"]
 
 [hints]
 estimated-ms-per-layer = 0

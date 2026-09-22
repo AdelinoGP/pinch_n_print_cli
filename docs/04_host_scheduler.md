@@ -86,8 +86,6 @@ pub struct LoadedModule {
     pub min_ir_schema:         SemVer,      // from manifest [compatibility].min-ir-schema
     pub max_ir_schema:         SemVer,      // from manifest [compatibility].max-ir-schema
     pub config_schema:         ConfigSchema,
-    pub overridable_per_region:Vec<String>, // from manifest [config.overridable-per-region].keys
-    pub overridable_per_layer: Vec<String>, // from manifest [config.overridable-per-layer].keys
     pub layer_parallel_safe:   bool,
     pub wasm_path:             PathBuf,
     pub provenance:            ModuleProvenance, // External | Integrated (packet 85/ADR-0056)
@@ -113,8 +111,11 @@ Manifest keys are kebab-case and table-scoped. `LoadedModule` stores normalized 
 | `[claims].requires`                    | `requires_claims`        |
 | `[compatibility].incompatible-with`    | `incompatible_with`      |
 | `[compatibility].requires`             | `requires_modules`       |
-| `[config.overridable-per-region].keys` | `overridable_per_region` |
-| `[config.overridable-per-layer].keys`  | `overridable_per_layer`  |
+
+Per-key scope eligibility is not a manifest-table list: each key's
+`denied_scopes` entries live on its own `[config.schema.<key>]` declaration and
+are parsed into the key's schema entry (`config_schema`), where the registry
+consumes them at resolution (see "Config scope admission (ADR-0069)" below).
 
 The manifest naming is canonical for author-facing docs and examples. Runtime field names are internal and must not appear in user-facing manifest examples.
 
@@ -865,6 +866,19 @@ the scattered resolvers and `overlay_resolved`:
   that determine the layer Z grid and the typed per-object planning records.
 - `resolve_scope_stack` is called by `PrePass::RegionMapping` to resolve the
   applicable typed scope deltas for each active region.
+
+### Config scope admission (Normative — ADR-0069)
+
+Scope eligibility is derived from the registry, not from any manifest-table
+allow list. The registry's admission state is built from every declaring
+manifest's per-key `denied_scopes` entries via
+`ConfigSchemaRegistry::admission_set`, and resolution consults that admission
+state: a key stated at a scope it denies is rejected loudly wherever it is
+stated, surfacing `ResolutionError::ScopeDenied` (naming key and scope) rather
+than being silently ignored. `denied_scopes` is the sole per-key eligibility
+mechanism for both host and module-declared keys (see "Common per-field keys"
+in `docs/03_wit_and_manifest.md`); when a key is declared by several declarers,
+the denials union across them — a scope denied by any declarer is denied.
 
 During region mapping, modifier volume `config_delta.fields` from every
 `modifier_volume` attached to a region's parent `ObjectMesh` are consumed by

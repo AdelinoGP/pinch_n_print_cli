@@ -47,12 +47,6 @@ default = false
 display = "Apply to All Walls"
 group   = "Fuzzy Skin"
 
-[config.overridable-per-region]
-keys = []
-
-[config.overridable-per-layer]
-keys = []
-
 [hints]
 estimated-ms-per-layer = 10
 layer-parallel-safe    = true

@@ -1,4 +1,4 @@
-use crate::resolved_config::{HostKeyMeta, ResolvedFloatOrPercent};
+use crate::resolved_config::{HostKeyMeta, ResolvedFloatOrPercent, WHOLE_PRINT_ONLY_SCOPES};
 
 /// `HostKeyMeta::NONE` as a *value*: the FRU base for annotated entries in
 /// [`SPEED_META`].
@@ -285,6 +285,20 @@ pub const SPEED_META: [Option<HostKeyMeta>; SPEED_KEY_COUNT] = [
 /// assertion fails the build when the two arrays' lengths drift apart.
 const _: () = assert!(SPEED_KEYS.len() == SPEED_META.len());
 
+/// Denied scopes for every [`SPEED_KEYS`] entry, positionally aligned with it.
+///
+/// The feedrate table is built once per whole print (`FeedrateConfig::
+/// from_raw_config` reads the print-wide config map), so no speed key has a
+/// sub-print consumer to honour a narrower statement — every entry carries
+/// [`WHOLE_PRINT_ONLY_SCOPES`] (AC-1; ADR-0069). The table is typed against
+/// [`SPEED_KEY_COUNT`], and the assertion below locks it to `SPEED_KEYS`, so a
+/// new speed key cannot be added without a policy slot.
+pub const SPEED_DENIED_SCOPES: [&[&str]; SPEED_KEY_COUNT] =
+    [WHOLE_PRINT_ONLY_SCOPES; SPEED_KEY_COUNT];
+
+/// All three speed tables must stay the same length; a drift in any of them is
+/// a compile error, not a test failure.
+const _: () = assert!(SPEED_KEYS.len() == SPEED_DENIED_SCOPES.len());
 /// Every host speed key, paired with the [`FeedrateConfig`] field it fills.
 ///
 /// Single source for both directions: [`FeedrateConfig::from_raw_config`]

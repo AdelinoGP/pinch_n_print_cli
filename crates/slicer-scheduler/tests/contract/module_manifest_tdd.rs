@@ -39,12 +39,6 @@ max-ir-schema = "2.0.0"
 type = "percent"
 default = {default_literal}
 
-[config.overridable-per-region]
-keys = ["density"]
-
-[config.overridable-per-layer]
-keys = ["density"]
-
 [hints]
 layer-parallel-safe = true
 "#

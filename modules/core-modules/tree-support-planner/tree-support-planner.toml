@@ -59,6 +59,8 @@ default = 0.4
 min     = 0.0
 display = "Nozzle Diameter"
 group   = "Support"
+# ADR-0069: tool-capable — statable at tool scope, denied at every narrower scope.
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic"]
 
 [config.schema.line_width]
 type    = "float"
@@ -257,12 +259,6 @@ default = "default"
 values  = ["default", "grid", "snug", "organic", "tree_slim", "tree_strong", "tree_hybrid"]
 display = "Support Style"
 group   = "Support"
-
-[config.overridable-per-region]
-keys = []
-
-[config.overridable-per-layer]
-keys = []
 
 [hints]
 estimated-ms-per-layer = 5

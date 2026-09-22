@@ -67,7 +67,7 @@
 - Packet 01 landed `RegistryEntry.denied_scopes`, union reconciliation, unknown-scope validation, and `HostRuntimeKey.denied_scopes`; only `wall_generator` currently has host-runtime denials.
 - FORWARD-DEP packet 05 exports `resolve_scope_stack`, `query_z_grid`, `ResolvedObjectLayerConfig { object_id: String, object_height: f64, layer_height: f64, first_layer_height: f64, support_raft_layers: u32 }`, `ResolutionError::InvalidObjectHeight`, and `prepass-layer-planning@2.0.0`.
 - The two legacy sections exist in 24 manifests, are empty in 23, are required by ingestion, and have no production reader; the one populated manifest does not preserve authority through retirement.
-- `nozzle_diameter` is declared by exactly arachne-perimeters, classic-perimeters, machine-gcode-emit, tree-support-planner, and wave-overhangs in the grounded tree; each declaration receives the tool-capable denials.
+- `nozzle_diameter` is declared by exactly 7 manifests in the grounded tree: classic-perimeters, machine-gcode-emit, traditional-support, tree-support, tree-support-planner, wave-overhangs, and arachne-perimeters (AC-1's mechanical filesystem discovery of `modules/core-modules/<id>/<id>.toml` confirms arachne's `[config.schema.nozzle_diameter]` carries the tool-capable `denied_scopes` — an earlier draft assumption that arachne does not declare the key is contradicted by the tree); each declaration receives the tool-capable denials. The tests are count-agnostic: the declarer set is derived from filesystem discovery, never a hand-listed roster.
 
 ## Risks and Tradeoffs
 

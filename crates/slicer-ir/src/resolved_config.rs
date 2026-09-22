@@ -827,6 +827,16 @@ pub struct HostConfigKey {
     /// Display metadata, [`HostKeyMeta::NONE`] when the declaration carries
     /// none.
     pub meta: HostKeyMeta,
+    /// Scopes in which the key may not be stated, in canonical order.
+    ///
+    /// Empty means statable at every scope (ADR-0069: permissive by default).
+    /// Two authored sets are canonical: [`WHOLE_PRINT_ONLY_SCOPES`] for
+    /// machine/emitter keys whose value cannot mean anything below whole-print
+    /// scope, and [`TOOL_CAPABLE_SCOPES`] for keys a per-tool statement can
+    /// narrow. A key declared by several channels gets the **union** of their
+    /// denials at registry assembly, so a scope denied by any declarer is
+    /// denied.
+    pub denied_scopes: &'static [&'static str],
 }
 
 /// One static host-runtime config key declaration.
@@ -929,6 +939,26 @@ impl HostKeyMeta {
 /// Default `wall_generator` value used when the config key is absent.
 pub const DEFAULT_WALL_GENERATOR: &str = "classic";
 
+/// Denied scopes for a key that can only be stated once per whole print.
+///
+/// Every sub-print scope is denied. Canonical order, low scope first; the
+/// `denied_scopes` field is compared positionally by the drift test, so this
+/// order is normative (ADR-0069).
+pub const WHOLE_PRINT_ONLY_SCOPES: &[&str] = &[
+    "object",
+    "layer_range",
+    "modifier",
+    "paint_semantic",
+    "tool",
+];
+
+/// Denied scopes for a key a per-tool statement can meaningfully narrow.
+///
+/// Identical to [`WHOLE_PRINT_ONLY_SCOPES`] minus `tool`: the tool scope stays
+/// statable, so the key can be per-tool while remaining print-wide everywhere
+/// else below object scope.
+pub const TOOL_CAPABLE_SCOPES: &[&str] = &["object", "layer_range", "modifier", "paint_semantic"];
+
 /// Static config keys read directly by host runtime code.
 ///
 /// The first three rows predate packet 06; the remaining rows are the
@@ -945,7 +975,7 @@ pub const HOST_RUNTIME_KEYS: &[HostRuntimeKey] = &[
         default: Some("true"),
         meta: HostKeyMeta::NONE,
         selector: false,
-        denied_scopes: &[],
+        denied_scopes: WHOLE_PRINT_ONLY_SCOPES,
     },
     HostRuntimeKey {
         key: "thumbnail_path",
@@ -962,7 +992,7 @@ pub const HOST_RUNTIME_KEYS: &[HostRuntimeKey] = &[
             ..HostKeyMeta::NONE
         },
         selector: false,
-        denied_scopes: &[],
+        denied_scopes: WHOLE_PRINT_ONLY_SCOPES,
     },
     HostRuntimeKey {
         key: "wall_generator",
@@ -971,13 +1001,7 @@ pub const HOST_RUNTIME_KEYS: &[HostRuntimeKey] = &[
         default: Some(DEFAULT_WALL_GENERATOR),
         meta: HostKeyMeta::NONE,
         selector: true,
-        denied_scopes: &[
-            "object",
-            "layer_range",
-            "modifier",
-            "paint_semantic",
-            "tool",
-        ],
+        denied_scopes: WHOLE_PRINT_ONLY_SCOPES,
     },
     // Host-consumed keys registered by packet 06 Step 2a. Defaults are `None`
     // by design: these keys are synthesized, defaulted at the consuming site,
@@ -1676,6 +1700,7 @@ macro_rules! __drc {
                         $($meta)*
                         ..$crate::resolved_config::HostKeyMeta::NONE
                     },
+                    denied_scopes: $crate::resolved_config::host_key_denied_scopes($cli_key),
                 },
             }
             map_arms: {
@@ -1750,6 +1775,7 @@ macro_rules! __drc {
                         $($meta)*
                         ..$crate::resolved_config::HostKeyMeta::NONE
                     },
+                    denied_scopes: $crate::resolved_config::host_key_denied_scopes($cli_key),
                 },
             }
             map_arms: {
@@ -1872,6 +1898,7 @@ macro_rules! __drc {
                         $($meta)*
                         ..$crate::resolved_config::HostKeyMeta::NONE
                     },
+                    denied_scopes: $crate::resolved_config::host_key_denied_scopes($cli_key),
                 },
             }
             map_arms: {
@@ -1946,6 +1973,7 @@ macro_rules! __drc {
                         $($meta)*
                         ..$crate::resolved_config::HostKeyMeta::NONE
                     },
+                    denied_scopes: $crate::resolved_config::host_key_denied_scopes($cli_key),
                 },
             }
             map_arms: {
@@ -2293,6 +2321,48 @@ declare_resolved_config! {
     /// Indexed by extruder/tool id — see [`ResolvedConfig::filament_density_for`].
     /// Empty means "not configured", which omits every weight output.
     cli @filament "filament_density" filament_density: Vec<f64> = Vec::new() => extract_float_list;
+}
+
+/// Denied scopes authored for one `declare_resolved_config!` CLI key.
+///
+/// This is the per-key **scope-eligibility roster** for the `cli` / `cli_opt`
+/// rows above (ADR-0069): deliberately hand-authored — a mechanical derivation
+/// proposes candidates, the author confirms, and nothing is auto-generated at
+/// runtime. Keys absent from the roster are statable at every scope
+/// (permissive by default); only [`WHOLE_PRINT_ONLY_SCOPES`] and
+/// [`TOOL_CAPABLE_SCOPES`] are authored on the host DSL.
+///
+/// The rows stay the single source of the *field set*; this table is the
+/// single source of the *policy*. The AC-1 drift test pins the roster exactly,
+/// so a policy named for a key that no row declares (or a row added without
+/// its policy) fails the tests rather than drifting silently.
+///
+/// `plain` rows do not appear here: they bind no config key and never reach
+/// the registry. `wall_generator`, `use_relative_e_distances` and
+/// `thumbnail_path` are carried by their [`HOST_RUNTIME_KEYS`] rows instead.
+#[must_use]
+pub fn host_key_denied_scopes(key: &str) -> &'static [&'static str] {
+    match key {
+        // Machine / emitter keys: one value per print by construction, so a
+        // narrower statement has no consumer to honour it.
+        "bed_shape"
+        | "disable_m73"
+        | "gcode_xy_decimals"
+        | "machine_max_acceleration_extruding"
+        | "machine_max_acceleration_travel"
+        | "machine_max_jerk_e"
+        | "machine_max_jerk_x"
+        | "machine_max_jerk_y"
+        | "machine_max_jerk_z"
+        | "machine_max_speed_e"
+        | "machine_max_speed_x"
+        | "machine_max_speed_y"
+        | "machine_max_speed_z" => WHOLE_PRINT_ONLY_SCOPES,
+        // Per-filament / per-tool keys: a tool statement is meaningful, so the
+        // tool scope stays statable.
+        "filament_density" | "filament_diameter" | "retract_length" => TOOL_CAPABLE_SCOPES,
+        _ => &[],
+    }
 }
 
 // Touch the imports the macro expansion implicitly relies on, so a future
@@ -2775,5 +2845,130 @@ mod config_map_parity_tests {
             !HostKeyMeta::NONE.omit_from_config_block,
             "the default metadata must emit"
         );
+    }
+}
+
+/// Packet `config-scope-resolution_07` AC-1 drift pin, host half.
+///
+/// Every host declaration channel must carry exactly the canonical policy for
+/// the keys AC-1 names — no key silently permissive, no key carrying a policy
+/// AC-1 does not name, and the canonical scope sets ordered as consumers
+/// compare them.
+///
+/// The module half of the roster is authored in the core-module manifests and
+/// pinned by `crates/slicer-config/tests/scope_eligibility_tdd.rs`.
+#[cfg(test)]
+mod scope_eligibility_tests {
+    use super::*;
+
+    /// AC-1 whole-print-only keys authored on host channels, excluding the 26
+    /// `SPEED_KEYS` (which carry the same policy, pinned by the speed table).
+    const WHOLE_PRINT_ONLY_HOST_KEYS: &[&str] = &[
+        "bed_shape",
+        "disable_m73",
+        "gcode_xy_decimals",
+        "machine_max_acceleration_extruding",
+        "machine_max_acceleration_travel",
+        "machine_max_jerk_e",
+        "machine_max_jerk_x",
+        "machine_max_jerk_y",
+        "machine_max_jerk_z",
+        "machine_max_speed_e",
+        "machine_max_speed_x",
+        "machine_max_speed_y",
+        "machine_max_speed_z",
+        "use_relative_e_distances",
+        "thumbnail_path",
+        "wall_generator",
+    ];
+
+    /// AC-1 tool-capable host keys (the module-only `nozzle_diameter` is
+    /// pinned with the module declarers in the `slicer-config` test).
+    const TOOL_CAPABLE_HOST_KEYS: &[&str] =
+        &["filament_density", "filament_diameter", "retract_length"];
+
+    #[test]
+    fn host_declaration_channels_carry_exactly_the_ac1_policies() {
+        let mut seen: Vec<(&'static str, &'static [&'static str])> = Vec::new();
+        seen.extend(
+            ResolvedConfig::host_config_keys()
+                .into_iter()
+                .map(|row| (row.key, row.denied_scopes)),
+        );
+        seen.extend(
+            HOST_RUNTIME_KEYS
+                .iter()
+                .map(|row| (row.key, row.denied_scopes)),
+        );
+
+        for key in WHOLE_PRINT_ONLY_HOST_KEYS {
+            let policy = seen
+                .iter()
+                .find(|(declared, _)| declared == key)
+                .unwrap_or_else(|| panic!("{key} is not declared on any host channel"))
+                .1;
+            assert_eq!(
+                policy, WHOLE_PRINT_ONLY_SCOPES,
+                "{key} must deny object/layer_range/modifier/paint_semantic/tool, in order"
+            );
+        }
+        for key in TOOL_CAPABLE_HOST_KEYS {
+            let policy = seen
+                .iter()
+                .find(|(declared, _)| declared == key)
+                .unwrap_or_else(|| panic!("{key} is not declared on any host channel"))
+                .1;
+            assert_eq!(
+                policy, TOOL_CAPABLE_SCOPES,
+                "{key} must deny object/layer_range/modifier/paint_semantic and allow tool"
+            );
+        }
+
+        // Every authored denial names an AC-1 key; otherwise a policy rides on
+        // a key the roster does not account for.
+        for (key, policy) in &seen {
+            if policy.is_empty() {
+                continue;
+            }
+            assert!(
+                WHOLE_PRINT_ONLY_HOST_KEYS.contains(key) || TOOL_CAPABLE_HOST_KEYS.contains(key),
+                "{key} carries authored denials but is absent from AC-1's host roster"
+            );
+        }
+
+        // The canonical scope sets themselves: order and membership are what
+        // consumers compare against, so pin them literally.
+        assert_eq!(
+            WHOLE_PRINT_ONLY_SCOPES,
+            [
+                "object",
+                "layer_range",
+                "modifier",
+                "paint_semantic",
+                "tool"
+            ]
+        );
+        assert_eq!(
+            TOOL_CAPABLE_SCOPES,
+            ["object", "layer_range", "modifier", "paint_semantic"]
+        );
+    }
+
+    /// The speed table is positionally aligned and length-locked; the three
+    /// tables cannot drift apart without a compile error or this failure.
+    #[test]
+    fn speed_denial_table_is_positionally_aligned_with_speed_keys() {
+        use crate::feedrate::{SPEED_DENIED_SCOPES, SPEED_KEYS, SPEED_KEY_COUNT, SPEED_META};
+
+        assert_eq!(SPEED_KEY_COUNT, 26, "AC-1 names 26 speed keys");
+        assert_eq!(SPEED_KEYS.len(), SPEED_KEY_COUNT);
+        assert_eq!(SPEED_META.len(), SPEED_KEY_COUNT);
+        assert_eq!(SPEED_DENIED_SCOPES.len(), SPEED_KEY_COUNT);
+        for (index, (key, _)) in SPEED_KEYS.iter().enumerate() {
+            assert_eq!(
+                SPEED_DENIED_SCOPES[index], WHOLE_PRINT_ONLY_SCOPES,
+                "speed {key} must deny object/layer_range/modifier/paint_semantic/tool"
+            );
+        }
     }
 }

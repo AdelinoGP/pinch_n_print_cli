@@ -519,6 +519,7 @@ fn host_key(key: &'static str, field_type: &'static str, default: &str) -> HostC
     row.field_type = field_type;
     row.default = Some(default.to_owned());
     row.meta = HostKeyMeta::NONE;
+    row.denied_scopes = &[];
     row
 }
 

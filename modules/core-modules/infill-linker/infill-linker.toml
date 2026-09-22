@@ -78,12 +78,6 @@ max     = 2.0
 display = "Line Width"
 group   = "Infill"
 
-[config.overridable-per-region]
-keys = []
-
-[config.overridable-per-layer]
-keys = []
-
 [hints]
 estimated-ms-per-layer = 30
 layer-parallel-safe    = true

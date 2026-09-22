@@ -107,10 +107,6 @@ pub struct LoadedModule {
     pub(crate) max_ir_schema: SemVer,
     /// Placeholder config schema payload.
     pub(crate) config_schema: ConfigSchema,
-    /// Keys overridable per region.
-    pub(crate) overridable_per_region: Vec<String>,
-    /// Keys overridable per layer.
-    pub(crate) overridable_per_layer: Vec<String>,
     /// Effective layer parallel safety used by the runtime.
     pub(crate) layer_parallel_safe: bool,
     /// Companion `.wasm` path for this manifest.
@@ -208,16 +204,6 @@ impl LoadedModule {
         self.config_schema.entries.keys().cloned().collect()
     }
 
-    /// Keys overridable per region.
-    pub fn overridable_per_region(&self) -> &[String] {
-        &self.overridable_per_region
-    }
-
-    /// Keys overridable per layer.
-    pub fn overridable_per_layer(&self) -> &[String] {
-        &self.overridable_per_layer
-    }
-
     /// Effective layer parallel safety used by the runtime.
     pub fn layer_parallel_safe(&self) -> bool {
         self.layer_parallel_safe
@@ -280,8 +266,6 @@ pub struct LoadedModuleBuilder {
     min_ir_schema: SemVer,
     max_ir_schema: SemVer,
     config_schema: ConfigSchema,
-    overridable_per_region: Vec<String>,
-    overridable_per_layer: Vec<String>,
     layer_parallel_safe: bool,
     placeholder_wasm: bool,
     provenance: ModuleProvenance,
@@ -313,8 +297,6 @@ impl LoadedModuleBuilder {
             min_ir_schema: SemVer::default(),
             max_ir_schema: SemVer::default(),
             config_schema: ConfigSchema::default(),
-            overridable_per_region: Vec::new(),
-            overridable_per_layer: Vec::new(),
             layer_parallel_safe: false,
             placeholder_wasm: false,
             provenance: ModuleProvenance::External,
@@ -383,18 +365,6 @@ impl LoadedModuleBuilder {
         self
     }
 
-    /// Set keys overridable per region.
-    pub fn overridable_per_region(mut self, keys: Vec<String>) -> Self {
-        self.overridable_per_region = keys;
-        self
-    }
-
-    /// Set keys overridable per layer.
-    pub fn overridable_per_layer(mut self, keys: Vec<String>) -> Self {
-        self.overridable_per_layer = keys;
-        self
-    }
-
     /// Set the effective layer-parallel safety flag.
     pub fn layer_parallel_safe(mut self, safe: bool) -> Self {
         self.layer_parallel_safe = safe;
@@ -441,8 +411,6 @@ impl LoadedModuleBuilder {
             min_ir_schema: self.min_ir_schema,
             max_ir_schema: self.max_ir_schema,
             config_schema: self.config_schema,
-            overridable_per_region: self.overridable_per_region,
-            overridable_per_layer: self.overridable_per_layer,
             layer_parallel_safe: self.layer_parallel_safe,
             wasm_path: self.wasm_path,
             provenance: self.provenance,
@@ -809,16 +777,6 @@ pub(crate) fn ingest_manifest_text(
         "compatibility.max-ir-schema",
     )?)
     .config_schema(config_schema)
-    .overridable_per_region(required_string_array(
-        &root,
-        manifest_path,
-        "config.overridable-per-region.keys",
-    )?)
-    .overridable_per_layer(required_string_array(
-        &root,
-        manifest_path,
-        "config.overridable-per-layer.keys",
-    )?)
     .layer_parallel_safe(layer_parallel_safe)
     .placeholder_wasm(placeholder_wasm)
     .provenance(provenance)
@@ -1641,6 +1599,7 @@ fn build_host_key_entries() -> Vec<serde_json::Value> {
             scope: row.scope,
             default: row.default.map(|value| value.to_owned()),
             meta: row.meta,
+            denied_scopes: row.denied_scopes,
         };
         push(
             host_key.key,

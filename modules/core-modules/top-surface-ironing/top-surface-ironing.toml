@@ -51,6 +51,9 @@ min     = 1.0
 max     = 300.0
 display = "Ironing Speed"
 group   = "TopSurface"
+# ADR-0069: the feedrate table is built once per whole print, so no sub-print
+# scope has a consumer that could honour a narrower statement.
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 [config.schema.ironing_flow]
 type    = "float"
@@ -74,12 +77,6 @@ values  = ["rectilinear"]
 default = "rectilinear"
 display = "Ironing Pattern"
 group   = "TopSurface"
-
-[config.overridable-per-region]
-keys = []
-
-[config.overridable-per-layer]
-keys = []
 
 [hints]
 estimated-ms-per-layer = 10

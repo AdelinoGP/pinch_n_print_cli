@@ -72,6 +72,7 @@ min     = 1.0
 max     = 300.0
 display = "Sparse Infill Speed"
 group   = "Infill"
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 [config.schema.top_surface_speed]
 type    = "float"
@@ -80,6 +81,7 @@ min     = 1.0
 max     = 300.0
 display = "Top Surface Speed"
 group   = "Infill"
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 [config.schema.internal_solid_infill_speed]
 type    = "float"
@@ -143,6 +145,7 @@ min     = 1.0
 max     = 300.0
 display = "Bridge Speed"
 group   = "Infill"
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 [config.schema.internal_bridge_density]
 type    = "float_or_percent"
@@ -171,6 +174,7 @@ default = "150%"
 min     = 1.0
 display = "Internal Bridge Speed"
 group   = "Infill"
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 [config.schema.internal_bridge_angle]
 type    = "float"
@@ -218,12 +222,6 @@ min     = 0.0
 max     = 2.0
 display = "Top Surface Line Width"
 group   = "Infill"
-
-[config.overridable-per-region]
-keys = []
-
-[config.overridable-per-layer]
-keys = []
 
 [hints]
 estimated-ms-per-layer = 10

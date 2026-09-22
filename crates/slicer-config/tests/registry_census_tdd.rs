@@ -254,7 +254,17 @@ fn host_runtime_rows_are_exact() {
     assert_eq!(relative_e_distances.default, Some("true"));
     assert_eq!(relative_e_distances.meta, HostKeyMeta::NONE);
     assert!(!relative_e_distances.selector);
-    assert!(relative_e_distances.denied_scopes.is_empty());
+    assert_eq!(
+        relative_e_distances.denied_scopes,
+        [
+            "object",
+            "layer_range",
+            "modifier",
+            "paint_semantic",
+            "tool"
+        ]
+        .as_slice()
+    );
 
     let thumbnail_path = &HOST_RUNTIME_KEYS[1];
     assert_eq!(thumbnail_path.key, "thumbnail_path");
@@ -262,7 +272,17 @@ fn host_runtime_rows_are_exact() {
     assert_eq!(thumbnail_path.scope, "printer");
     assert_eq!(thumbnail_path.default, Some(""));
     assert!(!thumbnail_path.selector);
-    assert!(thumbnail_path.denied_scopes.is_empty());
+    assert_eq!(
+        thumbnail_path.denied_scopes,
+        [
+            "object",
+            "layer_range",
+            "modifier",
+            "paint_semantic",
+            "tool"
+        ]
+        .as_slice()
+    );
     assert_eq!(thumbnail_path.meta.display, Some("Thumbnail path"));
     assert_eq!(
         thumbnail_path.meta.description,
@@ -436,9 +456,9 @@ fn real_toml_manifest_census_rederives_expected_scope() {
         .cloned()
         .collect::<BTreeSet<_>>();
 
-    assert_eq!(entry_count, 270);
-    assert_eq!(distinct_key_count, 179);
-    assert_eq!(multi_declared_count, 54);
+    assert_eq!(entry_count, 281);
+    assert_eq!(distinct_key_count, 180);
+    assert_eq!(multi_declared_count, 55);
     assert_eq!(
         wildcard_keys,
         ["object_height:*".to_owned(), "layer_height:*".to_owned()]

@@ -71,12 +71,6 @@ max     = 2.0
 display = "Line Width"
 group   = "Skirt/Brim"
 
-[config.overridable-per-region]
-keys = []
-
-[config.overridable-per-layer]
-keys = []
-
 [hints]
 estimated-ms-per-layer = 10
 layer-parallel-safe    = false

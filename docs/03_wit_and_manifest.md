@@ -708,8 +708,7 @@ now legacy" above).
 
 At ingestion, `ingest_manifest` in `crates/slicer-scheduler/src/manifest.rs`
 requires `[module].id`/`version`, `[stage].id`, `[ir-access].reads`/`writes`,
-`[claims].holds`/`requires`, all five `[compatibility]` fields,
-`config.overridable-per-region.keys`, `config.overridable-per-layer.keys`, and
+`[claims].holds`/`requires`, all five `[compatibility]` fields, and
 `hints.layer-parallel-safe`. `[config.schema]` and `[[region_split]]` are
 optional; their field entries and declarations are parsed when present. Other
 TOML keys are tolerated but are not stored by the manifest loader.
@@ -902,12 +901,15 @@ max-ir-schema     = "2.0.0"      # exclusive upper bound
   group    = "Advanced"
   advanced = true
 
-# ── Per-region / per-layer override policy ────────────────────────────────────
-[config.overridable-per-region]
-keys = ["pattern", "density", "multiline-count"]
-
-[config.overridable-per-layer]
-keys = ["density"]      # density can vary per-layer; pattern cannot
+# ── Scope eligibility (per key; ADR-0069) ─────────────────────────────────────
+# A key's scope eligibility is declared per field, on the key's own
+# `[config.schema.<key>]` entry, via `denied_scopes` (see "Config Field Types
+# Reference" below). Absent `denied_scopes` means the key may be stated at
+# every scope: `global`, `object`, `layer_range`, `modifier`, `paint_semantic`,
+# `tool`. There is no per-module override allow list. Illustrative entry:
+#   [config.schema.some_machine_key]
+#   type          = "float"
+#   denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 # ── Region-split semantics declaration (Normative — Packet 92) ─────────────
 # Each [[region_split]] entry declares one paint semantic this module wants
@@ -949,9 +951,7 @@ enabling modules to declare a single schema entry for dynamically-named
 keys such as `object_height:<uuid>` or `paint_config:<semantic>:<key>`.
 Static keys (without the `:*` suffix) continue to require exact-match.
 The matcher is `source_key_matches_declared` in
-`crates/slicer-scheduler/src/execution_plan.rs`. The parser stores the
-`config.overridable-per-region` and `config.overridable-per-layer` key lists,
-but the current scheduler does not apply this wildcard matcher to those lists.
+`crates/slicer-scheduler/src/execution_plan.rs`.
 
 ### `[[region_split]]` Validation Rules (Normative — Packet 92)
 
@@ -1618,7 +1618,7 @@ set is listed by `slicer_schema::VALID_CONFIG_TYPES`.
 | `advanced` | bool            | Hidden by default; revealed only in advanced view.               |
 | `selector` | bool           | Marks a key used to select a module or execution path; selector keys must be unavailable at narrower per-region scopes. |
 | `base_key` | string          | Absolute config key used as the base for `percent` and `float_or_percent` values. |
-| `denied_scopes` | array of strings | Scopes where this key cannot be stated: `global`, `object`, `layer_range`, `modifier`, `paint_semantic`, or `tool`. |
+| `denied_scopes` | array of strings | The key's scope eligibility, as a per-key **deny list** (ADR-0069): scopes where the key **cannot** be stated. Statable scopes are `global`, `object`, `layer_range`, `modifier`, `paint_semantic`, and `tool`; an absent (or empty) `denied_scopes` means the key may be stated at every scope (`global`, `object`, `layer_range`, `modifier`, `paint_semantic`, `tool`). This is the sole per-key scope-eligibility mechanism for both host and module-declared keys. A statement at a denied scope is rejected loudly at resolution (`ResolutionError::ScopeDenied`, see `docs/04_host_scheduler.md`). |
 | `tags`    | array of strings | UI taxonomy tags for sub-tab filtering and search (free-form). Emitted as `[]` when absent. |
 | `config_block` | bool (optional) | Whether the key is emitted in the G-code `CONFIG_BLOCK`. Default `true`: any declaration (host or module manifest) that does not set the flag emits the key whenever the resolved config carries it. A `false` on any declaration wins — reconciliation marks the key `omit_from_config_block` when any host row or declaring module sets it. |
 

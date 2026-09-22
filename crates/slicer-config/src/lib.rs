@@ -6,11 +6,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use slicer_ir::config_schema::ConfigFieldEntry;
-use slicer_ir::feedrate::{FeedrateConfig, SPEED_KEYS, SPEED_META};
+use slicer_ir::feedrate::{FeedrateConfig, SPEED_DENIED_SCOPES, SPEED_KEYS, SPEED_META};
 use slicer_ir::resolved_config::{
     HostConfigKey, HostKeyMeta, HostRuntimeKey, ResolvedConfig, HOST_RUNTIME_KEYS, SCOPE_PRINT,
 };
-use slicer_ir::ConfigValue;
+use slicer_ir::{ConfigKey, ConfigValue};
 
 pub mod ingestion;
 pub mod resolution;
@@ -154,6 +154,7 @@ impl HostChannels {
                     scope: SCOPE_PRINT,
                     default: Some(default),
                     meta,
+                    denied_scopes: SPEED_DENIED_SCOPES[index],
                 }
             })
             .collect();
@@ -330,6 +331,20 @@ impl fmt::Display for RegistryLoadError {
 
 impl std::error::Error for RegistryLoadError {}
 
+/// The `denied_scopes` vocabulary label for a typed configuration scope.
+///
+/// Scope instances share their family's eligibility policy: every object,
+/// modifier, paint-semantic name, and tool index is judged by its family.
+pub(crate) fn scope_denial_label(scope: &ConfigScope) -> &'static str {
+    match scope {
+        ConfigScope::Global => "global",
+        ConfigScope::Object(_) => "object",
+        ConfigScope::Modifier { .. } => "modifier",
+        ConfigScope::PaintSemantic(_) => "paint_semantic",
+        ConfigScope::Tool(_) => "tool",
+    }
+}
+
 /// Deterministic registry of reconciled configuration declarations.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ConfigSchemaRegistry {
@@ -337,6 +352,23 @@ pub struct ConfigSchemaRegistry {
 }
 
 impl ConfigSchemaRegistry {
+    /// Return the registry keys statable at `scope`.
+    ///
+    /// The set is derived only from the reconciled `denied_scopes` of each
+    /// entry: a scope denied by any declarer is denied for the key (ADR-0069
+    /// union), and an absent denial means the key is statable at every scope.
+    /// It is the only per-scope key roster the resolver consults, so it can
+    /// never disagree with a hand-authored roster elsewhere.
+    #[must_use]
+    pub fn admission_set(&self, scope: &ConfigScope) -> BTreeSet<ConfigKey> {
+        let label = scope_denial_label(scope);
+        self.entries
+            .values()
+            .filter(|entry| !entry.denied_scopes.iter().any(|denied| denied == label))
+            .map(|entry| entry.key.clone())
+            .collect()
+    }
+
     /// Iterate over registry keys in lexicographic order.
     pub fn keys(&self) -> impl Iterator<Item = &str> {
         self.entries.keys().map(String::as_str)
@@ -720,7 +752,11 @@ fn host_declaration(row: &HostConfigKey, provenance: &str) -> Declaration {
         min: row.meta.min,
         max: row.meta.max,
         values,
-        denied_scopes: Vec::new(),
+        denied_scopes: row
+            .denied_scopes
+            .iter()
+            .map(|scope| (*scope).to_owned())
+            .collect(),
         selector: false,
         omit_from_config_block: row.meta.omit_from_config_block,
         base_key: None,

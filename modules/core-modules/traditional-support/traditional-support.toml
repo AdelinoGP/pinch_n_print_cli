@@ -54,6 +54,9 @@ min     = 1.0
 max     = 300.0
 display = "Support Speed"
 group   = "Support"
+# ADR-0069: the feedrate table is built once per whole print, so no sub-print
+# scope has a consumer that could honour a narrower statement.
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 [config.schema.line_width]
 type    = "float"
@@ -102,6 +105,8 @@ unit    = "mm"
 display = "Nozzle diameter"
 description = "Typed to match the registry's existing declarers (classic-perimeters, wave-overhangs, machine-gcode-emit, tree-support-planner, arachne-perimeters all declare this key as `float` with default 0.4)."
 group   = "Support"
+# ADR-0069: tool-capable — statable at tool scope, denied at every narrower scope.
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic"]
 
 [config.schema.layer_height]
 type    = "float"
@@ -125,12 +130,6 @@ min     = 0.0
 max     = 1000.0
 display = "Support Line Width"
 group   = "Support"
-
-[config.overridable-per-region]
-keys = []
-
-[config.overridable-per-layer]
-keys = []
 
 [hints]
 estimated-ms-per-layer = 10

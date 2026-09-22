@@ -142,6 +142,7 @@ min     = 1.0
 max     = 300.0
 display = "Gap infill speed"
 group   = "Quality"
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 [config.schema.filter_out_gap_fill]
 type    = "float"
@@ -170,6 +171,7 @@ min     = 1.0
 max     = 300.0
 display = "Outer Wall Speed"
 group   = "Walls"
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 [config.schema.inner_wall_speed]
 type    = "float"
@@ -178,6 +180,7 @@ min     = 1.0
 max     = 300.0
 display = "Inner Wall Speed"
 group   = "Walls"
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 [config.schema.perimeter_arc_tolerance]
 type    = "float"
@@ -328,6 +331,7 @@ unit        = "mm"
 display     = "Nozzle diameter"
 description = "OrcaSlicer coFloat key nozzle_diameter; read by run_perimeters for the R4 thin-wall threshold (min_width = nozzle_diameter/3) and threaded into bridging_flow. Falls back to inner_wall_line_width when absent."
 group       = "Walls"
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic"]
 
 [config.schema.layer_height]
 type        = "float"
@@ -338,12 +342,6 @@ unit        = "mm"
 display     = "Layer height"
 description = "OrcaSlicer coFloat key layer_height; read by run_perimeters (packet 150 step 5) alongside nozzle_diameter for bridging_flow's thick_bridges round-cross-section formula (D-104g)."
 group       = "Quality"
-
-[config.overridable-per-region]
-keys = []
-
-[config.overridable-per-layer]
-keys = []
 
 [hints]
 estimated-ms-per-layer = 10

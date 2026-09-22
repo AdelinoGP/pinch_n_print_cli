@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: config-scope-resolution_07_scope-eligibility
 task_ids:
   - TASK-568

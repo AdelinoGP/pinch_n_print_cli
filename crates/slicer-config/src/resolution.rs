@@ -6,8 +6,8 @@ use std::fmt;
 use slicer_ir::{ConfigResolutionError, ConfigValue, ResolvedConfig};
 
 use crate::{
-    expand_automatic_values, ConfigSchemaRegistry, ConfigScope, ExpansionContext, ExpansionError,
-    RegistryEntry, ScopeDelta, ScopedConfig,
+    expand_automatic_values, scope_denial_label, ConfigSchemaRegistry, ConfigScope,
+    ExpansionContext, ExpansionError, RegistryEntry, ScopeDelta, ScopedConfig,
 };
 
 /// The object-level planning values needed to construct the shared Z grid.
@@ -52,6 +52,13 @@ pub enum ResolutionError {
         /// Invalid finite value, or `None` when the value was non-finite.
         value: Option<f64>,
     },
+    /// An authored key is not statable at the scope carrying its value.
+    ScopeDenied {
+        /// Registry key denied at `scope`.
+        key: String,
+        /// Scope whose delta stated the denied key.
+        scope: ConfigScope,
+    },
 }
 
 impl fmt::Display for ResolutionError {
@@ -69,6 +76,13 @@ impl fmt::Display for ResolutionError {
                     "object {object_id:?} height must be positive and finite"
                 ),
             },
+            Self::ScopeDenied { key, scope } => {
+                write!(
+                    formatter,
+                    "config key {key:?} is denied at {} scope",
+                    scope_denial_label(scope)
+                )
+            }
         }
     }
 }
@@ -79,6 +93,7 @@ impl std::error::Error for ResolutionError {
             Self::Application(error) => Some(error),
             Self::Expansion(error) => Some(error),
             Self::InvalidObjectHeight { .. } => None,
+            Self::ScopeDenied { .. } => None,
         }
     }
 }
@@ -98,11 +113,27 @@ impl From<ExpansionError> for ResolutionError {
 fn apply_delta(
     registry: &ConfigSchemaRegistry,
     config: &mut ResolvedConfig,
+    scope: &ConfigScope,
     delta: Option<&ScopeDelta>,
 ) -> Result<(), ResolutionError> {
     let Some(delta) = delta else {
         return Ok(());
     };
+
+    // Eligibility gate: every authored key must be statable at the scope
+    // carrying it. Scope instances share their family's policy, so `scope`
+    // itself is the authority rather than a caller-supplied roster. The check
+    // runs over the whole delta before the first mutation, so a denied key can
+    // never leave a partially applied scope behind.
+    let admission = registry.admission_set(scope);
+    for (key, _) in delta.iter() {
+        if !admission.contains(key) {
+            return Err(ResolutionError::ScopeDenied {
+                key: key.clone(),
+                scope: scope.clone(),
+            });
+        }
+    }
 
     for (key, value) in delta.iter() {
         if !config.apply_cli_key(key, value)? {
@@ -433,6 +464,11 @@ fn type_mismatch(key: &str, expected: &'static str, value: &ConfigValue) -> Reso
 /// target order, paint semantics in lexical order, and finally the selected
 /// tool. A delta's presence, including a value equal to the default, is always
 /// an override.
+///
+/// Every delta is validated against the registry's admission set for its scope
+/// before merge or expansion. A scope whose delta states a denied key is
+/// rejected whole: `ResolvedConfig::default()` is local to this call, so no
+/// partially resolved config can escape.
 pub fn resolve_scope_stack(
     registry: &ConfigSchemaRegistry,
     scoped: &ScopedConfig,
@@ -441,10 +477,13 @@ pub fn resolve_scope_stack(
 ) -> Result<ResolvedConfig, ResolutionError> {
     let mut config = ResolvedConfig::default();
 
-    apply_delta(registry, &mut config, scoped.global())?;
+    // Global is the only scope that is not statable per region, so it is not a
+    // member of the `denied_scopes` vocabulary and admits every key.
+    apply_delta(registry, &mut config, &ConfigScope::Global, scoped.global())?;
     apply_delta(
         registry,
         &mut config,
+        &ConfigScope::Object(target.object_id.clone()),
         scoped.delta(&ConfigScope::Object(target.object_id.clone())),
     )?;
 
@@ -452,33 +491,24 @@ pub fn resolve_scope_stack(
     // typed source and applicability model land.
 
     for modifier_id in &target.modifier_ids {
-        apply_delta(
-            registry,
-            &mut config,
-            scoped.delta(&ConfigScope::Modifier {
-                object_id: target.object_id.clone(),
-                modifier_id: modifier_id.clone(),
-            }),
-        )?;
+        let scope = ConfigScope::Modifier {
+            object_id: target.object_id.clone(),
+            modifier_id: modifier_id.clone(),
+        };
+        apply_delta(registry, &mut config, &scope, scoped.delta(&scope))?;
     }
 
     let mut paint_semantics = target.paint_semantics.clone();
     paint_semantics.sort();
     paint_semantics.dedup();
     for semantic in paint_semantics {
-        apply_delta(
-            registry,
-            &mut config,
-            scoped.delta(&ConfigScope::PaintSemantic(semantic)),
-        )?;
+        let scope = ConfigScope::PaintSemantic(semantic);
+        apply_delta(registry, &mut config, &scope, scoped.delta(&scope))?;
     }
 
     if let Some(tool_index) = target.tool_index {
-        apply_delta(
-            registry,
-            &mut config,
-            scoped.delta(&ConfigScope::Tool(tool_index)),
-        )?;
+        let scope = ConfigScope::Tool(tool_index);
+        apply_delta(registry, &mut config, &scope, scoped.delta(&scope))?;
     }
 
     seed_registry_defaults(registry, &mut config)?;

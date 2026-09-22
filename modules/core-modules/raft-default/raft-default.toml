@@ -53,12 +53,6 @@ min     = 0.000001
 display = "Raft Line Spacing"
 group   = "Raft"
 
-[config.overridable-per-region]
-keys = []
-
-[config.overridable-per-layer]
-keys = []
-
 [hints]
 estimated-ms-per-layer = 1
 layer-parallel-safe    = true
