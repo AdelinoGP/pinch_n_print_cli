@@ -27,3 +27,10 @@ Work:
 Until this lands, every scoreboard revision must disclose the degraded
 supports-on condition (Q5's disqualify rule marks those four cells tainted
 rather than won or lost).
+
+Measured context (ticket 11 scoreboard, 2026-09-22, matched job): every
+base.stl supports-on run in both PNP modes reports `degraded=true` with
+**172,181** non-fatal errors (29,108 at the old 3-wall/0.5 mm config), and PNP
+emits only 280 `Support` / 55 `Support interface` sections against Orca's
+638–640 / 224–225 — the dropped-layer work-skipping is visible in the output
+section counts themselves.
