@@ -161,13 +161,15 @@ pub fn support_plan_validation() {
     let service = ExactZQueryService::new(Arc::new(mesh()));
     let mut colliding = entry("colliding", 0);
     colliding.region_id = 8;
-    // Genuinely oversized: one unit wider than MAX_BODY_EXTENT_UNITS (1 << 20), so
-    // it fits in no cell-sized territory. (Before packet 224 this fixture was a
-    // 1_000-unit body parked across the x = 1 << 20 grid line, which pinned the
-    // absolute-grid defect rather than the size contract.)
+    // Genuinely oversized: one unit wider than MAX_BODY_EXTENT_UNITS (1 << 22,
+    // the build-plate bound), so it cannot fit the plate. (Before packet 224
+    // this fixture was a 1_000-unit body parked across the x = 1 << 20 grid
+    // line, which pinned the absolute-grid defect rather than the size
+    // contract; the literal moved with the constant when ADR-0059 Ruling 3
+    // recalibrated it off the deleted routing cell's size.)
     let mut spans_cell = entry("spans_cell", 30_000_000);
     spans_cell.region_id = 9;
-    spans_cell.roles[0].regions = vec![square(30_000_000, 5_000, (1 << 20) + 1)];
+    spans_cell.roles[0].regions = vec![square(30_000_000, 5_000, (1 << 22) + 1)];
     let plans = vec![slicer_ir::SupportPlanIR {
         entries: vec![entry("valid", 20_000_000), colliding, spans_cell],
         ..Default::default()
@@ -387,4 +389,83 @@ fn same_family_duplicate_identity_unions_without_a_duplicate_diagnostic() {
         2,
         "both bodies' geometry must survive the union"
     );
+}
+
+/// Regression (DEV-174 class, ticket 14): one declared identity's entry is the
+/// aggregate of every body its region carries at the plane (the producer
+/// contract admits exactly one entry per `(layer, object, region)`), so the
+/// extent bound must measure each body cross-section on its own. Measured on
+/// `tmp/base.stl` (matched-pair classic supports-on, 2026-09-23): the tree
+/// family packs a whole layer's columns into one entry whose combined spread
+/// reached 1,113,301 units while no single region exceeded 901,608; the
+/// whole-entry measurement rejected the entire layer and dropped ~60 layers of
+/// support mid-print behind 172,181 code-1200 unmet demands.
+#[test]
+fn identity_aggregate_spread_across_the_plate_is_measured_per_body() {
+    let service = ExactZQueryService::new(Arc::new(mesh()));
+    let mut packed = entry("packed-bodies", 20_000_000);
+    packed.region_id = 12;
+    // Two 5 mm bodies 110 mm apart: each is far inside any body cap, while the
+    // combined envelope (1,200,000 units) exceeds the deleted routing cell's
+    // `1 << 20` the old whole-entry measurement was calibrated to.
+    packed.roles[0].regions = vec![
+        square(20_000_000, 5_000, 50_000),
+        square(21_150_000, 5_000, 50_000),
+    ];
+
+    let plans = vec![slicer_ir::SupportPlanIR {
+        entries: vec![packed],
+        ..Default::default()
+    }];
+    let owned = family_assignments_for(&all_entries(&plans));
+    let result = aggregate_support_plans(SupportAggregationInput {
+        producers: producers_for(&plans),
+        plans,
+        exact_z: &service,
+        territory: Some(&owned),
+    });
+
+    assert!(
+        result.unmet.is_empty(),
+        "per-body measurement must not reject a spread of small bodies, got: {:?}",
+        result.unmet
+    );
+    assert_eq!(result.retained.len(), 1);
+    assert!(!result.degraded);
+}
+
+/// Regression (DEV-174 class, ticket 14): the body cap is the build-plate
+/// bound (`MAX_BODY_EXTENT_UNITS`, `1 << 22` = 419.43 mm — larger than the
+/// 256 mm BBL X1C bed's diagonal), not the deleted routing cell's `1 << 20`
+/// = 104.86 mm. Measured on `tmp/base.stl` (2026-09-23): legitimate single
+/// fused support regions reached 1,111,286 units (111.13 mm) — printable
+/// geometry that the old 104.86 mm calibration rejected wholesale.
+#[test]
+fn support_body_wider_than_the_deleted_routing_cell_is_retained() {
+    let service = ExactZQueryService::new(Arc::new(mesh()));
+    let mut wide = entry("wide-body", 20_000_000);
+    wide.region_id = 13;
+    // The widest single support region measured on base.stl (111.13 mm):
+    // over the deleted cell size, comfortably inside the plate.
+    wide.roles[0].regions = vec![square(20_000_000, 5_000, 1_111_286)];
+
+    let plans = vec![slicer_ir::SupportPlanIR {
+        entries: vec![wide],
+        ..Default::default()
+    }];
+    let owned = family_assignments_for(&all_entries(&plans));
+    let result = aggregate_support_plans(SupportAggregationInput {
+        producers: producers_for(&plans),
+        plans,
+        exact_z: &service,
+        territory: Some(&owned),
+    });
+
+    assert!(
+        result.unmet.is_empty(),
+        "a body that fits the plate must not be rejected, got: {:?}",
+        result.unmet
+    );
+    assert_eq!(result.retained.len(), 1);
+    assert!(!result.degraded);
 }

@@ -80,6 +80,7 @@ Standing decisions for this effort (2026-09-22):
 - [Unreachable batch-query dead end](issues/10-unreachable-batch-queries-dead-end.md): spatial-indexing `raycast_z_down_batch` / `surface_normal_at_batch` would optimize an unreached path (no production callers). Do not pursue.
 - [clipper2 1.1.0 upstream evidence](issues/16-clipper2-1-1-0-upstream-evidence.md): 1.1.0 is purely additive (PolyFace64 face extraction) — polygon-op cost and output for identical inputs unchanged, and `check_split_owner`'s unbounded recursion is byte-identical with unchanged reach in both versions.
 - [Matched-pair rig and first scoreboard](issues/11-matched-pair-rig-and-scoreboard.md): the matched job (0.4/0.20 mm, 2 walls, 20% gyroid, tree(auto) supports, per-cell generator) is rigged with per-run output-evidence validation and measured on all 8 cells — Orca wins every cell (median wall 6.3–26.2x, process CPU corroborating), accelerated mode buys 0–16% wall, and base supports-on is tainted by DEV-174 (`degraded=true`, 172,181 non-fatals); scoreboard in `evidence/matched-pair/SCOREBOARD.md`.
+- [Support-correctness repair](issues/14-support-correctness-repair.md): the DEV-174 dropped-band defect is fixed and kept — the complete-body extent gate measured identity aggregates as one body against the deleted routing cell's 104.86 mm cap; now measured per body cross-section against a 419.43 mm plate bound (ADR-0059 Ruling 3 / D-287). base.stl supports-on runs clean (`degraded=false`, `non_fatal=0`) in both generators and both PNP modes, band layers 108–258 restored (151→0 zero-Support layers), so the four tainted cells are untainted for future scoreboard revisions; evidence in `evidence/dev174-repair/`.
 
 ## Not yet specified
 
@@ -97,6 +98,13 @@ Standing decisions for this effort (2026-09-22):
   unknown (GUI-subsystem binary, little introspection). Worth scoping only if
   the gap narrows to specific stages where "why is Orca faster here" becomes the
   blocking question.
+- **Occupancy gate still measures the identity aggregate.**
+  [Support-correctness repair](issues/14-support-correctness-repair.md)
+  un-widened only the extent bound; `validate_entry`'s exact-Z occupancy check
+  still drops a whole identity entry when any one body cross-section overlaps
+  model occupancy — the same class of aggregate mis-measurement, latent (zero
+  occupancy rejections in the measured failure data). Becomes a ticket the day
+  it fires on a matched cell.
 
 ## Out of scope
 

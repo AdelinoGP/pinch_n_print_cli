@@ -628,7 +628,9 @@ support paths.
   produced which body and independent of plan arrival order.
 - **Complete-body validation.** A complete body is validated against the
   exact-Z occupancy and a maximum body extent bound (`MAX_BODY_EXTENT_UNITS`,
-  `1 << 20` units on each axis; see the host `exact_z_query` service in
+  `1 << 22` units = 419.43 mm on each axis — the build-plate bound from the
+  ADR-0059 Ruling 3 amendment; measured per body cross-section, not per
+  identity aggregate. See the host `exact_z_query` service in
   `crates/slicer-wasm-host/src/exact_z_query.rs`). The extent bound is a pure
   check — it neither assigns nor partitions. An invalid complete body is
   dropped, not clipped or replaced by a fallback filler.

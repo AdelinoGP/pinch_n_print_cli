@@ -16,3 +16,29 @@ The routing-cell and positive-area drop-both wording in the original Decision
 is superseded. Aggregation keys on declared identity, applies default-deny
 family ownership, enforces `MAX_BODY_EXTENT_UNITS`, and applies the documented
 own/foreign territory trim rule.
+
+Ruling 3: (2026-09-23, perf-vs-orca ticket 14, DEV-174 repair) the extent
+bound is measured **per body cross-section** (each role region), not across an
+entry's combined envelope, and `MAX_BODY_EXTENT_UNITS` is recalibrated
+`1 << 20` → `1 << 22` units (419.43 mm — larger than the diagonal of the
+matched BBL X1C 256 mm bed). Ruling 2's constant was the deleted routing
+cell's size and sat below legitimate fused support bodies: measured on
+`tmp/base.stl` (matched-pair classic supports-on, 2026-09-23), 151 whole-layer
+entries covering layers 108–258 were rejected — 172,181 code-1200 unmet
+demands, the DEV-174 dropped band — with single body cross-sections up to
+1,111,286 units (111.13 mm) and identity-aggregate spreads up to 1,113,301
+units against the 1,048,576-unit cap. The producer contract
+(`SupportPlanIR::duplicate_region_identity` (`crates/slicer-ir/src/slice_ir.rs`),
+checked by `Blackboard::commit_support_plan` (`crates/slicer-runtime/src/blackboard.rs`))
+admits exactly one entry per `(global_layer_index, object_id, region_id)`, so
+an entry is an identity aggregate that legitimately packs many bodies;
+measuring that aggregate as one body made the per-body bound unsatisfiable on
+wide layers. The size-contract fixtures (`spans_cell` in
+`crates/slicer-wasm-host/tests/contract/support_plan_validation.rs`, the
+`OVERSIZE` crossings in
+`modules/core-modules/tree-support-planner/tests/tree_family_tdd.rs` and
+`modules/core-modules/traditional-support-planner/tests/traditional_family_tdd.rs`,
+and the extent fixture in
+`crates/slicer-runtime/tests/integration/support_family_routing.rs`)
+recalibrate their cap-relative literals with the constant; their assertions
+are unchanged.

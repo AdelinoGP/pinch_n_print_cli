@@ -1464,12 +1464,15 @@ fn next_intermediate_plane_index(
 ///
 /// One consequence is deliberate. Host `validate_entry`
 /// (`crates/slicer-wasm-host/src/support_aggregation.rs`) runs per entry BEFORE
-/// its union, so it sees the merged entry: the `in_routing_cell` bound (bbox
-/// span <= `MAX_BODY_EXTENT_UNITS`) and the exact-Z occupancy check apply to
-/// the union of a region's columns rather than to each column. Despite its
-/// name, `in_routing_cell` is a pure maximum-body-extent bound - it assigns no
-/// entry to a cell and partitions nothing - so this widens what each check is
-/// measuring, not which entries are compared against each other.
+/// its union, so it sees the merged entry. Since the ADR-0059 Ruling 3
+/// amendment (DEV-174 repair) `in_routing_cell` (bbox span <=
+/// `MAX_BODY_EXTENT_UNITS` per body cross-section) measures each role region
+/// on its own, so merging columns cannot trip it; the exact-Z occupancy check
+/// still applies to the union of a region's columns rather than to each
+/// column. Despite its name, `in_routing_cell` is a pure maximum-body-extent
+/// bound - it assigns no entry to a cell and partitions nothing - so this
+/// widens what the remaining check measures, not which entries are compared
+/// against each other.
 pub fn merge_region_identity_entries(
     entries: &mut Vec<SupportPlanEntry>,
 ) -> Result<(), ModuleError> {

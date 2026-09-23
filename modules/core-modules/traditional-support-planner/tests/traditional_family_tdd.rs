@@ -2041,13 +2041,13 @@ fn invalid_body_rejected() {
     );
 
     // Genuinely oversized: one unit wider AND taller than MAX_BODY_EXTENT_UNITS
-    // (1 << 20), so it fits in no cell-sized territory wherever it is placed.
-    // (Before packet 224 this fixture was a 1_000-unit body parked across the
+    // (1 << 22), so it cannot fit the build plate wherever it is placed. (Before
+    // packet 224 this fixture was a 1_000-unit body parked across the
     // x = 1 << 20 grid line, which pinned the absolute-grid defect rather than
     // the size contract; the extent-based `in_routing_cell` now retains such a
     // body, as it should.) It is also kept clear of the validation mesh's
     // 0..100_000-unit footprint so occupancy cannot be the cause of the drop.
-    const OVERSIZE: i64 = (1 << 20) + 1;
+    const OVERSIZE: i64 = (1 << 22) + 1;
     let crossing = ExPolygon {
         contour: Polygon {
             points: vec![

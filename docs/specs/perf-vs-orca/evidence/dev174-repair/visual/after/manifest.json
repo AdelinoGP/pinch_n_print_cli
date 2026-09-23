@@ -1,0 +1,75 @@
+{
+  "schema_version": "1.0.0",
+  "source": {
+    "kind": "gcode",
+    "model": null,
+    "path": "D:/slicerProject/pinch_n_print_cli_2/target/after-instr.gcode"
+  },
+  "resolution_scale": 2,
+  "viewport": {
+    "width": 2048,
+    "height": 2048
+  },
+  "frame": "model",
+  "legend_version": "1.0.0",
+  "ir_schema_version": null,
+  "gcode_parser_version": "pnp-gcode-visual-debug/1",
+  "images": [
+    {
+      "source": "gcode",
+      "tap": "final_gcode",
+      "layer_index": 150,
+      "layer_z": 30.2,
+      "visualization": "filled_areas",
+      "png_path": "images/final_gcode_filled_areas_l150.png",
+      "viewport": {
+        "width": 2048,
+        "height": 2048
+      },
+      "legend_version": "1.0.0",
+      "ir_schema_version": null,
+      "gcode_parser_version": "pnp-gcode-visual-debug/1",
+      "warnings": [
+        "line 16: unsupported G-code construct outside the documented G0/G1 X/Y/Z/E/F subset: M73 P0 R721",
+        "unsupported G-code construct outside the documented G0/G1 X/Y/Z/E/F subset: M73 (first at line 16; 856 occurrences total, 855 suppressed)"
+      ],
+      "typed_capture": null,
+      "world_bounds_mm": {
+        "min_x": 62.697998,
+        "min_y": 74.371,
+        "max_x": 184.989,
+        "max_y": 165.325
+      }
+    },
+    {
+      "source": "gcode",
+      "tap": "final_gcode",
+      "layer_index": 230,
+      "layer_z": 46.2,
+      "visualization": "filled_areas",
+      "png_path": "images/final_gcode_filled_areas_l230.png",
+      "viewport": {
+        "width": 2048,
+        "height": 2048
+      },
+      "legend_version": "1.0.0",
+      "ir_schema_version": null,
+      "gcode_parser_version": "pnp-gcode-visual-debug/1",
+      "warnings": [
+        "line 16: unsupported G-code construct outside the documented G0/G1 X/Y/Z/E/F subset: M73 P0 R721",
+        "unsupported G-code construct outside the documented G0/G1 X/Y/Z/E/F subset: M73 (first at line 16; 856 occurrences total, 855 suppressed)"
+      ],
+      "typed_capture": null,
+      "world_bounds_mm": {
+        "min_x": 62.697998,
+        "min_y": 74.371,
+        "max_x": 184.989,
+        "max_y": 165.325
+      }
+    }
+  ],
+  "warnings": [],
+  "executed_stage_ids": [],
+  "layer_expansions": [],
+  "executed_layer_indices": []
+}

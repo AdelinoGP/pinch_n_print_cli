@@ -2364,16 +2364,17 @@ fn invalid_body_rejected() {
         "colliding demand must emit no body/interface polygons"
     );
 
-    // The host gate owns max-body-extent validation. This complete body crosses
-    // the 1 << 20-unit cell boundary and must not be clipped or filled.
-    // Genuinely oversized: one unit wider AND taller than MAX_BODY_EXTENT_UNITS
-    // (1 << 20), so it fits in no cell-sized territory wherever it is placed.
-    // (Before packet 224 this fixture was a 1_000-unit body parked across the
-    // x = 1 << 20 grid line, which pinned the absolute-grid defect rather than
-    // the size contract; the extent-based `in_routing_cell` now retains such a
-    // body, as it should.) It is also kept clear of the validation mesh's
-    // 0..100_000-unit footprint so occupancy cannot be the cause of the drop.
-    const OVERSIZE: i64 = (1 << 20) + 1;
+    // The host gate owns max-body-extent validation. This complete body exceeds
+    // the MAX_BODY_EXTENT_UNITS build-plate bound and must not be clipped or
+    // filled. Genuinely oversized: one unit wider AND taller than
+    // MAX_BODY_EXTENT_UNITS (1 << 22), so it cannot fit the plate wherever it
+    // is placed. (Before packet 224 this fixture was a 1_000-unit body parked
+    // across the x = 1 << 20 grid line, which pinned the absolute-grid defect
+    // rather than the size contract; the extent-based `in_routing_cell` now
+    // retains such a body, as it should.) It is also kept clear of the
+    // validation mesh's 0..100_000-unit footprint so occupancy cannot be the
+    // cause of the drop.
+    const OVERSIZE: i64 = (1 << 22) + 1;
     let crossing = ExPolygon {
         contour: Polygon {
             points: vec![
