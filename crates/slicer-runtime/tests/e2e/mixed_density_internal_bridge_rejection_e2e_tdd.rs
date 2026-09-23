@@ -20,7 +20,7 @@
 
 use slicer_core::algos::region_mapping::stamp_modifier_sub_region_configs;
 use slicer_ir::{
-    ConfigValue, ExPolygon, ModifierScope, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig,
+    ConfigValue, ExPolygon, ModifierKind, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig,
     SliceIR, SlicedRegion, CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
 use slicer_runtime::{commit_shell_classification_builtin, Blackboard};
@@ -110,19 +110,18 @@ fn mixed_density_internal_bridge_rejection_e2e_tdd() {
     base_config
         .extensions
         .insert("bridge_line_width".into(), ConfigValue::Float(0.4));
-    // exhaustive: fixture explicitly pins every ModifierVolume field
-    let modifier_volume = slicer_ir::ModifierVolume {
-        id: "mod-dense".into(),
-        mesh: slicer_ir::IndexedTriangleSet::default(),
-        config_delta: slicer_ir::ConfigDelta {
+    let modifier_volume = slicer_ir::ModifierVolume::new(
+        "mod-dense".into(),
+        slicer_ir::IndexedTriangleSet::default(),
+        slicer_ir::ConfigDelta {
             fields: HashMap::from([(
                 "infill_density".into(),
                 ConfigValue::Float(f64::from(SPARSE_DENSITY)),
             )]),
         },
-        priority: 0,
-        applies_to: ModifierScope::AllFeatures,
-    };
+        0,
+        ModifierKind::ParameterModifier,
+    );
     let per_region =
         stamp_modifier_sub_region_configs(base_config.clone(), 0, sub_id, &[modifier_volume]);
     let mut base_cfg = per_region

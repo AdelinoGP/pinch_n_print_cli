@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigDelta, ConfigValue, ExPolygon, GlobalLayer,
-    IndexedTriangleSet, LayerPlanIR, MeshIR, ModifierScope, ModifierVolume, ObjectMesh,
+    IndexedTriangleSet, LayerPlanIR, MeshIR, ModifierKind, ModifierVolume, ObjectMesh,
     PaintSemantic, Point2, Point3, Polygon, RegionKey, ResolvedConfig, SemVer, SliceIR,
     SlicedRegion, Transform3d,
 };
@@ -68,20 +68,18 @@ fn modifier_box_mesh(x0: f32, x1: f32, y0: f32, y1: f32, z0: f32, z1: f32) -> In
 /// Parameter modifier carrying `support_type=tree(auto)` on the right half of
 /// the object (x 10..20) on every layer.
 fn tree_support_modifier() -> ModifierVolume {
-    // exhaustive: ModifierVolume has no Default impl; every field is a fixture input
-    ModifierVolume {
-        id: "mod-tree".to_string(),
-        mesh: modifier_box_mesh(10.0, 20.0, 0.0, 10.0, 0.0, 1.0),
-        config_delta: ConfigDelta {
+    ModifierVolume::new(
+        "mod-tree".to_string(),
+        modifier_box_mesh(10.0, 20.0, 0.0, 10.0, 0.0, 1.0),
+        ConfigDelta {
             fields: HashMap::from([(
                 "support_type".to_string(),
                 ConfigValue::String("tree(auto)".to_string()),
             )]),
         },
-        priority: 0,
-        applies_to: ModifierScope::AllFeatures,
-        // exhaustive: ModifierVolume fixture preserves every field explicitly
-    }
+        0,
+        ModifierKind::ParameterModifier,
+    )
 }
 
 fn workspace_root() -> PathBuf {
@@ -294,19 +292,18 @@ fn modifier_support_type_routes_planned_support_inside_footprint() {
         .expect("load regression wedge");
     let object = mesh.objects.first_mut().expect("wedge object");
     let object_id = object.id.clone();
-    // exhaustive: ModifierVolume has no Default impl; this fixture pins every field.
-    object.modifier_volumes.push(ModifierVolume {
-        id: "cantilever-tree-support".to_string(),
-        mesh: modifier_box_mesh(0.0, 50.4, 49.0, 60.0, 28.5, 31.5),
-        config_delta: ConfigDelta {
+    object.modifier_volumes.push(ModifierVolume::new(
+        "cantilever-tree-support".to_string(),
+        modifier_box_mesh(0.0, 50.4, 49.0, 60.0, 28.5, 31.5),
+        ConfigDelta {
             fields: HashMap::from([(
                 "support_type".to_string(),
                 ConfigValue::String("tree(auto)".to_string()),
             )]),
         },
-        priority: 0,
-        applies_to: ModifierScope::AllFeatures,
-    });
+        0,
+        ModifierKind::ParameterModifier,
+    ));
 
     let config = HashMap::from([("enable_support".to_string(), ConfigValue::Bool(true))]);
     let ctx = slicer_runtime::run::prepare_prepass_context(

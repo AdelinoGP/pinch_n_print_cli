@@ -87,7 +87,15 @@ Bounds and overflow policy:
 
 **Produced by:** Host mesh loader  
 **Consumed by:** PrePass stages (read-only via host-services API; never passed directly to modules)
-**Current schema_version: 1.1.0** (Bumped to 1.1.0 by packet 56b — populated `modifier_volumes` from `Metadata/model_settings.config`.)
+**Current schema_version: 1.2.0** (authoritative source:
+`CURRENT_MESH_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`; bumped
+to 1.1.0 by packet 56b — populated `modifier_volumes` from
+`Metadata/model_settings.config`). The 1.1.0 → 1.2.0 bump is the
+activation-derived minor bump for the typed `ModifierVolume.kind` field
+(`ModifierKind`): it preserves the recorded major, increments the recorded
+minor, and resets the patch to zero. Legacy pre-1.2.0 payloads deserialize
+one-way — their subtype-string classification maps onto the typed kind — while
+serialization always emits the typed field.
 
 The `MeshIR`, `ObjectMesh`, `FacetPaintData`, and `PaintLayer` definitions are
 in `crates/slicer-ir/src/slice_ir.rs`. `MeshIR` carries the object list and
@@ -226,10 +234,12 @@ obsolete — code keying `HashMap<PaintValue, _>` directly is the
 canonical pattern post-Packet 91. The same `to_bits()` portability
 caveat as `ResolvedConfig` applies.
 
-`ModifierVolume`, `ModifierScope`, and `ConfigDelta` are defined in
+`ModifierVolume`, `ModifierKind`, and `ConfigDelta` are defined in
 `crates/slicer-ir/src/slice_ir.rs`. A modifier volume carries its ID, mesh,
-sparse config delta, priority, and scope. `ConfigDelta` contains only explicit
-fields and never includes baked-in defaults.
+sparse config delta, priority, and typed `ModifierKind` classification —
+`ParameterModifier`, `NegativePart`, `SupportEnforcer`, or `SupportBlocker`.
+`ConfigDelta` contains only explicit fields and never includes baked-in
+defaults; its keys are registry-typed (see § "Modifier Resolution Contract").
 
 ### Modifier Resolution Contract
 
@@ -257,6 +267,13 @@ during planning:
    with first-loaded tie ownership). There is no separate `load_order` concept.
 4. Apply paint-semantic overlays (`paint_config:`) on top.
 5. Apply the resolved tool overlay last.
+
+Modifier deltas reaching this path are registry-typed (ADR-0070): every key a
+modifier states is admitted through the config schema registry — type-checked,
+bounds-checked, and subject to ADR-0069 scope admission
+(`ResolutionError::ScopeDenied` on a denied key/scope) — rather than copied
+verbatim into the region config. The modifier's routing classification is the
+typed `ModifierVolume.kind` field, not a `config_delta` string.
 
 For the same key, the last applied value wins. If a later overlay omits a key,
 the previously resolved value remains unchanged (no implicit reset).
@@ -369,27 +386,28 @@ distinct sidecar sources in a single 3MF file:
    the complete object-level allowlist above. This object-level list is
    separate from the part-level allowlist and does not widen it.
 
-Subtype-key exclusion (Packet 68): the literal key `subtype` is
-routing metadata and is excluded from stamping into
-`RegionPlan.config.extensions`; only non-`subtype` keys flow through.
-Additionally, modifier volumes whose subtype value is
-`"support_enforcer"` or `"support_blocker"` are entirely SKIPPED
-during config stamping for OrcaSlicer parity — canonical
-`PrintApply.cpp` skips these volume subtypes when applying per-volume
-config overrides. Their semantics are exercised via
+Kind-based exclusion (Packet 68, retyped by the config-scope-resolution
+typed-modifier-kind packet): modifier volumes whose `kind` is
+`ModifierKind::SupportEnforcer` or `ModifierKind::SupportBlocker` are
+entirely SKIPPED during config stamping for OrcaSlicer parity — canonical
+`PrintApply.cpp` skips these volumes when applying per-volume config
+overrides. Their semantics are exercised via
 `PaintSemantic::SupportEnforcer` / `PaintSemantic::SupportBlocker`
 instead, never via `PaintValue::ToolIndex` — see also the
 "Support semantics use Flag, never ToolIndex" constraint in IR 4.
 
 `ConfigDelta` semantics:
 
-- Sparse — only explicitly set fields. No baked-in defaults.
-- `priority` (deterministic ordering hint): `ModifierPart = 0`,
-  `NegativePart = 100`, `SupportEnforcer = 200`, `SupportBlocker = 300`.
-  Consumers may ignore and apply their own ordering.
-- `applies_to`: for 3MF-sourced volumes, `ModifierScope::AllFeatures`
-  scoped to the parent `ObjectId` (the volume applies only to features
-  of its parent object, not the whole plate).
+- Sparse — only explicitly set fields. No baked-in defaults. Modifier deltas
+  are registry-typed (ADR-0070): every key is admitted through the config
+  schema registry like any other scope.
+- `priority` (deterministic ordering hint, by kind):
+  `ParameterModifier = 0`, `NegativePart = 100`, `SupportEnforcer = 200`,
+  `SupportBlocker = 300`. Consumers may ignore and apply their own ordering.
+- `kind`: every `ModifierVolume` carries its classification as the typed
+  `ModifierVolume.kind` field across the IR seam (ADR-0070). For 3MF-sourced
+  volumes the kind is classified at load time from the part subtype, and the
+  volume applies only to features of its parent object, not the whole plate.
 
 ### Canonical region-id parser (host-only — Packet 75)
 

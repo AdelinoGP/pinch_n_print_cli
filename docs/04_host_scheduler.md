@@ -882,17 +882,20 @@ the denials union across them — a scope denied by any declarer is denied.
 
 During region mapping, modifier volume `config_delta.fields` from every
 `modifier_volume` attached to a region's parent `ObjectMesh` are consumed by
-`resolve_scope_stack` in priority-ascending, last-writer-wins order and stamped
-into `RegionPlan.config.extensions`, with `support_enforcer` and
-`support_blocker` subtypes filtered out for OrcaSlicer parity (canonical
-`PrintApply.cpp`). Implemented modifier-volume splits (packets 131/132) bind
-configuration to geometric sub-regions: modifier meshes are sliced per layer
-during prepass, the cross-sections are intersected with the owning region's
-partitioned fill polygons at partition time, and each resulting wall-less
-sub-region carries its own `region_id` + config binding (per-region delivery
-through the region-view config accessor). The support enforcer/blocker subtypes
-remain filtered and never produce sub-regions; paint variant-splits remain the
-other per-region producer.
+`resolve_scope_stack` in priority-ascending, last-writer-wins order, admitted
+through the config schema registry (type-checked, bounds-checked, and subject
+to the ADR-0069 scope admission above), and stamped into
+`RegionPlan.config.extensions`. Modifier volumes whose typed kind is
+`ModifierKind::SupportEnforcer` or `ModifierKind::SupportBlocker` are filtered
+out for OrcaSlicer parity (canonical `PrintApply.cpp`). Implemented
+modifier-volume splits (packets 131/132) bind configuration to geometric
+sub-regions: modifier meshes are sliced per layer during prepass, the
+cross-sections are intersected with the owning region's partitioned fill
+polygons at partition time, and each resulting wall-less sub-region carries its
+own `region_id` + config binding (per-region delivery through the region-view
+config accessor). The `SupportEnforcer` / `SupportBlocker` kinds remain
+filtered and never produce sub-regions; paint variant-splits remain the other
+per-region producer.
 
 ### RegionMapping (Builtin) — `aggregated_region_split` Threading (Normative — Packet 93)
 
@@ -1281,7 +1284,7 @@ return types.
 
 ### Modifier-Part and Negative-Volume Routing (packets 56b / 56c)
 
-Modifier parts (3MF `Metadata/model_settings.config`) are routed into `MeshIR.objects[].modifier_volumes` by the host loader (packet 56b). Negative-volume and support-subtype modifiers (`ModifierScope::Support`, negative-volume difference) are applied by the per-layer negative-part subtract host stage described in the next section (packet 56c): the host subtracts negative-volume geometry per layer and routes support-subtype modifiers into the Support claim's per-region override stream.
+Modifier parts (3MF `Metadata/model_settings.config`) are routed into `MeshIR.objects[].modifier_volumes` by the host loader (packet 56b). Each modifier volume carries its routing classification as the typed `ModifierVolume.kind` field (`ModifierKind`) across the IR seam (ADR-0070), not a `config_delta` string. Negative-volume and support-kind modifiers (`ModifierKind::NegativePart`, `ModifierKind::SupportEnforcer` / `ModifierKind::SupportBlocker`) are applied by the per-layer negative-part subtract host stage described in the next section (packet 56c): the host subtracts negative-volume geometry per layer and routes support-kind modifiers into the Support claim's per-region override stream.
 
 #### Negative-Part Per-Layer Subtract (Normative — Packet 56c)
 
@@ -1301,9 +1304,8 @@ Per-layer call order is locked:
 `arena.take_slice()` → `apply_negative_part_subtract(...)` →
 `run_paint_annotation` loop → downstream per-layer stages.
 
-For each `ModifierVolume` whose
-`config_delta.fields["subtype"] == "negative_part"`, the stage
-projects the modifier mesh at `slice_ir.z` via
+For each `ModifierVolume` whose kind is `ModifierKind::NegativePart`, the
+stage projects the modifier mesh at `slice_ir.z` via
 `slicer_core::slice_mesh_ex(&mv.mesh, &[slice_ir.z])` and applies
 `slicer_core::polygon_ops::difference` to each
 `slice_ir.regions[ri].polygons`. Modifiers whose Z extent does not

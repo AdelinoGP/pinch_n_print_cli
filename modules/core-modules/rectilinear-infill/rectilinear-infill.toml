@@ -197,7 +197,7 @@ display = "Enable Extra Bridge Layer"
 group   = "Infill"
 
 [config.schema.sparse_infill_line_width]
-type    = "float"
+type    = "float_or_percent"
 base_key = "nozzle_diameter"
 default = 0.0
 min     = 0.0
@@ -206,7 +206,7 @@ display = "Sparse Infill Line Width"
 group   = "Infill"
 
 [config.schema.internal_solid_infill_line_width]
-type    = "float"
+type    = "float_or_percent"
 base_key = "nozzle_diameter"
 default = 0.0
 min     = 0.0
@@ -215,7 +215,7 @@ display = "Internal Solid Infill Line Width"
 group   = "Infill"
 
 [config.schema.top_surface_line_width]
-type    = "float"
+type    = "float_or_percent"
 base_key = "nozzle_diameter"
 default = 0.0
 min     = 0.0

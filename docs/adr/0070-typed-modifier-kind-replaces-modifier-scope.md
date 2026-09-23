@@ -1,25 +1,25 @@
 # ADR-0070 — Modifier kind is typed; `ModifierScope` is removed
 
-Status: **Accepted.** Approved in the config-scope design interview; not yet
-implemented. Supersedes the "extend `ModifierScope` beyond `AllFeatures`" future
-work named in ADR-0030.
+Status: **Implemented** (TASK-569, config-scope-resolution packet 08 —
+documentation closure). Approved in the config-scope design interview.
+Supersedes the "extend `ModifierScope` beyond `AllFeatures`" future work named
+in ADR-0030.
 
 `ModifierVolume` carries its **modifier kind** as a typed field across the IR seam.
-Today the loader parses a typed `PartSubtype` in `crates/slicer-model-io/src/sidecar.rs`,
-stringifies it into `config_delta.fields["subtype"]` in `resolve_object`, and ten
-production sites across `slicer-core` and `slicer-runtime` re-derive the
-classification by string comparison. Typing it means a new kind is a compile error
-at each site rather than a silent skip.
+The loader maps each typed `PartSubtype` to `ModifierKind` once when constructing
+`MeshIR`; it no longer round-trips the kind through `config_delta.fields["subtype"]`.
+Ten production sites across `slicer-core` and `slicer-runtime` match `ModifierKind`
+exhaustively, so adding a kind is a compile error at each route rather than a silent
+skip.
 
 A modifier's settings route through the **config schema registry** like any other
-scope. `stamp_modifier_sub_region_configs` currently copies every delta key straight
-into `ResolvedConfig.extensions` without calling `apply_cli_key`, so a region
-modifier is the one scope whose values are never type-checked or bounds-checked, and
-are invisible to any host code reading the typed field. Routing them through the
-registry also brings them under **scope eligibility** (ADR-0069).
+scope. `stamp_modifier_sub_region_configs` resolves modifier deltas through the
+registry before stamping them into `ResolvedConfig`, so modifier values receive
+type and bounds validation and are available to host code through typed fields.
+Modifier deltas are also checked for **scope eligibility** (ADR-0069).
 
-`ModifierScope` is deleted rather than wired. It is written at five construction
-sites, always as `AllFeatures`, and read by no production code. Its `LayerHeight`
+`ModifierScope` was deleted rather than wired. It was written at five construction
+sites, always as `AllFeatures`, and was read by no production code. Its `LayerHeight`
 variant is superseded by **layer range** becoming a real config scope. Its
 `Infill` / `Perimeters` / `Support` variants restrict which feature classes a
 modifier's settings reach — a genuine capability, but one already expressible by

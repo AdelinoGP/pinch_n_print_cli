@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+use slicer_ir::slice_ir::cli_bool_spelling;
 use slicer_ir::{ConfigResolutionError, ConfigValue, ResolvedConfig};
 
 use crate::{
@@ -306,11 +307,28 @@ fn validate_extension(
         return Ok(());
     };
 
+    // Per-filament envelope (canonical `coFloats`/`coInts`/`coStrings` wire):
+    // a scalar-typed key may arrive as a `List` whose first element carries the
+    // value — `extract_float_or_first`'s documented shape leniency. An empty
+    // list stays a hard error (it falls through to the type arms below), and
+    // list-typed declarations keep their `List` shape.
+    let value = match value {
+        ConfigValue::List(items) if !entry.field_type.ends_with("-list") => {
+            items.first().map_or(value, |first| first)
+        }
+        other => other,
+    };
+
     match entry.field_type.as_str() {
         "bool" => match value {
             ConfigValue::Bool(_) => Ok(()),
             // `extract_bool` accepts Int 0/1 as boolean; mirror that here.
             ConfigValue::Int(0 | 1) => Ok(()),
+            // Canonical CLI bool spellings (canonical `normalize_cli_bool_value`
+            // in `DynamicConfig::read_cli`): strict deserialization rejects
+            // these at ingestion, which retains them untyped with a warning;
+            // consumers apply this documented leniency.
+            ConfigValue::String(text) if cli_bool_spelling(text).is_some() => Ok(()),
             other => Err(type_mismatch(key, "Bool", other)),
         },
         "int" => match value {
@@ -327,6 +345,31 @@ fn validate_extension(
         "float" => match value {
             ConfigValue::Float(number) => check_extension_scalar(key, *number, entry, None),
             ConfigValue::Int(number) => check_extension_scalar(key, *number as f64, entry, None),
+            // Canonical wire spellings: the nullable "nil" sentinel (canonical
+            // `ConfigOptionFloatsNullable`) marks an absent value and needs no
+            // bounds check; a percent-form magnitude (canonical
+            // `ConfigOptionFloat::deserialize` parses the numeric prefix)
+            // checks the `min` side only, mirroring `Percent` values below.
+            ConfigValue::String(text) => {
+                let trimmed = text.trim();
+                if trimmed.eq_ignore_ascii_case("nil") {
+                    Ok(())
+                } else if let Some(percent) = trimmed.strip_suffix('%') {
+                    match percent.trim().parse::<f64>() {
+                        Ok(number) if number.is_finite() => {
+                            check_extension_percent(key, number, entry)
+                        }
+                        _ => Err(type_mismatch(key, "Float", value)),
+                    }
+                } else {
+                    match trimmed.parse::<f64>() {
+                        Ok(number) if number.is_finite() => {
+                            check_extension_scalar(key, number, entry, None)
+                        }
+                        _ => Err(type_mismatch(key, "Float", value)),
+                    }
+                }
+            }
             other => Err(type_mismatch(key, "Float", other)),
         },
         "string" | "enum" => match value {

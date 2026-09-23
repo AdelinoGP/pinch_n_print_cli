@@ -287,10 +287,32 @@ fn resolved_target_config<'a>(
 /// * `map[sub_region_id]`   → the runtime-pre-resolved modifier target (0.40)
 fn stamp_pre_resolved_sub_region_configs(
     base_config: ResolvedConfig,
-    sub_config: ResolvedConfig,
+    mut sub_config: ResolvedConfig,
+    modifier_volumes: &[ModifierVolume],
     base_region_id: u64,
     sub_region_id: u64,
 ) -> BTreeMap<u64, ResolvedConfig> {
+    let mut order: Vec<usize> = (0..modifier_volumes.len()).collect();
+    order.sort_by_key(|&index| (modifier_volumes[index].priority, std::cmp::Reverse(index)));
+    for index in order {
+        let modifier = &modifier_volumes[index];
+        match modifier.kind() {
+            slicer_ir::ModifierKind::ParameterModifier => {}
+            slicer_ir::ModifierKind::NegativePart => {}
+            slicer_ir::ModifierKind::SupportEnforcer => continue,
+            slicer_ir::ModifierKind::SupportBlocker => continue,
+        }
+        for (key, value) in &modifier.config_delta.fields {
+            if key == "subtype"
+                || matches!(value, ConfigValue::String(value) if value.is_empty())
+                || matches!(value, ConfigValue::List(value) if value.is_empty())
+            {
+                continue;
+            }
+            sub_config.extensions.insert(key.clone(), value.clone());
+        }
+    }
+
     let mut map = BTreeMap::new();
     map.insert(base_region_id, base_config);
     map.insert(sub_region_id, sub_config);
@@ -311,12 +333,11 @@ pub fn stamp_modifier_sub_region_configs(
     order.sort_by_key(|&index| (modifier_volumes[index].priority, std::cmp::Reverse(index)));
     for index in order {
         let modifier = &modifier_volumes[index];
-        if matches!(
-            modifier.config_delta.fields.get("subtype"),
-            Some(ConfigValue::String(subtype))
-                if subtype == "support_enforcer" || subtype == "support_blocker"
-        ) {
-            continue;
+        match modifier.kind() {
+            slicer_ir::ModifierKind::ParameterModifier => {}
+            slicer_ir::ModifierKind::NegativePart => {}
+            slicer_ir::ModifierKind::SupportEnforcer => continue,
+            slicer_ir::ModifierKind::SupportBlocker => continue,
         }
         for (key, value) in &modifier.config_delta.fields {
             if key == "subtype"
@@ -328,7 +349,13 @@ pub fn stamp_modifier_sub_region_configs(
             sub_config.extensions.insert(key.clone(), value.clone());
         }
     }
-    stamp_pre_resolved_sub_region_configs(base_config, sub_config, base_region_id, sub_region_id)
+    stamp_pre_resolved_sub_region_configs(
+        base_config,
+        sub_config,
+        &[],
+        base_region_id,
+        sub_region_id,
+    )
 }
 
 /// Slice and group parameter-modifier footprints for one object/layer pair.
@@ -343,13 +370,13 @@ fn modifier_footprint_groups(
 ) -> Vec<(Vec<slicer_ir::ExPolygon>, Vec<ModifierVolume>)> {
     let mut groups: Vec<(Vec<slicer_ir::ExPolygon>, Vec<ModifierVolume>)> = Vec::new();
     for modifier in &object.modifier_volumes {
-        if matches!(
-            modifier.config_delta.fields.get("subtype"),
-            Some(ConfigValue::String(subtype))
-                if subtype == "support_enforcer" || subtype == "support_blocker"
-        ) || modifier.mesh.vertices.is_empty()
-            || modifier.mesh.indices.is_empty()
-        {
+        match modifier.kind() {
+            slicer_ir::ModifierKind::ParameterModifier => {}
+            slicer_ir::ModifierKind::NegativePart => {}
+            slicer_ir::ModifierKind::SupportEnforcer => continue,
+            slicer_ir::ModifierKind::SupportBlocker => continue,
+        }
+        if modifier.mesh.vertices.is_empty() || modifier.mesh.indices.is_empty() {
             continue;
         }
         let footprint = crate::slice_mesh_ex(&modifier.mesh, &[layer_z])
@@ -693,11 +720,11 @@ pub fn execute_region_mapping_inner(
                     for mv in &obj.modifier_volumes {
                         // Same skip rules as `stamp_modifier_sub_region_configs`
                         // and `stage_modifier_footprints`.
-                        if let Some(ConfigValue::String(s)) = mv.config_delta.fields.get("subtype")
-                        {
-                            if s == "support_enforcer" || s == "support_blocker" {
-                                continue;
-                            }
+                        match mv.kind() {
+                            slicer_ir::ModifierKind::ParameterModifier => {}
+                            slicer_ir::ModifierKind::NegativePart => {}
+                            slicer_ir::ModifierKind::SupportEnforcer => continue,
+                            slicer_ir::ModifierKind::SupportBlocker => continue,
                         }
                         if mv.mesh.vertices.is_empty() || mv.mesh.indices.is_empty() {
                             continue;
@@ -752,6 +779,7 @@ pub fn execute_region_mapping_inner(
                         let sub_config = stamp_pre_resolved_sub_region_configs(
                             base_config.clone(),
                             resolved_sub_config,
+                            &modifiers,
                             region.region_id,
                             sub_id,
                         )
@@ -847,6 +875,9 @@ pub fn execute_region_mapping_inner(
                     if let Some(sem_key) = matched_key {
                         if let Some(sem_cfg) = paint_semantic_configs.get(sem_key) {
                             paint_overrides.insert(sem_key.clone(), sem_cfg.clone());
+                            if host_config.is_none() {
+                                effective = sem_cfg.clone();
+                            }
                         }
                     }
                     // A material chain entry carries the region's tool selector.
@@ -902,6 +933,7 @@ pub fn execute_region_mapping_inner(
                         let child_config = stamp_pre_resolved_sub_region_configs(
                             base_config.clone(),
                             resolved_child_config,
+                            modifiers,
                             parent_region_id,
                             sub_id,
                         )

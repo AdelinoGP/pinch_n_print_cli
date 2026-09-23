@@ -1255,11 +1255,14 @@ fn stage_modifier_footprints(slice: &mut SliceIR, blackboard: &Blackboard, layer
         for modifier_index in modifier_indices {
             let mv = &object.modifier_volumes[modifier_index];
             // Skip support_* modifiers: those go through the existing support path.
-            if let Some(ConfigValue::String(s)) = mv.config_delta.fields.get("subtype") {
-                match s.as_str() {
-                    "support_enforcer" | "support_blocker" => continue,
-                    _ => {}
-                }
+            let is_support_modifier = match mv.kind() {
+                slicer_ir::ModifierKind::ParameterModifier => false,
+                slicer_ir::ModifierKind::NegativePart => false,
+                slicer_ir::ModifierKind::SupportEnforcer => true,
+                slicer_ir::ModifierKind::SupportBlocker => true,
+            };
+            if is_support_modifier {
+                continue;
             }
             if mv.mesh.vertices.is_empty() || mv.mesh.indices.is_empty() {
                 continue;

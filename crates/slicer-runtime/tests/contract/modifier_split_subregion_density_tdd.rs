@@ -266,15 +266,15 @@ fn modifier_split_subregion_density() {
         .insert(INFILL_DENSITY.into(), ConfigValue::Float(0.15));
 
     // exhaustive: ModifierVolume fixture specifies every field for modifier split coverage
-    let modifier_volume = slicer_ir::ModifierVolume {
-        id: "mod-0".into(),
-        mesh: slicer_ir::IndexedTriangleSet::default(),
-        config_delta: slicer_ir::ConfigDelta {
+    let modifier_volume = slicer_ir::ModifierVolume::new(
+        "mod-0".into(),
+        slicer_ir::IndexedTriangleSet::default(),
+        slicer_ir::ConfigDelta {
             fields: HashMap::from([(INFILL_DENSITY.into(), ConfigValue::Float(0.40))]),
         },
-        priority: 0,
-        applies_to: slicer_ir::ModifierScope::AllFeatures,
-    };
+        0,
+        slicer_ir::ModifierKind::ParameterModifier,
+    );
 
     let per_region = slicer_core::algos::region_mapping::stamp_modifier_sub_region_configs(
         base_config.clone(),

@@ -621,3 +621,101 @@ fn sidecar_parser_handles_missing_plate_section() {
         result.plate_metadata
     );
 }
+
+fn make_cross_mesh_modifier_3mf() -> Vec<u8> {
+    let model = r#"<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <resources>
+    <object id="1" type="model">
+      <components>
+        <component objectid="2"/>
+        <component objectid="3"/>
+        <component objectid="4"/>
+        <component objectid="5"/>
+        <component objectid="6"/>
+      </components>
+    </object>
+    <object id="2" type="model"><mesh><vertices>
+      <vertex x="0" y="0" z="0"/><vertex x="1" y="0" z="0"/><vertex x="0" y="1" z="0"/>
+    </vertices><triangles><triangle v1="0" v2="1" v3="2"/></triangles></mesh></object>
+    <object id="3" type="model"><mesh><vertices>
+      <vertex x="2" y="0" z="0"/><vertex x="3" y="0" z="0"/><vertex x="2" y="1" z="0"/>
+    </vertices><triangles><triangle v1="0" v2="1" v3="2"/></triangles></mesh></object>
+    <object id="4" type="model"><mesh><vertices>
+      <vertex x="4" y="0" z="0"/><vertex x="5" y="0" z="0"/><vertex x="4" y="1" z="0"/>
+    </vertices><triangles><triangle v1="0" v2="1" v3="2"/></triangles></mesh></object>
+    <object id="5" type="model"><mesh><vertices>
+      <vertex x="6" y="0" z="0"/><vertex x="7" y="0" z="0"/><vertex x="6" y="1" z="0"/>
+    </vertices><triangles><triangle v1="0" v2="1" v3="2"/></triangles></mesh></object>
+    <object id="6" type="model"><mesh><vertices>
+      <vertex x="8" y="0" z="0"/><vertex x="9" y="0" z="0"/><vertex x="8" y="1" z="0"/>
+    </vertices><triangles><triangle v1="0" v2="1" v3="2"/></triangles></mesh></object>
+  </resources>
+  <build><item objectid="1"/></build>
+</model>"#;
+    let sidecar = r#"<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <object id="1">
+    <part id="2" subtype="modifier_part"><metadata key="name" value="parameter"/></part>
+    <part id="3" subtype="negative_part"><metadata key="name" value="negative"/></part>
+    <part id="4" subtype="support_enforcer"><metadata key="name" value="enforcer"/></part>
+    <part id="5" subtype="support_blocker"><metadata key="name" value="blocker"/></part>
+    <part id="6" subtype="normal_part"><metadata key="name" value="solid"/></part>
+  </object>
+</config>"#;
+
+    let buf = Cursor::new(Vec::new());
+    let mut writer = zip::ZipWriter::new(buf);
+    let opts = SimpleFileOptions::default();
+    writer.start_file("3D/3dmodel.model", opts).unwrap();
+    writer.write_all(model.as_bytes()).unwrap();
+    writer
+        .start_file("Metadata/model_settings.config", opts)
+        .unwrap();
+    writer.write_all(sidecar.as_bytes()).unwrap();
+    writer.finish().unwrap().into_inner()
+}
+
+#[test]
+fn modifier_parts_cross_mesh_ir_with_typed_kinds() {
+    use slicer_ir::ModifierKind;
+    use slicer_model_io::loader::load_model;
+
+    let suffix = NEXT_TEMP_MODEL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!(
+        "slicer-model-io-typed-modifier-kind-{}-{suffix}.3mf",
+        std::process::id(),
+    ));
+    std::fs::write(&path, make_cross_mesh_modifier_3mf()).unwrap();
+    let mesh_ir = load_model(&path).expect("cross-mesh typed modifier model should load");
+    let _ = std::fs::remove_file(&path);
+
+    let object = mesh_ir.objects.first().expect("build object should exist");
+    assert_eq!(
+        object.modifier_volumes.len(),
+        4,
+        "NormalPart must merge into solid geometry without creating a ModifierVolume"
+    );
+    assert!(
+        !object.mesh.indices.is_empty(),
+        "NormalPart must remain part of the merged solid mesh"
+    );
+
+    for (priority, expected_kind) in [
+        (0, ModifierKind::ParameterModifier),
+        (100, ModifierKind::NegativePart),
+        (200, ModifierKind::SupportEnforcer),
+        (300, ModifierKind::SupportBlocker),
+    ] {
+        let modifier = object
+            .modifier_volumes
+            .iter()
+            .find(|modifier| modifier.priority == priority)
+            .unwrap_or_else(|| panic!("missing modifier with priority {priority}"));
+        assert_eq!(modifier.kind(), expected_kind, "priority {priority} kind");
+        assert!(
+            !modifier.config_delta.fields.contains_key("subtype"),
+            "legacy subtype routing metadata must not be emitted for priority {priority}"
+        );
+    }
+}

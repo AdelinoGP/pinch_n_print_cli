@@ -30,5 +30,6 @@ mod slicing_precision_integration_tdd;
 mod slicing_promotion_e2e_dispatch_regression_tdd;
 mod threemf_fixture_e2e_tdd;
 mod threemf_subtypes_synthetic_e2e_tdd;
+mod typed_modifier_kind_tdd;
 mod wave_overhang_bridge_fill_e2e_tdd;
 mod wedge_linked_infill_report_tdd;

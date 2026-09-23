@@ -71,7 +71,7 @@ display = "Bridge Line Width"
 group   = "Infill"
 
 [config.schema.sparse_infill_line_width]
-type    = "float"
+type    = "float_or_percent"
 base_key = "nozzle_diameter"
 default = 0.0
 min     = 0.0

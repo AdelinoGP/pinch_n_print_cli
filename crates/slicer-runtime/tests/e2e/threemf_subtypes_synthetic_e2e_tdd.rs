@@ -1,4 +1,4 @@
-//! TDD suite for Packet 56c: negative_part subtract and support subtype routing.
+//! TDD suite for Packet 56c: negative_part subtract and typed support-kind routing.
 //!
 //! Tests for:
 //! - AC1/AC2: negative_part modifier reduces SliceIR polygon area.
@@ -13,10 +13,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
-    ActiveRegion, BoundingBox3, ConfigDelta, ConfigValue, ExPolygon, GlobalLayer,
-    IndexedTriangleSet, LayerPlanIR, MeshIR, ModifierScope, ModifierVolume, ObjectConfig,
-    ObjectMesh, PaintSemantic, Point2, Point3, Polygon, ResolvedConfig, SemVer, SliceIR,
-    SlicedRegion, SurfaceClassificationIR, Transform3d, CURRENT_SLICE_IR_SCHEMA_VERSION,
+    ActiveRegion, BoundingBox3, ConfigDelta, ExPolygon, GlobalLayer, IndexedTriangleSet,
+    LayerPlanIR, MeshIR, ModifierKind, ModifierVolume, ObjectConfig, ObjectMesh, PaintSemantic,
+    Point2, Point3, Polygon, ResolvedConfig, SemVer, SliceIR, SlicedRegion,
+    SurfaceClassificationIR, Transform3d, CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
 
 // ---------------------------------------------------------------------------
@@ -111,25 +111,10 @@ fn slice_ir_with_polygon(z_mm: f32, polygon: ExPolygon) -> SliceIR {
     }
 }
 
-/// Build a ModifierVolume with a given subtype string and mesh.
+/// Build a ModifierVolume with a typed kind and mesh.
 // exhaustive: ModifierVolume explicit test fixture preserves boundary data
-fn modifier_volume_with_subtype(subtype: &str, mesh: IndexedTriangleSet) -> ModifierVolume {
-    let mut fields = HashMap::new();
-    fields.insert(
-        String::from("subtype"),
-        ConfigValue::String(subtype.to_string()),
-    );
-    // exhaustive: ModifierVolume explicit test fixture preserves boundary data
-    ModifierVolume {
-        id: String::from("mv-1"),
-        mesh,
-        config_delta: ConfigDelta { fields },
-        priority: 0,
-        applies_to: ModifierScope::AllFeatures,
-        // exhaustive: ModifierVolume boundary/test fixture requires explicit field construction
-        // exhaustive: ModifierVolume explicit test fixture preserves boundary data
-    }
-    // exhaustive: ModifierVolume explicit test fixture preserves boundary data
+fn modifier_volume_with_kind(kind: ModifierKind, mesh: IndexedTriangleSet) -> ModifierVolume {
+    ModifierVolume::new(String::from("mv-1"), mesh, ConfigDelta::default(), 0, kind)
 }
 
 fn mesh_ir_with_modifier(object_id: &str, mv: ModifierVolume) -> Arc<MeshIR> {
@@ -236,7 +221,7 @@ fn negative_part_removes_layer_polygon_area() {
     // Out-of-extent layer: z=5.0 (above the negative cube's Z-max of 2.5, still within parent).
     let mut slice_outside = slice_ir_with_polygon(5.0, parent_polygon);
 
-    let make_mv = || modifier_volume_with_subtype("negative_part", box_mesh(2.5, 2.5, 2.5));
+    let make_mv = || modifier_volume_with_kind(ModifierKind::NegativePart, box_mesh(2.5, 2.5, 2.5));
 
     slicer_runtime::negative_part_subtract::apply_negative_part_subtract(
         &mut slice_inside,
@@ -287,7 +272,7 @@ fn negative_part_area_reduction_matches_cube_cross_section() {
     let mut slice = slice_ir_with_polygon(0.0, parent_polygon);
 
     // 5Ã—5Ã—5 mm negative cube centered at origin â†’ 25 mmÂ² cross-section at z=0.
-    let mv = modifier_volume_with_subtype("negative_part", box_mesh(2.5, 2.5, 2.5));
+    let mv = modifier_volume_with_kind(ModifierKind::NegativePart, box_mesh(2.5, 2.5, 2.5));
 
     slicer_runtime::negative_part_subtract::apply_negative_part_subtract(&mut slice, &[mv]);
 
@@ -317,7 +302,7 @@ fn negative_part_above_parent_no_subtract() {
     for v in &mut mesh.vertices {
         v.z += 10.0; // shift to z=5..15mm
     }
-    let mv = modifier_volume_with_subtype("negative_part", mesh);
+    let mv = modifier_volume_with_kind(ModifierKind::NegativePart, mesh);
 
     slicer_runtime::negative_part_subtract::apply_negative_part_subtract(&mut slice, &[mv]);
 
@@ -343,7 +328,7 @@ fn negative_part_subtract_runs_before_paint_segmentation() {
     let mut slice = slice_ir_with_polygon(1.0, parent_polygon);
 
     // Modifier cuts a 4x4mm hole out of the parent at z=1.0mm.
-    let mv = modifier_volume_with_subtype("negative_part", box_mesh(2.0, 2.0, 2.0));
+    let mv = modifier_volume_with_kind(ModifierKind::NegativePart, box_mesh(2.0, 2.0, 2.0));
 
     // Step 1: apply subtract (simulates layer_executor doing it before paint annotation).
     slicer_runtime::negative_part_subtract::apply_negative_part_subtract(&mut slice, &[mv]);
@@ -365,7 +350,7 @@ fn negative_part_subtract_runs_before_paint_segmentation() {
 }
 
 // ---------------------------------------------------------------------------
-// Step 3: support subtype paint region tests
+// Step 3: typed support-kind paint region tests
 // ---------------------------------------------------------------------------
 
 /// AC3 (D14): `support_enforcer` modifier_volume populates
@@ -383,7 +368,7 @@ fn support_enforcer_emits_paint_region() {
     // sufficiently that parent's contour-edge midpoints fall inside the modifier
     // polygon — D14 annotation check uses edge midpoints.
     let mv_mesh = box_mesh(4.0, 4.0, 4.0);
-    let mv = modifier_volume_with_subtype("support_enforcer", mv_mesh);
+    let mv = modifier_volume_with_kind(ModifierKind::SupportEnforcer, mv_mesh);
     let mesh = mesh_ir_with_modifier(object_id, mv);
 
     // Build a SliceIR with multiple layers, each carrying the parent footprint.
@@ -466,7 +451,7 @@ fn support_blocker_emits_paint_region() {
 
     let object_id = "parent-obj";
     let mv_mesh = box_mesh(3.0, 3.0, 3.0);
-    let mv = modifier_volume_with_subtype("support_blocker", mv_mesh);
+    let mv = modifier_volume_with_kind(ModifierKind::SupportBlocker, mv_mesh);
     let mesh = mesh_ir_with_modifier(object_id, mv);
 
     let zs: Vec<f32> = (0..10).map(|i| 0.5 + 0.5 * i as f32).collect();
@@ -549,7 +534,7 @@ fn empty_support_enforcer_emits_nothing() {
         vertices: vec![],
         indices: vec![],
     };
-    let mv = modifier_volume_with_subtype("support_enforcer", empty_mesh);
+    let mv = modifier_volume_with_kind(ModifierKind::SupportEnforcer, empty_mesh);
     let mesh = mesh_ir_with_modifier(object_id, mv);
 
     let zs: Vec<f32> = (0..5).map(|i| 0.5 + 0.5 * i as f32).collect();
@@ -637,7 +622,7 @@ fn empty_negative_part_no_subtract() {
         vertices: vec![],
         indices: vec![],
     };
-    let mv = modifier_volume_with_subtype("negative_part", empty_mesh);
+    let mv = modifier_volume_with_kind(ModifierKind::NegativePart, empty_mesh);
 
     slicer_runtime::negative_part_subtract::apply_negative_part_subtract(&mut slice, &[mv]);
 
@@ -675,7 +660,7 @@ fn empty_support_blocker_emits_nothing() {
         vertices: vec![],
         indices: vec![],
     };
-    let mv = modifier_volume_with_subtype("support_blocker", empty_mesh);
+    let mv = modifier_volume_with_kind(ModifierKind::SupportBlocker, empty_mesh);
     let mesh = mesh_ir_with_modifier(object_id, mv);
 
     let zs: Vec<f32> = (0..5).map(|i| 0.5 + 0.5 * i as f32).collect();

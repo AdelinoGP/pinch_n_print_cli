@@ -13,10 +13,12 @@ use slicer_config::resolution::{
     query_z_grid, resolve_scope_stack, ResolutionTarget, ResolvedObjectLayerConfig,
 };
 use slicer_config::{
-    assemble_registry, AssemblyOutcome, ConfigScope, ExpansionContext, HostChannels,
-    IngestionWarning, ModuleDeclaration, RegistryWarning, ScopedConfig,
+    ConfigIngestor, ConfigSchemaRegistry, ConfigScope, ExpansionContext, IngestionWarning,
+    RegistryWarning, ScopedConfig,
 };
-use slicer_ir::{ConfigKey, ConfigValue, MeshIR, PaintSemantic, PaintValue, ResolvedConfig};
+use slicer_ir::{
+    ConfigKey, ConfigValue, MeshIR, ModifierKind, PaintSemantic, PaintValue, ResolvedConfig,
+};
 use slicer_sdk::traits::LayerPlanningObject;
 
 /// Parse Orca-style 1-indexed support filament selections into the runtime's
@@ -160,7 +162,91 @@ fn ordered_subsets(values: &[String]) -> Vec<Vec<String>> {
     subsets
 }
 
-fn merge_model_scopes(scoped: &mut ScopedConfig, mesh: &MeshIR) {
+fn first_out_of_bounds_value(
+    value: &ConfigValue,
+    min: Option<f64>,
+    max: Option<f64>,
+) -> Option<f64> {
+    let numeric = match value {
+        ConfigValue::Float(value) => Some(*value),
+        ConfigValue::Int(value) => Some(*value as f64),
+        ConfigValue::FloatOrPercent {
+            value,
+            is_percent: false,
+        } => Some(*value),
+        ConfigValue::List(values) => {
+            return values
+                .iter()
+                .find_map(|value| first_out_of_bounds_value(value, min, max));
+        }
+        _ => None,
+    };
+    numeric
+        .filter(|value| min.is_some_and(|min| *value < min) || max.is_some_and(|max| *value > max))
+}
+
+fn validate_modifier_deltas(
+    registry: &ConfigSchemaRegistry,
+    scoped: &ScopedConfig,
+) -> Result<(), SliceRunError> {
+    for (scope, delta) in &scoped.deltas {
+        if !matches!(scope, ConfigScope::Modifier { .. }) {
+            continue;
+        }
+        for (key, value) in &delta.values {
+            let Some(entry) = registry.entry(key.as_str()) else {
+                continue;
+            };
+            if entry.denied_scopes.iter().any(|scope| scope == "modifier") {
+                return Err(SliceRunError(format!(
+                    "modifier config ingestion failed: ScopeDenied {{ key: \"{key}\", scope: Modifier }}"
+                )));
+            }
+            if let Some(value) = first_out_of_bounds_value(value, entry.min, entry.max) {
+                return Err(SliceRunError(format!(
+                    "modifier config ingestion failed: BoundsViolation {{ key: \"{key}\", value: {value}, min: {:?}, max: {:?}, scope: Modifier }}",
+                    entry.min, entry.max
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn merge_model_scopes(
+    registry: &ConfigSchemaRegistry,
+    scoped: &mut ScopedConfig,
+    mesh: &MeshIR,
+) -> Result<Vec<IngestionWarning>, SliceRunError> {
+    let mut modifier_ingestor = ConfigIngestor::new(registry);
+    for object in &mesh.objects {
+        for modifier in &object.modifier_volumes {
+            let scope = ConfigScope::Modifier {
+                object_id: object.id.clone(),
+                modifier_id: modifier.id.clone(),
+            };
+            let values = modifier
+                .config_delta
+                .fields
+                .iter()
+                .filter(|(key, value)| {
+                    key.as_str() != "subtype"
+                        && !matches!(value, ConfigValue::String(value) if value.is_empty())
+                        && !matches!(value, ConfigValue::List(value) if value.is_empty())
+                })
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect::<std::collections::HashMap<_, _>>();
+
+            modifier_ingestor
+                .ingest_delta(scope, &values)
+                .map_err(|error| {
+                    SliceRunError(format!("modifier config ingestion failed: {error}"))
+                })?;
+        }
+    }
+    let modifier_outcome = modifier_ingestor.finish();
+    validate_modifier_deltas(registry, &modifier_outcome.scoped)?;
+
     for object in &mesh.objects {
         let object_delta = scoped
             .deltas
@@ -172,29 +258,15 @@ fn merge_model_scopes(scoped: &mut ScopedConfig, mesh: &MeshIR) {
                 .entry(key.clone())
                 .or_insert_with(|| value.clone());
         }
-
-        for modifier in &object.modifier_volumes {
-            let modifier_delta = scoped
-                .deltas
-                .entry(ConfigScope::Modifier {
-                    object_id: object.id.clone(),
-                    modifier_id: modifier.id.clone(),
-                })
-                .or_default();
-            for (key, value) in &modifier.config_delta.fields {
-                if key == "subtype"
-                    || matches!(value, ConfigValue::String(value) if value.is_empty())
-                    || matches!(value, ConfigValue::List(value) if value.is_empty())
-                {
-                    continue;
-                }
-                modifier_delta
-                    .values
-                    .entry(key.clone())
-                    .or_insert_with(|| value.clone());
-            }
+    }
+    for (scope, delta) in modifier_outcome.scoped.deltas {
+        let target = scoped.deltas.entry(scope).or_default();
+        for (key, value) in delta.values {
+            target.values.entry(key).or_insert(value);
         }
     }
+
+    Ok(modifier_outcome.warnings)
 }
 
 struct RuntimeResolvedScopes {
@@ -241,6 +313,24 @@ fn resolve_runtime_scopes(
         );
     }
     let expansion_context = build_expansion_context(&preliminary_default, &preliminary_tools)?;
+
+    // Resolve every modifier once before composing target subsets. Parameter
+    // modifiers are resolved again below as applicable target combinations;
+    // support modifiers intentionally route through paint semantics, so this
+    // pass still subjects their authored deltas to the same admission, typing,
+    // and bounds contract. No resolved config escapes if any modifier fails.
+    for object in &mesh.objects {
+        for modifier in &object.modifier_volumes {
+            let target = ResolutionTarget {
+                object_id: object.id.clone(),
+                modifier_ids: vec![modifier.id.clone()],
+                ..ResolutionTarget::default()
+            };
+            resolve_scope_stack(registry, scoped, &target, &expansion_context)
+                .map_err(|error| SliceRunError(format!("config resolution failed: {error}")))?;
+        }
+    }
+
     let default_config = resolve_scope_stack(
         registry,
         scoped,
@@ -270,9 +360,8 @@ fn resolve_runtime_scopes(
             .enumerate()
             .filter(|(_, modifier)| {
                 !matches!(
-                    modifier.config_delta.fields.get("subtype"),
-                    Some(ConfigValue::String(subtype))
-                        if subtype == "support_enforcer" || subtype == "support_blocker"
+                    modifier.kind(),
+                    ModifierKind::SupportEnforcer | ModifierKind::SupportBlocker
                 )
             })
             .map(|(index, modifier)| {
@@ -301,14 +390,15 @@ fn resolve_runtime_scopes(
             }
         }
         for modifier in &object.modifier_volumes {
-            match modifier.config_delta.fields.get("subtype") {
-                Some(ConfigValue::String(subtype)) if subtype == "support_enforcer" => {
+            match modifier.kind() {
+                ModifierKind::SupportEnforcer => {
                     paint_semantics.insert("support_enforcer".to_owned());
                 }
-                Some(ConfigValue::String(subtype)) if subtype == "support_blocker" => {
+                ModifierKind::SupportBlocker => {
                     paint_semantics.insert("support_blocker".to_owned());
                 }
-                _ => {}
+                ModifierKind::ParameterModifier => {}
+                ModifierKind::NegativePart => {}
             }
         }
 
@@ -482,6 +572,13 @@ fn absolute_config_number(value: &ConfigValue) -> Option<f64> {
             value,
             is_percent: false,
         } => Some(*value),
+        // Orca wire shape leniency, matching `extract_float_or_first`: a real
+        // `project_settings.config` stores scalar options as JSON arrays of
+        // strings (e.g. `["0.4"]`), so a list resolves through its first
+        // element and a numeric string parses. A percent form stays
+        // non-absolute and remains a hard error.
+        ConfigValue::List(values) => values.first().and_then(absolute_config_number),
+        ConfigValue::String(text) => text.trim().parse::<f64>().ok(),
         _ => None,
     }
 }
@@ -1219,31 +1316,21 @@ pub fn run_slice_with_collector(
             search_roots
         ))
     })?;
-    let loader_registry_warnings = manifest_first.registry_warnings;
-    let ingestion_warnings = manifest_first.ingestion.warnings;
+    let registry_warnings = manifest_first.registry_warnings;
+    let mut ingestion_warnings = manifest_first.ingestion.warnings;
     let mut scoped_config = manifest_first.ingestion.scoped;
-    merge_model_scopes(&mut scoped_config, mesh_ir.as_ref());
     let typed_global_config = typed_global_config(&scoped_config);
     let mut loaded = manifest_first.live;
-    let module_declarations: Vec<ModuleDeclaration> = loaded
-        .bindings
-        .iter()
-        .map(|binding| ModuleDeclaration {
-            module_id: binding.module.id().to_owned(),
-            schema: binding.module.config_schema().clone(),
-            claim_exclusive_group: None,
-        })
-        .collect();
-    let AssemblyOutcome {
-        registry,
-        warnings: mut registry_warnings,
-    } = assemble_registry(&module_declarations, &HostChannels::from_live())
-        .map_err(|e| SliceRunError(format!("failed to assemble config registry: {e}")))?;
-    for warning in loader_registry_warnings {
-        if !registry_warnings.contains(&warning) {
-            registry_warnings.push(warning);
-        }
-    }
+    // Resolution runs against the same manifest-first registry that typed the
+    // authored deltas. Claim dedup drops a module from dispatch only, never
+    // from the config schema, so a claim-losing module's keys stay declared
+    // and resolvable instead of failing `admission_set` as undeclared.
+    let registry = manifest_first.registry;
+    ingestion_warnings.extend(merge_model_scopes(
+        &registry,
+        &mut scoped_config,
+        mesh_ir.as_ref(),
+    )?);
     append_config_startup_diagnostics(
         &mut loaded.diagnostics,
         &registry_warnings,
@@ -1732,31 +1819,21 @@ pub fn prepare_prepass_context(
             search_roots
         ))
     })?;
-    let loader_registry_warnings = manifest_first.registry_warnings;
-    let ingestion_warnings = manifest_first.ingestion.warnings;
+    let registry_warnings = manifest_first.registry_warnings;
+    let mut ingestion_warnings = manifest_first.ingestion.warnings;
     let mut scoped_config = manifest_first.ingestion.scoped;
-    merge_model_scopes(&mut scoped_config, mesh_ir.as_ref());
     let typed_global_config = typed_global_config(&scoped_config);
     let mut loaded = manifest_first.live;
-    let module_declarations: Vec<ModuleDeclaration> = loaded
-        .bindings
-        .iter()
-        .map(|binding| ModuleDeclaration {
-            module_id: binding.module.id().to_owned(),
-            schema: binding.module.config_schema().clone(),
-            claim_exclusive_group: None,
-        })
-        .collect();
-    let AssemblyOutcome {
-        registry,
-        warnings: mut registry_warnings,
-    } = assemble_registry(&module_declarations, &HostChannels::from_live())
-        .map_err(|e| SliceRunError(format!("failed to assemble config registry: {e}")))?;
-    for warning in loader_registry_warnings {
-        if !registry_warnings.contains(&warning) {
-            registry_warnings.push(warning);
-        }
-    }
+    // Resolution runs against the same manifest-first registry that typed the
+    // authored deltas. Claim dedup drops a module from dispatch only, never
+    // from the config schema, so a claim-losing module's keys stay declared
+    // and resolvable instead of failing `admission_set` as undeclared.
+    let registry = manifest_first.registry;
+    ingestion_warnings.extend(merge_model_scopes(
+        &registry,
+        &mut scoped_config,
+        mesh_ir.as_ref(),
+    )?);
     append_config_startup_diagnostics(
         &mut loaded.diagnostics,
         &registry_warnings,

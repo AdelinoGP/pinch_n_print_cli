@@ -300,11 +300,12 @@ fn mesh_has_any_paint(mesh: &slicer_ir::MeshIR) -> bool {
         }
         // D14: modifier-volume paint sources.
         for mv in &obj.modifier_volumes {
-            let is_support_semantic = matches!(
-                mv.config_delta.fields.get("subtype"),
-                Some(slicer_ir::ConfigValue::String(s))
-                    if s == "support_enforcer" || s == "support_blocker"
-            );
+            let is_support_semantic = match mv.kind() {
+                slicer_ir::ModifierKind::ParameterModifier => false,
+                slicer_ir::ModifierKind::NegativePart => false,
+                slicer_ir::ModifierKind::SupportEnforcer => true,
+                slicer_ir::ModifierKind::SupportBlocker => true,
+            };
             if is_support_semantic && !mv.mesh.vertices.is_empty() && !mv.mesh.indices.is_empty() {
                 return true;
             }
@@ -1801,7 +1802,13 @@ fn region_key_for_chain(
 #[allow(dead_code)]
 fn ext_abs_mm(cfg: &slicer_ir::ResolvedConfig, key: &str, base: f32) -> Option<f32> {
     let base = base as f64;
-    match cfg.extensions.get(key)? {
+    // Per-filament envelope (canonical `coFloats` wire): `ConfigView::get_abs_value`
+    // resolves a `List` through its first element; mirror that clause here.
+    let value = match cfg.extensions.get(key)? {
+        slicer_ir::ConfigValue::List(items) => items.first()?,
+        other => other,
+    };
+    match value {
         slicer_ir::ConfigValue::Percent(p) => {
             if base > 0.0 {
                 Some((p / 100.0 * base) as f32)
@@ -1834,8 +1841,17 @@ fn shell_params_from_config(cfg: &slicer_ir::ResolvedConfig) -> ShellParams {
     let nozzle_diameter = ext_abs_mm(cfg, "nozzle_diameter", 0.0)
         .filter(|v| *v > 0.0)
         .unwrap_or(DEFAULT_NOZZLE_DIAMETER_MM);
+    // `line_width`'s zero auto sentinel expands to canonical
+    // `Flow::auto_extrusion_width` (`Flow.cpp`): `1.125 * nozzle_diameter`.
+    // `RoleWidthContext::line_width` must hold the already-expanded base
+    // width (see `resolve_role_width`'s zero-role-width fall-through).
+    let line_width = if cfg.line_width > 0.0 {
+        cfg.line_width
+    } else {
+        1.125 * nozzle_diameter
+    };
     let ctx = crate::flow::RoleWidthContext {
-        line_width: cfg.line_width,
+        line_width,
         nozzle_diameter,
         initial_layer_line_width: slicer_ir::resolved_config::resolve_initial_layer_line_width_mm(
             cfg.initial_layer_line_width,
@@ -1886,9 +1902,9 @@ mod driver_v2_tests {
     use super::*;
     use slicer_ir::{
         BoundingBox3, ConfigDelta, ConfigValue, ExPolygon, FacetPaintData, IndexedTriangleSet,
-        ModifierScope, ModifierVolume, ObjectConfig, ObjectMesh, PaintLayer, PaintSemantic,
-        PaintStroke, PaintValue, Point2, Point3, Polygon, RegionKey, RegionMapIR, RegionPlan,
-        SliceIR, SlicedRegion, Transform3d, CURRENT_MESH_IR_SCHEMA_VERSION,
+        ModifierVolume, ObjectConfig, ObjectMesh, PaintLayer, PaintSemantic, PaintStroke,
+        PaintValue, Point2, Point3, Polygon, RegionKey, RegionMapIR, RegionPlan, SliceIR,
+        SlicedRegion, Transform3d, CURRENT_MESH_IR_SCHEMA_VERSION,
         CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
     };
     use std::sync::Arc;
@@ -2253,19 +2269,16 @@ mod driver_v2_tests {
                 7, 3, 1, 2, 6, 1, 6, 5,
             ],
         };
-        let mut mv_fields = std::collections::HashMap::new();
-        mv_fields.insert(
-            "subtype".to_string(),
-            ConfigValue::String("support_enforcer".to_string()),
+        // Keep the fixture on the typed ModifierVolume construction path.
+        let mv = ModifierVolume::new(
+            "mv1".to_string(),
+            mv_mesh,
+            ConfigDelta {
+                fields: std::collections::HashMap::new(),
+            },
+            0,
+            slicer_ir::ModifierKind::SupportEnforcer,
         );
-        // exhaustive: no Default impl for ModifierVolume; every field is a fixture input (packet 196)
-        let mv = ModifierVolume {
-            id: "mv1".to_string(),
-            mesh: mv_mesh,
-            config_delta: ConfigDelta { fields: mv_fields },
-            priority: 0,
-            applies_to: ModifierScope::AllFeatures,
-        };
 
         // Build a mesh with the modifier volume AND a painted facet (ToolIndex(1)).
         let mesh = Arc::new(slicer_ir::MeshIR {

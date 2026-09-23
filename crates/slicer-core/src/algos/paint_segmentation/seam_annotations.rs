@@ -231,9 +231,8 @@ fn point_near_degenerate_projection(
 mod tests {
     use super::*;
     use slicer_ir::{
-        BoundingBox3, ConfigDelta, ConfigValue, IndexedTriangleSet, ModifierScope, ModifierVolume,
-        ObjectConfig, ObjectMesh, PaintLayer, PaintSemantic, PaintValue, Point2, Point3, Polygon,
-        Transform3d,
+        BoundingBox3, ConfigDelta, IndexedTriangleSet, ModifierVolume, ObjectConfig, ObjectMesh,
+        PaintLayer, PaintSemantic, PaintValue, Point2, Point3, Polygon, Transform3d,
     };
     use std::collections::HashMap;
 
@@ -256,23 +255,26 @@ mod tests {
         IndexedTriangleSet { vertices, indices }
     }
 
-    fn make_modifier_volume(subtype: &str, mesh: IndexedTriangleSet) -> ModifierVolume {
-        let mut fields = HashMap::new();
-        fields.insert(
-            "subtype".to_string(),
-            ConfigValue::String(subtype.to_string()),
-        );
-        // exhaustive: `ModifierVolume` has no `Default` impl, and this helper pins `priority`/`applies_to` deliberately — the writer must ignore modifier volumes regardless of scope or ordering
-        ModifierVolume {
-            id: "mv1".to_string(),
+    fn make_modifier_volume(
+        kind: slicer_ir::ModifierKind,
+        mesh: IndexedTriangleSet,
+    ) -> ModifierVolume {
+        // The constructor carries the explicit kind; this helper uses its default scope.
+        ModifierVolume::new(
+            "mv1".to_string(),
             mesh,
-            config_delta: ConfigDelta { fields },
-            priority: 0,
-            applies_to: ModifierScope::AllFeatures,
-        }
+            ConfigDelta {
+                fields: HashMap::new(),
+            },
+            0,
+            kind,
+        )
     }
 
-    fn mesh_with_modifier(subtype: &str, mv_mesh: IndexedTriangleSet) -> slicer_ir::MeshIR {
+    fn mesh_with_modifier(
+        kind: slicer_ir::ModifierKind,
+        mv_mesh: IndexedTriangleSet,
+    ) -> slicer_ir::MeshIR {
         slicer_ir::MeshIR {
             schema_version: slicer_ir::CURRENT_MESH_IR_SCHEMA_VERSION,
             objects: vec![ObjectMesh {
@@ -287,7 +289,7 @@ mod tests {
                 config: ObjectConfig {
                     data: HashMap::new(),
                 },
-                modifier_volumes: vec![make_modifier_volume(subtype, mv_mesh)],
+                modifier_volumes: vec![make_modifier_volume(kind, mv_mesh)],
                 paint_data: None,
                 ..Default::default()
             }],
@@ -307,7 +309,8 @@ mod tests {
     }
 
     fn mesh_with_paint(name: &str) -> slicer_ir::MeshIR {
-        let mut mesh = mesh_with_modifier("unused", cube_mesh(1.0));
+        let mut mesh =
+            mesh_with_modifier(slicer_ir::ModifierKind::ParameterModifier, cube_mesh(1.0));
         mesh.objects[0].paint_data = Some(Default::default());
         mesh.objects[0].paint_data.as_mut().unwrap().layers = vec![PaintLayer {
             semantic: PaintSemantic::Custom(name.to_string()),

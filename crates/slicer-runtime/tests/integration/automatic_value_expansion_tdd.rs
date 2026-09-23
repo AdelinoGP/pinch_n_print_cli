@@ -8,7 +8,7 @@ use std::sync::Arc;
 use slicer_core::flow::{resolve_role_width, RoleWidthContext};
 use slicer_ir::{
     BoundingBox3, ConfigValue, ExtrusionRole, FacetPaintData, IndexedTriangleSet, MeshIR,
-    ModifierScope, ModifierVolume, ObjectConfig, ObjectMesh, PaintLayer, PaintSemantic, PaintValue,
+    ModifierKind, ModifierVolume, ObjectConfig, ObjectMesh, PaintLayer, PaintSemantic, PaintValue,
     Point3, ResolvedConfig, Transform3d,
 };
 use slicer_runtime::run::{prepare_prepass_context, run_slice_with_collector, SliceRunOptions};
@@ -130,14 +130,13 @@ fn cube(origin: f32, extent: f32) -> IndexedTriangleSet {
 fn fixture_mesh() -> Arc<MeshIR> {
     let object_mesh = cube(0.0, 10.0);
     let facet_count = object_mesh.indices.len() / 3;
-    // exhaustive: the modifier identity and applicability are part of this interning fixture.
-    let mut modifier = ModifierVolume {
-        id: "automatic-expansion-modifier".to_string(),
-        mesh: cube(2.0, 6.0),
-        config_delta: Default::default(),
-        priority: 0,
-        applies_to: ModifierScope::AllFeatures,
-    };
+    let mut modifier = ModifierVolume::new(
+        "automatic-expansion-modifier".to_string(),
+        cube(2.0, 6.0),
+        Default::default(),
+        0,
+        ModifierKind::ParameterModifier,
+    );
     modifier
         .config_delta
         .fields
@@ -189,8 +188,12 @@ fn scoped_placeholders(prefix: &str, line_width: f64) -> HashMap<String, ConfigV
         }
     };
     let mut values = HashMap::new();
-    values.insert(key("nozzle_diameter"), ConfigValue::Float(0.4));
     values.insert(key("line_width"), ConfigValue::Float(line_width));
+    // `nozzle_diameter` is tool-capable (ADR-0069): statable at global and
+    // tool scopes only, never at object/paint scopes.
+    if prefix.is_empty() || prefix.starts_with("tool_config") {
+        values.insert(key("nozzle_diameter"), ConfigValue::Float(0.4));
+    }
     for (index, width_key) in WIDTH_KEYS.iter().enumerate() {
         let value = if *width_key == "inner_wall_line_width" {
             ConfigValue::FloatOrPercent {
@@ -217,15 +220,20 @@ fn scoped_placeholders(prefix: &str, line_width: f64) -> HashMap<String, ConfigV
         key("support_bottom_interface_spacing"),
         ConfigValue::Float(-1.0),
     );
-    values.insert(key("outer_wall_speed"), ConfigValue::Float(60.0));
-    for (index, (speed_key, _)) in OVERHANG_EXPECTED.iter().enumerate() {
-        values.insert(
-            key(speed_key),
-            ConfigValue::FloatOrPercent {
-                value: 25.0 * (index + 1) as f64,
-                is_percent: true,
-            },
-        );
+    // Feedrate keys are whole-print only (ADR-0069 `WHOLE_PRINT_ONLY_SCOPES`),
+    // so they are statable only at the unprefixed (global) scope; the scoped
+    // instances still see the same values through global merge.
+    if prefix.is_empty() {
+        values.insert(key("outer_wall_speed"), ConfigValue::Float(60.0));
+        for (index, (speed_key, _)) in OVERHANG_EXPECTED.iter().enumerate() {
+            values.insert(
+                key(speed_key),
+                ConfigValue::FloatOrPercent {
+                    value: 25.0 * (index + 1) as f64,
+                    is_percent: true,
+                },
+            );
+        }
     }
     values
 }
@@ -480,8 +488,14 @@ fn runtime_expands_global_object_tool_and_paint_before_delivery() {
             Some(ConfigValue::Float(width)) => *width,
             other => panic!("RegionMapIR.configs[{index}].line_width is not literal: {other:?}"),
         };
+        // Tolerance membership: `line_width` is a declared `f32` field, so an
+        // authored `0.60` round-trips through `ResolvedConfig` as
+        // `0.6000000238...` — exact `f64` membership would be unsatisfiable by
+        // construction (same 1e-6 tolerance as `literal_float`).
         assert!(
-            [0.45, 0.50, 0.55, 0.60].contains(&width),
+            [0.45_f64, 0.50, 0.55, 0.60]
+                .iter()
+                .any(|expected| (width - expected).abs() < 1.0e-6),
             "RegionMapIR.configs[{index}] has unexpected scoped line_width {width}"
         );
         assert_expanded(&map, width, &format!("RegionMapIR.configs[{index}]"));

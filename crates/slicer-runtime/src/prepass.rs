@@ -833,13 +833,14 @@ fn execute_prepass_with_builtins_configured_instr_collecting(
                 }
             }
             for mv in &obj.modifier_volumes {
-                if let Some(slicer_ir::ConfigValue::String(s)) =
-                    mv.config_delta.fields.get("subtype")
-                {
-                    match s.as_str() {
-                        "support_enforcer" => record(PaintSemantic::SupportEnforcer, &mut present),
-                        "support_blocker" => record(PaintSemantic::SupportBlocker, &mut present),
-                        _ => {}
+                match mv.kind() {
+                    slicer_ir::ModifierKind::ParameterModifier
+                    | slicer_ir::ModifierKind::NegativePart => {}
+                    slicer_ir::ModifierKind::SupportEnforcer => {
+                        record(PaintSemantic::SupportEnforcer, &mut present)
+                    }
+                    slicer_ir::ModifierKind::SupportBlocker => {
+                        record(PaintSemantic::SupportBlocker, &mut present)
                     }
                 }
             }

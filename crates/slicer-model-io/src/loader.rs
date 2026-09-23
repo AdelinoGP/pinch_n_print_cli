@@ -15,7 +15,7 @@ use crate::sidecar::{parse_3mf_sidecar, ParsedSidecar, PartSubtype};
 
 use slicer_ir::{
     BoundingBox3, ConfigDelta, ConfigValue, FacetPaintData, IndexedTriangleSet, MeshIR,
-    ModifierScope, ModifierVolume, ObjectConfig, ObjectId, ObjectMesh, PaintLayer, PaintSemantic,
+    ModifierKind, ModifierVolume, ObjectConfig, ObjectId, ObjectMesh, PaintLayer, PaintSemantic,
     PaintStroke, PaintValue, Point3, Transform3d,
 };
 
@@ -654,13 +654,17 @@ fn resolve_object(
                     PartSubtype::NormalPart => unreachable!(),
                 };
 
+                let kind = match subtype {
+                    PartSubtype::ModifierPart => ModifierKind::ParameterModifier,
+                    PartSubtype::NegativePart => ModifierKind::NegativePart,
+                    PartSubtype::SupportEnforcer => ModifierKind::SupportEnforcer,
+                    PartSubtype::SupportBlocker => ModifierKind::SupportBlocker,
+                    PartSubtype::NormalPart => unreachable!(),
+                };
+
                 let modifier_id = format!("{}-{}-{}", object_id, comp.objectid, subtype_str);
 
                 let mut config_fields = std::collections::HashMap::new();
-                config_fields.insert(
-                    "subtype".to_string(),
-                    ConfigValue::String(subtype_str.to_string()),
-                );
 
                 if let Some(part) = part_info {
                     // Generic per-part metadata extraction: every authored
@@ -670,6 +674,9 @@ fn resolve_object(
                     // not this syntax-only adapter.
                     for (k, v) in &part.metadata {
                         match k.as_str() {
+                            // `subtype` is reserved for the typed modifier-kind
+                            // bridge and must never be authored as config metadata.
+                            "subtype" => {}
                             "extruder" => {
                                 if let Some(value) = rebased_extruder(v) {
                                     config_fields.insert(k.clone(), value);
@@ -687,15 +694,15 @@ fn resolve_object(
                     }
                 }
 
-                modifier_volumes.push(ModifierVolume {
-                    id: modifier_id,
-                    mesh: comp_mesh,
-                    config_delta: ConfigDelta {
+                modifier_volumes.push(ModifierVolume::new(
+                    modifier_id,
+                    comp_mesh,
+                    ConfigDelta {
                         fields: config_fields,
                     },
                     priority,
-                    applies_to: ModifierScope::AllFeatures,
-                });
+                    kind,
+                ));
             } else {
                 // NormalPart: merge into solid mesh as before.
                 let comp_facet_count = comp_mesh.indices.len() / 3;

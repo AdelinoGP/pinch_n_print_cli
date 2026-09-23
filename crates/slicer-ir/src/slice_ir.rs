@@ -270,11 +270,12 @@ pub const CURRENT_SLICE_IR_SCHEMA_VERSION: SemVer = SemVer {
     patch: 0,
 };
 
-/// Schema version for `MeshIR`. Bumped to 1.1.0 by packet 56b — populated
-/// `modifier_volumes` from `Metadata/model_settings.config`.
+/// Schema version for `MeshIR`. The activation-derived minor bump preserves the
+/// recorded major, increments the recorded minor, and resets the patch to zero
+/// for the typed `ModifierVolume.kind` field and one-way legacy deserialization.
 pub const CURRENT_MESH_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
-    minor: 1,
+    minor: 2,
     patch: 0,
 };
 
@@ -538,23 +539,21 @@ pub struct ConfigDelta {
     pub fields: HashMap<ConfigKey, ConfigValue>,
 }
 
-/// Modifier scope
+/// Typed kind of a modifier volume.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum ModifierScope {
-    /// Applies to all features
-    AllFeatures,
-    /// Applies only to infill
-    Infill,
-    /// Applies only to perimeters
-    Perimeters,
-    /// Applies only to support
-    Support,
-    /// Applies to layer height
-    LayerHeight,
+pub enum ModifierKind {
+    /// A modifier that changes print parameters.
+    ParameterModifier,
+    /// A volume that removes geometry from the printable part.
+    NegativePart,
+    /// A volume that forces support generation.
+    SupportEnforcer,
+    /// A volume that prevents support generation.
+    SupportBlocker,
 }
 
 /// Modifier volume
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ModifierVolume {
     /// Unique identifier for the modifier
     pub id: ModifierId,
@@ -564,8 +563,102 @@ pub struct ModifierVolume {
     pub config_delta: ConfigDelta,
     /// Priority of the modifier (higher wins)
     pub priority: u32,
-    /// Scope of the modifier application
-    pub applies_to: ModifierScope,
+    /// Typed kind of modifier volume
+    pub kind: ModifierKind,
+}
+
+impl ModifierVolume {
+    /// Construct a modifier volume with a typed kind.
+    pub fn new(
+        id: ModifierId,
+        mesh: IndexedTriangleSet,
+        config_delta: ConfigDelta,
+        priority: u32,
+        kind: ModifierKind,
+    ) -> Self {
+        Self {
+            id,
+            mesh,
+            config_delta,
+            priority,
+            kind,
+        }
+    }
+
+    /// Return the typed kind of this volume.
+    pub fn kind(&self) -> ModifierKind {
+        self.kind
+    }
+}
+
+#[derive(Default)]
+enum ModifierKindField {
+    Present(ModifierKind),
+    #[default]
+    Missing,
+}
+
+impl<'de> Deserialize<'de> for ModifierKindField {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        ModifierKind::deserialize(deserializer).map(Self::Present)
+    }
+}
+
+impl<'de> Deserialize<'de> for ModifierVolume {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct ModifierVolumeData {
+            id: ModifierId,
+            mesh: IndexedTriangleSet,
+            config_delta: ConfigDelta,
+            priority: u32,
+            #[serde(default)]
+            kind: ModifierKindField,
+        }
+
+        let mut data = ModifierVolumeData::deserialize(deserializer)?;
+        let kind = match data.kind {
+            ModifierKindField::Present(kind) => kind,
+            ModifierKindField::Missing => {
+                let subtype_key = ConfigKey::from("subtype");
+                let subtype = data
+                    .config_delta
+                    .fields
+                    .get(&subtype_key)
+                    .and_then(|value| match value {
+                        ConfigValue::String(value) => Some(value.as_str()),
+                        _ => None,
+                    });
+                let kind = match subtype {
+                    Some("modifier_part") => ModifierKind::ParameterModifier,
+                    Some("negative_part") => ModifierKind::NegativePart,
+                    Some("support_enforcer") => ModifierKind::SupportEnforcer,
+                    Some("support_blocker") => ModifierKind::SupportBlocker,
+                    _ => {
+                        return Err(serde::de::Error::custom(
+                            "legacy modifier volume is missing a recognized subtype",
+                        ));
+                    }
+                };
+                data.config_delta.fields.remove(&subtype_key);
+                kind
+            }
+        };
+
+        Ok(Self {
+            id: data.id,
+            mesh: data.mesh,
+            config_delta: data.config_delta,
+            priority: data.priority,
+            kind,
+        })
+    }
 }
 
 /// Object mesh
@@ -922,8 +1015,10 @@ impl ConfigView {
     /// Typed read: `bool` value, or `None` if missing/other type.
     #[must_use]
     pub fn get_bool(&self, key: &str) -> Option<bool> {
-        match self.fields.get(key)? {
+        match envelope(self.fields.get(key)?) {
             ConfigValue::Bool(b) => Some(*b),
+            // Canonical CLI bool spellings, see [`cli_bool_spelling`].
+            ConfigValue::String(text) => cli_bool_spelling(text),
             _ => None,
         }
     }
@@ -931,7 +1026,7 @@ impl ConfigView {
     /// Typed read: `i64` value, or `None` if missing/other type.
     #[must_use]
     pub fn get_int(&self, key: &str) -> Option<i64> {
-        match self.fields.get(key)? {
+        match envelope(self.fields.get(key)?) {
             ConfigValue::Int(i) => Some(*i),
             _ => None,
         }
@@ -948,12 +1043,25 @@ impl ConfigView {
     /// is a percent, callers MUST resolve it via [`ConfigView::get_abs_value`].
     #[must_use]
     pub fn get_float(&self, key: &str) -> Option<f64> {
-        match self.fields.get(key)? {
+        match envelope(self.fields.get(key)?) {
             ConfigValue::Float(f) => Some(if f.is_subnormal() { 0.0 } else { *f }),
             ConfigValue::FloatOrPercent {
                 value,
                 is_percent: false,
             } => Some(if value.is_subnormal() { 0.0 } else { *value }),
+            // Canonical scalar wire spellings (canonical
+            // `ConfigOptionFloat::deserialize`): a numeric string parses with
+            // its optional trailing `%` ignored, yielding the percent
+            // magnitude for percent-declared keys.
+            ConfigValue::String(text) => {
+                let number = text
+                    .trim()
+                    .strip_suffix('%')
+                    .unwrap_or(text.trim())
+                    .parse::<f64>()
+                    .ok()?;
+                Some(if number.is_subnormal() { 0.0 } else { number })
+            }
             _ => None,
         }
     }
@@ -961,7 +1069,7 @@ impl ConfigView {
     /// Typed read: `String` value, or `None` if missing/other type.
     #[must_use]
     pub fn get_string(&self, key: &str) -> Option<&str> {
-        match self.fields.get(key)? {
+        match envelope(self.fields.get(key)?) {
             ConfigValue::String(s) => Some(s.as_str()),
             _ => None,
         }
@@ -979,7 +1087,7 @@ impl ConfigView {
     /// * Any other variant, or a missing key, yields `None`.
     #[must_use]
     pub fn get_abs_value(&self, key: &str, base: f64) -> Option<f64> {
-        match self.fields.get(key)? {
+        match envelope(self.fields.get(key)?) {
             ConfigValue::Percent(p) => {
                 if base > 0.0 {
                     Some(p / 100.0 * base)
@@ -1087,6 +1195,42 @@ impl ConfigView {
     pub fn require_abs_value(&self, key: &str, base: f64) -> Result<f64, ConfigReadError> {
         self.get_abs_value(key, base)
             .ok_or_else(|| ConfigReadError::new(key, "percent, float-or-percent, or float"))
+    }
+}
+
+/// Canonical CLI bool spellings (canonical `normalize_cli_bool_value`, called
+/// from `DynamicConfig::read_cli`): "1/true/yes/on/enabled" are true and
+/// "0/false/no/off/disabled" are false, case-insensitively. Anything else is
+/// not bool wire and yields `None`.
+#[must_use]
+pub fn cli_bool_spelling(value: &str) -> Option<bool> {
+    const SPELLINGS: [(&str, bool); 10] = [
+        ("1", true),
+        ("true", true),
+        ("yes", true),
+        ("on", true),
+        ("enabled", true),
+        ("0", false),
+        ("false", false),
+        ("no", false),
+        ("off", false),
+        ("disabled", false),
+    ];
+    let trimmed = value.trim();
+    SPELLINGS
+        .iter()
+        .find_map(|(spelling, result)| trimmed.eq_ignore_ascii_case(spelling).then_some(*result))
+}
+
+/// Per-filament envelope resolution for typed config reads: canonical vector
+/// wire (`coFloats`/`coInts`/`coStrings`) reaches scalar readers as a `List`
+/// whose first element carries the value — `extract_float_or_first`'s
+/// documented shape leniency. Non-`List` values pass through unchanged.
+#[must_use]
+fn envelope(value: &ConfigValue) -> &ConfigValue {
+    match value {
+        ConfigValue::List(items) => items.first().map_or(value, |first| first),
+        other => other,
     }
 }
 

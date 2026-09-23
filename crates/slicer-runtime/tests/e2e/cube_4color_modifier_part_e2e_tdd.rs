@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use slicer_ir::{ActiveRegion, ConfigValue, GlobalLayer, LayerPlanIR, SemVer};
+use slicer_ir::{ActiveRegion, ConfigValue, GlobalLayer, LayerPlanIR, ModifierKind, SemVer};
 use slicer_runtime::{execute_region_mapping, ExecutionPlan};
 
 use crate::common::model_cache::cached_load_model;
@@ -83,10 +83,10 @@ fn modifier_part_excluded_from_solid_mesh() {
         mesh_ir.schema_version,
         SemVer {
             major: 1,
-            minor: 1,
+            minor: 2,
             patch: 0
         },
-        "expected schema_version 1.1.0, got {:?}",
+        "expected schema_version 1.2.0, got {:?}",
         mesh_ir.schema_version
     );
 }
@@ -112,23 +112,12 @@ fn modifier_volume_carries_typed_metadata() {
 
     let mv = &solid_obj.modifier_volumes[0];
 
-    // Packet 89: cube_cilindrical_modifier.3mf authors the modifier cylinder with
-    // four typed overrides (inner_wall_line_width, outer_wall_line_width,
-    // sparse_infill_density, sparse_infill_line_width — verified via
-    // `unzip -p ... Metadata/model_settings.config`). However, the current 3MF
-    // loader (`crates/slicer-model-io/src/loader.rs`) only extracts an
-    // allowlisted set of part-metadata keys into `config_delta.fields`:
-    // `subtype`, `fuzzy_skin`, `extruder`, and `matrix`. Extending the loader's
-    // allowlist to include the four wall/infill keys is out of scope for this
-    // packet (no source edits permitted). The strengthened typed-metadata
-    // assertion will be added once the loader is extended; until then, this
-    // test verifies the keys the loader DOES preserve.
-    let subtype = mv.config_delta.fields.get("subtype");
+    // The modifier-part route is represented by the typed kind; the fixture's
+    // matrix remains ordinary typed config metadata.
     assert_eq!(
-        subtype,
-        Some(&ConfigValue::String("modifier_part".to_string())),
-        "config_delta[subtype] = {:?}",
-        subtype
+        mv.kind(),
+        ModifierKind::ParameterModifier,
+        "modifier part must retain its typed parameter-modifier kind"
     );
 
     // The fixture stores the local offset for the cylinder in the `matrix` metadata
@@ -221,8 +210,8 @@ fn modifier_world_aabb_matches_composition() {
 fn modifier_projections_annotate_contour_points() {
     use slicer_core::algos::paint_segmentation::execute_paint_segmentation;
     use slicer_ir::{
-        ConfigDelta, ConfigValue, MeshIR, ModifierScope, ModifierVolume, ObjectConfig, ObjectMesh,
-        PaintSemantic, Point3, RegionKey, RegionMapIR, RegionPlan, SemVer, SliceIR, SlicedRegion,
+        ConfigDelta, MeshIR, ModifierKind, ModifierVolume, ObjectConfig, ObjectMesh, PaintSemantic,
+        Point3, RegionKey, RegionMapIR, RegionPlan, SemVer, SliceIR, SlicedRegion,
         CURRENT_SLICE_IR_SCHEMA_VERSION,
     };
     use std::collections::HashMap;
@@ -230,21 +219,13 @@ fn modifier_projections_annotate_contour_points() {
 
     let object_id = "obj1";
     let mv_mesh = box_mesh_xyz(4.0, 4.0, 4.0); // modifier wider than the test polygon
-    let mut mv_fields = HashMap::new();
-    mv_fields.insert(
-        "subtype".to_string(),
-        ConfigValue::String("support_enforcer".to_string()),
+    let mv = ModifierVolume::new(
+        "mv-1".to_string(),
+        mv_mesh,
+        ConfigDelta::default(),
+        0,
+        ModifierKind::SupportEnforcer,
     );
-    // exhaustive: ModifierVolume explicit test fixture preserves boundary data
-    let mv = ModifierVolume {
-        id: "mv-1".to_string(),
-        mesh: mv_mesh,
-        config_delta: ConfigDelta { fields: mv_fields },
-        priority: 0,
-        applies_to: ModifierScope::AllFeatures,
-        // exhaustive: ModifierVolume boundary/test fixture requires explicit field construction
-        // exhaustive: ModifierVolume explicit test fixture preserves boundary data
-    };
     let mesh = Arc::new(MeshIR {
         schema_version: SemVer {
             major: 1,
@@ -347,8 +328,8 @@ fn modifier_projections_annotate_contour_points() {
 fn modifier_projection_z_band_restriction() {
     use slicer_core::algos::paint_segmentation::execute_paint_segmentation;
     use slicer_ir::{
-        ConfigDelta, ConfigValue, MeshIR, ModifierScope, ModifierVolume, ObjectConfig, ObjectMesh,
-        PaintSemantic, Point3, RegionKey, RegionMapIR, RegionPlan, SemVer, SliceIR, SlicedRegion,
+        ConfigDelta, MeshIR, ModifierKind, ModifierVolume, ObjectConfig, ObjectMesh, PaintSemantic,
+        Point3, RegionKey, RegionMapIR, RegionPlan, SemVer, SliceIR, SlicedRegion,
         CURRENT_SLICE_IR_SCHEMA_VERSION,
     };
     use std::collections::HashMap;
@@ -357,21 +338,13 @@ fn modifier_projection_z_band_restriction() {
     let object_id = "obj1";
     // Modifier confined to z ∈ [-1, 1].
     let mv_mesh = box_mesh_z_band(4.0, 4.0, -1.0, 1.0);
-    let mut mv_fields = HashMap::new();
-    mv_fields.insert(
-        "subtype".to_string(),
-        ConfigValue::String("support_blocker".to_string()),
+    let mv = ModifierVolume::new(
+        "mv-band".to_string(),
+        mv_mesh,
+        ConfigDelta::default(),
+        0,
+        ModifierKind::SupportBlocker,
     );
-    // exhaustive: ModifierVolume explicit test fixture preserves boundary data
-    let mv = ModifierVolume {
-        id: "mv-band".to_string(),
-        mesh: mv_mesh,
-        config_delta: ConfigDelta { fields: mv_fields },
-        priority: 0,
-        applies_to: ModifierScope::AllFeatures,
-        // exhaustive: ModifierVolume boundary/test fixture requires explicit field construction
-        // exhaustive: ModifierVolume explicit test fixture preserves boundary data
-    };
     let mesh = Arc::new(MeshIR {
         schema_version: SemVer {
             major: 1,
@@ -601,12 +574,12 @@ fn test_square_polygon(side_mm: f32) -> slicer_ir::ExPolygon {
 }
 
 /// Negative-invariant: when a model has no modifier volumes (`cube_4color.3mf`
-/// is paint-only — no modifier_part subtype is declared), `execute_region_mapping`
+/// is paint-only — it has no parameter-modifier kind), `execute_region_mapping`
 /// must not stamp any modifier-derived keys into `RegionPlan.config.extensions`.
 #[test]
 fn empty_modifier_volume_stamps_no_regions() {
     // Packet 89: cube_4color.3mf is the no-modifier comparator. It carries
-    // 4-color paint strokes only — no `subtype="modifier_part"` parts → no
+    // 4-color paint strokes only — no parameter-modifier kind → no
     // modifier volumes are parsed → modifier_volumes is empty.
     let path = cube_4color_3mf();
     assert!(path.exists(), "fixture missing: {}", path.display());

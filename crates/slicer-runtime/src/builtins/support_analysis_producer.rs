@@ -381,7 +381,24 @@ pub fn commit_support_analysis_builtin(
 /// expanded support line width, so the two families never share an extrusion
 /// path.
 fn support_territory_clearance_mm(config: &ResolvedConfig) -> f32 {
-    config.support_line_width.value as f32
+    let fallback_line_width = if config.line_width > 0.0 {
+        config.line_width
+    } else {
+        DEFAULT_LINE_WIDTH_MM
+    };
+    let support_line_width = config.support_line_width;
+    if support_line_width.is_percent {
+        // BASE-UNAVAILABLE: this caller exposes no declared nozzle_diameter value.
+        return resolved_float_or_percent_abs(support_line_width, fallback_line_width)
+            .unwrap_or(0.0);
+    }
+    if support_line_width.value == 0.0 {
+        // Absolute-zero is the auto sentinel, indistinguishable by construction.
+        return fallback_line_width;
+    }
+    resolved_float_or_percent_abs(support_line_width, fallback_line_width)
+        .filter(|width| *width > 0.0)
+        .unwrap_or(fallback_line_width)
 }
 
 /// Fill `SupportAnalysisIR::support_territory` with the full cross-section of
@@ -417,11 +434,14 @@ fn collect_support_territory(
             continue;
         }
         for modifier in &object.modifier_volumes {
-            if matches!(
-                modifier.config_delta.fields.get("subtype"),
-                Some(ConfigValue::String(subtype))
-                    if subtype == "support_enforcer" || subtype == "support_blocker"
-            ) || modifier.mesh.vertices.is_empty()
+            let is_support_modifier = match modifier.kind() {
+                slicer_ir::ModifierKind::ParameterModifier => false,
+                slicer_ir::ModifierKind::NegativePart => false,
+                slicer_ir::ModifierKind::SupportEnforcer => true,
+                slicer_ir::ModifierKind::SupportBlocker => true,
+            };
+            if is_support_modifier
+                || modifier.mesh.vertices.is_empty()
                 || modifier.mesh.indices.is_empty()
             {
                 continue;
@@ -1314,27 +1334,33 @@ mod tests {
     /// A `MeshIR` for object `"object"` carrying the given `(subtype, box)`
     /// modifier volumes.
     fn mesh_with_modifiers(volumes: &[(&str, slicer_ir::IndexedTriangleSet)]) -> MeshIR {
-        use slicer_ir::{ConfigDelta, ModifierScope, ModifierVolume, ObjectMesh};
+        use slicer_ir::{ConfigDelta, ModifierKind, ModifierVolume, ObjectMesh};
         MeshIR {
             objects: vec![ObjectMesh {
                 id: "object".to_string(),
                 modifier_volumes: volumes
                     .iter()
                     .enumerate()
-                    // exhaustive: ModifierVolume has no Default and every field is load-bearing here
-                    .map(|(index, (subtype, mesh))| ModifierVolume {
-                        id: format!("mv-{index}"),
-                        mesh: mesh.clone(),
-                        config_delta: ConfigDelta {
-                            fields: [(
-                                "subtype".to_string(),
-                                ConfigValue::String((*subtype).to_string()),
-                            )]
-                            .into_iter()
-                            .collect(),
-                        },
-                        priority: 0,
-                        applies_to: ModifierScope::AllFeatures,
+                    .map(|(index, (subtype, mesh))| {
+                        let kind = match *subtype {
+                            "support_enforcer" => ModifierKind::SupportEnforcer,
+                            "support_blocker" => ModifierKind::SupportBlocker,
+                            _ => ModifierKind::ParameterModifier,
+                        };
+                        ModifierVolume::new(
+                            format!("mv-{index}"),
+                            mesh.clone(),
+                            ConfigDelta {
+                                fields: [(
+                                    "subtype".to_string(),
+                                    ConfigValue::String((*subtype).to_string()),
+                                )]
+                                .into_iter()
+                                .collect(),
+                            },
+                            0,
+                            kind,
+                        )
                     })
                     .collect(),
                 ..ObjectMesh::default()
@@ -1349,15 +1375,14 @@ mod tests {
     /// Enforcer / blocker volumes mint no sub-region and publish nothing.
     #[test]
     fn support_territory_publishes_modifier_footprint_under_minted_sub_region_id() {
-        use slicer_ir::{ConfigDelta, ModifierScope, ModifierVolume};
+        use slicer_ir::{ConfigDelta, ModifierKind, ModifierVolume};
         let parameter_mesh = modifier_box(0.5, 0.5, 2.5, 2.5);
         let mut mesh =
             mesh_with_modifiers(&[("support_enforcer", modifier_box(3.0, 3.0, 4.0, 4.0))]);
-        // exhaustive: ModifierVolume has no Default and every field is load-bearing here
-        mesh.objects[0].modifier_volumes.push(ModifierVolume {
-            id: "normal-half".to_string(),
-            mesh: parameter_mesh.clone(),
-            config_delta: ConfigDelta {
+        mesh.objects[0].modifier_volumes.push(ModifierVolume::new(
+            "normal-half".to_string(),
+            parameter_mesh.clone(),
+            ConfigDelta {
                 fields: [(
                     "support_type".to_string(),
                     ConfigValue::String("normal(auto)".to_string()),
@@ -1365,9 +1390,9 @@ mod tests {
                 .into_iter()
                 .collect(),
             },
-            priority: 0,
-            applies_to: ModifierScope::AllFeatures,
-        });
+            0,
+            ModifierKind::ParameterModifier,
+        ));
         let (lower, upper) = overhang_stack();
         let mut blackboard = blackboard_with_stack_and_mesh(&lower, &upper, mesh);
 

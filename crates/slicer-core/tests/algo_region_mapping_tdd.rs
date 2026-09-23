@@ -143,20 +143,53 @@ fn modifier_volume(
     key: &str,
     value: &str,
 ) -> slicer_ir::ModifierVolume {
-    // exhaustive: ModifierVolume has no Default impl; every field is a fixture input
-    slicer_ir::ModifierVolume {
-        id: id.to_string(),
-        mesh: modifier_cube_mesh(x0, x1),
-        config_delta: slicer_ir::ConfigDelta {
+    modifier_volume_with_kind(
+        id,
+        x0,
+        x1,
+        key,
+        value,
+        slicer_ir::ModifierKind::ParameterModifier,
+    )
+}
+
+fn modifier_volume_with_kind(
+    id: &str,
+    x0: f32,
+    x1: f32,
+    key: &str,
+    value: &str,
+    kind: slicer_ir::ModifierKind,
+) -> slicer_ir::ModifierVolume {
+    slicer_ir::ModifierVolume::new(
+        id.to_string(),
+        modifier_cube_mesh(x0, x1),
+        slicer_ir::ConfigDelta {
             fields: std::collections::HashMap::from([(
                 key.to_string(),
                 ConfigValue::String(value.to_string()),
             )]),
         },
-        priority: 0,
-        applies_to: slicer_ir::ModifierScope::AllFeatures,
-        // exhaustive: ModifierVolume fixture preserves every field explicitly
-    }
+        0,
+        kind,
+    )
+}
+
+fn support_enforcer_volume(
+    id: &str,
+    x0: f32,
+    x1: f32,
+    key: &str,
+    value: &str,
+) -> slicer_ir::ModifierVolume {
+    modifier_volume_with_kind(
+        id,
+        x0,
+        x1,
+        key,
+        value,
+        slicer_ir::ModifierKind::SupportEnforcer,
+    )
 }
 
 /// Ticket 18 test (1): two modifiers with DISTINCT `support_type` deltas on one
@@ -298,13 +331,15 @@ fn identical_modifier_footprints_first_equal_priority_wins() {
     let objects = vec![ObjectMesh {
         id: "obj_a".to_string(),
         modifier_volumes: vec![
-            slicer_ir::ModifierVolume {
-                priority: 7,
-                ..first
+            {
+                let mut modifier = first;
+                modifier.priority = 7;
+                modifier
             },
-            slicer_ir::ModifierVolume {
-                priority: 7,
-                ..second
+            {
+                let mut modifier = second;
+                modifier.priority = 7;
+                modifier
             },
         ],
         ..Default::default()
@@ -348,11 +383,8 @@ fn modifier_parent_bound_only_applies_to_effective_parameter_footprints() {
     };
     assert!(map_single_region_with_object(no_modifiers, 0.5).is_ok());
 
-    let mut support_only = modifier_volume("support-only", 0.0, 10.0, "support_type", "tree(auto)");
-    support_only.config_delta.fields.insert(
-        "subtype".to_string(),
-        ConfigValue::String("support_enforcer".to_string()),
-    );
+    let support_only =
+        support_enforcer_volume("support-only", 0.0, 10.0, "support_type", "tree(auto)");
     let support_object = ObjectMesh {
         id: "obj_a".to_string(),
         modifier_volumes: vec![support_only],

@@ -565,12 +565,40 @@ fn coerce_value(
                 .map_err(|_| mismatch()),
             _ => Err(mismatch()),
         },
-        "float-list" => coerce_list(key, authored, field_type, |item| match item {
-            ConfigValue::Float(value) if value.is_finite() => Some(ConfigValue::Float(*value)),
-            ConfigValue::Int(value) => Some(ConfigValue::Float(*value as f64)),
-            ConfigValue::String(value) => parse_finite_float(value).ok().map(ConfigValue::Float),
-            _ => None,
-        }),
+        "float-list" => {
+            // Canonical bed-point wire (canonical
+            // `ConfigOptionPoints::deserialize`): entries split on ',' and
+            // each coordinate pair on 'x', so a point string like "0x0"
+            // deserializes into two flat coordinates (the `bed_shape`
+            // flat-pair model). Numeric entries stay single floats.
+            let entries: Vec<&ConfigValue> = match authored {
+                ConfigValue::List(items) => items.iter().collect(),
+                other => vec![other],
+            };
+            let mut flat = Vec::with_capacity(entries.len() * 2);
+            for item in entries {
+                match item {
+                    ConfigValue::Float(value) if value.is_finite() => {
+                        flat.push(ConfigValue::Float(*value));
+                    }
+                    ConfigValue::Int(value) => flat.push(ConfigValue::Float(*value as f64)),
+                    ConfigValue::String(text) => {
+                        for entry in text.trim().split(',').filter(|part| !part.trim().is_empty()) {
+                            if let Some((x, y)) = parse_point_pair(entry) {
+                                flat.push(ConfigValue::Float(x));
+                                flat.push(ConfigValue::Float(y));
+                            } else if let Ok(value) = parse_finite_float(entry) {
+                                flat.push(ConfigValue::Float(value));
+                            } else {
+                                return Err(mismatch());
+                            }
+                        }
+                    }
+                    _ => return Err(mismatch()),
+                }
+            }
+            Ok(ConfigValue::List(flat))
+        }
         "int-list" => coerce_list(key, authored, field_type, |item| match item {
             ConfigValue::Int(value) => Some(ConfigValue::Int(*value)),
             ConfigValue::String(value) => value.parse::<i64>().ok().map(ConfigValue::Int),
@@ -687,6 +715,13 @@ where
             expected: field_type.to_owned(),
             authored: authored_text(authored),
         })
+}
+
+/// Parse one canonical bed-point entry ("XxY", canonical
+/// `ConfigOptionPoints::deserialize`) into its two flat coordinates.
+fn parse_point_pair(value: &str) -> Option<(f64, f64)> {
+    let (x, y) = value.trim().split_once('x')?;
+    Some((parse_finite_float(x).ok()?, parse_finite_float(y).ok()?))
 }
 
 fn parse_finite_float(value: &str) -> Result<f64, ()> {

@@ -10,8 +10,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_config::{
-    assemble_registry, ConfigIngestionError, ConfigIngestor, HostChannels, IngestionOutcome,
-    ModuleDeclaration, RegistryLoadError, RegistryWarning,
+    assemble_registry, ConfigIngestionError, ConfigIngestor, ConfigSchemaRegistry, HostChannels,
+    IngestionOutcome, ModuleDeclaration, RegistryLoadError, RegistryWarning,
 };
 use slicer_ir::{
     ConfigKey, ConfigValue, GlobalLayer, ModuleId, RegionKey, RegionPlan, ResolvedConfig, StageId,
@@ -125,6 +125,13 @@ pub struct ManifestFirstLiveLoadOutput {
     pub live: LiveModuleLoadOutput,
     /// Registry-typed authored configuration and non-fatal ingestion warnings.
     pub ingestion: IngestionOutcome,
+    /// The manifest-first config schema registry the ingestion typed against.
+    ///
+    /// Assembled from every discovered module's manifest, before claim dedup
+    /// drops modules from dispatch, so resolution sees the same key set the
+    /// ingestion did: a claim-losing module's keys stay declared and
+    /// resolvable even though the module itself does not run.
+    pub registry: ConfigSchemaRegistry,
     /// Opaque non-fatal diagnostics produced while reconciling declarations.
     pub registry_warnings: Vec<RegistryWarning>,
 }
@@ -500,6 +507,7 @@ pub fn load_live_modules_for_plan_manifest_first(
             engine,
         },
         ingestion,
+        registry: assembly.registry,
         registry_warnings: assembly.warnings,
     })
 }

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use slicer_config::ResolvedObjectLayerConfig;
 use slicer_ir::{
-    BoundingBox3, ConfigValue, IndexedTriangleSet, MeshIR, ModifierScope, ModifierVolume,
+    BoundingBox3, ConfigValue, IndexedTriangleSet, MeshIR, ModifierKind, ModifierVolume,
     ObjectConfig, ObjectMesh, Point3, Transform3d,
 };
 use slicer_runtime::run::{prepare_prepass_context, run_slice_with_collector, SliceRunOptions};
@@ -83,14 +83,13 @@ fn cube(origin: f32, extent: f32) -> IndexedTriangleSet {
 }
 
 fn fixture_mesh() -> Arc<MeshIR> {
-    // exhaustive: modifier identity, geometry, scoped delta, priority, and applicability define the fixture.
-    let mut modifier = ModifierVolume {
-        id: MODIFIER_ID.to_string(),
-        mesh: cube(0.2, 0.6),
-        config_delta: Default::default(),
-        priority: 10,
-        applies_to: ModifierScope::AllFeatures,
-    };
+    let mut modifier = ModifierVolume::new(
+        MODIFIER_ID.to_string(),
+        cube(0.2, 0.6),
+        Default::default(),
+        10,
+        ModifierKind::ParameterModifier,
+    );
     modifier
         .config_delta
         .fields

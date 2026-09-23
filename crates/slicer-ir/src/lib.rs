@@ -91,7 +91,7 @@ pub use slice_ir::{
     MaterialBoundarySegment,
     MeshIR,
     ModifierId,
-    ModifierScope,
+    ModifierKind,
     // Modifier types
     ModifierVolume,
     ModuleId,

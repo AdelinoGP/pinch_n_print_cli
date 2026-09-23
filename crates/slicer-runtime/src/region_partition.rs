@@ -57,7 +57,7 @@
 //! `tests/executor/` for the regression.
 
 use slicer_core::polygon_ops::{difference, intersection, union};
-use slicer_ir::{ConfigValue, LayerStageError, MeshIR, StageId};
+use slicer_ir::{LayerStageError, MeshIR, StageId};
 
 use crate::LayerArena;
 
@@ -214,11 +214,14 @@ pub fn split_modifier_sub_regions_for_prepass(
         });
         for modifier_index in modifier_indices {
             let modifier = &object.modifier_volumes[modifier_index];
-            if matches!(
-                modifier.config_delta.fields.get("subtype"),
-                Some(ConfigValue::String(subtype))
-                    if subtype == "support_enforcer" || subtype == "support_blocker"
-            ) || modifier.mesh.vertices.is_empty()
+            let is_support_modifier = match modifier.kind() {
+                slicer_ir::ModifierKind::ParameterModifier => false,
+                slicer_ir::ModifierKind::NegativePart => false,
+                slicer_ir::ModifierKind::SupportEnforcer => true,
+                slicer_ir::ModifierKind::SupportBlocker => true,
+            };
+            if is_support_modifier
+                || modifier.mesh.vertices.is_empty()
                 || modifier.mesh.indices.is_empty()
             {
                 continue;

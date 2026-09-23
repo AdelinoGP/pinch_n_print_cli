@@ -1399,6 +1399,10 @@ macro_rules! __drc {
                 let $value: &$crate::ConfigValue = value;
                 match $key {
                     $($arm)*
+                    "wall_loops" => {
+                        $cfg.wall_count = $crate::resolved_config::extract_int_as_u32($key, $value)?;
+                        ::core::result::Result::Ok(true)
+                    }
                     _ => ::core::result::Result::Ok(false),
                 }
             }
@@ -1412,7 +1416,16 @@ macro_rules! __drc {
             /// bind to no config key.
             pub fn host_config_keys() -> ::std::vec::Vec<$crate::resolved_config::HostConfigKey> {
                 let $dflt = ResolvedConfig::default();
-                ::std::vec![ $($hk)* ]
+                let mut keys = ::std::vec![ $($hk)* ];
+                keys.push($crate::resolved_config::HostConfigKey {
+                    key: "wall_loops",
+                    field_type: "int",
+                    scope: $crate::resolved_config::SCOPE_PRINT,
+                    default: None,
+                    meta: $crate::resolved_config::HostKeyMeta::NONE,
+                    denied_scopes: &[],
+                });
+                keys
             }
 
             /// Every declared field, as its effective `key -> ConfigValue`
@@ -1452,7 +1465,7 @@ macro_rules! __drc {
             /// value with a seeded `extensions` default.
             #[must_use]
             pub fn typed_field_keys() -> &'static [&'static str] {
-                &[ $($tk)* ]
+                &[ $($tk)* "wall_loops", ]
             }
         }
     };

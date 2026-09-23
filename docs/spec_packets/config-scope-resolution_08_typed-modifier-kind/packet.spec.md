@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: config-scope-resolution_08_typed-modifier-kind
 task_ids:
   - TASK-569
