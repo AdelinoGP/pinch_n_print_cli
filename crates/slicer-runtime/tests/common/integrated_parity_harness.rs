@@ -2,13 +2,14 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use slicer_ir::{ConfigView, SemVer};
+use slicer_ir::{ConfigValue, ConfigView, SemVer};
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::{
     CompiledModuleBuilder, CompiledModuleLive, LoadedModuleBuilder, WasmInstancePool,
     WasmRuntimeDispatcher,
 };
 use slicer_sdk::native::NativeStageEntry;
+use slicer_sdk::traits::LayerPlanningObject;
 
 use super::wasm_cache;
 
@@ -84,6 +85,37 @@ fn newest_source_mtime(guest_root: &Path) -> SystemTime {
     newest
 }
 
+/// Derive the layer-planning objects from the spec config's
+/// `object_height:<id>` keys — the shared mesh/config id literal contract
+/// that production establishes in `run.rs::layer_planning_objects`. Without
+/// them the dispatcher's empty default fails the positional
+/// object/config check before either side runs.
+fn layer_planning_objects_from_config(config: &ConfigView) -> Vec<LayerPlanningObject> {
+    let layer_height = config.get_float("layer_height").unwrap_or(0.0);
+    let first_layer_height = config
+        .get_float("first_layer_height")
+        .unwrap_or(layer_height);
+    let mut objects: Vec<LayerPlanningObject> = config
+        .iter_entries()
+        .filter_map(|(key, value)| {
+            let object_id = key.strip_prefix("object_height:")?;
+            let object_height = match value {
+                ConfigValue::Float(height) => *height,
+                _ => return None,
+            };
+            Some(LayerPlanningObject {
+                object_id: object_id.to_string(),
+                object_height,
+                layer_height,
+                first_layer_height,
+                support_raft_layers: 0,
+            })
+        })
+        .collect();
+    objects.sort_by(|left, right| left.object_id.cmp(&right.object_id));
+    objects
+}
+
 /// Build the native and real-component bindings once, then let the family test
 /// own its input carriers, stage invocation, and comparator result.
 pub fn run_integrated_parity<F, R>(spec: IntegratedParitySpec, execute: F) -> R
@@ -95,6 +127,7 @@ where
     ) -> R,
 {
     assert_guest_freshness(&spec.wasm_path);
+    let layer_planning_objects = layer_planning_objects_from_config(&spec.config);
     let wasm_module = CompiledModuleBuilder::new(spec.module_id.clone())
         .claims(spec.claims.clone())
         .config_view(Arc::clone(&spec.config))
@@ -143,6 +176,7 @@ where
         Arc::clone(native_module.config_view()),
     )
     .with_native_entry(spec.native_entry);
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&wasm_cache::shared_engine()));
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&wasm_cache::shared_engine()))
+        .with_layer_planning_objects(layer_planning_objects);
     execute(&dispatcher, &native_live, &wasm_live)
 }

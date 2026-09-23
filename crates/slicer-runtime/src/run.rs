@@ -457,6 +457,23 @@ fn resolve_runtime_scopes(
         .collect();
     let object_layer_configs = query_z_grid(registry, scoped, &object_heights, &expansion_context)
         .map_err(|error| SliceRunError(format!("config resolution failed: {error}")))?;
+    // Positional layer-planning contract (`validate_layer_planning_object_configs`):
+    // object configs pair with `mesh.objects` index-wise at dispatch, so
+    // restore mesh order here — the z-grid query iterates its sorted
+    // object-height map and would otherwise swap pairs on multi-object prints.
+    let mut object_layer_configs = object_layer_configs;
+    let mesh_order: std::collections::HashMap<&str, usize> = mesh
+        .objects
+        .iter()
+        .enumerate()
+        .map(|(index, object)| (object.id.as_str(), index))
+        .collect();
+    object_layer_configs.sort_by_key(|config| {
+        mesh_order
+            .get(config.object_id.as_str())
+            .copied()
+            .unwrap_or(usize::MAX)
+    });
 
     Ok(RuntimeResolvedScopes {
         default_config,
