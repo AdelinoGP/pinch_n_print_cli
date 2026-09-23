@@ -97,6 +97,7 @@ fn fixture_registry() -> ConfigSchemaRegistry {
                         float_field("0.4", Some(0.0), Some(2.0)),
                     ),
                     ("line_width".to_owned(), field("float")),
+                    ("vocab_bool".to_owned(), field("bool")),
                 ]),
             },
             ..ModuleDeclaration::default()
@@ -226,6 +227,38 @@ fn extensions_are_typed_bounded_and_presence_preserving() {
             assert_eq!(actual, "String");
         }
         other => panic!("expected Application(TypeMismatch), got {other:?}"),
+    }
+}
+
+/// Residual-red session: canonical wire spellings that tolerant ingestion
+/// retains untyped must validate at resolution and land in `extensions`
+/// verbatim — the nullable "nil" sentinel (canonical
+/// `ConfigOptionFloatsNullable`), a percent-form magnitude (min-side bounds
+/// only), CLI bool spellings (canonical `normalize_cli_bool_value`), and the
+/// per-filament `List` envelope (`extract_float_or_first` shape leniency).
+/// Non-vocabulary garbage keeps AC-2's rejection.
+#[test]
+fn extensions_accept_canonical_wire_vocabulary() {
+    let registry = fixture_registry();
+    for (key, value) in [
+        ("seeded_float", ConfigValue::String("nil".to_owned())),
+        ("seeded_float", ConfigValue::String("85%".to_owned())),
+        ("seeded_float", ConfigValue::List(vec![ConfigValue::Float(2.5)])),
+        ("vocab_bool", ConfigValue::String("disabled".to_owned())),
+        ("vocab_bool", ConfigValue::String("enabled".to_owned())),
+    ] {
+        let resolved = resolve_scope_stack(
+            &registry,
+            &scoped([(ConfigScope::Global, delta([(key, value.clone())]))]),
+            &ResolutionTarget::default(),
+            &expansion(),
+        )
+        .unwrap_or_else(|error| panic!("{key} = {value:?} must resolve: {error:?}"));
+        assert_eq!(
+            resolved.extensions.get(key),
+            Some(&value),
+            "{key} = {value:?} must land in extensions verbatim"
+        );
     }
 }
 

@@ -649,6 +649,53 @@ fn tolerant_non_finite_declared_float_is_still_rejected() {
     ));
 }
 
+/// Residual-red session: canonical bed-point wire (canonical
+/// `ConfigOptionPoints::deserialize`) — "XxY" point strings decode into the
+/// flat bed-pair model at strict ingestion, with no warning. Flat floats stay
+/// pinned verbatim by `resolved_config_view_tdd`'s AC-12.
+#[test]
+fn float_list_bed_point_wire_deserializes_to_flat_pairs() {
+    let registry = real_registry();
+    let authored = HashMap::from([(
+        "printable_area".to_owned(),
+        ConfigValue::List(vec![
+            ConfigValue::String("0x0".to_owned()),
+            ConfigValue::String("250x0".to_owned()),
+            ConfigValue::String("250x210".to_owned()),
+            ConfigValue::String("0x210".to_owned()),
+        ]),
+    )]);
+
+    let mut strict = ConfigIngestor::new(&registry);
+    strict
+        .ingest_flat(&authored)
+        .expect("canonical ConfigOptionPoints wire must decode as flat pairs");
+    let outcome = strict.finish();
+
+    assert_eq!(
+        outcome
+            .scoped
+            .global()
+            .and_then(|delta| delta.values.get("printable_area")),
+        Some(&ConfigValue::List(vec![
+            ConfigValue::Float(0.0),
+            ConfigValue::Float(0.0),
+            ConfigValue::Float(250.0),
+            ConfigValue::Float(0.0),
+            ConfigValue::Float(250.0),
+            ConfigValue::Float(210.0),
+            ConfigValue::Float(0.0),
+            ConfigValue::Float(210.0),
+        ])),
+        "XxY point strings must deserialize into the flat bed-pair model"
+    );
+    assert!(
+        outcome.warnings.is_empty(),
+        "clean coercion raises no warnings, got {:?}",
+        outcome.warnings
+    );
+}
+
 #[test]
 fn tolerant_tri_state_string_is_retained_and_strict_mode_rejects_it() {
     let registry = real_registry();

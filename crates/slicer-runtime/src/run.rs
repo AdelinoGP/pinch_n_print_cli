@@ -2211,6 +2211,40 @@ mod tests {
         scoped
     }
 
+    /// Residual-red session: `absolute_config_number` applies the Orca wire
+    /// shape leniency `extract_float_or_first` documents — a per-filament
+    /// `List` resolves through its first element and a numeric string parses —
+    /// while percent forms stay non-absolute and an empty envelope carries no
+    /// value.
+    #[test]
+    fn absolute_config_number_accepts_orca_wire_shapes() {
+        use slicer_ir::ConfigValue;
+        assert_eq!(
+            super::absolute_config_number(&ConfigValue::List(vec![ConfigValue::String(
+                "0.4".to_owned()
+            )])),
+            Some(0.4)
+        );
+        assert_eq!(
+            super::absolute_config_number(&ConfigValue::List(vec![ConfigValue::Float(0.6)])),
+            Some(0.6)
+        );
+        assert_eq!(
+            super::absolute_config_number(&ConfigValue::String(" 0.5 ".to_owned())),
+            Some(0.5)
+        );
+        assert_eq!(
+            super::absolute_config_number(&ConfigValue::String("50%".to_owned())),
+            None,
+            "percent forms are not absolute"
+        );
+        assert_eq!(
+            super::absolute_config_number(&ConfigValue::List(vec![])),
+            None,
+            "an empty envelope carries no value"
+        );
+    }
+
     /// Exit condition 1: an authored value must keep winning over the
     /// registry default. Deleting the authored branch and always reading the
     /// registry would resolve 0.4 here and fail this assertion.
