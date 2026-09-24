@@ -371,6 +371,17 @@ machine with a profiler).
 
 ## 7a. Criterion benchmarks — in scope, and stale
 
+> **Refreshed 2026-09-23 (ticket 15).** The "no criterion baselines exist on
+> disk" statement below was true when written and is now stale: all seven
+> benches have been run and 82 on-disk baselines established, with per-bench
+> trust verdicts. Baseline tables and the verdicts are in
+> `docs/specs/perf-vs-orca/evidence/t15-criterion-refresh/BASELINES.md` /
+> `FINDINGS.md`. One trap for consumers of those numbers: **the criterion
+> console's `time:` line is the regression slope in Linear sampling mode, not
+> the mean** (up to +8.61% off here) — read `estimates.json` or
+> `baselines.json` instead. The rest of this section is left as the
+> session-vintage record that motivated the refresh.
+
 ### 2026-09-07 bounded perimeter fastpath experiment
 
 The annotation-free `build_wall_flags` experiment is documented in

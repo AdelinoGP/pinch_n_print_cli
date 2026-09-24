@@ -50,17 +50,33 @@ Standing decisions for this effort (2026-09-22):
   work — a degraded slice is not Orca's job.
 - **Measurement mode**: paired ordinary + accelerated runs are the default
   keep/drop gate; the human may accept a one-sided win case by case.
-- **Timing discipline**: timing/acceptance tickets chain in number order (one
-  owner of builds and timing at a time — self-induced contention); attribution-
-  only tickets are parallel-takeable. Claim (`Status: claimed`) before any work.
+- **Timing discipline**: timing/acceptance tickets chain in the take order set
+  by [Gap budget per cell](issues/12-gap-budget-per-cell.md) (number order
+  superseded 2026-09-23; chain: 15 → 17 → 27's candidate → 22's candidate →
+  21's → 25's → below-fold polish); attribution-only tickets are
+  parallel-takeable, but no substage split starts before
+  [host:slice closing_ex span contradiction](issues/24-host-slice-closing-span-contradiction.md)
+  closes. Claim (`Status: claimed`) before any work.
 - **Recipe traps** (each has produced or nearly produced a wrong conclusion):
   instrumented runs never mixed into wall claims (§3.2); accumulated worker
-  elapsed is not CPU (§3.3); `--module-dir modules/core-modules` is mandatory
+  elapsed is not CPU (§3.3); the native `--profile` table's wall columns are
+  accumulated per-thread spans (`flush_native` sums concurrent worker spans),
+  never wall — do not compare them to `module_complete`/phase walls
+  ([host:slice closing_ex span contradiction](issues/24-host-slice-closing-span-contradiction.md),
+  2026-09-23); `--module-dir modules/core-modules` is mandatory
   (§3.4); `cargo xtask build-guests --check` must exit 0 first (§3.5); base.stl
   wall varies ±13% so take repeats (§3.6); accelerated runs use the complete
   `cargo xtask dist --accelerated` snapshot at `target/dist-accelerated/developer/`
   — the bare artifacts dir silently loads integrated modules, and dual
-  `--module-dir` does not shadow (2026-09-22 recipe addendum).
+  `--module-dir` does not shadow (2026-09-22 recipe addendum); criterion's
+  console `time:` is the regression *slope* in Linear sampling mode while its
+  `change:` line is mean-based — read `target/criterion/**/estimates.json` (or
+  `evidence/t15-criterion-refresh/baselines.json`) and compare like-for-like
+  ([Criterion bench refresh](issues/15-criterion-bench-refresh.md), 2026-09-23);
+  a PNP single-slice subprocess pays ~0.77 s of module compile *before* the
+  `validation` phase event, so phase walls sum to ~10% of
+  `slice_complete.elapsed_ms` — never read phase-sum as run wall
+  ([Criterion bench refresh](issues/15-criterion-bench-refresh.md), 2026-09-23).
 - Measured keep/drop recommendations return to the human; candidates are never
   auto-committed.
 
@@ -81,6 +97,9 @@ Standing decisions for this effort (2026-09-22):
 - [clipper2 1.1.0 upstream evidence](issues/16-clipper2-1-1-0-upstream-evidence.md): 1.1.0 is purely additive (PolyFace64 face extraction) — polygon-op cost and output for identical inputs unchanged, and `check_split_owner`'s unbounded recursion is byte-identical with unchanged reach in both versions.
 - [Matched-pair rig and first scoreboard](issues/11-matched-pair-rig-and-scoreboard.md): the matched job (0.4/0.20 mm, 2 walls, 20% gyroid, tree(auto) supports, per-cell generator) is rigged with per-run output-evidence validation and measured on all 8 cells — Orca wins every cell (median wall 6.3–26.2x, process CPU corroborating), accelerated mode buys 0–16% wall, and base supports-on is tainted by DEV-174 (`degraded=true`, 172,181 non-fatals); scoreboard in `evidence/matched-pair/SCOREBOARD.md`.
 - [Support-correctness repair](issues/14-support-correctness-repair.md): the DEV-174 dropped-band defect is fixed and kept — the complete-body extent gate measured identity aggregates as one body against the deleted routing cell's 104.86 mm cap; now measured per body cross-section against a 419.43 mm plate bound (ADR-0059 Ruling 3 / D-287). base.stl supports-on runs clean (`degraded=false`, `non_fatal=0`) in both generators and both PNP modes, band layers 108–258 restored (151→0 zero-Support layers), so the four tainted cells are untainted for future scoreboard revisions; evidence in `evidence/dev174-repair/`.
+- [Gap budget per cell](issues/12-gap-budget-per-cell.md): the serial terms bind every cell — with per-layer work free the prepass floor alone still loses benchy ~2–2.5x and base supports-on ~15–20x, a measured slice-outside wall costs 2.3x (5.5x post-repair) of Orca's budget on base, and the CPU work-density deficit is 6.98x→22.9x per output byte — so no old candidate closes a 6.28–26.24x gap. Route re-ranked: 24 → 22 → new [Serial host floor](issues/27-serial-host-prepass-floor.md) and [Classic output-volume surplus](issues/28-classic-output-volume-surplus.md), tickets 19/20 demoted below-fold, acceleration confirmed at 1.00–1.19x wall.
+- [host:slice closing_ex span contradiction](issues/24-host-slice-closing-span-contradiction.md): the contradiction is a units mismatch — `module_complete`'s ~3.2 s is real wall while the profile table's ~22 s `closing_ex` spans are accumulated per-thread spans (`fold_marks` is thread-correct; the aggregation sums concurrent worker spans) — so the lead retires with no ~22 s cost to promote, and the 22/27 substage splits inherit "work-share yes, wall claims no"; same-run capture in `evidence/t24-span-contradiction/SAME-RUN.md`.
+- [Criterion bench refresh](issues/15-criterion-bench-refresh.md): all 7 benches now have on-disk baselines (82 leaves, `base == new`) and are trustworthy — `gate_evidence` 885.9 ms vs the 10 s bound, `shell_classification` ms-scale with no short-circuit; two fixture limits recorded not fixed (`repair/cube` scans a clean 12-tri mesh, `decimate/cube_default` is rejected by the default `max_error = 0.01`); and the criterion console's `time:` is the regression *slope* in Linear mode, not the mean (up to +8.61% off) — cost A/Bs must compare like-for-like. Evidence in `evidence/t15-criterion-refresh/`, unblocking [clipper2 cost/output verdict](issues/17-clipper2-cost-output-verdict.md).
 
 ## Not yet specified
 
@@ -88,12 +107,14 @@ Standing decisions for this effort (2026-09-22):
   so the painted path of `build_wall_flags` (nearest-original reprojection
   reuse) is not even selectable as a candidate. Needs a fixture/scenario before
   it can graduate into a ticket.
-- **Post-budget re-ranking.** [Gap budget per cell](issues/12-gap-budget-per-cell.md)
-  decides which below-fold candidates survive (e.g. `split_top_surfaces`
-  secondary work, the `emit_walls` memory-shape idea, `apply_opening`'s
-  round-join arc-tolerance anomaly) and in what order; some may leave as
-  below-irrelevance once per-cell budgets exist, and tickets 18/22's splits may
-  surface new ones.
+- **New candidates from the structural splits.** [Gap budget per cell](issues/12-gap-budget-per-cell.md)'s
+  route tickets (24/22/27/28 and the re-scoped 18) may surface further
+  candidates inside the serial floor, the query path, or the marshalling
+  residual; graduate each as it appears. Below-fold polish (`offset2_ex` call
+  reduction, consume-only-when-read, `split_top_surfaces` secondary work, the
+  `emit_walls` memory-shape idea) stays parked — the park decision is in
+  [Gap budget per cell](issues/12-gap-budget-per-cell.md) — until a cell lands
+  within ~1.5x of Orca or the structural tickets come back short.
 - **Orca-side attribution.** What OrcaSlicer spends its time on per cell is
   unknown (GUI-subsystem binary, little introspection). Worth scoping only if
   the gap narrows to specific stages where "why is Orca faster here" becomes the
