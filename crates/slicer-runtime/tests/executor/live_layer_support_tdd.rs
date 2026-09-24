@@ -497,6 +497,21 @@ fn compile_support_module(
         "support_density".to_string(),
         slicer_ir::ConfigValue::Float(20.0),
     );
+    // Contract-required reads (packet 06): `run-support` `require_float`s
+    // `nozzle_diameter`, `support_base_pattern_spacing` and `layer_height` —
+    // bound-view values per `integrated_parity_tree_support_tdd`'s fixture.
+    config_map.insert(
+        "nozzle_diameter".to_string(),
+        slicer_ir::ConfigValue::Float(0.4),
+    );
+    config_map.insert(
+        "support_base_pattern_spacing".to_string(),
+        slicer_ir::ConfigValue::Float(2.5),
+    );
+    config_map.insert(
+        "layer_height".to_string(),
+        slicer_ir::ConfigValue::Float(0.2),
+    );
     let module = CompiledModuleBuilder::new(loaded.id().to_string())
         .config_view(Arc::new(slicer_ir::ConfigView::from_map(config_map)))
         .build();
@@ -1049,6 +1064,14 @@ mod planner_consuming_tier {
         let mut config_map = std::collections::HashMap::new();
         config_map.insert("enable_support".to_string(), ConfigValue::Bool(true));
         config_map.insert("support_density".to_string(), ConfigValue::Float(20.0));
+        // Contract-required reads (packet 06): `run-support` `require_float`s
+        // `nozzle_diameter`, `support_base_pattern_spacing` and `layer_height`.
+        config_map.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.4));
+        config_map.insert(
+            "support_base_pattern_spacing".to_string(),
+            ConfigValue::Float(2.5),
+        );
+        config_map.insert("layer_height".to_string(), ConfigValue::Float(0.2));
         let module = CompiledModuleBuilder::new(loaded.id().to_string())
             .config_view(Arc::new(ConfigView::from_map(config_map)))
             .build();
@@ -1191,6 +1214,21 @@ mod planner_consuming_tier {
             (
                 "support_density".to_string(),
                 slicer_ir::ConfigValue::Float(20.0),
+            ),
+            // Contract-required reads (packet 06): `TreeSupport::from_config`
+            // / `run_support` `require_float`s `nozzle_diameter`,
+            // `support_base_pattern_spacing` and `layer_height`.
+            (
+                "nozzle_diameter".to_string(),
+                slicer_ir::ConfigValue::Float(0.4),
+            ),
+            (
+                "support_base_pattern_spacing".to_string(),
+                slicer_ir::ConfigValue::Float(2.5),
+            ),
+            (
+                "layer_height".to_string(),
+                slicer_ir::ConfigValue::Float(0.2),
             ),
         ]));
         let module =

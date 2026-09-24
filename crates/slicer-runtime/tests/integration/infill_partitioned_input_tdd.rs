@@ -82,6 +82,30 @@ fn min_density_config() -> ConfigView {
     let mut map = std::collections::HashMap::new();
     map.insert("infill_density".into(), ConfigValue::Float(0.5));
     map.insert("line_width".into(), ConfigValue::Float(0.4));
+    map.insert("layer_height".into(), ConfigValue::Float(0.2));
+    // infill-linker's `AnchorParams::from_config` reads this via
+    // `require_abs_value` (packet 06); the manifest default is the absolute
+    // 20.0 mm float-or-percent.
+    map.insert("infill_anchor_max".into(), ConfigValue::Float(20.0));
+    // Packet 06 contract-required reads: the three fill modules `require_*`
+    // these keys on their classified paths, so a bound view always holds
+    // them at their manifest defaults. `bridge_line_width` /
+    // `initial_layer_line_width` are the 0.0 auto sentinel; the remaining
+    // rectilinear keys are its manifest defaults. `line_width` above is the
+    // already-expanded base width.
+    map.insert("bridge_line_width".into(), ConfigValue::Float(0.0));
+    map.insert("initial_layer_line_width".into(), ConfigValue::Float(0.0));
+    map.insert("bridge_density".into(), ConfigValue::Float(1.0));
+    map.insert("bridge_flow".into(), ConfigValue::Float(1.0));
+    map.insert("internal_bridge_density".into(), ConfigValue::Float(1.0));
+    map.insert("internal_bridge_flow".into(), ConfigValue::Float(1.0));
+    map.insert(
+        "dont_filter_internal_bridges".into(),
+        ConfigValue::Bool(false),
+    );
+    map.insert("enable_extra_bridge_layer".into(), ConfigValue::Bool(false));
+    map.insert("thick_bridges".into(), ConfigValue::Bool(false));
+    map.insert("thick_internal_bridges".into(), ConfigValue::Bool(false));
     ConfigView::from_map(map)
 }
 

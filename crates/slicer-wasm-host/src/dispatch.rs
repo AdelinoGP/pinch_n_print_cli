@@ -2376,14 +2376,29 @@ pub fn resolve_seam_for_perimeter_region(
     seam_plan: &slicer_ir::SeamPlanIR,
     layer_index: u32,
 ) -> Option<slicer_ir::SeamPosition> {
+    // Two-stage lookup (the `config_for_region_smallest_chain` precedent in
+    // `crates/slicer-runtime/src/layer_executor.rs`): an exact
+    // `(layer, object, region_id, variant_chain)` hit first, else the
+    // chain-less entry for the same identity triple. Seam planning runs
+    // before paint segmentation, so its entries are keyed on the base
+    // region; a painted region's chain is a relabel of that same geometry
+    // and must fall back to the base seam rather than lose it.
+    let matches_triple = |entry: &slicer_ir::SeamPlanEntry| {
+        entry.region_key.global_layer_index == layer_index
+            && entry.region_key.object_id == region.object_id
+            && entry.region_key.region_id == region.region_id
+    };
     seam_plan
         .entries
         .iter()
         .find(|entry| {
-            entry.region_key.global_layer_index == layer_index
-                && entry.region_key.object_id == region.object_id
-                && entry.region_key.region_id == region.region_id
-                && entry.region_key.variant_chain == region.variant_chain
+            matches_triple(entry) && entry.region_key.variant_chain == region.variant_chain
+        })
+        .or_else(|| {
+            seam_plan
+                .entries
+                .iter()
+                .find(|entry| matches_triple(entry) && entry.region_key.variant_chain.is_empty())
         })
         .map(|entry| entry.chosen_candidate.clone())
 }

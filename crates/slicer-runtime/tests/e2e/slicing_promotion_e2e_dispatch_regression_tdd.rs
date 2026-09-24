@@ -39,13 +39,16 @@ fn shared_staircase_paths() -> (&'static Path, &'static Path) {
         let stl = dir.path().join("staircase.stl");
         let cfg = dir.path().join("staircase_ironing.json");
         write_staircase_stl(&stl);
+        // `ironing_flow` = 15 is coPercent magnitude (15 = 15%) — canonical
+        // `ironing_flow` domain, `PrintConfigDef::init_fff_params`
+        // (`OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp`).
         std::fs::write(
             &cfg,
             "{\n  \
                 \"ironing_enabled\": true,\n  \
                 \"ironing_spacing_mm\": 0.2,\n  \
                 \"ironing_speed\": 15.0,\n  \
-                \"ironing_flow\": 0.15,\n  \
+                \"ironing_flow\": 15,\n  \
                 \"top_shell_layers\": 2,\n  \
                 \"bottom_shell_layers\": 2,\n  \
                 \"layer_height\": 0.2\n\
@@ -169,12 +172,15 @@ fn config_path(tmp: &tempfile::TempDir) -> PathBuf {
     std::fs::write(
         &p,
         // ironing_enabled = true with conservative defaults so the module
-        // actually fires on the staircase top surfaces.
+        // actually fires on the staircase top surfaces. `ironing_flow` = 15
+        // is coPercent magnitude (15 = 15%) — canonical `ironing_flow`
+        // domain, `PrintConfigDef::init_fff_params`
+        // (`OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp`).
         "{\n  \
             \"ironing_enabled\": true,\n  \
             \"ironing_spacing_mm\": 0.2,\n  \
             \"ironing_speed\": 15.0,\n  \
-            \"ironing_flow\": 0.15,\n  \
+            \"ironing_flow\": 15,\n  \
             \"top_shell_layers\": 2,\n  \
             \"bottom_shell_layers\": 2,\n  \
             \"layer_height\": 0.2\n\

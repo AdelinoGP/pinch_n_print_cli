@@ -256,7 +256,10 @@ impl LayerModule for TopSurfaceIroning {
         let ironing_flow = match config.get("ironing_flow") {
             Some(ConfigValue::Float(f)) => *f,
             Some(ConfigValue::Int(f)) => *f as f64,
-            _ => 0.10,
+            // Canonical default: coPercent 10 (10 = 10%) —
+            // `PrintConfigDef::init_fff_params`
+            // (`OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp`).
+            _ => 10.0,
         };
 
         if ironing_flow <= 0.0 {
@@ -320,7 +323,11 @@ impl LayerModule for TopSurfaceIroning {
         }
 
         let speed_factor = (self.ironing_speed / BASE_SPEED) as f32;
-        let flow_factor = self.ironing_flow as f32;
+        // `ironing_flow` is percent magnitude (coPercent 0..100); the ÷100
+        // happens at consumption, exactly canonical
+        // `ConfigOptionPercent::get_abs_value`
+        // (`OrcaSlicerDocumented/src/libslic3r/Config.hpp`).
+        let flow_factor = self.ironing_flow as f32 / 100.0;
 
         for region in regions {
             output.begin_region(region.object_id(), *region.region_id());

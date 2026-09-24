@@ -2,11 +2,11 @@
 //!
 //! Slices `resources/regression_wedge.stl` with a module set that EXCLUDES
 //! `infill-linker`. The slice must complete without error and the committed
-//! gcode-level sparse infill output must be the raw disjoint form (mean G1
-//! moves per `;TYPE:Sparse infill` block is at the raw baseline of ~ 1, NOT
-//! the linked output of >> 1). This pins ADR-0025's degraded-not-failed
-//! trade-off at the integration level: a missing linker is a degraded
-//! output, not a hard failure.
+//! gcode-level sparse infill output must be the raw disjoint form (mean
+//! points per `;TYPE:Sparse infill` path is at the raw two-point baseline of
+//! 2, NOT the linked output of ~ 4.9). This pins ADR-0025's
+//! degraded-not-failed trade-off at the integration level: a missing linker
+//! is a degraded output, not a hard failure.
 //!
 //! Authoritative pipe command:
 //!   `cargo test -p slicer-runtime --test integration -- no_linker_module_degraded_raw_output`
@@ -38,32 +38,57 @@ fn gcode_path() -> PathBuf {
         .join("no_linker_module_degraded.gcode")
 }
 
-fn parse_sparse_infill_g1_moves(gcode: &str) -> Vec<u32> {
-    let mut sparse_moves: Vec<u32> = Vec::new();
+/// Count extruding moves per contiguous sparse-infill path.
+///
+/// A path is a maximal run of extruding moves (`G1` with `E` and an `X`/`Y`
+/// coordinate) uninterrupted by travel (`G0`, or `G1` without `E`). A
+/// retraction or unretraction (`G1` with `E` but no `X`/`Y`) does not break a
+/// run. A path's point count is its G1-move count plus one, which is the unit
+/// AC-N1 states directly ("mean points-per-path <= 2").
+fn parse_sparse_infill_path_g1_moves(gcode: &str) -> Vec<u32> {
+    let mut paths: Vec<u32> = Vec::new();
     let mut in_sparse = false;
+    let mut in_path = false;
     let mut current: u32 = 0;
     for raw in gcode.lines() {
         let line = raw.trim();
         if line == ";TYPE:Sparse infill" {
-            if in_sparse {
-                sparse_moves.push(current);
-            }
             in_sparse = true;
+            in_path = false;
             current = 0;
-        } else if line.starts_with(";TYPE:") {
-            if in_sparse {
-                sparse_moves.push(current);
+            continue;
+        }
+        if line.starts_with(";TYPE:") {
+            if in_sparse && in_path {
+                paths.push(current);
             }
             in_sparse = false;
+            in_path = false;
             current = 0;
-        } else if in_sparse && line.starts_with("G1 ") && line.contains('E') {
+            continue;
+        }
+        if !in_sparse {
+            continue;
+        }
+        let is_g1 = line.starts_with("G1 ");
+        let has_e = is_g1 && line.contains('E');
+        let has_xy = has_e && (line.contains('X') || line.contains('Y'));
+        if has_xy {
+            if !in_path {
+                in_path = true;
+                current = 0;
+            }
             current += 1;
+        } else if in_path && (line.starts_with("G0 ") || (is_g1 && !has_e)) {
+            paths.push(current);
+            in_path = false;
+            current = 0;
         }
     }
-    if in_sparse {
-        sparse_moves.push(current);
+    if in_sparse && in_path {
+        paths.push(current);
     }
-    sparse_moves
+    paths
 }
 
 #[test]
@@ -134,36 +159,34 @@ fn no_linker_module_degraded_raw_output() {
     );
 
     // And the gcode must be written, with sparse infill output that is the
-    // raw disjoint form (mean G1 moves per block ≈ 1, NOT >> 1).
+    // raw disjoint two-point form, not the linked form.
     assert!(gcode.exists(), "gcode not written at {}", gcode.display());
     let gcode_text = std::fs::read_to_string(&gcode).expect("read gcode");
 
-    let sparse_moves = parse_sparse_infill_g1_moves(&gcode_text);
+    // The degraded form is a disjoint two-point path (one G1 move); the linked
+    // form joins those points into longer paths. Measured on this tree
+    // (2026-09-24, fresh guests, `--no-integrated-modules`):
+    //   without linker: 6123 paths, mean G1 moves per path = 1.000 -> 2.00 points
+    //   with linker:    2515 paths, mean G1 moves per path = 3.900 -> 4.90 points
+    // The metric is the AC's own unit ("mean points-per-path"); a path's point
+    // count is its extruding G1-move count plus one. Threshold 2.5 sits 25%
+    // above the measured degraded mean and 49% below the measured linked mean.
+    // The previous block-based proxy (mean G1 per `;TYPE:Sparse infill` block)
+    // went stale when packets 233/234/235 reshaped the wedge's sparse-infill
+    // islands: it measured 30.93 without the linker against a 28.0 threshold,
+    // even though no path in that output exceeds two points.
+    let paths = parse_sparse_infill_path_g1_moves(&gcode_text);
     assert!(
-        sparse_moves.len() >= 2,
-        "no-linker wedge slice must still produce at least 2 sparse-infill blocks (got {})",
-        sparse_moves.len()
+        paths.len() >= 2,
+        "no-linker wedge slice must still produce at least 2 sparse-infill paths (got {})",
+        paths.len()
     );
-    // Calibrated discriminator (re-measured 2026-08-24 on this tree):
-    //   with linker, mean G1 moves per sparse-infill block ≈ 36.86 (198 blocks)
-    //   without linker, mean G1 moves per sparse-infill block ≈ 21.48
-    // History: raw ≈ 4.68 with ±90° alternation (threshold 6.0); packet 233's
-    // D11/F7 constant-direction infill raised the degraded mean to ≈ 11.36
-    // (threshold 12.0, margin 0.64 — too thin); packets 234/235 bridge gating
-    // reshaped the wedge's sparse-infill islands further → raw ≈ 21.48.
-    // Threshold 28.0 keeps ≈ 30% headroom above the observed degraded mean and
-    // ≈ 24% below the linked mean. The AC's
-    // literal claim is "mean points-per-path ≤ 2" (which is the raw
-    // 2-point disjoint baseline); the gcode proxy uses G1-moves-per-block
-    // (N-point path = N-1 G1 moves, so 2-point = 1 G1 move on average).
-    // This guard accepts the measured raw-path band while rejecting the
-    // measured linked output; the observed separation is about 1.7x.
-    let mean = (sparse_moves.iter().sum::<u32>() as f32) / (sparse_moves.len() as f32);
-    // Packet 233 (D11/F7): rectilinear alternation removed (canonical _layer_angle == 0); degraded-mode mean G1 density shifts accordingly.
+    let mean_points_per_path = (paths.iter().sum::<u32>() as f32) / (paths.len() as f32) + 1.0;
     assert!(
-        mean < 28.0,
-        "AC-N1: without the linker, mean G1 moves per sparse-infill block should be at the \
-         raw baseline (< 28.0); got {mean:.2}. If this is high, the linker is wired even \
-         though its module-dir was excluded. Block counts: {sparse_moves:?}"
+        mean_points_per_path <= 2.5,
+        "AC-N1: without the linker, mean points per sparse-infill path should be at the raw \
+         two-point baseline (<= 2.5); got {mean_points_per_path:.2}. If this is high, the linker \
+         is wired even though its module-dir was excluded. Path count: {}",
+        paths.len()
     );
 }

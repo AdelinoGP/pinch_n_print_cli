@@ -4,8 +4,7 @@
 use std::sync::{Arc, Mutex};
 
 use slicer_ir::{
-    ConfigValue, ExtrusionRole, GlobalLayer, LayerStageCommit, ResolvedConfig, SupportIR,
-    SupportRole,
+    ConfigValue, ExtrusionRole, GlobalLayer, LayerStageCommit, SupportIR, SupportRole,
 };
 use slicer_runtime::{
     build_live_execution_plan, execute_per_layer_with_anchored_events, LayerStageInput,
@@ -18,23 +17,6 @@ use slicer_wasm_host::marshal::convert_native_support_output_with_plan;
 use tree_support::TreeSupport;
 
 use crate::common::support_wedge;
-
-/// Reify a raw source map into the `ResolvedConfig` a production run hands
-/// to binding: `apply_cli_key` takes typed fields, and undeclared keys route
-/// to `extensions` exactly as the host resolver routes the `Ok(false)`
-/// fall-through (crates/slicer-config/src/resolution.rs).
-fn resolved_from(source: std::collections::HashMap<String, ConfigValue>) -> ResolvedConfig {
-    let mut resolved = ResolvedConfig::default();
-    for (key, value) in source {
-        if !resolved
-            .apply_cli_key(&key, &value)
-            .expect("test config key must type-check against ResolvedConfig")
-        {
-            resolved.extensions.insert(key, value);
-        }
-    }
-    resolved
-}
 
 /// The wedge must select tree support and retain family attribution through
 /// the host SupportPlanIR aggregation boundary. The disabled helper exercises
@@ -102,26 +84,6 @@ pub fn tree_support_family() {
         .join("modules")
         .join("core-modules");
     let loaded = crate::common::wasm_cache::cached_live_modules(&[core_modules], 1);
-    let mut config_source = std::collections::HashMap::new();
-    config_source.insert("enable_support".to_string(), ConfigValue::Bool(true));
-    config_source.insert(
-        "support_type".to_string(),
-        ConfigValue::String("tree(auto)".to_string()),
-    );
-    // This fixture's column is only a few layers tall. With the default
-    // 2-layer interface band every layer would be roof, and interface is now
-    // carved OUT of the body rather than added on top of it, so there would be
-    // no `SupportBody` left to assert the trunk's wall+fill construction
-    // against. Interface placement itself is covered by `final_gcode_roles`
-    // and the planner's own suite.
-    config_source.insert(
-        "support_interface_top_layers".to_string(),
-        ConfigValue::Int(0),
-    );
-    config_source.insert(
-        "support_interface_bottom_layers".to_string(),
-        ConfigValue::Int(0),
-    );
     let target_z = structural_entry
         .skeleton
         .as_ref()
@@ -160,7 +122,13 @@ pub fn tree_support_family() {
     let mut layer_plan = build_live_execution_plan(
         loaded.sorted_stages.clone(),
         loaded.bindings.clone(),
-        &resolved_from(config_source),
+        // Production binding passes `default_resolved_config` — the value
+        // `resolve_scope_stack` produced, with every registry-declared
+        // default seeded (`seed_registry_defaults`) and automatic values
+        // expanded. A hand-built map bypasses that seeding, so the loaded
+        // classic-perimeters guest would not find its contract-required
+        // `bridge_line_width` (packet 06) in the bound view.
+        &ctx.default_resolved_config,
         Arc::new(global_layers),
         Arc::new(std::collections::HashMap::new()),
         &mut Vec::new(),
@@ -370,14 +338,14 @@ impl LayerStageRunner for CapturingLayerRunner {
                 .invoked
                 .lock()
                 .expect("tree renderer invocation lock must not be poisoned") = true;
-            let config = slicer_ir::ConfigView::from_map(std::collections::HashMap::from([
-                ("enable_support".to_string(), ConfigValue::Bool(true)),
-                (
-                    "support_type".to_string(),
-                    ConfigValue::String("tree(auto)".to_string()),
-                ),
-            ]));
-            let native = TreeSupport::from_config(&config)
+            // The production-bound view for this module: `build_live_execution_plan`
+            // pre-filtered the resolved config through `bind_module_config_view`,
+            // so it already holds every key the native constructor reads
+            // (`nozzle_diameter`, `layer_height`, `support_line_width`,
+            // `support_base_pattern_spacing`). Hand-building a partial map here
+            // bypassed that binding and tripped the packet-06 required reads.
+            let config: &slicer_ir::ConfigView = module.config_view.as_ref();
+            let native = TreeSupport::from_config(config)
                 .expect("tree-support native module must construct");
             let layer_index = self
                 .plan

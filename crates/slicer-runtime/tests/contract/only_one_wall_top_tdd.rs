@@ -8,16 +8,17 @@
 // AC-N2 (non_top_layer_case): When top_shell_index == None and
 // only_one_wall_top = true, wall_count must remain at the configured base (4).
 
+use crate::common::classic_perimeters_baseline;
 use classic_perimeters::ClassicPerimeters;
 use slicer_ir::{ConfigView, ExPolygon, LoopType, Point2, Polygon};
 use slicer_sdk::builders::PerimeterOutputBuilder;
-use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
-/// Build a ConfigView with wall_count=4, line_width=0.4, only_one_wall_top=<flag>.
+/// Build a ConfigView with wall_count=4, line_width=0.4, only_one_wall_top=<flag>
+/// over the bound-view baseline (packet 06 5c-prime).
 fn config_4_walls(only_one_wall_top: bool) -> ConfigView {
-    ConfigViewBuilder::new()
+    classic_perimeters_baseline()
         .int("wall_count", 4)
         .float("line_width", 0.4)
         .bool("only_one_wall_top", only_one_wall_top)

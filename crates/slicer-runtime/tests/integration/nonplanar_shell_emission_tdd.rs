@@ -30,7 +30,14 @@ fn make_surface_group(shell_count: u32) -> SurfaceGroup {
 /// exactly 3 walls, all `LoopType::NonPlanarShell`, and no infill.
 #[test]
 fn nonplanar_region_emits_shell_count_walls() {
-    let config = ConfigViewBuilder::new().int("wall_count", 2).build();
+    // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
+    // reads need the full classic surface; the fixture's own keys override it.
+    // `line_width` supplies the resolved wall width behind the baseline's
+    // auto-0 wall-width sentinels, or the spacing gate rejects the inset.
+    let config = crate::common::classic_perimeters_baseline()
+        .float("line_width", 0.4)
+        .int("wall_count", 2)
+        .build();
     let module = ClassicPerimeters::from_config(&config).unwrap();
 
     let region = SliceRegionViewBuilder::new()
@@ -77,7 +84,9 @@ fn nonplanar_region_emits_shell_count_walls() {
 /// ThinWall loops — the non-planar branch skips thin-wall detection entirely.
 #[test]
 fn nonplanar_skips_thin_wall_case() {
-    let config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): see nonplanar_region_emits_shell_count_walls.
+    let config = crate::common::classic_perimeters_baseline()
+        .float("line_width", 0.4)
         .int("wall_count", 2)
         .bool("detect_thin_wall", true)
         .build();

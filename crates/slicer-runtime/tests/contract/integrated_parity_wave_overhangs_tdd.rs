@@ -112,6 +112,13 @@ fn config() -> Arc<ConfigView> {
             "nozzle_diameter".to_string(),
             slicer_ir::ConfigValue::Float(0.4),
         ),
+        // Packet 06 (AC-3): `bridge_line_width` is a contract-required read
+        // (`require_abs_value` over the nozzle base); a bound view holds it —
+        // the resolved default, as in wave_overhangs_tdd.rs fixtures.
+        (
+            "bridge_line_width".to_string(),
+            slicer_ir::ConfigValue::Float(0.4),
+        ),
         (
             "layer_height".to_string(),
             slicer_ir::ConfigValue::Float(0.2),

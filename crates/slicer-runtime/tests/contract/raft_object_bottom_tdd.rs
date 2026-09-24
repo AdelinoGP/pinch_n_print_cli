@@ -23,11 +23,11 @@
 //! private, so its own unit test lives in that file's `#[cfg(test)] mod tests`
 //! and runs under `--lib`.
 
+use crate::common::classic_perimeters_baseline;
 use classic_perimeters::ClassicPerimeters;
 use slicer_core::algos::overhang_annotation::{detect_support_contacts, SupportContactParams};
 use slicer_ir::{ConfigView, ExPolygon, Point2, Polygon};
 use slicer_sdk::builders::PerimeterOutputBuilder;
-use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
@@ -86,7 +86,7 @@ fn raft_aware_params(threshold_angle_deg: f32, layer_id: u32) -> SupportContactP
 /// overlap keys deliberately set to different values so the key choice is
 /// observable in the emitted geometry.
 fn classic_infill_areas_at(layer_index: u32) -> Vec<Vec<ExPolygon>> {
-    let config: ConfigView = ConfigViewBuilder::new()
+    let config: ConfigView = classic_perimeters_baseline()
         .int("wall_count", 2)
         .float("line_width", 0.4)
         .int("support_raft_layers", RAFT_LAYERS as i64)

@@ -549,6 +549,45 @@ fn declared_percent_accepts_percent_authored_float_or_percent_variant() {
 }
 
 #[test]
+fn declared_float_accepts_canonical_percent_spelling_string() {
+    // Canonical scalar wire (canonical `ConfigOptionFloat::deserialize`): a
+    // numeric string parses with its optional trailing `%` ignored, yielding
+    // the percent magnitude — the same spelling `ConfigView::get_float`'s
+    // string branch accepts at the readers. Regression: a modifier delta
+    // authored `sparse_infill_density = "40%"` (a real OrcaSlicer export's
+    // percent wire) was rejected as `expected float, authored "40%"` by the
+    // packet-08 registry-routed modifier ingestion.
+    let registry = real_registry();
+    let key = declared_keys_with_type(&registry, "float")
+        .into_iter()
+        .next()
+        .expect("registry declares at least one float key");
+    let values = HashMap::from([(key.clone(), ConfigValue::String("40%".to_owned()))]);
+    let mut ingestor = ConfigIngestor::new(&registry);
+
+    ingestor
+        .ingest_delta(
+            ConfigScope::Modifier {
+                object_id: "obj-a".to_owned(),
+                modifier_id: "mod-a".to_owned(),
+            },
+            &values,
+        )
+        .expect("a percent-spelled numeric string is canonical float wire");
+    let outcome = ingestor.finish();
+
+    let delta = outcome
+        .scoped
+        .deltas
+        .get(&ConfigScope::Modifier {
+            object_id: "obj-a".to_owned(),
+            modifier_id: "mod-a".to_owned(),
+        })
+        .expect("modifier delta retained");
+    assert_eq!(delta.values.get(&key), Some(&ConfigValue::Float(40.0)));
+}
+
+#[test]
 fn strict_scalar_list_shape_is_rejected() {
     let registry = real_registry();
     let key = declared_keys_with_type(&registry, "int")

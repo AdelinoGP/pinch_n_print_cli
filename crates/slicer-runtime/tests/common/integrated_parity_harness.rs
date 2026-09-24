@@ -103,6 +103,7 @@ fn layer_planning_objects_from_config(config: &ConfigView) -> Vec<LayerPlanningO
                 ConfigValue::Float(height) => *height,
                 _ => return None,
             };
+            // exhaustive: the harness must forward every typed layer-planning field.
             Some(LayerPlanningObject {
                 object_id: object_id.to_string(),
                 object_height,

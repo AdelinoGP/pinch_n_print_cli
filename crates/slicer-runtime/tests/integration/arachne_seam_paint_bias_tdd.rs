@@ -4,7 +4,7 @@ use arachne_perimeters::ArachnePerimeters;
 use classic_perimeters::ClassicPerimeters;
 use slicer_ir::{units_to_mm, PaintSemantic, PaintValue};
 use slicer_sdk::builders::PerimeterOutputBuilder;
-use slicer_sdk::test_support::fixtures::{square_polygon, ConfigViewBuilder};
+use slicer_sdk::test_support::fixtures::square_polygon;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
@@ -23,7 +23,7 @@ fn run_region<M: LayerModule>(
 
 #[test]
 fn arachne_and_classic_exclude_same_painted_corner() {
-    let config = ConfigViewBuilder::new()
+    let config = crate::common::classic_perimeters_baseline()
         .int("wall_count", 1)
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)

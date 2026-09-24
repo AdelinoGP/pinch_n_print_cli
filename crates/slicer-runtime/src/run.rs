@@ -1033,7 +1033,18 @@ fn run_pipeline_fork(
     // leaked undeclared extension keys and the four `config_block = false`
     // keys). `registry` is only borrowed here, so the projection outlives each
     // call without changing any public signature.
-    let config_block = registry.config_block_map(&config.default_resolved_config);
+    //
+    // The projection is over the LOADED module set (packet-06 AC-4): claim
+    // dedup drops a module from dispatch only, never from the config schema,
+    // so the manifest-first registry still declares the claim-losing module's
+    // keys for resolution — but they must not leak into the emitted block.
+    let live_modules: std::collections::BTreeSet<String> = config
+        .wasm_handles
+        .keys()
+        .map(ToString::to_string)
+        .collect();
+    let config_block =
+        registry.config_block_map_for_modules(&config.default_resolved_config, &live_modules);
 
     let result = match (opts.report.as_ref(), progress_pi.as_ref()) {
         #[cfg(feature = "report")]

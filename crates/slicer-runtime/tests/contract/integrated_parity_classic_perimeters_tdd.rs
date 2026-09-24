@@ -7,18 +7,18 @@
 //! parity comparator. Parity is structural, tolerance-based — never
 //! byte-equality, never relaxed.
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use classic_perimeters::ClassicPerimeters;
 use slicer_ir::{
-    ConfigValue, ConfigView, ExPolygon, GlobalLayer, LayerStageCommit, Point2, Polygon, SemVer,
-    SliceIR, SlicedRegion, StageId,
+    ExPolygon, GlobalLayer, LayerStageCommit, Point2, Polygon, SemVer, SliceIR, SlicedRegion,
+    StageId,
 };
 use slicer_runtime::{Blackboard, LayerArena, LayerStageRunner};
 
 use crate::common::{
+    classic_perimeters_baseline,
     integrated_parity_harness::{run_integrated_parity, IntegratedParitySpec},
     parity_invariants::{assert_parity_structural, ParityTolerance},
 };
@@ -82,10 +82,14 @@ fn module_id() -> slicer_ir::ModuleId {
 
 #[test]
 fn integrated_parity_classic_perimeters_native_matches_wasm() {
-    let config = Arc::new(ConfigView::from_map(HashMap::from([(
-        "line_width".to_owned(),
-        ConfigValue::Float(0.4),
-    )])));
+    // Bound-view shape (packet 06 5c-prime, design.md item 11): a bound view
+    // always holds the module's contract-required reads at manifest defaults.
+    let config = Arc::new(
+        classic_perimeters_baseline()
+            .int("wall_count", 3)
+            .float("line_width", 0.4)
+            .build(),
+    );
     let bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
     let slice = holed_slice();
     let mut wasm_arena = LayerArena::new();

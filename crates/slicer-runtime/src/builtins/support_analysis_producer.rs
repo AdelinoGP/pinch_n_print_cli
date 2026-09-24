@@ -382,7 +382,7 @@ pub fn commit_support_analysis_builtin(
 /// path.
 fn support_territory_clearance_mm(config: &ResolvedConfig) -> f32 {
     let fallback_line_width = if config.line_width > 0.0 {
-        config.line_width
+        config.line_width as f32
     } else {
         DEFAULT_LINE_WIDTH_MM
     };
@@ -706,7 +706,7 @@ fn resolve_contact_params(
     threshold_angle_deg: f32,
 ) -> SupportContactParams {
     let typed_line_width = if config.line_width > 0.0 {
-        config.line_width
+        config.line_width as f32
     } else {
         DEFAULT_LINE_WIDTH_MM
     };

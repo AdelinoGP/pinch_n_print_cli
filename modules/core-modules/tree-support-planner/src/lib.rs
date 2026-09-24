@@ -1690,10 +1690,20 @@ impl PrepassModule for SupportPlanner {
             Some(ConfigValue::Float(n)) => *n as i32,
             _ => 0,
         };
+        // `raft_first_layer_density` arrives as coPercent magnitude (90 = 90%)
+        // and is consumed as `value * 0.01` — exactly canonical
+        // `TreeSupport::generate_toolpaths`
+        // (`OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp`).
+        // `RaftPlan.raft_first_layer_density` keeps the 0..1 fraction semantic.
         let raft_first_layer_density = match config.get("raft_first_layer_density") {
-            Some(ConfigValue::Float(d)) => *d as f32,
-            Some(ConfigValue::Int(d)) => *d as f32,
-            _ => 0.4,
+            // Canonical computes `value * 0.01` in double before the float
+            // cast (`TreeSupport::generate_toolpaths`,
+            // `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp`);
+            // f32 math turns authored 40 into 0.39999998 and breaks exact
+            // RaftPlan equality.
+            Some(ConfigValue::Float(d)) => (*d * 0.01) as f32,
+            Some(ConfigValue::Int(d)) => (*d as f64 * 0.01) as f32,
+            _ => 0.9,
         };
         let base_raft_layers = match config.get("base_raft_layers") {
             Some(ConfigValue::Int(n)) => *n as u32,

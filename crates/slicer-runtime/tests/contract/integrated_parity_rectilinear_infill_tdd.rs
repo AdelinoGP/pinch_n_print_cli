@@ -56,12 +56,95 @@ fn integrated_parity_rectilinear_infill() {
         "claim:bottom-fill".to_string(),
         "claim:bridge-fill".to_string(),
     ];
+    // Bound-view shape (packet 06 5c-prime): mirrors
+    // rectilinear_infill_tdd.rs::baseline_config — every contract-required
+    // read at manifest defaults, with this fixture's density/line_width winning.
     let config = Arc::new(ConfigView::from_map(std::collections::HashMap::from([
         (
             "infill_density".to_string(),
             slicer_ir::ConfigValue::Float(0.2),
         ),
         ("line_width".to_string(), slicer_ir::ConfigValue::Float(0.4)),
+        (
+            "bridge_line_width".to_string(),
+            slicer_ir::ConfigValue::Float(0.0),
+        ),
+        (
+            "initial_layer_line_width".to_string(),
+            slicer_ir::ConfigValue::Float(0.0),
+        ),
+        (
+            "top_surface_line_width".to_string(),
+            slicer_ir::ConfigValue::Float(0.0),
+        ),
+        (
+            "internal_solid_infill_line_width".to_string(),
+            slicer_ir::ConfigValue::Float(0.0),
+        ),
+        (
+            "sparse_infill_line_width".to_string(),
+            slicer_ir::ConfigValue::Float(0.0),
+        ),
+        (
+            "bridge_density".to_string(),
+            slicer_ir::ConfigValue::Float(1.0),
+        ),
+        (
+            "bridge_speed".to_string(),
+            slicer_ir::ConfigValue::Float(25.0),
+        ),
+        (
+            "bridge_flow".to_string(),
+            slicer_ir::ConfigValue::Float(1.0),
+        ),
+        (
+            "thick_bridges".to_string(),
+            slicer_ir::ConfigValue::Bool(false),
+        ),
+        (
+            "internal_bridge_density".to_string(),
+            slicer_ir::ConfigValue::Float(1.0),
+        ),
+        (
+            "internal_bridge_speed".to_string(),
+            slicer_ir::ConfigValue::Float(37.5),
+        ),
+        (
+            "internal_bridge_flow".to_string(),
+            slicer_ir::ConfigValue::Float(1.0),
+        ),
+        (
+            "thick_internal_bridges".to_string(),
+            slicer_ir::ConfigValue::Bool(true),
+        ),
+        (
+            "top_surface_speed".to_string(),
+            slicer_ir::ConfigValue::Float(60.0),
+        ),
+        (
+            "internal_solid_infill_speed".to_string(),
+            slicer_ir::ConfigValue::Float(60.0),
+        ),
+        (
+            "sparse_infill_speed".to_string(),
+            slicer_ir::ConfigValue::Float(60.0),
+        ),
+        (
+            "dont_filter_internal_bridges".to_string(),
+            slicer_ir::ConfigValue::Bool(false),
+        ),
+        (
+            "enable_extra_bridge_layer".to_string(),
+            slicer_ir::ConfigValue::Bool(false),
+        ),
+        (
+            "internal_bridge_angle".to_string(),
+            slicer_ir::ConfigValue::Float(0.0),
+        ),
+        (
+            "infill_shift_step".to_string(),
+            slicer_ir::ConfigValue::Float(0.0),
+        ),
     ])));
     let mut bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
     let mut region_map = RegionMapIR::default();

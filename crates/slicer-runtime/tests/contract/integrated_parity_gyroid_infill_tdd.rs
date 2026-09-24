@@ -116,7 +116,25 @@ fn integrated_parity_gyroid_infill() {
                 "claim:bottom-fill".into(),
                 "claim:bridge-fill".into(),
             ],
-            config: Arc::new(ConfigView::new()),
+            // Bound-view shape (packet 06 5c-prime): `bridge_line_width` /
+            // `initial_layer_line_width` are contract-required reads
+            // (`require_abs_value` over the fixed 0.4 nozzle base); a bound
+            // view holds them at their manifest defaults (0.0) and carries
+            // the host-expanded `line_width` (gyroid_infill_tdd.rs fixtures).
+            config: Arc::new(ConfigView::from_map(std::collections::HashMap::from([
+                (
+                    "bridge_line_width".to_string(),
+                    slicer_ir::ConfigValue::Float(0.0),
+                ),
+                (
+                    "initial_layer_line_width".to_string(),
+                    slicer_ir::ConfigValue::Float(0.0),
+                ),
+                (
+                    "line_width".to_string(),
+                    slicer_ir::ConfigValue::Float(0.45),
+                ),
+            ]))),
             native_entry: GyroidInfill::__slicer_native_entry(),
         },
         |dispatcher, native_live, wasm_live| {

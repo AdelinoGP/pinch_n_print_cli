@@ -123,13 +123,20 @@ display = "Support Raft Layers"
 description = "Number of raft layers; consumed by push_raft_plan to emit the raft plan band."
 group   = "Support"
 
+# Canonical `raft_first_layer_density` is coPercent with min 10, max 100,
+# default 90 (`PrintConfigDef::init_fff_params`,
+# `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp`): authored `"90%"` or
+# `90` is percent magnitude, and the ÷100 happens at consumption
+# (`TreeSupport::generate_toolpaths`,
+# `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp`). The RaftPlan
+# IR field keeps the 0..1 fraction semantic.
 [config.schema.raft_first_layer_density]
 type    = "float"
-default = 0.4
-min     = 0.0
-max     = 1.0
+default = 90.0
+min     = 10.0
+max     = 100.0
 display = "Raft First Layer Density"
-description = "Raft first-layer density; consumed by push_raft_plan as RaftPlan."
+description = "Raft first-layer density as percent magnitude (90 = 90%); consumed by push_raft_plan as the RaftPlan fraction."
 group   = "Support"
 
 [config.schema.base_raft_layers]

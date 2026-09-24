@@ -868,6 +868,88 @@ fn provenance_names_every_contributor() {
     );
 }
 
+/// Regression for the CONFIG_BLOCK claim-drop leak: the registry spans every
+/// discovered module (claim dedup drops a module from dispatch only, never
+/// from the config schema), so `config_block_map` carries the claim-losing
+/// module's keys. The emitted `CONFIG_BLOCK` contracts the LOADED set
+/// (packet-06 AC-4): `config_block_map_for_modules` must project only keys
+/// whose provenance names a live module or a host channel. Regression shape:
+/// `wall_generator=classic` drops `arachne-perimeters` from dispatch, yet its
+/// `initial_layer_min_bead_width` / `min_bead_count` / `max_bead_count` keys
+/// leaked into the emitted block.
+#[test]
+fn config_block_map_for_modules_projects_only_live_module_and_host_keys() {
+    let host = host_key("host_owned", "float", "0.5");
+    let modules = vec![
+        module(
+            "alpha-module",
+            vec![
+                ("alpha_key", field_with_default("float", "1")),
+                ("shared_key", field_with_default("float", "2")),
+            ],
+            None,
+        ),
+        module(
+            "beta-module",
+            vec![
+                ("beta_key", field_with_default("float", "3")),
+                ("shared_key", field_with_default("float", "2")),
+            ],
+            None,
+        ),
+    ];
+    let channels = HostChannels::from_parts(vec![host], Vec::new(), Vec::new());
+    let registry = assemble_registry(&modules, &channels)
+        .expect("distinct keys with defaults are non-fatal")
+        .registry;
+
+    // The resolution-side effective map is seeded the way the default run
+    // resolves it: non-typed registry defaults land in `extensions`.
+    let mut resolved = ResolvedConfig::default();
+    for key in ["alpha_key", "beta_key", "shared_key", "host_owned"] {
+        resolved.extensions.insert(
+            key.to_owned(),
+            slicer_ir::ConfigValue::Float(
+                registry
+                    .entry(key)
+                    .and_then(|entry| entry.default.as_deref())
+                    .and_then(|value| value.parse::<f64>().ok())
+                    .expect("fixture default parses"),
+            ),
+        );
+    }
+
+    let live: BTreeSet<String> = ["alpha-module".to_owned()].into_iter().collect();
+    let projected = registry.config_block_map_for_modules(&resolved, &live);
+
+    assert!(
+        projected.contains_key("alpha_key"),
+        "a live module's key must be projected"
+    );
+    assert!(
+        projected.contains_key("shared_key"),
+        "a key declared by a live module and a dropped one must be projected"
+    );
+    assert!(
+        projected.contains_key("host_owned"),
+        "a host-channel key must be projected regardless of the live module set"
+    );
+    assert!(
+        !projected.contains_key("beta_key"),
+        "a claim-dropped module's key must not leak into the emitted block"
+    );
+
+    // The unfiltered projection is unchanged: resolution-side consumers rely
+    // on it spanning every declaration.
+    let unfiltered = registry.config_block_map(&resolved);
+    for key in ["alpha_key", "beta_key", "shared_key", "host_owned"] {
+        assert!(
+            unfiltered.contains_key(key),
+            "{key} must survive the unfiltered projection"
+        );
+    }
+}
+
 #[test]
 fn runtime_selector_flag_reaches_registry_entry_and_wall_generator_denials_are_retained() {
     let outcome = assemble_registry(&[], &HostChannels::from_live())

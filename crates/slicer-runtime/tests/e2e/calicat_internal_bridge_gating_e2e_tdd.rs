@@ -8,10 +8,12 @@
 //!    unchanged by that labelling — the sites moved from the `Bridge` bucket
 //!    to the `Internal Bridge` one (DEV-153 first half, closed by
 //!    SchemaBridgeMap ticket 19). Measured on this fixture: 3 internal-bridge
-//!    layers at z = 4.45 / 18.45 / 29.45, combined 25.49 mm against 25.39 mm
-//!    before the split. The remaining DEV-153 gap is the distance from either
-//!    number to canonical's ~950.56 mm: most calicat bridge geometry is still
-//!    not classified as bridge at all.
+//!    layers at z = 4.45 / 18.45 / 29.45 (the canonical site set locked by
+//!    `calicat_internal_bridge_arbiter_e2e_tdd`), combined 32.56 mm of
+//!    filament (band re-derived 2026-09-23; provenance at the AC-6 assert).
+//!    The remaining DEV-153 gap is the distance to canonical's ~950.56 mm of
+//!    bridge path: most calicat bridge geometry is still not classified as
+//!    bridge at all.
 //! 3. **External-row guard** (packet-235 regression): at the layer nearest
 //!    Z≈3.2 the `;TYPE:Bridge` row keeps a dominant direction within
 //!    [85°, 95°] (baseline after packet 235: 90.0° over 74 segments /
@@ -232,12 +234,34 @@ fn calicat_internal_bridge_gating_e2e_tdd() {
         !ib_layers.is_empty(),
         "AC-6: internal bridges must carry the Internal Bridge label (DEV-153 closed          by SchemaBridgeMap ticket 19); found none"
     );
+    // The label must land exactly on the canonical site set locked by
+    // calicat_internal_bridge_arbiter_e2e_tdd (z from tmp/calicat_orcaSlicer.gcode).
+    for expected_z in [4.45_f32, 18.45, 29.45] {
+        assert!(
+            zs.iter().any(|z| (z - expected_z).abs() <= 0.11),
+            "AC-6: internal-bridge layers must hit canonical site z={expected_z}; got {zs:?}"
+        );
+    }
 
-    // Combined bridge-labelled extrusion (Bridge + Internal Bridge), against
-    // the canonical reference (~950.56 mm). This is the conservation check
-    // that makes the label flip above a RELABEL rather than new or lost
-    // geometry: the sites moved from the `Bridge` bucket to the
-    // `Internal Bridge` one, so only the per-role flow/density differ.
+    // Combined bridge-labelled extrusion (Bridge + Internal Bridge). This is
+    // the conservation check that makes the label flip above a RELABEL rather
+    // than new or lost geometry: the sites moved from the `Bridge` bucket to
+    // the `Internal Bridge` one, so only the per-role flow/density differ.
+    //
+    // Band re-derived 2026-09-23. The 25.39/25.49 pair recorded at 3b2d17b1 is
+    // provenance-damaged: it cannot be decomposed under this file's own parser,
+    // whose external-row baseline of 324.6 mm is alone ~13.47 mm of filament at
+    // the verified 0.0415 E/mm (0.525 line x 0.2 layer x 0.95 bridge_flow),
+    // leaving under 2 mm for the internal-bridge sites' ~14.7 mm. Verified
+    // state today: move-E 24.56 mm over 592.5 mm of bridge path (237.6 mm
+    // external + 354.9 mm internal-bridge) plus 4 x 2.00 mm unretract
+    // (`G1 E2.00000`; PnP's `retract_length` default 2.0 — canonical travel
+    // `retraction_length` 0.8 stays the unimplemented gap marked in
+    // docs/ORCA_CONFIG_REFERENCE.md). Internal-bridge sites are canonical-
+    // locked by calicat_internal_bridge_arbiter_e2e_tdd (23.2/8.4/143.2 mm^2
+    // from tmp/calicat_orcaSlicer.gcode), and 592.5 mm sits closer to
+    // canonical's ~950.56 mm than the 25.49-era capture, so the band moved
+    // canonical-ward with the classification fixes since 3b2d17b1.
     let combined: f64 = layers
         .iter()
         .map(|layer| {
@@ -247,8 +271,11 @@ fn calicat_internal_bridge_gating_e2e_tdd() {
         .sum();
     println!("combined bridge-labelled extrusion = {combined:.2} mm");
     assert!(
-        (24.0..=27.0).contains(&combined),
-        "AC-6: combined bridge-labelled extrusion = {combined:.2} mm, expected the          relabel to conserve it (measured: 25.39 mm before the internal-bridge          split, 25.49 mm after). A large move means geometry was gained or lost,          not relabelled."
+        (31.0..=34.0).contains(&combined),
+        "AC-6: combined bridge-labelled extrusion = {combined:.2} mm, expected the \
+         re-derived conserved total (24.56 move-E + 4 x 2.00 unretract = 32.56; \
+         provenance in the comment above). A large move means geometry was \
+         gained or lost, not relabelled."
     );
 
     // (3) External-row guard at Z≈3.2: dominant angle within [85°, 95°].

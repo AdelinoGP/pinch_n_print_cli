@@ -583,7 +583,11 @@ fn coerce_value(
                     }
                     ConfigValue::Int(value) => flat.push(ConfigValue::Float(*value as f64)),
                     ConfigValue::String(text) => {
-                        for entry in text.trim().split(',').filter(|part| !part.trim().is_empty()) {
+                        for entry in text
+                            .trim()
+                            .split(',')
+                            .filter(|part| !part.trim().is_empty())
+                        {
                             if let Some((x, y)) = parse_point_pair(entry) {
                                 flat.push(ConfigValue::Float(x));
                                 flat.push(ConfigValue::Float(y));
@@ -725,7 +729,13 @@ fn parse_point_pair(value: &str) -> Option<(f64, f64)> {
 }
 
 fn parse_finite_float(value: &str) -> Result<f64, ()> {
-    let value = value.trim().parse::<f64>().map_err(|_| ())?;
+    // Canonical scalar wire (canonical `ConfigOptionFloat::deserialize`): a
+    // numeric string parses with its optional trailing `%` ignored, yielding
+    // the percent magnitude — mirrors `ConfigView::get_float`'s string branch
+    // so validation and readers share one wire vocabulary.
+    let trimmed = value.trim();
+    let trimmed = trimmed.strip_suffix('%').unwrap_or(trimmed).trim();
+    let value = trimmed.parse::<f64>().map_err(|_| ())?;
     value.is_finite().then_some(value).ok_or(())
 }
 

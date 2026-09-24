@@ -43,10 +43,8 @@
 //!
 //! Exit condition: `cargo test -p slicer-runtime --test integration manifest_default_reconcile_tdd`
 
-use std::collections::HashMap;
-
 use classic_perimeters::ClassicPerimeters;
-use slicer_ir::{ConfigView, ExPolygon, Point2, Polygon};
+use slicer_ir::{ExPolygon, Point2, Polygon};
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
@@ -87,17 +85,30 @@ fn square_region(z: f32) -> SliceRegionView {
     region
 }
 
-/// Drive `run_perimeters` for module `M` with an empty config so every value is
-/// supplied by the code fallback, then recover those fallbacks from the emitted
-/// wall loops. Returns `(wall_count, outer_wall_speed, inner_wall_speed)`.
+/// Drive `run_perimeters` for module `M` with the bound-view baseline so the
+/// contract-required `require_*` reads are satisfied, then recover the CODE
+/// FALLBACKS from the emitted wall loops. Returns
+/// `(wall_count, outer_wall_speed, inner_wall_speed)`.
 ///
-/// A 10mm square at the default 0.4mm line width fits the default 3 walls, so the
+/// The three observed keys (`wall_count`, `outer_wall_speed`,
+/// `inner_wall_speed`) are deliberately ABSENT from the view — the baseline
+/// does not seed them — so the module's own fallbacks (and not an injected
+/// value) are what the emitted walls carry. Since packet 06's classified
+/// `require_*` reads, the view can no longer be empty: the baseline holds
+/// every other required key at its manifest-default value, and `line_width`
+/// supplies the already-expanded base width so the D-162 spacing gate passes.
+///
+/// A 10mm square at the 0.4mm line width fits the default 3 walls, so the
 /// emitted loop count equals the `wall_count` code fallback, and the outer
 /// (perimeter_index 0) / inner (perimeter_index >= 1) loops carry the speed
 /// fallbacks as `speed_factor`.
 fn observed_code_fallbacks<M: LayerModule>() -> (usize, f32, f32) {
-    let empty = ConfigView::from_map(HashMap::new());
-    let module = M::from_config(&empty).expect("from_config should succeed");
+    // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
+    // reads need the full classic surface; the test's own keys override it.
+    let config = crate::common::classic_perimeters_baseline()
+        .float("line_width", 0.4)
+        .build();
+    let module = M::from_config(&config).expect("from_config should succeed");
     let region = square_region(0.2);
     let mut output = PerimeterOutputBuilder::new();
     module
@@ -106,9 +117,9 @@ fn observed_code_fallbacks<M: LayerModule>() -> (usize, f32, f32) {
             &[region],
             &PaintRegionLayerView::new(0),
             &mut output,
-            &empty,
+            &config,
         )
-        .expect("run_perimeters with empty config should succeed");
+        .expect("run_perimeters with the fallback-observing config should succeed");
 
     let walls = output.wall_loops();
     let outer = walls

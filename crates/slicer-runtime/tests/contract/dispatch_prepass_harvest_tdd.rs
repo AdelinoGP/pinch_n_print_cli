@@ -809,6 +809,45 @@ fn seam_plan_injection_matches_variant_chain() {
 }
 
 #[test]
+fn seam_plan_injection_falls_back_to_the_chainless_base_entry() {
+    // Painted regions are a relabel of their base region's geometry, and seam
+    // planning runs BEFORE paint segmentation — so its entries are keyed on
+    // the chain-less base identity. A chain-carrying region whose exact chain
+    // is unkeyed must fall back to that base seam (two-stage lookup, the
+    // `config_for_region_smallest_chain` precedent) instead of losing it.
+    let plan = slicer_ir::SeamPlanIR {
+        entries: vec![slicer_ir::SeamPlanEntry {
+            // exhaustive: boundary fixture preserves explicit test data
+            region_key: slicer_ir::RegionKey {
+                global_layer_index: 3,
+                object_id: "obj-A".to_string(),
+                region_id: 7,
+                variant_chain: Vec::new(),
+            },
+            chosen_candidate: slicer_ir::SeamPosition {
+                point: slicer_ir::Point3WithWidth {
+                    // exhaustive: boundary fixture preserves explicit test data
+                    x: 10.0,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let region = slicer_ir::PerimeterRegion {
+        object_id: "obj-A".to_string(),
+        region_id: 7,
+        variant_chain: vec![("material".to_string(), slicer_ir::PaintValue::ToolIndex(2))],
+        ..Default::default()
+    };
+
+    let seam = slicer_wasm_host::dispatch::resolve_seam_for_perimeter_region(&region, &plan, 3);
+    assert_eq!(seam.map(|s| s.point.x), Some(10.0));
+}
+
+#[test]
 fn seam_plan_ir_rejects_invalid_region_identity() {
     // exhaustive: boundary fixture preserves explicit test data
     let entry = slicer_wasm_host::host::prepass::SeamPlanEntry {

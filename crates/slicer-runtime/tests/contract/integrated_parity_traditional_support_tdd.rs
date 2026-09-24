@@ -59,6 +59,21 @@ fn integrated_parity_traditional_support() {
             slicer_ir::ConfigValue::Float(20.0),
         ),
         ("line_width".to_string(), slicer_ir::ConfigValue::Float(0.4)),
+        // Bound-view shape (packet 06 5c-prime): the contract-required reads
+        // (`from_config` / `run_support`) at manifest defaults
+        // (traditional-support.toml `[config.schema]`).
+        (
+            "nozzle_diameter".to_string(),
+            slicer_ir::ConfigValue::Float(0.4),
+        ),
+        (
+            "support_base_pattern_spacing".to_string(),
+            slicer_ir::ConfigValue::Float(2.5),
+        ),
+        (
+            "layer_height".to_string(),
+            slicer_ir::ConfigValue::Float(0.2),
+        ),
     ])));
     // Packet 222 removed traditional-support's missing-plan scan-line filler:
     // it `continue`s when `support_plan_entries_for` is empty, so a bare

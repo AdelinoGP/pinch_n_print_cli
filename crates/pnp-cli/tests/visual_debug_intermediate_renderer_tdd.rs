@@ -51,8 +51,8 @@ use slicer_runtime::{
     compute_viewport_bounds, render_stage_capture, CapturedIr, GeometryView, RenderError,
     RenderView, StageCapture, ViewportBoundsMm,
 };
-use tempfile::TempDir;
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
+use tempfile::TempDir;
 
 // ─────────────────────────── CLI-level fixtures ────────────────────────────
 // Mirrors `visual_debug_typed_tap_capture_tdd.rs`'s helpers exactly (packet
@@ -1140,8 +1140,10 @@ fn unsupported_resolution_scale_fails_without_output() {
 // Gap-2 follow-up fix note (supersedes the prior "Finding 5" note, which
 // concluded `RenderError::MissingGeometryField` was unreachable via the CLI
 // and is now known to be wrong for one specific tap): every per-layer tap
-// EXCEPT `Layer::PathOptimization` skips its own arena commit entirely when
-// it has nothing to contribute (`Layer::Perimeters`/`Layer::Infill`/
+// EXCEPT `Layer::PathOptimization` and the `Layer::InfillPostProcess` slot
+// (which `ensure_infill_slot_committed` always commits empty-but-present at
+// its stage boundary) skips its own arena commit entirely when it has
+// nothing to contribute (`Layer::Perimeters`/`Layer::Infill`/
 // `Layer::Support` all do this), so an empty-but-present capture never
 // reaches the renderer for them — confirmed unreachable, as the prior note
 // found.
@@ -1242,9 +1244,14 @@ fn missing_layer_collection_geometry_fails_with_render_failed_via_cli() {
 
 /// A `module_dirs` root carrying only `layer-planner-default` (so the model
 /// has a real `LayerPlanIR`/global layer list at all — required for
-/// `PrePass::LayerPlanning` to succeed) and `path-optimization-default`
-/// (the `Layer::PathOptimization` tap itself) — deliberately excluding every
-/// perimeter/infill/support-generating module. Copies the two modules'
+/// `PrePass::LayerPlanning` to succeed), `path-optimization-default`
+/// (the `Layer::PathOptimization` tap itself), and `machine-gcode-emit`
+/// (the only loaded module that declares `nozzle_diameter`, which packet 04's
+/// scope resolution reads to expand `line_width = 0` into its
+/// `1.125 × nozzle_diameter` automatic width; without it resolution fails
+/// with `CaptureFailed` before the renderer is reached, masking the
+/// `RenderFailed` this test asserts) — deliberately excluding every
+/// perimeter/infill/support-generating module. Copies each module's
 /// already-built `<name>.toml` + `<name>.wasm` pair from the real
 /// `modules/core-modules/` tree (built once for the whole workspace by
 /// `cargo xtask build-guests`, same precondition every other test in this
@@ -1253,7 +1260,11 @@ fn missing_layer_collection_geometry_fails_with_render_failed_via_cli() {
 /// repo.
 fn minimal_layer_collection_only_module_dir(tmp: &Path) -> PathBuf {
     let dest_root = tmp.join("minimal-modules");
-    for module_name in ["layer-planner-default", "path-optimization-default"] {
+    for module_name in [
+        "layer-planner-default",
+        "path-optimization-default",
+        "machine-gcode-emit",
+    ] {
         let dest_dir = dest_root.join(module_name);
         fs::create_dir_all(&dest_dir).expect("create minimal module subdir");
         for ext in ["toml", "wasm"] {

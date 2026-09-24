@@ -569,7 +569,7 @@ fn resolve_opening_radius(
             variant_chain: Vec::new(),
         };
         if region_map.entries.contains_key(&key) {
-            let lw = region_map.config_for(&key).line_width;
+            let lw = region_map.config_for(&key).line_width as f32;
             if lw > 0.0 {
                 return lw * 0.5;
             }
@@ -713,7 +713,7 @@ fn gate_internal_bridge_sites(
             false,
             false,
             &slicer_core::flow::RoleWidthContext {
-                line_width: resolved.map_or(0.0, |config| config.line_width),
+                line_width: resolved.map_or(0.0, |config| config.line_width as f32),
                 nozzle_diameter,
                 internal_solid_infill_line_width: ext_abs(
                     "internal_solid_infill_line_width",

@@ -55,7 +55,9 @@ fn mean_x_mm(w: &WallLoop) -> f32 {
 /// region_id)` origin — never merged into a single shared trace.
 #[test]
 fn three_tool_polygon_fragments_into_three_regions() {
-    let config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
+    // reads need the full classic surface; the fixture's own keys override it.
+    let config = crate::common::classic_perimeters_baseline()
         .int("wall_count", 1)
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)
@@ -131,7 +133,9 @@ fn three_tool_polygon_fragments_into_three_regions() {
 /// physically lie on — no vertex crosses the boundary into the other material.
 #[test]
 fn inner_wall_respects_material_boundary() {
-    let config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
+    // reads need the full classic surface; the fixture's own keys override it.
+    let config = crate::common::classic_perimeters_baseline()
         .int("wall_count", 3)
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)
@@ -231,7 +235,9 @@ fn inner_wall_respects_material_boundary() {
 /// path without panicking, and must emit no walls for the degenerate input.
 #[test]
 fn degenerate_polygon_no_panic() {
-    let config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
+    // reads need the full classic surface; the fixture's own keys override it.
+    let config = crate::common::classic_perimeters_baseline()
         .int("wall_count", 2)
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)
@@ -303,7 +309,9 @@ fn degenerate_polygon_no_panic() {
 /// dropped.
 #[test]
 fn hole_with_thin_wall_emits_thin_wall() {
-    let config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
+    // reads need the full classic surface; the fixture's own keys override it.
+    let config = crate::common::classic_perimeters_baseline()
         .int("wall_count", 2)
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)
@@ -403,7 +411,9 @@ fn hole_with_thin_wall_emits_thin_wall() {
 #[test]
 fn gap_fill_in_overhang_region() {
     let make_config = |overhang_bonus: bool| {
-        ConfigViewBuilder::new()
+        // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
+        // reads need the full classic surface; this closure's own keys override it.
+        crate::common::classic_perimeters_baseline()
             .int("wall_count", 1)
             .float("outer_wall_line_width", 0.4)
             .float("inner_wall_line_width", 0.4)
@@ -512,7 +522,9 @@ fn gap_fill_in_overhang_region() {
 /// top-surface classification is this wall-count collapse.)
 #[test]
 fn top_flagged_region_propagates_flag() {
-    let config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
+    // reads need the full classic surface; the fixture's own keys override it.
+    let config = crate::common::classic_perimeters_baseline()
         .int("wall_count", 3)
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)
@@ -579,7 +591,9 @@ fn top_flagged_region_propagates_flag() {
 /// interior layer keeps the default `wall_count`.
 #[test]
 fn first_layer_override_applies() {
-    let config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
+    // reads need the full classic surface; the fixture's own keys override it.
+    let config = crate::common::classic_perimeters_baseline()
         .int("wall_count", 2)
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)

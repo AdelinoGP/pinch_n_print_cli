@@ -44,7 +44,12 @@ fn run_with_config(config: slicer_ir::ConfigView) -> Vec<slicer_ir::WallLoop> {
 /// AC-1 positive case: base wall_count=2, extra_perimeters=2 → 4 walls.
 #[test]
 fn extra_perimeters_bonus_adds_to_wall_count() {
-    let config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): `run_perimeters`
+    // contract-requires the whole `classic_perimeters_baseline` surface, so a
+    // partial view fails the typed `require_*` reads; the bonus under test is
+    // layered on top of the baseline.
+    let config = crate::common::classic_perimeters_baseline()
+        .float("line_width", 0.4)
         .int("wall_count", 2)
         .int("extra_perimeters", 2)
         .build();
@@ -61,7 +66,8 @@ fn extra_perimeters_bonus_adds_to_wall_count() {
 /// AC-1 no-op case: base wall_count=2, extra_perimeters=0 → 2 walls (unchanged).
 #[test]
 fn extra_perimeters_zero_is_noop() {
-    let config = ConfigViewBuilder::new()
+    let config = crate::common::classic_perimeters_baseline()
+        .float("line_width", 0.4)
         .int("wall_count", 2)
         .int("extra_perimeters", 0)
         .build();
@@ -139,23 +145,21 @@ fn classic_wall_count(config: &ConfigView, layer_index: u32) -> usize {
 
 /// `wall_count=2`, `extra_perimeters=<n>`, NO `max_bead_count` key — the
 /// auto-derivation path that must fold the bonus in.
+///
+/// This is the SHARED config for `extra_perimeters_survives_wall_generator_switch`
+/// (both generators run from it), so it is the union of the two modules'
+/// contract-required key sets: `classic_perimeters_baseline()` (packet 06
+/// 5c-prime) plus the arachne-only classified reads, at manifest defaults.
+/// `line_width` holds its post-expansion default (1.125 x nozzle_diameter =
+/// 0.45): the raw 0 is the auto sentinel expanded at Phase B and cannot
+/// survive the D-162 spacing gate.
 fn arachne_config(extra_perimeters: i64) -> ConfigView {
-    ConfigViewBuilder::new()
+    crate::common::classic_perimeters_baseline()
+        .float("line_width", 0.45)
         .float("inner_wall_line_width", BEAD_WIDTH_MM)
         .float("outer_wall_line_width", BEAD_WIDTH_MM)
         .int("wall_count", 2)
         .int("extra_perimeters", extra_perimeters)
-        // Required-read baseline (packet 06 5c): classified reads in
-        // run_perimeters/arachne_params_from_config are now require_*; the
-        // view holds every key the path reads at manifest-default values.
-        // line_width holds its post-expansion default (1.125 x
-        // nozzle_diameter = 0.45): the raw 0 is the auto sentinel expanded at
-        // Phase B and cannot survive the D-162 spacing gate.
-        .float("layer_height", 0.2)
-        .float("nozzle_diameter", 0.4)
-        .float("line_width", 0.45)
-        .float("bridge_line_width", 0.0)
-        .float("initial_layer_line_width", 0.0)
         .bool("precise_outer_wall", false)
         .string("wall_sequence", "InnerOuter")
         .int("support_raft_layers", 0)

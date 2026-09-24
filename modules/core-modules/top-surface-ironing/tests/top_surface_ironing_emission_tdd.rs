@@ -38,7 +38,7 @@ fn default_config() -> ConfigView {
     config_with(&[
         ("ironing_enabled", ConfigValue::Bool(true)),
         ("ironing_speed", ConfigValue::Float(20.0)),
-        ("ironing_flow", ConfigValue::Float(0.10)),
+        ("ironing_flow", ConfigValue::Float(10.0)),
         ("ironing_spacing_mm", ConfigValue::Float(0.1)),
         (
             "ironing_pattern",
@@ -193,7 +193,7 @@ fn absent_ironing_enabled_defaults_to_disabled() {
     let cfg = config_with(&[
         // deliberately NO ironing_enabled key
         ("ironing_speed", ConfigValue::Float(20.0)),
-        ("ironing_flow", ConfigValue::Float(0.10)),
+        ("ironing_flow", ConfigValue::Float(10.0)),
         ("ironing_spacing_mm", ConfigValue::Float(0.1)),
         (
             "ironing_pattern",
@@ -219,7 +219,7 @@ fn disabled_config_emits_no_ironing() {
     let cfg = config_with(&[
         ("ironing_enabled", ConfigValue::Bool(false)),
         ("ironing_speed", ConfigValue::Float(20.0)),
-        ("ironing_flow", ConfigValue::Float(0.10)),
+        ("ironing_flow", ConfigValue::Float(10.0)),
         ("ironing_spacing_mm", ConfigValue::Float(0.1)),
         (
             "ironing_pattern",
@@ -306,11 +306,55 @@ fn zero_flow_config_rejected_at_from_config() {
 }
 
 #[test]
+fn ironing_flow_percent_magnitude_resolves_at_consumption() {
+    // `ironing_flow` is coPercent magnitude (10 = 10%) — canonical
+    // `PrintConfigDef::init_fff_params`
+    // (`OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp`) — and the ÷100
+    // happens at consumption, exactly canonical
+    // `ConfigOptionPercent::get_abs_value`
+    // (`OrcaSlicerDocumented/src/libslic3r/Config.hpp`). Regression for the
+    // domain migration: the old fraction-domain declaration authored 0.10
+    // for this same emission, and `slice --config` files authoring canonical
+    // percent magnitudes (the Orca project wire) were rejected as out of
+    // range.
+    let cfg = config_with(&[
+        ("ironing_enabled", ConfigValue::Bool(true)),
+        ("ironing_speed", ConfigValue::Float(20.0)),
+        ("ironing_flow", ConfigValue::Float(10.0)),
+        ("ironing_spacing_mm", ConfigValue::Float(0.1)),
+        (
+            "ironing_pattern",
+            ConfigValue::String("rectilinear".to_string()),
+        ),
+    ]);
+    let module = TopSurfaceIroning::from_config(&cfg).unwrap();
+    let region = region_with(Some(0), None, vec![square_polygon(0.0, 0.0, 10.0)]);
+    let mut output = InfillOutputBuilder::new();
+
+    module
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &cfg)
+        .unwrap();
+
+    let paths = output.ironing_paths();
+    assert!(!paths.is_empty(), "expected ironing paths");
+    for path in paths {
+        for point in &path.points {
+            assert!(
+                (point.flow_factor - 0.10).abs() < 1e-6,
+                "ironing_flow = 10 (coPercent magnitude) must resolve to \
+                 flow_factor 0.10 at consumption, got {}",
+                point.flow_factor
+            );
+        }
+    }
+}
+
+#[test]
 fn unsupported_pattern_rejected_at_from_config() {
     let cfg = config_with(&[
         ("ironing_enabled", ConfigValue::Bool(true)),
         ("ironing_speed", ConfigValue::Float(20.0)),
-        ("ironing_flow", ConfigValue::Float(0.10)),
+        ("ironing_flow", ConfigValue::Float(10.0)),
         ("ironing_spacing_mm", ConfigValue::Float(0.1)),
         (
             "ironing_pattern",

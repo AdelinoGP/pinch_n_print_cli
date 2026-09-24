@@ -116,15 +116,112 @@ fn slice_region_view_contract() {
 fn prev_layer_boundary_reaches_live_perimeters_guest_view() {
     let boundary = square_with_bounds(-20_000, 120_000);
     let mut ctx = HostExecutionContextBuilder::new("slice-region-live", 0.4, 0.2).build();
+    // Contract-required reads (packet 06): the loaded guest is
+    // `arachne-perimeters` (below), whose `run_perimeters` `require_*`-reads
+    // every key on its classified path (mirroring
+    // `modules/core-modules/arachne-perimeters/tests/arachne_parity_seam_candidate_tdd.rs::make_config`
+    // at manifest defaults), so a partial view fails the typed call. This
+    // fixture keeps its own `wall_count` / wall widths.
     let mut fields = HashMap::new();
     fields.insert("wall_count".into(), ConfigValueStorage::Int(2));
+    fields.insert("line_width".into(), ConfigValueStorage::Float(0.4));
+    fields.insert("nozzle_diameter".into(), ConfigValueStorage::Float(0.4));
+    fields.insert("layer_height".into(), ConfigValueStorage::Float(0.2));
+    fields.insert("bridge_line_width".into(), ConfigValueStorage::Float(0.0));
+    fields.insert(
+        "initial_layer_line_width".into(),
+        ConfigValueStorage::Float(0.0),
+    );
+    fields.insert(
+        "outer_wall_line_width".into(),
+        ConfigValueStorage::Float(0.4),
+    );
     fields.insert(
         "inner_wall_line_width".into(),
         ConfigValueStorage::Float(0.4),
     );
     fields.insert(
-        "outer_wall_line_width".into(),
-        ConfigValueStorage::Float(0.4),
+        "seam_candidate_angle_threshold_deg".into(),
+        ConfigValueStorage::Float(30.0),
+    );
+    fields.insert("gap_infill_speed".into(), ConfigValueStorage::Float(30.0));
+    fields.insert("filter_out_gap_fill".into(), ConfigValueStorage::Float(0.5));
+    fields.insert(
+        "sparse_infill_density".into(),
+        ConfigValueStorage::Float(20.0),
+    );
+    fields.insert("bridge_flow".into(), ConfigValueStorage::Float(1.0));
+    fields.insert(
+        "smaller_perimeter_line_width".into(),
+        ConfigValueStorage::Float(0.25),
+    );
+    fields.insert(
+        "smaller_perimeter_threshold_mm".into(),
+        ConfigValueStorage::Float(0.8),
+    );
+    fields.insert(
+        "narrow_loop_length_threshold_mm".into(),
+        ConfigValueStorage::Float(10.0),
+    );
+    fields.insert(
+        "min_width_top_surface".into(),
+        ConfigValueStorage::Float(0.0),
+    );
+    fields.insert(
+        "infill_wall_overlap".into(),
+        ConfigValueStorage::Percent(15.0),
+    );
+    fields.insert(
+        "top_bottom_infill_wall_overlap".into(),
+        ConfigValueStorage::Percent(25.0),
+    );
+    fields.insert("detect_thin_wall".into(), ConfigValueStorage::Bool(true));
+    fields.insert(
+        "gap_fill_medial_axis_on_painted".into(),
+        ConfigValueStorage::Bool(false),
+    );
+    fields.insert("slice_has_paint".into(), ConfigValueStorage::Bool(false));
+    fields.insert("precise_outer_wall".into(), ConfigValueStorage::Bool(false));
+    fields.insert(
+        "alternate_extra_wall".into(),
+        ConfigValueStorage::Bool(false),
+    );
+    fields.insert("spiral_vase".into(), ConfigValueStorage::Bool(false));
+    fields.insert(
+        "extra_perimeters_on_overhangs".into(),
+        ConfigValueStorage::Bool(false),
+    );
+    fields.insert("only_one_wall_top".into(), ConfigValueStorage::Bool(false));
+    fields.insert(
+        "only_one_wall_first_layer".into(),
+        ConfigValueStorage::Bool(false),
+    );
+    fields.insert("thick_bridges".into(), ConfigValueStorage::Bool(false));
+    fields.insert("extra_perimeters".into(), ConfigValueStorage::Int(0));
+    fields.insert("support_raft_layers".into(), ConfigValueStorage::Int(0));
+    fields.insert(
+        "wall_sequence".into(),
+        ConfigValueStorage::Str("InnerOuter".into()),
+    );
+    // Arachne-only classified reads (packet 151 Step 2, packet 06): the four
+    // keys the arachne `run_perimeters` path reads that classic never touches,
+    // at their `arachne-perimeters.toml` manifest defaults.
+    fields.insert(
+        "wall_direction".into(),
+        ConfigValueStorage::Str("counter_clockwise".into()),
+    );
+    fields.insert(
+        "detect_overhang_wall".into(),
+        ConfigValueStorage::Bool(true),
+    );
+    fields.insert("overhang_reverse".into(), ConfigValueStorage::Bool(false));
+    fields.insert(
+        "overhang_reverse_internal_only".into(),
+        ConfigValueStorage::Bool(false),
+    );
+    fields.insert(
+        "overhang_reverse_threshold".into(),
+        ConfigValueStorage::Float(0.0),
     );
     let config_handle = ctx
         .push_config_view(ConfigViewData { fields })

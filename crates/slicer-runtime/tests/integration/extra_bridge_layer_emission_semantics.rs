@@ -44,6 +44,14 @@ fn run(extra: Option<bool>) -> Vec<SliceIR> {
         infill_density: 0.2,
         top_shell_layers: 3,
         bottom_shell_layers: 0,
+        // `line_width = 0` is the auto sentinel and a hand-built
+        // `ResolvedConfig` bypasses the host's auto expansion, so the bridge
+        // gate's `resolve_role_width` fallback would compute zero-width
+        // strokes and reject every candidate (`flow::line_width_to_spacing`
+        // errors on a non-positive width). Pin the expanded width (packet 04
+        // expands the auto-0 sentinel to `1.125 * nozzle_diameter` = 0.45 at
+        // the default 0.4 mm nozzle).
+        line_width: 0.45,
         ..Default::default()
     };
     if let Some(enabled) = extra {

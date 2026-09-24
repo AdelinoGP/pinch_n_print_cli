@@ -44,7 +44,20 @@ fn support_plan(output: &PrepassStageOutput) -> &slicer_ir::SupportPlanIR {
 
 #[test]
 fn integrated_parity_support_planner_native_matches_wasm() {
-    let config = Arc::new(ConfigView::new());
+    // Bound-view shape (packet 06 5c-prime): `nozzle_diameter` and
+    // `independent_support_layer_height` are contract-required reads in
+    // `SupportPlanner::from_config`; a bound view holds them at manifest
+    // defaults (tree-support-planner.toml `[config.schema]`).
+    let config = Arc::new(ConfigView::from_map(std::collections::HashMap::from([
+        (
+            "nozzle_diameter".to_string(),
+            slicer_ir::ConfigValue::Float(0.4),
+        ),
+        (
+            "independent_support_layer_height".to_string(),
+            slicer_ir::ConfigValue::Bool(true),
+        ),
+    ])));
     let stage = StageId::from("PrePass::SupportGeometry");
     // `com.core.tree-support-planner` skips every candidate whose resolved
     // family is not "tree". The default wedge sets no `support_type`, so its

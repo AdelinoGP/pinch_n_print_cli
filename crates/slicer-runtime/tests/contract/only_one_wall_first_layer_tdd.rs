@@ -4,16 +4,17 @@
 // must clamp wall count to 1 regardless of the configured wall_count.
 // At layer_index > 0 the configured wall_count (4) must be respected.
 
+use crate::common::classic_perimeters_baseline;
 use classic_perimeters::ClassicPerimeters;
 use slicer_ir::{ConfigView, ExPolygon, Point2, Polygon};
 use slicer_sdk::builders::PerimeterOutputBuilder;
-use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
-/// Build a ConfigView with wall_count=4, line_width=0.4, only_one_wall_first_layer=<flag>.
+/// Build a ConfigView with wall_count=4, line_width=0.4, only_one_wall_first_layer=<flag>
+/// over the bound-view baseline (packet 06 5c-prime).
 fn config_4_walls(only_one_wall_first_layer: bool) -> ConfigView {
-    ConfigViewBuilder::new()
+    classic_perimeters_baseline()
         .int("wall_count", 4)
         .float("line_width", 0.4)
         .bool("only_one_wall_first_layer", only_one_wall_first_layer)
@@ -107,7 +108,7 @@ fn non_first_layer_respects_wall_count() {
 /// `layer_id == object_config->raft_layers` in `process_classic` and, via
 /// `is_bottom_layer`, in `process_arachne` — i.e. the first *printed* layer.
 fn config_4_walls_with_raft(raft_layers: i64) -> ConfigView {
-    ConfigViewBuilder::new()
+    classic_perimeters_baseline()
         .int("wall_count", 4)
         .float("line_width", 0.4)
         .bool("only_one_wall_first_layer", true)

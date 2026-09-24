@@ -56,10 +56,15 @@ group   = "TopSurface"
 denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 [config.schema.ironing_flow]
+# Canonical domain: coPercent, default 10 (10 = 10%), min 0, max 100 —
+# `PrintConfigDef::init_fff_params` (`OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp`).
+# The value is percent magnitude at rest; the reader divides by 100 at
+# consumption, exactly canonical `ConfigOptionPercent::get_abs_value`
+# (`OrcaSlicerDocumented/src/libslic3r/Config.hpp`).
 type    = "float"
-default = 0.10
-min     = 0.01
-max     = 1.0
+default = 10.0
+min     = 0.0
+max     = 100.0
 display = "Ironing Flow"
 group   = "TopSurface"
 

@@ -61,6 +61,17 @@ fn region_config(density: f32) -> ResolvedConfig {
         infill_density: density,
         top_shell_layers: 2,
         bottom_shell_layers: 0,
+        // The gate resolves flow widths from resolved state
+        // (`gate_internal_bridge_sites`'s `RoleWidthContext`), and
+        // `line_width = 0` is the unresolved auto sentinel — resolution
+        // normally expands it to 1.125 × nozzle_diameter (the
+        // `line_width == 0` rule of `ExpansionResolver::expand_key`,
+        // `crates/slicer-config/src/lib.rs`; canonical
+        // `Flow::auto_extrusion_width`, `OrcaSlicerDocumented/src/libslic3r/Flow.cpp`).
+        // This fixture bypasses resolution, so pin the post-expansion value
+        // (1.125 × the gate's 0.4 fallback nozzle = 0.45); a zero width makes
+        // `line_width_to_spacing` reject every layer-visit.
+        line_width: 0.45,
         ..Default::default()
     }
 }

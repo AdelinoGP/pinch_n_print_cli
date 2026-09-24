@@ -111,9 +111,43 @@ fn build_slice_ir() -> SliceIR {
 }
 
 fn build_module_config() -> Arc<ConfigView> {
+    // Bound-view shape (packet 06 5c-prime): mirrors
+    // rectilinear_infill_tdd.rs::baseline_config — every contract-required
+    // read at manifest defaults, with this fixture's density/line_width
+    // winning (same set as `integrated_parity_rectilinear_infill_tdd`, a
+    // superset of gyroid's reads).
     let mut map = HashMap::new();
     map.insert("infill_density".into(), ConfigValue::Float(0.2));
     map.insert("line_width".into(), ConfigValue::Float(0.4));
+    map.insert("bridge_line_width".into(), ConfigValue::Float(0.0));
+    map.insert("initial_layer_line_width".into(), ConfigValue::Float(0.0));
+    map.insert("top_surface_line_width".into(), ConfigValue::Float(0.0));
+    map.insert(
+        "internal_solid_infill_line_width".into(),
+        ConfigValue::Float(0.0),
+    );
+    map.insert("sparse_infill_line_width".into(), ConfigValue::Float(0.0));
+    map.insert("bridge_density".into(), ConfigValue::Float(1.0));
+    map.insert("bridge_speed".into(), ConfigValue::Float(25.0));
+    map.insert("bridge_flow".into(), ConfigValue::Float(1.0));
+    map.insert("thick_bridges".into(), ConfigValue::Bool(false));
+    map.insert("internal_bridge_density".into(), ConfigValue::Float(1.0));
+    map.insert("internal_bridge_speed".into(), ConfigValue::Float(37.5));
+    map.insert("internal_bridge_flow".into(), ConfigValue::Float(1.0));
+    map.insert("thick_internal_bridges".into(), ConfigValue::Bool(true));
+    map.insert("top_surface_speed".into(), ConfigValue::Float(60.0));
+    map.insert(
+        "internal_solid_infill_speed".into(),
+        ConfigValue::Float(60.0),
+    );
+    map.insert("sparse_infill_speed".into(), ConfigValue::Float(60.0));
+    map.insert(
+        "dont_filter_internal_bridges".into(),
+        ConfigValue::Bool(false),
+    );
+    map.insert("enable_extra_bridge_layer".into(), ConfigValue::Bool(false));
+    map.insert("internal_bridge_angle".into(), ConfigValue::Float(0.0));
+    map.insert("infill_shift_step".into(), ConfigValue::Float(0.0));
     Arc::new(ConfigView::from_map(map))
 }
 

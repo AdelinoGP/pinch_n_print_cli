@@ -88,20 +88,19 @@ pub fn project_layer_plan_view(
 
 /// Project active SliceIR regions into the seam planner's whole-print input.
 ///
-/// Only regions with a non-empty supplied boundary are forwarded. When a map
-/// is present the exact RegionMap key, including its variant chain, is
-/// preferred; a key miss on the variant chain falls back to the identity
-/// triple `(layer, object, region_id)` and admits the region for geometry
-/// under the chain-less plan key the host lookup uses, so a painted slice
-/// region the map did not key (live `SliceIR` chains carry the paint
-/// annotation while the map's key may be chain-less) still gets a seam. A
-/// fully absent triple still admits: this projection is geometry-only, and
-/// the planner emits a deterministic fallback position for a candidate-less
-/// region, so the host lookup finds its entry.
+/// Only regions with a non-empty supplied boundary are forwarded, and every
+/// admitted region is keyed by the chain-less identity triple
+/// `(layer, object, region_id)` — never the slice's paint chain. Live
+/// `PerimeterIR` regions carry an empty chain and the host seam lookups key
+/// off that triple, so a painted region (a relabel of its base region) shares
+/// its base seam; painted variants of one base region collapse to a single
+/// deterministic entry via the planner's sorted same-key skip. This projection
+/// is geometry-only, and the planner emits a deterministic fallback position
+/// for a candidate-less region, so the host lookup finds its entry.
 pub fn project_seam_planning_view(
     slices: &[slicer_ir::SliceIR],
     layer_plan: Option<&slicer_ir::LayerPlanIR>,
-    region_map: Option<&slicer_ir::RegionMapIR>,
+    _region_map: Option<&slicer_ir::RegionMapIR>,
     config_view: &slicer_ir::ConfigView,
 ) -> host::SeamPlanningViewData {
     let scoring_width = match config_view.get("seam_scoring_width") {
@@ -141,31 +140,19 @@ pub fn project_seam_planning_view(
             if region.object_id.is_empty() || region.polygons.is_empty() {
                 continue;
             }
-            // Admission is geometry-only. When the map keys this region's
-            // exact variant chain the slice chain is forwarded unchanged;
-            // otherwise the region is forwarded under the chain-less identity
-            // the host lookup uses. Live `PerimeterIR` regions carry an empty
-            // chain, and `resolve_seam_for_perimeter_region` /
-            // `backfill_resolved_seam` compare the variant chain exactly, so a
-            // fallback-admitted region's plan entry must be keyed
-            // `variant_chain = []` — derived from the identity triple
-            // `(layer, object, region_id)`, never the slice's paint chain. A
-            // triple the map does not key at all is admitted the same way: the
-            // projection is geometry-only, and the planner emits a
-            // deterministic fallback position for a candidate-less region.
-            let variant_chain: &[(String, slicer_ir::PaintValue)] = match region_map {
-                Some(map)
-                    if !map.entries.contains_key(&slicer_ir::RegionKey {
-                        global_layer_index: slice.global_layer_index,
-                        object_id: region.object_id.clone(),
-                        region_id: region.region_id,
-                        variant_chain: region.variant_chain.clone(),
-                    }) =>
-                {
-                    &[]
-                }
-                _ => &region.variant_chain,
-            };
+            // The entry key is the chain-less identity triple
+            // `(layer, object, region_id)`, never the slice's paint chain:
+            // live `PerimeterIR` regions carry an empty chain, and
+            // `resolve_seam_for_perimeter_region` / `backfill_resolved_seam`
+            // key off that triple, so a forwarded paint chain would strand the
+            // entry out of the lookup's reach (a painted region is a relabel of
+            // its base region and shares its seam). Painted variants of one
+            // base region collapse to a single deterministic entry via the
+            // planner's sorted same-key skip. The projection is geometry-only:
+            // a triple the map does not key at all is admitted the same way,
+            // and the planner emits a deterministic fallback position for a
+            // candidate-less region.
+            let variant_chain: &[(String, slicer_ir::PaintValue)] = &[];
 
             let mut segment_annotations: Vec<_> = region.segment_annotations.iter().collect();
             segment_annotations.sort_by(|left, right| left.0.cmp(right.0));

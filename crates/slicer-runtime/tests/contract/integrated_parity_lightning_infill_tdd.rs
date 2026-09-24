@@ -127,7 +127,25 @@ fn integrated_parity_lightning_infill() {
             },
             tier: String::new(),
             claims: vec!["claim:sparse-fill".into()],
-            config: Arc::new(ConfigView::new()),
+            // Bound-view shape (packet 06 5c-prime): `bridge_line_width` /
+            // `initial_layer_line_width` are contract-required reads
+            // (`require_abs_value` over the fixed 0.4 nozzle base); a bound
+            // view holds them at their resolved defaults (lightning_infill_tdd.rs
+            // fixtures) and carries the host-expanded `line_width`.
+            config: Arc::new(ConfigView::from_map(std::collections::HashMap::from([
+                (
+                    "bridge_line_width".to_string(),
+                    slicer_ir::ConfigValue::Float(0.4),
+                ),
+                (
+                    "initial_layer_line_width".to_string(),
+                    slicer_ir::ConfigValue::Float(0.4),
+                ),
+                (
+                    "line_width".to_string(),
+                    slicer_ir::ConfigValue::Float(0.45),
+                ),
+            ]))),
             native_entry: LightningInfill::__slicer_native_entry(),
         },
         |dispatcher, native_live, wasm_live| {

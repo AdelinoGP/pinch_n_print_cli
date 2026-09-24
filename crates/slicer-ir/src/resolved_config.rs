@@ -87,10 +87,7 @@ impl ResolvedConfig {
     fn legacy_to_config_map(&self) -> HashMap<String, ConfigValue> {
         let mut m: HashMap<String, ConfigValue> = HashMap::new();
         m.insert("layer_height".into(), ConfigValue::Float(self.layer_height));
-        m.insert(
-            "line_width".into(),
-            ConfigValue::Float(f64::from(self.line_width)),
-        );
+        m.insert("line_width".into(), ConfigValue::Float(self.line_width));
         m.insert(
             "first_layer_height".into(),
             ConfigValue::Float(self.first_layer_height),
@@ -2028,7 +2025,7 @@ declare_resolved_config! {
     /// exact `f32 ==` plane test. See `extract_f64` for the full rationale.
     cli "layer_height"           layer_height: f64 = 0.2 => extract_f64;
     /// Line width in millimeters.
-    cli "line_width"             line_width: f32 = 0.0 => extract_float;
+    cli "line_width"             line_width: f64 = 0.0 => extract_f64;
     /// First layer height in millimeters. `f64` for the same reason as
     /// `layer_height` — feeds the layer-Z formula and must not be re-tainted
     /// by an `f32` round-trip. See `layer_height` and `extract_f64`.

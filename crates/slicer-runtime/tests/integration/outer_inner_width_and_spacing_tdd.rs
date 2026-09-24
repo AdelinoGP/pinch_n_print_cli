@@ -34,7 +34,9 @@ fn outer_inner_width_and_spacing() {
     let outer_w = 0.5_f32;
     let inner_w = 0.4_f32;
 
-    let config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
+    // reads need the full classic surface; the fixture's own keys override it.
+    let config = crate::common::classic_perimeters_baseline()
         .int("wall_count", 3)
         .float("outer_wall_line_width", outer_w as f64)
         .float("inner_wall_line_width", inner_w as f64)
@@ -140,7 +142,9 @@ fn outer_inner_width_and_spacing() {
 /// silent `Ok`. Mirrors `arachne-perimeters`' `ERR_NEGATIVE_SPACING` contract.
 #[test]
 fn negative_spacing_config_is_a_fatal_module_error() {
-    let config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
+    // reads need the full classic surface; the fixture's own keys override it.
+    let config = crate::common::classic_perimeters_baseline()
         .int("wall_count", 3)
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)

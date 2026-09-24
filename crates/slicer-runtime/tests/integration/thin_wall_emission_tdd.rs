@@ -93,7 +93,9 @@ fn thin_wall_emitted_for_thin_protrusion() {
     let inner_w = 0.4_f32;
     let nozzle_d = 0.4_f32;
 
-    let config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
+    // reads need the full classic surface; the fixture's own keys override it.
+    let config = crate::common::classic_perimeters_baseline()
         .int("wall_count", 2)
         .float("outer_wall_line_width", inner_w as f64)
         .float("inner_wall_line_width", inner_w as f64)
@@ -202,7 +204,8 @@ fn detect_disabled_case() {
     let inner_w = 0.4_f32;
     let nozzle_d = 0.4_f32;
 
-    let config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): see the positive case above.
+    let config = crate::common::classic_perimeters_baseline()
         .int("wall_count", 2)
         .float("outer_wall_line_width", inner_w as f64)
         .float("inner_wall_line_width", inner_w as f64)

@@ -203,7 +203,10 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
     let entries = output.entries();
     let raft_plan = output.raft_plan().expect("AC-4: expected one raft plan");
     assert_eq!(raft_plan.raft_layers, 3);
-    assert!((raft_plan.raft_first_layer_density - 0.4).abs() < f32::EPSILON);
+    // Canonical coPercent default is 90 (`PrintConfigDef::init_fff_params`,
+    // `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp`); unseeded, the
+    // planner must resolve the RaftPlan fraction 0.9 at consumption.
+    assert!((raft_plan.raft_first_layer_density - 0.9).abs() < f32::EPSILON);
     assert_eq!(raft_plan.base_raft_layers, 1);
     assert_eq!(raft_plan.interface_raft_layers, 0);
     assert!(
@@ -340,6 +343,57 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
     assert!(
         carve_checks > 0,
         "AC-4: no geometry layer sat below the interface band, so the body-below-the-band check was vacuous; interface layers={top_interface_layers:?}, geometry layers={geometry_layers:?}"
+    );
+}
+
+/// Regression: `raft_first_layer_density` is coPercent magnitude — authored 40
+/// must reach `RaftPlan` as the fraction 0.4 (canonical `value * 0.01` at
+/// consumption, `TreeSupport::generate_toolpaths`,
+/// `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp`). The
+/// pre-migration fraction domain authored 0.4 for the same emission.
+#[test]
+fn raft_first_layer_density_percent_magnitude_resolves_at_consumption() {
+    let config = make_planner_config(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        ("support_raft_layers", ConfigValue::Int(3)),
+        // coPercent magnitude (40 = 40%).
+        ("raft_first_layer_density", ConfigValue::Float(40.0)),
+        ("support_interface_top_layers", ConfigValue::Int(2)),
+        ("tree_support_interface_spacing_mm", ConfigValue::Float(0.4)),
+        ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
+        (
+            "tree_support_branch_diameter_angle",
+            ConfigValue::Float(5.0),
+        ),
+        ("tree_support_branch_distance", ConfigValue::Float(1.0)),
+        ("tree_support_wall_count", ConfigValue::Int(1)),
+        ("tree_support_branch_angle", ConfigValue::Float(45.0_f64)),
+    ]);
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
+
+    let obj = overhang_plate_fixture("col");
+    let lp = make_layer_plan(11, 0.0, 0.2);
+    let rs = make_region_segmentation("col", 11);
+    let sg = SupportGeometryView { entries: vec![] };
+    let mut output = SupportGeometryOutput::new();
+    planner
+        .run_support_geometry_with_analysis(
+            &[obj],
+            &lp,
+            &rs,
+            &tree_analysis("col"),
+            &sg,
+            &mut output,
+            &ConfigView::new(),
+        )
+        .expect("run_support_geometry");
+
+    let raft_plan = output.raft_plan().expect("expected one raft plan");
+    assert!(
+        (raft_plan.raft_first_layer_density - 0.4).abs() < f32::EPSILON,
+        "authored raft_first_layer_density = 40 (coPercent magnitude) must \
+         resolve to RaftPlan fraction 0.4, got {}",
+        raft_plan.raft_first_layer_density
     );
 }
 

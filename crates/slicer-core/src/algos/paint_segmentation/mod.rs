@@ -1846,7 +1846,7 @@ fn shell_params_from_config(cfg: &slicer_ir::ResolvedConfig) -> ShellParams {
     // `RoleWidthContext::line_width` must hold the already-expanded base
     // width (see `resolve_role_width`'s zero-role-width fall-through).
     let line_width = if cfg.line_width > 0.0 {
-        cfg.line_width
+        cfg.line_width as f32
     } else {
         1.125 * nozzle_diameter
     };

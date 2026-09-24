@@ -4,8 +4,9 @@
 
 use std::collections::HashMap;
 
+use crate::common::classic_perimeters_baseline;
 use classic_perimeters::ClassicPerimeters;
-use slicer_ir::{ConfigValue, ConfigView, ExPolygon, Point2, Polygon};
+use slicer_ir::{ConfigView, ExPolygon, Point2, Polygon};
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
@@ -28,7 +29,12 @@ fn square_region(z: f32) -> SliceRegionView {
 }
 
 fn config_with_wall_count(n: i64) -> ConfigView {
-    ConfigView::from_map([("wall_count".to_string(), ConfigValue::Int(n))].into())
+    classic_perimeters_baseline()
+        .int("wall_count", n)
+        // Already-expanded base width (bound-view shape): the percent-typed
+        // overlap keys resolve against the role width derived from it.
+        .float("line_width", 0.4)
+        .build()
 }
 
 #[test]

@@ -100,6 +100,22 @@ fn integrated_parity_overhang_classifier() {
             ("line_width".into(), ConfigValue::Float(0.4)),
             ("outer_wall_speed".into(), ConfigValue::Float(60.0)),
             ("overhang_1_4_speed".into(), ConfigValue::Float(20.0)),
+            // Bound-view shape (packet 06 5c-prime): the remaining
+            // contract-required reads at the module fixture's values
+            // (overhang-classifier-default/tests/basic_tdd.rs::overhang_config).
+            ("inner_wall_speed".into(), ConfigValue::Float(60.0)),
+            ("thin_wall_speed".into(), ConfigValue::Float(60.0)),
+            ("overhang_2_4_speed".into(), ConfigValue::Float(40.0)),
+            ("overhang_3_4_speed".into(), ConfigValue::Float(50.0)),
+            ("overhang_4_4_speed".into(), ConfigValue::Float(60.0)),
+            ("bridge_speed".into(), ConfigValue::Float(25.0)),
+            (
+                "slowdown_for_curled_perimeters".into(),
+                ConfigValue::Bool(false),
+            ),
+            // Auto sentinel (Float, not percent — the module reads it with
+            // `require_abs_value` over an inert 0.0 base).
+            ("outer_wall_line_width".into(), ConfigValue::Float(0.0)),
         ]
         .into_iter()
         .collect(),

@@ -129,6 +129,15 @@ fn config(extra: &[(&str, ConfigValue)]) -> HashMap<String, ConfigValue> {
         ("enable_support".into(), ConfigValue::Bool(true)),
         ("tree_support_branch_angle".into(), ConfigValue::Float(45.0)),
         ("line_width".into(), ConfigValue::Float(0.4)),
+        // Contract-required reads (packet 06): tree-support-planner's run
+        // `require_float`s `nozzle_diameter` and `require_bool`s
+        // `independent_support_layer_height` (manifest default true), so a
+        // partial view fails the typed call.
+        ("nozzle_diameter".into(), ConfigValue::Float(0.4)),
+        (
+            "independent_support_layer_height".into(),
+            ConfigValue::Bool(true),
+        ),
     ]);
     values.extend(
         extra
@@ -182,6 +191,30 @@ fn bundle(engine: &Arc<WasmEngine>, values: HashMap<String, ConfigValue>) -> Tes
         "SupportGeometryIR.entries".into(),
     ])
     .ir_writes(vec!["SupportPlanIR.entries".into()])
+    // Declared reads (mirroring the `tree-support-planner.toml` keys this
+    // file exercises): `bind_module_config_view` pre-filters the view to
+    // this schema, so an empty schema delivers an empty view and the
+    // contract-required `nozzle_diameter` read fails.
+    .config_schema(slicer_ir::config_schema::ConfigSchema {
+        entries: [
+            "enable_support",
+            "tree_support_branch_angle",
+            "line_width",
+            "nozzle_diameter",
+            "independent_support_layer_height",
+            "max_bridge_length",
+            "support_branch_merge_distance_mm",
+            "support_max_branches_per_layer",
+        ]
+        .into_iter()
+        .map(|key| {
+            (
+                key.to_string(),
+                slicer_ir::config_schema::ConfigFieldEntry::default(),
+            )
+        })
+        .collect(),
+    })
     .claims(vec!["support-planner".into(), "support-family:tree".into()])
     .min_host_version(semver())
     .min_ir_schema(semver())

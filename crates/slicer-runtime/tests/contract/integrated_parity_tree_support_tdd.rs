@@ -53,6 +53,15 @@ fn integrated_parity_tree_support() {
         ("enable_support".to_string(), ConfigValue::Bool(true)),
         ("support_density".to_string(), ConfigValue::Float(20.0)),
         ("line_width".to_string(), ConfigValue::Float(0.4)),
+        // Bound-view shape (packet 06 5c-prime): the contract-required reads
+        // (`from_config` / `run_support`) at manifest defaults
+        // (tree-support.toml `[config.schema]`).
+        ("nozzle_diameter".to_string(), ConfigValue::Float(0.4)),
+        (
+            "support_base_pattern_spacing".to_string(),
+            ConfigValue::Float(2.5),
+        ),
+        ("layer_height".to_string(), ConfigValue::Float(0.2)),
     ])));
     let mut wasm_arena = LayerArena::new();
     let mut native_arena = LayerArena::new();

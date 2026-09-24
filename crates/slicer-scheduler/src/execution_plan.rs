@@ -714,12 +714,16 @@ pub struct ExecutionPlan {
     /// Precomputed index for O(1) lookup of active regions per (layer, module).
     /// Key: (global_layer_index, module_id) → Value: slice of ActiveRegion.
     pub module_region_index: HashMap<(u32, ModuleId), Vec<ActiveRegion>>,
-    /// Cross-manifest aggregate of `[[region_split]]` declarations
-    /// (semantic → priority/value-type/declaring modules).
+    /// Cross-manifest aggregate of `[[region_split]]` declarations plus the
+    /// seeded built-in paint semantics (semantic →
+    /// priority/value-type/declaring modules).
     ///
-    /// Empty `BTreeMap` when no loaded module declares region-split semantics
-    /// — this is the production default today, which preserves AC-10
-    /// byte-identical g-code. See packet 93, AC-1.
+    /// Community semantics enter via module declarations (packet 93, AC-1);
+    /// `material`/`fuzzy_skin` are always present via
+    /// [`crate::region_split::seed_core_region_splits`] (CONTEXT.md's built-in
+    /// chain semantics). Chain expansion only materializes for objects that
+    /// CARRY those semantics' paint values, so un-painted single-object
+    /// fixtures keep AC-10 byte-identical g-code.
     pub aggregated_region_split: BTreeMap<String, AggregatedRegionSplitEntry>,
 }
 
@@ -1324,7 +1328,8 @@ pub fn build_execution_plan(
         .iter()
         .map(|b| b.module.clone())
         .collect();
-    let aggregated_region_split = aggregate_region_splits(&modules_for_agg, diagnostics);
+    let mut aggregated_region_split = aggregate_region_splits(&modules_for_agg, diagnostics);
+    crate::region_split::seed_core_region_splits(&mut aggregated_region_split);
 
     Ok(ExecutionPlan {
         prepass_stages,

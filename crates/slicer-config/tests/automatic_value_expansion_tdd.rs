@@ -189,7 +189,10 @@ fn phase_b_expands_hand_computed_percent_zero_and_minus_one_cases() {
     .expect("the literal fixture has every required base");
 
     let actual = config.to_config_map();
-    assert_float(&actual, "line_width", f64::from(0.45_f32));
+    // `line_width` is a typed `f64` field, so the auto expansion lands on the
+    // f64 product of the canonical formula (1.125 x nozzle_diameter) rather
+    // than an `f32`-round-tripped literal.
+    assert_float(&actual, "line_width", 1.125_f64 * 0.4);
     assert_float(&actual, "support_line_width", 0.4);
     // 150% of the 0.4 nozzle is hand-computed 0.6; the 1e-12 window absorbs
     // only binary representation, not a wrong base or ratio.
@@ -255,6 +258,50 @@ fn phase_b_expands_hand_computed_percent_zero_and_minus_one_cases() {
     assert_float(&second, "overhang_zero_speed", 0.0);
 }
 
+/// Regression: canonical `nozzle_diameter` is `coFloats` (per-tool vector,
+/// `OrcaSlicerDocumented/src/libslic3r/PrintConfig.hpp`) and real project
+/// files author it as `["0.4"]`. Typed ingestion retains that shape as
+/// `List([Float(0.4)])` (see
+/// `tolerant_scalar_list_shape_is_retained_and_warns`) and typed reads
+/// resolve it through the `envelope` first-element leniency; base resolution
+/// must do the same. Regression shape: `bridge_line_width = "100%"` over
+/// `nozzle_diameter = ["0.4"]` (cube_cilindrical_modifier.3mf's project
+/// config) failed with "unknown base key nozzle_diameter required by
+/// bridge_line_width".
+#[test]
+fn canonical_vector_base_resolves_at_first_element() {
+    let registry = registry_with(&[
+        ("nozzle_diameter", "float", None),
+        (
+            "bridge_line_width",
+            "float_or_percent",
+            Some("nozzle_diameter"),
+        ),
+    ]);
+    let mut config = ResolvedConfig::default();
+    config.extensions.insert(
+        "nozzle_diameter".to_owned(),
+        ConfigValue::List(vec![ConfigValue::Float(0.4)]),
+    );
+    config
+        .extensions
+        .insert("bridge_line_width".to_owned(), ConfigValue::Percent(100.0));
+
+    expand_automatic_values(
+        &registry,
+        &mut config,
+        &ExpansionContext {
+            nozzle_diameter_mm: 0.4,
+            ..ExpansionContext::default()
+        },
+        None,
+    )
+    .expect("a vector-shaped base resolves at its first element");
+
+    let actual = config.to_config_map();
+    assert_float(&actual, "bridge_line_width", 0.4);
+}
+
 #[test]
 fn tool_specific_base_wins_for_selected_tool() {
     let registry = registry_with(&[
@@ -312,16 +359,10 @@ fn tool_specific_base_wins_for_selected_tool() {
             }
         }
     }
-    assert_float(
-        &unselected.to_config_map(),
-        "line_width",
-        f64::from(0.45_f32),
-    );
-    assert_float(
-        &selected.to_config_map(),
-        "line_width",
-        f64::from(0.675_f32),
-    );
+    // `line_width` is a typed `f64` field; both the unselected (1.125 x 0.4)
+    // and selected (1.125 x 0.6) expansions land on their exact f64 products.
+    assert_float(&unselected.to_config_map(), "line_width", 1.125_f64 * 0.4);
+    assert_float(&selected.to_config_map(), "line_width", 1.125_f64 * 0.6);
     assert_float(&unselected.to_config_map(), "support_line_width", 0.4);
     assert_float(&selected.to_config_map(), "support_line_width", 0.6);
 }

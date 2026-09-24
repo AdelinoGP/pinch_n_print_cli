@@ -141,12 +141,13 @@ is the authoritative catalog of their defaults and ranges.
 | `infill_density` | float | `0.2` | [0.0, 1.0] | — | `gyroid-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | — | `gyroid-infill` |
 | `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `gyroid-infill` |
-| `internal_solid_infill_line_width` | float | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `gyroid-infill` |
+| `internal_solid_infill_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `gyroid-infill` |
 | `line_width` | float | `0` | [0.0, 2.0] | — | `gyroid-infill` |
-| `sparse_infill_line_width` | float | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `gyroid-infill` |
-| `top_surface_line_width` | float | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `gyroid-infill` |
+| `sparse_infill_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `gyroid-infill` |
+| `top_surface_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `gyroid-infill` |
 | `infill_anchor` | float_or_percent | `"400%"` | [0.0, 1000.0] | — | `infill-linker` |
 | `infill_anchor_max` | float_or_percent | `20.0` | [0.0, 1000.0] | — | `infill-linker` |
+| `infill_density` | float | `0.2` | [0.0, 1.0] | — | `infill-linker` |
 | `infill_overlap` | float | `0.45` | [0.0, 1.0] | — | `infill-linker` |
 | `layer_height` | float | `0.2` | [0.01, 2.0] | — | `infill-linker` |
 | `line_width` | float | `0.4` | [0.0, 2.0] | — | `infill-linker` |
@@ -158,7 +159,7 @@ is the authoritative catalog of their defaults and ranges.
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | — | `lightning-infill` |
 | `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `lightning-infill` |
 | `line_width` | float | `0` | [0.0, 2.0] | — | `lightning-infill` |
-| `sparse_infill_line_width` | float | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `lightning-infill` |
+| `sparse_infill_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `lightning-infill` |
 | `bed_temperature_initial_layer_single` | int | `60` | [0.0, 120.0] | — | `machine-gcode-emit` |
 | `before_layer_change_gcode` | string | `""` | — | — | `machine-gcode-emit` |
 | `change_extrusion_role_gcode` | string | `""` | — | — | `machine-gcode-emit` |
@@ -176,6 +177,8 @@ is the authoritative catalog of their defaults and ranges.
 | `bridge_speed` | float | `25.0` | — | — | `overhang-classifier-default` |
 | `enable_overhang_speed` | bool | `true` | — | — | `overhang-classifier-default` |
 | `inner_wall_speed` | float | `60.0` | — | — | `overhang-classifier-default` |
+| `line_width` | float | `0.4` | [0.0, 2.0] | — | `overhang-classifier-default` |
+| `outer_wall_line_width` | float_or_percent | `0` | [0.0, 2.0] | base `nozzle_diameter` | `overhang-classifier-default` |
 | `outer_wall_speed` | float | `60.0` | — | — | `overhang-classifier-default` |
 | `overhang_1_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `overhang-classifier-default` |
 | `overhang_2_4_speed` | float_or_percent | `0.0` | — | base `outer_wall_speed` | `overhang-classifier-default` |
@@ -208,20 +211,21 @@ is the authoritative catalog of their defaults and ranges.
 | `enable_extra_bridge_layer` | bool | `false` | — | — | `rectilinear-infill` |
 | `infill_angle` | float | `45.0` | [0.0, 360.0] | — | `rectilinear-infill` |
 | `infill_density` | float | `0.2` | [0.0, 1.0] | — | `rectilinear-infill` |
+| `infill_shift_step` | float | `0.0` | — | — | `rectilinear-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | — | `rectilinear-infill` |
 | `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `rectilinear-infill` |
 | `internal_bridge_angle` | float | `0.0` | [0.0, 180.0] | — | `rectilinear-infill` |
 | `internal_bridge_density` | float_or_percent | `"100%"` | [10.0, 125.0] | — | `rectilinear-infill` |
 | `internal_bridge_flow` | float | `1.0` | >= 0.0 | — | `rectilinear-infill` |
 | `internal_bridge_speed` | float_or_percent | `"150%"` | >= 1.0 | — | `rectilinear-infill` |
-| `internal_solid_infill_line_width` | float | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `rectilinear-infill` |
+| `internal_solid_infill_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `rectilinear-infill` |
 | `internal_solid_infill_speed` | float | `60.0` | [1.0, 300.0] | — | `rectilinear-infill` |
 | `line_width` | float | `0` | [0.0, 2.0] | — | `rectilinear-infill` |
-| `sparse_infill_line_width` | float | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `rectilinear-infill` |
+| `sparse_infill_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `rectilinear-infill` |
 | `sparse_infill_speed` | float | `60.0` | [1.0, 300.0] | — | `rectilinear-infill` |
 | `thick_bridges` | bool | `false` | — | — | `rectilinear-infill` |
 | `thick_internal_bridges` | bool | `true` | — | — | `rectilinear-infill` |
-| `top_surface_line_width` | float | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `rectilinear-infill` |
+| `top_surface_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `rectilinear-infill` |
 | `top_surface_speed` | float | `60.0` | [1.0, 300.0] | — | `rectilinear-infill` |
 | `seam_mode` | enum | `"aligned"` | — (values: nearest|rear|random|aligned|aligned_back) | — | `seam-placer` |
 | `seam_mode` | enum | `"aligned"` | — (values: nearest|rear|random|aligned|aligned_back) | — | `seam-planner-default` |
@@ -237,17 +241,20 @@ is the authoritative catalog of their defaults and ranges.
 | `ironing_speed` | float | `30.0` | [1.0, 300.0] | — | `support-surface-ironing` |
 | `line_width` | float | `0.4` | [0.0, 2.0] | — | `support-surface-ironing` |
 | `ironing_enabled` | bool | `false` | — | — | `top-surface-ironing` |
-| `ironing_flow` | float | `0.1` | [0.01, 1.0] | — | `top-surface-ironing` |
+| `ironing_flow` | float | `10.0` | [0.0, 100.0] | — | `top-surface-ironing` |
 | `ironing_pattern` | enum | `"rectilinear"` | — (values: rectilinear) | — | `top-surface-ironing` |
 | `ironing_spacing_mm` | float | `0.1` | [0.01, 1.0] | — | `top-surface-ironing` |
 | `ironing_speed` | float | `20.0` | [1.0, 300.0] | — | `top-surface-ironing` |
 | `enable_support` | bool | `true` | — | — | `traditional-support` |
+| `layer_height` | float | `0.2` | [0.01, 2.0] | — | `traditional-support` |
 | `line_width` | float | `0.4` | [0.0, 2.0] | — | `traditional-support` |
+| `nozzle_diameter` | float | `0.4` | [0.1, 2.0] | — | `traditional-support` |
 | `support_angle` | float | `60.0` | [0.0, 90.0] | — | `traditional-support` |
 | `support_base_pattern_spacing` | float | `2.5` | [0.0, 100.0] | — | `traditional-support` |
 | `support_bottom_interface_spacing` | float | `0.5` | [-1.0, 2.0] | — | `traditional-support` |
 | `support_interface_flow` | percent | `"100%"` | >= 0.0 | — | `traditional-support` |
 | `support_interface_spacing` | float | `0.4` | [0.0, 2.0] | — | `traditional-support` |
+| `support_line_width` | float_or_percent | `0.0` | [0.0, 1000.0] | base `nozzle_diameter` | `traditional-support` |
 | `support_speed` | float | `50.0` | [1.0, 300.0] | — | `traditional-support` |
 | `support_style` | enum | `"default"` | — (values: default|grid|snug|organic|tree_slim|tree_strong|tree_hybrid) | — | `traditional-support` |
 | `enable_support` | bool | `true` | — | — | `traditional-support-planner` |
@@ -264,11 +271,14 @@ is the authoritative catalog of their defaults and ranges.
 | `support_threshold_angle` | float | `30.0` | [0.0, 90.0] | — | `traditional-support-planner` |
 | `support_top_z_distance_mm` | float | `0.2` | [0.0, 5.0] | — | `traditional-support-planner` |
 | `enable_support` | bool | `true` | — | — | `tree-support` |
+| `layer_height` | float | `0.2` | [0.01, 2.0] | — | `tree-support` |
 | `line_width` | float | `0.4` | [0.0, 2.0] | — | `tree-support` |
+| `nozzle_diameter` | float | `0.4` | [0.1, 2.0] | — | `tree-support` |
 | `support_base_pattern_spacing` | float | `2.5` | [0.0, 100.0] | — | `tree-support` |
 | `support_bottom_interface_spacing` | float | `0.5` | [-1.0, 2.0] | — | `tree-support` |
 | `support_interface_flow` | percent | `"100%"` | >= 0.0 | — | `tree-support` |
 | `support_interface_spacing` | float | `0.4` | [0.0, 2.0] | — | `tree-support` |
+| `support_line_width` | float_or_percent | `0.0` | [0.0, 1000.0] | base `nozzle_diameter` | `tree-support` |
 | `support_speed` | float | `50.0` | [1.0, 300.0] | — | `tree-support` |
 | `tree_support_wall_count` | int | `1` | [0.0, 10.0] | — | `tree-support` |
 | `base_raft_layers` | int | `1` | [0.0, 20.0] | — | `tree-support-planner` |
@@ -279,7 +289,7 @@ is the authoritative catalog of their defaults and ranges.
 | `max_bridge_length` | float | `10.0` | >= 0.0 | — | `tree-support-planner` |
 | `nozzle_diameter` | float | `0.4` | >= 0.0 | — | `tree-support-planner` |
 | `num_top_base_interface_layers` | int | `0` | [0.0, 10.0] | — | `tree-support-planner` |
-| `raft_first_layer_density` | float | `0.4` | [0.0, 1.0] | — | `tree-support-planner` |
+| `raft_first_layer_density` | float | `90.0` | [10.0, 100.0] | — | `tree-support-planner` |
 | `support_branch_merge_distance_mm` | float | `0.8` | >= 0.0 | — | `tree-support-planner` |
 | `support_interface_bottom_layers` | int | `-1` | [-1.0, 10.0] | — | `tree-support-planner` |
 | `support_interface_top_layers` | int | `2` | [0.0, 10.0] | — | `tree-support-planner` |
@@ -302,6 +312,7 @@ is the authoritative catalog of their defaults and ranges.
 | `bridge_speed` | float | `25.0` | [1.0, 300.0] | — | `wave-overhangs` |
 | `layer_height` | float | `0.2` | [0.01, 2.0] | — | `wave-overhangs` |
 | `nozzle_diameter` | float | `0.4` | [0.1, 2.0] | — | `wave-overhangs` |
+| `thick_bridges` | bool | `false` | — | — | `wave-overhangs` |
 | `wall_count` | int | `3` | [1.0, 10.0] | — | `wave-overhangs` |
 | `wave_overhang_anchor_depth_mm` | float | `0.0` | [0.0, 20.0] | — | `wave-overhangs` |
 | `wave_overhang_flow_mm3_per_mm` | float | `0.15` | [0.02, 1.5] | — | `wave-overhangs` |
@@ -482,6 +493,7 @@ upstream or has no upstream equivalent.
 | `fan_max_speed` | `part-cooling` | `255` | `100.0` |
 | `fan_min_speed` | `part-cooling` | `51` | `20.0` |
 | `filter_out_gap_fill` | `classic-perimeters` | `0.5` | `0.0` |
+| `infill_shift_step` | `rectilinear-infill` | `0.0` | `0.4` |
 | `inner_wall_speed` | `classic-perimeters` | `45.0` | `60.0` |
 | `internal_solid_infill_speed` | `rectilinear-infill` | `60.0` | `100.0` |
 | `ironing_speed` | `support-surface-ironing` | `30.0` | `20.0` |

@@ -243,7 +243,10 @@ fn extensions_accept_canonical_wire_vocabulary() {
     for (key, value) in [
         ("seeded_float", ConfigValue::String("nil".to_owned())),
         ("seeded_float", ConfigValue::String("85%".to_owned())),
-        ("seeded_float", ConfigValue::List(vec![ConfigValue::Float(2.5)])),
+        (
+            "seeded_float",
+            ConfigValue::List(vec![ConfigValue::Float(2.5)]),
+        ),
         ("vocab_bool", ConfigValue::String("disabled".to_owned())),
         ("vocab_bool", ConfigValue::String("enabled".to_owned())),
     ] {
@@ -627,8 +630,9 @@ fn every_resolved_config_carries_every_exact_registry_key() {
     );
     assert_eq!(
         map.get("line_width"),
-        Some(&ConfigValue::Float(f64::from(0.45_f32))),
-        "the typed line_width auto-zero expands against the seeded nozzle"
+        Some(&ConfigValue::Float(1.125 * 0.4)),
+        "the typed line_width auto-zero expands against the seeded nozzle \
+         (the typed field is `f64`, so the product is exact)"
     );
 
     // Exempt documented shadow: the typed support_line_width auto-zero expands

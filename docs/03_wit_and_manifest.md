@@ -1221,9 +1221,9 @@ group   = "Support"
 # fields are mirrored into the configuration-only `RaftPlan` record.
 [config.schema.raft_first_layer_density]
 type    = "float"
-default = 0.4
-min     = 0.0
-max     = 1.0
+default = 90.0
+min     = 10.0
+max     = 100.0
 display = "Raft First Layer Density"
 group   = "Support"
 

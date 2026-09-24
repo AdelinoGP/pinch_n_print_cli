@@ -63,8 +63,11 @@ fn integrated_parity_top_surface_ironing() {
             slicer_ir::ConfigValue::Float(20.0),
         ),
         (
+            // coPercent magnitude (10 = 10%) — canonical `ironing_flow`
+            // domain, `PrintConfigDef::init_fff_params`
+            // (`OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp`).
             "ironing_flow".to_string(),
-            slicer_ir::ConfigValue::Float(0.1),
+            slicer_ir::ConfigValue::Float(10.0),
         ),
     ])));
     let bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);

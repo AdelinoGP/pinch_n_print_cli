@@ -165,7 +165,7 @@ fn scope_stack_matches_hand_authored_precedence_table() {
             .expect("literal precedence row must resolve");
         assert_eq!(resolved.infill_density, expected_density);
         assert_eq!(
-            resolved.line_width, 0.45_f32,
+            resolved.line_width, 0.45_f64,
             "Phase-B expansion must run after the complete scope merge"
         );
     }

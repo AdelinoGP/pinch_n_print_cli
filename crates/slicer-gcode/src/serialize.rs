@@ -439,17 +439,14 @@ fn serialize_config_block(
             let value_str = match value {
                 ConfigValue::Bool(b) => b.to_string(),
                 ConfigValue::Int(i) => i.to_string(),
-                ConfigValue::Float(f) => {
-                    // Strip trailing zeros like "22.0" → "22" not wanted by test, keep "22.0"
-                    format!("{f}")
-                }
+                ConfigValue::Float(f) => format_config_float(*f),
                 ConfigValue::String(s) => escape_cstyle(s),
                 ConfigValue::Percent(p) => format!("{p}%"),
                 ConfigValue::FloatOrPercent { value, is_percent } => {
                     if *is_percent {
                         format!("{value}%")
                     } else {
-                        format!("{value}")
+                        format_config_float(*value)
                     }
                 }
                 ConfigValue::List(items) => {
@@ -495,6 +492,21 @@ fn serialize_config_block(
 
     writeln!(out, "; CONFIG_BLOCK_END").unwrap();
     out
+}
+
+/// Render a config float at its own precision. Typed `ResolvedConfig`
+/// scalars are `f32` and widen to `f64` at `to_config_map`, so printing the
+/// `f64` directly leaks binary noise (`0.44999998807907104` for `0.45`).
+/// Values that round-trip through `f32` print with `f32`'s shortest form —
+/// the `format!("{}", v)` convention the header width block already uses —
+/// and genuine `f64` values keep `f64` shortest form.
+fn format_config_float(value: f64) -> String {
+    let narrow = f64::from(value as f32);
+    if narrow == value {
+        format!("{}", value as f32)
+    } else {
+        format!("{value}")
+    }
 }
 
 /// Emit one `; key = value` config line, skipping keys already written so padding
@@ -924,6 +936,25 @@ mod tests {
             .expect("default GCodeIR must serialize");
 
         assert!(output.contains("; support_line_width = 0.42"));
+    }
+
+    #[test]
+    fn config_block_renders_f32_scalars_at_f32_precision() {
+        // Typed `ResolvedConfig` scalars are `f32` and widen to `f64` in
+        // `to_config_map`; the block must render them at `f32` precision
+        // (`0.45`, the `format!("{}", f32)` shortest form the header width
+        // block already uses), not the widened `0.44999998807907104` that
+        // broke the AC-4 `; infill_overlap = 0.45` presence check while the
+        // 0.30 run's `0.30000001192092896` still prefix-matched `0.3`.
+        let cfg: HashMap<String, ConfigValue> = HashMap::from([(
+            "infill_overlap".to_string(),
+            ConfigValue::Float(f64::from(0.45_f32)),
+        )]);
+        let block = serialize_config_block(&cfg, &filament_colour_csv(4), GcodeFlavor::Marlin);
+        assert!(
+            block.contains("; infill_overlap = 0.45"),
+            "f32-derived floats must render at f32 precision; got:\n{block}"
+        );
     }
 
     #[test]

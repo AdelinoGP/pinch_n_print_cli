@@ -49,7 +49,7 @@ fn line_width_defaults_are_auto_sentinels() {
 #[test]
 fn explicit_width_round_trips_with_canonical_initial_layer_name() {
     let cfg = ResolvedConfig {
-        line_width: 0.4_f32,
+        line_width: f64::from(0.4_f32),
         initial_layer_line_width: ResolvedFloatOrPercent {
             value: f64::from(0.4_f32),
             is_percent: false,

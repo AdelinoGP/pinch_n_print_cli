@@ -35,6 +35,51 @@ use slicer_runtime::{
     FinalizationStageRunner, GCodeEmitter, GCodeSerializer, LayerStageRunner, PostpassStageRunner,
     PrepassStageRunner,
 };
+use slicer_sdk::test_support::fixtures::ConfigViewBuilder;
+
+/// Bound-view baseline for `com.core.classic-perimeters` (packet 06 5c-prime,
+/// design.md item 11; mirrors
+/// `modules/core-modules/classic-perimeters/tests/classic_perimeters_tdd.rs::baseline_config`):
+/// holds every key `ClassicPerimeters::run_perimeters`'s classified
+/// `require_*` reads touch on a plain-region path at the guest's
+/// manifest-default values (`classic-perimeters.toml` `[config.schema]`).
+/// The wall-width keys hold the auto sentinel 0 and resolve through the
+/// fixture's `line_width` (the already-expanded base width), matching the
+/// pre-migration fallback behaviour. A bound view always holds these keys —
+/// contract tests start here and override the key under test afterwards so
+/// the explicit value wins.
+pub fn classic_perimeters_baseline() -> ConfigViewBuilder {
+    ConfigViewBuilder::new()
+        .float("nozzle_diameter", 0.4)
+        .float("layer_height", 0.2)
+        .float("bridge_line_width", 0.0)
+        .float("initial_layer_line_width", 0.0)
+        .float("outer_wall_line_width", 0.0)
+        .float("inner_wall_line_width", 0.0)
+        .float("seam_candidate_angle_threshold_deg", 30.0)
+        .float("gap_infill_speed", 30.0)
+        .float("filter_out_gap_fill", 0.5)
+        .float("sparse_infill_density", 20.0)
+        .float("bridge_flow", 1.0)
+        .float("smaller_perimeter_line_width", 0.25)
+        .float("smaller_perimeter_threshold_mm", 0.8)
+        .float("narrow_loop_length_threshold_mm", 10.0)
+        .float("min_width_top_surface", 0.0)
+        .float_or_percent("infill_wall_overlap", 15.0, true)
+        .float_or_percent("top_bottom_infill_wall_overlap", 25.0, true)
+        .bool("detect_thin_wall", true)
+        .bool("gap_fill_medial_axis_on_painted", false)
+        .bool("slice_has_paint", false)
+        .bool("precise_outer_wall", false)
+        .bool("alternate_extra_wall", false)
+        .bool("spiral_vase", false)
+        .bool("extra_perimeters_on_overhangs", false)
+        .bool("only_one_wall_top", false)
+        .bool("only_one_wall_first_layer", false)
+        .bool("thick_bridges", false)
+        .int("extra_perimeters", 0)
+        .int("support_raft_layers", 0)
+}
 
 pub fn pipeline_config_base(
     mesh_ir: Arc<MeshIR>,

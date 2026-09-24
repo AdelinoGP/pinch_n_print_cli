@@ -173,6 +173,14 @@ fn module_bundle(module_id: &str, stage: &str, wasm_name: &str) -> TestModuleBun
         ("infill_overlap".to_string(), ConfigValue::Float(0.45)),
         ("infill_speed".to_string(), ConfigValue::Float(50.0)),
         ("line_width".to_string(), ConfigValue::Float(0.4)),
+        // Contract-required reads (packet 06): lightning-infill `require_abs_value`s
+        // the bound-view widths pair at manifest defaults (0.0), matching
+        // `integrated_parity_gyroid_infill_tdd`'s bound-view fixture.
+        ("bridge_line_width".to_string(), ConfigValue::Float(0.0)),
+        (
+            "initial_layer_line_width".to_string(),
+            ConfigValue::Float(0.0),
+        ),
     ]));
     let module = CompiledModuleBuilder::new(loaded.id().to_string())
         .config_view(Arc::new(config))

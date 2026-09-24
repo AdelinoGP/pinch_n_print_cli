@@ -38,10 +38,18 @@ fn zero_width_resolves_to_canonical_auto_extrusion_width() {
     let nozzle_diameter = 0.6_f32;
     let expected = 1.125_f32 * nozzle_diameter; // 0.675 mm
 
-    let config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
+    // reads need the full classic surface. `line_width` holds the host-expanded
+    // auto width (packet 04: the host expands the auto-0 sentinel to
+    // `1.125 * nozzle_diameter` before the guest sees the view), which is the
+    // base `resolve_role_width` falls back to when the role width is the 0
+    // sentinel — the value this test asserts.
+    let config = crate::common::classic_perimeters_baseline()
+        .float("line_width", expected as f64)
         .int("wall_count", 3)
         .float("nozzle_diameter", nozzle_diameter as f64)
         .float("outer_wall_line_width", 0.0)
+        .float("inner_wall_line_width", 0.0)
         .float("layer_height", 0.2)
         .build();
 
@@ -95,7 +103,8 @@ fn absent_width_keys_resolve_to_canonical_auto_width() {
     let nozzle_diameter = 0.6_f32;
     let expected = 1.125_f32 * nozzle_diameter; // 0.675 mm
 
-    let config = ConfigViewBuilder::new()
+    let config = crate::common::classic_perimeters_baseline()
+        .float("line_width", expected as f64)
         .int("wall_count", 3)
         .float("nozzle_diameter", nozzle_diameter as f64)
         .float("layer_height", 0.2)

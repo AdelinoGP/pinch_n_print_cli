@@ -41,10 +41,28 @@ fn square() -> ExPolygon {
 }
 
 fn config() -> Arc<ConfigView> {
+    // Bound-view shape (packet 06 5c-prime): this view feeds both the
+    // gyroid and rectilinear native entries, so it carries the union of
+    // their contract-required reads at manifest defaults
+    // (gyroid_infill_tdd.rs / rectilinear_infill_tdd.rs::baseline_config),
+    // with this test's density/line_width winning.
     Arc::new(ConfigView::from_map(
         [
             ("infill_density".into(), ConfigValue::Float(0.5)),
             ("line_width".into(), ConfigValue::Float(0.4)),
+            ("bridge_line_width".into(), ConfigValue::Float(0.0)),
+            ("initial_layer_line_width".into(), ConfigValue::Float(0.0)),
+            ("bridge_density".into(), ConfigValue::Float(1.0)),
+            ("bridge_flow".into(), ConfigValue::Float(1.0)),
+            ("thick_bridges".into(), ConfigValue::Bool(false)),
+            ("internal_bridge_density".into(), ConfigValue::Float(1.0)),
+            ("internal_bridge_flow".into(), ConfigValue::Float(1.0)),
+            ("thick_internal_bridges".into(), ConfigValue::Bool(true)),
+            (
+                "dont_filter_internal_bridges".into(),
+                ConfigValue::Bool(false),
+            ),
+            ("enable_extra_bridge_layer".into(), ConfigValue::Bool(false)),
         ]
         .into_iter()
         .collect(),
