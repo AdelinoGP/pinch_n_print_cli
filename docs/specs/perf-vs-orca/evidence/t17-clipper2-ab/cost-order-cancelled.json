@@ -1,0 +1,42 @@
+{
+ "difference/64": {
+  "fwd_median": 9.06216559762677,
+  "rev_median": 3.418765323310591,
+  "order_cancelled": 6.2404654604686804
+ },
+ "difference/256": {
+  "fwd_median": 5.54805279782784,
+  "rev_median": -0.6921322414247699,
+  "order_cancelled": 2.4279602782015353
+ },
+ "intersection/64": {
+  "fwd_median": 2.840186844735848,
+  "rev_median": 7.48018268110493,
+  "order_cancelled": 5.160184762920389
+ },
+ "intersection/256": {
+  "fwd_median": 4.305809030113627,
+  "rev_median": -2.2092243113621457,
+  "order_cancelled": 1.0482923593757407
+ },
+ "offset/64": {
+  "fwd_median": 4.089441348636402,
+  "rev_median": 2.7134603818513625,
+  "order_cancelled": 3.4014508652438824
+ },
+ "offset/256": {
+  "fwd_median": 3.145980126660042,
+  "rev_median": -1.7881821941680753,
+  "order_cancelled": 0.6788989662459832
+ },
+ "union/64": {
+  "fwd_median": 8.489139306863493,
+  "rev_median": 12.719225532589963,
+  "order_cancelled": 10.604182419726728
+ },
+ "union/256": {
+  "fwd_median": 4.547412429284369,
+  "rev_median": 5.496338971135339,
+  "order_cancelled": 5.021875700209854
+ }
+}

@@ -52,8 +52,9 @@ Standing decisions for this effort (2026-09-22):
   keep/drop gate; the human may accept a one-sided win case by case.
 - **Timing discipline**: timing/acceptance tickets chain in the take order set
   by [Gap budget per cell](issues/12-gap-budget-per-cell.md) (number order
-  superseded 2026-09-23; chain: 15 → 17 → 27's candidate → 22's candidate →
-  21's → 25's → below-fold polish); attribution-only tickets are
+  superseded 2026-09-23; chain: 15 ✅ → 17 ✅ → 27's candidate → 22's candidate →
+  21's → 25's → below-fold polish — 15 and 17 closed 2026-09-23/24);
+  attribution-only tickets are
   parallel-takeable, but no substage split starts before
   [host:slice closing_ex span contradiction](issues/24-host-slice-closing-span-contradiction.md)
   closes. Claim (`Status: claimed`) before any work.
@@ -76,7 +77,13 @@ Standing decisions for this effort (2026-09-22):
   a PNP single-slice subprocess pays ~0.77 s of module compile *before* the
   `validation` phase event, so phase walls sum to ~10% of
   `slice_complete.elapsed_ms` — never read phase-sum as run wall
-  ([Criterion bench refresh](issues/15-criterion-bench-refresh.md), 2026-09-23).
+  ([Criterion bench refresh](issues/15-criterion-bench-refresh.md), 2026-09-23);
+  a scratch harness in its own cargo workspace inherits only the *caret*
+  requirement, so its lock floats to the newest compatible release and a
+  version A/B silently measures the wrong version — pin the harness dep and
+  assert the resolved version from the harness's own `Cargo.lock`
+  ([clipper2 cost/output verdict](issues/17-clipper2-cost-output-verdict.md),
+  2026-09-24).
 - Measured keep/drop recommendations return to the human; candidates are never
   auto-committed.
 
@@ -100,6 +107,7 @@ Standing decisions for this effort (2026-09-22):
 - [Gap budget per cell](issues/12-gap-budget-per-cell.md): the serial terms bind every cell — with per-layer work free the prepass floor alone still loses benchy ~2–2.5x and base supports-on ~15–20x, a measured slice-outside wall costs 2.3x (5.5x post-repair) of Orca's budget on base, and the CPU work-density deficit is 6.98x→22.9x per output byte — so no old candidate closes a 6.28–26.24x gap. Route re-ranked: 24 → 22 → new [Serial host floor](issues/27-serial-host-prepass-floor.md) and [Classic output-volume surplus](issues/28-classic-output-volume-surplus.md), tickets 19/20 demoted below-fold, acceleration confirmed at 1.00–1.19x wall.
 - [host:slice closing_ex span contradiction](issues/24-host-slice-closing-span-contradiction.md): the contradiction is a units mismatch — `module_complete`'s ~3.2 s is real wall while the profile table's ~22 s `closing_ex` spans are accumulated per-thread spans (`fold_marks` is thread-correct; the aggregation sums concurrent worker spans) — so the lead retires with no ~22 s cost to promote, and the 22/27 substage splits inherit "work-share yes, wall claims no"; same-run capture in `evidence/t24-span-contradiction/SAME-RUN.md`.
 - [Criterion bench refresh](issues/15-criterion-bench-refresh.md): all 7 benches now have on-disk baselines (82 leaves, `base == new`) and are trustworthy — `gate_evidence` 885.9 ms vs the 10 s bound, `shell_classification` ms-scale with no short-circuit; two fixture limits recorded not fixed (`repair/cube` scans a clean 12-tri mesh, `decimate/cube_default` is rejected by the default `max_error = 0.01`); and the criterion console's `time:` is the regression *slope* in Linear mode, not the mean (up to +8.61% off) — cost A/Bs must compare like-for-like. Evidence in `evidence/t15-criterion-refresh/`, unblocking [clipper2 cost/output verdict](issues/17-clipper2-cost-output-verdict.md).
+- [clipper2 cost/output verdict](issues/17-clipper2-cost-output-verdict.md): **stay on 1.1.0** — the 1.0.3→1.1.0 bump is measured cost-neutral and output-identical (367 fixtures through the full entry-point surface, incl. 24 real benchy layers; `diff -rq` exit 0, tree SHA equal, both sides self-reproducing), with compiled bodies 230/240 bit-identical as the load-independent backstop; the geometry modules are byte-identical and `check_split_owner`'s reach is unchanged, so DEV-173's posture is unaffected; evidence in `evidence/t17-clipper2-ab/`. The harness trap (a scratch workspace's lock floats the caret req to the newest release — it silently measured 1.2.0 while labelled 1.1.0) is recorded for future dependency A/Bs, and it surfaced a real onward finding: **1.1.0→1.2.0 is not output-neutral** (2/367 fixtures lose one collinear vertex; 1.2.0's `clean_collinear` changed) — a future 1.2.0 bump needs its own geometry A/B.
 
 ## Not yet specified
 

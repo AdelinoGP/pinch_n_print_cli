@@ -1,0 +1,20 @@
+[package]
+name = "t17-outdiff"
+version = "0.0.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+slicer-core = { path = "../../crates/slicer-core" }
+slicer-ir = { path = "../../crates/slicer-ir" }
+slicer-model-io = { path = "../../crates/slicer-model-io" }
+serde_json = "1"
+
+# Pin the clipper version this harness measures, so the standalone workspace
+# lock cannot float the caret req up to 1.2.0 (it did on first run — and that
+# silently measured the wrong version).
+clipper2-rust = "=1.1.0"
+
+[profile.release]
+opt-level = 3

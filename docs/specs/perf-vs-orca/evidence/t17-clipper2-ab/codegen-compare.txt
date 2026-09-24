@@ -1,0 +1,12 @@
+base names: 103=240 110=244 common=240
+only-103=0 only-110=4 differing=3
+  only-110: _ZN13clipper2_rust7clipper20poly_path_to_faces64::hHASHE  (1 bodies)
+  only-110: _ZN13clipper2_rust7clipper20poly_tree_to_faces64::hHASHE  (1 bodies)
+  only-110: _ZN4core3ptr55drop_in_place$LT$clipper2_rust..clipper..PolyFace64$GT$::hHASHE  (1 bodies)
+  only-110: _ZN4core3ptr78drop_in_place$LT$alloc..vec..Vec$LT$clipper2_rust..clipper..PolyFace64$GT$$GT$::hHASHE  (1 bodies)
+  DIFF: _ZN13clipper2_rust13engine_public9PolyTreeD9add_child::hHASHE
+    103=1 bodies, 110=1 bodies, shared=0, a-only=1, b-only=1
+  DIFF: _ZN13clipper2_rust4core10scale_path::hHASHE
+    103=2 bodies, 110=2 bodies, shared=1, a-only=1, b-only=1
+  DIFF: _ZN5alloc7raw_vec19RawVec$LT$T$C$A$GT$8grow_one::hHASHE
+    103=23 bodies, 110=24 bodies, shared=13, a-only=0, b-only=1
