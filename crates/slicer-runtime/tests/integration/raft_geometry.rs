@@ -530,7 +530,7 @@ fn raft_fill_reaches_sliced_region_after_dispatch() {
     // Start at the native SDK boundary: this is the same builder operation a
     // module uses, including the explicit source-region identity.
     let mut builder = InfillOutputBuilder::new();
-    builder.begin_region(object_id, region_id);
+    builder.begin_region(object_id, region_id, &[]);
     builder
         .push_raft_fill(vec![polygon.clone()])
         .expect("native raft-fill push");
@@ -555,6 +555,7 @@ fn raft_fill_reaches_sliced_region_after_dispatch() {
         raft_fill_origins: vec![Some(slicer_wasm_host::marshal::OriginId {
             object_id: object_id.to_string(),
             region_id,
+            variant_chain: Vec::new(),
         })],
         ..Default::default()
     };

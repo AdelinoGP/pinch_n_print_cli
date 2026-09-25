@@ -582,12 +582,15 @@ fn boundary_position(
     // Strictly-inside-a-hole test up front: hole rings below are found by
     // `hole_index`, and the point-in-ring test runs on the hole polygon
     // itself (units space, exact integer arithmetic where it matters).
-    let inside_hole: Option<usize> = graph.rings().iter().enumerate().find_map(
-        |(ring_index, ring)| {
-            (ring.hole_index.is_some() && point_strictly_in_ring(point, &ring.polygon))
-                .then_some(ring_index)
-        },
-    );
+    let inside_hole: Option<usize> =
+        graph
+            .rings()
+            .iter()
+            .enumerate()
+            .find_map(|(ring_index, ring)| {
+                (ring.hole_index.is_some() && point_strictly_in_ring(point, &ring.polygon))
+                    .then_some(ring_index)
+            });
     if let Some(hole_ring) = inside_hole {
         // Inside a void: only that hole's own ring can anchor, and only when
         // the point sits on it (a scan line clipped exactly at the hole

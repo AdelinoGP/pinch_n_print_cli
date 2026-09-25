@@ -809,12 +809,16 @@ fn seam_plan_injection_matches_variant_chain() {
 }
 
 #[test]
-fn seam_plan_injection_falls_back_to_the_chainless_base_entry() {
-    // Painted regions are a relabel of their base region's geometry, and seam
-    // planning runs BEFORE paint segmentation — so its entries are keyed on
-    // the chain-less base identity. A chain-carrying region whose exact chain
-    // is unkeyed must fall back to that base seam (two-stage lookup, the
-    // `config_for_region_smallest_chain` precedent) instead of losing it.
+fn seam_plan_injection_missing_exact_chain_degrades_without_base_fallback() {
+    // Exact-identity lookup only: seam planning runs in the LATE prepass phase,
+    // AFTER PaintSegmentation has committed the paint-split SliceIR, so its
+    // entries are keyed on the region identity actually present (including the
+    // paint variant chain). A painted variant with no exact entry must NOT
+    // receive the chain-less base entry's seam — that would hand a variant the
+    // seam chosen for a different region — so the lookup returns `None` and the
+    // seam placer's degraded local-candidate fallback takes over. The
+    // same-chain case still resolves exactly (see
+    // `seam_plan_injection_matches_variant_chain`).
     let plan = slicer_ir::SeamPlanIR {
         entries: vec![slicer_ir::SeamPlanEntry {
             // exhaustive: boundary fixture preserves explicit test data
@@ -844,7 +848,12 @@ fn seam_plan_injection_falls_back_to_the_chainless_base_entry() {
     };
 
     let seam = slicer_wasm_host::dispatch::resolve_seam_for_perimeter_region(&region, &plan, 3);
-    assert_eq!(seam.map(|s| s.point.x), Some(10.0));
+    assert_eq!(
+        seam.map(|s| s.point.x),
+        None,
+        "a painted variant without its own entry must degrade, never borrow \
+         the chain-less base seam"
+    );
 }
 
 #[test]

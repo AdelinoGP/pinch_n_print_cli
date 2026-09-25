@@ -140,19 +140,12 @@ pub fn project_seam_planning_view(
             if region.object_id.is_empty() || region.polygons.is_empty() {
                 continue;
             }
-            // The entry key is the chain-less identity triple
-            // `(layer, object, region_id)`, never the slice's paint chain:
-            // live `PerimeterIR` regions carry an empty chain, and
-            // `resolve_seam_for_perimeter_region` / `backfill_resolved_seam`
-            // key off that triple, so a forwarded paint chain would strand the
-            // entry out of the lookup's reach (a painted region is a relabel of
-            // its base region and shares its seam). Painted variants of one
-            // base region collapse to a single deterministic entry via the
-            // planner's sorted same-key skip. The projection is geometry-only:
-            // a triple the map does not key at all is admitted the same way,
-            // and the planner emits a deterministic fallback position for a
-            // candidate-less region.
-            let variant_chain: &[(String, slicer_ir::PaintValue)] = &[];
+            // The entry identity is the FULL `(layer, object, region_id,
+            // variant_chain)` key. Seam-plan lookup (`resolve_seam_for_perimeter_region`
+            // / `backfill_resolved_seam`) is exact-identity only: a painted
+            // region whose chain has no exact plan entry degrades to local seam
+            // selection rather than borrowing another variant's plan.
+            let variant_chain: &[(String, slicer_ir::PaintValue)] = &region.variant_chain;
 
             let mut segment_annotations: Vec<_> = region.segment_annotations.iter().collect();
             segment_annotations.sort_by(|left, right| left.0.cmp(right.0));
@@ -661,6 +654,11 @@ pub fn perimeter_region_to_data(region: &slicer_ir::PerimeterRegion) -> Perimete
                 sp.wall_index,
             )
         }),
+        variant_chain: view
+            .variant_chain()
+            .iter()
+            .map(|(semantic, value)| (semantic.clone(), ir_to_wit_paint_value(value)))
+            .collect(),
         // Note: width/flow_factor/overhang_quartile and `reason` are
         // intentionally discarded here, mirroring the resolved_seam
         // conversion above — the WIT `push-seam-candidate` write contract
@@ -1083,6 +1081,78 @@ mod tests {
     use crate::host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::{
         SupportPlanEntry, SupportPlanRole, SupportPlanRoleRegion,
     };
+
+    /// The seam-planning projection must carry each region's FULL identity —
+    /// including the paint `variant_chain` — into
+    /// `SeamPlanningRegionInput`. A chain dropped here would make the planner
+    /// emit one entry per base region and every painted variant would then
+    /// either borrow it or degrade; painting could never change the seam.
+    #[test]
+    fn seam_planning_projection_carries_the_variant_chain() {
+        use slicer_ir::{
+            PaintValue, Point2, Polygon, SliceIR, SlicedRegion, CURRENT_SLICE_IR_SCHEMA_VERSION,
+        };
+
+        let square = |x: f32| Polygon {
+            points: vec![
+                Point2::from_mm(x, 0.0),
+                Point2::from_mm(x + 10.0, 0.0),
+                Point2::from_mm(x + 10.0, 10.0),
+                Point2::from_mm(x, 10.0),
+            ],
+        };
+        let region = |region_id: u64, chain: Vec<(String, PaintValue)>| SlicedRegion {
+            object_id: "object-a".to_string(),
+            region_id,
+            variant_chain: chain,
+            polygons: vec![slicer_ir::ExPolygon {
+                contour: square(0.0),
+                holes: Vec::new(),
+            }],
+            ..Default::default()
+        };
+        let slice = SliceIR {
+            schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+            global_layer_index: 2,
+            z: 0.4,
+            regions: vec![
+                region(7, Vec::new()),
+                region(7, vec![("material".to_string(), PaintValue::ToolIndex(1))]),
+            ],
+        };
+
+        let view = super::project_seam_planning_view(
+            &[slice],
+            None,
+            None,
+            &slicer_ir::ConfigView::from_map(std::collections::HashMap::new()),
+        );
+
+        assert_eq!(
+            view.regions.len(),
+            2,
+            "both variants must project as independent planning inputs: {:#?}",
+            view.regions
+        );
+        let mut chains: Vec<_> = view
+            .regions
+            .iter()
+            .map(|region| region.variant_chain.clone())
+            .collect();
+        chains.sort_by_key(std::vec::Vec::len);
+        assert_eq!(chains.len(), 2, "one planning input per variant");
+        assert!(
+            chains[0].is_empty(),
+            "the base variant keeps an empty chain"
+        );
+        assert_eq!(chains[1].len(), 1, "one chain entry on the painted variant");
+        assert_eq!(chains[1][0].0, "material");
+        assert!(
+            matches!(chains[1][0].1, crate::host::PaintValue::ToolIndex(1)),
+            "the painted variant's chain must survive projection, got {:?}",
+            chains[1][0].1
+        );
+    }
 
     #[test]
     fn base_interface_role_round_trips_both_legs() {

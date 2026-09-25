@@ -228,14 +228,22 @@ impl LayerModule for SupportSurfaceIroning {
             // (empty object_id / family_id), and the native leg diverges from
             // the wasm leg — which recovers an origin anyway via the host's
             // `touch_slice_region` fallback on the first view accessor call.
-            output.begin_region(region.object_id(), *region.region_id());
+            output.begin_region(
+                region.object_id(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
             let z = region.z();
 
             let polygons = region.polygons();
             if polygons.is_empty() {
                 continue;
             }
-            output.begin_region(region.object_id().as_str(), *region.region_id());
+            output.begin_region(
+                region.object_id().as_str(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
 
             for expoly in polygons {
                 let paths = self.fill_expolygon(expoly, z, speed_factor);

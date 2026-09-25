@@ -28,7 +28,7 @@ impl InfillLinker {
         region: &InfillRegion,
         output: &mut InfillOutputBuilder,
     ) -> Result<(), ModuleError> {
-        output.begin_region(&region.object_id, region.region_id);
+        output.begin_region(&region.object_id, region.region_id, &region.variant_chain);
         for path in &region.ironing {
             output
                 .push_ironing_path(path.clone())

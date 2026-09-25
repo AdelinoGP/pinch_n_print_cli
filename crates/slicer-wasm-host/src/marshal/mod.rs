@@ -136,6 +136,7 @@ pub fn convert_native_support_output_with_plan(
         value.as_ref().map(|value| OriginId {
             object_id: value.object_id.clone(),
             region_id: value.region_id,
+            variant_chain: value.variant_chain.clone(),
         })
     };
     let collected = SupportOutputCollected {

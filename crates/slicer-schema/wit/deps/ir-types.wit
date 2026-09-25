@@ -231,6 +231,11 @@ interface ir-handles {
         // none = this region owns its walls; some(base) = this region
         // shares the base region's walls (ADR-0028 §Amendment 2026-07-01).
         wall-source-region-id: func() -> option<region-id>;
+        // Ordered (paint-semantic-name, value) pairs identifying this region's
+        // paint variant, mirrored from `slice-region-view.variant-chain`, so a
+        // perimeter-region consumer can carry the FULL region identity through
+        // its output builder origin tag (see `set-current-origin`).
+        variant-chain: func() -> list<tuple<string, paint-value>>;
         // Per-region config view for this perimeter region. Host-populated at
         // dispatch time (packet 131, Step 3) so region-scoped modules can read
         // per-region overrides without routing through the module-level config.
@@ -245,6 +250,10 @@ interface ir-handles {
     record prior-infill-region {
         object-id: object-id,
         region-id: region-id,
+        // Full ordered (paint-semantic-name, value) variant chain for this
+        // bucket, so an InfillPostProcess consumer can construct the exact
+        // region identity for its own `set-current-origin` tag.
+        variant-chain: list<tuple<string, paint-value>>,
         sparse-infill: list<extrusion-path3d>,
         solid-infill: list<extrusion-path3d>,
         ironing: list<extrusion-path3d>,
@@ -255,7 +264,11 @@ interface ir-handles {
         push-solid-path:   func(path: extrusion-path3d) -> result<_, string>;
         push-ironing-path: func(path: extrusion-path3d) -> result<_, string>;
         push-raft-fill:    func(polygons: list<ex-polygon>) -> result<_, string>;
-        set-current-origin: func(object-id: string, region-id: string) -> result<_, string>;
+        // Tags subsequent pushes with the FULL region identity: object, region
+        // id, and the exact ordered variant chain. The chain is part of the
+        // routing key, so two regions sharing (object-id, region-id) but
+        // differing in paint variant route to distinct output buckets.
+        set-current-origin: func(object-id: string, region-id: string, variant-chain: list<tuple<string, paint-value>>) -> result<_, string>;
     }
 
     resource perimeter-output-builder {
@@ -264,7 +277,9 @@ interface ir-handles {
         set-infill-areas:        func(areas: list<ex-polygon>) -> result<_, string>;
         push-seam-candidate:     func(pos: point3, score: f32) -> result<_, string>;
         push-resolved-seam:      func(pos: point3, wall-index: u32) -> result<_, string>;
-        set-current-origin:      func(object-id: string, region-id: string) -> result<_, string>;
+        // Tags subsequent pushes with the FULL region identity (object, region
+        // id, exact ordered variant chain); chain is part of the routing key.
+        set-current-origin:      func(object-id: string, region-id: string, variant-chain: list<tuple<string, paint-value>>) -> result<_, string>;
     }
 
     resource slice-postprocess-builder {
@@ -311,7 +326,9 @@ interface ir-handles {
         push-interface-path: func(path: extrusion-path3d, is-top-interface: bool) -> result<_, string>;
         push-base-interface-path: func(path: extrusion-path3d, is-top-interface: bool) -> result<_, string>;
         push-raft-path:      func(path: extrusion-path3d) -> result<_, string>;
-        set-current-origin:  func(object-id: string, region-id: string) -> result<_, string>;
+        // Tags subsequent pushes with the FULL region identity (object, region
+        // id, exact ordered variant chain); chain is part of the routing key.
+        set-current-origin:  func(object-id: string, region-id: string, variant-chain: list<tuple<string, paint-value>>) -> result<_, string>;
     }
 
     record semantic-region { object-id: object-id, polygons: list<ex-polygon>, value: paint-value }

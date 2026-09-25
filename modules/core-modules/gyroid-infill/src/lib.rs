@@ -185,7 +185,11 @@ impl LayerModule for GyroidInfill {
         // each `fill_expolygon` call below.
         // See `crates/slicer-runtime/src/region_partition.rs`.
         for region in regions {
-            output.begin_region(region.object_id(), *region.region_id());
+            output.begin_region(
+                region.object_id(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
             let z = region.z();
 
             // Per-region config resolution (packet 131 / TASK-256):

@@ -238,7 +238,7 @@ pub fn orchestrate_infill(
     process_bucket(&records, PathBucket::Solid, infill_overlap, &mut buckets);
 
     for (index, region) in prior_infill.iter().enumerate() {
-        output.begin_region(&region.object_id, region.region_id);
+        output.begin_region(&region.object_id, region.region_id, &region.variant_chain);
         for path in buckets[index].sparse.drain(..) {
             output.push_sparse_path(path)?;
         }
@@ -766,7 +766,13 @@ fn link_paths(
     anchor: AnchorParams,
 ) -> (Vec<ExtrusionPath3D>, Vec<SourceSegment>) {
     let offset = ExPolygonWithOffset::for_infill_overlap(boundary, infill_overlap, spacing_mm);
-    link_paths_against(tagged, offset.polygons_outer(), boundary, spacing_mm, anchor)
+    link_paths_against(
+        tagged,
+        offset.polygons_outer(),
+        boundary,
+        spacing_mm,
+        anchor,
+    )
 }
 
 /// Clips and links `tagged` against the overlap-offset `boundary`, falling

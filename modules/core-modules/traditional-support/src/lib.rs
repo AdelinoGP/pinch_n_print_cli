@@ -282,7 +282,11 @@ impl LayerModule for TraditionalSupport {
                 // builder rejects a second proposal).
                 let mut off_grid_entities: Vec<slicer_ir::AnchoredEntity> = Vec::new();
 
-                output.begin_region(region.object_id(), *region.region_id());
+                output.begin_region(
+                    region.object_id(),
+                    *region.region_id(),
+                    region.variant_chain(),
+                );
                 // F-37: canonical `generate_interface_layers` regularizes every
                 // interface band (`closing` + `smooth_outward`) and subtracts
                 // the result from the base area before anything is filled.

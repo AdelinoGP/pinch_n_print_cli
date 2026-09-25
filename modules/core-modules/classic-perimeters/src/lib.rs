@@ -342,7 +342,11 @@ impl LayerModule for ClassicPerimeters {
         let thick_bridges = _config.require_bool("thick_bridges")?;
 
         for region in regions {
-            output.begin_region(region.object_id(), *region.region_id());
+            output.begin_region(
+                region.object_id(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
             if region.polygons().is_empty() {
                 continue;
             }

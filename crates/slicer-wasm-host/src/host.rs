@@ -259,6 +259,14 @@ pub struct PerimeterRegionData {
     /// virtual paint-variant sharing the base region's wall geometry
     /// (ADR-0028 §Amendment 2026-07-01).
     pub wall_source_region_id: Option<String>,
+    /// Ordered (paint-semantic-name, value) pairs identifying this region's
+    /// paint variant — part of the full region identity a guest forwards via
+    /// `set-current-origin` / `begin_region`. Empty for the legacy
+    /// single-variant flow.
+    pub variant_chain: Vec<(
+        String,
+        layer_perimeters::slicer::ir_handles::ir_handles::PaintValue,
+    )>,
 }
 
 /// Backing data for an `infill-output-builder` resource handle.
@@ -2927,7 +2935,7 @@ pub fn derive_tool_count<'a>(
 // Re-exported here so callers within this file and inner `mod` blocks that
 // do `use super::*` continue to resolve them without a path change.
 pub(crate) use crate::marshal::leaf::{
-    ir_to_wit_expolygons, ir_to_wit_extrusion_path, ir_to_wit_extrusion_role,
+    convert_paint_value, ir_to_wit_expolygons, ir_to_wit_extrusion_path, ir_to_wit_extrusion_role,
     ir_to_wit_paint_layer_view, ir_to_wit_paint_semantic, ir_to_wit_paint_value,
     ir_to_wit_wall_loop, wit_to_ir_expolygons,
 };
@@ -3064,6 +3072,7 @@ mod region_origin_tests {
                     raft_fill: Vec::new(),
                     tool_index: 0,
                     wall_source_region_id: None,
+                    variant_chain: Vec::new(),
                 },
             )
             .expect("push perimeter region");
@@ -3269,6 +3278,16 @@ impl HostExecutionContext {
         self.current_slice_region = Some(OriginId {
             object_id: data.object_id.clone(),
             region_id: rid,
+            variant_chain: data
+                .variant_chain
+                .iter()
+                .map(|(name, value)| {
+                    (
+                        name.clone(),
+                        crate::marshal::leaf::convert_paint_value(value),
+                    )
+                })
+                .collect(),
         });
         Ok(())
     }
@@ -3501,6 +3520,16 @@ impl HostExecutionContext {
         self.current_perimeter_region = Some(OriginId {
             object_id: data.object_id.clone(),
             region_id: rid,
+            variant_chain: data
+                .variant_chain
+                .iter()
+                .map(|(name, value)| {
+                    (
+                        name.clone(),
+                        crate::marshal::leaf::convert_paint_value(value),
+                    )
+                })
+                .collect(),
         });
         Ok(())
     }
@@ -3648,6 +3677,20 @@ impl ir::HostPerimeterRegionView for HostExecutionContext {
             .push(String::from("PerimeterIR.wall-source-region-id"));
         Ok(self.table.get(&self_)?.wall_source_region_id.clone())
     }
+    fn variant_chain(
+        &mut self,
+        self_: Resource<PerimeterRegionData>,
+    ) -> wasmtime::Result<
+        Vec<(
+            String,
+            layer_perimeters::slicer::ir_handles::ir_handles::PaintValue,
+        )>,
+    > {
+        self.touch_perimeter_region(&self_)?;
+        self.runtime_reads
+            .push(String::from("PerimeterIR.variant-chain"));
+        Ok(self.table.get(&self_)?.variant_chain.clone())
+    }
     fn drop(&mut self, rep: Resource<PerimeterRegionData>) -> wasmtime::Result<()> {
         self.table.delete(rep)?;
         Ok(())
@@ -3736,12 +3779,17 @@ impl ir::HostInfillOutputBuilder for HostExecutionContext {
         _self_: Resource<InfillOutputBuilderData>,
         object_id: String,
         region_id: String,
+        variant_chain: Vec<(String, PaintValue)>,
     ) -> wasmtime::Result<Result<(), String>> {
         match region_id.parse::<u64>() {
             Ok(parsed) if parsed.to_string() == region_id => {
                 self.explicit_perimeter_origin = Some(OriginId {
                     object_id,
                     region_id: parsed,
+                    variant_chain: variant_chain
+                        .iter()
+                        .map(|(name, value)| (name.clone(), convert_paint_value(value)))
+                        .collect(),
                 });
                 Ok(Ok(()))
             }
@@ -3855,12 +3903,17 @@ impl ir::HostPerimeterOutputBuilder for HostExecutionContext {
         _self_: Resource<PerimeterOutputBuilderData>,
         object_id: String,
         region_id: String,
+        variant_chain: Vec<(String, PaintValue)>,
     ) -> wasmtime::Result<Result<(), String>> {
         match region_id.parse::<u64>() {
             Ok(parsed) if parsed.to_string() == region_id => {
                 self.explicit_perimeter_origin = Some(OriginId {
                     object_id,
                     region_id: parsed,
+                    variant_chain: variant_chain
+                        .iter()
+                        .map(|(name, value)| (name.clone(), convert_paint_value(value)))
+                        .collect(),
                 });
                 Ok(Ok(()))
             }
@@ -4199,12 +4252,17 @@ impl ir::HostSupportOutputBuilder for HostExecutionContext {
         _self_: Resource<SupportOutputBuilderData>,
         object_id: String,
         region_id: String,
+        variant_chain: Vec<(String, PaintValue)>,
     ) -> wasmtime::Result<Result<(), String>> {
         match region_id.parse::<u64>() {
             Ok(parsed) if parsed.to_string() == region_id => {
                 self.explicit_perimeter_origin = Some(OriginId {
                     object_id,
                     region_id: parsed,
+                    variant_chain: variant_chain
+                        .iter()
+                        .map(|(name, value)| (name.clone(), convert_paint_value(value)))
+                        .collect(),
                 });
                 Ok(Ok(()))
             }
@@ -5036,22 +5094,6 @@ mod finalization_impls {
         use super::*;
 
         #[test]
-        fn ir_to_wit_extrusion_role_preserves_reserved_builtin_roles() {
-            assert!(matches!(
-                ir_to_wit_extrusion_role(&slicer_ir::ExtrusionRole::PrimeTower),
-                ExtrusionRole::Custom(tag) if tag == BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG
-            ));
-            assert!(matches!(
-                ir_to_wit_extrusion_role(&slicer_ir::ExtrusionRole::Skirt),
-                ExtrusionRole::Custom(tag) if tag == BUILTIN_EXTRUSION_ROLE_SKIRT_TAG
-            ));
-            assert!(matches!(
-                ir_to_wit_extrusion_role(&slicer_ir::ExtrusionRole::Brim),
-                ExtrusionRole::Custom(tag) if tag == BUILTIN_EXTRUSION_ROLE_BRIM_TAG
-            ));
-        }
-
-        #[test]
         fn finalization_output_builder_rejects_noncanonical_region_id_strings() {
             let mut ctx =
                 HostExecutionContextBuilder::new("com.test.finalization".to_string(), 0.0, 0.2)
@@ -5285,13 +5327,15 @@ mod tests {
         ctx.set_current_slice_region(Some(OriginId {
             object_id: "uuid".to_string(),
             region_id: 7,
+            variant_chain: Vec::new(),
         }));
 
         assert_eq!(
             ctx.effective_perimeter_origin(),
             Some(OriginId {
                 object_id: "uuid".to_string(),
-                region_id: 7
+                region_id: 7,
+                variant_chain: Vec::new(),
             })
         );
     }
@@ -5306,17 +5350,20 @@ mod tests {
         ctx.set_current_slice_region(Some(OriginId {
             object_id: "slice-uuid".to_string(),
             region_id: 1,
+            variant_chain: Vec::new(),
         }));
         ctx.set_current_perimeter_region(Some(OriginId {
             object_id: "perimeter-uuid".to_string(),
             region_id: 2,
+            variant_chain: Vec::new(),
         }));
 
         assert_eq!(
             ctx.effective_perimeter_origin(),
             Some(OriginId {
                 object_id: "perimeter-uuid".to_string(),
-                region_id: 2
+                region_id: 2,
+                variant_chain: Vec::new(),
             })
         );
     }

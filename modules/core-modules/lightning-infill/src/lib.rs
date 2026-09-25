@@ -109,7 +109,11 @@ impl LayerModule for LightningInfill {
         let speed_factor = self.infill_speed / BASE_SPEED;
 
         for region in regions {
-            output.begin_region(region.object_id(), *region.region_id());
+            output.begin_region(
+                region.object_id(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
             if !region.should_emit(ExtrusionRole::SparseInfill) {
                 continue;
             }

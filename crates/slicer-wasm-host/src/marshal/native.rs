@@ -61,6 +61,7 @@ fn origin(value: &Option<slicer_sdk::builders::RegionOrigin>) -> Option<OriginId
     value.as_ref().map(|origin| OriginId {
         object_id: origin.object_id.clone(),
         region_id: origin.region_id,
+        variant_chain: origin.variant_chain.clone(),
     })
 }
 
@@ -1214,6 +1215,7 @@ fn collect_perimeter(builder: &PerimeterOutputBuilder) -> PerimeterOutputCollect
         resolved_seam_origin: builder.resolved_seam_origin().map(|origin| OriginId {
             object_id: origin.object_id.clone(),
             region_id: origin.region_id,
+            variant_chain: origin.variant_chain.clone(),
         }),
     }
 }

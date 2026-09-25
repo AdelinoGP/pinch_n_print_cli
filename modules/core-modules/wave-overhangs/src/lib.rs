@@ -245,7 +245,12 @@ fn rotate_polys(polys: &[ExPolygon], cos: f64, sin: f64) -> Vec<ExPolygon> {
         .iter()
         .map(|exp| ExPolygon {
             contour: Polygon {
-                points: exp.contour.points.iter().map(|p| rotate(*p, cos, sin)).collect(),
+                points: exp
+                    .contour
+                    .points
+                    .iter()
+                    .map(|p| rotate(*p, cos, sin))
+                    .collect(),
             },
             holes: exp
                 .holes
@@ -295,8 +300,14 @@ fn rectilinear_scanlines(polys: &[ExPolygon], angle_deg: f32, spacing_units: f64
     while y < max_y as f64 {
         let yi = y.round() as i64;
         lines.push(vec![
-            Point2 { x: min_x - 1, y: yi },
-            Point2 { x: max_x + 1, y: yi },
+            Point2 {
+                x: min_x - 1,
+                y: yi,
+            },
+            Point2 {
+                x: max_x + 1,
+                y: yi,
+            },
         ]);
         y += spacing_units;
     }
@@ -416,15 +427,18 @@ impl LayerModule for WaveOverhangs {
         let mut locks = OrderLockAllocator::new();
 
         for region in regions {
-            output.begin_region(region.object_id(), *region.region_id());
+            output.begin_region(
+                region.object_id(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
             if !region.should_emit(ExtrusionRole::BridgeInfill) || region.bridge_areas().is_empty()
             {
                 continue;
             }
 
             // ---- Speed factor (AC-7). Fatal, never a silent clamp. ----------
-            let print_speed =
-                resolve_float(region, "wave_overhang_print_speed", self.print_speed);
+            let print_speed = resolve_float(region, "wave_overhang_print_speed", self.print_speed);
             let bridge_speed = resolve_float(region, "bridge_speed", self.bridge_speed);
             let speed_factor = if bridge_speed > 0.0 {
                 print_speed / bridge_speed
@@ -495,12 +509,15 @@ impl LayerModule for WaveOverhangs {
                 self.nozzle_diameter,
             )
             .spacing_mm;
-            let anchor_depth_cfg =
-                resolve_float(region, "wave_overhang_anchor_depth_mm", self.anchor_depth_mm);
+            let anchor_depth_cfg = resolve_float(
+                region,
+                "wave_overhang_anchor_depth_mm",
+                self.anchor_depth_mm,
+            );
             // Reproduces the generator's own canonical `anchors_size`
             // (`EXTERNAL_INFILL_MARGIN_MM.min(base_spacing * (wall_count + 1))`).
-            let anchors_size_mm = AUTO_ANCHOR_DEPTH_CAP_MM
-                .min(bridge_spacing_mm * (self.wall_count as f32 + 1.0));
+            let anchors_size_mm =
+                AUTO_ANCHOR_DEPTH_CAP_MM.min(bridge_spacing_mm * (self.wall_count as f32 + 1.0));
             let anchor_depth = if anchor_depth_cfg > 0.0 {
                 anchor_depth_cfg
             } else {
@@ -685,9 +702,12 @@ impl LayerModule for WaveOverhangs {
             }
 
             // ---- Internal-qualified polygons: unlocked rectilinear. ---------
-            for pl in internal_qualified.iter().flat_map(|(area, internal_angle)| {
-                rectilinear_scanlines(area, *internal_angle, fallback_spacing_units)
-            }) {
+            for pl in internal_qualified
+                .iter()
+                .flat_map(|(area, internal_angle)| {
+                    rectilinear_scanlines(area, *internal_angle, fallback_spacing_units)
+                })
+            {
                 output
                     .push_solid_path(to_path(
                         &pl,

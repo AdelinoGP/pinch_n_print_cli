@@ -738,6 +738,10 @@ pub struct PerimeterRegionView {
     /// `None` = this region owns its walls; `Some(base)` = this region shares
     /// the base region's walls (ADR-0028 §Amendment 2026-07-01).
     wall_source_region_id: Option<RegionId>,
+    /// Ordered `(paint-semantic-name, value)` pairs identifying this region's
+    /// paint variant, mirrored from the corresponding `SliceRegionView`
+    /// (full region identity for `begin_region` / `set-current-origin`).
+    variant_chain: Vec<(String, PaintValue)>,
     /// Per-region config view (packet 131). Host-populated at dispatch time
     /// (Step 3); `None` when no per-region config was derived.
     config: Option<ConfigView>,
@@ -753,6 +757,7 @@ impl PerimeterRegionView {
             infill_areas: region.infill_areas.clone(),
             seam_candidates: region.seam_candidates.clone(),
             resolved_seam: region.resolved_seam.clone(),
+            variant_chain: region.variant_chain.clone(),
             ..Self::default()
         }
     }
@@ -902,6 +907,19 @@ impl PerimeterRegionView {
     /// walls; `Some(base)` = this region shares the base region's walls.
     pub fn wall_source_region_id(&self) -> Option<&RegionId> {
         self.wall_source_region_id.as_ref()
+    }
+
+    /// Returns this region's ordered `(paint_semantic_name, value)` variant
+    /// chain — the full region identity used when re-tagging output via
+    /// `begin_region`. Empty for the legacy single-variant flow.
+    pub fn variant_chain(&self) -> &[(String, PaintValue)] {
+        &self.variant_chain
+    }
+
+    /// Override the variant chain (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_variant_chain(&mut self, variant_chain: Vec<(String, PaintValue)>) {
+        self.variant_chain = variant_chain;
     }
 
     /// Returns the per-region config view for this region, if the host

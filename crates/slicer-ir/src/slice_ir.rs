@@ -364,11 +364,12 @@ pub const CURRENT_PERIMETER_IR_SCHEMA_VERSION: SemVer = SemVer {
     patch: 0,
 };
 
-/// Schema version for `InfillIR`. Initial 1.0.0 — no bumps recorded in
-/// `docs/02_ir_schemas.md` as of TASK-200b.
+/// Schema version for `InfillIR`. Initial 1.0.0 (TASK-200b); 1.1.0 adds the
+/// additive `InfillRegion.variant_chain` carrier (seam identity), which is
+/// `#[serde(default)]` so pre-1.1.0 fixtures still parse to an empty chain.
 pub const CURRENT_INFILL_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
-    minor: 0,
+    minor: 1,
     patch: 0,
 };
 
@@ -3027,6 +3028,10 @@ pub struct InfillRegion {
     pub object_id: ObjectId,
     /// Region ID
     pub region_id: RegionId,
+    /// Variant chain (paint semantics) this region was split on, matching
+    /// [`PerimeterRegion::variant_chain`]. Empty for unpainted regions.
+    #[serde(default)]
+    pub variant_chain: Vec<(String, PaintValue)>,
     /// Sparse infill paths
     pub sparse_infill: Vec<ExtrusionPath3D>,
     /// Solid infill paths

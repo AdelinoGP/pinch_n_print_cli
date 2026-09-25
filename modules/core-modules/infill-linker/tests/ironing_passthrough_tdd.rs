@@ -45,6 +45,7 @@ fn prior_infill() -> Vec<InfillRegion> {
         InfillRegion {
             object_id: "object-a".to_string(),
             region_id: 7,
+            variant_chain: Vec::new(),
             sparse_infill: vec![path(ExtrusionRole::SparseInfill, 0.91, 0.0)],
             solid_infill: vec![path(ExtrusionRole::TopSolidInfill, 1.13, 1.0)],
             ironing: vec![
@@ -57,6 +58,7 @@ fn prior_infill() -> Vec<InfillRegion> {
         InfillRegion {
             object_id: "object-b".to_string(),
             region_id: 11,
+            variant_chain: Vec::new(),
             sparse_infill: vec![],
             solid_infill: vec![],
             ironing: vec![path(ExtrusionRole::Ironing, 0.66, -2.0)],
@@ -108,6 +110,7 @@ fn ironing_passthrough_identical() {
         &[Some(slicer_sdk::builders::RegionOrigin {
             object_id: "object-a".to_string(),
             region_id: 7,
+            variant_chain: Vec::new(),
         })]
     );
     assert_eq!(
@@ -115,6 +118,7 @@ fn ironing_passthrough_identical() {
         &[Some(slicer_sdk::builders::RegionOrigin {
             object_id: "object-a".to_string(),
             region_id: 7,
+            variant_chain: Vec::new(),
         })]
     );
     assert_eq!(
@@ -122,15 +126,18 @@ fn ironing_passthrough_identical() {
         &[
             Some(slicer_sdk::builders::RegionOrigin {
                 object_id: "object-a".to_string(),
-                region_id: 7
+                region_id: 7,
+                variant_chain: Vec::new(),
             }),
             Some(slicer_sdk::builders::RegionOrigin {
                 object_id: "object-a".to_string(),
-                region_id: 7
+                region_id: 7,
+                variant_chain: Vec::new(),
             }),
             Some(slicer_sdk::builders::RegionOrigin {
                 object_id: "object-b".to_string(),
-                region_id: 11
+                region_id: 11,
+                variant_chain: Vec::new(),
             }),
         ]
     );

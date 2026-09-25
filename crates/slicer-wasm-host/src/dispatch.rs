@@ -2376,29 +2376,21 @@ pub fn resolve_seam_for_perimeter_region(
     seam_plan: &slicer_ir::SeamPlanIR,
     layer_index: u32,
 ) -> Option<slicer_ir::SeamPosition> {
-    // Two-stage lookup (the `config_for_region_smallest_chain` precedent in
-    // `crates/slicer-runtime/src/layer_executor.rs`): an exact
-    // `(layer, object, region_id, variant_chain)` hit first, else the
-    // chain-less entry for the same identity triple. Seam planning runs
-    // before paint segmentation, so its entries are keyed on the base
-    // region; a painted region's chain is a relabel of that same geometry
-    // and must fall back to the base seam rather than lose it.
-    let matches_triple = |entry: &slicer_ir::SeamPlanEntry| {
-        entry.region_key.global_layer_index == layer_index
-            && entry.region_key.object_id == region.object_id
-            && entry.region_key.region_id == region.region_id
-    };
+    // Exact `(layer, object, region_id, variant_chain)` lookup only. Seam
+    // planning runs in the LATE prepass phase, AFTER the PaintSegmentation
+    // host builtin has committed the paint-split SliceIR; its entries are
+    // therefore keyed on the region identity actually present in `SliceIR`
+    // (including the paint variant chain), so a painted variant has its own
+    // entry or none. Falling back to the chain-less base entry here would
+    // hand a painted variant the seam chosen for its unpainted sibling.
     seam_plan
         .entries
         .iter()
         .find(|entry| {
-            matches_triple(entry) && entry.region_key.variant_chain == region.variant_chain
-        })
-        .or_else(|| {
-            seam_plan
-                .entries
-                .iter()
-                .find(|entry| matches_triple(entry) && entry.region_key.variant_chain.is_empty())
+            entry.region_key.global_layer_index == layer_index
+                && entry.region_key.object_id == region.object_id
+                && entry.region_key.region_id == region.region_id
+                && entry.region_key.variant_chain == region.variant_chain
         })
         .map(|entry| entry.chosen_candidate.clone())
 }
@@ -2598,11 +2590,31 @@ fn push_infill_postprocess_regions(
                 raft_fill: Vec::new(),
                 tool_index: 0,
                 wall_source_region_id: None,
+                variant_chain: region
+                    .variant_chain
+                    .iter()
+                    .map(|(name, value)| {
+                        (
+                            name.clone(),
+                            crate::marshal::leaf::ir_to_wit_paint_value(value),
+                        )
+                    })
+                    .collect(),
             },
         };
         // The view's identity is the slice region's, not the wall donor's.
         data.object_id = region.object_id.clone();
         data.region_id = region.region_id.to_string();
+        data.variant_chain = region
+            .variant_chain
+            .iter()
+            .map(|(name, value)| {
+                (
+                    name.clone(),
+                    crate::marshal::leaf::ir_to_wit_paint_value(value),
+                )
+            })
+            .collect();
         data.sparse_infill_area = crate::marshal::ir_to_wit_expolygons(&region.sparse_infill_area);
         data.top_solid_fill = crate::marshal::ir_to_wit_expolygons(&region.top_solid_fill);
         data.bottom_solid_fill = crate::marshal::ir_to_wit_expolygons(&region.bottom_solid_fill);

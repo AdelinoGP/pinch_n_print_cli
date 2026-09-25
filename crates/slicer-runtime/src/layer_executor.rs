@@ -890,11 +890,11 @@ fn execute_single_layer_inner(
         instrumentation.on_stage_start(&stage.stage_id, Some(layer.index));
         // Execute modules in topological order within each stage
         for module in &stage.modules {
-            // Per-layer host filter (packet 92): skip this module on this layer
-            // if it declares [[region_split]] semantics and no region's
-            // variant_chain matches any of them. The `continue` is placed
-            // BEFORE on_module_start so the skipped module is truly absent
-            // from the instrumentation and audit log.
+            // Per-layer host filter (packet 92; ADR-0071): skip this module on
+            // this layer only when its manifest opted into `paint_only = true`
+            // and no region's variant_chain matches a declared semantic. The
+            // `continue` is placed BEFORE on_module_start so the skipped module
+            // is truly absent from the instrumentation and audit log.
             if !module_invocation_allowed_on_layer(module.region_split_semantics(), arena.slice()) {
                 continue;
             }
@@ -3267,29 +3267,21 @@ fn backfill_resolved_seam(
         if region.resolved_seam.is_some() {
             continue;
         }
-        // Two-stage lookup (mirrors `resolve_seam_for_perimeter_region` and
-        // `config_for_region_smallest_chain`): exact identity first, else the
-        // chain-less base entry — seam planning runs before paint
-        // segmentation, so a painted region's chain is a relabel of the base
-        // region's geometry and falls back to its seam.
-        let chosen = {
-            let matches_triple = |e: &slicer_ir::SeamPlanEntry| {
+        // Exact identity lookup only (mirrors `resolve_seam_for_perimeter_region`):
+        // seam planning runs in the LATE prepass phase, after paint segmentation
+        // has committed the paint-split SliceIR, so its entries carry the full
+        // variant chain. A painted variant without its own entry gets no seam
+        // (degraded path) rather than its unpainted sibling's seam.
+        let chosen = seam_plan
+            .entries
+            .iter()
+            .find(|e| {
                 e.region_key.global_layer_index == layer_index
                     && e.region_key.object_id == region.object_id
                     && e.region_key.region_id == region.region_id
-            };
-            seam_plan
-                .entries
-                .iter()
-                .find(|e| matches_triple(e) && e.region_key.variant_chain == region.variant_chain)
-                .or_else(|| {
-                    seam_plan
-                        .entries
-                        .iter()
-                        .find(|e| matches_triple(e) && e.region_key.variant_chain.is_empty())
-                })
-                .map(|entry| entry.chosen_candidate.clone())
-        };
+                    && e.region_key.variant_chain == region.variant_chain
+            })
+            .map(|entry| entry.chosen_candidate.clone());
         if let Some(entry) = chosen {
             region.resolved_seam = Some(entry);
         }
@@ -3804,10 +3796,15 @@ fn merge_infill_ir(existing: &mut InfillIR, incoming: InfillIR) {
     existing.raft_regions.extend(incoming.raft_regions);
 }
 
-/// Per-layer host dispatch filter (packet 92).
+/// Per-layer host dispatch filter (packet 92; dispatch semantics redefined by
+/// ADR-0071).
 ///
-/// Returns `true` iff the module either:
-/// - declares NO `[[region_split]]` semantics (paint-transparent default), OR
+/// `declared` is the compiled `paint_only` semantic set, non-empty only for
+/// modules whose manifest opts into `paint_only = true`. Returns `true` iff
+/// the module either:
+/// - carries NO paint-only semantics (paint-transparent default — this covers
+///   every module that merely *declares* `[[region_split]]` for aggregation,
+///   including the core perimeter and fuzzy-skin modules), OR
 /// - at least one region on the layer has a `variant_chain` entry whose
 ///   semantic name is in `declared`.
 ///
@@ -3818,7 +3815,7 @@ pub fn module_invocation_allowed_on_layer(
     declared: &std::collections::HashSet<String>,
     slice: Option<&SliceIR>,
 ) -> bool {
-    // Paint-transparent: no region-split declarations → always invoke.
+    // Paint-transparent: no paint-only semantics → always invoke.
     if declared.is_empty() {
         return true;
     }

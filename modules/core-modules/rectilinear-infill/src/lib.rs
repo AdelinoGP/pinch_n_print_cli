@@ -258,7 +258,11 @@ impl LayerModule for RectilinearInfill {
         // each `scan_expolygon` call below.
         // See `crates/slicer-runtime/src/region_partition.rs`.
         for region in regions {
-            output.begin_region(region.object_id(), *region.region_id());
+            output.begin_region(
+                region.object_id(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
             let z = region.z();
             let std_cos_a = cos_a;
             let std_sin_a = sin_a;

@@ -650,7 +650,11 @@ impl LayerModule for ArachnePerimeters {
             } else {
                 params.max_bead_count = base_max_bead_count;
             }
-            output.begin_region(region.object_id(), *region.region_id());
+            output.begin_region(
+                region.object_id(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
             let polygons = region.polygons();
             if polygons.is_empty() {
                 continue;

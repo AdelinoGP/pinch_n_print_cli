@@ -290,6 +290,7 @@ fn prev_layer_boundary_reaches_live_perimeters_guest_view() {
     ctx.set_current_slice_region(Some(OriginId {
         object_id: "object-live".into(),
         region_id: 7,
+        variant_chain: Vec::new(),
     }));
 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

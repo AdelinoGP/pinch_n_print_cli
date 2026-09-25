@@ -226,6 +226,7 @@ fn sparse_region(region_id: u64, paths: Vec<ExtrusionPath3D>) -> InfillRegion {
     InfillRegion {
         object_id: "object".to_string(),
         region_id,
+        variant_chain: Vec::new(),
         sparse_infill: paths,
         solid_infill: vec![],
         ironing: vec![],
@@ -244,6 +245,7 @@ fn bridge_region(region_id: u64, bridge: Vec<ExtrusionPath3D>) -> InfillRegion {
     InfillRegion {
         object_id: "object".to_string(),
         region_id,
+        variant_chain: Vec::new(),
         sparse_infill: vec![],
         solid_infill: bridge,
         ironing: vec![],
@@ -499,6 +501,7 @@ fn all_none_locks_neutrality() {
         &[Some(slicer_sdk::builders::RegionOrigin {
             object_id: "object".to_string(),
             region_id: 1,
+            variant_chain: Vec::new(),
         })]
     );
 }
@@ -528,6 +531,7 @@ fn wall_sharing_same_config_union_link() {
                 == &Some(slicer_sdk::builders::RegionOrigin {
                     object_id: "object".to_string(),
                     region_id: 1,
+                    variant_chain: Vec::new(),
                 })
                 && path.points.iter().any(|point| point.x <= 0.1)
                 && path.points.iter().any(|point| point.x >= 14.9)
@@ -632,6 +636,7 @@ fn solid_bucket_forces_unlimited_anchor_while_sparse_obeys_the_key() {
         InfillRegion {
             object_id: "object".to_string(),
             region_id: 1,
+            variant_chain: Vec::new(),
             sparse_infill: sparse,
             solid_infill: vec![solid_a, solid_b],
             ironing: vec![],
@@ -890,6 +895,7 @@ fn internal_bridge_paths_stay_in_bridge_partition() {
     let prior = vec![InfillRegion {
         object_id: "0".to_string(),
         region_id: 0,
+        variant_chain: Vec::new(),
         sparse_infill: vec![],
         solid_infill: lines,
         ironing: vec![],

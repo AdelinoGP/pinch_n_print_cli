@@ -157,6 +157,7 @@ fn wall_postprocess_commits_resolved_seam_to_perimeter_ir() {
         .push(Some(OriginId {
             object_id: String::new(),
             region_id: 0,
+            variant_chain: Vec::new(),
         }));
 
     // Seam candidates (pos, score).
@@ -173,11 +174,13 @@ fn wall_postprocess_commits_resolved_seam_to_perimeter_ir() {
         .push(Some(OriginId {
             object_id: String::new(),
             region_id: 0,
+            variant_chain: Vec::new(),
         }));
 
     ctx.set_current_perimeter_region(Some(OriginId {
         object_id: String::new(),
         region_id: 0,
+        variant_chain: Vec::new(),
     }));
     ctx.push_resolved_seam(Resource::new_own(0), candidate_pos, 0)
         .expect("host push_resolved_seam call must succeed")
@@ -281,6 +284,7 @@ fn resolved_seam_is_applied_only_to_origin_region() {
         .push(Some(OriginId {
             object_id: "obj-a".to_string(),
             region_id: 0,
+            variant_chain: Vec::new(),
         }));
     ctx.perimeter_output_mut()
         .wall_loops
@@ -290,11 +294,13 @@ fn resolved_seam_is_applied_only_to_origin_region() {
         .push(Some(OriginId {
             object_id: "obj-b".to_string(),
             region_id: 1,
+            variant_chain: Vec::new(),
         }));
 
     ctx.set_current_perimeter_region(Some(OriginId {
         object_id: "obj-a".to_string(),
         region_id: 0,
+        variant_chain: Vec::new(),
     }));
     ctx.push_resolved_seam(
         Resource::new_own(0),
@@ -705,6 +711,7 @@ fn rotated_points_cardinality_mismatch_rejected() {
         .push(Some(OriginId {
             object_id: String::new(),
             region_id: 0,
+            variant_chain: Vec::new(),
         }));
 
     // convert_perimeter_output should reject the mismatched cardinality.
