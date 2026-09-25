@@ -379,7 +379,7 @@ fn serialize_config_block(
         Some(ConfigValue::List(_))
     ) {
         let effective = match raw_config.get("filament_diameter") {
-            Some(ConfigValue::Float(f)) => format!("{f}"),
+            Some(ConfigValue::Float(f)) => format_config_float(*f),
             Some(ConfigValue::Int(i)) => format!("{i}"),
             Some(ConfigValue::String(s)) => escape_cstyle(s),
             _ => "1.75".to_string(),
@@ -466,7 +466,7 @@ fn serialize_config_block(
                         .iter()
                         .map(|v| match v {
                             ConfigValue::String(s) => escape_cstyle(s),
-                            ConfigValue::Float(f) => format!("{f}"),
+                            ConfigValue::Float(f) => format_config_float(*f),
                             ConfigValue::Int(i) => format!("{i}"),
                             ConfigValue::Bool(b) => i64::from(*b).to_string(),
                             other => format!("{other:?}"),
@@ -494,7 +494,7 @@ fn serialize_config_block(
     out
 }
 
-/// Render a config float at its own precision. Typed `ResolvedConfig`
+/// Render a config float at its own precision. Some typed `ResolvedConfig`
 /// scalars are `f32` and widen to `f64` at `to_config_map`, so printing the
 /// `f64` directly leaks binary noise (`0.44999998807907104` for `0.45`).
 /// Values that round-trip through `f32` print with `f32`'s shortest form —
@@ -940,7 +940,7 @@ mod tests {
 
     #[test]
     fn config_block_renders_f32_scalars_at_f32_precision() {
-        // Typed `ResolvedConfig` scalars are `f32` and widen to `f64` in
+        // Some typed `ResolvedConfig` scalars are `f32` and widen to `f64` in
         // `to_config_map`; the block must render them at `f32` precision
         // (`0.45`, the `format!("{}", f32)` shortest form the header width
         // block already uses), not the widened `0.44999998807907104` that
@@ -955,6 +955,36 @@ mod tests {
             block.contains("; infill_overlap = 0.45"),
             "f32-derived floats must render at f32 precision; got:\n{block}"
         );
+    }
+
+    #[test]
+    fn config_block_float_precision_is_consistent_across_scalars_and_numeric_lists() {
+        let widened = f64::from(0.45_f32);
+        let precise = 0.451_234_567_890_123_f64;
+        assert_ne!(precise, f64::from(precise as f32));
+        let cfg: HashMap<String, ConfigValue> = HashMap::from([
+            ("infill_overlap".to_string(), ConfigValue::Float(widened)),
+            ("line_width".to_string(), ConfigValue::Float(precise)),
+            ("filament_diameter".to_string(), ConfigValue::Float(widened)),
+            (
+                "filament_density".to_string(),
+                ConfigValue::List(vec![
+                    ConfigValue::Float(widened),
+                    ConfigValue::Float(precise),
+                ]),
+            ),
+        ]);
+        let block = serialize_config_block(&cfg, &filament_colour_csv(2), GcodeFlavor::Marlin);
+        assert!(block.lines().any(|line| line == "; infill_overlap = 0.45"));
+        assert!(block
+            .lines()
+            .any(|line| line == "; line_width = 0.451234567890123"));
+        assert!(block
+            .lines()
+            .any(|line| line == "; filament_diameter = 0.45,0.45"));
+        assert!(block
+            .lines()
+            .any(|line| line == "; filament_density = 0.45,0.451234567890123"));
     }
 
     #[test]

@@ -47,7 +47,7 @@ use std::path::{Path, PathBuf};
 use slicer_config::{
     assemble_registry, ConfigSchemaRegistry, HostChannels, ModuleDeclaration, RegistryEntry,
 };
-use slicer_runtime::{load_modules_from_roots, LoadedModule};
+use slicer_runtime::load_modules_from_roots;
 
 fn repo_root() -> PathBuf {
     // CARGO_MANIFEST_DIR = crates/slicer-runtime
@@ -516,25 +516,39 @@ fn wedge_per_region_config_delivery_structural_canary() {
     // so a key appearing or disappearing now fails as a divergence between
     // the emitted block and the registry instead of a re-blessed number.
     //
-    // The registry must be assembled over the LOADED module set — not every
-    // on-disk manifest — because the canary drives `pnp_cli` with no config
-    // file: `wall_generator` then defaults to classic, and the production
-    // loader's `perimeter-generator` claim dedup drops arachne-perimeters
-    // before assembly (packet 112 Step 10). Its keys are correctly absent
-    // from the emitted block, so they must be absent from the expectation.
-    let mut candidates: Vec<LoadedModule> =
-        load_modules_from_roots(std::slice::from_ref(&core_modules_dir()))
-            .unwrap_or_else(|error| panic!("load core module schemas failed: {error:?}"))
-            .modules;
-    let mut dedup_diagnostics: Vec<slicer_runtime::manifest::LoadDiagnostic> = Vec::new();
-    let modules: Vec<LoadedModule> =
+    // Manifest-first assembly precedes claim dedup. The emitted block covers
+    // all non-omitted registered keys, including keys declared solely by the
+    // arachne perimeter generator when classic holds the claim. Dedup affects
+    // dispatch, not the CONFIG_BLOCK's registry-derived public surface.
+    let modules = load_modules_from_roots(std::slice::from_ref(&core_modules_dir()))
+        .unwrap_or_else(|error| panic!("load core module schemas failed: {error:?}"))
+        .modules;
+    assert_eq!(
+        slicer_runtime::DEFAULT_WALL_GENERATOR,
+        "classic",
+        "the unauthored wedge run must select classic for the claim-loser oracle"
+    );
+    let mut dispatch_candidates = modules.clone();
+    let dispatch_modules =
         slicer_runtime::execution_plan::dedup_same_claim_modules_with_wall_generator(
-            &mut candidates,
-            &mut dedup_diagnostics,
-            None,  // `wall_generator` absent => classic (`DEFAULT_WALL_GENERATOR`)
-            false, // `spiral_vase` false
-            None,  // support selection is per-region at dispatch time; unused here
+            &mut dispatch_candidates,
+            &mut Vec::new(),
+            None,  // no authored `wall_generator`: the same default run as the CLI above
+            false, // `spiral_vase` is absent
+            None,  // support selection is per-region at dispatch
         );
+    assert!(
+        dispatch_modules
+            .iter()
+            .any(|module| module.id() == "com.core.classic-perimeters"),
+        "this fixture requires classic to hold the perimeter-generator claim"
+    );
+    assert!(
+        !dispatch_modules
+            .iter()
+            .any(|module| module.id() == "com.core.arachne-perimeters"),
+        "this fixture requires arachne to lose the claim"
+    );
     let declarations: Vec<ModuleDeclaration> = modules
         .iter()
         .map(|module| ModuleDeclaration {
@@ -602,10 +616,16 @@ fn wedge_per_region_config_delivery_structural_canary() {
     );
     expected.sort_unstable();
     expected.dedup();
+    assert!(
+        expected
+            .iter()
+            .any(|key| key == "initial_layer_min_bead_width"),
+        "the real registry must include an arachne-only default even when classic holds the claim"
+    );
     assert_eq!(
         keys, expected,
-        "CONFIG_BLOCK key set diverged from the registry over the LOADED \
-         module set (default `wall_generator` = classic)"
+        "CONFIG_BLOCK key set diverged from the manifest-first registry \
+         (including claim-losing modules)"
     );
 
     // ── Layer count and monotonic Z ─────────────────────────────────────────

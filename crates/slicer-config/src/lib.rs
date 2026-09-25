@@ -406,52 +406,12 @@ impl ConfigSchemaRegistry {
     /// hash iteration.
     #[must_use]
     pub fn config_block_map(&self, resolved: &ResolvedConfig) -> BTreeMap<String, ConfigValue> {
-        self.project_config_block(resolved, None)
-    }
-
-    /// Project the resolved config block over the LOADED (claim-selected)
-    /// module set.
-    ///
-    /// [`Self::config_block_map`] spans every declaration that survived
-    /// assembly, and claim dedup drops a module from dispatch only, never
-    /// from the config schema (`crates/slicer-runtime/src/run.rs`), so a
-    /// claim-losing module's keys stay declared and resolvable. The emitted
-    /// `CONFIG_BLOCK` is the LOADED surface though (packet-06 AC-4): a key is
-    /// emitted only when its [`RegistryEntry::provenance`] names a module in
-    /// `live_modules` or one of the host channels. Typed fields with no
-    /// registry entry are host-owned and always emit.
-    #[must_use]
-    pub fn config_block_map_for_modules(
-        &self,
-        resolved: &ResolvedConfig,
-        live_modules: &BTreeSet<String>,
-    ) -> BTreeMap<String, ConfigValue> {
-        self.project_config_block(resolved, Some(live_modules))
-    }
-
-    fn project_config_block(
-        &self,
-        resolved: &ResolvedConfig,
-        live_modules: Option<&BTreeSet<String>>,
-    ) -> BTreeMap<String, ConfigValue> {
         let effective = resolved.to_config_map();
         let mut block = BTreeMap::new();
 
         for (key, entry) in &self.entries {
             if entry.omit_from_config_block {
                 continue;
-            }
-            if let Some(live) = live_modules {
-                let contributed_by_live = entry.provenance.iter().any(|label| {
-                    live.contains(label.as_str())
-                        || matches!(
-                            label.as_str(),
-                            HOST_PROVENANCE | SPEED_PROVENANCE | RUNTIME_PROVENANCE
-                        )
-                });
-                if !contributed_by_live {
-                    continue;
-                }
             }
             if let Some(value) = effective.get(key) {
                 block.insert(key.clone(), value.clone());

@@ -868,17 +868,11 @@ fn provenance_names_every_contributor() {
     );
 }
 
-/// Regression for the CONFIG_BLOCK claim-drop leak: the registry spans every
-/// discovered module (claim dedup drops a module from dispatch only, never
-/// from the config schema), so `config_block_map` carries the claim-losing
-/// module's keys. The emitted `CONFIG_BLOCK` contracts the LOADED set
-/// (packet-06 AC-4): `config_block_map_for_modules` must project only keys
-/// whose provenance names a live module or a host channel. Regression shape:
-/// `wall_generator=classic` drops `arachne-perimeters` from dispatch, yet its
-/// `initial_layer_min_bead_width` / `min_bead_count` / `max_bead_count` keys
-/// leaked into the emitted block.
+/// Claim selection cannot shrink the registry-driven CONFIG_BLOCK (packet-06
+/// AC-4). This projection fixture includes keys from two declarers; the
+/// runtime wedge canary checks the claim-losing case against a real plan.
 #[test]
-fn config_block_map_for_modules_projects_only_live_module_and_host_keys() {
+fn config_block_map_projects_all_registered_declarers() {
     let host = host_key("host_owned", "float", "0.5");
     let modules = vec![
         module(
@@ -919,8 +913,7 @@ fn config_block_map_for_modules_projects_only_live_module_and_host_keys() {
         );
     }
 
-    let live: BTreeSet<String> = ["alpha-module".to_owned()].into_iter().collect();
-    let projected = registry.config_block_map_for_modules(&resolved, &live);
+    let projected = registry.config_block_map(&resolved);
 
     assert!(
         projected.contains_key("alpha_key"),
@@ -932,22 +925,12 @@ fn config_block_map_for_modules_projects_only_live_module_and_host_keys() {
     );
     assert!(
         projected.contains_key("host_owned"),
-        "a host-channel key must be projected regardless of the live module set"
+        "a registered host-channel key must be projected"
     );
     assert!(
-        !projected.contains_key("beta_key"),
-        "a claim-dropped module's key must not leak into the emitted block"
+        projected.contains_key("beta_key"),
+        "the second declarer's registered key must remain in the emitted block"
     );
-
-    // The unfiltered projection is unchanged: resolution-side consumers rely
-    // on it spanning every declaration.
-    let unfiltered = registry.config_block_map(&resolved);
-    for key in ["alpha_key", "beta_key", "shared_key", "host_owned"] {
-        assert!(
-            unfiltered.contains_key(key),
-            "{key} must survive the unfiltered projection"
-        );
-    }
 }
 
 #[test]
