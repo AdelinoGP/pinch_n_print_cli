@@ -12,10 +12,10 @@ use slicer_sdk::layer_collection_builder::LayerCollectionBuilder;
 use slicer_sdk::postpass_builders::GcodeOutputBuilder;
 use slicer_sdk::postpass_types::{GcodeCommand, GcodeOutputCommand};
 use slicer_sdk::test_prelude::PerimeterRegionViewBuilder;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
 use std::collections::HashMap;
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 #[rustfmt::skip]
 fn make_wall_loop(x1: f32, y1: f32, x2: f32, y2: f32, z: f32) -> WallLoop {

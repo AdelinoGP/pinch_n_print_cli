@@ -476,7 +476,8 @@ fn build_preview_doc_merges_plan_body_regions_per_layer() {
         entries: vec![
             // exhaustive: the fixture pins every plan-entry field so the
             // emitted document shape is fully determined by this literal
-            slicer_ir::SupportPlanEntry { // exhaustive: fixture pins every field
+            slicer_ir::SupportPlanEntry {
+                // exhaustive: fixture pins every field
                 global_layer_index: 0,
                 object_id: "obj-0".to_owned(),
                 region_id: 0,
@@ -495,7 +496,8 @@ fn build_preview_doc_merges_plan_body_regions_per_layer() {
                 decline_reason: None,
             },
             // Raft prefix entries carry no geometry and must be skipped.
-            slicer_ir::SupportPlanEntry { // exhaustive: fixture pins every field
+            slicer_ir::SupportPlanEntry {
+                // exhaustive: fixture pins every field
                 global_layer_index: -1,
                 object_id: "obj-0".to_owned(),
                 region_id: 0,
@@ -589,7 +591,8 @@ fn interface_role_regions_land_in_support_interface() {
         entries: vec![
             // exhaustive: the fixture pins every plan-entry field so the
             // emitted document shape is fully determined by this literal
-            slicer_ir::SupportPlanEntry { // exhaustive: fixture pins every field
+            slicer_ir::SupportPlanEntry {
+                // exhaustive: fixture pins every field
                 global_layer_index: 0,
                 object_id: "obj-0".to_owned(),
                 region_id: 0,
@@ -622,7 +625,8 @@ fn interface_role_regions_land_in_support_interface() {
                 decline_reason: None,
             },
             // Raft prefix entries carry no geometry and must be skipped.
-            slicer_ir::SupportPlanEntry { // exhaustive: fixture pins every field
+            slicer_ir::SupportPlanEntry {
+                // exhaustive: fixture pins every field
                 global_layer_index: -1,
                 object_id: "obj-0".to_owned(),
                 region_id: 0,
@@ -651,7 +655,11 @@ fn interface_role_regions_land_in_support_interface() {
         .iter()
         .find(|layer| layer.layer_index == 0)
         .expect("layer 0 must exist");
-    assert_eq!(layer_0.support_body.len(), 1, "body regions stay in support_body");
+    assert_eq!(
+        layer_0.support_body.len(),
+        1,
+        "body regions stay in support_body"
+    );
     assert_eq!(
         layer_0.support_interface.len(),
         3,
@@ -756,9 +764,7 @@ fn intermediate_sentinel_entries_skipped_and_counted() {
         vec![0, 1, 2]
     );
     assert!(
-        doc.layers
-            .iter()
-            .all(|layer| layer.support_body.is_empty()),
+        doc.layers.iter().all(|layer| layer.support_body.is_empty()),
         "an empty plan must yield no support_body regions"
     );
 }

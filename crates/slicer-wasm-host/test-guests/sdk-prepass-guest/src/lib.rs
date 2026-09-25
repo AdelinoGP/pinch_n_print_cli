@@ -10,12 +10,12 @@
 //! drain: forwarded `_objects`, SDK `MeshAnalysisOutput`, and the
 //! `mesh-analysis-output` WIT resource on the host side.
 
+use slicer_ir::{ConfigView, ObjectId};
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::prepass_builders::MeshAnalysisOutput;
 use slicer_sdk::prepass_types::{FacetAnnotation, FacetClass, SurfaceGroupProposal};
 use slicer_sdk::slicer_module;
 use slicer_sdk::traits::PrepassModule;
-use slicer_ir::{ConfigView, ObjectId};
 
 pub struct SdkPrepassModule;
 
@@ -58,14 +58,23 @@ impl PrepassModule for SdkPrepassModule {
                     output
                         .push_facet_annotation(
                             obj.clone(),
-                            FacetAnnotation { facet_index: i, slope_angle_deg: slope, classification: class },
+                            FacetAnnotation {
+                                facet_index: i,
+                                slope_angle_deg: slope,
+                                classification: class,
+                            },
                         )
                         .map_err(|e| ModuleError::fatal(8, e))?;
                 }
                 output
                     .push_surface_group(
                         obj.clone(),
-                        SurfaceGroupProposal { facet_indices: (0..n).collect(), z_min: 0.0, z_max: (n as f32) * 0.2, shell_count: 2 },
+                        SurfaceGroupProposal {
+                            facet_indices: (0..n).collect(),
+                            z_min: 0.0,
+                            z_max: (n as f32) * 0.2,
+                            shell_count: 2,
+                        },
                     )
                     .map_err(|e| ModuleError::fatal(9, e))?;
             }

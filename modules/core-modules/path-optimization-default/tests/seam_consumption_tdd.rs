@@ -21,8 +21,8 @@
 use slicer_ir::{ExtrusionPath3D, ExtrusionRole, Point3WithWidth, SeamPosition, WallLoop};
 use slicer_sdk::prelude::LayerModule;
 use slicer_sdk::test_prelude::PerimeterRegionViewBuilder;
-use slicer_sdk::views::PerimeterRegionView;
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
+use slicer_sdk::views::PerimeterRegionView;
 
 /// Helper: make a 2-point horizontal wall loop.
 #[rustfmt::skip]

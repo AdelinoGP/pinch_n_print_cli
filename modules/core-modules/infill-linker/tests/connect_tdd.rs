@@ -2,11 +2,11 @@
 
 use infill_linker::connect::{connect_infill, AnchorParams};
 use infill_linker::graph::BoundaryInfillGraph;
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_ir::{
     point_in_polygon_winding, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point2, Point3WithWidth,
     Polygon,
 };
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 fn square(size_mm: f32) -> ExPolygon {
     ExPolygon {
@@ -268,7 +268,10 @@ fn outer_ring_connector_never_routes_through_a_hole_ring() {
     // starts just inside the hole span. The outer-projected endpoint must not
     // be spliced to the hole-projected one via either ring.
     let output = connect_infill(
-        vec![segment((0.0, 5.0), (3.9, 5.0)), segment((4.1, 5.0), (5.0, 5.0))],
+        vec![
+            segment((0.0, 5.0), (3.9, 5.0)),
+            segment((4.1, 5.0), (5.0, 5.0)),
+        ],
         &graph,
         AnchorParams {
             anchor_length_mm: 0.0,

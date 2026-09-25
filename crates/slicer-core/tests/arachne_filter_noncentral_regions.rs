@@ -92,7 +92,9 @@ fn dumbbell_single_central_region_inset0_ring_pair() {
 fn x_extent(line: &ExtrusionLine) -> (f32, f32) {
     line.junctions
         .iter()
-        .fold((f32::MAX, f32::MIN), |(lo, hi), j| (lo.min(j.p.x), hi.max(j.p.x)))
+        .fold((f32::MAX, f32::MIN), |(lo, hi), j| {
+            (lo.min(j.p.x), hi.max(j.p.x))
+        })
 }
 
 // Oracle for the two tests below: OrcaSlicer 2.4.1's CLI slicing each
@@ -124,7 +126,10 @@ fn dumbbell_wide_neck_outer_wall_is_one_loop_around_both_pads() {
         .map(|line| (line.is_closed, line.junctions.len()))
         .collect();
     assert_eq!(i0.len(), 1, "wide-neck inset-0 line count: {topology:?}");
-    assert!(i0[0].is_closed, "wide-neck outer wall must be closed: {topology:?}");
+    assert!(
+        i0[0].is_closed,
+        "wide-neck outer wall must be closed: {topology:?}"
+    );
     // One loop around BOTH pads (pads span x in [-3.5, -0.5] and [0.5, 3.5]).
     let (lo, hi) = x_extent(i0[0]);
     assert!(

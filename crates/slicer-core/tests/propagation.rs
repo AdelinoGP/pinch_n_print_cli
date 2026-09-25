@@ -613,10 +613,10 @@ fn downward_replaces_an_upward_copy_by_its_distance_from_the_source() {
                 vertex(v0_to_v1 + 20_000.0, 20_000.0, Some(10)),
             ],
             edges: vec![
-                edge(0, 1, 1_500.0, 6_000.0),   // 0: v0 -> v1 (upward)
-                edge(1, 0, 1_500.0, 6_000.0),   // 1: v1 -> v0
-                edge(1, 3, 6_000.0, 20_000.0),  // 2: v1 -> v2 (upward)
-                edge(2, 2, 6_000.0, 20_000.0),  // 3: v2 -> v1
+                edge(0, 1, 1_500.0, 6_000.0),  // 0: v0 -> v1 (upward)
+                edge(1, 0, 1_500.0, 6_000.0),  // 1: v1 -> v0
+                edge(1, 3, 6_000.0, 20_000.0), // 2: v1 -> v2 (upward)
+                edge(2, 2, 6_000.0, 20_000.0), // 3: v2 -> v1
             ],
             centrality_filtered: true,
             rib: RibData::default(),
@@ -666,7 +666,10 @@ fn downward_replaces_an_upward_copy_by_its_distance_from_the_source() {
         "bead 0 width {} != 0.25 * top + 0.75 * thin = {want}",
         blended.bead_widths[0]
     );
-    assert_ne!(thin.bead_widths[0], top.bead_widths[0], "fixture must tell the two apart");
+    assert_ne!(
+        thin.bead_widths[0], top.bead_widths[0],
+        "fixture must tell the two apart"
+    );
     assert_eq!(blended.bead_widths[1..], top.bead_widths[1..]);
 }
 /// 113c interleaved-rib topology: a single central edge `E0` (v0 -> v1, along

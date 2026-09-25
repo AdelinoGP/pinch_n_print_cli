@@ -54,7 +54,10 @@ fn polyline_len(line: &ExtrusionLine) -> f64 {
 fn two_hole_plate() -> ExPolygon {
     ExPolygon {
         contour: rect(0.0, 0.0, 24.0, 10.0, false),
-        holes: vec![rect(6.0, 3.0, 11.0, 7.0, true), rect(12.0, 3.0, 17.0, 7.0, true)],
+        holes: vec![
+            rect(6.0, 3.0, 11.0, 7.0, true),
+            rect(12.0, 3.0, 17.0, 7.0, true),
+        ],
     }
 }
 
@@ -74,10 +77,20 @@ fn odd_centre_bead_of_a_narrow_strip_is_one_open_odd_line() {
         .iter()
         .map(|l| (l.is_odd, l.is_closed, polyline_len(l)))
         .collect();
-    assert_eq!(inset1.len(), 1, "inset-1 lines (odd, closed, len): {summary:?}");
+    assert_eq!(
+        inset1.len(),
+        1,
+        "inset-1 lines (odd, closed, len): {summary:?}"
+    );
     let centre = inset1[0];
-    assert!(centre.is_odd, "the centre bead of an odd count is odd: {summary:?}");
-    assert!(!centre.is_closed, "the centre bead is an open line: {summary:?}");
+    assert!(
+        centre.is_odd,
+        "the centre bead of an odd count is odd: {summary:?}"
+    );
+    assert!(
+        !centre.is_closed,
+        "the centre bead is an open line: {summary:?}"
+    );
     let len = polyline_len(centre);
     assert!(
         (len - 3.70).abs() <= 0.05,
@@ -125,7 +138,10 @@ fn outer_and_second_walls_close_around_a_thin_walled_square_frame() {
         lines.iter().any(|l| l.inset_idx == 0) && lines.iter().any(|l| l.inset_idx == 1),
         "the frame must have inset-0 and inset-1 walls"
     );
-    assert!(open.is_empty(), "open inset-0/1 lines (inset, length mm): {open:?}");
+    assert!(
+        open.is_empty(),
+        "open inset-0/1 lines (inset, length mm): {open:?}"
+    );
 }
 
 /// T4: the zero-width inner-contour markers of the two-hole plate (the
@@ -134,11 +150,17 @@ fn outer_and_second_walls_close_around_a_thin_walled_square_frame() {
 fn inner_contour_markers_of_a_two_hole_plate_are_closed() {
     let (_, inner_contour) = run(two_hole_plate());
     let markers: Vec<&ExtrusionLine> = inner_contour.iter().filter(|l| !l.is_odd).collect();
-    assert!(!markers.is_empty(), "the plate must leave inner-contour markers");
+    assert!(
+        !markers.is_empty(),
+        "the plate must leave inner-contour markers"
+    );
     let open: Vec<f64> = markers
         .iter()
         .filter(|l| !l.is_closed)
         .map(|l| polyline_len(l))
         .collect();
-    assert!(open.is_empty(), "open inner-contour markers (length mm): {open:?}");
+    assert!(
+        open.is_empty(),
+        "open inner-contour markers (length mm): {open:?}"
+    );
 }

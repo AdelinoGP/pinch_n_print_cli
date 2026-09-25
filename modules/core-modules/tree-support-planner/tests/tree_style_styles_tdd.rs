@@ -53,7 +53,10 @@ fn tree_strong_uses_unweighted_neighbour_sum() {
 #[test]
 fn movement_is_outer_normal_for_every_style_when_outer_is_nonzero() {
     for style in ["tree_strong", "tree_slim", "default", "tree_hybrid"] {
-        close(style_movement(style, (1.0, 0.0), (0.0, 1.0), 2.0), (2.0, 0.0));
+        close(
+            style_movement(style, (1.0, 0.0), (0.0, 1.0), 2.0),
+            (2.0, 0.0),
+        );
         close(
             style_movement(style, (1.0, 0.0), (-1.0, 0.0), 2.0),
             (2.0, 0.0),
@@ -107,7 +110,14 @@ fn canonically_organic_styles_alias_to_strong_on_tree_family() {
 /// smsDefault (`SupportParameters.hpp`); nothing aliases to Strong there.
 #[test]
 fn non_tree_family_resolves_default_for_every_style() {
-    for style in ["default", "grid", "snug", "organic", "tree_strong", "tree_slim"] {
+    for style in [
+        "default",
+        "grid",
+        "snug",
+        "organic",
+        "tree_strong",
+        "tree_slim",
+    ] {
         assert_eq!(
             resolve_tree_style(&config_with_type(style, "normal(auto)")),
             "default",

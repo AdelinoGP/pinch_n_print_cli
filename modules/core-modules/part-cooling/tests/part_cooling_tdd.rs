@@ -14,9 +14,9 @@ use slicer_ir::{
     Point3WithWidth, PrintEntity, RegionKey, SemVer,
 };
 use slicer_sdk::test_prelude::config_with;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_sdk::test_support::fixtures::print_entity_base;
 use slicer_sdk::traits::{FinalizationModule, FinalizationOutputBuilder, LayerCollectionView};
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // ---------------------------------------------------------------------------
 // Fixtures
