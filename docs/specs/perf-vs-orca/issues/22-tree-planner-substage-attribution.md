@@ -3,7 +3,7 @@
 Type: task
 Status: resolved
 Blocked by: 12, 24
-Assignee: wayfinder session (ses_f2a93fce3ffeISNpELWz1rIg6z), 2026-09-24
+Assignee: wayfinder session (ses_f29984bdaffeT04YbEh81JtnVy), 2026-09-24 (evidence-correction resolution)
 
 ## Question
 
@@ -70,7 +70,7 @@ emit pass owns the planner, and its own sub-split closes at 99.4–99.7%:
 
 **Host side of the stage (the batched-service share is now measured).** The
 stage's host work is 194.0 s of `clip_polygons` over 171,636 calls (base) /
-5.65 s over 29,000 (benchy), plus 65.1 s of singular `offset_polygons` over
+6.63 s over 29,000 (benchy), plus 65.1 s of singular `offset_polygons` over
 23,535 calls, 0.51 s of batched offsets over 50 batches, **0 of
 `clip_polygons_batch`, 0 of `simplify_polygon_batch`**, and a 23.8 s
 `validate_entry` aggregation (every exact-Z query a miss: 0 hits / 431 misses;
@@ -78,22 +78,27 @@ stage's host work is 194.0 s of `clip_polygons` over 171,636 calls (base) /
 here — the planner's batch adoption covers only the lazy ladders — and the
 clip path never adopted the batch form at all.
 
-**Recommendation, for the gap budget: pursue the emit-pass carve, not the
-cache.** A bounding-box pre-test in `carve_emitted_regions` classifies 42.2%
-(benchy) / 46.2% (base) of the clips as disjoint — calls the clip set cannot
-affect — holding 26.0% / 27.1% of the measured clip wall. The measured
-constraint that makes this a real design decision, not a free win: a disjoint
-`Difference` returns the subject **as a set but not verbatim** — clipper
-normalizes ring order and winding (probe test
-`t22_probe_diff_identity_tdd.rs` in the patch). A gate is therefore only
-output-preserving if the downstream consumer is insensitive to that
-representation, which must be verified before the gate can be claimed
-behaviour-preserving. `union_expolys` + simplify (72.8 s base) is the
-second-ranked sub-term and shares the same "four role calls per layer" shape.
+**Recommendation, for the gap budget: investigate the emit-pass carve, not the
+cache.** The in-guest bbox pre-test counts 11,018 (benchy) / 78,832 (base)
+disjoint calls **inside `carve_emitted_regions`**: 50.7% / 53.3% of carve
+calls, or 38.0% / 45.9% of all stage singular clips. The host-side disjoint
+class (12,237 / 79,369 calls; 1.78 / 52.59 s of core boolean-call wall) also
+includes clips outside the carve, so it is **not** a measured gate saving.
+Its net wall effect needs a probe-free A/B. The temporary
+`t22_probe_diff_identity_tdd.rs` test observes that one disjoint rectangle
+`Difference` preserves area but changes the contour representation; it does
+not identify the changed attribute or prove general set equivalence. Returning
+the input verbatim would *not* reproduce that baseline representation. Verify
+downstream representation-insensitivity or reproduce the normalized output
+before claiming the gate behaviour-preserving. `union_expolys` + simplify
+(72.8 s base) is the second-ranked sub-term.
 
 **What this feeds.** [Serial host floor](27-serial-host-prepass-floor.md) gets
-its `PrePass::SupportGeometry` line item: the stage is 295 s of the base prepass
-(455.7 s post-repair) and 97% of it is this planner. [Gap budget per
+its `PrePass::SupportGeometry` line item: the stage is 295.0 s of the **same
+capture's 551.8 s instrumented base prepass**, and 270.7 s (91.8%) of the
+stage is this planner's dispatch. On benchy the stage is 11.42 s of the
+24.93 s prepass and 10.36 s (90.7%) is the planner. The 97.2% base / 92.6%
+benchy figures above instead mean **emit pass ÷ per-object planner**. [Gap budget per
 cell](12-gap-budget-per-cell.md)'s base supports-on binding cell needs the
 support path to move; this ticket names where. No wall claim is made from these
 instrumented numbers (§3.2). The candidate's own paired uninstrumented A/B
@@ -106,16 +111,49 @@ taken here.
   definitive runs; `--module-dir modules/core-modules`; matched-job config;
   `--instrument-stderr` only (no `--profile`); one probe build, one guest
   rebuild.
-- The planner takes no `slicer-core` dependency (its `Cargo.toml`; on wasm32
-  the SDK's polygon ops are host imports), so the accelerated build cannot
-  change this stage's cost — a mode pair would measure the same work.
-- Base host terms drifted ~25–45% between two identical-coverage captures
+- The planner has no *direct* `slicer-core` dependency (its `Cargo.toml`);
+  on wasm32 the SDK's polygon ops use host imports. The controlled accelerated
+  perimeter cfg does not select a different guest carve algorithm; this is
+  not a measured mode-timing equivalence or a waiver of paired acceptance.
+- Base host terms differed materially between two captures with identical
+  host-probe coverage but different guest bracket sets
   (`clip` 146.8 s vs 194.0 s; `exact_z` 27.4 s vs 21.1 s) while call counts and
   class shares were stable (46.2% disjoint in both; in-guest carve counts
-  byte-identical) — external-load drift on this box (§3.6/§10.3). The tables
-  quote the complete-bracket capture; the drift is disclosed rather than
-  averaged away.
+  byte-identical). Load is a possible cause (§3.6/§10.3), not isolated by
+  these runs. The tables quote the final bracket-set capture; the drift is
+  disclosed rather than averaged away.
+- The originally committed evidence mixed `base-def` guest terms with
+  `base-final`, and `benchy-def` host/context values with `benchy-final`.
+  `RAW-LINES.md` and the tables now quote the actual final captures, with
+  the earlier base capture explicitly separated for drift comparison.
+- The committed `probe.patch` passes `git apply --check --whitespace=nowarn`
+  against the probe-free tree. It includes the newly created host module and
+  temporary test; use the committed patch rather than relying on a stash to
+  recreate the whole probe.
 - `host::now_us` in the guest probe is the host clock for the module call; the
   planner is dispatched once per slice, so guest brackets are serial wall on
   one thread. The guest figures and host figures are different scopes and are
   never summed.
+
+## Answer — evidence-correction resolution
+
+Reopened and resolved 2026-09-24 after checking the retained `benchy-final`,
+`base-final`, and `base-def` JSONL captures with `t22_split.py`. The preserved
+probe and the headline emit-pass-vs-cache conclusion hold, but the original
+write-up mixed two captures, attributed stage-wide disjoint clip counts and
+wall to the carve, and used emit/planner percentages as planner/stage shares.
+`RAW-LINES.md`, `FINDINGS.md`, the serial-host-floor line item, the map gist,
+and the downstream carve-gate question now use the corrected scopes. The
+committed raw excerpt includes the same-capture module, stage, prepass, and
+slice events so the denominators can be checked without local scratch files.
+
+Verification: the retained final-capture probe and event lines match their
+local JSONL files; `git apply --check --whitespace=nowarn` accepts the committed
+probe patch; `cargo xtask build-guests --check` exited 0; the probe-free tree's
+`tree-support-planner` suite passed 137 tests; workspace all-target clippy
+and `check-literals` passed; `check-test-quality --report` still reports 12
+findings outside the changed files. A fresh `cargo build --workspace` did not
+finish before its command timeout and is **not** claimed as passed. No
+uninstrumented A/B or new geometry parity test was run; those remain the
+separate [Emit-pass carve gate: representation safety + paired A/B](32-emit-carve-gate-representation-and-ab.md)
+ticket's work.

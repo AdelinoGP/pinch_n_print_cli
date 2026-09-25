@@ -327,11 +327,13 @@ experiment must preserve visibility of this correctness problem. See
 5. **`tree-support-planner` — SUPERSEDED at the matched job 2026-09-24.**
    ADR-0049 measured its collision-cache build at **98.0%** — 603 independent
    `offset_polygons` calls (0.1 mm benchy-era vintage). [Tree-planner substage
-   attribution](../../issues/22-tree-planner-substage-attribution.md) re-measured
+    attribution](../issues/22-tree-planner-substage-attribution.md) re-measured
    at the matched job: the cache/ladders are **1.6%** (4.27 s of 269.6 s); the
-   emit pass is 97.2%, of which the per-region carve (171,636 singular
-   `clip_polygons`, 194.0 s) is the lead, with a measured representation caveat
-   on the bbox-gate candidate. See the ticket's `## Answer` and
+    emit pass is 97.2% of the per-object planner, of which the per-region
+    carve (147,993 calls on base) is the lead. The *whole stage* records
+    171,636 singular core boolean calls / 194.0 s, including other clip sites;
+    its bbox-disjoint wall is not an isolated saving for the carve gate.
+    The candidate also has a measured representation caveat. See the ticket's `## Answer` and
    `../t22-planner-substage/FINDINGS.md`.
 
 6. **The batched host services have no instrumentation — CLOSED 2026-09-24.**

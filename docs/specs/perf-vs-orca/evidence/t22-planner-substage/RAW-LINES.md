@@ -11,12 +11,20 @@ t22-planner-split p0_volumes_new=42616us/1 p3c_collision_ladder=136430us/27 p2_c
 ```
 
 ```json
-{"probe":"PERF-T22-PROBE","label":"PrePass::SupportGeometry","offset":{"calls":4977,"wall_ms":2410.9344,"batch_calls":28,"batch_wall_ms":31.7574,"batch_inner_ms":244.0561,"batch_items":6480,"batch_parallel":27},"clip":{"calls":29000,"wall_ms":5649.6097,"batch_calls":0,"batch_wall_ms":0,"batch_inner_ms":0,"batch_items":0,"batch_parallel":0,"bbox_disjoint_calls":12237,"bbox_disjoint_ms":1470.7255,"bbox_overlap_ms":4178.8842},"simplify":{"calls":0,"wall_ms":0,"batch_calls":0,"batch_wall_ms":0},"exactz":{"hits":0,"misses":179,"cross_section_ms":565.5188},"aggregate":{"calls":1,"wall_ms":841.6865,"validate_ms":835.0619,"union_ms":0.1068,"territory_ms":0,"overlap_ms":0.0941},"plan_clone_ms":0,"commit_ms":0}
+{"probe":"PERF-T22-PROBE","label":"PrePass::SupportGeometry","offset":{"calls":4977,"wall_ms":2702.0828,"batch_calls":28,"batch_wall_ms":59.4304,"batch_inner_ms":244.4544,"batch_items":6480,"batch_parallel":27},"clip":{"calls":29000,"wall_ms":6631.3017,"batch_calls":0,"batch_wall_ms":0,"batch_inner_ms":0,"batch_items":0,"batch_parallel":0,"bbox_disjoint_calls":12237,"bbox_disjoint_ms":1775.1758,"bbox_overlap_ms":4856.1259},"simplify":{"calls":0,"wall_ms":0,"batch_calls":0,"batch_wall_ms":0},"exactz":{"hits":0,"misses":179,"cross_section_ms":680.9209},"aggregate":{"calls":1,"wall_ms":1000.7679,"validate_ms":993.7698,"union_ms":0.0692,"territory_ms":0,"overlap_ms":0.0539},"plan_clone_ms":0,"commit_ms":0}
 ```
 
-Run context: `slice_complete` 39,449 ms, `degraded:false`,
+Run context: `slice_complete` 49,293 ms, `degraded:false`,
 `non_fatal_error_count:0`; `module_complete` `com.core.tree-support-planner`
-9,065 ms; `stage_complete` `PrePass::SupportGeometry` ~9.1 s.
+10,357 ms; `stage_complete` `PrePass::SupportGeometry` 11,419 ms;
+`phase_complete` prepass 24,930 ms.
+
+```jsonl
+{"schema_version":"1.5.0","event":"module_complete","timestamp_ms":1790296696046,"slice_id":"slice-1790296671125","phase":"prepass","stage":"PrePass::SupportGeometry","module_id":"com.core.tree-support-planner","status":"ok","elapsed_ms":10357,"wasm_peak_kb":0}
+{"schema_version":"1.5.0","event":"stage_complete","timestamp_ms":1790296697057,"slice_id":"slice-1790296671125","phase":"prepass","stage":"PrePass::SupportGeometry","status":"ok","elapsed_ms":11419}
+{"schema_version":"1.5.0","event":"phase_complete","timestamp_ms":1790296697057,"slice_id":"slice-1790296671125","phase":"prepass","status":"ok","elapsed_ms":24930}
+{"schema_version":"1.5.0","event":"slice_complete","timestamp_ms":1790296720448,"slice_id":"slice-1790296671125","status":"ok","elapsed_ms":49293,"degraded":false,"fatal_error_count":0,"non_fatal_error_count":0}
+```
 
 ## base — `target/t22/base-final.jsonl` (2026-09-24, complete bracket set)
 
@@ -30,7 +38,15 @@ t22-planner-split p0_volumes_new=520925us/1 p3c_collision_ladder=756924us/49 p2_
 
 Run context: `slice_complete` 734,988 ms, `degraded:false`,
 `non_fatal_error_count:0`; `module_complete` `com.core.tree-support-planner`
-270,691 ms; `stage_complete` `PrePass::SupportGeometry` 295,032 ms.
+270,691 ms; `stage_complete` `PrePass::SupportGeometry` 295,032 ms;
+`phase_complete` prepass 551,774 ms.
+
+```jsonl
+{"schema_version":"1.5.0","event":"module_complete","timestamp_ms":1790297257757,"slice_id":"slice-1790296728771","phase":"prepass","stage":"PrePass::SupportGeometry","module_id":"com.core.tree-support-planner","status":"ok","elapsed_ms":270691,"wasm_peak_kb":0}
+{"schema_version":"1.5.0","event":"stage_complete","timestamp_ms":1790297281685,"slice_id":"slice-1790296728771","phase":"prepass","stage":"PrePass::SupportGeometry","status":"ok","elapsed_ms":295032}
+{"schema_version":"1.5.0","event":"phase_complete","timestamp_ms":1790297281685,"slice_id":"slice-1790296728771","phase":"prepass","status":"ok","elapsed_ms":551774}
+{"schema_version":"1.5.0","event":"slice_complete","timestamp_ms":1790297463867,"slice_id":"slice-1790296728771","status":"ok","elapsed_ms":734988,"degraded":false,"fatal_error_count":0,"non_fatal_error_count":0}
+```
 
 ## base — `target/t22/base-def.jsonl` (2026-09-24, probe build, first complete split)
 

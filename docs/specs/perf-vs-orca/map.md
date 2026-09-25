@@ -85,11 +85,12 @@ Standing decisions for this effort (2026-09-22):
   version A/B silently measures the wrong version — pin the harness dep and
   assert the resolved version from the harness's own `Cargo.lock`
   ([clipper2 cost/output verdict](issues/17-clipper2-cost-output-verdict.md),
-  2026-09-24); host-side stage walls can drift ±25–45% between
-  identical-coverage captures on base while call counts and class shares hold
-  exactly (two ticket-22 captures: `clip` 146.8 s vs 194.0 s, in-guest carve
-  counts byte-identical) — quote shares/counts as the stable signal and
-  disclose the wall drift rather than averaging it away
+  2026-09-24); host-side stage walls differed materially between base captures
+  with the same host probe but different guest bracket sets while call counts
+  and class shares held (two ticket-22 captures: `clip` 146.8 s vs 194.0 s,
+  in-guest carve counts byte-identical) — quote shares/counts as the stable
+  signal and disclose wall drift rather than averaging it away; external load
+  is plausible but its cause was not isolated
   ([Tree-planner substage
   attribution](issues/22-tree-planner-substage-attribution.md), 2026-09-24).
 - Measured keep/drop recommendations return to the human; candidates are never
@@ -116,7 +117,7 @@ Standing decisions for this effort (2026-09-22):
 - [host:slice closing_ex span contradiction](issues/24-host-slice-closing-span-contradiction.md): the contradiction is a units mismatch — `module_complete`'s ~3.2 s is real wall while the profile table's ~22 s `closing_ex` spans are accumulated per-thread spans (`fold_marks` is thread-correct; the aggregation sums concurrent worker spans) — so the lead retires with no ~22 s cost to promote, and the 22/27 substage splits inherit "work-share yes, wall claims no"; same-run capture in `evidence/t24-span-contradiction/SAME-RUN.md`.
 - [Criterion bench refresh](issues/15-criterion-bench-refresh.md): all 7 benches now have on-disk baselines (82 leaves, `base == new`) and are trustworthy — `gate_evidence` 885.9 ms vs the 10 s bound, `shell_classification` ms-scale with no short-circuit; two fixture limits recorded not fixed (`repair/cube` scans a clean 12-tri mesh, `decimate/cube_default` is rejected by the default `max_error = 0.01`); and the criterion console's `time:` is the regression *slope* in Linear mode, not the mean (up to +8.61% off) — cost A/Bs must compare like-for-like. Evidence in `evidence/t15-criterion-refresh/`, unblocking [clipper2 cost/output verdict](issues/17-clipper2-cost-output-verdict.md).
 - [clipper2 cost/output verdict](issues/17-clipper2-cost-output-verdict.md): **stay on 1.1.0** — the 1.0.3→1.1.0 bump is measured cost-neutral and output-identical (367 fixtures through the full entry-point surface, incl. 24 real benchy layers; `diff -rq` exit 0, tree SHA equal, both sides self-reproducing), with compiled bodies 230/240 bit-identical as the load-independent backstop; the geometry modules are byte-identical and `check_split_owner`'s reach is unchanged, so DEV-173's posture is unaffected; evidence in `evidence/t17-clipper2-ab/`. The harness trap (a scratch workspace's lock floats the caret req to the newest release — it silently measured 1.2.0 while labelled 1.1.0) is recorded for future dependency A/Bs, and it surfaced a real onward finding: **1.1.0→1.2.0 is not output-neutral** (2/367 fixtures lose one collinear vertex; 1.2.0's `clean_collinear` changed) — a future 1.2.0 bump needs its own geometry A/B.
-- [Tree-planner substage attribution](issues/22-tree-planner-substage-attribution.md): ADR-0049's 98%-collision-cache lead **does not survive to the matched job** — the emit pass owns the planner (97.2% base / 92.6% benchy), split 46.8% per-region carve (one host `clip_polygons` per drawn region: 171,636 calls / 194.0 s on base), 27.8% union+simplify, 23.4% model-occupancy inflate; the collision/avoidance ladders are 4.27 s of 269.6 s (1.6%), and the batched host services are real but small (50 offset batches; `clip_polygons_batch`/`simplify_polygon_batch` never called). Candidate: a bbox gate in `carve_emitted_regions` skips 46.2%/42.2% of clips (26–27% of clip wall) — with the measured constraint that a disjoint `Difference` preserves the subject *as a set but not verbatim* (clipper normalizes ring order/winding), so downstream representation-insensitivity must be verified first. Evidence in `evidence/t22-planner-substage/` (findings, raw lines, extractor, probe diff).
+- [Tree-planner substage attribution](issues/22-tree-planner-substage-attribution.md): ADR-0049's 98%-collision-cache lead **does not survive to the matched job** — the emit pass is 97.2% base / 92.6% benchy of the per-object planner, with per-region carve the largest sub-term (46.8% of base emit wall), followed by union+simplify (27.8%) and model-occupancy inflate (23.4%); the ladders are 4.27 s of 269.6 s (1.6%). Batched host offsets run (50 batches on base), but batched clips/simplify do not. The carve alone makes 147,993 clips on base; the whole stage makes 171,636 / 194.0 s of core boolean calls. A bbox gate could avoid 78,832 base / 11,018 benchy disjoint *carve* calls as set operations, but its net wall and output equivalence are unmeasured; the probe showed one disjoint rectangle's contour differs from a verbatim input. Evidence in `evidence/t22-planner-substage/`.
 
 ## Not yet specified
 
@@ -130,11 +131,11 @@ Standing decisions for this effort (2026-09-22):
   residual; graduate each as it appears. [Tree-planner substage
   attribution](issues/22-tree-planner-substage-attribution.md) graduated one to
   [Emit-pass carve gate: representation safety + paired
-  A/B](issues/32-emit-carve-gate-representation-and-ab.md) (46.2%/42.2% of the
-  stage's `clip_polygons` calls are provably disjoint; 26–27% of the measured
-  clip wall), carrying the measured representation caveat — clipper normalizes
-  ring order/winding even when a disjoint `Difference` is set-preserving — so
-  it needs a representation-safety check before it can claim behaviour
+  A/B](issues/32-emit-carve-gate-representation-and-ab.md) (78,832 base /
+  11,018 benchy bbox-disjoint calls inside the carve; wall saving unmeasured),
+  carrying the observed contour-representation caveat — a disjoint rectangle
+  `Difference` did not return its input verbatim — so it needs a
+  representation-safety check before it can claim behaviour
   preservation. Its sibling sub-term (`union_expolys` + simplify, 72.8 s base)
   stays in this fog: it shares the "four role calls per layer" shape and may
   graduate once the gate's result is known. Below-fold polish (`offset2_ex` call

@@ -45,14 +45,20 @@ Work, in order:
 **Update 2026-09-24** — [Tree-planner substage
 attribution](22-tree-planner-substage-attribution.md) closed with the stage's
 line item measured at the matched job: `PrePass::SupportGeometry` is
-**295.0 s** of base's post-repair prepass (455.7 s) and **~9.1 s** of benchy's,
-and 97.2% (base) / 92.6% (benchy) of it is `com.core.tree-support-planner`'s
-single dispatch. Its split: 46.8% per-region carve (171,636 singular
-`clip_polygons` / 194.0 s on base), 27.8% union+simplify, 23.4% model-occupancy
-inflate; the collision/avoidance ladders (ADR-0049's "cache" lead) are 4.27 s of
-269.6 s (1.6%). The bbox-gate candidate and its measured representation caveat
-are in that ticket's `## Answer`; its acceptance slot is the timing chain's
-next. The other `PrePass` built-ins above keep their own lines.
+**295.0 s** of the same capture's **551.8 s instrumented base prepass**;
+`com.core.tree-support-planner` contributes 270.7 s (91.8% of that stage).
+On benchy the stage is 11.42 s of its 24.93 s prepass and the planner is
+10.36 s (90.7% of the stage). **97.2% base / 92.6% benchy instead refers to
+the emit pass's share of the per-object planner.** Of that emit pass, 46.8%
+is per-region carve (147,993 calls on base, not the stage's 171,636 clips),
+27.8% union+simplify and 23.4% model-occupancy inflate. The stage-wide
+`clip_polygons` bracket recorded 171,636 core boolean calls / 194.0 s;
+the collision/avoidance ladders are 4.27 s of the 269.6 s per-object planner
+(1.6%). The bbox-gate candidate and its measured representation caveat are in
+that ticket's `## Answer`; its acceptance slot is the timing chain's next.
+These are attribution figures, **not** an update to the separate 455.7 s
+post-repair capture or an uninstrumented wall claim. The other `PrePass`
+built-ins above keep their own lines.
 
 `host:slice`'s wall is back in scope as of
 [host:slice closing_ex span contradiction](24-host-slice-closing-span-contradiction.md)'s
