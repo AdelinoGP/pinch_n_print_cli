@@ -6,11 +6,97 @@ interface ir-handles {
 
     type object-id = string;
     type region-id = string;
-    // Signed because raft entries committed by `PrePass::SupportGeometry`
-    // carry negative `global_layer_index`. Layer-module exports always
-    // pass non-negative values; host conversion sites use `as u32` /
+    // Signed for historical reasons. The positive raft band occupies
+    // non-negative indices `0..support_raft_layers-1`, followed by model
+    // layers. Negative values identify deterministic off-grid support rows,
+    // not raft layers. Host conversion sites use `as u32` /
     // `as i32` at the boundary to round-trip into u32-keyed IR types.
     type layer-idx = s32;
+
+    // One-way host projection of structural support plans into the paint
+    // boundary. These VIEW records are owned here to avoid importing the
+    // prepass package (which already imports ir-handles).
+    enum support-plan-view-role { support-body, top-interface, base-interface, bottom-interface, raft-related }
+    record support-plan-view-role-region {
+        role: support-plan-view-role,
+        regions: list<ex-polygon>,
+    }
+    record support-plan-view-skeleton {
+        points: list<point3>,
+        wall-counts: list<u32>,
+    }
+    enum support-plan-view-decline-reason { declined-policy, no-route, blocked, unsupported-mode }
+    record support-plan-entry-view {
+        global-layer-index: s32,
+        object-id: object-id,
+        region-id: region-id,
+        family-id: string,
+        demand-ids: list<string>,
+        body-ids: list<string>,
+        anchor-layer-index: u32,
+        anchor-z: s64,
+        roles: list<support-plan-view-role-region>,
+        skeleton: option<support-plan-view-skeleton>,
+        capabilities: list<string>,
+        provenance: list<string>,
+        decline-reason: option<support-plan-view-decline-reason>,
+    }
+
+    // Local mirror of the prepass `RaftPlan` config record. Declared here
+    // rather than imported across worlds: `ir-handles` is imported by the
+    // prepass package, so importing back would risk a world-satisfaction
+    // failure. Mirrors `support-plan-entry-view` above, same reason.
+    record raft-plan-view {
+        raft-layers: u32,
+        raft-first-layer-density: f32,
+        base-raft-layers: u32,
+        interface-raft-layers: u32,
+    }
+
+    /// The declared Z extent of anchored work, in canonical 100 nm units.
+    variant anchored-geometry-contract {
+        planar(s64),
+        z-spanning(tuple<s64, s64>),
+    }
+
+    /// Provenance retained when anchored work moves between execution stages.
+    record anchored-entity-provenance {
+        requesting-feature: string,
+        source-plan-entry: string,
+    }
+
+    /// Printable work assigned to a global-layer execution anchor.
+    record anchored-entity {
+        local-id: u64,
+        anchor-global-layer-index: u32,
+        geometry: anchored-geometry-contract,
+        input-capabilities: list<string>,
+        output-capabilities: list<string>,
+        provenance: anchored-entity-provenance,
+        path-points: list<point3-with-width>,
+        role: extrusion-role,
+    }
+
+    /// Capability closure used to derive execution stages without event kinds.
+    record capability-derived-event-closure {
+        input-capabilities: list<string>,
+        output-capabilities: list<string>,
+        derived-capabilities: list<string>,
+    }
+
+    /// Runtime accounting and optimization policies for one anchored event.
+    record anchored-event-runtime-hooks {
+        optimize-paths: bool,
+        account-cooling: bool,
+        account-time: bool,
+    }
+
+    /// Atomically ordered anchored work owned by one global-layer anchor.
+    record ordered-event-collection {
+        anchor-global-layer-index: u32,
+        events: list<anchored-entity>,
+        runtime-hooks: anchored-event-runtime-hooks,
+    }
 
     record region-key {
         layer-index: layer-idx,
@@ -66,10 +152,22 @@ interface ir-handles {
         bottom-shell-index: func() -> option<u8>;
         top-solid-fill: func() -> list<ex-polygon>;
         bottom-solid-fill: func() -> list<ex-polygon>;
+        // Rust binding: internal_solid_fill.
+        internal-solid-fill: func() -> list<ex-polygon>;
         is-bridge: func() -> bool;
         bridge-areas: func() -> list<ex-polygon>;
+        // Rust binding: internal_bridge_areas.
+        internal-bridge-areas: func() -> list<ex-polygon>;
+        // Rust binding: internal_bridge_angles_deg. Bridge line direction in
+        // degrees per internal-bridge-areas polygon (index-aligned, same
+        // convention as bridge-orientation-deg). Empty = fall back to
+        // bridge-orientation-deg for every internal-bridge polygon.
+        internal-bridge-angles-deg: func() -> list<f32>;
         bridge-orientation-deg: func() -> f32;
         sparse-infill-area: func() -> list<ex-polygon>;
+        // Rust binding: raft_fill. Raft-substrate fill polygons; non-empty only
+        // on layers inside the positive-offset raft band (packet 240a).
+        raft-fill: func() -> list<ex-polygon>;
         held-claims: func() -> list<string>;
         overhang-areas: func() -> list<ex-polygon>;
         overhang-quartile-polygons: func() -> list<quartile-band>;
@@ -124,12 +222,20 @@ interface ir-handles {
         top-solid-fill: func() -> list<ex-polygon>;
         bottom-solid-fill: func() -> list<ex-polygon>;
         bridge-areas: func() -> list<ex-polygon>;
+        // Rust binding: raft_fill. Mirrored from slice-region-view.raft-fill
+        // (packet 240a).
+        raft-fill: func() -> list<ex-polygon>;
         // Host-computed tool index: variant-chain material tool →
         // RegionMapIR extensions["extruder"] → DEFAULT_TOOL(0).
         tool-index: func() -> u32;
         // none = this region owns its walls; some(base) = this region
         // shares the base region's walls (ADR-0028 §Amendment 2026-07-01).
         wall-source-region-id: func() -> option<region-id>;
+        // Ordered (paint-semantic-name, value) pairs identifying this region's
+        // paint variant, mirrored from `slice-region-view.variant-chain`, so a
+        // perimeter-region consumer can carry the FULL region identity through
+        // its output builder origin tag (see `set-current-origin`).
+        variant-chain: func() -> list<tuple<string, paint-value>>;
         // Per-region config view for this perimeter region. Host-populated at
         // dispatch time (packet 131, Step 3) so region-scoped modules can read
         // per-region overrides without routing through the module-level config.
@@ -144,6 +250,10 @@ interface ir-handles {
     record prior-infill-region {
         object-id: object-id,
         region-id: region-id,
+        // Full ordered (paint-semantic-name, value) variant chain for this
+        // bucket, so an InfillPostProcess consumer can construct the exact
+        // region identity for its own `set-current-origin` tag.
+        variant-chain: list<tuple<string, paint-value>>,
         sparse-infill: list<extrusion-path3d>,
         solid-infill: list<extrusion-path3d>,
         ironing: list<extrusion-path3d>,
@@ -153,7 +263,12 @@ interface ir-handles {
         push-sparse-path:  func(path: extrusion-path3d) -> result<_, string>;
         push-solid-path:   func(path: extrusion-path3d) -> result<_, string>;
         push-ironing-path: func(path: extrusion-path3d) -> result<_, string>;
-        set-current-origin: func(object-id: string, region-id: string) -> result<_, string>;
+        push-raft-fill:    func(polygons: list<ex-polygon>) -> result<_, string>;
+        // Tags subsequent pushes with the FULL region identity: object, region
+        // id, and the exact ordered variant chain. The chain is part of the
+        // routing key, so two regions sharing (object-id, region-id) but
+        // differing in paint variant route to distinct output buckets.
+        set-current-origin: func(object-id: string, region-id: string, variant-chain: list<tuple<string, paint-value>>) -> result<_, string>;
     }
 
     resource perimeter-output-builder {
@@ -162,7 +277,9 @@ interface ir-handles {
         set-infill-areas:        func(areas: list<ex-polygon>) -> result<_, string>;
         push-seam-candidate:     func(pos: point3, score: f32) -> result<_, string>;
         push-resolved-seam:      func(pos: point3, wall-index: u32) -> result<_, string>;
-        set-current-origin:      func(object-id: string, region-id: string) -> result<_, string>;
+        // Tags subsequent pushes with the FULL region identity (object, region
+        // id, exact ordered variant chain); chain is part of the routing key.
+        set-current-origin:      func(object-id: string, region-id: string, variant-chain: list<tuple<string, paint-value>>) -> result<_, string>;
     }
 
     resource slice-postprocess-builder {
@@ -195,18 +312,23 @@ interface ir-handles {
         start-point: point3-with-width,
         end-point: point3-with-width,
         point-count: u32,
+        order-lock: option<u64>,
     }
 
     resource layer-collection-builder {
         set-entity-order: func(items: list<tuple<u32, bool>>) -> result<_, string>;
         get-ordered-entities: func() -> list<ordered-entity-view>;
+        set-anchored-event-collection: func(collection: ordered-event-collection) -> result<_, string>;
     }
 
     resource support-output-builder {
         push-support-path:   func(path: extrusion-path3d) -> result<_, string>;
         push-interface-path: func(path: extrusion-path3d, is-top-interface: bool) -> result<_, string>;
+        push-base-interface-path: func(path: extrusion-path3d, is-top-interface: bool) -> result<_, string>;
         push-raft-path:      func(path: extrusion-path3d) -> result<_, string>;
-        set-current-origin:  func(object-id: string, region-id: string) -> result<_, string>;
+        // Tags subsequent pushes with the FULL region identity (object, region
+        // id, exact ordered variant chain); chain is part of the routing key.
+        set-current-origin:  func(object-id: string, region-id: string, variant-chain: list<tuple<string, paint-value>>) -> result<_, string>;
     }
 
     record semantic-region { object-id: object-id, polygons: list<ex-polygon>, value: paint-value }
@@ -217,7 +339,17 @@ interface ir-handles {
         layer-index: func() -> layer-idx;
         support-plan-segments: func(object-id: object-id, region-id: region-id)
             -> list<list<point3-with-width>>;
+        support-plan-entries: func(object-id: object-id, region-id: region-id)
+            -> list<support-plan-entry-view>;
         lightning-tree-segments: func(object-id: object-id, region-id: region-id)
             -> list<list<point3-with-width>>;
+        /// Configuration-only raft plan for this print, projected from
+        /// `SupportPlanIR.raft_plan`. Layer-independent: the same value is
+        /// returned on every layer. `none` when no raft was planned.
+        raft-plan: func() -> option<raft-plan-view>;
+        /// True when this layer belongs to the positive-offset raft band
+        /// (`GlobalLayer.is_raft`). A `Layer::Infill` guest has no other way
+        /// to tell a raft layer from a model layer.
+        is-raft: func() -> bool;
     }
 }

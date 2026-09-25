@@ -208,7 +208,9 @@ pub fn run(
     let z = region.z()
     let width = region_line_width.to_float()
 
-    match output.set_current_origin(region.object_id(), region.region_id()) {
+    match output.set_current_origin(
+      region.object_id(), region.region_id(), region.variant_chain(),
+    ) {
       Err(msg) => {
         failure = Some(@module-errors.ModuleError::{
           code: 1,
@@ -247,6 +249,7 @@ pub fn run(
           role: @geometry.ExtrusionRole::SparseInfill,
           speed_factor,
           tool_index: tool,
+          order_lock: None,
         }
         match output.push_sparse_path(path) {
           Err(msg) => {
