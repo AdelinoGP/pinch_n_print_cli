@@ -87,7 +87,8 @@ fn newest_source_mtime(guest_root: &Path) -> SystemTime {
 
 /// Derive the layer-planning objects from the spec config's
 /// `object_height:<id>` keys — the shared mesh/config id literal contract
-/// that production establishes in `run.rs::layer_planning_objects`. Without
+/// that production establishes in `layer_planning_objects`
+/// (`crates/slicer-runtime/src/run.rs`). Without
 /// them the dispatcher's empty default fails the positional
 /// object/config check before either side runs.
 fn layer_planning_objects_from_config(config: &ConfigView) -> Vec<LayerPlanningObject> {

@@ -40,11 +40,13 @@ fn gcode_path() -> PathBuf {
 
 /// Count extruding moves per contiguous sparse-infill path.
 ///
-/// A path is a maximal run of extruding moves (`G1` with `E` and an `X`/`Y`
-/// coordinate) uninterrupted by travel (`G0`, or `G1` without `E`). A
-/// retraction or unretraction (`G1` with `E` but no `X`/`Y`) does not break a
-/// run. A path's point count is its G1-move count plus one, which is the unit
-/// AC-N1 states directly ("mean points-per-path <= 2").
+/// A path is a maximal run of extruding sparse-infill moves (`G1` with `E`
+/// and an `X`/`Y` coordinate) uninterrupted by travel (`G0`, or `G1` without
+/// `E`) or a change to another `;TYPE:`. A repeated sparse-infill marker is
+/// not a path boundary. A retraction or unretraction (`G1` with `E` but no
+/// `X`/`Y`) does not break a run. A path's point count is its G1-move count
+/// plus one. Packet 136's original AC-N1 used a block-based G-code proxy;
+/// this test now pins the stricter path-level raw-output shape.
 fn parse_sparse_infill_path_g1_moves(gcode: &str) -> Vec<u32> {
     let mut paths: Vec<u32> = Vec::new();
     let mut in_sparse = false;
@@ -54,8 +56,6 @@ fn parse_sparse_infill_path_g1_moves(gcode: &str) -> Vec<u32> {
         let line = raw.trim();
         if line == ";TYPE:Sparse infill" {
             in_sparse = true;
-            in_path = false;
-            current = 0;
             continue;
         }
         if line.starts_with(";TYPE:") {
@@ -89,6 +89,18 @@ fn parse_sparse_infill_path_g1_moves(gcode: &str) -> Vec<u32> {
         paths.push(current);
     }
     paths
+}
+
+#[test]
+fn repeated_sparse_type_preserves_the_in_flight_path() {
+    let gcode = ";TYPE:Sparse infill\nG1 X1 Y1 E1\n;TYPE:Sparse infill\nG1 X2 Y2 E2\nG0 X3 Y3\n";
+    assert_eq!(parse_sparse_infill_path_g1_moves(gcode), vec![2]);
+}
+
+#[test]
+fn travel_separates_paths_across_repeated_sparse_type() {
+    let gcode = ";TYPE:Sparse infill\nG1 X1 Y1 E1\nG0 X2 Y2\n;TYPE:Sparse infill\nG1 X3 Y3 E2\n";
+    assert_eq!(parse_sparse_infill_path_g1_moves(gcode), vec![1, 1]);
 }
 
 #[test]
@@ -168,9 +180,10 @@ fn no_linker_module_degraded_raw_output() {
     // (2026-09-24, fresh guests, `--no-integrated-modules`):
     //   without linker: 6123 paths, mean G1 moves per path = 1.000 -> 2.00 points
     //   with linker:    2515 paths, mean G1 moves per path = 3.900 -> 4.90 points
-    // The metric is the AC's own unit ("mean points-per-path"); a path's point
-    // count is its extruding G1-move count plus one. Threshold 2.5 sits 25%
-    // above the measured degraded mean and 49% below the measured linked mean.
+    // A path's point count is its extruding G1-move count plus one. Require
+    // the raw two-point mean rather than a tolerance that also admits some
+    // linked output. Packet 136's original <6 discriminator used a different
+    // block-based proxy; it does not define this path-level bound.
     // The previous block-based proxy (mean G1 per `;TYPE:Sparse infill` block)
     // went stale when packets 233/234/235 reshaped the wedge's sparse-infill
     // islands: it measured 30.93 without the linker against a 28.0 threshold,
@@ -183,9 +196,9 @@ fn no_linker_module_degraded_raw_output() {
     );
     let mean_points_per_path = (paths.iter().sum::<u32>() as f32) / (paths.len() as f32) + 1.0;
     assert!(
-        mean_points_per_path <= 2.5,
+        mean_points_per_path <= 2.0,
         "AC-N1: without the linker, mean points per sparse-infill path should be at the raw \
-         two-point baseline (<= 2.5); got {mean_points_per_path:.2}. If this is high, the linker \
+         two-point baseline (<= 2); got {mean_points_per_path:.2}. If this is high, the linker \
          is wired even though its module-dir was excluded. Path count: {}",
         paths.len()
     );

@@ -57,7 +57,8 @@ fn integrated_parity_rectilinear_infill() {
         "claim:bridge-fill".to_string(),
     ];
     // Bound-view shape (packet 06 5c-prime): mirrors
-    // rectilinear_infill_tdd.rs::baseline_config — every contract-required
+    // `baseline_config` (`modules/core-modules/rectilinear-infill/tests/rectilinear_infill_tdd.rs`)
+    // — every contract-required
     // read at manifest defaults, with this fixture's density/line_width winning.
     let config = Arc::new(ConfigView::from_map(std::collections::HashMap::from([
         (

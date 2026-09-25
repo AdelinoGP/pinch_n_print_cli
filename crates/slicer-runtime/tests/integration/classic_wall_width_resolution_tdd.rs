@@ -15,10 +15,14 @@
 //! so absent keys behave identically to the explicit auto-0 sentinel in Test 1.
 
 use classic_perimeters::ClassicPerimeters;
+use slicer_ir::ConfigValue;
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
+
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 fn make_region(side_mm: f32, z: f32) -> SliceRegionView {
     SliceRegionViewBuilder::new()
@@ -97,18 +101,90 @@ fn zero_width_resolves_to_canonical_auto_extrusion_width() {
 
 #[test]
 fn absent_width_keys_resolve_to_canonical_auto_width() {
-    // No outer_wall_line_width, no inner_wall_line_width, no line_width.
-    // Packet 185 moved the defaults to canonical auto-0, so absent keys
-    // resolve exactly like the explicit zero sentinel: 1.125 * nozzle_diameter.
+    // No outer_wall_line_width, no inner_wall_line_width, no line_width in the
+    // AUTHORED source: an empty flat config ingested against the live registry,
+    // resolved with the production scope stack (registry-default seeding +
+    // `expand_automatic_values`), and bound through `bind_module_config_view`
+    // exactly as `run_slice` does. The width keys reach the view only via
+    // registry-default seeding; `line_width` arrives as the host-expanded auto
+    // width (packet 04: `expand_automatic_values` turns the auto-0 sentinel
+    // into `1.125 * nozzle_diameter`). The expected width is derived from the
+    // nozzle alone — nothing authored can carry the expected width into the
+    // view, so a resolution defect (a literal 0.4 fallback, an unexpanded
+    // sentinel) fails here rather than passing as a passthrough.
+    let modules: Vec<slicer_runtime::LoadedModule> =
+        slicer_runtime::load_modules_from_roots(std::slice::from_ref(
+            &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join("..")
+                .join("modules")
+                .join("core-modules"),
+        ))
+        .unwrap_or_else(|error| panic!("load core module schemas failed: {error:?}"))
+        .modules;
+    let classic = modules
+        .iter()
+        .find(|module| module.id() == "com.core.classic-perimeters")
+        .expect("classic-perimeters must be among the live core modules");
+    let declarations: Vec<slicer_config::ModuleDeclaration> = modules
+        .iter()
+        .map(|module| slicer_config::ModuleDeclaration {
+            module_id: module.id().to_owned(),
+            schema: module.config_schema().clone(),
+            claim_exclusive_group: None,
+        })
+        .collect();
+    let registry =
+        slicer_config::assemble_registry(&declarations, &slicer_config::HostChannels::from_live())
+            .unwrap_or_else(|error| panic!("assemble live registry failed: {error}"))
+            .registry;
+
+    // Genuinely absent WIDTH keys: only the nozzle is authored, so
+    // `line_width`/`outer_wall_line_width`/`inner_wall_line_width` are absent
+    // from the source and reach the view purely through registry-default
+    // seeding. Authoring the nozzle keeps the oracle independent of the
+    // manifest's 0.4 default (which `required_base` prefers over the expansion
+    // context) while still proving the absent widths resolve — a passthrough
+    // or literal-0.4 defect cannot produce 1.125 * 0.6.
+    let mut authored = HashMap::new();
+    authored.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.6));
+    let mut ingestor = slicer_config::ConfigIngestor::tolerant(&registry);
+    ingestor
+        .ingest_flat(&authored)
+        .expect("authored nozzle must decode");
+    let ingested = ingestor.finish();
+    assert!(
+        ingested.warnings.is_empty(),
+        "the authored nozzle must ingest clean: {:?}",
+        ingested.warnings
+    );
+    let resolved = slicer_config::resolve_scope_stack(
+        &registry,
+        &ingested.scoped,
+        &slicer_config::ResolutionTarget::default(),
+        &slicer_config::ExpansionContext {
+            nozzle_diameter_mm: 0.6,
+            ..slicer_config::ExpansionContext::default()
+        },
+    )
+    .expect("resolving the authored nozzle against the live registry");
+
+    // Fixture premise: the width keys are absent from the authored source, so
+    // their values can only come from seeding + expansion.
+    for key in [
+        "line_width",
+        "outer_wall_line_width",
+        "inner_wall_line_width",
+    ] {
+        assert!(
+            !authored.contains_key(key),
+            "premise: {key} must not be authored"
+        );
+    }
+
     let nozzle_diameter = 0.6_f32;
     let expected = 1.125_f32 * nozzle_diameter; // 0.675 mm
-
-    let config = crate::common::classic_perimeters_baseline()
-        .float("line_width", expected as f64)
-        .int("wall_count", 3)
-        .float("nozzle_diameter", nozzle_diameter as f64)
-        .float("layer_height", 0.2)
-        .build();
+    let config = slicer_runtime::bind_module_config_view(classic, &resolved);
 
     let module = ClassicPerimeters::from_config(&config).unwrap();
     let regions = vec![make_region(10.0, 0.2)];

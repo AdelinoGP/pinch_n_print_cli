@@ -102,7 +102,8 @@ fn integrated_parity_overhang_classifier() {
             ("overhang_1_4_speed".into(), ConfigValue::Float(20.0)),
             // Bound-view shape (packet 06 5c-prime): the remaining
             // contract-required reads at the module fixture's values
-            // (overhang-classifier-default/tests/basic_tdd.rs::overhang_config).
+            // (`overhang_config` in
+            // `modules/core-modules/overhang-classifier-default/tests/basic_tdd.rs`).
             ("inner_wall_speed".into(), ConfigValue::Float(60.0)),
             ("thin_wall_speed".into(), ConfigValue::Float(60.0)),
             ("overhang_2_4_speed".into(), ConfigValue::Float(40.0)),

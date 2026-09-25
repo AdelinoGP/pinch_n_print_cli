@@ -1,7 +1,6 @@
 //! Runtime-boundary coverage for automatic config-value expansion.
 
 use std::collections::HashMap;
-use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -12,7 +11,6 @@ use slicer_ir::{
     Point3, ResolvedConfig, Transform3d,
 };
 use slicer_runtime::run::{prepare_prepass_context, run_slice_with_collector, SliceRunOptions};
-use tempfile::TempDir;
 
 const OBJECT_ID: &str = "automatic-expansion-cube";
 const WIDTH_KEYS: &[&str] = &[
@@ -54,24 +52,6 @@ fn workspace_root() -> PathBuf {
 
 fn core_modules_dir() -> PathBuf {
     workspace_root().join("modules").join("core-modules")
-}
-
-fn material_region_split_module() -> TempDir {
-    let directory = tempfile::tempdir().expect("material region-split fixture directory");
-    let source_dir = core_modules_dir().join("classic-perimeters");
-    let manifest = fs::read_to_string(source_dir.join("classic-perimeters.toml"))
-        .expect("classic-perimeters manifest must be readable");
-    let manifest = format!(
-        "{manifest}\n\n[[region_split]]\nsemantic = \"material\"\npriority = 100\nvalue_type = \"tool_index\"\n"
-    );
-    fs::write(directory.path().join("classic-perimeters.toml"), manifest)
-        .expect("material region-split manifest must be written");
-    fs::copy(
-        source_dir.join("classic-perimeters.wasm"),
-        directory.path().join("classic-perimeters.wasm"),
-    )
-    .expect("classic-perimeters WASM must be copied for the fixture");
-    directory
 }
 
 fn cube(origin: f32, extent: f32) -> IndexedTriangleSet {
@@ -389,8 +369,11 @@ fn assert_expanded_view(view: &slicer_ir::ConfigView, expected_width: f64, label
 fn runtime_expands_global_object_tool_and_paint_before_delivery() {
     let mesh = fixture_mesh();
     let source = config_source();
-    let material_module = material_region_split_module();
-    let module_dirs = vec![material_module.path().to_path_buf(), core_modules_dir()];
+    // The live classic-perimeters manifest declares `[[region_split]] material`
+    // (ADR-0071), so the core-modules root alone carries the paint cross-product
+    // this test observes. No synthetic overlay is staged: appending a second
+    // `material` entry now trips `DuplicateRegionSplitSemantic`.
+    let module_dirs = vec![core_modules_dir()];
 
     let outcome = run_slice_with_collector(
         SliceRunOptions {

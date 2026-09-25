@@ -44,7 +44,10 @@ fn config() -> Arc<ConfigView> {
     // Bound-view shape (packet 06 5c-prime): this view feeds both the
     // gyroid and rectilinear native entries, so it carries the union of
     // their contract-required reads at manifest defaults
-    // (gyroid_infill_tdd.rs / rectilinear_infill_tdd.rs::baseline_config),
+    // (`make_config` in
+    // `modules/core-modules/gyroid-infill/tests/gyroid_infill_tdd.rs` and
+    // `baseline_config` in
+    // `modules/core-modules/rectilinear-infill/tests/rectilinear_infill_tdd.rs`),
     // with this test's density/line_width winning.
     Arc::new(ConfigView::from_map(
         [
