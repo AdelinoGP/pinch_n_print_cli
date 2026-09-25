@@ -31,17 +31,11 @@ fn wedge_stl() -> PathBuf {
 }
 
 fn report_path() -> PathBuf {
-    let manifest = env!("CARGO_MANIFEST_DIR");
-    PathBuf::from(manifest)
-        .join("target")
-        .join("wedge_linked_infill_report.html")
+    crate::common::slicer_cache::test_artifact_path("wedge_linked_infill_report.html")
 }
 
 fn gcode_path() -> PathBuf {
-    let manifest = env!("CARGO_MANIFEST_DIR");
-    PathBuf::from(manifest)
-        .join("target")
-        .join("wedge_linked_infill_report.gcode")
+    crate::common::slicer_cache::test_artifact_path("wedge_linked_infill_report.gcode")
 }
 
 fn parse_sparse_infill_g1_moves(gcode: &str) -> Vec<u32> {

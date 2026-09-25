@@ -52,9 +52,7 @@ fn calicat_stl() -> PathBuf {
 }
 
 fn gcode_path(tag: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("target")
-        .join(format!("calicat_{tag}.gcode"))
+    crate::common::slicer_cache::test_artifact_path(&format!("calicat_{tag}.gcode"))
 }
 
 /// One parsed G-code layer: total relative-E extrusion per `;TYPE:` label,
@@ -203,9 +201,9 @@ fn calicat_internal_bridge_gating_e2e_tdd() {
 
     let out_a = gcode_path("a");
     let out_b = gcode_path("b");
-    let config = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("target")
-        .join("calicat_internal_bridge_matched_config.json");
+    let config = crate::common::slicer_cache::test_artifact_path(
+        "calicat_internal_bridge_matched_config.json",
+    );
     std::fs::write(
         &config,
         br#"{"layer_height":0.2,"first_layer_height":0.25,"nozzle_diameter":0.5,"line_width":0.525,"bridge_flow":0.95,"internal_bridge_flow":0.95,"infill_density":0.25,"sparse_infill_density":25.0,"top_shell_layers":3,"bottom_shell_layers":3,"enable_support":true,"dont_filter_internal_bridges":false,"thick_bridges":false,"thick_internal_bridges":false}"#,

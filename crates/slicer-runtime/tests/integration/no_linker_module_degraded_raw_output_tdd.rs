@@ -32,10 +32,7 @@ fn wedge_stl() -> PathBuf {
 }
 
 fn gcode_path() -> PathBuf {
-    let manifest = env!("CARGO_MANIFEST_DIR");
-    PathBuf::from(manifest)
-        .join("target")
-        .join("no_linker_module_degraded.gcode")
+    crate::common::slicer_cache::test_artifact_path("no_linker_module_degraded.gcode")
 }
 
 /// Count extruding moves per contiguous sparse-infill path.
