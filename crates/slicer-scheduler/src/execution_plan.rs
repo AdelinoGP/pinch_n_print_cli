@@ -714,16 +714,15 @@ pub struct ExecutionPlan {
     /// Precomputed index for O(1) lookup of active regions per (layer, module).
     /// Key: (global_layer_index, module_id) → Value: slice of ActiveRegion.
     pub module_region_index: HashMap<(u32, ModuleId), Vec<ActiveRegion>>,
-    /// Cross-manifest aggregate of `[[region_split]]` declarations plus the
-    /// seeded built-in paint semantics (semantic →
-    /// priority/value-type/declaring modules).
+    /// Cross-manifest aggregate of `[[region_split]]` declarations.
     ///
-    /// Community semantics enter via module declarations (packet 93, AC-1);
-    /// `material`/`fuzzy_skin` are always present via
-    /// [`crate::region_split::seed_core_region_splits`] (CONTEXT.md's built-in
-    /// chain semantics). Chain expansion only materializes for objects that
-    /// CARRY those semantics' paint values, so un-painted single-object
-    /// fixtures keep AC-10 byte-identical g-code.
+    /// Community and core semantics enter via module declarations (packet 93,
+    /// AC-1) — the aggregate is exactly the union of every loaded module's
+    /// `[[region_split]]` entries, keyed by semantic with the first-seen
+    /// priority/value-type and the declaring-module list. There is no implicit
+    /// seeding: a semantic is in this map iff some loaded module declares it
+    /// (ADR-0071). Chain expansion only materializes for objects that CARRY
+    /// those semantics' paint values.
     pub aggregated_region_split: BTreeMap<String, AggregatedRegionSplitEntry>,
 }
 
@@ -862,9 +861,14 @@ pub struct CompiledModuleStatic {
     /// `compute_serial_edges_from_compiled` can emit
     /// `EdgeReason::ExplicitRequires` rows alongside `IrWriteRead`.
     pub(crate) requires_modules: Vec<ModuleId>,
-    /// Pre-computed set of region-split semantic names declared by this module.
-    /// Empty for paint-transparent modules (the common case). Used by the
-    /// per-layer host dispatch filter in `layer_executor.rs` (packet 92).
+    /// Pre-computed per-layer dispatch set. Empty for every module that did
+    /// not opt into `paint_only = true` — including modules that declare
+    /// `[[region_split]]` semantics (declaration activates the semantic in
+    /// `aggregated_region_split`, but only paint-only dispatch gates
+    /// invocation). Non-empty only when the module's manifest sets
+    /// `paint_only = true`, in which case it is exactly the declared semantic
+    /// names. Used by the per-layer host dispatch filter in
+    /// `layer_executor.rs` (packet 92; ADR-0071).
     pub(crate) region_split_semantics: std::collections::HashSet<String>,
 }
 
@@ -899,8 +903,9 @@ impl CompiledModuleStatic {
         &self.requires_modules
     }
 
-    /// Pre-computed set of declared region-split semantic names.
-    /// Empty for paint-transparent modules (the common case).
+    /// Pre-computed per-layer dispatch set. Empty for modules without
+    /// `paint_only = true`; exactly the declared semantic names for
+    /// paint-only modules.
     pub fn region_split_semantics(&self) -> &std::collections::HashSet<String> {
         &self.region_split_semantics
     }
@@ -968,7 +973,9 @@ impl CompiledModuleBuilder {
         self
     }
 
-    /// Set the pre-computed region-split semantic name set.
+    /// Set the pre-computed per-layer dispatch set. Leave empty for a
+    /// module that must run on every layer; only `paint_only = true`
+    /// modules carry their declared semantic names here (ADR-0071).
     pub fn region_split_semantics(mut self, semantics: std::collections::HashSet<String>) -> Self {
         self.region_split_semantics = semantics;
         self
@@ -1232,6 +1239,14 @@ pub fn build_execution_plan(
                 config_view: Arc::clone(&binding.config_view),
                 claims: binding.module.claims.clone(),
                 requires_modules: binding.module.requires_modules.clone(),
+                // Dispatch transparency is derived from `paint_only`, not from
+                // the mere presence of `[[region_split]]` declarations: a
+                // module may declare a semantic (activating it in the
+                // aggregate) while still running on every layer. Only a
+                // `paint_only = true` manifest gates invocation by layer
+                // (ADR-0071). `LoadedModule.region_split_semantics` already
+                // encodes that split (empty unless paint_only), so the
+                // propagation is a plain clone.
                 region_split_semantics: binding.module.region_split_semantics.clone(),
             });
         }
@@ -1322,14 +1337,15 @@ pub fn build_execution_plan(
     // ── Cross-manifest aggregate of [[region_split]] declarations ─────
     // Computed once at plan-build time so the host's `PrePass::RegionMapping`
     // builtin can deterministically reference module declarations without
-    // re-walking the manifest set. AC-1 / packet 93.
+    // re-walking the manifest set. AC-1 / packet 93. The aggregate is exactly
+    // the declared union: no core semantics are seeded implicitly — a semantic
+    // exists iff a loaded module declares it (ADR-0071).
     let modules_for_agg: Vec<LoadedModule> = request
         .module_bindings
         .iter()
         .map(|b| b.module.clone())
         .collect();
-    let mut aggregated_region_split = aggregate_region_splits(&modules_for_agg, diagnostics);
-    crate::region_split::seed_core_region_splits(&mut aggregated_region_split);
+    let aggregated_region_split = aggregate_region_splits(&modules_for_agg, diagnostics);
 
     Ok(ExecutionPlan {
         prepass_stages,

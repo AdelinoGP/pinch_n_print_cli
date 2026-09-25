@@ -47,6 +47,19 @@ default = false
 display = "Apply to All Walls"
 group   = "Fuzzy Skin"
 
+# Region-split activation. `fuzzy_skin` is declared so the aggregate knows the
+# semantic and painted fuzzy-skin regions get a variant chain. `paint_only` is
+# deliberately absent (defaults to false) and MUST STAY ABSENT: run_wall_postprocess
+# gates on `apply_to_all || wall.feature_flags.fuzzy_skin`, so a manifest that
+# declared paint_only would skip fuzzy-skin on unpainted layers whenever
+# `apply_to_all = true` — exactly the mode users rely on. Fuzzy-skin therefore
+# stays dispatch-transparent and runs on every layer; per-wall/per-feature
+# gating remains module-internal. See ADR-0071.
+[[region_split]]
+semantic   = "fuzzy_skin"
+priority   = 200
+value_type = "flag"
+
 [hints]
 estimated-ms-per-layer = 10
 layer-parallel-safe    = true

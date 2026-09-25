@@ -42,5 +42,9 @@ path = "tests/region_split_manifest_tdd.rs"
 name = "region_split_aggregation_tdd"
 path = "tests/region_split_aggregation_tdd.rs"
 
+[[test]]
+name = "region_split_plan_tdd"
+path = "tests/region_split_plan_tdd.rs"
+
 [lints]
 workspace = true

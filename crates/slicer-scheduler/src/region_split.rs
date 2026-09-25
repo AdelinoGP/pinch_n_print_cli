@@ -6,6 +6,11 @@
 //! - [`canonical_variant_chain_order`] — return semantic names in
 //!   `(priority, name)` canonical order.
 //!
+//! The aggregate is exactly the union of the loaded modules' declarations —
+//! no semantics are seeded implicitly. A core semantic such as `material` or
+//! `fuzzy_skin` is present iff a loaded manifest declares it (the core
+//! modules do; see ADR-0071).
+//!
 //! See packet 92, AC-7, AC-8, AC-N2.
 
 use std::collections::BTreeMap;
@@ -13,37 +18,6 @@ use std::collections::BTreeMap;
 use crate::manifest::{DiagnosticLevel, LoadDiagnostic, LoadedModule};
 
 pub use slicer_ir::slice_ir::AggregatedRegionSplitEntry;
-
-/// Seed the built-in paint semantics into an aggregated region-split registry.
-///
-/// `material` and `fuzzy_skin` are always-on region-split discriminators —
-/// CONTEXT.md's "Variant chain" section fixes their canonical precedence
-/// (Material before FuzzySkin), and canonical OrcaSlicer splits painted
-/// material/fuzzy-skin geometry unconditionally. The manifest
-/// `[[region_split]]` opt-in (packet 92) is how community semantics and
-/// additional module-owned semantics join the registry; the built-ins come
-/// from `slicer_schema::CORE_REGION_SPLIT_PRIORITIES`, the same table the
-/// manifest validator treats as the registered contract. `material`'s value
-/// domain is tool indices and `fuzzy_skin`'s is a flag (`value_type =
-/// "scalar"` is forbidden — D13). Existing entries win: a loaded module's
-/// declaration of a core semantic has already passed the
-/// `CorePriorityMismatch` validation, and aggregation's first-seen rule is
-/// preserved.
-pub fn seed_core_region_splits(aggregated: &mut BTreeMap<String, AggregatedRegionSplitEntry>) {
-    for (semantic, priority) in slicer_schema::CORE_REGION_SPLIT_PRIORITIES {
-        aggregated
-            .entry((*semantic).to_owned())
-            .or_insert_with(|| AggregatedRegionSplitEntry {
-                priority: *priority,
-                value_type: if *semantic == "material" {
-                    slicer_ir::slice_ir::RegionSplitValueType::ToolIndex
-                } else {
-                    slicer_ir::slice_ir::RegionSplitValueType::Flag
-                },
-                declaring_modules: Vec::new(),
-            });
-    }
-}
 
 /// Aggregate `[[region_split]]` declarations across all loaded modules into a
 /// `BTreeMap<semantic_name, AggregatedRegionSplitEntry>`.
@@ -171,37 +145,53 @@ pub fn canonical_variant_chain_order(
 }
 
 #[cfg(test)]
-mod seed_tests {
+mod tests {
     use super::*;
 
+    /// The aggregate contains exactly the semantics declared by the loaded
+    /// modules: no core semantics are seeded implicitly (ADR-0071). With an
+    /// empty module list the aggregate must be empty; a module declaring only
+    /// `material` must produce a map holding `material` and NOT `fuzzy_skin`.
     #[test]
-    fn seed_core_region_splits_seeds_builtins_and_preserves_declared_entries() {
-        let mut seeded: BTreeMap<String, AggregatedRegionSplitEntry> = BTreeMap::new();
-        seed_core_region_splits(&mut seeded);
-        let material = seeded.get("material").expect("material must be seeded");
-        assert_eq!(material.priority, 100);
-        assert_eq!(
-            material.value_type,
-            slicer_ir::slice_ir::RegionSplitValueType::ToolIndex
+    fn aggregate_contains_only_declared_semantics() {
+        // Empty module list → empty aggregate (AC-N2 behaviour, re-pinned
+        // here at the module level).
+        let empty = aggregate_region_splits(&[], &mut Vec::new());
+        assert!(
+            empty.is_empty(),
+            "no declarations means no semantics; core names must not be seeded"
         );
-        let fuzzy = seeded.get("fuzzy_skin").expect("fuzzy_skin must be seeded");
-        assert_eq!(fuzzy.priority, 200);
-        assert_eq!(
-            fuzzy.value_type,
-            slicer_ir::slice_ir::RegionSplitValueType::Flag
-        );
+        assert!(!empty.contains_key("material"));
+        assert!(!empty.contains_key("fuzzy_skin"));
 
-        let mut declared: BTreeMap<String, AggregatedRegionSplitEntry> = BTreeMap::new();
-        declared.insert(
-            "material".to_owned(),
-            AggregatedRegionSplitEntry {
-                priority: 100,
-                value_type: slicer_ir::slice_ir::RegionSplitValueType::ToolIndex,
-                declaring_modules: vec!["com.core.example".to_owned()],
+        // A module that declares `material` only → `material` present,
+        // `fuzzy_skin` absent.
+        let declared_material = crate::manifest::LoadedModuleBuilder::new(
+            "com.example.material-only",
+            slicer_ir::SemVer {
+                major: 0,
+                minor: 1,
+                patch: 0,
             },
+            "Layer::Perimeters",
+            String::new(),
+            std::path::PathBuf::from("fixtures/material-only.wasm"),
+        )
+        .region_splits(vec![crate::manifest::RegionSplitDeclaration {
+            semantic: "material".to_owned(),
+            priority: 100,
+            value_type: slicer_ir::slice_ir::RegionSplitValueType::ToolIndex,
+        }])
+        .build();
+
+        let aggregated = aggregate_region_splits(&[declared_material], &mut Vec::new());
+        let material = aggregated
+            .get("material")
+            .expect("declared material must be aggregated");
+        assert_eq!(material.priority, 100);
+        assert!(
+            !aggregated.contains_key("fuzzy_skin"),
+            "undeclared core semantics must not be seeded into the aggregate"
         );
-        seed_core_region_splits(&mut declared);
-        assert_eq!(declared.get("material").unwrap().declaring_modules.len(), 1);
-        assert!(declared.contains_key("fuzzy_skin"));
     }
 }

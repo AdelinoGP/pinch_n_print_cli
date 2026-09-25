@@ -125,11 +125,23 @@ pub struct LoadedModule {
     /// attempting component compilation.
     pub(crate) placeholder_wasm: bool,
     /// Region-split semantics this module declares (top-level `[[region_split]]`
-    /// TOML entries). Empty for paint-transparent modules; the host-filtered
-    /// dispatch guard in `layer_executor.rs` uses this list. See packet 92.
+    /// TOML entries). Empty when the module declares none. Declaring a
+    /// semantic registers it in the cross-manifest aggregate at plan-build
+    /// time; it does NOT by itself gate per-layer dispatch (see `paint_only`).
+    /// See packet 92.
     pub region_splits: Vec<RegionSplitDeclaration>,
-    /// Pre-computed lookup set built from `region_splits` at load-time.
-    /// O(1) membership probe for the per-layer dispatch filter.
+    /// True when this module opts into paint-only per-layer dispatch (top-level
+    /// `paint_only = true` TOML key). Only paint-only modules populate
+    /// [`Self::region_split_semantics`]; every other module — including one
+    /// that declares `[[region_split]]` — stays dispatch-transparent and runs
+    /// on every layer. `paint_only = true` requires at least one
+    /// `[[region_split]]` declaration (`LoadErrorKind::PaintOnlyWithoutRegionSplit`).
+    pub paint_only: bool,
+    /// Pre-computed lookup set for the per-layer dispatch filter in
+    /// `layer_executor.rs`. Exactly the declared `region_splits` semantic
+    /// names when [`Self::paint_only`] is true, and empty otherwise
+    /// (paint-transparent default: runs unconditionally). O(1) membership
+    /// probe. See packet 92 and ADR-0071.
     pub region_split_semantics: std::collections::HashSet<String>,
 }
 
@@ -229,12 +241,21 @@ impl LoadedModule {
     }
 
     /// Region-split declarations parsed from the manifest `[[region_split]]`
-    /// array. Empty for paint-transparent modules.
+    /// array. Empty when the module declares none.
     pub fn region_splits(&self) -> &[RegionSplitDeclaration] {
         &self.region_splits
     }
 
-    /// Pre-computed set of declared region-split semantic names.
+    /// True when this module opted into paint-only per-layer dispatch
+    /// (top-level `paint_only = true`). Requires at least one
+    /// `[[region_split]]` declaration.
+    pub fn paint_only(&self) -> bool {
+        self.paint_only
+    }
+
+    /// Per-layer dispatch set. Exactly the declared region-split semantic
+    /// names when [`Self::paint_only`] is true; empty otherwise (the module
+    /// runs unconditionally). See ADR-0071.
     pub fn region_split_semantics(&self) -> &std::collections::HashSet<String> {
         &self.region_split_semantics
     }
@@ -270,7 +291,7 @@ pub struct LoadedModuleBuilder {
     placeholder_wasm: bool,
     provenance: ModuleProvenance,
     region_splits: Vec<RegionSplitDeclaration>,
-    region_split_semantics: std::collections::HashSet<String>,
+    paint_only: bool,
 }
 
 impl LoadedModuleBuilder {
@@ -301,7 +322,7 @@ impl LoadedModuleBuilder {
             placeholder_wasm: false,
             provenance: ModuleProvenance::External,
             region_splits: Vec::new(),
-            region_split_semantics: std::collections::HashSet::new(),
+            paint_only: false,
         }
     }
 
@@ -384,19 +405,40 @@ impl LoadedModuleBuilder {
         self
     }
 
-    /// Set region-split declarations and the pre-computed semantic lookup set.
-    pub fn region_splits(
-        mut self,
-        splits: Vec<RegionSplitDeclaration>,
-        semantics: std::collections::HashSet<String>,
-    ) -> Self {
+    /// Set the region-split declarations parsed from `[[region_split]]`.
+    ///
+    /// The per-layer dispatch set is derived in [`Self::build`] from
+    /// [`Self::paint_only`]: the declared semantics when paint_only is true,
+    /// empty otherwise (paint-transparent default — the module runs on every
+    /// layer).
+    pub fn region_splits(mut self, splits: Vec<RegionSplitDeclaration>) -> Self {
         self.region_splits = splits;
-        self.region_split_semantics = semantics;
+        self
+    }
+
+    /// Opt this module into paint-only per-layer dispatch.
+    ///
+    /// When true, the built [`LoadedModule`] carries the declared
+    /// region-split semantics in its dispatch set and the host skips the
+    /// module on any layer whose regions carry none of them. Requires at
+    /// least one `[[region_split]]` declaration; the manifest parser rejects
+    /// an empty declaration set with
+    /// [`LoadErrorKind::PaintOnlyWithoutRegionSplit`].
+    pub fn paint_only(mut self, paint_only: bool) -> Self {
+        self.paint_only = paint_only;
         self
     }
 
     /// Finalize into a [`LoadedModule`].
     pub fn build(self) -> LoadedModule {
+        let region_split_semantics = if self.paint_only {
+            self.region_splits
+                .iter()
+                .map(|declaration| declaration.semantic.clone())
+                .collect()
+        } else {
+            std::collections::HashSet::new()
+        };
         LoadedModule {
             id: self.id,
             version: self.version,
@@ -416,7 +458,8 @@ impl LoadedModuleBuilder {
             provenance: self.provenance,
             placeholder_wasm: self.placeholder_wasm,
             region_splits: self.region_splits,
-            region_split_semantics: self.region_split_semantics,
+            paint_only: self.paint_only,
+            region_split_semantics,
         }
     }
 }
@@ -509,6 +552,11 @@ pub enum LoadErrorKind {
         /// The expected priority for this core semantic.
         expected_priority: u32,
     },
+    /// Top-level `paint_only = true` was declared with no `[[region_split]]`
+    /// entry. Paint-only dispatch is meaningless without at least one
+    /// semantic to filter on, and the host would otherwise skip the module on
+    /// every layer. See ADR-0071.
+    PaintOnlyWithoutRegionSplit,
 }
 
 /// Result of scanning one or more module roots.
@@ -709,8 +757,18 @@ pub(crate) fn ingest_manifest_text(
     let config_schema = read_config_schema(&root, manifest_path)?;
     let region_splits = parse_region_splits(&root, manifest_path)?;
     validate_region_splits(&region_splits, manifest_path)?;
-    let region_split_semantics: std::collections::HashSet<String> =
-        region_splits.iter().map(|d| d.semantic.clone()).collect();
+    let paint_only = optional_bool(&root, manifest_path, "paint_only")?.unwrap_or(false);
+    if paint_only && region_splits.is_empty() {
+        return Err(LoadError {
+            path: manifest_path.to_path_buf(),
+            field: Some("paint_only".to_string()),
+            kind: LoadErrorKind::PaintOnlyWithoutRegionSplit,
+            message: "`paint_only = true` requires at least one `[[region_split]]` entry: \
+                      a paint-only module with no declared semantics would be skipped on \
+                      every layer (ADR-0071)"
+                .to_string(),
+        });
+    }
     if placeholder_wasm {
         diagnostics.push(LoadDiagnostic {
             level: DiagnosticLevel::Warning,
@@ -780,7 +838,8 @@ pub(crate) fn ingest_manifest_text(
     .layer_parallel_safe(layer_parallel_safe)
     .placeholder_wasm(placeholder_wasm)
     .provenance(provenance)
-    .region_splits(region_splits, region_split_semantics)
+    .region_splits(region_splits)
+    .paint_only(paint_only)
     .build();
 
     Ok(IngestedManifest {
@@ -1427,6 +1486,23 @@ fn required_bool(
     let value = get_value(root, field).ok_or_else(|| missing_field_error(manifest_path, field))?;
     value
         .as_bool()
+        .ok_or_else(|| type_error(manifest_path, field, "bool"))
+}
+
+/// Read an optional top-level boolean key. Absent key → `Ok(None)`; present
+/// with a non-boolean value → a `Schema` error naming the field. Used for
+/// manifest metadata such as `paint_only` that defaults to `false`.
+fn optional_bool(
+    root: &Value,
+    manifest_path: &Path,
+    field: &'static str,
+) -> Result<Option<bool>, LoadError> {
+    let Some(value) = root.get(field) else {
+        return Ok(None);
+    };
+    value
+        .as_bool()
+        .map(Some)
         .ok_or_else(|| type_error(manifest_path, field, "bool"))
 }
 

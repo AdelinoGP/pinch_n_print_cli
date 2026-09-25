@@ -452,6 +452,15 @@ group       = "Support"
   description = "Allowed positional error (mm; squared internally) for Arachne's wall simplification, replacing meshfix_maximum_deviation for the wall path (canonical `WallToolPaths::simplifyToolPaths`). Code fallback is 0.005mm (ArachneParams::default's allowed_error_distance_squared = 0.000025 mm²); the manifest default states the code fallback per the reconcile guard. The previous 0.025 here was a 5x lie against the code fallback (see D-160's reconcile follow-up)."
   group       = "Walls"
 
+# Region-split activation. Declaring `material` registers it in the
+# cross-manifest aggregate at plan-build time. `paint_only` is deliberately
+# absent (defaults to false): Arachne perimeters must run on unpainted layers
+# too, so their per-layer dispatch set stays empty (ADR-0071).
+[[region_split]]
+semantic   = "material"
+priority   = 100
+value_type = "tool_index"
+
 [hints]
 estimated-ms-per-layer = 10
 layer-parallel-safe    = true

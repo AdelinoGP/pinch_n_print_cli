@@ -529,10 +529,12 @@ fn scan_paint_data(
 ///
 /// When `paint_regions` is `None`, the output is bit-identical to the
 /// pre-packet path (invariant 9). With painting present, objects carrying a
-/// registered semantic's values (built-ins are always registered — see
-/// `seed_core_region_splits` in `crates/slicer-scheduler/src/region_split.rs`)
-/// expand one entry per canonical variant chain; with `paint_semantic_configs`
-/// empty, every chain entry's resolved config stays equal to the base's.
+/// registered semantic's values expand one entry per canonical variant chain;
+/// the registry is exactly the set of semantics declared by loaded modules
+/// (`aggregate_region_splits` in
+/// `crates/slicer-scheduler/src/region_split.rs`; ADR-0071); with
+/// `paint_semantic_configs` empty, every chain entry's resolved config stays
+/// equal to the base's.
 pub fn execute_region_mapping(
     layer_plan: &LayerPlanIR,
     projection: &RegionMappingPlanProjection<'_>,

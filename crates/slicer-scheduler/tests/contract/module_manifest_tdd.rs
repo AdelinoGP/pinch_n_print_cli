@@ -194,3 +194,86 @@ fn perimeter_modules_declare_arc_tolerance() {
     assert_eq!(schema["min"].as_float(), Some(0.0), "min in {}", path);
     assert_eq!(schema["max"].as_float(), Some(1.0), "max in {}", path);
 }
+
+// ── Core region-split manifests must stay dispatch-transparent (ADR-0071) ──
+
+/// The three shipped core manifests that declare `[[region_split]]` must NOT
+/// set `paint_only`, and no OTHER core manifest may set it either. Each core
+/// module runs on unpainted layers:
+/// - `classic-perimeters` / `arachne-perimeters` generate walls for every
+///   layer, painted or not;
+/// - `fuzzy-skin` gates on `apply_to_all || feature_flags.fuzzy_skin`, so
+///   `apply_to_all = true` must still invoke it on an unpainted layer.
+///
+/// Regressing this pin (setting `paint_only = true`) would skip the module on
+/// every layer with no matching `variant_chain` — the exact defect ADR-0071
+/// records. Fixture manifests may set it; core shipping manifests may not.
+#[test]
+fn core_manifests_are_not_paint_only() {
+    const DECLARING: &[(&str, &str)] = &[
+        ("classic-perimeters", "material"),
+        ("arachne-perimeters", "material"),
+        ("fuzzy-skin", "fuzzy_skin"),
+    ];
+
+    // The three declared expectations must actually declare their semantics.
+    for (module, semantic) in DECLARING {
+        let relative = format!("../../modules/core-modules/{module}/{module}.toml");
+        let abs_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(&relative);
+        let manifest_text = std::fs::read_to_string(&abs_path)
+            .unwrap_or_else(|e| panic!("cannot read {}: {}", abs_path.display(), e));
+        let parsed: toml::Value = toml::from_str(&manifest_text)
+            .unwrap_or_else(|e| panic!("toml parse error in {}: {}", abs_path.display(), e));
+
+        let declared: Vec<&str> = parsed["region_split"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{module} must declare [[region_split]]"))
+            .iter()
+            .filter_map(|entry| entry.get("semantic").and_then(|s| s.as_str()))
+            .collect();
+        assert!(
+            declared.contains(semantic),
+            "{module} must declare semantic {semantic}; got {declared:?}"
+        );
+    }
+
+    // Sweep every core manifest, not just the three above: a NEW core module
+    // that sets paint_only would be skipped on all unpainted layers, and a
+    // hard-coded roster would stay green. Core modules are never paint-only.
+    let core_dir =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../modules/core-modules");
+    let mut checked = 0usize;
+    for entry in std::fs::read_dir(&core_dir)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", core_dir.display()))
+    {
+        let module_dir = entry
+            .unwrap_or_else(|e| panic!("cannot read core-module dir entry: {e}"))
+            .path();
+        if !module_dir.is_dir() {
+            continue;
+        }
+        let stem = module_dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_else(|| panic!("core module dir is not UTF-8: {module_dir:?}"));
+        let manifest_path = module_dir.join(format!("{stem}.toml"));
+        let Ok(manifest_text) = std::fs::read_to_string(&manifest_path) else {
+            continue; // a dir without a same-stem manifest is not a module
+        };
+        let parsed: toml::Value = toml::from_str(&manifest_text)
+            .unwrap_or_else(|e| panic!("toml parse error in {}: {e}", manifest_path.display()));
+        assert_eq!(
+            parsed.get("paint_only").and_then(toml::Value::as_bool),
+            None,
+            "{} must not set paint_only: core modules run on unpainted layers \
+             (ADR-0071)",
+            manifest_path.display()
+        );
+        checked += 1;
+    }
+    assert!(
+        checked >= DECLARING.len(),
+        "the core-module sweep must cover at least the three declaring manifests, \
+         found {checked}"
+    );
+}

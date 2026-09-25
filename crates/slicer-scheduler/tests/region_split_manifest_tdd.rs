@@ -41,7 +41,10 @@ fn stage_fixture(name: &str) -> (TempDir, std::path::PathBuf) {
 // -- AC-1: basic round-trip ---------------------------------------------------
 
 /// AC-1: a minimal manifest with one valid `[[region_split]]` loads cleanly
-/// and the resulting `LoadedModule` exposes the declared split.
+/// and the resulting `LoadedModule` exposes the declared split. Without
+/// `paint_only = true`, the declaration activates the semantic in the
+/// cross-manifest aggregate but leaves the module dispatch-transparent
+/// (`region_split_semantics` empty ⇒ runs on every layer; ADR-0071).
 #[test]
 fn region_split_manifest_basic() {
     let (_tmp, manifest) = stage_fixture("basic.toml");
@@ -59,6 +62,74 @@ fn region_split_manifest_basic() {
     assert_eq!(decl.semantic, "material");
     assert_eq!(decl.priority, 100);
     assert_eq!(decl.value_type, RegionSplitValueType::ToolIndex);
+    assert!(
+        !module.paint_only(),
+        "paint_only must default to false when the key is absent"
+    );
+    assert!(
+        module.region_split_semantics().is_empty(),
+        "a declaration without paint_only = true must NOT gate per-layer dispatch"
+    );
+}
+
+// -- paint_only opt-in --------------------------------------------------------
+
+/// `paint_only = true` with a declaration: the module opts into per-layer
+/// filtering and its compiled dispatch set is exactly the declared semantics.
+#[test]
+fn region_split_manifest_paint_only_true_carries_semantics() {
+    let (_tmp, manifest) = stage_fixture("paint_only.toml");
+    let wasm = manifest.with_extension("wasm");
+
+    let module = load_module_from_paths(&manifest, &wasm)
+        .expect("paint_only fixture with a declaration should load");
+
+    assert!(module.paint_only(), "paint_only = true must be parsed");
+    assert_eq!(module.region_splits().len(), 1);
+    let mut semantics: Vec<&str> = module
+        .region_split_semantics()
+        .iter()
+        .map(String::as_str)
+        .collect();
+    semantics.sort_unstable();
+    assert_eq!(
+        semantics,
+        vec!["com.example.paint-only"],
+        "paint_only module's dispatch set must be exactly its declared semantics"
+    );
+}
+
+/// `paint_only = true` without any `[[region_split]]` entry is rejected with
+/// `LoadErrorKind::PaintOnlyWithoutRegionSplit`: a paint-only module with no
+/// semantics would be skipped on every layer.
+#[test]
+fn region_split_manifest_paint_only_without_declaration_rejected() {
+    let (_tmp, manifest) = stage_fixture("paint_only_without_region_split.toml");
+    let wasm = manifest.with_extension("wasm");
+
+    let err = load_module_from_paths(&manifest, &wasm)
+        .expect_err("paint_only without a region_split declaration must be rejected");
+
+    assert_eq!(
+        err.kind,
+        LoadErrorKind::PaintOnlyWithoutRegionSplit,
+        "unexpected error: {err:?}"
+    );
+    assert_eq!(err.field.as_deref(), Some("paint_only"));
+}
+
+/// A non-boolean `paint_only` is a `Schema` error naming the field (not a
+/// silent default).
+#[test]
+fn region_split_manifest_paint_only_type_mismatch_rejected() {
+    let (_tmp, manifest) = stage_fixture("paint_only_wrong_type.toml");
+    let wasm = manifest.with_extension("wasm");
+
+    let err = load_module_from_paths(&manifest, &wasm)
+        .expect_err("non-boolean paint_only must be rejected");
+
+    assert_eq!(err.kind, LoadErrorKind::Schema, "unexpected error: {err:?}");
+    assert_eq!(err.field.as_deref(), Some("paint_only"));
 }
 
 // -- AC-3: duplicate semantic rejection ---------------------------------------

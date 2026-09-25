@@ -343,6 +343,15 @@ display     = "Layer height"
 description = "OrcaSlicer coFloat key layer_height; read by run_perimeters (packet 150 step 5) alongside nozzle_diameter for bridging_flow's thick_bridges round-cross-section formula (D-104g)."
 group       = "Quality"
 
+# Region-split activation. Declaring `material` registers it in the
+# cross-manifest aggregate at plan-build time. `paint_only` is deliberately
+# absent (defaults to false): classic perimeters must run on unpainted
+# layers too, so their per-layer dispatch set stays empty (ADR-0071).
+[[region_split]]
+semantic   = "material"
+priority   = 100
+value_type = "tool_index"
+
 [hints]
 estimated-ms-per-layer = 10
 layer-parallel-safe    = true
