@@ -345,15 +345,33 @@ fn run_real_arachne_guest(layer_index: u32, wall_sequence: &str) {
 /// observable on the `Limited` top of a fully-decorated stack built by
 /// `BeadingStrategyFactory::create_stack`.
 ///
-/// OrcaSlicer ref: `BeadingStrategy.hpp:97`
-/// (`getSplitMiddleThreshold(lower_bead_count)`); `BeadingStrategy.cpp:54-57`
-/// (consumed by `RedistributeBeadingStrategy` to pick the optimal bead count).
+/// OrcaSlicer ref: `BeadingStrategy.hpp` (`getSplitMiddleThreshold` /
+/// `getAddMiddleThreshold`); consumed by `RedistributeBeadingStrategy` to pick
+/// the optimal bead count.
+///
+/// The expected values are the canonical WIDTH-denominator forms from
+/// `WallToolPaths::generate`:
+///
+/// ```text
+/// bump  = layer_height * (1 - PI/4)                    = 2000 * (1 - PI/4) units
+/// split = clamp(2 * min_bead_width / (outer_width + bump) - 1, 0.01, 0.99)
+///       = 2 * 4000 / (4000 + 429.20367...) - 1         = 0.80619375...
+/// add   = clamp(min_bead_width / (inner_width + bump), 0.01, 0.99)
+///       = 4000 / (4000 + 429.20367...)                 = 0.90309687...
+/// ```
+///
+/// with `BeadingFactoryParams::default()` (`min_output_width` = `optimal_width`
+/// = `preferred_bead_width_outer` = 4000 units, `layer_height` = 2000 units =
+/// 0.2 mm). This test previously pinned `0.99` for both, which was the
+/// pre-H2 spacing-denominator result (the `[0.01, 0.99]` clamp saturating);
+/// the canonical denominators now produce the values above. Re-derived
+/// against `WallToolPaths.cpp`'s formulas, cross-checked by
+/// `crates/slicer-core/tests/beading/factory.rs`'s
+/// `beading_factory_divides_by_extrusion_widths_not_spacings`.
 #[test]
 fn arachne_parity_beading_split_middle_threshold_exposed() {
     // AC-2: G15. The factory-computed thresholds must be observable on the
-    // `Limited` top of a fully-decorated stack. The previous `assert!(false)`
-    // body is replaced per the test's own doc note at lines 120-132 of this
-    // file.
+    // `Limited` top of a fully-decorated stack.
     let params = BeadingFactoryParams {
         print_thin_walls: true,
         outer_wall_offset: 1.0,
@@ -361,15 +379,22 @@ fn arachne_parity_beading_split_middle_threshold_exposed() {
     };
     let stack = BeadingStrategyFactory::create_stack(&params);
 
+    let bump = params.layer_height * (1.0 - std::f64::consts::FRAC_PI_4);
+    let expected_split =
+        2.0 * params.min_output_width / (params.preferred_bead_width_outer + bump) - 1.0;
+    let expected_add = params.min_output_width / (params.optimal_width + bump);
+
     let split = stack.get_split_middle_threshold();
     let add = stack.get_add_middle_threshold();
-    assert_eq!(
-        split, 0.99,
-        "AC-2 G15: get_split_middle_threshold on Limited top must equal factory-computed 0.99"
+    assert!(
+        (split - expected_split).abs() < 1e-12,
+        "AC-2 G15: get_split_middle_threshold on Limited top must equal the \
+         canonical width-denominator value {expected_split}; got {split}"
     );
-    assert_eq!(
-        add, 0.99,
-        "AC-2 G15: get_add_middle_threshold on Limited top must equal factory-computed 0.99"
+    assert!(
+        (add - expected_add).abs() < 1e-12,
+        "AC-2 G15: get_add_middle_threshold on Limited top must equal the \
+         canonical width-denominator value {expected_add}; got {add}"
     );
 }
 

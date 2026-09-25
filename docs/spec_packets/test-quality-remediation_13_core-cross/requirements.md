@@ -28,7 +28,7 @@ The §5.1 CROSS audit row flagged the SDK/core wrapper families for review under
 - Other packet directories (`core-flow-consolidation` … `core-brittle`, `core-parity`) — never modified; predecessor files are read-only context.
 - The §5.8 SDK CROSS row (host wrappers vs wasm-host simplify) and the §5.11 runtime CROSS row (clip trio ↔ `polygon_ops.rs`) — different families, owned elsewhere.
 - Row #14 `core-parity` parity additions and any OrcaSlicer parity work — none applies here; no `OrcaSlicerDocumented/` content is consulted.
-- Other tests in the touched files (`clip_polygons_union_produces_nonempty_result_for_real_input` in host_wrappers_tdd.rs is owned by the runtime clip-trio review; `empty_mesh_reports_no_bounds_hits_or_closest_point`, `closest_point_projects_queries_below_and_above_the_cube`, `ray_miss_returns_no_intersections` in aabb_tree_tdd.rs; the other offset unit tests in polygon_ops.rs) — retained untouched, protected by the AC-N1 roster pins.
+- Other tests in the touched files (`clip_polygons_union_produces_nonempty_result_for_real_input` in host_wrappers_tdd.rs is owned by the runtime clip-trio review; `empty_mesh_reports_no_bounds_hits_or_closest_point`, `closest_point_projects_queries_below_and_above_the_cube`, `ray_miss_returns_no_intersections` in aabb_tree_tdd.rs; the other offset unit tests in polygon_ops.rs) — retained untouched. AC-N1's roster pins cover the complete 12-name roster of `host_wrappers_tdd.rs` (which includes the three logging tests and `now_us_is_monotonic_within_a_thread`) and the complete 6-name roster of `aabb_tree_tdd.rs`; the untouched tests in `polygon_ops.rs` are not covered by any roster pin and rest on the comment-only diff discipline of AC-6.
 - `crates/slicer-core/tests/polygon_ops_tdd.rs` — a different test target owned by the DUP-CORE-strengthen row.
 - Adding any wrapper-vs-core equality pin for the offset pair — rejected: the wrapper body is exactly the core call (plus join conversion), so such a pin is a self-referential oracle (docs/22_test_quality.md §2.1); the retained behavior tests are the correct delegate-contract cover.
 
@@ -46,7 +46,7 @@ The §5.1 CROSS audit row flagged the SDK/core wrapper families for review under
 Reference, never copy, criteria from `packet.spec.md`.
 
 - Positive: `AC-1` (SDK offset delegate arms + new miter-limit test), `AC-2` (batch offset wrappers), `AC-3` (SDK simplify distinct), `AC-4` (SDK raycast/bounds MeshSource distinct), `AC-5` (core AabbTree counterparts), `AC-6` (core polygon-op counterparts), `AC-7` (ledger core row).
-- Negative: `AC-N1` (exact 12-name SDK roster and exact 6-name core roster in file order; required-features rejection of the bare SDK run).
+- Negative: `AC-N1` (exact 12-name SDK roster and exact 6-name core roster in file order; bare-run twelve-test roster witness — the `test` feature is satisfied by the root package's self dev-dependency, so a cargo rejection is not available; zero-match filter reports `0 passed` + `filtered out`, distinguishing it from a pass).
 - Cross-packet impact: none — exports from #11/`core-paint` and #12/`core-brittle` are zero (test-only), and this packet exports nothing itself; `core-parity` (row #14) consumes no symbol from here.
 
 ## Verification Commands
@@ -62,7 +62,7 @@ This is the authoritative full matrix; `packet.spec.md` lists only 2-3 gate comm
 | `set -euo pipefail; mkdir -p target; for t in bounds_match_unit_cube_vertex_extrema positive_z_raycast_from_below_hits_cube_bottom_face_first raycast_all_hits_returns_sorted_entry_and_exit_intersections; do cargo test -p slicer-core --features host-algos --test aabb_tree_tdd -- "$t" --nocapture 2>&1 \| tee target/test-output.log >/dev/null; grep -Eq '^test result: ok\. 1 passed; 0 failed;' target/test-output.log; done` + marker pins | AC-5: core AabbTree counterparts | FACT pass/fail |
 | `set -euo pipefail; mkdir -p target; for t in offset_round_trip_preserves_hole_nesting expolygons_simplify_preserves_square; do cargo test -p slicer-core --features host-algos --lib "$t" -- --nocapture 2>&1 \| tee target/test-output.log >/dev/null; grep -Eq '^test result: ok\. 1 passed; 0 failed;' target/test-output.log; done` + marker pins | AC-6: core polygon-op counterparts | FACT pass/fail |
 | AC-7 python ledger predicate (packet.spec.md) | AC-7: §7 core-row content | FACT pass/fail |
-| AC-N1 roster pythons + bare-run rejection (`if cargo test -p slicer-sdk --test host_wrappers_tdd -- --list ...`) | AC-N1: roster exactness + feature-flag enforcement | FACT pass/fail |
+| AC-N1 roster pythons + bare-run twelve-test roster witness + zero-match `0 passed` non-vacuity control | AC-N1: roster exactness + `test`-feature unifier witness + filter-vs-pass distinguishability | FACT pass/fail |
 | `set -euo pipefail; mkdir -p target; cargo check --workspace --all-targets 2>&1 \| tee target/core-cross-check.log >/dev/null` | compile gate incl. test targets | FACT pass/fail (exit code) |
 | `set -euo pipefail; mkdir -p target; cargo clippy --workspace --all-targets -- -D warnings 2>&1 \| tee target/core-cross-clippy.log >/dev/null` | lint gate `-D warnings` | FACT pass/fail (exit code) |
 | `cargo xtask check-literals` | struct-literal gate (no new literals expected) | FACT pass/fail |

@@ -165,6 +165,7 @@ pub struct SliceRegionViewBuilder {
     is_internal_bridge: bool,
     bridge_areas: Vec<ExPolygon>,
     internal_bridge_areas: Vec<ExPolygon>,
+    internal_bridge_angles_deg: Vec<f32>,
     bridge_orientation_deg: f32,
     sparse_infill_area: Vec<ExPolygon>,
     raft_fill: Vec<ExPolygon>,
@@ -207,6 +208,7 @@ impl SliceRegionViewBuilder {
             is_internal_bridge: false,
             bridge_areas: Vec::new(),
             internal_bridge_areas: Vec::new(),
+            internal_bridge_angles_deg: Vec::new(),
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
             raft_fill: Vec::new(),
@@ -402,6 +404,15 @@ impl SliceRegionViewBuilder {
         self
     }
 
+    /// Set the per-polygon internal bridge line directions (degrees),
+    /// index-aligned with [`Self::internal_bridge_areas`].
+    /// Mirrors [`SliceRegionView::set_internal_bridge_angles_deg`].
+    #[must_use]
+    pub fn internal_bridge_angles_deg(mut self, angles: Vec<f32>) -> Self {
+        self.internal_bridge_angles_deg = angles;
+        self
+    }
+
     /// Set the best bridge direction across all valid bridge regions (degrees).
     /// Mirrors [`SliceRegionView::set_bridge_orientation_deg`].
     #[must_use]
@@ -489,6 +500,7 @@ impl SliceRegionViewBuilder {
             tmp.set_is_internal_bridge(self.is_internal_bridge);
             tmp.set_bridge_areas(self.bridge_areas);
             tmp.set_internal_bridge_areas(self.internal_bridge_areas);
+            tmp.set_internal_bridge_angles_deg(self.internal_bridge_angles_deg);
             tmp.set_bridge_orientation_deg(self.bridge_orientation_deg);
             tmp.set_sparse_infill_area(self.sparse_infill_area);
             tmp.set_raft_fill(self.raft_fill);

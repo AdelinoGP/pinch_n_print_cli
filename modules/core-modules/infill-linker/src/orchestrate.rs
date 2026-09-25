@@ -90,7 +90,13 @@ impl RoleBoundaries {
             ExtrusionRole::SparseInfill => Some(self.sparse.clone()),
             ExtrusionRole::TopSolidInfill => Some(self.top.clone()),
             ExtrusionRole::BottomSolidInfill => Some(self.bottom.clone()),
-            ExtrusionRole::BridgeInfill => Some(self.bridge.clone()),
+            // The host partition folds internal-bridge sites into
+            // `bridge_areas`; canonical `Fill.cpp::group_fills` gives
+            // `erInternalBridgeInfill` its own surface fill, so its connectors
+            // must stay inside that partition rather than the whole fill area.
+            ExtrusionRole::BridgeInfill | ExtrusionRole::InternalBridgeInfill => {
+                Some(self.bridge.clone())
+            }
             // `solid_role` in rectilinear-infill / gyroid-infill relabels a
             // top or bottom shell at depth ≥ 1 as InternalSolidInfill, so its
             // legal area is the union of the two solid-shell polygons.
@@ -567,14 +573,11 @@ fn link_region_group(
     for &index in group {
         let spacing_mm = spacing(records, index, bucket);
         let anchor = anchor(records, index, bucket);
+        let raw = boundary_for(boundaries, index);
         let boundary = if group.len() == 1 {
-            ExPolygonWithOffset::for_infill_overlap(
-                boundary_for(boundaries, index),
-                infill_overlap,
-                spacing_mm,
-            )
-            .polygons_outer()
-            .to_vec()
+            ExPolygonWithOffset::for_infill_overlap(raw, infill_overlap, spacing_mm)
+                .polygons_outer()
+                .to_vec()
         } else {
             mixed_boundary(boundaries, group, index, infill_overlap, spacing_mm)
         };
@@ -583,7 +586,11 @@ fn link_region_group(
             .cloned()
             .map(|path| (index, path))
             .collect::<Vec<_>>();
-        let (linked, _) = link_paths_without_offset(tagged, &boundary, spacing_mm, anchor);
+        let (linked, _) = if group.len() == 1 {
+            link_paths_against(tagged, &boundary, raw, spacing_mm, anchor)
+        } else {
+            link_paths_without_offset(tagged, &boundary, spacing_mm, anchor)
+        };
         append_paths(&mut buckets[records[index].prior_index], bucket, linked);
     }
 }
@@ -759,7 +766,37 @@ fn link_paths(
     anchor: AnchorParams,
 ) -> (Vec<ExtrusionPath3D>, Vec<SourceSegment>) {
     let offset = ExPolygonWithOffset::for_infill_overlap(boundary, infill_overlap, spacing_mm);
-    link_paths_without_offset(tagged, offset.polygons_outer(), spacing_mm, anchor)
+    link_paths_against(tagged, offset.polygons_outer(), boundary, spacing_mm, anchor)
+}
+
+/// Clips and links `tagged` against the overlap-offset `boundary`, falling
+/// back to the raw (un-offset) boundary when the offset collapses under a
+/// degenerate ribbon the emitter produced.
+///
+/// L45 benchy production case: `bridge_areas[8]` is a 0.0175 mm-wide ribbon
+/// (two near-coincident rails ~175 units apart) while the overlap inset is
+/// -0.0225 mm — wider than the ribbon — so the offset boundary vanishes and
+/// the 9.45 mm scan it contains clips away to nothing. The ribbon is still
+/// the emitter's legal fill domain (the scan kept its full length against
+/// the raw ring), so clipping against the raw boundary recovers it.
+/// Canonical never faces this choice: its emit-time scan and link-time
+/// boundary are the same `ExPolygonWithOffset` object
+/// (`FillRectilinear::fill_surface_by_lines`), so a collapsed offset is a
+/// no-fill verdict shared by both stages; PnP's split emit/link stages must
+/// re-admit the scan the emitter already produced.
+fn link_paths_against(
+    tagged: Vec<(usize, ExtrusionPath3D)>,
+    boundary: &[ExPolygon],
+    raw_boundary: &[ExPolygon],
+    spacing_mm: f32,
+    anchor: AnchorParams,
+) -> (Vec<ExtrusionPath3D>, Vec<SourceSegment>) {
+    let (linked, source_segments) =
+        link_paths_without_offset(tagged.clone(), boundary, spacing_mm, anchor);
+    if !linked.is_empty() {
+        return (linked, source_segments);
+    }
+    link_paths_without_offset(tagged, raw_boundary, spacing_mm, anchor)
 }
 
 fn link_paths_without_offset(

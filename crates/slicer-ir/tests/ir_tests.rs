@@ -843,14 +843,16 @@ fn bridge_detector_schema_versions_are_constant_sourced() {
     //       minor bump to 4.8.0 by packet 233 — additive InternalBridgeInfill role.
     //       minor bump to 4.9.0 by packet 240a — additive `GlobalLayer.is_raft`
     //       and `SlicedRegion.raft_fill` raft-substrate carriers.
+    //       minor bump to 4.10.0 — additive
+    //       `SlicedRegion.internal_bridge_angles_deg` carrier.
     assert_eq!(
         slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
         slicer_ir::SemVer {
             major: 4,
-            minor: 9,
+            minor: 10,
             patch: 0
         },
-        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (4, 9, 0)"
+        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (4, 10, 0)"
     );
 
     // (c)

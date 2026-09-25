@@ -100,7 +100,24 @@ pub(crate) fn perimeter_source_regions(slice: &slicer_ir::SliceIR) -> Vec<slicer
             restore!(top_solid_fill);
             restore!(sparse_infill_area);
             restore!(internal_solid_fill);
-            restore!(internal_bridge_areas);
+            // Internal-bridge polygons carry an index-aligned angle each, so
+            // they are concatenated, never unioned: a union would merge
+            // polygons and break the polygon/angle pairing.
+            if !sub_region.internal_bridge_areas.is_empty() {
+                if !(base.internal_bridge_angles_deg.is_empty()
+                    && sub_region.internal_bridge_angles_deg.is_empty())
+                {
+                    base.internal_bridge_angles_deg = (0..base.internal_bridge_areas.len())
+                        .map(|index| base.internal_bridge_angle_deg(index))
+                        .chain(
+                            (0..sub_region.internal_bridge_areas.len())
+                                .map(|index| sub_region.internal_bridge_angle_deg(index)),
+                        )
+                        .collect();
+                }
+                base.internal_bridge_areas
+                    .extend(sub_region.internal_bridge_areas.iter().cloned());
+            }
             restore!(raft_fill);
         }
     }

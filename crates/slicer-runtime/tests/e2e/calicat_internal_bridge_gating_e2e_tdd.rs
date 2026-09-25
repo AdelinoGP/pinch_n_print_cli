@@ -9,8 +9,11 @@
 //!    to the `Internal Bridge` one (DEV-153 first half, closed by
 //!    SchemaBridgeMap ticket 19). Measured on this fixture: 3 internal-bridge
 //!    layers at z = 4.45 / 18.45 / 29.45 (the canonical site set locked by
-//!    `calicat_internal_bridge_arbiter_e2e_tdd`), combined 32.56 mm of
-//!    filament (band re-derived 2026-09-23; provenance at the AC-6 assert).
+//!    `calicat_internal_bridge_arbiter_e2e_tdd`), combined 24.65 mm of
+//!    geometry-only bridge filament on the merged tree (master's 24.95 mm once
+//!    the duplicate InfillPostProcess internal-bridge producer was removed;
+//!    the merged value subtracts the layer-boundary retract/prime rows the
+//!    parser used to attribute to whichever `;TYPE:` label preceded them).
 //!    The remaining DEV-153 gap is the distance to canonical's ~950.56 mm of
 //!    bridge path: most calicat bridge geometry is still not classified as
 //!    bridge at all.
@@ -120,7 +123,13 @@ fn parse_layers(gcode: &str) -> Vec<Layer> {
         if let Some(e_val) = e {
             let delta = if relative_e { e_val } else { e_val - last_e };
             last_e = e_val;
-            if delta > 0.0 {
+            // Geometry-only accounting: an E-only row (retract/prime, no X/Y)
+            // is firmware bookkeeping, not an extrusion path. Counting it made
+            // the combined-bridge sum depend on which `;TYPE:` label happened
+            // to carry the layer-boundary prime (4 x 2.00 mm on some trees),
+            // not on the emitted bridge geometry.
+            let is_path_move = x.is_some() || y.is_some();
+            if delta > 0.0 && is_path_move {
                 let layer = layers.last_mut().expect("E move before any ;Z: header");
                 *layer.extrusion.entry(current_type.clone()).or_insert(0.0) += delta;
                 let dx = new_pos.0 - pos.0;
@@ -243,25 +252,27 @@ fn calicat_internal_bridge_gating_e2e_tdd() {
         );
     }
 
-    // Combined bridge-labelled extrusion (Bridge + Internal Bridge). This is
-    // the conservation check that makes the label flip above a RELABEL rather
-    // than new or lost geometry: the sites moved from the `Bridge` bucket to
-    // the `Internal Bridge` one, so only the per-role flow/density differ.
+    // Combined bridge-labelled extrusion (Bridge + Internal Bridge), geometry
+    // only. This is the conservation check that makes the label flip above a
+    // RELABEL rather than new or lost geometry: the sites moved from the
+    // `Bridge` bucket to the `Internal Bridge` one, so only the per-role
+    // flow/density differ.
     //
-    // Band re-derived 2026-09-23. The 25.39/25.49 pair recorded at 3b2d17b1 is
-    // provenance-damaged: it cannot be decomposed under this file's own parser,
-    // whose external-row baseline of 324.6 mm is alone ~13.47 mm of filament at
-    // the verified 0.0415 E/mm (0.525 line x 0.2 layer x 0.95 bridge_flow),
-    // leaving under 2 mm for the internal-bridge sites' ~14.7 mm. Verified
-    // state today: move-E 24.56 mm over 592.5 mm of bridge path (237.6 mm
-    // external + 354.9 mm internal-bridge) plus 4 x 2.00 mm unretract
-    // (`G1 E2.00000`; PnP's `retract_length` default 2.0 — canonical travel
-    // `retraction_length` 0.8 stays the unimplemented gap marked in
-    // docs/ORCA_CONFIG_REFERENCE.md). Internal-bridge sites are canonical-
-    // locked by calicat_internal_bridge_arbiter_e2e_tdd (23.2/8.4/143.2 mm^2
-    // from tmp/calicat_orcaSlicer.gcode), and 592.5 mm sits closer to
-    // canonical's ~950.56 mm than the 25.49-era capture, so the band moved
-    // canonical-ward with the classification fixes since 3b2d17b1.
+    // Single internal-bridge producer (origin/master 1124626a): the duplicate
+    // InfillPostProcess producer was removed, so canonical emits each
+    // stInternalBridge surface once, from its fill. Internal-bridge sites are
+    // locked to the canonical set by calicat_internal_bridge_arbiter_e2e_tdd
+    // (23.2/8.4/143.2 mm^2 from tmp/calicat_orcaSlicer.gcode).
+    //
+    // Band provenance (origin/master): 25.39 mm before the internal-bridge
+    // split, 25.49 mm after, 24.95 mm once the duplicate producer was removed.
+    // On the merged tree this same check measures 24.64 mm: 594.5 mm of bridge
+    // path at 0.04148 mm filament/mm (the 0.09975 mm^2 extrusion cross-section
+    // = 0.525 line x 0.2 layer x 0.95 bridge_flow, over the 2.405 mm^2
+    // 1.75 mm filament). `parse_layers` counts only rows carrying an X/Y, so
+    // layer-boundary retract/prime rows (`G1 E2.00000`, no coordinates) no longer ride whichever `;TYPE:` label
+    // happened to precede them — that accounting made the sum depend on prime
+    // placement (4 x 2.00 mm on this tree), not on emitted geometry.
     let combined: f64 = layers
         .iter()
         .map(|layer| {
@@ -271,11 +282,13 @@ fn calicat_internal_bridge_gating_e2e_tdd() {
         .sum();
     println!("combined bridge-labelled extrusion = {combined:.2} mm");
     assert!(
-        (31.0..=34.0).contains(&combined),
+        (24.0..=27.0).contains(&combined),
         "AC-6: combined bridge-labelled extrusion = {combined:.2} mm, expected the \
-         re-derived conserved total (24.56 move-E + 4 x 2.00 unretract = 32.56; \
-         provenance in the comment above). A large move means geometry was \
-         gained or lost, not relabelled."
+         relabel to conserve it (measured: 25.39 mm before the internal-bridge \
+         split, 25.49 mm after, 24.95 mm once the duplicate InfillPostProcess \
+         internal-bridge producer was removed: canonical emits each \
+         stInternalBridge surface once, from its fill). A large move means \
+         geometry was gained or lost, not relabelled."
     );
 
     // (3) External-row guard at Z≈3.2: dominant angle within [85°, 95°].

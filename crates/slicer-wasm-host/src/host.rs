@@ -191,6 +191,9 @@ pub struct SliceRegionData {
     pub bridge_areas: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Per-layer internal (over-sparse-infill) bridge polygons.
     pub internal_bridge_areas: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
+    /// Bridge line direction (degrees) per `internal_bridge_areas` polygon,
+    /// index-aligned. Empty = fall back to `bridge_orientation_deg`.
+    pub internal_bridge_angles_deg: Vec<f32>,
     /// Best bridge direction across all valid bridge regions (degrees).
     pub bridge_orientation_deg: f32,
     /// Sparse-only infill polygon after host-side fill partition.
@@ -2801,6 +2804,7 @@ impl hs::Host for HostExecutionContext {
             print_thin_walls: params.print_thin_walls,
             min_feature_size: params.min_feature_size as f64,
             min_bead_width: params.min_bead_width as f64,
+            layer_height: params.layer_height as f64,
             wall_transition_length: params.wall_transition_length as f64,
             wall_transition_angle: params.wall_transition_angle as f64,
             initial_layer_min_bead_width: params.initial_layer_min_bead_width as f64,
@@ -3015,6 +3019,7 @@ mod region_origin_tests {
                     is_bridge: false,
                     bridge_areas: Vec::new(),
                     internal_bridge_areas: Vec::new(),
+                    internal_bridge_angles_deg: Vec::new(),
                     bridge_orientation_deg: 0.0,
                     sparse_infill_area: Vec::new(),
                     raft_fill: Vec::new(),
@@ -3387,6 +3392,14 @@ impl ir::HostSliceRegionView for HostExecutionContext {
         self.runtime_reads
             .push(String::from("SliceIR.regions.internal-bridge-areas"));
         Ok(self.table.get(&self_)?.internal_bridge_areas.clone())
+    }
+    fn internal_bridge_angles_deg(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<Vec<f32>> {
+        self.runtime_reads
+            .push(String::from("SliceIR.regions.internal-bridge-angles-deg"));
+        Ok(self.table.get(&self_)?.internal_bridge_angles_deg.clone())
     }
     fn bridge_orientation_deg(
         &mut self,

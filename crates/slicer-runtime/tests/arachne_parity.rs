@@ -247,11 +247,17 @@ fn native_overhang_region(
 /// STALE_DOC: `wall_transition_filter_deviation` IS consumed by compute
 /// (D-143 closed — `ArachneParams.transition_filter_dist` →
 /// `BeadingFactoryParams` → `DistributedBeadingStrategy::get_transition_filter_dist`,
-/// used by `crates/slicer-core/src/skeletal_trapezoidation/centrality.rs:162`
-/// and `propagation.rs:670,719`). The manifest description at
-/// `arachne-perimeters.toml:64` still says "reserved, not yet read by compute".
+/// which canonical `SkeletalTrapezoidation::filterTransitionMids` takes as its
+/// `allowed_filter_deviation`; see `filter_transition_mids` in
+/// `crates/slicer-core/src/skeletal_trapezoidation/propagation.rs`). The
+/// centrality outer-edge filter is a SEPARATE strategy-derived value
+/// (`getTransitionThickness(0) / 2`, canonical `updateIsCentral`), so this key
+/// never feeds `filter_central`. The manifest description at
+/// `arachne-perimeters.toml`'s `[config.schema.wall_transition_filter_deviation]`
+/// previously said "reserved, not yet read by compute".
 ///
-/// OrcaSlicer ref: `PrintConfig.cpp:7180-7193`; `SkeletalTrapezoidation.cpp:820-956`.
+/// OrcaSlicer ref: `PrintConfig.cpp`'s `wall_transition_filter_deviation`
+/// definition; `SkeletalTrapezoidation::filterTransitionMids`.
 #[test]
 fn arachne_parity_stale_doc_wall_transition_filter_deviation_description() {
     let m = manifest();
@@ -270,11 +276,10 @@ fn arachne_parity_stale_doc_wall_transition_filter_deviation_description() {
          expected: the manifest description reflects that the key IS consumed \
          by the compute path (D-143 closed; transition_filter_dist wired \
          through BeadingFactoryParams -> DistributedBeadingStrategy::\
-         get_transition_filter_dist, used by centrality.rs:162 and \
-         propagation.rs:670,719) | got: arachne-perimeters.toml:64's \
-         [config.schema.wall_transition_filter_deviation].description still \
-         reads \"reserved, not yet read by compute\" — stale since D-143 | ref: \
-         PrintConfig.cpp:7180-7193"
+         get_transition_filter_dist, consumed by filter_transition_mids) | \
+         got: [config.schema.wall_transition_filter_deviation].description \
+         still reads \"reserved, not yet read by compute\" — stale since \
+         D-143 | ref: PrintConfig.cpp's wall_transition_filter_deviation definition"
     );
 }
 
@@ -586,17 +591,20 @@ fn arachne_parity_arachne_path_thin_wall_loop_type_emitted() {
 // registered and honored
 // ====================================================================================
 
-/// `precise_outer_wall` is now registered in `arachne-perimeters.toml` and
-/// gated on `precise_outer_wall && wall_sequence == "InnerOuter"`, offsetting
-/// the outer wall's toolpath by `-(preferred_bead_width_outer/2 -
-/// optimal_width/2)`, mirroring classic
-/// (`classic-perimeters/src/lib.rs:176-178, 545, 712`, T-053). Rewritten
+/// `precise_outer_wall` is registered in `arachne-perimeters.toml` and gated on
+/// `precise_outer_wall && wall_sequence == "InnerOuter"`. Canonical
+/// `process_arachne` moves the outline shrink and `wall_0_inset` together
+/// (`PerimeterGenerator.cpp`), so the outer wall stays at
+/// `ext_perimeter_width / 2` from the model boundary under either gate and the
+/// gate's observable is the INNER wall moving inward by `bump / 2`. Rewritten
 /// (packet 148 AC-9) to drive `ArachnePerimeters::run_perimeters` natively
-/// instead of substring-matching source text — mirrors
-/// `precise_outer_wall_tdd.rs`.
+/// instead of substring-matching source text; mirrors
+/// `precise_outer_wall_tdd.rs`, which carries the oracle derivation.
 ///
-/// OrcaSlicer ref: `PerimeterGenerator.cpp:2146-2158`;
-/// `OuterWallInsetBeadingStrategy.cpp:44-60`; `PrintConfig.cpp:1484-1489`.
+/// OrcaSlicer ref: `process_arachne` (`PerimeterGenerator.cpp`);
+/// `OuterWallInsetBeadingStrategy::compute`; `PrintConfig.cpp`'s
+/// `precise_outer_wall` definition. Oracle-measured (2.4.1): outer 95.250 ->
+/// 95.250, inner 95.657 -> 95.679 on the fixture below.
 #[test]
 fn arachne_parity_arachne_path_precise_outer_wall_registered() {
     assert!(
@@ -606,16 +614,15 @@ fn arachne_parity_arachne_path_precise_outer_wall_registered() {
 
     const OUTER_WIDTH_MM: f32 = 0.5;
     const SPACING_WIDTH_MM: f32 = 0.4;
-    const LAYER_HEIGHT_MM: f64 = 0.2; // manifest default, held explicitly below (packet 06 5c)
-                                      // Orca-parity precise-outer-wall inset: wall_0_inset =
-                                      // -(ext_perimeter_width/2 - ext_perimeter_spacing/2). Because spacing =
-                                      // width - layer_height*(1 - PI/4) (line_width_to_spacing), this reduces
-                                      // to the WIDTH-INDEPENDENT expression below: -layer_height*(1-PI/4)/2 ==
-                                      // -0.0214602 for LAYER_HEIGHT_MM = 0.2. Was `-0.05` (a raw-width-era
-                                      // value, stale after the AC-3 spacing conversion); corrected in packet
-                                      // 150 Step 4 alongside the lib.rs fix that pairs the outer wall's own
-                                      // spacing with its own raw width in `outer_wall_offset`.
-    const EXPECTED_OFFSET_MM: f64 = -(LAYER_HEIGHT_MM * (1.0 - std::f64::consts::PI / 4.0)) / 2.0;
+    const LAYER_HEIGHT_MM: f64 = 0.2; // held explicitly below by the packet 06 5c bound-view baseline
+    const HALF_SIDE_MM: f64 = 5.0;
+    /// `width - spacing = layer_height * (1 - PI/4)`; the gate's observable is
+    /// the inner wall moving inward by half of it (oracle +0.0220 here).
+    const BUMP_MM: f64 = LAYER_HEIGHT_MM * (1.0 - std::f64::consts::PI / 4.0);
+    const EXPECTED_INNER_DELTA_MM: f64 = BUMP_MM / 2.0;
+    /// Canonical outer-bead centreline distance from the model boundary, on
+    /// BOTH gates: the deeper outline shrink is cancelled by `wall_0_inset`.
+    const EXPECTED_OUTER_FROM_BOUNDARY_MM: f64 = OUTER_WIDTH_MM as f64 / 2.0;
     const TOLERANCE_MM: f32 = 1e-3;
 
     let make_config = |precise_outer_wall: bool| -> ConfigView {
@@ -648,7 +655,7 @@ fn arachne_parity_arachne_path_precise_outer_wall_registered() {
             .float("seam_candidate_angle_threshold_deg", 30.0)
             .build()
     };
-    let run_and_get_outer_wall = |config: &ConfigView| -> slicer_ir::WallLoop {
+    let run_and_get_wall = |config: &ConfigView, perimeter_index: u32| -> slicer_ir::WallLoop {
         let module = ArachnePerimeters::from_config(config).unwrap();
         let regions = vec![native_square_region(10.0, 0.2)];
         let paint = PaintRegionLayerView::new(0);
@@ -659,8 +666,10 @@ fn arachne_parity_arachne_path_precise_outer_wall_registered() {
         output
             .wall_loops()
             .iter()
-            .find(|w| w.perimeter_index == 0)
-            .expect("a wall loop with perimeter_index == 0 must be emitted")
+            .find(|w| w.perimeter_index == perimeter_index)
+            .unwrap_or_else(|| {
+                panic!("a wall loop with perimeter_index == {perimeter_index} must be emitted")
+            })
             .clone()
     };
     let min_x = |wall: &slicer_ir::WallLoop| -> f32 {
@@ -671,17 +680,39 @@ fn arachne_parity_arachne_path_precise_outer_wall_registered() {
             .fold(f32::INFINITY, f32::min)
     };
 
-    let outer_off = run_and_get_outer_wall(&make_config(false));
-    let outer_on = run_and_get_outer_wall(&make_config(true));
-    let observed_delta = (min_x(&outer_on) - min_x(&outer_off)) as f64;
+    let outer_off = run_and_get_wall(&make_config(false), 0);
+    let outer_on = run_and_get_wall(&make_config(true), 0);
+    let inner_off = run_and_get_wall(&make_config(false), 1);
+    let inner_on = run_and_get_wall(&make_config(true), 1);
 
+    // Canonical: the gate does not move the outer wall.
+    let outer_delta = (min_x(&outer_on) - min_x(&outer_off)) as f64;
     assert!(
-        (observed_delta - EXPECTED_OFFSET_MM).abs() < TOLERANCE_MM as f64,
-        "expected outer wall min-x to shift by {EXPECTED_OFFSET_MM} mm when \
-         precise_outer_wall is gated on, observed shift {observed_delta} mm \
-         (off min-x={}, on min-x={})",
+        outer_delta.abs() < TOLERANCE_MM as f64,
+        "the precise gate must not move the outer wall (outline shrink and \
+         wall_0_inset cancel on the outermost bead; oracle delta 0.000); \
+         observed {outer_delta} mm (off min-x={}, on min-x={})",
         min_x(&outer_off),
         min_x(&outer_on)
+    );
+
+    // Canonical: it sits at ext_perimeter_width / 2 from the boundary.
+    let outer_from_boundary = (-HALF_SIDE_MM - min_x(&outer_on) as f64).abs();
+    assert!(
+        (outer_from_boundary - EXPECTED_OUTER_FROM_BOUNDARY_MM).abs() < TOLERANCE_MM as f64,
+        "outer wall must sit {EXPECTED_OUTER_FROM_BOUNDARY_MM} mm from the model \
+         boundary with the gate on; measured {outer_from_boundary} mm"
+    );
+
+    // Canonical: the inner wall moves inward by bump/2.
+    let inner_delta = (min_x(&inner_on) - min_x(&inner_off)) as f64;
+    assert!(
+        (inner_delta - EXPECTED_INNER_DELTA_MM).abs() < TOLERANCE_MM as f64,
+        "expected inner wall min-x to shift by {EXPECTED_INNER_DELTA_MM} mm when \
+         precise_outer_wall is gated on, observed shift {inner_delta} mm \
+         (off min-x={}, on min-x={})",
+        min_x(&inner_off),
+        min_x(&inner_on)
     );
 }
 

@@ -58,7 +58,7 @@ Every test invocation tees to `target/test-output.log`; the log is the failure-e
 - `docs/08_coordinate_system.md` - direct bounded read of the coordinate rule and conversion policy.
 - `docs/21_data_defaults_and_fixtures.md` - implementation-time fixture and literal gate authority.
 - `docs/19_visual_debug.md` and `docs/17_agent_debugging.md` - bounded delegated pipeline diagnosis context where needed.
-- `tmp/perf-next/DESIGN-DECISIONS.md` - confirmed design input, read in bounded slices; historical provenance only. The packet's own design/plan files carry the settled normative contracts; this scratch record is not an implementation dependency (it is gitignored under `tmp/`).
+- `docs/specs/perf-vs-orca/evidence/perf-next/DESIGN-DECISIONS.md` - confirmed design input, read in bounded slices; historical provenance only. The packet's own design/plan files carry the settled normative contracts; this scratch record is not an implementation dependency (it is gitignored under `tmp/`).
 - `docs/23_controlled_perimeter_builds.md` - new same-packet doc created in Step 10; contains the controlled-build policy grammar, mode rules, and corpus layout. Slot 23 is the next free `docs/NN_` number today (`docs/22_test_quality.md` occupies 22); re-derive with `ls docs/2*.md` at creation time.
 
 ## Doc Impact Statement (Required)

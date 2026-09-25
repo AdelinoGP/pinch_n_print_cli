@@ -775,6 +775,12 @@ fn lightning_generator_deterministic() {
         .collect();
     let config = ResolvedConfig {
         sparse_fill_holder: String::from("lightning-infill"),
+        // Packet 04: the host expands the `line_width = 0` auto sentinel to
+        // `1.125 * nozzle_diameter` (0.45 at the 0.4 default) before the
+        // generator sees it; `resolve_role_width` no longer performs that
+        // fallback, so the fixture carries the expanded width. A raw 0 would
+        // make the generator's spacing zero.
+        line_width: 0.45,
         ..ResolvedConfig::default()
     };
     let first_ir = slicer_core::algos::lightning::generate_lightning_trees(&slices, &config)

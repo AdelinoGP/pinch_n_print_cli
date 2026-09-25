@@ -80,12 +80,12 @@ max-ir-schema     = "5.0.0"
   advanced    = true
 
   [config.schema.min_bead_width]
-  type        = "float"
-  default     = 4000
+  type        = "percent"
+  default     = "85%"
   min         = 0
-  unit        = "units"
+  unit        = "%"
   display     = "Minimum bead width"
-  description = "Fixed bead width WideningBeadingStrategy emits for regions below min_feature_size. OrcaSlicer coPercent default 100% of nozzle diameter; resolved here against a 0.4mm nozzle."
+  description = "Width of the bead that replaces thin features (below min_feature_size), and the base of WallToolPaths' wall_split_middle_threshold / wall_add_middle_threshold, which place the bead-count transitions. OrcaSlicer PrintConfig coPercent default 85% of nozzle diameter; resolved against nozzle_diameter."
   group       = "Arachne"
   advanced    = true
 
@@ -95,7 +95,7 @@ max-ir-schema     = "5.0.0"
   min         = 0
   unit        = "units"
   display     = "Wall transition filter deviation"
-  description = "Margin extending the extrusion-width range to reduce back-and-forth transitions between wall counts. Maps to DistributedBeadingStrategy's internal transition_filter_dist field and is consumed by the centrality/propagation path (skeletal_trapezoidation/centrality.rs:162, propagation.rs:670,719). OrcaSlicer coPercent default 25% of nozzle diameter; resolved here against a 0.4mm nozzle."
+  description = "Margin extending the extrusion-width range to reduce back-and-forth transitions between wall counts. Canonical allowed_filter_deviation: the line-width deviation SkeletalTrapezoidation::filterTransitionMids may introduce when it dissolves a marginal bead-count region (filter_transition_mids in skeletal_trapezoidation/propagation.rs). Carried as ArachneParams::transition_filter_dist. OrcaSlicer coPercent default 25% of nozzle diameter; resolved here against a 0.4mm nozzle. NOT the centrality outer-edge filter: canonical derives that from the beading strategy (getTransitionThickness(0) / 2), which the pipeline resolves from the constructed stack."
   group       = "Arachne"
   advanced    = true
 

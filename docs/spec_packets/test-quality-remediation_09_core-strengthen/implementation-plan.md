@@ -122,7 +122,7 @@ Aggregate context cost: `S`.
 - Every pipe-suffixed acceptance command returns PASS through its delegated runtime check.
 - The `core` ledger row is updated by the implementation worker through the bounded plan dispatch; AC-5 proves the actual row and the packet author does not edit the plan during generation.
 - The queue remains parent-owned and is not changed by this packet’s implementation step.
-- `packet.spec.md` remains `draft` until independent preflight and later acceptance; no implementation result is claimed here.
+- `packet.spec.md` moved to `implemented` on 2026-09-14 after the AC-1 through AC-5 acceptance commands and the workspace gates passed; the implementation result is recorded in the §7 `core` row.
 
 ## Acceptance Ceremony
 

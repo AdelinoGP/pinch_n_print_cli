@@ -4,7 +4,7 @@
 
 - Grouped task IDs: `core/BRITTLE`
 - Backlog source: `docs/specs/test-quality-remediation-plan.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `S`
 
 ## Problem Statement

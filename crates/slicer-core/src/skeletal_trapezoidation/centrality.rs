@@ -66,12 +66,15 @@ const EPS: f64 = 1e-6;
 /// radians and feeds the `sin(angle/2)` term directly.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CentralityParams {
-    /// `outer_edge_filter_length` proxy: an edge whose deepest endpoint has
+    /// Canonical `outer_edge_filter_length`: an edge whose deepest endpoint has
     /// `distance_to_boundary` below this threshold is forced non-central.
     /// Mirrors OrcaSlicer's
     /// `outer_edge_filter_length = beading_strategy.getTransitionThickness(0) / 2`.
-    /// Upstream this is a derived beading-strategy value; here it is an
-    /// explicit parameter so `filter_central` stays strategy-agnostic.
+    /// Upstream this is a derived beading-strategy value; [`crate::arachne::pipeline`]
+    /// resolves it from the constructed stack, and it stays an explicit
+    /// parameter here so `filter_central` remains strategy-agnostic.
+    /// NOT the configured `wall_transition_filter_deviation` — that is
+    /// canonical's `allowed_filter_deviation` for `filter_transition_mids`.
     pub transition_filter_dist: f64,
     /// Minimum `distance_to_boundary` an edge's deeper endpoint must reach
     /// to ever be considered central. Kept for backward compatibility with

@@ -90,4 +90,4 @@ The five surfaces are intentionally split so no step edits more than two files; 
 
 ## Open Questions
 
-None. The packet is intentionally `draft` pending independent preflight; no activation or implementation decision is being made here.
+None. Independent preflight passed on 2026-09-10, and the packet was activated and implemented under an explicit user request on 2026-09-14 with the AC-1 through AC-5 matrix green.

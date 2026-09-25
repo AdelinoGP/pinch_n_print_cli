@@ -1,0 +1,9 @@
+$h='tmp/alloc-bench/run_bench.ps1'
+$batch=Get-Date -Format 'yyyyMMdd-HHmmss'
+$runDir="tmp/perf-flags/quiet-validation/validated-runs/supports-on-$batch"
+$configs=@{classic='tmp/perf-flags/quiet-validation/benchy-supports-on-classic.json';arachne='tmp/perf-flags/quiet-validation/benchy-supports-on-arachne.json'}
+$warm=Join-Path $runDir 'warmups.csv'
+$jobs=@(@('baseline','classic'),@('candidate','classic'),@('baseline','arachne'),@('candidate','arachne'))
+foreach($j in $jobs){$side=$j[0];$gen=$j[1];$cfg=$configs[$gen];$exe=if($side -eq 'baseline'){'tmp/perf-flags/baseline-artifacts/pnp_cli.exe'}else{'target/release/pnp_cli.exe'};$mods=if($side -eq 'baseline'){'tmp/perf-flags/baseline-artifacts/core-modules'}else{'modules/core-modules'};$label="validated-supports-$gen-$side-warmup";& pwsh -NoProfile -File $h -ExePath $exe -InputModel 'tmp/3dbenchy.stl' -Config $cfg -ModuleDir $mods -OutputPath (Join-Path $runDir "$label.gcode") -Threads 12 -Warmup -Label $label -ResultsPath $warm -ExpectedGenerator $gen;if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}}
+$csv=Join-Path $runDir 'measured.csv';$schedule=@('baseline','candidate','candidate','baseline','candidate','baseline','baseline','candidate')
+foreach($gen in @('classic','arachne')){$cfg=$configs[$gen];$i=0;foreach($side in $schedule){$i++;$exe=if($side -eq 'baseline'){'tmp/perf-flags/baseline-artifacts/pnp_cli.exe'}else{'target/release/pnp_cli.exe'};$mods=if($side -eq 'baseline'){'tmp/perf-flags/baseline-artifacts/core-modules'}else{'modules/core-modules'};$label="validated-supports-$gen-$side-$i";& pwsh -NoProfile -File $h -ExePath $exe -InputModel 'tmp/3dbenchy.stl' -Config $cfg -ModuleDir $mods -OutputPath (Join-Path $runDir "$label.gcode") -Threads 12 -Label $label -ResultsPath $csv -ExpectedGenerator $gen;if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}}}

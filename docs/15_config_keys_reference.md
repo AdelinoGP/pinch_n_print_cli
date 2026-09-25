@@ -66,7 +66,7 @@ is the authoritative catalog of their defaults and ranges.
 | `layer_height` | float | `0.2` | [0.01, 1.0] | — | `arachne-perimeters` |
 | `line_width` | float | `0` | [0.0, 2.0] | — | `arachne-perimeters` |
 | `max_bead_count` | int | `0` | >= 0.0 | — | `arachne-perimeters` |
-| `min_bead_width` | float | `4000` | >= 0.0 | — | `arachne-perimeters` |
+| `min_bead_width` | percent | `"85%"` | >= 0.0 | — | `arachne-perimeters` |
 | `min_central_distance` | float | `0` | >= 0.0 | — | `arachne-perimeters` |
 | `min_feature_size` | percent | `"25%"` | >= 0.0 | — | `arachne-perimeters` |
 | `min_length_factor` | float | `0.5` | [0.0, 2.0] | — | `arachne-perimeters` |
@@ -342,8 +342,10 @@ sites are qualified against the committed layer below via
 `9*spacing^2` gate applied; expansion multiplier 3), and `true` maps to canonical
 `ibfNofilter` (bypass of the area/partial gate; expansion multiplier 1). The
 qualification runs in the ShellClassification prepass
-(`crates/slicer-runtime/src/slice_postprocess_prepass.rs`); the InfillPostProcess
-arm only emits the authored centerlines.
+(`crates/slicer-runtime/src/slice_postprocess_prepass.rs`), which also reads
+`internal_bridge_angle`, `bridge_line_width`, `internal_bridge_flow`, and
+`enable_extra_bridge_layer` to author one bridge angle per qualified polygon;
+the `claim:bridge-fill` module emits those polygons at those angles.
 
 **Note — `support_interface_bottom_layers`:** the key remains user-visible with
 default `-1`. Negative values mirror the configured top-interface count; positive
@@ -986,7 +988,7 @@ Keys registered on `arachne-perimeters` for the `slicer_core::beading` `BeadingS
 | Key | Type | Default | Units | Module |
 |---|---|---|---|---|
 | `min_feature_size` | percent | `25%` | % of `nozzle_diameter` | `arachne-perimeters` |
-| `min_bead_width` | float | `4000` | slicer units (0.4 mm) | `arachne-perimeters` |
+| `min_bead_width` | percent | `85%` | % of `nozzle_diameter` | `arachne-perimeters` |
 | `wall_transition_filter_deviation` | float | `1000` | slicer units (0.1 mm) | `arachne-perimeters` |
 | `wall_transition_length` | percent | `100%` | % of `nozzle_diameter` | `arachne-perimeters` |
 | `wall_transition_angle` | float | `10.0` | degrees | `arachne-perimeters` |
@@ -1001,7 +1003,7 @@ Keys registered on `arachne-perimeters` for the `slicer_core::beading` `BeadingS
 
 **`min_feature_size`** — OrcaSlicer `min_feature_size` (`PrintConfig.cpp` ~line 6836-6845, `coPercent` of nozzle diameter, upstream default `25%`). **Packet 150:** retyped `percent`, base `nozzle_diameter` (resolved module-side via `ConfigView::get_abs_value`), closing G6/D-104h. Below this thickness, a region is too narrow for the wrapped strategy's normal bead distribution. **Maps to `WideningBeadingStrategy`'s internal `min_input_width` field** (`crates/slicer-core/src/beading/widening.rs`) — confirmed via the OrcaSlicer tooltip ("Minimum thickness of thin features; thinner is not printed, thicker is widened to min wall width"), which matches `min_input_width`'s role as the sub-threshold-detection cutoff exactly.
 
-**`min_bead_width`** — OrcaSlicer `min_bead_width` (`PrintConfig.cpp` ~line 6873-6879, `coPercent` of nozzle diameter, upstream default `100%`; corrected here from the packet's original `200`-unit suggestion). The fixed bead width `WideningBeadingStrategy` emits for regions below `min_feature_size`; maps to its internal `min_bead_width` field (name matches verbatim).
+**`min_bead_width`** — OrcaSlicer `min_bead_width` (`PrintConfig.cpp`, `coPercent` of nozzle diameter, upstream default `85%`). Retyped `percent`, base `nozzle_diameter` (resolved module-side via `ConfigView::get_abs_value`); the former `4000`-unit (100%) default was a parity bug. Two roles: the bead width `WideningBeadingStrategy` emits for regions below `min_feature_size` (its `min_output_width`), and the base of `WallToolPaths`' `wall_split_middle_threshold = clamp(2·min_bead_width/ext_width − 1)` and `wall_add_middle_threshold = clamp(min_bead_width/width)`, which place the bead-count transitions. At 100% the split threshold clamps to 0.99 and a 0.70 mm strip prints one open centre bead where OrcaSlicer prints a closed two-bead loop (verified against the OrcaSlicer 2.4.1 CLI).
 
 **`wall_transition_filter_deviation`** — OrcaSlicer `wall_transition_filter_deviation` (`PrintConfig.cpp` ~line 6799-6812, `coPercent` of nozzle diameter, upstream default `25%`; corrected here from the packet's original `200`-unit suggestion). Margin extending the extrusion-width range to reduce back-and-forth transitions between wall counts; maps to `DistributedBeadingStrategy`'s internal `transition_filter_dist` field (`crates/slicer-core/src/beading/distributed.rs`) — reserved there for a later decorator step, not yet read by `compute`.
 

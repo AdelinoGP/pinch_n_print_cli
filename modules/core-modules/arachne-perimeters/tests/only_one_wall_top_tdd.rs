@@ -31,19 +31,14 @@ const SQUARE_SIDE_MM: f32 = 20.0;
 const BASE_MAX_BEAD_COUNT: i64 = 4;
 const BASE_WALL_COUNT: usize = 2;
 
-fn make_config(only_one_wall_top: bool) -> ConfigView {
+/// Required-read baseline (packet 06 5c', item 11): the classified reads in
+/// `run_perimeters`/`arachne_params_from_config` are now `require_*`; the view
+/// holds every key those paths read, at manifest-default values. `line_width`
+/// holds its post-expansion default (1.125 x nozzle_diameter): the raw 0 is
+/// the auto sentinel expanded at Phase B and cannot survive the D-162 spacing
+/// gate. Tests layer their own keys on top so the explicit value wins.
+fn base_config() -> ConfigViewBuilder {
     ConfigViewBuilder::new()
-        .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
-        .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
-        .int("wall_count", BASE_WALL_COUNT as i64)
-        .int("max_bead_count", BASE_MAX_BEAD_COUNT)
-        .bool("only_one_wall_top", only_one_wall_top)
-        // Required-read baseline (packet 06 5c', item 11): the classified
-        // reads in run_perimeters/arachne_params_from_config are now
-        // require_*; the view holds every key those paths read, at
-        // manifest-default values. line_width holds its post-expansion
-        // default (1.125 x nozzle_diameter): the raw 0 is the auto sentinel
-        // expanded at Phase B and cannot survive the D-162 spacing gate.
         .float("layer_height", 0.2)
         .float("nozzle_diameter", 0.4)
         .float("line_width", 0.45)
@@ -65,6 +60,15 @@ fn make_config(only_one_wall_top: bool) -> ConfigView {
         .float("bridge_flow", 1.0)
         .bool("thick_bridges", false)
         .float("seam_candidate_angle_threshold_deg", 30.0)
+}
+
+fn make_config(only_one_wall_top: bool) -> ConfigView {
+    base_config()
+        .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
+        .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
+        .int("wall_count", BASE_WALL_COUNT as i64)
+        .int("max_bead_count", BASE_MAX_BEAD_COUNT)
+        .bool("only_one_wall_top", only_one_wall_top)
         .build()
 }
 
@@ -309,4 +313,155 @@ fn wall_inside_top_fill(
         }
     }
     true
+}
+
+/// Regression: the second pass must publish the region's fill area. Canonical
+/// `PerimeterGenerator.cpp::process_arachne` sets
+/// `infill_contour = union_ex(top_expolygons, inner_wall_tool_paths.getInnerContour())`
+/// (or the fallback pass's inner contour when no top area survives). The
+/// second pass used to discard both inner contours and never set
+/// `infill_areas`, so the host partition received an empty wall inset: the
+/// top sub-area and the whole non-top interior got no fill (previously masked
+/// by an unclipped top-fill pass-through that printed over the walls).
+#[test]
+fn only_one_wall_top_second_pass_publishes_infill_areas() {
+    let config = base_config()
+        .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
+        .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
+        .int("wall_count", BASE_WALL_COUNT as i64)
+        .int("max_bead_count", 6)
+        .bool("only_one_wall_top", true)
+        // The second-pass function reads this via `require_abs_value`, so the
+        // view must hold it at its manifest default 0.0 (no filter).
+        .float("min_width_top_surface", 0.0)
+        .build();
+    let regions = vec![SliceRegionViewBuilder::new()
+        .object_id("obj-1")
+        .region_id(1)
+        .z(1.0)
+        .add_polygon(square_polygon(0.0, 0.0, SQUARE_SIDE_MM))
+        .top_shell_index(Some(1)) // non-topmost, with an exposed top sub-area
+        .top_solid_fill(vec![square_polygon(0.0, 0.0, 4.0)])
+        .build()];
+    let module = ArachnePerimeters::from_config(&config).unwrap();
+    let mut output = PerimeterOutputBuilder::new();
+    module
+        .run_perimeters(
+            5,
+            &regions,
+            &PaintRegionLayerView::new(5),
+            &mut output,
+            &config,
+        )
+        .unwrap();
+    assert!(
+        !output.wall_loops().is_empty(),
+        "the second pass must emit walls"
+    );
+    let infill: Vec<ExPolygon> = output.infill_areas().iter().flatten().cloned().collect();
+    // Region: 20 mm square centred on the origin; top sub-area: 4 mm square
+    // at the centre. Canonical infill contour = top sub-area ∪ inner contour
+    // of the non-top walls (3 x 1 mm walls around the outer edge and around
+    // the top sub-area), so the remainder's fill is a ring with a hole. The top
+    // sub-area's centre and the ring get fill; a point inside the remainder's
+    // walls around the top sub-area does not. `separateOutInnerContour` unions
+    // the contour loops with the even-odd rule, so the ring's hole loop must
+    // cut its hole whatever its winding.
+    for (x, y) in [(0.0f32, 0.0f32), (6.5, 0.0), (-6.5, -6.5)] {
+        assert!(
+            infill.iter().any(|ep| ex_polygon_contains(ep, x, y)),
+            "the second pass must publish a fill area covering ({x}, {y}); got {} polygon(s)",
+            infill.len()
+        );
+    }
+    assert!(
+        !infill.iter().any(|ep| ex_polygon_contains(ep, -4.0, 0.0)),
+        "(-4, 0) lies inside the walls around the top sub-area and must not be fill"
+    );
+}
+
+/// Canonical `process_arachne` unions the top sub-area's FULL polygon set into
+/// `infill_contour`:
+///
+/// ```text
+/// infill_contour = union_ex(top_expolygons, inner_wall_tool_paths.getInnerContour());
+/// ```
+///
+/// `top_expolygons` — not the single-wall pass's inner contour. Those differ by
+/// the wall's own width: the inner contour is the top area shrunk by one bead,
+/// so a formula that unioned it would leave the wall band of the top surface
+/// unfilled even though canonical's later `offset2_ex` shrink-expand is
+/// measured from the full area.
+///
+/// The band is measured here as: inside the top sub-area's expanded footprint
+/// (4 mm square + the 0.85 mm `offset2_ex` expansion = 2.85 mm half-side) but
+/// outside the 1 mm bead that the single top wall occupies (so >= 1.85 mm from
+/// the centre). `(2.35, 0)` sits in the middle of it. This point is fill under
+/// the canonical union and NOT fill under an inner-contour-only union, which is
+/// exactly the regression this pins.
+#[test]
+fn only_one_wall_top_infill_contour_includes_the_top_wall_band() {
+    let config = base_config()
+        .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
+        .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
+        .int("wall_count", BASE_WALL_COUNT as i64)
+        .int("max_bead_count", 6)
+        .bool("only_one_wall_top", true)
+        // The second-pass function reads this via `require_abs_value`, so the
+        // view must hold it at its manifest default 0.0 (no filter).
+        .float("min_width_top_surface", 0.0)
+        .build();
+    let regions = vec![SliceRegionViewBuilder::new()
+        .object_id("obj-1")
+        .region_id(1)
+        .z(1.0)
+        .add_polygon(square_polygon(0.0, 0.0, SQUARE_SIDE_MM))
+        .top_shell_index(Some(1)) // non-topmost, with an exposed top sub-area
+        .top_solid_fill(vec![square_polygon(0.0, 0.0, 4.0)])
+        .build()];
+    let module = ArachnePerimeters::from_config(&config).unwrap();
+    let mut output = PerimeterOutputBuilder::new();
+    module
+        .run_perimeters(
+            5,
+            &regions,
+            &PaintRegionLayerView::new(5),
+            &mut output,
+            &config,
+        )
+        .unwrap();
+    let infill: Vec<ExPolygon> = output.infill_areas().iter().flatten().cloned().collect();
+
+    // The top wall band: inside `top_expolygons`, outside the top bead.
+    assert!(
+        infill.iter().any(|ep| ex_polygon_contains(ep, 2.35, 0.0)),
+        "canonical `union_ex(top_expolygons, inner_contour)` covers the top \
+         sub-area's wall band; (2.35, 0) must be fill, got {} polygon(s)",
+        infill.len()
+    );
+    // The remainder's inner contour still bounds the far side.
+    assert!(
+        !infill.iter().any(|ep| ex_polygon_contains(ep, -4.0, 0.0)),
+        "the not-top walls must still cut their own band out of the fill"
+    );
+}
+
+/// Even-odd point-in-ExPolygon test (contour minus holes).
+fn ex_polygon_contains(ep: &ExPolygon, x_mm: f32, y_mm: f32) -> bool {
+    let p = slicer_ir::Point2::from_mm(x_mm, y_mm);
+    let inside = |pts: &[slicer_ir::Point2]| {
+        let mut c = false;
+        let n = pts.len();
+        for i in 0..n {
+            let (a, b) = (pts[i], pts[(i + 1) % n]);
+            if (a.y > p.y) != (b.y > p.y) {
+                let t = (p.y - a.y) as f64 / (b.y - a.y) as f64;
+                if (p.x as f64) < a.x as f64 + t * (b.x - a.x) as f64 {
+                    c = !c;
+                }
+            }
+        }
+        c
+    };
+    inside(&ep.contour.points) && !ep.holes.iter().any(|h| inside(&h.points))
 }

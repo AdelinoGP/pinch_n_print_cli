@@ -362,9 +362,15 @@ fn rotate_wall_loop(
     // Rotate the N effective points, then re-append the new first as the
     // closing repeat. Parallel arrays (feature_flags, width_profile.widths)
     // follow the same shape with closing repeats.
+    // Open walls (Arachne's odd centre beads) are canonical `ExtrusionPath`s,
+    // not loops: they carry no seam, and rotating an open polyline would join
+    // its old end to its old start with a chord.
     let total = loop_.path.points.len();
-    let is_closed = loop_.path.is_closed();
-    let effective = if is_closed { total - 1 } else { total };
+    if !loop_.path.is_closed() {
+        return loop_.clone();
+    }
+    let is_closed = true;
+    let effective = total - 1;
     if effective == 0 {
         return loop_.clone();
     }
@@ -583,6 +589,34 @@ mod tests {
     fn reason_bonus_concave_is_lowest() {
         assert!(reason_bonus(SeamReason::Concave) < reason_bonus(SeamReason::Sharp));
         assert!(reason_bonus(SeamReason::Sharp) < reason_bonus(SeamReason::Aligned));
+    }
+
+    /// Arachne's odd centre beads are open wall paths. Canonical places seams
+    /// only on `ExtrusionLoop`s, never on open `ExtrusionPath`s; rotating an
+    /// open polyline joins its old end to its old start with a chord.
+    #[test]
+    fn rotate_wall_loop_leaves_open_paths_untouched() {
+        use slicer_ir::{LoopType, Point3WithWidth, WallBoundaryType};
+        let mut wall = slicer_sdk::test_support::fixtures::wall_loop_base(
+            LoopType::ThinWall,
+            WallBoundaryType::ExteriorSurface,
+        );
+        wall.path.points = [0.0f32, 5.0, 10.0]
+            .iter()
+            .map(|&x| Point3WithWidth {
+                x,
+                y: 0.0,
+                z: 0.2,
+                width: 0.4,
+                ..Default::default()
+            })
+            .collect();
+        wall.width_profile.widths = vec![0.4, 0.5, 0.6];
+        wall.feature_flags = vec![Default::default(); 3];
+        assert!(!wall.path.is_closed());
+        let rotated = rotate_wall_loop(&wall, 1);
+        assert_eq!(rotated.path.points, wall.path.points);
+        assert_eq!(rotated.width_profile.widths, wall.width_profile.widths);
     }
 
     #[test]

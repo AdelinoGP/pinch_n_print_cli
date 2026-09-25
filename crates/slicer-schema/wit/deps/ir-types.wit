@@ -158,6 +158,11 @@ interface ir-handles {
         bridge-areas: func() -> list<ex-polygon>;
         // Rust binding: internal_bridge_areas.
         internal-bridge-areas: func() -> list<ex-polygon>;
+        // Rust binding: internal_bridge_angles_deg. Bridge line direction in
+        // degrees per internal-bridge-areas polygon (index-aligned, same
+        // convention as bridge-orientation-deg). Empty = fall back to
+        // bridge-orientation-deg for every internal-bridge polygon.
+        internal-bridge-angles-deg: func() -> list<f32>;
         bridge-orientation-deg: func() -> f32;
         sparse-infill-area: func() -> list<ex-polygon>;
         // Rust binding: raft_fill. Raft-substrate fill polygons; non-empty only

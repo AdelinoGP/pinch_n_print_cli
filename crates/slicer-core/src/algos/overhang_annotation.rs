@@ -716,6 +716,7 @@ mod tests {
     /// `PrePass::OverhangAnnotation` producer reads instead of re-slicing).
     /// Slicing here is test setup, done once and excluded from the timed
     /// region; the assertion guards the band-partition sweep, not slicing.
+    // KEEP-review (core-brittle): O(layers) sweep guard; timed region excludes one-time slicing setup; 1s threshold on 1200 pre-sliced layers.
     #[test]
     fn annotate_overhangs_is_fast_for_many_stacked_layers() {
         const CUBE_COUNT: usize = 1200;

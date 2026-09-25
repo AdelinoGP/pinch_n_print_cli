@@ -151,11 +151,13 @@ pub trait BeadingStrategy: Send + Sync {
         Vec::new()
     }
 
-    /// Returns the transition filter distance (in slicer units) used by
-    /// `filter_transition_mids` to dissolve nearby same-`lower_bead_count`
-    /// transitions.  The default implementation returns `0.0` (no filtering).
-    /// `DistributedBeadingStrategy` overrides this with the configured
-    /// `transition_filter_dist`.
+    /// Returns the configured `transition_filter_dist` (slicer units), i.e.
+    /// `wall_transition_filter_deviation`. The default implementation returns
+    /// `0.0`; `DistributedBeadingStrategy` overrides it. Canonical has no such
+    /// strategy method: `filter_transition_mids` takes the value directly as
+    /// its `allowed_filter_deviation`, and the walk distance is the fixed
+    /// `TRANSITION_FILTER_DIST_UNITS`. NOT the centrality outer-edge filter,
+    /// which canonical derives from [`BeadingStrategy::get_transition_thickness`].
     fn get_transition_filter_dist(&self, lower_bead_count: usize) -> f64 {
         let _ = lower_bead_count;
         0.0

@@ -1941,6 +1941,10 @@ fn capture_ir_to_json(ir: &slicer_runtime::CapturedIr) -> Option<serde_json::Val
             serde_json::to_value(&region.internal_bridge_areas).ok()?,
         );
         obj.insert(
+            "internal_bridge_angles_deg".into(),
+            serde_json::to_value(&region.internal_bridge_angles_deg).ok()?,
+        );
+        obj.insert(
             "raft_fill".into(),
             serde_json::to_value(&region.raft_fill).ok()?,
         );

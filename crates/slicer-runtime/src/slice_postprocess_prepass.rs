@@ -57,7 +57,7 @@ use rayon::prelude::*;
 use slicer_core::algos::prepass_slice::{
     gate_bridge_areas_by_unsupported_span, update_external_bridge_orientation,
 };
-use slicer_core::polygon_ops::{difference, intersection, offset, union, OffsetJoinType};
+use slicer_core::polygon_ops::{difference, intersection, offset, opening, union, OffsetJoinType};
 use slicer_ir::{ConfigValue, ExPolygon, ObjectId, RegionId, RegionKey, RegionMapIR, SliceIR};
 
 use slicer_ir::BlackboardError;
@@ -585,19 +585,20 @@ fn resolve_opening_radius(
 /// Packet 234a — canonical `bridge_over_infill` gather port (the support-math
 /// functions landed in `slicer_core::algos::bridge_over_infill`). For each
 /// region timeline, qualifies the upper layer's `internal_solid_fill` surfaces
-/// against the committed layer below and authors anchored internal-bridge
-/// polygons into `SlicedRegion::internal_bridge_areas` for the same-layer
-/// InfillPostProcess arm to construct and emit. Extends `bridge_areas` with the qualified
-/// polygons so the existing partition dataflow (`region_partition` derives
-/// `sparse_infill_area = difference(wall_inset, bridge ∪ bottom ∪ top)` at
-/// Perimeters commit) keeps module sparse infill out of the gated area.
+/// against the committed layer below and authors the qualified internal-bridge
+/// polygons into `SlicedRegion::internal_bridge_areas`, with one bridge
+/// direction per polygon in `SlicedRegion::internal_bridge_angles_deg`. This is
+/// the single internal-bridge producer: the fill module holding the bridge
+/// claim emits each polygon at its own angle. Extends `bridge_areas` with the
+/// qualified polygons so the existing partition dataflow (`region_partition`
+/// derives `sparse_infill_area = difference(wall_inset, bridge ∪ bottom ∪ top)`
+/// at Perimeters commit) keeps module sparse infill out of the gated area.
 ///
 /// Qualification runs in parallel, followed by ordered serial commits that
 /// can read earlier layers' bridge areas. Only this prepass legally sees every
 /// committed layer; per-layer stage arms run with private arenas. Config
 /// resolves through `region_map.config_for(...).extensions`, mirroring how
-/// undeclared module keys are routed there by the host resolver (same keys the
-/// old arm read from the module config view).
+/// undeclared module keys are routed there by the host resolver.
 fn gate_internal_bridge_sites(
     slices: &mut [SliceIR],
     timelines: &HashMap<(ObjectId, RegionId), Vec<usize>>,
@@ -608,7 +609,9 @@ fn gate_internal_bridge_sites(
     // Keep first-pass qualifications separate from carrier-free duplicates so a
     // duplicated area cannot become a new qualification candidate on the next
     // timeline entry.
-    let mut qualified_by_entry: HashMap<(usize, ObjectId, RegionId), Vec<ExPolygon>> =
+    // Qualified polygons and their index-aligned bridge angles.
+    type QualifiedSites = (Vec<ExPolygon>, Vec<f32>);
+    let mut qualified_by_entry: HashMap<(usize, ObjectId, RegionId), QualifiedSites> =
         HashMap::new();
     let density_for = |region: &slicer_ir::SlicedRegion, layer_index: u32| {
         let exact = RegionKey {
@@ -726,6 +729,16 @@ fn gate_internal_bridge_sites(
         // Canonical: expansion_multiplier 3 under strict filtering, 1 when the
         // filter is relaxed in any way (ibfLimited / ibfNofilter).
         let expansion_multiplier: f64 = if nofilter { 1.0 } else { 3.0 };
+        // Bridging-flow spacing for the direction step (canonical
+        // `bridging_flow(frSolidInfill, true).scaled_spacing()` per candidate).
+        let bridge_spacing_mm = slicer_core::flow::canonical_bridging_flow(
+            ext_abs("bridge_line_width", nozzle_diameter).unwrap_or(0.0),
+            ext_float("internal_bridge_flow", 1.0),
+            nozzle_diameter,
+        )
+        .spacing_mm;
+        // Canonical absolute `internal_bridge_angle` override; 0 = automatic.
+        let internal_bridge_angle = ext_float("internal_bridge_angle", 0.0);
 
         // Ascending print_z for this timeline, resolved once. Both bridge-depth
         // windows below are expressed against it, so neither has to materialise
@@ -1005,11 +1018,44 @@ fn gate_internal_bridge_sites(
                 );
                 continue;
             }
-            // Persist the qualified carrier independently of downstream
-            // construction; Step 4 consumes this area after real walls exist.
+            // One bridge direction per qualified polygon (canonical
+            // `bridge_over_infill` direction step). The fill module draws each
+            // polygon at its own angle; the region-wide
+            // `bridge_orientation_deg` stays the external-bridge direction.
+            slicer_core::algos::bridge_over_infill::presort_bridge_candidates(&mut qualified);
+            let expansion_area = {
+                let not_sparse = union(
+                    &union(&region.top_solid_fill, &region.bottom_solid_fill),
+                    &region.bridge_areas,
+                );
+                union(
+                    &difference(&region.infill_areas, &not_sparse),
+                    &region.internal_solid_fill,
+                )
+            };
+            let angles = slicer_core::algos::bridge_over_infill::internal_bridge_angles(
+                &qualified,
+                &slicer_core::algos::bridge_over_infill::InternalBridgeAngleInputs {
+                    deep_infill_clip_area: &deep_infill_clip_area,
+                    internal_unsupported_area: &internal_unsupported_area,
+                    expansion_area: &expansion_area,
+                    total_fill_area: &region.infill_areas,
+                    spacing_mm: bridge_spacing_mm,
+                    override_deg: internal_bridge_angle,
+                },
+            );
+            // The qualified polygons are the final bridge geometry: they join
+            // `bridge_areas`, so the Perimeters-commit partition cuts them out
+            // of sparse infill (canonical `cut_from_infill`), and the fill
+            // module emits them. Canonical anchor-driven growth beyond the
+            // candidate is DEV-150.
             region.internal_bridge_areas = qualified.clone();
+            region.internal_bridge_angles_deg = angles.clone();
             region.bridge_areas.extend(qualified.clone());
-            qualified_by_entry.insert((slice_idx, object_id.clone(), *region_id), qualified);
+            qualified_by_entry.insert(
+                (slice_idx, object_id.clone(), *region_id),
+                (qualified, angles),
+            );
         }
 
         if extra_bridge_layer {
@@ -1022,17 +1068,82 @@ fn gate_internal_bridge_sites(
                 {
                     continue;
                 }
-                let Some(current_areas) =
+                let Some((current_areas, current_angles)) =
                     qualified_by_entry.get(&(*current_idx, object_id.clone(), *region_id))
                 else {
                     continue;
                 };
+                // Canonical caches the source layer's stInternalBridge polys
+                // with a shrink-expand by the solid-infill extrusion WIDTH
+                // (`offset_ex(shrink_ex(cache.polys, offset_distance),
+                // offset_distance)` with `offset_distance =
+                // flow(frSolidInfill).scaled_width()`); the same cleanup is
+                // applied to the overlap below. `opening` is that
+                // shrink-then-expand.
+                let cleanup_width_mm = f64::from(solid_infill_width);
+                let current_cleaned =
+                    opening(current_areas, cleanup_width_mm, OffsetJoinType::Miter);
+                if current_cleaned.is_empty() {
+                    continue;
+                }
                 let Some(upper) = find_region_mut(&mut slices[*upper_idx], object_id, *region_id)
                 else {
                     continue;
                 };
-                let duplicates = intersection(&upper.internal_solid_fill, current_areas);
-                upper.internal_bridge_areas.extend(duplicates);
+                // Canonical converts only the upper layer's stInternal /
+                // stInternalSolid surfaces; its own internal bridges stay as
+                // they are, so they are excluded here. See
+                // `upper_convertible_surfaces` for the class mapping.
+                let upper_convertible = upper_convertible_surfaces(upper);
+                let mut duplicates = intersection(&upper_convertible, &current_cleaned);
+                if !upper.internal_bridge_areas.is_empty() {
+                    duplicates = difference(&duplicates, &upper.internal_bridge_areas);
+                }
+                // Shrink-expand to remove trivial overlap slivers
+                // (canonical `overlap = offset_ex(shrink_ex(overlap,
+                // offset_distance), offset_distance)`).
+                duplicates = opening(&duplicates, cleanup_width_mm, OffsetJoinType::Miter);
+                if duplicates.is_empty() {
+                    continue;
+                }
+                // Canonical second internal bridge: the layer's cached bridge
+                // angle (the last internal bridge on the layer wins) turned by
+                // 90 degrees, so the second layer crosses the first.
+                let second_angle = current_angles
+                    .last()
+                    .map_or(upper.bridge_orientation_deg, |angle| {
+                        (angle + 90.0).rem_euclid(180.0)
+                    });
+                let existing: Vec<f32> = (0..upper.internal_bridge_areas.len())
+                    .map(|index| upper.internal_bridge_angle_deg(index))
+                    .collect();
+                upper.internal_bridge_angles_deg = existing;
+                upper
+                    .internal_bridge_angles_deg
+                    .extend(std::iter::repeat_n(second_angle, duplicates.len()));
+                upper
+                    .internal_bridge_areas
+                    .extend(duplicates.iter().cloned());
+                // The duplicates are bridge fill: they join `bridge_areas` so
+                // the partition removes them from sparse infill and the fill
+                // module emits them.
+                upper.bridge_areas.extend(duplicates.iter().cloned());
+                // Canonical replaces the converted surfaces: the overlap
+                // leaves stInternal/stInternalSolid and becomes the second
+                // bridge, while the non-overlapping leftover keeps its
+                // original type. `internal_solid_fill` is not part of the
+                // partition's bridge cut, so remove the converted area here
+                // (`top_solid_fill` too: the dense-interior marker is a subset
+                // of it, and the `only_one_wall_top` exposed-top derivation
+                // (`top_solid_fill - internal_solid_fill`) runs at the
+                // pre-partition perimeters stage — removing from the marker
+                // alone would make the converted area read as exposed top).
+                if !upper.internal_solid_fill.is_empty() {
+                    upper.internal_solid_fill = difference(&upper.internal_solid_fill, &duplicates);
+                }
+                if !upper.top_solid_fill.is_empty() {
+                    upper.top_solid_fill = difference(&upper.top_solid_fill, &duplicates);
+                }
             }
         }
     }
@@ -1085,6 +1196,23 @@ fn resolve_shell_counts(
     }
     // OrcaSlicer default fallback: 3/3 shell layers when no plan entry exists.
     (3, 3)
+}
+
+/// Upper-layer surfaces canonical's extra-bridge-layer pass may convert:
+/// `next_region->fill_surfaces.filter_by_types({stInternal, stInternalSolid})`.
+///
+/// `internal_solid_fill` is this IR's `stInternalSolid` carrier. The
+/// `stInternal` half is the sparse claim — `infill_areas` minus the denser
+/// claims (top, bottom, external bridge) — the same derivation the
+/// qualification step uses for its expansion area. Internal-bridge surfaces
+/// are excluded by the caller (canonical keeps them as they are).
+fn upper_convertible_surfaces(region: &slicer_ir::SlicedRegion) -> Vec<ExPolygon> {
+    let not_sparse = union(
+        &union(&region.top_solid_fill, &region.bottom_solid_fill),
+        &region.bridge_areas,
+    );
+    let st_internal = difference(&region.infill_areas, &not_sparse);
+    union(&st_internal, &region.internal_solid_fill)
 }
 
 fn find_region_mut<'a>(
@@ -1312,5 +1440,69 @@ mod tests {
             ));
             assert_eq!(baseline, again, "shell classification output is not stable");
         }
+    }
+
+    /// Canonical's extra-bridge-layer pass converts
+    /// `fill_surfaces.filter_by_types({stInternal, stInternalSolid})`, i.e.
+    /// BOTH the sparse and the dense-interior surfaces of the layer above.
+    /// This IR carries the dense class as `internal_solid_fill`; the sparse
+    /// class is derived as `infill_areas − (top ∪ bottom ∪ external bridge)`.
+    ///
+    /// A fixture where the upper layer's sparse claim sits over a bridged
+    /// lower layer must therefore be offered to the conversion — the previous
+    /// operand (`internal_solid_fill` alone) never saw a sparse-only layer and
+    /// produced no second bridge there.
+    #[test]
+    fn upper_convertible_surfaces_include_the_sparse_class() {
+        let mut region = slicer_ir::SlicedRegion {
+            object_id: String::from("o"),
+            region_id: 0,
+            polygons: vec![rect(0.0, 20.0)],
+            infill_areas: vec![rect(0.0, 20.0)],
+            ..Default::default()
+        };
+        // Sparse-only layer: no dense interior, a top claim covering the left
+        // half. The convertible set must be the sparse remainder, [10,20].
+        region.top_solid_fill = vec![rect(0.0, 10.0)];
+
+        let convertible = upper_convertible_surfaces(&region);
+        assert!(
+            !convertible.is_empty(),
+            "a sparse-only layer is still stInternal and must be convertible"
+        );
+        assert_eq!(
+            min_x_mm(&convertible),
+            10.0,
+            "the top claim is not convertible (canonical keeps non-stInternal/\
+             stInternalSolid surfaces as they are); the sparse remainder is"
+        );
+
+        // Dense-interior layer: `internal_solid_fill` is offered as well.
+        region.internal_solid_fill = vec![rect(10.0, 20.0)];
+        let convertible = upper_convertible_surfaces(&region);
+        assert!(
+            !convertible.is_empty(),
+            "stInternalSolid must be convertible even where the sparse \
+             remainder is empty"
+        );
+        assert_eq!(
+            min_x_mm(&convertible),
+            10.0,
+            "the dense-interior class is stInternalSolid and must be included"
+        );
+
+        // A layer whose whole fill is top surface offers nothing.
+        let mut all_top = slicer_ir::SlicedRegion {
+            object_id: String::from("o"),
+            region_id: 0,
+            polygons: vec![rect(0.0, 20.0)],
+            infill_areas: vec![rect(0.0, 20.0)],
+            ..Default::default()
+        };
+        all_top.top_solid_fill = vec![rect(0.0, 20.0)];
+        assert!(
+            upper_convertible_surfaces(&all_top).is_empty(),
+            "no stInternal/stInternalSolid surface means nothing to convert"
+        );
     }
 }

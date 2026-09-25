@@ -509,3 +509,99 @@ fn empty_bridge_areas_emits_no_bridge_infill_even_when_is_bridge_true() {
         "NEG-2: expected zero BridgeInfill paths when bridge_areas is empty, got {bridge_count}"
     );
 }
+
+/// Line direction of a path folded into `[0, 180)`, from its first segment.
+fn line_direction_mod180(path: &slicer_ir::ExtrusionPath3D) -> f32 {
+    path_direction_deg(path).rem_euclid(180.0)
+}
+
+/// Smallest difference between two undirected line directions (degrees).
+fn line_diff_mod180(actual: f32, expected: f32) -> f32 {
+    let diff = (actual - expected).rem_euclid(180.0);
+    diff.min(180.0 - diff)
+}
+
+/// Every internal-bridge polygon is filled at its own host-authored angle
+/// (`internal_bridge_angles_deg[i]`, canonical per-surface `bridge_angle`);
+/// external bridges keep the region's `bridge_orientation_deg`. With no
+/// per-polygon angles the internal polygons fall back to
+/// `bridge_orientation_deg`.
+#[test]
+fn internal_bridge_areas_emit_at_their_own_angle() {
+    let external = rect_expoly_mm(0, 0, 10, 10);
+    let first = rect_expoly_mm(20, 0, 30, 10);
+    let second = rect_expoly_mm(40, 0, 50, 10);
+    let region_with = |angles: Vec<f32>| {
+        with_rectilinear_claims(
+            SliceRegionViewBuilder::new()
+                .object_id("test_object")
+                .region_id(0)
+                .add_infill_area(rect_expoly_mm(0, 0, 50, 10))
+                .effective_layer_height(0.2)
+                .z(1.0)
+                .is_bridge(true)
+                .bridge_areas(vec![external.clone(), first.clone(), second.clone()])
+                .internal_bridge_areas(vec![first.clone(), second.clone()])
+                .internal_bridge_angles_deg(angles)
+                .bridge_orientation_deg(0.0)
+                .build(),
+        )
+    };
+    let emit = |region: SliceRegionView| {
+        let config = baseline_config().build();
+        let module = RectilinearInfill::from_config(&config).unwrap();
+        let mut output = InfillOutputBuilder::new();
+        module
+            .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
+            .unwrap();
+        output.solid_paths().to_vec()
+    };
+    // Directions of the bridge paths whose first point lies in [x0, x1] mm.
+    let directions = |paths: &[slicer_ir::ExtrusionPath3D], role: ExtrusionRole, x0, x1| {
+        paths
+            .iter()
+            .filter(|path| path.role == role && path.points.len() >= 2)
+            .filter(|path| (x0..=x1).contains(&path.points[0].x))
+            .map(line_direction_mod180)
+            .collect::<Vec<f32>>()
+    };
+
+    let paths = emit(region_with(vec![60.0, 120.0]));
+    for (label, role, x0, x1, expected) in [
+        ("external", ExtrusionRole::BridgeInfill, -0.1, 10.1, 0.0),
+        (
+            "first internal",
+            ExtrusionRole::InternalBridgeInfill,
+            19.9,
+            30.1,
+            60.0,
+        ),
+        (
+            "second internal",
+            ExtrusionRole::InternalBridgeInfill,
+            39.9,
+            50.1,
+            120.0,
+        ),
+    ] {
+        let found = directions(&paths, role, x0, x1);
+        assert!(!found.is_empty(), "{label} bridge polygon emitted no paths");
+        assert!(
+            found
+                .iter()
+                .all(|dir| line_diff_mod180(*dir, expected) <= 1.0),
+            "{label} bridge must run at {expected} deg, got {found:?}"
+        );
+    }
+
+    let fallback = emit(region_with(Vec::new()));
+    let found = directions(&fallback, ExtrusionRole::InternalBridgeInfill, 19.9, 50.1);
+    assert!(
+        !found.is_empty(),
+        "fallback internal bridges emitted no paths"
+    );
+    assert!(
+        found.iter().all(|dir| line_diff_mod180(*dir, 0.0) <= 1.0),
+        "without per-polygon angles internal bridges use bridge_orientation_deg, got {found:?}"
+    );
+}

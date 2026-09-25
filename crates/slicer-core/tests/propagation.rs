@@ -28,6 +28,7 @@
 #![cfg(feature = "host-algos")]
 
 use slicer_core::beading::factory::{BeadingFactoryParams, BeadingStrategyFactory};
+use slicer_core::beading::Beading;
 use slicer_core::skeletal_trapezoidation::{
     apply_transitions, assign_bead_counts, filter_central, generate_transition_mids,
     populate_beading_propagation, propagate_beadings_downward, propagate_beadings_upward,
@@ -465,7 +466,209 @@ fn propagation_fills_gap_from_central_neighbor() {
     );
 }
 
-/// Hand-built graph exercising `insert_node`'s DCEL rewiring under the packet
+/// Canonical `propagateBeadingsDownward` skips CENTRAL upward edges: a
+/// wide node's beading must not be pushed down a central chain into the
+/// narrow nodes below it.
+///
+/// Hand-built central chain v0 -> v1 -> v2 with a thickness GRADIENT: v0 is
+/// wide (R=30000, bc=3, populated), v1/v2 are narrow (R=14700/5900,
+/// bc=None). Pushing v0's beading down would put an innermost location of
+/// 58000 on v1 (R 14700), outside v1's own band, and `generate_junctions`
+/// would emit no bead-2 fan there.
+///
+/// This test was written for a non-canonical "narrow-band guard" in the
+/// downward pass (removed 2026-09-18: it never fixed the benchy layer-29
+/// stern, whose root cause was the degenerate `dist_to_bottom_source`
+/// replay). It stays green for the canonical reason, the central-edge
+/// skip, and goes red without it.
+#[test]
+fn propagate_downward_keeps_narrow_gap_beading_in_band() {
+    use slicer_core::arachne::generate_toolpaths::generate_junctions;
+    use slicer_core::skeletal_trapezoidation::propagation::propagate_beadings_downward_with_transition_dist;
+
+    fn vertex(x: f64, r: f64, bc: Option<u32>) -> STVertex {
+        STVertex {
+            position: Vertex { x, y: 0.0 },
+            distance_to_boundary: r,
+            bead_count: bc,
+            transition_ratio: 0.0,
+        }
+    }
+    fn edge(start_vertex: usize, twin: usize, r_min: f64, r_max: f64) -> STHalfEdge {
+        STHalfEdge {
+            start_vertex,
+            twin,
+            r_min,
+            r_max,
+            central: true,
+            ..STHalfEdge::default()
+        }
+    }
+
+    // Units are the strategy's own (optimal_width = 4000): R=14700 is the
+    // l29 victim peak scaled 1:1 into this synthetic space, R=5900 the
+    // corridor mouth, R=30000 the wide donor.
+    //
+    // The donor carries bead_count 3 (a NARROWER beading than the gap's
+    // optimal 7): compute(60000, 3) yields 3 beads with innermost location
+    // 58000, far outside the v1 band (R=14700). This mirrors the l29 relay,
+    // where the beading arriving down-chain (n=3) is narrower than the
+    // victim's fallback-optimal beading (n=8).
+    let vertices = vec![
+        vertex(0.0, 30_000.0, Some(3)),
+        vertex(10.0, 14_700.0, None),
+        vertex(20.0, 5_900.0, None),
+    ];
+    // Twin involution holds (0<->1, 2<->3). The upward edges are 0
+    // (v1->v0, donor) and 2 (v2->v1, corridor); descending-r_max order
+    // visits the donor first, so without the central-edge skip v1 is filled from v0
+    // and then v2 from the corrupted v1.
+    let edges = vec![
+        edge(1, 1, 14_700.0, 30_000.0), // 0: donor v1->v0 (upward)
+        edge(0, 0, 14_700.0, 30_000.0), // 1: v0->v1 (downward twin)
+        edge(2, 3, 5_900.0, 14_700.0),  // 2: corridor v2->v1 (upward)
+        edge(1, 2, 5_900.0, 14_700.0),  // 3: v1->v2 (downward twin)
+    ];
+    let mut graph = SkeletalTrapezoidationGraph {
+        vertices,
+        edges,
+        centrality_filtered: true,
+        rib: RibData::default(),
+        ..Default::default()
+    };
+
+    let params = BeadingFactoryParams {
+        optimal_width: 4000.0,
+        default_transition_length: 4000.0,
+        max_bead_count: 10,
+        ..BeadingFactoryParams::default()
+    };
+    let strategy = BeadingStrategyFactory::create_stack(&params);
+    populate_beading_propagation(&mut graph, strategy.as_ref());
+    propagate_beadings_upward(&mut graph);
+    propagate_beadings_downward_with_transition_dist(&mut graph, 4000.0);
+
+    let fans = generate_junctions(&graph, strategy.as_ref());
+    let _ = fans;
+    // Assert on the SIDE TABLE (not the fan): pushed down the central chain,
+    // v1's slot would hold v0's 3-bead beading (innermost loc 58000 >> v1's
+    // R 14700); skipped, v1's slot stays empty so `generate_junctions` falls
+    // back to v1's own optimal beading.
+    let v1_loc = graph
+        .get_beding(1)
+        .and_then(|b| b.toolpath_locations.last().copied());
+    assert!(
+        v1_loc.is_none_or(|loc| loc <= 14_700.0),
+        "v1's side-table beading must fit v1's own band (inner loc <= R=14700); \
+         got {v1_loc:?} — the wide donor overwrote the narrow gap",
+    );
+}
+/// Canonical `propagateBeadingsUpward` records on every copied beading how
+/// far it travelled from the node whose own bead count produced it
+/// (`dist_to_bottom_source`), and `propagateBeadingsDownward` uses that as
+/// the weight of the beading coming down from the top: at or beyond the
+/// transition distance the top beading replaces the copy, closer in the two
+/// are blended with canonical `interpolate`, which keeps the thicker
+/// beading's bead list.
+///
+/// Chain v0 -> v1 -> v2 of non-central upward edges: v0 is a thin node with
+/// its own 1-bead beading, v2 a wide node with its own many-bead beading, v1
+/// has neither and receives v0's beading on the way up.
+///
+/// Before the fix the recorded distance was always 0 (the replay that
+/// recomputed it treated every vertex as a source), so `ratio_of_top` was 0
+/// and v1 kept v0's thin beading however far from v0 it was — on the benchy
+/// hull the 3-bead beading of the gap beside the stern ring climbed the
+/// whole stern and the third wall vanished there.
+#[test]
+fn downward_replaces_an_upward_copy_by_its_distance_from_the_source() {
+    use slicer_core::skeletal_trapezoidation::propagation::propagate_beadings_downward_with_transition_dist;
+
+    const TRANSITION: f64 = 4000.0;
+
+    /// Returns the propagated graph and v0's own (pre-propagation) beading.
+    fn chain(v0_to_v1: f64) -> (SkeletalTrapezoidationGraph, Beading) {
+        fn vertex(x: f64, r: f64, bc: Option<u32>) -> STVertex {
+            STVertex {
+                position: Vertex { x, y: 0.0 },
+                distance_to_boundary: r,
+                bead_count: bc,
+                transition_ratio: 0.0,
+            }
+        }
+        fn edge(start_vertex: usize, twin: usize, r_min: f64, r_max: f64) -> STHalfEdge {
+            STHalfEdge {
+                start_vertex,
+                twin,
+                r_min,
+                r_max,
+                central: false,
+                ..STHalfEdge::default()
+            }
+        }
+        let mut graph = SkeletalTrapezoidationGraph {
+            vertices: vec![
+                vertex(0.0, 1_500.0, Some(1)),
+                vertex(v0_to_v1, 6_000.0, None),
+                vertex(v0_to_v1 + 20_000.0, 20_000.0, Some(10)),
+            ],
+            edges: vec![
+                edge(0, 1, 1_500.0, 6_000.0),   // 0: v0 -> v1 (upward)
+                edge(1, 0, 1_500.0, 6_000.0),   // 1: v1 -> v0
+                edge(1, 3, 6_000.0, 20_000.0),  // 2: v1 -> v2 (upward)
+                edge(2, 2, 6_000.0, 20_000.0),  // 3: v2 -> v1
+            ],
+            centrality_filtered: true,
+            rib: RibData::default(),
+            ..Default::default()
+        };
+        let params = BeadingFactoryParams {
+            optimal_width: 4000.0,
+            default_transition_length: TRANSITION,
+            max_bead_count: 10,
+            ..BeadingFactoryParams::default()
+        };
+        let strategy = BeadingStrategyFactory::create_stack(&params);
+        populate_beading_propagation(&mut graph, strategy.as_ref());
+        let thin = graph.get_beding(0).expect("v0 has its own beading").clone();
+        propagate_beadings_upward(&mut graph);
+        propagate_beadings_downward_with_transition_dist(&mut graph, TRANSITION);
+        (graph, thin)
+    }
+
+    // v1 is 1 mm (> the 0.4 mm transition distance) from v0: replaced.
+    let (far, thin) = chain(10_000.0);
+    let top = far.get_beding(2).expect("v2 has its own beading").clone();
+    assert!(
+        top.bead_widths.len() > thin.bead_widths.len(),
+        "fixture needs a wider top beading"
+    );
+    assert_eq!(
+        far.get_beding(1),
+        Some(&top),
+        "a thin beading copied 1 mm up the spine must be replaced by the top beading"
+    );
+
+    // v1 is 0.1 mm from v0: ratio_of_top = 1000 / min(1000 + 20000, 4000)
+    // = 0.25, so bead 0 is blended 1:3 top:bottom and the top's other beads
+    // are kept.
+    let (near, thin) = chain(1_000.0);
+    let top = near.get_beding(2).expect("v2 has its own beading").clone();
+    let blended = near.get_beding(1).expect("v1 received a beading");
+    assert_eq!(
+        blended.bead_widths.len(),
+        top.bead_widths.len(),
+        "the blend keeps the thicker beading's bead list"
+    );
+    let want = 0.25 * top.bead_widths[0] + 0.75 * thin.bead_widths[0];
+    assert!(
+        (blended.bead_widths[0] - want).abs() < 1e-6,
+        "bead 0 width {} != 0.25 * top + 0.75 * thin = {want}",
+        blended.bead_widths[0]
+    );
+    assert_ne!(thin.bead_widths[0], top.bead_widths[0], "fixture must tell the two apart");
+    assert_eq!(blended.bead_widths[1..], top.bead_widths[1..]);
+}
 /// 113c interleaved-rib topology: a single central edge `E0` (v0 -> v1, along
 /// y=0 from x=0 to x=100) carries *two* `transition_mids` (so `apply_transitions`
 /// performs two same-edge splits on `E0` — the exact repeated-same-edge-split

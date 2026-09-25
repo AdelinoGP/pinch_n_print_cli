@@ -19,7 +19,8 @@
 //!    rectilinear bridge fill instead. No component is ever silently dropped.
 //! 6. Waves are emitted as `BridgeInfill`, order-locked with **one tag per
 //!    connected wave domain**, anchor-first. Internal-qualified bridge polygons
-//!    get **unlocked** rectilinear fallback under today's role mapping.
+//!    get **unlocked** rectilinear fallback under today's role mapping, each at
+//!    its host-authored per-polygon angle.
 
 #![warn(missing_docs)]
 #![warn(unused_imports)]
@@ -260,8 +261,10 @@ fn rotate_polys(polys: &[ExPolygon], cos: f64, sin: f64) -> Vec<ExPolygon> {
 /// Conventional rectilinear bridge scanlines over `polys`.
 ///
 /// Own copy of the rectilinear-infill precedent (ADR-0026 forbids sharing fill
-/// implementations between modules). The scan direction comes from the host's
-/// `bridge_orientation_deg`; this module never computes a bridge angle itself.
+/// implementations between modules). The scan direction comes from the host
+/// (`bridge_orientation_deg` for external bridges, the per-polygon
+/// `internal_bridge_angles_deg` for internal ones); this module never computes
+/// a bridge angle itself.
 fn rectilinear_scanlines(polys: &[ExPolygon], angle_deg: f32, spacing_units: f64) -> Vec<Polyline> {
     if polys.is_empty() || spacing_units <= 0.0 {
         return Vec::new();
@@ -462,8 +465,20 @@ impl LayerModule for WaveOverhangs {
 
             // ---- Region partition (steps 1-4). ------------------------------
             let external = difference(region.bridge_areas(), region.internal_bridge_areas());
-            let internal_qualified =
-                intersection(region.bridge_areas(), region.internal_bridge_areas());
+            // Each internal-bridge polygon keeps its own host-authored angle
+            // (`internal_bridge_angle_deg` falls back to
+            // `bridge_orientation_deg` when the host sent none).
+            let internal_qualified: Vec<(Vec<ExPolygon>, f32)> = region
+                .internal_bridge_areas()
+                .iter()
+                .enumerate()
+                .map(|(index, area)| {
+                    (
+                        intersection(region.bridge_areas(), std::slice::from_ref(area)),
+                        region.internal_bridge_angle_deg(index),
+                    )
+                })
+                .collect();
 
             // The packet docs call this `prev_object_boundary`; the accessor
             // that actually exists is `prev_layer_boundary()` (object-scoped
@@ -670,9 +685,9 @@ impl LayerModule for WaveOverhangs {
             }
 
             // ---- Internal-qualified polygons: unlocked rectilinear. ---------
-            for pl in
-                rectilinear_scanlines(&internal_qualified, angle, fallback_spacing_units)
-            {
+            for pl in internal_qualified.iter().flat_map(|(area, internal_angle)| {
+                rectilinear_scanlines(area, *internal_angle, fallback_spacing_units)
+            }) {
                 output
                     .push_solid_path(to_path(
                         &pl,

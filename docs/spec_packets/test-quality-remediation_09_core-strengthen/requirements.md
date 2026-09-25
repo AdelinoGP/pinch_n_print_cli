@@ -4,8 +4,8 @@
 
 - Grouped task IDs: `core/DUP-CORE-strengthen (excluding wider-bead)`
 - Backlog source: `docs/specs/test-quality-remediation-plan.md`
-- Packet status: `draft`
-- Independent preflight: `PREFLIGHT PASS` (2026-09-10, S0-S8, AC commands, and Doc Impact); the AC-5 lookahead now accepts a closing code-span backtick so the Validation cell can be written in the table's normal backticked style. Authoring result only; no implementation acceptance gate ran.
+- Packet status: `implemented`
+- Independent preflight: `PREFLIGHT PASS` (2026-09-10, S0-S8, AC commands, and Doc Impact); the AC-5 lookahead now accepts a closing code-span backtick so the Validation cell can be written in the table's normal backticked style. Implementation acceptance ran 2026-09-14: AC-1 through AC-5 passed, along with `cargo check --workspace --all-targets`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo xtask check-literals`, and `cargo xtask check-test-quality --report`.
 - Aggregate context cost: `S`
 
 ## Problem Statement
@@ -39,7 +39,7 @@ The remaining core weak-oracle cases execute real geometry and flow code but do 
 - `docs/08_coordinate_system.md` - direct read of the Point2 100-nm unit, `Point2::from_mm`, and area conversion rules.
 - `docs/adr/0064-existing-tests-retire-if-unjustified.md` - direct read; each retained test names a regression input that would otherwise slip through.
 - `docs/adr/0065-test-quality-gate-with-delayed-enforce-mode.md` - direct read; the quality gate remains report-mode until final-wave promotion.
-- `docs/spec_packets/test-quality-remediation_08_core-beading-threshold-review/` - delegated predecessor summary; draft, independently `PREFLIGHT PASS`, with no dependency exports.
+- `docs/spec_packets/test-quality-remediation_08_core-beading-threshold-review/` - delegated predecessor summary; implemented, independently `PREFLIGHT PASS`, with no dependency exports.
 
 ## Acceptance Summary
 

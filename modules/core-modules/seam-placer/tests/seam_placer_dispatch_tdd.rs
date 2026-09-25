@@ -130,8 +130,9 @@ fn seam_placer_selects_lowest_effective_score_candidate() {
 fn seam_rotation_preserves_non_target_walls() {
     let config = empty_seam_config();
     let module = SeamPlacer::from_config(&config).expect("module init must succeed");
-    let outer_wall = ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0)]);
-    let inner_wall = ir_wall(0.2, &[(0.0, 1.0), (1.0, 1.0), (2.0, 1.0)]);
+    // Closed loops (explicit closing repeat): only loops are seam-rotated.
+    let outer_wall = ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0), (0.0, 0.0)]);
+    let inner_wall = ir_wall(0.2, &[(0.0, 1.0), (1.0, 1.0), (2.0, 1.0), (0.0, 1.0)]);
     let regions = vec![sdk_region(
         "obj-a",
         0,

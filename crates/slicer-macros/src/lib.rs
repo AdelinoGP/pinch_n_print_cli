@@ -2532,6 +2532,7 @@ fn layer_light_helpers() -> TokenStream2 {
                 sdk_view.set_is_bridge(r.is_bridge());
                 sdk_view.set_bridge_areas(bridge_areas);
                 sdk_view.set_internal_bridge_areas(internal_bridge_areas);
+                sdk_view.set_internal_bridge_angles_deg(r.internal_bridge_angles_deg());
                 sdk_view.set_internal_solid_fill(internal_solid_fill);
                 sdk_view.set_bridge_orientation_deg(r.bridge_orientation_deg());
                 sdk_view.set_sparse_infill_area(sparse_infill_area);

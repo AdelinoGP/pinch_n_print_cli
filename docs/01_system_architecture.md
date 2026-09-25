@@ -441,6 +441,12 @@ Layer::Infill
             No per-region role-pick; no polygon math in modules, except
             raft-default's deterministic footprint synthesis via the host hatch
             service (ADR-0009's role/claim reference).
+            Internal bridges have one producer: the ShellClassification
+            prepass writes `internal_bridge_areas` (also in `bridge_areas`)
+            plus one angle per polygon (`internal_bridge_angles_deg`). The
+            bridge holder emits `bridge_areas − internal_bridge_areas` at
+            `bridge_orientation_deg` and each internal polygon as
+            `InternalBridgeInfill` at its own angle.
             The wave-overhangs bridge holder subtracts `internal_bridge_areas`,
             emits anchor-first locked `BridgeInfill` waves over external areas,
             and uses unlocked rectilinear fallback for internal or

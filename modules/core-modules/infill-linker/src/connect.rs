@@ -93,6 +93,9 @@ struct Endpoint {
     path_index: usize,
     at_start: bool,
     position: BoundaryPosition,
+    /// The endpoint's own coordinates. A join finds which end of a (possibly
+    /// already merged) path carries this endpoint by comparing against it.
+    point: (f32, f32),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -138,7 +141,10 @@ pub fn connect_infill(
             .then_with(|| endpoint_order(&left.second, &right.second))
     });
     let mut consumed = vec![[false; 2]; active.len()];
-    let mut reversed = vec![false; active.len()];
+    // Canonical `connect_infill`'s `merged_with` table: a merged polyline lives
+    // in the lower of its two slots, and an endpoint of a path that has been
+    // merged away resolves to that slot through `merged_representative`.
+    let mut merged_with = (0..active.len()).collect::<Vec<_>>();
     let mut boundary_positions = vec![Vec::new(); graph.rings().len()];
     for candidate in &candidates {
         for endpoint in [candidate.first, candidate.second] {
@@ -152,13 +158,8 @@ pub fn connect_infill(
     }
 
     for candidate in candidates {
-        let first_index = candidate.first.path_index;
-        let second_index = candidate.second.path_index;
-        if first_index == second_index
-            || endpoint_consumed(&consumed, candidate.first)
+        if endpoint_consumed(&consumed, candidate.first)
             || endpoint_consumed(&consumed, candidate.second)
-            || active[first_index].is_none()
-            || active[second_index].is_none()
         {
             continue;
         }
@@ -180,8 +181,16 @@ pub fn connect_infill(
             continue;
         };
 
-        mark_endpoint_consumed(&mut consumed, candidate.first);
-        mark_endpoint_consumed(&mut consumed, candidate.second);
+        let first_index = merged_representative(&mut merged_with, candidate.first.path_index);
+        let second_index = merged_representative(&mut merged_with, candidate.second.path_index);
+        // Both endpoints already belong to one merged polyline: canonical only
+        // connects when `polyline_idx1 != polyline_idx2` (never closes a loop).
+        if first_index == second_index
+            || active[first_index].is_none()
+            || active[second_index].is_none()
+        {
+            continue;
+        }
 
         let (first, second) = if first_index < second_index {
             let (left, right) = active.split_at_mut(second_index);
@@ -193,22 +202,35 @@ pub fn connect_infill(
         let (Some(mut first), Some(mut second)) = (first, second) else {
             continue;
         };
-        let mut first_reversed = reversed[first_index];
-        let mut second_reversed = reversed[second_index];
 
-        if candidate.distance < anchor_length_max_units {
-            orient_for_join_with_state(
-                &mut first,
-                candidate.first.at_start,
-                true,
-                &mut first_reversed,
-            );
-            orient_for_join_with_state(
-                &mut second,
-                candidate.second.at_start,
-                false,
-                &mut second_reversed,
-            );
+        // Orient by geometry, not by bookkeeping: the joined endpoint must be
+        // `first`'s last point and `second`'s first point. Canonical compares
+        // the T-joint's contour point with `polyline.points.front()` /
+        // `.back()`. A merged polyline no longer starts with the path whose
+        // endpoint a later candidate names, so a per-slot orientation flag goes
+        // stale after the first merge and splices the wrong end — a bare chord
+        // across the interior (benchy L33 sparse infill).
+        let (Some(first_at_start), Some(second_at_start)) = (
+            endpoint_side(&first, candidate.first.point),
+            endpoint_side(&second, candidate.second.point),
+        ) else {
+            active[first_index] = Some(first);
+            active[second_index] = Some(second);
+            continue;
+        };
+        mark_endpoint_consumed(&mut consumed, candidate.first);
+        mark_endpoint_consumed(&mut consumed, candidate.second);
+        let joinable = candidate.distance < anchor_length_max_units;
+        if joinable || anchor_length_units > 0.0 {
+            if first_at_start {
+                first.points.reverse();
+            }
+            if !second_at_start {
+                second.points.reverse();
+            }
+        }
+
+        if joinable {
             // After orientation the join runs from `first`'s last point to
             // `second`'s first point. Route it along the contour instead of
             // extruding a bare chord between them.
@@ -224,8 +246,9 @@ pub fn connect_infill(
                 ));
             }
             first.points.extend(second.points);
-            active[first_index.min(second_index)] = Some(first);
-            reversed[first_index.min(second_index)] = first_reversed;
+            let (lower, upper) = (first_index.min(second_index), first_index.max(second_index));
+            active[lower] = Some(first);
+            merged_with[upper] = lower;
         } else if anchor_length_units > 0.0 {
             let direction = ring
                 .directed_distance(
@@ -233,18 +256,6 @@ pub fn connect_infill(
                     candidate.second.position.arc_position,
                 )
                 .1;
-            orient_for_join_with_state(
-                &mut first,
-                candidate.first.at_start,
-                true,
-                &mut first_reversed,
-            );
-            orient_for_join_with_state(
-                &mut second,
-                candidate.second.at_start,
-                false,
-                &mut second_reversed,
-            );
             if let (Some(first_anchor), Some(second_anchor)) =
                 (first.points.last().copied(), second.points.first().copied())
             {
@@ -286,13 +297,9 @@ pub fn connect_infill(
             }
             active[first_index] = Some(first);
             active[second_index] = Some(second);
-            reversed[first_index] = first_reversed;
-            reversed[second_index] = second_reversed;
         } else {
             active[first_index] = Some(first);
             active[second_index] = Some(second);
-            reversed[first_index] = first_reversed;
-            reversed[second_index] = second_reversed;
         }
     }
 
@@ -403,20 +410,25 @@ fn nearest_pair_candidates(
         .enumerate()
         .flat_map(|(path_index, path)| {
             let path = path.as_ref()?;
-            let first = boundary_position(graph, path.points.first()?)?;
-            let last = boundary_position(graph, path.points.last()?)?;
-            Some([
-                Endpoint {
-                    path_index,
-                    at_start: true,
-                    position: first,
-                },
-                Endpoint {
-                    path_index,
-                    at_start: false,
-                    position: last,
-                },
-            ])
+            // Canonical admits only on-contour endpoints as T-joints
+            // (boundary_idx_unconnected otherwise); an interior end anchors no
+            // take. A path with one anchored end still contributes that end —
+            // filtering the whole path on either end would also drop every
+            // legitimately clipped path whose far end stops mid-span.
+            let (head, tail) = (path.points.first()?, path.points.last()?);
+            let first = boundary_position(graph, head).map(|position| Endpoint {
+                path_index,
+                at_start: true,
+                position,
+                point: (head.x, head.y),
+            });
+            let last = boundary_position(graph, tail).map(|position| Endpoint {
+                path_index,
+                at_start: false,
+                position,
+                point: (tail.x, tail.y),
+            });
+            Some([first, last].into_iter().flatten())
         })
         .flatten()
         .collect::<Vec<_>>();
@@ -549,34 +561,112 @@ fn boundary_position(
     point: &slicer_ir::Point3WithWidth,
 ) -> Option<BoundaryPosition> {
     let point = Point2::from_mm(point.x, point.y);
-    graph
-        .rings()
-        .iter()
-        .enumerate()
-        .filter_map(|(ring_index, ring)| {
-            project_on_ring(ring, point).map(|(distance_squared, local_arc)| {
-                (
-                    distance_squared,
-                    BoundaryPosition {
-                        ring_index,
-                        arc_position: ring.pos_of_first_point + local_arc,
-                    },
-                )
-            })
-        })
-        .min_by(
-            |(left_distance, left_position), (right_distance, right_position)| {
-                left_distance
-                    .total_cmp(right_distance)
-                    .then_with(|| left_position.ring_index.cmp(&right_position.ring_index))
-                    .then_with(|| {
-                        left_position
-                            .arc_position
-                            .total_cmp(&right_position.arc_position)
-                    })
-            },
-        )
-        .map(|(_, position)| position)
+    // Canonical FillBase.cpp::create_boundary_infill_graph projects every
+    // infill endpoint onto the boundary graph (`grid.closest_point_signed_
+    // distance` per end) and keys the T-joint to the nearest contour — there
+    // is no on-contour admission gate at all. A clipped scan line ends
+    // ~overlap inside the fill boundary by construction (inset
+    // `(0.5-overlap)*spacing`, e.g. 0.1 mm at defaults), so a tight
+    // epsilon-gate would reject every legitimate endpoint and union linking
+    // across wall-sharing regions would silently stop. The nearest
+    // qualifying ring still wins; what the gate must reject is only the
+    // genuinely ambiguous case — an endpoint strictly inside a HOLE, which
+    // canonical leaves unconnected (`contour_idx ==
+    // boundary_idx_unconnected`) because a connector routed along the hole
+    // ring would drag extrusion across the void the hole reserves. So: admit
+    // the nearest ring unless the point is strictly inside a hole polygon,
+    // in which case admit only that hole's ring when the point sits on it
+    // (within the clip stage's +-2-unit boundary tolerance, plus scan-emit
+    // rounding) and reject otherwise.
+    const ON_RING_TOLERANCE_UNITS_SQUARED: f64 = 16.0;
+    // Strictly-inside-a-hole test up front: hole rings below are found by
+    // `hole_index`, and the point-in-ring test runs on the hole polygon
+    // itself (units space, exact integer arithmetic where it matters).
+    let inside_hole: Option<usize> = graph.rings().iter().enumerate().find_map(
+        |(ring_index, ring)| {
+            (ring.hole_index.is_some() && point_strictly_in_ring(point, &ring.polygon))
+                .then_some(ring_index)
+        },
+    );
+    if let Some(hole_ring) = inside_hole {
+        // Inside a void: only that hole's own ring can anchor, and only when
+        // the point sits on it (a scan line clipped exactly at the hole
+        // edge). Anything deeper has no T-joint anywhere.
+        let ring = &graph.rings()[hole_ring];
+        let (distance_squared, local_arc) = project_on_ring(ring, point)?;
+        if distance_squared > ON_RING_TOLERANCE_UNITS_SQUARED {
+            return None;
+        }
+        return Some(BoundaryPosition {
+            ring_index: hole_ring,
+            arc_position: ring.pos_of_first_point + local_arc,
+        });
+    }
+    let mut best: Option<(f64, BoundaryPosition)> = None;
+    for (ring_index, ring) in graph.rings().iter().enumerate() {
+        let Some((distance_squared, local_arc)) = project_on_ring(ring, point) else {
+            continue;
+        };
+        let position = BoundaryPosition {
+            ring_index,
+            arc_position: ring.pos_of_first_point + local_arc,
+        };
+        let better = best.as_ref().is_none_or(|(best_distance, best_position)| {
+            distance_squared < *best_distance
+                || (distance_squared == *best_distance
+                    && (ring_index, position.arc_position)
+                        < (best_position.ring_index, best_position.arc_position))
+        });
+        if better {
+            best = Some((distance_squared, position));
+        }
+    }
+    best.map(|(_, position)| position)
+}
+
+/// Strict point-in-polygon over a single closed ring (units space).
+/// Boundary-exact points count as inside — the hole-edge scan-line case must
+/// still reach the tolerance check above rather than being treated as void.
+fn point_strictly_in_ring(point: Point2, ring: &slicer_ir::Polygon) -> bool {
+    let pts = &ring.points;
+    let n = pts.len();
+    if n < 3 {
+        return false;
+    }
+    let x = point.x as f64;
+    let y = point.y as f64;
+    // On-edge counts as NOT strictly inside.
+    for i in 0..n {
+        let a = pts[i];
+        let b = pts[(i + 1) % n];
+        let dx = (b.x - a.x) as f64;
+        let dy = (b.y - a.y) as f64;
+        let len2 = dx * dx + dy * dy;
+        if len2 == 0.0 {
+            continue;
+        }
+        let t = ((x - a.x as f64) * dx + (y - a.y as f64) * dy) / len2;
+        if (0.0..=1.0).contains(&t) {
+            let px = a.x as f64 + t * dx;
+            let py = a.y as f64 + t * dy;
+            if (x - px).hypot(y - py) <= 2.0 {
+                return false;
+            }
+        }
+    }
+    let mut inside = false;
+    let mut j = n - 1;
+    for i in 0..n {
+        let xi = pts[i].x as f64;
+        let yi = pts[i].y as f64;
+        let xj = pts[j].x as f64;
+        let yj = pts[j].y as f64;
+        if ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
 }
 
 fn project_on_ring(ring: &BoundaryRing, point: Point2) -> Option<(f64, f64)> {
@@ -618,22 +708,34 @@ fn project_on_ring(ring: &BoundaryRing, point: Point2) -> Option<(f64, f64)> {
     best
 }
 
-fn orient_for_join_with_state(
-    path: &mut ExtrusionPath3D,
-    at_start: bool,
-    first: bool,
-    reversed: &mut bool,
-) {
-    let selected_at_start = at_start != *reversed;
-    if orient_for_join(path, selected_at_start, first) {
-        *reversed = !*reversed;
+/// Canonical `get_and_update_merged_with`: the slot that now holds the
+/// polyline `path_index` was merged into, with path compression.
+fn merged_representative(merged_with: &mut [usize], path_index: usize) -> usize {
+    let mut last = path_index;
+    loop {
+        let lower = merged_with[last];
+        if lower == last {
+            merged_with[path_index] = last;
+            return last;
+        }
+        last = lower;
     }
 }
 
-fn orient_for_join(path: &mut ExtrusionPath3D, at_start: bool, first: bool) -> bool {
-    let should_reverse = (first && at_start) || (!first && !at_start);
-    if should_reverse {
-        path.points.reverse();
+/// Which end of `path` carries `point`: `Some(true)` for the first point,
+/// `Some(false)` for the last, `None` when neither does.
+///
+/// A path whose ends coincide reports its last point, which needs no
+/// reversal on either side of a join.
+fn endpoint_side(path: &ExtrusionPath3D, point: (f32, f32)) -> Option<bool> {
+    let matches = |candidate: &Point3WithWidth| {
+        candidate.x.to_bits() == point.0.to_bits() && candidate.y.to_bits() == point.1.to_bits()
+    };
+    if path.points.last().is_some_and(matches) {
+        Some(false)
+    } else if path.points.first().is_some_and(matches) {
+        Some(true)
+    } else {
+        None
     }
-    should_reverse
 }

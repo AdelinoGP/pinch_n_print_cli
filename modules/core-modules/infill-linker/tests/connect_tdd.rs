@@ -204,6 +204,9 @@ fn connector_routes_through_the_reflex_corner_instead_of_chording_the_notch() {
     // reflex corner. A bare chord between them passes through (5.5,5.5), which
     // is outside the L; the contour-routed connector must materialise (4,4).
     let graph = BoundaryInfillGraph::new(&[l_shape()]);
+    // Endpoints sit ON the two contour edges meeting at the reflex corner,
+    // the way clipped scan lines do: (7,4) on the y=4 edge, (4,7) on the x=4
+    // edge. The far ends anchor the paths in the L's two arms.
     let output = connect_infill(
         vec![
             segment((7.0, 1.0), (7.0, 4.0)),
@@ -236,9 +239,19 @@ fn connector_routes_through_the_reflex_corner_instead_of_chording_the_notch() {
 }
 
 #[test]
-fn connector_walks_a_hole_ring_rather_than_cutting_across_it() {
-    // Both joined endpoints project onto the hole ring; the walk between them
-    // passes the hole corner (4,6), which must appear as a real vertex.
+fn outer_ring_connector_never_routes_through_a_hole_ring() {
+    // L0 benchy bottom-fill regression: a hole ring and the outer contour are
+    // separate boundary loops. When one endpoint projects to the outer contour
+    // and the other to a hole, no shared ring exists, so the endpoints must
+    // stay unjoined — routing the walk along the hole ring would drag
+    // extrusion across the void the hole reserves (and a forced outer-ring
+    // walk would swing the long way round the part instead).
+    //
+    // Canonical Fill::connect_infill (FillBase.cpp::create_boundary_infill_graph
+    // + connect_infill) keys every T-joint to one contour_idx and only ever
+    // takes contour runs between joints on the SAME contour; cross-contour
+    // pairs fall through to take_limited stubs or stay separate, never a
+    // full-contour take across the gap.
     let frame = ExPolygon {
         contour: square(10.0).contour,
         holes: vec![Polygon {
@@ -250,37 +263,28 @@ fn connector_walks_a_hole_ring_rather_than_cutting_across_it() {
             ],
         }],
     };
-    let graph = BoundaryInfillGraph::new(&[frame.clone()]);
-    // spacing 0.4 mm → a 4 mm walk budget, which admits only the 2 mm hole-ring
-    // pair and not the 10 mm outer-ring pair.
+    let graph = BoundaryInfillGraph::new(&[frame]);
+    // (0,5)->(3.9,5) ends just outside the hole's left edge; (4.1,5)->(5,5)
+    // starts just inside the hole span. The outer-projected endpoint must not
+    // be spliced to the hole-projected one via either ring.
     let output = connect_infill(
-        vec![
-            segment((0.0, 5.0), (4.0, 5.0)),
-            segment((5.0, 10.0), (5.0, 6.0)),
-        ],
+        vec![segment((0.0, 5.0), (3.9, 5.0)), segment((4.1, 5.0), (5.0, 5.0))],
         &graph,
         AnchorParams {
             anchor_length_mm: 0.0,
-            anchor_length_max_mm: 4.0,
+            anchor_length_max_mm: 50.0,
         },
     );
 
-    assert_eq!(output.len(), 1, "the two lines share the hole ring");
-    let linked = &output[0];
-    assert!(
-        has_vertex(linked, 4.0, 6.0),
-        "connector must materialise the hole corner (4,6); got {:?}",
-        linked.points.iter().map(|p| (p.x, p.y)).collect::<Vec<_>>()
+    assert_eq!(
+        output.len(),
+        2,
+        "outer-anchored and hole-anchored endpoints share no ring and must stay separate; got {:?}",
+        output
+            .iter()
+            .map(|p| p.points.iter().map(|q| (q.x, q.y)).collect::<Vec<_>>())
+            .collect::<Vec<_>>()
     );
-    // Structural: no vertex may land strictly inside the hole.
-    for p in &linked.points {
-        assert!(
-            !(p.x > 4.0 + 1e-3 && p.x < 6.0 - 1e-3 && p.y > 4.0 + 1e-3 && p.y < 6.0 - 1e-3),
-            "linked vertex ({}, {}) is inside the hole — connector cut across it",
-            p.x,
-            p.y
-        );
-    }
 }
 
 #[test]
@@ -335,4 +339,117 @@ fn endpoints_on_different_rings_are_never_joined() {
             "a path spans the gap between the two islands"
         );
     }
+}
+
+fn point_segment_distance_mm(p: (f32, f32), a: (f32, f32), b: (f32, f32)) -> f32 {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let length_squared = dx * dx + dy * dy;
+    let t = if length_squared == 0.0 {
+        0.0
+    } else {
+        (((p.0 - a.0) * dx + (p.1 - a.1) * dy) / length_squared).clamp(0.0, 1.0)
+    };
+    (p.0 - a.0 - t * dx).hypot(p.1 - a.1 - t * dy)
+}
+
+fn ring_edges(boundary: &ExPolygon) -> Vec<((f32, f32), (f32, f32))> {
+    std::iter::once(&boundary.contour)
+        .chain(boundary.holes.iter())
+        .flat_map(|ring| {
+            (0..ring.points.len()).map(move |index| {
+                let a = ring.points[index].to_mm();
+                let b = ring.points[(index + 1) % ring.points.len()].to_mm();
+                (a, b)
+            })
+        })
+        .collect()
+}
+
+#[test]
+fn merged_path_is_extended_from_the_end_that_owns_the_joined_endpoint() {
+    // Benchy L33 sparse-infill regression (31.5 mm chord across the hull
+    // interior). Three scan lines; the middle one (index 1) is first merged
+    // with the short line of higher index 2 at the west wall (nearest pair,
+    // 1 mm), so the merged path lives in the lower slot and starts with line 2's
+    // hole-side end (6,4). The next join (east wall, 2 mm) pairs line 0's east
+    // end with line 1's east end (20,3) — now the merged path's LAST point.
+    // Extending the merged path from its other end instead splices a bare
+    // chord (20,1)->(6,4) across the interior.
+    //
+    // Canonical `FillBase.cpp::connect_infill` resolves the owning polyline
+    // with `get_and_update_merged_with` and orients it by comparing the
+    // T-joint's contour point with `polyline.points.front()` / `.back()`, so
+    // the connector is always the contour run between the two T-joints.
+    let boundary = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(0.0, 0.0),
+                Point2::from_mm(20.0, 0.0),
+                Point2::from_mm(20.0, 10.0),
+                Point2::from_mm(0.0, 10.0),
+            ],
+        },
+        holes: vec![Polygon {
+            points: vec![
+                Point2::from_mm(6.0, 3.5),
+                Point2::from_mm(6.0, 8.0),
+                Point2::from_mm(10.0, 8.0),
+                Point2::from_mm(10.0, 3.5),
+            ],
+        }],
+    };
+    let scans = vec![
+        segment((0.0, 1.0), (20.0, 1.0)),
+        segment((0.0, 3.0), (20.0, 3.0)),
+        segment((0.0, 4.0), (6.0, 4.0)),
+    ];
+    let graph = BoundaryInfillGraph::new(std::slice::from_ref(&boundary));
+    let output = connect_infill(
+        scans.clone(),
+        &graph,
+        AnchorParams {
+            anchor_length_mm: 0.0,
+            anchor_length_max_mm: 20.0,
+        },
+    );
+
+    let shape = output
+        .iter()
+        .map(|p| p.points.iter().map(|q| (q.x, q.y)).collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    let edges = ring_edges(&boundary);
+    let scan_edges = scans
+        .iter()
+        .map(|s| {
+            (
+                (s.points[0].x, s.points[0].y),
+                (s.points[1].x, s.points[1].y),
+            )
+        })
+        .collect::<Vec<_>>();
+    for path in &output {
+        for pair in path.points.windows(2) {
+            let (a, b) = ((pair[0].x, pair[0].y), (pair[1].x, pair[1].y));
+            let on_scan = scan_edges.iter().any(|&(s, e)| {
+                point_segment_distance_mm(a, s, e) < 1e-3
+                    && point_segment_distance_mm(b, s, e) < 1e-3
+            });
+            let on_ring = (0..=10).all(|step| {
+                let t = step as f32 / 10.0;
+                let p = (a.0 + t * (b.0 - a.0), a.1 + t * (b.1 - a.1));
+                edges
+                    .iter()
+                    .any(|&(s, e)| point_segment_distance_mm(p, s, e) < 1e-3)
+            });
+            assert!(
+                on_scan || on_ring,
+                "connector {a:?}->{b:?} is neither a scan line nor a contour run; got {shape:?}"
+            );
+        }
+    }
+    assert_eq!(
+        output.len(),
+        1,
+        "all three lines share the outer ring and link into one polyline; got {shape:?}"
+    );
 }

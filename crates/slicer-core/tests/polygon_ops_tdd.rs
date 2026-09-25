@@ -25,6 +25,48 @@ fn shape_signature(polys: &[ExPolygon]) -> Vec<Vec<(i64, i64)>> {
         .collect()
 }
 
+fn signed_area_twice(points: &[Point2]) -> i128 {
+    points
+        .iter()
+        .zip(points.iter().cycle().skip(1))
+        .map(|(current, next)| {
+            i128::from(current.x) * i128::from(next.y) - i128::from(current.y) * i128::from(next.x)
+        })
+        .sum()
+}
+
+fn area_units2(polys: &[ExPolygon]) -> i128 {
+    let twice_area: i128 = polys
+        .iter()
+        .map(|poly| {
+            signed_area_twice(&poly.contour.points).abs()
+                - poly
+                    .holes
+                    .iter()
+                    .map(|hole| signed_area_twice(&hole.points).abs())
+                    .sum::<i128>()
+        })
+        .sum();
+    twice_area.abs() / 2
+}
+
+fn contour_bounds(polys: &[ExPolygon]) -> Option<(Point2, Point2)> {
+    let mut points = polys.iter().flat_map(|poly| poly.contour.points.iter());
+    let first = points.next()?;
+    let (min_x, min_y, max_x, max_y) = points.fold(
+        (first.x, first.y, first.x, first.y),
+        |(min_x, min_y, max_x, max_y), point| {
+            (
+                min_x.min(point.x),
+                min_y.min(point.y),
+                max_x.max(point.x),
+                max_y.max(point.y),
+            )
+        },
+    );
+    Some((Point2 { x: min_x, y: min_y }, Point2 { x: max_x, y: max_y }))
+}
+
 #[test]
 fn boolean_ops_produce_expected_presence_for_overlapping_squares() {
     let a = square(0.0, 0.0, 10.0, 10.0);
@@ -45,6 +87,45 @@ fn boolean_ops_produce_expected_presence_for_overlapping_squares() {
         "difference should return geometry"
     );
     assert!(!xor_result.is_empty(), "xor should return geometry");
+
+    assert_eq!(union_result.len(), 1);
+    assert_eq!(area_units2(&union_result), 15_000_000_000);
+    assert_eq!(
+        contour_bounds(&union_result),
+        Some((Point2::from_mm(0.0, 0.0), Point2::from_mm(15.0, 10.0),))
+    );
+
+    assert_eq!(intersection_result.len(), 1);
+    assert_eq!(area_units2(&intersection_result), 5_000_000_000);
+    assert_eq!(
+        contour_bounds(&intersection_result),
+        Some((Point2::from_mm(5.0, 0.0), Point2::from_mm(10.0, 10.0),))
+    );
+
+    assert_eq!(difference_result.len(), 1);
+    assert_eq!(area_units2(&difference_result), 5_000_000_000);
+    assert_eq!(
+        contour_bounds(&difference_result),
+        Some((Point2::from_mm(0.0, 0.0), Point2::from_mm(5.0, 10.0),))
+    );
+
+    assert_eq!(xor_result.len(), 2);
+    assert_eq!(area_units2(&xor_result), 10_000_000_000);
+    assert_eq!(
+        contour_bounds(&xor_result),
+        Some((Point2::from_mm(0.0, 0.0), Point2::from_mm(15.0, 10.0),))
+    );
+
+    let union_signature = shape_signature(&union_result);
+    let intersection_signature = shape_signature(&intersection_result);
+    let difference_signature = shape_signature(&difference_result);
+    let xor_signature = shape_signature(&xor_result);
+    assert_ne!(union_signature, intersection_signature);
+    assert_ne!(union_signature, difference_signature);
+    assert_ne!(union_signature, xor_signature);
+    assert_ne!(intersection_signature, difference_signature);
+    assert_ne!(intersection_signature, xor_signature);
+    assert_ne!(difference_signature, xor_signature);
 }
 
 #[test]

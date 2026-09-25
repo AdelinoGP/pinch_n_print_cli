@@ -434,6 +434,7 @@ mod tests {
         }
     }
 
+    // KEEP-review (core-cross): per-item delta alignment of the offset batch wrapper; catches a misaligned zip.
     #[test]
     fn batch_offset_keeps_results_aligned_with_inputs() {
         let items = vec![1.0_f32, 2.0, 3.0];
@@ -460,6 +461,7 @@ mod tests {
         }
     }
 
+    // KEEP-review (core-cross): native batch form delegates to the singular wrappers; catches batch/singular divergence.
     #[test]
     fn batch_forms_agree_with_the_singular_forms() {
         let requests: Vec<OffsetRequest> = (1..=4)

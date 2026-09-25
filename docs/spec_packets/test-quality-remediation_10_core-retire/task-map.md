@@ -1,6 +1,6 @@
 # Task Map: core-retire
 
-The approved plan explicitly uses wave/item IDs instead of `TASK-###` mappings; `docs/specs/test-quality-remediation-plan.md` is the backlog source. The same grouped item owns the two code steps and the separate §7 ledger step.
+The approved plan explicitly uses wave/item IDs instead of `TASK-###` mappings; `docs/specs/test-quality-remediation-plan.md` is the backlog source. `docs/07_implementation_status.md` has no `core/RETIRE` row; the `docs/07 task ID` column below is retained for template compatibility and its values are plan-item IDs from `docs/specs/test-quality-remediation-plan.md`. The same grouped item owns the two code steps and the separate §7 ledger step.
 
 | docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
 | --- | --- | --- | --- | --- | --- | --- |

@@ -21,13 +21,8 @@ use slicer_ir::{
     RegionMapIR, RegionPlan, SemVer, SliceIR, SlicedRegion,
 };
 use slicer_runtime::region_partition::sync_perimeter_infill_areas_into_slice;
-use slicer_runtime::wit_host::{
-    ExtrusionPath3d, ExtrusionRole, HostExecutionContextBuilder, OriginId,
-};
 use slicer_runtime::LayerArena;
 use slicer_runtime::{commit_shell_classification_builtin, Blackboard};
-
-use crate::common::{commit_hec_for_test, point3_with_width};
 
 // ── fixture helpers ──────────────────────────────────────────────────────────
 
@@ -135,12 +130,16 @@ fn ex_area_mm2(polys: &[ExPolygon]) -> f64 {
     signed_sum.abs() / 1.0e8
 }
 
+/// Four layers with two top shells: layer 3 is the exposed top, layer 2 is the
+/// internal-solid shell band, and it sits on sparse layer 1, so layer 2
+/// qualifies. (A three-layer / three-shell stack qualifies nothing: its layer 0
+/// is itself shell-solid, which left every assertion here vacuously true.)
 #[test]
 fn internal_bridge_qualification_writes_gated_areas() {
     let object_id = ObjectId::from("qualification-cube");
     let candidate_square = square(-5.0, -5.0, 5.0, 5.0);
     let lower_fill = candidate_square.clone();
-    let slices = (0..3)
+    let slices = (0..4)
         .map(|index| SliceIR {
             schema_version: SemVer {
                 major: 4,
@@ -165,12 +164,17 @@ fn internal_bridge_qualification_writes_gated_areas() {
     let mut region_map = RegionMapIR::default();
     let resolved = slicer_ir::ResolvedConfig {
         infill_density: 0.2,
-        top_shell_layers: 3,
+        top_shell_layers: 2,
         bottom_shell_layers: 0,
+        // Packet 04: `line_width = 0` is the auto sentinel the host expands
+        // (1.125 x nozzle_diameter = 0.45) before any consumer sees the view;
+        // `resolve_role_width` no longer performs the nozzle fallback, so the
+        // production-equivalent fixture value is the expanded width.
+        line_width: 0.45,
         ..Default::default()
     };
     let config = region_map.intern_config(resolved);
-    for index in 0..3 {
+    for index in 0..4 {
         region_map.entries.insert(
             RegionKey {
                 global_layer_index: index,
@@ -184,7 +188,7 @@ fn internal_bridge_qualification_writes_gated_areas() {
             },
         );
     }
-    let mut blackboard = Blackboard::new(Arc::new(Default::default()), 3);
+    let mut blackboard = Blackboard::new(Arc::new(Default::default()), 4);
     blackboard
         .commit_region_map(Arc::new(region_map))
         .expect("region map");
@@ -194,10 +198,137 @@ fn internal_bridge_qualification_writes_gated_areas() {
 
     commit_shell_classification_builtin(&mut blackboard).expect("shell classification");
     let classified = blackboard.slice_ir().expect("classified slices");
-    let candidate = &classified[1].regions[0];
+    let candidate = &classified[2].regions[0];
     assert!(!candidate.internal_solid_fill.is_empty());
+    assert!(
+        !candidate.internal_bridge_areas.is_empty(),
+        "the shell band over sparse infill must qualify"
+    );
     assert_eq!(candidate.internal_bridge_areas, candidate.bridge_areas);
     assert!(candidate.internal_bridge_areas.len() <= candidate.bridge_areas.len());
+    assert_eq!(
+        candidate.internal_bridge_angles_deg.len(),
+        candidate.internal_bridge_areas.len(),
+        "one bridge angle per qualified internal-bridge polygon"
+    );
+}
+
+/// Canonical `PrintObject::bridge_over_infill` chooses one bridge direction
+/// per internal-bridge candidate from the anchors around *that* candidate, and
+/// a candidate within `3 × spacing` of an earlier one reuses its direction. The
+/// host prepass therefore authors `internal_bridge_angles_deg` index-aligned
+/// with `internal_bridge_areas`:
+/// - A (40 × 10 mm, long along x) is anchored on its long sides, so its lines
+///   run across it at ~90°;
+/// - B (10 × 40 mm, long along y, far away) runs at ~0°;
+/// - C (10 × 40 mm, 0.3 mm right of A; the shell band insets both, leaving
+///   ~1.1 mm between the qualified polygons) would pick ~0° on its own
+///   geometry but lies within `3 × spacing` (1.35 mm) of A, so it inherits
+///   A's ~90°.
+///
+/// The region-wide `bridge_orientation_deg` is 0 here, so a fallback or a
+/// single shared angle cannot satisfy A and B at once.
+#[test]
+fn internal_bridge_angle_is_per_area_from_boundary() {
+    let object_id = ObjectId::from("per-area-angles");
+    let a = square(0.0, 0.0, 40.0, 10.0);
+    let c = square(40.3, 0.0, 50.3, 40.0);
+    let b = square(70.0, 0.0, 80.0, 40.0);
+    let footprint = vec![a.clone(), c.clone(), b.clone()];
+    let layers = 6u32;
+    let slices = (0..layers)
+        .map(|index| SliceIR {
+            global_layer_index: index,
+            z: 0.2 * (index + 1) as f32,
+            regions: vec![SlicedRegion {
+                object_id: object_id.clone(),
+                region_id: 0,
+                polygons: footprint.clone(),
+                infill_areas: footprint.clone(),
+                effective_layer_height: 0.2,
+                ..Default::default()
+            }],
+            ..Default::default()
+        })
+        .collect::<Vec<_>>();
+    let mut region_map = RegionMapIR::default();
+    let config = region_map.intern_config(slicer_ir::ResolvedConfig {
+        infill_density: 0.2,
+        top_shell_layers: 2,
+        bottom_shell_layers: 0,
+        // Packet 04: the host expands the auto-zero sentinel to
+        // `1.125 * nozzle_diameter` before consumption; `resolve_role_width`
+        // no longer falls back to the nozzle, so the fixture carries the
+        // expanded 0.45 mm.
+        line_width: 0.45,
+        ..Default::default()
+    });
+    for index in 0..layers {
+        region_map.entries.insert(
+            RegionKey {
+                global_layer_index: index,
+                object_id: object_id.clone(),
+                region_id: 0,
+                variant_chain: Vec::new(),
+            },
+            RegionPlan {
+                config,
+                ..Default::default()
+            },
+        );
+    }
+    let mut blackboard = Blackboard::new(Arc::new(Default::default()), layers as usize);
+    blackboard
+        .commit_region_map(Arc::new(region_map))
+        .expect("region map");
+    blackboard
+        .commit_slice_ir(Arc::new(slices))
+        .expect("slice IR");
+    commit_shell_classification_builtin(&mut blackboard).expect("shell classification");
+
+    let classified = blackboard.slice_ir().expect("classified slices");
+    let bridged = classified
+        .iter()
+        .map(|slice| &slice.regions[0])
+        .find(|region| !region.internal_bridge_areas.is_empty())
+        .expect("fixture must qualify an internal-bridge layer");
+    assert_eq!(bridged.bridge_orientation_deg, 0.0);
+    assert_eq!(
+        bridged.internal_bridge_angles_deg.len(),
+        bridged.internal_bridge_areas.len(),
+        "one angle per internal-bridge polygon"
+    );
+    // Undirected line directions: compare modulo 180 degrees.
+    let line_diff = |angle: f32, expected: f32| {
+        let diff = (angle - expected).rem_euclid(180.0);
+        diff.min(180.0 - diff)
+    };
+    let angle_over = |target: &ExPolygon| {
+        let index = bridged
+            .internal_bridge_areas
+            .iter()
+            .position(|area| {
+                ex_area_mm2(&intersection(
+                    std::slice::from_ref(area),
+                    std::slice::from_ref(target),
+                )) > 0.5 * ex_area_mm2(std::slice::from_ref(target))
+            })
+            .expect("every rectangle qualifies as an internal bridge");
+        bridged.internal_bridge_angles_deg[index]
+    };
+    let (angle_a, angle_b, angle_c) = (angle_over(&a), angle_over(&b), angle_over(&c));
+    assert!(
+        line_diff(angle_a, 90.0) <= 10.0,
+        "A is anchored on its long x-parallel sides, got {angle_a}"
+    );
+    assert!(
+        line_diff(angle_b, 0.0) <= 10.0,
+        "B is anchored on its long y-parallel sides, got {angle_b}"
+    );
+    assert_eq!(
+        angle_c, angle_a,
+        "C lies within 3 x spacing of the earlier candidate A and reuses its angle"
+    );
 }
 
 #[test]
@@ -694,6 +825,48 @@ fn bridge_areas_survive_empty_wall_inset_ceiling_layer() {
     );
 }
 
+/// Regression (benchy wheel / window tops / roof ceilings): when the region
+/// HAS walls but they consume the whole cross-section, the inset is empty
+/// and canonical prints only walls there. `LayerRegion.cpp`'s
+/// `slices_to_fill_surfaces_clipped` builds every fill surface as the typed
+/// slice ∩ the perimeters' fill area, so an empty fill area yields no
+/// bridge and no top surface. Passing the prepass claims through unclipped
+/// printed Bridge / Top surface on top of the wall beads.
+#[test]
+fn empty_wall_inset_with_walls_claims_no_top_or_bridge() {
+    let region_polys = square(0.0, 0.0, 10.0, 10.0);
+
+    let mut slice = empty_slice_ir();
+    let mut sr = sliced_region("obj-1", 0, vec![region_polys.clone()]);
+    sr.top_solid_fill = vec![region_polys.clone()];
+    sr.bottom_solid_fill = vec![region_polys];
+    sr.bridge_areas = vec![square(1.0, 1.0, 9.0, 9.0)];
+    slice.regions.push(sr);
+
+    // Walls consumed the whole cross-section: walls present, no infill area.
+    let mut perim = empty_perimeter_ir();
+    let mut pr = perimeter_region("obj-1", 0, Vec::new());
+    pr.walls = vec![crate::common::ir_builders::wall_loop().points(4).build()];
+    perim.regions.push(pr);
+
+    let mut arena = arena_with(slice, perim);
+    sync_perimeter_infill_areas_into_slice(&mut arena, 0).expect("partition must not be fatal");
+
+    let r = &arena.slice().expect("slice").regions[0];
+    assert!(
+        r.bridge_areas.is_empty(),
+        "walled region with empty inset must claim no bridge; got {} mm²",
+        ex_area_mm2(&r.bridge_areas)
+    );
+    assert!(
+        r.top_solid_fill.is_empty(),
+        "walled region with empty inset must claim no top surface; got {} mm²",
+        ex_area_mm2(&r.top_solid_fill)
+    );
+    assert!(r.bottom_solid_fill.is_empty());
+    assert!(r.sparse_infill_area.is_empty());
+}
+
 // ── AC-6: preserves untouched fields ─────────────────────────────────────────
 
 #[test]
@@ -723,111 +896,4 @@ fn ac6_partition_preserves_unrelated_fields() {
     assert_eq!(r.top_shell_index, Some(2));
     assert_eq!(r.bottom_shell_index, Some(3));
     assert!(r.is_bridge);
-}
-
-#[test]
-fn internal_bridge_disjoint_from_sparse_partition_after_executor_pass() {
-    let wall_inset = square(0.0, 0.0, 10.0, 10.0);
-    let mut slice = empty_slice_ir();
-    slice
-        .regions
-        .push(sliced_region("obj-1", 0, vec![wall_inset.clone()]));
-    let mut arena = arena_with(slice, empty_perimeter_ir());
-    arena.take_perimeter();
-    arena
-        .set_perimeter(perimeter_region_ir_for_test(wall_inset))
-        .expect("set perimeter");
-    sync_perimeter_infill_areas_into_slice(&mut arena, 0).expect("partition");
-
-    let module_id = "test.internal-bridge";
-    let mut ctx = HostExecutionContextBuilder::new(module_id, 0.2, 0.2).build();
-    ctx.infill_output_mut().sparse_paths.push(ExtrusionPath3d {
-        points: vec![
-            point3_with_width(-1.0, -1.0, 0.2, 0.4),
-            point3_with_width(11.0, 1.0, 0.2, 0.4),
-        ],
-        role: ExtrusionRole::SparseInfill,
-        speed_factor: 1.0,
-        tool_index: None,
-        order_lock: None,
-    });
-    ctx.infill_output_mut().sparse_paths.push(ExtrusionPath3d {
-        points: vec![
-            point3_with_width(-1.0, 9.0, 0.2, 0.4),
-            point3_with_width(11.0, 11.0, 0.2, 0.4),
-        ],
-        role: ExtrusionRole::SparseInfill,
-        speed_factor: 1.0,
-        tool_index: None,
-        order_lock: None,
-    });
-    ctx.infill_output_mut().sparse_path_origins.extend([
-        Some(OriginId {
-            object_id: "obj-1".into(),
-            region_id: 0,
-        }),
-        Some(OriginId {
-            object_id: "obj-1".into(),
-            region_id: 0,
-        }),
-    ]);
-    commit_hec_for_test(
-        "Layer::InfillPostProcess",
-        module_id,
-        0,
-        &ctx,
-        &mut arena,
-        None,
-    )
-    .expect("infill postprocess commit");
-
-    let sparse = &arena.slice().expect("slice").regions[0].sparse_infill_area;
-    let infill = arena.infill().expect("infill");
-    let bridge = &infill.regions[0].internal_bridge_infill;
-    // This fixture has no persisted qualified internal-bridge carrier. The
-    // pre-shrink pin expected paths from any overlap; canonical gating drops
-    // the candidate before executor construction, so no paths are emitted.
-    assert!(
-        bridge.is_empty(),
-        "unqualified candidates must not emit InternalBridgeInfill"
-    );
-    for path in bridge {
-        let min_x = path
-            .points
-            .iter()
-            .map(|p| p.x)
-            .fold(f32::INFINITY, f32::min)
-            - 0.2;
-        let max_x = path
-            .points
-            .iter()
-            .map(|p| p.x)
-            .fold(f32::NEG_INFINITY, f32::max)
-            + 0.2;
-        let min_y = path
-            .points
-            .iter()
-            .map(|p| p.y)
-            .fold(f32::INFINITY, f32::min)
-            - 0.2;
-        let max_y = path
-            .points
-            .iter()
-            .map(|p| p.y)
-            .fold(f32::NEG_INFINITY, f32::max)
-            + 0.2;
-        let bridge_box = square(min_x, min_y, max_x, max_y);
-        assert!(
-            ex_area_mm2(&intersection(sparse, &[bridge_box])) < 0.01,
-            "InternalBridgeInfill partition must be disjoint from sparse partition"
-        );
-    }
-}
-
-fn perimeter_region_ir_for_test(infill_area: ExPolygon) -> PerimeterIR {
-    let mut perimeter = empty_perimeter_ir();
-    perimeter
-        .regions
-        .push(perimeter_region("obj-1", 0, vec![infill_area]));
-    perimeter
 }

@@ -164,4 +164,4 @@ Aggregate `M` (approved), largest step `S`; no L step, no split required.
 - Record remaining packet-local risk: the strict point-count assertion's Clipper2 detail (design.md Risks), and the guest-freshness follow-up if Step 2's `build-guests --check` reported stale.
 - Confirm context stayed at or below 150k standard; otherwise record a packet-authoring lesson.
 
-All `cargo check`, `cargo clippy`, and `cargo test` invocations in gate and verification commands must use `--all-targets` so the test, bench, and example targets compile.
+Cargo **test** invocations in gate and verification commands are the packet's narrow per-test filters (each greps its own anchored `test result:` line from `target/test-output.log`); do **not** add `--all-targets` to them — that widens the run to the crate's lib unittests and defeats the per-test `N passed` assertion. `--all-targets` belongs on `cargo check` and `cargo clippy` (per `AGENTS.md` §Test Discipline), which is where this packet uses it.

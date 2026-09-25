@@ -532,11 +532,17 @@ pub fn difference_ex(subject: &[ExPolygon], clip: &[ExPolygon]) -> Vec<ExPolygon
     difference(subject, clip)
 }
 
-/// OrcaSlicer's default miter limit for its closing/opening helpers
-/// (`ClipperUtils.hpp` `DefaultMiterLimit = 3.`). The plain [`offset`]
-/// wrapper keeps Clipper2's default of 2.0; the morphological helpers use
-/// Orca's value for `Miter` joins so parity call sites match the C++.
-const ORCA_MORPH_MITER_LIMIT: f64 = 3.0;
+/// OrcaSlicer's default miter limit for its offset helpers
+/// (`ClipperUtils.hpp` `DefaultMiterLimit = 3.`), used by every `offset` /
+/// `offset_ex` overload. The plain [`offset`] wrapper keeps Clipper2's default
+/// of 2.0 for historical reasons; Orca-parity call sites pass this value
+/// explicitly through [`offset_with_miter_limit`].
+pub const ORCA_DEFAULT_MITER_LIMIT: f64 = 3.0;
+
+/// Miter limit for the closing/opening morphological helpers — Orca's value
+/// for `Miter` joins, so parity call sites match the C++ (see
+/// [`ORCA_DEFAULT_MITER_LIMIT`] for the provenance).
+const ORCA_MORPH_MITER_LIMIT: f64 = ORCA_DEFAULT_MITER_LIMIT;
 
 /// Arc tolerance (mm) applied to `Round`-join morphological passes — the
 /// pre-existing convention in this module. `Miter`/`Square` joins emit no
@@ -934,11 +940,6 @@ mod tests {
     }
 
     #[test]
-    fn clip_operation_variants_are_distinct() {
-        assert_ne!(ClipOperation::Union, ClipOperation::Difference);
-    }
-
-    #[test]
     fn validate_polygon_simplicity_accepts_simple_square() {
         let square = square_10();
         assert!(validate_polygon_simplicity(&square).is_ok());
@@ -1074,6 +1075,7 @@ mod tests {
         assert_eq!(result[0].holes.len(), 1, "hole must survive the round trip");
     }
 
+    // KEEP-review (core-cross): core offset counterpart oracle — hole nesting survives the inflate_once tree path; independent of the SDK thin wrapper.
     #[test]
     fn offset_round_trip_preserves_hole_nesting() {
         // 2mm outer square (0,0)-(20000,20000), CCW; 0.8mm hole
@@ -1170,6 +1172,7 @@ mod tests {
         assert!(polys[0].holes.is_empty(), "small hole should be removed");
     }
 
+    // KEEP-review (core-cross): core RDP simplify counterpart, distinct from the SDK inline collinear drop.
     #[test]
     fn expolygons_simplify_preserves_square() {
         let sq = square_10();

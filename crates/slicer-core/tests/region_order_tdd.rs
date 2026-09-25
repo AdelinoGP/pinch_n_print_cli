@@ -129,6 +129,31 @@ fn region_order_single_line_preserved() {
     assert_eq!(get_region_order(&input, false), vec![]);
 }
 
+/// Regression: a single unconstrained line is the whole toolpath set, so the
+/// ordering walk must still emit it. Canonical `traverse_extrusions`
+/// (`PerimeterGenerator.cpp`) treats every unprocessed, unblocked line as a
+/// candidate, so a lone line is always emitted; a walk that reserves line 0 as
+/// a "seed" and then excludes it silently deletes the only wall (measured on a
+/// 0.25mm-wide strip, which emits exactly one centerline bead).
+#[test]
+fn region_order_topological_walk_preserves_single_unconstrained_line() {
+    let input = vec![line(&[(0.0, 0.0), (10.0, 0.0)], 0, true)];
+    assert_eq!(
+        topological_walk(&input, &[]),
+        vec![0],
+        "the lone line must not be dropped by the ordering walk"
+    );
+
+    let mut reordered = input.clone();
+    reorder_by_region_order(&mut reordered, false);
+    assert_eq!(
+        reordered.len(),
+        1,
+        "reordering a single line must preserve it"
+    );
+    assert_eq!(reordered[0].inset_idx, 0);
+}
+
 #[test]
 fn region_order_no_adjacency_falls_back_to_nearest_neighbor() {
     let input = vec![
@@ -169,6 +194,18 @@ fn region_order_topological_walk_matches_canonical_open_line_cursor() {
         "the walk must use the first input cursor, open-line endpoint updates, \
          stable input-order ties, open-before-closed iteration, and unlocks"
     );
+}
+
+/// The walk returns a permutation of its input: a lone open line (the
+/// deferred seed with nothing to go before it) must still be emitted. It
+/// used to be dropped, deleting the only wall of a strip thinner than two
+/// beads (its single odd centre line).
+#[test]
+fn region_order_single_open_line_is_emitted() {
+    let mut input = vec![line(&[(0.0, 0.0), (0.0, 4.75)], 0, false)];
+    assert_eq!(topological_walk(&input, &[]), vec![0]);
+    reorder_by_region_order(&mut input, false);
+    assert_eq!(input.len(), 1, "reordering must not drop the only line");
 }
 
 #[test]

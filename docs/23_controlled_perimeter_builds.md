@@ -199,7 +199,7 @@ Build and freshness-check the ordinary and accelerated snapshots with the
 controlled driver first.  Then verify the harness copy and dry-run protocol:
 
 ```powershell
-cmp resources/perimeter-acceptance/run_bench.ps1 tmp/alloc-bench/run_bench.ps1
+cmp resources/perimeter-acceptance/run_bench.ps1 docs/specs/perf-vs-orca/evidence/alloc-bench/run_bench.ps1
 pwsh -NoProfile -File resources/perimeter-acceptance/run-acceptance.ps1 -DryRun
 pwsh -NoProfile -File resources/perimeter-acceptance/run-acceptance.ps1 -Campaign
 ```

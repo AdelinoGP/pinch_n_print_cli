@@ -424,7 +424,8 @@ fn multi_region_mixed_seam_match_preserves_all_walls() {
     let module = SeamPlacer::from_config(&config).unwrap();
 
     // Region A: seam at (1.0, 0.0) — a vertex that exists on the wall.
-    let wall_a_points = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)];
+    // Closed loop (explicit closing repeat): only loops are seam-rotated.
+    let wall_a_points = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 0.0)];
     let wall_a = make_wall(0.2, &wall_a_points);
     let seam_a_point = Point3WithWidth {
         x: 1.0,
