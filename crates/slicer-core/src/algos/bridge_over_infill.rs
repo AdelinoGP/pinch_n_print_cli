@@ -700,7 +700,7 @@ fn vertical_sections(poly: &[(f64, f64)], x: f64) -> Vec<(f64, f64)> {
         }
     }
     ys.sort_by(|a, b| a.total_cmp(b));
-    ys.chunks_exact(2).map(|v| (v[0], v[1])).collect()
+    ys.as_chunks::<2>().0.iter().map(|v| (v[0], v[1])).collect()
 }
 fn has_anchor(anchors: &[Vec<(f64, f64)>], x: f64, y: f64, tolerance: f64) -> bool {
     anchors.iter().flat_map(|a| a.windows(2)).any(|p| {

@@ -366,7 +366,7 @@ fn load_obj(path: &Path) -> Result<IndexedTriangleSet, ModelLoadError> {
         let vertex_offset = vertices.len() as u32;
 
         // tobj stores positions as flat [x0, y0, z0, x1, y1, z1, ...]
-        for chunk in m.positions.chunks_exact(3) {
+        for chunk in m.positions.as_chunks::<3>().0 {
             vertices.push(Point3 {
                 x: chunk[0],
                 y: chunk[1],
@@ -2811,7 +2811,7 @@ pub fn bed_center_mm(bed_shape: &[f64]) -> Option<(f32, f32)> {
     }
     let (mut min_x, mut max_x) = (f64::INFINITY, f64::NEG_INFINITY);
     let (mut min_y, mut max_y) = (f64::INFINITY, f64::NEG_INFINITY);
-    for pair in bed_shape.chunks_exact(2) {
+    for pair in bed_shape.as_chunks::<2>().0 {
         if !pair[0].is_finite() || !pair[1].is_finite() {
             return None;
         }
@@ -2838,7 +2838,7 @@ pub fn bed_extent_mm(bed_shape: &[f64]) -> Option<(f32, f32, f32, f32)> {
     }
     let (mut min_x, mut max_x) = (f64::INFINITY, f64::NEG_INFINITY);
     let (mut min_y, mut max_y) = (f64::INFINITY, f64::NEG_INFINITY);
-    for pair in bed_shape.chunks_exact(2) {
+    for pair in bed_shape.as_chunks::<2>().0 {
         if !pair[0].is_finite() || !pair[1].is_finite() {
             return None;
         }

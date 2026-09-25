@@ -127,7 +127,9 @@ pub(crate) fn stamp_seam_paint_annotations(
         }
         let projected_triangles: Vec<(slicer_ir::ExPolygon, f32, f32)> = subset
             .indices
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .filter_map(|indices| {
                 let a = *subset.vertices.get(indices[0] as usize)?;
                 let b = *subset.vertices.get(indices[1] as usize)?;
