@@ -53,12 +53,13 @@ Standing decisions for this effort (2026-09-22):
 - **Timing discipline**: timing/acceptance tickets chain in the take order set
   by [Gap budget per cell](issues/12-gap-budget-per-cell.md) (number order
   superseded 2026-09-23; chain: 15 ✅ → 17 ✅ → 27's candidate → **22 ✅
-  (attribution; produced the emit-pass carve candidate)** → 22's acceptance
-  slot → 21's → 25's → below-fold polish — 15, 17, 22 closed 2026-09-23/24);
-  attribution-only tickets are
-  parallel-takeable, but no substage split starts before
-  [host:slice closing_ex span contradiction](issues/24-host-slice-closing-span-contradiction.md)
-  closes. Claim (`Status: claimed`) before any work.
+  (attribution; produced the emit-pass carve candidate)** → **[emit-pass carve
+  gate acceptance](issues/32-emit-carve-gate-representation-and-ab.md) (the
+  reserved acceptance slot)** → 21's → 25's → below-fold polish — 15, 17, 22
+  closed 2026-09-23/24); attribution-only tickets are parallel-takeable, but no
+  substage split starts before [host:slice closing_ex span
+  contradiction](issues/24-host-slice-closing-span-contradiction.md) closes.
+  Claim (`Status: claimed`) before any work.
 - **Recipe traps** (each has produced or nearly produced a wrong conclusion):
   instrumented runs never mixed into wall claims (§3.2); accumulated worker
   elapsed is not CPU (§3.3); the native `--profile` table's wall columns are
@@ -127,13 +128,16 @@ Standing decisions for this effort (2026-09-22):
   route tickets (24/22/27/28 and the re-scoped 18) may surface further
   candidates inside the serial floor, the query path, or the marshalling
   residual; graduate each as it appears. [Tree-planner substage
-  attribution](issues/22-tree-planner-substage-attribution.md) already
-  graduated one: the `carve_emitted_regions` bbox gate (46.2%/42.2% of the
+  attribution](issues/22-tree-planner-substage-attribution.md) graduated one to
+  [Emit-pass carve gate: representation safety + paired
+  A/B](issues/32-emit-carve-gate-representation-and-ab.md) (46.2%/42.2% of the
   stage's `clip_polygons` calls are provably disjoint; 26–27% of the measured
   clip wall), carrying the measured representation caveat — clipper normalizes
   ring order/winding even when a disjoint `Difference` is set-preserving — so
   it needs a representation-safety check before it can claim behaviour
-  preservation. Below-fold polish (`offset2_ex` call
+  preservation. Its sibling sub-term (`union_expolys` + simplify, 72.8 s base)
+  stays in this fog: it shares the "four role calls per layer" shape and may
+  graduate once the gate's result is known. Below-fold polish (`offset2_ex` call
   reduction, consume-only-when-read, `split_top_surfaces` secondary work, the
   `emit_walls` memory-shape idea) stays parked — the park decision is in
   [Gap budget per cell](issues/12-gap-budget-per-cell.md) — until a cell lands
