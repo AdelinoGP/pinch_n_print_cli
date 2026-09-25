@@ -42,6 +42,18 @@ Work, in order:
    (`crates/slicer-runtime/src/builtins/overhang_annotation_producer.rs`)** —
    11.9–17.6 s base / 0.8 s benchy.
 
+**Update 2026-09-24** — [Tree-planner substage
+attribution](22-tree-planner-substage-attribution.md) closed with the stage's
+line item measured at the matched job: `PrePass::SupportGeometry` is
+**295.0 s** of base's post-repair prepass (455.7 s) and **~9.1 s** of benchy's,
+and 97.2% (base) / 92.6% (benchy) of it is `com.core.tree-support-planner`'s
+single dispatch. Its split: 46.8% per-region carve (171,636 singular
+`clip_polygons` / 194.0 s on base), 27.8% union+simplify, 23.4% model-occupancy
+inflate; the collision/avoidance ladders (ADR-0049's "cache" lead) are 4.27 s of
+269.6 s (1.6%). The bbox-gate candidate and its measured representation caveat
+are in that ticket's `## Answer`; its acceptance slot is the timing chain's
+next. The other `PrePass` built-ins above keep their own lines.
+
 `host:slice`'s wall is back in scope as of
 [host:slice closing_ex span contradiction](24-host-slice-closing-span-contradiction.md)'s
 resolution (2026-09-23) — the exclusion that deferred it here is spent.

@@ -324,17 +324,21 @@ experiment must preserve visibility of this correctness problem. See
    prize than its raw CPU number suggests — Amdahl favours the serial prepass
    work in leads 1-3.
 
-5. **`tree-support-planner` — 9.4 s in benchy prepass.** ADR-0049 measured its
-   collision-cache build at **98.0%** of its runtime — 603 independent
-   `offset_polygons` calls. It is the only in-tree caller of the batched host
-   services (`slicer_sdk::host_batch::batch_offset`). Whether that batch is
-   actually the cost **at HEAD is unmeasured**.
+5. **`tree-support-planner` — SUPERSEDED at the matched job 2026-09-24.**
+   ADR-0049 measured its collision-cache build at **98.0%** — 603 independent
+   `offset_polygons` calls (0.1 mm benchy-era vintage). [Tree-planner substage
+   attribution](../../issues/22-tree-planner-substage-attribution.md) re-measured
+   at the matched job: the cache/ladders are **1.6%** (4.27 s of 269.6 s); the
+   emit pass is 97.2%, of which the per-region carve (171,636 singular
+   `clip_polygons`, 194.0 s) is the lead, with a measured representation caveat
+   on the bbox-gate candidate. See the ticket's `## Answer` and
+   `../t22-planner-substage/FINDINGS.md`.
 
-6. **The batched host services have no instrumentation.**
-   `offset_polygons_batch`, `clip_polygons_batch`, and `simplify_polygon_batch`
-   record nothing; only the two mesh-query batches push `batch_calls` audit
-   entries. Adding a timing hook is cheap and is a prerequisite for evaluating
-   lead 5.
+6. **The batched host services have no instrumentation — CLOSED 2026-09-24.**
+   All three polygon batch forms now carry timing hooks (ticket 22's probe
+   patch); at the matched job the planner uses 50 offset batches /
+   24,255 items, and `clip_polygons_batch` / `simplify_polygon_batch` are never
+   called. The singular clip path is where the stage's host wall lives.
 
 ### Dead end, already investigated — do not repeat
 

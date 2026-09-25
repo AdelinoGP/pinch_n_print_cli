@@ -52,8 +52,9 @@ Standing decisions for this effort (2026-09-22):
   keep/drop gate; the human may accept a one-sided win case by case.
 - **Timing discipline**: timing/acceptance tickets chain in the take order set
   by [Gap budget per cell](issues/12-gap-budget-per-cell.md) (number order
-  superseded 2026-09-23; chain: 15 ✅ → 17 ✅ → 27's candidate → 22's candidate →
-  21's → 25's → below-fold polish — 15 and 17 closed 2026-09-23/24);
+  superseded 2026-09-23; chain: 15 ✅ → 17 ✅ → 27's candidate → **22 ✅
+  (attribution; produced the emit-pass carve candidate)** → 22's acceptance
+  slot → 21's → 25's → below-fold polish — 15, 17, 22 closed 2026-09-23/24);
   attribution-only tickets are
   parallel-takeable, but no substage split starts before
   [host:slice closing_ex span contradiction](issues/24-host-slice-closing-span-contradiction.md)
@@ -83,7 +84,13 @@ Standing decisions for this effort (2026-09-22):
   version A/B silently measures the wrong version — pin the harness dep and
   assert the resolved version from the harness's own `Cargo.lock`
   ([clipper2 cost/output verdict](issues/17-clipper2-cost-output-verdict.md),
-  2026-09-24).
+  2026-09-24); host-side stage walls can drift ±25–45% between
+  identical-coverage captures on base while call counts and class shares hold
+  exactly (two ticket-22 captures: `clip` 146.8 s vs 194.0 s, in-guest carve
+  counts byte-identical) — quote shares/counts as the stable signal and
+  disclose the wall drift rather than averaging it away
+  ([Tree-planner substage
+  attribution](issues/22-tree-planner-substage-attribution.md), 2026-09-24).
 - Measured keep/drop recommendations return to the human; candidates are never
   auto-committed.
 
@@ -108,6 +115,7 @@ Standing decisions for this effort (2026-09-22):
 - [host:slice closing_ex span contradiction](issues/24-host-slice-closing-span-contradiction.md): the contradiction is a units mismatch — `module_complete`'s ~3.2 s is real wall while the profile table's ~22 s `closing_ex` spans are accumulated per-thread spans (`fold_marks` is thread-correct; the aggregation sums concurrent worker spans) — so the lead retires with no ~22 s cost to promote, and the 22/27 substage splits inherit "work-share yes, wall claims no"; same-run capture in `evidence/t24-span-contradiction/SAME-RUN.md`.
 - [Criterion bench refresh](issues/15-criterion-bench-refresh.md): all 7 benches now have on-disk baselines (82 leaves, `base == new`) and are trustworthy — `gate_evidence` 885.9 ms vs the 10 s bound, `shell_classification` ms-scale with no short-circuit; two fixture limits recorded not fixed (`repair/cube` scans a clean 12-tri mesh, `decimate/cube_default` is rejected by the default `max_error = 0.01`); and the criterion console's `time:` is the regression *slope* in Linear mode, not the mean (up to +8.61% off) — cost A/Bs must compare like-for-like. Evidence in `evidence/t15-criterion-refresh/`, unblocking [clipper2 cost/output verdict](issues/17-clipper2-cost-output-verdict.md).
 - [clipper2 cost/output verdict](issues/17-clipper2-cost-output-verdict.md): **stay on 1.1.0** — the 1.0.3→1.1.0 bump is measured cost-neutral and output-identical (367 fixtures through the full entry-point surface, incl. 24 real benchy layers; `diff -rq` exit 0, tree SHA equal, both sides self-reproducing), with compiled bodies 230/240 bit-identical as the load-independent backstop; the geometry modules are byte-identical and `check_split_owner`'s reach is unchanged, so DEV-173's posture is unaffected; evidence in `evidence/t17-clipper2-ab/`. The harness trap (a scratch workspace's lock floats the caret req to the newest release — it silently measured 1.2.0 while labelled 1.1.0) is recorded for future dependency A/Bs, and it surfaced a real onward finding: **1.1.0→1.2.0 is not output-neutral** (2/367 fixtures lose one collinear vertex; 1.2.0's `clean_collinear` changed) — a future 1.2.0 bump needs its own geometry A/B.
+- [Tree-planner substage attribution](issues/22-tree-planner-substage-attribution.md): ADR-0049's 98%-collision-cache lead **does not survive to the matched job** — the emit pass owns the planner (97.2% base / 92.6% benchy), split 46.8% per-region carve (one host `clip_polygons` per drawn region: 171,636 calls / 194.0 s on base), 27.8% union+simplify, 23.4% model-occupancy inflate; the collision/avoidance ladders are 4.27 s of 269.6 s (1.6%), and the batched host services are real but small (50 offset batches; `clip_polygons_batch`/`simplify_polygon_batch` never called). Candidate: a bbox gate in `carve_emitted_regions` skips 46.2%/42.2% of clips (26–27% of clip wall) — with the measured constraint that a disjoint `Difference` preserves the subject *as a set but not verbatim* (clipper normalizes ring order/winding), so downstream representation-insensitivity must be verified first. Evidence in `evidence/t22-planner-substage/` (findings, raw lines, extractor, probe diff).
 
 ## Not yet specified
 
@@ -118,7 +126,14 @@ Standing decisions for this effort (2026-09-22):
 - **New candidates from the structural splits.** [Gap budget per cell](issues/12-gap-budget-per-cell.md)'s
   route tickets (24/22/27/28 and the re-scoped 18) may surface further
   candidates inside the serial floor, the query path, or the marshalling
-  residual; graduate each as it appears. Below-fold polish (`offset2_ex` call
+  residual; graduate each as it appears. [Tree-planner substage
+  attribution](issues/22-tree-planner-substage-attribution.md) already
+  graduated one: the `carve_emitted_regions` bbox gate (46.2%/42.2% of the
+  stage's `clip_polygons` calls are provably disjoint; 26–27% of the measured
+  clip wall), carrying the measured representation caveat — clipper normalizes
+  ring order/winding even when a disjoint `Difference` is set-preserving — so
+  it needs a representation-safety check before it can claim behaviour
+  preservation. Below-fold polish (`offset2_ex` call
   reduction, consume-only-when-read, `split_top_surfaces` secondary work, the
   `emit_walls` memory-shape idea) stays parked — the park decision is in
   [Gap budget per cell](issues/12-gap-budget-per-cell.md) — until a cell lands

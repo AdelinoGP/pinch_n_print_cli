@@ -1,0 +1,1318 @@
+diff --git a/crates/slicer-core/tests/t22_probe_diff_identity_tdd.rs b/crates/slicer-core/tests/t22_probe_diff_identity_tdd.rs
+new file mode 100644
+index 00000000..675feb68
+--- /dev/null
++++ b/crates/slicer-core/tests/t22_probe_diff_identity_tdd.rs
+@@ -0,0 +1,81 @@
++//! [PERF-T22-PROBE] Temporary probe test (wayfinder ticket 22).
++//!
++//! Question: when `clip_polygons(subject, clip, Difference)` is called with a
++//! subject whose bounding box is disjoint from the clip's, what exactly does
++//! the caller get back? A `carve_emitted_regions` bbox gate needs to know
++//! whether skipping the call can be output-preserving.
++//!
++//! Measured answer:
++//!
++//! 1. The result is the subject **as a set** (same area, same outline) — the
++//!    clip contributes nothing.
++//! 2. The result is **not** the subject verbatim: clipper normalizes ring
++//!    order/winding (the test below observes a reversed, rotated contour). Any
++//!    gate must therefore be justified by downstream equivalence, not by
++//!    "returns the input unchanged".
++//!
++//! This file is probe-only: delete it before any commit.
++//!
++//! Run: cargo test -p slicer-core --features host-algos --test t22_probe_diff_identity_tdd
++
++#![cfg(feature = "host-algos")]
++
++use slicer_core::polygon_ops::clip_polygons;
++use slicer_core::polygon_ops::ClipOperation;
++use slicer_ir::{ExPolygon, Point2, Polygon};
++
++fn rect(x0: i64, y0: i64, x1: i64, y1: i64) -> ExPolygon {
++    ExPolygon {
++        contour: Polygon {
++            points: vec![
++                Point2 { x: x0, y: y0 },
++                Point2 { x: x1, y: y0 },
++                Point2 { x: x1, y: y1 },
++                Point2 { x: x0, y: y1 },
++            ],
++        },
++        holes: Vec::new(),
++    }
++}
++
++/// Shoelace area, ignoring sign, in scaled units².
++fn area(poly: &ExPolygon) -> f64 {
++    let pts = &poly.contour.points;
++    let mut twice = 0.0f64;
++    for i in 0..pts.len() {
++        let a = pts[i];
++        let b = pts[(i + 1) % pts.len()];
++        twice += (a.x as f64) * (b.y as f64) - (b.x as f64) * (a.y as f64);
++    }
++    (twice / 2.0).abs()
++}
++
++/// Disjoint boxes: the difference is the subject as a set (area equal), but it
++/// is NOT returned verbatim — clipper rewrites the ring.
++#[test]
++fn disjoint_difference_preserves_the_set_but_not_the_representation() {
++    let subject = vec![rect(0, 0, 1000, 1000)];
++    let clip = vec![rect(10_000, 10_000, 11_000, 11_000)];
++    let out = clip_polygons(&subject, &clip, ClipOperation::Difference);
++    assert_eq!(out.len(), 1, "one surviving region");
++    assert_eq!(
++        area(&out[0]),
++        area(&subject[0]),
++        "disjoint Difference is set-preserving"
++    );
++    assert_ne!(
++        out, subject,
++        "…but clipper normalizes ring order/winding, so it is not verbatim"
++    );
++}
++
++/// Touching bounding boxes are NOT disjoint (shared edge): a bbox gate must
++/// treat them as overlapping.
++#[test]
++fn touching_bboxes_are_not_disjoint() {
++    let subject = vec![rect(0, 0, 1000, 1000)];
++    let clip = vec![rect(1000, 0, 2000, 1000)];
++    let out = clip_polygons(&subject, &clip, ClipOperation::Difference);
++    assert_eq!(out.len(), 1);
++    assert_eq!(area(&out[0]), area(&subject[0]));
++}
+diff --git a/crates/slicer-runtime/src/prepass.rs b/crates/slicer-runtime/src/prepass.rs
+index fdd1e27f..f76e4839 100644
+--- a/crates/slicer-runtime/src/prepass.rs
++++ b/crates/slicer-runtime/src/prepass.rs
+@@ -274,6 +274,10 @@ fn execute_prepass_with_instrumentation_collecting(
+         let mut support_plan_producers: Vec<SupportPlanProducer> = Vec::new();
+ 
+         instrumentation.on_stage_start(&stage.stage_id, None);
++        // [PERF-T22-PROBE] Scope the host-side counters to this stage.
++        if stage.stage_id.as_str() == "PrePass::SupportGeometry" {
++            slicer_wasm_host::perf_t22_probe::reset();
++        }
+         for module in &stage.modules {
+             instrumentation.on_module_start(&stage.stage_id, None, module.module_id());
+             // Build IR-typed borrow structs for the new slicer-wasm-host trait boundary.
+@@ -408,6 +412,9 @@ fn execute_prepass_with_instrumentation_collecting(
+             }
+         }
+         if !support_plans.is_empty() {
++            // [PERF-T22-PROBE] The support-plan aggregation below is the
++            // "surrounding host validation/commit" term for the SupportGeometry
++            // stage. The whole stage's host-side bracket is flushed after it.
+             if let Some(entries) = harvested_plan_entries.as_deref_mut() {
+                 entries.extend(
+                     support_plans
+@@ -476,6 +483,10 @@ fn execute_prepass_with_instrumentation_collecting(
+             }
+         }
+         instrumentation.on_stage_end(&stage.stage_id, None);
++        // [PERF-T22-PROBE] Flush the stage's host-side split as one stderr line.
++        if stage.stage_id.as_str() == "PrePass::SupportGeometry" {
++            slicer_wasm_host::perf_t22_probe::flush("PrePass::SupportGeometry");
++        }
+     }
+ 
+     Ok(audits)
+diff --git a/crates/slicer-wasm-host/src/exact_z_query.rs b/crates/slicer-wasm-host/src/exact_z_query.rs
+index 38e863cd..b55eafcf 100644
+--- a/crates/slicer-wasm-host/src/exact_z_query.rs
++++ b/crates/slicer-wasm-host/src/exact_z_query.rs
+@@ -59,8 +59,17 @@ impl ExactZQueryService {
+             .map_err(|_| "exact-z-support-query: cache poisoned")?
+             .get(&key)
+         {
++            // [PERF-T22-PROBE]
++            crate::perf_t22_probe::probe()
++                .exact_z_hits
++                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+             return Ok(Arc::clone(result));
+         }
++        // [PERF-T22-PROBE]
++        crate::perf_t22_probe::probe()
++            .exact_z_misses
++            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++        let _t22_cross = crate::perf_t22_probe::Bracket::plain();
+ 
+         let object = self
+             .mesh
+@@ -74,6 +83,14 @@ impl ExactZQueryService {
+             .ok_or_else(|| format!("exact-z-support-query: object '{object_id}' has empty mesh"))?;
+         let plate = rectangle(bbox.0, bbox.1, bbox.2, bbox.3);
+         let top = cross_section_at_z(&world_mesh, bbox.5);
++        // [PERF-T22-PROBE] Cross-section work for this miss, including the
++        // top-of-object query the service performs alongside the requested Z.
++        crate::perf_t22_probe::probe()
++            .exact_z_cross_section_ns
++            .fetch_add(
++                _t22_cross.elapsed().as_nanos() as u64,
++                std::sync::atomic::Ordering::Relaxed,
++            );
+         let result = Arc::new(ExactZSupportQuery {
+             z_units,
+             blockers: occupancy.clone(),
+diff --git a/crates/slicer-wasm-host/src/host.rs b/crates/slicer-wasm-host/src/host.rs
+index 85622b60..ebf66389 100644
+--- a/crates/slicer-wasm-host/src/host.rs
++++ b/crates/slicer-wasm-host/src/host.rs
+@@ -2553,9 +2553,20 @@ impl hs::Host for HostExecutionContext {
+         clip: Vec<ExPolygon>,
+         op: hs::ClipOperation,
+     ) -> wasmtime::Result<Vec<ExPolygon>> {
++        // [PERF-T22-PROBE] Classify by bbox disjointness (attribution only).
+         let ir_subject = wit_to_ir_expolygons(&subject);
+         let ir_clip = wit_to_ir_expolygons(&clip);
++        let t22_disjoint = crate::perf_t22_probe::bbox_disjoint(&ir_subject, &ir_clip);
++        let t22_before = crate::perf_t22_probe::probe()
++            .clip_polygons
++            .wall_ns
++            .load(std::sync::atomic::Ordering::Relaxed);
++        let _t22 =
++            crate::perf_t22_probe::Bracket::new(&crate::perf_t22_probe::probe().clip_polygons);
+         let result = slicer_core::polygon_ops::clip_polygons(&ir_subject, &ir_clip, ir_clip_op(op));
++        // [PERF-T22-PROBE]
++        drop(_t22);
++        crate::perf_t22_probe::record_clip_class(t22_disjoint, t22_before);
+         Ok(ir_to_wit_expolygons(&result))
+     }
+ 
+@@ -2567,6 +2578,9 @@ impl hs::Host for HostExecutionContext {
+         arc_tolerance_mm: f32,
+         miter_limit: Option<f32>,
+     ) -> wasmtime::Result<Vec<ExPolygon>> {
++        // [PERF-T22-PROBE]
++        let _t22 =
++            crate::perf_t22_probe::Bracket::new(&crate::perf_t22_probe::probe().offset_polygons);
+         let ir_polys = wit_to_ir_expolygons(&polygons);
+         let result = match miter_limit {
+             Some(miter_limit) => slicer_core::polygon_ops::offset_with_miter_limit(
+@@ -2626,10 +2640,15 @@ impl hs::Host for HostExecutionContext {
+         &mut self,
+         requests: Vec<hs::OffsetRequest>,
+     ) -> wasmtime::Result<Vec<Vec<ExPolygon>>> {
+-        let (results, _mode) = crate::batch::map_batch(
++        // [PERF-T22-PROBE]
++        let _t22 = crate::perf_t22_probe::Bracket::new(
++            &crate::perf_t22_probe::probe().offset_polygons_batch,
++        );
++        let (results, t22_mode) = crate::batch::map_batch(
+             &requests,
+             |r| expolygon_vertex_count(&r.polygons),
+             |r| {
++                let t22_inner = crate::perf_t22_probe::Bracket::plain();
+                 let ir_polys = wit_to_ir_expolygons(&r.polygons);
+                 let result = match r.miter_limit {
+                     Some(miter_limit) => slicer_core::polygon_ops::offset_with_miter_limit(
+@@ -2646,9 +2665,19 @@ impl hs::Host for HostExecutionContext {
+                         r.arc_tolerance_mm,
+                     ),
+                 };
+-                ir_to_wit_expolygons(&result)
++                let converted = ir_to_wit_expolygons(&result);
++                crate::perf_t22_probe::add_inner(
++                    &crate::perf_t22_probe::probe().offset_polygons_batch,
++                    t22_inner.elapsed(),
++                );
++                converted
+             },
+         );
++        // [PERF-T22-PROBE]
++        crate::perf_t22_probe::record_batch_mode(
++            &crate::perf_t22_probe::probe().offset_polygons_batch,
++            t22_mode,
++        );
+         Ok(results)
+     }
+ 
+@@ -2656,10 +2685,15 @@ impl hs::Host for HostExecutionContext {
+         &mut self,
+         requests: Vec<hs::ClipRequest>,
+     ) -> wasmtime::Result<Vec<Vec<ExPolygon>>> {
+-        let (results, _mode) = crate::batch::map_batch(
++        // [PERF-T22-PROBE]
++        let _t22 = crate::perf_t22_probe::Bracket::new(
++            &crate::perf_t22_probe::probe().clip_polygons_batch,
++        );
++        let (results, t22_mode) = crate::batch::map_batch(
+             &requests,
+             |r| expolygon_vertex_count(&r.subject) + expolygon_vertex_count(&r.clip),
+             |r| {
++                let t22_inner = crate::perf_t22_probe::Bracket::plain();
+                 let ir_subject = wit_to_ir_expolygons(&r.subject);
+                 let ir_clip = wit_to_ir_expolygons(&r.clip);
+                 let result = slicer_core::polygon_ops::clip_polygons(
+@@ -2667,9 +2701,19 @@ impl hs::Host for HostExecutionContext {
+                     &ir_clip,
+                     ir_clip_op(r.op),
+                 );
+-                ir_to_wit_expolygons(&result)
++                let converted = ir_to_wit_expolygons(&result);
++                crate::perf_t22_probe::add_inner(
++                    &crate::perf_t22_probe::probe().clip_polygons_batch,
++                    t22_inner.elapsed(),
++                );
++                converted
+             },
+         );
++        // [PERF-T22-PROBE]
++        crate::perf_t22_probe::record_batch_mode(
++            &crate::perf_t22_probe::probe().clip_polygons_batch,
++            t22_mode,
++        );
+         Ok(results)
+     }
+ 
+@@ -2677,11 +2721,20 @@ impl hs::Host for HostExecutionContext {
+         &mut self,
+         requests: Vec<hs::SimplifyRequest>,
+     ) -> wasmtime::Result<Vec<Polygon>> {
+-        let (results, _mode) = crate::batch::map_batch(
++        // [PERF-T22-PROBE]
++        let _t22 = crate::perf_t22_probe::Bracket::new(
++            &crate::perf_t22_probe::probe().simplify_polygon_batch,
++        );
++        let (results, t22_mode) = crate::batch::map_batch(
+             &requests,
+             |r| r.polygon.points.len() as u64,
+             |r| simplify_polygon_collinear(r.polygon.clone()),
+         );
++        // [PERF-T22-PROBE]
++        crate::perf_t22_probe::record_batch_mode(
++            &crate::perf_t22_probe::probe().simplify_polygon_batch,
++            t22_mode,
++        );
+         Ok(results)
+     }
+ 
+diff --git a/crates/slicer-wasm-host/src/lib.rs b/crates/slicer-wasm-host/src/lib.rs
+index 5a9bec25..8e3164c2 100644
+--- a/crates/slicer-wasm-host/src/lib.rs
++++ b/crates/slicer-wasm-host/src/lib.rs
+@@ -15,6 +15,9 @@ pub mod host;
+ pub mod instance;
+ /// IR-to-WIT and WIT-to-IR marshalling helpers for the WASM stage boundary.
+ pub mod marshal;
++/// [PERF-T22-PROBE] Temporary host-side substage timing for wayfinder ticket 22.
++/// Probe-only; removed before any commit.
++pub mod perf_t22_probe;
+ pub mod pool;
+ /// Host-side fuel/scope profiling: mark records, the scope-stack fold, and the
+ /// process-global scope-name registry (ADR-0055).
+diff --git a/crates/slicer-wasm-host/src/perf_t22_probe.rs b/crates/slicer-wasm-host/src/perf_t22_probe.rs
+new file mode 100644
+index 00000000..9f24eb1c
+--- /dev/null
++++ b/crates/slicer-wasm-host/src/perf_t22_probe.rs
+@@ -0,0 +1,315 @@
++//! [PERF-T22-PROBE] Host-side substage timing for wayfinder ticket 22
++//! ("Tree-planner substage attribution").
++//!
++//! Probe-only, temporary. Every use site is tagged `PERF-T22-PROBE`; removal is
++//! a mechanical pass (delete this file, revert the tagged call sites, grep for
++//! `PERF-T22-PROBE`). Nothing here is meant to be committed.
++//!
++//! What it records, all as process-global atomics so rayon workers can add:
++//!
++//! - **Host geometry services** (`host.rs`): per-service call count and total
++//!   wall spent inside the host function body (IR conversion + clipper + back
++//!   conversion). For the batched forms it also records the summed per-request
++//!   wall, so `total - per-request` exposes fan-out/dispatch overhead.
++//! - **Exact-Z query service** (`exact_z_query.rs`): cache hits, misses, and
++//!   the wall spent inside `cross_section_at_z`.
++//! - **Support-plan aggregation** (`support_aggregation.rs`): overall wall plus
++//!   the `validate_entry`, same-family union, territory-clip, and cross-family
++//!   overlap sub-terms.
++//!
++//! `reset()` / `flush(label)` are driven from `crates/slicer-runtime/src/prepass.rs`
++//! around the `PrePass::SupportGeometry` guest stage, so the totals cover
++//! exactly that stage's host-side work. `flush` writes one greppable stderr
++//! line; the slice's stderr capture keeps it.
++
++#![allow(missing_docs)]
++
++use std::sync::atomic::{AtomicU64, Ordering};
++use std::sync::OnceLock;
++use std::time::Instant;
++
++/// One host service's accumulated counters.
++#[derive(Debug, Default)]
++pub struct ServiceCounters {
++    pub calls: AtomicU64,
++    pub wall_ns: AtomicU64,
++    /// Summed per-request wall for batched forms; 0 for singular forms.
++    pub inner_wall_ns: AtomicU64,
++    /// Number of requests in batched forms; 0 for singular forms.
++    pub items: AtomicU64,
++    /// Batches that ran on the rayon pool.
++    pub parallel_batches: AtomicU64,
++}
++
++impl ServiceCounters {
++    fn reset(&self) {
++        self.calls.store(0, Ordering::Relaxed);
++        self.wall_ns.store(0, Ordering::Relaxed);
++        self.inner_wall_ns.store(0, Ordering::Relaxed);
++        self.items.store(0, Ordering::Relaxed);
++        self.parallel_batches.store(0, Ordering::Relaxed);
++    }
++}
++
++/// Named host-service counters. Singular and batch forms are kept apart so a
++/// batch adoption's effect is visible.
++pub struct Probe {
++    pub offset_polygons: ServiceCounters,
++    pub offset_polygons_batch: ServiceCounters,
++    pub clip_polygons: ServiceCounters,
++    pub clip_polygons_batch: ServiceCounters,
++    pub simplify_polygon: ServiceCounters,
++    pub simplify_polygon_batch: ServiceCounters,
++    /// Whole `PrePass::SupportGeometry` aggregation call (once per stage).
++    pub aggregation: ServiceCounters,
++    /// Singular clips whose subject bbox was disjoint from the clip bbox.
++    pub clip_bbox_disjoint: AtomicU64,
++    pub clip_bbox_disjoint_ns: AtomicU64,
++    /// Singular clips whose bboxes overlapped (the ones a gate cannot skip).
++    pub clip_bbox_overlap_ns: AtomicU64,
++    pub exact_z_hits: AtomicU64,
++    pub exact_z_misses: AtomicU64,
++    pub exact_z_cross_section_ns: AtomicU64,
++    pub aggregation_validate_ns: AtomicU64,
++    pub aggregation_union_ns: AtomicU64,
++    pub aggregation_territory_ns: AtomicU64,
++    pub aggregation_overlap_ns: AtomicU64,
++    pub prepare_plan_clone_ns: AtomicU64,
++    pub prepass_commit_ns: AtomicU64,
++}
++
++static PROBE: OnceLock<Probe> = OnceLock::new();
++
++/// The process-global probe state.
++pub fn probe() -> &'static Probe {
++    PROBE.get_or_init(|| Probe {
++        offset_polygons: ServiceCounters::default(),
++        offset_polygons_batch: ServiceCounters::default(),
++        clip_polygons: ServiceCounters::default(),
++        clip_polygons_batch: ServiceCounters::default(),
++        simplify_polygon: ServiceCounters::default(),
++        simplify_polygon_batch: ServiceCounters::default(),
++        aggregation: ServiceCounters::default(),
++        clip_bbox_disjoint: AtomicU64::new(0),
++        clip_bbox_disjoint_ns: AtomicU64::new(0),
++        clip_bbox_overlap_ns: AtomicU64::new(0),
++        exact_z_hits: AtomicU64::new(0),
++        exact_z_misses: AtomicU64::new(0),
++        exact_z_cross_section_ns: AtomicU64::new(0),
++        aggregation_validate_ns: AtomicU64::new(0),
++        aggregation_union_ns: AtomicU64::new(0),
++        aggregation_territory_ns: AtomicU64::new(0),
++        aggregation_overlap_ns: AtomicU64::new(0),
++        prepare_plan_clone_ns: AtomicU64::new(0),
++        prepass_commit_ns: AtomicU64::new(0),
++    })
++}
++
++/// Zero every counter. Call before the measured stage.
++pub fn reset() {
++    let p = probe();
++    for c in [
++        &p.offset_polygons,
++        &p.offset_polygons_batch,
++        &p.clip_polygons,
++        &p.clip_polygons_batch,
++        &p.simplify_polygon,
++        &p.simplify_polygon_batch,
++        &p.aggregation,
++    ] {
++        c.reset();
++    }
++    for a in [
++        &p.exact_z_hits,
++        &p.exact_z_misses,
++        &p.exact_z_cross_section_ns,
++        &p.clip_bbox_disjoint,
++        &p.clip_bbox_disjoint_ns,
++        &p.clip_bbox_overlap_ns,
++        &p.aggregation_validate_ns,
++        &p.aggregation_union_ns,
++        &p.aggregation_territory_ns,
++        &p.aggregation_overlap_ns,
++        &p.prepare_plan_clone_ns,
++        &p.prepass_commit_ns,
++    ] {
++        a.store(0, Ordering::Relaxed);
++    }
++}
++
++/// Accumulate one call's wall against `c`.
++pub fn add(c: &ServiceCounters, wall: std::time::Duration) {
++    c.calls.fetch_add(1, Ordering::Relaxed);
++    c.wall_ns
++        .fetch_add(wall.as_nanos() as u64, Ordering::Relaxed);
++}
++
++/// Accumulate one request's wall (batch inner work).
++pub fn add_inner(c: &ServiceCounters, wall: std::time::Duration) {
++    c.items.fetch_add(1, Ordering::Relaxed);
++    c.inner_wall_ns
++        .fetch_add(wall.as_nanos() as u64, Ordering::Relaxed);
++}
++
++/// Record whether a batch took the parallel fan-out.
++pub fn record_batch_mode(c: &ServiceCounters, mode: crate::batch::BatchMode) {
++    if mode == crate::batch::BatchMode::Parallel {
++        c.parallel_batches.fetch_add(1, Ordering::Relaxed);
++    }
++}
++
++/// RAII wall bracket against one counter.
++pub struct Bracket {
++    start: Instant,
++    counter: Option<&'static ServiceCounters>,
++}
++
++impl Bracket {
++    #[must_use]
++    pub fn new(counter: &'static ServiceCounters) -> Self {
++        Self {
++            start: Instant::now(),
++            counter: Some(counter),
++        }
++    }
++
++    /// A bracket that records only into the caller (used for aggregation
++    /// sub-terms, which add their delta by hand).
++    #[must_use]
++    pub fn plain() -> Self {
++        Self {
++            start: Instant::now(),
++            counter: None,
++        }
++    }
++
++    #[must_use]
++    pub fn elapsed(&self) -> std::time::Duration {
++        self.start.elapsed()
++    }
++}
++
++impl Drop for Bracket {
++    fn drop(&mut self) {
++        if let Some(c) = self.counter {
++            add(c, self.start.elapsed());
++        }
++    }
++}
++
++fn ns(v: &AtomicU64) -> u64 {
++    v.load(Ordering::Relaxed)
++}
++
++fn bboxes_disjoint(a: &[slicer_ir::ExPolygon], b: &[slicer_ir::ExPolygon]) -> bool {
++    fn bbox(polys: &[slicer_ir::ExPolygon]) -> Option<(i64, i64, i64, i64)> {
++        let mut out: Option<(i64, i64, i64, i64)> = None;
++        for poly in polys {
++            for point in &poly.contour.points {
++                out = Some(match out {
++                    None => (point.x, point.x, point.y, point.y),
++                    Some((min_x, max_x, min_y, max_y)) => (
++                        min_x.min(point.x),
++                        max_x.max(point.x),
++                        min_y.min(point.y),
++                        max_y.max(point.y),
++                    ),
++                });
++            }
++        }
++        out
++    }
++    match (bbox(a), bbox(b)) {
++        (Some((aminx, amaxx, aminy, amaxy)), Some((bminx, bmaxx, bminy, bmaxy))) => {
++            amaxx < bminx || aminx > bmaxx || amaxy < bminy || aminy > bmaxy
++        }
++        _ => false,
++    }
++}
++
++/// Whether these two polygon sets are provably disjoint by bounding box.
++pub fn bbox_disjoint(subject: &[slicer_ir::ExPolygon], clip: &[slicer_ir::ExPolygon]) -> bool {
++    bboxes_disjoint(subject, clip)
++}
++
++/// Attribute one singular clip's wall to the disjoint or overlapping class.
++///
++/// `wall_before` is the wall counter's value before the call; the delta is
++/// recovered on the caller's thread, which is also where the counter was
++/// incremented.
++pub fn record_clip_class(disjoint: bool, wall_before: u64) {
++    let p = probe();
++    let after = p.clip_polygons.wall_ns.load(Ordering::Relaxed);
++    let delta = after.saturating_sub(wall_before);
++    if disjoint {
++        p.clip_bbox_disjoint.fetch_add(1, Ordering::Relaxed);
++        p.clip_bbox_disjoint_ns.fetch_add(delta, Ordering::Relaxed);
++    } else {
++        p.clip_bbox_overlap_ns.fetch_add(delta, Ordering::Relaxed);
++    }
++}
++fn ms(nanoseconds: u64) -> f64 {
++    nanoseconds as f64 / 1_000_000.0
++}
++
++/// Print every accumulated counter as one greppable JSON line.
++pub fn flush(label: &str) {
++    let p = probe();
++    let line = format!(
++        concat!(
++            "{{\"probe\":\"PERF-T22-PROBE\",\"label\":\"{lab}\",",
++            "\"offset\":{{\"calls\":{o_c},\"wall_ms\":{o_w},",
++            "\"batch_calls\":{o_bc},\"batch_wall_ms\":{o_bw},",
++            "\"batch_inner_ms\":{o_bi},\"batch_items\":{o_bi2},",
++            "\"batch_parallel\":{o_bi3}}},",
++            "\"clip\":{{\"calls\":{c_c},\"wall_ms\":{c_w},",
++            "\"batch_calls\":{c_bc},\"batch_wall_ms\":{c_bw},",
++            "\"batch_inner_ms\":{c_bi},\"batch_items\":{c_bi2},",
++            "\"batch_parallel\":{c_bi3},",
++            "\"bbox_disjoint_calls\":{c_bd},\"bbox_disjoint_ms\":{c_bdw},",
++            "\"bbox_overlap_ms\":{c_bow}}},",
++            "\"simplify\":{{\"calls\":{s_c},\"wall_ms\":{s_w},",
++            "\"batch_calls\":{s_bc},\"batch_wall_ms\":{s_bw}}},",
++            "\"exactz\":{{\"hits\":{z_h},\"misses\":{z_m},",
++            "\"cross_section_ms\":{z_x}}},",
++            "\"aggregate\":{{\"calls\":{a_c},\"wall_ms\":{a_w},",
++            "\"validate_ms\":{a_v},\"union_ms\":{a_u},",
++            "\"territory_ms\":{a_t},\"overlap_ms\":{a_o}}},",
++            "\"plan_clone_ms\":{pc},\"commit_ms\":{cm}}}"
++        ),
++        lab = label,
++        o_c = ns(&p.offset_polygons.calls),
++        o_w = ms(ns(&p.offset_polygons.wall_ns)),
++        o_bc = ns(&p.offset_polygons_batch.calls),
++        o_bw = ms(ns(&p.offset_polygons_batch.wall_ns)),
++        o_bi = ms(ns(&p.offset_polygons_batch.inner_wall_ns)),
++        o_bi2 = ns(&p.offset_polygons_batch.items),
++        o_bi3 = ns(&p.offset_polygons_batch.parallel_batches),
++        c_c = ns(&p.clip_polygons.calls),
++        c_w = ms(ns(&p.clip_polygons.wall_ns)),
++        c_bc = ns(&p.clip_polygons_batch.calls),
++        c_bw = ms(ns(&p.clip_polygons_batch.wall_ns)),
++        c_bi = ms(ns(&p.clip_polygons_batch.inner_wall_ns)),
++        c_bi2 = ns(&p.clip_polygons_batch.items),
++        c_bi3 = ns(&p.clip_polygons_batch.parallel_batches),
++        c_bd = ns(&p.clip_bbox_disjoint),
++        c_bdw = ms(ns(&p.clip_bbox_disjoint_ns)),
++        c_bow = ms(ns(&p.clip_bbox_overlap_ns)),
++        s_c = ns(&p.simplify_polygon.calls),
++        s_w = ms(ns(&p.simplify_polygon.wall_ns)),
++        s_bc = ns(&p.simplify_polygon_batch.calls),
++        s_bw = ms(ns(&p.simplify_polygon_batch.wall_ns)),
++        z_h = ns(&p.exact_z_hits),
++        z_m = ns(&p.exact_z_misses),
++        z_x = ms(ns(&p.exact_z_cross_section_ns)),
++        a_c = ns(&p.aggregation.calls),
++        a_w = ms(ns(&p.aggregation.wall_ns)),
++        a_v = ms(ns(&p.aggregation_validate_ns)),
++        a_u = ms(ns(&p.aggregation_union_ns)),
++        a_t = ms(ns(&p.aggregation_territory_ns)),
++        a_o = ms(ns(&p.aggregation_overlap_ns)),
++        pc = ms(ns(&p.prepare_plan_clone_ns)),
++        cm = ms(ns(&p.prepass_commit_ns)),
++    );
++    eprintln!("{line}");
++}
+diff --git a/crates/slicer-wasm-host/src/support_aggregation.rs b/crates/slicer-wasm-host/src/support_aggregation.rs
+index e4c5cd20..236fb2a7 100644
+--- a/crates/slicer-wasm-host/src/support_aggregation.rs
++++ b/crates/slicer-wasm-host/src/support_aggregation.rs
+@@ -369,6 +369,9 @@ pub fn try_aggregate_support_plans_with_policy(
+     input: SupportAggregationInput<'_>,
+     conflict_policy: FamilyConflictPolicy,
+ ) -> Result<SupportAggregationResult, SupportAggregationError> {
++    // [PERF-T22-PROBE] Whole-call bracket plus per-subterm brackets.
++    let _t22_call =
++        crate::perf_t22_probe::Bracket::new(&crate::perf_t22_probe::probe().aggregation);
+     // Producers are index-parallel to plans by construction at every call site;
+     // a mismatch is a host bug, and it denies rather than publishing anything
+     // unowned (see `check_ownership`).
+@@ -442,7 +445,15 @@ pub fn try_aggregate_support_plans_with_policy(
+             }
+             continue;
+         }
+-        match validate_entry(&entry, input.exact_z) {
++        let t22_validate = crate::perf_t22_probe::Bracket::plain();
++        let validated = validate_entry(&entry, input.exact_z);
++        crate::perf_t22_probe::probe()
++            .aggregation_validate_ns
++            .fetch_add(
++                t22_validate.elapsed().as_nanos() as u64,
++                std::sync::atomic::Ordering::Relaxed,
++            );
++        match validated {
+             None => result.retained.push(entry),
+             Some(reason) => {
+                 result.degraded = true;
+@@ -460,7 +471,14 @@ pub fn try_aggregate_support_plans_with_policy(
+     // cap on the merged result. The occupancy predicate is set-monotone -- a
+     // union cannot introduce an overlap that was absent from every input -- so
+     // re-checking it after merging would be redundant as well.
++    let t22_union = crate::perf_t22_probe::Bracket::plain();
+     union_same_family_entries(&mut result.retained);
++    crate::perf_t22_probe::probe()
++        .aggregation_union_ns
++        .fetch_add(
++            t22_union.elapsed().as_nanos() as u64,
++            std::sync::atomic::Ordering::Relaxed,
++        );
+     // Ticket 19: where the host published support territory for an
+     // `(object, layer)`, each retained body is clipped to the side its family
+     // owns (sub-region: `∩ own`; base: `- inflate(foreign, clearance)`).
+@@ -476,6 +494,8 @@ pub fn try_aggregate_support_plans_with_policy(
+             })
+     };
+     if let Some(clipper) = clipper.as_ref() {
++        // [PERF-T22-PROBE]
++        let t22_territory = crate::perf_t22_probe::Bracket::plain();
+         let retained = std::mem::take(&mut result.retained);
+         for mut entry in retained {
+             if !has_territory(&entry) {
+@@ -514,6 +534,13 @@ pub fn try_aggregate_support_plans_with_policy(
+                 result.retained.push(entry);
+             }
+         }
++        // [PERF-T22-PROBE]
++        crate::perf_t22_probe::probe()
++            .aggregation_territory_ns
++            .fetch_add(
++                t22_territory.elapsed().as_nanos() as u64,
++                std::sync::atomic::Ordering::Relaxed,
++            );
+     }
+     // Cross-family overlap is a FAMILY-ARBITRATION guard, not a plate-wide
+     // collision check: it exists because two families that both claim positive
+@@ -532,6 +559,8 @@ pub fn try_aggregate_support_plans_with_policy(
+     // `resources/bridge_support_enforcers.3mf`: one tree object plus two
+     // traditional objects yielded a slice with no `;TYPE:Support` whatsoever.
+     let mut rejected = vec![false; result.retained.len()];
++    // [PERF-T22-PROBE]
++    let t22_overlap = crate::perf_t22_probe::Bracket::plain();
+     for left in 0..result.retained.len() {
+         for right in (left + 1)..result.retained.len() {
+             let a = &result.retained[left];
+@@ -547,6 +576,13 @@ pub fn try_aggregate_support_plans_with_policy(
+             }
+         }
+     }
++    // [PERF-T22-PROBE]
++    crate::perf_t22_probe::probe()
++        .aggregation_overlap_ns
++        .fetch_add(
++            t22_overlap.elapsed().as_nanos() as u64,
++            std::sync::atomic::Ordering::Relaxed,
++        );
+     if rejected.iter().any(|value| *value) {
+         let retained = std::mem::take(&mut result.retained);
+         for (index, entry) in retained.into_iter().enumerate() {
+diff --git a/modules/core-modules/tree-support-planner/src/lib.rs b/modules/core-modules/tree-support-planner/src/lib.rs
+index b908fbca..f08b6953 100644
+--- a/modules/core-modules/tree-support-planner/src/lib.rs
++++ b/modules/core-modules/tree-support-planner/src/lib.rs
+@@ -119,6 +119,76 @@ const CIRCLE_RESOLUTION_FINE: usize = 100;
+ /// Canonical `draw_circles` picks [`CIRCLE_RESOLUTION_COARSE`] when
+ /// `avg_node_per_layer` exceeds this.
+ const COARSE_CIRCLE_NODE_THRESHOLD: usize = 200;
++// ---------------------------------------------------------------------------
++// [PERF-T22-PROBE] Temporary substage wall brackets for wayfinder ticket 22
++// (tree-planner substage attribution). `host::now_us` returns the host clock
++// for this module call, so deltas are call-local microseconds; the module is
++// dispatched once per slice, and the guest is single-threaded. Probe-only:
++// removed before any commit; grep `PERF-T22-PROBE` for every site.
++// ---------------------------------------------------------------------------
++thread_local! {
++    static T22_SPANS: std::cell::RefCell<Vec<(&'static str, u64, u64)>> =
++        const { std::cell::RefCell::new(Vec::new()) };
++}
++
++/// [PERF-T22-PROBE] Open/close wall bracket for one named substage.
++struct T22Span(&'static str, u64);
++
++impl T22Span {
++    fn new(name: &'static str) -> Self {
++        Self(name, host::now_us())
++    }
++
++    /// [PERF-T22-PROBE] Microseconds since this span opened, without closing it.
++    fn elapsed_us(&self) -> u64 {
++        host::now_us().saturating_sub(self.1)
++    }
++}
++
++impl Drop for T22Span {
++    fn drop(&mut self) {
++        let dt = host::now_us().saturating_sub(self.1);
++        T22_SPANS.with(|spans| {
++            let mut spans = spans.borrow_mut();
++            match spans.iter_mut().find(|(name, _, _)| *name == self.0) {
++                Some(entry) => {
++                    entry.1 += dt;
++                    entry.2 += 1;
++                }
++                None => spans.push((self.0, dt, 1)),
++            }
++        });
++    }
++}
++
++/// [PERF-T22-PROBE] Flush the accumulated split as one module log line.
++struct T22CallGuard;
++
++impl Drop for T22CallGuard {
++    fn drop(&mut self) {
++        let spans = T22_SPANS.with(|spans| std::mem::take(&mut *spans.borrow_mut()));
++        let carve = T22_COUNTERS.with(|c| {
++            let mut c = c.borrow_mut();
++            let snapshot = (c.bbox_skips, c.bbox_calls);
++            c.bbox_skips = 0;
++            c.bbox_calls = 0;
++            snapshot
++        });
++        if spans.is_empty() && carve == (0, 0) {
++            return;
++        }
++        let mut line = String::from("t22-planner-split");
++        for (name, us, calls) in &spans {
++            line.push_str(&format!(" {name}={us}us/{calls}"));
++        }
++        line.push_str(&format!(
++            " carve_disjoint={} carve_overlap={}",
++            carve.0, carve.1
++        ));
++        host::log_warn(&line);
++    }
++}
++
+ /// Multi-layer organic tree-support planner.
+ #[allow(dead_code)]
+ pub struct SupportPlanner {
+@@ -817,6 +887,8 @@ fn inflate_model_occupancy(polys: &[ExPolygon], xy_distance_mm: f32) -> Vec<ExPo
+     if polys.is_empty() || xy_distance_mm <= 0.0 {
+         return polys.to_vec();
+     }
++    // [PERF-T22-PROBE] p6d = model-occupancy inflation (host offset per call).
++    let _t22 = T22Span::new("p6d_inflate_occupancy");
+     host::offset_polygons(polys, xy_distance_mm, OffsetJoinType::Miter, 0.0)
+ }
+ 
+@@ -832,9 +904,34 @@ pub fn carve_emitted_regions(
+     if collision_polys.is_empty() || regions.is_empty() {
+         regions.to_vec()
+     } else {
+-        regions
++        // [PERF-T22-PROBE] Count, per region, whether a bbox-disjoint pre-test
++        // *could* skip the clip. Counts are accumulated in-guest (no host
++        // calls, no timing) so the clip wall is not perturbed; the matching
++        // wall-by-class split comes from the host-side probe inside
++        // `clip_polygons`, which sees the same subject/clip pair for free.
++        // The clips below still run unconditionally, so output is unchanged.
++        let collision_bbox = expolygons_bbox(collision_polys);
++        let t22_total = T22Span::new("p6a_total");
++        let out: Vec<ExPolygon> = regions
+             .iter()
+             .filter_map(|region| {
++                let disjoint = match (
++                    expolygons_bbox(std::slice::from_ref(region)),
++                    collision_bbox,
++                ) {
++                    (Some((rminx, rmaxx, rminy, rmaxy)), Some((cminx, cmaxx, cminy, cmaxy))) => {
++                        rmaxx < cminx || rminx > cmaxx || rmaxy < cminy || rminy > cmaxy
++                    }
++                    _ => false,
++                };
++                T22_COUNTERS.with(|c| {
++                    let mut c = c.borrow_mut();
++                    if disjoint {
++                        c.bbox_skips += 1;
++                    } else {
++                        c.bbox_calls += 1;
++                    }
++                });
+                 host::clip_polygons(
+                     std::slice::from_ref(region),
+                     collision_polys,
+@@ -847,10 +944,29 @@ pub fn carve_emitted_regions(
+                         .then_with(|| a.contour.points.cmp(&b.contour.points))
+                 })
+             })
+-            .collect()
++            .collect();
++        drop(t22_total);
++        out
+     }
+ }
+ 
++// [PERF-T22-PROBE] Carve-loop counters: how many regions a bbox pre-test
++// would leave uncarved vs how many actually overlap the collision set.
++thread_local! {
++    static T22_COUNTERS: std::cell::RefCell<T22CarveCounters> = const {
++        std::cell::RefCell::new(T22CarveCounters {
++            bbox_skips: 0,
++            bbox_calls: 0,
++        })
++    };
++}
++
++#[derive(Default)]
++struct T22CarveCounters {
++    bbox_skips: u64,
++    bbox_calls: u64,
++}
++
+ #[allow(clippy::too_many_arguments)]
+ #[doc(hidden)]
+ pub fn build_roles(
+@@ -882,7 +998,12 @@ pub fn build_roles(
+             // Canonical carves each drawn node circle before appending it to
+             // the role area. Carving after this union can join separate node
+             // circles through collision and then retain only one fragment.
+-            let regions = carve_emitted_regions(&regions, collision_polys);
++            // [PERF-T22-PROBE] p6a = the per-region carve loop (one host clip
++            // per region).
++            let regions = {
++                let _t22 = T22Span::new("p6a_carve_per_region");
++                carve_emitted_regions(&regions, collision_polys)
++            };
+             // Canonical accumulates the carved circles into `base_areas` /
+             // `roof_areas` and then runs them through Clipper boolean ops
+             // (`diff_ex(base_areas, roofs)`, `intersection_ex(base_areas,
+@@ -893,18 +1014,23 @@ pub fn build_roles(
+             // perimeter through the inside of each fused branch pair and makes
+             // the branch silhouette pop between layers as neighbouring circles
+             // drift in and out of contact.
++            // [PERF-T22-PROBE] p6c = union + simplify of the carved regions.
++            let _t22 = T22Span::new("p6c_union_simplify");
+             let regions = union_expolys(regions);
+             let regions =
+                 match role_simplify_tolerance(is_base_area, avg_node_per_layer, line_width_mm) {
+                     Some(tolerance) => expolygons_simplify(&regions, tolerance),
+                     None => regions,
+                 };
++            drop(_t22);
+             if collision_polys.is_empty() {
+                 regions
+             } else {
+                 // Simplification may move a boundary back into collision. The
+                 // per-circle largest-part selection already happened above, so
+                 // this is canonical's plain set-wide difference.
++                // [PERF-T22-PROBE] p6b = the post-simplify set-wide difference.
++                let _t22 = T22Span::new("p6b_final_difference");
+                 host::clip_polygons(&regions, collision_polys, ClipOperation::Difference)
+             }
+         };
+@@ -1523,6 +1649,9 @@ impl TreeVolumes {
+         if self.layer_outlines.is_empty() || self.collision.borrow().contains_key(&(key, 0)) {
+             return;
+         }
++        // [PERF-T22-PROBE] p3c = one collision-ladder build (batch offset +
++        // per-layer simplify + union).
++        let _t22 = T22Span::new("p3c_collision_ladder");
+         let inflate = ceil_radius(radius_mm) + self.xy_distance;
+         let inflate_foreign = ceil_radius(radius_mm) + self.territory_clearance;
+         let tolerance_units = mm_to_units(RADIUS_SAMPLE_RESOLUTION_MM) as f64;
+@@ -1578,6 +1707,9 @@ impl TreeVolumes {
+         if self.layer_outlines.is_empty() || self.avoidance.borrow().contains_key(&(key, 0)) {
+             return;
+         }
++        // [PERF-T22-PROBE] p3d = one avoidance-ladder build (serial recurrence
++        // of per-layer erosion/union host clips).
++        let _t22 = T22Span::new("p3d_avoidance_ladder");
+         self.ensure_collision(radius_mm);
+         let mut previous: Vec<ExPolygon> = Vec::new();
+         for layer in 0..self.layer_count() {
+@@ -1821,6 +1953,8 @@ impl PrepassModule for SupportPlanner {
+         output: &mut SupportGeometryOutput,
+         _config: &ConfigView,
+     ) -> Result<(), ModuleError> {
++        // [PERF-T22-PROBE] Flushes the accumulated split on every exit path.
++        let _t22_call = T22CallGuard;
+         if !self.enabled {
+             return Ok(());
+         }
+@@ -1871,14 +2005,20 @@ impl PrepassModule for SupportPlanner {
+         // quantity with no recursion. Canonical inflates collision by
+         // `radius + m_xy_distance` and derives avoidance as a recurrence down
+         // the layer stack, which is what stops a branch being trapped.
+-        let volumes = TreeVolumes::new(
+-            layer_plan,
+-            support_geometry,
+-            support_analysis,
+-            self.branch_angle_deg,
+-            self.support_object_xy_distance,
+-            self.support_line_width_mm,
+-        );
++        let volumes = {
++            // [PERF-T22-PROBE] TreeVolumes::new = outline stack + foreign
++            // keepout + the below-union ladder (all host geometry calls made
++            // during construction).
++            let _t22 = T22Span::new("p0_volumes_new");
++            TreeVolumes::new(
++                layer_plan,
++                support_geometry,
++                support_analysis,
++                self.branch_angle_deg,
++                self.support_object_xy_distance,
++                self.support_line_width_mm,
++            )
++        };
+         // Both ladders are now keyed on the canonical *avoidance query radius*
+         // `calc_radius(dist_mm_to_top + height)` (global base-radius taper) and
+         // materialise on demand (see `PolySet`). Until packet 224 step 5 the
+@@ -1910,6 +2050,8 @@ impl PrepassModule for SupportPlanner {
+             std::collections::BTreeMap::new();
+ 
+         for obj in objects {
++            // [PERF-T22-PROBE] One bracket for the whole per-object planner.
++            let _t22 = T22Span::new("p1_plan_for_object");
+             self.plan_for_object(
+                 obj,
+                 layer_plan,
+@@ -2008,6 +2150,9 @@ impl SupportPlanner {
+             gap_layers: i32::from(z_distance_top != 0.0),
+             support_roof_layers: self.support_interface_top_layers.max(0),
+         };
++        // [PERF-T22-PROBE] p2 = contact seeding (mesh/analysis candidates →
++        // contact points, incl. every `insert_contact_point` call).
++        let t22_contacts = T22Span::new("p2_contacts");
+ 
+         // Host analysis owns candidate discovery and policy. Geometry remains
+         // an independent compatibility input for collision avoidance below.
+@@ -2197,8 +2342,7 @@ impl SupportPlanner {
+         for candidate in support_analysis.candidates.iter().filter(|candidate| {
+             candidate.object_id == obj.object_id
+                 && candidate.blocked
+-                && candidate_family(candidate, support_analysis).as_deref()
+-                    == Some("tree")
++                && candidate_family(candidate, support_analysis).as_deref() == Some("tree")
+         }) {
+             declined_identities.insert((
+                 obj.object_id.clone(),
+@@ -2224,8 +2368,7 @@ impl SupportPlanner {
+         for candidate in support_analysis.candidates.iter().filter(|candidate| {
+             candidate.object_id == obj.object_id
+                 && !candidate.blocked
+-                && candidate_family(candidate, support_analysis).as_deref()
+-                    == Some("tree")
++                && candidate_family(candidate, support_analysis).as_deref() == Some("tree")
+                 && candidate
+                     .geometry
+                     .iter()
+@@ -2354,6 +2497,8 @@ impl SupportPlanner {
+         if contacts_by_layer.iter().all(|v| v.is_empty()) {
+             return Ok(());
+         }
++        // [PERF-T22-PROBE]
++        drop(t22_contacts);
+ 
+         // Canonical closes `generate_contact_points` with a line fit over
+         // every contact position, feeding `smooth_nodes` in step 6 (F-33).
+@@ -2375,6 +2520,8 @@ impl SupportPlanner {
+         //   c) merge nodes within merge_distance; record MST edges as segments
+         //   d) move each surviving node toward its MST neighbor by step_xy
+         //   e) pass surviving nodes down to layer (l-1)
++        // [PERF-T22-PROBE] p3 = the whole top-down drop/move/MST layer loop.
++        let t22_drop = T22Span::new("p3_drop_nodes_loop");
+         let tan_angle = self.branch_angle_deg.to_radians().tan();
+         let tan_diameter_angle = self.tree_support_branch_diameter_angle.to_radians().tan();
+         let branch_radius = self.tree_support_branch_diameter / 2.0;
+@@ -2986,6 +3133,9 @@ impl SupportPlanner {
+ 
+             active_nodes = next_nodes;
+         }
++        // [PERF-T22-PROBE] Close p3: the whole top-down layer loop ends here,
++        // before the F-14 unsupported-branch drain (a separate term).
++        drop(t22_drop);
+ 
+         // ── F-14: drain `unsupported_branch_leaves` ──────────────────────
+         //
+@@ -3040,12 +3190,15 @@ impl SupportPlanner {
+ 
+         // Canonical `erase_if(is_processed)` across ALL layers, applied here as
+         // a filter on the recorded per-layer node sets.
++        let t22_postdrop = T22Span::new("p4_f14_and_erase");
+         for record in &mut layer_records {
+             record.active.retain(|id| !arena[*id].is_processed);
+             record
+                 .edges
+                 .retain(|(a, b)| !arena[*a].is_processed && !arena[*b].is_processed);
+         }
++        // [PERF-T22-PROBE]
++        drop(t22_postdrop);
+ 
+         // ── Canonical `smooth_nodes` (F-33) ──────────────────────────────
+         //
+@@ -3056,7 +3209,11 @@ impl SupportPlanner {
+         // collision gate in the emit pass runs *after* this, so a smoothed
+         // position is still validated against model occupancy before it is
+         // allowed to print.
+-        smooth_nodes(&mut arena, &layer_records, self.support_line_width_mm);
++        {
++            // [PERF-T22-PROBE] p5 = smooth_nodes.
++            let _t22 = T22Span::new("p5_smooth_nodes");
++            smooth_nodes(&mut arena, &layer_records, self.support_line_width_mm);
++        }
+ 
+         // Canonical `draw_circles`' `CIRCLE_RESOLUTION`: a full 100-gon per
+         // node per layer is unaffordable once the model carries hundreds of
+@@ -3082,6 +3239,7 @@ impl SupportPlanner {
+             },
+         );
+         // ── Emit pass (canonical `draw_circles`) ─────────────────────────
++        let t22_emit = T22Span::new("p6_emit_pass");
+         for record in &layer_records {
+             let layer_rev = record.layer_rev;
+             let active_nodes: Vec<NodeId> = record.active.clone();
+@@ -3209,49 +3367,58 @@ impl SupportPlanner {
+             } else {
+                 self.support_interface_bottom_layers.max(0) as u32
+             };
+-            let node_roles: Vec<InterfaceRole> = active_nodes
+-                .iter()
+-                .map(|id| {
+-                    let node = &arena[*id];
+-                    // Floor: the branch lands on the model rather than the plate.
+-                    // The lookup is by *global* layer index; it previously mixed
+-                    // in `layer_rev`, the reverse loop counter, and indexed the
+-                    // collision cache with it.
+-                    let is_floor = bottom_n > 0
+-                        && !self.support_on_build_plate_only
+-                        && (1..=bottom_n).any(|k| {
+-                            cache_idx.checked_sub(k as usize).is_some_and(|below| {
+-                                point_in_any_expoly(volumes.outlines_at(below), node.x(), node.y())
+-                            })
+-                        });
+-                    // Roof: canonical `node->support_roof_layers_below > 0`,
+-                    // the per-node counter seeded at contact creation and
+-                    // decremented once per descendant (F-1). The old
+-                    // `roof_band_layers_emitted` object-wide counter is gone:
+-                    // it starved every overhang after the first of interface.
+-                    let is_roof = top_n > 0 && node.is_roof();
+-                    let mut below_roof = 0usize;
+-                    let mut reached_roof = false;
+-                    let mut ancestor = node.parent;
+-                    while let Some(parent_id) = ancestor {
+-                        below_roof += 1;
+-                        if arena[parent_id].is_roof() {
+-                            reached_roof = true;
+-                            break;
++            let node_roles: Vec<InterfaceRole> = {
++                // [PERF-T22-PROBE] p6e = per-node role classification (floor
++                // point-in tests + roof ancestry walk).
++                let _t22 = T22Span::new("p6e_node_roles");
++                active_nodes
++                    .iter()
++                    .map(|id| {
++                        let node = &arena[*id];
++                        // Floor: the branch lands on the model rather than the plate.
++                        // The lookup is by *global* layer index; it previously mixed
++                        // in `layer_rev`, the reverse loop counter, and indexed the
++                        // collision cache with it.
++                        let is_floor = bottom_n > 0
++                            && !self.support_on_build_plate_only
++                            && (1..=bottom_n).any(|k| {
++                                cache_idx.checked_sub(k as usize).is_some_and(|below| {
++                                    point_in_any_expoly(
++                                        volumes.outlines_at(below),
++                                        node.x(),
++                                        node.y(),
++                                    )
++                                })
++                            });
++                        // Roof: canonical `node->support_roof_layers_below > 0`,
++                        // the per-node counter seeded at contact creation and
++                        // decremented once per descendant (F-1). The old
++                        // `roof_band_layers_emitted` object-wide counter is gone:
++                        // it starved every overhang after the first of interface.
++                        let is_roof = top_n > 0 && node.is_roof();
++                        let mut below_roof = 0usize;
++                        let mut reached_roof = false;
++                        let mut ancestor = node.parent;
++                        while let Some(parent_id) = ancestor {
++                            below_roof += 1;
++                            if arena[parent_id].is_roof() {
++                                reached_roof = true;
++                                break;
++                            }
++                            ancestor = arena[parent_id].parent;
+                         }
+-                        ancestor = arena[parent_id].parent;
+-                    }
+-                    if is_floor {
+-                        InterfaceRole::Floor
+-                    } else if is_roof {
+-                        InterfaceRole::Roof
+-                    } else if reached_roof && below_roof <= base_n {
+-                        InterfaceRole::Base
+-                    } else {
+-                        InterfaceRole::Body
+-                    }
+-                })
+-                .collect();
++                        if is_floor {
++                            InterfaceRole::Floor
++                        } else if is_roof {
++                            InterfaceRole::Roof
++                        } else if reached_roof && below_roof <= base_n {
++                            InterfaceRole::Base
++                        } else {
++                            InterfaceRole::Body
++                        }
++                    })
++                    .collect()
++            };
+             // ── Canonical `draw_circles`: one ellipse per node per layer ──
+             //
+             // Canonical draws every surviving node's own cross-section into
+@@ -3267,46 +3434,50 @@ impl SupportPlanner {
+             let mut base_areas: Vec<ExPolygon> = Vec::new();
+             let mut floor_areas: Vec<ExPolygon> = Vec::new();
+             let mut layer_needs_extra_wall = false;
+-            for (i, id) in active_nodes.iter().enumerate() {
+-                let node = &arena[*id];
+-                // The F-34 virtual top-Z-gap node draws into `roof_gap_areas`,
+-                // which is never extruded.
+-                if node.is_virtual_gap() {
+-                    continue;
+-                }
+-                let radius = node.radius;
+-                // Same gate the contact-tip path applies: a node's own drawn
+-                // cross-section may never sit inside model occupancy,
+-                // whatever role it carries. (The MST-edge gate exempts
+-                // *interface endpoints* because the edge's other endpoint is
+-                // what reaches the model; a node's own ellipse has no such
+-                // partner.)
+-                let direction = if node.movement.x != 0 || node.movement.y != 0 {
+-                    node.movement
+-                } else {
+-                    node.skin_direction
+-                };
+-                let Some(ellipse) = node_ellipse(
+-                    &base_circle,
+-                    node.position,
+-                    (radius / branch_radius) as f64,
+-                    direction,
+-                    branch_radius_units,
+-                    circle_resolution == CIRCLE_RESOLUTION_COARSE,
+-                ) else {
+-                    continue;
+-                };
+-                // Canonical `drop_nodes`: only a cross-section the collision
+-                // volume swallows whole is lost.
+-                if swallowed_by_collision(node.x(), node.y(), radius) {
+-                    continue;
+-                }
+-                layer_needs_extra_wall |= node.need_extra_wall;
+-                match node_roles[i] {
+-                    InterfaceRole::Body => branch_areas.push(ellipse),
+-                    InterfaceRole::Roof => interface_areas.push(ellipse),
+-                    InterfaceRole::Base => base_areas.push(ellipse),
+-                    InterfaceRole::Floor => floor_areas.push(ellipse),
++            {
++                // [PERF-T22-PROBE] p6f = per-node ellipse construction + swallow gate.
++                let _t22 = T22Span::new("p6f_node_ellipses");
++                for (i, id) in active_nodes.iter().enumerate() {
++                    let node = &arena[*id];
++                    // The F-34 virtual top-Z-gap node draws into `roof_gap_areas`,
++                    // which is never extruded.
++                    if node.is_virtual_gap() {
++                        continue;
++                    }
++                    let radius = node.radius;
++                    // Same gate the contact-tip path applies: a node's own drawn
++                    // cross-section may never sit inside model occupancy,
++                    // whatever role it carries. (The MST-edge gate exempts
++                    // *interface endpoints* because the edge's other endpoint is
++                    // what reaches the model; a node's own ellipse has no such
++                    // partner.)
++                    let direction = if node.movement.x != 0 || node.movement.y != 0 {
++                        node.movement
++                    } else {
++                        node.skin_direction
++                    };
++                    let Some(ellipse) = node_ellipse(
++                        &base_circle,
++                        node.position,
++                        (radius / branch_radius) as f64,
++                        direction,
++                        branch_radius_units,
++                        circle_resolution == CIRCLE_RESOLUTION_COARSE,
++                    ) else {
++                        continue;
++                    };
++                    // Canonical `drop_nodes`: only a cross-section the collision
++                    // volume swallows whole is lost.
++                    if swallowed_by_collision(node.x(), node.y(), radius) {
++                        continue;
++                    }
++                    layer_needs_extra_wall |= node.need_extra_wall;
++                    match node_roles[i] {
++                        InterfaceRole::Body => branch_areas.push(ellipse),
++                        InterfaceRole::Roof => interface_areas.push(ellipse),
++                        InterfaceRole::Base => base_areas.push(ellipse),
++                        InterfaceRole::Floor => floor_areas.push(ellipse),
++                    }
+                 }
+             }
+ 
+@@ -3722,6 +3893,11 @@ impl SupportPlanner {
+             }
+         }
+ 
++        // [PERF-T22-PROBE] Close p6: emit pass done. Remaining tail is the
++        // template stamp + 239c/239d interpolation, bracketed as p7.
++        drop(t22_emit);
++        let t22_tail = T22Span::new("p7_stamp_and_interpolate");
++
+         // Family assignments can cover regions absent from either the
+         // segmentation projection or the candidate geometry path. Stamp each
+         // object/layer from one deterministic successful entry, without
+@@ -4096,10 +4272,9 @@ impl SupportPlanner {
+                         }
+                         let region_identity = (clone.object_id.clone(), clone.region_id.clone());
+                         match region_slots.get(&region_identity) {
+-                            Some(index) => merge_synthesized_region_row(
+-                                &mut interpolated[*index],
+-                                clone,
+-                            ),
++                            Some(index) => {
++                                merge_synthesized_region_row(&mut interpolated[*index], clone)
++                            }
+                             None => {
+                                 region_slots.insert(region_identity, interpolated.len());
+                                 interpolated.push(clone);
+@@ -4206,12 +4381,18 @@ impl SupportPlanner {
+         // (Emission happens in run_support_geometry after all objects are
+         // processed, so the diagnostic is one per affected global layer
+         // across all objects, not one per (object, layer) pair.)
++        // [PERF-T22-PROBE]
++        drop(t22_tail);
+ 
+         // Emit entries in top-to-bottom order.
+-        for entry in entries_in_order {
+-            output
+-                .push_support_plan_entry(entry)
+-                .map_err(|e| ModuleError::fatal(1, format!("push_support_plan failed: {e}")))?;
++        {
++            // [PERF-T22-PROBE] p8 = push every entry into the output builder.
++            let _t22 = T22Span::new("p8_push_entries");
++            for entry in entries_in_order {
++                output
++                    .push_support_plan_entry(entry)
++                    .map_err(|e| ModuleError::fatal(1, format!("push_support_plan failed: {e}")))?;
++            }
+         }
+         Ok(())
+     }
