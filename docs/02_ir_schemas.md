@@ -1088,7 +1088,7 @@ while seam-first geometry is represented by the first point of the wall path.
 
 **Stage:** Output of `Layer::Infill`, mutated by `Layer::InfillPostProcess`
 
-**Current schema_version: 1.0.0** (authoritative source: `CURRENT_INFILL_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`).
+**Current schema_version: 1.1.0** (authoritative source: `CURRENT_INFILL_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`). 1.1.0 adds the additive `InfillRegion.variant_chain: Vec<(String, PaintValue)>` carrier (seam identity): the full paint variant chain of the source region, so the infill linker and post-process consumers re-attribute output to the painted variant rather than the chain-less base. The field is `#[serde(default)]`, so pre-1.1.0 fixtures parse to an empty chain (unchanged behaviour for unpainted regions). Prior version: 1.0.0.
 
 `InfillIR` and `InfillRegion` are defined in
 `crates/slicer-ir/src/slice_ir.rs`. Each layer carries region-scoped sparse,
@@ -1459,11 +1459,22 @@ change fatal-error behaviour.
 **Stage:** Output of `PrePass::SeamPlanning` (optional; only present when a
 `seam-planner` module is loaded — packet 23-rev1).
 
-**Producer:** A module holding the `seam-planner` claim. Ordered after
-`PrePass::LayerPlanning`, before `PrePass::PaintSegmentation`.
+**Producer:** A module holding the `seam-planner` claim. Runs in the **late
+prepass phase** — after `PrePass::PaintSegmentation` (a host builtin that
+commits the paint-split `SliceIR`) — because its declared reads include
+`RegionMap` (`crates/slicer-runtime/src/prepass.rs`,
+`required_slots("PrePass::SeamPlanning")`). `STAGE_ORDER`
+(`crates/slicer-scheduler/src/execution_plan.rs`) lists `SeamPlanning` before
+`PaintSegmentation` as the canonical ordering registry; the runtime's
+early/late phase split is what settles the actual execution order. Seam-plan
+entries are therefore keyed on the paint-split region identity, including the
+full `variant_chain`.
 
 **Consumers:** `Layer::PerimetersPostProcess` modules holding the
-`seam-placer` claim. Advisory — may fall back to per-layer scoring.
+`seam-placer` claim. Advisory — may fall back to per-layer scoring. A region
+whose exact `(layer, object_id, region_id, variant_chain)` has no entry gets
+no injected seam (degraded path), never the seam chosen for a different
+paint variant.
 
 **schema_version: 1.1.0** (`CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION`; packet 178
 added additive `variant_chain` propagation through harvest (the field already

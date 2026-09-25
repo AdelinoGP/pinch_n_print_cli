@@ -51,6 +51,11 @@ each with its own resolved configuration. Semantics that are not region-split ar
 carried as **segment annotations** instead. The set of region-split semantics is
 decided per slicer instance, not hard-coded.
 
+### Paint-only module
+A module whose work is applicable only on layers containing a matching
+**painted variant**. Requesting a **region-split semantic** does not make a
+module paint-only; it may also run on unpainted layers.
+
 ### Variant chain
 The ordered sequence of paint-semantic discriminators that distinguishes a
 **painted variant** from its base region. Two regions of the same object and
@@ -64,6 +69,11 @@ A region distinguished from its base by a non-empty **variant chain**. Each
 painted variant carries its own resolved configuration — the base config plus
 the layered overlays contributed by each semantic in the chain. Painted variants
 of the same base region cover disjoint pieces of that base region's geometry.
+
+### Seam-plan identity
+The full **active region** identity, including its **variant chain**, to which
+one planned seam belongs. A different painted variant cannot inherit that seam;
+without its own matching plan it uses local seam selection as a degraded fallback.
 
 ### Segment annotation
 Per-contour-segment paint metadata that does NOT drive region-splitting. Carries

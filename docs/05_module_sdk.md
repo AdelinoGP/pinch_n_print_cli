@@ -876,14 +876,18 @@ selection and are not modified.
 **Degraded fallback via non-fatal `ModuleError`** — when no `SeamPlanIR`
 entry matches an active region in aligned mode, the module returns
 `Err(ModuleError::non_fatal(6, "missing seam plan entry (layer, object,
-region_id, variant_chain=[])"))`, applies the canonical local-candidate
+region_id, variant_chain=...)"))` naming the region's full identity —
+`global_layer_index`, `object_id`, `region_id`, and its actual
+`variant_chain` — applies the canonical local-candidate
 selection as a fallback, preserves all wall loops, and the slice continues
 with degraded status. `PerimeterRegionView`/perimeter-region identity
 includes `variant_chain` (packet 178): the seam-planning input preserves the
 full `RegionKey` — `global_layer_index`, `object_id`, `region_id`, and
 `variant_chain` — and missing-plan diagnostics use the complete matching
 `RegionKey` (`resolve_seam_for_perimeter_region` in
-`crates/slicer-wasm-host/src/dispatch.rs`).
+`crates/slicer-wasm-host/src/dispatch.rs`). The lookup is exact-identity
+only: a painted variant without its own entry degrades rather than receiving
+the seam chosen for the chain-less base region.
 A degenerate empty wall loop (no points) emits
 `Err(ModuleError::non_fatal(7, "degenerate empty wall loop (no points) at
 wall_index=N"))` without panicking, and the empty loop is preserved in the

@@ -90,6 +90,7 @@ pub struct LoadedModule {
     pub wasm_path:             PathBuf,
     pub provenance:            ModuleProvenance, // External | Integrated (packet 85/ADR-0056)
     pub region_splits:         Vec<RegionSplitDeclaration>, // from manifest [[region_split]] (packet 92)
+    pub paint_only:            bool,       // top-level paint_only = true (ADR-0071); gates per-layer dispatch
     pub placeholder_wasm:     bool,        // ≤8-byte stub; inert for dispatch (packet 181)
 }
 ```
@@ -125,12 +126,15 @@ Ingestion is generalized over manifest source: a module may come from a disk
 file or embedded TOML. `LoadedModule` carries a `ModuleProvenance` marker
 (`External | Integrated`); claims and DAG machinery never inspects provenance.
 
-### `[[region_split]]` Aggregation and Tied-Priority Diagnostic (Normative — Packet 92)
+### `[[region_split]]` Aggregation and Tied-Priority Diagnostic (Normative — Packet 92, ADR-0071)
 
 When ingestion completes, the scheduler aggregates the
 `[[region_split]]` array entries from every loaded manifest into a single
 canonical `BTreeMap<String, AggregatedRegionSplitEntry>` keyed by
-semantic name and ordered by `(priority, name)`. The map is consumed by:
+semantic name and ordered by `(priority, name)`. The aggregate is exactly the
+union of the loaded modules' declarations — no semantics are seeded implicitly.
+`material` and `fuzzy_skin` are present in a real slice because the core
+perimeter and fuzzy-skin manifests declare them. The map is consumed by:
 
 - `Phase 2` DAG construction (per-layer dispatch filter — see below).
 - `PrePass::RegionMapping` builtin (cross-product expansion — see
@@ -149,6 +153,9 @@ Per-manifest validation (Packet 92):
    are listed in `CORE_REGION_SPLIT_PRIORITIES`.
 4. **Core semantic with `priority` ≠ registry value** → rejected
    (`LoadErrorKind::CorePriorityMismatch`).
+5. **Top-level `paint_only = true` with no `[[region_split]]` entry** →
+   rejected (`LoadErrorKind::PaintOnlyWithoutRegionSplit`); a non-boolean
+   `paint_only` is a `Schema` error.
 
 Cross-manifest **tied-priority warning** (non-fatal): if two distinct
 semantics from different manifests declare the same priority, a
@@ -322,14 +329,20 @@ pub fn build_intra_stage_dag(
 }
 ```
 
-### Per-Layer Region-Split Dispatch Filter (Normative — Packet 92)
+### Per-Layer Region-Split Dispatch Filter (Normative — Packet 92, ADR-0071)
 
 After the intra-stage DAG is sorted, each `LoadedModule` carries a
 cached `region_split_semantics: HashSet<String>` on its
-`CompiledModuleStatic` descriptor (the set of semantic names declared
-in the module's `[[region_split]]` array). The host applies a per-layer
-filter at dispatch time using this set; the granularity is per-(module
-× layer), NOT per-(module × region):
+`CompiledModuleStatic` descriptor. The set is populated **only** when the
+module's manifest opted into paint-only dispatch with top-level
+`paint_only = true`, in which case it holds exactly the semantic names
+declared in the module's `[[region_split]]` array. A module that declares
+`[[region_split]]` semantics without `paint_only = true` — the core
+`classic-perimeters`, `arachne-perimeters`, and `fuzzy-skin` modules — has an
+**empty** dispatch set and runs on every layer; its declarations still
+register the semantics in the cross-manifest aggregate. The host applies a
+per-layer filter at dispatch time using this set; the granularity is
+per-(module × layer), NOT per-(module × region):
 
 - A module whose `region_split_semantics` is **empty** runs
   unconditionally (paint-transparent default — preserves pre-packet-92
@@ -1155,7 +1168,8 @@ pub struct CompiledModuleStatic {
     pub ir_write_mask: IrAccessMask,
     pub config_view:   Arc<ConfigView>,
     pub claims:        Vec<String>,   // frozen [claims].holds; feeds resolve_held_claims
-    // + requires_modules, region_split_semantics, layer_parallel_safe
+    // + requires_modules, layer_parallel_safe
+    // + region_split_semantics (empty unless the manifest set paint_only = true; ADR-0071)
 }
 ```
 

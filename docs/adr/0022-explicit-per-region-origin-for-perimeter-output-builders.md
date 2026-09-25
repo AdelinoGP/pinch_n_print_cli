@@ -140,3 +140,32 @@ Packet 205c extended the explicit-origin builder pattern to support output and
 replaced the flat support representation with per-region support output. The
 original support-stage exclusion is superseded; support now carries the origin
 semantics required by the native and WASM dispatch paths.
+
+## Amendment — 2026-09-25 (seam identity)
+
+The seam-identity repair widened the origin identity from
+`(object_id, region_id)` to the FULL region key
+`(object_id, region_id, variant_chain)`:
+
+- `set-current-origin` on all three builders
+  (`perimeter-output-builder`, `infill-output-builder`, `support-output-builder`)
+  now takes `variant-chain: list<tuple<string, paint-value>>` as a third
+  parameter; the two-argument form is removed.
+- `begin_region` on the SDK builders takes
+  `variant_chain: &[(String, PaintValue)]`, and
+  `PerimeterRegionView` exposes `variant-chain()` so guests can forward it.
+- `OriginId` carries the chain, so two regions sharing `(object_id, region_id)`
+  but differing in paint variant route to separate buckets instead of merging.
+- The seam-plan lookups (`resolve_seam_for_perimeter_region` in
+  `crates/slicer-wasm-host/src/dispatch.rs`, `backfill_resolved_seam` in
+  `crates/slicer-runtime/src/layer_executor.rs`) are exact-identity only. The
+  earlier chain-less base fallback was removed: it rested on a false premise
+  (`SeamPlanning` runs in the LATE prepass phase, after `PaintSegmentation`
+  commits the paint-split `SliceIR`, so entries ARE keyed on the painted
+  identity). A painted variant with no exact entry degrades to local seam
+  selection rather than borrowing a sibling's seam.
+
+The builders live in the **unversioned** shared `slicer:ir-handles` package, so
+there is no WIT world version to bump; compatibility is enforced structurally by
+wasmtime typed instantiation at first dispatch, and every guest must be rebuilt
+(`cargo xtask build-guests`).

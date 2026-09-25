@@ -291,13 +291,24 @@ Notable records/methods worth surfacing (not obvious from the resource names):
   resolved settings inside each region loop. Packet 131 bumps the then-monolithic `world-layer`
   from 2.0.0 to 2.1.0 for this additive contract change.
 - `perimeter-output-builder` and `infill-output-builder` both carry
-   `set-current-origin: func(object-id: string, region-id: string) -> result<_, string>`,
-   which tags the region currently being iterated so buffered per-region pushes are
-   attributed correctly (packet 127, ADR-0022; see the `begin_region` SDK method).
+   `set-current-origin: func(object-id: string, region-id: string, variant-chain: list<tuple<string, paint-value>>) -> result<_, string>`,
+   which tags the region currently being iterated — full identity, including
+   the paint variant chain — so buffered per-region pushes are
+   attributed correctly (packet 127, ADR-0022; see the `begin_region` SDK
+   method). Widened from the original two-field form by the seam-identity
+   change; the builders live in the **unversioned** shared `slicer:ir-handles`
+   package, so there is no world version to bump — compatibility is enforced
+   structurally by wasmtime typed instantiation at first dispatch, and every
+   guest must be rebuilt (`cargo xtask build-guests`).
 - `support-output-builder` also carries
-  `set-current-origin: func(object-id: string, region-id: string) -> result<_, string>`,
+  `set-current-origin: func(object-id: string, region-id: string, variant-chain: list<tuple<string, paint-value>>) -> result<_, string>`,
   which tags the support region currently being iterated so buffered per-region pushes
   are attributed correctly (packet 205c; see the `begin_region` SDK method).
+- `perimeter-region-view` exposes
+  `variant-chain: func() -> list<tuple<string, paint-value>>`, mirroring
+  `slice-region-view`; guests forward it through `begin_region`. The
+  `prior-infill-region` record carries `variant-chain` as a field so the
+  infill linker can re-attribute its re-emitted paths to the source variant.
 - `slice-region-view` and `perimeter-region-view` both expose
   `raft-fill: func() -> list<ex-polygon>` (packet 240a), mirroring
   `SlicedRegion.raft_fill`. The `raft-default` module writes raft polygons through
@@ -716,9 +727,17 @@ now legacy" above).
 At ingestion, `ingest_manifest` in `crates/slicer-scheduler/src/manifest.rs`
 requires `[module].id`/`version`, `[stage].id`, `[ir-access].reads`/`writes`,
 `[claims].holds`/`requires`, all five `[compatibility]` fields, and
-`hints.layer-parallel-safe`. `[config.schema]` and `[[region_split]]` are
-optional; their field entries and declarations are parsed when present. Other
-TOML keys are tolerated but are not stored by the manifest loader.
+`hints.layer-parallel-safe`. `[config.schema]`, `[[region_split]]`, and the
+top-level `paint_only` metadata are optional; their field entries and
+declarations are parsed when present. Other TOML keys are tolerated but are
+not stored by the manifest loader.
+
+Declaring `[[region_split]]` registers paint semantics in the cross-manifest
+aggregate; `paint_only = true` is a separate opt-in that makes the declaration
+also gate per-layer invocation. A module may declare semantics and still run
+on every layer (the core `classic-perimeters`, `arachne-perimeters`, and
+`fuzzy-skin` modules do exactly that — fuzzy-skin's `apply_to_all` mode
+requires invocation on unpainted layers). See ADR-0071.
 
 The sibling module manifest is a build-relevant declaration input: `[stage].id`
 drives stage expectation, and `[config.schema]` controls the keys forwarded
@@ -936,6 +955,16 @@ value_type = "tool_index"      # flag | tool_index | custom_string
                                 # Scalar paints route through
                                 # SlicedRegion.segment_annotations instead.
 
+# ── Paint-only dispatch opt-in (Normative — ADR-0071) ────────────────────────
+# paint_only = true makes the host skip this module on any layer whose regions
+# carry none of the declared [[region_split]] semantics. Omitted or false
+# (the default) keeps the module dispatch-transparent: it runs on every layer
+# and its declarations still register semantics in the aggregate. Setting
+# paint_only = true REQUIRES at least one [[region_split]] entry; a paint-only
+# module with no semantics would be skipped on every layer and is rejected at
+# load time with PaintOnlyWithoutRegionSplit. Uncomment both lines together:
+# paint_only = true
+
 # ── Hints ─────────────────────────────────────────────────────────────────────
 [hints]
 # <!-- VERIFY: `manifest.rs` parses only `layer-parallel-safe`; other hint
@@ -960,7 +989,7 @@ Static keys (without the `:*` suffix) continue to require exact-match.
 The matcher is `source_key_matches_declared` in
 `crates/slicer-scheduler/src/execution_plan.rs`.
 
-### `[[region_split]]` Validation Rules (Normative — Packet 92)
+### `[[region_split]]` Validation Rules (Normative — Packet 92, ADR-0071)
 
 Per-manifest:
 
@@ -974,6 +1003,14 @@ Per-manifest:
 4. **Core semantic (`material`, `fuzzy_skin`) with `priority` ≠ registry
    value** → rejected (`LoadErrorKind::CorePriorityMismatch`).
    `CORE_REGION_SPLIT_PRIORITIES = { "material" => 100, "fuzzy_skin" => 200 }`.
+5. **Top-level `paint_only = true` with no `[[region_split]]` entry** →
+   rejected (`LoadErrorKind::PaintOnlyWithoutRegionSplit`). A non-boolean
+   `paint_only` is a `Schema` error naming the field.
+
+The aggregate is declaration-only: `material` and `fuzzy_skin` are present in
+`aggregated_region_split` because the core perimeter and fuzzy-skin manifests
+declare them, not because the host seeds them. Removing every declaration
+empties the aggregate. See ADR-0071.
 
 Cross-manifest: distinct semantics from different manifests that share a
 priority emit a non-fatal `LoadDiagnostic { level: Warning, ... }` naming
