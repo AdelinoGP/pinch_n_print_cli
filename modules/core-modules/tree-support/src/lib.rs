@@ -768,7 +768,7 @@ impl TreeSupport {
         };
         let emit_scanline = |scan: f64, paths: &mut Vec<ExtrusionPath3D>| {
             let crossings = crossings_at(scan);
-            for pair in crossings.chunks_exact(2) {
+            for pair in crossings.as_chunks::<2>().0 {
                 if pair[1] > pair[0] && pair[0] >= min_x && pair[1] <= max_x {
                     paths.push(ExtrusionPath3D {
                         points: vec![

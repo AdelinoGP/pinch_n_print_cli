@@ -2310,7 +2310,7 @@ fn raycast_z_down_against(
     start_z: f32,
 ) -> Option<f32> {
     let mut best_hit = None;
-    for triangle in object.mesh.indices.chunks_exact(3) {
+    for triangle in object.mesh.indices.as_chunks::<3>().0 {
         let Some(vertices) = triangle_vertices(object, triangle) else {
             continue;
         };
@@ -2334,7 +2334,7 @@ fn surface_normal_at_against(
     z: f32,
 ) -> Option<slicer_ir::Point3> {
     let query_point = slicer_ir::Point3 { x, y, z };
-    for triangle in object.mesh.indices.chunks_exact(3) {
+    for triangle in object.mesh.indices.as_chunks::<3>().0 {
         let Some(vertices) = triangle_vertices(object, triangle) else {
             continue;
         };

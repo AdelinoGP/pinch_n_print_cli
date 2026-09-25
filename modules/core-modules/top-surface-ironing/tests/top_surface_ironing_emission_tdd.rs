@@ -396,7 +396,7 @@ fn l_shape_clip_keeps_strokes_inside_concave_polygon() {
     // X must lie within the L-shape's solid mass, i.e. not in the upper-right
     // cut-out (x > 0 && y > 0).
     for path in paths {
-        for pair in path.points.chunks_exact(2) {
+        for pair in path.points.as_chunks::<2>().0 {
             let midx = (pair[0].x + pair[1].x) / 2.0;
             let midy = (pair[0].y + pair[1].y) / 2.0;
             assert!(
@@ -451,7 +451,7 @@ fn u_shape_top_fill_produces_disjoint_segments_per_row() {
     let mut saw_left_band = false;
     let mut saw_right_band = false;
     for path in paths {
-        for pair in path.points.chunks_exact(2) {
+        for pair in path.points.as_chunks::<2>().0 {
             let midx = (pair[0].x + pair[1].x) / 2.0;
             let midy = (pair[0].y + pair[1].y) / 2.0;
             assert!(

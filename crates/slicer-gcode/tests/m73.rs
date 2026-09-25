@@ -87,7 +87,7 @@ fn stealth_q_s_mirrors_p_r() {
     inject_m73(&mut ir, &[0.0, 20.0, 45.0, 120.0, 210.0, 300.0, 600.0]);
 
     let lines = m73_lines(&ir);
-    for pair in lines.chunks_exact(2) {
+    for pair in lines.as_chunks::<2>().0 {
         let p = pair[0].strip_prefix("M73 P").unwrap();
         let q = pair[1].strip_prefix("M73 Q").unwrap();
         let (pct, remaining) = p.split_once(" R").unwrap();

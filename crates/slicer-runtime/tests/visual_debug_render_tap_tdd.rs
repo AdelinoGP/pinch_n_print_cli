@@ -330,8 +330,10 @@ fn degenerate_support_branch_renders_as_visible_disk() {
     .expect("degenerate support branch should render");
     let (_, _, rgb) = decode_rgb(&rendered.png_bytes);
     let painted = rgb
-        .chunks_exact(3)
-        .filter(|pixel| *pixel != BACKGROUND)
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .filter(|pixel| **pixel != BACKGROUND)
         .count();
     assert!(
         painted > 1,
@@ -398,8 +400,10 @@ fn degenerate_segment_at_path_end_renders_as_visible_disk() {
     .expect("mixed support branch should render");
     let (_, _, rgb) = decode_rgb(&rendered.png_bytes);
     let painted = rgb
-        .chunks_exact(3)
-        .filter(|pixel| *pixel != BACKGROUND)
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .filter(|pixel| **pixel != BACKGROUND)
         .count();
     assert!(
         painted > 1,
@@ -461,8 +465,10 @@ fn nearly_equal_path_endpoints_render_as_visible_disk() {
     .expect("nearly degenerate support branch should render");
     let (_, _, rgb) = decode_rgb(&rendered.png_bytes);
     let painted = rgb
-        .chunks_exact(3)
-        .filter(|pixel| *pixel != BACKGROUND)
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .filter(|pixel| **pixel != BACKGROUND)
         .count();
     assert!(
         painted > 1,
@@ -825,7 +831,11 @@ fn regionmapping_join_and_layerplanning_overlay() {
     .expect("SeamPlan base geometry is legitimately empty, not an error");
     let (_, _, seam_base_rgb) = decode_rgb(&seam_base.png_bytes);
     assert!(
-        seam_base_rgb.chunks_exact(3).all(|px| px == BACKGROUND),
+        seam_base_rgb
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .all(|px| *px == BACKGROUND),
         "SeamPlan's base geometry view has no area/path to draw; a non-background pixel here would mean a synthetic placeholder shape was drawn instead"
     );
     let seam_overlay = slicer_runtime::visual_debug_render::render_stage_capture_with_layer_plan(

@@ -2177,7 +2177,7 @@ fn intermediate_planes_generated_per_support_body_not_per_layer() {
         }
     }
     assert!(
-        off_grid_in_order.chunks_exact(2).all(|pair| {
+        off_grid_in_order.as_chunks::<2>().0.iter().all(|pair| {
             pair[0].0 == "0" && pair[1].0 == "1" && pair[0].1 == pair[1].1
         }),
         "239c finer candidates must retain object-level append order and per-region multiplicity: {off_grid_in_order:?}"

@@ -358,7 +358,7 @@ impl WasmRuntimeDispatcher {
             .borrow_mut()
             .push(call_fuel_consumed(store));
         let marks: Vec<crate::profiling::ProfileMark> =
-            store.data_mut().profile_marks.drain(..).collect();
+            std::mem::take(&mut store.data_mut().profile_marks);
         self.postpass_profile_marks.borrow_mut().push(marks);
     }
 
@@ -369,7 +369,7 @@ impl WasmRuntimeDispatcher {
         if ctx.batch_calls.is_empty() {
             return;
         }
-        let calls: Vec<(String, u32)> = ctx.batch_calls.drain(..).collect();
+        let calls: Vec<(String, u32)> = std::mem::take(&mut ctx.batch_calls);
         self.postpass_batch_calls.borrow_mut().push(calls);
     }
 
@@ -1589,8 +1589,7 @@ impl WasmRuntimeDispatcher {
 
         // Drain diagnostics from the context into the thread-local stash
         // before the store (and its HostExecutionContext) is consumed.
-        let diags: Vec<slicer_ir::Diagnostic> =
-            store.data_mut().diagnostics_mut().drain(..).collect();
+        let diags: Vec<slicer_ir::Diagnostic> = std::mem::take(store.data_mut().diagnostics_mut());
         LAST_PREPASS_DIAGNOSTICS.with(|c| c.borrow_mut().extend(diags));
 
         stash_batch_calls(store.data_mut());
@@ -3737,7 +3736,7 @@ fn stash_batch_calls(ctx: &mut HostExecutionContext) {
     if ctx.batch_calls.is_empty() {
         return;
     }
-    let calls: Vec<(String, u32)> = ctx.batch_calls.drain(..).collect();
+    let calls: Vec<(String, u32)> = std::mem::take(&mut ctx.batch_calls);
     LAST_BATCH_CALLS.with(|c| c.borrow_mut().extend(calls));
 }
 
@@ -3769,7 +3768,7 @@ fn stash_profile(store: &mut wasmtime::Store<HostExecutionContext>) {
         return;
     }
     let marks: Vec<crate::profiling::ProfileMark> =
-        store.data_mut().profile_marks.drain(..).collect();
+        std::mem::take(&mut store.data_mut().profile_marks);
     LAST_PROFILE_MARKS.with(|c| c.borrow_mut().extend(marks));
 }
 

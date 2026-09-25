@@ -1541,7 +1541,7 @@ fn plate_xy_bounds(
     }
     let (mut min_x, mut min_y) = (f64::MAX, f64::MAX);
     let (mut max_x, mut max_y) = (f64::MIN, f64::MIN);
-    for xy in pts.chunks_exact(2) {
+    for xy in pts.as_chunks::<2>().0 {
         if !xy[0].is_finite() || !xy[1].is_finite() {
             return Err(VisualDebugError::InvalidBedShape(
                 "bed_shape has a non-finite coordinate".into(),
