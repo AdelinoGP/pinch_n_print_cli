@@ -1,0 +1,230 @@
+[
+  {
+    "fixture": "benchy",
+    "outputs": {
+      "classic-off": {
+        "bytes": 7444356,
+        "types": {
+          "Bottom surface": 22,
+          "Bridge": 18,
+          "Brim": 1,
+          "Gap infill": 110,
+          "Inner wall": 257,
+          "Internal Bridge": 12,
+          "Internal solid infill": 13,
+          "Outer wall": 240,
+          "Skirt": 1,
+          "Sparse infill": 273,
+          "Top surface": 47
+        },
+        "degraded": false,
+        "non_fatal_errors": 0
+      },
+      "probe": {
+        "bytes": 7443967,
+        "types": {
+          "Bottom surface": 22,
+          "Bridge": 18,
+          "Brim": 1,
+          "Gap infill": 110,
+          "Inner wall": 254,
+          "Internal Bridge": 12,
+          "Internal solid infill": 13,
+          "Outer wall": 240,
+          "Skirt": 1,
+          "Sparse infill": 273,
+          "Top surface": 47
+        },
+        "degraded": false,
+        "non_fatal_errors": 0
+      }
+    },
+    "baseline_classic_fuel": 467964322572,
+    "probe_classic_fuel": 468025172082,
+    "baseline_classic_self": 331612857876,
+    "probe_classic_self": 1505635338,
+    "query_fuel_inclusive": 325111135784,
+    "indexed_internals_including_exact_predicates": 318268316015,
+    "fallback_scan_fuel": 6369666271,
+    "bridge_precheck_fuel": 114155685,
+    "fallback_reason_overhead": 22731664,
+    "public_query_wrapper_fuel": 336266149,
+    "context_build_fuel": 5056858206,
+    "scopes": {
+      "bridge": {
+        "calls": 628675,
+        "self_fuel": 106209550,
+        "total_fuel": 9615103966
+      },
+      "bridge_arithmetic_check": {
+        "calls": 397755,
+        "self_fuel": 114155685,
+        "total_fuel": 114155685
+      },
+      "context": {
+        "calls": 240,
+        "self_fuel": 5056858206,
+        "total_fuel": 5056858206
+      },
+      "distance": {
+        "calls": 617996,
+        "self_fuel": 144578157,
+        "total_fuel": 167065575261
+      },
+      "fallback_bridge": {
+        "calls": 230920,
+        "self_fuel": 6369164358,
+        "total_fuel": 6369164358
+      },
+      "fallback_quartile": {
+        "calls": 10679,
+        "self_fuel": 501913,
+        "total_fuel": 501913
+      },
+      "indexed_bridge": {
+        "calls": 397755,
+        "self_fuel": 3003867893,
+        "total_fuel": 3003867893
+      },
+      "indexed_distance": {
+        "calls": 617996,
+        "self_fuel": 13560618719,
+        "total_fuel": 13560618719
+      },
+      "indexed_inside": {
+        "calls": 617996,
+        "self_fuel": 153360378385,
+        "total_fuel": 153360378385
+      },
+      "indexed_quartile": {
+        "calls": 617996,
+        "self_fuel": 148343451018,
+        "total_fuel": 148343451018
+      },
+      "linear_fallback": {
+        "calls": 241599,
+        "self_fuel": 22731664,
+        "total_fuel": 6392397935
+      },
+      "quartile": {
+        "calls": 628675,
+        "self_fuel": 85478442,
+        "total_fuel": 148430456557
+      }
+    }
+  },
+  {
+    "fixture": "base",
+    "outputs": {
+      "classic-off": {
+        "bytes": 21936053,
+        "types": {
+          "Bottom surface": 49,
+          "Bridge": 51,
+          "Brim": 1,
+          "Gap infill": 245,
+          "Inner wall": 525,
+          "Internal Bridge": 6,
+          "Internal solid infill": 3,
+          "Outer wall": 495,
+          "Skirt": 1,
+          "Sparse infill": 670,
+          "Top surface": 58
+        },
+        "degraded": false,
+        "non_fatal_errors": 0
+      },
+      "probe": {
+        "bytes": 21936043,
+        "types": {
+          "Bottom surface": 49,
+          "Bridge": 51,
+          "Brim": 1,
+          "Gap infill": 245,
+          "Inner wall": 525,
+          "Internal Bridge": 6,
+          "Internal solid infill": 3,
+          "Outer wall": 495,
+          "Skirt": 1,
+          "Sparse infill": 670,
+          "Top surface": 58
+        },
+        "degraded": false,
+        "non_fatal_errors": 0
+      }
+    },
+    "baseline_classic_fuel": 6601043879881,
+    "probe_classic_fuel": 6601451235844,
+    "baseline_classic_self": 4122158839888,
+    "probe_classic_self": 8198975591,
+    "query_fuel_inclusive": 4081419194503,
+    "indexed_internals_including_exact_predicates": 4075561520375,
+    "fallback_scan_fuel": 2934344885,
+    "bridge_precheck_fuel": 970768029,
+    "fallback_reason_overhead": 3845872,
+    "public_query_wrapper_fuel": 1948715342,
+    "context_build_fuel": 32949496637,
+    "scopes": {
+      "bridge": {
+        "calls": 3416107,
+        "self_fuel": 687026014,
+        "total_fuel": 60225662156
+      },
+      "bridge_arithmetic_check": {
+        "calls": 3382467,
+        "self_fuel": 970768029,
+        "total_fuel": 970768029
+      },
+      "context": {
+        "calls": 495,
+        "self_fuel": 32949496637,
+        "total_fuel": 32949496637
+      },
+      "distance": {
+        "calls": 3408985,
+        "self_fuel": 797113020,
+        "total_fuel": 2956131886786
+      },
+      "fallback_bridge": {
+        "calls": 33640,
+        "self_fuel": 2934010151,
+        "total_fuel": 2934010151
+      },
+      "fallback_quartile": {
+        "calls": 7122,
+        "self_fuel": 334734,
+        "total_fuel": 334734
+      },
+      "indexed_bridge": {
+        "calls": 3382467,
+        "self_fuel": 55630695802,
+        "total_fuel": 55630695802
+      },
+      "indexed_distance": {
+        "calls": 3408985,
+        "self_fuel": 88879008137,
+        "total_fuel": 88879008137
+      },
+      "indexed_inside": {
+        "calls": 3408985,
+        "self_fuel": 2866455765629,
+        "total_fuel": 2866455765629
+      },
+      "indexed_quartile": {
+        "calls": 3408985,
+        "self_fuel": 1064596050807,
+        "total_fuel": 1064596050807
+      },
+      "linear_fallback": {
+        "calls": 40762,
+        "self_fuel": 3845872,
+        "total_fuel": 2938190757
+      },
+      "quartile": {
+        "calls": 3416107,
+        "self_fuel": 464576308,
+        "total_fuel": 1065061645561
+      }
+    }
+  }
+]
