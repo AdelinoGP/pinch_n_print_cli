@@ -2323,7 +2323,7 @@ pub fn support_carrier_regions(
     carriers
 }
 
-fn module_receives_slice_region(
+pub(crate) fn module_receives_slice_region(
     module_claims: &[String],
     layer: &GlobalLayer,
     region: &slicer_ir::SlicedRegion,
@@ -2958,13 +2958,12 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
                     message: "native entry family does not match layer runner".to_string(),
                 });
             };
-            let request = crate::marshal::native::build_native_layer_request_with_raft(
+            let request = crate::marshal::native::build_native_layer_request_for_layer(
                 stage_export,
-                layer.index,
+                layer,
                 &input,
                 module,
                 &held_claims_map,
-                layer.is_raft,
             );
             let response =
                 entry(&request).map_err(|e| slicer_ir::LayerStageError::FatalModule {

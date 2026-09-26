@@ -256,8 +256,8 @@ fn populate_surface_classification_fields(
     view.set_prev_layer_boundary(prev_layer_boundary);
 }
 
-/// Build a native layer request without passing any wasm-host type across the
-/// SDK boundary.
+/// Build a standalone native layer projection without a `GlobalLayer` eligibility
+/// gate. Live dispatch uses [`build_native_layer_request_for_layer`] instead.
 pub fn build_native_layer_request(
     stage_export: &'static str,
     layer_index: u32,
@@ -277,9 +277,10 @@ pub fn build_native_layer_request(
 
 /// Variant of [`build_native_layer_request`] that also carries the current
 /// layer's `GlobalLayer.is_raft` onto the paint view, mirroring the wasm leg's
-/// `paint-region-layer-view.is-raft` accessor. `dispatch_layer_call` calls
-/// this one; without it the native `PaintRegionLayerView::is_raft` would
-/// compile and silently return `false` on every layer.
+/// `paint-region-layer-view.is-raft` accessor. Live native dispatch calls
+/// [`build_native_layer_request_for_layer`]; without raft
+/// propagation the native `PaintRegionLayerView::is_raft` would silently return
+/// `false` on every layer.
 pub fn build_native_layer_request_with_raft(
     stage_export: &'static str,
     layer_index: u32,
@@ -288,6 +289,92 @@ pub fn build_native_layer_request_with_raft(
     held_claims_map: &HashMap<(String, String), Vec<String>>,
     is_raft: bool,
 ) -> NativeLayerRequest {
+    build_native_layer_request_impl(
+        stage_export,
+        layer_index,
+        input,
+        module,
+        held_claims_map,
+        is_raft,
+        None,
+    )
+}
+
+/// Build the live native request with the same active-region gate and
+/// per-region config resolution used by WASM dispatch.
+pub fn build_native_layer_request_for_layer(
+    stage_export: &'static str,
+    layer: &slicer_ir::GlobalLayer,
+    input: &LayerStageInput<'_>,
+    module: &CompiledModuleLive<'_>,
+    held_claims_map: &HashMap<(String, String), Vec<String>>,
+) -> NativeLayerRequest {
+    build_native_layer_request_impl(
+        stage_export,
+        layer.index,
+        input,
+        module,
+        held_claims_map,
+        layer.is_raft,
+        Some(layer),
+    )
+}
+
+fn native_region_config(
+    map: &slicer_ir::RegionMapIR,
+    key: &slicer_ir::RegionKey,
+    declared_keys: &[String],
+) -> slicer_ir::ConfigView {
+    let resolved = map.config_for(key).to_config_map();
+    slicer_ir::ConfigView::from_declared(&resolved, declared_keys.iter().map(String::as_str))
+}
+
+fn build_native_layer_request_impl(
+    stage_export: &'static str,
+    layer_index: u32,
+    input: &LayerStageInput<'_>,
+    module: &CompiledModuleLive<'_>,
+    held_claims_map: &HashMap<(String, String), Vec<String>>,
+    is_raft: bool,
+    layer: Option<&slicer_ir::GlobalLayer>,
+) -> NativeLayerRequest {
+    // Match the WASM host context's (object, region) config table: only
+    // eligible SliceIR identities with a RegionMap entry get an override.
+    // Build once so perimeter-region access does not re-scan the whole slice.
+    let config_by_region: HashMap<(String, u64), slicer_ir::ConfigView> =
+        match (input.slice, input.region_map.as_deref()) {
+            (Some(slice), Some(map)) => {
+                let declared_keys = module.config_view.keys();
+                slice
+                    .regions
+                    .iter()
+                    .filter(|region| {
+                        layer.is_none_or(|layer| {
+                            crate::dispatch::module_receives_slice_region(
+                                module.claims,
+                                layer,
+                                region,
+                            )
+                        })
+                    })
+                    .filter_map(|region| {
+                        let key = slicer_ir::RegionKey {
+                            global_layer_index: layer_index,
+                            object_id: region.object_id.clone(),
+                            region_id: region.region_id,
+                            variant_chain: region.variant_chain.clone(),
+                        };
+                        map.entries.get(&key).map(|_| {
+                            (
+                                (region.object_id.clone(), region.region_id),
+                                native_region_config(map, &key, &declared_keys),
+                            )
+                        })
+                    })
+                    .collect()
+            }
+            _ => HashMap::new(),
+        };
     // Ticket 19: support carriers for planned bodies with no slice geometry
     // on this layer (see `dispatch::support_carrier_regions`).
     let carriers: Vec<slicer_ir::SlicedRegion> = if stage_export == "Layer::Support" {
@@ -320,6 +407,19 @@ pub fn build_native_layer_request_with_raft(
                         .enumerate()
                         .map(move |(i, region)| (region_count + i, region)),
                 )
+                .filter(|(index, region)| {
+                    if *index >= region_count {
+                        return true; // synthetic support carriers bypass the slice-region gate
+                    }
+                    layer.is_none_or(|layer| {
+                        region.region_id != slicer_ir::MODIFIER_FOOTPRINT_REGION_ID
+                            && crate::dispatch::module_receives_slice_region(
+                                module.claims,
+                                layer,
+                                region,
+                            )
+                    })
+                })
                 .map(|(index, region)| {
                     let mut view = SliceRegionView::from_ir(
                         region,
@@ -340,7 +440,12 @@ pub fn build_native_layer_request_with_raft(
                         || view.derive_needs_support(input.surface_classification),
                         |data| data.needs_support,
                     ));
-                    view.set_config((*module.config_view).clone());
+                    view.set_config(
+                        config_by_region
+                            .get(&(region.object_id.clone(), region.region_id))
+                            .cloned()
+                            .unwrap_or_else(|| (*module.config_view).clone()),
+                    );
                     if let Some(data) = prepared {
                         view.set_surface_group(data.surface_group.clone());
                         view.set_overhang_quartile_polygons(
@@ -377,7 +482,14 @@ pub fn build_native_layer_request_with_raft(
                     .iter()
                     .map(|region| {
                         let mut view = PerimeterRegionView::from_ir(region);
-                        view.set_config((*module.config_view).clone());
+                        // WASM's perimeter accessor uses the same SliceIR-derived
+                        // table, falling back for perimeter-only identities.
+                        view.set_config(
+                            config_by_region
+                                .get(&(region.object_id.clone(), region.region_id))
+                                .cloned()
+                                .unwrap_or_else(|| (*module.config_view).clone()),
+                        );
                         view
                     })
                     .collect()
