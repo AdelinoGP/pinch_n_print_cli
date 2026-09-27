@@ -89,9 +89,9 @@ impl Drop for TempZipDir {
     }
 }
 
-/// Writes a temp 3MF carrying `xml` as the range member, or no range member
-/// at all when `xml` is `None`.
-fn temp_zip_with_ranges_member(xml: Option<&str>) -> TempZipDir {
+/// Writes a temp 3MF carrying raw `bytes` as the range member, or no range
+/// member at all when `bytes` is `None`.
+fn temp_zip_with_ranges_member_bytes(bytes: Option<&[u8]>) -> TempZipDir {
     let temp = TempZipDir::new();
     let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     let options = zip::write::SimpleFileOptions::default();
@@ -101,17 +101,21 @@ fn temp_zip_with_ranges_member(xml: Option<&str>) -> TempZipDir {
     writer
         .write_all(br#"<model unit="millimeter"/>"#)
         .expect("model member writes");
-    if let Some(xml) = xml {
+    if let Some(bytes) = bytes {
         writer
             .start_file("Metadata/layer_config_ranges.xml", options)
             .expect("range member starts");
-        writer
-            .write_all(xml.as_bytes())
-            .expect("range member writes");
+        writer.write_all(bytes).expect("range member writes");
     }
-    let bytes = writer.finish().expect("zip finalizes").into_inner();
-    std::fs::write(temp.zip_path(), bytes).expect("temp 3MF writes");
+    let archive_bytes = writer.finish().expect("zip finalizes").into_inner();
+    std::fs::write(temp.zip_path(), archive_bytes).expect("temp 3MF writes");
     temp
+}
+
+/// Writes a temp 3MF carrying `xml` as the range member, or no range member
+/// at all when `xml` is `None`.
+fn temp_zip_with_ranges_member(xml: Option<&str>) -> TempZipDir {
+    temp_zip_with_ranges_member_bytes(xml.map(str::as_bytes))
 }
 
 /// Writes `xml` into a temp 3MF and reads it back through the parser under
@@ -119,6 +123,60 @@ fn temp_zip_with_ranges_member(xml: Option<&str>) -> TempZipDir {
 fn parse_xml(xml: &str) -> Result<Vec<RawLayerConfigRange>, LayerRangeParseError> {
     let temp = temp_zip_with_ranges_member(Some(xml));
     read_3mf_layer_config_ranges(&temp.zip_path())
+}
+
+#[test]
+fn source_index_is_per_range_document_order_within_one_object() {
+    // One object carrying two ranges; both must survive with distinct,
+    // increasing `source_index` values in document order. A per-object index
+    // (the pre-fix behaviour) gives both records index 0 and fails here.
+    let xml = concat!(
+        r#"<objects><object id="1">"#,
+        r#"<range min_z="0.2" max_z="0.4"><option opt_key="layer_height">0.1</option></range>"#,
+        r#"<range min_z="0.5" max_z="0.7"><option opt_key="layer_height">0.2</option></range>"#,
+        r#"</object></objects>"#
+    );
+    let raw = parse_xml(xml).expect("well-formed two-range object must parse");
+
+    assert_eq!(raw.len(), 2, "both ranges must be emitted");
+    assert_eq!(raw[0].object_ordinal, 1);
+    assert_eq!(raw[1].object_ordinal, 1);
+    assert_eq!(raw[0].source_index, 0, "first range is document position 0");
+    assert_eq!(
+        raw[1].source_index, 1,
+        "second range is document position 1"
+    );
+    assert!(raw[0].source_index < raw[1].source_index);
+
+    assert_eq!(
+        raw[0].values.get("layer_height").map(String::as_str),
+        Some("0.1")
+    );
+    assert_eq!(
+        raw[1].values.get("layer_height").map(String::as_str),
+        Some("0.2")
+    );
+}
+
+#[test]
+fn undecodable_option_text_fails_atomically() {
+    // The `<option>` body carries the invalid UTF-8 byte 0xFF, so the range's
+    // option value cannot be read as text. The read must fail with
+    // `MalformedXml`; it must never expose the range with an empty value.
+    let mut xml = Vec::new();
+    xml.extend_from_slice(
+        br#"<objects><object id="1"><range min_z="0.4" max_z="0.8"><option opt_key="layer_height">"#,
+    );
+    xml.push(0xFF);
+    xml.extend_from_slice(b"</option></range></object></objects>");
+
+    let temp = temp_zip_with_ranges_member_bytes(Some(&xml));
+    let err = read_3mf_layer_config_ranges(&temp.zip_path())
+        .expect_err("invalid UTF-8 option text must fail the whole read");
+    assert!(
+        matches!(err, LayerRangeParseError::MalformedXml { .. }),
+        "expected MalformedXml, got {err:?}"
+    );
 }
 
 #[test]

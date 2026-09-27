@@ -124,8 +124,9 @@ pub struct RawLayerConfigRange {
     /// One-based position of the owning `<object>` element among the loaded
     /// object list.
     pub object_ordinal: u32,
-    /// Zero-based position of the owning `<object>` element in document order.
-    /// Used only for deterministic ordering and tie-breaks.
+    /// Zero-based document-order position of this `<range>` element within the
+    /// parsed part (counting only `<range>` elements, globally across all
+    /// objects). Used as the final ordering tie-break.
     pub source_index: u32,
     /// Lower bound of the world-Z interval, in millimetres.
     pub min_z: f64,
@@ -141,7 +142,9 @@ pub struct RawLayerConfigRange {
 pub struct MappedLayerConfigRange {
     /// The loaded object this range applies to.
     pub object_id: ObjectId,
-    /// Zero-based position of the owning `<object>` element in document order.
+    /// Zero-based document-order position of this `<range>` element within the
+    /// parsed part (counting only `<range>` elements, globally across all
+    /// objects). Used as the final ordering tie-break.
     pub source_index: u32,
     /// Lower bound of the world-Z interval, in millimetres.
     pub min_z: f64,
@@ -219,7 +222,7 @@ enum Frame {
     /// The `<objects>` root element.
     Objects,
     /// An `<object>` element directly below the root.
-    Object { ordinal: u32, source_index: u32 },
+    Object { ordinal: u32 },
     /// A `<range>` element directly below an `<object>`.
     Range {
         object_ordinal: u32,
@@ -274,14 +277,20 @@ fn parse_ranges_xml(bytes: &[u8]) -> Result<Vec<RawLayerConfigRange>, LayerRange
             }
             Event::End(_) => close_top(&mut stack, &mut records),
             Event::Text(ref text) => {
-                if let Ok(decoded) = text.decode() {
-                    append_option_text(&mut stack, &decoded);
-                }
+                let decoded = text
+                    .decode()
+                    .map_err(|err| LayerRangeParseError::MalformedXml {
+                        detail: format!("option text is not valid UTF-8: {err}"),
+                    })?;
+                append_option_text(&mut stack, &decoded);
             }
             Event::CData(ref text) => {
-                if let Ok(decoded) = text.decode() {
-                    append_option_text(&mut stack, &decoded);
-                }
+                let decoded = text
+                    .decode()
+                    .map_err(|err| LayerRangeParseError::MalformedXml {
+                        detail: format!("option CDATA is not valid UTF-8: {err}"),
+                    })?;
+                append_option_text(&mut stack, &decoded);
             }
             Event::GeneralRef(ref reference) => {
                 if matches!(stack.last(), Some(Frame::Option { .. })) {
@@ -359,18 +368,10 @@ fn open_element(
                         object_ordinal: ordinal,
                     });
                 }
-                let source_index = *next_source_index;
-                *next_source_index += 1;
-                Frame::Object {
-                    ordinal,
-                    source_index,
-                }
+                Frame::Object { ordinal }
             }
         }
-        Some(Frame::Object {
-            ordinal,
-            source_index,
-        }) => {
+        Some(Frame::Object { ordinal }) => {
             if local != b"range" {
                 Frame::Unknown
             } else {
@@ -381,9 +382,11 @@ fn open_element(
                 if !min_z.is_finite() || !max_z.is_finite() || min_z < 0.0 || min_z >= max_z {
                     return Err(LayerRangeParseError::InvalidBounds { min_z, max_z });
                 }
+                let source_index = *next_source_index;
+                *next_source_index += 1;
                 Frame::Range {
                     object_ordinal: *ordinal,
-                    source_index: *source_index,
+                    source_index,
                     min_z,
                     max_z,
                     values: BTreeMap::new(),
