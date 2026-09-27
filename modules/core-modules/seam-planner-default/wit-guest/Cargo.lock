@@ -893,6 +893,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "slicer-config"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+]
+
+[[package]]
 name = "slicer-core"
 version = "0.1.0"
 dependencies = [
@@ -902,6 +909,7 @@ dependencies = [
  "rayon",
  "rstar",
  "serde",
+ "slicer-config",
  "slicer-ir",
 ]
 

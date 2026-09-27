@@ -121,6 +121,7 @@ fn prepared_context(support_enabled: bool) -> slicer_runtime::PrepassContext {
     slicer_runtime::prepare_prepass_context(
         Arc::new(mesh),
         config_source(support_enabled),
+        Vec::new(),
         &[module_dir()],
         true,
         false,

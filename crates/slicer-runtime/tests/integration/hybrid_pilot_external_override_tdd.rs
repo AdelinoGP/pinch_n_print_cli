@@ -54,6 +54,7 @@ fn hybrid_pilot_external_override_forces_wasm() {
         std::slice::from_ref(&PathBuf::from(dir.path())),
         1,
         &HashMap::new(),
+        &[],
         false,
         std::slice::from_ref(&registration),
         &[(id.to_string(), ClassicPerimeters::__slicer_native_entry())],

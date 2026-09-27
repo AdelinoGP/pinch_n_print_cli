@@ -262,6 +262,7 @@ pub fn run_pipeline_capturing_perimeters(
             layer_height: object.layer_height,
             first_layer_height: object.first_layer_height,
             support_raft_layers: object.support_raft_layers,
+            layer_zs: Vec::new(),
         })
         .collect();
     let plan = build_live_execution_plan(

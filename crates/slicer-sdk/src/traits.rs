@@ -617,6 +617,8 @@ pub struct LayerPlanningObject {
     pub first_layer_height: f64,
     /// Number of support raft layers preceding this object's model layers.
     pub support_raft_layers: u32,
+    /// Host-derived object-local top Zs; empty preserves the uniform fallback.
+    pub layer_zs: Vec<f64>,
 }
 
 /// Contract for modules that perform print-wide mesh analysis or layer planning.

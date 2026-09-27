@@ -877,8 +877,23 @@ the scattered resolvers and `overlay_resolved`:
 
 - `query_z_grid` is called by `PrePass::LayerPlanning` to resolve the inputs
   that determine the layer Z grid and the typed per-object planning records.
+  Each record carries `layer_z_tops`, the explicit object-local top-Z schedule
+  derived from the object's composed layer-height profile, which
+  `run.rs::layer_planning_objects` carries across the WIT seam as `layer-zs`.
+- `query_layer_height_profile` is the shared producer of the canonical
+  layer-height profile: it composes the resolved object base height, the fixed
+  first-layer interval, and every matching **layer range**'s `layer_height`
+  into literal `(z_start, z_end, height)` segments. `layer_top_zs` evaluates
+  that profile into the object-local top-Z schedule, so the schedule the guest
+  plans against and the profile the host composed can never disagree.
 - `resolve_scope_stack` is called by `PrePass::RegionMapping` to resolve the
-  applicable typed scope deltas for each active region.
+  applicable typed scope deltas for each active region. The same **layer range**
+  set feeds it: when a range covers the region's layer top Z
+  (`ResolutionTarget.layer_top_z`), its typed values apply between the object
+  and modifier scopes. Range membership is decided by `LayerConfigRange::covers`
+  in `slicer-config`, which the runtime kernel also calls before re-resolving a
+  layer, so both consumers agree by construction — no caller re-derives range
+  precedence locally and no runtime path re-parses XML.
 
 ### Config scope admission (Normative — ADR-0069)
 

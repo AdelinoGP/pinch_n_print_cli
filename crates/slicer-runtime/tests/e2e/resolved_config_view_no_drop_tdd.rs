@@ -382,10 +382,15 @@ fn cube_and_full_registry_config_have_zero_unrecognized_keys() {
     // live module's view from it.
     let config_source = parse_cli_config_source(&json)
         .unwrap_or_else(|e| panic!("synthesized population must parse as CLI config: {e}"));
-    let prepass = prepare_prepass_context(Arc::clone(&mesh), config_source, &[core], true, false)
-        .unwrap_or_else(|e| {
-            panic!("prepare_prepass_context on synthesized population failed: {e}")
-        });
+    let prepass = prepare_prepass_context(
+        Arc::clone(&mesh),
+        config_source,
+        Vec::new(),
+        &[core],
+        true,
+        false,
+    )
+    .unwrap_or_else(|e| panic!("prepare_prepass_context on synthesized population failed: {e}"));
     let resolved_source = prepass.default_resolved_config.to_config_map();
     for module in &modules {
         let view = bind_module_config_view(module, &prepass.default_resolved_config);

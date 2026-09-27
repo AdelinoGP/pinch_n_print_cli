@@ -125,6 +125,7 @@ mod host_bridge_roundtrip_tdd;
 mod hybrid_pilot_external_override_tdd;
 mod infill_partition_e2e_tdd;
 mod infill_partitioned_input_tdd;
+mod layer_range_scope_tdd;
 mod live_module_loading_tdd;
 mod machine_start_end_gcode_emission_tdd;
 mod manifest_default_reconcile_tdd;

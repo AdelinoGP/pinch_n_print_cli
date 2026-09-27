@@ -250,11 +250,48 @@ global < object < layer range < modifier < paint semantic < tool
 ```
 
 The row-5 resolver implements the typed global/object/modifier/paint/tool path.
-`layer range` is deliberately not a row-5 implementation detail: no Rust
-`LayerRange` exists in row 5. The queued overlap contract is settled for the
-future layer-range scope: an overlapping `layer_height` range is won by the
-later-starting range, while overlapping ranges that state the same
-`non-layer_height` key with conflicting values produce a load error. The queue row 9 owns this future work. Row 9, not row 5, implements and verifies this layer-range overlap handling. The draft row-9 packet records a delegated-canonical observation that overlap retention may instead favor the earlier-starting range; row 9 reconciles that observation against the rule stated here before implementing.
+Row 9 implements `layer range` in the same resolver (`ConfigScope::LayerRange`,
+`resolve_scope_stack`'s `ResolutionTarget.layer_top_z` input): a range matching
+the target's layer top Z contributes its typed values between the object and
+modifier scopes. Membership is world-Z **half-open** `[min_z, max_z)`, evaluated
+against the layer **top Z** (`GlobalLayer.z`), so a range's `max_z` is excluded
+and catch-up layers inherit a range that covers their own top Z.
+`LayerConfigRange::covers` is the single membership authority — the resolver and
+the runtime region-mapping kernel both call it, so the two cannot disagree. Each
+bound is compared as the smaller of its authored `f64` millimetre value and its
+`f32` image, because both representations reach it: a layer top travels as an
+`f32` (`GlobalLayer.z`, widened back) while callers may state the authored bound
+directly. Narrowing is monotonic, so the adjusted upper bound is never greater
+than its authored value and no top ordered at or above the authored `max_z` can
+be admitted; the minimum also excludes the transported image of a top placed on
+`max_z` (`f32(0.7)` is `0.69999998807…`, below its literal), while `f32(0.8)`
+sits above its literal and the `f64` value is what excludes it. The lower bound
+works symmetrically. Using each bound's own `f32` shape rather than a fixed
+epsilon keeps a power-of-two bound (where the neighbouring `f32` gaps differ by
+a factor of two) from excluding a genuinely interior layer.
+
+The unavoidable consequence is that a bound lying *between* two `f32` values
+cannot be honoured exactly: narrowing moves it by up to half a local `f32` ULP,
+so a top within that distance of the bound — in either direction — resolves to
+the bound rather than to its authored side. Where the authored bound is itself
+representable (every ordinary print height) the rule is exact in both
+representations; the band only matters for a bound that is not.
+
+A range whose `layer_height` is finite but non-positive is a named
+`LayerRangeLoadError::InvalidLayerHeight` **load error**, never a range that
+silently contributes its other values while the profile skips the unusable
+height. Non-finite `layer_height` text is rejected one step earlier as a
+`ConfigIngestionError::TypeMismatch` while the authored string is typed.
+
+Overlapping `layer_height` ranges compose by **earlier-starting** retention:
+ranges sort by `(min_z, max_z, source_index)`, the fixed first-layer interval is
+retained first, and each later range's low edge is **trimmed** to the last
+retained high, so an earlier range keeps the overlap. Uncovered intervals are
+**gap**-filled from the resolved object base height. Overlapping ranges that
+state the same `non-layer_height` key with conflicting typed values produce a
+`LayerRangeLoadError::ConflictingOverlap` **load error** before either
+resolution entry point runs; equal values may overlap. Row 9 owns and verifies
+this layer-range overlap handling.
 
 Modifier deltas that are available to the row-5 path are merged deterministically
 during planning:

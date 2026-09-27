@@ -4,12 +4,24 @@
 
 - Grouped task IDs: `TASK-570`
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
-- Aggregate context cost: `M`
+- Packet status: `implemented`
+- Aggregate context cost: `L` (owner-approved Amendment 1 expanded this packet in place: WIT `@3.0.0` + guest schedule + per-layer application + manifest field)
 
 ## Problem Statement
 
 PnP currently has no source or typed representation for OrcaSlicer's per-object layer configuration ranges, so authored ranges cannot influence either layer-plan construction or per-layer region configuration. This packet closes the coherent vertical slice from canonical 3MF XML through registry-aware typed ingestion to packet-05's two resolver queries and the two runtime setup paths, while preserving packet-07 denial enforcement.
+
+### Amendment 1 (scope expansion, owner-approved 2026-09-26)
+
+Reconciliation (Step 1) proved the layer Z schedule is produced by guest `layer-planner-default` from scalar per-object heights through WIT `slicer:prepass-layer-planning@2.0.0` (`object-layer-config`), with no host breakpoint/profile API and no variable-step path anywhere. `layer_height` ranges therefore cannot affect the schedule — nor can AC-3 observe a profile — without a WIT change and a guest algorithm change. The owner approved expanding this packet in place:
+
+- WIT `slicer:prepass-layer-planning` bumps `@2.0.0 → @3.0.0`; `object-layer-config` gains `layer-zs: list<f64>` (object-local top Zs, empty = uniform fallback).
+- Host `slicer-config` gains `query_layer_height_profile` (literal `HeightProfileSegment` list) and `layer_top_zs` (explicit top-Z schedule), and `ResolutionTarget` gains `layer_top_z: Option<f64>`.
+- The guest consumes explicit schedules with variable-step `effective_layer_height` and catch-up, preserving the existing uniform path when `layer-zs` is empty.
+- Non-`layer_height` ranges are applied per layer in the runtime region-mapping builtin by re-resolving through `resolve_scope_stack` with `layer_top_z = layer.z` (canonical `GlobalLayer.z` is the layer top).
+- `manifest.json` gains additive `scheduled_layer_zs` (schema 1.3) so the real visual-debug gate is observable.
+
+No other WIT package, guest module, module manifest, or public IR serialization field changes. The `requirements.md` §Out of Scope line forbidding WIT/guest changes is superseded only for this packet's own surfaces.
 
 ### Approved plan-amendment note (attribution correction, not a divergence)
 
@@ -35,7 +47,7 @@ The source plan's Resolution paragraph says “later-starting range winning” f
 - Editing `docs/specs/config-scope-resolution-plan.md`, packet directories 01–08, ADR decision text, or `docs/DEVIATION_LOG.md`.
 - Queue row 8 modifier-kind migration, queue row 10 automatic values, aliases, config emission, or changes to other scope precedence.
 - A second range resolver, XML parsing inside runtime/resolver code, heuristic typing in model IO, or silent acceptance of denied/invalid ranges.
-- WIT, guest/module source, module manifests, public IR serialization fields, or schema/version bumps.
+- WIT, guest/module source, module manifests, public IR serialization fields, or schema/version bumps — except this packet's own approved Amendment 1 surfaces: `slicer:prepass-layer-planning@3.0.0` + `object-layer-config.layer-zs`, the `layer-planner-default` algorithm, and the additive `manifest.json.scheduled_layer_zs` field. No other WIT package, guest, manifest, or IR/wire field changes.
 - Matching ranges against object-local Z, layer bottom Z, nominal layer index, or closed upper endpoints.
 - Loading or rewriting existing large/binary fixtures to discover expectations; the new fixture is purpose-built and its member is asserted directly.
 
@@ -73,7 +85,7 @@ Files to inspect for this packet:
 | `bash -lc 'set -euo pipefail; mkdir -p target; cargo test -p slicer-model-io --all-targets --test layer_config_ranges_tdd 2>&1 | tee target/test-output.log >/dev/null; rg -q "test result: ok" target/test-output.log'` | XML shape, ordinal linkage, missing/malformed/invalid behavior | FACT pass/fail; SNIPPETS ≤20 lines on failure |
 | `bash -lc 'set -euo pipefail; mkdir -p target; cargo test -p slicer-config --all-targets --test layer_range_scope_tdd 2>&1 | tee target/test-output.log >/dev/null; rg -q "test result: ok" target/test-output.log'` | Scope typing, earlier-wins trimming/gaps, half-open/catch-up semantics, conflicts and denial | FACT pass/fail; SNIPPETS ≤20 lines on failure |
 | `bash -lc 'set -euo pipefail; mkdir -p target; cargo test -p slicer-runtime --all-targets --test integration layer_range_scope_tdd -- --nocapture 2>&1 | tee target/test-output.log >/dev/null; rg -q "test result: ok" target/test-output.log'` | Both production setup paths share range resolution | FACT pass/fail; SNIPPETS ≤20 lines on failure |
-| `bash -lc 'set -euo pipefail; mkdir -p target; cargo test -p pnp_cli --all-targets --test layer_range_scope_visual_debug_tdd 2>&1 | tee target/test-output.log >/dev/null; rg -q "test result: ok" target/test-output.log'` | Real visual-debug bundle/manifest and nonuniform schedule | FACT pass/fail; SNIPPETS ≤20 lines on failure |
+| `bash -lc 'set -euo pipefail; mkdir -p target; cargo test -p pnp-cli --all-targets --test layer_range_scope_visual_debug_tdd 2>&1 | tee target/test-output.log >/dev/null; rg -q "test result: ok" target/test-output.log'` | Real visual-debug bundle/manifest and nonuniform schedule | FACT pass/fail; SNIPPETS ≤20 lines on failure |
 | `cargo check --workspace --all-targets` | Compile every target after forward-interface reconciliation | FACT pass/fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Required lint gate | FACT pass/fail |
 | `cargo xtask check-literals` | Struct-literal fixture discipline | FACT pass/fail |
@@ -92,3 +104,4 @@ Files to inspect for this packet:
 - `crates/slicer-model-io/src/loader.rs`, `crates/slicer-runtime/src/run.rs`, `crates/pnp-cli/src/visual_debug.rs`, and architecture docs are long; use symbol-bounded reads only.
 - Never load the binary 3MF fixture directly. Inspect only its ZIP member list and the bounded XML member through a delegated FACT/SNIPPETS request.
 - Canonical Orca reads and every cargo command are delegated with the bounded return formats above.
+- Amendment 1 surfaces: `crates/slicer-schema/wit/deps/prepass-layer-planning/prepass-layer-planning.wit`, `crates/slicer-sdk/src/{traits,prepass_types,native}.rs`, `crates/slicer-macros/src/lib.rs`, `crates/slicer-wasm-host/src/{dispatch,execution_plan_live}.rs`, `modules/core-modules/layer-planner-default/src/lib.rs`, `crates/slicer-core/src/algos/region_mapping.rs`, and `crates/slicer-runtime/src/{run,prepass,pipeline}.rs`.

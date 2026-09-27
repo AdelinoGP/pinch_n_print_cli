@@ -22,6 +22,8 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
+use slicer_config::resolution::{resolve_scope_stack, ResolutionError, ResolutionTarget};
+use slicer_config::{ConfigSchemaRegistry, ExpansionContext, ScopedConfig};
 use slicer_ir::slice_ir::AggregatedRegionSplitEntry;
 use slicer_ir::{
     is_modifier_namespace_id, modifier_sub_region_id, modifier_sub_region_id_fits,
@@ -31,6 +33,24 @@ use slicer_ir::{
 };
 
 use crate::algos::paint_segmentation::paint_variant_region_id;
+
+/// Host config authority for per-layer layer-range re-resolution.
+///
+/// Production callers (the runtime's `commit_region_mapping_builtin`) supply
+/// the assembled registry, the authored typed scopes, and the expansion
+/// context so a region whose object carries an authored layer range covering
+/// the layer's top print Z is re-resolved through
+/// [`resolve_scope_stack`] with `ResolutionTarget::layer_top_z`. Compatibility
+/// callers omit it and keep the precomputed per-target configs exactly.
+#[derive(Clone, Copy)]
+pub struct RegionResolutionAuthority<'a> {
+    /// Registry the authored scopes were typed against.
+    pub registry: &'a ConfigSchemaRegistry,
+    /// Authored typed scopes, including per-object layer ranges.
+    pub scoped: &'a ScopedConfig,
+    /// Machine/tool context for automatic-value expansion.
+    pub expansion: &'a ExpansionContext,
+}
 
 /// Default cap on `RegionMapIR` entry count per docs/04_host_scheduler.md.
 pub use slicer_ir::DEFAULT_REGION_MAP_CAP;
@@ -58,7 +78,7 @@ pub struct TopContributor {
 }
 
 /// Structured region-mapping failure.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum RegionMappingError {
     /// `RegionMapIR` entry count exceeded the configured cap.
     CapExceeded {
@@ -96,6 +116,10 @@ pub enum RegionMappingError {
         /// [`RegionMappingError::scalar`] or `f32::from_bits(scalar_bits)`.
         scalar_bits: u32,
     },
+    /// A layer range covered the layer's top Z, so the region's config was
+    /// re-resolved through the typed scope stack with
+    /// `ResolutionTarget::layer_top_z`, and that resolution failed.
+    Resolution(ResolutionError),
 }
 
 impl RegionMappingError {
@@ -159,6 +183,9 @@ impl std::fmt::Display for RegionMappingError {
                      '{semantic}' on object '{object_id}'; region-split semantics must emit \
                      Flag/ToolIndex/Custom values (scalars cannot drive a discrete variant axis)"
                 )
+            }
+            Self::Resolution(error) => {
+                write!(f, "layer-range config resolution failed: {error}")
             }
         }
     }
@@ -272,6 +299,66 @@ fn resolved_target_config<'a>(
         &paint_semantics,
         tool_index,
     ))
+}
+
+/// Resolve one target's config at the layer's top print Z.
+///
+/// When a layer-range authority is present, the object has authored layer
+/// ranges, and at least one range covers `layer_top_z`, the target is resolved
+/// through the same [`resolve_scope_stack`] the runtime used for every
+/// precomputed target, with `ResolutionTarget::layer_top_z = Some(z)`. That
+/// restores the canonical `global < object < layer range < modifier < paint
+/// semantic < tool` precedence without a second resolution path. Otherwise the
+/// precomputed map lookup is returned unchanged (`None` when the map has no
+/// entry for this target), so behaviour is byte-identical to the
+/// no-authority path.
+fn resolved_target_config_for_layer(
+    host_config: Option<(&BTreeMap<String, ResolvedConfig>, &ResolvedConfig)>,
+    authority: Option<RegionResolutionAuthority<'_>>,
+    object_id: &str,
+    modifier_volumes: &[ModifierVolume],
+    chain: &[(String, PaintValue)],
+    tool_index: Option<u32>,
+    layer_top_z: f32,
+) -> Result<Option<ResolvedConfig>, RegionMappingError> {
+    if let Some(authority) = authority {
+        if authority.scoped.has_layer_ranges() {
+            let layer_top_z = f64::from(layer_top_z);
+            // Membership lives on `LayerConfigRange::covers` — the same
+            // authority `resolve_scope_stack` uses — so this pre-check can
+            // never disagree with the resolution it gates.
+            let covered = authority
+                .scoped
+                .ranges_for(&object_id.to_owned())
+                .iter()
+                .any(|range| range.covers(layer_top_z));
+            if covered {
+                let modifier_ids = ordered_modifier_ids(modifier_volumes);
+                let mut paint_semantics: Vec<String> =
+                    chain.iter().map(|(semantic, _)| semantic.clone()).collect();
+                paint_semantics.sort();
+                paint_semantics.dedup();
+                let target = ResolutionTarget {
+                    object_id: object_id.to_owned(),
+                    modifier_ids,
+                    paint_semantics,
+                    tool_index,
+                    layer_top_z: Some(layer_top_z),
+                };
+                return resolve_scope_stack(
+                    authority.registry,
+                    authority.scoped,
+                    &target,
+                    authority.expansion,
+                )
+                .map(Some)
+                .map_err(RegionMappingError::Resolution);
+            }
+        }
+    }
+    Ok(host_config.and_then(|(configs, _)| {
+        resolved_target_config(configs, object_id, modifier_volumes, chain, tool_index).cloned()
+    }))
 }
 
 /// Packet 132 (AC-4) — bind a modifier's config delta to the modifier's
@@ -582,6 +669,8 @@ pub fn execute_region_mapping_with_cap(
         // No per-tool overlays on the legacy/test entry point.
         &BTreeMap::new(),
         cap,
+        // No layer-range authority on the compatibility entry point.
+        None,
     )
 }
 
@@ -591,6 +680,13 @@ pub fn execute_region_mapping_with_cap(
 /// config authority (`host_config = Some(...)`) without duplicating the logic.
 /// (Minor deviation from AC-1's "private helpers" wording — recorded in
 /// packet deviations.)
+///
+/// `layer_range_authority` carries the typed scopes and expansion context the
+/// runtime used to precompute `host_config`. When supplied, a region whose
+/// object has authored layer ranges covering the layer's top Z has its target
+/// config re-resolved through [`resolve_scope_stack`] with
+/// `ResolutionTarget::layer_top_z`; when omitted (or when no range covers the
+/// layer) the precomputed lookup is used exactly.
 pub fn execute_region_mapping_inner(
     layer_plan: &LayerPlanIR,
     projection: &RegionMappingPlanProjection<'_>,
@@ -610,6 +706,9 @@ pub fn execute_region_mapping_inner(
     // tool-last precedence applied by the runtime resolver.
     tool_configs: &BTreeMap<u32, ResolvedConfig>,
     cap: usize,
+    // Layer-range authority for per-layer re-resolution (packet
+    // `config-scope-resolution_09`). `None` keeps the precomputed configs.
+    layer_range_authority: Option<RegionResolutionAuthority<'_>>,
 ) -> Result<RegionMapIR, RegionMappingError> {
     // --- Cap check with top-contributor diagnostics (docs/04 normative memory budget) ----
     let mut entry_count = 0usize;
@@ -770,18 +869,16 @@ pub fn execute_region_mapping_inner(
                             ));
                         }
                         let modifiers: Vec<ModifierVolume> = mvs.into_iter().cloned().collect();
-                        let resolved_sub_config = host_config
-                            .and_then(|(configs, _)| {
-                                resolved_target_config(
-                                    configs,
-                                    &region.object_id,
-                                    &modifiers,
-                                    &[],
-                                    None,
-                                )
-                            })
-                            .cloned()
-                            .unwrap_or_else(|| base_config.clone());
+                        let resolved_sub_config = resolved_target_config_for_layer(
+                            host_config,
+                            layer_range_authority,
+                            &region.object_id,
+                            &modifiers,
+                            &[],
+                            None,
+                            layer.z,
+                        )?
+                        .unwrap_or_else(|| base_config.clone());
                         let sub_config = stamp_pre_resolved_sub_region_configs(
                             base_config.clone(),
                             resolved_sub_config,
@@ -846,25 +943,23 @@ pub fn execute_region_mapping_inner(
                 // below. Keeping every parent chain pure prevents a modifier
                 // from leaking outside its footprint, including across paint
                 // variants.
-                let mut effective = host_config
-                    .and_then(|(configs, _)| {
-                        resolved_target_config(
-                            configs,
-                            &region.object_id,
-                            &[],
-                            &chain,
-                            chain.iter().find_map(|(semantic, value)| {
-                                (semantic == "material").then_some(value).and_then(|value| {
-                                    match value {
-                                        PaintValue::ToolIndex(index) => Some(*index),
-                                        _ => None,
-                                    }
-                                })
-                            }),
-                        )
-                    })
-                    .cloned()
-                    .unwrap_or_else(|| base_config.clone());
+                let mut effective = resolved_target_config_for_layer(
+                    host_config,
+                    layer_range_authority,
+                    &region.object_id,
+                    &[],
+                    &chain,
+                    chain.iter().find_map(|(semantic, value)| {
+                        (semantic == "material")
+                            .then_some(value)
+                            .and_then(|value| match value {
+                                PaintValue::ToolIndex(index) => Some(*index),
+                                _ => None,
+                            })
+                    }),
+                    layer.z,
+                )?
+                .unwrap_or_else(|| base_config.clone());
                 let mut paint_overrides: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
                 // The chain's painted material tool (if any). Captured here so the
                 // per-tool config can be overlaid LAST (highest precedence), after
@@ -924,18 +1019,16 @@ pub fn execute_region_mapping_inner(
                     for (footprint, modifiers) in &modifier_groups {
                         let sub_id =
                             modifier_sub_region_id(parent_region_id, &region.object_id, footprint);
-                        let resolved_child_config = host_config
-                            .and_then(|(configs, _)| {
-                                resolved_target_config(
-                                    configs,
-                                    &region.object_id,
-                                    modifiers,
-                                    &chain,
-                                    chain_tool_index,
-                                )
-                            })
-                            .cloned()
-                            .unwrap_or_else(|| base_config.clone());
+                        let resolved_child_config = resolved_target_config_for_layer(
+                            host_config,
+                            layer_range_authority,
+                            &region.object_id,
+                            modifiers,
+                            &chain,
+                            chain_tool_index,
+                            layer.z,
+                        )?
+                        .unwrap_or_else(|| base_config.clone());
                         let child_config = stamp_pre_resolved_sub_region_configs(
                             base_config.clone(),
                             resolved_child_config,

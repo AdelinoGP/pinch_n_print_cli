@@ -11,7 +11,8 @@ use std::sync::Arc;
 
 use slicer_config::{
     assemble_registry, ConfigIngestionError, ConfigIngestor, ConfigSchemaRegistry, HostChannels,
-    IngestionOutcome, ModuleDeclaration, RegistryLoadError, RegistryWarning,
+    IngestionOutcome, LayerRangeInput, LayerRangeLoadError, ModuleDeclaration, RegistryLoadError,
+    RegistryWarning,
 };
 use slicer_ir::{
     ConfigKey, ConfigValue, GlobalLayer, ModuleId, RegionKey, RegionPlan, ResolvedConfig, StageId,
@@ -145,6 +146,8 @@ pub enum LiveModuleLoadError {
     Registry(RegistryLoadError),
     /// An authored config value could not be ingested according to the registry.
     ConfigIngestion(ConfigIngestionError),
+    /// Authored layer ranges could not be ingested according to the registry.
+    LayerRangeIngestion(LayerRangeLoadError),
     /// Support planner and renderer family claims do not form pairs.
     SupportFamilyPairing(slicer_scheduler::SupportFamilyPairingError),
     /// A stage's intra-stage DAG could not be built.
@@ -180,6 +183,7 @@ impl std::fmt::Display for LiveModuleLoadError {
             Self::Load(e) => write!(f, "module discovery failed: {e:?}"),
             Self::Registry(e) => write!(f, "config registry assembly failed: {e}"),
             Self::ConfigIngestion(e) => write!(f, "config ingestion failed: {e}"),
+            Self::LayerRangeIngestion(e) => write!(f, "layer range ingestion failed: {e}"),
             Self::SupportFamilyPairing(e) => write!(f, "{e}"),
             Self::Dag(e) => write!(f, "intra-stage DAG construction failed: {e:?}"),
             Self::Cycle { stage_id, unsorted } => write!(
@@ -311,6 +315,7 @@ pub fn load_live_modules_for_plan_profiled(
         search_roots,
         host_parallelism,
         config_source,
+        &[],
         profile,
         &[],
         &[],
@@ -335,6 +340,7 @@ pub fn load_live_modules_for_plan_with_integrated(
     search_roots: &[PathBuf],
     host_parallelism: usize,
     config_source: &HashMap<ConfigKey, ConfigValue>,
+    layer_ranges: &[LayerRangeInput],
     profile: bool,
     integrated: &[IntegratedModuleRegistration],
     native_entries: &[(ModuleId, NativeStageEntry)],
@@ -343,6 +349,7 @@ pub fn load_live_modules_for_plan_with_integrated(
         search_roots,
         host_parallelism,
         config_source,
+        layer_ranges,
         profile,
         integrated,
         native_entries,
@@ -357,10 +364,16 @@ pub fn load_live_modules_for_plan_with_integrated(
 /// returns the typed ingestion result and opaque registry warnings alongside
 /// the live module output so callers can retain them through plan binding and
 /// config resolution.
+///
+/// When `layer_ranges` is non-empty, its typed world-Z ranges are ingested
+/// through the same registry immediately after the flat config; a denied,
+/// invalid, or conflicting range fails the load loudly instead of being
+/// dropped.
 pub fn load_live_modules_for_plan_manifest_first(
     search_roots: &[PathBuf],
     host_parallelism: usize,
     config_source: &HashMap<ConfigKey, ConfigValue>,
+    layer_ranges: &[LayerRangeInput],
     profile: bool,
     integrated: &[IntegratedModuleRegistration],
     native_entries: &[(ModuleId, NativeStageEntry)],
@@ -383,6 +396,11 @@ pub fn load_live_modules_for_plan_manifest_first(
     ingestor
         .ingest_flat(config_source)
         .map_err(|error| Box::new(LiveModuleLoadError::ConfigIngestion(error)))?;
+    if !layer_ranges.is_empty() {
+        ingestor
+            .ingest_layer_ranges(layer_ranges)
+            .map_err(|error| Box::new(LiveModuleLoadError::LayerRangeIngestion(error)))?;
+    }
     let ingestion = ingestor.finish();
 
     validate_support_family_pairing(&report.modules)

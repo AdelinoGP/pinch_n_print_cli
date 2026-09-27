@@ -17,7 +17,7 @@ pub mod resolution;
 
 pub use ingestion::{
     ConfigIngestionError, ConfigIngestor, ConfigScope, IngestionOutcome, IngestionWarning,
-    ScopeDelta, ScopedConfig,
+    LayerConfigRange, LayerRangeInput, LayerRangeLoadError, ScopeDelta, ScopedConfig,
 };
 pub use resolution::{
     query_z_grid, resolve_scope_stack, ResolutionError, ResolutionTarget, ResolvedObjectLayerConfig,
@@ -339,6 +339,7 @@ pub(crate) fn scope_denial_label(scope: &ConfigScope) -> &'static str {
     match scope {
         ConfigScope::Global => "global",
         ConfigScope::Object(_) => "object",
+        ConfigScope::LayerRange { .. } => "layer_range",
         ConfigScope::Modifier { .. } => "modifier",
         ConfigScope::PaintSemantic(_) => "paint_semantic",
         ConfigScope::Tool(_) => "tool",

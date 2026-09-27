@@ -1,4 +1,4 @@
-package slicer:prepass-layer-planning@2.0.0;
+package slicer:prepass-layer-planning@3.0.0;
 
 interface layer-planning-types {
     type object-id = string;
@@ -34,6 +34,8 @@ interface layer-planning {
         layer-height: f64,
         first-layer-height: f64,
         support-raft-layers: u32,
+        /// Host-derived object-local top Zs; empty preserves the uniform fallback.
+        layer-zs: list<f64>,
     }
 
     run: func(

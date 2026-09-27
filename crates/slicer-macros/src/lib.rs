@@ -1862,6 +1862,7 @@ fn build_prepass_layer_planning_glue(self_ty: &syn::Type) -> TokenStream2 {
                     layer_height: object_config.layer_height,
                     first_layer_height: object_config.first_layer_height,
                     support_raft_layers: object_config.support_raft_layers,
+                    layer_zs: object_config.layer_zs,
                 })
                 .collect();
         let mut sdk_output = ::slicer_sdk::prepass_builders::LayerPlanOutput::new();

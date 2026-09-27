@@ -33,6 +33,7 @@ fn test_single_object_uniform_layers() {
         layer_height: 0.2,
         first_layer_height: 0.2,
         support_raft_layers: 0,
+        layer_zs: Vec::new(),
     }];
     let mut output = LayerPlanOutput::new();
 
@@ -86,6 +87,7 @@ fn test_first_layer_height_respected() {
         layer_height: 0.2,
         first_layer_height: 0.3,
         support_raft_layers: 0,
+        layer_zs: Vec::new(),
     }];
     let mut output = LayerPlanOutput::new();
 
@@ -148,6 +150,7 @@ fn test_model_layers_start_above_raft_band() {
         layer_height: 0.2,
         first_layer_height: 0.2,
         support_raft_layers: 2,
+        layer_zs: Vec::new(),
     }];
 
     module
@@ -180,6 +183,7 @@ fn test_multi_object_same_height() {
             layer_height: 0.2,
             first_layer_height: 0.2,
             support_raft_layers: 0,
+            layer_zs: Vec::new(),
         },
         // exhaustive: all fields define object B's planning fixture.
         LayerPlanningObject {
@@ -188,6 +192,7 @@ fn test_multi_object_same_height() {
             layer_height: 0.2,
             first_layer_height: 0.2,
             support_raft_layers: 0,
+            layer_zs: Vec::new(),
         },
     ];
     let mut output = LayerPlanOutput::new();
@@ -252,6 +257,7 @@ fn test_multi_object_lcm_sync() {
             layer_height: 0.2,
             first_layer_height: 0.2,
             support_raft_layers: 0,
+            layer_zs: Vec::new(),
         },
         // exhaustive: all fields define object B's mixed-height fixture.
         LayerPlanningObject {
@@ -260,6 +266,7 @@ fn test_multi_object_lcm_sync() {
             layer_height: 0.3,
             first_layer_height: 0.2,
             support_raft_layers: 0,
+            layer_zs: Vec::new(),
         },
     ];
     let mut output = LayerPlanOutput::new();
@@ -321,6 +328,7 @@ fn test_catch_up_layer_fields() {
             layer_height: 0.2,
             first_layer_height: 0.2,
             support_raft_layers: 0,
+            layer_zs: Vec::new(),
         },
         // exhaustive: all fields define object B's catch-up fixture.
         LayerPlanningObject {
@@ -329,6 +337,7 @@ fn test_catch_up_layer_fields() {
             layer_height: 0.3,
             first_layer_height: 0.2,
             support_raft_layers: 0,
+            layer_zs: Vec::new(),
         },
     ];
     let mut output = LayerPlanOutput::new();
@@ -413,6 +422,7 @@ fn test_zero_layer_height_error() {
         layer_height: 0.0,
         first_layer_height: 0.2,
         support_raft_layers: 0,
+        layer_zs: Vec::new(),
     }];
     let mut output = LayerPlanOutput::new();
 
@@ -441,6 +451,7 @@ fn test_object_participation_map() {
         layer_height: 0.2,
         first_layer_height: 0.2,
         support_raft_layers: 0,
+        layer_zs: Vec::new(),
     }];
     let mut output = LayerPlanOutput::new();
 
@@ -472,4 +483,332 @@ fn test_object_participation_map() {
         assert!(!r.is_catchup);
         assert!((r.catchup_z_bottom - 0.0).abs() < 1e-6);
     }
+}
+
+// =============================================================================
+// Test 9: Explicit `layer_zs` schedules (host-derived object-local tops)
+// =============================================================================
+
+#[test]
+fn explicit_layer_zs_drive_variable_schedule_and_catch_up() {
+    let config = make_config(0.2, 0.2);
+    let module = DefaultLayerPlanner::from_config(&config).unwrap();
+
+    // exhaustive: all fields define this explicit-schedule fixture.
+    let objects = vec![LayerPlanningObject {
+        object_id: "obj-1".to_string(),
+        object_height: 1.0,
+        layer_height: 0.2,
+        first_layer_height: 0.2,
+        support_raft_layers: 0,
+        layer_zs: vec![0.2, 0.4, 0.5, 0.6, 0.7, 0.8, 1.0],
+    }];
+    let mut output = LayerPlanOutput::new();
+
+    module
+        .run_layer_planning(&objects, &mut output, &config)
+        .expect("should succeed");
+
+    let layers = output.layers();
+    assert!(
+        layers.iter().all(|layer| !layer.is_raft),
+        "no raft requested"
+    );
+
+    // The explicit schedule is authoritative and emitted verbatim (object-local
+    // tops; no raft offset when `support_raft_layers` is zero).
+    let zs: Vec<f32> = layers.iter().map(|layer| layer.z).collect();
+    assert_eq!(zs, vec![0.2f32, 0.4, 0.5, 0.6, 0.7, 0.8, 1.0]);
+
+    // First native plane is credited `first_layer_height`; each later native
+    // plane is the variable step to the previous native top.
+    let effective: Vec<f32> = layers
+        .iter()
+        .map(|layer| layer.active_regions[0].effective_layer_height)
+        .collect();
+    assert_eq!(effective, vec![0.2f32, 0.2, 0.1, 0.1, 0.1, 0.1, 0.2]);
+
+    for layer in layers {
+        assert_eq!(layer.active_regions.len(), 1);
+        let region = &layer.active_regions[0];
+        assert_eq!(region.object_id, "obj-1");
+        assert!(!region.is_catchup, "no catch-up at z={}", layer.z);
+        assert_eq!(region.catchup_z_bottom, 0.0);
+    }
+}
+
+#[test]
+fn explicit_schedule_mixed_with_uniform_object_catches_up() {
+    let config = make_config(0.2, 0.2);
+    let module = DefaultLayerPlanner::from_config(&config).unwrap();
+
+    // Object A carries the explicit schedule; object B uses the uniform scalar
+    // fallback (`layer_zs` empty).
+    let objects = vec![
+        // exhaustive: all fields define object A's explicit-schedule fixture.
+        LayerPlanningObject {
+            object_id: "obj-A".to_string(),
+            object_height: 1.0,
+            layer_height: 0.2,
+            first_layer_height: 0.2,
+            support_raft_layers: 0,
+            layer_zs: vec![0.2, 0.4, 0.5, 0.6, 0.7, 0.8, 1.0],
+        },
+        // exhaustive: all fields define object B's uniform fixture.
+        LayerPlanningObject {
+            object_id: "obj-B".to_string(),
+            object_height: 1.0,
+            layer_height: 0.2,
+            first_layer_height: 0.2,
+            support_raft_layers: 0,
+            layer_zs: Vec::new(),
+        },
+    ];
+    let mut output = LayerPlanOutput::new();
+
+    module
+        .run_layer_planning(&objects, &mut output, &config)
+        .expect("should succeed");
+
+    let layers = output.layers();
+    let zs: Vec<f32> = layers.iter().map(|layer| layer.z).collect();
+    assert_eq!(zs, vec![0.2f32, 0.4, 0.5, 0.6, 0.7, 0.8, 1.0]);
+
+    let mut a_effective = Vec::new();
+    let mut b_native = Vec::new();
+    let mut b_catchups = Vec::new();
+    for layer in layers {
+        let a = layer
+            .active_regions
+            .iter()
+            .find(|region| region.object_id == "obj-A")
+            .expect("A participates at every union plane");
+        assert!(!a.is_catchup, "A's schedule is native at z={}", layer.z);
+        assert_eq!(a.catchup_z_bottom, 0.0);
+        a_effective.push(a.effective_layer_height);
+
+        let b = layer
+            .active_regions
+            .iter()
+            .find(|region| region.object_id == "obj-B")
+            .expect("B participates at every union plane");
+        if b.is_catchup {
+            b_catchups.push((layer.z, b.catchup_z_bottom, b.effective_layer_height));
+        } else {
+            b_native.push(layer.z);
+        }
+    }
+
+    assert_eq!(
+        a_effective,
+        vec![0.2f32, 0.2, 0.1, 0.1, 0.1, 0.1, 0.2],
+        "A's schedule steps are independent of B's planes"
+    );
+
+    // B's uniform native planes are 0.2, 0.4, 0.6, 0.8, 1.0 (the scalar
+    // formula's bound admits `0.2 + 4 * 0.2`), so B catches up only at 0.5 and
+    // 0.7; a plane is never both native and catch-up.
+    assert_eq!(b_native, vec![0.2f32, 0.4, 0.6, 0.8, 1.0]);
+    assert_eq!(b_catchups.len(), 2);
+    assert_eq!(b_catchups[0].0, 0.5f32);
+    assert_eq!(b_catchups[0].1, 0.4f32);
+    assert_eq!(b_catchups[0].2, 0.5f32 - 0.4f32);
+    assert!((b_catchups[0].2 - 0.1).abs() < 1e-6);
+    assert_eq!(b_catchups[1].0, 0.7f32);
+    assert_eq!(b_catchups[1].1, 0.6f32);
+    assert_eq!(b_catchups[1].2, 0.7f32 - 0.6f32);
+    assert!((b_catchups[1].2 - 0.1).abs() < 1e-6);
+}
+
+#[test]
+fn explicit_schedule_with_raft_offsets_tops() {
+    let config = ConfigViewBuilder::new()
+        .float("layer_height", 0.2)
+        .float("first_layer_height", 0.2)
+        .int("support_raft_layers", 1)
+        .build();
+    let module = DefaultLayerPlanner::from_config(&config).unwrap();
+    let mut output = LayerPlanOutput::new();
+
+    // exhaustive: all fields define the raft-offset explicit-schedule fixture.
+    let objects = [LayerPlanningObject {
+        object_id: "obj-1".to_string(),
+        object_height: 1.0,
+        layer_height: 0.2,
+        first_layer_height: 0.2,
+        support_raft_layers: 1,
+        layer_zs: vec![0.2, 0.4],
+    }];
+
+    module
+        .run_layer_planning(&objects, &mut output, &config)
+        .expect("should succeed");
+
+    let layers = output.layers();
+
+    // Derivation from the module's scalar raft convention:
+    //   raft_top = first_layer_height + (raft_layers - 1) * layer_height
+    //            = 0.2 + 0 * 0.2 = 0.2
+    //   raft plane i = first_layer_height + i * layer_height = 0.2
+    //   explicit model tops = raft_top + z = 0.2 + 0.2 = 0.4, 0.2 + 0.4 = 0.6
+    assert_eq!(layers.len(), 3);
+    assert!(layers[0].is_raft);
+    assert_eq!(layers[0].z, 0.2f32);
+    assert!(!layers[1].is_raft);
+    assert_eq!(layers[1].z, 0.4f32);
+    assert!(!layers[2].is_raft);
+    assert_eq!(layers[2].z, 0.6f32);
+}
+
+#[test]
+fn explicit_schedule_differs_from_uniform_fallback_negative_control() {
+    let config = make_config(0.2, 0.2);
+    let module = DefaultLayerPlanner::from_config(&config).unwrap();
+
+    // exhaustive: all fields define the explicit-schedule fixture.
+    let explicit = vec![LayerPlanningObject {
+        object_id: "obj-1".to_string(),
+        object_height: 1.0,
+        layer_height: 0.2,
+        first_layer_height: 0.2,
+        support_raft_layers: 0,
+        layer_zs: vec![0.2, 0.4, 0.5, 0.6, 0.7, 0.8, 1.0],
+    }];
+    // exhaustive: all fields define the uniform-fallback fixture.
+    let uniform = vec![LayerPlanningObject {
+        object_id: "obj-1".to_string(),
+        object_height: 1.0,
+        layer_height: 0.2,
+        first_layer_height: 0.2,
+        support_raft_layers: 0,
+        layer_zs: Vec::new(),
+    }];
+
+    let mut explicit_output = LayerPlanOutput::new();
+    module
+        .run_layer_planning(&explicit, &mut explicit_output, &config)
+        .expect("should succeed");
+    let mut uniform_output = LayerPlanOutput::new();
+    module
+        .run_layer_planning(&uniform, &mut uniform_output, &config)
+        .expect("should succeed");
+
+    let explicit_zs: Vec<f32> = explicit_output
+        .layers()
+        .iter()
+        .map(|layer| layer.z)
+        .collect();
+    let uniform_zs: Vec<f32> = uniform_output
+        .layers()
+        .iter()
+        .map(|layer| layer.z)
+        .collect();
+
+    assert_eq!(explicit_zs, vec![0.2f32, 0.4, 0.5, 0.6, 0.7, 0.8, 1.0]);
+    assert_eq!(uniform_zs, vec![0.2f32, 0.4, 0.6, 0.8, 1.0]);
+    assert_ne!(
+        explicit_zs, uniform_zs,
+        "an implementation that ignores layer_zs would emit the uniform grid"
+    );
+}
+
+#[test]
+fn invalid_layer_zs_is_fatal_error() {
+    let config = make_config(0.2, 0.2);
+    let module = DefaultLayerPlanner::from_config(&config).unwrap();
+
+    let invalid_schedules = [
+        vec![0.0],
+        vec![-0.1],
+        vec![f64::NAN],
+        vec![f64::INFINITY],
+        vec![0.2, f64::NEG_INFINITY],
+    ];
+
+    for schedule in invalid_schedules {
+        // exhaustive: all fields define the invalid-layer_zs fixture.
+        let objects = vec![LayerPlanningObject {
+            object_id: "obj-1".to_string(),
+            object_height: 1.0,
+            layer_height: 0.2,
+            first_layer_height: 0.2,
+            support_raft_layers: 0,
+            layer_zs: schedule,
+        }];
+        let mut output = LayerPlanOutput::new();
+
+        let err = module
+            .run_layer_planning(&objects, &mut output, &config)
+            .expect_err("non-finite or non-positive layer_zs must be fatal");
+
+        assert!(err.fatal, "layer_zs error must be fatal: {err}");
+        assert_eq!(err.code, 6, "named layer_zs error code: {err}");
+        assert!(
+            err.message.contains("layer_zs"),
+            "message must name the field: {err}"
+        );
+    }
+}
+
+#[test]
+fn explicit_first_layer_credit_survives_a_preceding_catch_up() {
+    // Object A's schedule starts at 0.4, so the union plane at 0.3 is a
+    // catch-up region for A and would move a `last_z == 0.0` sentinel off zero.
+    // A's first *native* plane at 0.4 must still be credited
+    // `first_layer_height` (0.3), not `layer_height` (0.1).
+    let config = make_config(0.1, 0.3);
+    let module = DefaultLayerPlanner::from_config(&config).unwrap();
+
+    let objects = vec![
+        // exhaustive: all fields define object A's delayed-schedule fixture.
+        LayerPlanningObject {
+            object_id: "obj-A".to_string(),
+            object_height: 0.6,
+            layer_height: 0.1,
+            first_layer_height: 0.3,
+            support_raft_layers: 0,
+            layer_zs: vec![0.4, 0.5, 0.6],
+        },
+        // exhaustive: all fields define object B's uniform fixture.
+        LayerPlanningObject {
+            object_id: "obj-B".to_string(),
+            object_height: 0.6,
+            layer_height: 0.1,
+            first_layer_height: 0.3,
+            support_raft_layers: 0,
+            layer_zs: Vec::new(),
+        },
+    ];
+    let mut output = LayerPlanOutput::new();
+
+    module
+        .run_layer_planning(&objects, &mut output, &config)
+        .expect("should succeed");
+
+    let layers = output.layers();
+    let zs: Vec<f32> = layers.iter().map(|layer| layer.z).collect();
+    assert_eq!(zs, vec![0.3f32, 0.4, 0.5, 0.6]);
+
+    let a_regions: Vec<(f32, bool, f32)> = layers
+        .iter()
+        .map(|layer| {
+            let region = layer
+                .active_regions
+                .iter()
+                .find(|region| region.object_id == "obj-A")
+                .expect("A participates at every union plane");
+            (layer.z, region.is_catchup, region.effective_layer_height)
+        })
+        .collect();
+
+    assert_eq!(
+        a_regions,
+        vec![
+            (0.3f32, true, 0.3f32),
+            (0.4f32, false, 0.3f32),
+            (0.5f32, false, 0.1f32),
+            (0.6f32, false, 0.1f32),
+        ],
+        "A's first native plane keeps the first_layer_height credit despite the 0.3 catch-up"
+    );
 }

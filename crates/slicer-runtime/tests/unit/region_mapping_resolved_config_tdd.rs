@@ -6,9 +6,16 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
+use slicer_config::{
+    assemble_registry, ConfigIngestor, ConfigSchemaRegistry, ConfigScope, ExpansionContext,
+    HostChannels, LayerRangeInput, ModuleDeclaration, ScopeDelta, ScopedConfig,
+};
+use slicer_core::algos::region_mapping::RegionResolutionAuthority;
+use slicer_ir::config_schema::{ConfigFieldEntry, ConfigSchema};
 use slicer_ir::{
-    ActiveRegion, BoundingBox3, ConfigValue, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
-    ObjectMesh, Point3, RegionKey, ResolvedConfig, SemVer, Transform3d,
+    is_modifier_namespace_id, ActiveRegion, BoundingBox3, ConfigDelta, ConfigValue, GlobalLayer,
+    IndexedTriangleSet, LayerPlanIR, MeshIR, ModifierKind, ModifierVolume, ObjectMesh, Point3,
+    RegionKey, RegionMapIR, ResolvedConfig, SemVer, Transform3d,
 };
 use slicer_runtime::{
     build_execution_plan, commit_region_mapping_builtin, Blackboard, ExecutionPlanRequest,
@@ -92,6 +99,287 @@ fn empty_execution_plan() -> slicer_runtime::ExecutionPlan {
     build_execution_plan(&request, &mut diagnostics).expect("empty execution plan should build")
 }
 
+// --- Packet `config-scope-resolution_09` Step 6c-2 fixtures -----------------
+//
+// These fixtures make `infill_density` an admitted Float key so a typed
+// `ScopedConfig` can carry a layer range for `obj-A`, then drive the real
+// `commit_region_mapping_builtin` with a `RegionResolutionAuthority`. The
+// expectations are literals: no production helper computes them.
+
+fn float_field() -> ConfigFieldEntry {
+    ConfigFieldEntry {
+        field_type: "float".to_owned(),
+        ..ConfigFieldEntry::default()
+    }
+}
+
+fn infill_density_registry() -> ConfigSchemaRegistry {
+    assemble_registry(
+        &[ModuleDeclaration {
+            module_id: "dev.pinch.test.region-mapping-layer-range".to_owned(),
+            schema: ConfigSchema {
+                entries: BTreeMap::from([("infill_density".to_owned(), float_field())]),
+            },
+            ..ModuleDeclaration::default()
+        }],
+        &HostChannels::from_parts(Vec::new(), Vec::new(), Vec::new()),
+    )
+    .expect("layer-range fixture registry must assemble")
+    .registry
+}
+
+/// One raw-string transport value from the model-IO parser.
+fn range_input(
+    object_id: &str,
+    source_index: u32,
+    min_z: f64,
+    max_z: f64,
+    values: &[(&str, &str)],
+) -> LayerRangeInput {
+    // exhaustive: this transport fixture pins every LayerRangeInput field explicitly
+    LayerRangeInput {
+        object_id: object_id.to_owned(),
+        source_index,
+        min_z,
+        max_z,
+        values: values
+            .iter()
+            .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+            .collect(),
+    }
+}
+
+/// Typed scope world for the range fixture: global 0.20, object `obj-A` 0.25,
+/// and one `[0.4, 0.8)` range at 0.35 for `obj-A`.
+fn range_scope_world(registry: &ConfigSchemaRegistry) -> ScopedConfig {
+    let mut ingestor = ConfigIngestor::new(registry);
+    ingestor
+        .ingest_layer_ranges(&[range_input(
+            "obj-A",
+            0,
+            0.4,
+            0.8,
+            &[("infill_density", "0.35")],
+        )])
+        .expect("the admitted layer range must load");
+    let mut scoped = ingestor.finish().scoped;
+    scoped.deltas.insert(
+        ConfigScope::Global,
+        ScopeDelta {
+            values: BTreeMap::from([("infill_density".to_owned(), ConfigValue::Float(0.20))]),
+        },
+    );
+    scoped.deltas.insert(
+        ConfigScope::Object("obj-A".to_owned()),
+        ScopeDelta {
+            values: BTreeMap::from([("infill_density".to_owned(), ConfigValue::Float(0.25))]),
+        },
+    );
+    scoped
+}
+
+/// Commit one `obj-A` layer at world `z` through the real builtin with the
+/// layer-range authority attached, and return the committed region map.
+fn commit_with_authority(
+    registry: &ConfigSchemaRegistry,
+    scoped: &ScopedConfig,
+    mesh: MeshIR,
+    z: f32,
+) -> Arc<RegionMapIR> {
+    let layer_plan = Arc::new(LayerPlanIR {
+        schema_version: sv(1, 0, 0),
+        global_layers: vec![GlobalLayer {
+            index: 0,
+            z,
+            active_regions: vec![active_region("obj-A", 1)],
+            ..Default::default()
+        }],
+        object_participation: HashMap::new(),
+    });
+
+    // The object-only precomputed entry, as if the runtime resolved it without
+    // layer context: `obj-A` 0.25 from the object scope.
+    let mut resolved_configs: BTreeMap<String, ResolvedConfig> = BTreeMap::new();
+    resolved_configs.insert(
+        "obj-A".to_string(),
+        ResolvedConfig {
+            infill_density: 0.25,
+            ..ResolvedConfig::default()
+        },
+    );
+    let default_resolved_config = ResolvedConfig::default();
+
+    let mesh = Arc::new(mesh);
+    let mut blackboard = Blackboard::new(mesh, 0);
+    blackboard
+        .commit_layer_plan(Arc::clone(&layer_plan))
+        .expect("commit layer plan");
+
+    let plan = empty_execution_plan();
+    let expansion = ExpansionContext {
+        nozzle_diameter_mm: 0.4,
+        ..ExpansionContext::default()
+    };
+
+    commit_region_mapping_builtin(
+        &plan,
+        &mut blackboard,
+        &resolved_configs,
+        &default_resolved_config,
+        &std::collections::BTreeMap::new(),
+        &std::collections::BTreeMap::new(),
+        Some(RegionResolutionAuthority {
+            registry,
+            scoped,
+            expansion: &expansion,
+        }),
+    )
+    .expect("commit_region_mapping_builtin with layer-range authority must succeed");
+
+    Arc::clone(
+        blackboard
+            .region_map()
+            .expect("RegionMapIR must be committed after builtin runs"),
+    )
+}
+
+/// Modifier-free variant returning the base region's interned config.
+fn commit_and_read_region_config(
+    registry: &ConfigSchemaRegistry,
+    scoped: &ScopedConfig,
+    z: f32,
+) -> ResolvedConfig {
+    let rm = commit_with_authority(registry, scoped, minimal_mesh(), z);
+    let key = RegionKey {
+        global_layer_index: 0,
+        object_id: "obj-A".to_string(),
+        region_id: 1,
+        variant_chain: Vec::new(),
+    };
+    rm.config_for(&key).clone()
+}
+
+/// A closed 2×2 mm box spanning `z = 0.0..2.0`, so it has a real cross-section
+/// at the layer Zs under test.
+fn modifier_box_mesh() -> IndexedTriangleSet {
+    let v = |x: f32, y: f32, z: f32| Point3 { x, y, z };
+    IndexedTriangleSet {
+        vertices: vec![
+            v(2.0, 2.0, 0.0),
+            v(4.0, 2.0, 0.0),
+            v(4.0, 4.0, 0.0),
+            v(2.0, 4.0, 0.0),
+            v(2.0, 2.0, 2.0),
+            v(4.0, 2.0, 2.0),
+            v(4.0, 4.0, 2.0),
+            v(2.0, 4.0, 2.0),
+        ],
+        indices: vec![
+            0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6, 0, 4, 7, 0, 7,
+            3, 1, 2, 6, 1, 6, 5,
+        ],
+    }
+}
+
+// --- AC: per-layer range application through the real builtin --------------
+
+/// A layer whose top Z (`0.6`) is covered by `obj-A`'s authored `[0.4, 0.8)`
+/// range takes the range value `0.35`, outranking the precomputed object value
+/// `0.25`.
+#[test]
+fn range_covering_layer_top_z_overrides_region_config() {
+    let registry = infill_density_registry();
+    let scoped = range_scope_world(&registry);
+
+    let resolved = commit_and_read_region_config(&registry, &scoped, 0.6);
+
+    assert_eq!(
+        resolved.infill_density, 0.35,
+        "the [0.4, 0.8) range covering z=0.6 must outrank the precomputed object value 0.25"
+    );
+}
+
+/// A layer outside `[0.4, 0.8)` keeps the precomputed object value `0.25`, and
+/// `max_z` itself (`0.8`) is excluded by the half-open interval.
+#[test]
+fn range_uncovered_layer_keeps_precomputed_config() {
+    let registry = infill_density_registry();
+    let scoped = range_scope_world(&registry);
+
+    let above = commit_and_read_region_config(&registry, &scoped, 0.9);
+    assert_eq!(
+        above.infill_density, 0.25,
+        "z=0.9 is outside [0.4, 0.8), so the precomputed object value 0.25 survives"
+    );
+
+    let at_max_z = commit_and_read_region_config(&registry, &scoped, 0.8);
+    assert_eq!(
+        at_max_z.infill_density, 0.25,
+        "max_z itself is excluded by the half-open interval, so 0.25 survives"
+    );
+}
+
+/// A modifier-target layer at `z = 0.6`: the modifier scope `0.45` outranks the
+/// covering range `0.35`, and the modifier child region carries that value.
+#[test]
+fn range_covering_layer_top_z_overrides_region_config_at_object_range_modifier_precedence() {
+    let registry = infill_density_registry();
+    let mut scoped = range_scope_world(&registry);
+    scoped.deltas.insert(
+        ConfigScope::Modifier {
+            object_id: "obj-A".to_owned(),
+            modifier_id: "mod-A".to_owned(),
+        },
+        ScopeDelta {
+            values: BTreeMap::from([("infill_density".to_owned(), ConfigValue::Float(0.45))]),
+        },
+    );
+
+    // The modifier volume must have a non-empty cross-section at z = 0.6 for
+    // the kernel to mint its sub-region entry.
+    let mut mesh = minimal_mesh();
+    mesh.objects[0].modifier_volumes = vec![ModifierVolume::new(
+        "mod-A".to_string(),
+        modifier_box_mesh(),
+        ConfigDelta::default(),
+        0,
+        ModifierKind::ParameterModifier,
+    )];
+    let rm = commit_with_authority(&registry, &scoped, mesh, 0.6);
+
+    // The base region keeps the covering-range value, not the modifier value.
+    let base_key = RegionKey {
+        global_layer_index: 0,
+        object_id: "obj-A".to_string(),
+        region_id: 1,
+        variant_chain: Vec::new(),
+    };
+    assert_eq!(
+        rm.config_for(&base_key).infill_density,
+        0.35,
+        "the base region must keep the covering range value 0.35, not the modifier value"
+    );
+
+    // Exactly one modifier-namespace entry must exist for obj-A at layer 0, and
+    // it carries the modifier value 0.45 (modifier outranks the range).
+    let modifier_keys: Vec<&RegionKey> = rm
+        .entries
+        .keys()
+        .filter(|key| key.object_id == "obj-A" && is_modifier_namespace_id(key.region_id))
+        .collect();
+    assert_eq!(
+        modifier_keys.len(),
+        1,
+        "exactly one modifier sub-region entry must be minted for obj-A"
+    );
+    assert_eq!(
+        rm.config_for(modifier_keys[0]).infill_density,
+        0.45,
+        "the modifier sub-region must carry the modifier scope value 0.45, \
+         outranking both the covering range 0.35 and the object value 0.25"
+    );
+}
+
 // --- AC-4 test --------------------------------------------------------------
 
 #[test]
@@ -144,6 +432,7 @@ fn commit_stamps_per_object_resolved_config() {
         &default_resolved_config,
         &std::collections::BTreeMap::new(),
         &std::collections::BTreeMap::new(),
+        None,
     )
     .expect("commit_region_mapping_builtin must succeed");
 

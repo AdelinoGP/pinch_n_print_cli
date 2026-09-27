@@ -339,6 +339,7 @@ fn delta(entries: impl IntoIterator<Item = (&'static str, ConfigValue)>) -> Scop
 fn scoped(deltas: impl IntoIterator<Item = (ConfigScope, ScopeDelta)>) -> ScopedConfig {
     ScopedConfig {
         deltas: deltas.into_iter().collect(),
+        layer_ranges: Default::default(),
     }
 }
 

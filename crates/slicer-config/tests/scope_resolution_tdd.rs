@@ -98,6 +98,7 @@ fn scope_stack_matches_hand_authored_precedence_table() {
                 delta([("infill_density", ConfigValue::Float(0.70))]),
             ),
         ]),
+        layer_ranges: Default::default(),
     };
 
     let rows = [
@@ -107,6 +108,7 @@ fn scope_stack_matches_hand_authored_precedence_table() {
                 modifier_ids: vec!["priority-10".to_owned(), "priority-20".to_owned()],
                 paint_semantics: vec!["support_enforcer".to_owned(), "material".to_owned()],
                 tool_index: Some(1),
+                ..ResolutionTarget::default()
             },
             0.70_f32,
         ),
@@ -116,6 +118,7 @@ fn scope_stack_matches_hand_authored_precedence_table() {
                 modifier_ids: vec!["priority-10".to_owned(), "priority-20".to_owned()],
                 paint_semantics: vec!["support_enforcer".to_owned(), "material".to_owned()],
                 tool_index: None,
+                ..ResolutionTarget::default()
             },
             0.60_f32,
         ),
@@ -125,6 +128,7 @@ fn scope_stack_matches_hand_authored_precedence_table() {
                 modifier_ids: vec!["priority-10".to_owned(), "priority-20".to_owned()],
                 paint_semantics: vec!["material".to_owned()],
                 tool_index: None,
+                ..ResolutionTarget::default()
             },
             0.50_f32,
         ),
@@ -191,6 +195,7 @@ fn explicit_default_is_a_real_override() {
                 ]),
             ),
         ]),
+        layer_ranges: Default::default(),
     };
 
     let resolved = resolve_scope_stack(
@@ -221,6 +226,7 @@ fn explicit_default_is_a_real_override() {
                 delta([("custom_extension", ConfigValue::String(String::new()))]),
             ),
         ]),
+        layer_ranges: Default::default(),
     };
 
     let paint_resolved = resolve_scope_stack(
@@ -261,6 +267,7 @@ fn z_grid_query_returns_hand_computed_object_record() {
                 ]),
             ),
         ]),
+        layer_ranges: Default::default(),
     };
 
     let actual = query_z_grid(
@@ -281,6 +288,7 @@ fn z_grid_query_returns_hand_computed_object_record() {
                 layer_height: 0.25,
                 first_layer_height: 0.30,
                 support_raft_layers: 2,
+                layer_z_tops: vec![0.30, 0.55, 0.80, 1.05, 1.30, 1.55, 1.80],
             }
         ]
     );
@@ -316,6 +324,7 @@ fn invalid_support_raft_layer_counts_are_rejected_instead_of_wrapped() {
                 ConfigScope::Object("obj-a".to_owned()),
                 delta([("support_raft_layers", ConfigValue::Int(invalid_count))]),
             )]),
+            layer_ranges: Default::default(),
         };
 
         let error = query_z_grid(

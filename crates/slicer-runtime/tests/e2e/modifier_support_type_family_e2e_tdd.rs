@@ -216,6 +216,7 @@ fn modifier_support_type_binds_to_minted_sub_region_in_production() {
         &default_resolved_config,
         &paint_semantic_configs,
         &tool_configs,
+        None,
     )
     .expect("commit_region_mapping_builtin must succeed");
 
@@ -309,6 +310,7 @@ fn modifier_support_type_routes_planned_support_inside_footprint() {
     let ctx = slicer_runtime::run::prepare_prepass_context(
         Arc::new(mesh),
         config,
+        Vec::new(),
         &[root.join("modules/core-modules")],
         true,
         false,

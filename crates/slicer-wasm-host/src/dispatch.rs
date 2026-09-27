@@ -2647,12 +2647,14 @@ pub fn adapt_layer_planning_object_configs(
             let layer_height = object.layer_height;
             let first_layer_height = object.first_layer_height;
             let support_raft_layers = object.support_raft_layers;
+            let layer_zs = object.layer_zs.clone();
             host::prepass_layer_planning::exports::slicer::prepass_layer_planning::layer_planning::ObjectLayerConfig {
                 object_id,
                 object_height,
                 layer_height,
                 first_layer_height,
                 support_raft_layers,
+                layer_zs,
             }
         })
         .collect()

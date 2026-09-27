@@ -64,6 +64,7 @@ fn plan_with_raft_layers(raft_layers: i64) -> Vec<LayerProposal> {
         layer_height: LAYER_HEIGHT,
         first_layer_height: FIRST_LAYER_HEIGHT,
         support_raft_layers: u32::try_from(raft_layers).expect("non-negative raft count"),
+        layer_zs: Vec::new(),
     }];
     planner
         .run_layer_planning(&objects, &mut output, &config)

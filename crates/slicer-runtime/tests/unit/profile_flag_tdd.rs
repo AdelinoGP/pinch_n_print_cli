@@ -58,6 +58,7 @@ fn unprofiled_options() -> SliceRunOptions {
         progress_events: true,
         cancel_flag: None,
         config_overrides: HashMap::new(),
+        layer_ranges: Vec::new(),
     }
 }
 

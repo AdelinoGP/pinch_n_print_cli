@@ -175,8 +175,15 @@ fn both_entry_points_registry_type_modifier_deltas() {
         ]),
     );
 
-    let prepass = prepare_prepass_context(Arc::clone(&mesh), HashMap::new(), &[], true, false)
-        .expect("prepass entry point must registry-type the modifier delta");
+    let prepass = prepare_prepass_context(
+        Arc::clone(&mesh),
+        HashMap::new(),
+        Vec::new(),
+        &[],
+        true,
+        false,
+    )
+    .expect("prepass entry point must registry-type the modifier delta");
     assert_typed_modifier_resolution(&prepass);
     let slice = run_slice_with_collector(runtime_options(mesh), None)
         .expect("slice entry point must registry-type the same modifier delta");
@@ -203,8 +210,14 @@ fn invalid_modifier_delta_is_rejected_atomically() {
         .fields
         .clone();
     let denied_delta_bytes = modifier_delta_snapshot_bytes(&denied);
-    let error = match prepare_prepass_context(Arc::clone(&denied), HashMap::new(), &[], true, false)
-    {
+    let error = match prepare_prepass_context(
+        Arc::clone(&denied),
+        HashMap::new(),
+        Vec::new(),
+        &[],
+        true,
+        false,
+    ) {
         Ok(_) => panic!("bed_shape must be denied at modifier scope"),
         Err(error) => error,
     };
@@ -251,12 +264,17 @@ fn invalid_modifier_delta_is_rejected_atomically() {
         .fields
         .clone();
     let out_of_bounds_delta_bytes = modifier_delta_snapshot_bytes(&out_of_bounds);
-    let error =
-        match prepare_prepass_context(Arc::clone(&out_of_bounds), HashMap::new(), &[], true, false)
-        {
-            Ok(_) => panic!("an out-of-bounds declared value must reject the whole modifier delta"),
-            Err(error) => error,
-        };
+    let error = match prepare_prepass_context(
+        Arc::clone(&out_of_bounds),
+        HashMap::new(),
+        Vec::new(),
+        &[],
+        true,
+        false,
+    ) {
+        Ok(_) => panic!("an out-of-bounds declared value must reject the whole modifier delta"),
+        Err(error) => error,
+    };
     assert_eq!(
         error.to_string(),
         "modifier config ingestion failed: BoundsViolation { key: \"infill_density\", value: 200, min: Some(0.0), max: Some(1.0), scope: Modifier }"
@@ -297,8 +315,15 @@ fn all_modifier_kinds_keep_their_geometry_routes() {
         ModifierKind::ParameterModifier,
         HashMap::from([("wall_loops".to_owned(), ConfigValue::String("0".to_owned()))]),
     );
-    let context = prepare_prepass_context(Arc::clone(&parameter), config.clone(), &[], true, false)
-        .expect("parameter modifier must keep its geometry route");
+    let context = prepare_prepass_context(
+        Arc::clone(&parameter),
+        config.clone(),
+        Vec::new(),
+        &[],
+        true,
+        false,
+    )
+    .expect("parameter modifier must keep its geometry route");
     let layer = context
         .blackboard
         .layer_plan()
@@ -327,8 +352,15 @@ fn all_modifier_kinds_keep_their_geometry_routes() {
         "the wall_loops delta must be stamped into the parameter sub-region"
     );
     let negative = mesh_with_modifier(ModifierKind::NegativePart, HashMap::new());
-    let context = prepare_prepass_context(Arc::clone(&negative), config.clone(), &[], true, false)
-        .expect("negative part must keep its geometry route");
+    let context = prepare_prepass_context(
+        Arc::clone(&negative),
+        config.clone(),
+        Vec::new(),
+        &[],
+        true,
+        false,
+    )
+    .expect("negative part must keep its geometry route");
     let negative_debug = format!("{:#?}", context.blackboard);
     assert!(
         negative_debug.contains("kind: NegativePart"),
@@ -339,6 +371,7 @@ fn all_modifier_kinds_keep_their_geometry_routes() {
         let context = prepare_prepass_context(
             mesh_with_modifier(kind, HashMap::new()),
             config.clone(),
+            Vec::new(),
             &[],
             true,
             false,

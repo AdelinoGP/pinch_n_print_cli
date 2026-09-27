@@ -114,6 +114,14 @@ pub struct PipelineOutput {
     pub layer_audits: Vec<ModuleAccessAudit>,
     /// Runtime access audits collected during postpass execution (TASK-123c).
     pub postpass_audits: Vec<ModuleAccessAudit>,
+    /// The `RegionMapIR` the prepass committed, when one was committed.
+    ///
+    /// Exposed because it is the authoritative per-region resolved config —
+    /// including any layer-range values — and the returned G-code does not
+    /// carry per-region config (the emitter writes one config block per print).
+    /// Callers that must observe what a layer actually resolved against read it
+    /// here rather than re-deriving it.
+    pub region_map: Option<Arc<slicer_ir::RegionMapIR>>,
 }
 
 /// Structured pipeline orchestration failures.
@@ -277,6 +285,7 @@ pub fn run_pipeline_with_events(
         prepass_audits,
         layer_audits,
         postpass_audits,
+        region_map: blackboard.region_map().cloned(),
     })
 }
 
@@ -514,6 +523,7 @@ fn run_pipeline_core(
         prepass_audits,
         layer_audits,
         postpass_audits,
+        region_map: blackboard.region_map().cloned(),
     })
 }
 

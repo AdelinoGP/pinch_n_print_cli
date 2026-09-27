@@ -144,6 +144,7 @@ fn full_coverage_external_override_forces_wasm() {
             std::slice::from_ref(&PathBuf::from(dir.path())),
             1,
             &std::collections::HashMap::new(),
+            &[],
             false,
             std::slice::from_ref(registration),
             &entries,

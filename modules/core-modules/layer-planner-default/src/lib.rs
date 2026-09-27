@@ -13,17 +13,26 @@
 //! Implements the `PrepassModule` trait for the `PrePass::LayerPlanning` stage.
 //! Computes global Z-plane sequences from typed per-object planning inputs.
 //!
-//! # Algorithm (MVP — uniform layers)
+//! # Algorithm
 //!
 //! 1. Consume each object's resolved planning record
 //! 2. Generate any object-specific raft prefix
-//! 3. Generate layer sequence: first_layer_height, then layer_height increments
-//! 4. For multi-object with different layer heights: compute LCM sync interval
-//! 5. Generate catch-up layers for objects that skip intermediate global layers
+//! 3. Generate each object's native layer sequence: when the host-derived
+//!    `layer_zs` schedule is non-empty it is authoritative; otherwise the
+//!    uniform `first_layer_height + n * layer_height` formula is used
+//! 4. Merge the sequences: same-height uniform objects use the fast path; any
+//!    explicit schedule routes the whole merge through the general union path
+//! 5. Insert catch-up layers for objects that skip intermediate global layers
 //! 6. Push each layer proposal to output
 
 use slicer_sdk::prelude::*;
 use slicer_sdk::traits::LayerPlanningObject;
+
+/// Fatal code for malformed host-derived explicit layer schedules.
+///
+/// Codes `1..=5` are already owned by the no-objects, scalar-validation, and
+/// push-failure paths in `run_layer_planning`.
+const ERR_INVALID_LAYER_ZS: u32 = 6;
 
 /// Default layer planner that produces uniform layer heights.
 ///
@@ -54,6 +63,17 @@ impl PrepassModule for DefaultLayerPlanner {
         // Build per-object plans
         let mut plans = Vec::new();
         for object in objects {
+            // Validate the explicit schedule before the zero-height skip: a
+            // malformed host-derived schedule must never be silently dropped
+            // just because this object happens not to be printable.
+            for &z in &object.layer_zs {
+                if !z.is_finite() || z <= 0.0 {
+                    return Err(ModuleError::fatal(
+                        ERR_INVALID_LAYER_ZS,
+                        "layer_zs entries must be finite and positive",
+                    ));
+                }
+            }
             if object.object_height <= 0.0 {
                 continue;
             }
@@ -69,6 +89,7 @@ impl PrepassModule for DefaultLayerPlanner {
                 layer_height: object.layer_height,
                 first_layer_height: object.first_layer_height,
                 raft_layers: object.support_raft_layers,
+                layer_zs: object.layer_zs.clone(),
             });
         }
 
@@ -123,6 +144,15 @@ struct ObjectPlan {
     first_layer_height: f64,
     /// Number of raft layers contributed by this object.
     raft_layers: u32,
+    /// Host-derived object-local top Zs; empty means "generate uniformly".
+    layer_zs: Vec<f64>,
+}
+
+impl ObjectPlan {
+    /// True when this object's native tops are an explicit host-derived schedule.
+    fn has_explicit_schedule(&self) -> bool {
+        !self.layer_zs.is_empty()
+    }
 }
 
 /// A merged global layer with per-object participation info.
@@ -187,24 +217,17 @@ fn merge_raft_sequences(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
         .collect()
 }
 
-/// Generate uniform Z-plane sequence for a single object.
+/// Generate an object's native Z-plane sequence (object-local, no raft offset).
 ///
-/// Z values are computed in `f64` using the direct formula
-/// `first_layer_height + n * layer_height` and then converted to `f32` at
-/// the return boundary. `ObjectPlan` fields are `f64` (sourced from
-/// `ResolvedConfig`'s `f64` `layer_height`/`first_layer_height`), so the
-/// formula runs in untainted `f64` — the `f32` bit pattern of `0.2` is
-/// `0.20000000298...`, which (if narrowed to `f32` and re-widened) would
-/// drift `93 * 0.20000000298... = 18.80000028...` onto the adjacent `f32`
-/// `18.80000114...` instead of the STL's `f32(18.8) = 18.79999924`,
-/// missing the vertex in `classify_vertex` and breaking the topology
-/// walk (the benchy z=18.8 regression). OrcaSlicer computes layer Z in
-/// `coordf_t` (= `double`) — see
-/// `OrcaSlicerDocumented/src/libslic3r/Slicing.cpp:807-867`
-/// (`generate_object_layers`); this function mirrors that, casting to
-/// `f32` only here (equivalent to OrcaSlicer's `float(print_z)` at
-/// `slice_facet`'s `slice_z` parameter, `TriangleMeshSlicer.cpp:158`).
-fn generate_object_layers(plan: &ObjectPlan, raft_top: f64) -> Vec<f32> {
+/// When `plan.layer_zs` is non-empty it is the authoritative host-derived
+/// schedule and is returned verbatim in `f64`; the uniform formula is never
+/// reapplied. Otherwise the uniform sequence is computed in `f64` using the
+/// direct formula `first_layer_height + n * layer_height`.
+fn generate_object_layers_f64(plan: &ObjectPlan) -> Vec<f64> {
+    if plan.has_explicit_schedule() {
+        return plan.layer_zs.clone();
+    }
+
     let mut layers = Vec::new();
     let first = plan.first_layer_height;
     let step = plan.layer_height;
@@ -215,10 +238,45 @@ fn generate_object_layers(plan: &ObjectPlan, raft_top: f64) -> Vec<f32> {
         if z_f64 > height + 1e-6 {
             break;
         }
-        layers.push((raft_top + z_f64) as f32);
+        layers.push(z_f64);
         n += 1;
     }
     layers
+}
+
+/// Generate object-local native Z-planes with the raft offset applied.
+///
+/// Z values are computed in `f64` (direct formula for the uniform fallback) and
+/// converted to `f32` at this boundary. `ObjectPlan` fields are `f64` (sourced
+/// from `ResolvedConfig`'s `f64` `layer_height`/`first_layer_height`), so the
+/// formula runs in untainted `f64` — the `f32` bit pattern of `0.2` is
+/// `0.20000000298...`, which (if narrowed to `f32` and re-widened) would drift
+/// `93 * 0.20000000298... = 18.80000028...` onto the adjacent `f32`
+/// `18.80000114...` instead of the STL's `f32(18.8) = 18.79999924`, missing the
+/// vertex in `classify_vertex` and breaking the topology walk (the benchy z=18.8
+/// regression). OrcaSlicer computes layer Z in `coordf_t` (= `double`) — see
+/// `generate_object_layers` (`Slicing.cpp`); this function mirrors that, casting
+/// to `f32` only here.
+fn generate_object_layers(plan: &ObjectPlan, raft_top: f64) -> Vec<f32> {
+    generate_object_layers_f64(plan)
+        .into_iter()
+        .map(|z| (raft_top + z) as f32)
+        .collect()
+}
+
+/// Effective layer height of an explicit schedule's native plane at `index`.
+///
+/// The step comes from adjacent `f64` schedule entries, not from the `f32`
+/// print Zs, so `0.5 - 0.4` yields exactly `0.1f32` instead of the `f32`
+/// subtraction's `0.099999994`. The first native plane is credited
+/// `first_layer_height` (the schedule is host-derived ascending, so index `0`
+/// is that first plane regardless of how many catch-up planes precede it).
+fn explicit_schedule_step(plan: &ObjectPlan, index: usize) -> f32 {
+    if index == 0 {
+        plan.first_layer_height as f32
+    } else {
+        (plan.layer_zs[index] - plan.layer_zs[index - 1]) as f32
+    }
 }
 
 /// Merge layer sequences from multiple objects into a global Z-plane sequence.
@@ -230,9 +288,13 @@ fn merge_layer_sequences(plans: &[ObjectPlan], raft_top: f64) -> Vec<MergedLayer
         return Vec::new();
     }
 
-    // If all objects have the same layer height, simple merge
+    // If all objects have the same layer height and none carries an explicit
+    // schedule, simple merge. A single explicit schedule makes the merged
+    // sequence non-uniform, so the general path must own the whole merge (the
+    // fast path below has no schedule concept and would ignore `layer_zs`).
     let all_same_height = plans.iter().all(|p| {
-        (p.layer_height - plans[0].layer_height).abs() < 1e-6
+        !p.has_explicit_schedule()
+            && (p.layer_height - plans[0].layer_height).abs() < 1e-6
             && (p.first_layer_height - plans[0].first_layer_height).abs() < 1e-6
     });
 
@@ -295,7 +357,7 @@ fn merge_same_height(plans: &[ObjectPlan], raft_top: f64) -> Vec<MergedLayer> {
 /// object participates. Objects without a native layer at that Z get a catch-up
 /// layer bridging from their last participated Z to the current one.
 fn merge_different_heights(plans: &[ObjectPlan], raft_top: f64) -> Vec<MergedLayer> {
-    // Generate per-object Z sequences
+    // Generate per-object Z sequences (object-local tops, raft offset applied)
     let object_zs: Vec<Vec<f32>> = plans
         .iter()
         .map(|plan| generate_object_layers(plan, raft_top))
@@ -307,7 +369,7 @@ fn merge_different_heights(plans: &[ObjectPlan], raft_top: f64) -> Vec<MergedLay
     all_zs.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
 
     let mut layers = Vec::new();
-    // Track the last Z at which each object participated
+    // Track the last Z at which each object participated (native or catch-up).
     let mut last_z: Vec<f32> = vec![0.0; plans.len()];
 
     for &z in &all_zs {
@@ -316,24 +378,38 @@ fn merge_different_heights(plans: &[ObjectPlan], raft_top: f64) -> Vec<MergedLay
         let base_z_f64 = z_f64 - raft_top;
 
         for (i, plan) in plans.iter().enumerate() {
+            // Both uniform and explicit-schedule objects are bounded by their
+            // scalar `height`: a schedule says which planes are *native*, not
+            // how far the object extends. Planes between a schedule's last top
+            // and the physical height still need catch-up regions, or material
+            // above the final scheduled plane would never be sliced.
             if base_z_f64 > plan.height + 1e-6 {
                 continue;
             }
 
-            // Check if this object has a native layer at this Z
-            let is_native = object_zs[i].iter().any(|oz| (*oz - z).abs() < 1e-6);
+            // Check if this object has a native layer at this Z. Explicit
+            // schedules are matched on their own `f64` entries so the matched
+            // index also gives the variable step below.
+            let native_index = object_zs[i].iter().position(|oz| (*oz - z).abs() < 1e-6);
 
-            if is_native {
-                // Regular layer for this object
-                let effective_lh = if (last_z[i] - 0.0).abs() < 1e-6 {
-                    plan.first_layer_height
+            if let Some(native_index) = native_index {
+                // Regular layer for this object.
+                //
+                // Explicit schedules step between their own `f64` entry pairs
+                // (variable step); the first native plane is credited
+                // `first_layer_height`. Uniform objects keep the historical
+                // sentinel-based credit.
+                let effective_lh = if plan.has_explicit_schedule() {
+                    explicit_schedule_step(plan, native_index)
+                } else if (last_z[i] - 0.0).abs() < 1e-6 {
+                    plan.first_layer_height as f32
                 } else {
-                    plan.layer_height
+                    plan.layer_height as f32
                 };
                 regions.push(RegionLayerProposal {
                     object_id: plan.object_id.clone(),
                     region_id: "0".to_string(),
-                    effective_layer_height: effective_lh as f32,
+                    effective_layer_height: effective_lh,
                     is_catchup: false,
                     catchup_z_bottom: 0.0,
                 });

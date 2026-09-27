@@ -1222,6 +1222,7 @@ fn support_type_tree_config_selects_tree_support_holder() {
     let context = slicer_runtime::run::prepare_prepass_context(
         mesh,
         config_source.clone(),
+        Vec::new(),
         &[full],
         true,
         false,

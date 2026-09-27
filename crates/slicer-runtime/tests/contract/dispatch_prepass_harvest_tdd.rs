@@ -28,6 +28,7 @@ fn layer_planning_objects_for(configs: &[(&str, f64, f64, f64)]) -> Vec<LayerPla
                     layer_height: *layer_height,
                     first_layer_height: *first_layer_height,
                     support_raft_layers: 0,
+                    layer_zs: Vec::new(),
                 }
             },
         )

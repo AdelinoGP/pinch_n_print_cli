@@ -43,6 +43,26 @@ fn exact_z_support_query() {
 }
 
 #[test]
+fn layer_planning_v2_accepts_matching_five_field_object_configs() {
+    prepass_layer_planning_v2_tdd::layer_planning_v2_accepts_matching_five_field_object_configs();
+}
+
+#[test]
+fn layer_planning_v2_adapter_carries_every_field_without_config_lookup() {
+    prepass_layer_planning_v2_tdd::layer_planning_v2_adapter_carries_every_field_without_config_lookup();
+}
+
+#[test]
+fn layer_planning_v2_rejects_mismatched_or_omitted_configs() {
+    prepass_layer_planning_v2_tdd::layer_planning_v2_rejects_mismatched_or_omitted_configs();
+}
+
+#[test]
+fn layer_zs_round_trip_through_wit_record() {
+    prepass_layer_planning_v2_tdd::layer_zs_round_trip_through_wit_record();
+}
+
+#[test]
 fn support_decline_contract() {
     support_decline_contract::support_decline_contract();
 }

@@ -24,10 +24,19 @@ pub struct ResolvedObjectLayerConfig {
     pub first_layer_height: f64,
     /// Number of support raft layers preceding model layers.
     pub support_raft_layers: u32,
+    /// Explicit object-local model-layer top Zs, in millimetres.
+    ///
+    /// Empty means the uniform height formula applies; a non-empty list is the
+    /// exact schedule produced by [`layer_top_zs`] over the object's composed
+    /// layer-height profile.
+    pub layer_z_tops: Vec<f64>,
 }
 
 /// Applicable typed scopes for one resolution query.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+///
+/// `Eq` is intentionally absent: [`Self::layer_top_z`] is an `f64`, which
+/// implements only `PartialEq`.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ResolutionTarget {
     /// Object whose object and modifier deltas apply.
     pub object_id: String,
@@ -37,6 +46,26 @@ pub struct ResolutionTarget {
     pub paint_semantics: Vec<String>,
     /// Selected tool, when tool-specific configuration applies.
     pub tool_index: Option<u32>,
+    /// Layer top print Z in millimetres, when resolution has a layer context.
+    ///
+    /// A layer-range delta applies only when this is `Some(z)` and the range's
+    /// half-open world-Z interval `[min_z, max_z)` covers `z`. `None` means no
+    /// layer context, so no layer-range delta ever applies.
+    pub layer_top_z: Option<f64>,
+}
+
+/// One contiguous interval of an object's composed layer-height profile.
+///
+/// The segment covers `[z_start, z_end)` and supplies the layer height used
+/// while the current layer top Z lies inside it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct HeightProfileSegment {
+    /// Inclusive lower world-Z bound in millimetres.
+    pub z_start: f64,
+    /// Exclusive upper world-Z bound in millimetres.
+    pub z_end: f64,
+    /// Layer height in millimetres applied inside this interval.
+    pub height: f64,
 }
 
 /// Failure while resolving a typed configuration scope stack.
@@ -503,10 +532,10 @@ fn type_mismatch(key: &str, expected: &'static str, value: &ConfigValue) -> Reso
 
 /// Resolve all applicable deltas in canonical precedence order, then run Phase B.
 ///
-/// Precedence is global, object, the reserved layer-range seam, modifiers in
-/// target order, paint semantics in lexical order, and finally the selected
-/// tool. A delta's presence, including a value equal to the default, is always
-/// an override.
+/// Precedence is global, object, the layer-range deltas covering
+/// [`ResolutionTarget::layer_top_z`], modifiers in target order, paint semantics
+/// in lexical order, and finally the selected tool. A delta's presence,
+/// including a value equal to the default, is always an override.
 ///
 /// Every delta is validated against the registry's admission set for its scope
 /// before merge or expansion. A scope whose delta states a denied key is
@@ -530,8 +559,19 @@ pub fn resolve_scope_stack(
         scoped.delta(&ConfigScope::Object(target.object_id.clone())),
     )?;
 
-    // Reserved precedence seam: layer-range deltas belong here once their
-    // typed source and applicability model land.
+    // Layer-range deltas sit between object and modifier. The stored order is
+    // already `(min_z, max_z, source_index)` ascending, which is also
+    // `range_index` order, so a plain forward scan is canonical.
+    // `layer_top_z: None` means no layer context: no range ever applies.
+    // Membership is `LayerConfigRange::covers`, the single authority the
+    // runtime kernel shares, so the two cannot disagree.
+    if let Some(layer_top_z) = target.layer_top_z {
+        for range in scoped.ranges_for(&target.object_id) {
+            if range.covers(layer_top_z) {
+                apply_delta(registry, &mut config, &range.scope, Some(&range.delta))?;
+            }
+        }
+    }
 
     for modifier_id in &target.modifier_ids {
         let scope = ConfigScope::Modifier {
@@ -560,10 +600,231 @@ pub fn resolve_scope_stack(
     Ok(config)
 }
 
+/// Return the zero-based range index carried by a layer-range scope.
+fn layer_range_index(scope: &ConfigScope) -> u32 {
+    match scope {
+        ConfigScope::LayerRange { range_index, .. } => *range_index,
+        _ => 0,
+    }
+}
+
+/// Validate one object-level planning height before it feeds a profile.
+///
+/// The variant is named for the object height because that is its first and
+/// most common trigger; every height read here (object height, resolved
+/// `layer_height`, resolved `first_layer_height`) obeys the same
+/// finite-and-positive contract.
+fn validate_height(object_id: &str, height: f64) -> Result<(), ResolutionError> {
+    if height.is_finite() && height > 0.0 {
+        return Ok(());
+    }
+    Err(ResolutionError::InvalidObjectHeight {
+        object_id: object_id.to_owned(),
+        value: height.is_finite().then_some(height),
+    })
+}
+
+/// Compose one object's contiguous layer-height profile over `[0, object_height)`.
+///
+/// The composed profile follows canonical `layer_height_profile_from_ranges`
+/// (`Slicing.cpp`): the fixed first-layer interval `[0, first_layer_height)` is
+/// retained first; ranges then iterate in ascending `(min_z, max_z,
+/// range_index)` order, so an earlier-starting range keeps an overlap and trims
+/// a later range's low edge to the last retained high. Uncovered gaps — and the
+/// tail up to `object_height` — use the resolved base `layer_height`. Adjacent
+/// equal-height segments are coalesced, so the result is the minimal exact
+/// cover of the profile.
+///
+/// Only `layer_height` values are read; other range keys are precedence inputs
+/// for [`resolve_scope_stack`], not profile geometry.
+///
+/// # Errors
+///
+/// Returns [`ResolutionError::InvalidObjectHeight`] when `object_height` is
+/// absent, non-finite, zero, or negative, and likewise when the object's
+/// resolved `layer_height` or `first_layer_height` is non-finite or
+/// non-positive. Resolution failures of the base scope stack propagate
+/// unchanged.
+pub fn query_layer_height_profile(
+    registry: &ConfigSchemaRegistry,
+    scoped: &ScopedConfig,
+    object_id: &str,
+    object_height: f64,
+    expansion: &ExpansionContext,
+) -> Result<Vec<HeightProfileSegment>, ResolutionError> {
+    validate_height(object_id, object_height)?;
+
+    // Resolve the object's base scalars through the production scope stack so
+    // the profile can never disagree with `ResolvedObjectLayerConfig`.
+    let config = resolve_scope_stack(
+        registry,
+        scoped,
+        &ResolutionTarget {
+            object_id: object_id.to_owned(),
+            ..ResolutionTarget::default()
+        },
+        expansion,
+    )?;
+    validate_height(object_id, config.layer_height)?;
+    validate_height(object_id, config.first_layer_height)?;
+
+    // Retained coverage: the synthetic first-layer interval first, then each
+    // range's surviving portion. `coverage_high` is the end of the last
+    // retained interval.
+    let mut retained = vec![HeightProfileSegment {
+        z_start: 0.0,
+        z_end: config.first_layer_height,
+        height: config.first_layer_height,
+    }];
+    let mut coverage_high = config.first_layer_height;
+
+    let mut ranges: Vec<(f64, f64, u32, f64)> = scoped
+        .ranges_for(&object_id.to_owned())
+        .iter()
+        .filter_map(|range| match range.delta.values.get("layer_height") {
+            Some(ConfigValue::Float(height)) if height.is_finite() && *height > 0.0 => Some((
+                range.min_z,
+                range.max_z,
+                layer_range_index(&range.scope),
+                *height,
+            )),
+            _ => None,
+        })
+        .collect();
+    ranges.sort_by(|first, second| {
+        first
+            .0
+            .total_cmp(&second.0)
+            .then_with(|| first.1.total_cmp(&second.1))
+            .then_with(|| first.2.cmp(&second.2))
+    });
+
+    for (min_z, max_z, _, height) in ranges {
+        // A range fully inside retained coverage contributes nothing; this is
+        // also what stops a range at `0.0` from duplicating the synthetic
+        // first-layer interval.
+        if max_z <= coverage_high {
+            continue;
+        }
+        // The low edge is trimmed to the last retained high, so an
+        // earlier-starting range keeps the overlap.
+        retained.push(HeightProfileSegment {
+            z_start: min_z.max(coverage_high),
+            z_end: max_z,
+            height,
+        });
+        coverage_high = max_z;
+    }
+
+    Ok(fill_profile_gaps(
+        retained,
+        coverage_high,
+        object_height,
+        config.layer_height,
+    ))
+}
+
+/// Fill profile gaps with the base layer height and coalesce equal neighbours.
+///
+/// The retained segments are strictly ascending and non-overlapping; the
+/// result covers `[0, max(object_height, coverage_high))` because a range may
+/// extend past the object height and its retained interval is kept whole.
+fn fill_profile_gaps(
+    retained: Vec<HeightProfileSegment>,
+    coverage_high: f64,
+    object_height: f64,
+    base_height: f64,
+) -> Vec<HeightProfileSegment> {
+    let target = object_height.max(coverage_high);
+    let mut profile: Vec<HeightProfileSegment> = Vec::with_capacity(retained.len() + 1);
+    let mut cursor = 0.0;
+
+    for segment in retained {
+        if segment.z_start > cursor {
+            push_profile_segment(&mut profile, cursor, segment.z_start, base_height);
+        }
+        push_profile_segment(&mut profile, segment.z_start, segment.z_end, segment.height);
+        cursor = segment.z_end;
+    }
+    if cursor < target {
+        push_profile_segment(&mut profile, cursor, target, base_height);
+    }
+    profile
+}
+
+fn push_profile_segment(
+    profile: &mut Vec<HeightProfileSegment>,
+    z_start: f64,
+    z_end: f64,
+    height: f64,
+) {
+    if z_end <= z_start {
+        return;
+    }
+    if let Some(last) = profile.last_mut() {
+        if last.height == height && last.z_end == z_start {
+            last.z_end = z_end;
+            return;
+        }
+    }
+    profile.push(HeightProfileSegment {
+        z_start,
+        z_end,
+        height,
+    });
+}
+
+/// Evaluate an object-local layer-top schedule from a composed profile.
+///
+/// The walk starts at Z=0 and repeatedly adds the height of the segment
+/// containing a probe just **above** the current top (`z + 1e-9`), pushing each
+/// new top while it is at most `object_height` plus the same tolerance.
+///
+/// Probing above the top (rather than testing the top itself against
+/// `z_start <= z < z_end`) is what makes the walk cross a range boundary
+/// exactly once. Canonical `generate_object_layers` (`Slicing.cpp`) selects a
+/// layer's height from a probe inside the layer for the same reason: `0.7 + 0.1`
+/// accumulates to `0.7999999999999999`, one ULP below the `[0.4, 0.8)` end, so a
+/// half-open test on the top re-selects the exhausted 0.1 mm segment and the
+/// object's final layer is silently dropped. Probing past the boundary advances
+/// to the next segment, whose height carries the schedule to the object top.
+///
+/// A probe outside every segment stops the walk defensively. The returned Zs
+/// are object-local: no raft offset is applied here.
+#[must_use]
+pub fn layer_top_zs(segments: &[HeightProfileSegment], object_height: f64) -> Vec<f64> {
+    const TOP_TOLERANCE: f64 = 1.0e-9;
+
+    let mut tops = Vec::new();
+    let mut z = 0.0;
+
+    while let Some(segment) = segments.iter().find(|segment| {
+        let probe = z + TOP_TOLERANCE;
+        segment.z_start <= probe && probe < segment.z_end
+    }) {
+        // Profile construction never emits a non-positive height; a hand-built
+        // list must not be able to hang the caller. `NaN <= 0.0` is false, so
+        // the `is_nan` arm is required for a non-terminating guard.
+        if segment.height.is_nan() || segment.height <= 0.0 {
+            break;
+        }
+        z += segment.height;
+        if z <= object_height + 1.0e-9 {
+            tops.push(z);
+        } else {
+            break;
+        }
+    }
+
+    tops
+}
+
 /// Resolve object planning inputs in object-id order for shared Z-grid construction.
 ///
 /// All object heights are validated before any scope stack is resolved, so an
-/// invalid height rejects the query atomically.
+/// invalid height rejects the query atomically. Each record carries the
+/// explicit object-local layer-top schedule derived from the object's composed
+/// layer-height profile alongside the base scalars.
 pub fn query_z_grid(
     registry: &ConfigSchemaRegistry,
     scoped: &ScopedConfig,
@@ -592,6 +853,8 @@ pub fn query_z_grid(
                 expansion,
             )?;
             let support_raft_layers = support_raft_layers(&config)?;
+            let profile =
+                query_layer_height_profile(registry, scoped, object_id, *object_height, expansion)?;
 
             Ok(ResolvedObjectLayerConfig {
                 object_id: object_id.clone(),
@@ -599,6 +862,7 @@ pub fn query_z_grid(
                 layer_height: config.layer_height,
                 first_layer_height: config.first_layer_height,
                 support_raft_layers,
+                layer_z_tops: layer_top_zs(&profile, *object_height),
             })
         })
         .collect()

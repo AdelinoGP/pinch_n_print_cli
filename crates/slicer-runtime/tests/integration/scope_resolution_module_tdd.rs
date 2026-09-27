@@ -149,13 +149,14 @@ fn config_source() -> HashMap<String, ConfigValue> {
 }
 
 fn expected_planning() -> ResolvedObjectLayerConfig {
-    // exhaustive: the five planning fields are the contract under test.
+    // exhaustive: the six planning fields are the contract under test.
     ResolvedObjectLayerConfig {
         object_id: OBJECT_ID.to_string(),
         object_height: 1.0,
         layer_height: 0.2,
         first_layer_height: 0.3,
         support_raft_layers: 0,
+        layer_z_tops: vec![0.3, 0.5, 0.7, 0.9],
     }
 }
 
@@ -207,6 +208,7 @@ fn planning_evidence(mesh: &MeshIR, zs: &[f32]) -> ResolvedObjectLayerConfig {
         first_layer_height: f64::from(zs[0]),
         support_raft_layers: u32::try_from(raft_layer_count)
             .expect("raft layer count must fit u32"),
+        layer_z_tops: vec![0.3, 0.5, 0.7, 0.9],
     }
 }
 
@@ -304,7 +306,7 @@ fn both_entry_points_share_resolution_results() {
         EXPECTED_MODEL_LAYER_COUNT,
         "full slice emitted Z layers must pin object_height and support_raft_layers"
     );
-    let context = prepare_prepass_context(mesh, source, &module_dirs, true, false)
+    let context = prepare_prepass_context(mesh, source, Vec::new(), &module_dirs, true, false)
         .expect("prepare_prepass_context must resolve the same typed object scope");
     let prepass_zs: Vec<f32> = context
         .plan
@@ -364,9 +366,15 @@ fn multi_object_planning_carries_divergent_first_layer_and_raft_fields() {
         ConfigValue::Int(2),
     );
 
-    let context =
-        prepare_prepass_context(Arc::new(mesh), source, &[core_modules_dir()], true, false)
-            .expect("divergent per-object planning fields must cross the typed boundary");
+    let context = prepare_prepass_context(
+        Arc::new(mesh),
+        source,
+        Vec::new(),
+        &[core_modules_dir()],
+        true,
+        false,
+    )
+    .expect("divergent per-object planning fields must cross the typed boundary");
     let prefix: Vec<(i32, bool)> = context
         .plan
         .global_layers

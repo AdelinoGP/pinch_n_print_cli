@@ -10,14 +10,16 @@ pub use slicer_core::{
 };
 use slicer_ir::{ConfigKey, ConfigValue, ModuleId, ResolvedConfig, StageId, SupportPlanEntry};
 
-/// Registry and machine/tool context required to expand automatic config values.
+/// Registry, scope stack, and machine/tool context required to expand
+/// automatic config values and re-resolve a region's config for its layer.
 ///
 /// Production entry points provide this authority. Compatibility entry points
 /// omit it and therefore require their supplied configs to already be expanded.
 #[derive(Clone, Copy)]
 pub(crate) struct ConfigExpansionAuthority<'a> {
-    pub(crate) _registry: &'a slicer_config::ConfigSchemaRegistry,
-    pub(crate) _context: &'a slicer_config::ExpansionContext,
+    pub(crate) registry: &'a slicer_config::ConfigSchemaRegistry,
+    pub(crate) scoped: &'a slicer_config::ScopedConfig,
+    pub(crate) expansion: &'a slicer_config::ExpansionContext,
 }
 
 use crate::builtins::overhang_annotation_producer::{
@@ -47,7 +49,11 @@ use slicer_wasm_host::{
 // and return PrepassStageOutput (not a tuple with runtime_reads).
 
 /// Structured prepass executor failures.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// `Eq` is intentionally absent: variants carry sources such as
+/// `RegionMappingBuiltinError` whose `RegionMappingError::Resolution` holds the
+/// resolver's `ResolutionError`, which is `PartialEq` only.
+#[derive(Debug, Clone, PartialEq)]
 pub enum PrepassExecutionError {
     /// A stage started before one of its required prepass inputs existed.
     MissingRequiredPrepass {
@@ -774,8 +780,15 @@ fn execute_prepass_with_builtins_configured_instr_collecting(
         ),
     >,
     harvested_plan_entries: Option<&mut Vec<SupportPlanEntry>>,
-    _expansion_authority: Option<ConfigExpansionAuthority<'_>>,
+    expansion_authority: Option<ConfigExpansionAuthority<'_>>,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
+    let region_authority = expansion_authority.map(|authority| {
+        slicer_core::algos::region_mapping::RegionResolutionAuthority {
+            registry: authority.registry,
+            scoped: authority.scoped,
+            expansion: authority.expansion,
+        }
+    });
     run_builtin_stage(
         blackboard,
         instrumentation,
@@ -932,6 +945,7 @@ fn execute_prepass_with_builtins_configured_instr_collecting(
                 expanded_default,
                 paint_semantic_configs,
                 tool_configs,
+                region_authority,
             )
             .map_err(|source| PrepassExecutionError::RegionMapping { source })
         },

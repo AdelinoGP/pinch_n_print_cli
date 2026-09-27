@@ -415,7 +415,7 @@ fn runtime_expands_global_object_tool_and_paint_before_delivery() {
         "full-slice gcode must contain executed outer-wall geometry"
     );
 
-    let context = prepare_prepass_context(mesh, source, &module_dirs, true, false)
+    let context = prepare_prepass_context(mesh, source, Vec::new(), &module_dirs, true, false)
         .expect("prepare_prepass_context must accept fully scoped placeholder config");
 
     let mut bound_module_count = 0usize;

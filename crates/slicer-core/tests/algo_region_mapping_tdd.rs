@@ -843,6 +843,8 @@ fn region_mapping_applies_per_tool_config_overlay_to_painted_tool() {
         None,
         &tool_configs,
         DEFAULT_REGION_MAP_CAP,
+        // No layer-range authority on this tool-precedence fixture.
+        None,
     )
     .expect("region mapping must succeed");
 
@@ -930,6 +932,8 @@ fn region_mapping_per_tool_config_overrides_paint_semantic_on_same_key() {
         None,
         &tool_configs,
         DEFAULT_REGION_MAP_CAP,
+        // No layer-range authority on this precedence fixture.
+        None,
     )
     .expect("region mapping must succeed");
 

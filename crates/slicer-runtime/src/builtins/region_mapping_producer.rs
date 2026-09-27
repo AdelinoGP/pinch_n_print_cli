@@ -43,7 +43,10 @@ pub static REGION_MAPPING_PRODUCER: BuiltinProducer = BuiltinProducer {
 };
 
 /// Wrapper error used when the built-in runs on the real prepass path.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// `Eq` is intentionally absent: `RegionMappingError` carries the resolver's
+/// `ResolutionError` and is `PartialEq` only.
+#[derive(Debug, Clone, PartialEq)]
 pub enum RegionMappingBuiltinError {
     /// No `LayerPlanIR` committed to the blackboard yet.
     MissingLayerPlan,
@@ -81,6 +84,7 @@ pub fn commit_region_mapping_builtin(
     default_resolved_config: &ResolvedConfig,
     paint_semantic_configs: &BTreeMap<PaintSemantic, ResolvedConfig>,
     tool_configs: &BTreeMap<u32, ResolvedConfig>,
+    authority: Option<slicer_core::algos::region_mapping::RegionResolutionAuthority<'_>>,
 ) -> Result<(), RegionMappingBuiltinError> {
     if blackboard.region_map().is_some() {
         return Ok(());
@@ -120,6 +124,7 @@ pub fn commit_region_mapping_builtin(
         Some((resolved_configs, default_resolved_config)),
         tool_configs,
         DEFAULT_REGION_MAP_CAP,
+        authority,
     )
     .map_err(RegionMappingBuiltinError::Mapping)?;
 

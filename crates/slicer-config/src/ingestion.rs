@@ -5,7 +5,7 @@ use std::fmt;
 
 use slicer_ir::{ConfigKey, ConfigValue, ModifierId, ObjectId};
 
-use crate::{ConfigSchemaRegistry, RegistryEntry};
+use crate::{ConfigSchemaRegistry, RegistryEntry, ResolutionError};
 
 /// The configuration scope receiving an authored value.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
@@ -14,6 +14,16 @@ pub enum ConfigScope {
     Global,
     /// Configuration for one object.
     Object(ObjectId),
+    /// Configuration for one world-Z interval of one object.
+    ///
+    /// `range_index` is the deterministic zero-based index assigned after
+    /// sorting the object's ranges by `(min_z, max_z, source_index)`.
+    LayerRange {
+        /// The containing object identifier.
+        object_id: ObjectId,
+        /// Zero-based index of the range within its object.
+        range_index: u32,
+    },
     /// Configuration for one modifier belonging to one object.
     Modifier {
         /// The containing object identifier.
@@ -42,10 +52,12 @@ impl ScopeDelta {
 }
 
 /// All authored scope deltas in deterministic scope order.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ScopedConfig {
     /// Authored deltas keyed by their typed scope.
     pub deltas: BTreeMap<ConfigScope, ScopeDelta>,
+    /// Authored world-Z ranges per object, normalized and indexed.
+    pub layer_ranges: BTreeMap<ObjectId, Vec<LayerConfigRange>>,
 }
 
 impl ScopedConfig {
@@ -69,6 +81,243 @@ impl ScopedConfig {
     /// Iterate over scopes in deterministic order.
     pub fn scopes(&self) -> impl Iterator<Item = &ConfigScope> {
         self.deltas.keys()
+    }
+
+    /// Return the normalized layer ranges authored for `object_id`.
+    #[must_use]
+    pub fn ranges_for(&self, object_id: &ObjectId) -> &[LayerConfigRange] {
+        self.layer_ranges.get(object_id).map_or(&[], Vec::as_slice)
+    }
+
+    /// Return whether any object carries authored layer ranges.
+    #[must_use]
+    pub fn has_layer_ranges(&self) -> bool {
+        !self.layer_ranges.is_empty()
+    }
+}
+
+/// One raw world-Z range as it reaches the typed ingestor.
+///
+/// The cross-crate transport from the model loader: bounds are world-Z
+/// millimetres and `values` are raw authored strings. Registry typing, scope
+/// admission, and interval validation all happen inside
+/// [`ConfigIngestor::ingest_layer_ranges`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct LayerRangeInput {
+    /// Stable object identifier.
+    pub object_id: ObjectId,
+    /// Source order within the parsed part, used as the final tie-break.
+    pub source_index: u32,
+    /// Inclusive world-Z lower bound in millimetres.
+    pub min_z: f64,
+    /// Exclusive world-Z upper bound in millimetres.
+    pub max_z: f64,
+    /// Raw authored values keyed by canonical (snake_case) key.
+    pub values: BTreeMap<String, String>,
+}
+
+/// One validated, registry-typed world-Z range committed to a [`ScopedConfig`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct LayerConfigRange {
+    /// Typed scope identifying the containing object and range index.
+    pub scope: ConfigScope,
+    /// Inclusive world-Z lower bound in millimetres.
+    pub min_z: f64,
+    /// Exclusive world-Z upper bound in millimetres.
+    pub max_z: f64,
+    /// Registry-typed values stated by the range.
+    pub delta: ScopeDelta,
+}
+
+impl LayerConfigRange {
+    /// Whether this range covers a layer whose top print Z is `layer_top_z`.
+    ///
+    /// Membership is half-open `[min_z, max_z)` evaluated against the layer
+    /// **top** Z, and this method is the single authority for it — the resolver
+    /// and the runtime kernel both call it, so the two can never disagree.
+    ///
+    /// Each bound is compared as the smaller of its authored `f64` millimetre
+    /// value and its `f32` image. Both representations reach this predicate: a
+    /// layer top travels as an `f32` (`GlobalLayer.z`, widened back to `f64`),
+    /// while callers may also state an authored bound directly. Narrowing is
+    /// monotonic, so the adjusted `max_z` is never greater than its authored
+    /// value and no top ordered at or above the authored bound is admitted;
+    /// taking the minimum also excludes the transported image of a top placed
+    /// exactly on it, which is what keeps the authored rule half-open.
+    /// `f32(0.7)` is `0.69999998807…`, below its own authored bound, and
+    /// `f32(0.8)` is `0.80000001192…`, above its own; the minimum handles both
+    /// without a fixed epsilon, so a power-of-two bound (where the two
+    /// neighbouring `f32` gaps differ by a factor of two) cannot swallow a
+    /// genuinely interior layer, and subnormal or very large bounds need no
+    /// special case. The lower bound works symmetrically.
+    ///
+    /// A bound that lies *between* two `f32` values cannot be honoured exactly:
+    /// narrowing moves it by up to half a local `f32` ULP, so a top within that
+    /// distance of the bound — in either direction — resolves to the bound
+    /// rather than to its authored side. Where the authored bound is itself
+    /// representable (every ordinary print height) the rule is exact in both
+    /// representations; the band only matters for a bound that is not.
+    #[must_use]
+    pub fn covers(&self, layer_top_z: f64) -> bool {
+        // `as f32` saturates to an infinity only at magnitudes no print can
+        // reach; fall back to the authored bound there so the comparison stays
+        // finite instead of becoming vacuously open or closed.
+        let narrower = |bound: f64| match bound as f32 {
+            narrowed if narrowed.is_finite() => f64::from(narrowed),
+            _ => bound,
+        };
+        let lower = self.min_z.min(narrower(self.min_z));
+        let upper = self.max_z.min(narrower(self.max_z));
+        lower <= layer_top_z && layer_top_z < upper
+    }
+
+    /// Validate one range's interval and scope variant before committing it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LayerRangeLoadError::InvalidInterval`] unless every bound is
+    /// finite, `min_z >= 0.0`, and `min_z < max_z`.
+    pub fn new(
+        object_id: ObjectId,
+        range_index: u32,
+        min_z: f64,
+        max_z: f64,
+        delta: ScopeDelta,
+    ) -> Result<Self, LayerRangeLoadError> {
+        let valid = min_z.is_finite() && max_z.is_finite() && min_z >= 0.0 && min_z < max_z;
+        if !valid {
+            return Err(LayerRangeLoadError::InvalidInterval {
+                object_id,
+                range_index,
+                min_z,
+                max_z,
+            });
+        }
+        Ok(Self {
+            scope: ConfigScope::LayerRange {
+                object_id,
+                range_index,
+            },
+            min_z,
+            max_z,
+            delta,
+        })
+    }
+}
+
+/// Fatal failure while loading registry-typed world-Z ranges.
+#[derive(Clone, Debug, PartialEq)]
+pub enum LayerRangeLoadError {
+    /// A stated key is not admitted at its range's scope.
+    Denied(ResolutionError),
+    /// Two ranges on one object state unequal values over a non-empty overlap.
+    ConflictingOverlap {
+        /// Object whose ranges conflict.
+        object_id: ObjectId,
+        /// Configuration key with divergent values.
+        key: ConfigKey,
+        /// Earlier range index of the overlapping pair.
+        first_range: u32,
+        /// Later range index of the overlapping pair.
+        second_range: u32,
+    },
+    /// A range's bounds are non-finite, negative, or not ascending.
+    InvalidInterval {
+        /// Object carrying the invalid interval.
+        object_id: ObjectId,
+        /// Zero-based index of the invalid range.
+        range_index: u32,
+        /// Authored inclusive lower bound.
+        min_z: f64,
+        /// Authored exclusive upper bound.
+        max_z: f64,
+    },
+    /// A range names an object with no declared ranges.
+    UnknownObject {
+        /// Object identifier with no ranges.
+        object_id: ObjectId,
+    },
+    /// A range states a `layer_height` that cannot compose a physical profile.
+    ///
+    /// Raised for a finite, non-positive height — `0.0` or a negative value.
+    /// Non-finite text never reaches this variant: `coerce_value` rejects it as
+    /// `ConfigIngestionError::TypeMismatch` while typing the authored string.
+    /// `layer_height` is the one key the profile consumes directly, so a
+    /// non-positive value is a load error rather than a value the profile can
+    /// silently skip: dropping it would silently ignore an authored range.
+    InvalidLayerHeight {
+        /// Object whose range states the invalid height.
+        object_id: ObjectId,
+        /// Zero-based index of the offending range.
+        range_index: u32,
+        /// The authored height in millimetres.
+        layer_height: f64,
+    },
+    /// A raw value could not be typed by the registry declaration.
+    Ingestion(ConfigIngestionError),
+}
+
+impl fmt::Display for LayerRangeLoadError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Denied(error) => error.fmt(formatter),
+            Self::ConflictingOverlap {
+                object_id,
+                key,
+                first_range,
+                second_range,
+            } => write!(
+                formatter,
+                "layer ranges {first_range} and {second_range} of object {object_id:?} state conflicting values for {key:?}"
+            ),
+            Self::InvalidInterval {
+                object_id,
+                range_index,
+                min_z,
+                max_z,
+            } => write!(
+                formatter,
+                "layer range {range_index} of object {object_id:?} has invalid bounds [{min_z}, {max_z})"
+            ),
+            Self::UnknownObject { object_id } => {
+                write!(formatter, "layer range names unknown object {object_id:?}")
+            }
+            Self::InvalidLayerHeight {
+                object_id,
+                range_index,
+                layer_height,
+            } => write!(
+                formatter,
+                "layer range {range_index} of object {object_id:?} states an unusable layer_height {layer_height}; \
+                 it must be finite and positive"
+            ),
+            Self::Ingestion(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl std::error::Error for LayerRangeLoadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Denied(error) => Some(error),
+            Self::Ingestion(error) => Some(error),
+            Self::ConflictingOverlap { .. }
+            | Self::InvalidInterval { .. }
+            | Self::UnknownObject { .. }
+            | Self::InvalidLayerHeight { .. } => None,
+        }
+    }
+}
+
+impl From<ConfigIngestionError> for LayerRangeLoadError {
+    fn from(error: ConfigIngestionError) -> Self {
+        Self::Ingestion(error)
+    }
+}
+
+impl From<ResolutionError> for LayerRangeLoadError {
+    fn from(error: ResolutionError) -> Self {
+        Self::Denied(error)
     }
 }
 
@@ -138,7 +387,7 @@ impl fmt::Display for ConfigIngestionError {
 impl std::error::Error for ConfigIngestionError {}
 
 /// The completed result of typed configuration ingestion.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct IngestionOutcome {
     /// Authored values grouped by typed scope.
     pub scoped: ScopedConfig,
@@ -152,6 +401,7 @@ pub struct IngestionOutcome {
 pub struct ConfigIngestor<'registry> {
     registry: &'registry ConfigSchemaRegistry,
     deltas: BTreeMap<ConfigScope, ScopeDelta>,
+    layer_ranges: BTreeMap<ObjectId, Vec<LayerConfigRange>>,
     warnings: Vec<IngestionWarning>,
     untyped_global_keys: BTreeSet<ConfigKey>,
     tolerant: bool,
@@ -174,6 +424,7 @@ impl<'registry> ConfigIngestor<'registry> {
         Self {
             registry,
             deltas: BTreeMap::new(),
+            layer_ranges: BTreeMap::new(),
             warnings: Vec::new(),
             untyped_global_keys: BTreeSet::new(),
             tolerant,
@@ -214,6 +465,151 @@ impl<'registry> ConfigIngestor<'registry> {
         Ok(())
     }
 
+    /// Ingest raw world-Z ranges, typing every value through the registry.
+    ///
+    /// Ranges are grouped by object and normalized by `(min_z, max_z,
+    /// source_index)`, then receive their zero-based `range_index` in that
+    /// order. Every value is typed exactly as [`Self::ingest_delta`] types an
+    /// explicit delta; an undeclared key warns and is dropped, a mistyped value
+    /// is a fatal [`LayerRangeLoadError::Ingestion`].
+    ///
+    /// The whole input is validated before any state changes:
+    ///
+    /// - every typed key must be admitted by
+    ///   [`ConfigSchemaRegistry::admission_set`](crate::ConfigSchemaRegistry::admission_set)
+    ///   at its range's scope, else [`LayerRangeLoadError::Denied`];
+    /// - two ranges of one object that overlap with non-empty intersection
+    ///   may not state unequal typed values for any key other than
+    ///   `layer_height`, else [`LayerRangeLoadError::ConflictingOverlap`].
+    ///
+    /// A successful call replaces the ingested ranges of every named object;
+    /// a failed call changes nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LayerRangeLoadError`] as described above.
+    pub fn ingest_layer_ranges(
+        &mut self,
+        inputs: &[LayerRangeInput],
+    ) -> Result<(), LayerRangeLoadError> {
+        let mut grouped: BTreeMap<ObjectId, Vec<&LayerRangeInput>> = BTreeMap::new();
+        for input in inputs {
+            grouped
+                .entry(input.object_id.clone())
+                .or_default()
+                .push(input);
+        }
+
+        let mut warnings = Vec::new();
+        let mut pending: BTreeMap<ObjectId, Vec<PendingLayerRange>> = BTreeMap::new();
+
+        for (object_id, mut authored_ranges) in grouped {
+            authored_ranges.sort_by(|first, second| {
+                first
+                    .min_z
+                    .total_cmp(&second.min_z)
+                    .then_with(|| first.max_z.total_cmp(&second.max_z))
+                    .then_with(|| first.source_index.cmp(&second.source_index))
+            });
+
+            let mut ranges = Vec::with_capacity(authored_ranges.len());
+            for (index, input) in authored_ranges.into_iter().enumerate() {
+                // The count is bounded by the already-materialized input slice,
+                // so it is far below `u32::MAX` on any real host.
+                let range_index = index as u32;
+                let scope = ConfigScope::LayerRange {
+                    object_id: object_id.clone(),
+                    range_index,
+                };
+                if !valid_layer_range_interval(input.min_z, input.max_z) {
+                    return Err(LayerRangeLoadError::InvalidInterval {
+                        object_id: object_id.clone(),
+                        range_index,
+                        min_z: input.min_z,
+                        max_z: input.max_z,
+                    });
+                }
+
+                let mut delta = ScopeDelta::default();
+                for (key, authored) in &input.values {
+                    let authored = ConfigValue::String(authored.clone());
+                    let entry = self.prepare_entry(scope.clone(), key.clone(), key, &authored)?;
+                    if let Some(value) = entry.value {
+                        delta.values.insert(entry.key, value);
+                    }
+                    if let Some(warning) = entry.warning {
+                        warnings.push(warning);
+                    }
+                }
+
+                // `layer_height` is the one key the profile consumes directly.
+                // Reject an unusable value here rather than letting the profile
+                // skip it: a silently skipped range would apply every other
+                // value it states while quietly ignoring the authored height.
+                if let Some(value) = delta.values.get("layer_height") {
+                    match value {
+                        ConfigValue::Float(height) if height.is_finite() && *height > 0.0 => {}
+                        other => {
+                            let layer_height = match other {
+                                ConfigValue::Float(height) => *height,
+                                ConfigValue::Int(height) => *height as f64,
+                                _ => f64::NAN,
+                            };
+                            return Err(LayerRangeLoadError::InvalidLayerHeight {
+                                object_id: object_id.clone(),
+                                range_index,
+                                layer_height,
+                            });
+                        }
+                    }
+                }
+
+                let admission = self.registry.admission_set(&scope);
+                for key in delta.values.keys() {
+                    if !admission.contains(key) {
+                        return Err(LayerRangeLoadError::Denied(ResolutionError::ScopeDenied {
+                            key: key.clone(),
+                            scope: scope.clone(),
+                        }));
+                    }
+                }
+
+                ranges.push(PendingLayerRange {
+                    range_index,
+                    min_z: input.min_z,
+                    max_z: input.max_z,
+                    delta,
+                });
+            }
+            pending.insert(object_id, ranges);
+        }
+
+        validate_layer_range_overlaps(&pending)?;
+
+        // Commit only after the entire input validated. The new ranges are
+        // built first so a construction failure cannot leave a partial object.
+        let mut committed = Vec::with_capacity(pending.len());
+        for (object_id, ranges) in pending {
+            let mut object_ranges = Vec::with_capacity(ranges.len());
+            for range in ranges {
+                object_ranges.push(LayerConfigRange::new(
+                    object_id.clone(),
+                    range.range_index,
+                    range.min_z,
+                    range.max_z,
+                    range.delta,
+                )?);
+            }
+            committed.push((object_id, object_ranges));
+        }
+        for (object_id, ranges) in committed {
+            self.layer_ranges.insert(object_id, ranges);
+        }
+        self.warnings.extend(warnings);
+        self.warnings.sort_by(warning_order);
+        Ok(())
+    }
+
     /// Finish ingestion and return the accepted authored values and derived selectors.
     ///
     /// An undeclared key is absent: it warns and is dropped at preparation,
@@ -241,6 +637,7 @@ impl<'registry> ConfigIngestor<'registry> {
         IngestionOutcome {
             scoped: ScopedConfig {
                 deltas: self.deltas,
+                layer_ranges: self.layer_ranges,
             },
             selector_values,
             warnings: self.warnings,
@@ -375,6 +772,55 @@ struct PendingEntry {
     /// `None` for an undeclared key: warned once, never retained.
     value: Option<ConfigValue>,
     warning: Option<IngestionWarning>,
+}
+
+/// One validated layer range awaiting atomic commit.
+struct PendingLayerRange {
+    range_index: u32,
+    min_z: f64,
+    max_z: f64,
+    delta: ScopeDelta,
+}
+
+/// Validate one world-Z interval for a layer range.
+fn valid_layer_range_interval(min_z: f64, max_z: f64) -> bool {
+    min_z.is_finite() && max_z.is_finite() && min_z >= 0.0 && min_z < max_z
+}
+
+/// Reject unequal non-`layer_height` values over non-empty range overlaps.
+///
+/// Grouped per object; `layer_height` is governed by profile trimming instead
+/// (canonical `layer_height_profile_from_ranges`), so it is never a conflict.
+fn validate_layer_range_overlaps(
+    pending: &BTreeMap<ObjectId, Vec<PendingLayerRange>>,
+) -> Result<(), LayerRangeLoadError> {
+    for (object_id, ranges) in pending {
+        for (first_index, first) in ranges.iter().enumerate() {
+            for second in ranges.iter().skip(first_index + 1) {
+                // Non-empty intersection: `[min_z, max_z)` half-open overlap.
+                if !(first.min_z < second.max_z && second.min_z < first.max_z) {
+                    continue;
+                }
+                for (key, first_value) in &first.delta.values {
+                    if key == "layer_height" {
+                        continue;
+                    }
+                    let Some(second_value) = second.delta.values.get(key) else {
+                        continue;
+                    };
+                    if first_value != second_value {
+                        return Err(LayerRangeLoadError::ConflictingOverlap {
+                            object_id: object_id.clone(),
+                            key: key.clone(),
+                            first_range: first.range_index,
+                            second_range: second.range_index,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 fn warning_order(first: &IngestionWarning, second: &IngestionWarning) -> std::cmp::Ordering {

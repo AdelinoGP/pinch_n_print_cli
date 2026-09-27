@@ -365,6 +365,7 @@ fn test_11_run_layer_planning_signature_matches_wit() {
         layer_height: 0.2,
         first_layer_height: 0.24,
         support_raft_layers: 2,
+        layer_zs: Vec::new(),
     }];
     let mut output = LayerPlanOutput::new();
 

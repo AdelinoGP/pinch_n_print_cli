@@ -20,6 +20,11 @@ rstar = "0.12"
 rayon = { version = "1.10", optional = true }
 boostvoronoi = { version = "0.12", optional = true }
 slicer-ir = { path = "../slicer-ir" }
+# Region mapping re-resolves per-region configs through the typed scope
+# resolver when a layer range covers the layer's top Z (packet
+# `config-scope-resolution_09`). `slicer-config` depends on `slicer-ir` only,
+# so this adds no cycle and compiles for `wasm32`.
+slicer-config = { path = "../slicer-config" }
 serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]

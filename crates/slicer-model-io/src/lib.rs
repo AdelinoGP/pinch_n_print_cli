@@ -7,10 +7,15 @@
 
 #![warn(missing_docs)]
 
+pub mod layer_config_ranges;
 pub mod loader;
 pub mod sidecar;
 pub mod writer;
 
+pub use layer_config_ranges::{
+    map_layer_config_ranges, read_3mf_layer_config_ranges, LayerRangeParseError,
+    MappedLayerConfigRange, RawLayerConfigRange,
+};
 pub use loader::{
     assemble_object, bed_center_mm, bed_extent_mm, bed_overflow_mm, check_basename_collisions,
     detect_format, load_model, place_bare_mesh_on_bed, read_3mf_project_settings, BedPlacement,

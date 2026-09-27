@@ -494,6 +494,55 @@ fn main() {
                 }
             };
             let mesh = std::sync::Arc::new(place_model_on_bed(mesh, &model, config.as_deref()));
+            // Model-authored layer ranges live only in a 3MF's
+            // `Metadata/layer_config_ranges.xml` member, so bare meshes
+            // (STL/OBJ) can never carry them and are not probed. Parse the
+            // member once here — the runtime never touches model bytes — and
+            // map its one-based object ordinals onto the loaded MeshIR object
+            // order (post-`place_model_on_bed`; that step is a pass-through
+            // for 3MF). A malformed member or unmappable ordinal fails the
+            // whole slice before any module loads, atomically.
+            let layer_ranges: Vec<slicer_config::LayerRangeInput> = if matches!(
+                slicer_model_io::detect_format(&model),
+                Ok(slicer_model_io::ModelFormat::ThreeMf)
+            ) {
+                let raw = match slicer_model_io::read_3mf_layer_config_ranges(&model) {
+                    Ok(raw) => raw,
+                    Err(e) => {
+                        eprintln!(
+                            "error: failed to read layer ranges from {}: {e}",
+                            model.display()
+                        );
+                        std::process::exit(1);
+                    }
+                };
+                let object_ids: Vec<slicer_ir::ObjectId> = mesh
+                    .objects
+                    .iter()
+                    .map(|object| object.id.clone())
+                    .collect();
+                match slicer_model_io::map_layer_config_ranges(&raw, &object_ids) {
+                    Ok(mapped) => mapped
+                        .into_iter()
+                        .map(|range| slicer_config::LayerRangeInput {
+                            object_id: range.object_id,
+                            source_index: range.source_index,
+                            min_z: range.min_z,
+                            max_z: range.max_z,
+                            values: range.values,
+                        })
+                        .collect(),
+                    Err(e) => {
+                        eprintln!(
+                            "error: failed to map layer ranges from {}: {e}",
+                            model.display()
+                        );
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                Vec::new()
+            };
             #[cfg(feature = "report")]
             let (report_opt, report_verbose_opt) = (report, report_verbose);
             #[cfg(not(feature = "report"))]
@@ -568,6 +617,7 @@ fn main() {
                 progress_events: !no_progress_events,
                 cancel_flag: Some(cancel_flag.clone()),
                 config_overrides,
+                layer_ranges,
             };
             match slicer_runtime::run_slice(opts) {
                 Ok(outcome) => {

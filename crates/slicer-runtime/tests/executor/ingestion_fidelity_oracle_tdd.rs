@@ -294,6 +294,7 @@ fn live_plans(inputs: &OracleInputs) -> LivePlans {
     let arachne = slicer_runtime::run::prepare_prepass_context(
         Arc::clone(&inputs.mesh),
         arachne_source,
+        Vec::new(),
         &module_dirs,
         true,
         false,
@@ -302,6 +303,7 @@ fn live_plans(inputs: &OracleInputs) -> LivePlans {
     let classic = slicer_runtime::run::prepare_prepass_context(
         Arc::clone(&inputs.mesh),
         classic_source,
+        Vec::new(),
         &module_dirs,
         true,
         false,

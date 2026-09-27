@@ -305,6 +305,7 @@ fn try_slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> Result<String, Pi
             layer_height: object.layer_height,
             first_layer_height: object.first_layer_height,
             support_raft_layers: object.support_raft_layers,
+            layer_zs: Vec::new(),
         })
         .collect();
 

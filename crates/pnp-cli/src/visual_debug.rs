@@ -27,6 +27,13 @@ const VERSION_1_1: &str = "1.1.0";
 /// (fail-closed, never silently ignored).
 const VERSION_1_2: &str = "1.2.0";
 
+/// Schema 1.3.0 (config-scope-resolution packet 09): adds the additive
+/// `scheduled_layer_zs` manifest field - the resolved layer-top Z schedule
+/// behind a model-source bundle. Everything 1.2.0 accepts stays accepted;
+/// the field is emitted only under a declared 1.3.0, so `1.0.0`/`1.1.0`/
+/// `1.2.0` manifests stay byte-unchanged (the key is skipped entirely).
+const VERSION_1_3: &str = "1.3.0";
+
 /// The schema 1.2.0 side-view visualization kind.
 const SILHOUETTE_KIND: &str = "silhouette";
 
@@ -52,10 +59,10 @@ const SILHOUETTE_TAP_STAGE_IDS: &[&str] = &[
 ];
 
 /// Whether a declared schema version gets the strict typed `options` parse
-/// (`deny_unknown_fields`, typed option validation). True for 1.1.0 and
-/// 1.2.0; a 1.0.0 request keeps the legacy loose read.
+/// (`deny_unknown_fields`, typed option validation). True for 1.1.0, 1.2.0,
+/// and 1.3.0; a 1.0.0 request keeps the legacy loose read.
 fn strict_options(schema_version: &str) -> bool {
-    schema_version == VERSION_1_1 || schema_version == VERSION_1_2
+    schema_version == VERSION_1_1 || schema_version == VERSION_1_2 || schema_version == VERSION_1_3
 }
 
 /// The resolved silhouette projection plane name for a visualization's
@@ -96,7 +103,7 @@ fn silhouette_tap_rejection_reason(tap: &str) -> String {
 }
 
 fn schema_supported(v: &str) -> bool {
-    v == VERSION || v == VERSION_1_1 || v == VERSION_1_2
+    v == VERSION || v == VERSION_1_1 || v == VERSION_1_2 || v == VERSION_1_3
 }
 
 /// The legend version recorded for a bundle: a 1.0.0 request renders only
@@ -104,8 +111,13 @@ fn schema_supported(v: &str) -> bool {
 /// (a strict superset — see `slicer_runtime::visual_debug_style`).
 /// A 1.2.0 request records the same legend as 1.1.0: silhouettes add fill
 /// classes, not glyphs, so `LEGEND_VERSION` is deliberately not bumped.
+/// A 1.3.0 request records the same legend again: `scheduled_layer_zs` adds
+/// a schedule readout, not glyphs.
 fn legend_version_for(schema_version: &str) -> &str {
-    if schema_version == VERSION_1_1 || schema_version == VERSION_1_2 {
+    if schema_version == VERSION_1_1
+        || schema_version == VERSION_1_2
+        || schema_version == VERSION_1_3
+    {
         slicer_runtime::LEGEND_VERSION
     } else {
         VERSION
@@ -664,7 +676,10 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
         return Err(ValidationError::SchemaVersion);
     }
     let strict = strict_options(&req.schema_version);
-    let is_v1_2 = req.schema_version == VERSION_1_2;
+    // Schema 1.2.0 introduced `silhouette`; 1.3.0 is a strict superset of
+    // 1.2.0 (it adds only the additive `scheduled_layer_zs` manifest
+    // readout), so every 1.2.0-gated surface stays accepted there.
+    let is_v1_2_plus = req.schema_version == VERSION_1_2 || req.schema_version == VERSION_1_3;
     if !(1..=3).contains(&req.resolution_scale) {
         return Err(ValidationError::ResolutionScale);
     }
@@ -681,7 +696,7 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
             // gated, so a pre-1.2 request gets a named requires-1.2.0
             // error naming the fix rather than the generic unknown-kind
             // rejection.
-            if !is_v1_2 {
+            if !is_v1_2_plus {
                 return Err(ValidationError::SilhouetteRequiresSchema12);
             }
         } else if !matches!(
@@ -739,7 +754,7 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
         // Schema 1.2.0: `options.view` is silhouette-only and 1.2.0-only.
         match opts.view.as_deref() {
             None => {}
-            Some(_) if !is_v1_2 => {
+            Some(_) if !is_v1_2_plus => {
                 return Err(ValidationError::InvalidSilhouetteView {
                     message: format!(
                         "option 'view' requires schema_version \"{VERSION_1_2}\" (this request declares '{}')",
@@ -829,7 +844,7 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
         // pre-1.2.0 request hears about the version, not the kind; the kind
         // gate is a named validation error, never a parse/unknown-key one.
         if let Some(composited) = &opts.composited_overlays {
-            if !is_v1_2 {
+            if !is_v1_2_plus {
                 return Err(ValidationError::InvalidOverlays {
                     message: format!(
                         "option 'composited_overlays' requires schema_version \"{VERSION_1_2}\" \
@@ -902,7 +917,7 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
     // Schema 1.2.0 (packet 247): bundle-wide silhouette rules. Ordered so
     // the most specific misuse is named first: mixing, then the bundle
     // plane, then frame / source / tap support.
-    if is_v1_2
+    if is_v1_2_plus
         && req
             .visualizations
             .iter()
@@ -1094,6 +1109,16 @@ pub struct Manifest {
     /// — a non-selected layer is never executed, so it never appears here.
     #[serde(default)]
     pub executed_layer_indices: Vec<i64>,
+    /// Schema 1.3.0 (config-scope-resolution packet 09): the resolved
+    /// layer-top Z schedule behind a model-source bundle, in millimetres
+    /// (each entry is a `GlobalLayer.z` from `LayerPlanIR.global_layers`,
+    /// i.e. the layer top). Present only for a model source whose request
+    /// declared `schema_version` `"1.3.0"`; `None` — and therefore absent
+    /// from the JSON — on a standalone G-code source, on a model request
+    /// with no taps (no schedule is ever resolved), and on every
+    /// 1.0.0/1.1.0/1.2.0 bundle, whose manifests stay byte-unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scheduled_layer_zs: Option<Vec<f64>>,
     /// Schema 1.1.0: the per-tool color table, emitted whenever any
     /// visualization in this bundle used `color_by: "tool"`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1993,6 +2018,7 @@ fn run_model_source(
         Vec<String>,
         Vec<LayerExpansionEntry>,
         Vec<i64>,
+        Option<Vec<f64>>,
         Vec<(String, Vec<u8>)>,
         Option<Vec<ToolPaletteEntry>>,
     ),
@@ -2016,7 +2042,8 @@ fn run_model_source(
     if tap_ids.is_empty() {
         // No taps selected: nothing to capture. Model/modules are never
         // touched (AC-N1 — ordinary slicing and no-tap requests must not
-        // pay any capture cost).
+        // pay any capture cost). No schedule is ever resolved, so no
+        // `scheduled_layer_zs` is reported either.
         return Ok((
             source,
             Some(VERSION.into()),
@@ -2025,6 +2052,7 @@ fn run_model_source(
             Vec::new(),
             Vec::new(),
             Vec::new(),
+            None,
             Vec::new(),
             None,
         ));
@@ -2049,6 +2077,46 @@ fn run_model_source(
         ))
     })?;
     let config_source = load_visual_debug_config(config.as_deref())?;
+    // Model-authored layer ranges live only in a 3MF project's
+    // `Metadata/layer_config_ranges.xml` member; bare meshes (STL/OBJ) cannot
+    // carry them and are not probed. Parse once here and map one-based object
+    // ordinals onto the loaded MeshIR object order, matching the slice arm in
+    // `main.rs`; a malformed member or unmappable ordinal fails the whole
+    // request before any module loads.
+    let layer_ranges: Vec<slicer_config::LayerRangeInput> = if matches!(
+        slicer_model_io::detect_format(&model_path),
+        Ok(slicer_model_io::ModelFormat::ThreeMf)
+    ) {
+        let raw = slicer_model_io::read_3mf_layer_config_ranges(&model_path).map_err(|e| {
+            VisualDebugError::CaptureFailed(format!(
+                "failed to read layer ranges from {}: {e}",
+                model_path.display()
+            ))
+        })?;
+        let object_ids: Vec<slicer_ir::ObjectId> = mesh
+            .objects
+            .iter()
+            .map(|object| object.id.clone())
+            .collect();
+        slicer_model_io::map_layer_config_ranges(&raw, &object_ids)
+            .map_err(|e| {
+                VisualDebugError::CaptureFailed(format!(
+                    "failed to map layer ranges from {}: {e}",
+                    model_path.display()
+                ))
+            })?
+            .into_iter()
+            .map(|range| slicer_config::LayerRangeInput {
+                object_id: range.object_id,
+                source_index: range.source_index,
+                min_z: range.min_z,
+                max_z: range.max_z,
+                values: range.values,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     // Retained raw copy: `tool_color_source: "filament"` reads the authored
     // `filament_colour` palette from the raw source map (the same key
     // `slicer-gcode`'s serializer reads), which `prepare_prepass_context`
@@ -2098,6 +2166,7 @@ fn run_model_source(
     let mut ctx = slicer_runtime::prepare_prepass_context(
         Arc::new(mesh),
         config_source,
+        layer_ranges,
         module_dirs,
         false,
         true,
@@ -2128,6 +2197,17 @@ fn run_model_source(
         .into_iter()
         .map(|i| i as u32)
         .collect();
+
+    // Schema 1.3.0 (config-scope-resolution packet 09): a 1.3.0 model
+    // request reports the resolved schedule itself — the layer top Z of
+    // every `LayerPlanIR.global_layers` entry, in millimetres. Older
+    // declared versions get `None`, so their manifests carry no
+    // `scheduled_layer_zs` key at all and stay byte-identical. This is
+    // read straight off the just-committed plan the selectors resolved
+    // against, so it is the schedule the pipeline actually ran, never a
+    // re-derivation.
+    let scheduled_layer_zs: Option<Vec<f64>> =
+        (req.schema_version == VERSION_1_3).then(|| schedule.iter().filter_map(|s| s.z).collect());
 
     // Split the requested taps into the three closures that source them
     // (ADR-0040 "three tap classes"): the seven arena taps still run
@@ -2827,6 +2907,7 @@ fn run_model_source(
         output.closure_stage_ids,
         layer_expansions,
         executed_layer_indices,
+        scheduled_layer_zs,
         rendered_files,
         tool_palette,
     ))
@@ -2871,6 +2952,7 @@ pub fn run_visual_debug(
         executed_stage_ids,
         layer_expansions,
         executed_layer_indices,
+        scheduled_layer_zs,
         rendered_files,
         tool_palette,
     ) = match &req.source {
@@ -2975,6 +3057,10 @@ pub fn run_visual_debug(
                     Vec::new(),
                     Vec::new(),
                     Vec::new(),
+                    // Standalone G-code sources have no `LayerPlanIR` and
+                    // therefore no resolved schedule to report: always `None`
+                    // (spec Step 7), independent of the declared version.
+                    None,
                     Vec::new(),
                     None,
                 )
@@ -3161,6 +3247,9 @@ pub fn run_visual_debug(
                         Vec::new(),
                         Vec::new(),
                         Vec::new(),
+                        // Standalone G-code sources never carry a resolved
+                        // layer-plan schedule (spec Step 7).
+                        None,
                         rendered_files,
                         gcode_tool_palette,
                     )
@@ -3281,6 +3370,9 @@ pub fn run_visual_debug(
                         Vec::new(),
                         Vec::new(),
                         Vec::new(),
+                        // Standalone G-code sources never carry a resolved
+                        // layer-plan schedule (spec Step 7).
+                        None,
                         rendered_files,
                         gcode_tool_palette,
                     )
@@ -3340,6 +3432,7 @@ pub fn run_visual_debug(
         executed_stage_ids,
         layer_expansions,
         executed_layer_indices,
+        scheduled_layer_zs,
         tool_palette,
     };
     let manifest_path = output_dir.join("manifest.json");

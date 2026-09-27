@@ -111,6 +111,7 @@ fn layer_planning_objects_from_config(config: &ConfigView) -> Vec<LayerPlanningO
                 layer_height,
                 first_layer_height,
                 support_raft_layers: 0,
+                layer_zs: Vec::new(),
             })
         })
         .collect();

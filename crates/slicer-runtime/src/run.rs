@@ -413,6 +413,7 @@ fn resolve_runtime_scopes(
                         modifier_ids: modifiers.clone(),
                         paint_semantics: paints.clone(),
                         tool_index,
+                        layer_top_z: None,
                     };
                     let config = resolve_scope_stack(registry, scoped, &target, &expansion_context)
                         .map_err(|error| {
@@ -709,12 +710,14 @@ fn layer_planning_objects(object_layers: &[ResolvedObjectLayerConfig]) -> Vec<La
             let layer_height = object.layer_height;
             let first_layer_height = object.first_layer_height;
             let support_raft_layers = object.support_raft_layers;
+            let layer_zs = object.layer_z_tops.clone();
             LayerPlanningObject {
                 object_id,
                 object_height,
                 layer_height,
                 first_layer_height,
                 support_raft_layers,
+                layer_zs,
             }
         })
         .collect()
@@ -831,6 +834,8 @@ pub struct SliceRunOptions {
     /// `filament_colour`) that seed `config_source` as defaults. An explicit
     /// `--config` key always wins over an override with the same name.
     pub config_overrides: std::collections::HashMap<String, ConfigValue>,
+    /// Model-authored layer configuration ranges, parsed once by the caller.
+    pub layer_ranges: Vec<slicer_config::LayerRangeInput>,
 }
 
 /// Quiet test baseline - `progress_events: false` deliberately differs from
@@ -854,6 +859,7 @@ impl Default for SliceRunOptions {
             progress_events: false,
             cancel_flag: None,
             config_overrides: std::collections::HashMap::new(),
+            layer_ranges: Vec::new(),
         }
     }
 }
@@ -880,6 +886,13 @@ pub struct SliceOutcome {
     /// warn-to-drop flip (packet config-scope-resolution_06, Step 6b) consumes
     /// this list instead of dropping silently (docs/22 §4, AC-5).
     pub ingestion_warnings: Vec<IngestionWarning>,
+    /// The `RegionMapIR` the prepass committed, when one was committed.
+    ///
+    /// The authoritative per-region resolved config for the slice that ran,
+    /// exposed so a caller can observe per-layer values the emitted G-code does
+    /// not carry (the emitter writes one config block per print, not per
+    /// region). `None` when no prepass committed a region map.
+    pub region_map: Option<Arc<slicer_ir::RegionMapIR>>,
 }
 
 /// Error returned by `run_slice`.
@@ -990,14 +1003,16 @@ fn run_pipeline_fork(
     config: PipelineConfig,
     config_source: &std::collections::HashMap<String, ConfigValue>,
     registry: &slicer_config::ConfigSchemaRegistry,
+    scoped_config: &slicer_config::ScopedConfig,
     expansion_context: &ExpansionContext,
     profile: Option<&Arc<ProfileAggregator>>,
     #[cfg(feature = "report")] dag_snapshot: Option<crate::report::ReportDagSnapshot>,
 ) -> Result<crate::pipeline::PipelineOutput, SliceRunError> {
     let sink_arc = Arc::clone(&channel.sink);
     let expansion_authority = ConfigExpansionAuthority {
-        _registry: registry,
-        _context: expansion_context,
+        registry,
+        scoped: scoped_config,
+        expansion: expansion_context,
     };
 
     // Profiling needs the adapter even under `--no-progress-events`: it is the
@@ -1326,6 +1341,7 @@ pub fn run_slice_with_collector(
         &search_roots,
         num_cpus_guess(),
         &config_source,
+        &opts.layer_ranges,
         opts.profile,
         &integrated_regs,
         &native_entries,
@@ -1641,6 +1657,7 @@ pub fn run_slice_with_collector(
         pipeline_config,
         &expanded_global_source,
         &registry,
+        &scoped_config,
         &expansion_context,
         profile.as_ref(),
         #[cfg(feature = "report")]
@@ -1744,6 +1761,7 @@ pub fn run_slice_with_collector(
         wallclock_ms,
         profile: profile_summary,
         ingestion_warnings,
+        region_map: pipeline_output.region_map,
     })
 }
 
@@ -1801,6 +1819,7 @@ pub struct PrepassContext {
 pub fn prepare_prepass_context(
     mesh_ir: Arc<MeshIR>,
     mut config_source: std::collections::HashMap<String, ConfigValue>,
+    layer_ranges: Vec<slicer_config::LayerRangeInput>,
     module_dirs: &[PathBuf],
     no_default_module_paths: bool,
     no_integrated_modules: bool,
@@ -1829,6 +1848,7 @@ pub fn prepare_prepass_context(
         &search_roots,
         num_cpus_guess(),
         &config_source,
+        &layer_ranges,
         false,
         &integrated_registrations,
         &native_entries,
@@ -1929,8 +1949,9 @@ pub fn prepare_prepass_context(
         &config_bounds,
         &wasm_handles,
         ConfigExpansionAuthority {
-            _registry: &registry,
-            _context: &expansion_context,
+            registry: &registry,
+            scoped: &scoped_config,
+            expansion: &expansion_context,
         },
     )
     .map_err(|e| SliceRunError(format!("prepass failed: {e}")))?;
