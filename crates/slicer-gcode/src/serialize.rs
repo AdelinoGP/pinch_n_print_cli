@@ -309,9 +309,18 @@ fn serialize_width_comments(
 /// Convert a `ResolvedConfig` to a flat `HashMap<String, ConfigValue>`.
 ///
 /// Used to populate the CONFIG_BLOCK with the effective slicer settings.
-/// `Option`-typed fields that are `None` are omitted; all others are included.
+/// `Option`-typed fields that are `None` are omitted. The host's wall-path
+/// precision is added here rather than to `ResolvedConfig::to_config_map`,
+/// which also feeds module ConfigViews and must not change for disclosure alone.
 pub fn resolved_config_to_map(cfg: &ResolvedConfig) -> HashMap<String, ConfigValue> {
-    cfg.to_config_map()
+    let mut map = cfg.to_config_map();
+    // Render from the f32 field so the appendix does not display the expanded
+    // f64 representation of an otherwise short decimal such as 0.025.
+    map.insert(
+        "gcode_resolution".into(),
+        ConfigValue::String(cfg.gcode_resolution.to_string()),
+    );
+    map
 }
 
 /// Produce the CONFIG_BLOCK text (packet 55 Step 5 / AC-8, AC-9).
@@ -391,6 +400,21 @@ fn serialize_config_block(
         })
         .unwrap_or_else(|| flavor.config_str());
     emit_config_kv(&mut out, &mut emitted, "gcode_flavor", flavor_value);
+
+    // Derive OrcaSlicer-named appendix keys whose PnP resolved-config name
+    // differs (see ORCA_CONFIG_ALIAS_KEYS). Emitted before the raw passthrough
+    // so a raw key in OrcaSlicer's spelling cannot disclose a value the slice
+    // did not apply — PnP honours none of the alias names as inputs. The
+    // padding loop below supplies the fallback when the source key is absent
+    // (e.g. a serializer constructed without a resolved config).
+    for (appendix_key, pnp_key) in ORCA_CONFIG_ALIAS_KEYS {
+        if let Some(rendered) = raw_config
+            .get(*pnp_key)
+            .and_then(render_appendix_alias_value)
+        {
+            emit_config_kv(&mut out, &mut emitted, appendix_key, &rendered);
+        }
+    }
 
     // Resolved configurations supply these values through raw_config; retain
     // canonical defaults for serializers constructed without resolved config.
@@ -496,7 +520,7 @@ const ORCA_CONFIG_PADDING: &[(&str, &str)] = &[
     ("brim_width", "0"),
     ("skirt_loops", "1"),
     ("skirt_distance", "2"),
-    ("sparse_infill_density", "15%"),
+    ("sparse_infill_density", "20%"),
     ("sparse_infill_pattern", "grid"),
     ("top_surface_pattern", "monotonic"),
     ("bottom_surface_pattern", "monotonic"),
@@ -560,6 +584,70 @@ const SUPPORT_CONFIG_DEFAULTS: &[(&str, &str)] = &[
     ("support_top_z_distance", "0.2"),
     ("support_bottom_z_distance", "0.2"),
 ];
+
+/// Appendix keys PnP carries under a different config name, as
+/// `(appendix_key, pnp_key)`.
+///
+/// [`ResolvedConfig::to_config_map`] and the module manifests export the PnP
+/// spelling — `wall_count` for the wall loop count, `infill_angle` for the
+/// infill direction, `seam_mode` for the seam position — while OrcaSlicer's
+/// appendix reader (`ConfigBase::load_from_gcode_file` →
+/// `GCodeProcessor::apply_config`) names the same setting `wall_loops` /
+/// `infill_direction` / `seam_position`. Without this derivation the appendix
+/// key misses the source value in the effective config, falls through to
+/// [`ORCA_CONFIG_PADDING`]'s static default, and mis-discloses every
+/// non-default setting (measured 2026-09-22: `wall_count` 1 and 3 both printed
+/// `wall_loops = 2` while the wall output changed accordingly).
+///
+/// Every row is a 1:1 setting. Keys that look related but are not the same
+/// setting are deliberately absent: `sparse_infill_density` is a distinct
+/// perimeter-module percentage (module default `20`, percent unit) while the
+/// resolved `infill_density` is a fraction (default `0.2`);
+/// `raft_layers` is split across `support_raft_layers`, `base_raft_layers`, and
+/// `interface_raft_layers`; `ironing_type` is a narrowed bool upstream
+/// (`ironing_enabled`), not a rename. Padding-only values remain Orca defaults,
+/// not evidence of PnP's effective settings.
+const ORCA_CONFIG_ALIAS_KEYS: &[(&str, &str)] = &[
+    // classic-/arachne-perimeters read `wall_count`; Orca names the same
+    // plain-integer count `wall_loops`.
+    ("wall_loops", "wall_count"),
+    // gyroid-/rectilinear-infill read `infill_angle`; Orca names the same
+    // degrees value `infill_direction`.
+    ("infill_direction", "infill_angle"),
+    // Host precision key. Orca has one global `resolution`; the adjudicated
+    // PnP counterpart is `gcode_resolution` (03-asset-scoped-gap.md), whose
+    // resolved default is `0.0125` (`ResolvedConfig::gcode_resolution`), not
+    // Orca's snapshot default `0.01`.
+    ("resolution", "gcode_resolution"),
+    // Legacy Slic3r spelling of the support toggle; the resolved bool is
+    // `enable_support`.
+    ("support_material", "enable_support"),
+    // seam-placer / seam-planner-default read `seam_mode`; Orca names the
+    // enum `seam_position`.
+    ("seam_position", "seam_mode"),
+    // slicer-scheduler reads `spiral_vase` (execution_plan.rs
+    // `SPIRAL_VASE_CONFIG_KEY`); Orca names the bool `spiral_mode`.
+    ("spiral_mode", "spiral_vase"),
+    // fuzzy-skin reads the non-namespaced `thickness` / `point_distance`;
+    // Orca names them `fuzzy_skin_thickness` / `fuzzy_skin_point_distance`
+    // (03-asset-scoped-gap.md; rename workstream ticket 103).
+    ("fuzzy_skin_thickness", "thickness"),
+    ("fuzzy_skin_point_distance", "point_distance"),
+];
+
+/// Render an alias source value into the appendix's scalar spelling, or `None`
+/// when the variant has no scalar rendering (the [`ORCA_CONFIG_PADDING`]
+/// default then stands). Bools render as `1`/`0` — the only two literals
+/// OrcaSlicer's `ConfigOptionBool::deserialize` accepts.
+fn render_appendix_alias_value(value: &ConfigValue) -> Option<String> {
+    match value {
+        ConfigValue::Bool(b) => Some(u8::from(*b).to_string()),
+        ConfigValue::Int(i) => Some(i.to_string()),
+        ConfigValue::Float(f) => Some(format!("{f}")),
+        ConfigValue::String(s) => Some(s.clone()),
+        ConfigValue::List(_) | ConfigValue::Percent(_) | ConfigValue::FloatOrPercent { .. } => None,
+    }
+}
 
 /// A `GCodeSerializer` wrapper that injects `THUMBNAIL_BLOCK` and `CONFIG_BLOCK`
 /// from the raw config source, delegating core serialization to the inner serializer.
@@ -1002,5 +1090,65 @@ mod tests {
             !block.contains("Float("),
             "list elements must not be Debug-formatted; got:\n{block}"
         );
+    }
+
+    #[test]
+    fn config_block_discloses_resolved_wall_count_under_orca_name() {
+        // The old padding always claimed two walls even when the perimeter
+        // generators received wall_count = 1 or 3.
+        for wall_count in [1, 3] {
+            let cfg = ResolvedConfig {
+                wall_count,
+                ..ResolvedConfig::default()
+            };
+            let mut map = resolved_config_to_map(&cfg);
+            // An Orca-named raw field is not the setting PnP applied.
+            map.insert("wall_loops".into(), ConfigValue::Int(99));
+            let block = serialize_config_block(&map, &filament_colour_csv(1), GcodeFlavor::Marlin);
+            let actual: Vec<_> = block
+                .lines()
+                .filter(|line| line.starts_with("; wall_loops = "))
+                .collect();
+            assert_eq!(actual, [format!("; wall_loops = {wall_count}")], "{block}");
+        }
+    }
+
+    #[test]
+    fn config_block_discloses_distinct_resolved_precision_and_infill_direction() {
+        let cfg = ResolvedConfig {
+            gcode_resolution: 0.025,
+            infill_resolution: 0.08,
+            infill_angle: 30.0,
+            ..ResolvedConfig::default()
+        };
+        let mut map = resolved_config_to_map(&cfg);
+        map.insert("resolution".into(), ConfigValue::Float(0.5));
+        let block = serialize_config_block(&map, &filament_colour_csv(1), GcodeFlavor::Marlin);
+        let resolution: Vec<_> = block
+            .lines()
+            .filter(|line| line.starts_with("; resolution = "))
+            .collect();
+        let direction: Vec<_> = block
+            .lines()
+            .filter(|line| line.starts_with("; infill_direction = "))
+            .collect();
+        assert_eq!(resolution, ["; resolution = 0.025"], "{block}");
+        assert_eq!(direction, ["; infill_direction = 30"], "{block}");
+    }
+
+    #[test]
+    fn config_block_keeps_sparse_infill_density_distinct_from_fractional_infill_density() {
+        // sparse_infill_density belongs to perimeter modules and is measured
+        // in percent; the resolved infill_density is a separate fraction.
+        let block = serialize_config_block(
+            &resolved_config_to_map(&ResolvedConfig::default()),
+            &filament_colour_csv(1),
+            GcodeFlavor::Marlin,
+        );
+        let density: Vec<_> = block
+            .lines()
+            .filter(|line| line.starts_with("; sparse_infill_density = "))
+            .collect();
+        assert_eq!(density, ["; sparse_infill_density = 20%"], "{block}");
     }
 }
