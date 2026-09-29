@@ -6,9 +6,10 @@
 use std::collections::{BTreeMap, HashMap};
 
 use slicer_config::{
-    assemble_registry, resolve_scope_stack, ConfigIngestionError, ConfigIngestor,
-    ConfigSchemaRegistry, ConfigScope, ExpansionContext, HostChannels, ModuleDeclaration,
-    ResolutionError, ResolutionTarget, ScopeDelta, ScopedConfig,
+    assemble_registry, canonical_config_key, resolve_scope_stack, ConfigIngestionError,
+    ConfigIngestor, ConfigSchemaRegistry, ConfigScope, ExpansionContext, HostChannels,
+    ModuleDeclaration, ResolutionError, ResolutionTarget, ScopeDelta, ScopedConfig,
+    CONFIG_KEY_ALIASES,
 };
 use slicer_ir::{ConfigKey, ConfigValue, PaintSemantic, ResolvedConfig};
 
@@ -357,22 +358,6 @@ fn is_numeric_field_type(field_type: &str) -> bool {
     )
 }
 
-/// Legacy config-key spellings and the canonical key each resolves to.
-///
-/// Entries are `(legacy, canonical)`. Supplying **both** spellings in one
-/// source is rejected rather than silently resolved: with a `HashMap` source
-/// there is no defined ordering between the two keys, so last-writer-wins would
-/// make the resolved value depend on hash iteration order — non-deterministic
-/// across runs. Rejecting is the pre-existing precedent set by
-/// `first_layer_line_width`, and is applied uniformly here.
-const CONFIG_KEY_ALIASES: [(&str, &str); 2] = [
-    ("first_layer_line_width", "initial_layer_line_width"),
-    // Renamed to the canonical OrcaSlicer spelling (`PrintConfig.cpp`'s
-    // `support_threshold_angle`); the old in-tree name stays accepted so
-    // existing profiles and 3MF project settings keep resolving.
-    ("support_overhang_angle", "support_threshold_angle"),
-];
-
 /// Rejects any source that supplies both spellings of an aliased key.
 fn reject_alias_conflicts<F>(contains: F) -> Result<(), ConfigResolutionError>
 where
@@ -388,15 +373,6 @@ where
         }
     }
     Ok(())
-}
-
-fn canonical_config_key(key: &str) -> &str {
-    for (legacy, canonical) in CONFIG_KEY_ALIASES {
-        if key == legacy {
-            return canonical;
-        }
-    }
-    key
 }
 
 /// Decode and validate a legacy flat source for the unified scope-stack resolver.

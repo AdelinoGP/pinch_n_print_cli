@@ -41,20 +41,14 @@ impl InfillLinker {
 #[slicer_module]
 impl LayerModule for InfillLinker {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let infill_overlap = match config.get("infill_overlap") {
-            Some(ConfigValue::Float(value))
-                if value.is_finite() && *value >= 0.0 && *value <= 1.0 =>
-            {
-                *value
-            }
-            Some(ConfigValue::Int(value)) if (0..=1).contains(value) => *value as f64,
-            _ => 0.45,
-        };
-        let line_width = match config.get("line_width") {
-            Some(ConfigValue::Float(value)) if value.is_finite() && *value > 0.0 => *value as f32,
-            Some(ConfigValue::Int(value)) if *value > 0 => *value as f32,
-            _ => 0.4,
-        };
+        // Required reads: both keys are declared in infill-linker.toml with
+        // registry defaults (`infill_overlap` 0.45, `line_width` 0.4), and the
+        // registry seeds every declared default into a bound view — absence is
+        // a contract violation, not a configurable fallback (packet 06
+        // fail-closed semantics; mirrors arachne-perimeters). Declared bounds
+        // are enforced host-side at ingestion.
+        let infill_overlap = config.require_float("infill_overlap")?;
+        let line_width = config.require_float("line_width")? as f32;
         Ok(Self {
             infill_overlap,
             line_width,

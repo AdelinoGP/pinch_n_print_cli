@@ -109,46 +109,32 @@ fn point_in_polygon(px: f32, py: f32, polygon: &[(f32, f32)]) -> bool {
 }
 
 impl WipeTower {
-    /// Construct from a config view, reading wipe tower settings with defaults.
+    /// Construct from a config view, reading wipe tower settings.
+    ///
+    /// Required reads (packet 06 fail-closed semantics; mirrors
+    /// arachne-perimeters): the registry seeds every declared key's default
+    /// into a bound view, so an absent key is a contract violation, not a
+    /// configurable fallback. `wipe_tower_enabled` is additionally a typed
+    /// host `ResolvedConfig` field, whose own default travels through
+    /// `to_config_map` (`false`, matching the pre-migration literal).
     pub fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let enabled = match config.get("wipe_tower_enabled") {
-            Some(ConfigValue::Bool(b)) => *b,
-            _ => false,
-        };
+        let enabled = config.require_bool("wipe_tower_enabled")?;
 
-        let tower_x = match config.get("wipe_tower_x") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 0.0,
-        };
+        let tower_x = config.require_float("wipe_tower_x")? as f32;
 
-        let tower_y = match config.get("wipe_tower_y") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 0.0,
-        };
+        let tower_y = config.require_float("wipe_tower_y")? as f32;
 
-        let tower_width = match config.get("wipe_tower_width") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 60.0,
-        };
+        let tower_width = config.require_float("wipe_tower_width")? as f32;
 
-        let purge_volume = match config.get("wipe_tower_purge_volume") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            // Match the manifest default (wipe-tower.toml: default 10.0, max 50.0).
-            // The previous 70.0 fallback exceeded the schema max and is reachable
-            // now that multi-tool prints auto-enable the wipe tower without
-            // necessarily supplying an explicit purge volume.
-            _ => 10.0,
-        };
+        // Required read: the manifest default (10.0) is seeded into every
+        // bound view. The previous 70.0 literal fallback exceeded the schema
+        // max and was lowered to the manifest default in commit 6973f5c1
+        // (`fix(parity): close 4 OrcaSlicer parity gaps`).
+        let purge_volume = config.require_float("wipe_tower_purge_volume")? as f32;
 
-        let line_width = match config.get("line_width") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 0.4,
-        };
+        let line_width = config.require_float("line_width")? as f32;
 
-        let retract_length = match config.get("retract_length") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 2.0,
-        };
+        let retract_length = config.require_float("retract_length")? as f32;
 
         // Parse bed_shape from config (interleaved [x0,y0,x1,y1,...]).
         // Default to a 250×250 mm rectangle if not provided.

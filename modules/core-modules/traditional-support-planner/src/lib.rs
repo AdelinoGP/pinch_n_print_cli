@@ -32,23 +32,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use slicer_ir::SupportPlanDeclineReason;
 use slicer_sdk::prelude::*;
 
-/// Default number of dense interface layers at the top of a support column.
-const DEFAULT_INTERFACE_TOP_LAYERS: i32 = 2;
-/// Default number of dense interface layers at the bottom of a support column.
-/// Automatic values are expanded by the host before this guest sees config.
-const DEFAULT_INTERFACE_BOTTOM_LAYERS: i32 = 2;
-/// Default base fill pattern.
-const DEFAULT_BASE_PATTERN: &str = "rectilinear";
-/// Default XY clearance between support and object, matching OrcaSlicer's
-/// `support_object_xy_distance` default of 0.35 mm.
-const DEFAULT_OBJECT_XY_DISTANCE_MM: f32 = 0.35;
-/// Default extrusion line width in mm, used to expand the canonical bottom
-/// contact area (`support_material_flow.scaled_width()`).
-const DEFAULT_LINE_WIDTH_MM: f32 = 0.4;
-/// Default support base pattern spacing in mm, matching the manifest
-/// `support_base_pattern_spacing` default. Canonical `SupportGridPattern`
-/// derives its grid resolution and oversampling from this spacing.
-const DEFAULT_BASE_PATTERN_SPACING_MM: f32 = 2.5;
 /// Canonical `SupportGridPattern::island_samples` shrinks each expolygon by
 /// `offset(expoly, -20)` orca nm before sampling it. 20 orca nm is 0.2 PnP
 /// units, which truncates to 0; rounded AWAY from zero to one whole unit
@@ -63,10 +46,6 @@ const OFFSET_TO_PROPAGATE: i64 = -1;
 /// support extrusion flow. The `+5` is 0.05 PnP units, rounded UP to `1` (the
 /// conservative direction: the printed area may never under-cover).
 const OFFSET_TO_SLICE_EPSILON: i64 = 1;
-/// Default vertical gap between a support contact and the model above it.
-/// Matches OrcaSlicer's `support_top_z_distance` default of 0.2 mm. This was
-/// `0.0`, so support was printed flush against the overhang with no gap.
-const DEFAULT_TOP_Z_DISTANCE_MM: f32 = 0.2;
 
 /// Which area-propagation path the traditional planner uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,35 +101,22 @@ pub struct SupportPlanner {
 #[slicer_module]
 impl PrepassModule for SupportPlanner {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let enabled = match config.get("enable_support") {
-            Some(ConfigValue::Bool(b)) => *b,
-            _ => true,
-        };
+        // Every key read below is declared in this module's manifest with a
+        // registry default, so an always-resolved view holds all of them; a
+        // missing or wrong-typed value is a config defect, not a fallback.
+        let enabled = config.require_bool("enable_support")?;
         let support_family = canonical_support_family(config);
-        let support_interface_top_layers = match config.get("support_interface_top_layers") {
-            Some(ConfigValue::Int(n)) => *n as i32,
-            Some(ConfigValue::Float(n)) => *n as i32,
-            _ => DEFAULT_INTERFACE_TOP_LAYERS,
-        };
-        let support_interface_bottom_layers = match config.get("support_interface_bottom_layers") {
-            Some(ConfigValue::Int(n)) => *n as i32,
-            Some(ConfigValue::Float(n)) => *n as i32,
-            _ => DEFAULT_INTERFACE_BOTTOM_LAYERS,
-        };
-        let support_base_pattern = match config.get("support_base_pattern") {
-            Some(ConfigValue::String(s)) => s.clone(),
-            _ => DEFAULT_BASE_PATTERN.to_string(),
-        };
-        let support_top_z_distance_mm = match config.get("support_top_z_distance_mm") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            Some(ConfigValue::Int(v)) => *v as f32,
-            _ => DEFAULT_TOP_Z_DISTANCE_MM,
-        };
-        let support_layer_height_mm = match config.get("support_layer_height_mm") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            Some(ConfigValue::Int(v)) => *v as f32,
-            _ => 0.0,
-        };
+        let support_interface_top_layers =
+            config.require_int("support_interface_top_layers")? as i32;
+        // Automatic values are expanded by the host before this guest sees
+        // config (packet 4), so the delivered value is already concrete.
+        let support_interface_bottom_layers =
+            config.require_int("support_interface_bottom_layers")? as i32;
+        let support_base_pattern = config.require_string("support_base_pattern")?.to_string();
+        let support_top_z_distance_mm = config.require_float("support_top_z_distance_mm")? as f32;
+        // `0.0` is the sentinel for "same as the model layer height" (see the
+        // manifest declaration), so the zero value must flow through.
+        let support_layer_height_mm = config.require_float("support_layer_height_mm")? as f32;
         // Packet 239c: default true, matching the manifest declaration and
         // canonical `PrintConfig.cpp` `init_fff_params` (coBool, default
         // true). When true, `plan_candidate` derives free-floating
@@ -164,21 +130,10 @@ impl PrepassModule for SupportPlanner {
         // `support_overhang_angle` is no longer read here. Contact detection
         // moved to `PrePass::SupportAnalysis`, which consumes that key from the
         // resolved config and hands this planner finished contacts.
-        let support_object_xy_distance = match config.get("support_object_xy_distance") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            Some(ConfigValue::Int(v)) => *v as f32,
-            _ => DEFAULT_OBJECT_XY_DISTANCE_MM,
-        };
-        let line_width_mm = match config.get("line_width") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            Some(ConfigValue::Int(v)) => *v as f32,
-            _ => DEFAULT_LINE_WIDTH_MM,
-        };
-        let support_base_pattern_spacing_mm = match config.get("support_base_pattern_spacing") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            Some(ConfigValue::Int(v)) => *v as f32,
-            _ => DEFAULT_BASE_PATTERN_SPACING_MM,
-        };
+        let support_object_xy_distance = config.require_float("support_object_xy_distance")? as f32;
+        let line_width_mm = config.require_float("line_width")? as f32;
+        let support_base_pattern_spacing_mm =
+            config.require_float("support_base_pattern_spacing")? as f32;
         // A present-but-unknown string is fatal; a missing or wrong-typed value
         // falls back to `legacy_semantic` (the `SeamPlacer` precedent). `agg` is
         // opt-in: see DEV-166 and the manifest comment on this key.

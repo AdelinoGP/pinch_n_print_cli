@@ -161,58 +161,6 @@ impl WaveOverhangs {
     }
 }
 
-/// Read a float-ish config key, tolerating `Int` encodings.
-fn cfg_float(config: &ConfigView, key: &str, fallback: f32) -> f32 {
-    match config.get(key) {
-        Some(ConfigValue::Float(v)) => *v as f32,
-        Some(ConfigValue::Int(v)) => *v as f32,
-        _ => fallback,
-    }
-}
-
-/// Read a density-style key declared as `float_or_percent` in the manifest,
-/// normalising to a fraction (`"100%"` and `1.0` both yield `1.0`).
-fn cfg_density(config: &ConfigView, key: &str, fallback: f32) -> f32 {
-    match config.get(key) {
-        Some(ConfigValue::Percent(v)) => (*v / 100.0) as f32,
-        Some(ConfigValue::FloatOrPercent { value, is_percent }) => {
-            if *is_percent {
-                (*value / 100.0) as f32
-            } else {
-                *value as f32
-            }
-        }
-        Some(ConfigValue::Float(v)) => *v as f32,
-        Some(ConfigValue::Int(v)) => *v as f32,
-        _ => fallback,
-    }
-}
-
-/// Read an int-ish config key, tolerating `Float` encodings.
-fn cfg_u32(config: &ConfigView, key: &str, fallback: u32) -> u32 {
-    match config.get(key) {
-        Some(ConfigValue::Int(v)) => (*v).max(0) as u32,
-        Some(ConfigValue::Float(v)) => v.max(0.0) as u32,
-        _ => fallback,
-    }
-}
-
-/// Read a bool config key.
-fn cfg_bool(config: &ConfigView, key: &str, fallback: bool) -> bool {
-    match config.get(key) {
-        Some(ConfigValue::Bool(v)) => *v,
-        _ => fallback,
-    }
-}
-
-/// Read a string config key.
-fn cfg_str<'cfg>(config: &'cfg ConfigView, key: &str, fallback: &'cfg str) -> &'cfg str {
-    match config.get(key) {
-        Some(ConfigValue::String(v)) => v.as_str(),
-        _ => fallback,
-    }
-}
-
 /// Per-region resolution of a `wave_overhang_*` integer key.
 fn resolve_u32(region: &SliceRegionView, key: &str, fallback: u32) -> u32 {
     match region.config().and_then(|c| c.get(key)) {
@@ -382,37 +330,43 @@ fn anchor_first(paths: &mut Vec<Polyline>, supported_fill: &[ExPolygon]) {
 #[slicer_module]
 impl LayerModule for WaveOverhangs {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
+        // Required reads (config-scope-resolution plan): every key below is
+        // declared in `wave-overhangs.toml`, so the bound view always holds
+        // its registry default. A missing key is a contract violation, not a
+        // fallback — `require_*` failures convert to fatal `ModuleError`s.
         let pattern =
-            WavePattern::from_str_or_default(cfg_str(config, "wave_overhang_pattern", "smart"));
-        let nozzle_diameter = cfg_float(config, "nozzle_diameter", 0.4);
+            WavePattern::from_str_or_default(config.require_string("wave_overhang_pattern")?);
+        let nozzle_diameter_mm = config.require_float("nozzle_diameter")?;
         // Packet 06 (AC-3): `bridge_line_width` is declared
         // `float_or_percent` with `base_key = "nozzle_diameter"` in the
         // manifest, so a bound view always holds it; a missing value is a
         // contract violation, not a fallback.
         let bridge_line_width =
-            config.require_abs_value("bridge_line_width", nozzle_diameter as f64)? as f32;
+            config.require_abs_value("bridge_line_width", nozzle_diameter_mm)? as f32;
 
         Ok(Self {
             pattern,
-            line_spacing: cfg_float(config, "wave_overhang_line_spacing", 0.35),
-            perimeter_overlap: cfg_float(config, "wave_overhang_perimeter_overlap", 0.1),
-            minimum_width: cfg_float(config, "wave_overhang_minimum_width", 0.7),
-            min_new_area: cfg_float(config, "wave_overhang_min_new_area", 0.01),
-            min_length: cfg_float(config, "wave_overhang_min_length", 0.0),
-            max_iterations: cfg_u32(config, "wave_overhang_max_iterations", 0),
-            flow_mm3_per_mm: cfg_float(config, "wave_overhang_flow_mm3_per_mm", 0.15),
-            print_speed: cfg_float(config, "wave_overhang_print_speed", 2.0),
-            anchor_depth_mm: cfg_float(config, "wave_overhang_anchor_depth_mm", 0.0),
-            bridge_speed: cfg_float(config, "bridge_speed", 25.0),
+            line_spacing: config.require_float("wave_overhang_line_spacing")? as f32,
+            perimeter_overlap: config.require_float("wave_overhang_perimeter_overlap")? as f32,
+            minimum_width: config.require_float("wave_overhang_minimum_width")? as f32,
+            min_new_area: config.require_float("wave_overhang_min_new_area")? as f32,
+            min_length: config.require_float("wave_overhang_min_length")? as f32,
+            max_iterations: config.require_int("wave_overhang_max_iterations")?.max(0) as u32,
+            flow_mm3_per_mm: config.require_float("wave_overhang_flow_mm3_per_mm")? as f32,
+            print_speed: config.require_float("wave_overhang_print_speed")? as f32,
+            anchor_depth_mm: config.require_float("wave_overhang_anchor_depth_mm")? as f32,
+            bridge_speed: config.require_float("bridge_speed")? as f32,
             bridge_line_width,
-            bridge_flow: cfg_float(config, "bridge_flow", 1.0),
-            bridge_density: cfg_density(config, "bridge_density", 1.0),
-            nozzle_diameter,
-            wall_count: cfg_u32(config, "wall_count", 3),
-            layer_height: cfg_float(config, "layer_height", 0.2),
-            // Not a manifest key: printer profiles supply it, and its absence
-            // means the flat-thread bridge model, matching the host default.
-            thick_bridges: cfg_bool(config, "thick_bridges", false),
+            bridge_flow: config.require_float("bridge_flow")? as f32,
+            // Declared `float_or_percent` (default `"100%"`) with no
+            // `base_key`, so the identity base 1.0 resolves a percent
+            // magnitude to the fraction the generator consumes
+            // (`"100%"` -> 1.0), mirroring `rectilinear-infill`.
+            bridge_density: config.require_abs_value("bridge_density", 1.0)? as f32,
+            nozzle_diameter: nozzle_diameter_mm as f32,
+            wall_count: config.require_int("wall_count")?.max(0) as u32,
+            layer_height: config.require_float("layer_height")? as f32,
+            thick_bridges: config.require_bool("thick_bridges")?,
         })
     }
 

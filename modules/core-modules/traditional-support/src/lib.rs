@@ -47,14 +47,29 @@ use slicer_sdk::LayerCollectionBuilder;
 /// Default base speed used for normalizing speed factors (mm/s).
 const BASE_SPEED: f32 = 50.0;
 
-/// Default gap between adjacent support-interface extrusions, matching
-/// OrcaSlicer's `support_interface_spacing` default of 0.4 mm.
-const DEFAULT_INTERFACE_SPACING_MM: f32 = 0.4;
-
 /// Fallback layer height (mm) used only when the region view reports a
 /// non-positive `effective_layer_height`. Interface pitch degenerates to the
 /// configured gap in that case, which is the pre-flow-term behaviour.
 const FALLBACK_LAYER_HEIGHT_MM: f32 = 0.0;
+
+/// Required read of a `percent`-declared key's raw magnitude.
+///
+/// `percent` values are consumed here as a ratio
+/// (`resolved_interface_flow_ratio`), never resolved against a base, so
+/// neither `require_float` (which refuses `Percent` by design — no base is
+/// available) nor `require_abs_value` (appropriate only for width-like keys
+/// with a declared `base_key`) fits. The registry seeds this
+/// manifest-declared key as `ConfigValue::Percent` and ingestion coerces
+/// every authored spelling to the same variant, so a missing or mistyped
+/// value is a config defect that must abort rather than fall back to a
+/// literal. The error travels the same `ConfigReadError` → fatal
+/// `ModuleError` path as the `require_*` accessors.
+fn required_percent_magnitude(config: &ConfigView, key: &str) -> Result<f32, ModuleError> {
+    match config.get(key) {
+        Some(ConfigValue::Percent(magnitude)) => Ok(*magnitude as f32),
+        _ => Err(slicer_ir::slice_ir::ConfigReadError::new(key, "percent").into()),
+    }
+}
 
 /// Traditional support fill generator.
 ///
@@ -98,26 +113,17 @@ pub struct TraditionalSupport {
 #[slicer_module]
 impl LayerModule for TraditionalSupport {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let enabled = match config.get("enable_support") {
-            Some(ConfigValue::Bool(b)) => *b,
-            _ => false,
-        };
+        // Every key below is declared in `traditional-support.toml`, so the
+        // registry seeds its default into every bound view and absence is a
+        // contract violation. Required reads abort instead of silently
+        // restoring a stale in-code literal (the pre-migration fallbacks).
+        let enabled = config.require_bool("enable_support")?;
 
-        let base_angle = match config.get("support_angle") {
-            Some(ConfigValue::Float(a)) => *a as f32,
-            _ => 0.0,
-        };
+        let base_angle = config.require_float("support_angle")? as f32;
 
-        let support_speed = match config.get("support_speed") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => BASE_SPEED,
-        };
+        let support_speed = config.require_float("support_speed")? as f32;
 
-        let line_width = match config.get("line_width") {
-            Some(ConfigValue::Float(w)) => *w as f32,
-            _ => 0.4,
-        };
+        let line_width = config.require_float("line_width")? as f32;
 
         // Required read (packet 06): `nozzle_diameter` is `float` in the
         // manifest with a seeded 0.4 default (matching the registry's
@@ -137,33 +143,27 @@ impl LayerModule for TraditionalSupport {
             .filter(|width| *width > 0.0)
             .unwrap_or(line_width);
         let base_pattern_spacing_mm = config.require_float("support_base_pattern_spacing")? as f32;
-        let interface_flow_percent = match config.get("support_interface_flow") {
-            Some(ConfigValue::Float(value)) => *value as f32,
-            Some(ConfigValue::Int(value)) => *value as f32,
-            _ => 100.0,
-        };
+        // `support_interface_flow` is declared `percent`: the registry seeds
+        // `ConfigValue::Percent(100.0)` and ingestion delivers authored values
+        // as `Percent` too. The raw magnitude is what
+        // `resolved_interface_flow_ratio` consumes (it is a ratio, not a
+        // width), so there is no base to resolve against and no literal
+        // fallback: a missing or mistyped value aborts.
+        let interface_flow_percent = required_percent_magnitude(config, "support_interface_flow")?;
 
-        let top_interface_spacing_mm = match config.get("support_interface_spacing") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => DEFAULT_INTERFACE_SPACING_MM,
-        };
+        let top_interface_spacing_mm = config.require_float("support_interface_spacing")? as f32;
 
-        let bottom_interface_spacing_mm = match config.get("support_bottom_interface_spacing") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => DEFAULT_INTERFACE_SPACING_MM,
-        };
+        let bottom_interface_spacing_mm =
+            config.require_float("support_bottom_interface_spacing")? as f32;
 
         // Canonical `SupportParameters` resolves `support_style` against
         // `support_type` first: a tree style on a non-tree object degrades to
         // `smsDefault`, and `smsDefault` for a non-tree object is `smsGrid`.
         // `smooth_supports` is then `support_style != smsGrid`, so within the
         // traditional family only an explicit `snug` regularizes.
-        let smooth_supports = match config.get("support_style") {
-            Some(ConfigValue::String(s)) => s.eq_ignore_ascii_case("snug"),
-            _ => false,
-        };
+        let smooth_supports = config
+            .require_string("support_style")?
+            .eq_ignore_ascii_case("snug");
 
         Ok(Self {
             enabled,
@@ -751,10 +751,11 @@ mod tests {
     use super::*;
 
     /// Packet 06 made `nozzle_diameter` and `support_base_pattern_spacing`
-    /// required reads (`require_float`) in `from_config`. The host seeds
-    /// these at their manifest defaults (0.4 / 2.5), so unit fixtures seed
-    /// the same values — exactly the pre-B4 in-code fallbacks, keeping the
-    /// assertion constants below unchanged.
+    /// required reads (`require_float`) in `from_config`; the fail-closed
+    /// migration made the remaining manifest-declared keys required too. The
+    /// host seeds all of these at their manifest defaults, so unit fixtures
+    /// seed the same values — exactly the pre-B4 in-code fallbacks, keeping
+    /// the assertion constants below unchanged.
     fn seeded_config() -> ConfigView {
         let mut map = std::collections::HashMap::new();
         map.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.4));
@@ -762,6 +763,26 @@ mod tests {
         map.insert(
             "support_base_pattern_spacing".to_string(),
             ConfigValue::Float(2.5),
+        );
+        map.insert("enable_support".to_string(), ConfigValue::Bool(false));
+        map.insert("support_angle".to_string(), ConfigValue::Float(60.0));
+        map.insert("support_speed".to_string(), ConfigValue::Float(50.0));
+        map.insert("line_width".to_string(), ConfigValue::Float(0.4));
+        map.insert(
+            "support_interface_flow".to_string(),
+            ConfigValue::Percent(100.0),
+        );
+        map.insert(
+            "support_interface_spacing".to_string(),
+            ConfigValue::Float(0.4),
+        );
+        map.insert(
+            "support_bottom_interface_spacing".to_string(),
+            ConfigValue::Float(0.4),
+        );
+        map.insert(
+            "support_style".to_string(),
+            ConfigValue::String("default".to_string()),
         );
         ConfigView::from_map(map)
     }

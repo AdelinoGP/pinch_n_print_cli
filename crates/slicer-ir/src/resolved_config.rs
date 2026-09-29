@@ -2178,7 +2178,7 @@ declare_resolved_config! {
     /// (`PrintConfig.cpp`) is a `coInt` with min 0, max 90 and
     /// `set_default_value(new ConfigOptionInt(30))`. Held as `f32` in-tree.
     /// The legacy in-tree name `support_overhang_angle` remains accepted as an
-    /// alias (`slicer_scheduler::config_resolution::canonical_config_key`).
+    /// alias (`slicer_config::canonical_config_key`).
     ///
     /// This macro line is the **single source of truth** for the default; host
     /// consumers must read the typed field, never re-derive a fallback.

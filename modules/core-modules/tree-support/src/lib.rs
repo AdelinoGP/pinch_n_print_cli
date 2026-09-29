@@ -56,9 +56,24 @@ use slicer_sdk::LayerCollectionBuilder;
 /// Default base speed used for normalizing speed factors (mm/s).
 const BASE_SPEED: f32 = 50.0;
 
-/// Default gap between adjacent support-interface extrusions, matching
-/// OrcaSlicer's `support_interface_spacing` default of 0.4 mm.
-const DEFAULT_INTERFACE_SPACING_MM: f32 = 0.4;
+/// Required read of a `percent`-declared key's raw magnitude.
+///
+/// `support_interface_flow` is consumed here as a ratio
+/// (`resolved_interface_flow_ratio`), never resolved against a base, so
+/// neither `require_float` (which refuses `Percent` by design — no base is
+/// available) nor `require_abs_value` (appropriate only for width-like keys
+/// with a declared `base_key`) fits. The registry seeds the declared key as
+/// `ConfigValue::Percent(100.0)` and ingestion coerces every authored
+/// spelling to the same variant, so a missing or mistyped value is a config
+/// defect that must abort rather than fall back to a literal. The error
+/// travels the same `ConfigReadError` → fatal `ModuleError` path as the
+/// `require_*` accessors.
+fn required_percent_magnitude(config: &ConfigView, key: &str) -> Result<f32, ModuleError> {
+    match config.get(key) {
+        Some(ConfigValue::Percent(magnitude)) => Ok(*magnitude as f32),
+        _ => Err(slicer_ir::slice_ir::ConfigReadError::new(key, "percent").into()),
+    }
+}
 
 /// Tree-support renderer.
 ///
@@ -235,55 +250,46 @@ fn point_in_expolygon(expoly: &ExPolygon, x: f32, y: f32) -> bool {
 #[slicer_module]
 impl LayerModule for TreeSupport {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let enabled = match config.get("enable_support") {
-            Some(ConfigValue::Bool(b)) => *b,
-            _ => false,
-        };
+        // Every key below is declared in `tree-support.toml`, so the registry
+        // seeds its default into every bound view and absence is a contract
+        // violation. Required reads abort instead of silently restoring a
+        // stale in-code literal (the pre-migration fallbacks).
+        let enabled = config.require_bool("enable_support")?;
 
-        let support_speed = match config.get("support_speed") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => BASE_SPEED,
-        };
+        let support_speed = config.require_float("support_speed")? as f32;
 
         // Required read (packet 06): `nozzle_diameter` is `float` in the
         // manifest with a seeded 0.4 default (matching the registry's
         // existing declarers), so absence is a contract violation, not a
         // fallback case.
         let nozzle_diameter = config.require_float("nozzle_diameter")?;
-        let line_width = config
-            .get_abs_value("support_line_width", nozzle_diameter)
-            .or_else(|| config.get_int("support_line_width").map(|v| v as f64))
-            .map(|w| {
-                if w > 0.0 {
-                    w as f32
-                } else {
-                    (1.125 * nozzle_diameter) as f32
-                }
-            })
-            .filter(|w| *w > 0.0)
-            .unwrap_or(1.125 * nozzle_diameter as f32);
-        let interface_flow_percent = match config.get("support_interface_flow") {
-            Some(ConfigValue::Float(value)) => *value as f32,
-            Some(ConfigValue::Int(value)) => *value as f32,
-            _ => 100.0,
+        // `support_line_width` is declared `float_or_percent` with
+        // `base_key = "nozzle_diameter"` and an auto sentinel default of 0.0,
+        // so the required read resolves its absolute width; a non-positive
+        // resolved value keeps the existing auto semantic (1.125 × nozzle
+        // diameter) as an explicit value check, not a silent None-fallback.
+        let resolved_line_width =
+            config.require_abs_value("support_line_width", nozzle_diameter)?;
+        let line_width = if resolved_line_width > 0.0 {
+            resolved_line_width as f32
+        } else {
+            (1.125 * nozzle_diameter) as f32
         };
-        let wall_count = match config.get("tree_support_wall_count") {
-            Some(ConfigValue::Int(value)) => (*value).max(1) as usize,
-            Some(ConfigValue::Float(value)) => (*value).max(1.0) as usize,
-            _ => 2,
-        };
+        // `support_interface_flow` is declared `percent`: the registry seeds
+        // `ConfigValue::Percent(100.0)` and ingestion delivers authored values
+        // as `Percent` too. The raw magnitude is what
+        // `resolved_interface_flow_ratio` consumes (it is a ratio, not a
+        // width), so there is no base to resolve against and no literal
+        // fallback: a missing or mistyped value aborts.
+        let interface_flow_percent = required_percent_magnitude(config, "support_interface_flow")?;
+        // Declared `int` with the canonical `0 = auto` sentinel; the `.max(1)`
+        // clamp is the consumption-site semantic from canonical
+        // `generate_toolpaths`.
+        let wall_count = config.require_int("tree_support_wall_count")?.max(1) as usize;
 
-        let top_interface_spacing_mm = match config.get("support_interface_spacing") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => DEFAULT_INTERFACE_SPACING_MM,
-        };
-        let bottom_interface_spacing_mm = match config.get("support_bottom_interface_spacing") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => DEFAULT_INTERFACE_SPACING_MM,
-        };
+        let top_interface_spacing_mm = config.require_float("support_interface_spacing")? as f32;
+        let bottom_interface_spacing_mm =
+            config.require_float("support_bottom_interface_spacing")? as f32;
         let base_pattern_spacing_mm = config.require_float("support_base_pattern_spacing")? as f32;
 
         Ok(Self {
@@ -847,11 +853,14 @@ mod tests {
 
     /// Packet 06 made `nozzle_diameter`, `layer_height` and
     /// `support_base_pattern_spacing` required reads (`require_float`) in
-    /// `from_config`/`run_support`. The host seeds these at their manifest
-    /// defaults (0.4 / 0.2 / 2.5), so unit fixtures seed the same values —
+    /// `from_config`/`run_support`; the fail-closed migration made every
+    /// other manifest-declared key required too. The host seeds all of these
+    /// at their manifest defaults, so unit fixtures seed the same values —
     /// exactly the pre-B4 in-code fallbacks, keeping the assertion constants
-    /// below unchanged.
-    fn seeded_config() -> ConfigView {
+    /// below unchanged. `support_line_width` seeds its manifest default 0.0
+    /// (the auto sentinel; the explicit value check keeps the
+    /// 1.125 × nozzle_diameter auto semantic).
+    fn seeded_config_map() -> std::collections::HashMap<String, ConfigValue> {
         let mut map = std::collections::HashMap::new();
         map.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.4));
         map.insert("layer_height".to_string(), ConfigValue::Float(0.2));
@@ -859,7 +868,27 @@ mod tests {
             "support_base_pattern_spacing".to_string(),
             ConfigValue::Float(2.5),
         );
-        ConfigView::from_map(map)
+        map.insert("enable_support".to_string(), ConfigValue::Bool(false));
+        map.insert("support_speed".to_string(), ConfigValue::Float(50.0));
+        map.insert("support_line_width".to_string(), ConfigValue::Float(0.0));
+        map.insert(
+            "support_interface_flow".to_string(),
+            ConfigValue::Percent(100.0),
+        );
+        map.insert("tree_support_wall_count".to_string(), ConfigValue::Int(1));
+        map.insert(
+            "support_interface_spacing".to_string(),
+            ConfigValue::Float(0.4),
+        );
+        map.insert(
+            "support_bottom_interface_spacing".to_string(),
+            ConfigValue::Float(0.4),
+        );
+        map
+    }
+
+    fn seeded_config() -> ConfigView {
+        ConfigView::from_map(seeded_config_map())
     }
 
     #[test]
@@ -907,17 +936,11 @@ mod tests {
         // coincident copies of the same contour and then scan-fill the whole
         // polygon at a `line_width` pitch, so a body was extruded several times
         // over the same area.
-        let mut map = std::collections::HashMap::new();
-        // `tree_support_wall_count` is this test's focus; the packet-06
-        // required keys are seeded alongside at manifest defaults.
+        // `tree_support_wall_count` is this test's focus; every other
+        // declared key comes from `seeded_config_map` at its manifest default.
+        let mut map = seeded_config_map();
         map.insert("enable_support".to_string(), ConfigValue::Bool(true));
         map.insert("tree_support_wall_count".to_string(), ConfigValue::Int(2));
-        map.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.4));
-        map.insert("layer_height".to_string(), ConfigValue::Float(0.2));
-        map.insert(
-            "support_base_pattern_spacing".to_string(),
-            ConfigValue::Float(2.5),
-        );
         let module = TreeSupport::from_config(&ConfigView::from_map(map)).unwrap();
 
         let square = ExPolygon {
@@ -965,14 +988,11 @@ mod tests {
     #[test]
     fn fill_pitch_derives_from_base_spacing() {
         let build = |density: f64| {
-            let mut map = std::collections::HashMap::new();
-            // `support_base_pattern_spacing` is this test's focus; the
-            // packet-06 required keys are seeded alongside (the density
-            // insert below overrides the seed, which is the point).
-            map.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.4));
-            map.insert("layer_height".to_string(), ConfigValue::Float(0.2));
+            // `support_base_pattern_spacing` is this test's focus; every other
+            // declared key comes from `seeded_config_map` at its manifest
+            // default (the density override below is the point).
+            let mut map = seeded_config_map();
             map.insert("enable_support".to_string(), ConfigValue::Bool(true));
-            map.insert("tree_support_wall_count".to_string(), ConfigValue::Int(1));
             map.insert(
                 "support_base_pattern_spacing".to_string(),
                 ConfigValue::Float(density),

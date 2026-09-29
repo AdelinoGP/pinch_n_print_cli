@@ -16,8 +16,9 @@ pub mod ingestion;
 pub mod resolution;
 
 pub use ingestion::{
-    ConfigIngestionError, ConfigIngestor, ConfigScope, IngestionOutcome, IngestionWarning,
-    LayerConfigRange, LayerRangeInput, LayerRangeLoadError, ScopeDelta, ScopedConfig,
+    canonical_config_key, ConfigIngestionError, ConfigIngestor, ConfigScope, IngestionOutcome,
+    IngestionWarning, LayerConfigRange, LayerRangeInput, LayerRangeLoadError, ScopeDelta,
+    ScopedConfig, CONFIG_KEY_ALIASES,
 };
 pub use resolution::{
     query_z_grid, resolve_scope_stack, ResolutionError, ResolutionTarget, ResolvedObjectLayerConfig,
@@ -744,12 +745,25 @@ struct Declaration {
     is_host: bool,
 }
 
-fn host_declaration(row: &HostConfigKey, provenance: &str) -> Declaration {
-    let field_type = row.meta.wire_type.unwrap_or(row.field_type);
-    let values = if field_type == "enum" || !row.meta.values.is_empty() {
+/// Assemble a host-channel [`Declaration`] from the shared parts of a host
+/// config row.
+///
+/// Both host row types derive their wire type, enum domain, bounds, denial
+/// roster, and omission flag from the row's [`HostKeyMeta`]; they differ only
+/// in provenance, default representation, and whether the key is a selector.
+/// Those three are supplied by the caller.
+fn declaration_from_host_parts(
+    provenance: &str,
+    field_type: &'static str,
+    default: Option<String>,
+    selector: bool,
+    meta: HostKeyMeta,
+    denied_scopes: &[&str],
+) -> Declaration {
+    let field_type = meta.wire_type.unwrap_or(field_type);
+    let values = if field_type == "enum" || !meta.values.is_empty() {
         Some(
-            row.meta
-                .values
+            meta.values
                 .iter()
                 .map(|value| (*value).to_owned())
                 .collect(),
@@ -763,59 +777,43 @@ fn host_declaration(row: &HostConfigKey, provenance: &str) -> Declaration {
         module_id: None,
         claim_exclusive_group: None,
         field_type: field_type.to_owned(),
-        default: row.default.clone(),
-        min: row.meta.min,
-        max: row.meta.max,
+        default,
+        min: meta.min,
+        max: meta.max,
         values,
-        denied_scopes: row
-            .denied_scopes
+        denied_scopes: denied_scopes
             .iter()
             .map(|scope| (*scope).to_owned())
             .collect(),
-        selector: false,
-        omit_from_config_block: row.meta.omit_from_config_block,
+        selector,
+        omit_from_config_block: meta.omit_from_config_block,
         base_key: None,
-        host_meta: Some(row.meta),
+        host_meta: Some(meta),
         module_meta: None,
         is_host: true,
     }
 }
 
-fn runtime_declaration(row: &HostRuntimeKey) -> Declaration {
-    let field_type = row.meta.wire_type.unwrap_or(row.field_type);
-    let values = if field_type == "enum" || !row.meta.values.is_empty() {
-        Some(
-            row.meta
-                .values
-                .iter()
-                .map(|value| (*value).to_owned())
-                .collect(),
-        )
-    } else {
-        None
-    };
+fn host_declaration(row: &HostConfigKey, provenance: &str) -> Declaration {
+    declaration_from_host_parts(
+        provenance,
+        row.field_type,
+        row.default.clone(),
+        false,
+        row.meta,
+        row.denied_scopes,
+    )
+}
 
-    Declaration {
-        provenance: RUNTIME_PROVENANCE.to_owned(),
-        module_id: None,
-        claim_exclusive_group: None,
-        field_type: field_type.to_owned(),
-        default: row.default.map(|value| value.to_owned()),
-        min: row.meta.min,
-        max: row.meta.max,
-        values,
-        denied_scopes: row
-            .denied_scopes
-            .iter()
-            .map(|scope| (*scope).to_owned())
-            .collect(),
-        selector: row.selector,
-        omit_from_config_block: row.meta.omit_from_config_block,
-        base_key: None,
-        host_meta: Some(row.meta),
-        module_meta: None,
-        is_host: true,
-    }
+fn runtime_declaration(row: &HostRuntimeKey) -> Declaration {
+    declaration_from_host_parts(
+        RUNTIME_PROVENANCE,
+        row.field_type,
+        row.default.map(|value| value.to_owned()),
+        row.selector,
+        row.meta,
+        row.denied_scopes,
+    )
 }
 
 fn module_declaration(module: &ModuleDeclaration, field: &ConfigFieldEntry) -> Declaration {

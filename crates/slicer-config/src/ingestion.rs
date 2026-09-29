@@ -866,22 +866,28 @@ fn warning_order(first: &IngestionWarning, second: &IngestionWarning) -> std::cm
 
 /// Legacy config-key spellings and the canonical key each resolves to.
 ///
-/// This table mirrors `CONFIG_KEY_ALIASES` in
-/// `slicer_scheduler::config_resolution` (the scheduler crate depends on this
-/// one, so the table cannot be shared in that direction; keep both tables in
-/// sync when adding an alias). It exists here only to answer the
-/// declared-ness question during ingestion: a legacy spelling of a
-/// registry-declared key is not "undeclared" and must survive to
-/// scheduler-side canonicalization and both-spellings conflict detection
-/// (`reject_alias_conflicts`).
-const CONFIG_KEY_ALIASES: [(&str, &str); 2] = [
+/// This table is the single alias authority. It is consumed by ingestion for
+/// the declared-ness check — a legacy spelling of a registry-declared key is
+/// not "undeclared" — and, via the `slicer_config` re-export, by
+/// `slicer_scheduler::config_resolution` for canonicalization and
+/// both-spellings conflict detection (`reject_alias_conflicts`).
+///
+/// Entries are `(legacy, canonical)`. Supplying **both** spellings in one
+/// source is rejected rather than silently resolved: with a `HashMap` source
+/// there is no defined ordering between the two keys, so last-writer-wins
+/// would make the resolved value depend on hash iteration order —
+/// non-deterministic across runs. Rejecting is the pre-existing precedent set
+/// by `first_layer_line_width`, and is applied uniformly.
+pub const CONFIG_KEY_ALIASES: [(&str, &str); 2] = [
     ("first_layer_line_width", "initial_layer_line_width"),
+    // Renamed to the canonical OrcaSlicer spelling (`PrintConfig.cpp`'s
+    // `support_threshold_angle`); the old in-tree name stays accepted so
+    // existing profiles and 3MF project settings keep resolving.
     ("support_overhang_angle", "support_threshold_angle"),
 ];
 
-/// Resolve a legacy key spelling to its canonical key, mirroring
-/// `slicer_scheduler::config_resolution::canonical_config_key`.
-fn canonical_config_key(key: &str) -> &str {
+/// Resolve a legacy key spelling to its canonical key.
+pub fn canonical_config_key(key: &str) -> &str {
     for (legacy, canonical) in CONFIG_KEY_ALIASES {
         if key == legacy {
             return canonical;
@@ -951,6 +957,13 @@ fn coerce_value(
     match field_type {
         "bool" => match authored {
             ConfigValue::Bool(value) => Ok(ConfigValue::Bool(*value)),
+            // Canonical numeric wire: `extract_bool` (and
+            // `validate_extension`'s bool arm, which mirrors it) accepts an
+            // `Int` 0/1 as a boolean, so a hand-written JSON config that
+            // spells a flag numerically normalizes here rather than surviving
+            // to a fail-closed `require_bool` reader.
+            ConfigValue::Int(0) => Ok(ConfigValue::Bool(false)),
+            ConfigValue::Int(1) => Ok(ConfigValue::Bool(true)),
             ConfigValue::String(value) => parse_bool(value)
                 .map(ConfigValue::Bool)
                 .map_err(|_| mismatch()),
@@ -958,6 +971,15 @@ fn coerce_value(
         },
         "int" => match authored {
             ConfigValue::Int(value) => Ok(ConfigValue::Int(*value)),
+            // Canonical JSON wire: a real OrcaSlicer/Bambu GUI export writes
+            // whole numbers through JSON's number type, so `fan_max_speed`
+            // arrives as `100.0` for an `int`-declared key. `validate_extension`
+            // already accepts a finite integral float as valid int wire; the
+            // coercion must agree or the float survives to a fail-closed
+            // `require_int` reader and aborts the slice.
+            ConfigValue::Float(value) if value.is_finite() && value.fract() == 0.0 => {
+                Ok(ConfigValue::Int(*value as i64))
+            }
             ConfigValue::String(value) => value
                 .trim()
                 .parse::<i64>()
@@ -1073,7 +1095,16 @@ fn coerce_scalar_list(
     if field_type.ends_with("-list") {
         return Ok(None);
     }
-
+    // A scalar-typed key authored as a per-extruder list carries one value
+    // per filament; the consumer applies its first-element resolution
+    // (canonical `get_at(0)`, `docs/03` §placeholder engine). Coercing to the
+    // first element's typed value here lets the seeded/extension value type
+    // against the declared scalar so a bound view delivers it.
+    if let Some(first) = items.first() {
+        if let Ok(value) = coerce_value(key, first, field_type) {
+            return Ok(Some(value));
+        }
+    }
     let mut coerced = Vec::with_capacity(items.len());
     for item in items {
         match coerce_value(key, item, field_type) {

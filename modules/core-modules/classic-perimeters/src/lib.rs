@@ -85,27 +85,15 @@ const ERR_NEGATIVE_SPACING: u32 = 1;
 #[slicer_module]
 impl LayerModule for ClassicPerimeters {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let wall_count = match config.get("wall_count") {
-            Some(ConfigValue::Int(n)) => *n as u32,
-            _ => 3, // default
-        };
+        // Required reads: the registry seeds every declared key's default into
+        // a bound view, so an absent key is a contract violation, not a
+        // configurable fallback (packet 06 fail-closed semantics; mirrors
+        // arachne-perimeters).
+        let wall_count = config.require_int("wall_count")? as u32;
 
-        let outer_wall_speed = match config.get("outer_wall_speed") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => 30.0, // default
-        };
-
-        let inner_wall_speed = match config.get("inner_wall_speed") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => 45.0, // default
-        };
-
-        let perimeter_arc_tolerance = match config.get("perimeter_arc_tolerance") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 0.0125,
-        };
+        let outer_wall_speed = config.require_float("outer_wall_speed")? as f32;
+        let inner_wall_speed = config.require_float("inner_wall_speed")? as f32;
+        let perimeter_arc_tolerance = config.require_float("perimeter_arc_tolerance")? as f32;
 
         Ok(Self {
             wall_count,
@@ -1365,7 +1353,17 @@ mod tests {
 
     #[test]
     fn from_config_defaults() {
-        let config = ConfigView::from_map(HashMap::new());
+        // Declared keys (classic-perimeters.toml) seeded at their manifest
+        // defaults, mirroring the production `seed_registry_defaults` step.
+        let config = ConfigView::from_map(HashMap::from([
+            ("wall_count".to_string(), ConfigValue::Int(3)),
+            ("outer_wall_speed".to_string(), ConfigValue::Float(30.0)),
+            ("inner_wall_speed".to_string(), ConfigValue::Float(45.0)),
+            (
+                "perimeter_arc_tolerance".to_string(),
+                ConfigValue::Float(0.0125),
+            ),
+        ]));
         let module = ClassicPerimeters::from_config(&config).unwrap();
         assert_eq!(module.wall_count, 3);
         // R2: inner_wall_line_width is now read per-invocation, not cached.

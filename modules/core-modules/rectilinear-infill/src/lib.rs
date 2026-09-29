@@ -86,28 +86,31 @@ pub struct RectilinearInfill {
 #[slicer_module]
 impl LayerModule for RectilinearInfill {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let density = match config.get("infill_density") {
-            Some(ConfigValue::Float(d)) => *d as f32,
-            _ => 0.2,
-        };
+        // Required reads: the registry seeds every declared key's default into
+        // a bound view, so an absent key is a contract violation, not a
+        // configurable fallback (packet 06 fail-closed semantics; mirrors
+        // arachne-perimeters).
+        let density = config.require_float("infill_density")? as f32;
 
-        let base_angle = match config.get("infill_angle") {
-            Some(ConfigValue::Float(a)) => *a as f32,
-            _ => 0.0,
-        };
+        let base_angle = config.require_float("infill_angle")? as f32;
 
-        let infill_speed = match config.get("infill_speed") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => 60.0,
-        };
+        let infill_speed = config.require_float("infill_speed")? as f32;
 
-        let speed_value = |key: &str, default: f32| match config.get(key) {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => default,
-        };
+        // `top_surface_speed`, `internal_solid_infill_speed`, and
+        // `internal_bridge_angle` are declared `float` with literal defaults
+        // in the manifest: required reads. `sparse_infill_speed` keeps its
+        // computed `infill_speed` fallback (the resolved sparse speed is the
+        // natural default for an unset sparse-speed override; the manifest
+        // default 60.0 equals `infill_speed`'s default).
+        let required_speed =
+            |key: &str| -> Result<f32, ModuleError> { Ok(config.require_float(key)? as f32) };
 
+        // The three role line-width keys below are typed `float_or_percent`
+        // with `base_key = "nozzle_diameter"`; their `0.0` arms are the
+        // canonical auto sentinel consumed by `resolve_role_width` (zero role
+        // width falls through to the base width), NOT dead literal defaults,
+        // so they stay on the raw `get` read (matches `line_width` above and
+        // the sentinel exception in the packet-06 migration rules).
         let width_value = |key: &str| match config.get(key) {
             Some(ConfigValue::Float(w)) => *w as f32,
             Some(ConfigValue::Int(w)) => *w as f32,
@@ -116,7 +119,9 @@ impl LayerModule for RectilinearInfill {
         let width_context = RoleWidthContext {
             // Packet 185 (AC-5): absent `line_width` is the canonical auto-0
             // sentinel (resolved to 1.125 × nozzle by `resolve_role_width`),
-            // not the legacy 0.4 mm default.
+            // not the legacy 0.4 mm default. This per-invocation read keeps its
+            // documented sentinel arm: the 0.0 value is semantic (auto), not a
+            // dead literal default.
             line_width: match config.get("line_width") {
                 Some(ConfigValue::Float(w)) => *w as f32,
                 Some(ConfigValue::Int(w)) => *w as f32,
@@ -145,11 +150,7 @@ impl LayerModule for RectilinearInfill {
         // read with `require_abs_value` against the identity base 1.0, NOT
         // `require_float` (packet 06, mirrors arachne-perimeters).
         let bridge_density = config.require_abs_value("bridge_density", 1.0)? as f32;
-        let bridge_speed = match config.get("bridge_speed") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => 25.0,
-        };
+        let bridge_speed = config.require_float("bridge_speed")? as f32;
         let bridge_flow_ratio = config.require_float("bridge_flow")? as f32;
         let thick_bridges = config.require_bool("thick_bridges")?;
 
@@ -162,17 +163,18 @@ impl LayerModule for RectilinearInfill {
         let internal_bridge_flow_ratio = config.require_float("internal_bridge_flow")? as f32;
         let thick_internal_bridges = config.require_bool("thick_internal_bridges")?;
 
-        let top_surface_speed = speed_value("top_surface_speed", 60.0);
-        let internal_solid_infill_speed = speed_value("internal_solid_infill_speed", 60.0);
-        let sparse_infill_speed = speed_value("sparse_infill_speed", infill_speed);
+        let top_surface_speed = required_speed("top_surface_speed")?;
+        let internal_solid_infill_speed = required_speed("internal_solid_infill_speed")?;
+        let sparse_infill_speed = match config.get("sparse_infill_speed") {
+            Some(ConfigValue::Float(s)) => *s as f32,
+            Some(ConfigValue::Int(s)) => *s as f32,
+            _ => infill_speed,
+        };
         let dont_filter_internal_bridges = config.require_bool("dont_filter_internal_bridges")?;
         let enable_extra_bridge_layer = config.require_bool("enable_extra_bridge_layer")?;
-        let internal_bridge_angle = speed_value("internal_bridge_angle", 0.0);
+        let internal_bridge_angle = required_speed("internal_bridge_angle")?;
 
-        let infill_shift_step = match config.get("infill_shift_step") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            _ => 0.0,
-        };
+        let infill_shift_step = config.require_float("infill_shift_step")? as f32;
 
         Ok(Self {
             density,

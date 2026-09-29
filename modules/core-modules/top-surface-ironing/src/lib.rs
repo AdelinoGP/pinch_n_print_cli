@@ -26,8 +26,7 @@
 #![warn(unused_imports)]
 
 use slicer_ir::{
-    units_to_mm, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole,
-    Point3WithWidth, Polygon,
+    units_to_mm, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point3WithWidth, Polygon,
 };
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -239,28 +238,21 @@ fn generate_zigzag_strokes_for_polygon(
 #[slicer_module]
 impl LayerModule for TopSurfaceIroning {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let enabled = match config.get("ironing_enabled") {
-            Some(ConfigValue::Bool(b)) => *b,
-            // Default OFF to match OrcaSlicer (`ironing_type = no ironing`).
-            // Ironing at 0.1 mm spacing over every top surface roughly doubles
-            // top-surface emission; users opt in explicitly.
-            _ => false,
-        };
+        // Required reads (config-scope-resolution plan): every key below is
+        // declared in `top-surface-ironing.toml`, so the bound view always
+        // holds its registry default. A missing key is a contract violation,
+        // not a fallback — `require_*` failures convert to fatal `ModuleError`s.
+        //
+        // `ironing_enabled` defaults OFF to match OrcaSlicer
+        // (`ironing_type = no ironing`); users opt in explicitly.
+        let enabled = config.require_bool("ironing_enabled")?;
 
-        let ironing_speed = match config.get("ironing_speed") {
-            Some(ConfigValue::Float(s)) => *s,
-            Some(ConfigValue::Int(s)) => *s as f64,
-            _ => 20.0,
-        };
+        let ironing_speed = config.require_float("ironing_speed")?;
 
-        let ironing_flow = match config.get("ironing_flow") {
-            Some(ConfigValue::Float(f)) => *f,
-            Some(ConfigValue::Int(f)) => *f as f64,
-            // Canonical default: coPercent 10 (10 = 10%) —
-            // `PrintConfigDef::init_fff_params`
-            // (`OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp`).
-            _ => 10.0,
-        };
+        // Canonical default: coPercent 10 (10 = 10%) —
+        // `PrintConfigDef::init_fff_params`
+        // (`OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp`).
+        let ironing_flow = config.require_float("ironing_flow")?;
 
         if ironing_flow <= 0.0 {
             return Err(ModuleError::fatal(
@@ -269,28 +261,20 @@ impl LayerModule for TopSurfaceIroning {
             ));
         }
 
-        let ironing_spacing_mm = match config.get("ironing_spacing_mm") {
-            Some(ConfigValue::Float(s)) => *s,
-            Some(ConfigValue::Int(s)) => *s as f64,
-            _ => 0.1,
-        };
+        let ironing_spacing_mm = config.require_float("ironing_spacing_mm")?;
 
-        let ironing_pattern = match config.get("ironing_pattern") {
-            Some(ConfigValue::String(p)) => {
-                if p != "rectilinear" {
-                    return Err(ModuleError::fatal(
-                        2,
-                        format!(
-                            "unsupported ironing_pattern '{}'; only 'rectilinear' is supported \
-                             (key: ironing_pattern)",
-                            p
-                        ),
-                    ));
-                }
-                p.clone()
-            }
-            _ => "rectilinear".to_string(),
-        };
+        let ironing_pattern = config.require_string("ironing_pattern")?;
+        if ironing_pattern != "rectilinear" {
+            return Err(ModuleError::fatal(
+                2,
+                format!(
+                    "unsupported ironing_pattern '{}'; only 'rectilinear' is supported \
+                     (key: ironing_pattern)",
+                    ironing_pattern
+                ),
+            ));
+        }
+        let ironing_pattern = ironing_pattern.to_string();
 
         Ok(Self {
             enabled,

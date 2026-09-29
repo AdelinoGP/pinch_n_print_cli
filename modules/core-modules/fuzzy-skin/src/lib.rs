@@ -25,8 +25,8 @@
 use std::collections::HashMap;
 
 use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, LoopType, Point3WithWidth, WallFeatureFlags,
-    WallLoop, WidthProfile,
+    ConfigView, ExtrusionPath3D, LoopType, Point3WithWidth, WallFeatureFlags, WallLoop,
+    WidthProfile,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -50,18 +50,13 @@ pub struct FuzzySkinModule {
 #[slicer_module]
 impl LayerModule for FuzzySkinModule {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let thickness = match config.get("thickness") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 0.3,
-        };
-        let point_distance = match config.get("point_distance") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 0.8,
-        };
-        let apply_to_all = match config.get("apply_to_all") {
-            Some(ConfigValue::Bool(v)) => *v,
-            _ => false,
-        };
+        // Required reads: the registry seeds every declared key's default into
+        // a bound view, so an absent key is a contract violation, not a
+        // configurable fallback (packet 06 fail-closed semantics; mirrors
+        // arachne-perimeters).
+        let thickness = config.require_float("thickness")? as f32;
+        let point_distance = config.require_float("point_distance")? as f32;
+        let apply_to_all = config.require_bool("apply_to_all")?;
 
         Ok(Self {
             thickness,

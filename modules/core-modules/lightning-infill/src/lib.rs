@@ -52,17 +52,18 @@ impl LightningInfill {
 #[slicer_module]
 impl LayerModule for LightningInfill {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let density = match config.get("infill_density") {
-            Some(ConfigValue::Float(d)) => *d as f32,
-            _ => 0.2,
-        };
+        // Required reads: the registry seeds every declared key's default into
+        // a bound view, so an absent key is a contract violation, not a
+        // configurable fallback (packet 06 fail-closed semantics; mirrors
+        // arachne-perimeters).
+        let density = config.require_float("infill_density")? as f32;
 
-        let infill_speed = match config.get("infill_speed") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => BASE_SPEED,
-        };
+        let infill_speed = config.require_float("infill_speed")? as f32;
 
+        // The `width` closure below keeps its literal `0.0` arms: they are the
+        // documented canonical auto-0 sentinel (packet 185 AC-5), not
+        // configurable defaults — `resolve_role_width` routes a zero role
+        // width through the already-expanded base width.
         let width = |key: &str, fallback: f32| match config.get(key) {
             Some(ConfigValue::Float(w)) => *w as f32,
             Some(ConfigValue::Int(w)) => *w as f32,
@@ -169,6 +170,11 @@ mod tests {
         // module's fixed 0.4 mm nozzle). Seed the bound value; the
         // production auto-expansion lives host-side now.
         values.insert("line_width".into(), ConfigValue::Float(0.45));
+        // Declared keys (lightning-infill.toml) seeded at their manifest
+        // defaults, mirroring the production `seed_registry_defaults` step.
+        values.insert("infill_density".into(), ConfigValue::Float(0.2));
+        values.insert("infill_angle".into(), ConfigValue::Float(45.0));
+        values.insert("infill_speed".into(), ConfigValue::Float(60.0));
         let config = ConfigView::from_map(values);
         let module = LightningInfill::from_config(&config).unwrap();
         assert!((module.density - 0.2).abs() < 0.001);
