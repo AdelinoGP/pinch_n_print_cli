@@ -1,7 +1,8 @@
 # Classic output-volume surplus at matched settings
 
 Type: task
-Status: open
+Status: resolved
+Assignee: wayfinder session (ses_f14ba59b7ffeteaZ0tDfSNEjpc), 2026-09-29
 
 ## Question
 
@@ -36,3 +37,34 @@ Disclosure/analysis only; no optimization authorized until the surplus is
 classified. Parallel-takeable (not a timing/acceptance ticket). Any candidate
 it produces touches output geometry and must pass the fairness contract's
 disclosure rules before joining the timing chain.
+
+## Answer
+
+**Resolved 2026-09-29: Benchy's classic surplus is mostly actual sparse
+extrusion; base's is mostly wall-section bytes, with a separate cross-tool
+serialization cost.** Fresh matched PNP supports-off classic/Arachne slices
+were measured on both fixtures (ordinary guests checked fresh; release host
+rebuilt). The Benchy classic file exceeds PNP Arachne by 2,738,863 bytes;
+2,481,329 bytes (90.6%) are labelled `Sparse infill`, with 106,442 versus
+47,659 printed XY segments. At layer 104 (Z 21 mm), classic prints 2,562
+sparse segments while Arachne prints one and the retained matched Orca
+classic/Arachne captures print none. This **does not prove** which fill claim
+is correct. Gap infill contributes only 30,140 bytes to the Benchy PNP delta;
+it is a legitimate classic feature, not the dominant surplus.
+
+On base, PNP classic is 941,196 bytes larger than PNP Arachne: outer+inner
+wall sections add 1,370,922 bytes, while sparse infill is 463,583 bytes
+*smaller*. This is a different fixture shape, not a universal gap-fill tax.
+Across tools, PNP writes Z and F on every XY+E move; the historical Orca
+captures omit most repeated modal tokens. That is demonstrable formatting
+redundancy, but no safe-removal count or wall/CPU benefit has been measured.
+
+Methods, raw-capture paths, full role-bytes JSON and per-layer CSVs:
+[`FINDINGS.md`](../evidence/t28-output-volume/FINDINGS.md). The four fresh
+captures completed without degraded/non-fatal events, but had existing
+`ERR_MALFORMED_LAYER_MARKER` warnings; Orca comparison files are retained
+historical captures, not a same-day rerun. No optimization, acceptance A/B or
+keep/drop verdict was made. Follow-ups are [Benchy classic sparse-fill domain
+at middle layers](35-benchy-classic-sparse-fill-domain.md) (real-layer IR and
+canonical role oracle) and [Modal G-code Z/F token redundancy and speed
+gate](36-modal-gcode-token-redundancy.md) (state semantics before a paired A/B).

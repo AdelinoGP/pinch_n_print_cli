@@ -59,7 +59,25 @@ Standing decisions for this effort (2026-09-22):
   closed 2026-09-23/24); attribution-only tickets are parallel-takeable, but no
   substage split starts before [host:slice closing_ex span
   contradiction](issues/24-host-slice-closing-span-contradiction.md) closes.
-  Claim (`Status: claimed`) before any work.
+   Claim (`Status: claimed`) before any work.
+   2026-09-29 route update: the human parked 27's candidate search after
+   accepting the sibling-region memo DROP; attribution-only 28 is resolved.
+   Its new [Benchy classic sparse-fill domain at middle layers](issues/35-benchy-classic-sparse-fill-domain.md)
+   and [Modal G-code Z/F token redundancy and speed gate](issues/36-modal-gcode-token-redundancy.md)
+   are distinct frontier investigations, not already-accepted optimizations.
+   2026-09-29 second update: 35 resolved as a **containment defect, not a fill
+   domain** — the linker's clipped-to-nothing verdict is overridden by the
+   empty-output preservation rule, printing 68% of classic Benchy's sparse
+   output outside the part. Its fix is graduated to [InfillPostProcess
+   empty-output protocol](issues/37-infillpostprocess-empty-output-protocol.md),
+   which touches the linker/host contract rather than the fill geometry and
+   needs the standing paired A/B before any keep. 36 stays open and parallel.
+- **Recipe trap (new 2026-09-29):** a `Layer::InfillPostProcess` (or any stage)
+   invocation that emits no paths is indistinguishable from a stage that did not
+   run — the host preserves the prior `InfillIR`. Never read "the linker produced
+   nothing" as "no linking was needed"; check the linker's own kept-length from
+   `evidence/t35-fill-domain/probe.patch` before attributing output to the fill
+   generator.
 - **Recipe traps** (each has produced or nearly produced a wrong conclusion):
   instrumented runs never mixed into wall claims (§3.2); accumulated worker
   elapsed is not CPU (§3.3); the native `--profile` table's wall columns are
@@ -121,6 +139,13 @@ Standing decisions for this effort (2026-09-22):
 - [Emit-pass carve gate: representation safety + paired A/B](issues/32-emit-carve-gate-representation-and-ab.md): the naive bbox skip changes representation and a reachable lone-disc simplification result; guarded winding and lone-region repair preserve the tested production chain exactly. Independently measured ordinary + accelerated pairs favor the candidate on process CPU in every completed pair and on paired median wall in every cell, but wall is load-qualified (cpu/wall below quiet reference). **Human accepted KEEP; committed with this ticket.** Evidence in `evidence/t32-carve-gate/`.
 - [Accelerated residual query attribution](issues/18-accelerated-residual-query-attribution.md): the hot queries' ~1.9× residual is **the exact winding predicate loop after candidate reduction** — `inside_scan`+`quartile_scan` are ~89% of base's accelerated query fuel (collect is 24–55× cheaper), same shape under Arachne (79–81% of module) — while the u128-envelope suspect is falsified (f64 envelopes; the u128 bridge precheck is ~0.03% with its unsafe fallback never firing) and Linear fallbacks fire often but cost 0.07–1.96%; per-query scan fuel grows 3.5× benchy→base while collect stays flat, locating the superlinearity in the scan. Next candidates (2-D per-polygon bbox records, pre-converted vertex cache + short-circuits, descending quartile first-hit) stay below-fold — fuel→wall transfer 0–16%, no gap-closer. Evidence in `evidence/t18-accelerated-residual/`.
 - [Integrated-parity oracle experiment](issues/23-integrated-parity-oracle.md): native region eligibility and per-region config precedence were repaired and narrowly tested, but integrated timings remain disqualified as a module-work oracle pending the [Integrated/external matched-output oracle gate](issues/33-integrated-external-matched-output-oracle-gate.md) against real full-slice outputs.
+- [Config appendix must reflect resolved settings](issues/26-config-appendix-resolved-settings.md): one-to-one Orca-named appendix aliases now disclose PNP's effective wall count, infill direction, and wall-path precision instead of static padding; sparse-density padding now matches its documented default. Remaining padding-only disclosure semantics are the separate [Config padding disclosure boundary and viewer-key gate](issues/34-config-padding-disclosure-boundary.md).
+- [Serial host floor](issues/27-serial-host-prepass-floor.md) — **work item 1** (2026-09-27; items 2–5 still open): slice-outside wall R measured same-run is **0.15–0.23x** of Orca's budget on the worst cell (benchy ≈ 0.2 s, base 1.6–3.4 s) — ticket 12's 2.3x/5.5x R came from subtracting instrumented phase sums from uninstrumented process wall (§3.2), so every c-min in its budgets table is 10–35x too high and R retires as a budget term; the elapsed tail is attributed (pre-validation ~1.1–1.5 s incl. the ~0.77 s module-compile fixed term; prepass→per_layer handoff ~0.75 s; post-postpass = 32–38 s of pre-repair DEV-174 diagnostic replays — an artifact, not route work — plus `estimate_print`+scan at 6.8 s accelerated vs 16.9 s ordinary on identical 54.5 MB output, ordinary/accelerated delta unexplained, probe next). Evidence in `evidence/t27-serial-floor/`.
+- [Serial host floor](issues/27-serial-host-prepass-floor.md) — **work items 2–5** (2026-09-27, `PERF-T27-PROBE`, 4 uninstrumented runs, guests fresh): all four prepass built-ins attributed at the matched job and **`PrePass::Slice` (47–56 s wall on base, #2 serial block) adopted into the ticket**; ShellClassification's serial gate-commit loop (25–30 s) is the largest confirmed serial block outside Slice; the overhang footprint exact union (17–18 s serial) has an exact-intersection support-eligibility consumer (bbox replacement unsafe; premise audit below); SupportAnalysis's serial sweep is 24.7 s and its detect pass is parallel-saturated (11.7x); OverhangAnnotation's interior is parallel (needs a wall bracket before candidates graduate). Probe code stays out of commits. Evidence in `evidence/t27-serial-floor/FINDINGS-SUBSTAGE.md`.
+- [Serial host floor](issues/27-serial-host-prepass-floor.md) — **probe iteration 2 and premise audit** (2026-09-28): phase-B's two Miter offsets are measured work, but the proposed sibling-region memo has zero eligible siblings in the matched single-region jobs and its key does not prove identical input; drop that candidate, not the cost. `PrePass::Slice` fuel is ~70% `assemble_flat_bridge_areas` (parallel-saturated), but a safe reduction needs representation analysis. **The 6.8-vs-16.9 s tail mystery resolves to the pipeline-boundary teardown** (`estimate_print` itself is ~0.1 s; teardown 7.5–17 s vintage-dependent, below-fold); OverhangAnnotation wall-bracketed at 12.2–14.2 s (11–16x parallel, below-fold). Evidence in `evidence/t27-serial-floor/FINDINGS-SUBSTAGE-2.md` and `evidence/t27-serial-floor/PREMISE-AUDIT.md`.
+- [Serial host floor](issues/27-serial-host-prepass-floor.md) — **human route decision** (2026-09-29): accepted DROP of the phase-B sibling-region memo for the matched jobs and parked further serial-floor candidate search until an output-safe, measurably useful reduction has a real-layer IR oracle. The failed flat-bridge mask elimination remains dropped; `apply_opening` parity is separate. Prioritize the already-open [Classic output-volume surplus](issues/28-classic-output-volume-surplus.md) attribution next. Serial host floor stays open and unclaimed; no candidate committed in this take.
+- [Classic output-volume surplus](issues/28-classic-output-volume-surplus.md): fresh ordinary matched output census attributes 90.6% of Benchy's classic-vs-Arachne byte excess to actual sparse XY paths, not gap fill; base's classic excess is mostly wall bytes and sparse is smaller than Arachne. Historical Orca captures and a middle Benchy layer expose a fill-domain discrepancy, not a proven safe deletion. PNP also repeats Z/F modal tokens on every XY+E move; its speed impact is unmeasured. Follow-ups: [Benchy classic sparse-fill domain at middle layers](issues/35-benchy-classic-sparse-fill-domain.md) and [Modal G-code Z/F token redundancy and speed gate](issues/36-modal-gcode-token-redundancy.md). Evidence: `evidence/t28-output-volume/FINDINGS.md`.
+- [Benchy classic sparse-fill domain at middle layers](issues/35-benchy-classic-sparse-fill-domain.md): **not a fill-domain question — a commit-protocol containment hole.** The linker clips the raw gyroid waves to nothing on the burst layers (probe: 1,741 mm in, 0 paths kept at classic L104), the host reads that empty output as "committed nothing", and the preserved prior `InfillIR` prints the raw, unclipped envelope — 54,324 of 79,940 printed sparse mm (68.0%) and 3,054,585 of 4,486,477 sparse bytes across 60 classic layers, with 88.7% of the L104 revived path outside the part cross-section and 1,741 mm printed against a 44.2 mm absolute bound from the 17.7 mm² sparse claim. Arachne 16 layers / 20.9%; base has zero all-empty layers and classic prints fewer sparse mm than Arachne there, which explains the ticket-28 fixture divergence. No fix made — the protocol change is graduated to [InfillPostProcess empty-output protocol](issues/37-infillpostprocess-empty-output-protocol.md). Evidence: `evidence/t35-fill-domain/FINDINGS.md`.
 
 ## Not yet specified
 
@@ -137,7 +162,17 @@ Standing decisions for this effort (2026-09-22):
   A/B](issues/32-emit-carve-gate-representation-and-ab.md). Its sibling
   sub-term (`union_expolys` + simplify, 72.8 s base) remains in this fog:
   investigate whether a representation-safe call reduction exists before
-  graduating a concrete candidate. Below-fold polish (`offset2_ex` call
+  graduating a concrete candidate. [Serial host
+  floor](issues/27-serial-host-prepass-floor.md)'s probe batches (items 1–5 +
+  iteration 2) surfaced three graduate-when-probed questions resolved on
+  2026-09-28 (phase-B = two costly offsets, sibling memo dropped for the matched job by human decision on 2026-09-29;
+  estimate_print tail = pipeline teardown, below-fold; OverhangAnnotation
+  wall = parallel) and one still-open (flat-bridge reduction inside
+   `PrePass::Slice`, representation analysis first; the tested `refilled`-mask
+   elimination failed real-layer IR equivalence and was dropped — see
+   `evidence/t27-serial-floor/FLAT-BRIDGE-EXPERIMENT.md`). The smaller
+   `apply_opening` lead is a separate geometry-parity question, not a
+   representation-preserving replacement. Below-fold polish (`offset2_ex` call
   reduction, consume-only-when-read, `split_top_surfaces` secondary work, the
   `emit_walls` memory-shape idea, and the ticket-18 query-internals candidates
   — 2-D per-polygon bbox records, pre-converted winding vertex cache +

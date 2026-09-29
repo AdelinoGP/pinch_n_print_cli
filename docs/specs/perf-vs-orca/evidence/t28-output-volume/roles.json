@@ -1,0 +1,932 @@
+[
+  {
+    "file": "target\\matched-pair\\t28-output-volume\\benchy-classic.gcode",
+    "total_bytes": 7444447,
+    "roles": {
+      "Bottom surface": {
+        "bytes": 32378,
+        "sections": 22,
+        "motions": 810,
+        "xy_e_motions": 709,
+        "xy_e_motion_bytes": 28664,
+        "xy_e_z_token_bytes": 3546,
+        "xy_e_f_token_bytes": 4254
+      },
+      "Bridge": {
+        "bytes": 14035,
+        "sections": 18,
+        "motions": 344,
+        "xy_e_motions": 309,
+        "xy_e_motion_bytes": 12667,
+        "xy_e_z_token_bytes": 1598,
+        "xy_e_f_token_bytes": 1854
+      },
+      "Brim": {
+        "bytes": 3811,
+        "sections": 1,
+        "motions": 100,
+        "xy_e_motions": 80,
+        "xy_e_motion_bytes": 3200,
+        "xy_e_z_token_bytes": 400,
+        "xy_e_f_token_bytes": 480
+      },
+      "Gap infill": {
+        "bytes": 30140,
+        "sections": 110,
+        "motions": 715,
+        "xy_e_motions": 589,
+        "xy_e_motion_bytes": 23906,
+        "xy_e_z_token_bytes": 2954,
+        "xy_e_f_token_bytes": 3534
+      },
+      "Inner wall": {
+        "bytes": 1313447,
+        "sections": 257,
+        "motions": 32019,
+        "xy_e_motions": 31230,
+        "xy_e_motion_bytes": 1283165,
+        "xy_e_z_token_bytes": 168424,
+        "xy_e_f_token_bytes": 187380
+      },
+      "Internal Bridge": {
+        "bytes": 29698,
+        "sections": 12,
+        "motions": 749,
+        "xy_e_motions": 641,
+        "xy_e_motion_bytes": 25806,
+        "xy_e_z_token_bytes": 2889,
+        "xy_e_f_token_bytes": 3846
+      },
+      "Internal solid infill": {
+        "bytes": 33192,
+        "sections": 13,
+        "motions": 819,
+        "xy_e_motions": 716,
+        "xy_e_motion_bytes": 29298,
+        "xy_e_z_token_bytes": 3760,
+        "xy_e_f_token_bytes": 4296
+      },
+      "Outer wall": {
+        "bytes": 1398177,
+        "sections": 240,
+        "motions": 34125,
+        "xy_e_motions": 33377,
+        "xy_e_motion_bytes": 1370171,
+        "xy_e_z_token_bytes": 180084,
+        "xy_e_f_token_bytes": 200262
+      },
+      "Skirt": {
+        "bytes": 1177,
+        "sections": 1,
+        "motions": 31,
+        "xy_e_motions": 24,
+        "xy_e_motion_bytes": 960,
+        "xy_e_z_token_bytes": 120,
+        "xy_e_f_token_bytes": 144
+      },
+      "Sparse infill": {
+        "bytes": 4486477,
+        "sections": 273,
+        "motions": 109464,
+        "xy_e_motions": 106442,
+        "xy_e_motion_bytes": 4380349,
+        "xy_e_z_token_bytes": 573949,
+        "xy_e_f_token_bytes": 638652
+      },
+      "Top surface": {
+        "bytes": 87036,
+        "sections": 47,
+        "motions": 2126,
+        "xy_e_motions": 1946,
+        "xy_e_motion_bytes": 80319,
+        "xy_e_z_token_bytes": 10811,
+        "xy_e_f_token_bytes": 11676
+      },
+      "[untyped]": {
+        "bytes": 14879,
+        "sections": 0,
+        "motions": 0,
+        "xy_e_motions": 0,
+        "xy_e_motion_bytes": 0,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      }
+    }
+  },
+  {
+    "file": "target\\matched-pair\\t28-output-volume\\benchy-arachne.gcode",
+    "total_bytes": 4705584,
+    "roles": {
+      "Bottom surface": {
+        "bytes": 34539,
+        "sections": 25,
+        "motions": 857,
+        "xy_e_motions": 756,
+        "xy_e_motion_bytes": 30760,
+        "xy_e_z_token_bytes": 3780,
+        "xy_e_f_token_bytes": 4536
+      },
+      "Bridge": {
+        "bytes": 14567,
+        "sections": 21,
+        "motions": 356,
+        "xy_e_motions": 320,
+        "xy_e_motion_bytes": 13124,
+        "xy_e_z_token_bytes": 1662,
+        "xy_e_f_token_bytes": 1920
+      },
+      "Brim": {
+        "bytes": 3771,
+        "sections": 1,
+        "motions": 100,
+        "xy_e_motions": 80,
+        "xy_e_motion_bytes": 3160,
+        "xy_e_z_token_bytes": 400,
+        "xy_e_f_token_bytes": 480
+      },
+      "Inner wall": {
+        "bytes": 1243473,
+        "sections": 681,
+        "motions": 30133,
+        "xy_e_motions": 29360,
+        "xy_e_motion_bytes": 1206376,
+        "xy_e_z_token_bytes": 158083,
+        "xy_e_f_token_bytes": 176160
+      },
+      "Internal Bridge": {
+        "bytes": 29698,
+        "sections": 12,
+        "motions": 749,
+        "xy_e_motions": 641,
+        "xy_e_motion_bytes": 25806,
+        "xy_e_z_token_bytes": 2889,
+        "xy_e_f_token_bytes": 3846
+      },
+      "Internal solid infill": {
+        "bytes": 38087,
+        "sections": 13,
+        "motions": 941,
+        "xy_e_motions": 827,
+        "xy_e_motion_bytes": 33848,
+        "xy_e_z_token_bytes": 4424,
+        "xy_e_f_token_bytes": 4962
+      },
+      "Outer wall": {
+        "bytes": 1221076,
+        "sections": 692,
+        "motions": 29618,
+        "xy_e_motions": 28869,
+        "xy_e_motion_bytes": 1185317,
+        "xy_e_z_token_bytes": 155592,
+        "xy_e_f_token_bytes": 173214
+      },
+      "Skirt": {
+        "bytes": 1165,
+        "sections": 1,
+        "motions": 31,
+        "xy_e_motions": 24,
+        "xy_e_motion_bytes": 948,
+        "xy_e_z_token_bytes": 120,
+        "xy_e_f_token_bytes": 144
+      },
+      "Sparse infill": {
+        "bytes": 2005148,
+        "sections": 248,
+        "motions": 49171,
+        "xy_e_motions": 47659,
+        "xy_e_motion_bytes": 1948323,
+        "xy_e_z_token_bytes": 244669,
+        "xy_e_f_token_bytes": 285954
+      },
+      "Top surface": {
+        "bytes": 99708,
+        "sections": 60,
+        "motions": 2445,
+        "xy_e_motions": 2182,
+        "xy_e_motion_bytes": 89993,
+        "xy_e_z_token_bytes": 12137,
+        "xy_e_f_token_bytes": 13092
+      },
+      "[untyped]": {
+        "bytes": 14352,
+        "sections": 0,
+        "motions": 0,
+        "xy_e_motions": 0,
+        "xy_e_motion_bytes": 0,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      }
+    }
+  },
+  {
+    "file": "target\\matched-pair\\t28-output-volume\\base-classic.gcode",
+    "total_bytes": 21935986,
+    "roles": {
+      "Bottom surface": {
+        "bytes": 34229,
+        "sections": 49,
+        "motions": 830,
+        "xy_e_motions": 712,
+        "xy_e_motion_bytes": 29291,
+        "xy_e_z_token_bytes": 4157,
+        "xy_e_f_token_bytes": 4272
+      },
+      "Bridge": {
+        "bytes": 22393,
+        "sections": 51,
+        "motions": 544,
+        "xy_e_motions": 458,
+        "xy_e_motion_bytes": 18838,
+        "xy_e_z_token_bytes": 2664,
+        "xy_e_f_token_bytes": 2748
+      },
+      "Brim": {
+        "bytes": 3871,
+        "sections": 1,
+        "motions": 100,
+        "xy_e_motions": 80,
+        "xy_e_motion_bytes": 3240,
+        "xy_e_z_token_bytes": 400,
+        "xy_e_f_token_bytes": 480
+      },
+      "Gap infill": {
+        "bytes": 48639,
+        "sections": 245,
+        "motions": 1142,
+        "xy_e_motions": 739,
+        "xy_e_motion_bytes": 30069,
+        "xy_e_z_token_bytes": 3974,
+        "xy_e_f_token_bytes": 4434
+      },
+      "Inner wall": {
+        "bytes": 6028351,
+        "sections": 526,
+        "motions": 146859,
+        "xy_e_motions": 145926,
+        "xy_e_motion_bytes": 5989419,
+        "xy_e_z_token_bytes": 803935,
+        "xy_e_f_token_bytes": 875556
+      },
+      "Internal Bridge": {
+        "bytes": 21334,
+        "sections": 6,
+        "motions": 525,
+        "xy_e_motions": 454,
+        "xy_e_motion_bytes": 18785,
+        "xy_e_z_token_bytes": 2677,
+        "xy_e_f_token_bytes": 2724
+      },
+      "Internal solid infill": {
+        "bytes": 557,
+        "sections": 3,
+        "motions": 12,
+        "xy_e_motions": 3,
+        "xy_e_motion_bytes": 124,
+        "xy_e_z_token_bytes": 16,
+        "xy_e_f_token_bytes": 18
+      },
+      "Outer wall": {
+        "bytes": 6288351,
+        "sections": 495,
+        "motions": 153192,
+        "xy_e_motions": 152309,
+        "xy_e_motion_bytes": 6251694,
+        "xy_e_z_token_bytes": 838522,
+        "xy_e_f_token_bytes": 913854
+      },
+      "Skirt": {
+        "bytes": 1245,
+        "sections": 1,
+        "motions": 31,
+        "xy_e_motions": 24,
+        "xy_e_motion_bytes": 972,
+        "xy_e_z_token_bytes": 120,
+        "xy_e_f_token_bytes": 144
+      },
+      "Sparse infill": {
+        "bytes": 9431668,
+        "sections": 670,
+        "motions": 229928,
+        "xy_e_motions": 225004,
+        "xy_e_motion_bytes": 9252887,
+        "xy_e_z_token_bytes": 1242466,
+        "xy_e_f_token_bytes": 1350024
+      },
+      "Top surface": {
+        "bytes": 27113,
+        "sections": 58,
+        "motions": 665,
+        "xy_e_motions": 549,
+        "xy_e_motion_bytes": 22215,
+        "xy_e_z_token_bytes": 2822,
+        "xy_e_f_token_bytes": 3294
+      },
+      "[untyped]": {
+        "bytes": 28235,
+        "sections": 0,
+        "motions": 0,
+        "xy_e_motions": 0,
+        "xy_e_motion_bytes": 0,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      }
+    }
+  },
+  {
+    "file": "target\\matched-pair\\t28-output-volume\\base-arachne.gcode",
+    "total_bytes": 20994790,
+    "roles": {
+      "Bottom surface": {
+        "bytes": 36451,
+        "sections": 58,
+        "motions": 880,
+        "xy_e_motions": 758,
+        "xy_e_motion_bytes": 31166,
+        "xy_e_z_token_bytes": 4398,
+        "xy_e_f_token_bytes": 4548
+      },
+      "Bridge": {
+        "bytes": 27503,
+        "sections": 78,
+        "motions": 668,
+        "xy_e_motions": 540,
+        "xy_e_motion_bytes": 22160,
+        "xy_e_z_token_bytes": 3107,
+        "xy_e_f_token_bytes": 3240
+      },
+      "Brim": {
+        "bytes": 3891,
+        "sections": 1,
+        "motions": 100,
+        "xy_e_motions": 80,
+        "xy_e_motion_bytes": 3240,
+        "xy_e_z_token_bytes": 400,
+        "xy_e_f_token_bytes": 480
+      },
+      "Inner wall": {
+        "bytes": 5581346,
+        "sections": 845,
+        "motions": 135803,
+        "xy_e_motions": 134889,
+        "xy_e_motion_bytes": 5537994,
+        "xy_e_z_token_bytes": 743378,
+        "xy_e_f_token_bytes": 809334
+      },
+      "Internal Bridge": {
+        "bytes": 21585,
+        "sections": 6,
+        "motions": 532,
+        "xy_e_motions": 453,
+        "xy_e_motion_bytes": 18781,
+        "xy_e_z_token_bytes": 2671,
+        "xy_e_f_token_bytes": 2718
+      },
+      "Internal solid infill": {
+        "bytes": 871,
+        "sections": 3,
+        "motions": 20,
+        "xy_e_motions": 11,
+        "xy_e_motion_bytes": 439,
+        "xy_e_z_token_bytes": 48,
+        "xy_e_f_token_bytes": 66
+      },
+      "Outer wall": {
+        "bytes": 5364434,
+        "sections": 842,
+        "motions": 130563,
+        "xy_e_motions": 129668,
+        "xy_e_motion_bytes": 5321850,
+        "xy_e_z_token_bytes": 713899,
+        "xy_e_f_token_bytes": 778008
+      },
+      "Skirt": {
+        "bytes": 1252,
+        "sections": 1,
+        "motions": 31,
+        "xy_e_motions": 24,
+        "xy_e_motion_bytes": 972,
+        "xy_e_z_token_bytes": 120,
+        "xy_e_f_token_bytes": 144
+      },
+      "Sparse infill": {
+        "bytes": 9895251,
+        "sections": 618,
+        "motions": 241290,
+        "xy_e_motions": 236062,
+        "xy_e_motion_bytes": 9706455,
+        "xy_e_z_token_bytes": 1303504,
+        "xy_e_f_token_bytes": 1416372
+      },
+      "Top surface": {
+        "bytes": 34382,
+        "sections": 80,
+        "motions": 840,
+        "xy_e_motions": 679,
+        "xy_e_motion_bytes": 27548,
+        "xy_e_z_token_bytes": 3537,
+        "xy_e_f_token_bytes": 4074
+      },
+      "[untyped]": {
+        "bytes": 27824,
+        "sections": 0,
+        "motions": 0,
+        "xy_e_motions": 0,
+        "xy_e_motion_bytes": 0,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      }
+    }
+  },
+  {
+    "file": "target\\matched-pair\\s1-benchy\\gcode\\benchy-classic-off-orca-m3.gcode",
+    "total_bytes": 3890416,
+    "roles": {
+      "Bottom surface": {
+        "bytes": 12973,
+        "sections": 5,
+        "motions": 459,
+        "xy_e_motions": 417,
+        "xy_e_motion_bytes": 11580,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Bridge": {
+        "bytes": 12749,
+        "sections": 3,
+        "motions": 464,
+        "xy_e_motions": 379,
+        "xy_e_motion_bytes": 10428,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Brim": {
+        "bytes": 3049,
+        "sections": 1,
+        "motions": 105,
+        "xy_e_motions": 95,
+        "xy_e_motion_bytes": 2650,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Custom": {
+        "bytes": 16321,
+        "sections": 2,
+        "motions": 298,
+        "xy_e_motions": 126,
+        "xy_e_motion_bytes": 3731,
+        "xy_e_z_token_bytes": 42,
+        "xy_e_f_token_bytes": 659
+      },
+      "Gap infill": {
+        "bytes": 595779,
+        "sections": 777,
+        "motions": 20149,
+        "xy_e_motions": 10047,
+        "xy_e_motion_bytes": 276454,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Inner wall": {
+        "bytes": 605720,
+        "sections": 612,
+        "motions": 21319,
+        "xy_e_motions": 19959,
+        "xy_e_motion_bytes": 548107,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Internal Bridge": {
+        "bytes": 27378,
+        "sections": 12,
+        "motions": 965,
+        "xy_e_motions": 876,
+        "xy_e_motion_bytes": 24001,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Internal solid infill": {
+        "bytes": 370758,
+        "sections": 312,
+        "motions": 12680,
+        "xy_e_motions": 8757,
+        "xy_e_motion_bytes": 240568,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Outer wall": {
+        "bytes": 952427,
+        "sections": 743,
+        "motions": 34143,
+        "xy_e_motions": 30947,
+        "xy_e_motion_bytes": 853097,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Overhang wall": {
+        "bytes": 13595,
+        "sections": 84,
+        "motions": 344,
+        "xy_e_motions": 260,
+        "xy_e_motion_bytes": 7116,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Skirt": {
+        "bytes": 1210,
+        "sections": 1,
+        "motions": 43,
+        "xy_e_motions": 38,
+        "xy_e_motion_bytes": 1042,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Sparse infill": {
+        "bytes": 949481,
+        "sections": 248,
+        "motions": 34333,
+        "xy_e_motions": 32949,
+        "xy_e_motion_bytes": 906797,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Top surface": {
+        "bytes": 64516,
+        "sections": 22,
+        "motions": 2129,
+        "xy_e_motions": 697,
+        "xy_e_motion_bytes": 19251,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "[untyped]": {
+        "bytes": 264460,
+        "sections": 0,
+        "motions": 3761,
+        "xy_e_motions": 569,
+        "xy_e_motion_bytes": 16232,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      }
+    }
+  },
+  {
+    "file": "target\\matched-pair\\s1-benchy\\gcode\\benchy-arachne-off-orca-m3.gcode",
+    "total_bytes": 4680789,
+    "roles": {
+      "Bottom surface": {
+        "bytes": 15044,
+        "sections": 2,
+        "motions": 536,
+        "xy_e_motions": 484,
+        "xy_e_motion_bytes": 13415,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Bridge": {
+        "bytes": 15176,
+        "sections": 9,
+        "motions": 544,
+        "xy_e_motions": 398,
+        "xy_e_motion_bytes": 10934,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Brim": {
+        "bytes": 3084,
+        "sections": 1,
+        "motions": 106,
+        "xy_e_motions": 95,
+        "xy_e_motion_bytes": 2650,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Custom": {
+        "bytes": 16321,
+        "sections": 2,
+        "motions": 298,
+        "xy_e_motions": 126,
+        "xy_e_motion_bytes": 3731,
+        "xy_e_z_token_bytes": 42,
+        "xy_e_f_token_bytes": 659
+      },
+      "Inner wall": {
+        "bytes": 1570248,
+        "sections": 663,
+        "motions": 50535,
+        "xy_e_motions": 34024,
+        "xy_e_motion_bytes": 937839,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Internal Bridge": {
+        "bytes": 29311,
+        "sections": 11,
+        "motions": 1032,
+        "xy_e_motions": 936,
+        "xy_e_motion_bytes": 25753,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Internal solid infill": {
+        "bytes": 762446,
+        "sections": 557,
+        "motions": 26068,
+        "xy_e_motions": 15490,
+        "xy_e_motion_bytes": 428390,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Outer wall": {
+        "bytes": 903838,
+        "sections": 753,
+        "motions": 31762,
+        "xy_e_motions": 27660,
+        "xy_e_motion_bytes": 762732,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Overhang wall": {
+        "bytes": 10631,
+        "sections": 84,
+        "motions": 247,
+        "xy_e_motions": 224,
+        "xy_e_motion_bytes": 6142,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Skirt": {
+        "bytes": 1210,
+        "sections": 1,
+        "motions": 43,
+        "xy_e_motions": 38,
+        "xy_e_motion_bytes": 1042,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Sparse infill": {
+        "bytes": 997154,
+        "sections": 241,
+        "motions": 36047,
+        "xy_e_motions": 34380,
+        "xy_e_motion_bytes": 946587,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Top surface": {
+        "bytes": 74984,
+        "sections": 29,
+        "motions": 2479,
+        "xy_e_motions": 808,
+        "xy_e_motion_bytes": 22195,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "[untyped]": {
+        "bytes": 281342,
+        "sections": 0,
+        "motions": 4244,
+        "xy_e_motions": 1014,
+        "xy_e_motion_bytes": 28983,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      }
+    }
+  },
+  {
+    "file": "target\\matched-pair\\s2-base\\gcode\\base-classic-off-orca-m3.gcode",
+    "total_bytes": 20653987,
+    "roles": {
+      "Bridge": {
+        "bytes": 96793,
+        "sections": 119,
+        "motions": 3401,
+        "xy_e_motions": 2096,
+        "xy_e_motion_bytes": 58733,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Brim": {
+        "bytes": 6908,
+        "sections": 1,
+        "motions": 239,
+        "xy_e_motions": 225,
+        "xy_e_motion_bytes": 6347,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Custom": {
+        "bytes": 16291,
+        "sections": 2,
+        "motions": 298,
+        "xy_e_motions": 126,
+        "xy_e_motion_bytes": 3731,
+        "xy_e_z_token_bytes": 42,
+        "xy_e_f_token_bytes": 659
+      },
+      "Gap infill": {
+        "bytes": 379595,
+        "sections": 605,
+        "motions": 12832,
+        "xy_e_motions": 4361,
+        "xy_e_motion_bytes": 121541,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Inner wall": {
+        "bytes": 3549725,
+        "sections": 904,
+        "motions": 125718,
+        "xy_e_motions": 123323,
+        "xy_e_motion_bytes": 3457242,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Internal Bridge": {
+        "bytes": 14594,
+        "sections": 14,
+        "motions": 485,
+        "xy_e_motions": 426,
+        "xy_e_motion_bytes": 11901,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Internal solid infill": {
+        "bytes": 3186960,
+        "sections": 1476,
+        "motions": 106882,
+        "xy_e_motions": 59376,
+        "xy_e_motion_bytes": 1671601,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Outer wall": {
+        "bytes": 4627086,
+        "sections": 1695,
+        "motions": 164526,
+        "xy_e_motions": 156939,
+        "xy_e_motion_bytes": 4402121,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Overhang wall": {
+        "bytes": 218472,
+        "sections": 952,
+        "motions": 6151,
+        "xy_e_motions": 5138,
+        "xy_e_motion_bytes": 143412,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Skirt": {
+        "bytes": 1219,
+        "sections": 1,
+        "motions": 42,
+        "xy_e_motions": 38,
+        "xy_e_motion_bytes": 1074,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Sparse infill": {
+        "bytes": 7966666,
+        "sections": 1604,
+        "motions": 283021,
+        "xy_e_motions": 266850,
+        "xy_e_motion_bytes": 7514471,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Top surface": {
+        "bytes": 79989,
+        "sections": 105,
+        "motions": 2580,
+        "xy_e_motions": 832,
+        "xy_e_motion_bytes": 23076,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "[untyped]": {
+        "bytes": 509689,
+        "sections": 0,
+        "motions": 8105,
+        "xy_e_motions": 1496,
+        "xy_e_motion_bytes": 43063,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      }
+    }
+  },
+  {
+    "file": "target\\matched-pair\\s2-base\\gcode\\base-arachne-off-orca-m3.gcode",
+    "total_bytes": 19218998,
+    "roles": {
+      "Bridge": {
+        "bytes": 116740,
+        "sections": 134,
+        "motions": 4109,
+        "xy_e_motions": 2587,
+        "xy_e_motion_bytes": 72594,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Brim": {
+        "bytes": 6878,
+        "sections": 1,
+        "motions": 239,
+        "xy_e_motions": 225,
+        "xy_e_motion_bytes": 6347,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Custom": {
+        "bytes": 16291,
+        "sections": 2,
+        "motions": 298,
+        "xy_e_motions": 126,
+        "xy_e_motion_bytes": 3731,
+        "xy_e_z_token_bytes": 42,
+        "xy_e_f_token_bytes": 659
+      },
+      "Inner wall": {
+        "bytes": 3255381,
+        "sections": 982,
+        "motions": 114039,
+        "xy_e_motions": 108696,
+        "xy_e_motion_bytes": 3048894,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Internal Bridge": {
+        "bytes": 12289,
+        "sections": 12,
+        "motions": 412,
+        "xy_e_motions": 359,
+        "xy_e_motion_bytes": 9996,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Internal solid infill": {
+        "bytes": 3153137,
+        "sections": 1421,
+        "motions": 105911,
+        "xy_e_motions": 59184,
+        "xy_e_motion_bytes": 1666165,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Outer wall": {
+        "bytes": 3515089,
+        "sections": 1680,
+        "motions": 124555,
+        "xy_e_motions": 116601,
+        "xy_e_motion_bytes": 3272322,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Overhang wall": {
+        "bytes": 171758,
+        "sections": 989,
+        "motions": 4647,
+        "xy_e_motions": 3938,
+        "xy_e_motion_bytes": 110025,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Skirt": {
+        "bytes": 1219,
+        "sections": 1,
+        "motions": 42,
+        "xy_e_motions": 38,
+        "xy_e_motion_bytes": 1074,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Sparse infill": {
+        "bytes": 8320524,
+        "sections": 1446,
+        "motions": 295580,
+        "xy_e_motions": 279011,
+        "xy_e_motion_bytes": 7857861,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "Top surface": {
+        "bytes": 94159,
+        "sections": 122,
+        "motions": 3046,
+        "xy_e_motions": 963,
+        "xy_e_motion_bytes": 26716,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      },
+      "[untyped]": {
+        "bytes": 555533,
+        "sections": 0,
+        "motions": 10013,
+        "xy_e_motions": 3386,
+        "xy_e_motion_bytes": 96334,
+        "xy_e_z_token_bytes": 0,
+        "xy_e_f_token_bytes": 0
+      }
+    }
+  }
+]
