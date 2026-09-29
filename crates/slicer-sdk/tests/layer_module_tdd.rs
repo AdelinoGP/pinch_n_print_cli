@@ -534,6 +534,28 @@ fn slice_region_view_derive_needs_support_disjoint_footprint_is_false() {
 }
 
 #[test]
+fn slice_region_view_derive_needs_support_overlapping_bboxes_but_disjoint_polygons_is_false() {
+    // The two triangles' bounding boxes overlap in both axes, but their
+    // interiors do not. A bbox-only replacement for the overhang footprint
+    // would incorrectly mark this region support-eligible.
+    let triangle = |points: [(f32, f32); 3]| ExPolygon {
+        contour: Polygon {
+            points: points
+                .into_iter()
+                .map(|(x, y)| Point2::from_mm(x, y))
+                .collect(),
+        },
+        holes: vec![],
+    };
+    let mut view = SliceRegionView::default();
+    view.set_object_id("obj-1".to_string());
+    view.set_polygons(vec![triangle([(0.0, 0.0), (4.0, 0.0), (0.0, 4.0)])]);
+    let classification =
+        support_test_classification(triangle([(3.0, 3.0), (7.0, 3.0), (3.0, 7.0)]));
+    assert!(!view.derive_needs_support(Some(&classification)));
+}
+
+#[test]
 fn slice_region_view_derive_needs_support_overlapping_footprint_is_true() {
     let mut view = SliceRegionView::default();
     view.set_object_id("obj-1".to_string());
