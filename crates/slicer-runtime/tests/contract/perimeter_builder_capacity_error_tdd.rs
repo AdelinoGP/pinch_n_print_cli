@@ -2,8 +2,6 @@
 // capacity-rejecting PerimeterOutputBuilder causes run_perimeters to
 // return Err(ModuleError), not silently Ok(()).
 
-use std::collections::HashMap;
-
 use crate::common::classic_perimeters_baseline;
 use classic_perimeters::ClassicPerimeters;
 use slicer_ir::{ConfigView, ExPolygon, Point2, Polygon};
@@ -37,10 +35,19 @@ fn config_with_wall_count(n: i64) -> ConfigView {
         .build()
 }
 
+/// Base-module config for `from_config`: the bound-view baseline plus the
+/// declared `wall_count` at its manifest default (3), mirroring the
+/// production `seed_registry_defaults` step. `run_perimeters` reads the
+/// per-invocation `wall_count` from the call-site config, so this value is
+/// only what satisfies the fail-closed `require_int` read.
+fn base_module_config() -> ConfigView {
+    classic_perimeters_baseline().int("wall_count", 3).build()
+}
+
 #[test]
 fn capacity_zero_wall_loops_rejects_push() {
-    let module = ClassicPerimeters::from_config(&ConfigView::from_map(HashMap::new()))
-        .expect("from_config should succeed");
+    let module =
+        ClassicPerimeters::from_config(&base_module_config()).expect("from_config should succeed");
 
     let region = square_region(0.2);
     let config = config_with_wall_count(2);
@@ -69,8 +76,8 @@ fn capacity_zero_wall_loops_rejects_push() {
 
 #[test]
 fn capacity_one_wall_loop_accepts_one_rejects_second() {
-    let module = ClassicPerimeters::from_config(&ConfigView::from_map(HashMap::new()))
-        .expect("from_config should succeed");
+    let module =
+        ClassicPerimeters::from_config(&base_module_config()).expect("from_config should succeed");
 
     let region = square_region(0.2);
 
@@ -113,8 +120,8 @@ fn capacity_one_wall_loop_accepts_one_rejects_second() {
 
 #[test]
 fn unbounded_builder_never_rejects() {
-    let module = ClassicPerimeters::from_config(&ConfigView::from_map(HashMap::new()))
-        .expect("from_config should succeed");
+    let module =
+        ClassicPerimeters::from_config(&base_module_config()).expect("from_config should succeed");
 
     let region = square_region(0.2);
     let config = config_with_wall_count(5);
@@ -143,8 +150,8 @@ fn unbounded_builder_never_rejects() {
 
 #[test]
 fn capacity_zero_seam_candidates_rejects_push() {
-    let module = ClassicPerimeters::from_config(&ConfigView::from_map(HashMap::new()))
-        .expect("from_config should succeed");
+    let module =
+        ClassicPerimeters::from_config(&base_module_config()).expect("from_config should succeed");
 
     let region = square_region(0.2);
     let config = config_with_wall_count(1);

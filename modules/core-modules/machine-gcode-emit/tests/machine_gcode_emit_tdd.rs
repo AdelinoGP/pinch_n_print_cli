@@ -9,21 +9,41 @@
 #![allow(missing_docs)]
 
 use machine_gcode_emit::MachineGcodeEmit;
-use slicer_ir::{ConfigValue, ExtrusionRole, GCodeCommand, RetractMode};
+use slicer_ir::{ConfigValue, ConfigView, ExtrusionRole, GCodeCommand, RetractMode};
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::host::test_support::{install_log_capture, take_log_messages};
 use slicer_sdk::host::LogLevel;
 use slicer_sdk::postpass_builders::GcodeOutputBuilder;
 use slicer_sdk::postpass_types::GcodeOutputCommand;
-use slicer_sdk::test_prelude::config_with;
 use slicer_sdk::traits::PostpassModule;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// Required declared keys (machine-gcode-emit.toml) seeded at their manifest
+/// defaults when a test config omits them, mirroring the production
+/// `seed_registry_defaults` step so per-test pairs remain the only overrides.
+fn with_declared_defaults(
+    config_pairs: &[(&str, ConfigValue)],
+) -> std::collections::HashMap<String, ConfigValue> {
+    let mut fields = std::collections::HashMap::new();
+    fields.insert(
+        "bed_temperature_initial_layer_single".to_string(),
+        ConfigValue::Int(60),
+    );
+    fields.insert(
+        "nozzle_temperature_initial_layer".to_string(),
+        ConfigValue::Int(215),
+    );
+    for (key, value) in config_pairs {
+        fields.insert((*key).to_string(), value.clone());
+    }
+    fields
+}
+
 fn run(config_pairs: &[(&str, ConfigValue)], commands: &[GCodeCommand]) -> GcodeOutputBuilder {
-    let cfg = config_with(config_pairs);
+    let cfg = ConfigView::from_map(with_declared_defaults(config_pairs));
     let module = MachineGcodeEmit::from_config(&cfg).expect("from_config must succeed");
     let mut output = GcodeOutputBuilder::new();
     module
@@ -39,7 +59,7 @@ fn try_run(
     config_pairs: &[(&str, ConfigValue)],
     commands: &[GCodeCommand],
 ) -> (Result<(), ModuleError>, GcodeOutputBuilder) {
-    let cfg = config_with(config_pairs);
+    let cfg = ConfigView::from_map(with_declared_defaults(config_pairs));
     let module = MachineGcodeEmit::from_config(&cfg).expect("from_config must succeed");
     let mut output = GcodeOutputBuilder::new();
     let result = module.run_gcode_postprocess(commands, &mut output, &cfg);

@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use slicer_ir::{
-    ConfigView, ExtrusionRole, Point3, SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion,
-    SupportPlanSkeleton,
+    ConfigValue, ConfigView, ExtrusionRole, Point3, SupportPlanIR, SupportPlanRole,
+    SupportPlanRoleRegion, SupportPlanSkeleton,
 };
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::test_prelude::*;
@@ -20,20 +20,26 @@ fn make_config(
     speed: f64,
     line_width: f64,
 ) -> ConfigView {
-    ConfigViewBuilder::new()
-        .bool("enable_support", enabled)
-        // Packet 06: required reads (`nozzle_diameter`,
-        // `support_base_pattern_spacing` in `from_config`; `layer_height` in
-        // `run_support` when the region carries no effective layer height) at
-        // their manifest defaults.
-        .float("nozzle_diameter", 0.4)
-        .float("layer_height", 0.2)
-        .float("support_base_pattern_spacing", 2.5)
-        .float("support_angle", angle)
-        .float("support_speed", speed)
-        .float("support_line_width", line_width)
-        .float("support_bottom_interface_spacing", 0.4)
-        .build()
+    // `support_interface_flow` is declared `percent`; `ConfigViewBuilder` has
+    // no percent constructor, so the fixture is built from typed pairs.
+    config_with(&[
+        ("enable_support", ConfigValue::Bool(enabled)),
+        // Required reads (`nozzle_diameter`, `support_base_pattern_spacing`
+        // in `from_config`; `layer_height` in `run_support` when the region
+        // carries no effective layer height) at their manifest defaults.
+        ("nozzle_diameter", ConfigValue::Float(0.4)),
+        ("layer_height", ConfigValue::Float(0.2)),
+        ("support_base_pattern_spacing", ConfigValue::Float(2.5)),
+        ("support_angle", ConfigValue::Float(angle)),
+        ("support_speed", ConfigValue::Float(speed)),
+        ("support_line_width", ConfigValue::Float(line_width)),
+        // Declared `int` (manifest default 1, canonical `0 = auto`).
+        ("tree_support_wall_count", ConfigValue::Int(1)),
+        // `percent`-declared: the magnitude is consumed directly.
+        ("support_interface_flow", ConfigValue::Percent(100.0)),
+        ("support_interface_spacing", ConfigValue::Float(0.4)),
+        ("support_bottom_interface_spacing", ConfigValue::Float(0.4)),
+    ])
 }
 
 fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
@@ -142,17 +148,20 @@ fn paint_with_interface_plan() -> PaintRegionLayerView {
 }
 
 fn interface_paths(flow: f64) -> Vec<(slicer_ir::ExtrusionPath3D, bool)> {
-    let config = ConfigViewBuilder::new()
-        .bool("enable_support", true)
-        // Packet 06 required reads at manifest defaults (see `make_config`).
-        .float("nozzle_diameter", 0.4)
-        .float("layer_height", 0.2)
-        .float("support_base_pattern_spacing", 2.5)
-        .float("support_speed", 50.0)
-        .float("support_line_width", 0.4)
-        .float("support_interface_flow", flow)
-        .float("support_bottom_interface_spacing", 0.4)
-        .build();
+    let config = config_with(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        // Required reads at manifest defaults (see `make_config`).
+        ("nozzle_diameter", ConfigValue::Float(0.4)),
+        ("layer_height", ConfigValue::Float(0.2)),
+        ("support_base_pattern_spacing", ConfigValue::Float(2.5)),
+        ("support_speed", ConfigValue::Float(50.0)),
+        ("support_line_width", ConfigValue::Float(0.4)),
+        // `percent`-declared: the magnitude is consumed directly.
+        ("support_interface_flow", ConfigValue::Percent(flow)),
+        ("support_interface_spacing", ConfigValue::Float(0.4)),
+        ("support_bottom_interface_spacing", ConfigValue::Float(0.4)),
+        ("tree_support_wall_count", ConfigValue::Int(1)),
+    ]);
     let module = TreeSupport::from_config(&config).unwrap();
     let region = make_square_region(10.0, 0.3);
     let paint = paint_with_interface_plan();
@@ -170,15 +179,25 @@ fn interface_paths(flow: f64) -> Vec<(slicer_ir::ExtrusionPath3D, bool)> {
     output.interface_paths().to_vec()
 }
 
-/// Test 1: from_config with only the packet-06 required keys at their
-/// manifest defaults uses module defaults for everything else.
+/// Test 1: `from_config` at the manifest defaults resolves the auto support
+/// line width (1.125 × 0.4 nozzle) and disabled support. Every key the
+/// module reads is declared in the manifest, so the fixture seeds the same
+/// defaults the registry does.
 #[test]
 fn from_config_defaults() {
-    let config = ConfigViewBuilder::new()
-        .float("nozzle_diameter", 0.4)
-        .float("layer_height", 0.2)
-        .float("support_base_pattern_spacing", 2.5)
-        .build();
+    let config = config_with(&[
+        ("nozzle_diameter", ConfigValue::Float(0.4)),
+        ("layer_height", ConfigValue::Float(0.2)),
+        ("support_base_pattern_spacing", ConfigValue::Float(2.5)),
+        ("enable_support", ConfigValue::Bool(false)),
+        ("support_speed", ConfigValue::Float(50.0)),
+        // The manifest default is the auto sentinel 0.0.
+        ("support_line_width", ConfigValue::Float(0.0)),
+        ("support_interface_flow", ConfigValue::Percent(100.0)),
+        ("tree_support_wall_count", ConfigValue::Int(1)),
+        ("support_interface_spacing", ConfigValue::Float(0.4)),
+        ("support_bottom_interface_spacing", ConfigValue::Float(0.4)),
+    ]);
     let module = TreeSupport::from_config(&config).unwrap();
     assert!(!module.enabled());
     assert!((module.line_width() - 0.45).abs() < 0.001);
@@ -381,17 +400,20 @@ fn nonpositive_interface_flow_falls_back_to_default_module_boundary() {
 
 #[test]
 fn zero_base_and_interface_spacing_clamp_to_solid_pitch() {
-    let config = ConfigViewBuilder::new()
-        .bool("enable_support", true)
-        // Packet 06 required reads at manifest defaults (see `make_config`).
-        .float("nozzle_diameter", 0.4)
-        .float("layer_height", 0.2)
-        .float("support_base_pattern_spacing", 0.0)
-        .float("support_interface_spacing", 0.0)
-        .float("support_bottom_interface_spacing", 0.0)
-        .float("support_speed", 50.0)
-        .float("support_line_width", 0.4)
-        .build();
+    let config = config_with(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        // Required reads at manifest defaults (see `make_config`).
+        ("nozzle_diameter", ConfigValue::Float(0.4)),
+        ("layer_height", ConfigValue::Float(0.2)),
+        ("support_base_pattern_spacing", ConfigValue::Float(0.0)),
+        ("support_interface_spacing", ConfigValue::Float(0.0)),
+        ("support_bottom_interface_spacing", ConfigValue::Float(0.0)),
+        ("support_speed", ConfigValue::Float(50.0)),
+        ("support_line_width", ConfigValue::Float(0.4)),
+        // `percent`-declared: the magnitude is consumed directly.
+        ("support_interface_flow", ConfigValue::Percent(100.0)),
+        ("tree_support_wall_count", ConfigValue::Int(1)),
+    ]);
     let module = TreeSupport::from_config(&config).unwrap();
     let region = make_square_region(10.0, 0.3);
     let paint = paint_with_plan("tree");
@@ -459,17 +481,20 @@ fn paths_at_correct_z() {
 #[test]
 fn tree_support_wall_count() {
     let render = |wall_count: i64| {
-        let config = ConfigViewBuilder::new()
-            .bool("enable_support", true)
-            // Packet 06 required reads at manifest defaults (see `make_config`).
-            .float("nozzle_diameter", 0.4)
-            .float("layer_height", 0.2)
-            .float("support_base_pattern_spacing", 2.5)
-            .float("support_speed", 50.0)
-            .float("line_width", 0.4)
-            .int("tree_support_wall_count", wall_count)
-            .float("support_bottom_interface_spacing", 0.4)
-            .build();
+        let config = config_with(&[
+            ("enable_support", ConfigValue::Bool(true)),
+            // Required reads at manifest defaults (see `make_config`).
+            ("nozzle_diameter", ConfigValue::Float(0.4)),
+            ("layer_height", ConfigValue::Float(0.2)),
+            ("support_base_pattern_spacing", ConfigValue::Float(2.5)),
+            ("support_speed", ConfigValue::Float(50.0)),
+            ("support_line_width", ConfigValue::Float(0.4)),
+            ("tree_support_wall_count", ConfigValue::Int(wall_count)),
+            // `percent`-declared: the magnitude is consumed directly.
+            ("support_interface_flow", ConfigValue::Percent(100.0)),
+            ("support_interface_spacing", ConfigValue::Float(0.4)),
+            ("support_bottom_interface_spacing", ConfigValue::Float(0.4)),
+        ]);
         let module = TreeSupport::from_config(&config).unwrap();
         let region = make_square_region(10.0, 0.3);
         let paint = paint_with_plan("tree");
@@ -496,17 +521,20 @@ fn tree_support_wall_count() {
 
 #[test]
 fn extra_wall_count_printed_from_skeleton() {
-    let config = ConfigViewBuilder::new()
-        .bool("enable_support", true)
-        // Packet 06 required reads at manifest defaults (see `make_config`).
-        .float("nozzle_diameter", 0.4)
-        .float("layer_height", 0.2)
-        .float("support_base_pattern_spacing", 2.5)
-        .float("support_speed", 50.0)
-        .float("support_line_width", 0.4)
-        .int("tree_support_wall_count", 1)
-        .float("support_bottom_interface_spacing", 0.4)
-        .build();
+    let config = config_with(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        // Required reads at manifest defaults (see `make_config`).
+        ("nozzle_diameter", ConfigValue::Float(0.4)),
+        ("layer_height", ConfigValue::Float(0.2)),
+        ("support_base_pattern_spacing", ConfigValue::Float(2.5)),
+        ("support_speed", ConfigValue::Float(50.0)),
+        ("support_line_width", ConfigValue::Float(0.4)),
+        ("tree_support_wall_count", ConfigValue::Int(1)),
+        // `percent`-declared: the magnitude is consumed directly.
+        ("support_interface_flow", ConfigValue::Percent(100.0)),
+        ("support_interface_spacing", ConfigValue::Float(0.4)),
+        ("support_bottom_interface_spacing", ConfigValue::Float(0.4)),
+    ]);
     let module = TreeSupport::from_config(&config).unwrap();
     // exhaustive: skeleton wall-count fixture; SupportPlanEntry has no Default impl
     let entry = slicer_ir::SupportPlanEntry {
@@ -621,17 +649,20 @@ fn opposite_family_plan_is_rejected() {
 
 #[test]
 fn tree_bodies_render_hollow_concentric_walls() {
-    let config = ConfigViewBuilder::new()
-        .bool("enable_support", true)
-        // Packet 06 required reads at manifest defaults (see `make_config`).
-        .float("nozzle_diameter", 0.4)
-        .float("layer_height", 0.2)
-        .float("support_base_pattern_spacing", 2.5)
-        .float("support_speed", 50.0)
-        .float("support_line_width", 0.4)
-        .int("tree_support_wall_count", 2)
-        .float("support_bottom_interface_spacing", 0.4)
-        .build();
+    let config = config_with(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        // Required reads at manifest defaults (see `make_config`).
+        ("nozzle_diameter", ConfigValue::Float(0.4)),
+        ("layer_height", ConfigValue::Float(0.2)),
+        ("support_base_pattern_spacing", ConfigValue::Float(2.5)),
+        ("support_speed", ConfigValue::Float(50.0)),
+        ("support_line_width", ConfigValue::Float(0.4)),
+        ("tree_support_wall_count", ConfigValue::Int(2)),
+        // `percent`-declared: the magnitude is consumed directly.
+        ("support_interface_flow", ConfigValue::Percent(100.0)),
+        ("support_interface_spacing", ConfigValue::Float(0.4)),
+        ("support_bottom_interface_spacing", ConfigValue::Float(0.4)),
+    ]);
     let module = TreeSupport::from_config(&config).unwrap();
     let mut output = SupportOutputBuilder::new();
     module
@@ -654,16 +685,20 @@ fn tree_bodies_render_hollow_concentric_walls() {
 
 #[test]
 fn body_fill_alternates_direction_across_layers() {
-    let config = ConfigViewBuilder::new()
-        .bool("enable_support", true)
-        // Packet 06 required reads at manifest defaults (see `make_config`).
-        .float("nozzle_diameter", 0.4)
-        .float("layer_height", 0.2)
-        .float("support_base_pattern_spacing", 2.5)
-        .float("support_speed", 50.0)
-        .float("support_line_width", 0.4)
-        .float("support_bottom_interface_spacing", 0.4)
-        .build();
+    // All keys are fail-closed reads; seeded at `tree-support.toml`
+    // manifest defaults (see `make_config`, which this mirrors).
+    let config = config_with(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        ("nozzle_diameter", ConfigValue::Float(0.4)),
+        ("layer_height", ConfigValue::Float(0.2)),
+        ("support_base_pattern_spacing", ConfigValue::Float(2.5)),
+        ("support_speed", ConfigValue::Float(50.0)),
+        ("support_line_width", ConfigValue::Float(0.4)),
+        ("support_interface_flow", ConfigValue::Percent(100.0)),
+        ("tree_support_wall_count", ConfigValue::Int(1)),
+        ("support_interface_spacing", ConfigValue::Float(0.4)),
+        ("support_bottom_interface_spacing", ConfigValue::Float(0.5)),
+    ]);
     let module = TreeSupport::from_config(&config).unwrap();
     let mut horizontal = SupportOutputBuilder::new();
     module

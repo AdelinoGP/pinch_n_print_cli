@@ -668,6 +668,31 @@ fn round_to(v: i64, step: i64) -> i64 {
 /// key under test is ever inspected.
 fn seeded_defaults() -> ConfigView {
     let mut values: HashMap<ConfigKey, ConfigValue> = HashMap::new();
+    // Declared keys (traditional-support-planner.toml) seeded at their
+    // manifest defaults, mirroring the production `seed_registry_defaults`
+    // step; `independent_support_layer_height` is the packet-06 required
+    // read this suite already drove.
+    values.insert("enable_support".into(), ConfigValue::Bool(true));
+    values.insert("support_interface_top_layers".into(), ConfigValue::Int(2));
+    values.insert(
+        "support_interface_bottom_layers".into(),
+        ConfigValue::Int(-1),
+    );
+    values.insert(
+        "support_object_xy_distance".into(),
+        ConfigValue::Float(0.35),
+    );
+    values.insert("support_top_z_distance_mm".into(), ConfigValue::Float(0.2));
+    values.insert("support_layer_height_mm".into(), ConfigValue::Float(0.0));
+    values.insert(
+        "support_base_pattern".into(),
+        ConfigValue::String("rectilinear".into()),
+    );
+    values.insert(
+        "support_base_pattern_spacing".into(),
+        ConfigValue::Float(2.5),
+    );
+    values.insert("line_width".into(), ConfigValue::Float(0.4));
     values.insert(
         "independent_support_layer_height".into(),
         ConfigValue::Bool(true),
@@ -687,6 +712,27 @@ fn rasterizer_config(value: &str) -> ConfigView {
         "independent_support_layer_height".into(),
         ConfigValue::Bool(true),
     );
+    values.insert("enable_support".into(), ConfigValue::Bool(true));
+    values.insert("support_interface_top_layers".into(), ConfigValue::Int(2));
+    values.insert(
+        "support_interface_bottom_layers".into(),
+        ConfigValue::Int(-1),
+    );
+    values.insert(
+        "support_object_xy_distance".into(),
+        ConfigValue::Float(0.35),
+    );
+    values.insert("support_top_z_distance_mm".into(), ConfigValue::Float(0.2));
+    values.insert("support_layer_height_mm".into(), ConfigValue::Float(0.0));
+    values.insert(
+        "support_base_pattern".into(),
+        ConfigValue::String("rectilinear".into()),
+    );
+    values.insert(
+        "support_base_pattern_spacing".into(),
+        ConfigValue::Float(2.5),
+    );
+    values.insert("line_width".into(), ConfigValue::Float(0.4));
     ConfigView::from_map(values)
 }
 

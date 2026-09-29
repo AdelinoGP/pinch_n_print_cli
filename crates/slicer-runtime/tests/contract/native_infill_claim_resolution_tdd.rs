@@ -52,6 +52,19 @@ fn config() -> Arc<ConfigView> {
     Arc::new(ConfigView::from_map(
         [
             ("infill_density".into(), ConfigValue::Float(0.5)),
+            // Declared required reads since the guests' config-literal
+            // fallbacks migrated to `require_*` (gyroid-infill.toml /
+            // rectilinear-infill.toml manifest defaults).
+            ("infill_angle".into(), ConfigValue::Float(45.0)),
+            ("infill_speed".into(), ConfigValue::Float(60.0)),
+            ("bridge_speed".into(), ConfigValue::Float(25.0)),
+            ("top_surface_speed".into(), ConfigValue::Float(60.0)),
+            (
+                "internal_solid_infill_speed".into(),
+                ConfigValue::Float(60.0),
+            ),
+            ("internal_bridge_angle".into(), ConfigValue::Float(0.0)),
+            ("infill_shift_step".into(), ConfigValue::Float(0.0)),
             ("line_width".into(), ConfigValue::Float(0.4)),
             ("bridge_line_width".into(), ConfigValue::Float(0.0)),
             ("initial_layer_line_width".into(), ConfigValue::Float(0.0)),

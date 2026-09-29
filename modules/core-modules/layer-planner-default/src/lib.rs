@@ -437,15 +437,3 @@ fn merge_different_heights(plans: &[ObjectPlan], raft_top: f64) -> Vec<MergedLay
     }
     layers
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::HashMap;
-
-    #[test]
-    fn from_config_defaults() {
-        let config = ConfigView::from_map(HashMap::new());
-        DefaultLayerPlanner::from_config(&config).unwrap();
-    }
-}

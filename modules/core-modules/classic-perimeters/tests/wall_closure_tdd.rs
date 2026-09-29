@@ -54,6 +54,10 @@ fn config_one_outer_wall() -> ConfigView {
         .int("support_raft_layers", 0)
         .int("wall_count", 1)
         .float("line_width", 0.4)
+        // Fail-closed migration keys (classic-perimeters.toml manifest defaults).
+        .float("outer_wall_speed", 30.0)
+        .float("inner_wall_speed", 45.0)
+        .float("perimeter_arc_tolerance", 0.0125)
         .build()
 }
 

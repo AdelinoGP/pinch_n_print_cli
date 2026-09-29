@@ -1,8 +1,6 @@
 // per_layer_config_override_tdd.rs — LayerOverrides per-layer config plumbing
 // (wall_count, outer_wall_speed, inner_wall_speed read per invocation)
 
-use std::collections::HashMap;
-
 use crate::common::classic_perimeters_baseline;
 use classic_perimeters::ClassicPerimeters;
 use slicer_ir::{ConfigView, ExPolygon, Point2, Polygon};
@@ -36,10 +34,19 @@ fn config_with_wall_count(n: i64) -> ConfigView {
         .build()
 }
 
+/// Base-module config for `from_config`: the bound-view baseline plus the
+/// declared `wall_count` at its manifest default (3), mirroring the
+/// production `seed_registry_defaults` step. The per-layer configs below
+/// carry their own `wall_count` (where the test requires an override), so
+/// this value only satisfies the fail-closed `require_int` read.
+fn base_module_config() -> ConfigView {
+    classic_perimeters_baseline().int("wall_count", 3).build()
+}
+
 #[test]
 fn per_layer_config_wall_count_override() {
-    let base_module = ClassicPerimeters::from_config(&ConfigView::from_map(HashMap::new()))
-        .expect("from_config should succeed");
+    let base_module =
+        ClassicPerimeters::from_config(&base_module_config()).expect("from_config should succeed");
 
     // Layer 0: base wall_count = 2 (default)
     let region0 = square_region(0.2);
@@ -82,8 +89,8 @@ fn per_layer_config_wall_count_override() {
 
 #[test]
 fn per_layer_config_wall_count_zero_emits_only_infill() {
-    let base_module = ClassicPerimeters::from_config(&ConfigView::from_map(HashMap::new()))
-        .expect("from_config should succeed");
+    let base_module =
+        ClassicPerimeters::from_config(&base_module_config()).expect("from_config should succeed");
 
     let region = square_region(0.2);
     let mut output = PerimeterOutputBuilder::new();
@@ -143,8 +150,8 @@ fn per_layer_config_missing_wall_count_falls_back_to_from_config() {
 
 #[test]
 fn per_layer_config_speed_override() {
-    let module = ClassicPerimeters::from_config(&ConfigView::from_map(HashMap::new()))
-        .expect("from_config should succeed");
+    let module =
+        ClassicPerimeters::from_config(&base_module_config()).expect("from_config should succeed");
 
     let region = square_region(0.2);
     let mut output = PerimeterOutputBuilder::new();

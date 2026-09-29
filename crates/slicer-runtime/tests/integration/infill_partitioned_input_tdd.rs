@@ -81,12 +81,25 @@ fn l_shape() -> ExPolygon {
 fn min_density_config() -> ConfigView {
     let mut map = std::collections::HashMap::new();
     map.insert("infill_density".into(), ConfigValue::Float(0.5));
+    map.insert("infill_angle".into(), ConfigValue::Float(45.0));
+    map.insert("infill_speed".into(), ConfigValue::Float(60.0));
+    map.insert("sparse_infill_speed".into(), ConfigValue::Float(60.0));
+    map.insert(
+        "internal_solid_infill_speed".into(),
+        ConfigValue::Float(60.0),
+    );
+    map.insert("top_surface_speed".into(), ConfigValue::Float(60.0));
+    map.insert("internal_bridge_angle".into(), ConfigValue::Float(0.0));
+    map.insert("infill_shift_step".into(), ConfigValue::Float(0.0));
+    map.insert("bridge_speed".into(), ConfigValue::Float(25.0));
     map.insert("line_width".into(), ConfigValue::Float(0.4));
     map.insert("layer_height".into(), ConfigValue::Float(0.2));
     // infill-linker's `AnchorParams::from_config` reads this via
     // `require_abs_value` (packet 06); the manifest default is the absolute
     // 20.0 mm float-or-percent.
     map.insert("infill_anchor_max".into(), ConfigValue::Float(20.0));
+    // infill-linker's `AnchorParams::from_config` fail-closed reads.
+    map.insert("infill_overlap".into(), ConfigValue::Float(0.45));
     // Packet 06 contract-required reads: the three fill modules `require_*`
     // these keys on their classified paths, so a bound view always holds
     // them at their manifest defaults. `bridge_line_width` /

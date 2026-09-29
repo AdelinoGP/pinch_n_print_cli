@@ -447,7 +447,12 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
     );
     let module = CompiledModuleBuilder::new(loaded.id().to_string())
         .config_view(Arc::new(slicer_ir::ConfigView::from_map(
-            std::collections::HashMap::new(),
+            // Fail-closed migration key (path-optimization-default.toml
+            // manifest default): a required read since the fallback removal.
+            std::collections::HashMap::from([(
+                "path_optimization_emit_layer_markers".to_string(),
+                slicer_ir::ConfigValue::Bool(true),
+            )]),
         )))
         .build();
 
@@ -961,7 +966,12 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
     );
     let module = CompiledModuleBuilder::new(loaded.id().to_string())
         .config_view(Arc::new(slicer_ir::ConfigView::from_map(
-            std::collections::HashMap::new(),
+            // Fail-closed migration key (path-optimization-default.toml
+            // manifest default): a required read since the fallback removal.
+            std::collections::HashMap::from([(
+                "path_optimization_emit_layer_markers".to_string(),
+                slicer_ir::ConfigValue::Bool(true),
+            )]),
         )))
         .build();
     let bundle = crate::common::TestModuleBundle {

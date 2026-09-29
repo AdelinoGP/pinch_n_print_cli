@@ -512,6 +512,60 @@ fn compile_support_module(
         "layer_height".to_string(),
         slicer_ir::ConfigValue::Float(0.2),
     );
+    // Fail-closed migration keys (tree-support.toml / traditional-support.toml
+    // manifest defaults — both support guests dispatch through this helper).
+    config_map.insert(
+        "support_speed".to_string(),
+        slicer_ir::ConfigValue::Float(50.0),
+    );
+    config_map.insert(
+        "support_angle".to_string(),
+        slicer_ir::ConfigValue::Float(60.0),
+    );
+    config_map.insert(
+        "support_interface_spacing".to_string(),
+        slicer_ir::ConfigValue::Float(0.4),
+    );
+    config_map.insert(
+        "support_bottom_interface_spacing".to_string(),
+        slicer_ir::ConfigValue::Float(0.4),
+    );
+    config_map.insert(
+        "support_interface_flow".to_string(),
+        slicer_ir::ConfigValue::Percent(100.0),
+    );
+    config_map.insert(
+        "tree_support_wall_count".to_string(),
+        slicer_ir::ConfigValue::Int(1),
+    );
+    config_map.insert(
+        "support_line_width".to_string(),
+        slicer_ir::ConfigValue::FloatOrPercent {
+            value: 0.0,
+            is_percent: false,
+        },
+    );
+    config_map.insert(
+        "support_style".to_string(),
+        slicer_ir::ConfigValue::String("default".into()),
+    );
+    config_map.insert("line_width".to_string(), slicer_ir::ConfigValue::Float(0.4));
+    config_map.insert(
+        "support_base_pattern".to_string(),
+        slicer_ir::ConfigValue::String("rectilinear".into()),
+    );
+    config_map.insert(
+        "support_top_z_distance_mm".to_string(),
+        slicer_ir::ConfigValue::Float(0.2),
+    );
+    config_map.insert(
+        "support_object_xy_distance".to_string(),
+        slicer_ir::ConfigValue::Float(0.35),
+    );
+    config_map.insert(
+        "support_base_pattern_spacing".to_string(),
+        slicer_ir::ConfigValue::Float(2.5),
+    );
     let module = CompiledModuleBuilder::new(loaded.id().to_string())
         .config_view(Arc::new(slicer_ir::ConfigView::from_map(config_map)))
         .build();
@@ -1072,6 +1126,50 @@ mod planner_consuming_tier {
             ConfigValue::Float(2.5),
         );
         config_map.insert("layer_height".to_string(), ConfigValue::Float(0.2));
+        // Fail-closed migration keys (tree-support.toml / traditional-support.toml
+        // manifest defaults — both support guests dispatch through this helper).
+        config_map.insert("support_speed".to_string(), ConfigValue::Float(50.0));
+        config_map.insert("support_angle".to_string(), ConfigValue::Float(60.0));
+        config_map.insert(
+            "support_interface_spacing".to_string(),
+            ConfigValue::Float(0.4),
+        );
+        config_map.insert(
+            "support_bottom_interface_spacing".to_string(),
+            ConfigValue::Float(0.4),
+        );
+        config_map.insert(
+            "support_interface_flow".to_string(),
+            ConfigValue::Percent(100.0),
+        );
+        config_map.insert("tree_support_wall_count".to_string(), ConfigValue::Int(1));
+        config_map.insert(
+            "support_line_width".to_string(),
+            ConfigValue::FloatOrPercent {
+                value: 0.0,
+                is_percent: false,
+            },
+        );
+        // traditional-support keys (traditional-support.toml manifest
+        // defaults) — the same helper dispatches both support guests.
+        config_map.insert("support_angle".to_string(), ConfigValue::Float(60.0));
+        config_map.insert("line_width".to_string(), ConfigValue::Float(0.4));
+        config_map.insert(
+            "support_style".to_string(),
+            ConfigValue::String("default".into()),
+        );
+        config_map.insert(
+            "support_base_pattern".to_string(),
+            ConfigValue::String("rectilinear".into()),
+        );
+        config_map.insert(
+            "support_top_z_distance_mm".to_string(),
+            ConfigValue::Float(0.2),
+        );
+        config_map.insert(
+            "support_object_xy_distance".to_string(),
+            ConfigValue::Float(0.35),
+        );
         let module = CompiledModuleBuilder::new(loaded.id().to_string())
             .config_view(Arc::new(ConfigView::from_map(config_map)))
             .build();
@@ -1229,6 +1327,34 @@ mod planner_consuming_tier {
             (
                 "layer_height".to_string(),
                 slicer_ir::ConfigValue::Float(0.2),
+            ),
+            // Fail-closed migration keys (tree-support.toml manifest defaults).
+            (
+                "support_speed".to_string(),
+                slicer_ir::ConfigValue::Float(50.0),
+            ),
+            (
+                "support_interface_spacing".to_string(),
+                slicer_ir::ConfigValue::Float(0.4),
+            ),
+            (
+                "support_bottom_interface_spacing".to_string(),
+                slicer_ir::ConfigValue::Float(0.4),
+            ),
+            (
+                "support_interface_flow".to_string(),
+                slicer_ir::ConfigValue::Percent(100.0),
+            ),
+            (
+                "tree_support_wall_count".to_string(),
+                slicer_ir::ConfigValue::Int(1),
+            ),
+            (
+                "support_line_width".to_string(),
+                slicer_ir::ConfigValue::FloatOrPercent {
+                    value: 0.0,
+                    is_percent: false,
+                },
             ),
         ]));
         let module =

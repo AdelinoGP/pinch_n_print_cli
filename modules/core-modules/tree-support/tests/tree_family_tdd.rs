@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use slicer_ir::{
-    ConfigView, ExPolygon, Polygon, SupportPlanDeclineReason, SupportPlanIR, SupportPlanRole,
-    SupportPlanRoleRegion,
+    ConfigValue, ConfigView, ExPolygon, Polygon, SupportPlanDeclineReason, SupportPlanIR,
+    SupportPlanRole, SupportPlanRoleRegion,
 };
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::test_prelude::*;
@@ -31,19 +31,23 @@ fn fixture(
     family: &str,
     decline_reason: Option<SupportPlanDeclineReason>,
 ) -> (ConfigView, SliceRegionView, PaintRegionLayerView) {
-    let config = ConfigViewBuilder::new()
-        .bool("enable_support", true)
-        // Packet-06 required reads: the host seeds these at manifest
-        // defaults (0.4 nozzle, 0.2 layer height, 2.5 base pattern
-        // spacing), so the fixture seeds the same values.
-        .float("nozzle_diameter", 0.4)
-        .float("layer_height", 0.2)
-        .float("support_base_pattern_spacing", 2.5)
-        .float("support_speed", 50.0)
-        .float("line_width", 0.4)
-        .int("tree_support_wall_count", 2)
-        .float("support_bottom_interface_spacing", 0.4)
-        .build();
+    // Every key is a fail-closed `require_*` read in tree-support, seeded at
+    // its `tree-support.toml` manifest default. Built from typed pairs
+    // because `support_interface_flow` is declared `percent` and
+    // `ConfigViewBuilder` has no percent constructor.
+    let config = config_with(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        ("nozzle_diameter", ConfigValue::Float(0.4)),
+        ("layer_height", ConfigValue::Float(0.2)),
+        ("support_base_pattern_spacing", ConfigValue::Float(2.5)),
+        ("support_speed", ConfigValue::Float(50.0)),
+        ("line_width", ConfigValue::Float(0.4)),
+        ("tree_support_wall_count", ConfigValue::Int(2)),
+        ("support_line_width", ConfigValue::Float(0.0)),
+        ("support_interface_flow", ConfigValue::Percent(100.0)),
+        ("support_interface_spacing", ConfigValue::Float(0.4)),
+        ("support_bottom_interface_spacing", ConfigValue::Float(0.5)),
+    ]);
     // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
     let entry = slicer_ir::SupportPlanEntry {
         global_layer_index: 0,

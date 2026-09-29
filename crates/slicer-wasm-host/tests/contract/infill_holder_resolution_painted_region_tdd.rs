@@ -148,6 +148,10 @@ fn build_module_config() -> Arc<ConfigView> {
     map.insert("enable_extra_bridge_layer".into(), ConfigValue::Bool(false));
     map.insert("internal_bridge_angle".into(), ConfigValue::Float(0.0));
     map.insert("infill_shift_step".into(), ConfigValue::Float(0.0));
+    // Fail-closed migration keys (gyroid-infill.toml / rectilinear-infill.toml
+    // manifest defaults): required reads since the fallback removal.
+    map.insert("infill_angle".into(), ConfigValue::Float(45.0));
+    map.insert("infill_speed".into(), ConfigValue::Float(60.0));
     Arc::new(ConfigView::from_map(map))
 }
 

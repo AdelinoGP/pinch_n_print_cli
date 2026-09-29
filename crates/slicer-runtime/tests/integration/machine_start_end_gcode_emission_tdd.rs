@@ -805,13 +805,17 @@ fn user_override_replaces_default() {
 #[test]
 fn substitution_uses_overridden_temp_values() {
     let mut raw: HashMap<ConfigKey, ConfigValue> = HashMap::new();
+    // Both keys are declared `int` by `machine-gcode-emit.toml`; production
+    // ingestion coerces any authored spelling (including the GUI's string
+    // numbering) to `Int` before the module view is bound. This harness
+    // reifies the raw source directly, so seed the post-ingestion type.
     raw.insert(
         "bed_temperature_initial_layer_single".to_string(),
-        ConfigValue::String("65".to_string()),
+        ConfigValue::Int(65),
     );
     raw.insert(
         "nozzle_temperature_initial_layer".to_string(),
-        ConfigValue::String("220".to_string()),
+        ConfigValue::Int(220),
     );
     let gcode = slice_with_raw(raw);
 

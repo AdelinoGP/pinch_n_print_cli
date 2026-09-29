@@ -86,6 +86,11 @@ fn from_config_defaults() {
     // nozzle). Seed the bound value; the production auto-expansion lives
     // host-side now.
     values.insert("line_width".into(), slicer_ir::ConfigValue::Float(0.45));
+    // Declared keys (gyroid-infill.toml) seeded at their manifest defaults,
+    // mirroring the production `seed_registry_defaults` step.
+    values.insert("infill_density".into(), slicer_ir::ConfigValue::Float(0.2));
+    values.insert("infill_angle".into(), slicer_ir::ConfigValue::Float(45.0));
+    values.insert("infill_speed".into(), slicer_ir::ConfigValue::Float(60.0));
     let config = ConfigView::from_map(values);
     let module = GyroidInfill::from_config(&config).unwrap();
     assert!((module.density() - 0.2).abs() < 0.001);

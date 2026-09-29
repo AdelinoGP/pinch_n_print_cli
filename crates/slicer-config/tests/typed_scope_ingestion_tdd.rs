@@ -614,7 +614,99 @@ fn strict_scalar_list_shape_is_rejected() {
 }
 
 #[test]
-fn tolerant_scalar_list_shape_is_retained_and_warns() {
+fn strict_ingestion_accepts_integral_float_for_declared_int() {
+    // Real-wire regression: a committed OrcaSlicer/Bambu GUI export
+    // (`resources/support_test_modifier_normal_in_tree_gui.3mf`) writes
+    // `"fan_max_speed": 100.0` — JSON's number type has no integer variant, so
+    // a whole-number setting arrives as a `Float`. `validate_extension` already
+    // accepts a finite integral float as valid int wire; ingestion must
+    // normalize it to `Int` so the fail-closed `require_int` readers in the
+    // part-cooling guest can deliver the value instead of aborting the slice.
+    let registry = real_registry();
+    let key = declared_keys_with_type(&registry, "int")
+        .into_iter()
+        .next()
+        .expect("registry declares at least one scalar int key");
+    let authored = HashMap::from([(key.clone(), ConfigValue::Float(100.0))]);
+    let mut ingestor = ConfigIngestor::new(&registry);
+
+    ingestor
+        .ingest_flat(&authored)
+        .expect("a finite integral float is canonical int wire");
+    let outcome = ingestor.finish();
+
+    assert_eq!(
+        outcome
+            .scoped
+            .global()
+            .and_then(|delta| delta.values.get(&key)),
+        Some(&ConfigValue::Int(100))
+    );
+    assert!(
+        outcome.warnings.is_empty(),
+        "an integral float for an int declaration is a clean coercion, got {:?}",
+        outcome.warnings
+    );
+}
+
+#[test]
+fn strict_ingestion_rejects_non_integral_float_for_declared_int() {
+    let registry = real_registry();
+    let key = declared_keys_with_type(&registry, "int")
+        .into_iter()
+        .next()
+        .expect("registry declares at least one scalar int key");
+    let authored = HashMap::from([(key.clone(), ConfigValue::Float(1.5))]);
+    let mut ingestor = ConfigIngestor::new(&registry);
+
+    let error = ingestor
+        .ingest_flat(&authored)
+        .expect_err("a fractional float is not int wire");
+    assert!(matches!(
+        error,
+        ConfigIngestionError::TypeMismatch {
+            key: reported_key,
+            expected,
+            ..
+        } if reported_key == key && expected == "int"
+    ));
+}
+
+#[test]
+fn strict_ingestion_accepts_numeric_bool_wire() {
+    // Canonical numeric bool wire: `extract_bool` in
+    // `crates/slicer-ir/src/resolved_config.rs` accepts an `Int` 0/1 as a
+    // boolean, so ingestion normalizes it rather than letting the `Int`
+    // survive to a fail-closed `require_bool` reader.
+    let registry = real_registry();
+    let key = declared_keys_with_type(&registry, "bool")
+        .into_iter()
+        .next()
+        .expect("registry declares at least one bool key");
+    let authored = HashMap::from([(key.clone(), ConfigValue::Int(1))]);
+    let mut ingestor = ConfigIngestor::new(&registry);
+
+    ingestor
+        .ingest_flat(&authored)
+        .expect("Int 1 is canonical bool wire");
+    let outcome = ingestor.finish();
+
+    assert_eq!(
+        outcome
+            .scoped
+            .global()
+            .and_then(|delta| delta.values.get(&key)),
+        Some(&ConfigValue::Bool(true))
+    );
+    assert!(
+        outcome.warnings.is_empty(),
+        "a numeric bool is a clean coercion, got {:?}",
+        outcome.warnings
+    );
+}
+
+#[test]
+fn tolerant_scalar_list_coerces_to_first_element_and_warns() {
     let registry = real_registry();
     let key = declared_keys_with_type(&registry, "int")
         .into_iter()
@@ -629,12 +721,17 @@ fn tolerant_scalar_list_shape_is_retained_and_warns() {
         .expect("tolerant ingestion should retain a representable scalar list");
     let outcome = ingestor.finish();
 
+    // First-element resolution (canonical `get_at(0)`, docs/03 §placeholder
+    // engine): the delivered value is the coerced scalar so the seeded/
+    // extension value types against the declared scalar and a bound view
+    // delivers it. The per-element List shape is a consumer-facing leniency
+    // that lives on `ConfigView` accessors and host DSL extractors.
     assert_eq!(
         outcome
             .scoped
             .global()
             .and_then(|delta| delta.values.get(&key)),
-        Some(&ConfigValue::List(vec![ConfigValue::Int(1)]))
+        Some(&ConfigValue::Int(1))
     );
     assert_eq!(
         outcome.warnings,

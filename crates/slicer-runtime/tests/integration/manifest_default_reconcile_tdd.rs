@@ -6,20 +6,28 @@
 //!
 //! To avoid a vacuous literal-against-literal assertion, this test reads BOTH
 //! sides from their real sources. The manifest side is parsed from the committed
-//! `*.toml` at compile time; the code side is observed by driving
-//! `run_perimeters` with an EMPTY config and reading the fallback values back out
-//! of the emitted wall loops. A divergence on either side (e.g. someone edits the
-//! `unwrap_or(30.0)` arm but forgets the manifest, or vice-versa) fails the
-//! assertion.
+//! `*.toml` at compile time; the behavior side is observed by driving
+//! `run_perimeters` and reading the values back out of the emitted wall loops.
 //!
 //! Two layers of guard:
 //!
-//! 1. **Behavioral** (`classic_perimeters_defaults_match_manifest`): drives
-//!    `run_perimeters` with an empty config and reads 3 fallbacks back out of
-//!    the emitted walls. Strongest form, but only reaches keys with an
-//!    observable output path — which is exactly how classic's
-//!    `outer_wall_line_width` manifest default sat at a false `0.5` for months
-//!    (the code fallback was `0.4`; D-160's audit caught it by hand).
+//! 1. **Behavioral** (`classic_perimeters_defaults_match_manifest`): seeds the
+//!    observed keys at their manifest defaults (mirroring production's
+//!    `seed_registry_defaults`), drives `run_perimeters`, and reads the three
+//!    values back out of the emitted walls — so a module that read the wrong
+//!    key, or mis-plumbed a value, fails even though both sides cite the same
+//!    manifest. Its converse
+//!    (`classic_perimeters_absent_observed_keys_are_a_config_defect`) pins the
+//!    fail-closed half: with the keys absent, `from_config` aborts naming the
+//!    key instead of substituting a literal.
+//!
+//!    The original form of this leg omitted the keys and observed the module's
+//!    in-code fallbacks. That premise was retired by the packet-06 fail-closed
+//!    migration — `wall_count`, `outer_wall_speed` and `inner_wall_speed` are
+//!    `require_*` reads in `from_config` now, so absence aborts and there is no
+//!    fallback left to observe. Divergence between manifest and behavior is
+//!    correspondingly impossible for these keys: the manifest default is the
+//!    only value that can reach the reader.
 //!
 //! 2. **Exhaustive by enumeration** (`*_manifest_defaults_are_the_code_fallbacks`):
 //!    every `[config.schema.*]` key in the classic + arachne manifests must
@@ -85,30 +93,37 @@ fn square_region(z: f32) -> SliceRegionView {
     region
 }
 
-/// Drive `run_perimeters` for module `M` with the bound-view baseline so the
-/// contract-required `require_*` reads are satisfied, then recover the CODE
-/// FALLBACKS from the emitted wall loops. Returns
-/// `(wall_count, outer_wall_speed, inner_wall_speed)`.
+/// Drive `run_perimeters` for `ClassicPerimeters` with the observed keys
+/// seeded at their manifest defaults (mirroring production's
+/// `seed_registry_defaults`), then read them back out of the emitted wall
+/// loops. Returns `(wall_count, outer_wall_speed, inner_wall_speed)`.
 ///
-/// The three observed keys (`wall_count`, `outer_wall_speed`,
-/// `inner_wall_speed`) are deliberately ABSENT from the view — the baseline
-/// does not seed them — so the module's own fallbacks (and not an injected
-/// value) are what the emitted walls carry. Since packet 06's classified
-/// `require_*` reads, the view can no longer be empty: the baseline holds
-/// every other required key at its manifest-default value, and `line_width`
-/// supplies the already-expanded base width so the D-162 spacing gate passes.
-///
-/// A 10mm square at the 0.4mm line width fits the default 3 walls, so the
-/// emitted loop count equals the `wall_count` code fallback, and the outer
-/// (perimeter_index 0) / inner (perimeter_index >= 1) loops carry the speed
-/// fallbacks as `speed_factor`.
-fn observed_code_fallbacks<M: LayerModule>() -> (usize, f32, f32) {
+/// The baseline supplies every other contract-required key at its
+/// manifest-default value, and `line_width` supplies the already-expanded base
+/// width so the D-162 spacing gate passes. A 10mm square at the 0.4mm line
+/// width fits 3 walls, so the emitted loop count equals the seeded
+/// `wall_count`, and the outer (perimeter_index 0) / inner (perimeter_index
+/// >= 1) loops carry the seeded speeds as `speed_factor`.
+fn observed_seeded_defaults() -> (usize, f32, f32) {
     // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
-    // reads need the full classic surface; the test's own keys override it.
+    // reads need the full classic surface; the three observed keys are seeded
+    // here at the manifest defaults the host injects.
     let config = crate::common::classic_perimeters_baseline()
         .float("line_width", 0.4)
+        .int(
+            "wall_count",
+            manifest_default(CLASSIC_MANIFEST, "wall_count") as i64,
+        )
+        .float(
+            "outer_wall_speed",
+            manifest_default(CLASSIC_MANIFEST, "outer_wall_speed"),
+        )
+        .float(
+            "inner_wall_speed",
+            manifest_default(CLASSIC_MANIFEST, "inner_wall_speed"),
+        )
         .build();
-    let module = M::from_config(&config).expect("from_config should succeed");
+    let module = ClassicPerimeters::from_config(&config).expect("from_config should succeed");
     let region = square_region(0.2);
     let mut output = PerimeterOutputBuilder::new();
     module
@@ -119,7 +134,7 @@ fn observed_code_fallbacks<M: LayerModule>() -> (usize, f32, f32) {
             &mut output,
             &config,
         )
-        .expect("run_perimeters with the fallback-observing config should succeed");
+        .expect("run_perimeters with the seeded config should succeed");
 
     let walls = output.wall_loops();
     let outer = walls
@@ -157,8 +172,28 @@ fn assert_reconciled(manifest: &str, wall_count: usize, outer: f32, inner: f32) 
 
 #[test]
 fn classic_perimeters_defaults_match_manifest() {
-    let (wall_count, outer, inner) = observed_code_fallbacks::<ClassicPerimeters>();
+    let (wall_count, outer, inner) = observed_seeded_defaults();
     assert_reconciled(CLASSIC_MANIFEST, wall_count, outer, inner);
+}
+
+/// The converse half of the behavioral guard: with the observed keys absent
+/// from an otherwise-complete bound view, `from_config` must abort naming the
+/// key rather than substitute a literal. This is what makes the reconcile
+/// non-vacuous after the fail-closed migration — divergence between the
+/// manifest default and behavior is impossible because there is no fallback.
+#[test]
+fn classic_perimeters_absent_observed_keys_are_a_config_defect() {
+    let config = crate::common::classic_perimeters_baseline()
+        .float("line_width", 0.4)
+        .build();
+    let error = match ClassicPerimeters::from_config(&config) {
+        Ok(_) => panic!("an absent required key must abort, not fall back to a literal"),
+        Err(error) => error,
+    };
+    assert!(
+        error.message.contains("wall_count"),
+        "the abort must name the missing key, got: {error:?}"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

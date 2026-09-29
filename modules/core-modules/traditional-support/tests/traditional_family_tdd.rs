@@ -3,7 +3,8 @@
 use std::sync::Arc;
 
 use slicer_ir::{
-    ConfigView, ExPolygon, Polygon, SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion,
+    ConfigValue, ConfigView, ExPolygon, Polygon, SupportPlanIR, SupportPlanRole,
+    SupportPlanRoleRegion,
 };
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::test_prelude::*;
@@ -30,19 +31,23 @@ fn fixture(
     family: &str,
     roles: Vec<SupportPlanRoleRegion>,
 ) -> (ConfigView, SliceRegionView, PaintRegionLayerView) {
-    let config = ConfigViewBuilder::new()
-        .bool("enable_support", true)
-        // Packet 06: required reads (`nozzle_diameter`,
-        // `support_base_pattern_spacing` in `from_config`; `layer_height` in
-        // `run_support` when the region carries no effective layer height) at
-        // their manifest defaults.
-        .float("nozzle_diameter", 0.4)
-        .float("layer_height", 0.2)
-        .float("support_base_pattern_spacing", 2.5)
-        .float("support_speed", 50.0)
-        .float("line_width", 0.4)
-        .float("support_bottom_interface_spacing", 0.4)
-        .build();
+    let config = config_with(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        // Required reads (`nozzle_diameter`, `support_base_pattern_spacing`
+        // in `from_config`; `layer_height` in `run_support` when the region
+        // carries no effective layer height) at their manifest defaults.
+        ("nozzle_diameter", ConfigValue::Float(0.4)),
+        ("layer_height", ConfigValue::Float(0.2)),
+        ("support_base_pattern_spacing", ConfigValue::Float(2.5)),
+        ("support_angle", ConfigValue::Float(0.0)),
+        ("support_speed", ConfigValue::Float(50.0)),
+        ("line_width", ConfigValue::Float(0.4)),
+        // `percent`-declared: the magnitude is consumed directly.
+        ("support_interface_flow", ConfigValue::Percent(100.0)),
+        ("support_interface_spacing", ConfigValue::Float(0.4)),
+        ("support_bottom_interface_spacing", ConfigValue::Float(0.4)),
+        ("support_style", ConfigValue::String("default".to_string())),
+    ]);
     fixture_with_config(config, family, roles)
 }
 
@@ -172,17 +177,21 @@ fn interface_spacing_config_controls_scan_fill() {
         .unwrap();
     let default_count = output.interface_paths().len();
 
-    let wide_config = ConfigViewBuilder::new()
-        .bool("enable_support", true)
-        // Packet 06: required reads at manifest defaults (see `fixture`).
-        .float("nozzle_diameter", 0.4)
-        .float("layer_height", 0.2)
-        .float("support_base_pattern_spacing", 2.5)
-        .float("support_speed", 50.0)
-        .float("line_width", 0.4)
-        .float("support_interface_spacing", 0.8)
-        .float("support_bottom_interface_spacing", 0.8)
-        .build();
+    let wide_config = config_with(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        // Required reads at manifest defaults (see `fixture`).
+        ("nozzle_diameter", ConfigValue::Float(0.4)),
+        ("layer_height", ConfigValue::Float(0.2)),
+        ("support_base_pattern_spacing", ConfigValue::Float(2.5)),
+        ("support_angle", ConfigValue::Float(0.0)),
+        ("support_speed", ConfigValue::Float(50.0)),
+        ("line_width", ConfigValue::Float(0.4)),
+        // `percent`-declared: the magnitude is consumed directly.
+        ("support_interface_flow", ConfigValue::Percent(100.0)),
+        ("support_interface_spacing", ConfigValue::Float(0.8)),
+        ("support_bottom_interface_spacing", ConfigValue::Float(0.8)),
+        ("support_style", ConfigValue::String("default".to_string())),
+    ]);
     let (config, region, paint) =
         fixture_with_config(wide_config, "traditional", body_and_interface_roles());
     let module = TraditionalSupport::from_config(&config).unwrap();

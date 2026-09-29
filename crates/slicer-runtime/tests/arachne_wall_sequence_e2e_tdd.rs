@@ -117,7 +117,12 @@ fn live_arachne_layer_one_sandwich_reaches_path_optimizer_unchanged() {
             PATH_OPT_ID,
             "Layer::PathOptimization",
             "path-optimization-default/path-optimization-default.wasm",
-            [],
+            // Fail-closed migration key (path-optimization-default.toml
+            // manifest default): a required read since the fallback removal.
+            [(
+                "path_optimization_emit_layer_markers",
+                ConfigValue::Bool(true),
+            )],
         );
 
         let committed_layer_one = Arc::new(Mutex::new(None));

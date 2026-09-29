@@ -66,6 +66,10 @@ fn concave_region_emits_outer_wall_without_panic() {
         .int("support_raft_layers", 0)
         .int("wall_count", 2)
         .float("line_width", 0.4)
+        // Fail-closed migration keys (classic-perimeters.toml manifest defaults).
+        .float("outer_wall_speed", 30.0)
+        .float("inner_wall_speed", 45.0)
+        .float("perimeter_arc_tolerance", 0.0125)
         .build();
     let module = ClassicPerimeters::from_config(&cfg).unwrap();
 

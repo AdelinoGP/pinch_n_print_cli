@@ -54,6 +54,14 @@ fn config_1_wall() -> ConfigView {
         .bool("thick_bridges", false)
         .int("extra_perimeters", 0)
         .int("support_raft_layers", 0)
+        // Fail-closed migration keys (classic-perimeters.toml manifest
+        // defaults): `outer_wall_speed` (30.0), `inner_wall_speed` (45.0) and
+        // `perimeter_arc_tolerance` (0.0125) are `require_*` reads since the
+        // guest's config-literal fallbacks migrated. The manifest defaults
+        // equal the retired literals, so behavior is unchanged.
+        .float("outer_wall_speed", 30.0)
+        .float("inner_wall_speed", 45.0)
+        .float("perimeter_arc_tolerance", 0.0125)
         .int("wall_count", 1)
         .float("line_width", 0.4)
         .build()
@@ -91,6 +99,14 @@ fn config_2_walls() -> ConfigView {
         .bool("thick_bridges", false)
         .int("extra_perimeters", 0)
         .int("support_raft_layers", 0)
+        // Fail-closed migration keys (classic-perimeters.toml manifest
+        // defaults): `outer_wall_speed` (30.0), `inner_wall_speed` (45.0) and
+        // `perimeter_arc_tolerance` (0.0125) are `require_*` reads since the
+        // guest's config-literal fallbacks migrated. The manifest defaults
+        // equal the retired literals, so behavior is unchanged.
+        .float("outer_wall_speed", 30.0)
+        .float("inner_wall_speed", 45.0)
+        .float("perimeter_arc_tolerance", 0.0125)
         .int("wall_count", 2)
         .float("line_width", 0.4)
         .build()

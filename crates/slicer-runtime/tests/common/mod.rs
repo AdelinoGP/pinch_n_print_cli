@@ -79,6 +79,13 @@ pub fn classic_perimeters_baseline() -> ConfigViewBuilder {
         .bool("thick_bridges", false)
         .int("extra_perimeters", 0)
         .int("support_raft_layers", 0)
+        // Fail-closed migration keys (classic-perimeters.toml manifest
+        // defaults): `outer_wall_speed`, `inner_wall_speed` and
+        // `perimeter_arc_tolerance` are required reads since the guest's
+        // config-literal fallbacks migrated to `require_*`.
+        .float("outer_wall_speed", 30.0)
+        .float("inner_wall_speed", 45.0)
+        .float("perimeter_arc_tolerance", 0.0125)
 }
 
 pub fn pipeline_config_base(

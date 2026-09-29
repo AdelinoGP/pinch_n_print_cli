@@ -185,11 +185,14 @@ fn interior_top_shell_layers_emit_no_ironing() {
 }
 
 #[test]
-fn absent_ironing_enabled_defaults_to_disabled() {
-    // Regression: when the user config omits `ironing_enabled` entirely, the
-    // module MUST default to OFF (OrcaSlicer parity: `ironing_type = no
-    // ironing`). Previously the fallback was `true`, which silently ironed
-    // every top surface at 0.1 mm spacing and inflated default gcode ~16%.
+fn absent_ironing_enabled_is_a_config_defect_not_a_default() {
+    // Packet-06 fail-closed contract: `ironing_enabled` is a declared key
+    // (top-surface-ironing.toml, default false), so a bound view always
+    // carries it — the host seeds the registry default at resolution
+    // (`seed_registry_defaults`). A view that omits it is a host-side
+    // contract violation, not a "default to off" case: the module must
+    // abort rather than silently pick a value. (The old absent-key
+    // fallback is gone; a missing key can no longer select OFF.)
     let cfg = config_with(&[
         // deliberately NO ironing_enabled key
         ("ironing_speed", ConfigValue::Float(20.0)),
@@ -200,17 +203,11 @@ fn absent_ironing_enabled_defaults_to_disabled() {
             ConfigValue::String("rectilinear".to_string()),
         ),
     ]);
-    let module = TopSurfaceIroning::from_config(&cfg).unwrap();
-    let region = region_with(Some(0), None, vec![square_polygon(0.0, 0.0, 10.0)]);
-    let mut output = InfillOutputBuilder::new();
-
-    module
-        .run_infill(0, &[region], &empty_paint_view(), &mut output, &cfg)
-        .unwrap();
-
+    let err = TopSurfaceIroning::from_config(&cfg)
+        .expect_err("a view omitting declared key ironing_enabled must fail closed");
     assert!(
-        output.ironing_paths().is_empty(),
-        "ironing must default to OFF when ironing_enabled is absent from config"
+        err.to_string().contains("ironing_enabled"),
+        "the failure must name the missing key, got: {err}"
     );
 }
 

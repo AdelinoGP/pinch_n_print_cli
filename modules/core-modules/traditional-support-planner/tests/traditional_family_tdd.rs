@@ -153,6 +153,18 @@ fn planner_config_with(
         "independent_support_layer_height".into(),
         ConfigValue::Bool(true),
     );
+    // Remaining declared keys seeded at their manifest defaults
+    // (traditional-support-planner.toml), mirroring the production
+    // `seed_registry_defaults` step.
+    values.insert(
+        "support_object_xy_distance".into(),
+        ConfigValue::Float(0.35),
+    );
+    values.insert("line_width".into(), ConfigValue::Float(0.4));
+    values.insert(
+        "support_base_pattern_spacing".into(),
+        ConfigValue::Float(2.5),
+    );
     ConfigView::from_map(values)
 }
 

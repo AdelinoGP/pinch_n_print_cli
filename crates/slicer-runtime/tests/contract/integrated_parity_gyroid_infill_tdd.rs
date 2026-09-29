@@ -121,7 +121,23 @@ fn integrated_parity_gyroid_infill() {
             // (`require_abs_value` over the fixed 0.4 nozzle base); a bound
             // view holds them at their manifest defaults (0.0) and carries
             // the host-expanded `line_width` (gyroid_infill_tdd.rs fixtures).
+            // `infill_density` / `infill_angle` / `infill_speed` are declared
+            // required reads since the guest's config-literal fallbacks
+            // migrated to `require_*`; seed the manifest defaults
+            // (gyroid-infill.toml).
             config: Arc::new(ConfigView::from_map(std::collections::HashMap::from([
+                (
+                    "infill_density".to_string(),
+                    slicer_ir::ConfigValue::Float(0.2),
+                ),
+                (
+                    "infill_angle".to_string(),
+                    slicer_ir::ConfigValue::Float(45.0),
+                ),
+                (
+                    "infill_speed".to_string(),
+                    slicer_ir::ConfigValue::Float(60.0),
+                ),
                 (
                     "bridge_line_width".to_string(),
                     slicer_ir::ConfigValue::Float(0.0),

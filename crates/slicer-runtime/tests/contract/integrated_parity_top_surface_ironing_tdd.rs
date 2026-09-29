@@ -69,6 +69,13 @@ fn integrated_parity_top_surface_ironing() {
             "ironing_flow".to_string(),
             slicer_ir::ConfigValue::Float(10.0),
         ),
+        // Declared string key (top-surface-ironing.toml, enum
+        // default "rectilinear") — a fail-closed required read since the
+        // guest's config-literal fallbacks were migrated to require_*.
+        (
+            "ironing_pattern".to_string(),
+            slicer_ir::ConfigValue::String("rectilinear".into()),
+        ),
     ])));
     let bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
     let mut wasm_arena = LayerArena::new();

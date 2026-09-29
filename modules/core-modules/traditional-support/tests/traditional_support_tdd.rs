@@ -2,7 +2,9 @@
 
 use std::sync::Arc;
 
-use slicer_ir::{ConfigView, ExtrusionRole, SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion};
+use slicer_ir::{
+    ConfigValue, ConfigView, ExtrusionRole, SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion,
+};
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
@@ -17,19 +19,28 @@ fn make_config(
     speed: f64,
     line_width: f64,
 ) -> ConfigView {
-    ConfigViewBuilder::new()
-        .bool("enable_support", enabled)
-        // Packet 06: required reads (`nozzle_diameter` in `from_config`;
-        // `layer_height` in `run_support` when the region carries no
-        // effective layer height) at their manifest defaults.
-        .float("nozzle_diameter", 0.4)
-        .float("layer_height", 0.2)
-        .float("support_base_pattern_spacing", base_spacing)
-        .float("support_angle", angle)
-        .float("support_speed", speed)
-        .float("line_width", line_width)
-        .float("support_bottom_interface_spacing", 0.4)
-        .build()
+    // `support_interface_flow` is declared `percent`; `ConfigViewBuilder` has
+    // no percent constructor, so the fixture is built from typed pairs.
+    config_with(&[
+        ("enable_support", ConfigValue::Bool(enabled)),
+        // Required reads (`nozzle_diameter` in `from_config`; `layer_height`
+        // in `run_support` when the region carries no effective layer height)
+        // at their manifest defaults.
+        ("nozzle_diameter", ConfigValue::Float(0.4)),
+        ("layer_height", ConfigValue::Float(0.2)),
+        (
+            "support_base_pattern_spacing",
+            ConfigValue::Float(base_spacing),
+        ),
+        ("support_angle", ConfigValue::Float(angle)),
+        ("support_speed", ConfigValue::Float(speed)),
+        ("line_width", ConfigValue::Float(line_width)),
+        // `percent`-declared: the magnitude is consumed directly.
+        ("support_interface_flow", ConfigValue::Percent(100.0)),
+        ("support_interface_spacing", ConfigValue::Float(0.4)),
+        ("support_bottom_interface_spacing", ConfigValue::Float(0.4)),
+        ("support_style", ConfigValue::String("default".to_string())),
+    ])
 }
 
 fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
@@ -136,17 +147,21 @@ fn paint_with_interface_plan() -> PaintRegionLayerView {
 }
 
 fn interface_paths(flow: f64) -> Vec<(slicer_ir::ExtrusionPath3D, bool)> {
-    let config = ConfigViewBuilder::new()
-        .bool("enable_support", true)
-        // Packet 06 required reads at manifest defaults (see `make_config`).
-        .float("nozzle_diameter", 0.4)
-        .float("layer_height", 0.2)
-        .float("support_base_pattern_spacing", 2.5)
-        .float("support_speed", 50.0)
-        .float("line_width", 0.4)
-        .float("support_interface_flow", flow)
-        .float("support_bottom_interface_spacing", 0.4)
-        .build();
+    let config = config_with(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        // Required reads at manifest defaults (see `make_config`).
+        ("nozzle_diameter", ConfigValue::Float(0.4)),
+        ("layer_height", ConfigValue::Float(0.2)),
+        ("support_base_pattern_spacing", ConfigValue::Float(2.5)),
+        ("support_angle", ConfigValue::Float(0.0)),
+        ("support_speed", ConfigValue::Float(50.0)),
+        ("line_width", ConfigValue::Float(0.4)),
+        // `percent`-declared: the magnitude is consumed directly.
+        ("support_interface_flow", ConfigValue::Percent(flow)),
+        ("support_interface_spacing", ConfigValue::Float(0.4)),
+        ("support_bottom_interface_spacing", ConfigValue::Float(0.4)),
+        ("support_style", ConfigValue::String("default".to_string())),
+    ]);
     let module = TraditionalSupport::from_config(&config).unwrap();
     let region = make_square_region(10.0, 0.3);
     let paint = paint_with_interface_plan();
@@ -527,17 +542,21 @@ fn nonpositive_interface_flow_falls_back_to_default_module_boundary() {
 
 #[test]
 fn zero_base_and_interface_spacing_clamp_to_solid_pitch() {
-    let config = ConfigViewBuilder::new()
-        .bool("enable_support", true)
-        // Packet 06 required reads at manifest defaults (see `make_config`).
-        .float("nozzle_diameter", 0.4)
-        .float("layer_height", 0.2)
-        .float("support_base_pattern_spacing", 0.0)
-        .float("support_interface_spacing", 0.0)
-        .float("support_bottom_interface_spacing", 0.0)
-        .float("support_speed", 50.0)
-        .float("line_width", 0.4)
-        .build();
+    let config = config_with(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        // Required reads at manifest defaults (see `make_config`).
+        ("nozzle_diameter", ConfigValue::Float(0.4)),
+        ("layer_height", ConfigValue::Float(0.2)),
+        ("support_base_pattern_spacing", ConfigValue::Float(0.0)),
+        ("support_angle", ConfigValue::Float(0.0)),
+        ("support_interface_spacing", ConfigValue::Float(0.0)),
+        ("support_bottom_interface_spacing", ConfigValue::Float(0.0)),
+        ("support_speed", ConfigValue::Float(50.0)),
+        ("line_width", ConfigValue::Float(0.4)),
+        // `percent`-declared: the magnitude is consumed directly.
+        ("support_interface_flow", ConfigValue::Percent(100.0)),
+        ("support_style", ConfigValue::String("default".to_string())),
+    ]);
     let module = TraditionalSupport::from_config(&config).unwrap();
     let region = make_square_region(10.0, 0.3);
     let paint = paint_with_plan("traditional");

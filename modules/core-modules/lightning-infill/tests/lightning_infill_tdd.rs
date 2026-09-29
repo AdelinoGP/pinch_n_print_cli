@@ -97,6 +97,11 @@ fn from_config_defaults() {
     // module's fixed 0.4 mm nozzle). Seed the bound value; the
     // production auto-expansion lives host-side now.
     values.insert("line_width".into(), ConfigValue::Float(0.45));
+    // Declared keys (lightning-infill.toml) seeded at their manifest
+    // defaults, mirroring the production `seed_registry_defaults` step.
+    values.insert("infill_density".into(), ConfigValue::Float(0.2));
+    values.insert("infill_angle".into(), ConfigValue::Float(45.0));
+    values.insert("infill_speed".into(), ConfigValue::Float(60.0));
     let config = ConfigView::from_map(values);
     let module = LightningInfill::from_config(&config).unwrap();
     assert!((module.density() - 0.2).abs() < 0.001);

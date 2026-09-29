@@ -191,9 +191,13 @@ fn core_module_manifest_paths() -> Vec<(String, PathBuf)> {
         }
         let module = entry.file_name().to_string_lossy().into_owned();
         let manifest = entry.path().join(format!("{module}.toml"));
-        if manifest.is_file() {
-            out.push((module, manifest));
+        if !manifest.is_file() {
+            panic!(
+                "core module {module} has no manifest at {}",
+                manifest.display()
+            );
         }
+        out.push((module, manifest));
     }
     out.sort();
     assert!(!out.is_empty(), "no core module manifests discovered");

@@ -65,6 +65,16 @@ fn integrated_parity_rectilinear_infill() {
             "infill_density".to_string(),
             slicer_ir::ConfigValue::Float(0.2),
         ),
+        // Declared required reads since the guest's config-literal fallbacks
+        // migrated to `require_*` (rectilinear-infill.toml manifest defaults).
+        (
+            "infill_angle".to_string(),
+            slicer_ir::ConfigValue::Float(45.0),
+        ),
+        (
+            "infill_speed".to_string(),
+            slicer_ir::ConfigValue::Float(60.0),
+        ),
         ("line_width".to_string(), slicer_ir::ConfigValue::Float(0.4)),
         (
             "bridge_line_width".to_string(),

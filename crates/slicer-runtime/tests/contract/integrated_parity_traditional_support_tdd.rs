@@ -74,6 +74,26 @@ fn integrated_parity_traditional_support() {
             "layer_height".to_string(),
             slicer_ir::ConfigValue::Float(0.2),
         ),
+        // Fail-closed migration keys (traditional-support.toml manifest
+        // defaults).
+        ("support_angle".to_string(), slicer_ir::ConfigValue::Float(60.0)),
+        ("support_speed".to_string(), slicer_ir::ConfigValue::Float(50.0)),
+        (
+            "support_interface_spacing".to_string(),
+            slicer_ir::ConfigValue::Float(0.4),
+        ),
+        (
+            "support_bottom_interface_spacing".to_string(),
+            slicer_ir::ConfigValue::Float(0.4),
+        ),
+        (
+            "support_interface_flow".to_string(),
+            slicer_ir::ConfigValue::Percent(100.0),
+        ),
+        (
+            "support_style".to_string(),
+            slicer_ir::ConfigValue::String("default".into()),
+        ),
     ])));
     // Packet 222 removed traditional-support's missing-plan scan-line filler:
     // it `continue`s when `support_plan_entries_for` is empty, so a bare
