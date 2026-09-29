@@ -19,10 +19,10 @@ This packet owns only Phase C, where move geometry and the active tool are avail
 
 ## Prerequisites and Blockers
 
-- Depends on: **FORWARD-DEP** packet 04, `config-scope-resolution_04_automatic-value-expansion` (`status: draft`), for `ExpansionContext { nozzle_diameter_mm, tool_bases }`, `expand_automatic_values`, `ExpansionError::{UnknownBaseKey, MissingAutoBase, NonPositiveBase}`, and its net-new expected test target `crates/slicer-config/tests/automatic_value_expansion_tdd.rs`; Step 1 name-reconciles that path after packet 04 lands.
-- Depends on: **FORWARD-DEP** packet 05, `config-scope-resolution_05_scope-resolution-module` (`status: draft`), for the `slicer_config::resolution` module and its normative scope precedence.
+- Depends on: **FORWARD-DEP** packet 04, `config-scope-resolution_04_automatic-value-expansion` (`status: implemented`), for `ExpansionContext { nozzle_diameter_mm, tool_bases }`, `expand_automatic_values`, `ExpansionError::{UnknownBaseKey, MissingAutoBase, NonPositiveBase}`, and its net-new expected test target `crates/slicer-config/tests/automatic_value_expansion_tdd.rs`; Step 1 name-reconciles that path after packet 04 lands.
+- Depends on: **FORWARD-DEP** packet 05, `config-scope-resolution_05_scope-resolution-module` (`status: implemented`), for the `slicer_config::resolution` module and its normative scope precedence.
 - Unblocks: no queued packet identified by the approved plan.
-- Activation blockers: packets 04 and 05 must land, their exports must be reconciled against code, and Step 1's derived census must confirm there is no Phase-C negative sentinel or name the newly discovered in-scope sentinel before implementation proceeds.
+- Activation blockers: packets 04 and 05 are implemented and their exports are reconcilable against the landed tree; Step 1's derived census must confirm there is no Phase-C negative sentinel or name the newly discovered in-scope sentinel before implementation proceeds.
 
 ## Acceptance Criteria
 

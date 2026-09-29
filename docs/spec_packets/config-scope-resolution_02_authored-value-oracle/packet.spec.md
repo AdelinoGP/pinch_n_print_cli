@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: config-scope-resolution_02_authored-value-oracle
 task_ids:
   - TASK-563
@@ -66,3 +66,7 @@ This packet was generated against the context_discipline preamble shared by `spe
 - obey the shared absolute context bands: 120k reading budget with hand-off at 150k (standard); the extended band (240k reading / 300k hard stop) only via swarm's escalation protocol
 
 Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation (an extended-band run may carry a single L step only when `design.md` justifies why it cannot be split).
+
+## Closure Note
+
+Implemented as a red oracle at commit `5e4362fe` (2026-09-27): AC-1 failed red with the seven required `MISMATCH` lines while the selector, population, and comparator controls were green. Packet 3's typed-scope-ingestion then turned the principal oracle green as plan queue row 3 (“Turns #2 green”) intended. The current `ingestion_fidelity_oracle_tdd` passes all four tests, which is the correct steady state; AC-1's red expectation describes packet-2-era acceptance and is superseded.
