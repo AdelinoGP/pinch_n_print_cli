@@ -510,6 +510,30 @@ pub fn convert_infill_output(
     })
 }
 
+/// The `Layer::InfillPostProcess` replacement set for an invocation that ran
+/// and re-emitted nothing: the **empty** set.
+///
+/// The stage's contract is replace-with-complete-re-emit (ADR-0028 §Amendment
+/// Change 3): the module's output *is* the layer's whole infill set, so an
+/// output of zero paths is a verdict — "no infill survives the re-clip" — not
+/// an absence. Collapsing the two (returning `Ok(None)` for an all-empty
+/// invocation) preserved the prior `InfillIR`, which on the affected layers is
+/// the raw, unclipped emitter envelope the infill-linker had just rejected
+/// (wayfinder perf-vs-orca ticket 37: 68.0% of classic Benchy's printed sparse
+/// mm, 88.7% of one revived layer path outside the part cross-section).
+///
+/// The preservation rule for genuinely absent invocations is untouched: a stage
+/// with zero registered modules, a region-split skip, or a missing component
+/// never reaches the commit producer at all.
+pub fn empty_infill_replacement(layer_index: u32) -> slicer_ir::InfillIR {
+    slicer_ir::InfillIR {
+        schema_version: slicer_ir::CURRENT_INFILL_IR_SCHEMA_VERSION,
+        global_layer_index: layer_index,
+        regions: Vec::new(),
+        raft_regions: Vec::new(),
+    }
+}
+
 /// Map a `MarshalError` to a human-readable string, preserving the old
 /// untagged-push message for infill (no contract test asserts on this substring,
 /// but keep it informative).

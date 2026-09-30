@@ -1121,7 +1121,7 @@ pub use crate::marshal::accumulators::{
 };
 pub use crate::marshal::out::{
     collect_postpass_output, convert_infill_output, convert_perimeter_output,
-    convert_support_output, merge_slice_postprocess_into,
+    convert_support_output, empty_infill_replacement, merge_slice_postprocess_into,
 };
 pub use crate::marshal::OriginId;
 

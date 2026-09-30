@@ -466,6 +466,14 @@ pub trait LayerModule: Sized {
     /// buckets committed by `Layer::Infill` (ADR-0028 Option 1b). The
     /// output builder stays write-only; the module emits the COMPLETE
     /// replacement `InfillIR`, re-emitting buckets it did not transform.
+    ///
+    /// Because the output is a complete replacement set, emitting **nothing**
+    /// is a verdict, not an absence: the host commits the empty replacement
+    /// (no regions, no raft regions) and the prior `InfillIR` is superseded
+    /// (ADR-0028 §Amendment 2026-09-29). A module that wants to pass a bucket
+    /// through must re-emit it. Only a genuinely absent invocation — no module
+    /// registered for the stage, a region-split skip, or a missing component —
+    /// leaves the prior `InfillIR` in place.
     fn run_infill_postprocess(
         &self,
         _layer_index: u32,

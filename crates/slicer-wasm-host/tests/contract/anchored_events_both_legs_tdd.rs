@@ -87,7 +87,8 @@ fn native_support_postprocess_preserves_geometry_and_anchored_events() {
     let input = collection(AnchoredGeometryContract::Planar { z: 3000 }, 0.3);
     let mut output = SupportOutputBuilder::new();
     output
-        .push_support_path(ExtrusionPath3D { // exhaustive: fixture pins every field
+        // exhaustive: fixture pins every field
+        .push_support_path(ExtrusionPath3D {
             // exhaustive: fixture pins every field
             points: vec![Point3WithWidth {
                 x: 0.0,

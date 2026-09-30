@@ -989,6 +989,17 @@ while seam-first geometry is represented by the first point of the wall path.
 `crates/slicer-ir/src/slice_ir.rs`. Each layer carries region-scoped sparse,
 solid, and ironing extrusion paths.
 
+**Empty-commit protocol (ADR-0028 §Amendment 2026-09-29).** `Layer::Infill` is a
+merge stage: an invocation that emits no paths commits nothing (`Ok(None)`), and
+the prior `InfillIR` is preserved. `Layer::InfillPostProcess` is
+replace-with-complete-re-emit: an invocation that *ran* and re-emitted no paths
+commits the **empty replacement set** (no regions, no raft regions), because
+zero paths there is a clip verdict, not an absence. Only genuinely absent
+invocations — zero registered modules, a region-split skip, a missing component
+— leave the prior `InfillIR` in place. Conflating the two resurrected the raw,
+unclipped emitter envelope the infill linker had just rejected (wayfinder
+perf-vs-orca tickets 35/37).
+
 Infill is the only producer that may set `ExtrusionPath3D.tool_index` to
 `Some(t)` (authored coloring, packet 226 / ADR-0058); see the
 `ExtrusionPath3D.tool_index` subsection under IR 7 for the field semantics. An

@@ -13,6 +13,7 @@ mod exact_z_support_query;
 mod finalization_role_round_trip_tdd;
 mod host_services_tdd;
 mod infill_holder_resolution_painted_region_tdd;
+mod infill_postprocess_empty_commit_tdd;
 mod layer_collection_builder_contract_tdd;
 mod layer_height_transport_tdd;
 mod lightning_dispatch_per_region_keying_tdd;

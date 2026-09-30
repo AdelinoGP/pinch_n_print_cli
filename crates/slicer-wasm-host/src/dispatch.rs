@@ -3726,11 +3726,25 @@ pub fn deconstruct_layer_ctx(
     match stage_id {
         "Layer::Infill" | "Layer::InfillPostProcess" => {
             let infill = &ctx.infill_output;
-            if infill.sparse_paths.is_empty()
+            let empty = infill.sparse_paths.is_empty()
                 && infill.solid_paths.is_empty()
                 && infill.ironing_paths.is_empty()
-                && infill.raft_fill.is_empty()
-            {
+                && infill.raft_fill.is_empty();
+            if empty && stage_id == "Layer::InfillPostProcess" {
+                // The stage's contract is replace-with-complete-re-emit
+                // (ADR-0028 §Amendment Change 3), so an invocation that ran and
+                // re-emitted nothing has committed the EMPTY replacement set —
+                // a verdict, not an absence. Returning `Ok(None)` here instead
+                // preserved the prior `InfillIR` (the raw emitter envelope the
+                // infill-linker had just clipped to nothing), the containment
+                // hole localized by wayfinder ticket 35 and fixed by ticket 37.
+                // The `Layer::Infill` merge semantics below are unaffected: for
+                // that stage an empty output really is "no contribution".
+                return Ok(Some(LayerStageCommit::InfillPostProcess(
+                    crate::marshal::empty_infill_replacement(layer_index),
+                )));
+            }
+            if empty {
                 return Ok(None);
             }
             let ir = crate::marshal::convert_infill_output(infill, layer_index, authored)

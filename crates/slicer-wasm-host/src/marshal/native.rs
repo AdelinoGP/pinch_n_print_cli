@@ -1379,10 +1379,29 @@ pub fn commit_native_layer_response(
                 return Ok(None);
             };
             let collected = collect_infill(builder);
+            // Keep this predicate identical to the wasm leg's (`raft_fill`
+            // included): a raft-only output is NOT the empty case, so it must
+            // fall through and commit its raft regions rather than be collapsed
+            // into the empty replacement set.
             if collected.sparse_paths.is_empty()
                 && collected.solid_paths.is_empty()
                 && collected.ironing_paths.is_empty()
+                && collected.raft_fill.is_empty()
             {
+                if stage_export.ends_with("PostProcess") {
+                    // Native mirror of the wasm leg's empty-replacement rule:
+                    // `Layer::InfillPostProcess` is replace-with-complete-
+                    // re-emit (ADR-0028 §Amendment Change 3), so a ran
+                    // invocation that produced zero paths has committed the
+                    // empty replacement set, not "no commit". The absent-builder
+                    // arm above stays `Ok(None)`: the macro's
+                    // `run_infill_postprocess` shim always populates `infill`,
+                    // so a missing builder is a mis-bound entry, not a ran-and-
+                    // emitted-nothing linker.
+                    return Ok(Some(LayerStageCommit::InfillPostProcess(
+                        crate::marshal::empty_infill_replacement(layer_index),
+                    )));
+                }
                 return Ok(None);
             }
             // Native modules author no per-path tool today; pass `None` so the

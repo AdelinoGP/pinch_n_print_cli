@@ -1169,7 +1169,10 @@ packet-local limitation, not evidence that module execution failed.
 Native commit is lossless for every declared supported stage output: it
 preserves all output variants, commits explicit empty postprocess results,
 retains region IDs and seam reasons, and does not fatal on outputless
-`PrePass::PaintSegmentation` when the WASM leg is also outputless.
+`PrePass::PaintSegmentation` when the WASM leg is also outputless. For
+`Layer::InfillPostProcess` specifically, an invocation that ran and re-emitted
+nothing commits the empty replacement set on both legs (ADR-0028 §Amendment
+2026-09-29); `Layer::Infill` treats empty output as no contribution.
 
 The orchestrator constructs the input struct at each dispatch call
 site by projecting field-level borrows from `Blackboard` / `LayerArena`,

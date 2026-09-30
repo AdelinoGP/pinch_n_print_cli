@@ -72,12 +72,30 @@ Standing decisions for this effort (2026-09-22):
    empty-output protocol](issues/37-infillpostprocess-empty-output-protocol.md),
    which touches the linker/host contract rather than the fill geometry and
    needs the standing paired A/B before any keep. 36 stays open and parallel.
+   2026-09-29 third update: **37 resolved and fixed** — a ran
+   `Layer::InfillPostProcess` invocation now commits the empty replacement set,
+   so the linker's clip verdict supersedes the raw envelope. Stage-local (only
+   this stage's contract is a complete replacement set); `Layer::Infill`,
+   `Layer::Support`, `Layer::SupportPostProcess` and `Layer::AnchoredEvents`
+   keep their existing empty-output semantics. Verified on real G-code (60
+   classic layers → zero sparse, worst overshoot 21.78 mm → 0.00 mm; base.stl
+   byte-identical as the negative control) and paired ordinary + accelerated
+   A/B measured **no wall win with corroborating CPU** — the case is
+   containment, not speed.
+   Recommended KEEP to the human; not auto-committed.
 - **Recipe trap (new 2026-09-29):** a `Layer::InfillPostProcess` (or any stage)
    invocation that emits no paths is indistinguishable from a stage that did not
    run — the host preserves the prior `InfillIR`. Never read "the linker produced
    nothing" as "no linking was needed"; check the linker's own kept-length from
    `evidence/t35-fill-domain/probe.patch` before attributing output to the fill
    generator.
+- **Recipe trap (narrowed 2026-09-29 by 37):** the trap above applies to
+   *instrumented analysis of the pre-fix tree*. From the fix onward a ran
+   `Layer::InfillPostProcess` that re-emits nothing commits the empty
+   replacement set, so "no sparse output on this layer" is a real verdict on
+   both engines. The distinction still matters for `Layer::Infill` (merge
+   stage, unchanged) and for genuinely absent stages. See
+   [InfillPostProcess empty-output protocol](issues/37-infillpostprocess-empty-output-protocol.md).
 - **Recipe traps** (each has produced or nearly produced a wrong conclusion):
   instrumented runs never mixed into wall claims (§3.2); accumulated worker
   elapsed is not CPU (§3.3); the native `--profile` table's wall columns are
@@ -146,6 +164,7 @@ Standing decisions for this effort (2026-09-22):
 - [Serial host floor](issues/27-serial-host-prepass-floor.md) — **human route decision** (2026-09-29): accepted DROP of the phase-B sibling-region memo for the matched jobs and parked further serial-floor candidate search until an output-safe, measurably useful reduction has a real-layer IR oracle. The failed flat-bridge mask elimination remains dropped; `apply_opening` parity is separate. Prioritize the already-open [Classic output-volume surplus](issues/28-classic-output-volume-surplus.md) attribution next. Serial host floor stays open and unclaimed; no candidate committed in this take.
 - [Classic output-volume surplus](issues/28-classic-output-volume-surplus.md): fresh ordinary matched output census attributes 90.6% of Benchy's classic-vs-Arachne byte excess to actual sparse XY paths, not gap fill; base's classic excess is mostly wall bytes and sparse is smaller than Arachne. Historical Orca captures and a middle Benchy layer expose a fill-domain discrepancy, not a proven safe deletion. PNP also repeats Z/F modal tokens on every XY+E move; its speed impact is unmeasured. Follow-ups: [Benchy classic sparse-fill domain at middle layers](issues/35-benchy-classic-sparse-fill-domain.md) and [Modal G-code Z/F token redundancy and speed gate](issues/36-modal-gcode-token-redundancy.md). Evidence: `evidence/t28-output-volume/FINDINGS.md`.
 - [Benchy classic sparse-fill domain at middle layers](issues/35-benchy-classic-sparse-fill-domain.md): **not a fill-domain question — a commit-protocol containment hole.** The linker clips the raw gyroid waves to nothing on the burst layers (probe: 1,741 mm in, 0 paths kept at classic L104), the host reads that empty output as "committed nothing", and the preserved prior `InfillIR` prints the raw, unclipped envelope — 54,324 of 79,940 printed sparse mm (68.0%) and 3,054,585 of 4,486,477 sparse bytes across 60 classic layers, with 88.7% of the L104 revived path outside the part cross-section and 1,741 mm printed against a 44.2 mm absolute bound from the 17.7 mm² sparse claim. Arachne 16 layers / 20.9%; base has zero all-empty layers and classic prints fewer sparse mm than Arachne there, which explains the ticket-28 fixture divergence. No fix made — the protocol change is graduated to [InfillPostProcess empty-output protocol](issues/37-infillpostprocess-empty-output-protocol.md). Evidence: `evidence/t35-fill-domain/FINDINGS.md`.
+- [InfillPostProcess empty-output protocol](issues/37-infillpostprocess-empty-output-protocol.md): **fixed — a ran `Layer::InfillPostProcess` that re-emits nothing commits the empty replacement set, so the linker's clip verdict supersedes the raw envelope.** The fix is stage-local (only this stage's contract is replace-with-complete-re-emit; `Layer::Infill` keeps merge semantics and `Layer::SupportPostProcess` stays additive) and lands at the producer on both legs (`deconstruct_layer_ctx`, `commit_native_layer_response`) plus the test mirror, all sharing `empty_infill_replacement`. `RoleBoundaries::for_role`'s `Some(empty)`-vs-`None` containment distinction is untouched (`modules/` diff empty). Real-G-code verification: the 60 classic burst layers go to zero sparse output and every other layer is byte-identical (classic 106,442 → 34,307 segments, 79,939.9 → 25,616.2 mm; Arachne 47,659 → 37,606), worst overshoot past the layer's own wall bbox 21.78 mm → 0.00 mm, and base.stl is byte-identical as the negative control (225,004 segments both sides, 0 differing layers). Paired ordinary + accelerated A/B (6 repeats/arm/cell, quiet machine, no starvation exclusions) measures **no wall win with corroborating CPU** in any of four benchy supports-off batches: paired median wall −0.17/−0.13/−0.03/−0.01 s, and the one directional cell (classic-off ordinary, 6/6) has flat CPU (+0.04 s, 3/6) — the case is containment, not speed, so this is a correctness keep, not a route-performance step. Contract recorded in ADR-0028 §Amendment 2026-09-29, `docs/02_ir_schemas.md` IR 8, the `run_infill_postprocess` trait doc, and DEV-196. **KEEP recommended to the human; not auto-committed.** Evidence: `evidence/t37-empty-commit-protocol/`.
 
 ## Not yet specified
 
