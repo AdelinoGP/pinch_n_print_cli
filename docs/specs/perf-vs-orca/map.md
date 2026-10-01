@@ -58,7 +58,8 @@ Standing decisions for this effort (2026-09-22):
   → **21 ✅ (attribution, 2026-10-01; produced the
   [clip-universe hoist](issues/44-clip-universe-hoist.md) candidate awaiting
   its own take)** → **25 ✅ (attribution, 2026-10-01; produced the
-  overhang-quartile predicate candidate awaiting its own take)** → below-fold
+  [overhang-quartile predicate narrowing](issues/45-overhang-quartile-predicate-narrowing.md)
+  candidate awaiting its own take)** → below-fold
   polish — 15, 17, 22
   closed 2026-09-23/24); attribution-only tickets are parallel-takeable, but no
   substage split starts before [host:slice closing_ex span

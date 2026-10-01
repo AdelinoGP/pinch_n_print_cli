@@ -73,4 +73,6 @@ measured fuel→wall transfer is 0-16%). Two value-preserving shapes (narrow the
 predicate for `eps = 0.0`, or an inclusive bbox prefilter in the query) are
 design work for the candidate's own take. No implementation, authorization,
 A/B, keep/drop or commit is claimed here; the candidate joins the timing chain
-awaiting its own scope plus the standing paired ordinary + accelerated A/B.
+awaiting its own scope plus the standing paired ordinary + accelerated A/B —
+graduated as [Overhang-quartile query: predicate narrowing + standing paired
+A/B](45-overhang-quartile-predicate-narrowing.md).
