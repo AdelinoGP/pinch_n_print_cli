@@ -1,0 +1,12 @@
+{
+  "replay_matches_saved_analysis": true,
+  "tampered_summary_rejected": true,
+  "arachne_wall_overlap_preserved": true,
+  "arachne_longest_two_layers_every_sample": [
+    1,
+    2
+  ],
+  "original_raw_files_verified": 101,
+  "original_tracked_files_verified": 91,
+  "new_slice_or_acceptance_runs": 0
+}

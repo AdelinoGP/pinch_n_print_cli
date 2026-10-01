@@ -1,0 +1,1466 @@
+{
+  "kind": "saved-evidence-analysis-not-new-acceptance",
+  "campaign_status": "inconclusive",
+  "summary_sha256": "614dc7e3643f30a66c2ac15ba5288d1ccaa2b2f969c4cdfb288914c8b50d6630",
+  "raw_files_verified": {
+    "summary.json": "614dc7e3643f30a66c2ac15ba5288d1ccaa2b2f969c4cdfb288914c8b50d6630",
+    "runs/supports-off-benchy-classic/measured-baseline-1.csv": "8a92e7d073fe211acf03a99421ad8d1487dca7e58c37140c6ea806446747640b",
+    "runs/supports-off-benchy-classic/measured-baseline-1.gcode": "6d06c76b7fe0d3f20fcae348d406445596638755c3463fba91e2890413921ca1",
+    "runs/supports-off-benchy-classic/measured-baseline-1.jsonl": "5f73a37feef43bf2c41b3831f9a60c053bd519e199b36a2a060815bfd92f4502",
+    "runs/supports-off-benchy-classic/measured-baseline-2.csv": "1d94cf676b4d25b6ed3b6f5aa99719b92a56293153836b10ec06b50a98ba8d12",
+    "runs/supports-off-benchy-classic/measured-baseline-2.gcode": "69040d53980f81b7248601c9f8ba21ba635c6850e18338a0bcfb1720889ddfbb",
+    "runs/supports-off-benchy-classic/measured-baseline-2.jsonl": "6096519bee1c562f1aced05d420c13f12ed04fdf12439bd53159626a3ca4393f",
+    "runs/supports-off-benchy-classic/measured-baseline-3.csv": "db368190bc9579a006e4bdc2b3f87b9ad0524ccfc857876ee94728f1dc35bda6",
+    "runs/supports-off-benchy-classic/measured-baseline-3.gcode": "d39620d660ac0ae0036125518df5722d0bd3f06bd3eee1e1a56c9c7f8eb2f9ef",
+    "runs/supports-off-benchy-classic/measured-baseline-3.jsonl": "842210000e9da4c10492c41792331de87aa14bf34df05d58e0f0a87bcac52760",
+    "runs/supports-off-benchy-classic/measured-baseline-4.csv": "1d112b4054de6a3a69fc93b9ea100dcec033f75a5fdc070b53d3be97c82f827b",
+    "runs/supports-off-benchy-classic/measured-baseline-4.gcode": "0e8803014e90479ac995ae95df4899178678b5fbf5dcb417631dc9097c8638cc",
+    "runs/supports-off-benchy-classic/measured-baseline-4.jsonl": "d5f19e09391392bd03d0a490032f10812713dd2881e090d3dfcad18200cf446f",
+    "runs/supports-off-benchy-classic/measured-candidate-1.csv": "14734930bf36184f4e8cbfa2afbc2204c3c9c9d1aa621f5471f80614a73990fb",
+    "runs/supports-off-benchy-classic/measured-candidate-1.gcode": "2c81f77a6898b6abaebd47b2050ada425aab62dce920abeb34d9e3b06d86843b",
+    "runs/supports-off-benchy-classic/measured-candidate-1.jsonl": "961684f27548717a0b95faf21a47473686dcf9c8a88e1a24663738b0f5e09304",
+    "runs/supports-off-benchy-classic/measured-candidate-2.csv": "48dfc7c038851029e50d69dda964b3e4496c3d94032568b6117d7bb62ae3c757",
+    "runs/supports-off-benchy-classic/measured-candidate-2.gcode": "6f616be638882e1a92c8782e42e70d1bf0c519dc1263f81a40e8962bf318fd86",
+    "runs/supports-off-benchy-classic/measured-candidate-2.jsonl": "c4a3356981091a20f1415f7e2e54eccfed097563978eb6d2d0c39a50bbd4f63a",
+    "runs/supports-off-benchy-classic/measured-candidate-3.csv": "badfb15ff67326dd7828ed31a2f0c8714f33cc6aecc7275c5ab7f5b2d56a2922",
+    "runs/supports-off-benchy-classic/measured-candidate-3.gcode": "d69132ec9b28b92b0ddd62d5196b6dbb2a420e189a2596a7e99b333826d90d80",
+    "runs/supports-off-benchy-classic/measured-candidate-3.jsonl": "f8fcb68f76d4fc39e9aed912f94a41e17efb2045ab74510d3213b851acbcc317",
+    "runs/supports-off-benchy-classic/measured-candidate-4.csv": "904cd994bcc1292276df866ff0b0122d2da0e36c7522efaa6bc2fa4d235f34ac",
+    "runs/supports-off-benchy-classic/measured-candidate-4.gcode": "3e74b83eb2f24a7088712ef0fea5b7d8cec1c7b6c1dc9b607d8acc3320f11ff6",
+    "runs/supports-off-benchy-classic/measured-candidate-4.jsonl": "1e2d32f69c07ec6d08daa4fac3003c34fcd2e8eb968577e2419095f72b139651",
+    "runs/supports-off-benchy-arachne/measured-baseline-1.csv": "33d5157a5cadd53b8d7cd42259331b7d1adbe84c3aa5605f45ecd1d058c84ad8",
+    "runs/supports-off-benchy-arachne/measured-baseline-1.gcode": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+    "runs/supports-off-benchy-arachne/measured-baseline-1.jsonl": "dff4f42b7dcbe4661904af0787c8dd1a1d6beb2776cd72d0e87d6772b9330bd3",
+    "runs/supports-off-benchy-arachne/measured-baseline-2.csv": "e8a309bb3cf4456df7fa6ef279cb3d10b37191e726956a8d1a797a7cca6e39d6",
+    "runs/supports-off-benchy-arachne/measured-baseline-2.gcode": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+    "runs/supports-off-benchy-arachne/measured-baseline-2.jsonl": "6d5ee11efd5ce21f0a1bf8a4dad882be4dfcee365f25d676f51af4bb1e653452",
+    "runs/supports-off-benchy-arachne/measured-baseline-3.csv": "7e239a3fb71fb530991931730aad2fce03b2f7d78dc8b1cff1d4a7fc7b3e4a7e",
+    "runs/supports-off-benchy-arachne/measured-baseline-3.gcode": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+    "runs/supports-off-benchy-arachne/measured-baseline-3.jsonl": "352d39c8c5ecaf48da72d10d4d1728142a6b47cb926c84efee6c7585b323a860",
+    "runs/supports-off-benchy-arachne/measured-baseline-4.csv": "dcf8b83c834ac9f584e0a28bc12e85c47e199142e193b97e727dd29138fdb64b",
+    "runs/supports-off-benchy-arachne/measured-baseline-4.gcode": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+    "runs/supports-off-benchy-arachne/measured-baseline-4.jsonl": "e815952dc362081bbbe45f74c65eda849a53606b2a441845cd83a5055afc65d9",
+    "runs/supports-off-benchy-arachne/measured-candidate-1.csv": "ba8129e866ecbc252b7b1f99ef405d7ed719d1d21603686c8879c76bab7c1be5",
+    "runs/supports-off-benchy-arachne/measured-candidate-1.gcode": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+    "runs/supports-off-benchy-arachne/measured-candidate-1.jsonl": "2472e3c7b7f0d9e96ed21bcbb8f44a367c87f97c55bdcf801afa0760bc1503a5",
+    "runs/supports-off-benchy-arachne/measured-candidate-2.csv": "6767053e4136b642443e14a23cb0cb63489ff17ce79318cab97f380a240fddee",
+    "runs/supports-off-benchy-arachne/measured-candidate-2.gcode": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+    "runs/supports-off-benchy-arachne/measured-candidate-2.jsonl": "d6cce8c4c5efb54f49e8ee78278bafc9c23e449fb260b0862533d8cb21638e60",
+    "runs/supports-off-benchy-arachne/measured-candidate-3.csv": "495067066d1cad5ab5483d9306e19280c8425569e1a8d097955a2190af2a064e",
+    "runs/supports-off-benchy-arachne/measured-candidate-3.gcode": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+    "runs/supports-off-benchy-arachne/measured-candidate-3.jsonl": "b2cd4b179785a80330ac9ef9f9e55e54b575984df9e48cabf65ea4928c2d7e26",
+    "runs/supports-off-benchy-arachne/measured-candidate-4.csv": "258335130b241eedb4600ced0103d99ff546f24e1672135e317f1bad660e1a23",
+    "runs/supports-off-benchy-arachne/measured-candidate-4.gcode": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+    "runs/supports-off-benchy-arachne/measured-candidate-4.jsonl": "5f561ddb4b6e0273d2c7e1d2fcd3abd09b284f5e69a99db38b80a710508a0932"
+  },
+  "cells": {
+    "classic": {
+      "rows_in_measured_order": [
+        {
+          "label": "measured-baseline-1",
+          "variant": "baseline",
+          "timestamp_utc": "2026-10-01T03:30:08.244Z",
+          "cpu_seconds": 144.9062,
+          "process_wall_ms": 20693.8,
+          "phase_ms": {
+            "validation": 91,
+            "prepass": 6983,
+            "per_layer": 12011,
+            "postpass": 524
+          },
+          "runtime_elapsed_ms": 20514,
+          "runtime_outside_phases_ms": 905,
+          "process_outside_runtime_ms": 179.79999999999927,
+          "layer_elapsed_sum_ms_not_cpu": 105271,
+          "longest_layers": [
+            {
+              "layer_index": 1,
+              "elapsed_ms": 6901,
+              "start_offset_ms": 1707,
+              "complete_offset_ms": 8609
+            },
+            {
+              "layer_index": 2,
+              "elapsed_ms": 3402,
+              "start_offset_ms": 8609,
+              "complete_offset_ms": 12011
+            },
+            {
+              "layer_index": 0,
+              "elapsed_ms": 1706,
+              "start_offset_ms": 1,
+              "complete_offset_ms": 1707
+            },
+            {
+              "layer_index": 50,
+              "elapsed_ms": 1573,
+              "start_offset_ms": 6440,
+              "complete_offset_ms": 8014
+            },
+            {
+              "layer_index": 49,
+              "elapsed_ms": 1443,
+              "start_offset_ms": 4996,
+              "complete_offset_ms": 6440
+            }
+          ],
+          "longest_two_elapsed_sum_ms_not_cpu": 10303,
+          "other_layers_elapsed_sum_ms_not_cpu": 94968,
+          "all_except_longest_two_complete_by_ms": 8703,
+          "gcode_sha256": "6d06c76b7fe0d3f20fcae348d406445596638755c3463fba91e2890413921ca1",
+          "layer_count": 240,
+          "event_counts": {
+            "phase_start": 4,
+            "phase_complete": 4,
+            "layer_start": 240,
+            "layer_complete": 240,
+            "slice_stats": 1,
+            "slice_complete": 1
+          }
+        },
+        {
+          "label": "measured-candidate-1",
+          "variant": "candidate",
+          "timestamp_utc": "2026-10-01T03:30:29.177Z",
+          "cpu_seconds": 119.8125,
+          "process_wall_ms": 19810.5,
+          "phase_ms": {
+            "validation": 86,
+            "prepass": 7309,
+            "per_layer": 10816,
+            "postpass": 517
+          },
+          "runtime_elapsed_ms": 19630,
+          "runtime_outside_phases_ms": 902,
+          "process_outside_runtime_ms": 180.5,
+          "layer_elapsed_sum_ms_not_cpu": 77078,
+          "longest_layers": [
+            {
+              "layer_index": 1,
+              "elapsed_ms": 5764,
+              "start_offset_ms": 1750,
+              "complete_offset_ms": 7515
+            },
+            {
+              "layer_index": 2,
+              "elapsed_ms": 3300,
+              "start_offset_ms": 7515,
+              "complete_offset_ms": 10816
+            },
+            {
+              "layer_index": 0,
+              "elapsed_ms": 1749,
+              "start_offset_ms": 0,
+              "complete_offset_ms": 1750
+            },
+            {
+              "layer_index": 52,
+              "elapsed_ms": 862,
+              "start_offset_ms": 3286,
+              "complete_offset_ms": 4148
+            },
+            {
+              "layer_index": 47,
+              "elapsed_ms": 821,
+              "start_offset_ms": 2834,
+              "complete_offset_ms": 3656
+            }
+          ],
+          "longest_two_elapsed_sum_ms_not_cpu": 9064,
+          "other_layers_elapsed_sum_ms_not_cpu": 68014,
+          "all_except_longest_two_complete_by_ms": 6175,
+          "gcode_sha256": "2c81f77a6898b6abaebd47b2050ada425aab62dce920abeb34d9e3b06d86843b",
+          "layer_count": 240,
+          "event_counts": {
+            "phase_start": 4,
+            "phase_complete": 4,
+            "layer_start": 240,
+            "layer_complete": 240,
+            "slice_stats": 1,
+            "slice_complete": 1
+          }
+        },
+        {
+          "label": "measured-candidate-2",
+          "variant": "candidate",
+          "timestamp_utc": "2026-10-01T03:30:50.349Z",
+          "cpu_seconds": 119.4531,
+          "process_wall_ms": 20070.0,
+          "phase_ms": {
+            "validation": 86,
+            "prepass": 7314,
+            "per_layer": 11075,
+            "postpass": 500
+          },
+          "runtime_elapsed_ms": 19898,
+          "runtime_outside_phases_ms": 923,
+          "process_outside_runtime_ms": 172.0,
+          "layer_elapsed_sum_ms_not_cpu": 77184,
+          "longest_layers": [
+            {
+              "layer_index": 1,
+              "elapsed_ms": 5823,
+              "start_offset_ms": 1802,
+              "complete_offset_ms": 7625
+            },
+            {
+              "layer_index": 2,
+              "elapsed_ms": 3449,
+              "start_offset_ms": 7626,
+              "complete_offset_ms": 11075
+            },
+            {
+              "layer_index": 0,
+              "elapsed_ms": 1801,
+              "start_offset_ms": 0,
+              "complete_offset_ms": 1802
+            },
+            {
+              "layer_index": 52,
+              "elapsed_ms": 916,
+              "start_offset_ms": 1094,
+              "complete_offset_ms": 2010
+            },
+            {
+              "layer_index": 53,
+              "elapsed_ms": 889,
+              "start_offset_ms": 2011,
+              "complete_offset_ms": 2900
+            }
+          ],
+          "longest_two_elapsed_sum_ms_not_cpu": 9272,
+          "other_layers_elapsed_sum_ms_not_cpu": 67912,
+          "all_except_longest_two_complete_by_ms": 6270,
+          "gcode_sha256": "6f616be638882e1a92c8782e42e70d1bf0c519dc1263f81a40e8962bf318fd86",
+          "layer_count": 240,
+          "event_counts": {
+            "phase_start": 4,
+            "phase_complete": 4,
+            "layer_start": 240,
+            "layer_complete": 240,
+            "slice_stats": 1,
+            "slice_complete": 1
+          }
+        },
+        {
+          "label": "measured-baseline-2",
+          "variant": "baseline",
+          "timestamp_utc": "2026-10-01T03:31:12.342Z",
+          "cpu_seconds": 146.0938,
+          "process_wall_ms": 20914.5,
+          "phase_ms": {
+            "validation": 102,
+            "prepass": 7129,
+            "per_layer": 12043,
+            "postpass": 525
+          },
+          "runtime_elapsed_ms": 20745,
+          "runtime_outside_phases_ms": 946,
+          "process_outside_runtime_ms": 169.5,
+          "layer_elapsed_sum_ms_not_cpu": 105738,
+          "longest_layers": [
+            {
+              "layer_index": 1,
+              "elapsed_ms": 6732,
+              "start_offset_ms": 1857,
+              "complete_offset_ms": 8589
+            },
+            {
+              "layer_index": 2,
+              "elapsed_ms": 3453,
+              "start_offset_ms": 8590,
+              "complete_offset_ms": 12043
+            },
+            {
+              "layer_index": 0,
+              "elapsed_ms": 1856,
+              "start_offset_ms": 0,
+              "complete_offset_ms": 1856
+            },
+            {
+              "layer_index": 47,
+              "elapsed_ms": 1407,
+              "start_offset_ms": 3241,
+              "complete_offset_ms": 4649
+            },
+            {
+              "layer_index": 50,
+              "elapsed_ms": 1368,
+              "start_offset_ms": 5511,
+              "complete_offset_ms": 6879
+            }
+          ],
+          "longest_two_elapsed_sum_ms_not_cpu": 10185,
+          "other_layers_elapsed_sum_ms_not_cpu": 95553,
+          "all_except_longest_two_complete_by_ms": 9054,
+          "gcode_sha256": "69040d53980f81b7248601c9f8ba21ba635c6850e18338a0bcfb1720889ddfbb",
+          "layer_count": 240,
+          "event_counts": {
+            "phase_start": 4,
+            "phase_complete": 4,
+            "layer_start": 240,
+            "layer_complete": 240,
+            "slice_stats": 1,
+            "slice_complete": 1
+          }
+        },
+        {
+          "label": "measured-candidate-3",
+          "variant": "candidate",
+          "timestamp_utc": "2026-10-01T03:31:33.196Z",
+          "cpu_seconds": 118.3125,
+          "process_wall_ms": 19701.3,
+          "phase_ms": {
+            "validation": 87,
+            "prepass": 7056,
+            "per_layer": 10953,
+            "postpass": 476
+          },
+          "runtime_elapsed_ms": 19524,
+          "runtime_outside_phases_ms": 952,
+          "process_outside_runtime_ms": 177.29999999999927,
+          "layer_elapsed_sum_ms_not_cpu": 75877,
+          "longest_layers": [
+            {
+              "layer_index": 1,
+              "elapsed_ms": 5756,
+              "start_offset_ms": 1769,
+              "complete_offset_ms": 7525
+            },
+            {
+              "layer_index": 2,
+              "elapsed_ms": 3427,
+              "start_offset_ms": 7526,
+              "complete_offset_ms": 10953
+            },
+            {
+              "layer_index": 0,
+              "elapsed_ms": 1767,
+              "start_offset_ms": 1,
+              "complete_offset_ms": 1769
+            },
+            {
+              "layer_index": 52,
+              "elapsed_ms": 885,
+              "start_offset_ms": 1737,
+              "complete_offset_ms": 2622
+            },
+            {
+              "layer_index": 45,
+              "elapsed_ms": 851,
+              "start_offset_ms": 984,
+              "complete_offset_ms": 1836
+            }
+          ],
+          "longest_two_elapsed_sum_ms_not_cpu": 9183,
+          "other_layers_elapsed_sum_ms_not_cpu": 66694,
+          "all_except_longest_two_complete_by_ms": 6137,
+          "gcode_sha256": "d69132ec9b28b92b0ddd62d5196b6dbb2a420e189a2596a7e99b333826d90d80",
+          "layer_count": 240,
+          "event_counts": {
+            "phase_start": 4,
+            "phase_complete": 4,
+            "layer_start": 240,
+            "layer_complete": 240,
+            "slice_stats": 1,
+            "slice_complete": 1
+          }
+        },
+        {
+          "label": "measured-baseline-3",
+          "variant": "baseline",
+          "timestamp_utc": "2026-10-01T03:31:55.668Z",
+          "cpu_seconds": 144.7188,
+          "process_wall_ms": 21376.100000000002,
+          "phase_ms": {
+            "validation": 89,
+            "prepass": 7324,
+            "per_layer": 12354,
+            "postpass": 521
+          },
+          "runtime_elapsed_ms": 21204,
+          "runtime_outside_phases_ms": 916,
+          "process_outside_runtime_ms": 172.10000000000218,
+          "layer_elapsed_sum_ms_not_cpu": 105027,
+          "longest_layers": [
+            {
+              "layer_index": 1,
+              "elapsed_ms": 6966,
+              "start_offset_ms": 1754,
+              "complete_offset_ms": 8720
+            },
+            {
+              "layer_index": 2,
+              "elapsed_ms": 3633,
+              "start_offset_ms": 8721,
+              "complete_offset_ms": 12354
+            },
+            {
+              "layer_index": 0,
+              "elapsed_ms": 1753,
+              "start_offset_ms": 0,
+              "complete_offset_ms": 1754
+            },
+            {
+              "layer_index": 52,
+              "elapsed_ms": 1407,
+              "start_offset_ms": 5982,
+              "complete_offset_ms": 7390
+            },
+            {
+              "layer_index": 48,
+              "elapsed_ms": 1369,
+              "start_offset_ms": 6253,
+              "complete_offset_ms": 7622
+            }
+          ],
+          "longest_two_elapsed_sum_ms_not_cpu": 10599,
+          "other_layers_elapsed_sum_ms_not_cpu": 94428,
+          "all_except_longest_two_complete_by_ms": 8919,
+          "gcode_sha256": "d39620d660ac0ae0036125518df5722d0bd3f06bd3eee1e1a56c9c7f8eb2f9ef",
+          "layer_count": 240,
+          "event_counts": {
+            "phase_start": 4,
+            "phase_complete": 4,
+            "layer_start": 240,
+            "layer_complete": 240,
+            "slice_stats": 1,
+            "slice_complete": 1
+          }
+        },
+        {
+          "label": "measured-baseline-4",
+          "variant": "baseline",
+          "timestamp_utc": "2026-10-01T03:32:17.523Z",
+          "cpu_seconds": 145.2188,
+          "process_wall_ms": 20742.7,
+          "phase_ms": {
+            "validation": 98,
+            "prepass": 7168,
+            "per_layer": 11954,
+            "postpass": 461
+          },
+          "runtime_elapsed_ms": 20566,
+          "runtime_outside_phases_ms": 885,
+          "process_outside_runtime_ms": 176.70000000000073,
+          "layer_elapsed_sum_ms_not_cpu": 103687,
+          "longest_layers": [
+            {
+              "layer_index": 1,
+              "elapsed_ms": 6910,
+              "start_offset_ms": 1864,
+              "complete_offset_ms": 8774
+            },
+            {
+              "layer_index": 2,
+              "elapsed_ms": 3178,
+              "start_offset_ms": 8775,
+              "complete_offset_ms": 11953
+            },
+            {
+              "layer_index": 0,
+              "elapsed_ms": 1863,
+              "start_offset_ms": 0,
+              "complete_offset_ms": 1864
+            },
+            {
+              "layer_index": 49,
+              "elapsed_ms": 1510,
+              "start_offset_ms": 5072,
+              "complete_offset_ms": 6583
+            },
+            {
+              "layer_index": 50,
+              "elapsed_ms": 1400,
+              "start_offset_ms": 6583,
+              "complete_offset_ms": 7984
+            }
+          ],
+          "longest_two_elapsed_sum_ms_not_cpu": 10088,
+          "other_layers_elapsed_sum_ms_not_cpu": 93599,
+          "all_except_longest_two_complete_by_ms": 8485,
+          "gcode_sha256": "0e8803014e90479ac995ae95df4899178678b5fbf5dcb417631dc9097c8638cc",
+          "layer_count": 240,
+          "event_counts": {
+            "phase_start": 4,
+            "phase_complete": 4,
+            "layer_start": 240,
+            "layer_complete": 240,
+            "slice_stats": 1,
+            "slice_complete": 1
+          }
+        },
+        {
+          "label": "measured-candidate-4",
+          "variant": "candidate",
+          "timestamp_utc": "2026-10-01T03:32:38.613Z",
+          "cpu_seconds": 119.75,
+          "process_wall_ms": 20005.8,
+          "phase_ms": {
+            "validation": 88,
+            "prepass": 7176,
+            "per_layer": 11117,
+            "postpass": 561
+          },
+          "runtime_elapsed_ms": 19838,
+          "runtime_outside_phases_ms": 896,
+          "process_outside_runtime_ms": 167.79999999999927,
+          "layer_elapsed_sum_ms_not_cpu": 76723,
+          "longest_layers": [
+            {
+              "layer_index": 1,
+              "elapsed_ms": 5915,
+              "start_offset_ms": 1800,
+              "complete_offset_ms": 7716
+            },
+            {
+              "layer_index": 2,
+              "elapsed_ms": 3400,
+              "start_offset_ms": 7716,
+              "complete_offset_ms": 11117
+            },
+            {
+              "layer_index": 0,
+              "elapsed_ms": 1800,
+              "start_offset_ms": 0,
+              "complete_offset_ms": 1800
+            },
+            {
+              "layer_index": 49,
+              "elapsed_ms": 844,
+              "start_offset_ms": 3201,
+              "complete_offset_ms": 4045
+            },
+            {
+              "layer_index": 52,
+              "elapsed_ms": 838,
+              "start_offset_ms": 722,
+              "complete_offset_ms": 1560
+            }
+          ],
+          "longest_two_elapsed_sum_ms_not_cpu": 9315,
+          "other_layers_elapsed_sum_ms_not_cpu": 67408,
+          "all_except_longest_two_complete_by_ms": 6132,
+          "gcode_sha256": "3e74b83eb2f24a7088712ef0fea5b7d8cec1c7b6c1dc9b607d8acc3320f11ff6",
+          "layer_count": 240,
+          "event_counts": {
+            "phase_start": 4,
+            "phase_complete": 4,
+            "layer_start": 240,
+            "layer_complete": 240,
+            "slice_stats": 1,
+            "slice_complete": 1
+          }
+        }
+      ],
+      "metrics": {
+        "baseline": {
+          "cpu_seconds": {
+            "min": 144.7188,
+            "max": 146.0938,
+            "mean": 145.2344,
+            "median": 145.0625,
+            "range": 1.375
+          },
+          "process_wall_ms": {
+            "min": 20693.8,
+            "max": 21376.100000000002,
+            "mean": 20931.775,
+            "median": 20828.6,
+            "range": 682.3000000000029
+          },
+          "runtime_elapsed_ms": {
+            "min": 20514,
+            "max": 21204,
+            "mean": 20757.25,
+            "median": 20655.5,
+            "range": 690
+          },
+          "runtime_outside_phases_ms": {
+            "min": 885,
+            "max": 946,
+            "mean": 913,
+            "median": 910.5,
+            "range": 61
+          },
+          "process_outside_runtime_ms": {
+            "min": 169.5,
+            "max": 179.79999999999927,
+            "mean": 174.52500000000055,
+            "median": 174.40000000000146,
+            "range": 10.299999999999272
+          },
+          "layer_elapsed_sum_ms_not_cpu": {
+            "min": 103687,
+            "max": 105738,
+            "mean": 104930.75,
+            "median": 105149.0,
+            "range": 2051
+          },
+          "longest_two_elapsed_sum_ms_not_cpu": {
+            "min": 10088,
+            "max": 10599,
+            "mean": 10293.75,
+            "median": 10244.0,
+            "range": 511
+          },
+          "other_layers_elapsed_sum_ms_not_cpu": {
+            "min": 93599,
+            "max": 95553,
+            "mean": 94637,
+            "median": 94698.0,
+            "range": 1954
+          },
+          "all_except_longest_two_complete_by_ms": {
+            "min": 8485,
+            "max": 9054,
+            "mean": 8790.25,
+            "median": 8811.0,
+            "range": 569
+          },
+          "phase_ms": {
+            "validation": {
+              "min": 89,
+              "max": 102,
+              "mean": 95,
+              "median": 94.5,
+              "range": 13
+            },
+            "prepass": {
+              "min": 6983,
+              "max": 7324,
+              "mean": 7151,
+              "median": 7148.5,
+              "range": 341
+            },
+            "per_layer": {
+              "min": 11954,
+              "max": 12354,
+              "mean": 12090.5,
+              "median": 12027.0,
+              "range": 400
+            },
+            "postpass": {
+              "min": 461,
+              "max": 525,
+              "mean": 507.75,
+              "median": 522.5,
+              "range": 64
+            }
+          }
+        },
+        "candidate": {
+          "cpu_seconds": {
+            "min": 118.3125,
+            "max": 119.8125,
+            "mean": 119.332025,
+            "median": 119.60155,
+            "range": 1.5
+          },
+          "process_wall_ms": {
+            "min": 19701.3,
+            "max": 20070.0,
+            "mean": 19896.9,
+            "median": 19908.15,
+            "range": 368.7000000000007
+          },
+          "runtime_elapsed_ms": {
+            "min": 19524,
+            "max": 19898,
+            "mean": 19722.5,
+            "median": 19734.0,
+            "range": 374
+          },
+          "runtime_outside_phases_ms": {
+            "min": 896,
+            "max": 952,
+            "mean": 918.25,
+            "median": 912.5,
+            "range": 56
+          },
+          "process_outside_runtime_ms": {
+            "min": 167.79999999999927,
+            "max": 180.5,
+            "mean": 174.39999999999964,
+            "median": 174.64999999999964,
+            "range": 12.700000000000728
+          },
+          "layer_elapsed_sum_ms_not_cpu": {
+            "min": 75877,
+            "max": 77184,
+            "mean": 76715.5,
+            "median": 76900.5,
+            "range": 1307
+          },
+          "longest_two_elapsed_sum_ms_not_cpu": {
+            "min": 9064,
+            "max": 9315,
+            "mean": 9208.5,
+            "median": 9227.5,
+            "range": 251
+          },
+          "other_layers_elapsed_sum_ms_not_cpu": {
+            "min": 66694,
+            "max": 68014,
+            "mean": 67507,
+            "median": 67660.0,
+            "range": 1320
+          },
+          "all_except_longest_two_complete_by_ms": {
+            "min": 6132,
+            "max": 6270,
+            "mean": 6178.5,
+            "median": 6156.0,
+            "range": 138
+          },
+          "phase_ms": {
+            "validation": {
+              "min": 86,
+              "max": 88,
+              "mean": 86.75,
+              "median": 86.5,
+              "range": 2
+            },
+            "prepass": {
+              "min": 7056,
+              "max": 7314,
+              "mean": 7213.75,
+              "median": 7242.5,
+              "range": 258
+            },
+            "per_layer": {
+              "min": 10816,
+              "max": 11117,
+              "mean": 10990.25,
+              "median": 11014.0,
+              "range": 301
+            },
+            "postpass": {
+              "min": 476,
+              "max": 561,
+              "mean": 513.5,
+              "median": 508.5,
+              "range": 85
+            }
+          }
+        }
+      },
+      "candidate_minus_baseline_mean_wall_components_ms": {
+        "validation": -8.25,
+        "prepass": 62.75,
+        "per_layer": -1100.25,
+        "postpass": 5.75,
+        "runtime_outside_phases_ms": 5.25,
+        "process_outside_runtime_ms": -0.1250000000009095
+      },
+      "mean_process_wall_delta_ms": -1034.875,
+      "cpu_separated": true,
+      "wall_separated": true,
+      "decision": "KEEP"
+    },
+    "arachne": {
+      "rows_in_measured_order": [
+        {
+          "label": "measured-baseline-1",
+          "variant": "baseline",
+          "timestamp_utc": "2026-10-01T03:34:21.897Z",
+          "cpu_seconds": 73.2188,
+          "process_wall_ms": 17487.9,
+          "phase_ms": {
+            "validation": 104,
+            "prepass": 7327,
+            "per_layer": 8662,
+            "postpass": 319
+          },
+          "runtime_elapsed_ms": 17313,
+          "runtime_outside_phases_ms": 901,
+          "process_outside_runtime_ms": 174.90000000000146,
+          "layer_elapsed_sum_ms_not_cpu": 26449,
+          "longest_layers": [
+            {
+              "layer_index": 1,
+              "elapsed_ms": 5082,
+              "start_offset_ms": 286,
+              "complete_offset_ms": 5369
+            },
+            {
+              "layer_index": 2,
+              "elapsed_ms": 3292,
+              "start_offset_ms": 5369,
+              "complete_offset_ms": 8662
+            },
+            {
+              "layer_index": 0,
+              "elapsed_ms": 285,
+              "start_offset_ms": 0,
+              "complete_offset_ms": 286
+            },
+            {
+              "layer_index": 48,
+              "elapsed_ms": 229,
+              "start_offset_ms": 955,
+              "complete_offset_ms": 1185
+            },
+            {
+              "layer_index": 46,
+              "elapsed_ms": 215,
+              "start_offset_ms": 527,
+              "complete_offset_ms": 743
+            }
+          ],
+          "longest_two_elapsed_sum_ms_not_cpu": 8374,
+          "other_layers_elapsed_sum_ms_not_cpu": 18075,
+          "all_except_longest_two_complete_by_ms": 1692,
+          "gcode_sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+          "layer_count": 240,
+          "event_counts": {
+            "phase_start": 4,
+            "phase_complete": 4,
+            "layer_start": 240,
+            "layer_complete": 240,
+            "slice_stats": 1,
+            "slice_complete": 1
+          }
+        },
+        {
+          "label": "measured-candidate-1",
+          "variant": "candidate",
+          "timestamp_utc": "2026-10-01T03:34:40.113Z",
+          "cpu_seconds": 69.9062,
+          "process_wall_ms": 17073.699999999997,
+          "phase_ms": {
+            "validation": 96,
+            "prepass": 7222,
+            "per_layer": 8343,
+            "postpass": 320
+          },
+          "runtime_elapsed_ms": 16903,
+          "runtime_outside_phases_ms": 922,
+          "process_outside_runtime_ms": 170.6999999999971,
+          "layer_elapsed_sum_ms_not_cpu": 22896,
+          "longest_layers": [
+            {
+              "layer_index": 1,
+              "elapsed_ms": 4955,
+              "start_offset_ms": 325,
+              "complete_offset_ms": 5280
+            },
+            {
+              "layer_index": 2,
+              "elapsed_ms": 3062,
+              "start_offset_ms": 5280,
+              "complete_offset_ms": 8343
+            },
+            {
+              "layer_index": 0,
+              "elapsed_ms": 324,
+              "start_offset_ms": 0,
+              "complete_offset_ms": 325
+            },
+            {
+              "layer_index": 41,
+              "elapsed_ms": 220,
+              "start_offset_ms": 1013,
+              "complete_offset_ms": 1234
+            },
+            {
+              "layer_index": 39,
+              "elapsed_ms": 176,
+              "start_offset_ms": 869,
+              "complete_offset_ms": 1046
+            }
+          ],
+          "longest_two_elapsed_sum_ms_not_cpu": 8017,
+          "other_layers_elapsed_sum_ms_not_cpu": 14879,
+          "all_except_longest_two_complete_by_ms": 1386,
+          "gcode_sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+          "layer_count": 240,
+          "event_counts": {
+            "phase_start": 4,
+            "phase_complete": 4,
+            "layer_start": 240,
+            "layer_complete": 240,
+            "slice_stats": 1,
+            "slice_complete": 1
+          }
+        },
+        {
+          "label": "measured-candidate-2",
+          "variant": "candidate",
+          "timestamp_utc": "2026-10-01T03:34:58.320Z",
+          "cpu_seconds": 69.4375,
+          "process_wall_ms": 17159.0,
+          "phase_ms": {
+            "validation": 86,
+            "prepass": 7171,
+            "per_layer": 8514,
+            "postpass": 290
+          },
+          "runtime_elapsed_ms": 16983,
+          "runtime_outside_phases_ms": 922,
+          "process_outside_runtime_ms": 176.0,
+          "layer_elapsed_sum_ms_not_cpu": 23033,
+          "longest_layers": [
+            {
+              "layer_index": 1,
+              "elapsed_ms": 4906,
+              "start_offset_ms": 311,
+              "complete_offset_ms": 5217
+            },
+            {
+              "layer_index": 2,
+              "elapsed_ms": 3296,
+              "start_offset_ms": 5218,
+              "complete_offset_ms": 8515
+            },
+            {
+              "layer_index": 0,
+              "elapsed_ms": 310,
+              "start_offset_ms": 0,
+              "complete_offset_ms": 310
+            },
+            {
+              "layer_index": 39,
+              "elapsed_ms": 188,
+              "start_offset_ms": 152,
+              "complete_offset_ms": 341
+            },
+            {
+              "layer_index": 41,
+              "elapsed_ms": 187,
+              "start_offset_ms": 492,
+              "complete_offset_ms": 679
+            }
+          ],
+          "longest_two_elapsed_sum_ms_not_cpu": 8202,
+          "other_layers_elapsed_sum_ms_not_cpu": 14831,
+          "all_except_longest_two_complete_by_ms": 1379,
+          "gcode_sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+          "layer_count": 240,
+          "event_counts": {
+            "phase_start": 4,
+            "phase_complete": 4,
+            "layer_start": 240,
+            "layer_complete": 240,
+            "slice_stats": 1,
+            "slice_complete": 1
+          }
+        },
+        {
+          "label": "measured-baseline-2",
+          "variant": "baseline",
+          "timestamp_utc": "2026-10-01T03:35:16.227Z",
+          "cpu_seconds": 73.6719,
+          "process_wall_ms": 16858.399999999998,
+          "phase_ms": {
+            "validation": 89,
+            "prepass": 7016,
+            "per_layer": 8379,
+            "postpass": 296
+          },
+          "runtime_elapsed_ms": 16663,
+          "runtime_outside_phases_ms": 883,
+          "process_outside_runtime_ms": 195.39999999999782,
+          "layer_elapsed_sum_ms_not_cpu": 26317,
+          "longest_layers": [
+            {
+              "layer_index": 1,
+              "elapsed_ms": 4747,
+              "start_offset_ms": 292,
+              "complete_offset_ms": 5040
+            },
+            {
+              "layer_index": 2,
+              "elapsed_ms": 3337,
+              "start_offset_ms": 5040,
+              "complete_offset_ms": 8378
+            },
+            {
+              "layer_index": 0,
+              "elapsed_ms": 292,
+              "start_offset_ms": 0,
+              "complete_offset_ms": 292
+            },
+            {
+              "layer_index": 49,
+              "elapsed_ms": 255,
+              "start_offset_ms": 802,
+              "complete_offset_ms": 1057
+            },
+            {
+              "layer_index": 51,
+              "elapsed_ms": 220,
+              "start_offset_ms": 1269,
+              "complete_offset_ms": 1489
+            }
+          ],
+          "longest_two_elapsed_sum_ms_not_cpu": 8084,
+          "other_layers_elapsed_sum_ms_not_cpu": 18233,
+          "all_except_longest_two_complete_by_ms": 1683,
+          "gcode_sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+          "layer_count": 240,
+          "event_counts": {
+            "phase_start": 4,
+            "phase_complete": 4,
+            "layer_start": 240,
+            "layer_complete": 240,
+            "slice_stats": 1,
+            "slice_complete": 1
+          }
+        },
+        {
+          "label": "measured-candidate-3",
+          "variant": "candidate",
+          "timestamp_utc": "2026-10-01T03:35:34.253Z",
+          "cpu_seconds": 67.9375,
+          "process_wall_ms": 16991.2,
+          "phase_ms": {
+            "validation": 85,
+            "prepass": 7132,
+            "per_layer": 8414,
+            "postpass": 303
+          },
+          "runtime_elapsed_ms": 16809,
+          "runtime_outside_phases_ms": 875,
+          "process_outside_runtime_ms": 182.20000000000073,
+          "layer_elapsed_sum_ms_not_cpu": 22996,
+          "longest_layers": [
+            {
+              "layer_index": 1,
+              "elapsed_ms": 4920,
+              "start_offset_ms": 304,
+              "complete_offset_ms": 5225
+            },
+            {
+              "layer_index": 2,
+              "elapsed_ms": 3188,
+              "start_offset_ms": 5225,
+              "complete_offset_ms": 8414
+            },
+            {
+              "layer_index": 0,
+              "elapsed_ms": 302,
+              "start_offset_ms": 0,
+              "complete_offset_ms": 303
+            },
+            {
+              "layer_index": 41,
+              "elapsed_ms": 211,
+              "start_offset_ms": 996,
+              "complete_offset_ms": 1207
+            },
+            {
+              "layer_index": 39,
+              "elapsed_ms": 172,
+              "start_offset_ms": 835,
+              "complete_offset_ms": 1007
+            }
+          ],
+          "longest_two_elapsed_sum_ms_not_cpu": 8108,
+          "other_layers_elapsed_sum_ms_not_cpu": 14888,
+          "all_except_longest_two_complete_by_ms": 1390,
+          "gcode_sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+          "layer_count": 240,
+          "event_counts": {
+            "phase_start": 4,
+            "phase_complete": 4,
+            "layer_start": 240,
+            "layer_complete": 240,
+            "slice_stats": 1,
+            "slice_complete": 1
+          }
+        },
+        {
+          "label": "measured-baseline-3",
+          "variant": "baseline",
+          "timestamp_utc": "2026-10-01T03:35:51.883Z",
+          "cpu_seconds": 71.7344,
+          "process_wall_ms": 16556.3,
+          "phase_ms": {
+            "validation": 90,
+            "prepass": 6800,
+            "per_layer": 8276,
+            "postpass": 352
+          },
+          "runtime_elapsed_ms": 16389,
+          "runtime_outside_phases_ms": 871,
+          "process_outside_runtime_ms": 167.29999999999927,
+          "layer_elapsed_sum_ms_not_cpu": 25865,
+          "longest_layers": [
+            {
+              "layer_index": 1,
+              "elapsed_ms": 4783,
+              "start_offset_ms": 275,
+              "complete_offset_ms": 5059
+            },
+            {
+              "layer_index": 2,
+              "elapsed_ms": 3216,
+              "start_offset_ms": 5059,
+              "complete_offset_ms": 8276
+            },
+            {
+              "layer_index": 0,
+              "elapsed_ms": 274,
+              "start_offset_ms": 0,
+              "complete_offset_ms": 275
+            },
+            {
+              "layer_index": 52,
+              "elapsed_ms": 205,
+              "start_offset_ms": 1361,
+              "complete_offset_ms": 1567
+            },
+            {
+              "layer_index": 56,
+              "elapsed_ms": 202,
+              "start_offset_ms": 1379,
+              "complete_offset_ms": 1581
+            }
+          ],
+          "longest_two_elapsed_sum_ms_not_cpu": 7999,
+          "other_layers_elapsed_sum_ms_not_cpu": 17866,
+          "all_except_longest_two_complete_by_ms": 1741,
+          "gcode_sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+          "layer_count": 240,
+          "event_counts": {
+            "phase_start": 4,
+            "phase_complete": 4,
+            "layer_start": 240,
+            "layer_complete": 240,
+            "slice_stats": 1,
+            "slice_complete": 1
+          }
+        },
+        {
+          "label": "measured-baseline-4",
+          "variant": "baseline",
+          "timestamp_utc": "2026-10-01T03:36:10.501Z",
+          "cpu_seconds": 72.5156,
+          "process_wall_ms": 17491.0,
+          "phase_ms": {
+            "validation": 89,
+            "prepass": 7399,
+            "per_layer": 8654,
+            "postpass": 311
+          },
+          "runtime_elapsed_ms": 17314,
+          "runtime_outside_phases_ms": 861,
+          "process_outside_runtime_ms": 177.0,
+          "layer_elapsed_sum_ms_not_cpu": 27537,
+          "longest_layers": [
+            {
+              "layer_index": 1,
+              "elapsed_ms": 5248,
+              "start_offset_ms": 333,
+              "complete_offset_ms": 5582
+            },
+            {
+              "layer_index": 2,
+              "elapsed_ms": 3070,
+              "start_offset_ms": 5582,
+              "complete_offset_ms": 8653
+            },
+            {
+              "layer_index": 0,
+              "elapsed_ms": 333,
+              "start_offset_ms": 0,
+              "complete_offset_ms": 333
+            },
+            {
+              "layer_index": 50,
+              "elapsed_ms": 257,
+              "start_offset_ms": 883,
+              "complete_offset_ms": 1141
+            },
+            {
+              "layer_index": 47,
+              "elapsed_ms": 251,
+              "start_offset_ms": 430,
+              "complete_offset_ms": 681
+            }
+          ],
+          "longest_two_elapsed_sum_ms_not_cpu": 8318,
+          "other_layers_elapsed_sum_ms_not_cpu": 19219,
+          "all_except_longest_two_complete_by_ms": 1769,
+          "gcode_sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+          "layer_count": 240,
+          "event_counts": {
+            "phase_start": 4,
+            "phase_complete": 4,
+            "layer_start": 240,
+            "layer_complete": 240,
+            "slice_stats": 1,
+            "slice_complete": 1
+          }
+        },
+        {
+          "label": "measured-candidate-4",
+          "variant": "candidate",
+          "timestamp_utc": "2026-10-01T03:36:28.815Z",
+          "cpu_seconds": 69.75,
+          "process_wall_ms": 17166.399999999998,
+          "phase_ms": {
+            "validation": 85,
+            "prepass": 7307,
+            "per_layer": 8343,
+            "postpass": 367
+          },
+          "runtime_elapsed_ms": 16998,
+          "runtime_outside_phases_ms": 896,
+          "process_outside_runtime_ms": 168.39999999999782,
+          "layer_elapsed_sum_ms_not_cpu": 22853,
+          "longest_layers": [
+            {
+              "layer_index": 1,
+              "elapsed_ms": 4891,
+              "start_offset_ms": 283,
+              "complete_offset_ms": 5175
+            },
+            {
+              "layer_index": 2,
+              "elapsed_ms": 3167,
+              "start_offset_ms": 5175,
+              "complete_offset_ms": 8343
+            },
+            {
+              "layer_index": 0,
+              "elapsed_ms": 283,
+              "start_offset_ms": 0,
+              "complete_offset_ms": 283
+            },
+            {
+              "layer_index": 41,
+              "elapsed_ms": 220,
+              "start_offset_ms": 494,
+              "complete_offset_ms": 714
+            },
+            {
+              "layer_index": 39,
+              "elapsed_ms": 176,
+              "start_offset_ms": 162,
+              "complete_offset_ms": 338
+            }
+          ],
+          "longest_two_elapsed_sum_ms_not_cpu": 8058,
+          "other_layers_elapsed_sum_ms_not_cpu": 14795,
+          "all_except_longest_two_complete_by_ms": 1390,
+          "gcode_sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+          "layer_count": 240,
+          "event_counts": {
+            "phase_start": 4,
+            "phase_complete": 4,
+            "layer_start": 240,
+            "layer_complete": 240,
+            "slice_stats": 1,
+            "slice_complete": 1
+          }
+        }
+      ],
+      "metrics": {
+        "baseline": {
+          "cpu_seconds": {
+            "min": 71.7344,
+            "max": 73.6719,
+            "mean": 72.785175,
+            "median": 72.8672,
+            "range": 1.9375
+          },
+          "process_wall_ms": {
+            "min": 16556.3,
+            "max": 17491.0,
+            "mean": 17098.4,
+            "median": 17173.15,
+            "range": 934.7000000000007
+          },
+          "runtime_elapsed_ms": {
+            "min": 16389,
+            "max": 17314,
+            "mean": 16919.75,
+            "median": 16988.0,
+            "range": 925
+          },
+          "runtime_outside_phases_ms": {
+            "min": 861,
+            "max": 901,
+            "mean": 879,
+            "median": 877.0,
+            "range": 40
+          },
+          "process_outside_runtime_ms": {
+            "min": 167.29999999999927,
+            "max": 195.39999999999782,
+            "mean": 178.64999999999964,
+            "median": 175.95000000000073,
+            "range": 28.099999999998545
+          },
+          "layer_elapsed_sum_ms_not_cpu": {
+            "min": 25865,
+            "max": 27537,
+            "mean": 26542,
+            "median": 26383.0,
+            "range": 1672
+          },
+          "longest_two_elapsed_sum_ms_not_cpu": {
+            "min": 7999,
+            "max": 8374,
+            "mean": 8193.75,
+            "median": 8201.0,
+            "range": 375
+          },
+          "other_layers_elapsed_sum_ms_not_cpu": {
+            "min": 17866,
+            "max": 19219,
+            "mean": 18348.25,
+            "median": 18154.0,
+            "range": 1353
+          },
+          "all_except_longest_two_complete_by_ms": {
+            "min": 1683,
+            "max": 1769,
+            "mean": 1721.25,
+            "median": 1716.5,
+            "range": 86
+          },
+          "phase_ms": {
+            "validation": {
+              "min": 89,
+              "max": 104,
+              "mean": 93,
+              "median": 89.5,
+              "range": 15
+            },
+            "prepass": {
+              "min": 6800,
+              "max": 7399,
+              "mean": 7135.5,
+              "median": 7171.5,
+              "range": 599
+            },
+            "per_layer": {
+              "min": 8276,
+              "max": 8662,
+              "mean": 8492.75,
+              "median": 8516.5,
+              "range": 386
+            },
+            "postpass": {
+              "min": 296,
+              "max": 352,
+              "mean": 319.5,
+              "median": 315.0,
+              "range": 56
+            }
+          }
+        },
+        "candidate": {
+          "cpu_seconds": {
+            "min": 67.9375,
+            "max": 69.9062,
+            "mean": 69.2578,
+            "median": 69.59375,
+            "range": 1.9686999999999983
+          },
+          "process_wall_ms": {
+            "min": 16991.2,
+            "max": 17166.399999999998,
+            "mean": 17097.574999999997,
+            "median": 17116.35,
+            "range": 175.1999999999971
+          },
+          "runtime_elapsed_ms": {
+            "min": 16809,
+            "max": 16998,
+            "mean": 16923.25,
+            "median": 16943.0,
+            "range": 189
+          },
+          "runtime_outside_phases_ms": {
+            "min": 875,
+            "max": 922,
+            "mean": 903.75,
+            "median": 909.0,
+            "range": 47
+          },
+          "process_outside_runtime_ms": {
+            "min": 168.39999999999782,
+            "max": 182.20000000000073,
+            "mean": 174.3249999999989,
+            "median": 173.34999999999854,
+            "range": 13.80000000000291
+          },
+          "layer_elapsed_sum_ms_not_cpu": {
+            "min": 22853,
+            "max": 23033,
+            "mean": 22944.5,
+            "median": 22946.0,
+            "range": 180
+          },
+          "longest_two_elapsed_sum_ms_not_cpu": {
+            "min": 8017,
+            "max": 8202,
+            "mean": 8096.25,
+            "median": 8083.0,
+            "range": 185
+          },
+          "other_layers_elapsed_sum_ms_not_cpu": {
+            "min": 14795,
+            "max": 14888,
+            "mean": 14848.25,
+            "median": 14855.0,
+            "range": 93
+          },
+          "all_except_longest_two_complete_by_ms": {
+            "min": 1379,
+            "max": 1390,
+            "mean": 1386.25,
+            "median": 1388.0,
+            "range": 11
+          },
+          "phase_ms": {
+            "validation": {
+              "min": 85,
+              "max": 96,
+              "mean": 88,
+              "median": 85.5,
+              "range": 11
+            },
+            "prepass": {
+              "min": 7132,
+              "max": 7307,
+              "mean": 7208,
+              "median": 7196.5,
+              "range": 175
+            },
+            "per_layer": {
+              "min": 8343,
+              "max": 8514,
+              "mean": 8403.5,
+              "median": 8378.5,
+              "range": 171
+            },
+            "postpass": {
+              "min": 290,
+              "max": 367,
+              "mean": 320,
+              "median": 311.5,
+              "range": 77
+            }
+          }
+        }
+      },
+      "candidate_minus_baseline_mean_wall_components_ms": {
+        "validation": -5,
+        "prepass": 72.5,
+        "per_layer": -89.25,
+        "postpass": 0.5,
+        "runtime_outside_phases_ms": 24.75,
+        "process_outside_runtime_ms": -4.325000000000728
+      },
+      "mean_process_wall_delta_ms": -0.8250000000043656,
+      "cpu_separated": true,
+      "wall_separated": false,
+      "decision": "inconclusive"
+    }
+  }
+}
