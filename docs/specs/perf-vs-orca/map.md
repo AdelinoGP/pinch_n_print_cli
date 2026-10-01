@@ -131,10 +131,55 @@ Standing decisions for this effort (2026-09-22):
   attribution](issues/22-tree-planner-substage-attribution.md), 2026-09-24).
 - Measured keep/drop recommendations return to the human; candidates are never
   auto-committed.
+- **Production-mode route (2026-09-30):** pursue conditional accelerated
+  adoption; ordinary stays the actual default pending the existing acceptance
+  gate. See [Accelerated perimeter-spatial adoption decision](issues/13-accelerated-adoption-decision.md)
+   and its [acceptance campaign](issues/38-accelerated-adoption-acceptance-campaign.md).
+  **Adoption preflight (2026-09-30):** both mode-specific guest freshness checks
+  passed, but the real acceptance CSV reader loses non-fatal counts and the
+  existing references predate correctness repairs. Campaign timing has not
+  started; its prerequisite blocking edges carry the new frontier. Evidence:
+   [Accelerated adoption campaign preflight](evidence/t38-adoption-preflight/PREFLIGHT.md).
+   **Runner prerequisite repaired:** see
+   [Acceptance runner CSV status preservation](issues/39-acceptance-runner-status-roundtrip.md).
+   **References now prepared/frozen:** see
+   [Current-job adoption reference preparation policy](issues/40-acceptance-reference-refresh-policy.md).
+   The historical corpus remains intact; use the frozen manifest's new corpus
+   root explicitly after its identity gate. No campaign timing has started;
+    full adoption gates remain pending.
+    **Resumption blocker (2026-09-30):** the manifest-named frozen ordinary
+    snapshot and current-job corpus roots are now absent; the read-only identity
+    gate failed before comparison or timing. Historical corpus, manifest and
+    build-input hashes still match. The campaign is blocked on
+    [Missing frozen adoption inputs recovery decision](issues/41-missing-frozen-adoption-inputs-recovery.md);
+    do not silently recreate the missing payloads. Evidence:
+    [Frozen-input difference audit](evidence/t38-adoption-campaign/freeze-difference.json).
+    **Recovery authorized:** the human chose a new, separate ordinary-only
+    preparation with the unchanged six-cell job and checks. Durable payloads
+    will live under `.local-artifacts/perimeter-reference-preparation/`, outside
+    `target/`; previous evidence and the historical corpus remain preserved.
+    **Replacement technically prepared/frozen:** all six ordinary references
+    passed the unchanged checks and main-session identity verification outside
+    `target/`. Evidence:
+    [Durable preparation findings](evidence/t41-reference-repreparation/FINDINGS.md).
+    **Recovery accepted:** the human accepted the validated durable set and
+    the recorded preparation-only preflight restart exception, then requested
+    continuation. The
+    [acceptance campaign](issues/38-accelerated-adoption-acceptance-campaign.md)
+     resumes under the unchanged gates; no automatic retry, commit or default
+     switch is authorized.
 
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+
+- [Missing frozen adoption inputs recovery decision](issues/41-missing-frozen-adoption-inputs-recovery.md): human accepted the new validated ordinary-only frozen set outside `target/` and the recorded preparation-only preflight restart exception; campaign continuation authorized under unchanged gates.
+
+- [Current-job adoption reference preparation policy](issues/40-acceptance-reference-refresh-policy.md): human-authorized ordinary-only references prepared and frozen for the unchanged six-cell job, with clean-output and targeted repair checks; historical corpus preserved, full adoption acceptance still pending.
+
+- [Acceptance runner CSV status preservation](issues/39-acceptance-runner-status-roundtrip.md): real CSV non-fatal counts and validated generator markers now survive the runner gate; regression checks pass without relaxing adoption gates.
+
+- [Accelerated perimeter-spatial adoption decision](issues/13-accelerated-adoption-decision.md): human confirmed conditional accelerated adoption under the existing exactness and strict CPU/wall campaign gate; ordinary remains the default pending acceptance.
 
 - [Baseline and measurement recipe](issues/01-baseline-and-measurement-recipe.md): the three-fixture PNP-vs-Orca baseline is captured but configuration-unmatched (no speed multiple is defensible from it), and the six measurement traps plus reproduction commands are the standing protocol.
 - [shell_classification guard ordering](issues/02-shell-classification-guard-ordering.md): the stage's cost was two full-layer `offset` calls computed before the early-outs that discard them; guards hoisted, erosion made lazy, bridge gate parallelized — benchy stage 17.8 s → 2.96 s, landed.

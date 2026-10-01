@@ -164,6 +164,26 @@ preferred because the first missing path is deterministic.  Reference G-code
 is precomputed under the same supported configuration and is checked before
 measured rows are retained.
 
+### Durable frozen preparation inputs
+
+Frozen reference corpora and the ordinary snapshots that produced them are
+acceptance inputs, **not build artifacts**. Keep newly prepared sets under
+`.local-artifacts/perimeter-reference-preparation/<distinct-attempt>/`, outside
+`target/` and temporary/scratch directories. This dedicated namespace is
+gitignored because it contains licensed models, raw outputs and executables;
+it must be preserved across build cleanup. Being outside `target/` is not a
+backup guarantee: retain a separate copy if these inputs must survive loss of
+the workspace.
+
+Keep manifests, hashes, commands and validation/provenance evidence under the
+effort's tracked evidence directory. Verify the full frozen identity before
+comparison and again after a campaign. Pass the manifest's corpus root
+explicitly as `-CorpusRoot`; do not silently use the historical default corpus.
+If a frozen set is missing or changed, stop. Restoration must match the original
+manifest; regeneration requires explicit human authorization for a **new**
+preparation attempt, without overwriting the old evidence or manifest. Neither
+recovery path changes the exactness or timing thresholds.
+
 ### Campaign protocol
 
 There are six cells: supports-off Benchy, tree-support Benchy, and the

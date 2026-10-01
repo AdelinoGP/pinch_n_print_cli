@@ -1,0 +1,112 @@
+{
+  "status": "blocked",
+  "mode": "ordinary",
+  "threads": 12,
+  "purpose": "ordinary equivalence references, not geometry or adoption acceptance",
+  "commands": [
+    {
+      "name": "snapshot-toolchain",
+      "argv": [
+        "rustc",
+        "-vV"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "ordinary-dist-build",
+      "argv": [
+        "cargo",
+        "xtask",
+        "dist",
+        "--edition",
+        "developer"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "snapshot-ordinary-freshness",
+      "argv": [
+        "cargo",
+        "xtask",
+        "build-guests",
+        "--check"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "cells": [],
+  "overshoot_controls": "inside accepted; outside start/end rejected",
+  "started_utc": "2026-09-30T06:39:18.143157+00:00",
+  "scratch_root": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-reference-preparation\\t40-20260930T063918Z",
+  "source_revision": "2ebc372a4cc3e96d1a03bba94569c049d18ad5e1",
+  "compiler_identity": "rustc 1.96.0 (ac68faa20 2026-05-25)\nbinary: rustc\ncommit-hash: ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96\ncommit-date: 2026-05-25\nhost: x86_64-pc-windows-msvc\nrelease: 1.96.0\nLLVM version: 22.1.2\n",
+  "policy_source_sha256": "c1d1a8ab21212a2715cf8eb1024e089f64cf370c4525d20fe26803052ea94a28",
+  "policy_doc_sha256": "7cff1a42473e24f06d8ac5a1c2ea62540ac644180faed39a4026c99211854002",
+  "preparation_script_sha256": "0a0a5452adeae89486f38811de540e2d187c4600845673130b48a85736fe13e2",
+  "validator_script_sha256": "bd4c6a5ed930dede53d18a930cd8deef27d8e3b10da0cee3dbcfa83548d3b4c5",
+  "shared_validator_sha256": "a8641f1fa6d5ab9aaa4c60a9bdd8ab984dabab25a5976af66af79ef04c37b96d",
+  "cargo_configuration": {
+    "D:\\slicerProject\\pinch_n_print_cli_2\\.cargo\\config.toml": {
+      "sha256": "470d789b0b63b2a32096007ea7d329dcc4e9a2c421b69cb9a1fa6c8ab7007608",
+      "content": "[alias]\nxtask = \"run --quiet -p xtask --\"\n"
+    },
+    "C:\\Users\\agpen\\.cargo\\config.toml": {
+      "sha256": "52c51ab0e59a410df6f4f9cf12c432c3dad35d88672138d3de676200be2e371a",
+      "content": "[build]\n# Limits the number of parallel compiler jobs globally\njobs = 1\n\n[env]\n# Forces the test runner to restrict thread concurrency globally\nRUST_TEST_THREADS = \"3\"\n"
+    }
+  },
+  "snapshot_root": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-reference-preparation\\t40-20260930T063918Z\\ordinary",
+  "snapshot_sha256": {
+    "modules\\arachne-perimeters\\arachne-perimeters.toml": "b201a3b95892ef9650565a37b491ce9b517944333af6151b91f97f6abce5fc80",
+    "modules\\arachne-perimeters\\arachne-perimeters.wasm": "29a88175ee75808b09d425d6accdc3cfa04c16445020e0d9c68fc3c6921bb3b8",
+    "modules\\classic-perimeters\\classic-perimeters.toml": "b53a25536a375fb8ac8ebeee674c5c6ca2a035173f6c0f2aa61529c1090a0868",
+    "modules\\classic-perimeters\\classic-perimeters.wasm": "c9591ae8e9e6a4563ad0b7a1d3c7c46d8f5ef71b87a0b00a633a903976c8fa89",
+    "modules\\fuzzy-skin\\fuzzy-skin.toml": "7dc448c037eb911e1f5b02063a0242ec270478a0c0052fc45b80bfdf3d0268da",
+    "modules\\fuzzy-skin\\fuzzy-skin.wasm": "684403b1048ecd05d80c8dbcca095c5477c7da3c4ac0efff212bba53db81f9c4",
+    "modules\\gyroid-infill\\gyroid-infill.toml": "3d4c0828bde1aa6cfb9a1eebbc1fdd4393f587a32f52fe92615cc55e5e5802c5",
+    "modules\\gyroid-infill\\gyroid-infill.wasm": "e3f6c6269b382ed825bc1a427364abdea183f9f007fb3e46f75cc090c5eb59d9",
+    "modules\\infill-linker\\infill-linker.toml": "b6d5d7784031173e5c71d30f869a69fc9993ba86fcb90fc8373cb03d23b0fb3b",
+    "modules\\infill-linker\\infill-linker.wasm": "b65b5f0053464d172ed0d4689d7c46fbb55787479c92112c0e3ca24ad7cab53e",
+    "modules\\layer-planner-default\\layer-planner-default.toml": "2e0c62f9baf2f3b5a0d37c30761adbbcf74bd4962a769082dad1d2cb982f372e",
+    "modules\\layer-planner-default\\layer-planner-default.wasm": "8ede989df0c1ba02a9f49884b5b454d344a988153f37aa8911b511e25f9c60ea",
+    "modules\\lightning-infill\\lightning-infill.toml": "550a5af2cb1d56ae1c92bf295aad08a438792c38df440d3273b55beaba2f51ef",
+    "modules\\lightning-infill\\lightning-infill.wasm": "fe16ad3c829f5abee774a83ed9a1e101f8f222933355ab6ce0680178d402a626",
+    "modules\\machine-gcode-emit\\machine-gcode-emit.toml": "5620241c4598c889e8e72a1d5674f300ef0ba8ceadb6d1bcbbfac01eaf2e93cb",
+    "modules\\machine-gcode-emit\\machine-gcode-emit.wasm": "bffadad6ad828ded949623acecf4ef5c74fabd110013b94dd3391ef8bcbbe529",
+    "modules\\overhang-classifier-default\\overhang-classifier-default.toml": "d39ca55514e85cbc34d865779634afcb4ac9d248700ceeb876a5e63b54867bde",
+    "modules\\overhang-classifier-default\\overhang-classifier-default.wasm": "7db6b9b772337fff6ad8f6c551e2c46dcfc5f7dfd138eb5f870a2b5b70d0a62d",
+    "modules\\part-cooling\\part-cooling.toml": "07540470d42b1943dc8ff1b61d80b8362d0840f6d52d34f589f79d1bf64bf446",
+    "modules\\part-cooling\\part-cooling.wasm": "3f972144f6a14cd50e55a842ad58b081f600cb0e46fd7135602b3ddbc6e8c2a7",
+    "modules\\path-optimization-default\\path-optimization-default.toml": "7f0a8cc423c7ac50667fa0a50e5eafb805114f23ed7aa722b44c0f753e30b251",
+    "modules\\path-optimization-default\\path-optimization-default.wasm": "61e247e1932ff67b175640ab6f9cab49f06c232d0ef1fdb2da039a485122ac99",
+    "modules\\raft-default\\raft-default.toml": "741323ac61137900de1513e79afca3456825960a5c71f2cef1ece982b394b58d",
+    "modules\\raft-default\\raft-default.wasm": "774b86abf671785a75ea1d2ac3b36cb199408cf09a255b3a5ad6c92986f30092",
+    "modules\\rectilinear-infill\\rectilinear-infill.toml": "a43a822b8fcc9ba0c08407fded382dbe0b945dd11c7f7d8b96adbca62ccd07ed",
+    "modules\\rectilinear-infill\\rectilinear-infill.wasm": "671ca147e8a43a83986d2db02be1f07887a02b27076c07627f88955ec655b315",
+    "modules\\seam-placer\\seam-placer.toml": "83ccb68f05fe6bb109c5d3c6908697c93a31b9b3ef0899907ee184279a77bf02",
+    "modules\\seam-placer\\seam-placer.wasm": "c12bb9fbb6d4f9bcbf2a53f86bcab14dee4134d325658bbd3b607435b6174c7f",
+    "modules\\seam-planner-default\\seam-planner-default.toml": "6331b3f4308c786d7d21b89b6412daf3904b2149428ceaae4cb68140b33d53d6",
+    "modules\\seam-planner-default\\seam-planner-default.wasm": "431d9d9433b9ef4a7453f735f55a87b8ef3c810c02f1856941138ca036daec15",
+    "modules\\skirt-brim\\skirt-brim.toml": "6378a85864afd9572f2c5a1f9d0cc39268fa23de8b72b13043f2a9dc4bc94998",
+    "modules\\skirt-brim\\skirt-brim.wasm": "fa43d6474bd2419228e90e153b7b3d308646722ee3d3d54e6c155021beae8f06",
+    "modules\\support-surface-ironing\\support-surface-ironing.toml": "b36416c465e8514ef361a116676c356f23479c34bb745b90bd7534cf664ba0b2",
+    "modules\\support-surface-ironing\\support-surface-ironing.wasm": "bd6bd2c9ff9801db42b8af3ef0d0db785eeb416e2c8a66c16898ab586ad8fd1f",
+    "modules\\top-surface-ironing\\top-surface-ironing.toml": "63a7725553511a94a5914a4e7af68376aaea9b07d0d492b74e0c4719e501f017",
+    "modules\\top-surface-ironing\\top-surface-ironing.wasm": "c75e9b70b7cc93abb457be6277e9fea435e2284f689716d55d489d66619c024f",
+    "modules\\traditional-support\\traditional-support.toml": "dbddf163cba2d0b68156f4b365ea43e7e6914a0b7c9165c77e08390052374442",
+    "modules\\traditional-support\\traditional-support.wasm": "94974ce1ccb0984093a8b9020da7a742fa3fc7480e519796b38cbcc92dbb2283",
+    "modules\\traditional-support-planner\\traditional-support-planner.toml": "5997320ba87be26d95cf7bdd8e5e0c82d9d67a78e2ffe615c6ed4fd64dca218d",
+    "modules\\traditional-support-planner\\traditional-support-planner.wasm": "504ab7916f7a6a815db7957574b8166c4e1f387d8e5b7a9fd251b114e0c41206",
+    "modules\\tree-support\\tree-support.toml": "2a123df8097210f42e454561eb4b873f702de570ac796f941c757b37bc64baf0",
+    "modules\\tree-support\\tree-support.wasm": "80fdf52615d60c24e2bdaf42a818cfe4245e47d02ca879722f5eb19cf90d6f7e",
+    "modules\\tree-support-planner\\tree-support-planner.toml": "0f6d20ed83628ea07c2a623748437a11638a451bc88263686ec9090348286e60",
+    "modules\\tree-support-planner\\tree-support-planner.wasm": "4d212e82c7a472d11b498f925ce7442d00f6555d0cea47f60c5d2a6f62dffa8e",
+    "modules\\wave-overhangs\\wave-overhangs.toml": "371dc966a90911981ab535910be93522b811e78fda6a1036136ec527b40d0df1",
+    "modules\\wave-overhangs\\wave-overhangs.wasm": "514739173d1b6e4817778365863129e1d2f22b46e0d4df4fe5c8079f7e67a01a",
+    "modules\\wipe-tower\\wipe-tower.toml": "41838ec4e766b94982bd11b88844c11be67a35aa136af2634b7daf231aa5695f",
+    "modules\\wipe-tower\\wipe-tower.wasm": "f02b4d1dd9525300acdc2f7a6236d81aa6b00f36bb004c04c8a3ecaf8c682729",
+    "pnp_cli.exe": "b4e0451c164ed6a16543d25bcfc42a118d9b12f5da4e970339169a1a002f806c"
+  },
+  "corpus_root": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-reference-preparation\\t40-20260930T063918Z\\corpus",
+  "failure": "'supports-off-benchy/model.stl'"
+}

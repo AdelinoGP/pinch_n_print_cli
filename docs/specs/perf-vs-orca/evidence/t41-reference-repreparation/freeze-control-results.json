@@ -1,0 +1,40 @@
+[
+  {
+    "control": "changed-manifest",
+    "command": [
+      "C:\\Users\\agpen\\.vfox\\sdks\\python\\python.exe",
+      "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t41-reference-repreparation\\verify-freeze.py",
+      "C:\\Users\\agpen\\AppData\\Local\\Temp\\tmpfvuzm0m_"
+    ],
+    "exit_code": 1,
+    "rejection_verified": true
+  },
+  {
+    "control": "disabled-assertions",
+    "command": [
+      "C:\\Users\\agpen\\.vfox\\sdks\\python\\python.exe",
+      "-O",
+      "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t41-reference-repreparation\\verify-freeze.py",
+      "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t41-reference-repreparation\\attempt-1"
+    ],
+    "exit_code": 1,
+    "rejection_verified": true
+  },
+  {
+    "control": "missing-durable-root",
+    "command": "require_root(never-frozen)",
+    "rejection": "MISSING FROZEN ROOT: corpus root D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\never-frozen does not exist",
+    "rejection_verified": true
+  },
+  {
+    "control": "tampered-frozen-file-copy",
+    "command": "digest(supports-off-benchy/arachne.json)",
+    "rejection": "inventory digest differs",
+    "rejection_verified": true
+  },
+  {
+    "control": "frozen-files-unchanged",
+    "command": "inventory before/after controls",
+    "rejection_verified": true
+  }
+]

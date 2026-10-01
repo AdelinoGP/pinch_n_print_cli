@@ -1,0 +1,89 @@
+[
+  {
+    "name": "toolchain",
+    "command": [
+      "rustc",
+      "-vV"
+    ],
+    "exit_code": 0,
+    "required_tests": [],
+    "missing_successful_tests": []
+  },
+  {
+    "name": "ordinary-freshness",
+    "command": [
+      "cargo",
+      "xtask",
+      "build-guests",
+      "--check"
+    ],
+    "exit_code": 0,
+    "required_tests": [],
+    "missing_successful_tests": []
+  },
+  {
+    "name": "support-repair",
+    "command": [
+      "cargo",
+      "test",
+      "-p",
+      "slicer-wasm-host",
+      "--test",
+      "contract",
+      "--",
+      "support_plan_validation",
+      "--nocapture"
+    ],
+    "exit_code": 0,
+    "required_tests": [
+      "identity_aggregate_spread_across_the_plate_is_measured_per_body",
+      "support_body_wider_than_the_deleted_routing_cell_is_retained"
+    ],
+    "missing_successful_tests": []
+  },
+  {
+    "name": "empty-infill-producers",
+    "command": [
+      "cargo",
+      "test",
+      "-p",
+      "slicer-wasm-host",
+      "--test",
+      "contract",
+      "--",
+      "infill_postprocess_empty_commit_tdd",
+      "--nocapture"
+    ],
+    "exit_code": 0,
+    "required_tests": [
+      "wasm_infill_postprocess_empty_output_commits_the_empty_replacement",
+      "native_infill_postprocess_empty_output_commits_the_empty_replacement",
+      "wasm_infill_empty_output_still_commits_nothing",
+      "native_infill_empty_output_still_commits_nothing",
+      "both_legs_agree_on_the_empty_replacement_shape"
+    ],
+    "missing_successful_tests": []
+  },
+  {
+    "name": "empty-infill-runtime",
+    "command": [
+      "cargo",
+      "xtask",
+      "test",
+      "--summary",
+      "-p",
+      "slicer-runtime",
+      "--test",
+      "contract",
+      "--",
+      "infill_postprocess_contract_tdd",
+      "--nocapture"
+    ],
+    "exit_code": 0,
+    "required_tests": [
+      "infill_postprocess_empty_replacement_supersedes_prior_ir",
+      "infill_postprocess_inside_path_survives_so_the_clip_is_real"
+    ],
+    "missing_successful_tests": []
+  }
+]

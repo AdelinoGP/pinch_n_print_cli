@@ -1,0 +1,466 @@
+   Compiling quote v1.0.45
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling syn v2.0.117
+   Compiling serde_core v1.0.228
+   Compiling serde v1.0.228
+   Compiling serde_derive v1.0.228
+    Checking cfg-if v1.0.4
+    Checking memchr v2.8.0
+   Compiling libm v0.2.16
+    Checking windows-link v0.2.1
+   Compiling zmij v1.0.21
+   Compiling serde_json v1.0.149
+    Checking foldhash v0.2.0
+   Compiling thiserror v1.0.69
+   Compiling thiserror-impl v1.0.69
+   Compiling thiserror v2.0.18
+   Compiling thiserror-impl v2.0.18
+   Compiling getrandom v0.3.4
+   Compiling autocfg v1.5.0
+    Checking equivalent v1.0.2
+    Checking itoa v1.0.17
+    Checking windows-sys v0.61.2
+    Checking slicer-ir v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-ir)
+    Checking hashbrown v0.17.0
+   Compiling num-traits v0.2.19
+    Checking stable_deref_trait v1.2.1
+   Compiling zerocopy v0.8.48
+    Checking indexmap v2.14.0
+   Compiling zerocopy-derive v0.8.48
+    Checking log v0.4.29
+    Checking byteorder v1.5.0
+    Checking smallvec v1.15.1
+    Checking rustc-hash v2.1.2
+    Checking either v1.15.0
+    Checking ppv-lite86 v0.2.21
+   Compiling crossbeam-utils v0.8.21
+    Checking winnow v0.7.15
+    Checking crossbeam-epoch v0.9.18
+   Compiling rayon-core v1.13.0
+    Checking crossbeam-deque v0.8.6
+    Checking rayon v1.11.0
+    Checking toml_datetime v0.6.11
+    Checking serde_spanned v0.6.9
+    Checking toml_write v0.1.2
+    Checking option-ext v0.2.0
+    Checking slicer-schema v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-schema)
+    Checking toml_edit v0.22.27
+    Checking toml v0.8.23
+    Checking approx v0.5.1
+    Checking dirs-sys v0.5.0
+    Checking directories v6.0.0
+    Checking rand_core v0.9.5
+    Checking rand_chacha v0.9.0
+   Compiling heapless v0.8.0
+    Checking rand v0.9.4
+    Checking slicer-scheduler v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-scheduler)
+   Compiling slicer-core v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-core)
+    Checking hash32 v0.3.1
+    Checking cpp_map v0.2.0
+    Checking ordered-float v5.3.0
+    Checking vob v3.0.6
+    Checking boostvoronoi v0.12.1
+    Checking rstar v0.12.2
+    Checking clipper2-rust v1.1.0
+   Compiling version_check v0.9.5
+   Compiling slicer-macros v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-macros)
+    Checking slicer-sdk v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-sdk)
+    Checking allocator-api2 v0.2.21
+    Checking once_cell v1.21.4
+   Compiling crc32fast v1.5.0
+   Compiling heck v0.5.0
+    Checking rand_core v0.10.1
+   Compiling getrandom v0.4.2
+    Checking bumpalo v3.20.2
+   Compiling displaydoc v0.2.5
+    Checking winapi-util v0.1.11
+    Checking sha1_smol v1.0.1
+    Checking uuid v1.23.0
+    Checking simd-adler32 v0.3.9
+    Checking adler2 v2.0.1
+    Checking miniz_oxide v0.8.9
+    Checking flate2 v1.1.9
+   Compiling semver v1.0.27
+    Checking aho-corasick v1.1.4
+    Checking regex-syntax v0.8.10
+    Checking regex-automata v0.4.14
+    Checking regex v1.12.3
+    Checking itertools v0.10.5
+    Checking bitflags v2.11.1
+   Compiling ahash v0.8.12
+   Compiling zip v2.4.2
+   Compiling rustc_version v0.4.1
+    Checking zopfli v0.8.3
+    Checking tobj v4.0.3
+    Checking quick-xml v0.39.2
+    Checking stl_io v0.11.0
+    Checking anstyle v1.0.14
+    Checking slicer-model-io v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-model-io)
+    Checking once_cell_polyfill v1.70.2
+    Checking utf8parse v0.2.2
+    Checking anstyle-parse v1.0.0
+    Checking anstyle-wincon v3.0.11
+    Checking anstyle-query v1.1.5
+    Checking is_terminal_polyfill v1.70.2
+    Checking colorchoice v1.0.5
+    Checking anstream v1.0.0
+    Checking clap_lex v1.1.0
+    Checking strsim v0.11.1
+    Checking clap_builder v4.6.0
+   Compiling clap_derive v4.6.1
+    Checking clap v4.6.1
+    Checking scopeguard v1.2.0
+    Checking lock_api v0.4.14
+   Compiling jobserver v0.1.34
+   Compiling find-msvc-tools v0.1.9
+   Compiling shlex v1.3.0
+   Compiling cc v1.2.59
+   Compiling typenum v1.19.0
+   Compiling anyhow v1.0.104
+   Compiling heapless v0.7.17
+    Checking same-file v1.0.6
+    Checking walkdir v2.5.0
+    Checking half v2.7.1
+   Compiling pkg-config v0.3.32
+    Checking ciborium-io v0.2.2
+    Checking ciborium-ll v0.2.2
+    Checking hashbrown v0.16.1
+    Checking cast v0.3.0
+    Checking criterion-plot v0.5.0
+    Checking ciborium v0.2.2
+    Checking is-terminal v0.4.17
+    Checking tinytemplate v1.2.1
+    Checking anes v0.1.6
+    Checking oorandom v11.1.5
+    Checking criterion v0.5.1
+   Compiling bytemuck_derive v1.10.2
+    Checking bytemuck v1.25.0
+    Checking spin v0.9.8
+    Checking hash32 v0.2.1
+   Compiling libc v0.2.189
+    Checking cobs v0.3.0
+    Checking postcard v1.1.3
+    Checking num-complex v0.4.6
+    Checking fastrand v2.3.0
+    Checking tempfile v3.27.0
+   Compiling generic-array v0.14.7
+   Compiling syn v1.0.109
+   Compiling id-arena v2.3.0
+   Compiling wasmtime-internal-core v47.0.3
+   Compiling paste v1.0.15
+   Compiling cranelift-bitset v0.134.3
+   Compiling target-lexicon v0.13.5
+   Compiling synstructure v0.13.2
+   Compiling cranelift-srcgen v0.134.3
+   Compiling cranelift-assembler-x64-meta v0.134.3
+   Compiling zerofrom-derive v0.1.7
+    Checking zerofrom v0.1.8
+    Checking block-buffer v0.10.4
+    Checking crypto-common v0.1.7
+   Compiling yoke-derive v0.8.2
+   Compiling pulley-macros v47.0.3
+    Checking leb128fmt v0.1.0
+    Checking fnv v1.0.7
+    Checking gimli v0.33.0
+    Checking yoke v0.8.3
+    Checking digest v0.10.7
+    Checking cranelift-entity v0.134.3
+    Checking wasmparser v0.252.0
+   Compiling wasmtime-internal-versioned-export-macros v47.0.3
+    Checking cpufeatures v0.2.17
+   Compiling cranelift-isle v0.134.3
+    Checking sha2 v0.10.9
+    Checking cranelift-bforest v0.134.3
+   Compiling pulley-interpreter v47.0.3
+   Compiling zerovec-derive v0.11.3
+   Compiling object v0.39.1
+   Compiling cranelift-codegen-shared v0.134.3
+   Compiling cranelift-codegen-meta v0.134.3
+    Checking zerovec v0.11.6
+   Compiling cranelift-assembler-x64 v0.134.3
+   Compiling cpp_demangle v0.5.1
+   Compiling cranelift-codegen v0.134.3
+    Checking wasm-encoder v0.252.0
+   Compiling zstd-sys v2.0.16+zstd.1.5.7
+    Checking termcolor v1.4.1
+    Checking arbitrary v1.4.2
+   Compiling windows_x86_64_msvc v0.52.6
+    Checking cranelift-control v0.134.3
+    Checking wasmprinter v0.252.0
+    Checking regalloc2 v0.15.1
+   Compiling winapi v0.3.9
+   Compiling windows_x86_64_msvc v0.53.1
+    Checking rustc-demangle v0.1.27
+    Checking wasmtime-internal-component-util v47.0.3
+    Checking wasmtime-environ v47.0.3
+    Checking tinystr v0.8.3
+    Checking litemap v0.8.2
+    Checking writeable v0.6.3
+   Compiling zstd-safe v7.2.4
+    Checking pin-project-lite v0.2.17
+    Checking icu_locale_core v2.2.0
+    Checking windows-targets v0.52.6
+    Checking potential_utf v0.1.5
+    Checking zerotrie v0.2.4
+    Checking wasm-encoder v0.256.0
+   Compiling ittapi-sys v0.4.0
+    Checking utf8_iter v1.0.4
+   Compiling io-lifetimes v2.0.4
+    Checking winnow v1.0.1
+    Checking unicode-width v0.2.2
+   Compiling icu_normalizer_data v2.2.0
+   Compiling io-lifetimes v3.0.1
+    Checking futures-sink v0.3.32
+   Compiling icu_properties_data v2.2.0
+    Checking futures-core v0.3.32
+   Compiling wasmtime-internal-unwinder v47.0.3
+    Checking futures-channel v0.3.32
+    Checking wast v256.0.0
+    Checking toml_parser v1.1.2+spec-1.1.0
+    Checking icu_collections v2.2.0
+    Checking icu_provider v2.2.0
+    Checking windows-targets v0.53.5
+    Checking dirs-sys-next v0.1.2
+    Checking windows-sys v0.59.0
+   Compiling wit-parser v0.252.0
+   Compiling wasmtime-internal-fiber v47.0.3
+   Compiling wasmtime-internal-jit-debug v47.0.3
+    Checking serde_spanned v1.1.1
+    Checking toml_datetime v0.7.5+spec-1.1.0
+    Checking futures-task v0.3.32
+    Checking futures-io v0.3.32
+    Checking slab v0.4.12
+   Compiling wasmtime-internal-component-macro v47.0.3
+    Checking fixedbitset v0.4.2
+   Compiling io-extras v0.19.0
+    Checking toml_writer v1.1.1+spec-1.1.0
+   Compiling leb128 v0.2.7
+   Compiling wasmtime-internal-cache v47.0.3
+   Compiling wasmtime-internal-cranelift v47.0.3
+   Compiling wast v35.0.2
+    Checking toml v0.9.12+spec-1.1.0
+    Checking petgraph v0.6.5
+    Checking futures-util v0.3.32
+   Compiling wasmtime-internal-wit-bindgen v47.0.3
+    Checking directories-next v2.0.0
+    Checking windows-sys v0.60.2
+    Checking zstd v0.13.3
+    Checking wat v1.256.0
+    Checking cranelift-native v0.134.3
+    Checking cranelift-frontend v0.134.3
+   Compiling wasmtime v47.0.3
+    Checking debugid v0.8.0
+   Compiling proc-macro-error-attr v1.0.4
+    Checking itertools v0.14.0
+    Checking base64 v0.22.1
+   Compiling cap-primitives v4.0.2
+    Checking wasm-compose v0.252.0
+   Compiling witx v0.9.1
+    Checking fxprof-processed-profile v0.8.1
+    Checking icu_properties v2.2.0
+    Checking icu_normalizer v2.2.0
+    Checking fs-set-times v0.20.3
+    Checking ittapi v0.4.0
+    Checking futures v0.3.32
+    Checking winx v0.36.4
+    Checking addr2line v0.26.1
+    Checking wasmtime-internal-jit-icache-coherence v47.0.3
+    Checking tracing-core v0.1.36
+   Compiling proc-macro-error v1.0.4
+    Checking encoding_rs v0.8.35
+   Compiling tracing-attributes v0.1.31
+   Compiling async-trait v0.1.89
+    Checking ipnet v2.12.1
+    Checking maybe-owned v0.3.4
+    Checking ambient-authority v0.0.2
+   Compiling cap-std v4.0.2
+   Compiling wiggle-macro v47.0.3
+    Checking tracing v0.1.44
+    Checking idna_adapter v1.2.2
+   Compiling wiggle-generate v47.0.3
+    Checking cpufeatures v0.3.0
+    Checking bytes v1.12.1
+   Compiling cap-fs-ext v4.0.2
+    Checking percent-encoding v2.3.2
+   Compiling rustix v1.1.4
+   Compiling cgmath v0.18.0
+    Checking form_urlencoded v1.2.2
+    Checking chacha20 v0.10.1
+    Checking idna v1.1.0
+    Checking approx v0.4.0
+    Checking errno v0.3.14
+    Checking mio v1.2.2
+    Checking socket2 v0.6.5
+    Checking getrandom v0.2.17
+    Checking rand_core v0.6.4
+    Checking tokio v1.53.1
+    Checking url v2.5.8
+    Checking wiggle v47.0.3
+    Checking rand v0.10.2
+    Checking wasmtime-wasi-io v47.0.3
+   Compiling katexit v0.1.5
+   Compiling slicer-wasm-host v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host)
+    Checking matext4cgmath v0.1.0
+    Checking wasmtime-wasi v47.0.3
+    Checking rand_chacha v0.3.1
+    Checking rand v0.8.5
+    Checking truck-base v0.5.0
+   Compiling truck-derivers v0.1.0
+   Compiling branches v0.3.0
+   Compiling parking_lot_core v0.9.12
+    Checking truck-geotrait v0.4.0
+   Compiling lzma-sys v0.1.20
+   Compiling winnow v0.5.40
+   Compiling convert_case v0.4.0
+   Compiling derive_more v0.99.20
+   Compiling toml_edit v0.19.15
+    Checking parking_lot v0.12.5
+    Checking rclite v0.2.8
+    Checking itertools v0.13.0
+   Compiling lazy_static v1.5.0
+    Checking array-macro v2.1.8
+   Compiling nano-gemm-codegen v0.2.1
+    Checking truck-polymesh v0.6.0
+   Compiling Inflector v0.11.4
+   Compiling proc-macro-crate v1.3.1
+    Checking truck-topology v0.6.0
+    Checking truck-geometry v0.5.0
+    Checking memchr v1.0.2
+    Checking safe_arch v0.7.4
+    Checking float-cmp v0.10.0
+   Compiling matrixmultiply v0.3.10
+    Checking minimal-lexical v0.2.1
+    Checking nom v7.1.3
+    Checking wide v0.7.33
+    Checking nom v3.2.1
+    Checking xz2 v0.1.7
+   Compiling ruststep-derive v0.4.0
+   Compiling derive-new v0.5.9
+   Compiling num-derive v0.3.3
+   Compiling meshopt v0.6.2
+    Checking num-integer v0.1.46
+    Checking quick-xml v0.22.0
+    Checking base64 v0.13.1
+    Checking lz4_flex v0.7.5
+    Checking rawpointer v0.2.1
+    Checking robust v1.2.0
+    Checking spade v2.15.1
+    Checking vtkio v0.6.3
+    Checking num-rational v0.4.2
+    Checking ruststep v0.4.0
+    Checking simba v0.8.1
+    Checking truck-modeling v0.6.0
+    Checking raw-cpuid v11.6.0
+   Compiling pulp v0.22.3
+    Checking chrono v0.4.44
+   Compiling nalgebra-macros v0.2.2
+    Checking nalgebra v0.32.6
+    Checking truck-stepio v0.3.0
+    Checking truck-meshalgo v0.4.0
+    Checking reborrow v0.5.5
+    Checking pulp-wasm-simd-flag v0.1.1
+   Compiling dyn-stack-macros v0.1.3
+    Checking dyn-stack v0.13.2
+    Checking slicer-helpers v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-helpers)
+   Compiling seq-macro v0.3.6
+    Checking gemm-common v0.19.0
+    Checking nano-gemm-core v0.2.1
+    Checking fdeflate v0.3.7
+    Checking pxfm v0.1.30
+    Checking zune-core v0.5.1
+    Checking zune-jpeg v0.5.15
+    Checking moxcms v0.8.1
+    Checking png v0.18.1
+   Compiling nano-gemm-c64 v0.2.1
+   Compiling nano-gemm-f64 v0.2.1
+   Compiling nano-gemm-c32 v0.2.1
+   Compiling nano-gemm-f32 v0.2.1
+   Compiling interpol v0.2.1
+    Checking qoi v0.4.1
+   Compiling defer v0.2.1
+    Checking byteorder-lite v0.1.0
+    Checking image v0.25.10
+   Compiling private-gemm-x86 v0.1.20
+   Compiling equator-macro v0.2.1
+    Checking equator v0.2.2
+    Checking gemm-c64 v0.19.0
+    Checking gemm-c32 v0.19.0
+    Checking gemm-f32 v0.19.0
+    Checking gemm-f64 v0.19.0
+    Checking qd v0.8.0
+    Checking generativity v1.2.1
+   Compiling equator-macro v0.6.0
+    Checking num_cpus v1.17.0
+    Checking equator v0.6.0
+    Checking faer-traits v0.24.0
+    Checking gemm v0.19.0
+    Checking nano-gemm v0.2.2
+    Checking slicer-gcode v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-gcode)
+    Checking faer v0.24.4
+    Checking seam-planner-default v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\seam-planner-default)
+    Checking seam-placer v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\seam-placer)
+    Checking infill-linker v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\infill-linker)
+    Checking rectilinear-infill v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\rectilinear-infill)
+    Checking traditional-support v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\traditional-support)
+    Checking tree-support v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\tree-support)
+    Checking wipe-tower v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\wipe-tower)
+    Checking path-optimization-default v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\path-optimization-default)
+    Checking fuzzy-skin v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\fuzzy-skin)
+    Checking part-cooling v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\part-cooling)
+    Checking skirt-brim v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\skirt-brim)
+    Checking support-surface-ironing v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\support-surface-ironing)
+    Checking lightning-infill v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\lightning-infill)
+    Checking gyroid-infill v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\gyroid-infill)
+    Checking overhang-classifier-default v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\overhang-classifier-default)
+    Checking top-surface-ironing v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\top-surface-ironing)
+    Checking layer-planner-default v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\layer-planner-default)
+    Checking machine-gcode-emit v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\machine-gcode-emit)
+    Checking slicer-integrated-modules v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-integrated-modules)
+    Checking predicates-core v1.0.10
+    Checking difflib v0.4.0
+   Compiling assert_cmd v2.2.2
+    Checking normalize-line-endings v0.3.0
+    Checking termtree v0.5.1
+    Checking predicates-tree v1.0.13
+    Checking predicates v3.1.4
+    Checking slicer-runtime v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-runtime)
+    Checking bstr v1.12.1
+    Checking wait-timeout v0.2.1
+    Checking arachne-perimeters v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\arachne-perimeters)
+   Compiling wasmparser v0.254.0
+   Compiling prettyplease v0.2.37
+   Compiling wasm-encoder v0.254.0
+   Compiling wit-parser v0.254.0
+   Compiling wasm-metadata v0.254.0
+   Compiling wit-bindgen-rust v0.60.0
+   Compiling wit-component v0.254.0
+   Compiling wit-bindgen-core v0.60.0
+   Compiling wit-bindgen-rust-macro v0.60.0
+    Checking witness v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host\test-guests\witness)
+   Compiling macro-string v0.2.0
+   Compiling wit-bindgen v0.60.0
+    Checking wasmparser v0.247.0
+    Checking tree-support-planner v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\tree-support-planner)
+    Checking unicode-xid v0.2.6
+    Checking wit-parser v0.247.0
+    Checking pnp-cli-locator v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\pnp-cli-locator)
+    Checking classic-perimeters v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\classic-perimeters)
+    Checking jiff-core v0.1.0
+    Checking jiff v0.2.34
+    Checking env_filter v2.0.0
+    Checking env_logger v0.11.11
+    Checking ctrlc v3.5.2
+    Checking pnp-cli v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\pnp-cli)
+    Checking wave-overhangs v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\wave-overhangs)
+    Checking sdk-layer-infill-guest v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host\test-guests\sdk-layer-infill-guest)
+    Checking sdk-prepass-guest v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host\test-guests\sdk-prepass-guest)
+    Checking sdk-postpass-text-guest v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host\test-guests\sdk-postpass-text-guest)
+    Checking sdk-finalization-guest v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host\test-guests\sdk-finalization-guest)
+    Checking raft-default v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\raft-default)
+    Checking static_assertions v1.1.0
+    Checking traditional-support-planner v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\traditional-support-planner)
+    Checking xtask v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\xtask)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 8m 30s
+warning: the following packages contain code that will be rejected by a future version of Rust: nom v3.2.1, quick-xml v0.22.0
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`

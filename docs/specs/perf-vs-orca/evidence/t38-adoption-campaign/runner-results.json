@@ -1,0 +1,11 @@
+[
+  {
+    "name": "freeze-before",
+    "command": [
+      "C:\\Users\\agpen\\.vfox\\sdks\\python\\python.exe",
+      "docs/specs/perf-vs-orca/evidence/t40-reference-preparation/verify-freeze.py",
+      "docs/specs/perf-vs-orca/evidence/t40-reference-preparation/attempt-2"
+    ],
+    "exit_code": 1
+  }
+]
