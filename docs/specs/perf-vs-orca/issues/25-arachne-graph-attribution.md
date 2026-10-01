@@ -1,7 +1,8 @@
 # Arachne graph-construction attribution
 
 Type: task
-Status: open
+Status: claimed
+Assignee: current OpenCode session (wayfinder), 2026-10-01
 Blocked by: 12, 21
 
 ## Question
