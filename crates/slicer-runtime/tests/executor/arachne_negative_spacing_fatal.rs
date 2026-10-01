@@ -102,6 +102,96 @@ fn arachne_negative_spacing_config_fails_the_slice_with_actionable_error() {
         "outer_wall_line_width".to_string(),
         slicer_ir::ConfigValue::Float(0.1),
     );
+    // Required-read baseline (packet 06 5c): classified reads in
+    // run_perimeters/arachne_params_from_config are now require_*; the view
+    // holds every key the path reads at manifest-default values. The fatal
+    // trigger stays the authored role widths (0.1mm at 1.0mm layer height),
+    // which resolve before the fallback chain.
+    fields.insert(
+        "nozzle_diameter".to_string(),
+        slicer_ir::ConfigValue::Float(0.4),
+    );
+    fields.insert(
+        "line_width".to_string(),
+        slicer_ir::ConfigValue::Float(0.45),
+    );
+    fields.insert(
+        "bridge_line_width".to_string(),
+        slicer_ir::ConfigValue::Float(0.0),
+    );
+    fields.insert(
+        "initial_layer_line_width".to_string(),
+        slicer_ir::ConfigValue::Float(0.0),
+    );
+    fields.insert("wall_count".to_string(), slicer_ir::ConfigValue::Int(3));
+    fields.insert(
+        "extra_perimeters".to_string(),
+        slicer_ir::ConfigValue::Int(0),
+    );
+    fields.insert(
+        "precise_outer_wall".to_string(),
+        slicer_ir::ConfigValue::Bool(false),
+    );
+    fields.insert(
+        "wall_sequence".to_string(),
+        slicer_ir::ConfigValue::String("InnerOuter".to_string()),
+    );
+    fields.insert(
+        "support_raft_layers".to_string(),
+        slicer_ir::ConfigValue::Int(0),
+    );
+    fields.insert(
+        "only_one_wall_top".to_string(),
+        slicer_ir::ConfigValue::Bool(false),
+    );
+    fields.insert(
+        "wall_direction".to_string(),
+        slicer_ir::ConfigValue::String("counter_clockwise".to_string()),
+    );
+    fields.insert(
+        "alternate_extra_wall".to_string(),
+        slicer_ir::ConfigValue::Bool(false),
+    );
+    fields.insert(
+        "spiral_vase".to_string(),
+        slicer_ir::ConfigValue::Bool(false),
+    );
+    fields.insert(
+        "sparse_infill_density".to_string(),
+        slicer_ir::ConfigValue::Float(20.0),
+    );
+    fields.insert(
+        "only_one_wall_first_layer".to_string(),
+        slicer_ir::ConfigValue::Bool(false),
+    );
+    fields.insert(
+        "detect_overhang_wall".to_string(),
+        slicer_ir::ConfigValue::Bool(true),
+    );
+    fields.insert(
+        "overhang_reverse".to_string(),
+        slicer_ir::ConfigValue::Bool(false),
+    );
+    fields.insert(
+        "overhang_reverse_internal_only".to_string(),
+        slicer_ir::ConfigValue::Bool(false),
+    );
+    fields.insert(
+        "overhang_reverse_threshold".to_string(),
+        slicer_ir::ConfigValue::Float(0.0),
+    );
+    fields.insert(
+        "bridge_flow".to_string(),
+        slicer_ir::ConfigValue::Float(1.0),
+    );
+    fields.insert(
+        "thick_bridges".to_string(),
+        slicer_ir::ConfigValue::Bool(false),
+    );
+    fields.insert(
+        "seam_candidate_angle_threshold_deg".to_string(),
+        slicer_ir::ConfigValue::Float(30.0),
+    );
 
     let module = CompiledModuleBuilder::new(loaded.id().to_string())
         .config_view(Arc::new(slicer_ir::ConfigView::from_map(fields)))

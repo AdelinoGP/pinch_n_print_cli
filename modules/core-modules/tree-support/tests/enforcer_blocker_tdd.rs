@@ -14,8 +14,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
-    ConfigView, ExPolygon, PaintSemantic, PaintValue, Point2, Polygon, SliceIR, SlicedRegion,
-    SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion, CURRENT_SLICE_IR_SCHEMA_VERSION,
+    ConfigValue, ConfigView, ExPolygon, PaintSemantic, PaintValue, Point2, Polygon, SliceIR,
+    SlicedRegion, SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion,
+    CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::test_prelude::*;
@@ -25,13 +26,26 @@ use slicer_sdk::views::SliceRegionView;
 use tree_support::TreeSupport;
 
 /// Helper: create an enabled support config.
+///
+/// Every key is a fail-closed `require_*` read in tree-support
+/// (`from_config` / `run_support`), seeded here at its
+/// `tree-support.toml` manifest default — the same values the production
+/// `seed_registry_defaults` step injects into a bound view.
+/// `support_interface_flow` is declared `percent`, and `ConfigViewBuilder`
+/// has no percent constructor, so the fixture is built from typed pairs.
 fn enabled_config() -> ConfigView {
-    ConfigViewBuilder::new()
-        .bool("enable_support", true)
-        .float("support_angle", 0.0)
-        .float("support_speed", 50.0)
-        .float("line_width", 0.4)
-        .build()
+    config_with(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        ("nozzle_diameter", ConfigValue::Float(0.4)),
+        ("layer_height", ConfigValue::Float(0.2)),
+        ("support_base_pattern_spacing", ConfigValue::Float(2.5)),
+        ("support_speed", ConfigValue::Float(50.0)),
+        ("support_interface_flow", ConfigValue::Percent(100.0)),
+        ("support_line_width", ConfigValue::Float(0.0)),
+        ("tree_support_wall_count", ConfigValue::Int(1)),
+        ("support_interface_spacing", ConfigValue::Float(0.4)),
+        ("support_bottom_interface_spacing", ConfigValue::Float(0.5)),
+    ])
 }
 
 /// Helper: create a 10mm square ExPolygon centered at origin.

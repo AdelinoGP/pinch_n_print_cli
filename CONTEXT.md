@@ -51,6 +51,11 @@ each with its own resolved configuration. Semantics that are not region-split ar
 carried as **segment annotations** instead. The set of region-split semantics is
 decided per slicer instance, not hard-coded.
 
+### Paint-only module
+A module whose work is applicable only on layers containing a matching
+**painted variant**. Requesting a **region-split semantic** does not make a
+module paint-only; it may also run on unpainted layers.
+
 ### Variant chain
 The ordered sequence of paint-semantic discriminators that distinguishes a
 **painted variant** from its base region. Two regions of the same object and
@@ -64,6 +69,11 @@ A region distinguished from its base by a non-empty **variant chain**. Each
 painted variant carries its own resolved configuration — the base config plus
 the layered overlays contributed by each semantic in the chain. Painted variants
 of the same base region cover disjoint pieces of that base region's geometry.
+
+### Seam-plan identity
+The full **active region** identity, including its **variant chain**, to which
+one planned seam belongs. A different painted variant cannot inherit that seam;
+without its own matching plan it uses local seam selection as a degraded fallback.
 
 ### Segment annotation
 Per-contour-segment paint metadata that does NOT drive region-splitting. Carries
@@ -240,6 +250,14 @@ default: a key is statable at every scope unless its declaration denies
 specific ones. A key denied at a scope cannot be stated there at all, rather
 than being accepted and ignored.
 _Avoid_: Overridable-per-region, allow list, override permission
+
+### Declared extension key
+A setting recognised by the **config schema registry** whose resolved value belongs to the extensible portion of a region's configuration rather than its fixed field set. Host-declared and module-declared settings can both have this form, with the same declared type, default, bounds, and scope eligibility.
+_Avoid_: Unknown key, unvalidated extra
+
+### Persisted IR schema
+The versioned shape of a stored pipeline intermediate representation, distinct from the **stage contract** a module satisfies. New content inside an existing extensible setting collection is not itself a new stored record shape.
+_Avoid_: Stage contract (when stored representation is meant), WIT version
 
 ### Authored value
 What a source document states for a setting, as distinct from the **resolved**

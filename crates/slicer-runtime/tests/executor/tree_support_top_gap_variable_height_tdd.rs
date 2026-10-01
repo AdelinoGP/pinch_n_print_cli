@@ -160,6 +160,15 @@ fn planner_config() -> ConfigView {
             "support_top_z_distance_mm".to_string(),
             ConfigValue::Float(TOP_GAP_MM as f64),
         ),
+        // Contract-required reads (packet 06): tree-support-planner's run
+        // `require_float`s `nozzle_diameter` and `require_bool`s
+        // `independent_support_layer_height` (manifest default true), so a
+        // partial view fails the typed call.
+        ("nozzle_diameter".to_string(), ConfigValue::Float(0.4)),
+        (
+            "independent_support_layer_height".to_string(),
+            ConfigValue::Bool(true),
+        ),
     ]))
 }
 

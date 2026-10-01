@@ -61,7 +61,8 @@ display = "Line Width"
 group   = "Infill"
 
 [config.schema.initial_layer_line_width]
-type    = "float"
+type    = "float_or_percent"
+base_key = "nozzle_diameter"
 default = 0.0
 min     = 0.0
 max     = 2.0
@@ -69,7 +70,8 @@ display = "Initial Layer Line Width"
 group   = "Infill"
 
 [config.schema.bridge_line_width]
-type    = "float"
+type    = "float_or_percent"
+base_key = "nozzle_diameter"
 default = 0.0
 min     = 0.0
 max     = 2.0
@@ -77,7 +79,8 @@ display = "Bridge Line Width"
 group   = "Infill"
 
 [config.schema.sparse_infill_line_width]
-type    = "float"
+type    = "float_or_percent"
+base_key = "nozzle_diameter"
 default = 0.0
 min     = 0.0
 max     = 2.0
@@ -85,7 +88,8 @@ display = "Sparse Infill Line Width"
 group   = "Infill"
 
 [config.schema.internal_solid_infill_line_width]
-type    = "float"
+type    = "float_or_percent"
+base_key = "nozzle_diameter"
 default = 0.0
 min     = 0.0
 max     = 2.0
@@ -93,18 +97,13 @@ display = "Internal Solid Infill Line Width"
 group   = "Infill"
 
 [config.schema.top_surface_line_width]
-type    = "float"
+type    = "float_or_percent"
+base_key = "nozzle_diameter"
 default = 0.0
 min     = 0.0
 max     = 2.0
 display = "Top Surface Line Width"
 group   = "Infill"
-
-[config.overridable-per-region]
-keys = []
-
-[config.overridable-per-layer]
-keys = []
 
 [hints]
 estimated-ms-per-layer = 10

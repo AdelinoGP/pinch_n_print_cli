@@ -22,15 +22,35 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
+use slicer_config::resolution::{resolve_scope_stack, ResolutionError, ResolutionTarget};
+use slicer_config::{ConfigSchemaRegistry, ExpansionContext, ScopedConfig};
+use slicer_ir::slice_ir::AggregatedRegionSplitEntry;
 use slicer_ir::{
     is_modifier_namespace_id, modifier_sub_region_id, modifier_sub_region_id_fits,
     region_split_registry::enumerate_canonical_chains, ConfigValue, LayerPlanIR, ModifierVolume,
     ModuleInvocation, ObjectId, ObjectMesh, PaintSemantic, PaintValue, RegionKey, RegionMapIR,
     RegionPlan, ResolvedConfig, StageId,
 };
-use slicer_scheduler::region_split::AggregatedRegionSplitEntry;
 
 use crate::algos::paint_segmentation::paint_variant_region_id;
+
+/// Host config authority for per-layer layer-range re-resolution.
+///
+/// Production callers (the runtime's `commit_region_mapping_builtin`) supply
+/// the assembled registry, the authored typed scopes, and the expansion
+/// context so a region whose object carries an authored layer range covering
+/// the layer's top print Z is re-resolved through
+/// [`resolve_scope_stack`] with `ResolutionTarget::layer_top_z`. Compatibility
+/// callers omit it and keep the precomputed per-target configs exactly.
+#[derive(Clone, Copy)]
+pub struct RegionResolutionAuthority<'a> {
+    /// Registry the authored scopes were typed against.
+    pub registry: &'a ConfigSchemaRegistry,
+    /// Authored typed scopes, including per-object layer ranges.
+    pub scoped: &'a ScopedConfig,
+    /// Machine/tool context for automatic-value expansion.
+    pub expansion: &'a ExpansionContext,
+}
 
 /// Default cap on `RegionMapIR` entry count per docs/04_host_scheduler.md.
 pub use slicer_ir::DEFAULT_REGION_MAP_CAP;
@@ -58,7 +78,7 @@ pub struct TopContributor {
 }
 
 /// Structured region-mapping failure.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum RegionMappingError {
     /// `RegionMapIR` entry count exceeded the configured cap.
     CapExceeded {
@@ -96,6 +116,10 @@ pub enum RegionMappingError {
         /// [`RegionMappingError::scalar`] or `f32::from_bits(scalar_bits)`.
         scalar_bits: u32,
     },
+    /// A layer range covered the layer's top Z, so the region's config was
+    /// re-resolved through the typed scope stack with
+    /// `ResolutionTarget::layer_top_z`, and that resolution failed.
+    Resolution(ResolutionError),
 }
 
 impl RegionMappingError {
@@ -160,6 +184,9 @@ impl std::fmt::Display for RegionMappingError {
                      Flag/ToolIndex/Custom values (scalars cannot drive a discrete variant axis)"
                 )
             }
+            Self::Resolution(error) => {
+                write!(f, "layer-range config resolution failed: {error}")
+            }
         }
     }
 }
@@ -209,167 +236,213 @@ fn cap_exceeded(
     }
 }
 
-/// Apply a paint-semantic `ResolvedConfig` on top of a base `ResolvedConfig`.
+const RESOLVED_TARGET_PREFIX: &str = "\0resolved-target:";
+
+fn append_key_part(key: &mut String, value: &str) {
+    use std::fmt::Write as _;
+    let _ = write!(key, "{}:{value}", value.len());
+}
+
+fn resolved_target_key(
+    object_id: &str,
+    modifier_ids: &[String],
+    paint_semantics: &[String],
+    tool_index: Option<u32>,
+) -> String {
+    if modifier_ids.is_empty() && paint_semantics.is_empty() && tool_index.is_none() {
+        return object_id.to_owned();
+    }
+    let mut key = RESOLVED_TARGET_PREFIX.to_owned();
+    append_key_part(&mut key, object_id);
+    key.push('|');
+    for modifier_id in modifier_ids {
+        append_key_part(&mut key, modifier_id);
+        key.push(',');
+    }
+    key.push('|');
+    for semantic in paint_semantics {
+        append_key_part(&mut key, semantic);
+        key.push(',');
+    }
+    key.push('|');
+    if let Some(tool_index) = tool_index {
+        use std::fmt::Write as _;
+        let _ = write!(key, "{tool_index}");
+    }
+    key
+}
+
+fn ordered_modifier_ids(modifier_volumes: &[ModifierVolume]) -> Vec<String> {
+    let mut order: Vec<usize> = (0..modifier_volumes.len()).collect();
+    order.sort_by_key(|&index| (modifier_volumes[index].priority, std::cmp::Reverse(index)));
+    order
+        .into_iter()
+        .map(|index| modifier_volumes[index].id.clone())
+        .collect()
+}
+
+fn resolved_target_config<'a>(
+    resolved_configs: &'a BTreeMap<String, ResolvedConfig>,
+    object_id: &str,
+    modifier_volumes: &[ModifierVolume],
+    chain: &[(String, PaintValue)],
+    tool_index: Option<u32>,
+) -> Option<&'a ResolvedConfig> {
+    let modifier_ids = ordered_modifier_ids(modifier_volumes);
+    let mut paint_semantics: Vec<String> =
+        chain.iter().map(|(semantic, _)| semantic.clone()).collect();
+    paint_semantics.sort();
+    paint_semantics.dedup();
+    resolved_configs.get(&resolved_target_key(
+        object_id,
+        &modifier_ids,
+        &paint_semantics,
+        tool_index,
+    ))
+}
+
+/// Resolve one target's config at the layer's top print Z.
 ///
-/// For each field in `overlay` that differs from `ResolvedConfig::default()`,
-/// the overlay value is written into `base`. This implements the
-/// global → per_object → per_paint_semantic precedence chain: the paint
-/// overlay wins over the per-object config for any field it explicitly sets.
-fn overlay_resolved(base: ResolvedConfig, overlay: &ResolvedConfig) -> ResolvedConfig {
-    let d = ResolvedConfig::default();
-    let mut r = base;
-    if overlay.layer_height != d.layer_height {
-        r.layer_height = overlay.layer_height;
+/// When a layer-range authority is present, the object has authored layer
+/// ranges, and at least one range covers `layer_top_z`, the target is resolved
+/// through the same [`resolve_scope_stack`] the runtime used for every
+/// precomputed target, with `ResolutionTarget::layer_top_z = Some(z)`. That
+/// restores the canonical `global < object < layer range < modifier < paint
+/// semantic < tool` precedence without a second resolution path. Otherwise the
+/// precomputed map lookup is returned unchanged (`None` when the map has no
+/// entry for this target), so behaviour is byte-identical to the
+/// no-authority path.
+fn resolved_target_config_for_layer(
+    host_config: Option<(&BTreeMap<String, ResolvedConfig>, &ResolvedConfig)>,
+    authority: Option<RegionResolutionAuthority<'_>>,
+    object_id: &str,
+    modifier_volumes: &[ModifierVolume],
+    chain: &[(String, PaintValue)],
+    tool_index: Option<u32>,
+    layer_top_z: f32,
+) -> Result<Option<ResolvedConfig>, RegionMappingError> {
+    if let Some(authority) = authority {
+        if authority.scoped.has_layer_ranges() {
+            let layer_top_z = f64::from(layer_top_z);
+            // Membership lives on `LayerConfigRange::covers` — the same
+            // authority `resolve_scope_stack` uses — so this pre-check can
+            // never disagree with the resolution it gates.
+            let covered = authority
+                .scoped
+                .ranges_for(&object_id.to_owned())
+                .iter()
+                .any(|range| range.covers(layer_top_z));
+            if covered {
+                let modifier_ids = ordered_modifier_ids(modifier_volumes);
+                let mut paint_semantics: Vec<String> =
+                    chain.iter().map(|(semantic, _)| semantic.clone()).collect();
+                paint_semantics.sort();
+                paint_semantics.dedup();
+                let target = ResolutionTarget {
+                    object_id: object_id.to_owned(),
+                    modifier_ids,
+                    paint_semantics,
+                    tool_index,
+                    layer_top_z: Some(layer_top_z),
+                };
+                return resolve_scope_stack(
+                    authority.registry,
+                    authority.scoped,
+                    &target,
+                    authority.expansion,
+                )
+                .map(Some)
+                .map_err(RegionMappingError::Resolution);
+            }
+        }
     }
-    if overlay.line_width != d.line_width {
-        r.line_width = overlay.line_width;
-    }
-    if overlay.first_layer_height != d.first_layer_height {
-        r.first_layer_height = overlay.first_layer_height;
-    }
-    if overlay.initial_layer_line_width != d.initial_layer_line_width {
-        r.initial_layer_line_width = overlay.initial_layer_line_width;
-    }
-    if overlay.wall_count != d.wall_count {
-        r.wall_count = overlay.wall_count;
-    }
-    if overlay.outer_wall_speed != d.outer_wall_speed {
-        r.outer_wall_speed = overlay.outer_wall_speed;
-    }
-    if overlay.inner_wall_speed != d.inner_wall_speed {
-        r.inner_wall_speed = overlay.inner_wall_speed;
-    }
-    if overlay.wall_generator != d.wall_generator {
-        r.wall_generator = overlay.wall_generator;
-    }
-    if overlay.arachne_min_feature_size != d.arachne_min_feature_size {
-        r.arachne_min_feature_size = overlay.arachne_min_feature_size;
-    }
-    if overlay.infill_type != d.infill_type {
-        r.infill_type = overlay.infill_type;
-    }
-    if overlay.infill_density != d.infill_density {
-        r.infill_density = overlay.infill_density;
-    }
-    if overlay.infill_angle != d.infill_angle {
-        r.infill_angle = overlay.infill_angle;
-    }
-    if overlay.infill_speed != d.infill_speed {
-        r.infill_speed = overlay.infill_speed;
-    }
-    if overlay.solid_infill_speed != d.solid_infill_speed {
-        r.solid_infill_speed = overlay.solid_infill_speed;
-    }
-    if overlay.top_shell_layers != d.top_shell_layers {
-        r.top_shell_layers = overlay.top_shell_layers;
-    }
-    if overlay.bottom_shell_layers != d.bottom_shell_layers {
-        r.bottom_shell_layers = overlay.bottom_shell_layers;
-    }
-    if overlay.top_fill_holder != d.top_fill_holder {
-        r.top_fill_holder = overlay.top_fill_holder.clone();
-    }
-    if overlay.bottom_fill_holder != d.bottom_fill_holder {
-        r.bottom_fill_holder = overlay.bottom_fill_holder.clone();
-    }
-    if overlay.bridge_fill_holder != d.bridge_fill_holder {
-        r.bridge_fill_holder = overlay.bridge_fill_holder.clone();
-    }
-    if overlay.sparse_fill_holder != d.sparse_fill_holder {
-        r.sparse_fill_holder = overlay.sparse_fill_holder.clone();
-    }
-    if overlay.support_enabled != d.support_enabled {
-        r.support_enabled = overlay.support_enabled;
-    }
-    if overlay.support_type != d.support_type {
-        r.support_type = overlay.support_type;
-    }
-    if overlay.support_threshold_angle != d.support_threshold_angle {
-        r.support_threshold_angle = overlay.support_threshold_angle;
-    }
-    if overlay.nonplanar_max_angle_deg != d.nonplanar_max_angle_deg {
-        r.nonplanar_max_angle_deg = overlay.nonplanar_max_angle_deg;
-    }
-    if overlay.nonplanar_shell_count != d.nonplanar_shell_count {
-        r.nonplanar_shell_count = overlay.nonplanar_shell_count;
-    }
-    if overlay.nonplanar_amplitude != d.nonplanar_amplitude {
-        r.nonplanar_amplitude = overlay.nonplanar_amplitude;
-    }
-    if overlay.smoothificator_target_height != d.smoothificator_target_height {
-        r.smoothificator_target_height = overlay.smoothificator_target_height;
-    }
-    if overlay.smoothificator_adaptive != d.smoothificator_adaptive {
-        r.smoothificator_adaptive = overlay.smoothificator_adaptive;
-    }
-    // Merge extension keys from overlay into base.
-    for (k, v) in &overlay.extensions {
-        r.extensions.insert(k.clone(), v.clone());
-    }
-    r
+    Ok(host_config.and_then(|(configs, _)| {
+        resolved_target_config(configs, object_id, modifier_volumes, chain, tool_index).cloned()
+    }))
 }
 
 /// Packet 132 (AC-4) — bind a modifier's config delta to the modifier's
 /// minted sub-region `RegionKey` instead of stamping the whole object.
 ///
 /// This returns a `region_id → config` map that keeps the parent region's
-/// config untouched while merging every modifier delta onto a *separate*
-/// config keyed by the minted sub-region id.
+/// config untouched while binding a pre-resolved modifier scope stack to a
+/// *separate* config keyed by the minted sub-region id.
 ///
 /// Concretely, given a base `infill_density = 0.15` and a modifier volume
 /// carrying `infill_density = 0.40`:
 /// * `map[base_region_id]`  → `base_config` (0.15, unchanged)
-/// * `map[sub_region_id]`   → `base_config` + merged modifier deltas (0.40)
-///
-/// The same skip rules as [`modifier_footprint_groups`] apply: modifier
-/// volumes whose subtype is `support_enforcer` / `support_blocker` are
-/// skipped entirely, empty string/list values are skipped, and modifiers are
-/// merged in priority-ascending order (last writer wins) via
-/// [`overlay_resolved`].
-pub fn stamp_modifier_sub_region_configs(
+/// * `map[sub_region_id]`   → the runtime-pre-resolved modifier target (0.40)
+fn stamp_pre_resolved_sub_region_configs(
     base_config: ResolvedConfig,
+    mut sub_config: ResolvedConfig,
+    modifier_volumes: &[ModifierVolume],
     base_region_id: u64,
     sub_region_id: u64,
-    modifier_volumes: &[ModifierVolume],
 ) -> BTreeMap<u64, ResolvedConfig> {
-    // Sort modifier indices by priority ascending so higher-priority writes
-    // last (overlay_resolved is last-writer-wins on the `extensions` map).
-    // Reverse document order for equal priorities so the first-loaded modifier
-    // remains the winner, matching geometry ownership.
     let mut order: Vec<usize> = (0..modifier_volumes.len()).collect();
-    order.sort_by_key(|&i| (modifier_volumes[i].priority, std::cmp::Reverse(i)));
-
-    let mut sub_config = base_config.clone();
-    for idx in order {
-        let mv = &modifier_volumes[idx];
-        // OrcaSlicer parity: skip support_enforcer / support_blocker entirely.
-        if let Some(ConfigValue::String(s)) = mv.config_delta.fields.get("subtype") {
-            if s == "support_enforcer" || s == "support_blocker" {
+    order.sort_by_key(|&index| (modifier_volumes[index].priority, std::cmp::Reverse(index)));
+    for index in order {
+        let modifier = &modifier_volumes[index];
+        match modifier.kind() {
+            slicer_ir::ModifierKind::ParameterModifier => {}
+            slicer_ir::ModifierKind::NegativePart => {}
+            slicer_ir::ModifierKind::SupportEnforcer => continue,
+            slicer_ir::ModifierKind::SupportBlocker => continue,
+        }
+        for (key, value) in &modifier.config_delta.fields {
+            if key == "subtype"
+                || matches!(value, ConfigValue::String(value) if value.is_empty())
+                || matches!(value, ConfigValue::List(value) if value.is_empty())
+            {
                 continue;
             }
+            sub_config.extensions.insert(key.clone(), value.clone());
         }
-        let mut overlay = ResolvedConfig::default();
-        for (k, v) in &mv.config_delta.fields {
-            if k == "subtype" {
-                continue;
-            }
-            match v {
-                ConfigValue::String(s) if s.is_empty() => continue,
-                ConfigValue::List(l) if l.is_empty() => continue,
-                _ => {}
-            }
-            overlay.extensions.insert(k.clone(), v.clone());
-        }
-        if overlay.extensions.is_empty() {
-            continue;
-        }
-        sub_config = overlay_resolved(sub_config, &overlay);
     }
 
     let mut map = BTreeMap::new();
     map.insert(base_region_id, base_config);
     map.insert(sub_region_id, sub_config);
     map
+}
+
+/// Compatibility adapter for callers that exercise modifier stamping without
+/// the runtime's typed scope resolver. Production region mapping uses
+/// [`stamp_pre_resolved_sub_region_configs`] instead.
+pub fn stamp_modifier_sub_region_configs(
+    base_config: ResolvedConfig,
+    base_region_id: u64,
+    sub_region_id: u64,
+    modifier_volumes: &[ModifierVolume],
+) -> BTreeMap<u64, ResolvedConfig> {
+    let mut sub_config = base_config.clone();
+    let mut order: Vec<usize> = (0..modifier_volumes.len()).collect();
+    order.sort_by_key(|&index| (modifier_volumes[index].priority, std::cmp::Reverse(index)));
+    for index in order {
+        let modifier = &modifier_volumes[index];
+        match modifier.kind() {
+            slicer_ir::ModifierKind::ParameterModifier => {}
+            slicer_ir::ModifierKind::NegativePart => {}
+            slicer_ir::ModifierKind::SupportEnforcer => continue,
+            slicer_ir::ModifierKind::SupportBlocker => continue,
+        }
+        for (key, value) in &modifier.config_delta.fields {
+            if key == "subtype"
+                || matches!(value, ConfigValue::String(value) if value.is_empty())
+                || matches!(value, ConfigValue::List(value) if value.is_empty())
+            {
+                continue;
+            }
+            sub_config.extensions.insert(key.clone(), value.clone());
+        }
+    }
+    stamp_pre_resolved_sub_region_configs(
+        base_config,
+        sub_config,
+        &[],
+        base_region_id,
+        sub_region_id,
+    )
 }
 
 /// Slice and group parameter-modifier footprints for one object/layer pair.
@@ -384,13 +457,13 @@ fn modifier_footprint_groups(
 ) -> Vec<(Vec<slicer_ir::ExPolygon>, Vec<ModifierVolume>)> {
     let mut groups: Vec<(Vec<slicer_ir::ExPolygon>, Vec<ModifierVolume>)> = Vec::new();
     for modifier in &object.modifier_volumes {
-        if matches!(
-            modifier.config_delta.fields.get("subtype"),
-            Some(ConfigValue::String(subtype))
-                if subtype == "support_enforcer" || subtype == "support_blocker"
-        ) || modifier.mesh.vertices.is_empty()
-            || modifier.mesh.indices.is_empty()
-        {
+        match modifier.kind() {
+            slicer_ir::ModifierKind::ParameterModifier => {}
+            slicer_ir::ModifierKind::NegativePart => {}
+            slicer_ir::ModifierKind::SupportEnforcer => continue,
+            slicer_ir::ModifierKind::SupportBlocker => continue,
+        }
+        if modifier.mesh.vertices.is_empty() || modifier.mesh.indices.is_empty() {
             continue;
         }
         let footprint = crate::slice_mesh_ex(&modifier.mesh, &[layer_z])
@@ -541,8 +614,14 @@ fn scan_paint_data(
 /// appear in their source `Vec`s, so repeated invocations over the same
 /// inputs produce a `RegionMapIR` with identical content.
 ///
-/// When `paint_regions` is `None` or `paint_semantic_configs` is empty, the
-/// output is bit-identical to the pre-packet path (invariant 9).
+/// When `paint_regions` is `None`, the output is bit-identical to the
+/// pre-packet path (invariant 9). With painting present, objects carrying a
+/// registered semantic's values expand one entry per canonical variant chain;
+/// the registry is exactly the set of semantics declared by loaded modules
+/// (`aggregate_region_splits` in
+/// `crates/slicer-scheduler/src/region_split.rs`; ADR-0071); with
+/// `paint_semantic_configs` empty, every chain entry's resolved config stays
+/// equal to the base's.
 pub fn execute_region_mapping(
     layer_plan: &LayerPlanIR,
     projection: &RegionMappingPlanProjection<'_>,
@@ -590,6 +669,8 @@ pub fn execute_region_mapping_with_cap(
         // No per-tool overlays on the legacy/test entry point.
         &BTreeMap::new(),
         cap,
+        // No layer-range authority on the compatibility entry point.
+        None,
     )
 }
 
@@ -599,6 +680,13 @@ pub fn execute_region_mapping_with_cap(
 /// config authority (`host_config = Some(...)`) without duplicating the logic.
 /// (Minor deviation from AC-1's "private helpers" wording — recorded in
 /// packet deviations.)
+///
+/// `layer_range_authority` carries the typed scopes and expansion context the
+/// runtime used to precompute `host_config`. When supplied, a region whose
+/// object has authored layer ranges covering the layer's top Z has its target
+/// config re-resolved through [`resolve_scope_stack`] with
+/// `ResolutionTarget::layer_top_z`; when omitted (or when no range covers the
+/// layer) the precomputed lookup is used exactly.
 pub fn execute_region_mapping_inner(
     layer_plan: &LayerPlanIR,
     projection: &RegionMappingPlanProjection<'_>,
@@ -609,25 +697,18 @@ pub fn execute_region_mapping_inner(
     // map to preserve the pre-P93 single-variant flow.
     aggregated_region_split: &BTreeMap<String, AggregatedRegionSplitEntry>,
     objects: &[ObjectMesh],
-    // Host config authority for `RegionPlan.config` (packet 76, 1a). When
-    // `Some((per_object, default))`, each region's base config is taken from
-    // the host's per-object map (falling back to `default`) rather than the
-    // module-emitted `region.resolved_config`; modifier deltas and paint
-    // overlays are then stamped on top in a single pass. When `None`, the
-    // module-emitted `region.resolved_config` is used as the base (preserves
-    // the pre-commit `execute_region_mapping` test/e2e callers).
+    // Host config authority for `RegionPlan.config` (packet 76, 1a). The map
+    // contains runtime-pre-resolved object/modifier/paint/tool target stacks.
+    // When `None`, the module-emitted `region.resolved_config` remains the
+    // compatibility base for `execute_region_mapping` test/e2e callers.
     host_config: Option<(&BTreeMap<String, ResolvedConfig>, &ResolvedConfig)>,
-    // Per-tool/extruder config overlays keyed by `tool_index` (`tool_config:<n>:<key>`,
-    // global-based, resolved by `resolve_per_tool_configs`). For a painted variant
-    // chain carrying `("material", ToolIndex(n))`, the matching `tool_configs[n]` is
-    // overlaid LAST — highest precedence — onto the region's effective config,
-    // mirroring OrcaSlicer's filament-override-last model
-    // (`PrintApply.cpp` applies filament overrides on top of print/object/modifier).
-    // This is the only place a painted region's tool is known before perimeter
-    // generation, so it is where per-tool geometry (e.g. `line_width`) composes.
-    // Pass an empty map to disable (preserves the pre-existing single-config flow).
+    // Standalone compatibility configs. Production target stacks already have
+    // tool-last precedence applied by the runtime resolver.
     tool_configs: &BTreeMap<u32, ResolvedConfig>,
     cap: usize,
+    // Layer-range authority for per-layer re-resolution (packet
+    // `config-scope-resolution_09`). `None` keeps the precomputed configs.
+    layer_range_authority: Option<RegionResolutionAuthority<'_>>,
 ) -> Result<RegionMapIR, RegionMappingError> {
     // --- Cap check with top-contributor diagnostics (docs/04 normative memory budget) ----
     let mut entry_count = 0usize;
@@ -744,11 +825,11 @@ pub fn execute_region_mapping_inner(
                     for mv in &obj.modifier_volumes {
                         // Same skip rules as `stamp_modifier_sub_region_configs`
                         // and `stage_modifier_footprints`.
-                        if let Some(ConfigValue::String(s)) = mv.config_delta.fields.get("subtype")
-                        {
-                            if s == "support_enforcer" || s == "support_blocker" {
-                                continue;
-                            }
+                        match mv.kind() {
+                            slicer_ir::ModifierKind::ParameterModifier => {}
+                            slicer_ir::ModifierKind::NegativePart => {}
+                            slicer_ir::ModifierKind::SupportEnforcer => continue,
+                            slicer_ir::ModifierKind::SupportBlocker => continue,
                         }
                         if mv.mesh.vertices.is_empty() || mv.mesh.indices.is_empty() {
                             continue;
@@ -787,15 +868,23 @@ pub fn execute_region_mapping_inner(
                                 region_map_out.entries.len() + 1,
                             ));
                         }
-                        let sub_config = stamp_modifier_sub_region_configs(
+                        let modifiers: Vec<ModifierVolume> = mvs.into_iter().cloned().collect();
+                        let resolved_sub_config = resolved_target_config_for_layer(
+                            host_config,
+                            layer_range_authority,
+                            &region.object_id,
+                            &modifiers,
+                            &[],
+                            None,
+                            layer.z,
+                        )?
+                        .unwrap_or_else(|| base_config.clone());
+                        let sub_config = stamp_pre_resolved_sub_region_configs(
                             base_config.clone(),
+                            resolved_sub_config,
+                            &modifiers,
                             region.region_id,
                             sub_id,
-                            // Clone the (usually single-element) group: the
-                            // stamping helper takes `&[ModifierVolume]`, and
-                            // the mint rarely overlaps two modifiers with
-                            // identical cross-sections.
-                            &mvs.into_iter().cloned().collect::<Vec<ModifierVolume>>(),
                         )
                         .remove(&sub_id)
                         .expect(
@@ -854,7 +943,23 @@ pub fn execute_region_mapping_inner(
                 // below. Keeping every parent chain pure prevents a modifier
                 // from leaking outside its footprint, including across paint
                 // variants.
-                let mut effective = base_config.clone();
+                let mut effective = resolved_target_config_for_layer(
+                    host_config,
+                    layer_range_authority,
+                    &region.object_id,
+                    &[],
+                    &chain,
+                    chain.iter().find_map(|(semantic, value)| {
+                        (semantic == "material")
+                            .then_some(value)
+                            .and_then(|value| match value {
+                                PaintValue::ToolIndex(index) => Some(*index),
+                                _ => None,
+                            })
+                    }),
+                    layer.z,
+                )?
+                .unwrap_or_else(|| base_config.clone());
                 let mut paint_overrides: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
                 // The chain's painted material tool (if any). Captured here so the
                 // per-tool config can be overlaid LAST (highest precedence), after
@@ -870,8 +975,10 @@ pub fn execute_region_mapping_inner(
                         .find(|sem| &paint_semantic_namespace_key(sem) == sem_name);
                     if let Some(sem_key) = matched_key {
                         if let Some(sem_cfg) = paint_semantic_configs.get(sem_key) {
-                            effective = overlay_resolved(effective, sem_cfg);
                             paint_overrides.insert(sem_key.clone(), sem_cfg.clone());
+                            if host_config.is_none() {
+                                effective = sem_cfg.clone();
+                            }
                         }
                     }
                     // A material chain entry carries the region's tool selector.
@@ -882,13 +989,13 @@ pub fn execute_region_mapping_inner(
                     }
                 }
 
-                // Per-tool overlay — highest precedence (OrcaSlicer filament-
-                // override-last). Enables per-tool geometry (e.g. `line_width`) for
-                // painted/MMU tools at the one point the tool is known before
-                // perimeter generation. `region_id` stays the pure identity.
-                if let Some(t) = chain_tool_index {
-                    if let Some(tool_cfg) = tool_configs.get(&t) {
-                        effective = overlay_resolved(effective, tool_cfg);
+                // Compatibility callers without the production target map can
+                // still provide a fully resolved tool target.
+                if host_config.is_none() {
+                    if let Some(tool_config) =
+                        chain_tool_index.and_then(|index| tool_configs.get(&index))
+                    {
+                        effective = tool_config.clone();
                     }
                 }
 
@@ -912,33 +1019,25 @@ pub fn execute_region_mapping_inner(
                     for (footprint, modifiers) in &modifier_groups {
                         let sub_id =
                             modifier_sub_region_id(parent_region_id, &region.object_id, footprint);
-                        let mut child_config = stamp_modifier_sub_region_configs(
+                        let resolved_child_config = resolved_target_config_for_layer(
+                            host_config,
+                            layer_range_authority,
+                            &region.object_id,
+                            modifiers,
+                            &chain,
+                            chain_tool_index,
+                            layer.z,
+                        )?
+                        .unwrap_or_else(|| base_config.clone());
+                        let child_config = stamp_pre_resolved_sub_region_configs(
                             base_config.clone(),
+                            resolved_child_config,
+                            modifiers,
                             parent_region_id,
                             sub_id,
-                            modifiers,
                         )
                         .remove(&sub_id)
                         .expect("modifier config helper always emits the child entry");
-
-                        // Modifier precedence is below paint and per-tool
-                        // precedence, matching the parent chain resolution.
-                        for (sem_name, value) in &chain {
-                            let matched_key = paint_semantic_configs
-                                .keys()
-                                .find(|sem| &paint_semantic_namespace_key(sem) == sem_name);
-                            if let Some(sem_key) = matched_key {
-                                if let Some(sem_cfg) = paint_semantic_configs.get(sem_key) {
-                                    child_config = overlay_resolved(child_config, sem_cfg);
-                                }
-                            }
-                            let _ = value;
-                        }
-                        if let Some(t) = chain_tool_index {
-                            if let Some(tool_cfg) = tool_configs.get(&t) {
-                                child_config = overlay_resolved(child_config, tool_cfg);
-                            }
-                        }
 
                         let key = RegionKey {
                             global_layer_index: layer.index,

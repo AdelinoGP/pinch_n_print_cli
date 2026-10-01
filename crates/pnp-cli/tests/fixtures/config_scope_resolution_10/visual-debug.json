@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0.0",
+  "source": {
+    "kind": "model",
+    "model": "resources/regression_wedge.stl",
+    "config": "crates/pnp-cli/tests/fixtures/config_scope_resolution_10/visual-debug-config.json",
+    "module_dirs": [
+      "modules/core-modules"
+    ]
+  },
+  "layers": [
+    0
+  ],
+  "taps": [
+    "PostPass::GCodeEmit"
+  ],
+  "visualizations": [
+    "filament_lines"
+  ]
+}

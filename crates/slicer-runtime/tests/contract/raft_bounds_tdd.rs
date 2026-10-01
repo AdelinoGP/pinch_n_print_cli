@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use slicer_ir::{ConfigValue, ConfigView, RegionKey, RegionPlan, SemVer};
+use slicer_ir::{ConfigValue, ConfigView, RegionKey, RegionPlan, ResolvedConfig, SemVer};
 use slicer_runtime::{
     bind_module_config_view, build_execution_plan, ConfigFieldEntry, ConfigSchema,
     ExecutionModuleBinding, ExecutionPlanError, ExecutionPlanRequest, LoadDiagnostic, LoadedModule,
@@ -82,7 +82,7 @@ fn raft_keys_declared_and_wired() {
     )
     .expect("raft source must be readable");
 
-    let mut values = HashMap::new();
+    let mut resolved = ResolvedConfig::default();
     for (key, default, value, display) in KEYS {
         let entry = module
             .config_schema()
@@ -99,10 +99,20 @@ fn raft_keys_declared_and_wired() {
             source.contains(&format!("value(\"{key}\"")),
             "{key} must be read"
         );
-        values.insert(key.to_string(), ConfigValue::Float(value));
+        // The raft keys are module-declared, not `ResolvedConfig` fields, so
+        // they surface in the bound view through `extensions` (the resolver's
+        // routing for `apply_cli_key`'s `Ok(false)` fall-through).
+        if !resolved
+            .apply_cli_key(key, &ConfigValue::Float(value))
+            .expect("raft keys are not typed ResolvedConfig fields")
+        {
+            resolved
+                .extensions
+                .insert(key.to_string(), ConfigValue::Float(value));
+        }
     }
 
-    let view = bind_module_config_view(&module, &values);
+    let view = bind_module_config_view(&module, &resolved);
     assert_eq!(view.get_float("raft_contact_distance"), Some(0.1));
     assert_eq!(view.get_float("raft_expansion"), Some(1.5));
     assert_eq!(view.get_float("raft_first_layer_expansion"), Some(2.0));

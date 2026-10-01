@@ -61,6 +61,7 @@ fn origin() -> Option<OriginId> {
     Some(OriginId {
         object_id: OBJECT_ID.to_string(),
         region_id: REGION_ID,
+        variant_chain: Vec::new(),
     })
 }
 

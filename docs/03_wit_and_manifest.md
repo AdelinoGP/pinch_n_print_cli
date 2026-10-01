@@ -56,7 +56,7 @@ crates/slicer-schema/wit/
     layer-path-optimization/layer-path-optimization.wit                      # package slicer:layer-path-optimization@1.0.0
     layer-anchored-events/layer-anchored-events.wit                            # package slicer:layer-anchored-events@1.0.0
     prepass-mesh-analysis/prepass-mesh-analysis.wit                          # package slicer:prepass-mesh-analysis@1.0.0
-    prepass-layer-planning/prepass-layer-planning.wit                        # package slicer:prepass-layer-planning@1.0.0
+    prepass-layer-planning/prepass-layer-planning.wit                        # package slicer:prepass-layer-planning@3.0.0
     prepass-seam-planning/prepass-seam-planning.wit                          # package slicer:prepass-seam-planning@1.0.0
     prepass-support-geometry/prepass-support-geometry.wit                    # package slicer:prepass-support-geometry@1.0.0
     postpass-gcode-postprocess/postpass-gcode-postprocess.wit          # package slicer:postpass-gcode-postprocess@1.0.0
@@ -291,13 +291,24 @@ Notable records/methods worth surfacing (not obvious from the resource names):
   resolved settings inside each region loop. Packet 131 bumps the then-monolithic `world-layer`
   from 2.0.0 to 2.1.0 for this additive contract change.
 - `perimeter-output-builder` and `infill-output-builder` both carry
-   `set-current-origin: func(object-id: string, region-id: string) -> result<_, string>`,
-   which tags the region currently being iterated so buffered per-region pushes are
-   attributed correctly (packet 127, ADR-0022; see the `begin_region` SDK method).
+   `set-current-origin: func(object-id: string, region-id: string, variant-chain: list<tuple<string, paint-value>>) -> result<_, string>`,
+   which tags the region currently being iterated — full identity, including
+   the paint variant chain — so buffered per-region pushes are
+   attributed correctly (packet 127, ADR-0022; see the `begin_region` SDK
+   method). Widened from the original two-field form by the seam-identity
+   change; the builders live in the **unversioned** shared `slicer:ir-handles`
+   package, so there is no world version to bump — compatibility is enforced
+   structurally by wasmtime typed instantiation at first dispatch, and every
+   guest must be rebuilt (`cargo xtask build-guests`).
 - `support-output-builder` also carries
-  `set-current-origin: func(object-id: string, region-id: string) -> result<_, string>`,
+  `set-current-origin: func(object-id: string, region-id: string, variant-chain: list<tuple<string, paint-value>>) -> result<_, string>`,
   which tags the support region currently being iterated so buffered per-region pushes
   are attributed correctly (packet 205c; see the `begin_region` SDK method).
+- `perimeter-region-view` exposes
+  `variant-chain: func() -> list<tuple<string, paint-value>>`, mirroring
+  `slice-region-view`; guests forward it through `begin_region`. The
+  `prior-infill-region` record carries `variant-chain` as a field so the
+  infill linker can re-attribute its re-emitted paths to the source variant.
 - `slice-region-view` and `perimeter-region-view` both expose
   `raft-fill: func() -> list<ex-polygon>` (packet 240a), mirroring
   `SlicedRegion.raft_fill`. The `raft-default` module writes raft polygons through
@@ -515,7 +526,7 @@ interface contains the single `run` function:
 | Stage | Source package | Package identity |
 |-------|----------------|------------------|
 | `PrePass::MeshAnalysis` | `deps/prepass-mesh-analysis/prepass-mesh-analysis.wit` | `slicer:prepass-mesh-analysis@1.0.0` |
-| `PrePass::LayerPlanning` | `deps/prepass-layer-planning/prepass-layer-planning.wit` | `slicer:prepass-layer-planning@1.0.0` |
+| `PrePass::LayerPlanning` | `deps/prepass-layer-planning/prepass-layer-planning.wit` | `slicer:prepass-layer-planning@3.0.0` |
 | `PrePass::SeamPlanning` | `deps/prepass-seam-planning/prepass-seam-planning.wit` | `slicer:prepass-seam-planning@1.0.0` |
 | `PrePass::SupportGeometry` | `deps/prepass-support-geometry/prepass-support-geometry.wit` | `slicer:prepass-support-geometry@1.0.0` |
 
@@ -523,6 +534,25 @@ The shared view records (`mesh-object-view`, `paint-value-view`, `paint-stroke-v
 `paint-layer-view`) are defined once in the unversioned flat package
 `deps/prepass-types.wit` (`slicer:prepass-types`). Read each stage package for its exact
 parameters, view records, and imported output resource.
+
+### `PrePass::LayerPlanning` v3 object configuration (Normative — TASK-566)
+
+`slicer:prepass-layer-planning@3.0.0` retains the layer-planning `objects`,
+`output`, and `config` inputs and adds `object-configs:
+list<object-layer-config>`. The `object-layer-config` record has exactly these
+six fields:
+
+| WIT field | Meaning |
+|-----------|---------|
+| `object-id` | Stable object identity for the resolved record. |
+| `object-height` | Resolved object height in millimetres. |
+| `layer-height` | Effective resolved layer height. |
+| `first-layer-height` | Effective resolved first-layer height. |
+| `support-raft-layers` | Resolved number of raft prefix layers. |
+| `layer-zs` | Host-derived object-local top Zs; empty preserves the uniform fallback. |
+
+The host resolves these values before dispatch; the guest receives the typed
+record rather than reconstructing namespaced keys.
 
 `PrePass::PaintSegmentation` is host-built-in (packet 97; see
 `01_system_architecture.md`) and has no module package or WIT export.
@@ -697,11 +727,18 @@ now legacy" above).
 
 At ingestion, `ingest_manifest` in `crates/slicer-scheduler/src/manifest.rs`
 requires `[module].id`/`version`, `[stage].id`, `[ir-access].reads`/`writes`,
-`[claims].holds`/`requires`, all five `[compatibility]` fields,
-`config.overridable-per-region.keys`, `config.overridable-per-layer.keys`, and
-`hints.layer-parallel-safe`. `[config.schema]` and `[[region_split]]` are
-optional; their field entries and declarations are parsed when present. Other
-TOML keys are tolerated but are not stored by the manifest loader.
+`[claims].holds`/`requires`, all five `[compatibility]` fields, and
+`hints.layer-parallel-safe`. `[config.schema]`, `[[region_split]]`, and the
+top-level `paint_only` metadata are optional; their field entries and
+declarations are parsed when present. Other TOML keys are tolerated but are
+not stored by the manifest loader.
+
+Declaring `[[region_split]]` registers paint semantics in the cross-manifest
+aggregate; `paint_only = true` is a separate opt-in that makes the declaration
+also gate per-layer invocation. A module may declare semantics and still run
+on every layer (the core `classic-perimeters`, `arachne-perimeters`, and
+`fuzzy-skin` modules do exactly that — fuzzy-skin's `apply_to_all` mode
+requires invocation on unpainted layers). See ADR-0071.
 
 The sibling module manifest is a build-relevant declaration input: `[stage].id`
 drives stage expectation, and `[config.schema]` controls the keys forwarded
@@ -863,7 +900,6 @@ max-ir-schema     = "2.0.0"      # exclusive upper bound
   display  = "Infill Density"
   unit     = "ratio"          # UI renders as percentage
   group    = "Pattern"
-  validate = "value > 0.0 && value < 1.0"
 
    [config.schema.multiline_count]
   type    = "int"
@@ -892,22 +928,15 @@ max-ir-schema     = "2.0.0"      # exclusive upper bound
   group    = "Advanced"
   advanced = true
 
-# ── Cross-field validation ────────────────────────────────────────────────────
-# <!-- VERIFY: as of this writing, `manifest.rs` does not parse
-#      `[[config.cross-validate]]`; the rule is not enforced at module load.
-#      Treat this section as a forward-looking design item until the parser
-#      and validator catch up. -->
-[[config.cross-validate]]
-rule     = "marching_cell_size >= raster_precision * 10"
-message  = "Marching cell size should be at least 10x the raster precision"
-severity = "warning"    # "error" blocks slicing; "warning" notifies only
-
-# ── Per-region / per-layer override policy ────────────────────────────────────
-[config.overridable-per-region]
-keys = ["pattern", "density", "multiline-count"]
-
-[config.overridable-per-layer]
-keys = ["density"]      # density can vary per-layer; pattern cannot
+# ── Scope eligibility (per key; ADR-0069) ─────────────────────────────────────
+# A key's scope eligibility is declared per field, on the key's own
+# `[config.schema.<key>]` entry, via `denied_scopes` (see "Config Field Types
+# Reference" below). Absent `denied_scopes` means the key may be stated at
+# every scope: `global`, `object`, `layer_range`, `modifier`, `paint_semantic`,
+# `tool`. There is no per-module override allow list. Illustrative entry:
+#   [config.schema.some_machine_key]
+#   type          = "float"
+#   denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 # ── Region-split semantics declaration (Normative — Packet 92) ─────────────
 # Each [[region_split]] entry declares one paint semantic this module wants
@@ -926,6 +955,16 @@ value_type = "tool_index"      # flag | tool_index | custom_string
                                 # `scalar` is REJECTED at manifest load —
                                 # Scalar paints route through
                                 # SlicedRegion.segment_annotations instead.
+
+# ── Paint-only dispatch opt-in (Normative — ADR-0071) ────────────────────────
+# paint_only = true makes the host skip this module on any layer whose regions
+# carry none of the declared [[region_split]] semantics. Omitted or false
+# (the default) keeps the module dispatch-transparent: it runs on every layer
+# and its declarations still register semantics in the aggregate. Setting
+# paint_only = true REQUIRES at least one [[region_split]] entry; a paint-only
+# module with no semantics would be skipped on every layer and is rejected at
+# load time with PaintOnlyWithoutRegionSplit. Uncomment both lines together:
+# paint_only = true
 
 # ── Hints ─────────────────────────────────────────────────────────────────────
 [hints]
@@ -949,11 +988,9 @@ enabling modules to declare a single schema entry for dynamically-named
 keys such as `object_height:<uuid>` or `paint_config:<semantic>:<key>`.
 Static keys (without the `:*` suffix) continue to require exact-match.
 The matcher is `source_key_matches_declared` in
-`crates/slicer-scheduler/src/execution_plan.rs`. The parser stores the
-`config.overridable-per-region` and `config.overridable-per-layer` key lists,
-but the current scheduler does not apply this wildcard matcher to those lists.
+`crates/slicer-scheduler/src/execution_plan.rs`.
 
-### `[[region_split]]` Validation Rules (Normative — Packet 92)
+### `[[region_split]]` Validation Rules (Normative — Packet 92, ADR-0071)
 
 Per-manifest:
 
@@ -967,6 +1004,14 @@ Per-manifest:
 4. **Core semantic (`material`, `fuzzy_skin`) with `priority` ≠ registry
    value** → rejected (`LoadErrorKind::CorePriorityMismatch`).
    `CORE_REGION_SPLIT_PRIORITIES = { "material" => 100, "fuzzy_skin" => 200 }`.
+5. **Top-level `paint_only = true` with no `[[region_split]]` entry** →
+   rejected (`LoadErrorKind::PaintOnlyWithoutRegionSplit`). A non-boolean
+   `paint_only` is a `Schema` error naming the field.
+
+The aggregate is declaration-only: `material` and `fuzzy_skin` are present in
+`aggregated_region_split` because the core perimeter and fuzzy-skin manifests
+declare them, not because the host seeds them. Removing every declaration
+empties the aggregate. See ADR-0071.
 
 Cross-manifest: distinct semantics from different manifests that share a
 priority emit a non-fatal `LoadDiagnostic { level: Warning, ... }` naming
@@ -1221,9 +1266,9 @@ group   = "Support"
 # fields are mirrored into the configuration-only `RaftPlan` record.
 [config.schema.raft_first_layer_density]
 type    = "float"
-default = 0.4
-min     = 0.0
-max     = 1.0
+default = 90.0
+min     = 10.0
+max     = 100.0
 display = "Raft First Layer Density"
 group   = "Support"
 
@@ -1616,8 +1661,20 @@ set is listed by `slicer_schema::VALID_CONFIG_TYPES`.
 | `description` | string       | UI tooltip / help text.                                          |
 | `group`   | string           | UI grouping hint (becomes a section header in the settings tab). |
 | `advanced` | bool            | Hidden by default; revealed only in advanced view.               |
-| `validate` | string          | Single-field validation expression. See § Validation Expression Language. |
+| `selector` | bool           | Marks a key used to select a module or execution path; selector keys must be unavailable at narrower per-region scopes. |
+| `base_key` | string          | Absolute config key used as the base for `percent` and `float_or_percent` values. |
+| `denied_scopes` | array of strings | The key's scope eligibility, as a per-key **deny list** (ADR-0069): scopes where the key **cannot** be stated. Statable scopes are `global`, `object`, `layer_range`, `modifier`, `paint_semantic`, and `tool`; an absent (or empty) `denied_scopes` means the key may be stated at every scope (`global`, `object`, `layer_range`, `modifier`, `paint_semantic`, `tool`). This is the sole per-key scope-eligibility mechanism for both host and module-declared keys. A statement at a denied scope is rejected loudly at resolution (`ResolutionError::ScopeDenied`, see `docs/04_host_scheduler.md`). |
 | `tags`    | array of strings | UI taxonomy tags for sub-tab filtering and search (free-form). Emitted as `[]` when absent. |
+| `config_block` | bool (optional) | Whether the key is emitted in the G-code `CONFIG_BLOCK`. Default `true`: any declaration (host or module manifest) that does not set the flag emits the key whenever the resolved config carries it. A `false` on any declaration wins — reconciliation marks the key `omit_from_config_block` when any host row or declaring module sets it. |
+
+Exactly four keys carry explicit `config_block = false`: `thumbnail_path`, `mmu_segmented_region_max_width`, `mmu_segmented_region_interlocking_depth`, and `mmu_segmented_region_interlocking_beam`. The three `mmu_segmented_region_*` keys are excluded because their emission would change `CONFIG_BLOCK` bytes for every print; `thumbnail_path` is the fork-only runtime key. Emission order is deterministic (`BTreeMap`).
+
+When a `CONFIG_BLOCK` value is a string, the serializer escapes it per
+canonical `escape_string_cstyle` (`ConfigOptionString::serialize`, OrcaSlicer
+`Config.cpp`): a string value in any declaration's key is serialized with
+`\n`, `\r`, `\\`, and `\"` escapes so multi-line values (for example
+`machine_start_gcode`) round-trip on one `; key = value` line through
+OrcaSlicer's `ConfigBase::load_from_gcode_file`.
 
 #### Tag conventions
 
@@ -1664,34 +1721,6 @@ and `resolve_global_config` / `resolve_per_object_configs` /
 | `"deg"`   | `X°`               |
 | `"mm/s"`  | `X mm/s`           |
 | `"ms"`    | `X ms`             |
-
----
-
-## Validation Expression Language
-
-Used in `validate` (single field) and `cross-validate.rule` (multi-field). Deliberately restricted — no loops, no I/O, no function calls.
-
-<!-- VERIFY: as of this writing the parser stores `validate`/`cross-validate`
-     strings but does not interpret them at module load. The grammar below is
-     the forward-looking design; do not assume runtime enforcement. The
-     numeric-bounds enforcement above (`min`/`max`) is independent of this
-     grammar and is enforced today by `ConfigBoundsIndex`. -->
-
-
-```text
-Literals:   0, 1.5, true, false, "string"
-References: value (single-field), field-name (cross-validate)
-Operators:  && || ! == != < <= > >= + - * /
-Functions:  min(a,b)  max(a,b)  abs(x)  floor(x)  ceil(x)
-```
-
-Examples:
-
-```toml
-validate = "value >= 0.01 && value <= 10.0"
-rule     = "outer_wall_speed <= inner_wall_speed * 1.5"
-rule     = "min(layer_height, 0.35) == layer_height"
-```
 
 ---
 

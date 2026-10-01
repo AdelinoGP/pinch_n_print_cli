@@ -13,16 +13,17 @@
 // as a real TDD test that expresses the target behaviour. AC-N1 is the sub-case
 // that MUST pass immediately (empty bridge_areas → no panic, all is_bridge=false).
 
+use crate::common::classic_perimeters_baseline;
 use classic_perimeters::ClassicPerimeters;
 use slicer_ir::{ConfigView, ExPolygon, Point2, Polygon};
 use slicer_sdk::builders::PerimeterOutputBuilder;
-use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
-/// Build a `ConfigView` with `wall_count=1`, `line_width=0.4`.
+/// Build a `ConfigView` with `wall_count=1`, `line_width=0.4` over the
+/// bound-view baseline (packet 06 5c-prime).
 fn config_1_wall() -> ConfigView {
-    ConfigViewBuilder::new()
+    classic_perimeters_baseline()
         .int("wall_count", 1)
         .float("line_width", 0.4)
         .build()

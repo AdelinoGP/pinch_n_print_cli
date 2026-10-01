@@ -246,7 +246,9 @@ fn enforcer_bias_flips_seam_placer_selection() {
 /// unread as before.
 #[test]
 fn classic_perimeters_blocker_excludes_painted_corner() {
-    let config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
+    // reads need the full classic surface; the fixture's own keys override it.
+    let config = crate::common::classic_perimeters_baseline()
         .int("wall_count", 1)
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)

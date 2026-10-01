@@ -15,7 +15,7 @@ fn root() -> PathBuf {
 
 fn run_capture(model: &Path, tag: &str) -> Value {
     let root = root();
-    let target = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target");
+    let target = crate::common::slicer_cache::test_artifact_dir();
     let request = target.join(format!("{tag}_request.json"));
     let output = target.join(format!("{tag}_bundle"));
     let config = target.join(format!("{tag}_config.json"));

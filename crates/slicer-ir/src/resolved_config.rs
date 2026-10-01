@@ -28,17 +28,15 @@ pub struct ResolvedFloatOrPercent {
     pub is_percent: bool,
 }
 
-/// Resolve `support_line_width` to millimetres. A percentage is of the nozzle
-/// diameter; the default `0` is auto and also resolves to the nozzle diameter
-/// (PnP has no flow model).
-pub fn resolve_support_line_width_mm(
+/// Resolve `initial_layer_line_width` to millimetres. Percentages use the
+/// nozzle diameter as their base; an absolute value, including the zero auto
+/// sentinel, passes through unchanged for the role-width resolver to handle.
+pub fn resolve_initial_layer_line_width_mm(
     value: ResolvedFloatOrPercent,
     nozzle_diameter_mm: f32,
 ) -> f32 {
     if value.is_percent {
         value.value as f32 / 100.0 * nozzle_diameter_mm
-    } else if value.value == 0.0 {
-        nozzle_diameter_mm
     } else {
         value.value as f32
     }
@@ -68,6 +66,12 @@ impl std::hash::Hash for ResolvedFloatOrPercent {
     }
 }
 
+/// AC-13 oracle: the hand-written `to_config_map` as it stood before the
+/// [`declare_resolved_config!`] macro generated the production map from the
+/// `cli` / `cli_opt` / `plain` rows. The body below is kept verbatim — same
+/// keys, same renderings, same comments — so the generated map can be
+/// falsified against it.
+#[cfg(test)]
 impl ResolvedConfig {
     /// Flattens this config into a `HashMap<key, ConfigValue>` of effective
     /// slicer settings.
@@ -80,20 +84,20 @@ impl ResolvedConfig {
     /// restrict visibility (e.g. the per-module config view) filter this map to
     /// their declared keys.
     #[must_use]
-    pub fn to_config_map(&self) -> HashMap<String, ConfigValue> {
+    fn legacy_to_config_map(&self) -> HashMap<String, ConfigValue> {
         let mut m: HashMap<String, ConfigValue> = HashMap::new();
         m.insert("layer_height".into(), ConfigValue::Float(self.layer_height));
-        m.insert(
-            "line_width".into(),
-            ConfigValue::Float(f64::from(self.line_width)),
-        );
+        m.insert("line_width".into(), ConfigValue::Float(self.line_width));
         m.insert(
             "first_layer_height".into(),
             ConfigValue::Float(self.first_layer_height),
         );
         m.insert(
             "initial_layer_line_width".into(),
-            ConfigValue::Float(f64::from(self.initial_layer_line_width)),
+            ConfigValue::FloatOrPercent {
+                value: self.initial_layer_line_width.value,
+                is_percent: self.initial_layer_line_width.is_percent,
+            },
         );
         m.insert(
             "wall_count".into(),
@@ -310,6 +314,67 @@ impl ResolvedConfig {
 }
 
 impl ResolvedConfig {
+    /// Effective `filament_max_volumetric_speed` in mm³/s for the selected
+    /// tool, read from the [`ResolvedConfig::extensions`] carrier.
+    ///
+    /// Mirrors canonical `Extruder::max_volumetric_speed` / `GCode::_extrude`,
+    /// which reads the filament setting for the active extruder. `0.0` means no
+    /// explicit maximum is available; an absent key is the same "unavailable"
+    /// state and also reads as `0.0`. If a zero role speed requests automatic
+    /// derivation without a positive maximum, the emitter returns an error.
+    ///
+    /// Accepted shapes, matching [`extract_float_or_first`]'s documented
+    /// envelope leniency (canonical `coFloats` wire): a `Float`, an `Int`, a
+    /// numeric `String`, or a non-empty `List` whose first element is one of
+    /// those; the magnitude is the entry the envelope carries, so a per-filament
+    /// list is read at its first element and never indexed by tool. Empty lists,
+    /// non-numeric first elements, non-numeric variants, NaN/±Inf, and negative
+    /// values are rejected with a named error. Percent magnitudes and the
+    /// nullable `nil` sentinel are deliberately not accepted as an absolute
+    /// limit.
+    pub fn filament_max_volumetric_speed(&self) -> Result<f64, String> {
+        const KEY: &str = "filament_max_volumetric_speed";
+        fn scalar(value: &ConfigValue) -> Result<f64, String> {
+            match value {
+                ConfigValue::Float(f) => Ok(*f),
+                ConfigValue::Int(i) => Ok(*i as f64),
+                ConfigValue::String(s) => s.trim().parse::<f64>().map_err(|_| {
+                    format!("config key '{KEY}': expected a numeric value, got {s:?}")
+                }),
+                other => Err(format!(
+                    "config key '{KEY}': expected Float, Int, a numeric String, or a non-empty \
+                     List whose first element is numeric, got {}",
+                    variant_name(other)
+                )),
+            }
+        }
+
+        let value = match self.extensions.get(KEY) {
+            None => return Ok(0.0),
+            Some(ConfigValue::List(items)) => match items.first() {
+                Some(first) => scalar(first)?,
+                None => {
+                    return Err(format!(
+                        "config key '{KEY}': expected a non-empty List, got an empty List"
+                    ))
+                }
+            },
+            Some(other) => scalar(other)?,
+        };
+
+        if !value.is_finite() {
+            return Err(format!(
+                "config key '{KEY}': value {value} must be finite (NaN and ±Inf are not a maximum)"
+            ));
+        }
+        if value < 0.0 {
+            return Err(format!(
+                "config key '{KEY}': value {value} must be non-negative (0 = unavailable)"
+            ));
+        }
+        Ok(value)
+    }
+
     /// Filament density in g/cm³ for `tool_index`, or `None` when unconfigured.
     ///
     /// Mirrors canonical `Extruder::filament_density`, which reads
@@ -820,6 +885,42 @@ pub struct HostConfigKey {
     /// Display metadata, [`HostKeyMeta::NONE`] when the declaration carries
     /// none.
     pub meta: HostKeyMeta,
+    /// Scopes in which the key may not be stated, in canonical order.
+    ///
+    /// Empty means statable at every scope (ADR-0069: permissive by default).
+    /// Two authored sets are canonical: [`WHOLE_PRINT_ONLY_SCOPES`] for
+    /// machine/emitter keys whose value cannot mean anything below whole-print
+    /// scope, and [`TOOL_CAPABLE_SCOPES`] for keys a per-tool statement can
+    /// narrow. A key declared by several channels gets the **union** of their
+    /// denials at registry assembly, so a scope denied by any declarer is
+    /// denied.
+    pub denied_scopes: &'static [&'static str],
+}
+
+/// One static host-runtime config key declaration.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HostRuntimeKey {
+    /// Config key name as it appears in the CLI/JSON config source.
+    pub key: &'static str,
+    /// Wire type string, matching the module-manifest vocabulary.
+    pub field_type: &'static str,
+    /// Preset scope for the key.
+    pub scope: &'static str,
+    /// Default rendered as a static string, or `None` when the key has no
+    /// default.
+    ///
+    /// A key registered without a default is not seeded, stays absent unless
+    /// authored, and renders `"default": null` on the `module config-schema`
+    /// wire. Keys the serializer synthesizes when absent (e.g.
+    /// `printer_model`) and `extruder` (a seeded value would change per-region
+    /// tool assignment) deliberately carry none.
+    pub default: Option<&'static str>,
+    /// Display metadata for the key.
+    pub meta: HostKeyMeta,
+    /// Whether the key selects a host runtime implementation.
+    pub selector: bool,
+    /// Scopes in which the key may not be overridden.
+    pub denied_scopes: &'static [&'static str],
 }
 
 /// Optional GUI display metadata for one host config key, mirroring the
@@ -867,6 +968,13 @@ pub struct HostKeyMeta {
     /// Whether the control lands in expert mode on the GUI (`true`) or
     /// advanced mode (`false`).
     pub advanced: bool,
+    /// Whether this key is excluded from the G-code `CONFIG_BLOCK`.
+    ///
+    /// Polarity-safe: `false` (the [`HostKeyMeta::NONE`] default) means the key
+    /// is emitted. Marked on the three `mmu_segmented_region_*` rows, whose
+    /// emission would change `CONFIG_BLOCK` bytes for every print (P96 AC-8),
+    /// and on the fork-only `thumbnail_path` runtime row.
+    pub omit_from_config_block: bool,
 }
 
 impl HostKeyMeta {
@@ -882,8 +990,200 @@ impl HostKeyMeta {
         values: &[],
         wire_type: None,
         advanced: false,
+        omit_from_config_block: false,
     };
 }
+
+/// Default `wall_generator` value used when the config key is absent.
+pub const DEFAULT_WALL_GENERATOR: &str = "classic";
+
+/// Denied scopes for a key that can only be stated once per whole print.
+///
+/// Every sub-print scope is denied. Canonical order, low scope first; the
+/// `denied_scopes` field is compared positionally by the drift test, so this
+/// order is normative (ADR-0069).
+pub const WHOLE_PRINT_ONLY_SCOPES: &[&str] = &[
+    "object",
+    "layer_range",
+    "modifier",
+    "paint_semantic",
+    "tool",
+];
+
+/// Denied scopes for a key a per-tool statement can meaningfully narrow.
+///
+/// Identical to [`WHOLE_PRINT_ONLY_SCOPES`] minus `tool`: the tool scope stays
+/// statable, so the key can be per-tool while remaining print-wide everywhere
+/// else below object scope.
+pub const TOOL_CAPABLE_SCOPES: &[&str] = &["object", "layer_range", "modifier", "paint_semantic"];
+
+/// Static config keys read directly by host runtime code.
+///
+/// The first three rows predate packet 06; the remaining rows are the
+/// host-consumed keys whose absence the host previously tolerated only because
+/// ingestion was warn-and-keep and the raw overlay re-injected them. Keys the
+/// serializer synthesizes when absent (`gcode_flavor`, `printer_model`,
+/// `filament_colour`, `extruder_colour`) and `extruder` carry no default so
+/// registration never seeds them.
+///
+/// `filament_max_volumetric_speed` is the one row among the post-packet-06
+/// additions that carries a real value default rather than `None`: it is a
+/// declared config key (not a synthesized wire key), so the registry seed rule
+/// materializes its `0.0` into [`ResolvedConfig::extensions`], where the
+/// accessor reads it. Its [`HostKeyMeta::min`] and
+/// [`HostRuntimeKey::denied_scopes`] carry the same `>= 0` bound and
+/// tool-capable policy its removed typed declaration had.
+pub const HOST_RUNTIME_KEYS: &[HostRuntimeKey] = &[
+    HostRuntimeKey {
+        key: "use_relative_e_distances",
+        field_type: "bool",
+        scope: SCOPE_PRINTER,
+        default: Some("true"),
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: WHOLE_PRINT_ONLY_SCOPES,
+    },
+    HostRuntimeKey {
+        key: "thumbnail_path",
+        field_type: "string",
+        scope: SCOPE_PRINTER,
+        default: Some(""),
+        meta: HostKeyMeta {
+            display: Some("Thumbnail path"),
+            description: Some(
+                "File path the slicer writes its thumbnail plate into; empty disables thumbnails.",
+            ),
+            group: Some("Output"),
+            omit_from_config_block: true,
+            ..HostKeyMeta::NONE
+        },
+        selector: false,
+        denied_scopes: WHOLE_PRINT_ONLY_SCOPES,
+    },
+    HostRuntimeKey {
+        key: "wall_generator",
+        field_type: "string",
+        scope: SCOPE_PRINT,
+        default: Some(DEFAULT_WALL_GENERATOR),
+        meta: HostKeyMeta::NONE,
+        selector: true,
+        denied_scopes: WHOLE_PRINT_ONLY_SCOPES,
+    },
+    // Host-consumed keys registered by packet 06 Step 2a. Defaults are `None`
+    // by design: these keys are synthesized, defaulted at the consuming site,
+    // or seeded elsewhere.
+    HostRuntimeKey {
+        key: "gcode_flavor",
+        field_type: "string",
+        scope: SCOPE_PRINTER,
+        default: None,
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "printer_model",
+        field_type: "string",
+        scope: SCOPE_PRINTER,
+        default: None,
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "filament_colour",
+        field_type: "string-list",
+        scope: SCOPE_FILAMENT,
+        default: None,
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "extruder_colour",
+        field_type: "string-list",
+        scope: SCOPE_PRINTER,
+        default: None,
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "filament_cost",
+        field_type: "string-list",
+        scope: SCOPE_FILAMENT,
+        default: None,
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "printable_area",
+        field_type: "float-list",
+        scope: SCOPE_PRINTER,
+        default: None,
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "support_type",
+        field_type: "string",
+        scope: SCOPE_PRINT,
+        default: None,
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "support_family",
+        field_type: "string",
+        scope: SCOPE_PRINT,
+        default: None,
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "thumbnails",
+        field_type: "string",
+        scope: SCOPE_PRINT,
+        default: None,
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "machine_max_acceleration_retracting",
+        field_type: "float-list",
+        scope: SCOPE_PRINTER,
+        default: None,
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "extruder",
+        field_type: "int",
+        scope: SCOPE_PRINT,
+        default: None,
+        meta: HostKeyMeta::NONE,
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "filament_max_volumetric_speed",
+        field_type: "float",
+        scope: SCOPE_FILAMENT,
+        default: Some("0.0"),
+        meta: HostKeyMeta {
+            min: Some(0.0),
+            ..HostKeyMeta::NONE
+        },
+        selector: false,
+        denied_scopes: TOOL_CAPABLE_SCOPES,
+    },
+];
 
 /// Maps a declared Rust field type onto the config-schema wire vocabulary and
 /// renders its default.
@@ -954,6 +1254,111 @@ impl<T: HostWireField> HostWireField for Option<T> {
     }
 }
 
+/// Maps a declared Rust field type onto the [`ConfigValue`] variant the
+/// macro-generated [`ResolvedConfig::to_config_map`] emits for it.
+///
+/// Sibling of [`HostWireField`] and used for the same reason: the generated map
+/// must render every `cli` / `cli_opt` / `plain` row by the field's own type,
+/// so a new field type is a compile error until it is mapped here.
+///
+/// `None` means "this value has no config-map representation": an empty
+/// numeric list (`filament_density`, Orca `coFloats`) is omitted rather than
+/// emitted as an empty `ConfigValue::List`, preserving the pre-generation map's
+/// bytes for unconfigured filaments.
+#[doc(hidden)]
+pub trait HostMapField {
+    /// The [`ConfigValue`] for this field's effective value, or `None` when the
+    /// value must not appear in the map.
+    fn to_config_value(&self) -> Option<ConfigValue>;
+}
+
+impl HostMapField for f32 {
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        Some(ConfigValue::Float(f64::from(*self)))
+    }
+}
+
+impl HostMapField for f64 {
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        Some(ConfigValue::Float(*self))
+    }
+}
+
+impl HostMapField for u32 {
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        Some(ConfigValue::Int(i64::from(*self)))
+    }
+}
+
+impl HostMapField for bool {
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        Some(ConfigValue::Bool(*self))
+    }
+}
+
+impl HostMapField for String {
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        Some(ConfigValue::String(self.clone()))
+    }
+}
+
+impl HostMapField for Vec<f64> {
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        if self.is_empty() {
+            return None;
+        }
+        Some(ConfigValue::List(
+            self.iter()
+                .map(|value| ConfigValue::Float(*value))
+                .collect(),
+        ))
+    }
+}
+
+impl HostMapField for Vec<String> {
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        Some(ConfigValue::List(
+            self.iter()
+                .map(|value| ConfigValue::String(value.clone()))
+                .collect(),
+        ))
+    }
+}
+
+impl HostMapField for ResolvedFloatOrPercent {
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        Some(ConfigValue::FloatOrPercent {
+            value: self.value,
+            is_percent: self.is_percent,
+        })
+    }
+}
+
+impl HostMapField for WallGenerator {
+    /// Rendered through `Debug`, matching the pre-generation map's rendering of
+    /// this `plain` field.
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        Some(ConfigValue::String(format!("{self:?}")))
+    }
+}
+
+impl HostMapField for InfillType {
+    /// Rendered through `Debug`, matching the pre-generation map's rendering of
+    /// this `plain` field.
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        Some(ConfigValue::String(format!("{self:?}")))
+    }
+}
+
+impl HostMapField for SupportType {
+    /// Rendered through [`SupportType::as_canonical_str`], not `Debug`: the map
+    /// is read back by `canonical_support_family`, whose alias table matches
+    /// `tree*` / `normal*` case-sensitively.
+    fn to_config_value(&self) -> Option<ConfigValue> {
+        Some(ConfigValue::String(self.as_canonical_str().to_string()))
+    }
+}
+
 /// Declare every `ResolvedConfig` field in one place. Each line is one of:
 ///
 /// - `plain <field>: <Ty> = <default>;` — struct field + Default only; the
@@ -990,10 +1395,15 @@ macro_rules! declare_resolved_config {
             defaults:  { }
             cli_arms:  { }
             host_keys: { }
+            map_arms:  { }
+            typed_keys: { }
             cfg:       __drc_cfg
             key:       __drc_key
             value:     __drc_value
             dflt:      __drc_dflt
+            map:       __drc_map
+            mapval:    __drc_mapval
+            mapped:    __drc_mapped
             input:     { $($t)* }
         );
     };
@@ -1008,10 +1418,15 @@ macro_rules! __drc {
         defaults:  { $($df:tt)* }
         cli_arms:  { $($arm:tt)* }
         host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
         cfg:       $cfg:ident
         key:       $key:ident
         value:     $value:ident
         dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
         input:     { }
     ) => {
         /// Fully merged config produced by the host resolver and consumed by
@@ -1062,6 +1477,10 @@ macro_rules! __drc {
                 let $value: &$crate::ConfigValue = value;
                 match $key {
                     $($arm)*
+                    "wall_loops" => {
+                        $cfg.wall_count = $crate::resolved_config::extract_int_as_u32($key, $value)?;
+                        ::core::result::Result::Ok(true)
+                    }
                     _ => ::core::result::Result::Ok(false),
                 }
             }
@@ -1075,7 +1494,56 @@ macro_rules! __drc {
             /// bind to no config key.
             pub fn host_config_keys() -> ::std::vec::Vec<$crate::resolved_config::HostConfigKey> {
                 let $dflt = ResolvedConfig::default();
-                ::std::vec![ $($hk)* ]
+                let mut keys = ::std::vec![ $($hk)* ];
+                keys.push($crate::resolved_config::HostConfigKey {
+                    key: "wall_loops",
+                    field_type: "int",
+                    scope: $crate::resolved_config::SCOPE_PRINT,
+                    default: None,
+                    meta: $crate::resolved_config::HostKeyMeta::NONE,
+                    denied_scopes: &[],
+                });
+                keys
+            }
+
+            /// Every declared field, as its effective `key -> ConfigValue`
+            /// map.
+            ///
+            /// Flattens the whole config into the map consumed by G-code
+            /// `CONFIG_BLOCK` emission and the per-region `ConfigView`.
+            /// Generated from the `cli` / `cli_opt` / `plain` rows, so a field
+            /// cannot be declared without appearing here: `cli` and `plain`
+            /// rows always emit; a `cli_opt` row emits only while `Some`; the
+            /// per-type rendering lives in [`HostMapField`]. Module-supplied
+            /// `extensions` keys are merged last and unchanged, so an
+            /// extension can shadow a declared key. Consumers that must
+            /// restrict visibility (e.g. the per-module config view) filter
+            /// this map to their declared keys.
+            #[must_use]
+            pub fn to_config_map(
+                &self,
+            ) -> ::std::collections::HashMap<String, $crate::ConfigValue> {
+                let $cfg: &ResolvedConfig = self;
+                let mut $map: ::std::collections::HashMap<String, $crate::ConfigValue> =
+                    ::std::collections::HashMap::new();
+                $($ma)*
+                // Merge extension keys (module-contributed, already in ConfigValue form).
+                for (k, v) in &$cfg.extensions {
+                    $map.insert(k.clone(), v.clone());
+                }
+                $map
+            }
+
+            /// Every `cli` / `cli_opt` / `plain` declared field key.
+            ///
+            /// Exists because a `plain` row also returns `Ok(false)` from
+            /// [`ResolvedConfig::apply_cli_key`], so probing that method cannot
+            /// separate "typed field" from "undeclared". The registry
+            /// seed-set rule uses membership here to avoid shadowing a typed
+            /// value with a seeded `extensions` default.
+            #[must_use]
+            pub fn typed_field_keys() -> &'static [&'static str] {
+                &[ $($tk)* "wall_loops", ]
             }
         }
     };
@@ -1086,10 +1554,15 @@ macro_rules! __drc {
         defaults:  { $($df:tt)* }
         cli_arms:  { $($arm:tt)* }
         host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
         cfg:       $cfg:ident
         key:       $key:ident
         value:     $value:ident
         dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
         input: {
             $(#[$m:meta])*
             plain $field:ident : $ty:ty = $default:expr ;
@@ -1108,10 +1581,22 @@ macro_rules! __drc {
             }
             cli_arms:  { $($arm)* }
             host_keys: { $($hk)* }
+            map_arms: {
+                $($ma)*
+                if let ::core::option::Option::Some($mapped) =
+                    $crate::resolved_config::HostMapField::to_config_value(&$cfg.$field)
+                {
+                    $map.insert(::core::stringify!($field).to_string(), $mapped);
+                }
+            }
+            typed_keys: { $($tk)* ::core::stringify!($field), }
             cfg:       $cfg
             key:       $key
             value:     $value
             dflt:      $dflt
+            map:       $map
+            mapval:    $mapval
+            mapped:    $mapped
             input:     { $($rest)* }
         );
     };
@@ -1124,10 +1609,15 @@ macro_rules! __drc {
         defaults:  { $($df:tt)* }
         cli_arms:  { $($arm:tt)* }
         host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
         cfg:       $cfg:ident
         key:       $key:ident
         value:     $value:ident
         dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
         input: {
             $(#[$m:meta])*
             cli @ $scope:ident $cli_key:literal $field:ident : $ty:ty = $default:expr => $extractor:ident ;
@@ -1141,10 +1631,15 @@ macro_rules! __drc {
             defaults:  { $($df)* }
             cli_arms:  { $($arm)* }
             host_keys: { $($hk)* }
+            map_arms:  { $($ma)* }
+            typed_keys: { $($tk)* }
             cfg:       $cfg
             key:       $key
             value:     $value
             dflt:      $dflt
+            map:       $map
+            mapval:    $mapval
+            mapped:    $mapped
             input: {
                 $(#[$m])*
                 cli @ $scope $cli_key $field : $ty = $default => $extractor @ { } ;
@@ -1160,10 +1655,15 @@ macro_rules! __drc {
         defaults:  { $($df:tt)* }
         cli_arms:  { $($arm:tt)* }
         host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
         cfg:       $cfg:ident
         key:       $key:ident
         value:     $value:ident
         dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
         input: {
             $(#[$m:meta])*
             cli_opt @ $scope:ident $cli_key:literal $field:ident : $ty:ty = $default:expr => $extractor:ident ;
@@ -1177,10 +1677,15 @@ macro_rules! __drc {
             defaults:  { $($df)* }
             cli_arms:  { $($arm)* }
             host_keys: { $($hk)* }
+            map_arms:  { $($ma)* }
+            typed_keys: { $($tk)* }
             cfg:       $cfg
             key:       $key
             value:     $value
             dflt:      $dflt
+            map:       $map
+            mapval:    $mapval
+            mapped:    $mapped
             input: {
                 $(#[$m])*
                 cli_opt @ $scope $cli_key $field : $ty = $default => $extractor @ { } ;
@@ -1196,10 +1701,15 @@ macro_rules! __drc {
         defaults:  { $($df:tt)* }
         cli_arms:  { $($arm:tt)* }
         host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
         cfg:       $cfg:ident
         key:       $key:ident
         value:     $value:ident
         dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
         input: {
             $(#[$m:meta])*
             cli_opt $cli_key:literal $field:ident : $ty:ty = $default:expr => $extractor:ident ;
@@ -1213,10 +1723,15 @@ macro_rules! __drc {
             defaults:  { $($df)* }
             cli_arms:  { $($arm)* }
             host_keys: { $($hk)* }
+            map_arms:  { $($ma)* }
+            typed_keys: { $($tk)* }
             cfg:       $cfg
             key:       $key
             value:     $value
             dflt:      $dflt
+            map:       $map
+            mapval:    $mapval
+            mapped:    $mapped
             input: {
                 $(#[$m])*
                 cli_opt $cli_key $field : $ty = $default => $extractor @ { } ;
@@ -1233,10 +1748,15 @@ macro_rules! __drc {
         defaults:  { $($df:tt)* }
         cli_arms:  { $($arm:tt)* }
         host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
         cfg:       $cfg:ident
         key:       $key:ident
         value:     $value:ident
         dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
         input: {
             $(#[$m:meta])*
             cli @ $scope:ident $cli_key:literal $field:ident : $ty:ty = $default:expr => $extractor:ident @ { $($meta:tt)* } ;
@@ -1271,12 +1791,25 @@ macro_rules! __drc {
                         $($meta)*
                         ..$crate::resolved_config::HostKeyMeta::NONE
                     },
+                    denied_scopes: $crate::resolved_config::host_key_denied_scopes($cli_key),
                 },
             }
+            map_arms: {
+                $($ma)*
+                if let ::core::option::Option::Some($mapped) =
+                    $crate::resolved_config::HostMapField::to_config_value(&$cfg.$field)
+                {
+                    $map.insert($cli_key.to_string(), $mapped);
+                }
+            }
+            typed_keys: { $($tk)* $cli_key, }
             cfg:       $cfg
             key:       $key
             value:     $value
             dflt:      $dflt
+            map:       $map
+            mapval:    $mapval
+            mapped:    $mapped
             input:     { $($rest)* }
         );
     };
@@ -1288,10 +1821,15 @@ macro_rules! __drc {
         defaults:  { $($df:tt)* }
         cli_arms:  { $($arm:tt)* }
         host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
         cfg:       $cfg:ident
         key:       $key:ident
         value:     $value:ident
         dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
         input: {
             $(#[$m:meta])*
             cli_opt @ $scope:ident $cli_key:literal $field:ident : $ty:ty = $default:expr => $extractor:ident @ { $($meta:tt)* } ;
@@ -1328,12 +1866,27 @@ macro_rules! __drc {
                         $($meta)*
                         ..$crate::resolved_config::HostKeyMeta::NONE
                     },
+                    denied_scopes: $crate::resolved_config::host_key_denied_scopes($cli_key),
                 },
             }
+            map_arms: {
+                $($ma)*
+                if let ::core::option::Option::Some($mapval) = &$cfg.$field {
+                    if let ::core::option::Option::Some($mapped) =
+                        $crate::resolved_config::HostMapField::to_config_value($mapval)
+                    {
+                        $map.insert($cli_key.to_string(), $mapped);
+                    }
+                }
+            }
+            typed_keys: { $($tk)* $cli_key, }
             cfg:       $cfg
             key:       $key
             value:     $value
             dflt:      $dflt
+            map:       $map
+            mapval:    $mapval
+            mapped:    $mapped
             input:     { $($rest)* }
         );
     };
@@ -1345,10 +1898,15 @@ macro_rules! __drc {
         defaults:  { $($df:tt)* }
         cli_arms:  { $($arm:tt)* }
         host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
         cfg:       $cfg:ident
         key:       $key:ident
         value:     $value:ident
         dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
         input: {
             $(#[$m:meta])*
             cli $cli_key:literal $field:ident : $ty:ty = $default:expr => $extractor:ident ;
@@ -1362,10 +1920,15 @@ macro_rules! __drc {
             defaults:  { $($df)* }
             cli_arms:  { $($arm)* }
             host_keys: { $($hk)* }
+            map_arms:  { $($ma)* }
+            typed_keys: { $($tk)* }
             cfg:       $cfg
             key:       $key
             value:     $value
             dflt:      $dflt
+            map:       $map
+            mapval:    $mapval
+            mapped:    $mapped
             input: {
                 $(#[$m])*
                 cli $cli_key $field : $ty = $default => $extractor @ { } ;
@@ -1383,10 +1946,15 @@ macro_rules! __drc {
         defaults:  { $($df:tt)* }
         cli_arms:  { $($arm:tt)* }
         host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
         cfg:       $cfg:ident
         key:       $key:ident
         value:     $value:ident
         dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
         input: {
             $(#[$m:meta])*
             cli $cli_key:literal $field:ident : $ty:ty = $default:expr => $extractor:ident @ { $($meta:tt)* } ;
@@ -1421,12 +1989,25 @@ macro_rules! __drc {
                         $($meta)*
                         ..$crate::resolved_config::HostKeyMeta::NONE
                     },
+                    denied_scopes: $crate::resolved_config::host_key_denied_scopes($cli_key),
                 },
             }
+            map_arms: {
+                $($ma)*
+                if let ::core::option::Option::Some($mapped) =
+                    $crate::resolved_config::HostMapField::to_config_value(&$cfg.$field)
+                {
+                    $map.insert($cli_key.to_string(), $mapped);
+                }
+            }
+            typed_keys: { $($tk)* $cli_key, }
             cfg:       $cfg
             key:       $key
             value:     $value
             dflt:      $dflt
+            map:       $map
+            mapval:    $mapval
+            mapped:    $mapped
             input:     { $($rest)* }
         );
     };
@@ -1438,10 +2019,15 @@ macro_rules! __drc {
         defaults:  { $($df:tt)* }
         cli_arms:  { $($arm:tt)* }
         host_keys: { $($hk:tt)* }
+        map_arms:  { $($ma:tt)* }
+        typed_keys: { $($tk:tt)* }
         cfg:       $cfg:ident
         key:       $key:ident
         value:     $value:ident
         dflt:      $dflt:ident
+        map:       $map:ident
+        mapval:    $mapval:ident
+        mapped:    $mapped:ident
         input: {
             $(#[$m:meta])*
             cli_opt $cli_key:literal $field:ident : $ty:ty = $default:expr => $extractor:ident @ { $($meta:tt)* } ;
@@ -1478,12 +2064,27 @@ macro_rules! __drc {
                         $($meta)*
                         ..$crate::resolved_config::HostKeyMeta::NONE
                     },
+                    denied_scopes: $crate::resolved_config::host_key_denied_scopes($cli_key),
                 },
             }
+            map_arms: {
+                $($ma)*
+                if let ::core::option::Option::Some($mapval) = &$cfg.$field {
+                    if let ::core::option::Option::Some($mapped) =
+                        $crate::resolved_config::HostMapField::to_config_value($mapval)
+                    {
+                        $map.insert($cli_key.to_string(), $mapped);
+                    }
+                }
+            }
+            typed_keys: { $($tk)* $cli_key, }
             cfg:       $cfg
             key:       $key
             value:     $value
             dflt:      $dflt
+            map:       $map
+            mapval:    $mapval
+            mapped:    $mapped
             input:     { $($rest)* }
         );
     };
@@ -1505,13 +2106,13 @@ declare_resolved_config! {
     /// exact `f32 ==` plane test. See `extract_f64` for the full rationale.
     cli "layer_height"           layer_height: f64 = 0.2 => extract_f64;
     /// Line width in millimeters.
-    cli "line_width"             line_width: f32 = 0.0 => extract_float;
+    cli "line_width"             line_width: f64 = 0.0 => extract_f64;
     /// First layer height in millimeters. `f64` for the same reason as
     /// `layer_height` — feeds the layer-Z formula and must not be re-tainted
     /// by an `f32` round-trip. See `layer_height` and `extract_f64`.
     cli "first_layer_height"     first_layer_height: f64 = 0.2 => extract_f64;
     /// First layer line width in millimeters.
-    cli "initial_layer_line_width" initial_layer_line_width: f32 = 0.0 => extract_float;
+    cli "initial_layer_line_width" initial_layer_line_width: ResolvedFloatOrPercent = ResolvedFloatOrPercent::default() => extract_float_or_percent;
     /// Filament diameter in millimeters. Used by the G-code emitter to convert
     /// extruded volume (width × height × length) into filament length (E).
     /// Filament diameter in mm. Orca declares this `coFloats` (one entry per
@@ -1658,7 +2259,7 @@ declare_resolved_config! {
     /// (`PrintConfig.cpp`) is a `coInt` with min 0, max 90 and
     /// `set_default_value(new ConfigOptionInt(30))`. Held as `f32` in-tree.
     /// The legacy in-tree name `support_overhang_angle` remains accepted as an
-    /// alias (`slicer_scheduler::config_resolution::canonical_config_key`).
+    /// alias (`slicer_config::canonical_config_key`).
     ///
     /// This macro line is the **single source of truth** for the default; host
     /// consumers must read the typed field, never re-derive a fallback.
@@ -1760,15 +2361,28 @@ declare_resolved_config! {
 
     // MMU segmented region (Phase 5 — width limiting / interlocking)
     /// Maximum width of MMU segmented regions in mm. `0.0` means no limit.
-    cli "mmu_segmented_region_max_width" mmu_segmented_region_max_width: f32 = 0.0 => extract_float;
+    ///
+    /// `omit_from_config_block`: emitting this key would change `CONFIG_BLOCK`
+    /// bytes for every print (P96 AC-8); the block still carries the value for
+    /// consumers through `to_config_map`.
+    cli "mmu_segmented_region_max_width" mmu_segmented_region_max_width: f32 = 0.0 => extract_float @ {
+        omit_from_config_block: true,
+    };
     /// Interlocking depth for MMU segmented regions in mm. `0.0` means no interlocking.
-    cli "mmu_segmented_region_interlocking_depth" mmu_segmented_region_interlocking_depth: f32 = 0.0 => extract_float;
+    ///
+    /// `omit_from_config_block`: see `mmu_segmented_region_max_width`.
+    cli "mmu_segmented_region_interlocking_depth" mmu_segmented_region_interlocking_depth: f32 = 0.0 => extract_float @ {
+        omit_from_config_block: true,
+    };
     /// When true, Phase 5 width-limiting is skipped entirely (OrcaSlicer
     /// interlocking-beam parity). Default `false` matches single-material behaviour.
+    ///
+    /// `omit_from_config_block`: see `mmu_segmented_region_max_width`.
     cli "mmu_segmented_region_interlocking_beam" mmu_segmented_region_interlocking_beam: bool = false => extract_bool @ {
         display: Some("MMU segmented region interlocking beam"),
         description: Some("Skip Phase 5 width limiting entirely (interlocking-beam behaviour)."),
         group: Some("Multimaterial"),
+        omit_from_config_block: true,
     };
 
     // Machine kinematic limits (time estimator; optional — absent keys stay None)
@@ -1800,6 +2414,48 @@ declare_resolved_config! {
     cli @filament "filament_density" filament_density: Vec<f64> = Vec::new() => extract_float_list;
 }
 
+/// Denied scopes authored for one `declare_resolved_config!` CLI key.
+///
+/// This is the per-key **scope-eligibility roster** for the `cli` / `cli_opt`
+/// rows above (ADR-0069): deliberately hand-authored — a mechanical derivation
+/// proposes candidates, the author confirms, and nothing is auto-generated at
+/// runtime. Keys absent from the roster are statable at every scope
+/// (permissive by default); only [`WHOLE_PRINT_ONLY_SCOPES`] and
+/// [`TOOL_CAPABLE_SCOPES`] are authored on the host DSL.
+///
+/// The rows stay the single source of the *field set*; this table is the
+/// single source of the *policy*. The AC-1 drift test pins the roster exactly,
+/// so a policy named for a key that no row declares (or a row added without
+/// its policy) fails the tests rather than drifting silently.
+///
+/// `plain` rows do not appear here: they bind no config key and never reach
+/// the registry. `wall_generator`, `use_relative_e_distances` and
+/// `thumbnail_path` are carried by their [`HOST_RUNTIME_KEYS`] rows instead.
+#[must_use]
+pub fn host_key_denied_scopes(key: &str) -> &'static [&'static str] {
+    match key {
+        // Machine / emitter keys: one value per print by construction, so a
+        // narrower statement has no consumer to honour it.
+        "bed_shape"
+        | "disable_m73"
+        | "gcode_xy_decimals"
+        | "machine_max_acceleration_extruding"
+        | "machine_max_acceleration_travel"
+        | "machine_max_jerk_e"
+        | "machine_max_jerk_x"
+        | "machine_max_jerk_y"
+        | "machine_max_jerk_z"
+        | "machine_max_speed_e"
+        | "machine_max_speed_x"
+        | "machine_max_speed_y"
+        | "machine_max_speed_z" => WHOLE_PRINT_ONLY_SCOPES,
+        // Per-filament / per-tool keys: a tool statement is meaningful, so the
+        // tool scope stays statable.
+        "filament_density" | "filament_diameter" | "retract_length" => TOOL_CAPABLE_SCOPES,
+        _ => &[],
+    }
+}
+
 // Touch the imports the macro expansion implicitly relies on, so a future
 // reviewer doesn't think they're unused.
 #[allow(dead_code)]
@@ -1814,7 +2470,7 @@ impl PartialEq for ResolvedConfig {
         self.layer_height.to_bits() == other.layer_height.to_bits()
             && self.line_width.to_bits() == other.line_width.to_bits()
             && self.first_layer_height.to_bits() == other.first_layer_height.to_bits()
-            && self.initial_layer_line_width.to_bits() == other.initial_layer_line_width.to_bits()
+            && self.initial_layer_line_width == other.initial_layer_line_width
             && self.filament_diameter.to_bits() == other.filament_diameter.to_bits()
             && self.wall_count == other.wall_count
             && self.outer_wall_speed.to_bits() == other.outer_wall_speed.to_bits()
@@ -1922,7 +2578,7 @@ impl std::hash::Hash for ResolvedConfig {
         self.layer_height.to_bits().hash(state);
         self.line_width.to_bits().hash(state);
         self.first_layer_height.to_bits().hash(state);
-        self.initial_layer_line_width.to_bits().hash(state);
+        self.initial_layer_line_width.hash(state);
         self.filament_diameter.to_bits().hash(state);
         self.wall_count.hash(state);
         self.outer_wall_speed.to_bits().hash(state);
@@ -2139,5 +2795,438 @@ mod machine_limit_config_tests {
                 .is_err(),
             "a bool is not a machine limit"
         );
+    }
+}
+
+#[cfg(test)]
+mod filament_max_volumetric_speed_tests {
+    use super::*;
+    use std::hash::{Hash, Hasher};
+
+    const KEY: &str = "filament_max_volumetric_speed";
+
+    fn hash(config: &ResolvedConfig) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        config.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    /// The accessor reads the existing extension carrier: an absent key is the
+    /// "unavailable" state and reads as 0.0, and every accepted envelope shape
+    /// resolves to the carried magnitude.
+    #[test]
+    fn accessor_reads_extension_carrier_shapes_and_absent_default() {
+        let config = ResolvedConfig::default();
+        assert_eq!(
+            config.filament_max_volumetric_speed(),
+            Ok(0.0),
+            "an absent key is the unavailable maximum and must read as 0.0"
+        );
+        assert!(
+            !config.to_config_map().contains_key(KEY),
+            "an absent extension key is not synthesized into the config map"
+        );
+
+        // The reverted packet-10 carrier is an extension key, not a CLI-typed
+        // declared field: routing the key must report "not typed" and leave the
+        // value for the extension path, or the accessor and the registry seed
+        // rule would disagree about the carrier.
+        let mut config = ResolvedConfig::default();
+        let applied = config
+            .apply_cli_key(KEY, &ConfigValue::Float(8.0))
+            .expect("routing an extension key must not error");
+        assert!(
+            !applied,
+            "the volumetric maximum must stay an extension key, not a typed field"
+        );
+        assert!(
+            config.extensions.is_empty(),
+            "apply_cli_key must not write the extension bucket itself"
+        );
+        assert!(
+            !ResolvedConfig::typed_field_keys().contains(&KEY),
+            "the volumetric maximum must not be a typed field key"
+        );
+
+        for (label, value, expected) in [
+            ("float", ConfigValue::Float(8.0), 8.0),
+            ("int", ConfigValue::Int(12), 12.0),
+            (
+                "numeric string",
+                ConfigValue::String(" 7.25 ".to_string()),
+                7.25,
+            ),
+            (
+                "oracle coFloats envelope",
+                ConfigValue::List(vec![ConfigValue::Float(120.0), ConfigValue::Float(60.0)]),
+                120.0,
+            ),
+            (
+                "single-element list",
+                ConfigValue::List(vec![ConfigValue::Int(9)]),
+                9.0,
+            ),
+        ] {
+            let mut config = ResolvedConfig::default();
+            config.extensions.insert(KEY.to_string(), value);
+            assert_eq!(
+                config.filament_max_volumetric_speed(),
+                Ok(expected),
+                "{label}: the accessor must resolve the carried magnitude"
+            );
+        }
+    }
+
+    /// Rejections are named and total: wrong variants, an empty envelope, a
+    /// non-numeric first element, non-finite magnitudes, and negative values are
+    /// never silently clamped or substituted.
+    #[test]
+    fn accessor_rejects_invalid_values_with_named_errors() {
+        for (label, value) in [
+            ("bool", ConfigValue::Bool(true)),
+            ("percent magnitude", ConfigValue::Percent(25.0)),
+            (
+                "float-or-percent",
+                ConfigValue::FloatOrPercent {
+                    value: 8.0,
+                    is_percent: false,
+                },
+            ),
+            ("nil sentinel", ConfigValue::String("nil".to_string())),
+            ("empty envelope", ConfigValue::List(vec![])),
+            (
+                "non-numeric first element",
+                ConfigValue::List(vec![ConfigValue::String("fast".to_string())]),
+            ),
+            ("negative float", ConfigValue::Float(-0.5)),
+            ("negative int", ConfigValue::Int(-3)),
+            ("NaN", ConfigValue::Float(f64::NAN)),
+            ("+Inf", ConfigValue::Float(f64::INFINITY)),
+        ] {
+            let mut config = ResolvedConfig::default();
+            config.extensions.insert(KEY.to_string(), value);
+            let error = config
+                .filament_max_volumetric_speed()
+                .expect_err(&format!("{label} must be rejected as a maximum"));
+            assert!(
+                error.contains(KEY),
+                "{label}: the rejection must name the key, got: {error}"
+            );
+        }
+    }
+
+    /// The extension carrier is part of the config identity: the map and the
+    /// hand-written `PartialEq`/`Hash` see a changed extension value, and
+    /// `-0.0`/`+0.0` bit patterns stay distinct through the interner.
+    #[test]
+    fn extension_value_participates_in_equality_and_hash() {
+        let mut with_extension = ResolvedConfig::default();
+        with_extension
+            .extensions
+            .insert(KEY.to_string(), ConfigValue::Float(8.0));
+
+        assert_ne!(ResolvedConfig::default(), with_extension);
+        assert_ne!(hash(&ResolvedConfig::default()), hash(&with_extension));
+        assert_eq!(
+            with_extension.to_config_map().get(KEY),
+            Some(&ConfigValue::Float(8.0)),
+            "the extension value must reach the flattened config map"
+        );
+
+        let mut positive_zero = ResolvedConfig::default();
+        positive_zero
+            .extensions
+            .insert(KEY.to_string(), ConfigValue::Float(0.0));
+        let mut negative_zero = ResolvedConfig::default();
+        negative_zero
+            .extensions
+            .insert(KEY.to_string(), ConfigValue::Float(-0.0));
+        assert_ne!(
+            ConfigValue::Float(0.0),
+            ConfigValue::Float(-0.0),
+            "ConfigValue compares floats bitwise"
+        );
+        assert_ne!(positive_zero, negative_zero);
+        assert_ne!(hash(&positive_zero), hash(&negative_zero));
+
+        // IEEE `-0.0 < 0.0` is false, and the registry's own `value >= min`
+        // bound accepts it too, so `-0.0` stays admissible and reads as the
+        // unavailable maximum rather than failing the non-negative check.
+        assert_eq!(
+            negative_zero
+                .filament_max_volumetric_speed()
+                .expect("-0.0 is not less than 0.0"),
+            -0.0
+        );
+    }
+}
+
+/// AC-13 parity: the macro-generated [`ResolvedConfig::to_config_map`] must
+/// render every key the retired hand map emitted with an identical
+/// [`ConfigValue`], and must additionally emit the declared rows the hand map
+/// never listed. The oracle is [`ResolvedConfig::legacy_to_config_map`].
+#[cfg(test)]
+mod config_map_parity_tests {
+    use super::*;
+
+    /// `ResolvedConfig::default()` plus the three non-default shapes AC-13
+    /// names: a non-empty `filament_density`, a tree `support_type`, and one
+    /// `cli_opt` row set to `Some`.
+    fn non_default_config() -> ResolvedConfig {
+        ResolvedConfig {
+            filament_density: vec![1.24, 1.75],
+            support_type: SupportType::TreeAuto,
+            arachne_min_feature_size: Some(0.25),
+            ..ResolvedConfig::default()
+        }
+    }
+
+    #[test]
+    fn generated_to_config_map_matches_legacy_rendering() {
+        let cases = [
+            ("default", ResolvedConfig::default()),
+            ("non-default", non_default_config()),
+        ];
+        for (label, cfg) in &cases {
+            let generated = cfg.to_config_map();
+            let legacy = cfg.legacy_to_config_map();
+            for (key, value) in &legacy {
+                assert_eq!(
+                    generated.get(key),
+                    Some(value),
+                    "{label}: generated map disagrees with the legacy oracle on {key}"
+                );
+            }
+            // Every key the oracle emitted names a declared typed field, so
+            // the registry seed rule (membership in `typed_field_keys`) can
+            // see it. `extensions` is empty in both cases, so every generated
+            // key must be declared too.
+            for key in legacy.keys() {
+                assert!(
+                    ResolvedConfig::typed_field_keys().contains(&key.as_str()),
+                    "{label}: oracle key {key} is missing from typed_field_keys()"
+                );
+            }
+            for key in generated.keys() {
+                assert!(
+                    ResolvedConfig::typed_field_keys().contains(&key.as_str()),
+                    "{label}: generated key {key} is not a declared field"
+                );
+            }
+        }
+
+        let default_map = ResolvedConfig::default().to_config_map();
+        assert_eq!(
+            default_map.get("support_type"),
+            Some(&ConfigValue::String("normal(auto)".to_string())),
+            "support_type must render through as_canonical_str(), not Debug"
+        );
+        assert_eq!(
+            default_map.get("infill_type"),
+            Some(&ConfigValue::String("Grid".to_string())),
+            "infill_type keeps its current Debug rendering"
+        );
+        assert!(
+            !default_map.contains_key("filament_density"),
+            "filament_density must stay omitted while empty"
+        );
+
+        let non_default_map = non_default_config().to_config_map();
+        assert_eq!(
+            non_default_map.get("support_type"),
+            Some(&ConfigValue::String("tree(auto)".to_string()))
+        );
+        assert_eq!(
+            non_default_map.get("filament_density"),
+            Some(&ConfigValue::List(vec![
+                ConfigValue::Float(1.24),
+                ConfigValue::Float(1.75),
+            ]))
+        );
+        assert_eq!(
+            non_default_map.get("arachne_min_feature_size"),
+            Some(&ConfigValue::Float(0.25)),
+            "a Some cli_opt row must emit"
+        );
+
+        // Representative rows the hand map never listed — one per declaration
+        // form and per field type the generated map must now cover.
+        for key in [
+            "filament_diameter",                      // cli @filament, f32
+            "bed_shape",                              // cli, float-list
+            "fill_authored_coloring",                 // cli, string-list
+            "disable_m73",                            // cli, bool
+            "flat_bridge_closing_join",               // cli, string + metadata
+            "mmu_segmented_region_interlocking_beam", // cli, annotated bool
+            "gcode_resolution",                       // cli, annotated f32
+            "retract_length",                         // cli, f32
+            "wipe_tower_enabled",                     // cli, bool
+        ] {
+            assert!(
+                default_map.contains_key(key),
+                "{key} is a declared cli row and must appear in the generated map"
+            );
+        }
+    }
+
+    /// The `config_block = false` marking is carried by the declaration
+    /// channels, so the registry can filter emission without a second roster.
+    #[test]
+    fn omit_from_config_block_is_marked_on_exactly_the_four_keys() {
+        let mut omitted: Vec<&str> = ResolvedConfig::host_config_keys()
+            .iter()
+            .filter(|row| row.meta.omit_from_config_block)
+            .map(|row| row.key)
+            .collect();
+        omitted.extend(
+            HOST_RUNTIME_KEYS
+                .iter()
+                .filter(|row| row.meta.omit_from_config_block)
+                .map(|row| row.key),
+        );
+        omitted.sort_unstable();
+        assert_eq!(
+            omitted,
+            [
+                "mmu_segmented_region_interlocking_beam",
+                "mmu_segmented_region_interlocking_depth",
+                "mmu_segmented_region_max_width",
+                "thumbnail_path",
+            ],
+            "exactly the four declared keys carry config_block = false"
+        );
+        assert!(
+            !HostKeyMeta::NONE.omit_from_config_block,
+            "the default metadata must emit"
+        );
+    }
+}
+
+/// Packet `config-scope-resolution_07` AC-1 drift pin, host half.
+///
+/// Every host declaration channel must carry exactly the canonical policy for
+/// the keys AC-1 names — no key silently permissive, no key carrying a policy
+/// AC-1 does not name, and the canonical scope sets ordered as consumers
+/// compare them.
+///
+/// The module half of the roster is authored in the core-module manifests and
+/// pinned by `crates/slicer-config/tests/scope_eligibility_tdd.rs`.
+#[cfg(test)]
+mod scope_eligibility_tests {
+    use super::*;
+
+    /// AC-1 whole-print-only keys authored on host channels, excluding the 26
+    /// `SPEED_KEYS` (which carry the same policy, pinned by the speed table).
+    const WHOLE_PRINT_ONLY_HOST_KEYS: &[&str] = &[
+        "bed_shape",
+        "disable_m73",
+        "gcode_xy_decimals",
+        "machine_max_acceleration_extruding",
+        "machine_max_acceleration_travel",
+        "machine_max_jerk_e",
+        "machine_max_jerk_x",
+        "machine_max_jerk_y",
+        "machine_max_jerk_z",
+        "machine_max_speed_e",
+        "machine_max_speed_x",
+        "machine_max_speed_y",
+        "machine_max_speed_z",
+        "use_relative_e_distances",
+        "thumbnail_path",
+        "wall_generator",
+    ];
+
+    /// AC-1 tool-capable host keys (the module-only `nozzle_diameter` is
+    /// pinned with the module declarers in the `slicer-config` test).
+    const TOOL_CAPABLE_HOST_KEYS: &[&str] = &[
+        "filament_density",
+        "filament_diameter",
+        "filament_max_volumetric_speed",
+        "retract_length",
+    ];
+
+    #[test]
+    fn host_declaration_channels_carry_exactly_the_ac1_policies() {
+        let mut seen: Vec<(&'static str, &'static [&'static str])> = Vec::new();
+        seen.extend(
+            ResolvedConfig::host_config_keys()
+                .into_iter()
+                .map(|row| (row.key, row.denied_scopes)),
+        );
+        seen.extend(
+            HOST_RUNTIME_KEYS
+                .iter()
+                .map(|row| (row.key, row.denied_scopes)),
+        );
+
+        for key in WHOLE_PRINT_ONLY_HOST_KEYS {
+            let policy = seen
+                .iter()
+                .find(|(declared, _)| declared == key)
+                .unwrap_or_else(|| panic!("{key} is not declared on any host channel"))
+                .1;
+            assert_eq!(
+                policy, WHOLE_PRINT_ONLY_SCOPES,
+                "{key} must deny object/layer_range/modifier/paint_semantic/tool, in order"
+            );
+        }
+        for key in TOOL_CAPABLE_HOST_KEYS {
+            let policy = seen
+                .iter()
+                .find(|(declared, _)| declared == key)
+                .unwrap_or_else(|| panic!("{key} is not declared on any host channel"))
+                .1;
+            assert_eq!(
+                policy, TOOL_CAPABLE_SCOPES,
+                "{key} must deny object/layer_range/modifier/paint_semantic and allow tool"
+            );
+        }
+
+        // Every authored denial names an AC-1 key; otherwise a policy rides on
+        // a key the roster does not account for.
+        for (key, policy) in &seen {
+            if policy.is_empty() {
+                continue;
+            }
+            assert!(
+                WHOLE_PRINT_ONLY_HOST_KEYS.contains(key) || TOOL_CAPABLE_HOST_KEYS.contains(key),
+                "{key} carries authored denials but is absent from AC-1's host roster"
+            );
+        }
+
+        // The canonical scope sets themselves: order and membership are what
+        // consumers compare against, so pin them literally.
+        assert_eq!(
+            WHOLE_PRINT_ONLY_SCOPES,
+            [
+                "object",
+                "layer_range",
+                "modifier",
+                "paint_semantic",
+                "tool"
+            ]
+        );
+        assert_eq!(
+            TOOL_CAPABLE_SCOPES,
+            ["object", "layer_range", "modifier", "paint_semantic"]
+        );
+    }
+
+    /// The speed table is positionally aligned and length-locked; the three
+    /// tables cannot drift apart without a compile error or this failure.
+    #[test]
+    fn speed_denial_table_is_positionally_aligned_with_speed_keys() {
+        use crate::feedrate::{SPEED_DENIED_SCOPES, SPEED_KEYS, SPEED_KEY_COUNT, SPEED_META};
+
+        assert_eq!(SPEED_KEY_COUNT, 26, "AC-1 names 26 speed keys");
+        assert_eq!(SPEED_KEYS.len(), SPEED_KEY_COUNT);
+        assert_eq!(SPEED_META.len(), SPEED_KEY_COUNT);
+        assert_eq!(SPEED_DENIED_SCOPES.len(), SPEED_KEY_COUNT);
+        for (index, (key, _)) in SPEED_KEYS.iter().enumerate() {
+            assert_eq!(
+                SPEED_DENIED_SCOPES[index], WHOLE_PRINT_ONLY_SCOPES,
+                "speed {key} must deny object/layer_range/modifier/paint_semantic/tool"
+            );
+        }
     }
 }

@@ -86,12 +86,11 @@ pub struct LoadedModule {
     pub min_ir_schema:         SemVer,      // from manifest [compatibility].min-ir-schema
     pub max_ir_schema:         SemVer,      // from manifest [compatibility].max-ir-schema
     pub config_schema:         ConfigSchema,
-    pub overridable_per_region:Vec<String>, // from manifest [config.overridable-per-region].keys
-    pub overridable_per_layer: Vec<String>, // from manifest [config.overridable-per-layer].keys
     pub layer_parallel_safe:   bool,
     pub wasm_path:             PathBuf,
     pub provenance:            ModuleProvenance, // External | Integrated (packet 85/ADR-0056)
     pub region_splits:         Vec<RegionSplitDeclaration>, // from manifest [[region_split]] (packet 92)
+    pub paint_only:            bool,       // top-level paint_only = true (ADR-0071); gates per-layer dispatch
     pub placeholder_wasm:     bool,        // ≤8-byte stub; inert for dispatch (packet 181)
 }
 ```
@@ -113,8 +112,11 @@ Manifest keys are kebab-case and table-scoped. `LoadedModule` stores normalized 
 | `[claims].requires`                    | `requires_claims`        |
 | `[compatibility].incompatible-with`    | `incompatible_with`      |
 | `[compatibility].requires`             | `requires_modules`       |
-| `[config.overridable-per-region].keys` | `overridable_per_region` |
-| `[config.overridable-per-layer].keys`  | `overridable_per_layer`  |
+
+Per-key scope eligibility is not a manifest-table list: each key's
+`denied_scopes` entries live on its own `[config.schema.<key>]` declaration and
+are parsed into the key's schema entry (`config_schema`), where the registry
+consumes them at resolution (see "Config scope admission (ADR-0069)" below).
 
 The manifest naming is canonical for author-facing docs and examples. Runtime field names are internal and must not appear in user-facing manifest examples.
 
@@ -124,12 +126,15 @@ Ingestion is generalized over manifest source: a module may come from a disk
 file or embedded TOML. `LoadedModule` carries a `ModuleProvenance` marker
 (`External | Integrated`); claims and DAG machinery never inspects provenance.
 
-### `[[region_split]]` Aggregation and Tied-Priority Diagnostic (Normative — Packet 92)
+### `[[region_split]]` Aggregation and Tied-Priority Diagnostic (Normative — Packet 92, ADR-0071)
 
 When ingestion completes, the scheduler aggregates the
 `[[region_split]]` array entries from every loaded manifest into a single
 canonical `BTreeMap<String, AggregatedRegionSplitEntry>` keyed by
-semantic name and ordered by `(priority, name)`. The map is consumed by:
+semantic name and ordered by `(priority, name)`. The aggregate is exactly the
+union of the loaded modules' declarations — no semantics are seeded implicitly.
+`material` and `fuzzy_skin` are present in a real slice because the core
+perimeter and fuzzy-skin manifests declare them. The map is consumed by:
 
 - `Phase 2` DAG construction (per-layer dispatch filter — see below).
 - `PrePass::RegionMapping` builtin (cross-product expansion — see
@@ -148,6 +153,9 @@ Per-manifest validation (Packet 92):
    are listed in `CORE_REGION_SPLIT_PRIORITIES`.
 4. **Core semantic with `priority` ≠ registry value** → rejected
    (`LoadErrorKind::CorePriorityMismatch`).
+5. **Top-level `paint_only = true` with no `[[region_split]]` entry** →
+   rejected (`LoadErrorKind::PaintOnlyWithoutRegionSplit`); a non-boolean
+   `paint_only` is a `Schema` error.
 
 Cross-manifest **tied-priority warning** (non-fatal): if two distinct
 semantics from different manifests declare the same priority, a
@@ -321,14 +329,20 @@ pub fn build_intra_stage_dag(
 }
 ```
 
-### Per-Layer Region-Split Dispatch Filter (Normative — Packet 92)
+### Per-Layer Region-Split Dispatch Filter (Normative — Packet 92, ADR-0071)
 
 After the intra-stage DAG is sorted, each `LoadedModule` carries a
 cached `region_split_semantics: HashSet<String>` on its
-`CompiledModuleStatic` descriptor (the set of semantic names declared
-in the module's `[[region_split]]` array). The host applies a per-layer
-filter at dispatch time using this set; the granularity is per-(module
-× layer), NOT per-(module × region):
+`CompiledModuleStatic` descriptor. The set is populated **only** when the
+module's manifest opted into paint-only dispatch with top-level
+`paint_only = true`, in which case it holds exactly the semantic names
+declared in the module's `[[region_split]]` array. A module that declares
+`[[region_split]]` semantics without `paint_only = true` — the core
+`classic-perimeters`, `arachne-perimeters`, and `fuzzy-skin` modules — has an
+**empty** dispatch set and runs on every layer; its declarations still
+register the semantics in the cross-manifest aggregate. The host applies a
+per-layer filter at dispatch time using this set; the granularity is
+per-(module × layer), NOT per-(module × region):
 
 - A module whose `region_split_semantics` is **empty** runs
   unconditionally (paint-transparent default — preserves pre-packet-92
@@ -497,23 +511,45 @@ Both `com.core.classic-perimeters` and `com.core.arachne-perimeters` declare
 other. Two modules holding the same non-fill claim would normally be a fatal
 startup conflict, but the `perimeter-generator` claim is resolved *before*
 `validate_startup_dag` runs, at module-load dedup time, by
-`dedup_same_claim_modules_with_wall_generator`
-(`crates/slicer-scheduler/src/execution_plan.rs`, called from
-`crates/slicer-runtime/src/run.rs`). Dedup keeps exactly one holder, so
+`dedup_same_claim_modules_with_typed_wall_generator` (the `ConfigValue`-typed
+twin of `dedup_same_claim_modules_with_wall_generator`; both in
+`crates/slicer-scheduler/src/execution_plan.rs`, called from the
+manifest-first live loaders in
+`crates/slicer-wasm-host/src/execution_plan_live.rs`, which
+`crates/slicer-runtime/src/run.rs` drives). Dedup keeps exactly one holder, so
 `incompatible-with` never has a chance to fire.
 
 Selection rules, in order:
 
-1. **`wall_generator` config key** — read directly from the raw config source
-   at module-load time (before `ResolvedConfig` exists) via
-   `WALL_GENERATOR_CONFIG_KEY` / `DEFAULT_WALL_GENERATOR`. Values: `"classic"`
-   (default) or `"arachne"`. `dedup_same_claim_modules_with_wall_generator`
-   resolves the `perimeter-generator` claim by this key instead of alphabetical
-   order, falling back to `classic` if the preferred module is not among the
-   loaded candidates or the value is unrecognised. This closes
-   the wall-generator selection record (before it, dedup silently kept the
-   alphabetically-first candidate — `arachne-perimeters` — with no way for a
-   user to express intent).
+1. **`wall_generator` typed global selector** — the value arrives as a typed
+   global value decoded once by `slicer-config`'s ingestion
+   (`ConfigIngestor` in `crates/slicer-config/src/ingestion.rs`): the
+   assembled registry marks `wall_generator` as the only current startup
+   claim selector (`selector = true` on its `HOST_RUNTIME_KEYS` row,
+   ordinary host rows carrying `selector = false`, the `spiral_vase`
+   manifest declarations omitting selector metadata so it defaults false,
+   and `support_family` undeclared), so `finish()` derives
+   `IngestionOutcome.selector_values` containing exactly
+   `wall_generator`. Selection reads it from that map — not from the raw
+   config source map — as a `ConfigScope::Global`-scope value via
+   `dedup_same_claim_modules_with_typed_wall_generator`
+   (`crates/slicer-scheduler/src/execution_plan.rs`, called from
+   `load_live_modules_for_plan_manifest_first` /
+   `load_live_modules_for_plan_with_integrated`
+   in `crates/slicer-wasm-host/src/execution_plan_live.rs`). Values:
+   `"classic"` (default) or `"arachne"`; an absent or unrecognised value
+   falls back to `DEFAULT_WALL_GENERATOR`
+   (`crates/slicer-ir/src/resolved_config.rs`, `"classic"`), and when the
+   preferred module is not among the loaded candidates the dedup falls
+   through to its alphabetical default. Because only a registry entry
+   declared `selector = true` enters the selector channel, `spiral_vase` and
+   `support_type` remain ordinary typed global values (read from the global
+   `ScopeDelta`), and undeclared `support_family` is warn-and-kept. This
+   closes the wall-generator selection record (before it, dedup silently
+   kept the alphabetically-first candidate — `arachne-perimeters` — with no
+   way for a user to express intent). The production composition roots
+   thread the same typed ingestion result (`IngestionOutcome`) through plan
+   binding and config resolution (`crates/slicer-runtime/src/run.rs`).
 
 2. **Spiral-vase fallback (packet 151)** — when `spiral_vase = true`, the
    scheduler forces `com.core.classic-perimeters` as the `perimeter-generator`
@@ -834,7 +870,60 @@ fn compute_reachability(
 
 `PrePass::RegionMapping` is host-built-in and precomputes per-region execution context so Tier 2 has no config or claim resolution overhead.
 
-During region mapping, modifier volume `config_delta.fields` from every `modifier_volume` attached to a region's parent `ObjectMesh` are stamped into `RegionPlan.config.extensions` via `overlay_resolved` (priority-ascending, last-writer-wins), with `support_enforcer` and `support_blocker` subtypes filtered out for OrcaSlicer parity (canonical `PrintApply.cpp`). Implemented modifier-volume splits (packets 131/132) bind configuration to geometric sub-regions: modifier meshes are sliced per layer during prepass, the cross-sections are intersected with the owning region's partitioned fill polygons at partition time, and each resulting wall-less sub-region carries its own `region_id` + config binding (per-region delivery through the region-view config accessor). The support enforcer/blocker subtypes remain filtered and never produce sub-regions; paint variant-splits remain the other per-region producer.
+### Unified config-resolution entry points (Normative — TASK-566)
+
+The `slicer-config` resolution module exposes two unified entry points, replacing
+the scattered resolvers and `overlay_resolved`:
+
+- `query_z_grid` is called by `PrePass::LayerPlanning` to resolve the inputs
+  that determine the layer Z grid and the typed per-object planning records.
+  Each record carries `layer_z_tops`, the explicit object-local top-Z schedule
+  derived from the object's composed layer-height profile, which
+  `run.rs::layer_planning_objects` carries across the WIT seam as `layer-zs`.
+- `query_layer_height_profile` is the shared producer of the canonical
+  layer-height profile: it composes the resolved object base height, the fixed
+  first-layer interval, and every matching **layer range**'s `layer_height`
+  into literal `(z_start, z_end, height)` segments. `layer_top_zs` evaluates
+  that profile into the object-local top-Z schedule, so the schedule the guest
+  plans against and the profile the host composed can never disagree.
+- `resolve_scope_stack` is called by `PrePass::RegionMapping` to resolve the
+  applicable typed scope deltas for each active region. The same **layer range**
+  set feeds it: when a range covers the region's layer top Z
+  (`ResolutionTarget.layer_top_z`), its typed values apply between the object
+  and modifier scopes. Range membership is decided by `LayerConfigRange::covers`
+  in `slicer-config`, which the runtime kernel also calls before re-resolving a
+  layer, so both consumers agree by construction — no caller re-derives range
+  precedence locally and no runtime path re-parses XML.
+
+### Config scope admission (Normative — ADR-0069)
+
+Scope eligibility is derived from the registry, not from any manifest-table
+allow list. The registry's admission state is built from every declaring
+manifest's per-key `denied_scopes` entries via
+`ConfigSchemaRegistry::admission_set`, and resolution consults that admission
+state: a key stated at a scope it denies is rejected loudly wherever it is
+stated, surfacing `ResolutionError::ScopeDenied` (naming key and scope) rather
+than being silently ignored. `denied_scopes` is the sole per-key eligibility
+mechanism for both host and module-declared keys (see "Common per-field keys"
+in `docs/03_wit_and_manifest.md`); when a key is declared by several declarers,
+the denials union across them — a scope denied by any declarer is denied.
+
+During region mapping, modifier volume `config_delta.fields` from every
+`modifier_volume` attached to a region's parent `ObjectMesh` are consumed by
+`resolve_scope_stack` in priority-ascending, last-writer-wins order, admitted
+through the config schema registry (type-checked, bounds-checked, and subject
+to the ADR-0069 scope admission above), and stamped into
+`RegionPlan.config.extensions`. Modifier volumes whose typed kind is
+`ModifierKind::SupportEnforcer` or `ModifierKind::SupportBlocker` are filtered
+out for OrcaSlicer parity (canonical `PrintApply.cpp`). Implemented
+modifier-volume splits (packets 131/132) bind configuration to geometric
+sub-regions: modifier meshes are sliced per layer during prepass, the
+cross-sections are intersected with the owning region's partitioned fill
+polygons at partition time, and each resulting wall-less sub-region carries its
+own `region_id` + config binding (per-region delivery through the region-view
+config accessor). The `SupportEnforcer` / `SupportBlocker` kinds remain
+filtered and never produce sub-regions; paint variant-splits remain the other
+per-region producer.
 
 ### RegionMapping (Builtin) — `aggregated_region_split` Threading (Normative — Packet 93)
 
@@ -869,10 +958,7 @@ surfaces `RegionMappingError::CapExceeded` naming
 the top contributor's `(object_id, region_count, layer_count)` so callers can diagnose which object
 exploded the cross-product.
 
-**Cross-crate dependency:** `slicer-core` depends on `slicer-scheduler`
-for the `AggregatedRegionSplitEntry` type. Relocating the type to
-`slicer-ir` to clean up the edge is a deferred follow-up; verify with
-`cargo tree -p slicer-core --edges normal`.
+**Cross-crate dependency:** `AggregatedRegionSplitEntry` is owned by `slicer-ir::slice_ir`; `slicer-core` imports it from `slicer-ir` and no longer has a normal `slicer-scheduler` dependency.
 
 ```rust
 // Illustrative. The real entry point is `execute_region_mapping` in
@@ -956,6 +1042,13 @@ dispatched Layer-tier modules. The frozen-at-load `module.config_view`
 is retained only for prepass and finalization stages where there is no
 region-level overlay.
 
+The resolved-config-view packet strengthens both legs: the frozen-at-load
+view is bound by `bind_module_config_view` from the fully resolved config, so
+every declared key with a registry default or an authored value is present and
+the load-time view is registry-complete; and the per-region overlay rides on
+the same resolved base, so a region view also contains every declared key —
+authored or seeded default — with the region's overlay applied on top.
+
 ### PrePass Config-View Plumbing (Normative — Packet 73)
 
 Every module-implementable PrePass export (`mesh-analysis`, `layer-planning`,
@@ -963,8 +1056,14 @@ Every module-implementable PrePass export (`mesh-analysis`, `layer-planning`,
 parameter providing read-only access to declared config keys, normalised
 across stages by Packet 73 (the `support-geometry` runner was the final
 holdout). Modules declaring no `[config.schema]` receive an empty
-`ConfigView`. Config keys are looked up by string name; absent keys
-return `None`. The `support-geometry` runner specifically:
+`ConfigView`. Config keys are looked up by string name; with the
+resolved-config-view packet, resolution seeds every declared key that has a
+registry default, so a declared key is absent from a view only when neither a
+registry default nor an authored value exists (undeclared-absent /
+declared-present): an undeclared key is never visible, and a declared key
+carries its registry default or an authored value. Reads of a declared key
+that is genuinely absent still return `None` (or `Err` from the
+`require_*` accessors). The `support-geometry` runner specifically:
 
 - Now honours `enable_support` (false → planner is invoked but emits
   no plan; was previously discarded by an empty `ConfigView` injection).
@@ -1084,7 +1183,8 @@ pub struct CompiledModuleStatic {
     pub ir_write_mask: IrAccessMask,
     pub config_view:   Arc<ConfigView>,
     pub claims:        Vec<String>,   // frozen [claims].holds; feeds resolve_held_claims
-    // + requires_modules, region_split_semantics, layer_parallel_safe
+    // + requires_modules, layer_parallel_safe
+    // + region_split_semantics (empty unless the manifest set paint_only = true; ADR-0071)
 }
 ```
 
@@ -1213,7 +1313,7 @@ return types.
 
 ### Modifier-Part and Negative-Volume Routing (packets 56b / 56c)
 
-Modifier parts (3MF `Metadata/model_settings.config`) are routed into `MeshIR.objects[].modifier_volumes` by the host loader (packet 56b). Negative-volume and support-subtype modifiers (`ModifierScope::Support`, negative-volume difference) are applied by the per-layer negative-part subtract host stage described in the next section (packet 56c): the host subtracts negative-volume geometry per layer and routes support-subtype modifiers into the Support claim's per-region override stream.
+Modifier parts (3MF `Metadata/model_settings.config`) are routed into `MeshIR.objects[].modifier_volumes` by the host loader (packet 56b). Each modifier volume carries its routing classification as the typed `ModifierVolume.kind` field (`ModifierKind`) across the IR seam (ADR-0070), not a `config_delta` string. Negative-volume and support-kind modifiers (`ModifierKind::NegativePart`, `ModifierKind::SupportEnforcer` / `ModifierKind::SupportBlocker`) are applied by the per-layer negative-part subtract host stage described in the next section (packet 56c): the host subtracts negative-volume geometry per layer and routes support-kind modifiers into the Support claim's per-region override stream.
 
 #### Negative-Part Per-Layer Subtract (Normative — Packet 56c)
 
@@ -1233,9 +1333,8 @@ Per-layer call order is locked:
 `arena.take_slice()` → `apply_negative_part_subtract(...)` →
 `run_paint_annotation` loop → downstream per-layer stages.
 
-For each `ModifierVolume` whose
-`config_delta.fields["subtype"] == "negative_part"`, the stage
-projects the modifier mesh at `slice_ir.z` via
+For each `ModifierVolume` whose kind is `ModifierKind::NegativePart`, the
+stage projects the modifier mesh at `slice_ir.z` via
 `slicer_core::slice_mesh_ex(&mv.mesh, &[slice_ir.z])` and applies
 `slicer_core::polygon_ops::difference` to each
 `slice_ir.regions[ri].polygons`. Modifiers whose Z extent does not

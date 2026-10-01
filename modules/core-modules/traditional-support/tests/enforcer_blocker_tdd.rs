@@ -14,8 +14,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
-    ConfigView, ExPolygon, PaintSemantic, PaintValue, Point2, Polygon, SliceIR, SlicedRegion,
-    SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion, CURRENT_SLICE_IR_SCHEMA_VERSION,
+    ConfigValue, ConfigView, ExPolygon, PaintSemantic, PaintValue, Point2, Polygon, SliceIR,
+    SlicedRegion, SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion,
+    CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::test_prelude::*;
@@ -26,13 +27,23 @@ use traditional_support::TraditionalSupport;
 
 /// Helper: create an enabled support config.
 fn enabled_config() -> ConfigView {
-    ConfigViewBuilder::new()
-        .bool("enable_support", true)
-        .float("support_base_pattern_spacing", 2.5)
-        .float("support_angle", 0.0)
-        .float("support_speed", 50.0)
-        .float("line_width", 0.4)
-        .build()
+    config_with(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        // Required reads (`nozzle_diameter`, `support_base_pattern_spacing`
+        // in `from_config`; `layer_height` in `run_support` when the region
+        // carries no effective layer height) at their manifest defaults.
+        ("nozzle_diameter", ConfigValue::Float(0.4)),
+        ("layer_height", ConfigValue::Float(0.2)),
+        ("support_base_pattern_spacing", ConfigValue::Float(2.5)),
+        ("support_angle", ConfigValue::Float(0.0)),
+        ("support_speed", ConfigValue::Float(50.0)),
+        ("line_width", ConfigValue::Float(0.4)),
+        // `percent`-declared: the magnitude is consumed directly.
+        ("support_interface_flow", ConfigValue::Percent(100.0)),
+        ("support_interface_spacing", ConfigValue::Float(0.4)),
+        ("support_bottom_interface_spacing", ConfigValue::Float(0.4)),
+        ("support_style", ConfigValue::String("default".to_string())),
+    ])
 }
 
 /// Helper: create a 10mm square ExPolygon centered at origin.

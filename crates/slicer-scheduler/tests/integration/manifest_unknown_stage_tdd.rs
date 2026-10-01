@@ -58,12 +58,6 @@ max-ir-schema = "2.0.0"
 
 [config.schema]
 
-[config.overridable-per-region]
-keys = []
-
-[config.overridable-per-layer]
-keys = []
-
 [hints]
 layer-parallel-safe = false
 "#

@@ -46,6 +46,7 @@ fn run_cancel_test_scenario(cancel_flag: Arc<AtomicBool>) -> Result<SliceOutcome
         progress_events: false,
         cancel_flag: Some(cancel_flag),
         config_overrides: HashMap::new(),
+        layer_ranges: Vec::new(),
     };
     let collector = Arc::new(Mutex::new(SliceEventCollector::new()));
     match run_slice_with_collector(opts, Some(Arc::clone(&collector))) {

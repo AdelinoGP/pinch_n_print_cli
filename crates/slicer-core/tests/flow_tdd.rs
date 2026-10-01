@@ -302,7 +302,7 @@ fn resolve_role_width_bridge_fallback_covers_zero_and_absent_widths() {
         let expected = if expected_role_width > 0.0 {
             expected_role_width
         } else {
-            1.125 * context.nozzle_diameter
+            context.line_width
         };
         assert_eq!(
             resolve_role_width(role.clone(), true, true, &context),
@@ -334,16 +334,24 @@ fn resolve_role_width_role_zero_and_positive_matrix() {
 }
 
 #[test]
-fn resolve_role_width_auto_sentinel_uses_line_width_then_nozzle_width() {
+fn role_width_dispatch_uses_expanded_line_width() {
     for role in roles() {
         let mut context = RoleWidthContext {
+            line_width: 0.45,
             nozzle_diameter: 0.4,
             ..RoleWidthContext::default()
         };
         set_role_width(&mut context, role.clone(), 0.0);
         assert_eq!(
+            resolve_role_width(role.clone(), false, false, &context),
+            0.45
+        );
+
+        context.line_width = 0.0;
+        assert_eq!(
             resolve_role_width(role, false, false, &context),
-            1.125 * context.nozzle_diameter
+            0.0,
+            "an unexpanded zero base width must remain zero"
         );
     }
 }

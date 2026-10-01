@@ -122,6 +122,17 @@ fn integrated_parity_infill_linker() {
             "infill_density".to_string(),
             slicer_ir::ConfigValue::Float(0.2),
         ),
+        // Packet 06 (AC-3): `layer_height` and `infill_anchor_max` are
+        // contract-required reads (orchestrate_infill / AnchorParams::from_config);
+        // a bound view holds them at manifest defaults (infill-linker.toml).
+        (
+            "layer_height".to_string(),
+            slicer_ir::ConfigValue::Float(0.2),
+        ),
+        (
+            "infill_anchor_max".to_string(),
+            slicer_ir::ConfigValue::Float(20.0),
+        ),
     ])));
     let blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
     let mut wasm_arena = LayerArena::new();

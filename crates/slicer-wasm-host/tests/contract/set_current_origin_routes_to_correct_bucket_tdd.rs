@@ -110,6 +110,7 @@ fn set_current_origin_routes_to_correct_bucket() {
         origin_handle,
         TEST_UUID.to_string(),
         TEST_REGION_ID.to_string(),
+        Vec::new(),
     )
     .expect("host call must succeed");
     assert!(
@@ -174,6 +175,101 @@ fn set_current_origin_routes_to_correct_bucket() {
 }
 
 #[test]
+fn painted_variants_with_the_same_region_id_route_to_separate_buckets() {
+    // Full identity is (object_id, region_id, variant_chain): two regions that
+    // share object and region id but differ in paint variant are distinct, and
+    // a painted variant must never absorb its sibling's output. Drive both
+    // through `set_current_origin` and assert `convert_perimeter_output`
+    // yields two regions carrying their respective chains.
+    use slicer_wasm_host::host::PaintValue;
+
+    let mut ctx = HostExecutionContextBuilder::new("com.test.variant-origin", 0.0, 0.2).build();
+
+    let push_for = |ctx: &mut slicer_wasm_host::host::HostExecutionContext,
+                    chain: Vec<(String, PaintValue)>| {
+        let origin_handle = ctx
+            .push_perimeter_output_builder()
+            .expect("push perimeter output builder for set_current_origin");
+        let result = <slicer_wasm_host::host::HostExecutionContext as HostPerimeterOutputBuilder>::set_current_origin(
+            ctx,
+            origin_handle,
+            TEST_UUID.to_string(),
+            TEST_REGION_ID.to_string(),
+            chain,
+        )
+        .expect("host call must succeed");
+        assert!(result.is_ok(), "set_current_origin: {result:?}");
+
+        let wall_handle = ctx
+            .push_perimeter_output_builder()
+            .expect("push perimeter output builder for push_wall_loop");
+        let wall_result = <slicer_wasm_host::host::HostExecutionContext as HostPerimeterOutputBuilder>::push_wall_loop(
+            ctx,
+            wall_handle,
+            make_wall_loop(),
+        )
+        .expect("host call must succeed");
+        assert!(wall_result.is_ok(), "push_wall_loop: {wall_result:?}");
+    };
+
+    push_for(
+        &mut ctx,
+        vec![("material".to_string(), PaintValue::ToolIndex(0))],
+    );
+    push_for(
+        &mut ctx,
+        vec![("material".to_string(), PaintValue::ToolIndex(1))],
+    );
+
+    let perimeter_ir =
+        convert_perimeter_output(ctx.perimeter_output(), 0).expect("convert must succeed");
+    assert_eq!(
+        perimeter_ir.regions.len(),
+        2,
+        "two variant chains must produce two regions, not one merged bucket: {:#?}",
+        perimeter_ir.regions
+    );
+    let mut chains: Vec<_> = perimeter_ir
+        .regions
+        .iter()
+        .map(|region| {
+            assert_eq!(region.object_id, TEST_UUID);
+            assert_eq!(region.region_id, TEST_REGION_ID);
+            region.walls.len()
+        })
+        .collect();
+    chains.sort_unstable();
+    assert_eq!(
+        chains,
+        vec![1, 1],
+        "each variant bucket must retain its own single wall loop"
+    );
+    let variant_tools: Vec<_> = {
+        let mut tools: Vec<_> = perimeter_ir
+            .regions
+            .iter()
+            .map(|region| {
+                region
+                    .variant_chain
+                    .iter()
+                    .map(|(_, value)| value.clone())
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        tools.sort_by_key(|chain| format!("{chain:?}"));
+        tools
+    };
+    assert_eq!(
+        variant_tools,
+        vec![
+            vec![slicer_ir::PaintValue::ToolIndex(0)],
+            vec![slicer_ir::PaintValue::ToolIndex(1)]
+        ],
+        "each region must carry its own chain, not the sibling's"
+    );
+}
+
+#[test]
 fn support_set_current_origin_routes_to_correct_bucket() {
     let mut ctx = HostExecutionContextBuilder::new("com.test.explicit-origin", 0.0, 0.2).build();
     assert!(ctx.current_slice_region().is_none());
@@ -186,6 +282,7 @@ fn support_set_current_origin_routes_to_correct_bucket() {
         handle,
         TEST_UUID.to_string(),
         TEST_REGION_ID.to_string(),
+        Vec::new(),
     )
     .expect("host call must succeed");
     assert!(
@@ -223,6 +320,7 @@ fn set_current_origin_rejects_noncanonical_region_id() {
         handle,
         TEST_UUID.to_string(),
         "01".to_string(),
+        Vec::new(),
     )
     .expect("host call must succeed");
     assert!(result.is_err());

@@ -166,6 +166,11 @@ fn internal_bridge_qualification_writes_gated_areas() {
         infill_density: 0.2,
         top_shell_layers: 2,
         bottom_shell_layers: 0,
+        // Packet 04: `line_width = 0` is the auto sentinel the host expands
+        // (1.125 x nozzle_diameter = 0.45) before any consumer sees the view;
+        // `resolve_role_width` no longer performs the nozzle fallback, so the
+        // production-equivalent fixture value is the expanded width.
+        line_width: 0.45,
         ..Default::default()
     };
     let config = region_map.intern_config(resolved);
@@ -251,6 +256,11 @@ fn internal_bridge_angle_is_per_area_from_boundary() {
         infill_density: 0.2,
         top_shell_layers: 2,
         bottom_shell_layers: 0,
+        // Packet 04: the host expands the auto-zero sentinel to
+        // `1.125 * nozzle_diameter` before consumption; `resolve_role_width`
+        // no longer falls back to the nozzle, so the fixture carries the
+        // expanded 0.45 mm.
+        line_width: 0.45,
         ..Default::default()
     });
     for index in 0..layers {

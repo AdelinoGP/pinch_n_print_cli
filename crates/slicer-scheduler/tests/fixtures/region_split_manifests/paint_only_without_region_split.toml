@@ -1,0 +1,30 @@
+paint_only = true
+
+[module]
+id           = "com.test.paint-only-without-split"
+version      = "0.1.0"
+display-name = "Paint Only Without Split"
+description  = "Fixture: paint_only = true with no [[region_split]] entry (must be rejected)"
+author       = "test"
+license      = "MIT"
+
+[stage]
+id = "Layer::Infill"
+
+[ir-access]
+reads  = []
+writes = []
+
+[claims]
+holds    = []
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires          = []
+min-host-version  = "0.1.0"
+min-ir-schema     = "1.0.0"
+max-ir-schema     = "5.0.0"
+
+[hints]
+layer-parallel-safe = true

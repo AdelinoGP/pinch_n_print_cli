@@ -7,10 +7,9 @@ use std::sync::Arc;
 
 use slicer_core::algos::paint_segmentation::execute_paint_segmentation;
 use slicer_ir::{
-    ConfigDelta, ConfigValue, ExPolygon, IndexedTriangleSet, MeshIR, ModifierScope, ModifierVolume,
-    ObjectMesh, PaintValue, Point2, Point3, Polygon, RegionKey, RegionMapIR, RegionPlan,
-    ResolvedConfig, SemVer, SliceIR, SlicedRegion, Transform3d,
-    CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
+    ConfigDelta, ExPolygon, IndexedTriangleSet, MeshIR, ModifierVolume, ObjectMesh, PaintValue,
+    Point2, Point3, Polygon, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SemVer, SliceIR,
+    SlicedRegion, Transform3d, CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
 };
 
 const IDENTITY: [f64; 16] = [
@@ -51,19 +50,15 @@ fn square(y0: f32, y1: f32) -> ExPolygon {
 }
 
 fn fixture() -> (Arc<MeshIR>, Arc<Vec<SliceIR>>, Arc<RegionMapIR>) {
-    let mut fields = HashMap::new();
-    fields.insert(
-        "subtype".to_owned(),
-        ConfigValue::String("support_enforcer".to_owned()),
+    let volume = ModifierVolume::new(
+        "paint-trigger".to_owned(),
+        box_mesh(2.0, 8.0),
+        ConfigDelta {
+            fields: HashMap::new(),
+        },
+        0,
+        slicer_ir::ModifierKind::SupportEnforcer,
     );
-    // exhaustive: fixture pins every modifier volume field
-    let volume = ModifierVolume {
-        id: "paint-trigger".to_owned(),
-        mesh: box_mesh(2.0, 8.0),
-        config_delta: ConfigDelta { fields },
-        priority: 0,
-        applies_to: ModifierScope::Support,
-    };
     let mesh = Arc::new(MeshIR {
         objects: vec![
             ObjectMesh {

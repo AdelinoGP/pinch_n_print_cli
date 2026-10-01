@@ -101,12 +101,20 @@ fn gap_fill_emitted_for_narrow_gap() {
     // Assertion threshold for TOTAL polyline length (AC-4 contract: 0.5 mm).
     let filter_mm = 0.5_f32;
 
-    let config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): `run_perimeters`'s classified
+    // reads are `require_*`, so the full classic surface must be present; the
+    // fixture's own keys override the baseline. Both overlap keys are zeroed
+    // because this fixture's geometry (see the module docs) is derived from
+    // the pre-migration code fallback `0.0`, not the manifest percent default.
+    let config = crate::common::classic_perimeters_baseline()
+        .float("line_width", 0.4)
         .int("wall_count", 2)
         .float("outer_wall_line_width", inner_w as f64)
         .float("inner_wall_line_width", inner_w as f64)
         .float("gap_infill_speed", 30.0)
         .float("filter_out_gap_fill", 0.5_f64)
+        .float("infill_wall_overlap", 0.0)
+        .float("top_bottom_infill_wall_overlap", 0.0)
         .build();
 
     let module = ClassicPerimeters::from_config(&config).unwrap();
@@ -244,12 +252,16 @@ fn gap_fill_emitted_for_narrow_gap() {
 fn no_gaps_case() {
     let inner_w = 0.4_f32;
 
-    let config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): see gap_fill_emitted_for_narrow_gap.
+    let config = crate::common::classic_perimeters_baseline()
+        .float("line_width", 0.4)
         .int("wall_count", 2)
         .float("outer_wall_line_width", inner_w as f64)
         .float("inner_wall_line_width", inner_w as f64)
         .float("gap_infill_speed", 30.0)
         .float("filter_out_gap_fill", 0.5)
+        .float("infill_wall_overlap", 0.0)
+        .float("top_bottom_infill_wall_overlap", 0.0)
         .build();
 
     let module = ClassicPerimeters::from_config(&config).unwrap();

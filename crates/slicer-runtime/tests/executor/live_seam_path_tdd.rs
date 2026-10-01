@@ -157,6 +157,7 @@ fn wall_postprocess_commits_resolved_seam_to_perimeter_ir() {
         .push(Some(OriginId {
             object_id: String::new(),
             region_id: 0,
+            variant_chain: Vec::new(),
         }));
 
     // Seam candidates (pos, score).
@@ -173,11 +174,13 @@ fn wall_postprocess_commits_resolved_seam_to_perimeter_ir() {
         .push(Some(OriginId {
             object_id: String::new(),
             region_id: 0,
+            variant_chain: Vec::new(),
         }));
 
     ctx.set_current_perimeter_region(Some(OriginId {
         object_id: String::new(),
         region_id: 0,
+        variant_chain: Vec::new(),
     }));
     ctx.push_resolved_seam(Resource::new_own(0), candidate_pos, 0)
         .expect("host push_resolved_seam call must succeed")
@@ -281,6 +284,7 @@ fn resolved_seam_is_applied_only_to_origin_region() {
         .push(Some(OriginId {
             object_id: "obj-a".to_string(),
             region_id: 0,
+            variant_chain: Vec::new(),
         }));
     ctx.perimeter_output_mut()
         .wall_loops
@@ -290,11 +294,13 @@ fn resolved_seam_is_applied_only_to_origin_region() {
         .push(Some(OriginId {
             object_id: "obj-b".to_string(),
             region_id: 1,
+            variant_chain: Vec::new(),
         }));
 
     ctx.set_current_perimeter_region(Some(OriginId {
         object_id: "obj-a".to_string(),
         region_id: 0,
+        variant_chain: Vec::new(),
     }));
     ctx.push_resolved_seam(
         Resource::new_own(0),
@@ -441,7 +447,12 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
     );
     let module = CompiledModuleBuilder::new(loaded.id().to_string())
         .config_view(Arc::new(slicer_ir::ConfigView::from_map(
-            std::collections::HashMap::new(),
+            // Fail-closed migration key (path-optimization-default.toml
+            // manifest default): a required read since the fallback removal.
+            std::collections::HashMap::from([(
+                "path_optimization_emit_layer_markers".to_string(),
+                slicer_ir::ConfigValue::Bool(true),
+            )]),
         )))
         .build();
 
@@ -705,6 +716,7 @@ fn rotated_points_cardinality_mismatch_rejected() {
         .push(Some(OriginId {
             object_id: String::new(),
             region_id: 0,
+            variant_chain: Vec::new(),
         }));
 
     // convert_perimeter_output should reject the mismatched cardinality.
@@ -954,7 +966,12 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
     );
     let module = CompiledModuleBuilder::new(loaded.id().to_string())
         .config_view(Arc::new(slicer_ir::ConfigView::from_map(
-            std::collections::HashMap::new(),
+            // Fail-closed migration key (path-optimization-default.toml
+            // manifest default): a required read since the fallback removal.
+            std::collections::HashMap::from([(
+                "path_optimization_emit_layer_markers".to_string(),
+                slicer_ir::ConfigValue::Bool(true),
+            )]),
         )))
         .build();
     let bundle = crate::common::TestModuleBundle {
@@ -1319,10 +1336,18 @@ fn classic_perimeters_seam_candidate_z_survives_wasm_boundary_above_first_layer(
         .expect("instance pool must build"),
     );
 
+    // Bound-view baseline (packet 06 5c-prime): `run-perimeters`
+    // contract-requires the full `classic_perimeters_baseline` surface
+    // (first failure: `layer_height`) plus `wall_count` and `line_width`
+    // (the already-expanded base width the auto-sentinel wall widths
+    // resolve through); seam placement itself is independent of these keys.
     let module = CompiledModuleBuilder::new(loaded.id().to_string())
-        .config_view(Arc::new(slicer_ir::ConfigView::from_map(
-            std::collections::HashMap::new(),
-        )))
+        .config_view(Arc::new(
+            crate::common::classic_perimeters_baseline()
+                .int("wall_count", 2)
+                .float("line_width", 0.4)
+                .build(),
+        ))
         .build();
 
     let bundle = crate::common::TestModuleBundle {

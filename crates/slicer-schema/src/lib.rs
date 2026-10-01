@@ -203,7 +203,7 @@ pub const STAGES: &[StageSpec] = &[
         tier_id: TIER_PREPASS,
         trait_name: "PrepassModule",
         wit_dir: "prepass-layer-planning",
-        wit_package: "slicer:prepass-layer-planning@1.0.0",
+        wit_package: "slicer:prepass-layer-planning@3.0.0",
         wit_interface: "layer-planning",
         wit_world: "layer-planning-module",
     },
@@ -542,9 +542,6 @@ pub const RECOGNIZED_CLAIMS: &[&str] = &[
     "gcode-postprocessor",
     "text-postprocessor",
 ];
-
-/// Recognized severity values for `[[config.cross-validate]]` rules.
-pub const VALID_SEVERITIES: &[&str] = &["error", "warning"];
 
 #[cfg(test)]
 mod tests {

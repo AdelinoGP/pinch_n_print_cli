@@ -7,9 +7,13 @@
 
 use std::collections::HashMap;
 
-use slicer_ir::{ConfigValue, PaintSemantic, ResolvedConfig};
+use slicer_config::{ConfigScope, ExpansionContext, ResolutionTarget};
+use slicer_ir::{ConfigValue, PaintSemantic};
 use slicer_scheduler::{
-    resolve_per_paint_semantic_configs, ConfigBoundsIndex, ConfigResolutionError,
+    config_resolution::{
+        ingest_resolution_config, resolve_config, unknown_paint_semantic_warnings,
+    },
+    ConfigBoundsIndex,
 };
 
 // ---------------------------------------------------------------------------
@@ -38,23 +42,21 @@ fn resolves_paint_config_namespace() {
         config_value_int(5),
     );
 
-    let global = ResolvedConfig {
-        wall_count: 2,
-        ..ResolvedConfig::default()
-    };
-
-    let semantics = [PaintSemantic::Custom("fuzzy_skin".to_string())];
-
     let bounds = ConfigBoundsIndex::empty();
-    let (result, _warnings) =
-        resolve_per_paint_semantic_configs(&global, &source, &semantics, &bounds)
-            .expect("resolution should not fail");
-    assert!(result.contains_key(&PaintSemantic::Custom("fuzzy_skin".to_string())));
-    assert_eq!(
-        result[&PaintSemantic::Custom("fuzzy_skin".to_string())].wall_count,
-        5
-    );
-    let _: Result<(), ConfigResolutionError> = Ok(()); // keep import used
+    let resolved = resolve_config(
+        &source,
+        &bounds,
+        &ResolutionTarget {
+            paint_semantics: vec!["fuzzy_skin".to_owned()],
+            ..ResolutionTarget::default()
+        },
+        &ExpansionContext {
+            nozzle_diameter_mm: 0.4,
+            ..ExpansionContext::default()
+        },
+    )
+    .expect("resolution should not fail");
+    assert_eq!(resolved.wall_count, 5);
 }
 
 /// AC-2 (packet 51): A `paint_config` entry whose semantic does not appear in
@@ -68,16 +70,26 @@ fn unknown_semantic_warns_then_ignores() {
         config_value_int(5),
     );
 
-    let global = ResolvedConfig::default();
-
     // Known semantics list deliberately does NOT include UNKNOWN_SEMANTIC.
     let semantics: [PaintSemantic; 0] = [];
 
     let bounds = ConfigBoundsIndex::empty();
-    let (result, warnings) =
-        resolve_per_paint_semantic_configs(&global, &source, &semantics, &bounds)
-            .expect("resolution should not fail");
-    assert!(!result.contains_key(&PaintSemantic::Custom("UNKNOWN_SEMANTIC".to_string())));
+    let scoped = ingest_resolution_config(&source, &bounds).expect("typed ingestion should pass");
+    let warnings = unknown_paint_semantic_warnings(&scoped, &semantics);
+    assert!(scoped
+        .delta(&ConfigScope::PaintSemantic("UNKNOWN_SEMANTIC".to_owned()))
+        .is_some());
+    let resolved = resolve_config(
+        &source,
+        &bounds,
+        &ResolutionTarget::default(),
+        &ExpansionContext {
+            nozzle_diameter_mm: 0.4,
+            ..ExpansionContext::default()
+        },
+    )
+    .expect("unselected paint semantic must not apply");
+    assert_eq!(resolved.wall_count, 2);
     assert_eq!(warnings.len(), 1);
     assert!(warnings[0].contains("UNKNOWN_SEMANTIC"));
 }

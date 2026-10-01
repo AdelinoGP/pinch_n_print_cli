@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
 
-use slicer_ir::{ModifierScope, ModifierVolume, RegionKey, SemVer};
+use slicer_ir::{RegionKey, SemVer};
 use slicer_runtime::progress_events::{
     JsonLinesEmitter, ProgressError, ProgressEvent, ProgressEventType, ProgressPhase,
     ProgressStatus, SliceEventCollector,
@@ -264,79 +264,6 @@ fn serialized_pool_only_ever_returns_slot_zero_under_repeated_acquisition() {
 // â”€â”€ Modifier resolution precedence + determinism â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // docs/12 Â§Determinism row (claim holder map identical for every (...));
 // docs/02 Â§IR 2 ModifierVolume.priority.
-
-// exhaustive: ModifierVolume explicit test fixture preserves boundary data
-fn modifier(id: &str, priority: u32, scope: ModifierScope) -> ModifierVolume {
-    use slicer_ir::{ConfigDelta, IndexedTriangleSet};
-    // exhaustive: ModifierVolume explicit test fixture preserves boundary data
-    ModifierVolume {
-        id: id.to_string(),
-        mesh: IndexedTriangleSet {
-            vertices: vec![],
-            indices: vec![],
-        },
-        config_delta: ConfigDelta {
-            fields: HashMap::new(),
-        },
-        priority,
-        applies_to: scope,
-        // exhaustive: ModifierVolume boundary/test fixture requires explicit field construction
-        // exhaustive: ModifierVolume explicit test fixture preserves boundary data
-    }
-    // exhaustive: ModifierVolume explicit test fixture preserves boundary data
-}
-
-fn resolve_winner_for_scope<'a>(
-    mods: &'a [ModifierVolume],
-    scope: ModifierScope,
-) -> Option<&'a ModifierVolume> {
-    // Documented precedence: highest priority wins; deterministic tie-break by
-    // modifier id (lexicographic ascending) so equal-priority overlaps never
-    // depend on insertion order.
-    mods.iter()
-        .filter(|m| m.applies_to == scope || m.applies_to == ModifierScope::AllFeatures)
-        .max_by(|a, b| a.priority.cmp(&b.priority).then_with(|| b.id.cmp(&a.id)))
-}
-
-#[test]
-fn modifier_resolution_picks_highest_priority_within_scope() {
-    let mods = vec![
-        modifier("low", 1, ModifierScope::Infill),
-        modifier("mid", 5, ModifierScope::Infill),
-        modifier("high", 9, ModifierScope::Infill),
-        modifier("noise", 100, ModifierScope::Perimeters),
-    ];
-    let winner = resolve_winner_for_scope(&mods, ModifierScope::Infill).unwrap();
-    assert_eq!(winner.id, "high");
-}
-
-#[test]
-fn modifier_resolution_breaks_priority_ties_deterministically_by_id() {
-    let a = modifier("alpha", 7, ModifierScope::Infill);
-    let b = modifier("beta", 7, ModifierScope::Infill);
-    let order_one = vec![a.clone(), b.clone()];
-    let order_two = vec![b.clone(), a.clone()];
-    let w1 = resolve_winner_for_scope(&order_one, ModifierScope::Infill).unwrap();
-    let w2 = resolve_winner_for_scope(&order_two, ModifierScope::Infill).unwrap();
-    assert_eq!(
-        w1.id, w2.id,
-        "tie-break must be insertion-order-independent"
-    );
-    assert_eq!(w1.id, "alpha");
-}
-
-#[test]
-fn all_features_modifier_participates_in_every_scope_resolution() {
-    let mods = vec![
-        modifier("global", 4, ModifierScope::AllFeatures),
-        modifier("infill-spec", 3, ModifierScope::Infill),
-    ];
-    let w = resolve_winner_for_scope(&mods, ModifierScope::Infill).unwrap();
-    assert_eq!(
-        w.id, "global",
-        "AllFeatures must compete in scope-specific resolution"
-    );
-}
 
 // â”€â”€ Canonical ID / numeric edge cases â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // docs/12 Â§Determinism (canonical hash); docs/02 IR types.

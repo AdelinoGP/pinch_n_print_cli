@@ -23,6 +23,17 @@ fn integrated_parity_machine_gcode_emit() {
                 "machine_end_gcode".into(),
                 ConfigValue::String("END".into()),
             ),
+            // Declared required reads since the guest's config-literal
+            // fallbacks migrated to `require_int` (machine-gcode-emit.toml
+            // manifest defaults).
+            (
+                "bed_temperature_initial_layer_single".into(),
+                ConfigValue::Int(60),
+            ),
+            (
+                "nozzle_temperature_initial_layer".into(),
+                ConfigValue::Int(215),
+            ),
         ]
         .into_iter()
         .collect(),

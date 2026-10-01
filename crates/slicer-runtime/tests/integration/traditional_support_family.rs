@@ -67,12 +67,6 @@ pub fn traditional_support_family() {
         .join("modules")
         .join("core-modules");
     let loaded = crate::common::wasm_cache::cached_live_modules(&[core_modules], 1);
-    let mut config_source = std::collections::HashMap::new();
-    config_source.insert("enable_support".to_string(), ConfigValue::Bool(true));
-    config_source.insert(
-        "support_type".to_string(),
-        ConfigValue::String("normal(auto)".to_string()),
-    );
     let target_z = structural_entry.anchor_z as f32 / 10_000.0;
     let global_layers = ctx
         .blackboard
@@ -106,7 +100,13 @@ pub fn traditional_support_family() {
     let mut layer_plan = build_live_execution_plan(
         loaded.sorted_stages.clone(),
         loaded.bindings.clone(),
-        &config_source,
+        // Production binding passes `default_resolved_config` — the value
+        // `resolve_scope_stack` produced, with every registry-declared
+        // default seeded (`seed_registry_defaults`) and automatic values
+        // expanded. A hand-built map bypasses that seeding, so the loaded
+        // classic-perimeters guest would not find its contract-required
+        // `bridge_line_width` (packet 06) in the bound view.
+        &ctx.default_resolved_config,
         Arc::new(global_layers),
         Arc::new(std::collections::HashMap::new()),
         &mut Vec::new(),
@@ -255,14 +255,14 @@ impl LayerStageRunner for CapturingLayerRunner {
                 .invoked
                 .lock()
                 .expect("traditional renderer invocation lock must not be poisoned") = true;
-            let config = slicer_ir::ConfigView::from_map(std::collections::HashMap::from([
-                ("enable_support".to_string(), ConfigValue::Bool(true)),
-                (
-                    "support_type".to_string(),
-                    ConfigValue::String("normal(auto)".to_string()),
-                ),
-            ]));
-            let native = TraditionalSupport::from_config(&config)
+            // The production-bound view for this module: `build_live_execution_plan`
+            // pre-filtered the resolved config through `bind_module_config_view`,
+            // so it already holds every key the native constructor reads
+            // (`nozzle_diameter`, `layer_height`, `support_line_width`,
+            // `support_base_pattern_spacing`). Hand-building a partial map here
+            // bypassed that binding and tripped the packet-06 required reads.
+            let config: &slicer_ir::ConfigView = module.config_view.as_ref();
+            let native = TraditionalSupport::from_config(config)
                 .expect("traditional-support native module must construct");
             let layer_index = self
                 .plan

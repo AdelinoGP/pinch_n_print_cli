@@ -101,9 +101,9 @@ fn support_path(x: f32) -> ExtrusionPath3D {
 
 fn native_support_entry(_: &NativeLayerRequest) -> Result<NativeLayerResponse, ModuleError> {
     let mut support = SupportOutputBuilder::new();
-    support.begin_region("support-object-a", 7);
+    support.begin_region("support-object-a", 7, &[]);
     support.push_support_path(support_path(0.0))?;
-    support.begin_region("support-object-b", 11);
+    support.begin_region("support-object-b", 11, &[]);
     support.push_interface_path(support_path(10.0), true)?;
     support.push_raft_path(support_path(20.0))?;
     // exhaustive: test-only native layer response; every stage slot named explicitly by this parity fixture

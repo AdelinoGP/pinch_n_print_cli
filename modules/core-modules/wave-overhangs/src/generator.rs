@@ -300,9 +300,9 @@ fn point_in_ring(p: Point2, ring: &Polygon) -> bool {
 
 /// Containment test against a polygon set (contour minus holes).
 fn point_in_polys(p: Point2, polys: &[ExPolygon]) -> bool {
-    polys.iter().any(|exp| {
-        point_in_ring(p, &exp.contour) && !exp.holes.iter().any(|h| point_in_ring(p, h))
-    })
+    polys
+        .iter()
+        .any(|exp| point_in_ring(p, &exp.contour) && !exp.holes.iter().any(|h| point_in_ring(p, h)))
 }
 
 /// Minimum distance from `p` to `pl`, and whether the closest projection foot
@@ -585,7 +585,14 @@ fn closing_pass(
         let comp_slice = std::slice::from_ref(comp);
         // Width test: a component survives erosion by half the threshold only
         // if it is wider than the threshold somewhere.
-        if offset(comp_slice, -min_half, OffsetJoinType::Round, ARC_TOLERANCE_MM).is_empty() {
+        if offset(
+            comp_slice,
+            -min_half,
+            OffsetJoinType::Round,
+            ARC_TOLERANCE_MM,
+        )
+        .is_empty()
+        {
             continue;
         }
         let center = strip_centerline(comp, tolerance, step);
@@ -892,7 +899,12 @@ fn should_generate_waves_for_region(
 
 /// Score a candidate front against already-emitted paths (canonical
 /// `support_score`).
-fn support_score(candidate: &[Point2], support: &[Polyline], reach: f64, prefix_length: f64) -> f64 {
+fn support_score(
+    candidate: &[Point2],
+    support: &[Polyline],
+    reach: f64,
+    prefix_length: f64,
+) -> f64 {
     if support.is_empty() || candidate.len() < 2 {
         return -1.0;
     }
@@ -1330,7 +1342,12 @@ pub(crate) fn generate(
         append_zig_zag_front_levels(&levels_all, zig_zag_connector_limit)
     } else {
         let flat: Vec<Polyline> = levels_all.into_iter().flatten().collect();
-        append_wave_fronts(&flat, flow_width_mm, zig_zag_connector_limit, params.pattern)
+        append_wave_fronts(
+            &flat,
+            flow_width_mm,
+            zig_zag_connector_limit,
+            params.pattern,
+        )
     };
 
     // 12. Drop empty paths; keep the unioned filled region.

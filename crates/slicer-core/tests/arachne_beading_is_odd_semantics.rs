@@ -112,24 +112,27 @@ fn even_bead_strip_ring_graph() -> SkeletalTrapezoidationGraph {
         transition_ratio: 0.0,
     };
     let vertices = vec![
-        node(0.0, half_width, half_width, Some(4)),   // 0: A
-        node(len, half_width, half_width, Some(4)),   // 1: B
-        node(0.0, 0.0, 0.0, None),                    // 2: b0
-        node(len, 0.0, 0.0, None),                    // 3: b1
-        node(len, 2.0 * half_width, 0.0, None),       // 4: b2
-        node(0.0, 2.0 * half_width, 0.0, None),       // 5: b3
+        node(0.0, half_width, half_width, Some(4)), // 0: A
+        node(len, half_width, half_width, Some(4)), // 1: B
+        node(0.0, 0.0, 0.0, None),                  // 2: b0
+        node(len, 0.0, 0.0, None),                  // 3: b1
+        node(len, 2.0 * half_width, 0.0, None),     // 4: b2
+        node(0.0, 2.0 * half_width, 0.0, None),     // 5: b3
     ];
-    let half_edge = |start_vertex: usize, twin: usize, prev: usize, next: usize, spine: bool| {
-        STHalfEdge {
+    let half_edge =
+        |start_vertex: usize, twin: usize, prev: usize, next: usize, spine: bool| STHalfEdge {
             start_vertex,
             twin,
             prev,
             next,
             central: spine,
-            edge_type: if spine { EdgeType::NORMAL } else { EdgeType::EXTRA_VD },
+            edge_type: if spine {
+                EdgeType::NORMAL
+            } else {
+                EdgeType::EXTRA_VD
+            },
             ..STHalfEdge::default()
-        }
-    };
+        };
     let none = NO_INDEX;
     let edges = vec![
         half_edge(2, 9, none, 1, false), // 0: b0 -> A

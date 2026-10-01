@@ -21,8 +21,8 @@
 use slicer_ir::{ExtrusionPath3D, ExtrusionRole, Point3WithWidth, SeamPosition, WallLoop};
 use slicer_sdk::prelude::LayerModule;
 use slicer_sdk::test_prelude::PerimeterRegionViewBuilder;
-use slicer_sdk::views::PerimeterRegionView;
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
+use slicer_sdk::views::PerimeterRegionView;
 
 /// Helper: make a 2-point horizontal wall loop.
 #[rustfmt::skip]
@@ -69,7 +69,10 @@ fn no_move_commands_emitted_when_perimeter_already_rotated() {
     region.set_resolved_seam(Some(resolved_seam));
 
     let module = path_optimization_default::PathOptimizationDefault::from_config(
-        &slicer_ir::ConfigView::default(),
+        &slicer_ir::ConfigView::from_map([(
+            "path_optimization_emit_layer_markers".to_string(),
+            slicer_ir::ConfigValue::Bool(true),
+        )].into_iter().collect()),
     )
     .expect("from_config must succeed");
     let mut output = slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
@@ -134,7 +137,10 @@ fn missing_resolved_seam_leaves_wall_loop_order_unchanged() {
     region.set_resolved_seam(None);
 
     let module = path_optimization_default::PathOptimizationDefault::from_config(
-        &slicer_ir::ConfigView::default(),
+        &slicer_ir::ConfigView::from_map([(
+            "path_optimization_emit_layer_markers".to_string(),
+            slicer_ir::ConfigValue::Bool(true),
+        )].into_iter().collect()),
     )
     .expect("from_config must succeed");
     let mut output = slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
@@ -195,7 +201,10 @@ fn seam_started_wall_replay_is_deterministic() {
     region.set_resolved_seam(Some(resolved_seam));
 
     let module = path_optimization_default::PathOptimizationDefault::from_config(
-        &slicer_ir::ConfigView::default(),
+        &slicer_ir::ConfigView::from_map([(
+            "path_optimization_emit_layer_markers".to_string(),
+            slicer_ir::ConfigValue::Bool(true),
+        )].into_iter().collect()),
     )
     .expect("from_config must succeed");
 

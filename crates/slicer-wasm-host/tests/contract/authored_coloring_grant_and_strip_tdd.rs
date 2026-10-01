@@ -62,6 +62,7 @@ fn collected_with_tool(tool_index: Option<u32>) -> InfillOutputCollected {
         sparse_path_origins: vec![Some(OriginId {
             object_id: OBJECT_ID.to_string(),
             region_id: REGION_ID,
+            variant_chain: Vec::new(),
         })],
         ..Default::default()
     }

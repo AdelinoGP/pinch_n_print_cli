@@ -69,7 +69,11 @@ fn split_loops_by_island(walls: &[WallLoop]) -> (usize, usize) {
 /// the canonical post-185 behavior.
 #[test]
 fn topmost_collapse_is_unconditional() {
-    let config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
+    // reads need the full classic surface; the test's own keys override the
+    // baseline defaults.
+    let config = crate::common::classic_perimeters_baseline()
+        .float("line_width", 0.4)
         .int("wall_count", WALL_COUNT)
         .float("outer_wall_line_width", 0.5)
         .float("inner_wall_line_width", 0.4)
@@ -106,7 +110,9 @@ fn topmost_collapse_is_unconditional() {
 
 #[test]
 fn min_width_top_surface_gates_only_one_wall_top() {
-    let config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): see topmost_collapse_is_unconditional.
+    let config = crate::common::classic_perimeters_baseline()
+        .float("line_width", 0.4)
         .int("wall_count", WALL_COUNT)
         .float("outer_wall_line_width", 0.5)
         .float("inner_wall_line_width", 0.4)

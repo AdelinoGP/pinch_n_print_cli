@@ -282,6 +282,16 @@ pub fn infill_ir_to_prior_regions(
         .map(|r| crate::host::PriorInfillRegion {
             object_id: r.object_id.clone(),
             region_id: r.region_id.to_string(),
+            variant_chain: r
+                .variant_chain
+                .iter()
+                .map(|(semantic, value)| {
+                    (
+                        semantic.clone(),
+                        crate::marshal::leaf::ir_to_wit_paint_value(value),
+                    )
+                })
+                .collect(),
             sparse_infill: r
                 .sparse_infill
                 .iter()
@@ -434,6 +444,7 @@ pub fn convert_infill_output(
         slicer_ir::InfillRegion {
             object_id: o.object_id.clone(),
             region_id: o.region_id,
+            variant_chain: o.variant_chain.clone(),
             sparse_infill: Vec::new(),
             solid_infill: Vec::new(),
             ironing: Vec::new(),
@@ -862,7 +873,7 @@ pub fn convert_perimeter_output(
 
     fn mint_perimeter_region(o: &OriginId) -> slicer_ir::PerimeterRegion {
         slicer_ir::PerimeterRegion {
-            variant_chain: Vec::new(),
+            variant_chain: o.variant_chain.clone(),
             object_id: o.object_id.clone(),
             region_id: o.region_id,
             walls: Vec::new(),

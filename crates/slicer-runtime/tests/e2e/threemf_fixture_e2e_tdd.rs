@@ -18,7 +18,7 @@ use slicer_core::algos::region_mapping::RegionMappingPlanProjection;
 use slicer_core::slice_mesh_ex;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigDelta, ConfigValue, ExPolygon, GlobalLayer,
-    IndexedTriangleSet, LayerPlanIR, MeshIR, ModifierScope, ModifierVolume, ObjectConfig,
+    IndexedTriangleSet, LayerPlanIR, MeshIR, ModifierKind, ModifierVolume, ObjectConfig,
     ObjectLayerRef, ObjectMesh, PaintSemantic, PaintValue, Point3, Polygon, RegionMapIR,
     ResolvedConfig, SemVer, SliceIR, SlicedRegion, Transform3d, CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
@@ -211,12 +211,7 @@ fn negative_part_subtracts_via_full_pipeline() {
         .objects
         .iter()
         .flat_map(|obj| &obj.modifier_volumes)
-        .filter(|mv| {
-            mv.config_delta.fields.get("subtype").map_or(
-                false,
-                |v| matches!(v, ConfigValue::String(s) if s == "negative_part"),
-            )
-        })
+        .filter(|mv| mv.kind() == ModifierKind::NegativePart)
         .collect();
 
     assert!(
@@ -235,17 +230,7 @@ fn negative_part_subtracts_via_full_pipeline() {
 
     // Build a SliceIR for all objects at test Z, only for the parent object.
     // We slice the first object (the positive part that contains the parent mesh).
-    let parent_obj = mesh_ir
-        .objects
-        .iter()
-        .find(|obj| {
-            obj.modifier_volumes.iter().any(|mv| {
-                matches!(mv.config_delta.fields.get("subtype"),
-                    Some(ConfigValue::String(s)) if s == "normal_part")
-            })
-        })
-        .or_else(|| mesh_ir.objects.first())
-        .expect("at least one object");
+    let parent_obj = mesh_ir.objects.first().expect("at least one object");
     let projected = slice_mesh_ex(&parent_obj.mesh, &[z_test]);
     let polygons = projected.into_iter().next().unwrap_or_default();
 
@@ -296,12 +281,7 @@ fn negative_part_transform_baked_correctly() {
         .objects
         .iter()
         .flat_map(|obj| &obj.modifier_volumes)
-        .filter(|mv| {
-            mv.config_delta.fields.get("subtype").map_or(
-                false,
-                |v| matches!(v, ConfigValue::String(s) if s == "negative_part"),
-            )
-        })
+        .filter(|mv| mv.kind() == ModifierKind::NegativePart)
         .collect();
 
     assert!(
@@ -389,12 +369,7 @@ fn modifier_volumes_populated_with_correct_metadata() {
         .objects
         .iter()
         .flat_map(|obj| &obj.modifier_volumes)
-        .filter(|mv| {
-            mv.config_delta.fields.get("subtype").map_or(
-                false,
-                |v| matches!(v, ConfigValue::String(s) if s == "negative_part"),
-            )
-        })
+        .filter(|mv| mv.kind() == ModifierKind::NegativePart)
         .collect();
 
     assert!(
@@ -403,16 +378,10 @@ fn modifier_volumes_populated_with_correct_metadata() {
     );
 
     let mv = neg_mvs[0];
-    let subtype = mv
-        .config_delta
-        .fields
-        .get("subtype")
-        .expect("subtype key must exist");
-
     assert_eq!(
-        *subtype,
-        ConfigValue::String("negative_part".to_string()),
-        "subtype must be 'negative_part'"
+        mv.kind(),
+        ModifierKind::NegativePart,
+        "negative-volume route must be represented by its typed kind"
     );
 
     let extruder = mv
@@ -446,12 +415,7 @@ fn support_enforcer_emits_paint_regions_from_disk() {
         .objects
         .iter()
         .flat_map(|obj| &obj.modifier_volumes)
-        .any(|mv| {
-            mv.config_delta
-                .fields
-                .get("subtype")
-                .is_some_and(|v| matches!(v, ConfigValue::String(s) if s == "support_enforcer"))
-        });
+        .any(|mv| mv.kind() == ModifierKind::SupportEnforcer);
     if !has_enforcer {
         eprintln!("SKIP: fixture has no support_enforcer modifier volumes");
         return;
@@ -503,7 +467,10 @@ fn support_enforcer_emits_paint_regions_from_disk() {
             patch: 0,
         },
         entries,
-        configs: vec![ResolvedConfig::default()],
+        configs: vec![ResolvedConfig {
+            line_width: 0.4,
+            ..ResolvedConfig::default()
+        }],
     });
 
     let result = execute_paint_segmentation(mesh_ir, slice_ir, region_map).expect("v2 driver ok");
@@ -585,15 +552,11 @@ fn support_blocker_emits_paint_regions_from_disk() {
             continue;
         }
         let mesh = crate::common::model_cache::cached_load_model(&path);
-        let has_blocker =
-            mesh.objects
-                .iter()
-                .flat_map(|obj| &obj.modifier_volumes)
-                .any(|mv| {
-                    mv.config_delta.fields.get("subtype").is_some_and(
-                        |v| matches!(v, ConfigValue::String(s) if s == "support_blocker"),
-                    )
-                });
+        let has_blocker = mesh
+            .objects
+            .iter()
+            .flat_map(|obj| &obj.modifier_volumes)
+            .any(|mv| mv.kind() == ModifierKind::SupportBlocker);
         if has_blocker {
             chosen = Some(mesh);
             break;
@@ -698,8 +661,8 @@ fn support_blocker_emits_paint_regions_from_disk() {
 // AC-6: modifier_part_benchy_regression
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-/// Regression: cube fixtures with modifier-volume `subtype = "negative_part"`
-/// or any support-semantic subtype must round-trip through the v2 paint
+/// Regression: cube fixtures with typed negative-part or support modifier kinds
+/// must round-trip through the v2 paint
 /// segmentation driver without changing the parent's painted-region output.
 /// The packet-95 driver runs negative_part_subtract BEFORE paint segmentation
 /// (synthetic coverage in `negative_part_subtract_runs_before_paint_segmentation`);
@@ -745,7 +708,7 @@ fn modifier_part_benchy_regression() {
 
     let after_area = sum_area_mm2(&slice.regions[0].polygons);
 
-    // If the modifier carries a negative_part subtype that overlaps the parent,
+    // If a negative-part kind overlaps the parent,
     // the area decreases.  Otherwise areas are equal (no negative volume hit
     // this z).  Either is a valid regression check — the assertion catches the
     // pathological case where subtract corrupts a region (e.g., produces NaN
@@ -780,12 +743,7 @@ fn model_without_negative_skips_subtract() {
         .objects
         .iter()
         .flat_map(|obj| &obj.modifier_volumes)
-        .any(|mv| {
-            mv.config_delta.fields.get("subtype").map_or(
-                false,
-                |v| matches!(v, ConfigValue::String(s) if s == "negative_part"),
-            )
-        });
+        .any(|mv| mv.kind() == ModifierKind::NegativePart);
 
     assert!(
         !has_negative,
@@ -863,23 +821,13 @@ fn two_objects_produce_separate_modifier_volumes() {
     let obj4_enforcer = obj4
         .modifier_volumes
         .iter()
-        .find(|mv| {
-            mv.config_delta.fields.get("subtype").map_or(
-                false,
-                |v| matches!(v, ConfigValue::String(s) if s == "support_enforcer"),
-            )
-        })
+        .find(|mv| mv.kind() == ModifierKind::SupportEnforcer)
         .expect("object 4 must have support_enforcer modifier_volumes");
 
     let obj5_blocker = obj5
         .modifier_volumes
         .iter()
-        .find(|mv| {
-            mv.config_delta.fields.get("subtype").map_or(
-                false,
-                |v| matches!(v, ConfigValue::String(s) if s == "support_blocker"),
-            )
-        })
+        .find(|mv| mv.kind() == ModifierKind::SupportBlocker)
         .expect("object 5 must have support_blocker modifier_volumes");
 
     assert_ne!(
@@ -918,15 +866,20 @@ fn duplicate_part_id_handled_gracefully() {
         "bridge_support_enforcers.3mf must have at least one object with modifier_volumes"
     );
     for obj in &modifier_objs {
-        let subtype_mvs: Vec<&ModifierVolume> = obj
+        let typed_support_mvs: Vec<&ModifierVolume> = obj
             .modifier_volumes
             .iter()
-            .filter(|mv| mv.config_delta.fields.contains_key("subtype"))
+            .filter(|mv| {
+                matches!(
+                    mv.kind(),
+                    ModifierKind::SupportEnforcer | ModifierKind::SupportBlocker
+                )
+            })
             .collect();
 
         assert!(
-            !subtype_mvs.is_empty(),
-            "object '{}' must have at least one modifier_volume with a subtype",
+            !typed_support_mvs.is_empty(),
+            "object '{}' must have at least one support modifier with a typed kind",
             obj.id
         );
     }
@@ -1062,9 +1015,9 @@ fn negative_part_stamps_extruder_into_extensions() {
 // in at least one RegionPlan.config.extensions after region mapping.
 //
 // No on-disk fixture carries this exact key/value pair on a modifier_part:
-// cube_cilindrical_modifier.3mf authors a modifier_part whose metadata
-// preserves only `subtype` and `matrix` (the four wall/infill keys it also
-// authors are not on the loader allowlist). To keep this RED-guard test
+// cube_cilindrical_modifier.3mf authors a parameter modifier with a `matrix`
+// config field (the four wall/infill keys it also authors are not on the loader
+// allowlist). To keep this RED-guard test
 // expressing the SAME invariant â€” not a weaker proxy â€” we now construct a
 // synthetic ObjectMesh with a modifier whose `config_delta.fields` contains
 // exactly `fuzzy_skin=String("external")`, reusing the same synthetic
@@ -1074,12 +1027,9 @@ fn negative_part_stamps_extruder_into_extensions() {
 #[test]
 fn modifier_part_stamps_fuzzy_skin_into_extensions() {
     let mut fields: HashMap<String, ConfigValue> = HashMap::new();
-    fields.insert(
-        "subtype".into(),
-        ConfigValue::String("modifier_part".into()),
-    );
     fields.insert("fuzzy_skin".into(), ConfigValue::String("external".into()));
-    let modifier = synthetic_modifier_volume("mod-fuzzy-skin", 0, fields);
+    let modifier =
+        synthetic_modifier_volume("mod-fuzzy-skin", 0, fields, ModifierKind::ParameterModifier);
     let object = synthetic_object_with_modifiers("synthetic-obj", vec![modifier]);
 
     let region_map = region_map_for_synthetic_objects(vec![object], "synthetic-obj");
@@ -1103,27 +1053,28 @@ fn modifier_part_stamps_fuzzy_skin_into_extensions() {
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // AC-Mod-3 (RED): modifier_part_stamps_extruder_into_extensions
 // RED until Packet 68 lands `stamp_modifier_config_deltas`. Symmetric with
-// AC-Mod-2 but for the extruder key. Confirms modifier_part subtype is in
+// AC-Mod-2 but for the extruder key. Confirms parameter modifiers are in
 // the stamp list (OrcaSlicer parity: PARAMETER_MODIFIER per
 // PrintApply.cpp:590-594).
 //
 // No on-disk fixture carries this exact key/value pair on a modifier_part:
 // cube_cilindrical_modifier.3mf does not author `extruder=0` on the modifier
-// (only `subtype`+`matrix`+four non-allowlisted wall/infill keys). To preserve
+// (only `matrix`+four non-allowlisted wall/infill keys). To preserve
 // the invariant exactly â€” not a weaker proxy â€” a synthetic modifier with
-// `extruder=Int(0)` (and `subtype="modifier_part"` so it is recognised as a
-// parameter modifier) is constructed via the same helpers AC-N1/AC-N2 use.
+// `extruder=Int(0)` with an explicit ParameterModifier kind is constructed via
+// the same helpers AC-N1/AC-N2 use.
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn modifier_part_stamps_extruder_into_extensions() {
     let mut fields: HashMap<String, ConfigValue> = HashMap::new();
-    fields.insert(
-        "subtype".into(),
-        ConfigValue::String("modifier_part".into()),
-    );
     fields.insert("extruder".into(), ConfigValue::Int(0));
-    let modifier = synthetic_modifier_volume("mod-extruder-zero", 0, fields);
+    let modifier = synthetic_modifier_volume(
+        "mod-extruder-zero",
+        0,
+        fields,
+        ModifierKind::ParameterModifier,
+    );
     let object = synthetic_object_with_modifiers("synthetic-obj", vec![modifier]);
 
     let region_map = region_map_for_synthetic_objects(vec![object], "synthetic-obj");
@@ -1139,7 +1090,7 @@ fn modifier_part_stamps_extruder_into_extensions() {
         stamped,
         "RED: stamp_modifier_config_deltas (Packet 68) must stamp modifier_part \
          config_delta[\"extruder\"]=Int(0) into at least one RegionPlan.config.extensions. \
-         Synthetic modifier authors subtype=modifier_part and extruder=0 \
+          Synthetic parameter modifier authors extruder=0 \
          (reproduced via the synthetic_modifier_volume helper)."
     );
 }
@@ -1170,7 +1121,7 @@ fn support_enforcer_config_delta_not_stamped() {
         !leaked,
         "OrcaSlicer parity (PrintApply.cpp:590-594): support_enforcer config_delta MUST \
          NOT stamp into RegionPlan.config.extensions. If this fails after Packet 68 lands, \
-         Packet 68 forgot the ENFORCER/BLOCKER subtype filter in \
+          Packet 68 forgot the ENFORCER/BLOCKER kind filter in \
          stamp_modifier_config_deltas."
     );
 }
@@ -1180,7 +1131,7 @@ fn support_enforcer_config_delta_not_stamped() {
 // OrcaSlicer parity guard, symmetric with AC-Mod-4. The blocker side of the
 // bridge fixture (obj5) carries only support_blocker modifier_volumes;
 // SUPPORT_BLOCKER is also excluded by PrintApply.cpp:590-594. Asserts via
-// the same fixture as AC-Mod-4 â€” kept separate so each subtype's parity
+// the same fixture as AC-Mod-4 â€” kept separate so each kind's parity
 // contract is independently findable in test output.
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -1201,7 +1152,7 @@ fn support_blocker_config_delta_not_stamped() {
         !leaked,
         "OrcaSlicer parity (PrintApply.cpp:590-594): support_blocker config_delta MUST \
          NOT stamp into RegionPlan.config.extensions. If this fails after Packet 68 lands, \
-         Packet 68 forgot the ENFORCER/BLOCKER subtype filter in \
+          Packet 68 forgot the ENFORCER/BLOCKER kind filter in \
          stamp_modifier_config_deltas. (See also AC-Mod-4 for the enforcer side.)"
     );
 }
@@ -1277,24 +1228,16 @@ fn support_enforcer_paint_value_is_flag_not_tool_index() {
         0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6, 0, 4, 7, 0, 7, 3,
         1, 2, 6, 1, 6, 5,
     ];
-    let mut mv_fields = HashMap::new();
-    mv_fields.insert(
-        "subtype".to_string(),
-        ConfigValue::String("support_enforcer".to_string()),
-    );
-    // exhaustive: ModifierVolume explicit test fixture preserves boundary data
-    let mv = ModifierVolume {
-        id: "mv-enforcer".to_string(),
-        mesh: IndexedTriangleSet {
+    let mv = ModifierVolume::new(
+        "mv-enforcer".to_string(),
+        IndexedTriangleSet {
             vertices: mv_mesh_vertices,
             indices: mv_mesh_indices,
         },
-        config_delta: ConfigDelta { fields: mv_fields },
-        priority: 0,
-        applies_to: ModifierScope::AllFeatures,
-        // exhaustive: ModifierVolume boundary/test fixture requires explicit field construction
-        // exhaustive: ModifierVolume explicit test fixture preserves boundary data
-    };
+        ConfigDelta::default(),
+        0,
+        ModifierKind::SupportEnforcer,
+    );
 
     let parent_mesh = IndexedTriangleSet {
         vertices: vec![
@@ -1565,19 +1508,15 @@ fn synthetic_modifier_volume(
     id: &str,
     priority: u32,
     fields: HashMap<String, ConfigValue>,
-    // exhaustive: ModifierVolume explicit test fixture preserves boundary data
+    kind: ModifierKind,
 ) -> ModifierVolume {
-    // exhaustive: ModifierVolume explicit test fixture preserves boundary data
-    ModifierVolume {
-        id: id.into(),
-        mesh: synthetic_modifier_mesh(),
-        config_delta: ConfigDelta { fields },
+    ModifierVolume::new(
+        id.into(),
+        synthetic_modifier_mesh(),
+        ConfigDelta { fields },
         priority,
-        applies_to: ModifierScope::AllFeatures,
-        // exhaustive: ModifierVolume boundary/test fixture requires explicit field construction
-        // exhaustive: ModifierVolume explicit test fixture preserves boundary data
-    }
-    // exhaustive: ModifierVolume explicit test fixture preserves boundary data
+        kind,
+    )
 }
 
 fn synthetic_object_with_modifiers(object_id: &str, mods: Vec<ModifierVolume>) -> ObjectMesh {
@@ -1666,9 +1605,9 @@ fn region_map_for_synthetic_objects(objects: Vec<ObjectMesh>, object_id: &str) -
 // AC-1: config_delta_extruder_stamped_into_extensions
 //
 // Packet text says "for a region that overlaps a support_enforcer modifier
-// volume". However, the locked subtype filter (AC-Filter, PrintApply.cpp:590-594
+// volume". However, the locked typed-kind filter (AC-Filter, PrintApply.cpp:590-594
 // parity) excludes support_enforcer / support_blocker from stamping. The test
-// therefore exercises the equivalent semantics on a subtype that IS in the
+// therefore exercises the equivalent semantics on a modifier kind that IS in the
 // stamp list â€” cube_positive_n_negative.3mf's `negative_part` modifier whose
 // config_delta carries extruder=Int(0). Asserts that at least one RegionPlan
 // keyed on the parent object_id carries extensions["extruder"]=Int(0).
@@ -1691,16 +1630,15 @@ fn config_delta_extruder_stamped_into_extensions() {
         .iter()
         .filter(|obj| {
             obj.modifier_volumes.iter().any(|mv| {
-                let subtype_excluded = matches!(
-                    mv.config_delta.fields.get("subtype"),
-                    Some(ConfigValue::String(s))
-                        if s == "support_enforcer" || s == "support_blocker"
+                let support_kind_excluded = matches!(
+                    mv.kind(),
+                    ModifierKind::SupportEnforcer | ModifierKind::SupportBlocker
                 );
                 let has_extruder_zero = matches!(
                     mv.config_delta.fields.get("extruder"),
                     Some(ConfigValue::Int(0))
                 );
-                !subtype_excluded && has_extruder_zero
+                !support_kind_excluded && has_extruder_zero
             })
         })
         .map(|obj| obj.id.clone())
@@ -1748,13 +1686,10 @@ fn config_delta_extruder_stamped_into_extensions() {
 #[test]
 fn config_delta_non_extruder_key_survives() {
     let mut fields: HashMap<String, ConfigValue> = HashMap::new();
-    fields.insert(
-        "subtype".into(),
-        ConfigValue::String("modifier_part".into()),
-    );
     fields.insert("extruder".into(), ConfigValue::Int(0));
     fields.insert("fuzzy_skin".into(), ConfigValue::String("external".into()));
-    let modifier = synthetic_modifier_volume("mod-both-keys", 0, fields);
+    let modifier =
+        synthetic_modifier_volume("mod-both-keys", 0, fields, ModifierKind::ParameterModifier);
     let object = synthetic_object_with_modifiers("synthetic-obj", vec![modifier]);
 
     let region_map = region_map_for_synthetic_objects(vec![object], "synthetic-obj");
@@ -1808,12 +1743,7 @@ fn negative_part_extruder_does_not_affect_subtract() {
         .objects
         .iter()
         .flat_map(|obj| &obj.modifier_volumes)
-        .filter(|mv| {
-            mv.config_delta.fields.get("subtype").map_or(
-                false,
-                |v| matches!(v, ConfigValue::String(s) if s == "negative_part"),
-            )
-        })
+        .filter(|mv| mv.kind() == ModifierKind::NegativePart)
         .collect();
 
     assert!(
@@ -1843,17 +1773,7 @@ fn negative_part_extruder_does_not_affect_subtract() {
         });
     let z_test = (z_min + z_max) / 2.0;
 
-    let parent_obj = mesh_ir
-        .objects
-        .iter()
-        .find(|obj| {
-            obj.modifier_volumes.iter().any(|mv| {
-                matches!(mv.config_delta.fields.get("subtype"),
-                    Some(ConfigValue::String(s)) if s == "normal_part")
-            })
-        })
-        .or_else(|| mesh_ir.objects.first())
-        .expect("at least one object");
+    let parent_obj = mesh_ir.objects.first().expect("at least one object");
     let projected = slice_mesh_ex(&parent_obj.mesh, &[z_test]);
     let polygons = projected.into_iter().next().unwrap_or_default();
     let pre_area = sum_area_mm2(&polygons);
@@ -1888,23 +1808,23 @@ fn negative_part_extruder_does_not_affect_subtract() {
 }
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// AC-N1: subtype_only_modifier_stamps_no_extensions
+// AC-N1: kind_only_modifier_stamps_no_extensions
 //
 // Construct a synthetic ObjectMesh whose ModifierVolume's config_delta.fields
-// contains ONLY the `subtype` key. Run region mapping. Assert
+// has an empty config delta. Run region mapping and assert
 // `RegionPlan.config.extensions` carries NO entries from the modifier â€” the
-// `subtype` key is excluded from stamping per
-// `stamp_modifier_config_deltas`.
+// the typed routing kind is not treated as config to stamp.
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
-fn subtype_only_modifier_stamps_no_extensions() {
-    let mut fields: HashMap<String, ConfigValue> = HashMap::new();
-    fields.insert(
-        "subtype".into(),
-        ConfigValue::String("modifier_part".into()),
+fn kind_only_modifier_stamps_no_extensions() {
+    let modifier = synthetic_modifier_volume(
+        "mod-kind-only",
+        0,
+        HashMap::new(),
+        ModifierKind::ParameterModifier,
     );
-    let modifier = synthetic_modifier_volume("mod-subtype-only", 0, fields);
+    assert_eq!(modifier.kind(), ModifierKind::ParameterModifier);
     let object = synthetic_object_with_modifiers("synthetic-obj", vec![modifier]);
 
     let region_map = region_map_for_synthetic_objects(vec![object], "synthetic-obj");
@@ -1912,22 +1832,9 @@ fn subtype_only_modifier_stamps_no_extensions() {
     for key in region_map.entries.keys() {
         let cfg = region_map.config_for(key);
         assert!(
-            !cfg.extensions.contains_key("subtype"),
-            "AC-N1: RegionPlan at {key:?} must not carry a stamped \"subtype\" key - \
-             stamp_modifier_config_deltas excludes the subtype key. \
-             Found extensions={:?}",
-            cfg.extensions
-        );
-        assert!(
-            !cfg.extensions.contains_key("extruder"),
-            "AC-N1: RegionPlan at {key:?} must not carry an \"extruder\" key when the \
-             modifier's config_delta contains only \"subtype\". Found extensions={:?}",
-            cfg.extensions
-        );
-        assert!(
-            !cfg.extensions.contains_key("fuzzy_skin"),
-            "AC-N1: RegionPlan at {key:?} must not carry a \"fuzzy_skin\" key when the \
-             modifier's config_delta contains only \"subtype\". Found extensions={:?}",
+            cfg.extensions.is_empty(),
+            "AC-N1: RegionPlan at {key:?} must not receive config from a kind-only modifier; \
+             found extensions={:?}",
             cfg.extensions
         );
     }
@@ -1949,20 +1856,22 @@ fn subtype_only_modifier_stamps_no_extensions() {
 #[test]
 fn conflicting_extruder_modifier_priority_wins() {
     let mut a_fields: HashMap<String, ConfigValue> = HashMap::new();
-    a_fields.insert(
-        "subtype".into(),
-        ConfigValue::String("modifier_part".into()),
-    );
     a_fields.insert("extruder".into(), ConfigValue::Int(0));
-    let mod_a = synthetic_modifier_volume("mod-a-low-priority", 0, a_fields);
+    let mod_a = synthetic_modifier_volume(
+        "mod-a-low-priority",
+        0,
+        a_fields,
+        ModifierKind::ParameterModifier,
+    );
 
     let mut b_fields: HashMap<String, ConfigValue> = HashMap::new();
-    b_fields.insert(
-        "subtype".into(),
-        ConfigValue::String("modifier_part".into()),
-    );
     b_fields.insert("extruder".into(), ConfigValue::Int(1));
-    let mod_b = synthetic_modifier_volume("mod-b-high-priority", 1, b_fields);
+    let mod_b = synthetic_modifier_volume(
+        "mod-b-high-priority",
+        1,
+        b_fields,
+        ModifierKind::ParameterModifier,
+    );
 
     let object = synthetic_object_with_modifiers("synthetic-obj", vec![mod_a, mod_b]);
 

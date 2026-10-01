@@ -8,9 +8,22 @@ use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::SliceRegionView;
 use support_surface_ironing::SupportSurfaceIroning;
 
-fn config_with(entries: Vec<(&str, ConfigValue)>) -> ConfigView {
-    let mut fields = HashMap::new();
-    for (key, value) in entries {
+/// Build a ConfigView with the manifest defaults for every key `from_config`
+/// reads, overridden by the given key-value pairs.
+///
+/// Required-read baseline (config-scope-resolution plan): the classified
+/// match-arm fallbacks in `from_config` are now `require_*`, so the view must
+/// hold every key those paths read. A bound view always does (the registry
+/// seeds each declared default); this fixture seeds the same values.
+fn config_with(overrides: Vec<(&str, ConfigValue)>) -> ConfigView {
+    let mut fields: HashMap<String, ConfigValue> = HashMap::from([
+        ("ironing_enabled".to_string(), ConfigValue::Bool(false)),
+        ("ironing_speed".to_string(), ConfigValue::Float(30.0)),
+        ("ironing_flow_rate".to_string(), ConfigValue::Float(100.0)),
+        ("ironing_spacing".to_string(), ConfigValue::Float(0.1)),
+        ("line_width".to_string(), ConfigValue::Float(0.4)),
+    ]);
+    for (key, value) in overrides {
         fields.insert(key.to_string(), value);
     }
     ConfigView::from_map(fields)

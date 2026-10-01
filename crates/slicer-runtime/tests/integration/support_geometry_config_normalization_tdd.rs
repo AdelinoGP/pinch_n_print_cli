@@ -245,6 +245,15 @@ fn base_config(enabled: bool) -> HashMap<String, ConfigValue> {
         ConfigValue::Int(1024),
     );
     map.insert("line_width".to_string(), ConfigValue::Float(0.4));
+    // Packet-06 contract-required keys (`SupportPlanner::from_config`'s
+    // `require_float("nozzle_diameter")` and packet-239c's
+    // `require_bool("independent_support_layer_height")`): hand-built partial
+    // fixtures must seed them, the `classic_perimeters_baseline()` pattern.
+    map.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.4));
+    map.insert(
+        "independent_support_layer_height".to_string(),
+        ConfigValue::Bool(true),
+    );
     map
 }
 
@@ -259,6 +268,13 @@ fn raft_layers_config_is_honored() {
 
     let mut config = base_config(true);
     config.insert("support_raft_layers".to_string(), ConfigValue::Int(2));
+    // coPercent magnitude (40 = 40%); the assert below locks the ÷100 at
+    // consumption (`TreeSupport::generate_toolpaths`,
+    // `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp`).
+    config.insert(
+        "raft_first_layer_density".to_string(),
+        ConfigValue::Float(40.0),
+    );
 
     let bundle = compile_support_planner_with_config(&engine, config);
     let (module, wasm_handles) = bundle.into_module_and_handles();

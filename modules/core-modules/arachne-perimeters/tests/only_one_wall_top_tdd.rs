@@ -31,10 +31,42 @@ const SQUARE_SIDE_MM: f32 = 20.0;
 const BASE_MAX_BEAD_COUNT: i64 = 4;
 const BASE_WALL_COUNT: usize = 2;
 
-fn make_config(only_one_wall_top: bool) -> ConfigView {
+/// Required-read baseline (packet 06 5c', item 11): the classified reads in
+/// `run_perimeters`/`arachne_params_from_config` are now `require_*`; the view
+/// holds every key those paths read, at manifest-default values. `line_width`
+/// holds its post-expansion default (1.125 x nozzle_diameter): the raw 0 is
+/// the auto sentinel expanded at Phase B and cannot survive the D-162 spacing
+/// gate. Tests layer their own keys on top so the explicit value wins.
+fn base_config() -> ConfigViewBuilder {
     ConfigViewBuilder::new()
+        .float("layer_height", 0.2)
+        .float("nozzle_diameter", 0.4)
+        .float("line_width", 0.45)
+        .float("bridge_line_width", 0.0)
+        .float("initial_layer_line_width", 0.0)
+        .int("extra_perimeters", 0)
+        .bool("precise_outer_wall", false)
+        .string("wall_sequence", "InnerOuter")
+        .int("support_raft_layers", 0)
+        .string("wall_direction", "counter_clockwise")
+        .bool("alternate_extra_wall", false)
+        .bool("spiral_vase", false)
+        .float("sparse_infill_density", 20.0)
+        .bool("only_one_wall_first_layer", false)
+        .bool("detect_overhang_wall", true)
+        .bool("overhang_reverse", false)
+        .bool("overhang_reverse_internal_only", false)
+        .float("overhang_reverse_threshold", 0.0)
+        .float("bridge_flow", 1.0)
+        .bool("thick_bridges", false)
+        .float("seam_candidate_angle_threshold_deg", 30.0)
+}
+
+fn make_config(only_one_wall_top: bool) -> ConfigView {
+    base_config()
         .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
         .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
+        .int("wall_count", BASE_WALL_COUNT as i64)
         .int("max_bead_count", BASE_MAX_BEAD_COUNT)
         .bool("only_one_wall_top", only_one_wall_top)
         .build()
@@ -102,14 +134,64 @@ fn only_one_wall_top_second_pass() {
     let naive_config = ConfigViewBuilder::new()
         .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
         .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
+        .int("wall_count", BASE_WALL_COUNT as i64)
         .int("max_bead_count", MAX_BEAD)
         .bool("only_one_wall_top", false)
+        // Required-read baseline (packet 06 5c', item 11): see make_config;
+        // this path additionally reaches `min_width_top_surface` in the
+        // second-pass function, so it is held here at its default 0.0.
+        .float("layer_height", 0.2)
+        .float("nozzle_diameter", 0.4)
+        .float("line_width", 0.45)
+        .float("bridge_line_width", 0.0)
+        .float("initial_layer_line_width", 0.0)
+        .int("extra_perimeters", 0)
+        .bool("precise_outer_wall", false)
+        .string("wall_sequence", "InnerOuter")
+        .int("support_raft_layers", 0)
+        .string("wall_direction", "counter_clockwise")
+        .bool("alternate_extra_wall", false)
+        .bool("spiral_vase", false)
+        .float("sparse_infill_density", 20.0)
+        .bool("only_one_wall_first_layer", false)
+        .bool("detect_overhang_wall", true)
+        .bool("overhang_reverse", false)
+        .bool("overhang_reverse_internal_only", false)
+        .float("overhang_reverse_threshold", 0.0)
+        .float("bridge_flow", 1.0)
+        .bool("thick_bridges", false)
+        .float("seam_candidate_angle_threshold_deg", 30.0)
+        .float("min_width_top_surface", 0.0)
         .build();
     let second_config = ConfigViewBuilder::new()
         .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
         .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
+        .int("wall_count", BASE_WALL_COUNT as i64)
         .int("max_bead_count", MAX_BEAD)
         .bool("only_one_wall_top", true)
+        // Required-read baseline (packet 06 5c', item 11): see make_config.
+        .float("layer_height", 0.2)
+        .float("nozzle_diameter", 0.4)
+        .float("line_width", 0.45)
+        .float("bridge_line_width", 0.0)
+        .float("initial_layer_line_width", 0.0)
+        .int("extra_perimeters", 0)
+        .bool("precise_outer_wall", false)
+        .string("wall_sequence", "InnerOuter")
+        .int("support_raft_layers", 0)
+        .string("wall_direction", "counter_clockwise")
+        .bool("alternate_extra_wall", false)
+        .bool("spiral_vase", false)
+        .float("sparse_infill_density", 20.0)
+        .bool("only_one_wall_first_layer", false)
+        .bool("detect_overhang_wall", true)
+        .bool("overhang_reverse", false)
+        .bool("overhang_reverse_internal_only", false)
+        .float("overhang_reverse_threshold", 0.0)
+        .float("bridge_flow", 1.0)
+        .bool("thick_bridges", false)
+        .float("seam_candidate_angle_threshold_deg", 30.0)
+        .float("min_width_top_surface", 0.0)
         .build();
 
     // Top sub-area: a 4 mm square in the corner of the 20 mm region square.
@@ -243,11 +325,15 @@ fn wall_inside_top_fill(
 /// by an unclipped top-fill pass-through that printed over the walls).
 #[test]
 fn only_one_wall_top_second_pass_publishes_infill_areas() {
-    let config = ConfigViewBuilder::new()
+    let config = base_config()
         .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
         .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
+        .int("wall_count", BASE_WALL_COUNT as i64)
         .int("max_bead_count", 6)
         .bool("only_one_wall_top", true)
+        // The second-pass function reads this via `require_abs_value`, so the
+        // view must hold it at its manifest default 0.0 (no filter).
+        .float("min_width_top_surface", 0.0)
         .build();
     let regions = vec![SliceRegionViewBuilder::new()
         .object_id("obj-1")
@@ -315,11 +401,15 @@ fn only_one_wall_top_second_pass_publishes_infill_areas() {
 /// exactly the regression this pins.
 #[test]
 fn only_one_wall_top_infill_contour_includes_the_top_wall_band() {
-    let config = ConfigViewBuilder::new()
+    let config = base_config()
         .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
         .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
+        .int("wall_count", BASE_WALL_COUNT as i64)
         .int("max_bead_count", 6)
         .bool("only_one_wall_top", true)
+        // The second-pass function reads this via `require_abs_value`, so the
+        // view must hold it at its manifest default 0.0 (no filter).
+        .float("min_width_top_surface", 0.0)
         .build();
     let regions = vec![SliceRegionViewBuilder::new()
         .object_id("obj-1")

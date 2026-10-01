@@ -152,7 +152,12 @@ pub enum NativeStageEntry {
     /// Layer-stage family entry.
     Layer(fn(&NativeLayerRequest) -> Result<NativeLayerResponse, ModuleError>),
     /// Prepass-stage family entry.
-    Prepass(fn(&NativePrepassRequest) -> Result<NativePrepassResponse, ModuleError>),
+    Prepass(
+        fn(
+            &NativePrepassRequest,
+            Option<&[crate::traits::LayerPlanningObject]>,
+        ) -> Result<NativePrepassResponse, ModuleError>,
+    ),
     /// Postpass-stage family entry.
     Postpass(fn(&NativePostpassRequest) -> Result<NativePostpassResponse, ModuleError>),
     /// Finalization-stage family entry.

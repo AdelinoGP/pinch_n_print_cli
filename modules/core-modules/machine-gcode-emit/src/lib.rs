@@ -213,17 +213,12 @@ impl PostpassModule for MachineGcodeEmit {
         output: &mut GcodeOutputBuilder,
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        // Step 1: Read the temperature scalars with defaults.
-        let bed_temp: i64 = match config.get("bed_temperature_initial_layer_single") {
-            Some(ConfigValue::Int(v)) => *v,
-            Some(ConfigValue::String(s)) => s.parse::<i64>().unwrap_or(60),
-            _ => 60,
-        };
-        let nozzle_temp: i64 = match config.get("nozzle_temperature_initial_layer") {
-            Some(ConfigValue::Int(v)) => *v,
-            Some(ConfigValue::String(s)) => s.parse::<i64>().unwrap_or(215),
-            _ => 215,
-        };
+        // Step 1: Read the temperature scalars. Both keys are declared `int`
+        // in this module's manifest, so an always-resolved view holds them;
+        // a missing or wrong-typed value is a config defect, not a
+        // 60 °C / 215 °C fallback.
+        let bed_temp: i64 = config.require_int("bed_temperature_initial_layer_single")?;
+        let nozzle_temp: i64 = config.require_int("nozzle_temperature_initial_layer")?;
 
         // Step 2: Build the base substitution lookup.
         let mut base_lookup: HashMap<String, String> = HashMap::new();

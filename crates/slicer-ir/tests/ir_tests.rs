@@ -8,20 +8,6 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
-    fn modifier_volume_base() -> ModifierVolume {
-        // exhaustive: file-local base; no Default impl for ModifierVolume (packet 196)
-        ModifierVolume {
-            id: String::new(),
-            mesh: IndexedTriangleSet {
-                vertices: Vec::new(),
-                indices: Vec::new(),
-            },
-            config_delta: ConfigDelta::default(),
-            priority: 0,
-            applies_to: ModifierScope::AllFeatures,
-        }
-    }
-
     #[test]
     fn modifier_region_namespace_is_disjoint_from_regular_ids() {
         let sub_id = modifier_sub_region_id(7, "object", &[]);
@@ -297,27 +283,15 @@ mod tests {
 
     #[test]
     fn test_modifier_volume() {
-        let modifier = ModifierVolume {
-            id: "mod-123".to_string(),
-            mesh: IndexedTriangleSet {
-                vertices: vec![],
-                indices: vec![],
-            },
-            priority: 10,
-            applies_to: ModifierScope::Perimeters,
-            ..modifier_volume_base()
-        };
+        let modifier = ModifierVolume::new(
+            "mod-123".to_string(),
+            IndexedTriangleSet::default(),
+            ConfigDelta::default(),
+            10,
+            ModifierKind::SupportEnforcer,
+        );
 
         test_serde_roundtrip!(modifier);
-    }
-
-    #[test]
-    fn test_modifier_scope() {
-        test_serde_roundtrip!(ModifierScope::AllFeatures);
-        test_serde_roundtrip!(ModifierScope::Infill);
-        test_serde_roundtrip!(ModifierScope::Perimeters);
-        test_serde_roundtrip!(ModifierScope::Support);
-        test_serde_roundtrip!(ModifierScope::LayerHeight);
     }
 
     #[test]
@@ -702,6 +676,107 @@ mod tests {
         // We'll verify it compiles and serde works
         // test_serde_roundtrip!(InfillType::Grid);
     }
+}
+
+#[test]
+fn typed_modifier_kind_mesh_ir_minor_contract() {
+    let legacy_cases = [
+        (
+            ModifierKind::ParameterModifier,
+            "modifier_part",
+            "AllFeatures",
+        ),
+        (ModifierKind::NegativePart, "negative_part", "Infill"),
+        (
+            ModifierKind::SupportEnforcer,
+            "support_enforcer",
+            "Perimeters",
+        ),
+        (ModifierKind::SupportBlocker, "support_blocker", "Support"),
+    ];
+
+    for (kind, legacy_subtype, legacy_scope) in legacy_cases {
+        let modifier = ModifierVolume::new(
+            format!("modifier-{kind:?}"),
+            IndexedTriangleSet::default(),
+            ConfigDelta::default(),
+            0,
+            kind,
+        );
+
+        let serialized = serde_json::to_value(&modifier).unwrap();
+        let serialized_fields = serialized
+            .as_object()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(
+            serialized_fields,
+            ["id", "mesh", "config_delta", "priority", "kind"]
+                .into_iter()
+                .map(str::to_owned)
+                .collect()
+        );
+        assert!(serialized.get("applies_to").is_none());
+
+        let deserialized: ModifierVolume = serde_json::from_value(serialized).unwrap();
+        assert_eq!(modifier.kind(), kind);
+        assert_eq!(deserialized.kind(), kind);
+
+        let mut legacy_payload = serde_json::to_value(&modifier).unwrap();
+        let legacy_fields = legacy_payload.as_object_mut().unwrap();
+        legacy_fields.remove("kind");
+        legacy_fields.insert("applies_to".to_owned(), serde_json::json!(legacy_scope));
+        legacy_fields
+            .get_mut("config_delta")
+            .unwrap()
+            .get_mut("fields")
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .insert(
+                "subtype".to_owned(),
+                serde_json::json!({ "String": legacy_subtype }),
+            );
+
+        let legacy_deserialized: ModifierVolume = serde_json::from_value(legacy_payload).unwrap();
+        assert_eq!(legacy_deserialized.kind(), kind);
+
+        let normalized = serde_json::to_value(legacy_deserialized).unwrap();
+        assert!(normalized.get("applies_to").is_none());
+        assert!(normalized["config_delta"]["fields"]
+            .get("subtype")
+            .is_none());
+    }
+
+    let mut unclassified_legacy_payload = serde_json::to_value(ModifierVolume::new(
+        "unclassified-legacy".to_owned(),
+        IndexedTriangleSet::default(),
+        ConfigDelta::default(),
+        0,
+        ModifierKind::ParameterModifier,
+    ))
+    .unwrap();
+    let unclassified_fields = unclassified_legacy_payload.as_object_mut().unwrap();
+    unclassified_fields.remove("kind");
+    unclassified_fields.insert("applies_to".to_owned(), serde_json::json!("AllFeatures"));
+    assert!(serde_json::from_value::<ModifierVolume>(unclassified_legacy_payload).is_err());
+
+    let pre_activation_mesh_version = SemVer {
+        major: 1,
+        minor: 1,
+        patch: 0,
+    };
+    assert_eq!(
+        CURRENT_MESH_IR_SCHEMA_VERSION.major,
+        pre_activation_mesh_version.major
+    );
+    assert_eq!(
+        CURRENT_MESH_IR_SCHEMA_VERSION.minor,
+        pre_activation_mesh_version.minor + 1
+    );
+    assert_eq!(CURRENT_MESH_IR_SCHEMA_VERSION.patch, 0);
 }
 
 #[test]

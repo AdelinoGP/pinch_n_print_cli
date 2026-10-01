@@ -44,6 +44,11 @@
 
 use std::path::{Path, PathBuf};
 
+use slicer_config::{
+    assemble_registry, ConfigSchemaRegistry, HostChannels, ModuleDeclaration, RegistryEntry,
+};
+use slicer_runtime::load_modules_from_roots;
+
 fn repo_root() -> PathBuf {
     // CARGO_MANIFEST_DIR = crates/slicer-runtime
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -462,8 +467,6 @@ fn wedge_mvp_gcode_has_extrusion_moves() {
 fn wedge_per_region_config_delivery_structural_canary() {
     /// Layers in the default wedge slice: 40mm of model at 0.2mm.
     const EXPECTED_LAYERS: usize = 200;
-    /// Wall loops per contour under the default config: one outer, two inner.
-    const INNER_LOOPS_PER_OUTER: usize = 2;
 
     let tmp = tempfile::tempdir().expect("tempdir");
     let output = tmp.path().join("wedge.gcode");
@@ -508,28 +511,122 @@ fn wedge_per_region_config_delivery_structural_canary() {
         .collect();
     keys.sort_unstable();
     keys.dedup();
+    // Derive the expected config surface from the assembled registry rather
+    // than a magic count: the registry reconciles host + module declarations,
+    // so a key appearing or disappearing now fails as a divergence between
+    // the emitted block and the registry instead of a re-blessed number.
+    //
+    // Manifest-first assembly precedes claim dedup. The emitted block covers
+    // all non-omitted registered keys, including keys declared solely by the
+    // arachne perimeter generator when classic holds the claim. Dedup affects
+    // dispatch, not the CONFIG_BLOCK's registry-derived public surface.
+    let modules = load_modules_from_roots(std::slice::from_ref(&core_modules_dir()))
+        .unwrap_or_else(|error| panic!("load core module schemas failed: {error:?}"))
+        .modules;
     assert_eq!(
-        keys.len(),
-        95,
-        "CONFIG_BLOCK key count changed — a key was added or removed. Keys: {keys:?}"
+        slicer_runtime::DEFAULT_WALL_GENERATOR,
+        "classic",
+        "the unauthored wedge run must select classic for the claim-loser oracle"
     );
-    for required in [
-        "layer_height",
-        "line_width",
-        "wall_count",
-        "wall_loops",
-        "sparse_infill_density",
-        "sparse_fill_holder",
-        "top_fill_holder",
-        "bottom_fill_holder",
-        "bridge_fill_holder",
-        "wall_generator",
-    ] {
-        assert!(
-            keys.contains(&required),
-            "CONFIG_BLOCK lost the `{required}` key. Keys: {keys:?}"
+    let mut dispatch_candidates = modules.clone();
+    let dispatch_modules =
+        slicer_runtime::execution_plan::dedup_same_claim_modules_with_wall_generator(
+            &mut dispatch_candidates,
+            &mut Vec::new(),
+            None,  // no authored `wall_generator`: the same default run as the CLI above
+            false, // `spiral_vase` is absent
+            None,  // support selection is per-region at dispatch
         );
+    assert!(
+        dispatch_modules
+            .iter()
+            .any(|module| module.id() == "com.core.classic-perimeters"),
+        "this fixture requires classic to hold the perimeter-generator claim"
+    );
+    assert!(
+        !dispatch_modules
+            .iter()
+            .any(|module| module.id() == "com.core.arachne-perimeters"),
+        "this fixture requires arachne to lose the claim"
+    );
+    let declarations: Vec<ModuleDeclaration> = modules
+        .iter()
+        .map(|module| ModuleDeclaration {
+            module_id: module.id().to_owned(),
+            schema: module.config_schema().clone(),
+            claim_exclusive_group: None,
+        })
+        .collect();
+    let registry: ConfigSchemaRegistry =
+        assemble_registry(&declarations, &HostChannels::from_live())
+            .unwrap_or_else(|error| panic!("assemble registry from live schemas failed: {error}"))
+            .registry;
+    // AC-4 projection arms: a key is emitted when its registry entry (without
+    // `omit_from_config_block`) carries an effective value, or it is a typed
+    // field with no registry entry (`infill_type`, `support_type`). The
+    // effective map is reproduced the way the default run resolves it: typed
+    // fields at their declared defaults, plus every non-typed registry
+    // default seeded as an extension (module and host-runtime keys). Typed
+    // fields whose default renders no value (`filament_density`'s empty list)
+    // and default-less runtime rows (`extruder`, `printable_area`, ...) carry
+    // no effective value and are therefore not projected.
+    let typed_fields = slicer_sdk::ir::ResolvedConfig::typed_field_keys();
+    let mut effective = slicer_sdk::ir::ResolvedConfig::default().to_config_map();
+    for key in registry.keys() {
+        if typed_fields.contains(&key) {
+            continue; // typed fields carry their own default; seeding would shadow it
+        }
+        let entry = registry
+            .entry(key)
+            .expect("registry keys must resolve to entries");
+        if let Some(default) = &entry.default {
+            effective
+                .entry(key.to_owned())
+                .or_insert_with(|| slicer_sdk::ir::ConfigValue::String(default.clone()));
+        }
     }
+    let mut expected: Vec<String> = registry
+        .keys()
+        .filter(|key| {
+            let entry: &RegistryEntry = registry
+                .entry(key)
+                .expect("registry keys must resolve to entries");
+            !entry.omit_from_config_block && !key.contains(':') && effective.contains_key(*key)
+        })
+        .map(str::to_owned)
+        .collect();
+    expected.extend(
+        typed_fields
+            .iter()
+            .copied()
+            .filter(|key| registry.entry(key).is_none() && effective.contains_key(*key))
+            .map(str::to_owned),
+    );
+    // `plain`-typed keys have no declared default in the registry but are
+    // still emitted; they are added explicitly.
+    expected.extend(
+        [
+            "filament_diameter",
+            "filament_colour",
+            "extruder_colour",
+            "printer_model",
+            "gcode_flavor",
+        ]
+        .map(str::to_owned),
+    );
+    expected.sort_unstable();
+    expected.dedup();
+    assert!(
+        expected
+            .iter()
+            .any(|key| key == "initial_layer_min_bead_width"),
+        "the real registry must include an arachne-only default even when classic holds the claim"
+    );
+    assert_eq!(
+        keys, expected,
+        "CONFIG_BLOCK key set diverged from the manifest-first registry \
+         (including claim-losing modules)"
+    );
 
     // ── Layer count and monotonic Z ─────────────────────────────────────────
     let zs: Vec<f64> = gcode
@@ -566,9 +663,17 @@ fn wedge_per_region_config_delivery_structural_canary() {
     }
 
     // ── Wall structure ──────────────────────────────────────────────────────
-    // One outer loop per contour with its full inner set. A loop is a travel
-    // followed by a run of consecutive extruding G1s, so maximal extruding runs
-    // count loops.
+    // One outer loop per contour with `wall_count - 1` inner loops. The count
+    // is DERIVED from the emitted `wall_count` (the canary's earlier literal
+    // `2` encoded wall_count = 3, which stopped being the default); an outer
+    // loop is a travel followed by a run of consecutive extruding G1s, so
+    // maximal extruding runs count loops.
+    let wall_count: usize = gcode[config_start..config_end]
+        .lines()
+        .filter_map(|line| line.strip_prefix("; wall_count = "))
+        .filter_map(|value| value.parse::<usize>().ok())
+        .next()
+        .expect("CONFIG_BLOCK must carry `wall_count`");
     let (mut outer, mut inner) = (0usize, 0usize);
     let mut role: Option<&str> = None;
     let mut prev_extruding = false;
@@ -594,8 +699,9 @@ fn wedge_per_region_config_delivery_structural_canary() {
     assert!(outer > 0, "the wedge must emit outer wall loops");
     assert_eq!(
         inner,
-        INNER_LOOPS_PER_OUTER * outer,
-        "wall structure drift: {outer} outer loops should carry          {INNER_LOOPS_PER_OUTER} inner loops each, got {inner}"
+        wall_count.saturating_sub(1) * outer,
+        "wall structure drift: {outer} outer loops should carry {wall_count} walls \
+         ({wall_count} - 1 inner) each, got {inner}"
     );
 }
 
@@ -1116,6 +1222,7 @@ fn support_type_tree_config_selects_tree_support_holder() {
     let context = slicer_runtime::run::prepare_prepass_context(
         mesh,
         config_source.clone(),
+        Vec::new(),
         &[full],
         true,
         false,

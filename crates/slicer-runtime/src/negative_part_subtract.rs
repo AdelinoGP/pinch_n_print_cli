@@ -6,11 +6,11 @@
 //! support routing) operate on geometry that already has void volumes removed.
 
 use slicer_core::{difference, slice_mesh_ex};
-use slicer_ir::{ConfigValue, ModifierVolume, SliceIR};
+use slicer_ir::{ModifierVolume, SliceIR};
 
 /// Subtract every `negative_part` modifier volume from all regions in `slice_ir`.
 ///
-/// For each modifier volume whose `config_delta` carries `subtype = "negative_part"`:
+/// For each modifier volume whose kind is `ModifierKind::NegativePart`:
 /// 1. Determine the modifier mesh's Z extent from its vertices.
 /// 2. Skip layers whose Z falls outside the modifier's Z extent.
 /// 3. Project the modifier mesh at `slice_ir.z` via `slice_mesh_ex`.
@@ -19,10 +19,12 @@ use slicer_ir::{ConfigValue, ModifierVolume, SliceIR};
 /// Empty meshes and out-of-range layers are silently skipped.
 pub fn apply_negative_part_subtract(slice_ir: &mut SliceIR, modifier_volumes: &[ModifierVolume]) {
     for mv in modifier_volumes {
-        // Check the subtype config key.
-        let is_negative = mv.config_delta.fields.get("subtype").map_or(false, |v| {
-            v == &ConfigValue::String("negative_part".to_string())
-        });
+        let is_negative = match mv.kind() {
+            slicer_ir::ModifierKind::ParameterModifier => false,
+            slicer_ir::ModifierKind::NegativePart => true,
+            slicer_ir::ModifierKind::SupportEnforcer => false,
+            slicer_ir::ModifierKind::SupportBlocker => false,
+        };
         if !is_negative || mv.mesh.vertices.is_empty() {
             continue;
         }

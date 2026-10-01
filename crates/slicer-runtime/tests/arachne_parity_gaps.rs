@@ -98,11 +98,40 @@ fn run_walls(config: &ConfigView, regions: &[SliceRegionView], layer_index: u32)
 }
 
 /// Baseline config: 0.4 mm beads, `wall_count` walls.
+///
+/// Required-read baseline (packet 06 5c): classified reads in
+/// `run_perimeters`/`arachne_params_from_config` are now `require_*`, so the
+/// view holds every key those paths read, at manifest-default values.
+/// `line_width` holds its post-expansion default (1.125 x nozzle_diameter =
+/// 0.45): the raw 0 is the auto sentinel expanded at Phase B and cannot
+/// survive the D-162 spacing gate.
 fn base_config(wall_count: i64) -> ConfigViewBuilder {
     ConfigViewBuilder::new()
         .int("wall_count", wall_count)
         .float("inner_wall_line_width", 0.4)
         .float("outer_wall_line_width", 0.4)
+        .float("layer_height", 0.2)
+        .float("nozzle_diameter", 0.4)
+        .float("line_width", 0.45)
+        .float("bridge_line_width", 0.0)
+        .float("initial_layer_line_width", 0.0)
+        .int("extra_perimeters", 0)
+        .bool("precise_outer_wall", false)
+        .string("wall_sequence", "InnerOuter")
+        .int("support_raft_layers", 0)
+        .bool("only_one_wall_top", false)
+        .string("wall_direction", "counter_clockwise")
+        .bool("alternate_extra_wall", false)
+        .bool("spiral_vase", false)
+        .float("sparse_infill_density", 20.0)
+        .bool("only_one_wall_first_layer", false)
+        .bool("detect_overhang_wall", true)
+        .bool("overhang_reverse", false)
+        .bool("overhang_reverse_internal_only", false)
+        .float("overhang_reverse_threshold", 0.0)
+        .float("bridge_flow", 1.0)
+        .bool("thick_bridges", false)
+        .float("seam_candidate_angle_threshold_deg", 30.0)
 }
 
 /// A plain square region built from the shared parity fixture.

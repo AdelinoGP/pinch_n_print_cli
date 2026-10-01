@@ -49,7 +49,13 @@ fn outer_wall_widths_for(config: &slicer_ir::ConfigView, region: &SliceRegionVie
 /// `smaller_perimeter_line_width` on its outer wall.
 #[test]
 fn narrow_island_uses_smaller_perimeter_width() {
-    let config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
+    // reads need the full classic surface; the fixture's own keys override it.
+    // `line_width` backs every role width left at the baseline's auto sentinel
+    // (notably `inner_wall_line_width`), so the spacing resolution stays
+    // positive without changing the explicit `outer_wall_line_width` under test.
+    let config = crate::common::classic_perimeters_baseline()
+        .float("line_width", 0.4)
         .int("wall_count", 2)
         .float("outer_wall_line_width", 0.5)
         .float("smaller_perimeter_threshold_mm", 0.8)
@@ -74,7 +80,9 @@ fn narrow_island_uses_smaller_perimeter_width() {
 /// keeps the default `outer_wall_line_width` (0.5 mm) on its outer wall.
 #[test]
 fn wide_island_keeps_default_outer_wall_width() {
-    let config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): see the narrow-island case above.
+    let config = crate::common::classic_perimeters_baseline()
+        .float("line_width", 0.4)
         .int("wall_count", 2)
         .float("outer_wall_line_width", 0.5)
         .float("smaller_perimeter_threshold_mm", 0.8)

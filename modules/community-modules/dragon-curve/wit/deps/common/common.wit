@@ -54,7 +54,8 @@ interface host-services {
     enum offset-join-type { miter, round, square }
     enum wall-sequence { inner-outer, outer-inner, inner-outer-inner }
     clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
-    offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type, arc-tolerance-mm: f32) -> list<ex-polygon>;
+    offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type, arc-tolerance-mm: f32, miter-limit: option<f32>) -> list<ex-polygon>;
+    hatch-areas:      func(areas: list<ex-polygon>, spacing-mm: f32, angle-degrees: f32) -> list<polygon>;
     simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
 
     // ── Batched forms ────────────────────────────────────────────────────
@@ -85,6 +86,7 @@ interface host-services {
         delta-mm: f32,
         join:     offset-join-type,
         arc-tolerance-mm: f32,
+        miter-limit: option<f32>,
     }
     offset-polygons-batch: func(requests: list<offset-request>) -> list<list<ex-polygon>>;
 
@@ -133,6 +135,10 @@ interface host-services {
         print-thin-walls: bool,
         min-feature-size: f32,
         min-bead-width: f32,
+        /// Layer height in millimetres; converts the bead-width spacings back
+        /// to extrusion widths for the canonical middle-threshold
+        /// denominators.
+        layer-height: f32,
         wall-transition-length: f32,
         wall-transition-angle: f32,
         initial-layer-min-bead-width: f32,

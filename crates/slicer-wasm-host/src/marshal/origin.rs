@@ -8,12 +8,20 @@ use std::fmt;
 ///
 /// Used as the grouping key inside [`OriginBucket`] to route per-payload outputs
 /// back to the correct region accumulator when a stage runs in tagged (multi-region) mode.
+///
+/// The **full** region identity includes the ordered paint `variant_chain`: two
+/// regions sharing `(object_id, region_id)` but differing in paint variant are
+/// distinct identities and must route to distinct buckets (a painted variant must
+/// never absorb its sibling's output).
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct OriginId {
     /// The object identifier string emitted by the WASM guest (matches `MeshObjectView.id`).
     pub object_id: String,
     /// The region index emitted by the WASM guest for this payload.
     pub region_id: u64,
+    /// Ordered `(paint-semantic-name, value)` pairs for this region. Empty for
+    /// the legacy single-variant flow.
+    pub variant_chain: Vec<(String, slicer_ir::PaintValue)>,
 }
 
 // ---------------------------------------------------------------------------
@@ -112,6 +120,7 @@ impl<R> OriginBucket<R> {
             let anon_id = OriginId {
                 object_id: String::new(),
                 region_id: 0,
+                variant_chain: Vec::new(),
             };
             let region = mint(&anon_id);
             OriginBucket {
@@ -199,6 +208,7 @@ mod tests {
         OriginId {
             object_id: obj.to_string(),
             region_id: region,
+            variant_chain: Vec::new(),
         }
     }
 

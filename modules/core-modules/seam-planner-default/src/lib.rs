@@ -43,6 +43,7 @@ use slicer_sdk::prelude::*;
 
 use crate::comparator::EnforcedBlockedSeamPoint;
 use crate::comparator::SeamSetup;
+use crate::contours::project_point_onto_inset_boundary;
 use crate::visibility::candidate_paint_classification;
 
 /// Default extrusion flow width used for seam scoring. Units: mm.
@@ -194,6 +195,87 @@ fn choose_region_candidate(
     }
 }
 
+/// Deterministic fallback position for a candidate-less region.
+///
+/// Mirrors the sharpest-vertex degradation in
+/// `slicer_core::perimeter_utils::generate_sharp_corner_seam_candidates`: the
+/// boundary vertex with the largest absolute turn angle wins, the first
+/// occurrence taking ties, and the region boundary's first point is the
+/// backstop for degenerate rings. Blocked vertices are eligible here by
+/// construction — this path only runs once the paint filter has already
+/// emptied the ordinary candidate set — so a fully blocked region still gets
+/// exactly one plan entry instead of silently dropping out of `SeamPlanIR`
+/// (which the host aligned-seam lookup reports as a missing entry, code 6).
+///
+/// This is a *chosen-position* degradation, not a candidate: the returned
+/// position is not appended to `scored_candidates`, whose scored content stays
+/// exactly what `region_candidates` produced. Returns `None` only when the
+/// region has no boundary point at all.
+fn fallback_region_position(region: &SeamPlanningRegionInput) -> Option<Point3WithWidth> {
+    let width = if region.scoring_width.is_finite() && region.scoring_width > 0.0 {
+        region.scoring_width
+    } else {
+        DEFAULT_FLOW_WIDTH_MM
+    };
+    let mut first_point: Option<[f32; 2]> = None;
+    let mut sharpest: Option<(f32, [f32; 2])> = None;
+    for polygon in &region.ex_polygons {
+        let rings = std::iter::once(&polygon.contour).chain(polygon.holes.iter());
+        for ring in rings {
+            let points = &ring.points;
+            if points.len() < 3 {
+                if let Some(point) = points.first() {
+                    if first_point.is_none() {
+                        first_point = Some([units_to_mm(point.x), units_to_mm(point.y)]);
+                    }
+                }
+                continue;
+            }
+            for (index, point) in points.iter().enumerate() {
+                let point_mm = [units_to_mm(point.x), units_to_mm(point.y)];
+                if first_point.is_none() {
+                    first_point = Some(point_mm);
+                }
+                let previous = &points[(index + points.len() - 1) % points.len()];
+                let next = &points[(index + 1) % points.len()];
+                let incoming = [
+                    point_mm[0] - units_to_mm(previous.x),
+                    point_mm[1] - units_to_mm(previous.y),
+                ];
+                let outgoing = [
+                    units_to_mm(next.x) - point_mm[0],
+                    units_to_mm(next.y) - point_mm[1],
+                ];
+                let incoming_len = (incoming[0] * incoming[0] + incoming[1] * incoming[1]).sqrt();
+                let outgoing_len = (outgoing[0] * outgoing[0] + outgoing[1] * outgoing[1]).sqrt();
+                if incoming_len == 0.0 || outgoing_len == 0.0 {
+                    continue;
+                }
+                let cross = incoming[0] * outgoing[1] - incoming[1] * outgoing[0];
+                let dot = incoming[0] * outgoing[0] + incoming[1] * outgoing[1];
+                let turn = cross.atan2(dot).abs();
+                if sharpest
+                    .as_ref()
+                    .is_none_or(|(best_turn, _)| turn > *best_turn)
+                {
+                    sharpest = Some((turn, point_mm));
+                }
+            }
+        }
+    }
+    let position = sharpest.map(|(_, point)| point).or(first_point)?;
+    Some(Point3WithWidth {
+        x: position[0],
+        y: position[1],
+        z: region.z,
+        width,
+        flow_factor: 1.0,
+        overhang_quartile: None,
+        overhang_distance_mm: None,
+        dist_to_top_mm: 0.0,
+    })
+}
+
 fn run_region_planning_entries(
     region_input: &SeamPlanningView,
     mode: SeamPlannerMode,
@@ -223,17 +305,47 @@ fn run_region_planning_entries(
         previous_key = Some(key);
 
         let scored_candidates = region_candidates(region);
-        let Some(chosen) =
-            choose_region_candidate(&scored_candidates, mode, region.global_layer_index)
-        else {
-            continue;
-        };
+        let mut chosen_position =
+            match choose_region_candidate(&scored_candidates, mode, region.global_layer_index) {
+                Some(chosen) => chosen.position,
+                // Paint (or an empty boundary) can empty the scored set. The
+                // planner must still emit exactly one entry per admitted region:
+                // the host aligned-seam lookup keys off the region identity, and a
+                // missing entry degrades to seam-placer code 6 and leaves the
+                // layer unseamed. The fallback is deterministic and independent of
+                // the scored path, which stays untouched; the reported scored
+                // candidates stay exactly what `region_candidates` produced.
+                None => match fallback_region_position(region) {
+                    Some(position) => position,
+                    None => continue,
+                },
+            };
+        // The planner emits planner coordinates, not raw region-boundary
+        // coordinates: the chosen seam is projected onto the inset boundary the
+        // toolpath actually follows for this region's scoring width. The
+        // candidate *generation* path (`region_candidates`) deliberately stays
+        // on the original vertices — paint annotations are indexed by
+        // `(contour_idx, vertex_idx)` on those vertices, and a per-vertex remap
+        // would sever that indexing. Only the reported `chosen_position` moves.
+        let inset_delta_mm = -0.5 * chosen_position.width; // mm
+        let insets = host::offset_polygons(
+            &region.ex_polygons,
+            inset_delta_mm,
+            OffsetJoinType::Miter,
+            0.0,
+        );
+        if let Some(projected) =
+            project_point_onto_inset_boundary(&insets, [chosen_position.x, chosen_position.y])
+        {
+            chosen_position.x = projected[0];
+            chosen_position.y = projected[1];
+        }
         entries.push(SeamPlanEntry {
             global_layer_index: region.global_layer_index,
             object_id: region.object_id.clone(),
             region_id: region.region_id.clone(),
             variant_chain: region.variant_chain.clone(),
-            chosen_position: chosen.position,
+            chosen_position,
             chosen_wall_index: 0,
             scored_candidates,
         });
@@ -377,8 +489,14 @@ mod tests {
         let first = choose_region_candidate(&candidates, SeamPlannerMode::Random, 0).unwrap();
         let second = choose_region_candidate(&candidates, SeamPlannerMode::Random, 1).unwrap();
         let third = choose_region_candidate(&candidates, SeamPlannerMode::Random, 2).unwrap();
-        assert_ne!((first.position.x, first.position.y), (second.position.x, second.position.y));
-        assert_eq!((first.position.x, first.position.y), (third.position.x, third.position.y));
+        assert_ne!(
+            (first.position.x, first.position.y),
+            (second.position.x, second.position.y)
+        );
+        assert_eq!(
+            (first.position.x, first.position.y),
+            (third.position.x, third.position.y)
+        );
     }
 
     /// With no paint every candidate scores 0.0, so the filter is a no-op and
@@ -419,6 +537,97 @@ mod tests {
             SeamPlannerMode::Random,
         ] {
             assert!(choose_region_candidate(&[], mode, 0).is_none());
+        }
+    }
+
+    /// Regression guard for the candidate-less silent skip.
+    ///
+    /// A region whose every vertex is `seam_blocker`-blocked previously emitted
+    /// no `SeamPlanEntry` at all (`else { continue; }`), so the host aligned-seam
+    /// lookup found no entry for the region key and `seam-placer` degraded with
+    /// code 6. Every admitted region must now get exactly one keyed entry, with
+    /// the sharpest-vertex fallback projected through the same inset boundary as
+    /// the scored path. `scored_candidates` stays exactly what the paint filter
+    /// produced — empty here — because the fallback is a chosen position, not a
+    /// candidate.
+    #[test]
+    fn candidate_less_region_still_emits_one_keyed_plan_entry() {
+        /// Half of `scoring_width = 0.4`: the inset distance per edge (mm).
+        const HALF_WIDTH_MM: f32 = 0.2;
+        /// Tolerance for the offset round trip (Clipper2 rounds to 100 nm).
+        const TOL_MM: f32 = 1e-4;
+
+        let blocked_at_every_vertex = vec![(
+            PaintSemantic::Custom("seam_blocker".to_string()),
+            vec![vec![
+                Some(PaintValue::Flag(true)),
+                Some(PaintValue::Flag(true)),
+                Some(PaintValue::Flag(true)),
+                Some(PaintValue::Flag(true)),
+            ]],
+        )];
+        let region = SeamPlanningRegionInput {
+            global_layer_index: 3,
+            object_id: "obj".to_string(),
+            region_id: "7".to_string(),
+            variant_chain: Vec::new(),
+            z: 0.6,
+            height: 0.2,
+            ex_polygons: vec![ExPolygon {
+                contour: Polygon {
+                    points: vec![
+                        Point2::from_mm(0.0, 0.0),
+                        Point2::from_mm(10.0, 0.0),
+                        Point2::from_mm(10.0, 10.0),
+                        Point2::from_mm(0.0, 10.0),
+                    ],
+                },
+                holes: Vec::new(),
+            }],
+            segment_annotations: blocked_at_every_vertex,
+            scoring_width: 0.4,
+        };
+        let view = SeamPlanningView {
+            regions: vec![region],
+        };
+
+        for aligned_back in [false, true] {
+            let entries = run_aligned_planning_entries(&view, aligned_back);
+            assert_eq!(
+                entries.len(),
+                1,
+                "a candidate-less region must still yield exactly one plan entry"
+            );
+            let entry = &entries[0];
+            assert_eq!(
+                (
+                    entry.global_layer_index,
+                    entry.object_id.as_str(),
+                    entry.region_id.as_str(),
+                    entry.variant_chain.len(),
+                ),
+                (3, "obj", "7", 0),
+                "the fallback entry must carry the region's key so lookup matches"
+            );
+            assert!(
+                entry.scored_candidates.is_empty(),
+                "the fallback supplies a chosen position, not a scored candidate"
+            );
+            // Sharpest-vertex tie (all four corners are 90 degrees) goes to the
+            // first boundary vertex, (0,0), inset by half the scoring width on
+            // both axes — derived from the fixture, not read back.
+            assert!(
+                (entry.chosen_position.x - HALF_WIDTH_MM).abs() < TOL_MM
+                    && (entry.chosen_position.y - HALF_WIDTH_MM).abs() < TOL_MM,
+                "fallback must project the first sharpest vertex onto the inset \
+                 boundary; got ({}, {})",
+                entry.chosen_position.x,
+                entry.chosen_position.y
+            );
+            assert!(
+                entry.chosen_position.z == 0.6,
+                "fallback must carry the supplied layer z"
+            );
         }
     }
 }

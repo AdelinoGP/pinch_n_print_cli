@@ -42,10 +42,22 @@ group   = "Support"
 [config.schema.tree_support_wall_count]
 type    = "int"
 default = 1
-min     = 1
+min     = 0
 max     = 10
 display = "Tree Support Wall Count"
 group   = "Support"
+# `min = 0` is required, not a relaxation: canonical OrcaSlicer declares
+# `def->min = 0` for `tree_support_wall_count` (`PrintConfig.cpp`) with the
+# tooltip "range of [0,2]. 0 means auto", and clamps at the consumption site
+# with `std::max(1, config.tree_support_wall_count.value)`
+# (`TreeSupportCommon.hpp`, `TreeSupport.cpp::generate_toolpaths`). Orca
+# serialises `0` into real profiles, so a `min = 1` bound rejects valid data.
+# `max = 10` and `default = 1` are deliberate divergences from canonical
+# (`max = 2`, `default = 0`): the renderer handles any wall count and
+# `tree-support/tests/tree_support_tdd.rs::tree_support_wall_count` pins
+# `render(3) == 3`, so tightening the maximum would make a supported value
+# unreachable. See packet 03 `design.md` for the measured evidence.
+description = "Wall loops for tree support; `0` is canonical OrcaSlicer's \"auto\" sentinel, clamped to 1 at the consumption site."
 
 [config.schema.support_speed]
 type    = "float"
@@ -54,11 +66,14 @@ min     = 1.0
 max     = 300.0
 display = "Support Speed"
 group   = "Support"
+# ADR-0069: the feedrate table is built once per whole print, so no sub-print
+# scope has a consumer that could honour a narrower statement.
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 [config.schema.line_width]
 type    = "float"
 default = 0.4
-min     = 0.1
+min     = 0
 max     = 2.0
 display = "Line Width"
 group   = "Support"
@@ -86,11 +101,40 @@ max     = 2.0
 display = "Support Bottom Interface Spacing"
 group   = "Support"
 
-[config.overridable-per-region]
-keys = []
+[config.schema.nozzle_diameter]
+type    = "float"
+default = 0.4
+min     = 0.1
+max     = 2.0
+unit    = "mm"
+display = "Nozzle diameter"
+description = "Typed to match the registry's existing declarers (classic-perimeters, wave-overhangs, machine-gcode-emit, tree-support-planner, arachne-perimeters all declare this key as `float` with default 0.4)."
+group   = "Support"
+# ADR-0069: tool-capable — statable at tool scope, denied at every narrower scope.
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic"]
 
-[config.overridable-per-layer]
-keys = []
+[config.schema.layer_height]
+type    = "float"
+default = 0.2
+min     = 0.01
+max     = 2.0
+unit    = "mm"
+display = "Layer height"
+description = "Typed to match the registry's existing declarers (layer-planner-default, classic-perimeters, wave-overhangs, arachne-perimeters, infill-linker all declare this key as `float` with default 0.2)."
+group   = "Support"
+
+[config.schema.support_line_width]
+type    = "float_or_percent"
+base_key = "nozzle_diameter"
+default = 0.0
+min     = 0.0
+# Percent semantics: Orca's `support_line_width` (PrintConfig.cpp, coFloatOrPercent)
+# declares min 0 / max 1000 for the percent form, and the bounds check applies
+# to the raw percent number ("80%" -> 80). Typed to match the
+# tree-support-planner declaration of the same key.
+max     = 1000.0
+display = "Support Line Width"
+group   = "Support"
 
 [hints]
 estimated-ms-per-layer = 10

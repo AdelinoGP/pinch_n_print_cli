@@ -80,6 +80,7 @@ pub fn run_support_preview(
     let ctx = slicer_runtime::prepare_prepass_context(
         Arc::new(mesh),
         config_source,
+        Vec::new(),
         module_dirs,
         no_default_module_paths,
         false,

@@ -185,17 +185,32 @@ pub fn orchestrate_infill(
         let line_width = config_float(view.config(), "line_width")
             .filter(|value| value.is_finite() && *value > 0.0)
             .unwrap_or(default_line_width);
-        let density = config_float(view.config(), "infill_density")
+        // Packet 06 (AC-3): `infill_density` and `layer_height` are declared
+        // `float` with registry defaults in infill-linker.toml, so a bound
+        // view always holds them; a missing or mistyped value is a fatal
+        // config defect, not a fallback case. The sanitizing filter stays
+        // for degenerate-but-legal values (a 0.0 density must not reach the
+        // `sparse_spacing_mm` division).
+        let density = view
+            .config()
+            .map(|config| config.require_float("infill_density"))
+            .transpose()
+            .map_err(|error| error.to_string())?
             .filter(|value| value.is_finite() && *value > 0.0)
-            .unwrap_or(0.2);
-        let layer_height = config_float(view.config(), "layer_height")
+            .unwrap_or(0.2) as f32;
+        let layer_height = view
+            .config()
+            .map(|config| config.require_float("layer_height"))
+            .transpose()
+            .map_err(|error| error.to_string())?
             .filter(|value| value.is_finite() && *value > 0.0)
-            .unwrap_or(0.2);
+            .unwrap_or(0.2) as f32;
         // Packet-approved deviation: flow.rs treats negative spacing as the canonical
         // throw analog (`FlowErrorNegativeSpacing`); the linker resolves the percent
         // base from user config, must not fail a slice on a non-physical width, and the formula port is exact.
         let anchor_base_mm = line_width_to_spacing(line_width, layer_height).unwrap_or(line_width);
-        let sparse_anchor = AnchorParams::from_config(view.config(), anchor_base_mm);
+        let sparse_anchor = AnchorParams::from_config(view.config(), anchor_base_mm)
+            .map_err(|error| error.to_string())?;
 
         records.push(RegionRecord {
             prior_index,
@@ -223,7 +238,7 @@ pub fn orchestrate_infill(
     process_bucket(&records, PathBucket::Solid, infill_overlap, &mut buckets);
 
     for (index, region) in prior_infill.iter().enumerate() {
-        output.begin_region(&region.object_id, region.region_id);
+        output.begin_region(&region.object_id, region.region_id, &region.variant_chain);
         for path in buckets[index].sparse.drain(..) {
             output.push_sparse_path(path)?;
         }
@@ -751,7 +766,13 @@ fn link_paths(
     anchor: AnchorParams,
 ) -> (Vec<ExtrusionPath3D>, Vec<SourceSegment>) {
     let offset = ExPolygonWithOffset::for_infill_overlap(boundary, infill_overlap, spacing_mm);
-    link_paths_against(tagged, offset.polygons_outer(), boundary, spacing_mm, anchor)
+    link_paths_against(
+        tagged,
+        offset.polygons_outer(),
+        boundary,
+        spacing_mm,
+        anchor,
+    )
 }
 
 /// Clips and links `tagged` against the overlap-offset `boundary`, falling

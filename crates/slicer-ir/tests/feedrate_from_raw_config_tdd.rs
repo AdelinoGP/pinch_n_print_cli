@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 
-use slicer_ir::{ConfigValue, FeedrateConfig};
+use slicer_ir::{feedrate::resolve_internal_bridge_speed_mm, ConfigValue, FeedrateConfig};
 
 fn raw(pairs: &[(&str, ConfigValue)]) -> HashMap<String, ConfigValue> {
     pairs
@@ -55,6 +55,28 @@ fn from_raw_config_accepts_lists_and_ints() {
     let fc = FeedrateConfig::from_raw_config(&config);
     assert_eq!(fc.filament_ironing_speed, 25.0);
     assert_eq!(fc.overhang_1_4_speed, 30.0);
+}
+
+#[test]
+fn from_raw_config_retains_internal_bridge_percent_until_resolution() {
+    let config = raw(&[
+        ("bridge_speed", ConfigValue::Float(25.0)),
+        (
+            "internal_bridge_speed",
+            ConfigValue::FloatOrPercent {
+                value: 150.0,
+                is_percent: true,
+            },
+        ),
+    ]);
+
+    let fc = FeedrateConfig::from_raw_config(&config);
+    assert_eq!(fc.internal_bridge_speed.value, 150.0);
+    assert!(fc.internal_bridge_speed.is_percent);
+    assert_eq!(
+        resolve_internal_bridge_speed_mm(fc.internal_bridge_speed, fc.bridge_speed),
+        37.5
+    );
 }
 
 #[test]

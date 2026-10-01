@@ -451,7 +451,11 @@ impl LayerModule for SeamPlacer {
         let mut degraded_error = None;
         let mut empty_wall_loop_error = None;
         for region in regions {
-            output.begin_region(region.object_id(), *region.region_id());
+            output.begin_region(
+                region.object_id(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
             if matches!(self.mode, SeamMode::Aligned | SeamMode::AlignedBack)
                 && region.resolved_seam().is_none()
                 && degraded_error.is_none()
@@ -459,10 +463,11 @@ impl LayerModule for SeamPlacer {
                 degraded_error = Some(ModuleError::non_fatal(
                     6,
                     format!(
-                        "missing seam plan entry (layer={}, object={}, region_id={}, variant_chain=[])",
+                        "missing seam plan entry (layer={}, object={}, region_id={}, variant_chain={:?})",
                         layer_index,
                         region.object_id(),
                         region.region_id(),
+                        region.variant_chain(),
                     ),
                 ));
             }

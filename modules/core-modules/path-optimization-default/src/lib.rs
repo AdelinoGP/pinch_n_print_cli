@@ -303,10 +303,13 @@ impl PathOptimizationDefault {
 #[slicer_module]
 impl LayerModule for PathOptimizationDefault {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let emit_layer_markers = match config.get("path_optimization_emit_layer_markers") {
-            Some(ConfigValue::Bool(b)) => *b,
-            _ => true,
-        };
+        // Required read (packet 06 fail-closed semantics): the registry seeds
+        // the manifest default (`true`) into a bound view, so absence is a
+        // contract violation, not a configurable fallback.
+        let emit_layer_markers = config.require_bool("path_optimization_emit_layer_markers")?;
+        // The retraction keys keep their `DEFAULT_*` computed fallbacks: those
+        // constants are pipeline defaults the manifest mirrors, and the
+        // registry seeds the declared defaults into bound views.
         let retract_length = match config.get("retract_length") {
             Some(ConfigValue::Float(f)) => *f as f32,
             _ => DEFAULT_RETRACT_LENGTH,
@@ -455,7 +458,13 @@ mod tests {
 
     #[test]
     fn defaults_emit_layer_markers_true() {
-        let config = ConfigView::from_map(HashMap::new());
+        // Declared key (path-optimization-default.toml) seeded at its
+        // manifest default, mirroring the production `seed_registry_defaults`
+        // step; the empty-map probe now behaves like a bound view.
+        let config = ConfigView::from_map(HashMap::from([(
+            "path_optimization_emit_layer_markers".to_string(),
+            ConfigValue::Bool(true),
+        )]));
         let module = PathOptimizationDefault::from_config(&config).unwrap();
         assert!(module.emit_layer_markers);
     }
@@ -500,7 +509,12 @@ mod tests {
         // list (the host ordering helper guarantees this order before dispatch).
         // With emit_layer_markers=true and an empty regions list the module emits
         // one marker comment referencing layer 0 with 0 regions and 0 entities.
-        let config = ConfigView::from_map(HashMap::new());
+        // The declared key is seeded at its manifest default (production
+        // `seed_registry_defaults` step).
+        let config = ConfigView::from_map(HashMap::from([(
+            "path_optimization_emit_layer_markers".to_string(),
+            ConfigValue::Bool(true),
+        )]));
         let module = PathOptimizationDefault::from_config(&config).unwrap();
         let mut output = GcodeOutputBuilder::new();
         let mut collection = LayerCollectionBuilder::new();
@@ -520,6 +534,10 @@ mod tests {
     fn retract_length_read_from_config() {
         let mut fields: HashMap<String, ConfigValue> = HashMap::new();
         fields.insert("retract_length".into(), ConfigValue::Float(1.5));
+        fields.insert(
+            "path_optimization_emit_layer_markers".into(),
+            ConfigValue::Bool(true),
+        );
         let config = ConfigView::from_map(fields);
         let module = PathOptimizationDefault::from_config(&config).unwrap();
         assert!(

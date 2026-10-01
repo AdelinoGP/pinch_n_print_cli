@@ -4,6 +4,7 @@ members = [
     "crates/slicer-runtime",
     "crates/slicer-scheduler",
     "crates/slicer-core",
+    "crates/slicer-config",
     "crates/slicer-gcode",
     "crates/slicer-ir",
     "crates/slicer-macros",
