@@ -55,7 +55,9 @@ Standing decisions for this effort (2026-09-22):
   superseded 2026-09-23; chain: 15 ✅ → 17 ✅ → 27's candidate → **22 ✅
   (attribution; produced the emit-pass carve candidate)** → **[emit-pass carve
   gate acceptance](issues/32-emit-carve-gate-representation-and-ab.md) ✅**
-  → 21's → 25's → below-fold polish — 15, 17, 22
+  → **21 ✅ (attribution, 2026-10-01; produced the
+  [clip-universe hoist](issues/44-clip-universe-hoist.md) candidate awaiting
+  its own take)** → 25's → below-fold polish — 15, 17, 22
   closed 2026-09-23/24); attribution-only tickets are parallel-takeable, but no
   substage split starts before [host:slice closing_ex span
   contradiction](issues/24-host-slice-closing-span-contradiction.md) closes.
@@ -178,12 +180,27 @@ Standing decisions for this effort (2026-09-22):
        dispatch. No acceptance retry or fix ran. Next lead: low-layer linker
        subcost attribution, requiring separate authorization. See
        [Arachne critical-tail module attribution](issues/43-arachne-critical-tail-module-attribution.md).
+      **Next lead taken and answered (2026-10-01):** the human authorized
+       [infill-linker attribution](issues/21-infill-linker-attribution.md) as
+       the next map step. Result: the tail is ~99.95% guest execution, and the
+       linker's cost is 97.65% the **per-path re-clip** — 64.84% of all linker
+       fuel is the repeated clip-universe pre-inflate, 32.65% the clipper
+       execute; connectivity is 2.01%. The split is numerically mode-invariant
+       (linker is the #1 accelerated fuel consumer at 59.1%). One candidate:
+       hoist the clip-universe preparation out of the per-path loop (fuel
+       ceiling ≈ 61.4% of linker ≈ 28.1% of slice fuel), needing its own scope
+       plus the standing paired A/B. No fix, commit or acceptance retry
+       occurred; ordinary remains production and the adoption gate stays
+       inconclusive. Evidence:
+       [linker subcost findings](evidence/t21-linker-subcost/FINDINGS.md).
 
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
-- [Arachne critical-tail module attribution](issues/43-arachne-critical-tail-module-attribution.md): authorized diagnostic pair completed with clean byte-identical output and frozen inputs; infill-linker dispatch occupies 90.01–96.69% of layers 1/2, host-vs-guest subcosts still unmeasured; no acceptance retry or production change.
+- [infill-linker attribution](issues/21-infill-linker-attribution.md): the linker's cost is 97.65% the per-path re-clip — 64.84% of linker fuel is the per-call clip-universe pre-inflate, 32.65% the clipper execute — and the layers 1–2 tail is ~99.95% guest execution (host prep/marshalling ~1.7 ms); one candidate (hoist the universe preparation per invocation, fuel ceiling ≈ 61.4% of linker ≈ 28.1% of slice) awaits its own scope + paired A/B, with the split mode-invariant and the linker the #1 accelerated fuel consumer at 59.1%.
+
+- [Arachne critical-tail module attribution](issues/43-arachne-critical-tail-module-attribution.md): authorized diagnostic pair completed with clean byte-identical output and frozen inputs; infill-linker dispatch occupies 90.01–96.69% of layers 1/2 (its host-vs-guest subcosts were subsequently split by [infill-linker attribution](issues/21-infill-linker-attribution.md): ~99.95% guest); no acceptance retry or production change.
 
 - [Accelerated adoption route after inconclusive campaign](issues/42-accelerated-adoption-inconclusive-route.md): human chose saved-evidence-first Arachne investigation, then authorized the diagnostic pair; ordinary remains production pending unchanged acceptance gates.
 
@@ -236,7 +253,14 @@ Standing decisions for this effort (2026-09-22):
 - **New candidates from the structural splits.** [Gap budget per cell](issues/12-gap-budget-per-cell.md)'s
   route tickets (24/22/27/28 and the re-scoped 18) may surface further
   candidates inside the serial floor, the query path, or the marshalling
-  residual; graduate each as it appears. [Tree-planner substage
+  residual; graduate each as it appears. [infill-linker
+  attribution](issues/21-infill-linker-attribution.md)'s split graduated the
+  now-open [clip-universe preparation hoist](issues/44-clip-universe-hoist.md)
+  (2026-10-01); its measured mode-invariance also re-ranks the *remaining*
+  linker work below the hoist — the per-polyline clipper execute (32.65% of
+  linker fuel) and the ~2.4% that is not the re-clip (connectivity 2.01% plus
+  a <0.4% residual) stay in this fog until a take has a reason to touch that
+  shape. [Tree-planner substage
   attribution](issues/22-tree-planner-substage-attribution.md) graduated the
    now-resolved [Emit-pass carve gate: representation safety + paired
   A/B](issues/32-emit-carve-gate-representation-and-ab.md). Its sibling
