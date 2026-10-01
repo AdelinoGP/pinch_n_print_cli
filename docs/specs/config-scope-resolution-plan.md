@@ -1,6 +1,7 @@
 # Config Scope and Resolution — Approved Plan
 
-Status: approved; revised 2026-09-11 after a two-axis code review and a
+Status: implemented; plan closed 2026-10-01. Approved design revised
+2026-09-11 after a two-axis code review and a
 design-interview revision session. The revision decisions that amend governance
 are recorded in the Amendment sections of **ADR-0067**, **ADR-0068** and
 **ADR-0069** (ADR-0070 is unchanged). This revised file is the
@@ -9,6 +10,13 @@ review session that produced it.
 Source: architecture review of the config pipeline. Every count and
 divergence below was measured against a clean `master` working tree at review
 time; all are **ledger facts** — re-derive before acting on any of them.
+
+Closure reconciles the packet queue with the implementation decisions in the
+packet contracts and `docs/07_implementation_status.md`. Final-packet re-scope,
+acceptance evidence and limitations remain recorded in
+`docs/spec_packets/config-scope-resolution_10_remaining-automatic-values/packet.spec.md`
+and its `review-remediation.md`. The explicitly out-of-scope naming work below
+is not closed by this plan.
 
 Governing ADRs authored with this plan: **ADR-0067** (one config schema
 registry), **ADR-0068** (config scope is a wire encoding), **ADR-0069**
@@ -473,4 +481,4 @@ table.
 | 7 | scope-eligibility | Author per-key `denied_scopes` on host and module schema entries (hand-authored machine/emitter denials cross-checked by the mechanical derivation and pinned by a drift test), derive the per-object admission set from the registry, and delete the two inert manifest sections. | TASK-568 | #5 | implemented | docs/spec_packets/config-scope-resolution_07_scope-eligibility/ |
 | 8 | typed-modifier-kind | Carry modifier kind typed across the IR seam, match exhaustively at the ten sites, route modifier deltas through the registry, and delete `ModifierScope` and `ModifierVolume.applies_to` (minor MeshIR bump per owner decision). | TASK-569 | #5, #7 | implemented | docs/spec_packets/config-scope-resolution_08_typed-modifier-kind/ |
 | 9 | layer-range-scope | Ingest `Metadata/layer_config_ranges.xml`, add the per-object layer-range scope wired to both entry points under the settled geometry semantics (world-Z, half-open, overlap rules, catch-up inheritance, selector-denial load error), and author a fixture carrying one range. | TASK-570 | #5, #7 | implemented | docs/spec_packets/config-scope-resolution_09_layer-range-scope/ |
-| 10 | remaining-automatic-values | Implement the remaining Phase C expansions — the speed family's `0 = volumetric auto` fallback in the emitter and any geometry-dependent `-1 = auto` sentinels not covered by #4. | TASK-571 | #4, #5 | generated | docs/spec_packets/config-scope-resolution_10_remaining-automatic-values/ |
+| 10 | remaining-automatic-values | Implement the remaining Phase C expansions — the speed family's `0 = volumetric auto` fallback in the emitter and any geometry-dependent `-1 = auto` sentinels not covered by #4. | TASK-571 | #4, #5 | implemented | docs/spec_packets/config-scope-resolution_10_remaining-automatic-values/ |
