@@ -57,7 +57,9 @@ Standing decisions for this effort (2026-09-22):
   gate acceptance](issues/32-emit-carve-gate-representation-and-ab.md) ✅**
   → **21 ✅ (attribution, 2026-10-01; produced the
   [clip-universe hoist](issues/44-clip-universe-hoist.md) candidate awaiting
-  its own take)** → 25's → below-fold polish — 15, 17, 22
+  its own take)** → **25 ✅ (attribution, 2026-10-01; produced the
+  overhang-quartile predicate candidate awaiting its own take)** → below-fold
+  polish — 15, 17, 22
   closed 2026-09-23/24); attribution-only tickets are parallel-takeable, but no
   substage split starts before [host:slice closing_ex span
   contradiction](issues/24-host-slice-closing-span-contradiction.md) closes.
@@ -193,10 +195,24 @@ Standing decisions for this effort (2026-09-22):
        occurred; ordinary remains production and the adoption gate stays
        inconclusive. Evidence:
        [linker subcost findings](evidence/t21-linker-subcost/FINDINGS.md).
+      **Next chain link taken and answered (2026-10-01):**
+       [Arachne graph-construction attribution](issues/25-arachne-graph-attribution.md)
+       resolved with an attribution that **reverses the old study's focus
+       boundary**: the module's cost is 86.4% two guest per-vertex queries
+       (`signed_distance_to_boundary` 48.3%, `overhang_quartile` 38.1%), while
+       the whole host pipeline is ~18% of module elapsed; the host internals
+       still split into the old two leads (triple offset 41.6%, boostvoronoi
+       sweep 33.5%) and the 364.932 ms remainder is closed. One candidate (the
+       quartile predicate's `eps = 0.0` boundary pre-pass, fuel ceiling ≈
+       24–25% of module fuel) awaits its own scope plus the paired A/B. No fix,
+       commit or acceptance retry; ordinary remains production. Evidence:
+       [Arachne re-attribution findings](evidence/t25-arachne-attribution/FINDINGS.md).
 
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+
+- [Arachne graph-construction attribution](issues/25-arachne-graph-attribution.md): **the module's cost is two guest per-vertex spatial queries — 86.4% of module fuel (`signed_distance_to_boundary` 48.3%, `overhang_quartile` 38.1%) — not the host pipeline, which is only ~18% of module elapsed** (the 75.3% ticket 06 measured was of the enclosing pipeline interval, not the module); inside the host service preprocess is 43.3% (stage-1 triple offset 41.6%) and graph construction 38.0% (boostvoronoi sweep 33.5%), closing the old 364.932 ms remainder; acceleration cuts the module 1.73x but the two queries still hold 82.0% accelerated; one candidate — the `overhang_quartile` predicate's `eps = 0.0` boundary pre-pass is a measured 62.8–66.3% of the predicate, fuel ceiling ≈ 24–25% of module fuel — awaits its own scope + paired A/B, with no fix, commit or acceptance retry.
 
 - [infill-linker attribution](issues/21-infill-linker-attribution.md): the linker's cost is 97.65% the per-path re-clip — 64.84% of linker fuel is the per-call clip-universe pre-inflate, 32.65% the clipper execute — and the layers 1–2 tail is ~99.95% guest execution (host prep/marshalling ~1.7 ms); one candidate (hoist the universe preparation per invocation, fuel ceiling ≈ 61.4% of linker ≈ 28.1% of slice) awaits its own scope + paired A/B, with the split mode-invariant and the linker the #1 accelerated fuel consumer at 59.1%.
 
@@ -253,7 +269,14 @@ Standing decisions for this effort (2026-09-22):
 - **New candidates from the structural splits.** [Gap budget per cell](issues/12-gap-budget-per-cell.md)'s
   route tickets (24/22/27/28 and the re-scoped 18) may surface further
   candidates inside the serial floor, the query path, or the marshalling
-  residual; graduate each as it appears. [infill-linker
+  residual; graduate each as it appears. [Arachne graph-construction
+  attribution](issues/25-arachne-graph-attribution.md)'s split (2026-10-01)
+  re-derived the module's shape: the two per-vertex queries are 86.4% of guest
+  fuel and the candidate it produced (the `overhang_quartile` predicate's
+  `eps = 0.0` boundary pre-pass, ceiling ≈ 24–25% of module fuel) stays in this
+  fog until a take has a reason to touch it — it needs its own scope plus the
+  standing paired A/B, and the paired `signed_distance_to_boundary` term (48.3%
+  of guest fuel) is the larger but not-yet-candidate-shaped half. [infill-linker
   attribution](issues/21-infill-linker-attribution.md)'s split graduated the
   now-open [clip-universe preparation hoist](issues/44-clip-universe-hoist.md)
   (2026-10-01); its measured mode-invariance also re-ranks the *remaining*
