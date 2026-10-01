@@ -1,0 +1,16 @@
+# These captured evidence sets contain hash-pinned manifests and raw logs.
+# Preserve their bytes on add/checkout instead of normalizing line endings.
+/docs/specs/perf-vs-orca/evidence/t38-adoption-campaign/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t38-adoption-preflight/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t38-adoption-resumed/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t39-status-roundtrip/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t40-reference-preparation/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t41-reference-repreparation/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t42-arachne-investigation/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t43-critical-tail/** -text whitespace=cr-at-eol
+
+# Captured command output and source diffs retain the producer's whitespace.
+/docs/specs/perf-vs-orca/evidence/t3[89]-*/**/*.log -whitespace
+/docs/specs/perf-vs-orca/evidence/t4[0-3]-*/**/*.log -whitespace
+/docs/specs/perf-vs-orca/evidence/t3[89]-*/**/*.diff -whitespace
+/docs/specs/perf-vs-orca/evidence/t4[0-3]-*/**/*.diff -whitespace

@@ -20,6 +20,9 @@
 *.pdb
 # Python linter cache
 .ruff_cache/
+# Python interpreter caches (including evidence-script imports)
+__pycache__/
+*.py[cod]
 
 # ---------------------------------------------------------------------------
 # Project-specific
@@ -30,6 +33,9 @@
 # Local worktrees and scratch output
 .worktrees/
 tmp/
+# Durable local acceptance payloads (licensed inputs and frozen snapshots).
+# Not build/scratch storage: preserve across cargo clean and target cleanup.
+/.local-artifacts/perimeter-reference-preparation/
 # Local environment files
 .env
 
