@@ -272,11 +272,12 @@ Standing decisions for this effort (2026-09-22):
   residual; graduate each as it appears. [Arachne graph-construction
   attribution](issues/25-arachne-graph-attribution.md)'s split (2026-10-01)
   re-derived the module's shape: the two per-vertex queries are 86.4% of guest
-  fuel and the candidate it produced (the `overhang_quartile` predicate's
-  `eps = 0.0` boundary pre-pass, ceiling ≈ 24–25% of module fuel) stays in this
-  fog until a take has a reason to touch it — it needs its own scope plus the
-  standing paired A/B, and the paired `signed_distance_to_boundary` term (48.3%
-  of guest fuel) is the larger but not-yet-candidate-shaped half. [infill-linker
+  fuel and its candidate graduated the now-open
+  [overhang-quartile predicate narrowing](issues/45-overhang-quartile-predicate-narrowing.md)
+  (fuel ceiling ≈ 24–25% of module fuel), which needs its own scope plus the
+  standing paired A/B; the paired `signed_distance_to_boundary` term (48.3% of
+  guest fuel) is the larger but not-yet-candidate-shaped half and stays in this
+  fog. [infill-linker
   attribution](issues/21-infill-linker-attribution.md)'s split graduated the
   now-open [clip-universe preparation hoist](issues/44-clip-universe-hoist.md)
   (2026-10-01); its measured mode-invariance also re-ranks the *remaining*
