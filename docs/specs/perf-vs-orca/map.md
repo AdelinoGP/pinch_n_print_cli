@@ -172,10 +172,20 @@ Standing decisions for this effort (2026-09-22):
      Benchy passed; Arachne wall ranges overlapped and the prescribed stop left
      four cells unrun. No retry or default switch occurred. The human route is
       [Accelerated adoption route after inconclusive campaign](issues/42-accelerated-adoption-inconclusive-route.md).
+      **Investigation selected:** saved Arachne evidence localizes the finishing
+       tail to layers 1 and 2. The subsequently authorized two-slice diagnostic
+       pair identified infill-linker dispatch as the owner, not Arachne perimeter
+       dispatch. No acceptance retry or fix ran. Next lead: low-layer linker
+       subcost attribution, requiring separate authorization. See
+       [Arachne critical-tail module attribution](issues/43-arachne-critical-tail-module-attribution.md).
 
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+
+- [Arachne critical-tail module attribution](issues/43-arachne-critical-tail-module-attribution.md): authorized diagnostic pair completed with clean byte-identical output and frozen inputs; infill-linker dispatch occupies 90.01–96.69% of layers 1/2, host-vs-guest subcosts still unmeasured; no acceptance retry or production change.
+
+- [Accelerated adoption route after inconclusive campaign](issues/42-accelerated-adoption-inconclusive-route.md): human chose saved-evidence-first Arachne investigation, then authorized the diagnostic pair; ordinary remains production pending unchanged acceptance gates.
 
 - [Accelerated production adoption acceptance campaign](issues/38-accelerated-adoption-acceptance-campaign.md): controlled snapshots and one real campaign completed; adoption remains inconclusive after Arachne wall overlap, with four cells unrun; route returned to the human, ordinary unchanged.
 
