@@ -1,0 +1,213 @@
+{
+  "pass": true,
+  "modules_loaded": 24,
+  "stages": 12,
+  "modules": [
+    {
+      "id": "com.core.arachne-perimeters",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.classic-perimeters",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.fuzzy-skin",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.gyroid-infill",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.infill-linker",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.layer-planner-default",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.lightning-infill",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.machine-gcode-emit",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.overhang-classifier-default",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.part-cooling",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.path-optimization-default",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.raft-default",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.rectilinear-infill",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.seam-placer",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.seam-planner-default",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.skirt-brim",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.support-surface-ironing",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.top-surface-ironing",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.traditional-support",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.traditional-support-planner",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.tree-support",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.tree-support-planner",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.wave-overhangs",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.wipe-tower",
+      "provenance": "external"
+    }
+  ],
+  "diagnostics": [
+    {
+      "level": "warning",
+      "file": "integrated://fuzzy-skin",
+      "field": "module.id",
+      "message": "external module com.core.fuzzy-skin shadows integrated module com.core.fuzzy-skin"
+    },
+    {
+      "level": "warning",
+      "file": "integrated://gyroid-infill",
+      "field": "module.id",
+      "message": "external module com.core.gyroid-infill shadows integrated module com.core.gyroid-infill"
+    },
+    {
+      "level": "warning",
+      "file": "integrated://infill-linker",
+      "field": "module.id",
+      "message": "external module com.core.infill-linker shadows integrated module com.core.infill-linker"
+    },
+    {
+      "level": "warning",
+      "file": "integrated://layer-planner-default",
+      "field": "module.id",
+      "message": "external module com.core.layer-planner-default shadows integrated module com.core.layer-planner-default"
+    },
+    {
+      "level": "warning",
+      "file": "integrated://lightning-infill",
+      "field": "module.id",
+      "message": "external module com.core.lightning-infill shadows integrated module com.core.lightning-infill"
+    },
+    {
+      "level": "warning",
+      "file": "integrated://overhang-classifier-default",
+      "field": "module.id",
+      "message": "external module com.core.overhang-classifier-default shadows integrated module com.core.overhang-classifier-default"
+    },
+    {
+      "level": "warning",
+      "file": "integrated://part-cooling",
+      "field": "module.id",
+      "message": "external module com.core.part-cooling shadows integrated module com.core.part-cooling"
+    },
+    {
+      "level": "warning",
+      "file": "integrated://rectilinear-infill",
+      "field": "module.id",
+      "message": "external module com.core.rectilinear-infill shadows integrated module com.core.rectilinear-infill"
+    },
+    {
+      "level": "warning",
+      "file": "integrated://seam-placer",
+      "field": "module.id",
+      "message": "external module com.core.seam-placer shadows integrated module com.core.seam-placer"
+    },
+    {
+      "level": "warning",
+      "file": "integrated://seam-planner-default",
+      "field": "module.id",
+      "message": "external module com.core.seam-planner-default shadows integrated module com.core.seam-planner-default"
+    },
+    {
+      "level": "warning",
+      "file": "integrated://skirt-brim",
+      "field": "module.id",
+      "message": "external module com.core.skirt-brim shadows integrated module com.core.skirt-brim"
+    },
+    {
+      "level": "warning",
+      "file": "integrated://support-surface-ironing",
+      "field": "module.id",
+      "message": "external module com.core.support-surface-ironing shadows integrated module com.core.support-surface-ironing"
+    },
+    {
+      "level": "warning",
+      "file": "integrated://top-surface-ironing",
+      "field": "module.id",
+      "message": "external module com.core.top-surface-ironing shadows integrated module com.core.top-surface-ironing"
+    },
+    {
+      "level": "warning",
+      "file": "integrated://traditional-support",
+      "field": "module.id",
+      "message": "external module com.core.traditional-support shadows integrated module com.core.traditional-support"
+    },
+    {
+      "level": "warning",
+      "file": "integrated://tree-support",
+      "field": "module.id",
+      "message": "external module com.core.tree-support shadows integrated module com.core.tree-support"
+    },
+    {
+      "level": "warning",
+      "file": "integrated://wipe-tower",
+      "field": "module.id",
+      "message": "external module com.core.wipe-tower shadows integrated module com.core.wipe-tower"
+    },
+    {
+      "level": "warning",
+      "file": "integrated://path-optimization-default",
+      "field": "module.id",
+      "message": "external module com.core.path-optimization-default shadows integrated module com.core.path-optimization-default"
+    },
+    {
+      "level": "warning",
+      "file": "integrated://machine-gcode-emit",
+      "field": "module.id",
+      "message": "external module com.core.machine-gcode-emit shadows integrated module com.core.machine-gcode-emit"
+    }
+  ]
+}

@@ -168,10 +168,16 @@ Standing decisions for this effort (2026-09-22):
     [acceptance campaign](issues/38-accelerated-adoption-acceptance-campaign.md)
      resumes under the unchanged gates; no automatic retry, commit or default
      switch is authorized.
+     **Campaign completed (2026-10-01): inconclusive.** Classic supports-off
+     Benchy passed; Arachne wall ranges overlapped and the prescribed stop left
+     four cells unrun. No retry or default switch occurred. The human route is
+      [Accelerated adoption route after inconclusive campaign](issues/42-accelerated-adoption-inconclusive-route.md).
 
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+
+- [Accelerated production adoption acceptance campaign](issues/38-accelerated-adoption-acceptance-campaign.md): controlled snapshots and one real campaign completed; adoption remains inconclusive after Arachne wall overlap, with four cells unrun; route returned to the human, ordinary unchanged.
 
 - [Missing frozen adoption inputs recovery decision](issues/41-missing-frozen-adoption-inputs-recovery.md): human accepted the new validated ordinary-only frozen set outside `target/` and the recorded preparation-only preflight restart exception; campaign continuation authorized under unchanged gates.
 

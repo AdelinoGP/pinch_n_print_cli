@@ -1,0 +1,10 @@
+    Checking slicer-wasm-host v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host)
+    Checking slicer-runtime v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-runtime)
+    Checking pnp-cli v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\pnp-cli)
+    Checking traditional-support-planner v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\traditional-support-planner)
+    Checking tree-support-planner v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\tree-support-planner)
+    Checking tree-support v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\tree-support)
+    Checking traditional-support v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\traditional-support)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 39.66s
+warning: the following packages contain code that will be rejected by a future version of Rust: nom v3.2.1, quick-xml v0.22.0
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
