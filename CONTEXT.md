@@ -251,6 +251,14 @@ specific ones. A key denied at a scope cannot be stated there at all, rather
 than being accepted and ignored.
 _Avoid_: Overridable-per-region, allow list, override permission
 
+### Declared extension key
+A setting recognised by the **config schema registry** whose resolved value belongs to the extensible portion of a region's configuration rather than its fixed field set. Host-declared and module-declared settings can both have this form, with the same declared type, default, bounds, and scope eligibility.
+_Avoid_: Unknown key, unvalidated extra
+
+### Persisted IR schema
+The versioned shape of a stored pipeline intermediate representation, distinct from the **stage contract** a module satisfies. New content inside an existing extensible setting collection is not itself a new stored record shape.
+_Avoid_: Stage contract (when stored representation is meant), WIT version
+
 ### Authored value
 What a source document states for a setting, as distinct from the **resolved**
 value a module finally reads. The two differ whenever a scope above it restates

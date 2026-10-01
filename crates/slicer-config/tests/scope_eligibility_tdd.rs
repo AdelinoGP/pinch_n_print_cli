@@ -66,6 +66,7 @@ const AC1_WHOLE_PRINT_ONLY: &[&str] = &[
 const AC1_TOOL_CAPABLE: &[&str] = &[
     "filament_density",
     "filament_diameter",
+    "filament_max_volumetric_speed",
     "nozzle_diameter",
     "retract_length",
 ];

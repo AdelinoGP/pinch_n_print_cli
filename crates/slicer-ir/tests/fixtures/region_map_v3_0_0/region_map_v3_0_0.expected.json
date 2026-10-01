@@ -1,0 +1,63 @@
+{
+  "fixture": "region_map_v3_0_0.postcard",
+  "serialization": "postcard",
+  "serialized_type": "slicer_ir::RegionMapIR",
+  "schema_version": {
+    "major": 3,
+    "minor": 0,
+    "patch": 0
+  },
+  "new_field": {
+    "name": "filament_max_volumetric_speed",
+    "present_in_fixture": false,
+    "expected_default_after_decode": 0.0,
+    "expected_default_bits": "0x00000000"
+  },
+  "configs": [
+    {
+      "index": 0,
+      "note": "RegionMapIR::default() pre-seed; all-default ResolvedConfig",
+      "filament_diameter": 1.75,
+      "outer_wall_speed": 50.0
+    },
+    {
+      "index": 1,
+      "note": "interned by the generator with distinct non-default old-field values",
+      "filament_diameter": 1.72,
+      "outer_wall_speed": 61.5
+    }
+  ],
+  "entries": [
+    {
+      "region_key": {
+        "global_layer_index": 5,
+        "object_id": "obj-legacy-1",
+        "region_id": 7,
+        "variant_chain": [["material", { "ToolIndex": 1 }]]
+      },
+      "config_index": 1,
+      "stage_modules_empty": true,
+      "paint_overrides": [
+        {
+          "semantic": "Material",
+          "filament_diameter": 2.85,
+          "outer_wall_speed": 25.0
+        }
+      ]
+    },
+    {
+      "region_key": {
+        "global_layer_index": 6,
+        "object_id": "obj-legacy-1",
+        "region_id": 7,
+        "variant_chain": []
+      },
+      "config_index": 0,
+      "stage_modules_empty": true,
+      "paint_overrides": []
+    }
+  ],
+  "provenance_note": "hand-written expected values; independent of the packet's own decode path",
+  "fixture_sha256": "5af57d3e3d2fe2205a12dda7d7927e71b49925cfc7850a6893c06ddc4e4b33e3",
+  "fixture_bytes": 1030
+}

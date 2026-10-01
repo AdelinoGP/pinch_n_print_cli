@@ -549,9 +549,12 @@ must know:
   (default `"rectilinear-infill"`). The claim↔key mapping is in
   `03_wit_and_manifest.md` § "Known claim IDs"; resolution is in
   `04_host_scheduler.md` § "Claim Resolution".
-- **`extensions: BTreeMap<String, ConfigValue>` is the overflow bucket** for
-  keys contributed by modules outside the current schema snapshot. It
-  round-trips without corrupting config. It was migrated from `HashMap` to
+- **`extensions: BTreeMap<String, ConfigValue>` carries keys without fixed
+  fields**, including registry-declared host runtime keys and keys contributed
+  by modules outside the current fixed-field schema snapshot. Declared keys
+  receive normal registry validation, defaults, and scope resolution before
+  interning; this map is not a bypass for those rules. It round-trips without
+  corrupting config. It was migrated from `HashMap` to
   `BTreeMap` in Packet 91 so `ResolvedConfig` can derive `Hash`; deterministic
   iteration order is the upside. The `Hash` impl hashes `f32` fields via
   `to_bits()`, which is consistent within one process.
@@ -570,8 +573,45 @@ and `support_bottom_interface_spacing = -1` — never reach the interner or a
 target map, and a failed expansion commits nothing. Expansion is registry-driven
 via `ExpansionContext` (global nozzle diameter plus per-tool absolute bases);
 only `RegistryEntry.base_key`-typed percentages are expanded. Packet 10 retains
-the emitter-owned volumetric `0 = auto` rule and all geometry-, layer-, flow-,
-or move-dependent `-1` sentinels.
+configured role speed `0` as an emitter-owned automatic value (see Phase C),
+along with geometry-, layer-, flow-, or move-dependent `-1` sentinels, if
+declared. `filament_max_volumetric_speed = 0` means the limit is unavailable;
+it does not request derivation of the filament limit itself.
+
+### Phase C per-move automatic-value resolution (Normative)
+
+`filament_max_volumetric_speed` is a filament-scoped, registry-declared host
+runtime key carried in `ResolvedConfig.extensions`, not a fixed serialized
+field. `ResolvedConfig::filament_max_volumetric_speed` in
+`crates/slicer-ir/src/resolved_config.rs` is a typed `Result<f64, String>`
+accessor: absent means numeric `0.0`; Float, Int, or a finite numeric String is
+accepted either as the scalar value or as the first element of a non-empty
+List. Wrong types, empty Lists, non-finite values, and negative values are
+rejected. Numeric-string parsing is specific to this accessor and does not
+define a general config coercion rule. This scalar envelope is retained by
+resolution; it is not indexed by tool number. Registry default is `0.0` and
+minimum is `0`; zero is unavailable, not a Phase-B automatic filament limit.
+
+A configured role speed of exactly zero selects the Phase-C fallback when
+per-move width/flow and layer `height_delta` are available in
+`DefaultGCodeEmitter::emit_gcode` (`crates/slicer-gcode/src/emit.rs`). The active
+tool's resolved limit wins, with resolved global fallback when the tool config
+is absent. A finite positive limit divided by finite positive
+`width × height_delta × flow_factor` supplies the private automatic base in
+mm/s. Normal shared factor clamping and mm/min conversion still apply; the
+automatic path rejects non-finite factors, overflow, and a final rounded or
+narrowed `F` that is non-finite or non-positive. Explicit positive configured
+speeds intentionally remain uncapped by this volumetric fallback. This is
+scope-limited formula/tool parity with canonical `GCode.cpp::GCode::_extrude`,
+not full emitter parity: canonical separately caps explicit positive speeds.
+
+[ADR-0072](adr/0072-context-aware-feedrate-resolution-preserves-factor-contract.md)
+narrowly amends ADR-0052's resolver-body and direct-call mechanism: production
+extrusion uses private move-context base selection and one shared host-side
+factor clamp/conversion policy. The public context-free role/factor resolver
+retains its signature and role-zero placeholder; factor carriers, replacement
+and entity-factor fallback remain unchanged. `D-CSR10-ADR-0052-AMENDED` in
+`docs/DEVIATION_LOG.md` registers this amendment, not a WIT or IR layout change.
 
 Module `ConfigView` delivery is **always resolved and registry-complete**
 (normative — resolved-config-view packet): the live binding path
@@ -614,17 +654,21 @@ Reproducibility requirements:
 
 ### ResolvedConfig Hash invariant (Normative — Packet 91)
 
-`ResolvedConfig` derives `PartialEq` + `Eq` + `Hash`. All `f32`/`f64`
-fields are hashed via `to_bits()` so that `a == b ⇒ hash(a) == hash(b)`
-holds (both equality and hashing use bit-pattern comparison, not float
-equality). This is required for the Packet 91 interner that dedupes
-configs into `RegionMapIR.configs` via linear scan keyed by `==`.
+The declaration macro drives `ResolvedConfig`'s fields, defaults, and
+config-map conversion; `PartialEq`/`Eq` and `Hash` are hand-written. Those
+implementations explicitly cover the declared typed fields and `extensions`.
+Floating-point values, including optional and sequence fields, are compared
+and hashed via `to_bits()` rather than native float equality, so bitwise
+equality keeps `a == b ⇒ hash(a) == hash(b)` coherent. This is required for
+the Packet 91 interner that dedupes configs into `RegionMapIR.configs` via
+linear scan keyed by `==`.
 
 Portability caveat: hash output is consistent within one process but is
 NOT portable across architectures with differing NaN bit patterns. Two
-configs differing only in NaN payload bit pattern would compare unequal
-and intern as distinct entries. NaN is already a fatal validation error
-(see top of this doc), so this is theoretical for real prints.
+configs differing only in NaN payload bit pattern would compare unequal,
+and their distinct bit patterns would be supplied to hashing, so they intern
+as distinct entries. NaN is already a fatal validation error (see top of this
+doc), so this is theoretical for real prints.
 
 ---
 
@@ -632,7 +676,16 @@ and intern as distinct entries. NaN is already a fatal validation error
 
 **Stage:** Output of `PrePass::RegionMapping` (host-built-in)  
 **Lifetime:** Blackboard (immutable after PrePass)  
-**Current schema_version: 3.0.0** (Major bump by F-19 — `ResolvedConfig` is interned in `RegionMapIR.configs`, and `ResolvedConfig.support_type` widened from the two-variant `Traditional` / `Tree` enum to canonical's four-value `s_keys_map_SupportType` (`normal(auto)` / `tree(auto)` / `normal(manual)` / `tree(manual)`); the serde tokens are now those canonical spellings, so `Traditional` / `Tree` no longer deserialize. Prior versions: 1.0.0 initial; 1.1.0 (Packet 51 — additive `paint_overrides` field on `RegionPlan`); 2.0.0 (Packet 91 — `RegionPlan.config` is now a `ConfigId` interner index, `RegionMapIR.configs` Vec added, `RegionKey.variant_chain` added).)
+**Current schema_version: 3.0.0** (`CURRENT_REGION_MAP_IR_SCHEMA_VERSION` in
+`crates/slicer-ir/src/slice_ir.rs`). Prior
+versions: 1.0.0 initial; 1.1.0 (Packet 51 — additive `paint_overrides` field on
+`RegionPlan`); 2.0.0 (Packet 91 — `RegionPlan.config` is now a `ConfigId` interner
+index, `RegionMapIR.configs` Vec added, `RegionKey.variant_chain` added); 3.0.0
+(F-19 — `ResolvedConfig` is interned in `RegionMapIR.configs`, and
+`ResolvedConfig.support_type` widened from the two-variant `Traditional` / `Tree`
+enum to canonical's four-value `s_keys_map_SupportType` (`normal(auto)` /
+`tree(auto)` / `normal(manual)` / `tree(manual)`), so the old tokens no longer
+deserialize).
 
 `RegionMapIR`, `RegionKey`, `RegionPlan`, `ModuleInvocation`, and `ConfigId` are
 defined in `crates/slicer-ir/src/slice_ir.rs`. `RegionMapIR.configs` is the
@@ -640,6 +693,19 @@ interned `ResolvedConfig` pool, `RegionPlan.config` is its per-plan index, and
 `RegionKey.variant_chain` carries ordered paint variants. Use
 `RegionMapIR::config_for` and `RegionMapIR::intern_config` rather than relying
 on the internal pool layout.
+
+Packet 10 adds map content in existing `ResolvedConfig.extensions` values in
+`RegionMapIR.configs` and `RegionPlan.paint_overrides`; it does not add a struct
+field or change the persisted 3.0.0 layout. The independent pre-change 3.0.0
+Postcard fixture remains an unchanged-layout regression oracle, deserialized
+directly by tests with the existing dev-only Postcard dependency. The unshipped
+experimental fixed-field 3.1.0 layout and its packet-added production decoder
+are abandoned without authorizing deletion or regeneration of existing
+experimental artifacts and without a reader compatibility promise. This
+preservation constraint does not assert that a 3.1.0 fixture was produced;
+Packet 10's [review remediation](spec_packets/config-scope-resolution_10_remaining-automatic-values/review-remediation.md)
+records the identified artifact inventory.
+No WIT, CLI-output, or manifest schema version changes.
 
 ### Config Interner Contract (Normative — Packet 91)
 
@@ -2089,7 +2155,7 @@ pre-packet-60 behavior at `{:.4}`).
 | Field removed            | Major (1.x → 2.0) | No — requires compatibility shim   |
 | New enum variant         | Minor (1.0 → 1.1) | Yes — old modules treat as unknown |
 
-The `extensions: BTreeMap<String, ConfigValue>` field on `ResolvedConfig` is the soft landing zone for config keys contributed by modules not present in the host's schema snapshot. Keys always round-trip safely.
+The existing `extensions: BTreeMap<String, ConfigValue>` field on `ResolvedConfig` carries declared host runtime and module keys without fixed fields in the host's schema snapshot. Adding content to that map does not itself add a serialized struct field; declared keys still follow normal registry validation, defaulting, and scope resolution before interning.
 
 ### Reservation Table — perimeter parity roadmap (P102–P112)
 

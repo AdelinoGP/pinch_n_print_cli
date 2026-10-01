@@ -1,10 +1,14 @@
 //! Independent literal-oracle coverage for Phase B automatic-value expansion.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
+use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::path::{Path, PathBuf};
 
 use slicer_config::{
-    assemble_registry, expand_automatic_values, ConfigSchemaRegistry, ExpansionContext,
-    ExpansionError, HostChannels, ModuleDeclaration,
+    assemble_registry, expand_automatic_values, resolve_scope_stack, ConfigSchemaRegistry,
+    ConfigScope, ExpansionContext, ExpansionError, HostChannels, ModuleDeclaration, RegistryEntry,
+    ResolutionError, ResolutionTarget, ScopeDelta, ScopedConfig,
 };
 use slicer_ir::config_schema::{ConfigFieldEntry, ConfigSchema};
 use slicer_ir::{ConfigValue, ResolvedConfig};
@@ -476,4 +480,772 @@ fn zero_nozzle_rejects_required_width_expansion_without_nan() {
         assert_eq!(config, original, "invalid nozzle must not mutate config");
         assert!(!config.line_width.is_nan(), "failure must not write NaN");
     }
+}
+
+// ── Live-registry negative-sentinel census (packet 10, Step 2 slice C) ─────
+//
+// Derivation rule: scan the live host declaration channels plus every real
+// core-module manifest declaration for a numeric negative default or lower
+// bound. A default is inspected as the same comma-joined wire string the
+// declaration carries, so a negative element inside an array default is a
+// candidate exactly like a negative scalar; non-numeric elements are not.
+// Assemble the registry from those exact declarations, and fail loudly
+// when a derived key has no explicit owner rule. The owner rule is narrow on
+// purpose: packet 04 exclusively owns the two config-only `-1` mirrors, so any
+// other negative-capable declaration is an unowned Phase C candidate until a
+// rule names it. No complete key roster is maintained here.
+
+/// One declaration whose numeric default (a scalar, or one numeric element of
+/// an array default) or numeric lower bound is negative.
+#[derive(Debug)]
+struct NegativeDeclaration {
+    key: String,
+    provenance: String,
+    negative_default: Option<f64>,
+    negative_min: Option<f64>,
+}
+
+/// The explicit narrow owner rules for negative-capable declarations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NegativeSentinelOwner {
+    /// `support_interface_bottom_layers = -1` mirrors `support_interface_top_layers`.
+    BottomLayers,
+    /// `support_bottom_interface_spacing = -1` mirrors `support_interface_spacing`.
+    BottomSpacing,
+}
+
+impl NegativeSentinelOwner {
+    fn key(self) -> &'static str {
+        match self {
+            Self::BottomLayers => "support_interface_bottom_layers",
+            Self::BottomSpacing => "support_bottom_interface_spacing",
+        }
+    }
+
+    fn sentinel(self) -> ConfigValue {
+        match self {
+            Self::BottomLayers => ConfigValue::Int(-1),
+            Self::BottomSpacing => ConfigValue::Float(-1.0),
+        }
+    }
+}
+
+/// The owner rule. `None` means the key is an unowned Phase C candidate.
+fn classify_phase_c_negative_candidate(key: &str) -> Option<NegativeSentinelOwner> {
+    match key {
+        "support_interface_bottom_layers" => Some(NegativeSentinelOwner::BottomLayers),
+        "support_bottom_interface_spacing" => Some(NegativeSentinelOwner::BottomSpacing),
+        _ => None,
+    }
+}
+
+/// Every derived candidate whose key the narrow owner rule does not classify,
+/// i.e. an unowned Phase-C candidate.
+fn unowned_phase_c_candidates(candidates: &[NegativeDeclaration]) -> Vec<&NegativeDeclaration> {
+    candidates
+        .iter()
+        .filter(|candidate| classify_phase_c_negative_candidate(&candidate.key).is_none())
+        .collect()
+}
+
+/// The census's ownership gate: panic on the first derived negative-capable
+/// candidate the narrow owner rule does not classify, and return the set of
+/// classified owners otherwise. The live census and the falsifying negative
+/// control both pass through this function, so the control exercises the very
+/// failure the census enforces.
+fn enforce_negative_sentinel_ownership(
+    candidates: &[NegativeDeclaration],
+) -> BTreeSet<&'static str> {
+    if let Some(candidate) = unowned_phase_c_candidates(candidates).first() {
+        panic!(
+            "unowned negative-capable Phase-C candidate `{}` declared by {} (negative default {:?}, negative lower bound {:?}); classify its owner before this packet can claim the census is complete",
+            candidate.key, candidate.provenance, candidate.negative_default, candidate.negative_min
+        );
+    }
+    candidates
+        .iter()
+        .filter_map(|candidate| classify_phase_c_negative_candidate(&candidate.key))
+        .map(NegativeSentinelOwner::key)
+        .collect()
+}
+
+fn workspace_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+fn real_manifest_paths() -> Vec<PathBuf> {
+    let modules_dir = workspace_root().join("modules/core-modules");
+    let mut paths = fs::read_dir(&modules_dir)
+        .unwrap_or_else(|error| panic!("cannot read {}: {error}", modules_dir.display()))
+        .map(|entry| {
+            entry
+                .unwrap_or_else(|error| panic!("cannot read module directory entry: {error}"))
+                .path()
+        })
+        .filter(|path| path.is_dir())
+        .collect::<Vec<_>>();
+    paths.sort();
+    assert!(
+        !paths.is_empty(),
+        "real core-module manifest census found no module directories"
+    );
+    paths
+}
+
+fn toml_default_to_wire(value: &toml::Value) -> String {
+    match value {
+        toml::Value::String(text) => text.clone(),
+        toml::Value::Array(items) => items
+            .iter()
+            .map(|item| match item {
+                toml::Value::String(text) => text.clone(),
+                other => other.to_string(),
+            })
+            .collect::<Vec<_>>()
+            .join(","),
+        other => other.to_string(),
+    }
+}
+
+fn toml_value_as_f64(value: &toml::Value) -> Option<f64> {
+    value
+        .as_float()
+        .or_else(|| value.as_integer().map(|int| int as f64))
+}
+
+fn parse_manifest_field(key: &str, value: &toml::Value) -> ConfigFieldEntry {
+    if let Some(field_type) = value.as_str() {
+        return ConfigFieldEntry {
+            field_type: field_type.to_owned(),
+            ..ConfigFieldEntry::default()
+        };
+    }
+
+    let table = value
+        .as_table()
+        .unwrap_or_else(|| panic!("config.schema.{key} must be a string or a table"));
+    ConfigFieldEntry {
+        field_type: table
+            .get("type")
+            .and_then(toml::Value::as_str)
+            .unwrap_or_else(|| panic!("config.schema.{key}.type is required"))
+            .to_owned(),
+        default: table.get("default").map(toml_default_to_wire),
+        min: table.get("min").and_then(toml_value_as_f64),
+        max: table.get("max").and_then(toml_value_as_f64),
+        base_key: table
+            .get("base_key")
+            .and_then(toml::Value::as_str)
+            .map(str::to_owned),
+        values: table
+            .get("values")
+            .and_then(toml::Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(toml::Value::as_str)
+                    .map(str::to_owned)
+                    .collect()
+            }),
+        selector: table
+            .get("selector")
+            .and_then(toml::Value::as_bool)
+            .unwrap_or(false),
+        denied_scopes: table
+            .get("denied_scopes")
+            .and_then(toml::Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(toml::Value::as_str)
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default(),
+        omit_from_config_block: !table
+            .get("config_block")
+            .and_then(toml::Value::as_bool)
+            .unwrap_or(true),
+        ..ConfigFieldEntry::default()
+    }
+}
+
+fn parse_real_module_declarations() -> Vec<ModuleDeclaration> {
+    let mut declarations = Vec::new();
+    for module_dir in real_manifest_paths() {
+        let stem = module_dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_else(|| panic!("module directory is not valid UTF-8: {module_dir:?}"));
+        let manifest_path = module_dir.join(format!("{stem}.toml"));
+        let text = fs::read_to_string(&manifest_path)
+            .unwrap_or_else(|error| panic!("cannot read {}: {error}", manifest_path.display()));
+        let document: toml::Value = toml::from_str(&text)
+            .unwrap_or_else(|error| panic!("cannot parse {}: {error}", manifest_path.display()));
+        let module_id = document
+            .get("module")
+            .and_then(toml::Value::as_table)
+            .and_then(|module| module.get("id"))
+            .and_then(toml::Value::as_str)
+            .unwrap_or_else(|| {
+                panic!(
+                    "manifest {} has no string module.id",
+                    manifest_path.display()
+                )
+            })
+            .to_owned();
+        let schema = document
+            .get("config")
+            .and_then(toml::Value::as_table)
+            .and_then(|config| config.get("schema"))
+            .and_then(toml::Value::as_table)
+            .unwrap_or_else(|| {
+                panic!(
+                    "manifest {} has no [config.schema] table",
+                    manifest_path.display()
+                )
+            });
+        let entries = schema
+            .iter()
+            .map(|(key, value)| (key.clone(), parse_manifest_field(key, value)))
+            .collect();
+        declarations.push(ModuleDeclaration {
+            module_id,
+            schema: ConfigSchema { entries },
+            ..ModuleDeclaration::default()
+        });
+    }
+    assert!(
+        !declarations.is_empty(),
+        "real core-module manifest parse produced no module declarations"
+    );
+    declarations
+}
+
+fn is_negative(value: f64) -> bool {
+    value.is_finite() && value < 0.0
+}
+
+/// The negative numeric value carried by a declaration's default wire string.
+///
+/// Production renders array defaults comma-joined (`toml_default_to_wire` in
+/// `slicer-scheduler`'s manifest reader; `HostWireField::wire_default` for
+/// `Vec<f64>`/`Vec<String>`), so a scalar and an array element share one wire
+/// shape and are inspected the same way: every comma-separated element is
+/// parsed, and the first negative numeric element is the candidate. A
+/// non-numeric element (`enum`/string-list text, `"100%"` magnitudes) is not
+/// a numeric scalar and cannot be a negative default.
+fn negative_default_number(wire: &str) -> Option<f64> {
+    wire.split(',')
+        .filter_map(|element| element.trim().parse::<f64>().ok())
+        .find(|value| is_negative(*value))
+}
+
+fn push_negative_candidate(
+    candidates: &mut Vec<NegativeDeclaration>,
+    key: &str,
+    provenance: &str,
+    default: Option<&str>,
+    min: Option<f64>,
+) {
+    let negative_default = default.and_then(negative_default_number);
+    let negative_min = min.filter(|value| is_negative(*value));
+    if negative_default.is_some() || negative_min.is_some() {
+        candidates.push(NegativeDeclaration {
+            key: key.to_owned(),
+            provenance: provenance.to_owned(),
+            negative_default,
+            negative_min,
+        });
+    }
+}
+
+/// Whether a reconciled [`RegistryEntry`] carries a negative numeric default
+/// (scalar or one element of an array default) or a negative lower bound.
+/// Shared by the per-declaration registry check, the registry-wide derivation,
+/// and the falsifying negative control, so all three take the same path.
+fn registry_entry_is_negative(entry: &RegistryEntry) -> bool {
+    entry
+        .default
+        .as_deref()
+        .and_then(negative_default_number)
+        .is_some()
+        || entry.min.is_some_and(is_negative)
+}
+
+/// Every reconciled registry key whose default or lower bound is negative,
+/// derived straight off the assembled registry.
+fn registry_negative_keys(registry: &ConfigSchemaRegistry) -> BTreeSet<String> {
+    registry
+        .keys()
+        .filter(|key| registry.entry(key).is_some_and(registry_entry_is_negative))
+        .map(str::to_owned)
+        .collect()
+}
+
+fn host_negative_declarations(host: &HostChannels) -> Vec<NegativeDeclaration> {
+    let mut candidates = Vec::new();
+    for row in &host.host_keys {
+        push_negative_candidate(
+            &mut candidates,
+            row.key,
+            "HostChannels::from_live (ResolvedConfig)",
+            row.default.as_deref(),
+            row.meta.min,
+        );
+    }
+    for row in &host.speed_keys {
+        push_negative_candidate(
+            &mut candidates,
+            row.key,
+            "HostChannels::from_live (feedrate)",
+            row.default.as_deref(),
+            row.meta.min,
+        );
+    }
+    for row in &host.runtime_keys {
+        push_negative_candidate(
+            &mut candidates,
+            row.key,
+            "HostChannels::from_live (host runtime)",
+            row.default,
+            row.meta.min,
+        );
+    }
+    candidates
+}
+
+fn module_negative_declarations(modules: &[ModuleDeclaration]) -> Vec<NegativeDeclaration> {
+    let mut candidates = Vec::new();
+    for module in modules {
+        for (key, field) in &module.schema.entries {
+            push_negative_candidate(
+                &mut candidates,
+                key,
+                &module.module_id,
+                field.default.as_deref(),
+                field.min,
+            );
+        }
+    }
+    candidates
+}
+
+/// Build a control `ModuleDeclaration` from a manifest-shaped schema TOML
+/// document through the same parse path real manifests take
+/// ([`parse_manifest_field`]), so the control is discovered and classified
+/// exactly like a live declaration rather than injected after the fact.
+fn control_declaration(schema_toml: &str) -> ModuleDeclaration {
+    let document: toml::Value = toml::from_str(schema_toml)
+        .unwrap_or_else(|error| panic!("control schema TOML must parse: {error}"));
+    let table = document
+        .as_table()
+        .expect("control schema document must be a table");
+    let entries = table
+        .iter()
+        .map(|(key, value)| (key.clone(), parse_manifest_field(key, value)))
+        .collect();
+    ModuleDeclaration {
+        module_id: "dev.pinch.test.negative-control".to_owned(),
+        schema: ConfigSchema { entries },
+        ..ModuleDeclaration::default()
+    }
+}
+
+/// The message text of a caught panic payload (a `String` or `&'static str`).
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    payload
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| {
+            payload
+                .downcast_ref::<&str>()
+                .map(|text| (*text).to_owned())
+        })
+        .unwrap_or_else(|| "<non-string panic payload>".to_owned())
+}
+
+/// Derive every negative-capable declaration from the live channels and real
+/// manifests, assemble the live registry from those exact declarations, and
+/// fail on any derived key the narrow owner rule does not classify.
+#[test]
+fn registry_negative_sentinel_census_has_no_unowned_phase_c_candidate() {
+    let modules = parse_real_module_declarations();
+    let host = HostChannels::from_live();
+    let registry = assemble_registry(&modules, &host)
+        .unwrap_or_else(|error| {
+            panic!("live registry must assemble for the negative-sentinel census: {error:?}")
+        })
+        .registry;
+
+    let mut candidates = module_negative_declarations(&modules);
+    candidates.extend(host_negative_declarations(&host));
+    candidates.sort_by(|first, second| {
+        (&first.key, &first.provenance).cmp(&(&second.key, &second.provenance))
+    });
+    assert!(
+        !candidates.is_empty(),
+        "census derived no negative-capable declaration; the two packet-04 config-only sentinels are live, so the derivation is broken"
+    );
+
+    // Ownership gate, shared with the falsifying negative control at the end
+    // of this test: any derived candidate the narrow owner rule does not
+    // classify is an unowned Phase-C candidate and fails the census loudly.
+    let classified = enforce_negative_sentinel_ownership(&candidates);
+
+    for candidate in &candidates {
+        let entry = registry.entry(&candidate.key).unwrap_or_else(|| {
+            panic!(
+                "negative-capable declaration `{}` from {} is absent from the assembled live registry",
+                candidate.key, candidate.provenance
+            )
+        });
+        assert!(
+            registry_entry_is_negative(entry),
+            "negative-capable declaration `{}` from {} (negative default {:?}, negative lower bound {:?}) is not negative in the reconciled registry (default {:?}, lower bound {:?})",
+            candidate.key,
+            candidate.provenance,
+            candidate.negative_default,
+            candidate.negative_min,
+            entry.default,
+            entry.min
+        );
+    }
+
+    // Second derivation, straight off the assembled registry: any entry whose
+    // reconciled default or reconciled lower bound is negative must also be
+    // classified. This closes the gap where a merge path could produce a
+    // negative value the per-declaration scan does not model.
+    let registry_negatives = registry_negative_keys(&registry);
+    assert!(
+        !registry_negatives.is_empty(),
+        "assembled live registry has no negative-capable entry; the two packet-04 sentinels are live, so the registry derivation is broken"
+    );
+    for key in &registry_negatives {
+        assert!(
+            classify_phase_c_negative_candidate(key).is_some(),
+            "assembled live registry exposes unowned negative-capable entry `{key}`; classify its owner before this packet can claim the census is complete"
+        );
+    }
+
+    // The two packet-04 owners keep their existing classifications; the census
+    // must not silently reclassify them after the array-aware derivation.
+    // (The production cross-check below re-asserts membership per owner.)
+
+    // Reconciled-metadata bound, derived from the live assembled registry so
+    // it agrees with `docs/config/host-keys.toml` (`>= 0`) and doc 15: the
+    // automatic volumetric key's lower bound is `Some(0.0)`, and zero itself
+    // stays admissible (0 is only "unavailable" when an automatic speed is
+    // requested, which is the emitter's concern, not the declaration's).
+    let volumetric = registry
+        .entry("filament_max_volumetric_speed")
+        .expect("the automatic volumetric key must reach the live registry");
+    assert_eq!(
+        volumetric.min,
+        Some(0.0),
+        "filament_max_volumetric_speed must reconcile to lower bound Some(0.0) matching host-keys.toml >= 0"
+    );
+    assert_eq!(
+        volumetric
+            .default
+            .as_deref()
+            .and_then(|wire| wire.parse::<f64>().ok()),
+        Some(0.0),
+        "filament_max_volumetric_speed default must stay the live zero default"
+    );
+    assert!(
+        volumetric.min.is_some_and(|min| 0.0_f64 >= min),
+        "zero must remain acceptable to the declared lower bound"
+    );
+
+    // Production cross-check: a classified owner must actually be claimed by
+    // the Phase B automatic-value resolver. An unowned negative value is not an
+    // automatic sentinel, so `expect_err` discriminates ownership from the
+    // production path rather than restating the test's own classification.
+    for owner in [
+        NegativeSentinelOwner::BottomLayers,
+        NegativeSentinelOwner::BottomSpacing,
+    ] {
+        assert!(
+            classified.contains(owner.key()),
+            "census lost packet-04-owned key {}",
+            owner.key()
+        );
+        let mut config = config_without_automatic_widths();
+        config
+            .extensions
+            .insert(owner.key().to_owned(), owner.sentinel());
+        let error = expand_automatic_values(
+            &registry,
+            &mut config,
+            &ExpansionContext::default(),
+            None,
+        )
+        .expect_err(
+            "a classified packet-04 negative sentinel must be claimed by the automatic-value resolver",
+        );
+        match error {
+            ExpansionError::MissingAutoBase { key, .. } => assert_eq!(
+                key,
+                owner.key(),
+                "the missing-base error must name the classified key"
+            ),
+            other => panic!(
+                "expected MissingAutoBase for {}, got {other:?}",
+                owner.key()
+            ),
+        }
+    }
+
+    // Negative controls for the ownership oracle (docs/22 §3): the classifier
+    // must reject a negative-capable key with no rule, and the production
+    // resolver must leave an unowned negative value untouched instead of
+    // claiming it as an automatic sentinel.
+    assert!(
+        classify_phase_c_negative_candidate("synthetic_unowned_negative_sentinel").is_none(),
+        "the ownership rule must not silently accept a key it does not classify"
+    );
+
+    let mut unowned = config_without_automatic_widths();
+    unowned.extensions.insert(
+        "synthetic_unowned_negative_sentinel".to_owned(),
+        ConfigValue::Float(-1.0),
+    );
+    expand_automatic_values(&registry, &mut unowned, &ExpansionContext::default(), None)
+        .expect("an unowned negative value is not an automatic sentinel");
+    assert_eq!(
+        unowned
+            .extensions
+            .get("synthetic_unowned_negative_sentinel"),
+        Some(&ConfigValue::Float(-1.0)),
+        "an unowned negative value must pass through the automatic-value resolver"
+    );
+
+    // Falsifying negative control through the same discovery and classification
+    // path the live census takes (docs/22 §3): a manifest-shaped declaration
+    // with an unknown key and a negative numeric element inside an array
+    // default must be discovered by `module_negative_declarations` and rejected
+    // by the shared ownership gate. If the array-aware derivation regresses to
+    // scalar-only parsing, the control yields no candidate, the gate returns
+    // without panicking, and this test fails — the control falsifies the very
+    // gap it guards.
+    let control = control_declaration(
+        "[negative_control_array_default]\n\
+         type = \"float-list\"\n\
+         default = [0.4, -1.25]\n",
+    );
+    let control_candidates = module_negative_declarations(&[control]);
+    let control_candidate = control_candidates
+        .iter()
+        .find(|candidate| candidate.key == "negative_control_array_default")
+        .expect(
+            "the array-aware derivation must detect a negative numeric element in an array default",
+        );
+    assert_eq!(
+        control_candidate.negative_default,
+        Some(-1.25),
+        "the derived candidate must carry the control's negative array element"
+    );
+    let control_panic = catch_unwind(AssertUnwindSafe(|| {
+        enforce_negative_sentinel_ownership(&control_candidates)
+    }))
+    .expect_err("the shared ownership gate must reject the unclassified control declaration");
+    let control_message = panic_message(control_panic.as_ref());
+    assert!(
+        control_message.contains("negative_control_array_default"),
+        "the rejection must name the unclassified control key, got {control_message:?}"
+    );
+
+    // The same discovery path must NOT treat a non-numeric array default as a
+    // negative candidate: string-list text elements are not numeric scalars.
+    let non_numeric = control_declaration(
+        "[negative_control_string_list]\n\
+         type = \"string-list\"\n\
+         default = [\"red\", \"green\"]\n",
+    );
+    assert!(
+        module_negative_declarations(&[non_numeric]).is_empty(),
+        "a non-numeric array default must not become a negative-capable candidate"
+    );
+}
+
+/// Focused live check of the reconciled registry entry for the automatic
+/// volumetric key: the assembled live registry carries the zero default and
+/// the `Some(0.0)` lower bound that `docs/config/host-keys.toml` (`>= 0`) and
+/// generated doc 15 state, zero stays admissible, and a negative maximum falls
+/// below the declared bound that the resolution paths compare against.
+#[test]
+fn live_registry_reconciles_volumetric_default_and_lower_bound() {
+    let modules = parse_real_module_declarations();
+    let host = HostChannels::from_live();
+    let registry = assemble_registry(&modules, &host)
+        .unwrap_or_else(|error| panic!("live registry must assemble: {error:?}"))
+        .registry;
+
+    let entry = registry
+        .entry("filament_max_volumetric_speed")
+        .expect("the volumetric key must declare through HostChannels::from_live");
+
+    assert_eq!(
+        entry.field_type, "float",
+        "the volumetric key is a scalar float declaration"
+    );
+    assert_eq!(
+        entry
+            .default
+            .as_deref()
+            .and_then(|wire| wire.parse::<f64>().ok()),
+        Some(0.0),
+        "the reconciled default must parse as zero"
+    );
+    assert_eq!(
+        entry.min,
+        Some(0.0),
+        "the reconciled lower bound must be Some(0.0), matching host-keys.toml >= 0"
+    );
+
+    // Compare against `entry.min` exactly as the bounds paths do, so the
+    // assertions exercise the reconciled bound rather than a restated zero.
+    let min = entry.min.expect("the reconciled lower bound is required");
+    assert!(
+        0.0 >= min,
+        "zero must remain admissible under the reconciled lower bound {min}"
+    );
+    assert!(
+        -1.0 < min,
+        "a negative volumetric maximum must fall below the reconciled lower bound {min}"
+    );
+}
+
+#[test]
+fn declared_volumetric_extension_resolves_defaults_and_tool_precedence() {
+    let registry = assemble_registry(&[], &HostChannels::from_live())
+        .expect("host registry must assemble")
+        .registry;
+    let expansion = ExpansionContext {
+        nozzle_diameter_mm: 0.4,
+        ..ExpansionContext::default()
+    };
+    let default_config = resolve_scope_stack(
+        &registry,
+        &ScopedConfig::default(),
+        &ResolutionTarget::default(),
+        &expansion,
+    )
+    .expect("registry defaults must resolve");
+    assert_eq!(
+        default_config
+            .extensions
+            .get("filament_max_volumetric_speed"),
+        Some(&ConfigValue::Float(0.0)),
+        "the declared default must be seeded in the existing extension carrier"
+    );
+
+    let scoped = ScopedConfig {
+        deltas: BTreeMap::from([
+            (
+                ConfigScope::Global,
+                ScopeDelta {
+                    values: BTreeMap::from([(
+                        "filament_max_volumetric_speed".to_owned(),
+                        ConfigValue::Float(20.0),
+                    )]),
+                },
+            ),
+            (
+                ConfigScope::Tool(1),
+                ScopeDelta {
+                    values: BTreeMap::from([(
+                        "filament_max_volumetric_speed".to_owned(),
+                        ConfigValue::List(vec![ConfigValue::Float(12.0)]),
+                    )]),
+                },
+            ),
+        ]),
+        ..ScopedConfig::default()
+    };
+    for (tool_index, expected) in [(None, 20.0), (Some(1), 12.0), (Some(2), 20.0)] {
+        let config = resolve_scope_stack(
+            &registry,
+            &scoped,
+            &ResolutionTarget {
+                tool_index,
+                ..ResolutionTarget::default()
+            },
+            &expansion,
+        )
+        .expect("global/tool settings must resolve");
+        assert_eq!(
+            config
+                .filament_max_volumetric_speed()
+                .expect("numeric resolved limit"),
+            expected,
+            "tool {tool_index:?} must consume its resolved scalar or first filament envelope value"
+        );
+        assert!(config
+            .to_config_map()
+            .contains_key("filament_max_volumetric_speed"));
+    }
+}
+
+#[test]
+fn declared_volumetric_extension_rejects_invalid_values_and_object_scope() {
+    let registry = assemble_registry(&[], &HostChannels::from_live())
+        .expect("host registry must assemble")
+        .registry;
+    let expansion = ExpansionContext {
+        nozzle_diameter_mm: 0.4,
+        ..ExpansionContext::default()
+    };
+    for value in [
+        ConfigValue::Float(-1.0),
+        ConfigValue::Float(f64::NAN),
+        ConfigValue::Float(f64::INFINITY),
+        ConfigValue::Bool(true),
+        ConfigValue::List(vec![]),
+    ] {
+        let scoped = ScopedConfig {
+            deltas: BTreeMap::from([(
+                ConfigScope::Global,
+                ScopeDelta {
+                    values: BTreeMap::from([("filament_max_volumetric_speed".to_owned(), value)]),
+                },
+            )]),
+            ..ScopedConfig::default()
+        };
+        let error =
+            resolve_scope_stack(&registry, &scoped, &ResolutionTarget::default(), &expansion)
+                .expect_err("the declared extension must not bypass registry numeric validation");
+        assert!(matches!(error, ResolutionError::Application(_)));
+        assert!(error.to_string().contains("filament_max_volumetric_speed"));
+    }
+    let scoped = ScopedConfig {
+        deltas: BTreeMap::from([(
+            ConfigScope::Object("object-a".to_owned()),
+            ScopeDelta {
+                values: BTreeMap::from([(
+                    "filament_max_volumetric_speed".to_owned(),
+                    ConfigValue::Float(8.0),
+                )]),
+            },
+        )]),
+        ..ScopedConfig::default()
+    };
+    let error = resolve_scope_stack(
+        &registry,
+        &scoped,
+        &ResolutionTarget {
+            object_id: "object-a".to_owned(),
+            ..ResolutionTarget::default()
+        },
+        &expansion,
+    )
+    .expect_err("a per-filament limit must remain inadmissible at object scope");
+    assert_eq!(
+        error,
+        ResolutionError::ScopeDenied {
+            key: "filament_max_volumetric_speed".to_owned(),
+            scope: ConfigScope::Object("object-a".to_owned()),
+        }
+    );
 }

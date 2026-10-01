@@ -1,102 +1,84 @@
 # Design: remaining-automatic-values
 
+## Selected Approach
+
+Use a registry-declared host runtime extension key with a typed accessor, not a fixed serialized field. The existing `ResolvedConfig.extensions` map transports the key after normal packet-05 validation, defaults and scope resolution. Add no second resolution pass and no `typed_field_keys` entry. RegionMapIR stays at its pre-change 3.0.0 struct layout; new map content is distinct from a layout addition. This is not a blanket rule for future host keys.
+
 ## Controlling Code Paths
 
-- Primary code path: `DefaultGCodeEmitter::emit_gcode` (`crates/slicer-gcode/src/emit.rs`) already combines per-move width/flow with the layer's `height_delta` when computing `e_delta`, then calls `DefaultGCodeEmitter::resolve_feedrate`; the new automatic branch stays at this context-rich seam.
-- Config transport: the `declare_resolved_config!` invocation (`crates/slicer-ir/src/resolved_config.rs`) supplies global and per-tool `ResolvedConfig`; `run_slice_with_collector` (`crates/slicer-runtime/src/run.rs`) passes both through `with_resolved_config` and `with_tool_configs`.
-- Neighboring tests/fixtures: `crates/slicer-gcode/tests/gcode_feedrate_emission_tdd.rs`, net-new `crates/slicer-gcode/tests/volumetric_auto_speed_tdd.rs`, FORWARD-DEP net-new `crates/slicer-config/tests/automatic_value_expansion_tdd.rs` from draft packet 04 (reconcile its landed filename before use), and net-new `crates/pnp-cli/tests/fixtures/config_scope_resolution_10/{visual-debug.json,visual-debug-config.json}`.
-- OrcaSlicer comparison: see `requirements.md` §OrcaSlicer Reference Obligations; do not repeat delegation rules.
+- `HOST_RUNTIME_KEYS`, `HostRuntimeKey`, `host_key_denied_scopes` and `ResolvedConfig` (`crates/slicer-ir/src/resolved_config.rs`): add the Float declaration with `Some("0.0")`, `SCOPE_FILAMENT`, `meta.min = Some(0.0)`, and `TOOL_CAPABLE_SCOPES` denial. The new accessor `filament_max_volumetric_speed(&self) -> Result<f64, String>` accepts Float, Int, or a finite numeric String, either as a scalar or as the first element of a non-empty List; absent is zero, while wrong types, empty Lists, non-finite values, and negative values are rejected. This string parsing is accessor-specific, not a general config coercion rule. Resolution retains this scalar envelope; it is not a tool-index array, so the accessor must not index it by tool number.
+- `RegionMapIR.configs`, `RegionPlan.paint_overrides`, and `CURRENT_REGION_MAP_IR_SCHEMA_VERSION` (`crates/slicer-ir/src/slice_ir.rs`): restore only packet-added fixed-field/migration changes; retain pre-existing 3.0.0 shape and F-19 chain. `postcard` remains dev-only in `crates/slicer-ir/Cargo.toml`.
+- `DefaultGCodeEmitter::emit_gcode` (`crates/slicer-gcode/src/emit.rs`): live move inputs select a private automatic base when role speed is exactly zero, active-tool config wins, absent tool config falls back globally. Shared `feedrate_from_base_mm_per_s` applies normal clamp/conversion; no absolute point-speed input or public emission seam is added.
+- `PrepassContext` and `prepare_prepass_context` (`crates/slicer-runtime/src/run.rs`): carry already-resolved tool configs to the model consumer instead of discarding them. Normal runtime and visual emission share resolved sources, not a duplicate scope engine.
+- `load_visual_debug_config` and model GCodeEmit construction (`crates/pnp-cli/src/visual_debug.rs`): feed request-derived `FeedrateConfig::from_raw_config` and resolved global/tool configs to the emitter. Inline tests assert emitted F with a default-config control and distinct tool maxima.
+- `resolved_config_keys_match_default` (`crates/slicer-runtime/tests/unit/host_keys_doc_lock_tdd.rs`): retained `[resolved_config]` mirror reads its default through the typed extension accessor. The previously red numeric-field lookup must not be presented as a passed lock.
 
 ## Architecture Constraints
 
-- Phase placement is strict: packet 04 resolves only config-known placeholders; width, effective layer height, flow factor, and current tool remain live until `DefaultGCodeEmitter::emit_gcode` handles Phase C.
-- `slicer-config` remains independent of `slicer-gcode`; do not move emitter geometry or G-code errors into the resolution crate.
-- `filament_max_volumetric_speed` is a snake_case host key, per-filament/per-tool like `filament_diameter`, and must be finite and positive when a zero speed needs it.
-- `ResolvedConfig` equality/hash/to-map behavior remains macro-driven; adding its field must not introduce a parallel hand-maintained serializer.
-- Packet 04 retains exclusive ownership of overhang percentages and both existing config-only negative mirror rules.
-<!-- snippet: wasm-staleness -->
-- Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and inspect its exit code: exit 0 means fresh, non-zero means stale (a distinct exit code signals `wasm-tools` is unavailable). Never use `rg -q 'STALE:'` — a `wasm-tools`-missing infrastructure error prints no `STALE:` and would read as fresh. If stale, rebuild without `--check` before re-running the failing test. Stale-guest failures look unrelated to the change but are caused by it.
-<!-- snippet: coord-system -->
-- Coordinate units: **1 unit = 100 nm** (10⁻⁴ mm), NOT 1 nm like OrcaSlicer. Divide OrcaSlicer constants by 100. Use `Point2::from_mm(x, y)` or `mm_to_units()` at every mm↔unit boundary. Full porting checklist in `docs/08_coordinate_system.md`.
+- Config-only percentages/mirrors remain packet-04-owned; packet 05 remains the only precedence/resolution source. Emission does not repeat merges or registry assembly.
+- Role speed zero triggers automatic speed; filament limit zero means unavailable. Automatic geometry/limit/base and final rounded/narrowed F must be finite positive. Reject non-finite factors before clamping; retain normal finite-factor clamp semantics. Overflow or round-to-zero fails through `GCodeEmitError::Emit`.
+- Explicit positive configured speeds remain intentionally uncapped. This packet does not claim an all-speed volumetric ceiling.
+- Canonical `GCode.cpp::GCode::_extrude` independently confirms the zero-speed quotient and active `m_writer.filament()` selection, but also caps explicit positive speeds separately. This packet is scope-limited formula/tool parity, not full canonical emitter parity; the user explicitly chose to leave positive speeds uncapped. The read-only source check is not a test PASS.
+- Existing extension comparison/hash already participates in interning; test distinct content, config/paint preservation and identity instead of adding handwritten fixed-field equality/hash arms.
+- Q8 "Amend ADR" authorizes the genuine narrow architectural mechanism amendment in ADR-0072 (`docs/adr/0072-context-aware-feedrate-resolution-preserves-factor-contract.md`), registered as `D-CSR10-ADR-0052-AMENDED` in `docs/DEVIATION_LOG.md`. ADR-0052 §Decision 1's unchanged-body, exact single-function placement and direct-production-call requirements are superseded, not merely clarified. Its factor-valued carriers, public role/factor signature, replacement/fallback, profile length and mutation/application constraints remain; original sections and 2026-08-05 amendment stay textually unchanged.
+- Public context-free `resolve_feedrate` delegates role-only base selection and shared conversion; configured zero remains its zero placeholder. Production extrusion uses private `resolve_extrusion_feedrate` with live tool/geometry context for both point and entity factors. One private `feedrate_from_base_mm_per_s` applies `clamp(0.05, 5.0)` and conversion for automatic and explicit bases; its actual f64 multiply rounds to three decimals before f32 narrowing. Producers never send absolute mm/s. These are inspected mechanism facts, not test PASS or blanket byte-identity claims.
+- WIT, stage packages, CLI JSON, visual schemas/manifest and persisted struct layout are unchanged.
+- Coordinate unit is 100 nm; use established mm/unit adapters in fixtures.
 
-## Code Change Surface
+## Artifact and Dependency Policy
 
-- Selected approach: add the typed filament maximum to `ResolvedConfig`; keep `resolve_feedrate` as the sole factor-to-`F` seam and add a private move-context helper used by `emit_gcode` when the selected role base is zero. The helper selects tool-over-global config, validates finite positive inputs, and calculates the automatic mm/s base from `mm3_per_mm`; that base then flows through `resolve_feedrate`'s existing speed-factor clamp, mm/min conversion, and rounding rather than bypassing them.
-- Exact functions, traits, manifests, tests, and fixtures:
-  - `declare_resolved_config!` gains `cli @filament "filament_max_volumetric_speed" filament_max_volumetric_speed: f32 = 0.0 => extract_float_or_first` with metadata documenting `0` as unavailable unless no automatic speed is requested.
-  - `DefaultGCodeEmitter` gains private tool/global maximum and move-context base-speed selection; `emit_gcode` supplies `current_tool`, `point.width`, the layer's `height_delta`, and `point.flow_factor`, while `resolve_feedrate` remains responsible for factor clamping and `F` conversion.
-  - `GCodeEmitError::Emit` carries invalid maximum/width/height/flow diagnostics; no new public error variant is required.
-  - `volumetric_auto_speed_tdd.rs` emits real `GCodeIR` and inspects literal `Move.f` values; it does not test a duplicate formula helper in isolation.
-  - `registry_negative_sentinel_census_has_no_unowned_phase_c_candidate` derives entries with a negative numeric default or lower bound from the assembled registry and fails on an unclassified negative-capable key rather than maintaining a complete key roster.
-  - The visual-debug request drives a model through `PostPass::GCodeEmit`; its `source.config` references `visual-debug-config.json`, parsed by `parse_cli_config_source`, containing `outer_wall_speed = 0` and `filament_max_volumetric_speed = 8.0`.
-- Rejected alternatives and reasons:
-  - Expanding zero speed in `expand_automatic_values`: rejected because move width, effective layer height, flow factor, and active tool are unavailable in Phase B.
-  - Teaching `FeedrateConfig::from_raw_config` geometry: rejected because it is a config adapter and would freeze context too early.
-  - Re-owning overhang percentages: rejected because packet 04 resolves all four against typed `outer_wall_speed`.
-  - Inventing branches for undeclared Orca negative sentinels: rejected; the derived census must first establish a live registry key and owner.
+Keep the independent pre-change fixture under `crates/slicer-ir/tests/fixtures/region_map_v3_0_0/` byte-for-byte, including provenance and expected values. Repurpose `region_map_versioned_decode_tdd.rs` for direct dev-Postcard deserialize and current extension round-trips across configs/paint; its historical filename does not promise a version dispatcher. Abandon the unshipped experimental 3.1.0 layout and decoder without deleting any existing experimental artifacts or promising compatibility. This is a non-deletion constraint, not a requirement to create an experimental fixture or an assertion that a 3.1.0 artifact exists. `review-remediation.md` identifies the extant files, baseline/end hashes and bounded search result; unidentified files are never described as proven present, absent or deleted. Do not create or regenerate fixtures, read large JSON fixtures directly, or rely on experimental artifacts as an oracle.
+
+Retire the packet-added production Postcard dependency. Root/guest locks are regenerated only through normal Cargo operations; inspect resulting diffs rather than assuming previous dependency-promotion diffs remain needed. Do not hand-edit locks or discard unrelated churn. Guest freshness is mandatory: check exact exit 0/1/3, rebuild stale guests, and use gated sequential guest-touching tests. Ordinary `cargo build/test` does not rebuild guests.
 
 ## Files in Scope (read + edit)
 
-- `crates/slicer-ir/src/resolved_config.rs` — role: typed host/per-tool config carrier; expected change: add `filament_max_volumetric_speed` through the declaration macro.
-- `crates/slicer-gcode/src/emit.rs` and `crates/slicer-gcode/tests/volumetric_auto_speed_tdd.rs` — role: Phase-C owner and falsifying tests; expected change: context-aware zero-speed resolution and literal output checks.
-- FORWARD-DEP net-new `crates/slicer-config/tests/automatic_value_expansion_tdd.rs` from draft packet 04 (name-reconciled against its landed test target), `crates/pnp-cli/tests/fixtures/config_scope_resolution_10/{visual-debug.json,visual-debug-config.json}`, `docs/config/host-keys.toml` (new `[resolved_config]` `filament_max_volumetric_speed` entry feeding `cargo xtask gen-config-docs`; `host_keys_doc_lock_tdd` holds it equal to the `ResolvedConfig` default), `docs/02_ir_schemas.md`, and generated `docs/15_config_keys_reference.md` — justified extras: derived ownership guard, mandated visual evidence with its parsed config source, the machine-readable host-key declaration behind the generated config row, and required docs; expected change: census, request/config fixture, host-key entry, and contract documentation only.
+- `crates/slicer-ir/src/resolved_config.rs` — declaration/accessor, remove only experimental fixed field/fallout, inline accessor/scope controls.
+- `crates/slicer-ir/src/slice_ir.rs` — retire only packet-added decoder/legacy shapes and restore 3.0.0 layout/version chain.
+- `crates/slicer-ir/Cargo.toml` — retire packet-added production Postcard dependency, retain dev dependency.
+- `crates/slicer-ir/tests/region_map_versioned_decode_tdd.rs` — preserved fixture plus current extension/paint identity and accessor cases.
+- `crates/slicer-gcode/src/emit.rs`, `crates/slicer-gcode/tests/volumetric_auto_speed_tdd.rs` — extension accessor consumption, real emission and final-F failure controls.
+- `crates/slicer-config/tests/automatic_value_expansion_tdd.rs`, `crates/slicer-config/tests/scope_eligibility_tdd.rs`, `crates/slicer-config/tests/registry_census_tdd.rs` — census, legitimate registry-roster follow-through, real declared-extension default/precedence/validation, and exact-denial coverage; preserve source-derived discovery and assertions, and do not rewrite packet-05 resolution behavior.
+- `crates/slicer-runtime/src/run.rs` — `PrepassContext` and resolved-tool return/handoff; approved runtime expansion, not read-only.
+- `crates/pnp-cli/src/visual_debug.rs` — model config/tool handoff and inline actual-F tests only.
+- `crates/pnp-cli/tests/fixtures/config_scope_resolution_10/{visual-debug.json,visual-debug-config.json}` — request/config pair with a distinct tool-0 override to falsify a dropped runtime tool map; inline multiple-tool emission asserts separate literal feedrates.
+- `crates/pnp-cli/tests/visual_debug_volumetric_auto_tdd.rs` — introduce a direct Cargo test target that compares actual model CLI captures with and without the tool-0 override; the shared `visual_debug_volumetric_auto` filter must run it, not just helper tests.
+- `crates/slicer-runtime/tests/unit/host_keys_doc_lock_tdd.rs` — accessor-based retained mirror lock.
+- `docs/config/host-keys.toml`, generated `docs/15_config_keys_reference.md` — mirror retained, regenerate normally.
+- `CONTEXT.md`, `docs/02_ir_schemas.md`, `docs/adr/0052-per-point-speed-factor-contract.md` (packet append only), TASK-571 evidence in `docs/07_implementation_status.md`, and this packet's five core files — revised domain/contract/evidence only.
+- `docs/spec_packets/config-scope-resolution_10_remaining-automatic-values/review-remediation.md` — coordinator-owned finding disposition, identified artifact inventory and fresh verification receipts.
+- `docs/adr/0072-context-aware-feedrate-resolution-preserves-factor-contract.md` — separate accepted narrow mechanism decision; `docs/DEVIATION_LOG.md` — only the `D-CSR10-ADR-0052-AMENDED` row. Q8 explicitly expands documentation scope to these paths; no other ADR or registry-row edits.
+- Root `Cargo.lock` and guest Cargo-generated locks only when normal resolution changes them; audit each diff and validate convergence. These are generated outputs, never hand edits or a blanket entitlement to unrelated changes.
 
 ## Read-Only Context
 
-- `crates/slicer-runtime/src/run.rs` — `DefaultGCodeEmitter` construction and resolved global/tool handoff only.
-- `crates/slicer-ir/src/feedrate.rs` — `FeedrateConfig`, `SPEED_KEYS`, `read_speed`, and `from_raw_config` only.
-- `crates/slicer-gcode/src/error.rs` — `GCodeEmitError` variants and runtime mapping comments.
-- `docs/specs/config-scope-resolution-plan.md` — RC-8, Expansion, queue row 10, and cross-cutting requirements only.
-- `docs/spec_packets/config-scope-resolution_04_automatic-value-expansion/{design.md,task-map.md}` — FORWARD-DEP exports and exclusions only.
-- `docs/spec_packets/config-scope-resolution_05_scope-resolution-module/{design.md,packet.spec.md}` — resolution exports and precedence only.
-- `docs/19_visual_debug.md` — request, manifest, and G-code emit tap sections only.
+- `docs/specs/config-scope-resolution-plan.md`, packet 04/05 exports/status and all other packet directories.
+- `docs/19_visual_debug.md`, `docs/22_test_quality.md`, `docs/21_data_defaults_and_fixtures.md`, `docs/11_operational_governance_and_acceptance_gate.md` — relevant bounded sections.
+- `crates/slicer-runtime/src/pipeline.rs::dump_prepass_ir_if_requested`, `crates/slicer-ir/src/feedrate.rs::FeedrateConfig`, `crates/slicer-gcode/src/error.rs::GCodeEmitError` — relevant symbols only.
+- Independent pre-change fixture bytes/provenance/expected values and experimental on-disk artifacts — immutable inputs/history.
 
 ## Out-of-Bounds Files
 
-- `docs/specs/config-scope-resolution-plan.md` and packet directories 01–09 — read-only; never edit.
-- Overhang-classifier manifests/source and `FeedrateConfig` overhang-percent expansion — packet 04 ownership.
-- `OrcaSlicerDocumented/...` — delegate; never load.
-- WIT, IR schema-version constants, CLI JSON schema versions, manifest-schema vocabulary — unchanged.
-- `target/`, `Cargo.lock`, generated code, vendored dependencies — never load.
-- Unrelated crates — delegate symbol lookups; do not browse.
+Approved plan and packet dirs other than this one; WIT packages, UI/renderers, visual schema/manifest vocabulary; packet-04 expansion and packet-05 resolution implementations; unrelated source/docs/fixtures; prior ADR-0052 sections and all other ADRs except the exact new ADR-0072 path above. Deviation registry edits beyond the one named row are out of bounds. Never load canonical Orca directly, large fixture bodies, target/generated code or vendored dependencies. Experimental artifact deletion, fixture regeneration, branch/stash/reset/revert and commits are prohibited.
+
+## Rejected Alternatives
+
+- Phase-B zero-speed expansion or geometric `FeedrateConfig` adapter: missing live move context.
+- Fixed serialized field plus 3.1.0 migration: existing extension transport suffices; unshipped experiment need not become a compatibility commitment.
+- Public absolute-mm/s point-speed seam: contradicts factor contract; private automatic base does not need it.
+- Conforming to ADR-0052's unchanged body/direct production call by simulating move context in configuration or cloning emitters: hides geometry-owned context; abandoning automatic geometry speed drops the chosen feature. Q8 instead accepts the bounded private delegation mechanism in ADR-0072.
+- Re-resolving visual tools or taking a default-only map: duplicates precedence or loses tool-specific behavior.
+- Manifest-only visual proof or a complete hand-authored census roster: false-green coverage.
 
 ## Expected Sub-Agent Dispatches
 
-- Question: do packets 04/05's implemented exports match the names/shapes in this packet, and does resolution deliver per-tool `filament_max_volumetric_speed` to emitter tool configs?; scope: exact exports plus emitter construction; return: `FACT: <5 lines or fewer>`; purpose: Step 1 prerequisite gate.
-- Question: derive every assembled registry entry with a negative numeric default and classify whether its automatic base is config-only or stage-context-dependent; scope: registry assembly inputs and automatic rules; return: `LOCATIONS: <at most 20 file:line entries, one context line each>`; purpose: Step 1 census.
-- Question: verify canonical zero-speed volumetric formula, tool selection, and invalid-flow behavior; scope: `OrcaSlicerDocumented/src/libslic3r/GCode.cpp`, function `GCode::_extrude`; return: `SUMMARY: <at most 200 words, no code unless requested>`; purpose: Step 1 parity lock.
-- Question: run each narrow cargo/visual/freshness command and report only verdict plus bounded failure evidence; scope: commands in `requirements.md`; return: `FACT: <5 lines or fewer>`; purpose: Steps 2–4 validation.
+1. Reconcile dependencies and derived census; exact exports/status and source-derived owners; FACT or bounded LOCATIONS with symbol/path.
+2. Verify canonical `GCode.cpp::GCode::_extrude` formula/tool/guards; SUMMARY at most 200 words.
+3. Bounded workers by implementation step, each at most three edited files; fresh test/gate FACT with non-empty markers and failure snippets only. Return results outside thinking blocks.
+4. Fresh preflight S0–S8 before activation and full review after all gates; no previous approval reused.
 
-## Data and Contract Notes
+## Risks and Open Facts
 
-- IR/manifest contracts: adding a host field to `ResolvedConfig` changes in-memory config content but introduces no new serialized IR container or manifest field vocabulary; existing schema/version constants remain unchanged unless implementation proves this assumption false, which blocks rather than silently bumps.
-- WIT boundary: unchanged; no guest receives move-context automatic-speed inputs.
-- Determinism/scheduler constraints: packet-05 precedence selects the resolved global/tool values; emitter selection is deterministic by `PrintEntity.tool_index`. No scope merge occurs in the emitter.
-- Units: maximum volumetric speed is mm³/s, `mm3_per_mm` is mm³/mm, their quotient is mm/s, and emitted `F` remains mm/min.
-- ADR contract: ADR-0052 (`docs/adr/0052-per-point-speed-factor-contract.md`) makes `DefaultGCodeEmitter::resolve_feedrate` the sole factor-to-`F` seam and requires its `speed_factor.clamp(0.05, 5.0)`. The Phase-C quotient supplies the base speed to that seam; it does not bypass factor application or clamping. AC-1/AC-2 deliberately use factor `1.0`, so their literal `F` values isolate automatic-base and tool-selection behavior rather than re-testing the clamp.
+Direct 3.0.0 fixture decode must prove actual shape restoration; extension round-trip alone is insufficient. Valid division can still produce unsafe final F, so test non-finite factors, overflow and round-to-zero independently. Visual tools must be the already-resolved map, not raw config reconstruction. The explicit-speed regression must use a positive volumetric ceiling below its configured speed. Current named receipts must cover fixture decode, roundtrip and interning; an older two-test receipt is not evidence for the current test file. Aggregate/largest context cost M; no L step.
 
-## Locked Assumptions and Invariants
-
-- A positive configured role speed keeps the existing path and is not capped by this packet.
-- Exactly zero selects Phase-C automatic speed; negative configured speeds remain invalid at registry validation and are not an auto signal.
-- Tool-specific resolved config wins; absent tool config falls back to resolved global config.
-- Packet 04's four overhang percentage values arrive as absolute mm/s or numeric zero and are never resolved again here.
-- Current grounding found no declared geometry-dependent negative sentinel; the conservative derived census converts any future discovery into a loud failure before implementation can claim completion.
-
-## Risks and Tradeoffs
-
-- The current role-only `resolve_feedrate` input cannot calculate automatic speed. The implementation must extend its private input path to receive the context-selected base rather than emit from a parallel helper; otherwise it either silently preserves zero or violates ADR-0052's sole factor-to-`F` seam. The emitter test must exercise `emit_gcode` itself.
-- A zero/negative layer delta or width can produce division by zero or a non-finite F token. Validate all factors before division and test each class.
-- Adding a `ResolvedConfig` field has a broad struct-literal/equality/hash surface. The macro should own generated behavior; all test literals must use FRU or an exhaustive waiver under `docs/21_data_defaults_and_fixtures.md`.
-- A registry census can become a hand-maintained roster if it starts from key names. Derive candidates from live declarations and keep only explicit owner classification for discovered negative defaults.
-
-## Context Cost Estimate
-
-- Aggregate: `M`
-- Largest step: `M`
-- Highest-risk dispatch and required return format: Orca `GCode::_extrude` formula/tool/guard verification — `SUMMARY` ≤200 words.
-
-## Open Questions
-
-- [FWD] At implementation start, reconcile packet 04/05's landed exports and adapt imports/call signatures without changing Phase-C ownership.
-- [FWD] If the derived negative-default census finds a live geometry-dependent `-1` key beyond packet 04's two mirrors, pause after naming its key, owner stage, base inputs, and test target; incorporate it only if it fits this packet's Phase-C boundary, otherwise return a scope blocker.
+Original preflight was `PREFLIGHT BLOCKED` on S8. Q8 remains resolved by ADR-0072/`D-CSR10-ADR-0052-AMENDED`; the later cold review reopened the packet with `CHANGES REQUESTED`. Remediation closure is supported by the fresh validation and independent full review recorded in `review-remediation.md`, not inferred from architectural acceptance.

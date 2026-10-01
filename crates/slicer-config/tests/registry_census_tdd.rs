@@ -245,7 +245,7 @@ fn assembled_real_registry() -> slicer_config::ConfigSchemaRegistry {
 
 #[test]
 fn host_runtime_rows_are_exact() {
-    assert_eq!(HOST_RUNTIME_KEYS.len(), 14);
+    assert_eq!(HOST_RUNTIME_KEYS.len(), 15);
 
     let relative_e_distances = &HOST_RUNTIME_KEYS[0];
     assert_eq!(relative_e_distances.key, "use_relative_e_distances");
@@ -317,11 +317,13 @@ fn host_runtime_rows_are_exact() {
 }
 
 /// Packet 06 Step 2a registered eleven host-consumed keys after the three
-/// pre-existing rows. Each carries `default: None` by design (synthesized,
-/// defaulted at the consuming site, or seeded elsewhere), so this pin derives
+/// pre-existing rows. Packet 10 appended one declared-extension row after the
+/// eleven. The original eleven carry `default: None` by design (synthesized,
+/// defaulted at the consuming site, or seeded elsewhere); the appended
+/// `filament_max_volumetric_speed` row carries `Some("0.0")`. This pin derives
 /// its expectations from those authored rows rather than restating them as
-/// captured output: the ordered key list is asserted first, then all eleven
-/// rows are checked as typed declarations for the key that list names.
+/// captured output: the ordered key list is asserted first, then the original
+/// eleven rows are checked as typed declarations for the key that list names.
 #[test]
 fn host_runtime_step_2a_rows_are_registered_with_option_defaults() {
     let registered = HOST_RUNTIME_KEYS
@@ -345,6 +347,7 @@ fn host_runtime_step_2a_rows_are_registered_with_option_defaults() {
             "thumbnails",
             "machine_max_acceleration_retracting",
             "extruder",
+            "filament_max_volumetric_speed",
         ]
     );
 

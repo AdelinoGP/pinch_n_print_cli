@@ -142,8 +142,23 @@ impl DefaultGCodeEmitter {
     }
 
     /// Resolves the feedrate (in mm/min) for a given extrusion role and speed factor multiplier.
+    ///
+    /// This retains ADR-0052's role/factor semantics: it selects the configured
+    /// base speed for `role` and delegates factor clamping and conversion to
+    /// `feedrate_from_base_mm_per_s`, the sole clamp/conversion seam shared by
+    /// explicit and automatic speeds.
     pub fn resolve_feedrate(&self, role: &ExtrusionRole, speed_factor: f32) -> Option<f32> {
-        let base_speed = match role {
+        Some(self.feedrate_from_base_mm_per_s(self.role_base_speed_mm_per_s(role), speed_factor))
+    }
+
+    /// Role-only dispatch of the configured base speed (mm/s).
+    ///
+    /// Exactly zero is the Phase-C automatic-volumetric placeholder for
+    /// extrusion moves; `resolve_extrusion_feedrate` replaces it with the
+    /// active tool's volumetric maximum over the move's `mm3_per_mm`. This
+    /// helper stays context-free so it can be shared by `resolve_feedrate`.
+    fn role_base_speed_mm_per_s(&self, role: &ExtrusionRole) -> f32 {
+        match role {
             ExtrusionRole::OuterWall => self.feedrate_config.outer_wall_speed,
             ExtrusionRole::InnerWall => self.feedrate_config.inner_wall_speed,
             ExtrusionRole::ThinWall => self.feedrate_config.thin_wall_speed,
@@ -181,12 +196,168 @@ impl DefaultGCodeEmitter {
             },
             ExtrusionRole::GapFill => self.feedrate_config.gap_infill_speed,
             ExtrusionRole::RaftInfill => self.feedrate_config.outer_wall_speed,
-        };
+        }
+    }
 
+    /// Applies ADR-0052's `clamp(0.05, 5.0)` factor clamp and the mm/s → mm/min
+    /// `F` conversion to an already-selected `base_speed_mm_per_s`.
+    ///
+    /// The multiply runs in f64 and is rounded (3 decimals) before narrowing so
+    /// automatic quotients such as `8.0 / (0.4 × 0.2 × 1.0)` cannot drop a
+    /// millidegree to f32 product rounding (e.g. F8999.999). Explicit speeds
+    /// are unaffected in practice: their inputs are exactly representable at
+    /// the values the tests pin (F1800, F6000, …), so the narrowed result is
+    /// identical to the previous f32 arithmetic.
+    fn feedrate_from_base_mm_per_s(&self, base_speed_mm_per_s: f32, speed_factor: f32) -> f32 {
         let clamped_factor = speed_factor.clamp(0.05, 5.0);
-        let f_value = base_speed * 60.0 * clamped_factor;
+        let f_value = (base_speed_mm_per_s as f64) * 60.0 * (clamped_factor as f64);
         let rounded = (f_value * 1000.0).round() / 1000.0;
-        Some(rounded)
+        rounded as f32
+    }
+
+    /// Resolves the feedrate (mm/min) for one extrusion move of `role` on
+    /// `tool`, replacing a configured zero base speed with the Phase-C
+    /// automatic volumetric speed.
+    ///
+    /// The automatic base is `filament_max_volumetric_speed / mm3_per_mm` where
+    /// `mm3_per_mm = width × height_delta × flow_factor` (mm³/mm), matching
+    /// canonical `GCode::_extrude`. The maximum is read through
+    /// [`ResolvedConfig::filament_max_volumetric_speed`] (the registered
+    /// extension carrier): the active tool's resolved value wins, and only a
+    /// tool with no resolved entry at all falls back to the resolved global
+    /// value. A narrower entry that is present but invalid or explicitly zero
+    /// fails closed instead of widening to the global maximum.
+    ///
+    /// Geometry, capacity, the derived product/quotient, and the final rounded
+    /// `F` must be finite and positive; the speed factor must be finite and
+    /// retains the normal clamp even when negative. Canonical has no visible
+    /// invalid-geometry guard, so this emitter fails closed with
+    /// `GCodeEmitError::Emit` instead of emitting `F0`/`FNaN`.
+    ///
+    /// The resolved mm/s base always flows through the same
+    /// `feedrate_from_base_mm_per_s` conversion (and therefore the same
+    /// `clamp(0.05, 5.0)` factor application) as explicit speeds: there is no
+    /// parallel `F` pathway.
+    fn resolve_extrusion_feedrate(
+        &self,
+        role: &ExtrusionRole,
+        tool: u32,
+        speed_factor: f32,
+        width: f32,
+        height_delta: f32,
+        flow_factor: f32,
+    ) -> Result<f32, GCodeEmitError> {
+        let base_speed = self.role_base_speed_mm_per_s(role);
+        if base_speed != 0.0 {
+            return Ok(self.feedrate_from_base_mm_per_s(base_speed, speed_factor));
+        }
+
+        // A non-finite factor cannot be clamped meaningfully (`f32::clamp`
+        // propagates NaN and saturates infinities), and the automatic branch
+        // owns the final-`F` safety contract: reject it outright rather than
+        // emitting an `F` derived from a malformed multiplier. Finite factors
+        // keep the ADR-0052 `clamp(0.05, 5.0)` behaviour untouched.
+        if !speed_factor.is_finite() {
+            return Err(GCodeEmitError::Emit(format!(
+                "automatic volumetric speed: speed factor must be finite, got {speed_factor}"
+            )));
+        }
+
+        if !(width.is_finite() && width > 0.0) {
+            return Err(GCodeEmitError::Emit(format!(
+                "automatic volumetric speed: move width must be finite and positive, got {width}"
+            )));
+        }
+        if !(height_delta.is_finite() && height_delta > 0.0) {
+            return Err(GCodeEmitError::Emit(format!(
+                "automatic volumetric speed: layer height must be finite and positive, got \
+                 {height_delta}"
+            )));
+        }
+        if !(flow_factor.is_finite() && flow_factor > 0.0) {
+            return Err(GCodeEmitError::Emit(format!(
+                "automatic volumetric speed: flow factor must be finite and positive, got \
+                 {flow_factor}"
+            )));
+        }
+
+        // f64 intermediate: `width × height × flow` in f32 can shave the decimal
+        // product (0.4 × 0.2 → 0.08000001), turning the canonical F9000 quotient
+        // into an off-by-one-milliodegree F8999.999. Canonical `GCode::_extrude`
+        // computes this quotient in doubles; match that here.
+        let mm3_per_mm = (width as f64) * (height_delta as f64) * (flow_factor as f64);
+        if !(mm3_per_mm.is_finite() && mm3_per_mm > 0.0) {
+            return Err(GCodeEmitError::Emit(format!(
+                "automatic volumetric speed: derived mm3_per_mm must be finite and positive, got \
+                 {mm3_per_mm}"
+            )));
+        }
+
+        // Tool-specific resolved value wins; absent tool falls back to global.
+        // The maximum is read through `ResolvedConfig::filament_max_volumetric_speed`,
+        // the registered-extension accessor, so the emitter never touches the
+        // raw carrier type itself. A present-but-malformed narrower entry fails
+        // closed here: it must never widen to an unrelated global placeholder,
+        // and neither may an explicitly zero entry.
+        let max_volumetric_speed = match self.tool_configs.get(&tool) {
+            Some(tool_config) => tool_config
+                .filament_max_volumetric_speed()
+                .map_err(|error| {
+                    GCodeEmitError::Emit(format!(
+                    "automatic volumetric speed: filament_max_volumetric_speed for tool {tool} is \
+                     invalid for role {role:?}: {error}"
+                ))
+                })?,
+            None => self
+                .resolved_config
+                .filament_max_volumetric_speed()
+                .map_err(|error| {
+                    GCodeEmitError::Emit(format!(
+                        "automatic volumetric speed: filament_max_volumetric_speed for the global \
+                         config is invalid for role {role:?} on tool {tool}: {error}"
+                    ))
+                })?,
+        };
+        if !(max_volumetric_speed.is_finite() && max_volumetric_speed > 0.0) {
+            return Err(GCodeEmitError::Emit(format!(
+                "automatic volumetric speed: filament_max_volumetric_speed must be finite and \
+                 positive for role {role:?} on tool {tool}, got {max_volumetric_speed}"
+            )));
+        }
+
+        let speed_mm_per_s = max_volumetric_speed / mm3_per_mm;
+        if !speed_mm_per_s.is_finite() || speed_mm_per_s <= 0.0 {
+            return Err(GCodeEmitError::Emit(format!(
+                "automatic volumetric speed: derived speed must be finite and positive, got \
+                 {speed_mm_per_s} (max={max_volumetric_speed}, mm3_per_mm={mm3_per_mm})"
+            )));
+        }
+
+        // Narrow only after the quotient is validated; the f64→f32 step can
+        // itself overflow or underflow for pathological (but finite) quotients.
+        let base_speed = speed_mm_per_s as f32;
+        if !base_speed.is_finite() || base_speed <= 0.0 {
+            return Err(GCodeEmitError::Emit(format!(
+                "automatic volumetric speed: derived speed overflows f32, got {speed_mm_per_s} \
+                 (max={max_volumetric_speed}, mm3_per_mm={mm3_per_mm})"
+            )));
+        }
+
+        // Same conversion and factor clamp as every explicit speed: no parallel
+        // F pathway (ADR-0052). The conversion itself can still produce a
+        // non-finite or zero `F` from a finite base (large base × 60 × clamped
+        // factor overflows f32; a tiny base rounds to `F0`), so the actual
+        // returned value — not just the inputs that seeded it — must be
+        // validated before it reaches the command stream.
+        let f_value = self.feedrate_from_base_mm_per_s(base_speed, speed_factor);
+        if !(f_value.is_finite() && f_value > 0.0) {
+            return Err(GCodeEmitError::Emit(format!(
+                "automatic volumetric speed: derived feedrate must be finite and positive after \
+                 the factor clamp and conversion, got {f_value} (base={base_speed} mm/s, \
+                 factor={speed_factor})"
+            )));
+        }
+        Ok(f_value)
     }
 
     /// Returns the slicer version string.
@@ -593,11 +764,19 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                         },
                         // Per-point factor REPLACES the whole-entity scalar when
                         // present (fallback, never composition — see ADR-0052).
-                        f: self.resolve_feedrate(
-                            role,
-                            profile
-                                .and_then(|p| p.get(original_index).copied())
-                                .unwrap_or(entity.path.speed_factor),
+                        // Zero-speed roles resolve here, where the active tool
+                        // and live move geometry are in scope (Phase C).
+                        f: Some(
+                            self.resolve_extrusion_feedrate(
+                                role,
+                                current_tool,
+                                profile
+                                    .and_then(|p| p.get(original_index).copied())
+                                    .unwrap_or(entity.path.speed_factor),
+                                point.width,
+                                height_delta,
+                                point.flow_factor,
+                            )?,
                         ),
                         role: role.clone(),
                     });

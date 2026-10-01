@@ -314,6 +314,67 @@ impl ResolvedConfig {
 }
 
 impl ResolvedConfig {
+    /// Effective `filament_max_volumetric_speed` in mm³/s for the selected
+    /// tool, read from the [`ResolvedConfig::extensions`] carrier.
+    ///
+    /// Mirrors canonical `Extruder::max_volumetric_speed` / `GCode::_extrude`,
+    /// which reads the filament setting for the active extruder. `0.0` means no
+    /// explicit maximum is available; an absent key is the same "unavailable"
+    /// state and also reads as `0.0`. If a zero role speed requests automatic
+    /// derivation without a positive maximum, the emitter returns an error.
+    ///
+    /// Accepted shapes, matching [`extract_float_or_first`]'s documented
+    /// envelope leniency (canonical `coFloats` wire): a `Float`, an `Int`, a
+    /// numeric `String`, or a non-empty `List` whose first element is one of
+    /// those; the magnitude is the entry the envelope carries, so a per-filament
+    /// list is read at its first element and never indexed by tool. Empty lists,
+    /// non-numeric first elements, non-numeric variants, NaN/±Inf, and negative
+    /// values are rejected with a named error. Percent magnitudes and the
+    /// nullable `nil` sentinel are deliberately not accepted as an absolute
+    /// limit.
+    pub fn filament_max_volumetric_speed(&self) -> Result<f64, String> {
+        const KEY: &str = "filament_max_volumetric_speed";
+        fn scalar(value: &ConfigValue) -> Result<f64, String> {
+            match value {
+                ConfigValue::Float(f) => Ok(*f),
+                ConfigValue::Int(i) => Ok(*i as f64),
+                ConfigValue::String(s) => s.trim().parse::<f64>().map_err(|_| {
+                    format!("config key '{KEY}': expected a numeric value, got {s:?}")
+                }),
+                other => Err(format!(
+                    "config key '{KEY}': expected Float, Int, a numeric String, or a non-empty \
+                     List whose first element is numeric, got {}",
+                    variant_name(other)
+                )),
+            }
+        }
+
+        let value = match self.extensions.get(KEY) {
+            None => return Ok(0.0),
+            Some(ConfigValue::List(items)) => match items.first() {
+                Some(first) => scalar(first)?,
+                None => {
+                    return Err(format!(
+                        "config key '{KEY}': expected a non-empty List, got an empty List"
+                    ))
+                }
+            },
+            Some(other) => scalar(other)?,
+        };
+
+        if !value.is_finite() {
+            return Err(format!(
+                "config key '{KEY}': value {value} must be finite (NaN and ±Inf are not a maximum)"
+            ));
+        }
+        if value < 0.0 {
+            return Err(format!(
+                "config key '{KEY}': value {value} must be non-negative (0 = unavailable)"
+            ));
+        }
+        Ok(value)
+    }
+
     /// Filament density in g/cm³ for `tool_index`, or `None` when unconfigured.
     ///
     /// Mirrors canonical `Extruder::filament_density`, which reads
@@ -964,6 +1025,14 @@ pub const TOOL_CAPABLE_SCOPES: &[&str] = &["object", "layer_range", "modifier", 
 /// serializer synthesizes when absent (`gcode_flavor`, `printer_model`,
 /// `filament_colour`, `extruder_colour`) and `extruder` carry no default so
 /// registration never seeds them.
+///
+/// `filament_max_volumetric_speed` is the one row among the post-packet-06
+/// additions that carries a real value default rather than `None`: it is a
+/// declared config key (not a synthesized wire key), so the registry seed rule
+/// materializes its `0.0` into [`ResolvedConfig::extensions`], where the
+/// accessor reads it. Its [`HostKeyMeta::min`] and
+/// [`HostRuntimeKey::denied_scopes`] carry the same `>= 0` bound and
+/// tool-capable policy its removed typed declaration had.
 pub const HOST_RUNTIME_KEYS: &[HostRuntimeKey] = &[
     HostRuntimeKey {
         key: "use_relative_e_distances",
@@ -1101,6 +1170,18 @@ pub const HOST_RUNTIME_KEYS: &[HostRuntimeKey] = &[
         meta: HostKeyMeta::NONE,
         selector: false,
         denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "filament_max_volumetric_speed",
+        field_type: "float",
+        scope: SCOPE_FILAMENT,
+        default: Some("0.0"),
+        meta: HostKeyMeta {
+            min: Some(0.0),
+            ..HostKeyMeta::NONE
+        },
+        selector: false,
+        denied_scopes: TOOL_CAPABLE_SCOPES,
     },
 ];
 
@@ -2717,6 +2798,169 @@ mod machine_limit_config_tests {
     }
 }
 
+#[cfg(test)]
+mod filament_max_volumetric_speed_tests {
+    use super::*;
+    use std::hash::{Hash, Hasher};
+
+    const KEY: &str = "filament_max_volumetric_speed";
+
+    fn hash(config: &ResolvedConfig) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        config.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    /// The accessor reads the existing extension carrier: an absent key is the
+    /// "unavailable" state and reads as 0.0, and every accepted envelope shape
+    /// resolves to the carried magnitude.
+    #[test]
+    fn accessor_reads_extension_carrier_shapes_and_absent_default() {
+        let config = ResolvedConfig::default();
+        assert_eq!(
+            config.filament_max_volumetric_speed(),
+            Ok(0.0),
+            "an absent key is the unavailable maximum and must read as 0.0"
+        );
+        assert!(
+            !config.to_config_map().contains_key(KEY),
+            "an absent extension key is not synthesized into the config map"
+        );
+
+        // The reverted packet-10 carrier is an extension key, not a CLI-typed
+        // declared field: routing the key must report "not typed" and leave the
+        // value for the extension path, or the accessor and the registry seed
+        // rule would disagree about the carrier.
+        let mut config = ResolvedConfig::default();
+        let applied = config
+            .apply_cli_key(KEY, &ConfigValue::Float(8.0))
+            .expect("routing an extension key must not error");
+        assert!(
+            !applied,
+            "the volumetric maximum must stay an extension key, not a typed field"
+        );
+        assert!(
+            config.extensions.is_empty(),
+            "apply_cli_key must not write the extension bucket itself"
+        );
+        assert!(
+            !ResolvedConfig::typed_field_keys().contains(&KEY),
+            "the volumetric maximum must not be a typed field key"
+        );
+
+        for (label, value, expected) in [
+            ("float", ConfigValue::Float(8.0), 8.0),
+            ("int", ConfigValue::Int(12), 12.0),
+            (
+                "numeric string",
+                ConfigValue::String(" 7.25 ".to_string()),
+                7.25,
+            ),
+            (
+                "oracle coFloats envelope",
+                ConfigValue::List(vec![ConfigValue::Float(120.0), ConfigValue::Float(60.0)]),
+                120.0,
+            ),
+            (
+                "single-element list",
+                ConfigValue::List(vec![ConfigValue::Int(9)]),
+                9.0,
+            ),
+        ] {
+            let mut config = ResolvedConfig::default();
+            config.extensions.insert(KEY.to_string(), value);
+            assert_eq!(
+                config.filament_max_volumetric_speed(),
+                Ok(expected),
+                "{label}: the accessor must resolve the carried magnitude"
+            );
+        }
+    }
+
+    /// Rejections are named and total: wrong variants, an empty envelope, a
+    /// non-numeric first element, non-finite magnitudes, and negative values are
+    /// never silently clamped or substituted.
+    #[test]
+    fn accessor_rejects_invalid_values_with_named_errors() {
+        for (label, value) in [
+            ("bool", ConfigValue::Bool(true)),
+            ("percent magnitude", ConfigValue::Percent(25.0)),
+            (
+                "float-or-percent",
+                ConfigValue::FloatOrPercent {
+                    value: 8.0,
+                    is_percent: false,
+                },
+            ),
+            ("nil sentinel", ConfigValue::String("nil".to_string())),
+            ("empty envelope", ConfigValue::List(vec![])),
+            (
+                "non-numeric first element",
+                ConfigValue::List(vec![ConfigValue::String("fast".to_string())]),
+            ),
+            ("negative float", ConfigValue::Float(-0.5)),
+            ("negative int", ConfigValue::Int(-3)),
+            ("NaN", ConfigValue::Float(f64::NAN)),
+            ("+Inf", ConfigValue::Float(f64::INFINITY)),
+        ] {
+            let mut config = ResolvedConfig::default();
+            config.extensions.insert(KEY.to_string(), value);
+            let error = config
+                .filament_max_volumetric_speed()
+                .expect_err(&format!("{label} must be rejected as a maximum"));
+            assert!(
+                error.contains(KEY),
+                "{label}: the rejection must name the key, got: {error}"
+            );
+        }
+    }
+
+    /// The extension carrier is part of the config identity: the map and the
+    /// hand-written `PartialEq`/`Hash` see a changed extension value, and
+    /// `-0.0`/`+0.0` bit patterns stay distinct through the interner.
+    #[test]
+    fn extension_value_participates_in_equality_and_hash() {
+        let mut with_extension = ResolvedConfig::default();
+        with_extension
+            .extensions
+            .insert(KEY.to_string(), ConfigValue::Float(8.0));
+
+        assert_ne!(ResolvedConfig::default(), with_extension);
+        assert_ne!(hash(&ResolvedConfig::default()), hash(&with_extension));
+        assert_eq!(
+            with_extension.to_config_map().get(KEY),
+            Some(&ConfigValue::Float(8.0)),
+            "the extension value must reach the flattened config map"
+        );
+
+        let mut positive_zero = ResolvedConfig::default();
+        positive_zero
+            .extensions
+            .insert(KEY.to_string(), ConfigValue::Float(0.0));
+        let mut negative_zero = ResolvedConfig::default();
+        negative_zero
+            .extensions
+            .insert(KEY.to_string(), ConfigValue::Float(-0.0));
+        assert_ne!(
+            ConfigValue::Float(0.0),
+            ConfigValue::Float(-0.0),
+            "ConfigValue compares floats bitwise"
+        );
+        assert_ne!(positive_zero, negative_zero);
+        assert_ne!(hash(&positive_zero), hash(&negative_zero));
+
+        // IEEE `-0.0 < 0.0` is false, and the registry's own `value >= min`
+        // bound accepts it too, so `-0.0` stays admissible and reads as the
+        // unavailable maximum rather than failing the non-negative check.
+        assert_eq!(
+            negative_zero
+                .filament_max_volumetric_speed()
+                .expect("-0.0 is not less than 0.0"),
+            -0.0
+        );
+    }
+}
+
 /// AC-13 parity: the macro-generated [`ResolvedConfig::to_config_map`] must
 /// render every key the retired hand map emitted with an identical
 /// [`ConfigValue`], and must additionally emit the declared rows the hand map
@@ -2894,8 +3138,12 @@ mod scope_eligibility_tests {
 
     /// AC-1 tool-capable host keys (the module-only `nozzle_diameter` is
     /// pinned with the module declarers in the `slicer-config` test).
-    const TOOL_CAPABLE_HOST_KEYS: &[&str] =
-        &["filament_density", "filament_diameter", "retract_length"];
+    const TOOL_CAPABLE_HOST_KEYS: &[&str] = &[
+        "filament_density",
+        "filament_diameter",
+        "filament_max_volumetric_speed",
+        "retract_length",
+    ];
 
     #[test]
     fn host_declaration_channels_carry_exactly_the_ac1_policies() {

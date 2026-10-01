@@ -428,6 +428,7 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `bridge_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:bridge-fill (packet 37)) | — | `resolved_config.rs::ResolvedConfig` |
 | `bridge_no_support` | bool | `false` | — | — | `resolved_config.rs::ResolvedConfig` |
 | `enforce_support_layers` | int | `0` | [0, 5000] | — | `resolved_config.rs::ResolvedConfig` |
+| `filament_max_volumetric_speed` | float | `0.0` | >= 0 (filament-scoped declared extension; 0 = unavailable when role speed requests volumetric auto; automatic role speed resolves per move in DefaultGCodeEmitter::emit_gcode) | — | `resolved_config.rs::ResolvedConfig` |
 | `flat_bridge_closing_join` | string | `"miter"` | — (flat-bridge enclosure closing join: miter (OrcaSlicer parity, default) | square | round (legacy, bit-identical, slow)) | — | `resolved_config.rs::ResolvedConfig` |
 | `gcode_resolution` | float | `0.0125` | >= 0 (D-P tolerance for walls / brim) | — | `resolved_config.rs::ResolvedConfig` |
 | `gcode_xy_decimals` | int | `3` | [1, 6] (X / Y / Z token formatting) | — | `resolved_config.rs::ResolvedConfig` |
@@ -494,6 +495,7 @@ upstream or has no upstream equivalent.
 | `brim_width` | `skirt-brim` | `8.0` | `0.0` |
 | `fan_max_speed` | `part-cooling` | `255` | `100.0` |
 | `fan_min_speed` | `part-cooling` | `51` | `20.0` |
+| `filament_max_volumetric_speed` | `resolved_config.rs::ResolvedConfig` | `0.0` | `2.0` |
 | `filter_out_gap_fill` | `classic-perimeters` | `0.5` | `0.0` |
 | `infill_shift_step` | `rectilinear-infill` | `0.0` | `0.4` |
 | `inner_wall_speed` | `classic-perimeters` | `45.0` | `60.0` |

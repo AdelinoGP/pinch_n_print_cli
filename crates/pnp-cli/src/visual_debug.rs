@@ -1714,8 +1714,36 @@ pub fn postpass_stage_captures(
     captures
 }
 
+/// The model-mode `PostPass::GCodeEmit` emitter: builds the feedrate table
+/// from the request's already-parsed config source through the same
+/// `FeedrateConfig::from_raw_config` path `pnp_cli slice` uses, and hands over
+/// the resolved configs the model path already resolved.
+///
+/// This exists so the request's `[speeds]` keys reach the emitted `F` values:
+/// a request with `outer_wall_speed = 0` is asking to see the automatic
+/// volumetric branch, and `DefaultGCodeEmitter::new`'s
+/// `FeedrateConfig::default()` (60 mm/s outer wall) would emit a different
+/// feedrate than the request specified.
+///
+/// `tool_configs` is the map the normal runtime resolver produced and
+/// `prepare_prepass_context` retained on [`slicer_runtime::PrepassContext`];
+/// it is passed straight to `with_tool_configs` — no second resolution.
+fn model_gcode_emitter(
+    config_source: &HashMap<String, slicer_ir::ConfigValue>,
+    resolved_config: &slicer_ir::ResolvedConfig,
+    tool_configs: &std::collections::BTreeMap<u32, slicer_ir::ResolvedConfig>,
+) -> slicer_runtime::DefaultGCodeEmitter {
+    slicer_runtime::DefaultGCodeEmitter::new_with_config(
+        "pnp_cli visual-debug".to_string(),
+        slicer_ir::FeedrateConfig::from_raw_config(config_source),
+    )
+    .with_resolved_config(resolved_config.clone())
+    .with_tool_configs(tool_configs.clone())
+}
+
 fn run_postpass_taps(
     ctx: &mut slicer_runtime::PrepassContext,
+    config_source: &HashMap<String, slicer_ir::ConfigValue>,
     request: &slicer_runtime::CaptureRequest,
     support_tools: slicer_runtime::layer_executor::SupportToolSelection,
     shape: PostpassCaptureShape,
@@ -1763,8 +1791,11 @@ fn run_postpass_taps(
     // Tier 4: postpass, with the read-only capture sink enabled so we get
     // back the finalized (travel-reconciled) layers and the initially
     // emitted GCodeIR without altering what would ordinarily be emitted.
-    let emitter = slicer_runtime::DefaultGCodeEmitter::new("pnp_cli visual-debug".to_string())
-        .with_resolved_config((*ctx.default_resolved_config).clone());
+    let emitter = model_gcode_emitter(
+        config_source,
+        &ctx.default_resolved_config,
+        &ctx.tool_configs,
+    );
     let serializer = slicer_runtime::DefaultGCodeSerializer::new();
     let mut capture = slicer_runtime::postpass::PostPassCapture::default();
     slicer_runtime::postpass::execute_postpass_with_capture(
@@ -2266,6 +2297,7 @@ fn run_model_source(
         };
         (postpass_output, postpass_schedule) = run_postpass_taps(
             &mut ctx,
+            &config_source_raw,
             &capture_request,
             support_tools,
             if silhouette_view.is_some() {
@@ -3559,5 +3591,352 @@ mod framing_tests {
             ..Default::default()
         };
         assert!(mesh_xy_bounds(&mesh).is_none());
+    }
+
+    /// AC-4 (config-scope-resolution packet 10, Step 4B): the request's parsed
+    /// config must reach the model `PostPass::GCodeEmit` emitter, and the
+    /// emitter must actually consume it — not merely retain it.
+    ///
+    /// The two-key JSON below is the global request config for this inline
+    /// probe: `outer_wall_speed = 0` asks for the automatic volumetric branch,
+    /// and `filament_max_volumetric_speed = 8.0` is its limit. The companion
+    /// CLI fixture adds a tool-0 limit of 12.0 to distinguish the prepass tool
+    /// map from this global value. A width-0.4, height-0.2, flow-1.0 move gives
+    /// `mm3_per_mm = 0.08`, so this global base is `8.0 / 0.08 = 100 mm/s` and
+    /// `F = 100 × 60 = 6000` — the literal below (derived by hand here, never
+    /// by calling the emitter).
+    ///
+    /// The control proves the assertion can fail: `FeedrateConfig::default()`
+    /// has `outer_wall_speed = 60.0`, so the same move under the default
+    /// feedrate table would emit `F3600`, not `F6000`. A construction that
+    /// dropped the parsed config would therefore land on the control value and
+    /// fail this test.
+    ///
+    /// Both halves go through the same production seam the model path uses:
+    /// the JSON is parsed by `parse_cli_config_source`, and the emitter is the
+    /// private `model_gcode_emitter` helper `run_postpass_taps` itself calls.
+    #[test]
+    fn visual_debug_volumetric_auto_config_reaches_emitter() {
+        use slicer_ir::{ExtrusionRole, GCodeCommand, Point3WithWidth, PrintEntity};
+        use slicer_runtime::GCodeEmitter as _;
+
+        let parsed = slicer_runtime::parse_cli_config_source(
+            r#"{"outer_wall_speed": 0, "filament_max_volumetric_speed": 8.0}"#,
+        )
+        .expect("the AC-4 two-key global config must parse");
+        assert_eq!(
+            parsed.get("outer_wall_speed"),
+            Some(&slicer_ir::ConfigValue::Int(0)),
+            "the fixture's outer_wall_speed must survive parsing as written"
+        );
+        assert_eq!(
+            parsed.get("filament_max_volumetric_speed"),
+            Some(&slicer_ir::ConfigValue::Float(8.0)),
+            "the fixture's volumetric limit must survive parsing as written"
+        );
+
+        // Use the public registry-backed resolver rather than applying only
+        // known ResolvedConfig fields: the volumetric maximum is a registered
+        // extension and must be read through its typed accessor.
+        let registry =
+            slicer_config::assemble_registry(&[], &slicer_config::HostChannels::from_live())
+                .expect("live host config registry must assemble")
+                .registry;
+        let scoped = slicer_config::ScopedConfig {
+            deltas: std::collections::BTreeMap::from([(
+                slicer_config::ConfigScope::Global,
+                slicer_config::ScopeDelta {
+                    values: parsed
+                        .iter()
+                        .map(|(key, value)| (key.clone(), value.clone()))
+                        .collect(),
+                },
+            )]),
+            ..Default::default()
+        };
+        let resolved = slicer_config::resolve_scope_stack(
+            &registry,
+            &scoped,
+            &slicer_config::ResolutionTarget::default(),
+            &slicer_config::ExpansionContext {
+                nozzle_diameter_mm: 0.4,
+                ..Default::default()
+            },
+        )
+        .expect("the parsed global request config must resolve");
+        assert_eq!(resolved.outer_wall_speed, 0.0);
+        assert_eq!(
+            resolved
+                .filament_max_volumetric_speed()
+                .expect("the resolved global volumetric limit must be numeric"),
+            8.0
+        );
+
+        // Same production helper `run_postpass_taps` constructs its emitter
+        // with — a test that hand-built an equivalent emitter could pass while
+        // the model path still used the default feedrate table.
+        let emitter = model_gcode_emitter(&parsed, &resolved, &std::collections::BTreeMap::new());
+
+        // The literal fixture move: width 0.4 mm, first-layer height 0.2 mm
+        // (`first_layer_height` seeds layer 0's height_delta), flow 1.0.
+        let layer = slicer_ir::LayerCollectionIR {
+            z: 0.2,
+            ordered_entities: vec![PrintEntity {
+                path: slicer_ir::ExtrusionPath3D {
+                    points: vec![
+                        Point3WithWidth {
+                            x: 0.0,
+                            y: 0.0,
+                            z: 0.2,
+                            width: 0.4,
+                            flow_factor: 1.0,
+                            ..Default::default()
+                        },
+                        Point3WithWidth {
+                            x: 10.0,
+                            y: 0.0,
+                            z: 0.2,
+                            width: 0.4,
+                            flow_factor: 1.0,
+                            ..Default::default()
+                        },
+                    ],
+                    speed_factor: 1.0,
+                    ..slicer_sdk::test_support::fixtures::extrusion_path3d_base(
+                        ExtrusionRole::OuterWall,
+                    )
+                },
+                role: ExtrusionRole::OuterWall,
+                ..slicer_sdk::test_support::fixtures::print_entity_base(ExtrusionRole::OuterWall)
+            }],
+            ..Default::default()
+        };
+
+        let emitted = emitter
+            .emit_gcode(std::slice::from_ref(&layer))
+            .expect("the AC-4 fixture move must emit");
+        let outer_wall_f: Vec<f32> = emitted
+            .commands
+            .iter()
+            .filter_map(|command| match command {
+                GCodeCommand::Move {
+                    f: Some(f), role, ..
+                } if *role == ExtrusionRole::OuterWall => Some(*f),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            outer_wall_f.len(),
+            2,
+            "the two-point fixture must emit two outer-wall moves"
+        );
+        assert_eq!(
+            outer_wall_f[1], 6000.0,
+            "the extruding move must carry the request-derived F6000 \
+             (8.0 mm³/s ÷ (0.4 × 0.2 × 1.0) = 100 mm/s), not the default \
+             feedrate table's F3600"
+        );
+
+        // Control: the same move under an emitter built the pre-fix way (no
+        // request feedrate config) emits the default outer-wall speed.
+        let default_emitter =
+            slicer_runtime::DefaultGCodeEmitter::new("pnp_cli visual-debug".to_string())
+                .with_resolved_config(resolved.clone());
+        let control = default_emitter
+            .emit_gcode(&[layer])
+            .expect("the control fixture move must emit");
+        let control_f = control.commands.iter().find_map(|command| match command {
+            GCodeCommand::Move {
+                f: Some(f), role, ..
+            } if *role == ExtrusionRole::OuterWall => Some(*f),
+            _ => None,
+        });
+        assert_eq!(
+            control_f,
+            Some(60.0 * 60.0),
+            "the default feedrate table must produce F3600 for the same move; \
+             if this equals F6000 the test cannot distinguish the fix"
+        );
+    }
+
+    /// Registry-typed ingestion and resolution must retain each request tool
+    /// override, and the exact emitter helper used by `run_postpass_taps` must
+    /// consume those configs per extrusion. Tool 2 is intentionally absent
+    /// from the map, so it uses the global limit.
+    #[test]
+    fn visual_debug_volumetric_auto_tool_configs_reach_emitter() {
+        use std::collections::{BTreeMap, BTreeSet};
+
+        use slicer_ir::{
+            ExtrusionPath3D, ExtrusionRole, GCodeCommand, LayerCollectionIR, Point3WithWidth,
+            PrintEntity, RegionKey, ToolChange,
+        };
+        use slicer_runtime::GCodeEmitter as _;
+
+        let parsed = slicer_runtime::parse_cli_config_source(
+            r#"{"outer_wall_speed": 0, "filament_max_volumetric_speed": 20.0, "tool_config:0:filament_max_volumetric_speed": 8.0, "tool_config:1:filament_max_volumetric_speed": 12.0}"#,
+        )
+        .expect("the global and per-tool request config must parse");
+        let registry =
+            slicer_config::assemble_registry(&[], &slicer_config::HostChannels::from_live())
+                .expect("live host config registry must assemble")
+                .registry;
+        let mut ingestor = slicer_config::ConfigIngestor::new(&registry);
+        ingestor
+            .ingest_flat(&parsed)
+            .expect("request global and tool config keys must ingest");
+        let scoped = ingestor.finish().scoped;
+        let expansion = slicer_config::ExpansionContext {
+            nozzle_diameter_mm: 0.4,
+            ..Default::default()
+        };
+        let resolved = slicer_config::resolve_scope_stack(
+            &registry,
+            &scoped,
+            &slicer_config::ResolutionTarget::default(),
+            &expansion,
+        )
+        .expect("the request global config must resolve");
+        let configured_tools = scoped
+            .deltas
+            .keys()
+            .filter_map(|scope| match scope {
+                slicer_config::ConfigScope::Tool(tool_index) => Some(*tool_index),
+                _ => None,
+            })
+            .collect::<BTreeSet<_>>();
+        let tool_configs = configured_tools
+            .into_iter()
+            .map(|tool_index| {
+                let config = slicer_config::resolve_scope_stack(
+                    &registry,
+                    &scoped,
+                    &slicer_config::ResolutionTarget {
+                        tool_index: Some(tool_index),
+                        ..Default::default()
+                    },
+                    &expansion,
+                )
+                .unwrap_or_else(|error| panic!("tool {tool_index} config must resolve: {error}"));
+                (tool_index, config)
+            })
+            .collect::<BTreeMap<_, _>>();
+
+        assert_eq!(tool_configs.keys().copied().collect::<Vec<_>>(), vec![0, 1]);
+        assert_eq!(
+            tool_configs[&0]
+                .filament_max_volumetric_speed()
+                .expect("tool 0 volumetric limit must be numeric"),
+            8.0
+        );
+        assert_eq!(
+            tool_configs[&1]
+                .filament_max_volumetric_speed()
+                .expect("tool 1 volumetric limit must be numeric"),
+            12.0
+        );
+        assert_eq!(
+            resolved
+                .filament_max_volumetric_speed()
+                .expect("global volumetric limit must be numeric"),
+            20.0
+        );
+
+        // Three literal two-point outer-wall entities, each with width 0.4,
+        // first-layer Z/height 0.2, and flow 1.0; tool_index selects the active
+        // emitter config while the points independently pin move geometry.
+        let entities = (0..=2)
+            .map(|tool_index| PrintEntity {
+                entity_id: u64::from(tool_index) + 1,
+                path: ExtrusionPath3D {
+                    points: vec![
+                        Point3WithWidth {
+                            x: 0.0,
+                            y: 0.0,
+                            z: 0.2,
+                            width: 0.4,
+                            flow_factor: 1.0,
+                            ..Default::default()
+                        },
+                        Point3WithWidth {
+                            x: 10.0,
+                            y: 0.0,
+                            z: 0.2,
+                            width: 0.4,
+                            flow_factor: 1.0,
+                            ..Default::default()
+                        },
+                    ],
+                    speed_factor: 1.0,
+                    ..slicer_sdk::test_support::fixtures::extrusion_path3d_base(
+                        ExtrusionRole::OuterWall,
+                    )
+                },
+                tool_index,
+                region_key: RegionKey {
+                    global_layer_index: 0,
+                    object_id: "visual-debug-tool-config".to_owned(),
+                    region_id: u64::from(tool_index),
+                    variant_chain: Vec::new(),
+                },
+                ..slicer_sdk::test_support::fixtures::print_entity_base(ExtrusionRole::OuterWall)
+            })
+            .collect();
+        let layer = LayerCollectionIR {
+            global_layer_index: 0,
+            z: 0.2,
+            ordered_entities: entities,
+            // Intra-layer transitions are carried the way production records
+            // them (`apply_cross_layer_tool_rotation` recomputes this same
+            // entity-indexed list); without them the emitter never switches
+            // tools and this test would not exercise per-tool limits.
+            tool_changes: vec![
+                ToolChange {
+                    after_entity_index: 0,
+                    from_tool: 0,
+                    to_tool: 1,
+                },
+                ToolChange {
+                    after_entity_index: 1,
+                    from_tool: 1,
+                    to_tool: 2,
+                },
+            ],
+            ..Default::default()
+        };
+
+        let emitted = model_gcode_emitter(&parsed, &resolved, &tool_configs)
+            .emit_gcode(&[layer])
+            .expect("the three-tool fixture must emit");
+        assert!(!emitted.commands.is_empty(), "emission must not be empty");
+
+        let mut active_tool = 0;
+        let mut tool_changes = Vec::new();
+        let mut role_f_by_tool: BTreeMap<u32, Vec<f32>> = BTreeMap::new();
+        for command in &emitted.commands {
+            match command {
+                GCodeCommand::ToolChange { from, to, .. } => {
+                    assert_eq!(*from, active_tool, "tool changes must follow emitted state");
+                    active_tool = *to;
+                    tool_changes.push((*from, *to));
+                }
+                GCodeCommand::Move {
+                    f: Some(f), role, ..
+                } if *role == ExtrusionRole::OuterWall => {
+                    role_f_by_tool.entry(active_tool).or_default().push(*f);
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(tool_changes, vec![(0, 1), (1, 2)]);
+        assert_eq!(
+            role_f_by_tool,
+            BTreeMap::from([
+                (0, vec![6000.0, 6000.0]),
+                (1, vec![9000.0, 9000.0]),
+                (2, vec![15000.0, 15000.0]),
+            ]),
+            "tool 0 must emit F6000, tool 1 F9000, and unconfigured tool 2 must fall back to global F15000"
+        );
     }
 }

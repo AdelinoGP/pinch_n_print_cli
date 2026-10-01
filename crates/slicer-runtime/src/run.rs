@@ -1798,6 +1798,12 @@ pub struct PrepassContext {
     /// being the first. Per-object overlays are irrelevant to those keys: the
     /// bed is a property of the printer, not of any object on it.
     pub default_resolved_config: Arc<slicer_ir::ResolvedConfig>,
+    /// Per-tool resolved configs this context produced, keyed by tool index
+    /// (the same `resolve_runtime_scopes` result `run_slice` hands to the
+    /// emitter's `with_tool_configs`). Retained rather than discarded so the
+    /// visual-debug model `PostPass::GCodeEmit` seam can consume the normal
+    /// resolver's map instead of re-resolving (or silently defaulting) it.
+    pub tool_configs: std::collections::BTreeMap<u32, slicer_ir::ResolvedConfig>,
 }
 
 /// Load modules, resolve config, build the live execution plan, and run
@@ -1807,10 +1813,11 @@ pub struct PrepassContext {
 ///
 /// Deliberately narrower than `run_slice`'s setup: it skips the 14-pass
 /// startup DAG validation, thumbnail/CONFIG_BLOCK wiring, relative-E and
-/// MMU wipe-tower heuristics, `validate_support_layer_heights`, and
-/// per-tool config resolution — none of which affect per-layer arena
-/// commits, and all of which belong to gcode-emission concerns this entry
-/// point never reaches.
+/// MMU wipe-tower heuristics, and `validate_support_layer_heights` — none of
+/// which affect per-layer arena commits or the gcode-emission handoff this
+/// entry point serves. Per-tool configs are still resolved (they are part of
+/// `resolve_runtime_scopes` and are retained on [`PrepassContext`] for the
+/// emitter handoff).
 ///
 /// # Errors
 ///
@@ -1894,7 +1901,7 @@ pub fn prepare_prepass_context(
     let RuntimeResolvedScopes {
         default_config: default_resolved_config,
         target_configs: resolved_configs_map,
-        tool_configs: _,
+        tool_configs: per_tool_configs_map,
         object_layer_configs,
         expansion_context,
     } = resolve_runtime_scopes(&registry, &scoped_config, mesh_ir.as_ref())?;
@@ -1966,6 +1973,7 @@ pub fn prepare_prepass_context(
         wasm_handles,
         layer_runner,
         default_resolved_config: Arc::new(default_resolved_config),
+        tool_configs: per_tool_configs_map,
     })
 }
 
