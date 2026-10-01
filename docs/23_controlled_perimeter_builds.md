@@ -200,9 +200,17 @@ controlled driver first.  Then verify the harness copy and dry-run protocol:
 
 ```powershell
 cmp resources/perimeter-acceptance/run_bench.ps1 docs/specs/perf-vs-orca/evidence/alloc-bench/run_bench.ps1
+pwsh -NoProfile -File resources/perimeter-acceptance/test-status-roundtrip.ps1
 pwsh -NoProfile -File resources/perimeter-acceptance/run-acceptance.ps1 -DryRun
 pwsh -NoProfile -File resources/perimeter-acceptance/run-acceptance.ps1 -Campaign
 ```
+
+The status round-trip regression uses the benchmark's actual CSV schema and
+the runner's real reader, decision functions, and summary writer. It checks
+retained completion status, degraded/fatal/non-fatal counts and validated
+generator markers, including a non-fatal mismatch that must be `DROP` despite
+favorable synthetic timing ranges. It runs no slicer; its timings are not
+acceptance evidence. The stock dry run bypasses the CSV reader, so run both.
 
 The last command is intentionally fail-closed when the user-prepared corpus
 is absent.  Its first missing-artifact line is evidence that no fabricated
