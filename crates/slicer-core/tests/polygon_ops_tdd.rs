@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use slicer_core::polygon_ops::clip_polylines;
+use slicer_core::polygon_ops::{clip_polylines, PreparedPolylineClip};
 use slicer_core::{difference, intersection, offset, union, xor, OffsetJoinType};
 use slicer_ir::{ExPolygon, Point2, Polygon};
 
@@ -411,6 +411,39 @@ fn clip_polylines_empty_input_returns_empty() {
     assert!(clip_polylines(&[], &clip).is_empty());
     assert!(clip_polylines(&[input.clone()], &[]).is_empty());
     assert!(clip_polylines(&[], &[]).is_empty());
+}
+
+/// Representation/reuse regression: holes, islands, concavity, dense rings,
+/// all contour edges, hole edges, outside paths and <2-point subjects. The
+/// expected vertices/order were captured from the pre-hoist one-shot function.
+#[test]
+fn prepared_clip_repeated_calls_match_pre_hoist_one_shot_outputs() {
+    let reference: serde_json::Value = serde_json::from_str(include_str!(
+        "fixtures/clip_polylines_prepared_reference.json"
+    ))
+    .unwrap();
+    let cases = reference["cases"].as_array().unwrap();
+    assert_eq!(cases.len(), 5);
+    for case in cases {
+        let clip: Vec<ExPolygon> = serde_json::from_value(case["clip"].clone()).unwrap();
+        let prepared = PreparedPolylineClip::new(&clip);
+        let calls = case["calls"].as_array().unwrap();
+        assert_eq!(calls.len(), 14);
+        // Revisit calls in reverse order on the same object to catch leaked
+        // Clipper state after an outside/empty result or a multi-subject call.
+        for call in calls.iter().chain(calls.iter().rev()) {
+            let input: Vec<Vec<Point2>> = serde_json::from_value(call["input"].clone()).unwrap();
+            let expected: Vec<Vec<Point2>> =
+                serde_json::from_value(call["expected"].clone()).unwrap();
+            assert_eq!(prepared.clip(&input), expected, "prepared {}", case["name"]);
+            assert_eq!(
+                clip_polylines(&input, &clip),
+                expected,
+                "one-shot {}",
+                case["name"]
+            );
+        }
+    }
 }
 
 #[test]

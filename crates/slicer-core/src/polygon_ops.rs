@@ -231,9 +231,6 @@ fn path_to_polyline(path: &[Point64]) -> Vec<Point2> {
 ///    result Vec is unspecified.
 /// 7. Input polylines with fewer than 2 points are silently skipped.
 pub fn clip_polylines(polylines: &[Vec<Point2>], clip: &[ExPolygon]) -> Vec<Vec<Point2>> {
-    use clipper2_rust::core::FillRule;
-    use clipper2_rust::{inflate_paths_64, ClipType, Clipper64, EndType, JoinType};
-
     if polylines.is_empty() || clip.is_empty() {
         return Vec::new();
     }
@@ -246,45 +243,83 @@ pub fn clip_polylines(polylines: &[Vec<Point2>], clip: &[ExPolygon]) -> Vec<Vec<
     if open_subjects.is_empty() {
         return Vec::new();
     }
-    // Pre-inflate the clip universe by exactly 1 unit (100 nm). Clipper2's
-    // treatment of open segments lying exactly on a closed clip boundary is
-    // side-dependent (some edges keep the span, others drop it), so guarantee
-    // AC-5 by making every on-edge span strictly interior. The 1-unit shift
-    // stays within the documented ±2-unit boundary tolerance. Inflating the
-    // flat contour+hole path set also shrinks holes by 1 unit, so on-hole-edge
-    // spans count as inside too. NonZero winding downstream keeps hole
-    // semantics intact.
-    let raw_clip_paths: Vec<Vec<Point64>> = clip.iter().flat_map(expolygon_to_paths).collect();
-    let clip_paths = inflate_paths_64(
-        &raw_clip_paths,
-        1.0, // delta in integer units, matching `offset2_ex`'s delta_units convention
-        JoinType::Miter,
-        EndType::Polygon,
-        2.0,
-        0.0,
-    );
 
-    let mut clipper = Clipper64::default();
-    clipper.add_open_subject(&open_subjects);
-    clipper.add_clip(&clip_paths);
+    PreparedPolylineClip::new(clip).clip_open_subjects(open_subjects)
+}
 
-    let mut closed_solution: Vec<Vec<Point64>> = Vec::new();
-    let mut open_solution: Vec<Vec<Point64>> = Vec::new();
-    let ok = clipper.execute(
-        ClipType::Intersection,
-        FillRule::NonZero,
-        &mut closed_solution,
-        Some(&mut open_solution),
-    );
-    if !ok {
-        return Vec::new();
+/// Immutable clip universe for repeated [`clip_polylines`] calls against the
+/// same boundary. Preparation preserves the one-shot contour/hole order and
+/// exact 1-unit inflation; each call still executes an independent intersection.
+/// This is a local Rust helper, not a host service or a cross-invocation cache.
+pub struct PreparedPolylineClip {
+    clip_paths: Vec<Vec<Point64>>,
+}
+
+impl PreparedPolylineClip {
+    /// Flattens and pre-inflates a boundary once, in scaled integer units.
+    pub fn new(clip: &[ExPolygon]) -> Self {
+        use clipper2_rust::{inflate_paths_64, EndType, JoinType};
+
+        if clip.is_empty() {
+            return Self {
+                clip_paths: Vec::new(),
+            };
+        }
+        // Pre-inflate by exactly 1 unit (100 nm) so contour and hole edges
+        // count as inside (AC-5). Keep the original flat path order, winding,
+        // and inflate parameters; do not union, simplify, or reorient here.
+        let raw_clip_paths: Vec<Vec<Point64>> = clip.iter().flat_map(expolygon_to_paths).collect();
+        let clip_paths = inflate_paths_64(
+            &raw_clip_paths,
+            1.0, // delta in integer units, matching `offset2_ex`'s convention
+            JoinType::Miter,
+            EndType::Polygon,
+            2.0,
+            0.0,
+        );
+        Self { clip_paths }
     }
 
-    open_solution
-        .iter()
-        .filter(|path| path.len() >= 2)
-        .map(|path| path_to_polyline(path))
-        .collect()
+    /// Clips polylines with all seven guarantees of [`clip_polylines`].
+    /// No execution state is retained between calls, including empty results.
+    pub fn clip(&self, polylines: &[Vec<Point2>]) -> Vec<Vec<Point2>> {
+        let open_subjects: Vec<Vec<Point64>> = polylines
+            .iter()
+            .filter(|p| p.len() >= 2)
+            .map(|p| polyline_to_path(p))
+            .collect();
+        self.clip_open_subjects(open_subjects)
+    }
+
+    fn clip_open_subjects(&self, open_subjects: Vec<Vec<Point64>>) -> Vec<Vec<Point2>> {
+        use clipper2_rust::core::FillRule;
+        use clipper2_rust::{ClipType, Clipper64};
+
+        if open_subjects.is_empty() || self.clip_paths.is_empty() {
+            return Vec::new();
+        }
+        let mut clipper = Clipper64::default();
+        clipper.add_open_subject(&open_subjects);
+        clipper.add_clip(&self.clip_paths);
+
+        let mut closed_solution: Vec<Vec<Point64>> = Vec::new();
+        let mut open_solution: Vec<Vec<Point64>> = Vec::new();
+        let ok = clipper.execute(
+            ClipType::Intersection,
+            FillRule::NonZero,
+            &mut closed_solution,
+            Some(&mut open_solution),
+        );
+        if !ok {
+            return Vec::new();
+        }
+
+        open_solution
+            .iter()
+            .filter(|path| path.len() >= 2)
+            .map(|path| path_to_polyline(path))
+            .collect()
+    }
 }
 
 /// Executes a boolean clip operation on polygon sets.
@@ -918,6 +953,41 @@ mod tests {
     fn make_polygon(pts: &[(i64, i64)]) -> Polygon {
         Polygon {
             points: pts.iter().map(|&(x, y)| Point2 { x, y }).collect(),
+        }
+    }
+
+    #[test]
+    fn prepared_polyline_clip_universe_matches_pre_hoist_reference() {
+        // Recorded BEFORE extraction, not recomputed by either new entry point.
+        // Pins flatten order, winding, hole inclusion and every inflated vertex.
+        let reference: serde_json::Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/clip_polylines_prepared_reference.json"
+        ))
+        .unwrap();
+        let cases = reference["cases"].as_array().unwrap();
+        assert_eq!(cases.len(), 5);
+        for case in cases {
+            let clip: Vec<ExPolygon> = serde_json::from_value(case["clip"].clone()).unwrap();
+            let coords = |paths: &[Vec<Point64>]| {
+                paths
+                    .iter()
+                    .map(|path| path.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>())
+                    .collect::<Vec<_>>()
+            };
+            let raw: Vec<Vec<Point64>> = clip.iter().flat_map(expolygon_to_paths).collect();
+            assert_eq!(
+                serde_json::json!(coords(&raw)),
+                case["raw_paths"],
+                "raw {}",
+                case["name"]
+            );
+            let prepared = PreparedPolylineClip::new(&clip);
+            assert_eq!(
+                serde_json::json!(coords(&prepared.clip_paths)),
+                case["inflated_paths"],
+                "inflated {}",
+                case["name"]
+            );
         }
     }
 

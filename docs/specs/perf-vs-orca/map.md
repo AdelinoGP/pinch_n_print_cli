@@ -60,8 +60,8 @@ Standing decisions for this effort (2026-09-22):
   (attribution; produced the emit-pass carve candidate)** → **[emit-pass carve
   gate acceptance](issues/32-emit-carve-gate-representation-and-ab.md) ✅**
   → **21 ✅ (attribution, 2026-10-01; produced the
-  [clip-universe hoist](issues/44-clip-universe-hoist.md) candidate awaiting
-  its own take)** → **25 ✅ (attribution, 2026-10-01; produced the
+  → **[clip-universe hoist](issues/44-clip-universe-hoist.md) candidate, subsequently
+  resolved as KEEP approved under the human-approved fresh-baseline gate)** → **25 ✅ (attribution, 2026-10-01; produced the
   [overhang-quartile predicate narrowing](issues/45-overhang-quartile-predicate-narrowing.md)
   candidate awaiting its own take)** → below-fold
   polish — 15, 17, 22
@@ -219,6 +219,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Clip-universe preparation hoist](issues/44-clip-universe-hoist.md): **KEEP approved (2026-10-02)** — immutable per-invocation preparation preserves the tested fresh-baseline output and passes the standing paired ordinary + accelerated wall/CPU gate; no adoption retry or default-mode switch, with pre-existing frozen-job drift disclosed separately in [Frozen-job output drift boundary](issues/46-frozen-job-output-drift-boundary.md).
+
 - [Arachne graph-construction attribution](issues/25-arachne-graph-attribution.md): **the module's cost is two guest per-vertex spatial queries — 86.4% of module fuel (`signed_distance_to_boundary` 48.3%, `overhang_quartile` 38.1%) — not the host pipeline, which is only ~18% of module elapsed** (the 75.3% ticket 06 measured was of the enclosing pipeline interval, not the module); inside the host service preprocess is 43.3% (stage-1 triple offset 41.6%) and graph construction 38.0% (boostvoronoi sweep 33.5%), closing the old 364.932 ms remainder; acceleration cuts the module 1.73x but the two queries still hold 82.0% accelerated; one candidate — the `overhang_quartile` predicate's `eps = 0.0` boundary pre-pass measures 56.5–71.2% of the predicate across four preserved synthetic-ring runs, fuel ceiling ≈ 21–27% of module fuel as a cross-domain bound — awaits its own scope + paired A/B, with no fix, commit or acceptance retry.
 
 - [infill-linker attribution](issues/21-infill-linker-attribution.md): the linker's cost is 97.65% the per-path re-clip — 64.84% of linker fuel is the per-call clip-universe pre-inflate, 32.65% the clipper execute — and the layers 1–2 tail is ~99.95% guest execution (host prep/marshalling ~1.7 ms); one candidate (hoist the universe preparation per invocation, fuel ceiling ≈ 61.4% of linker ≈ 28.1% of slice by the uniform-count estimate, 63.7% of linker layer-aware, both estimates under a same-cost assumption) awaits its own scope + paired A/B, with the split mode-invariant and the linker the #1 accelerated fuel consumer at 59.1%.
@@ -287,7 +289,7 @@ Standing decisions for this effort (2026-09-22):
   guest fuel) is the larger but not-yet-candidate-shaped half and stays in this
   fog. [infill-linker
   attribution](issues/21-infill-linker-attribution.md)'s split graduated the
-  now-open [clip-universe preparation hoist](issues/44-clip-universe-hoist.md)
+  now-resolved [clip-universe preparation hoist](issues/44-clip-universe-hoist.md)
   (2026-10-01); its measured mode-invariance also re-ranks the *remaining*
   linker work below the hoist — the per-polyline clipper execute (32.65% of
   linker fuel) and the ~2.4% that is not the re-clip (connectivity 2.01% plus

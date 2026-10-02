@@ -3,7 +3,7 @@
 Type: task
 Status: open
 Parent: [Slice performance vs OrcaSlicer](../map.md)
-Blocked by: 25
+Blocked by: 25, 46
 
 ## Question
 
@@ -37,6 +37,12 @@ measured fuel saving. Wall transfer unmeasured; the map's measured fuel→wall
 transfer is 0-16%.
 
 ## Work (only after explicit human authorization of this take)
+
+Gate prerequisite surfaced by [Clip-universe preparation hoist](44-clip-universe-hoist.md):
+fresh HEAD does not reproduce the old frozen job even before a candidate edit.
+[Frozen-job output drift boundary](46-frozen-job-output-drift-boundary.md) must
+resolve that reference/job boundary, or the human must explicitly authorize a
+fresh-baseline gate for this take too. The hoist's exception is not map-wide.
 
 - Choose the shape: narrow `point_in_contour_winding` /
   `point_in_polygon_winding` (`crates/slicer-ir/src/polygon_predicate.rs`) so
