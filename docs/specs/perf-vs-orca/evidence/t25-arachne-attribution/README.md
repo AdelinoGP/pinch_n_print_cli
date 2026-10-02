@@ -6,17 +6,24 @@ to index the artifacts in this directory.
 | artifact | what it is |
 |---|---|
 | `FINDINGS.md` | the re-attribution, the one candidate, validation, gaps |
-| `t25_split.py` | reduces one host-probe stderr capture to the stage tables |
-| `verify-t25.py` | read-only re-derivation of every FINDINGS headline from the raw captures (exit 0 = all pass) |
+| `captures/` | in-repo reduced captures + `output-hashes.json`; `verify-t25.py` runs against these by default |
+| `reduce_captures.py` | regenerates `captures/` from the durable raw tree |
+| `t25_capture.py` | shared capture-parsing helpers for the reducer and verifier |
+| `t25_split.py` | reduces one host-probe capture to the stage tables |
+| `verify-t25.py` | read-only re-derivation of every FINDINGS headline (exit 0 = all pass) |
 | `host-split.txt` | the reduced host-side stage table for `attrib8-final` |
-| `probe.patch` | the temporary `[T25-PROBE]` host/guest instrumentation (tracked-file diff; applies to `5e0e2fdb` + the claim commit; removed before any commit) |
+| `probe_outputs/` | captured stdout of the two probe tests (4 winding-share runs, 2 scaling runs) |
+| `probe.patch` | the temporary `[T25-PROBE]` host/guest instrumentation (tracked-file diff; applies cleanly to the reviewed tree; stashed out, not committed) |
 | `perf_t25_probe.rs.txt` | the probe module source (untracked file; not in `probe.patch`) |
 | `t25_probe_quartile_shape_tdd.rs.txt` | probe test: quartile-query cost scales with band-polygon size |
 | `t25_probe_winding_pass_share_tdd.rs.txt` | probe test: the `eps=0` boundary pre-pass share of the predicate |
 | `arachne-perimeters-lib.probe.rs.txt` | the guest module source with the `t25::*` user scopes |
 
-Raw captures (durable, gitignored):
-`.local-artifacts/perimeter-reference-preparation/t25-arachne-attribution-run1/`
+Raw captures (full set, durable, gitignored):
+`.local-artifacts/perimeter-reference-preparation/t25-arachne-attribution-run1/`.
+The reduced in-repo set is derived from these by `reduce_captures.py`; the
+reduction keeps `T25-PROBE` lines, `profile_summary` events, and
+`module_complete` events for `com.core.arachne-perimeters`.
 
 | path | capture |
 |---|---|

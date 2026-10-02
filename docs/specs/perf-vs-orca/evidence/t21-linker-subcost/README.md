@@ -6,12 +6,17 @@ to index the artifacts in this directory.
 | artifact | what it is |
 |---|---|
 | `FINDINGS.md` | the attributed split, candidate, validation, gaps |
-| `probe.patch` | the `T21-PROBE` instrumentation (applies cleanly to the tree at d6be6203; stashed out, not committed) |
+| `captures/` | in-repo reduced captures + `output-hashes.json`; `verify-t21.py` runs against these by default |
+| `reduce_captures.py` | regenerates `captures/` from the durable raw tree |
+| `probe.patch` | the `T21-PROBE` instrumentation (applies cleanly to the reviewed tree; stashed out, not committed) |
 | `t21_split.py` | reduces one probe capture to the per-layer/split tables |
-| `verify-t21.py` | read-only re-derivation of every FINDINGS headline from the raw captures (exit 0 = all pass) |
+| `verify-t21.py` | read-only re-derivation of every FINDINGS headline (exit 0 = all pass) |
 
-Raw captures (durable, gitignored):
-`.local-artifacts/perimeter-reference-preparation/t21-linker-subcost-run1/`
+Raw captures (full set, durable, gitignored):
+`.local-artifacts/perimeter-reference-preparation/t21-linker-subcost-run1/`.
+The reduced in-repo set is derived from these by `reduce_captures.py`; the
+reduction keeps `T21-PROBE` lines, `profile_summary` events, and
+`module_complete` events for `com.core.infill-linker`.
 
 | path | capture |
 |---|---|

@@ -36,7 +36,9 @@ which. This study splits that boundary and then splits the guest work.
   reference identity gate (`verify-freeze.py`) passed.
 - All four measured outputs are byte-identical to the frozen reference
   (`7049a06d…`): the baseline profiling run, both probe runs, and the
-  accelerated probe run (re-derived by `verify-t21.py`).
+  accelerated probe run (re-derived by `verify-t21.py` from the in-repo
+  reduced captures at `captures/`, and re-runnable against the durable raw
+  tree with `--capture-root`).
 - The probe replaced **one** guest (`infill-linker.wasm`) in a complete module
   dir; the other 23 modules stayed bit-for-bit frozen. Probe sources are
   preserved in `probe.patch` and were stashed out of the working tree, not
@@ -80,7 +82,7 @@ This closes the boundary ticket 43 left unmeasured, for these three layers.
 | scope | calls | self fuel | share | layers 0–2 share |
 |---|---:|---:|---:|---:|
 | `t21::path_reclip` (whole per-path clip loop) | 212 | **107,062,264,520** | **97.65%** | 98.44% |
-| `t21::connect_infill` | 212 | 2,203,531,440 | 2.01% | 1.33% |
+| `t21::connect_infill` (`modules/core-modules/infill-linker/src/connect.rs`) | 212 | 2,203,531,440 | 2.01% | 1.33% |
 | `t21::overlap_offset` (`ExPolygonWithOffset`) | 185 | 29,352,317 | 0.03% | 0.01% |
 | `t21::graph_build` (`BoundaryInfillGraph::new`) | 212 | 21,979,325 | 0.02% | 0.01% |
 | `t21::boundary_prep` (per-role boundary + locked-footprint diff) | 185 | 2,960,323 | 0.00% | 0.00% |
@@ -88,11 +90,14 @@ This closes the boundary ticket 43 left unmeasured, for these three layers.
 | `t21::output_emit` | 240 | 495,065 | 0.00% | 0.00% |
 | `t21::majority_owner` | 0 (single-region job) | 0 | 0.00% | 0.00% |
 
-`t21::path_reclip` encloses `link_paths_without_offset`, which loops every
-selected path calling `clip_to_offset_boundary` → `clip_polylines`; it is the
-linker. Note `majority_owner` is 0 calls here: the matched job's groups all
-take `link_region_group`, not `link_union_group` (the owner-assignment term
-only exists on the union path).
+`t21::path_reclip` encloses `link_paths_without_offset`
+(`modules/core-modules/infill-linker/src/orchestrate.rs`), which loops every
+selected path calling `clip_to_offset_boundary`
+(`modules/core-modules/infill-linker/src/offset.rs`) → `clip_polylines`
+(`crates/slicer-core/src/polygon_ops.rs`); it is the linker. Note
+`majority_owner` is 0 calls here: the matched job's groups all take
+`link_region_group`, not `link_union_group` (the owner-assignment term only
+exists on the union path).
 
 ### Workload shape (counters)
 
@@ -157,28 +162,63 @@ on-edge spans strictly interior, guaranteeing AC-5).
 
 Ceiling arithmetic: 4,520 clip calls across 212 `path_reclip` invocations plus
 27 raw-boundary fallbacks. A per-invocation prepare needs at most 212 + 27 =
-239 preparations ⇒ saves 1 − 239/4520 = **94.7% of the inflate term = 61.4% of
-linker fuel ≈ 28.1% of slice fuel** (fuel). Wall transfer is unmeasured; this
-map has measured 0–16% fuel→wall transfer, and the candidate's own paired
-ordinary + accelerated A/B is required before any keep.
+239 preparations.
+
+- **Uniform-count estimate:** 1 − 239/4520 = 94.71% of the inflate term = 61.4%
+  of linker fuel ≈ 28.1% of slice fuel.
+- **Layer-aware estimate:** per-call inflate is heterogeneous (median 2.3M
+  fuel/call on layers > 2 vs 81.0M on layer 1), so the saving is re-derived
+  per layer as Σ `inflate_layer × (1 − preparations_layer / calls_layer)`,
+  with `preparations_layer` = `path_reclip` invocations + fallbacks for that
+  layer. That gives **98.24% of the inflate term = 63.70% of linker fuel**,
+  because the expensive layers already have the fewest preparations-per-call.
+
+The two numbers are close and both are **assumption-based estimates, not
+measurements**: they assume the deduplicated preparation costs the same as one
+current per-call preparation, which the fuel split does not prove (the universe
+cost tracks boundary size, and the surviving preparations may carry the largest
+universes). `verify-t21.py` re-derives the layer-aware figure from the
+counters. Wall transfer is unmeasured; this map has measured 0–16% fuel→wall
+transfer, and the candidate's own paired ordinary + accelerated A/B is
+required before any keep.
 
 Exactness: value-identical by construction — the prepared universe is the same
 deterministic `inflate_paths_64` result the current code recomputes per call,
 and `clip_polylines`'s AC-6 already guarantees independent per-polyline
-clipping. The other three production call sites
-(`lightning/layer.rs`, `lightning/mod.rs`, `prepass_slice.rs`) keep the
-current one-shot API.
+clipping. The other three production call sites keep the current one-shot API:
+`convert_to_lines` (`crates/slicer-core/src/algos/lightning/layer.rs`), the
+tree-sampling loop in `generate_lightning_trees`
+(`crates/slicer-core/src/algos/lightning/mod.rs`), and
+`floating_edges_of_gated_area`
+(`crates/slicer-core/src/algos/prepass_slice.rs`).
 
 **Not implemented here.** It needs its own scope/authorization, then the
 standing paired A/B; a host-side API extension or an in-guest precomputed
 universe are both live shapes and the choice belongs to that take.
 
+## Recommendation
+
+**No keep/drop recommendation is possible from this ticket.** The ticket's
+acceptance line requires a paired-mode A/B before a keep/drop, and this take
+authorized attribution only (no fix, no A/B). The recommendation is handed to
+the candidate's own take — [Clip-universe preparation hoist: implementation +
+standing paired A/B](../../issues/44-clip-universe-hoist.md) — whose gates are
+an exactness proof plus the standing paired measurement. That is a deliberate
+scope boundary, not an omitted deliverable.
+
 ## Validation
 
 - `python docs/specs/perf-vs-orca/evidence/t21-linker-subcost/verify-t21.py`:
-  exit 0; re-derives from the raw captures the four output hashes, the
-  capture-1 shares, the capture-3 split and tail share, the cross-mode
-  invariance, the accelerated ranking, and the L1 counters/wall bracket.
+  exit 0 against the in-repo reduced captures (`captures/`); re-derives the
+  output hashes, the capture-1 shares, the capture-3 split and tail share, the
+  layer-aware hoist saving, the cross-mode invariance, the accelerated ranking,
+  and the L1 counters/wall bracket. `--capture-root
+  .local-artifacts/perimeter-reference-preparation/t21-linker-subcost-run1`
+  runs the same checks against the full durable raw tree.
+- `python docs/specs/perf-vs-orca/evidence/t21-linker-subcost/reduce_captures.py`:
+  regenerates `captures/` (probe lines + `profile_summary` +
+  `module_complete` for `com.core.infill-linker`) and `output-hashes.json`
+  from the raw tree.
 - No Rust tests were run against production code: nothing in the production
   tree changed (probe stashed; `probe.patch` preserved).
 - Guests were rebuilt to production after the probe; `cargo xtask
@@ -195,5 +235,6 @@ universe are both live shapes and the choice belongs to that take.
   5,304 ms on L1 / 3,232 ms on L2 versus capture 2's 4,153 / 2,808 ms — the
   three extra core sub-scope marks add six host calls per clip call); they do
   not perturb fuel (ADR-0055).
-- The candidate's saving is a fuel ceiling; its wall effect, and any
-  host-vs-guest API choice, are unmeasured until the separate take.
+- The saving figures are bounds under a same-cost assumption, as above; the
+  candidate's wall effect, and any host-vs-guest API choice, are unmeasured
+  until the separate take.

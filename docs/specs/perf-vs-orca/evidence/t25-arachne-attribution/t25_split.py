@@ -12,6 +12,10 @@ Usage: python t25_split.py <stderr.txt> [--top N]
 import json
 import sys
 from collections import defaultdict
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from t25_capture import parse_probe_lines  # noqa: E402
 
 ORDER = [
     "svc",
@@ -141,23 +145,7 @@ HUMAN = {
 
 
 def parse(path):
-    rows = []
-    with open(path, encoding="utf-8", errors="replace") as f:
-        for line in f:
-            line = line.strip()
-            if not line.startswith("T25-PROBE"):
-                continue
-            fields = {}
-            seq = None
-            for part in line.split()[1:]:
-                key, value = part.split("=", 1)
-                if key == "seq":
-                    seq = int(value)
-                else:
-                    wall, calls = value.split(":")
-                    fields[key] = (int(wall), int(calls))
-            rows.append({"seq": seq, **fields})
-    return rows
+    return parse_probe_lines(path)
 
 
 def main(path, top=12):

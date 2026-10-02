@@ -20,15 +20,21 @@ attribution](25-arachne-graph-attribution.md)'s measured split (2026-10-01):
 the Arachne module's fuel is 86.4% two guest per-vertex queries, of which
 `overhang_quartile` is 38.1% of module fuel at ~1.64 ms/call ordinary.
 Its classification goes through
-`point_in_polygon_winding(polygon, x, y, 0.0)`, whose boundary-tolerance
-pre-pass is **measured at 62.8-66.3% of the predicate's own cost** with
-identical verdicts against a winding-only replica
+`point_in_polygon_winding(polygon, x, y, 0.0)`
+(`crates/slicer-ir/src/polygon_predicate.rs`), whose boundary-tolerance
+pre-pass is **measured at 56.5-71.2% of the predicate's own cost** across four
+preserved synthetic-ring runs
+(`evidence/t25-arachne-attribution/probe_outputs/winding_pass_share.run{1..4}.txt`)
+with identical verdicts against a winding-only replica
 (`t25_probe_winding_pass_share_tdd`), while the predicate's own doc-comment
-defines `0.0` as the strict-containment contract.
+defines `0.0` as the strict-containment contract. The exact-on-edge verdict is
+the open question: the pre-pass admits a point exactly on an edge, and a
+straight skip is probably — not provably — value-preserving.
 
-Fuel ceiling: the pre-pass share of the predicate × the query's module share
-≈ **24-25% of module fuel**. Wall transfer unmeasured; the map's measured
-fuel→wall transfer is 0-16%.
+Fuel ceiling: the synthetic pre-pass share × the query's module share ≈
+**21-27% of module fuel** — a bound derived from a cross-domain share, not a
+measured fuel saving. Wall transfer unmeasured; the map's measured fuel→wall
+transfer is 0-16%.
 
 ## Work (only after explicit human authorization of this take)
 
@@ -60,5 +66,6 @@ authorizes this take; the ticket 25 study authorized attribution only.
 
 [Arachne re-attribution findings](../evidence/t25-arachne-attribution/FINDINGS.md),
 probe preserved at `evidence/t25-arachne-attribution/probe.patch` +
-`evidence/t25-arachne-attribution/*.rs.txt`, re-derivation in
+`evidence/t25-arachne-attribution/*.rs.txt`, reduced captures at
+`evidence/t25-arachne-attribution/captures/`, re-derivation in
 `evidence/t25-arachne-attribution/verify-t25.py`.

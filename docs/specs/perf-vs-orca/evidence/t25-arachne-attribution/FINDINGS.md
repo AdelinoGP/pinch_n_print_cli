@@ -5,7 +5,7 @@ pipeline the 2026-09-07 study measured as 75.3%.** The module's own fuel is
 **86.4% two guest-side per-vertex spatial queries** — `signed_distance_to_boundary`
 (48.3%) and `overhang_quartile` (38.1%) — while the whole host
 `generate-arachne-walls` service (all 9 preprocess stages, graph construction,
-beading, toolpaths, post-process) is only **~20% of module elapsed**; it burns
+beading, toolpaths, post-process) is only **~18% of module elapsed**; it burns
 **no guest fuel at all** (host calls are unmetered, ADR-0055) and its guest-side
 marshalling is 0.04% of module fuel. Inside the host
 service, stage 1's triple offset is 41.6% and the boostvoronoi sweep 33.5% of
@@ -51,16 +51,29 @@ The ticket names `preprocess_input_outline` / `run_nine_stage_pipeline`
 
 ## Finding 1 — the boundary the old study could not see
 
-Ticket 06 measured the **host pipeline interval** (4,739.9 ms accumulated over
-240 calls) and could not see the guest's own work outside it. At HEAD, same-run
-`module_complete` vs the probe's service bracket gives the split directly:
+Ticket 06 measured the **host pipeline interval** and could not see the guest's
+own work outside it. At HEAD, same-run `module_complete` vs the probe's service
+bracket gives the split directly. Two measurement boundaries appear in the
+table below and are labelled per row:
 
-| Capture | module elapsed (sum) | host service (sum) | host share |
-| --- | ---: | ---: | ---: |
-| ordinary, `attrib4-inst` | 14,656 ms | 2,648.5 ms | 18.1% |
-| ordinary, `attrib10-verify` | 15,033 ms | 2,645.2 ms | 17.6% |
-| ordinary, guest-scope capture (`attrib8-final`) | 18,130 ms (wall) | 3,732.6 ms (wall) | 20.6% |
-| accelerated (`attrib`) | 11,171 ms (wall) | 3,312.1 ms (wall) | 29.6% |
+- **elapsed sum** — the sum of the 240 per-layer `module_complete.elapsed_ms`
+  values; its same-run host figure is the `T25-PROBE` `svc` sum.
+- **profile wall** — the guest-scope `profile_summary` wall for the module; its
+  same-run host figure is the `t25::host_arachne_svc` scope's wall.
+
+| Capture | boundary | module figure | host service | host share |
+| --- | --- | ---: | ---: | ---: |
+| ordinary, `attrib4-inst` | elapsed sum | 13,954 ms | 2,741.3 ms | 19.6% |
+| ordinary, `attrib5-prof` | elapsed sum | 14,656 ms | 2,648.5 ms | 18.1% |
+| ordinary, `attrib10-verify` | elapsed sum | 15,033 ms | 2,645.2 ms | 17.6% |
+| ordinary, `attrib8-final` | elapsed sum | 20,194 ms | 3,691.3 ms | 18.3% |
+| ordinary, `attrib8-final` | profile wall | 18,130 ms | 3,732.6 ms | 20.6% |
+| accelerated, `attrib` | elapsed sum | 13,015 ms | 3,268.0 ms | 25.1% |
+| accelerated, `attrib` | profile wall | 11,171 ms | 3,312.1 ms | 29.7% |
+
+(`attrib10-verify`'s profile wall is 13,459.5 ms against a 2,680.0 ms host
+scope — 19.9%.) Every row is re-derived from its own capture by `verify-t25.py`;
+see Gaps for the capture-to-capture wall spread.
 
 **The host pipeline is a fifth of the module, not three quarters.** The old
 study's "75.3% of the enclosing interval" was true of that interval, and the
@@ -68,7 +81,7 @@ interval is not the module.
 
 ## Finding 2 — the module's cost is two guest per-vertex queries
 
-Guest fuel split (ordinary, `attrib7-guest2` / `attrib8-final`; shares
+Guest fuel split (ordinary, `attrib8-final` / `attrib10-verify`; shares
 reproduce to three significant figures across captures):
 
 | scope | calls | fuel share | wall share (instrumented) |
@@ -84,9 +97,9 @@ reproduce to three significant figures across captures):
 **The two queries are 86.4% of the module's fuel.** They are not the
 `build_wall_flags` reprojection (0.02%) and not the seam candidates (0.2%).
 
-The tail is not concentrated: the top 12 of 239 layers carry 17.3% of guest
-fuel, and 239 of 239 layers call both queries. This is a per-vertex,
-every-layer cost, unlike the linker's tail.
+The tail is not concentrated: the top 12 of 239 non-zero layers carry 17.3% of
+guest fuel, and 239 of 240 dispatches call both queries (layer 0 calls neither).
+This is a per-vertex, every-layer cost, unlike the linker's tail.
 
 Per-call shape from the same capture:
 
@@ -115,9 +128,11 @@ dominate the module afterwards. Mode invariance holds on the host side
 
 ## Finding 4 — inside the host service (the ticket's named targets, re-measured)
 
-Ordinary host service wall, 240 invocations, `attrib8-final`:
+Ordinary host service wall, 240 invocations, `attrib8-final` (reduced capture
+committed at `captures/ordinary/attrib8-final.reduced.log`; the `svc` total is
+3,691.3 ms and the reduced stage table is `host-split.txt`):
 
-| stage | wall ms | share |
+| stage | wall ms | share of svc |
 | --- | ---: | ---: |
 | `preprocess_input_outline` total | 1,597.9 | **43.3%** |
 | — stage 1 triple offset | 1,536.3 | 41.6% |
@@ -125,8 +140,8 @@ Ordinary host service wall, 240 invocations, `attrib8-final`:
 | — — — pass 1 `inflate_paths_64` | 530.1 | 14.4% |
 | — — — pass 2 `execute_tree` | 571.3 | 15.5% |
 | — — follow-up `offset` | 427.7 | 11.6% |
-| — stages 2-9 combined | 61.6 | 1.7% |
-| `from_polygons` total | 1,400.9 | **38.0%** |
+| — stages 2-9 combined | 59.9 | 1.6% |
+| `SkeletalTrapezoidationGraph::from_polygons` total | 1,400.9 | **38.0%** |
 | — `voronoi_from_segments` | 1,239.0 | 33.6% |
 | — — boostvoronoi `Builder::build` | 1,235.7 | 33.5% |
 | — — `Builder::build` (per-cell loop) | 55.7 | 1.5% |
@@ -139,11 +154,13 @@ Ordinary host service wall, 240 invocations, `attrib8-final`:
 | everything else named | <1.5% each | — |
 | WIT in+out conversion | 1.2 | 0.03% |
 
-The named-stage sum closes to 99.2% of the pipeline total — the 364.932 ms
-remainder the old study could not explain is now covered. The old study's two
-tied leads (preprocess 1,782.8 ms vs graph 1,785.3 ms) keep their shape: both
-are real, preprocess is now slightly larger, and each is dominated by a single
-sub-term (triple offset / boostvoronoi sweep).
+The named-stage sum closes to 98.7% of the pipeline total — the 364.932 ms
+remainder the old study could not explain is now covered (the named-share check
+uses `attrib3`, where it is 99.2%; both are within the ±0.5pt bracket the
+verifier enforces). The old study's two tied leads (preprocess 1,782.8 ms vs
+graph 1,785.3 ms) keep their shape: both are real, preprocess is now slightly
+larger, and each is dominated by a single sub-term (triple offset / boostvoronoi
+sweep).
 
 ## The one candidate
 
@@ -155,51 +172,83 @@ The evidence:
 
 - `legacy_overhang_quartile` / `indexed_overhang_quartile`
   (`crates/slicer-core/src/perimeter_spatial.rs`) both classify points through
-  `slicer_ir::point_in_polygon_winding(polygon, x, y, 0.0)`.
+  `slicer_ir::point_in_polygon_winding(polygon, x, y, 0.0)`
+  (`crates/slicer-ir/src/polygon_predicate.rs`).
 - That predicate runs two passes: a per-edge point-to-segment projection
   guarded by `dist2 <= eps²`, then the winding scan. At `eps = 0.0` the first
   pass can only fire for a point exactly on an edge, yet still pays a full
-  projection per edge. **Measured: 62.8-66.3% of the predicate's own cost**
-  across 64/512/4096-vertex rings, with identical inside/outside verdicts
-  between the full predicate and a winding-only replica
-  (`t25_probe_winding_pass_share_tdd`).
+  projection per edge. **Measured: 56.5-71.2% of the predicate's own cost**
+  across four runs of 64/512/4096-vertex rings (raw outputs preserved at
+  `probe_outputs/winding_pass_share.run{1..4}.txt`; the original draft quoted
+  62.8-66.3% from runs that were not preserved, and the full preserved sample
+  widens the range), with identical inside/outside verdicts between the full
+  predicate and a winding-only replica (`t25_probe_winding_pass_share_tdd`).
 - The predicate's own doc-comment defines `0.0` as "strict containment
   (winding-number only)", so skipping the pass on that path is the contract the
-  call sites already ask for.
-- Cost is linear in band-polygon size (851 ns/call at 16 points, 3.07 µs at 64,
-  9.6 µs at 256, 39.1 µs at 1024, 157.6 µs at 4096;
+  call sites already ask for. **The exact-on-edge verdict is the open
+  question**: at `eps = 0.0` the pre-pass admits a point whose `dist2 <= 0`
+  (exactly on an edge) before the winding scan runs; the winding scan itself
+  may or may not classify that point as inside, so a straight skip is
+  *probably* value-preserving but is not proven so by this attribution. Ticket
+  45 owns that decision.
+- Cost is linear in band-polygon size (682 ns/call at 16 points, 2.46 µs at 64,
+  9.6 µs at 256, 39.2 µs at 1024, 156.0 µs at 4096 — `probe_outputs/quartile_shape.run1.txt`;
   `t25_probe_quartile_shape_tdd`), and the per-call cost tracks band complexity
   on real layers (layer 45: 59.4M fuel/call; layer 189: 2.0M fuel/call — 30x).
 
 **Shape choice (design work for the candidate's own take).** Either narrow
 `point_in_contour_winding`/`point_in_polygon_winding` so a `eps = 0.0` call
-skips the boundary pass outright (the smaller change; needs a decision on
-exactly-on-edge points, which the strict path currently admits via `dist2 <= 0`),
-or keep the predicate whole and add an inclusive per-polygon bbox prefilter in
-the quartile query so non-containing polygons never reach the O(N) scan
-(value-preserving by construction; the saving is unmeasured because the
-y-interval lookups may already reject most candidates). Both are inside the
+skips the boundary pass outright (the smaller change; needs the exact-on-edge
+decision above), or keep the predicate whole and add an inclusive per-polygon
+bbox prefilter in the quartile query so non-containing polygons never reach the
+O(N) scan (value-preserving by construction; the saving is unmeasured because
+the y-interval lookups may already reject most candidates). Both are inside the
 38.1% term the attribution localizes; neither is implemented here.
 
-**Ceiling arithmetic (fuel only, wall unmeasured).** The pre-pass removal alone
-is bounded by the measured 63-66% of the predicate, itself 38.1% of module fuel
-— a fuel ceiling of **~24-25% of module fuel**. The bbox shape's saving is a
-bound, not a measurement (see Gaps). The map's measured fuel→wall transfer is
-0-16%, so no wall win is implied.
+**Ceiling arithmetic (fuel only, wall unmeasured).** The probe's
+winding-share measurement is a native test-harness timing of a synthetic ring,
+not a guest-fuel measurement of the production predicate. The pre-pass is
+measured at 56.5-71.2% of that synthetic predicate; applying that share to the
+query's 38.1% module-fuel share gives a **fuel ceiling of ~21-27% of module
+fuel**, labelled a bound derived from a cross-domain share, not a measured
+fuel saving. The bbox shape's saving is likewise a bound, not a measurement
+(see Gaps). The map's measured fuel→wall transfer is 0-16%, so no wall win is
+implied.
 
 **Not implemented here.** The candidate needs its own scope/authorization plus
-the standing paired ordinary + accelerated A/B before any keep.
+the standing paired ordinary + accelerated A/B before any keep; the keep/drop
+decision is deferred to that take (see the recommendation below).
+
+## Recommendation
+
+**No keep/drop recommendation is possible from this ticket.** The ticket's
+acceptance line requires a paired-mode A/B before a keep/drop, and this take
+authorized attribution only (no fix, no A/B). Ticket 25 therefore resolves as
+attribution and **hands the required recommendation to the candidate's own
+take** — [Overhang-quartile query: predicate narrowing + standing paired
+A/B](../../issues/45-overhang-quartile-predicate-narrowing.md) — whose gates
+are an exactness proof plus the standing paired measurement. That is a
+deliberate scope boundary, not an omitted deliverable; the human's decision
+point is the candidate's keep/drop, and the candidate is not authorized yet.
 
 ## Validation
 
 - `python docs/specs/perf-vs-orca/evidence/t25-arachne-attribution/verify-t25.py`:
-  exit 0; re-derives the 240-line capture, the stage shares, the guest split,
-  the mode ratios, and every output hash from the raw captures.
+  exit 0 against the in-repo reduced captures (`captures/`); re-derives the
+  Finding-1 rows, every stage share, the guest split, the mode ratios, the
+  per-layer coverage, and every output hash. `--capture-root
+  .local-artifacts/perimeter-reference-preparation/t25-arachne-attribution-run1`
+  runs the same checks against the full durable raw tree.
+- `python docs/specs/perf-vs-orca/evidence/t25-arachne-attribution/reduce_captures.py`:
+  regenerates `captures/` (probe lines + `profile_summary` +
+  `module_complete` for `com.core.arachne-perimeters`) and
+  `output-hashes.json` from the raw tree.
 - `python docs/specs/perf-vs-orca/evidence/t25-arachne-attribution/t25_split.py
   <capture>`: the reducer that produced `host-split.txt`.
 - Probe-only tests: `t25_probe_quartile_shape_tdd` (linear-scaling evidence),
   `t25_probe_winding_pass_share_tdd` (the `eps=0` pass share). Both are
-  probe-only and were removed with the rest of the probe.
+  probe-only and were removed with the rest of the probe; their captured
+  outputs are preserved at `probe_outputs/`.
 - No Rust tests were run against production code: nothing in the production
   tree changed (probes stashed/removed); guests were rebuilt to production and
   `cargo xtask build-guests --check` exits 0 at the time of writing.
@@ -210,6 +259,11 @@ the standing paired ordinary + accelerated A/B before any keep.
   deterministic result is the fuel split. Wall sums also include a
   non-trivial capture-to-capture spread (e.g. module wall 18,130 ms vs
   13,460 ms across identical builds), consistent with the map's §3.3 class.
+- The 62.8-66.3% figure first drafted into the ticket came from the original
+  session's probe runs, which were not preserved; the four-run sample preserved
+  here spans **56.5-71.2%**. The wider range is quoted because it is the honest
+  one, and the share is from a synthetic ring in a native harness, not from
+  production band polygons.
 - The bbox-hit share of `overhang_quartile`'s scans was NOT measured (the
   counting probe would have added O(N) work inside the function it measured
   and was removed before the final captures); the candidate's bbox saving is
@@ -221,3 +275,5 @@ the standing paired ordinary + accelerated A/B before any keep.
   and vertex count, but the band polygon's own shape was not dumped; the
   scaling test supports the interpretation rather than proving it for that
   layer.
+- Wall transfer of either candidate shape is unmeasured; the fuel ceiling does
+  not imply a wall win.

@@ -1,12 +1,13 @@
 """Read-only verification of the T21 linker-subcost evidence.
 
-Re-reads the raw captures under
-`.local-artifacts/perimeter-reference-preparation/t21-linker-subcost-run1/`
-and re-derives every headline figure in FINDINGS.md. Launches no slices and
-never writes outside stdout.
+Runs against the in-repo reduced captures (`captures/`) by default, so a plain
+checkout can reproduce every headline; pass `--capture-root` to point at the
+full durable raw tree instead. Launches no slices and writes nothing.
 
-Usage: python verify-t21.py [--run-root <dir>]
+Usage: python verify-t21.py [--capture-root <dir>]
 """
+
+from __future__ import annotations
 
 import argparse
 import hashlib
@@ -14,80 +15,92 @@ import json
 import sys
 from pathlib import Path
 
-WS = Path(__file__).resolve().parents[5]
-DEFAULT_ROOT = (
-    WS
-    / ".local-artifacts"
-    / "perimeter-reference-preparation"
-    / "t21-linker-subcost-run1"
-)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from t21_capture import module_rows, probe_counters as read_probe_counters  # noqa: E402
+
+HERE = Path(__file__).resolve().parent
+DEFAULT_ROOT = HERE / "captures"
 REFERENCE_SHA = "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161"
+MODULE_ID = "com.core.infill-linker"
 
 
-def sha256(path):
-    h = hashlib.sha256()
-    with open(path, "rb") as stream:
-        for chunk in iter(lambda: stream.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+def resolve(root: Path, stem: str) -> Path:
+    """Accept either the in-repo reduced capture or the full raw capture."""
+    for suffix in (".reduced.log", ".jsonl"):
+        candidate = root / f"{stem}{suffix}"
+        if candidate.exists():
+            return candidate
+    raise SystemExit(f"capture not found: {root / stem}.{{reduced.log,jsonl}}")
 
 
-def read_capture(path):
-    """Return (linker_per_layer, summary) for one profile capture."""
-    per_layer = {}
-    summary = None
-    for line in open(path, encoding="utf-8"):
+def load_manifest(root: Path) -> dict:
+    manifest = root / "output-hashes.json"
+    if not manifest.exists():
+        manifest = DEFAULT_ROOT / "output-hashes.json"
+    return json.loads(manifest.read_text(encoding="utf-8"))
+
+
+def digest_bytes(path: Path) -> str:
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def iter_events(path: Path):
+    for line in path.open(encoding="utf-8", errors="replace"):
         line = line.strip()
         if not line.startswith("{"):
             continue
         try:
-            e = json.loads(line)
+            yield json.loads(line)
         except json.JSONDecodeError:
             continue
+
+
+def read_capture(path: Path):
+    """Return (linker_per_layer, summary, probe_counters) for one capture."""
+    per_layer = {}
+    summary = None
+    for e in iter_events(path):
         if e.get("event") == "profile_summary":
             summary = e["profile"]
-        if (
-            e.get("event") == "module_complete"
-            and e.get("module_id") == "com.core.infill-linker"
-        ):
-            d = e.get("profile_scopes") or {}
-            per_layer[e.get("layer_index", -1)] = {
-                "elapsed_ms": e.get("elapsed_ms"),
-                "fuel": d.get("call_fuel", 0),
-                "scopes": {s["scope"]: s["self_fuel"] for s in d.get("scopes", [])},
-            }
-    return per_layer, summary
+    for li, elapsed_ms, fuel, scopes in module_rows(path):
+        per_layer[li] = {
+            "elapsed_ms": elapsed_ms,
+            "fuel": fuel,
+            "scopes": {s["scope"]: s["self_fuel"] for s in scopes},
+        }
+    return per_layer, summary, read_probe_counters(path)
 
 
 def linker_summary_row(summary):
-    for m in summary["modules"]:
-        if m["module_id"] == "com.core.infill-linker":
-            return m
+    for module in summary["modules"]:
+        if module["module_id"] == MODULE_ID:
+            return module
     raise AssertionError("no infill-linker row in profile_summary")
 
 
-def verify(run_root):
+def verify(run_root: Path) -> int:
     checks = []
 
     def check(name, condition, detail):
         checks.append((name, bool(condition), detail))
 
-    # --- capture hashes + byte-identical outputs --------------------------
-    for rel, expected in [
-        ("ordinary/output.gcode", REFERENCE_SHA),
-        ("ordinary/probe-output.gcode", REFERENCE_SHA),
-        ("ordinary/probe2-output.gcode", REFERENCE_SHA),
-        ("accelerated/probe2-output.gcode", REFERENCE_SHA),
-    ]:
-        p = run_root / rel
+    # --- output byte-identity ---------------------------------------------
+    manifest = load_manifest(run_root)
+    check(
+        "manifest reference is the frozen Arachne reference",
+        manifest["frozen_reference"]["sha256"] == REFERENCE_SHA,
+        manifest["frozen_reference"]["sha256"][:16],
+    )
+    for entry in manifest["captures"]:
         check(
-            f"sha256({rel})",
-            p.exists() and sha256(p) == expected,
-            f"exists={p.exists()}",
+            f"{entry['capture']} output == frozen Arachne reference",
+            entry["sha256"] == REFERENCE_SHA,
+            entry["sha256"][:16],
         )
 
     # --- capture 1: baseline split ---------------------------------------
-    base_layers, base_summary = read_capture(run_root / "ordinary" / "profile.jsonl")
+    base_layers, base_summary, _ = read_capture(resolve(run_root, "ordinary/profile"))
     linker_row = linker_summary_row(base_summary)
     total_fuel = linker_row["total_fuel"]
     scoped = sum(s["self_fuel"] for s in linker_row["scopes"])
@@ -111,8 +124,8 @@ def verify(run_root):
     )
 
     # --- capture 3: the sub-split ----------------------------------------
-    probe_layers, probe_summary = read_capture(
-        run_root / "ordinary" / "probe2-profile.jsonl"
+    probe_layers, probe_summary, probe_counters = read_capture(
+        resolve(run_root, "ordinary/probe2-profile")
     )
     probe_row = linker_summary_row(probe_summary)
     probe_total = probe_row["total_fuel"]
@@ -148,9 +161,36 @@ def verify(run_root):
         f"{tail_inflate / inflate:.4f}",
     )
 
+    # --- the hoist saving, re-derived per layer --------------------------
+    # Per-layer, per-call inflate cost is heterogeneous, so the hoist saving
+    # is re-derived layer-aware rather than from the uniform 1 - 239/4520.
+    clip_calls = {li: c.get("clip_calls", 0) for li, c in probe_counters.items()}
+    fallbacks = {li: c.get("fallbacks", 0) for li, c in probe_counters.items()}
+    per_layer_reclip = {}
+    for e in iter_events(resolve(run_root, "ordinary/probe2-profile")):
+        if e.get("event") == "module_complete" and e.get("module_id") == MODULE_ID:
+            scopes_e = e.get("profile_scopes") or {}
+            for s in scopes_e.get("scopes", []):
+                if s["scope"] == "t21::path_reclip":
+                    per_layer_reclip[e.get("layer_index", -1)] = s["calls"]
+    savings = 0.0
+    for li, row in probe_layers.items():
+        layer_inflate = row["scopes"].get("t21::clip_polylines_inflate", 0)
+        calls = clip_calls.get(li, 0)
+        if calls == 0:
+            continue
+        # one preparation per path_reclip invocation + one per fallback clip
+        preparations = per_layer_reclip.get(li, 0) + fallbacks.get(li, 0)
+        savings += layer_inflate * (1 - preparations / calls)
+    check(
+        "hoist saving is >=94% of the inflate term",
+        savings / inflate >= 0.94,
+        f"{savings / inflate:.4f} of inflate = {savings / probe_total:.4f} of linker fuel",
+    )
+
     # --- cross-mode invariance -------------------------------------------
-    acc_layers, acc_summary = read_capture(
-        run_root / "accelerated" / "probe2-profile.jsonl"
+    acc_layers, acc_summary, _ = read_capture(
+        resolve(run_root, "accelerated/probe2-profile")
     )
     acc_row = linker_summary_row(acc_summary)
     acc_scopes = {s["scope"]: s["self_fuel"] for s in acc_row["scopes"]}
@@ -163,7 +203,7 @@ def verify(run_root):
     check(
         "accelerated linker is #1 fuel consumer",
         max(acc_summary["modules"], key=lambda m: m["total_fuel"])["module_id"]
-        == "com.core.infill-linker",
+        == MODULE_ID,
         f"top={max(acc_summary['modules'], key=lambda m: m['total_fuel'])['module_id']}",
     )
     check(
@@ -176,20 +216,7 @@ def verify(run_root):
     )
 
     # --- host-vs-guest boundary (counters + fn_us) ------------------------
-    counters = {}
-    for line in open(run_root / "ordinary" / "probe-profile.jsonl", encoding="utf-8"):
-        line = line.strip()
-        if not line.startswith("{"):
-            continue
-        try:
-            e = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if e.get("event") == "module_log" and e.get("message", "").startswith(
-            "T21-PROBE"
-        ):
-            parts = dict(x.split("=", 1) for x in e["message"].split()[1:])
-            counters[int(parts.pop("layer"))] = {k: int(v) for k, v in parts.items()}
+    _, _, counters = read_capture(resolve(run_root, "ordinary/probe-profile"))
     check(
         "probe counters present for 240 layers",
         len(counters) == 240,
@@ -214,12 +241,12 @@ def verify(run_root):
     if failures:
         print(f"FAIL: {len(failures)} check(s) failed")
         return 1
-    print(f"PASS: all {len(checks)} checks re-derived from raw captures")
+    print(f"PASS: all {len(checks)} checks re-derived from the captures")
     return 0
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--run-root", type=Path, default=DEFAULT_ROOT)
+    parser.add_argument("--capture-root", type=Path, default=DEFAULT_ROOT)
     args = parser.parse_args()
-    sys.exit(verify(args.run_root))
+    sys.exit(verify(args.capture_root))

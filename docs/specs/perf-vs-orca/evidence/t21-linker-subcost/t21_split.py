@@ -13,6 +13,10 @@ Usage: python t21_split.py <capture.jsonl> [--top N]
 import json
 import sys
 from collections import defaultdict
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from t21_capture import module_rows, probe_counters  # noqa: E402
 
 SCOPE_ORDER = [
     "t21::orchestrate_total",
@@ -35,50 +39,18 @@ def main(path, top=12):
     per_layer = {}
     scope_tot = defaultdict(lambda: {"calls": 0, "self": 0, "total": 0})
     scope_tail = defaultdict(lambda: {"calls": 0, "self": 0, "total": 0})
-    probe_lines = {}
+    probe_lines = probe_counters(path)
 
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            if line.startswith("T21-PROBE"):
-                parts = dict(p.split("=", 1) for p in line.split()[1:])
-                probe_lines[int(parts["layer"])] = {
-                    k: int(v) for k, v in parts.items() if k != "layer"
-                }
-                continue
-            if not line.startswith("{"):
-                continue
-            try:
-                e = json.loads(line)
-            except Exception:
-                continue
-            if e.get("event") == "module_log":
-                msg = e.get("message", "")
-                if msg.startswith("T21-PROBE"):
-                    parts = dict(p.split("=", 1) for p in msg.split()[1:])
-                    probe_lines[int(parts["layer"])] = {
-                        k: int(v) for k, v in parts.items() if k != "layer"
-                    }
-                continue
-            if (
-                e.get("event") != "module_complete"
-                or e.get("module_id") != "com.core.infill-linker"
-            ):
-                continue
-            li = e.get("layer_index")
-            d = e.get("profile_scopes")
-            fuel = d["call_fuel"] if d else 0
-            per_layer[li] = {"elapsed_ms": e.get("elapsed_ms"), "fuel": fuel}
-            for row in (d or {}).get("scopes", []):
+    for li, elapsed_ms, fuel, scopes in module_rows(path):
+        per_layer[li] = {"elapsed_ms": elapsed_ms, "fuel": fuel}
+        for row in scopes:
+            for bucket in ("self", "total"):
+                scope_tot[row["scope"]][bucket] += row[f"{bucket}_fuel"]
+            scope_tot[row["scope"]]["calls"] += row["calls"]
+            if li in (0, 1, 2):
                 for bucket in ("self", "total"):
-                    scope_tot[row["scope"]][bucket] += row[f"{bucket}_fuel"]
-                scope_tot[row["scope"]]["calls"] += row["calls"]
-                if li in (0, 1, 2):
-                    for bucket in ("self", "total"):
-                        scope_tail[row["scope"]][bucket] += row[f"{bucket}_fuel"]
-                    scope_tail[row["scope"]]["calls"] += row["calls"]
+                    scope_tail[row["scope"]][bucket] += row[f"{bucket}_fuel"]
+                scope_tail[row["scope"]]["calls"] += row["calls"]
 
     tail = [li for li in (0, 1, 2)]
     total_fuel = sum(v["fuel"] for v in per_layer.values())

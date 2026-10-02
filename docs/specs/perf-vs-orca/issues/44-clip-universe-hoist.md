@@ -16,19 +16,27 @@ Graduated from [infill-linker attribution](21-infill-linker-attribution.md)'s
 measured split (2026-10-01): the linker is 97.65% the per-path re-clip, and
 64.84% of all linker fuel is `clip_polylines`'s repeated flatten + 1-unit
 `inflate_paths_64` of a clip universe that every call in one invocation shares.
-Fuel ceiling: 94.7% of the inflate term = 61.4% of linker fuel ≈ 28.1% of
-slice fuel (239.5B baseline). Wall transfer unmeasured.
+Fuel ceiling — an **estimate under a same-cost assumption**, not a measurement:
+the uniform-count bound is 94.7% of the inflate term = 61.4% of linker fuel ≈
+28.1% of slice fuel (239.5B baseline); the layer-aware estimate is 98.2% of the
+inflate term = 63.7% of linker fuel. Both assume the surviving deduplicated
+preparation costs the same as one current per-call preparation, which the fuel
+split does not prove. Wall transfer unmeasured.
 
 ## Work (only after explicit human authorization of this take)
 
 - Choose the shape: a prepared-universe entry point in
   `crates/slicer-core/src/polygon_ops.rs` (`clip_polylines` keeps its current
-  one-shot API for `lightning/layer.rs`, `lightning/mod.rs`,
-  `prepass_slice.rs`), versus a guest-side precomputed universe, versus a
-  batched multi-polyline entry that flattens+inflates once. Whichever is
-  chosen, `inflate_paths_64`'s inputs and outputs must be bit-identical to
-  today's per-call computation, and AC-1…AC-7 of the `clip_polylines` contract
-  must hold.
+  one-shot API for `convert_to_lines`
+  (`crates/slicer-core/src/algos/lightning/layer.rs`), the tree-sampling loop
+  in `generate_lightning_trees`
+  (`crates/slicer-core/src/algos/lightning/mod.rs`), and
+  `floating_edges_of_gated_area`
+  (`crates/slicer-core/src/algos/prepass_slice.rs`)), versus a guest-side
+  precomputed universe, versus a batched multi-polyline entry that
+  flattens+inflates once. Whichever is chosen, `inflate_paths_64`'s inputs and
+  outputs must be bit-identical to today's per-call computation, and AC-1…AC-7
+  of the `clip_polylines` contract must hold.
 - Prove output equivalence first: the frozen supports-off Benchy Arachne
   reference (`7049a06d…`) is byte-identical, plus the classic and base cells'
   outputs if the take wants a broader exactness claim; add a regression test

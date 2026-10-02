@@ -1,0 +1,11 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.28s
+     Running tests\t25_probe_winding_pass_share_tdd.rs (target\debug\deps\t25_probe_winding_pass_share_tdd-d1bf0de2dcfcd8b2.exe)
+
+running 1 test
+PROBE n=64 full_ns_per_call=3023.5 winding_only_ns=870.7 pass1_share=0.712 hits_full=102000 hits_wind=102000
+PROBE n=512 full_ns_per_call=20363.6 winding_only_ns=8028.1 pass1_share=0.606 hits_full=102000 hits_wind=102000
+PROBE n=4096 full_ns_per_call=169840.5 winding_only_ns=58680.0 pass1_share=0.654 hits_full=102000 hits_wind=102000
+test boundary_pre_pass_share_of_the_winding_predicate ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 33.38s
+

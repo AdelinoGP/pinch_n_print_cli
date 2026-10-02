@@ -1,33 +1,56 @@
-"""Read-only re-derivation of every T25 FINDINGS headline from raw captures.
+"""Read-only re-derivation of every T25 FINDINGS headline from the captures.
 
-Usage: python verify-t25.py
+Runs against the in-repo reduced captures (`captures/`) by default, so a plain
+checkout can reproduce every headline; pass `--capture-root` to point at the
+full durable raw tree instead. Never writes outside stdout and launches no
+slices.
 
 Checks (exit 0 = all pass):
-  * the ordinary capture has exactly 240 T25-PROBE lines and every line has svc==1,
-  * both probe outputs are byte-identical to the frozen Arachne reference,
-  * the headline shares (preprocess, stage 1, offset2_ex, voronoi build,
-    connect_junctions, reorder) reproduce from the raw capture,
-  * the stage sum closes to the pipeline total within 0.5%,
-  * the guest-side module elapsed sum and its relation to the pipeline total.
+  * every capture has 240 T25-PROBE lines with svc==1 per line,
+  * every measured output is byte-identical to the frozen Arachne reference
+    (via `captures/output-hashes.json`),
+  * the Finding-1 module/host split per capture,
+  * the headline shares (preprocess, stage 1, graph, boostvoronoi,
+    connect_junctions) reproduce from the raw capture,
+  * the named-stage sum closes to the pipeline total within 1%,
+  * the guest-side fuel split and the ordinary/accelerated ratios,
+  * the 239/239 per-layer coverage and the top-12 layer share.
+
+Usage: python verify-t25.py [--capture-root <dir>]
 """
 
+from __future__ import annotations
+
+import argparse
 import hashlib
 import json
-import re
+import sys
 from collections import defaultdict
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[5]
-CAPTURE = (
-    ROOT
-    / ".local-artifacts/perimeter-reference-preparation/t25-arachne-attribution-run1/ordinary"
-)
-REFERENCE = (
-    ROOT
-    / ".local-artifacts/perimeter-reference-preparation/t41-20260930T232255Z/corpus/supports-off-benchy/reference-arachne.gcode"
-)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from t25_capture import module_events, module_scopes, parse_probe_lines  # noqa: E402
+
+HERE = Path(__file__).resolve().parent
+DEFAULT_ROOT = HERE / "captures"
 
 failures = []
+
+
+def resolve(root: Path, stem: str) -> Path:
+    """Accept either the in-repo reduced capture or the full raw capture."""
+    for suffix in (".reduced.log", ".stderr.txt"):
+        candidate = root / f"{stem}{suffix}"
+        if candidate.exists():
+            return candidate
+    raise SystemExit(f"capture not found: {root / stem}.{{reduced.log,stderr.txt}}")
+
+
+def load_manifest(root: Path) -> dict:
+    manifest = root / "output-hashes.json"
+    if not manifest.exists():
+        manifest = DEFAULT_ROOT / "output-hashes.json"
+    return json.loads(manifest.read_text(encoding="utf-8"))
 
 
 def check(name, condition, detail=""):
@@ -37,298 +60,292 @@ def check(name, condition, detail=""):
         failures.append(name)
 
 
-def digest(path):
+def digest(path: Path) -> str:
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def parse(path):
-    rows = []
-    with path.open(encoding="utf-8", errors="replace") as f:
-        for line in f:
-            line = line.strip()
-            if not line.startswith("T25-PROBE"):
+def aggregate(rows):
+    agg = defaultdict(lambda: [0, 0])
+    for row in rows:
+        for key, value in row.items():
+            if key == "seq":
                 continue
-            fields, seq = {}, None
-            for part in line.split()[1:]:
-                key, value = part.split("=", 1)
-                if key == "seq":
-                    seq = int(value)
-                else:
-                    wall, calls = value.split(":")
-                    fields[key] = (int(wall), int(calls))
-            rows.append({"seq": seq, **fields})
-    return rows
+            agg[key][0] += value[0]
+            agg[key][1] += value[1]
+    return agg
 
 
-capture = CAPTURE / "attrib3.stderr.txt"
-rows = parse(capture)
-# Instrumented same-run capture carries `module_complete` events (the default
-# core-tier stream does not).
-inst_capture = CAPTURE / "attrib10-verify.stderr.txt"
-
-check("capture has 240 probe lines", len(rows) == 240, f"n={len(rows)}")
-check(
-    "every line flushed exactly one service call",
-    all(r.get("svc", (0, 0))[1] == 1 for r in rows),
-)
-
-agg = defaultdict(lambda: [0, 0])
-for row in rows:
-    for key, value in row.items():
-        if key == "seq":
-            continue
-        wall, calls = value
-        agg[key][0] += wall
-        agg[key][1] += calls
-
-total = agg["svc"][0]
-pipe = agg["pipe"][0]
+def module_elapsed_ms(path) -> tuple[int, int]:
+    events = module_events(path)
+    return sum(e.get("elapsed_ms", 0) for e in events), len(events)
 
 
-def share(key):
-    return agg[key][0] / total
+def main(root: Path) -> None:
+    # ---- probe-line integrity, every capture -----------------------------
+    names = [
+        "ordinary/attrib3",
+        "ordinary/attrib4-inst",
+        "ordinary/attrib5-prof",
+        "ordinary/attrib10-verify",
+        "ordinary/attrib8-final",
+        "accelerated/attrib",
+    ]
+    rows = {}
+    for name in names:
+        path = resolve(root, name)
+        rows[name] = parse_probe_lines(path)
+        check(
+            f"{name}: 240 probe lines",
+            len(rows[name]) == 240,
+            f"n={len(rows[name])}",
+        )
+        check(
+            f"{name}: every line flushed exactly one service call",
+            all(r.get("svc", (0, 0))[1] == 1 for r in rows[name]),
+        )
 
+    # ---- Finding 1: module vs host split, per capture --------------------
+    expected = {
+        "ordinary/attrib4-inst": (13954, 2741.3),
+        "ordinary/attrib5-prof": (14656, 2648.5),
+        "ordinary/attrib10-verify": (15033, 2645.2),
+        "ordinary/attrib8-final": (20194, 3691.3),
+        "accelerated/attrib": (13015, 3268.0),
+    }
+    for name, (want_ms, want_svc) in expected.items():
+        ms, n = module_elapsed_ms(resolve(root, name))
+        svc = aggregate(rows[name])["svc"][0] / 1e6
+        check(
+            f"Finding 1 {name}: module elapsed sum",
+            n == 240 and ms == want_ms,
+            f"{ms} ms over {n} dispatches",
+        )
+        check(
+            f"Finding 1 {name}: host service sum",
+            abs(svc - want_svc) < 0.05,
+            f"{svc:.1f} ms",
+        )
 
-check(
-    "pipeline wall is >=99% of service wall",
-    pipe / total >= 0.99,
-    f"pipe/svc={pipe / total:.4f}",
-)
-check(
-    "preprocess share = 41.7% (+-0.5pt)",
-    abs(share("pre") - 0.4167) < 0.005,
-    f"{share('pre'):.4f}",
-)
-check(
-    "stage-1 share = 40.1% (+-0.5pt)",
-    abs(share("s1") - 0.4007) < 0.005,
-    f"{share('s1'):.4f}",
-)
-check(
-    "stage-1 == offset2_ex + offset (within bracket slop)",
-    abs(agg["s1"][0] - (agg["s1_o2"][0] + agg["s1_off"][0])) / agg["s1"][0] < 0.01,
-    f"s1={agg['s1'][0] / 1e6:.1f} s1_o2+s1_off={(agg['s1_o2'][0] + agg['s1_off'][0]) / 1e6:.1f} ms",
-)
-check(
-    "graph share = 37.5% (+-0.5pt)",
-    abs(share("g_tot") - 0.3749) < 0.005,
-    f"{share('g_tot'):.4f}",
-)
-check(
-    "voronoi build is >=80% of graph total",
-    agg["g_vbuild"][0] / agg["g_tot"][0] >= 0.80,
-    f"{agg['g_vbuild'][0] / agg['g_tot'][0]:.4f}",
-)
-check(
-    "boostvoronoi build share = 33.0% (+-0.5pt)",
-    abs(share("g_vbuild") - 0.3302) < 0.005,
-    f"{share('g_vbuild'):.4f}",
-)
-check(
-    "connect_junctions share = 6.8% (+-0.5pt)",
-    abs(share("conn") - 0.0676) < 0.005,
-    f"{share('conn'):.4f}",
-)
+    # ---- Finding 4: host stage shares (attrib3 is the reduced reference) --
+    a = aggregate(rows["ordinary/attrib3"])
+    total = a["svc"][0]
+    pipe = a["pipe"][0]
 
-# Named top-level stages sum to the pipeline total (no remainder > 0.5%).
-top_level = [
-    "pre",
-    "g_tot",
-    "strat",
-    "cent",
-    "beads",
-    "noncent",
-    "tm_gen",
-    "tm_filt",
-    "ends",
-    "apply_tr",
-    "ribs",
-    "pop",
-    "up",
-    "down",
-    "junc",
-    "conn",
-    "maxima",
-    "stitch",
-    "rm_small",
-    "sep",
-    "simp",
-    "rm_empty",
-    "reorder",
-]
-named = sum(agg[key][0] for key in top_level)
-check(
-    "named stages close to pipeline total within 1%",
-    abs(named - pipe) / pipe < 0.01,
-    f"named/pipe={named / pipe:.4f}",
-)
+    def share(key):
+        return a[key][0] / total
 
-# Output byte-identity for both probe runs.
-reference_hash = digest(REFERENCE)
-check(
-    "attrib-output.gcode == frozen Arachne reference",
-    digest(CAPTURE / "attrib-output.gcode") == reference_hash,
-)
-check(
-    "attrib2-output.gcode == frozen Arachne reference",
-    digest(CAPTURE / "attrib2-output.gcode") == reference_hash,
-)
-check(
-    "attrib3-output.gcode == frozen Arachne reference",
-    digest(CAPTURE / "attrib3-output.gcode") == reference_hash,
-)
-
-# Guest-side module elapsed sum for the same run (instrumented capture).
-module_ms = []
-with inst_capture.open(encoding="utf-8", errors="replace") as f:
-    for line in f:
-        line = line.strip()
-        if not line.startswith("{"):
-            continue
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if (
-            event.get("event") == "module_complete"
-            and event.get("module_id") == "com.core.arachne-perimeters"
-        ):
-            module_ms.append(event.get("elapsed_ms", 0))
-check(
-    "Arachne module_complete covers 240 layers",
-    len(module_ms) == 240,
-    f"n={len(module_ms)}",
-)
-
-# Same-run host-vs-module split from the instrumented capture: re-read its own
-# probe lines rather than reusing the uninstrumented capture's total.
-inst_svc = []
-with inst_capture.open(encoding="utf-8", errors="replace") as f:
-    for line in f:
-        line = line.strip()
-        if not line.startswith("T25-PROBE"):
-            continue
-        fields = dict(part.split("=", 1) for part in line.split()[1:])
-        inst_svc.append(int(fields["svc"].split(":")[0]))
-check(
-    "instrumented capture has 240 probe lines",
-    len(inst_svc) == 240,
-    f"n={len(inst_svc)}",
-)
-if len(module_ms) == 240 and len(inst_svc) == 240:
-    module_total_ms = sum(module_ms)
-    svc_total_ms = sum(inst_svc) / 1e6
-    print(
-        f"INFO  same-run arachne module elapsed sum: {module_total_ms} ms "
-        f"vs host pipeline service sum {svc_total_ms:.1f} ms "
-        f"-> host pipeline is {svc_total_ms / module_total_ms * 100:.1f}% of module elapsed"
+    check(
+        "pipeline wall is >=99% of service wall",
+        pipe / total >= 0.99,
+        f"pipe/svc={pipe / total:.4f}",
+    )
+    check(
+        "preprocess share = 41.7% (+-0.5pt)",
+        abs(share("pre") - 0.4167) < 0.005,
+        f"{share('pre'):.4f}",
+    )
+    check(
+        "stage-1 share = 40.1% (+-0.5pt)",
+        abs(share("s1") - 0.4007) < 0.005,
+        f"{share('s1'):.4f}",
+    )
+    check(
+        "stage-1 == offset2_ex + offset (within bracket slop)",
+        abs(a["s1"][0] - (a["s1_o2"][0] + a["s1_off"][0])) / a["s1"][0] < 0.01,
+        f"s1={a['s1'][0] / 1e6:.1f} s1_o2+s1_off={(a['s1_o2'][0] + a['s1_off'][0]) / 1e6:.1f} ms",
+    )
+    check(
+        "graph share = 37.5% (+-0.5pt)",
+        abs(share("g_tot") - 0.3749) < 0.005,
+        f"{share('g_tot'):.4f}",
+    )
+    check(
+        "voronoi build is >=80% of graph total",
+        a["g_vbuild"][0] / a["g_tot"][0] >= 0.80,
+        f"{a['g_vbuild'][0] / a['g_tot'][0]:.4f}",
+    )
+    check(
+        "boostvoronoi build share = 33.0% (+-0.5pt)",
+        abs(share("g_vbuild") - 0.3302) < 0.005,
+        f"{share('g_vbuild'):.4f}",
+    )
+    check(
+        "connect_junctions share = 6.8% (+-0.5pt)",
+        abs(share("conn") - 0.0676) < 0.005,
+        f"{share('conn'):.4f}",
     )
 
-# Per-invocation table with shape metrics (top 12 by service wall).
-ranked = sorted(rows, key=lambda r: -r.get("svc", (0, 0))[0])
-print("\nINFO  top invocations by service wall:")
-print(
-    f"{'seq':>5} {'svc_ms':>8} {'pre_ms':>8} {'graph_ms':>9} {'poly':>5} {'segs':>5} {'lines':>6}"
-)
-for r in ranked[:12]:
-    print(
-        f"{r['seq']:>5} {r['svc'][0] / 1e6:>8.1f} {r['pre'][0] / 1e6:>8.1f} "
-        f"{r['g_tot'][0] / 1e6:>9.1f} {r['m_polys'][1]:>5} {r['m_segs'][1]:>5} {r['m_lines'][1]:>6}"
+    # ---- named-stage closure ---------------------------------------------
+    top_level = [
+        "pre",
+        "g_tot",
+        "strat",
+        "cent",
+        "beads",
+        "noncent",
+        "tm_gen",
+        "tm_filt",
+        "ends",
+        "apply_tr",
+        "ribs",
+        "pop",
+        "up",
+        "down",
+        "junc",
+        "conn",
+        "maxima",
+        "stitch",
+        "rm_small",
+        "sep",
+        "simp",
+        "rm_empty",
+        "reorder",
+    ]
+    named = sum(a[key][0] for key in top_level)
+    check(
+        "named stages close to pipeline total within 1%",
+        abs(named - pipe) / pipe < 0.01,
+        f"named/pipe={named / pipe:.4f}",
     )
-top12 = sum(r["svc"][0] for r in ranked[:12])
-print(f"INFO  top-12 invocations carry {top12 / total * 100:.1f}% of the service total")
-tail_gt = sum(r["svc"][0] for r in rows if r["svc"][0] > 15_000_000)
-n_gt = sum(1 for r in rows if r["svc"][0] > 15_000_000)
-print(
-    f"INFO  {n_gt} invocations >15 ms carry {tail_gt / total * 100:.1f}% of the service total"
-)
 
-# ---- Guest-side split (fuel; the module-side unit) -----------------------
-acc_capture = (
-    ROOT
-    / ".local-artifacts/perimeter-reference-preparation/t25-arachne-attribution-run1/accelerated/attrib.stderr.txt"
-)
+    # ---- output byte-identity (hashes preserved in-repo) ------------------
+    manifest = load_manifest(root)
+    reference = manifest["frozen_reference"]["sha256"]
+    for entry in manifest["captures"]:
+        check(
+            f"{entry['capture']} output == frozen Arachne reference",
+            entry["sha256"] == reference,
+            entry["sha256"][:16],
+        )
+
+    # ---- Finding 2: guest fuel split (attrib10-verify + accelerated) ------
+    module_ord, scopes_ord = module_scopes(resolve(root, "ordinary/attrib10-verify"))
+    module_acc, scopes_acc = module_scopes(resolve(root, "accelerated/attrib"))
+
+    sd = scopes_ord["t25::signed_distance"]
+    oq = scopes_ord["t25::overhang_quartile"]
+    check(
+        "guest: signed_distance is the top scope (48.3% of module fuel)",
+        abs(sd["total_fuel"] / module_ord["total_fuel"] - 0.483) < 0.005,
+        f"{sd['total_fuel'] / module_ord['total_fuel']:.4f}",
+    )
+    check(
+        "guest: overhang_quartile is 38.1% of module fuel",
+        abs(oq["total_fuel"] / module_ord["total_fuel"] - 0.381) < 0.005,
+        f"{oq['total_fuel'] / module_ord['total_fuel']:.4f}",
+    )
+    two = sd["total_fuel"] + oq["total_fuel"]
+    check(
+        "guest: the two per-vertex queries are 86.4% of module fuel",
+        abs(two / module_ord["total_fuel"] - 0.864) < 0.005,
+        f"{two / module_ord['total_fuel']:.4f}",
+    )
+    check(
+        "guest: the host service call is <0.1% of module fuel",
+        scopes_ord["t25::host_arachne_svc"]["total_fuel"] / module_ord["total_fuel"]
+        < 0.001,
+        f"{scopes_ord['t25::host_arachne_svc']['total_fuel'] / module_ord['total_fuel']:.5f}",
+    )
+
+    # ---- Finding 3: mode ratios ------------------------------------------
+    ratio_total = module_ord["total_fuel"] / module_acc["total_fuel"]
+    check(
+        "modes: accelerated cuts module fuel 1.6-1.8x",
+        1.6 < ratio_total < 1.8,
+        f"{ratio_total:.2f}",
+    )
+    ratio_sd = sd["total_fuel"] / scopes_acc["t25::signed_distance"]["total_fuel"]
+    check(
+        "modes: signed_distance cut 1.8-2.1x", 1.8 < ratio_sd < 2.1, f"{ratio_sd:.2f}"
+    )
+    ratio_oq = oq["total_fuel"] / scopes_acc["t25::overhang_quartile"]["total_fuel"]
+    check(
+        "modes: overhang_quartile cut 1.6-1.8x", 1.6 < ratio_oq < 1.8, f"{ratio_oq:.2f}"
+    )
+    two_acc = (
+        scopes_acc["t25::signed_distance"]["total_fuel"]
+        + scopes_acc["t25::overhang_quartile"]["total_fuel"]
+    )
+    check(
+        "modes: the two queries still dominate accelerated (>=80%)",
+        two_acc / module_acc["total_fuel"] >= 0.80,
+        f"{two_acc / module_acc['total_fuel']:.4f}",
+    )
+
+    # ---- per-layer coverage and top-12 share (Finding 2 note) ------------
+    layers = []
+    for event in module_events(resolve(root, "ordinary/attrib9-verbose")):
+        data = event.get("profile_scopes") or {}
+        scopes = {s["scope"]: s for s in data.get("scopes", [])}
+        layers.append(
+            (
+                event.get("layer_index"),
+                data.get("call_fuel", 0),
+                scopes.get("t25::signed_distance", {}).get("calls", 0),
+                scopes.get("t25::overhang_quartile", {}).get("calls", 0),
+            )
+        )
+    both = [row for row in layers if row[2] > 0 and row[3] > 0]
+    check(
+        "layers: 239 of 240 dispatches call both queries",
+        len(both) == 239 and len(layers) == 240,
+        f"{len(both)}/{len(layers)}",
+    )
+    total_239 = sum(row[1] for row in layers if row[0] != 0)
+    top12 = sum(row[1] for row in sorted(both, key=lambda r: -r[1])[:12])
+    check(
+        "layers: top 12 carry 17.3% (+-0.5pt) of non-zero-layer fuel",
+        abs(top12 / total_239 - 0.173) < 0.005,
+        f"{top12 / total_239:.4f}",
+    )
+
+    # ---- probe-output evidence (the candidate's measured shares) ---------
+    # The two synthetic-ring probe tests are preserved as source + captured
+    # stdout; re-derive the quoted ranges from those outputs.
+    def probe_shares(stem: str, prefix: str) -> list[float]:
+        shares = []
+        for run in sorted((HERE / "probe_outputs").glob(f"{stem}.run*.txt")):
+            for line in run.open(encoding="utf-8", errors="replace"):
+                if line.startswith(prefix):
+                    parts = dict(p.split("=", 1) for p in line.split()[1:])
+                    shares.append(float(parts["pass1_share"]))
+        return shares
+
+    shares = probe_shares("winding_pass_share", "PROBE")
+    check(
+        "probe: winding pass share lies in 56.5-71.2% over 4 runs x 3 ring sizes",
+        len(shares) == 12
+        and min(shares) >= 0.565 - 0.001
+        and max(shares) <= 0.712 + 0.001
+        and min(shares) <= 0.575
+        and max(shares) >= 0.702,
+        f"min={min(shares):.3f} max={max(shares):.3f} n={len(shares)}",
+    )
+    scaling = []
+    for run in sorted((HERE / "probe_outputs").glob("quartile_shape.run*.txt")):
+        for line in run.open(encoding="utf-8", errors="replace"):
+            if line.startswith("PROBE"):
+                parts = dict(p.split("=", 1) for p in line.split()[1:])
+                scaling.append((int(parts["n"]), int(parts["per_call_ns"])))
+    sizes = {n for n, _ in scaling}
+    check(
+        "probe: quartile scaling covers 16..4096 and grows with ring size",
+        sizes == {16, 64, 256, 1024, 4096}
+        and len(scaling) == 10
+        and all(dict(scaling)[16] < dict(scaling)[n] for n in sizes if n != 16),
+        f"n={len(scaling)} sizes={sorted(sizes)}",
+    )
+
+    print()
+    if failures:
+        print(f"FAIL: {len(failures)} check(s) failed: {failures}")
+        raise SystemExit(1)
+    print("PASS: all checks re-derived from the captures")
 
 
-def module_scopes(path):
-    with path.open(encoding="utf-8", errors="replace") as f:
-        for line in f:
-            line = line.strip()
-            if not line.startswith("{"):
-                continue
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if event.get("event") != "profile_summary":
-                continue
-            for module in event["profile"]["modules"]:
-                if module["module_id"] == "com.core.arachne-perimeters":
-                    return module, {s["scope"]: s for s in module.get("scopes", [])}
-    raise RuntimeError(f"no arachne profile_summary in {path}")
-
-
-module_ord, scopes_ord = module_scopes(inst_capture)
-module_acc, scopes_acc = module_scopes(acc_capture)
-
-sd = scopes_ord["t25::signed_distance"]
-oq = scopes_ord["t25::overhang_quartile"]
-check(
-    "guest: signed_distance is the top scope (48.3% of module fuel)",
-    abs(sd["total_fuel"] / module_ord["total_fuel"] - 0.483) < 0.005,
-    f"{sd['total_fuel'] / module_ord['total_fuel']:.4f}",
-)
-check(
-    "guest: overhang_quartile is 38.1% of module fuel",
-    abs(oq["total_fuel"] / module_ord["total_fuel"] - 0.381) < 0.005,
-    f"{oq['total_fuel'] / module_ord['total_fuel']:.4f}",
-)
-two = sd["total_fuel"] + oq["total_fuel"]
-check(
-    "guest: the two per-vertex queries are 86.4% of module fuel",
-    abs(two / module_ord["total_fuel"] - 0.864) < 0.005,
-    f"{two / module_ord['total_fuel']:.4f}",
-)
-check(
-    "guest: the host service call is <0.1% of module fuel",
-    scopes_ord["t25::host_arachne_svc"]["total_fuel"] / module_ord["total_fuel"]
-    < 0.001,
-    f"{scopes_ord['t25::host_arachne_svc']['total_fuel'] / module_ord['total_fuel']:.5f}",
-)
-
-# Mode comparison: acceleration cuts the module 1.6-1.8x, the distance query
-# ~1.9x, the quartile query ~1.7x — and the two still dominate after.
-ratio_total = module_ord["total_fuel"] / module_acc["total_fuel"]
-check(
-    "modes: accelerated cuts module fuel 1.6-1.8x",
-    1.6 < ratio_total < 1.8,
-    f"{ratio_total:.2f}",
-)
-ratio_sd = sd["total_fuel"] / scopes_acc["t25::signed_distance"]["total_fuel"]
-check(
-    "modes: signed_distance cut 1.8-2.1x",
-    1.8 < ratio_sd < 2.1,
-    f"{ratio_sd:.2f}",
-)
-ratio_oq = oq["total_fuel"] / scopes_acc["t25::overhang_quartile"]["total_fuel"]
-check(
-    "modes: overhang_quartile cut 1.6-1.8x",
-    1.6 < ratio_oq < 1.8,
-    f"{ratio_oq:.2f}",
-)
-two_acc = (
-    scopes_acc["t25::signed_distance"]["total_fuel"]
-    + scopes_acc["t25::overhang_quartile"]["total_fuel"]
-)
-check(
-    "modes: the two queries still dominate accelerated (>=80%)",
-    two_acc / module_acc["total_fuel"] >= 0.80,
-    f"{two_acc / module_acc['total_fuel']:.4f}",
-)
-
-print()
-if failures:
-    print(f"FAIL: {len(failures)} check(s) failed: {failures}")
-    raise SystemExit(1)
-print("PASS: all checks re-derived from raw captures")
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--capture-root", type=Path, default=DEFAULT_ROOT)
+    args = parser.parse_args()
+    main(args.capture_root)

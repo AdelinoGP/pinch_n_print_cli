@@ -9,6 +9,12 @@
 /docs/specs/perf-vs-orca/evidence/t42-arachne-investigation/** -text whitespace=cr-at-eol
 /docs/specs/perf-vs-orca/evidence/t43-critical-tail/** -text whitespace=cr-at-eol
 
+# T21/T25 reduced captures and probe outputs are hash-checked byte-for-byte by
+# their verifiers; preserve their bytes.
+/docs/specs/perf-vs-orca/evidence/t21-linker-subcost/captures/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t25-arachne-attribution/captures/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t25-arachne-attribution/probe_outputs/** -text whitespace=cr-at-eol
+
 # Captured command output and source diffs retain the producer's whitespace.
 /docs/specs/perf-vs-orca/evidence/t3[89]-*/**/*.log -whitespace
 /docs/specs/perf-vs-orca/evidence/t4[0-3]-*/**/*.log -whitespace

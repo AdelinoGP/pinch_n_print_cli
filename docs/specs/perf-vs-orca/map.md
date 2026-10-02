@@ -24,8 +24,12 @@ Every number in this tracker is a ledger fact — re-derive at the point of use.
   the `check_split_owner` unbounded recursion — ledger row **DEV-173**; its
   "DEV-167" is the tree-support routing-cell defect — ledger row **DEV-174**.
   Re-derive ids from `docs/DEVIATION_LOG.md`, never from the handoff.
-- **Evidence policy:** every file this map cites lives in
-  `docs/specs/perf-vs-orca/evidence/` (in-repo). The only gitignored
+- **Evidence policy:** every claim's headline evidence lives in
+  `docs/specs/perf-vs-orca/evidence/` (in-repo) and must be re-derivable from a
+  plain checkout. A gitignored raw capture tree may be cited only as the
+  fuller, optional source that the in-repo reduced set is derived from (and
+  the reducer script must live in-repo); verification scripts must exit 0
+  against the in-repo set without the raw tree. The only other gitignored
   references allowed are the heavy model fixtures `tmp/3dbenchy.stl` and
   `tmp/base.stl` — user-supplied and licence-encumbered, they must never be
   committed.
@@ -191,10 +195,11 @@ Standing decisions for this effort (2026-09-22):
        execute; connectivity is 2.01%. The split is numerically mode-invariant
        (linker is the #1 accelerated fuel consumer at 59.1%). One candidate:
        hoist the clip-universe preparation out of the per-path loop (fuel
-       ceiling ≈ 61.4% of linker ≈ 28.1% of slice fuel), needing its own scope
-       plus the standing paired A/B. No fix, commit or acceptance retry
-       occurred; ordinary remains production and the adoption gate stays
-       inconclusive. Evidence:
+       ceiling ≈ 61.4% of linker ≈ 28.1% of slice fuel as a uniform-count
+       estimate; 63.7% of linker layer-aware; both estimates under a same-cost
+       assumption), needing its own scope plus the standing paired A/B. No
+       fix, commit or acceptance retry occurred; ordinary remains production
+       and the adoption gate stays inconclusive. Evidence:
        [linker subcost findings](evidence/t21-linker-subcost/FINDINGS.md).
       **Next chain link taken and answered (2026-10-01):**
        [Arachne graph-construction attribution](issues/25-arachne-graph-attribution.md)
@@ -205,17 +210,18 @@ Standing decisions for this effort (2026-09-22):
        still split into the old two leads (triple offset 41.6%, boostvoronoi
        sweep 33.5%) and the 364.932 ms remainder is closed. One candidate (the
        quartile predicate's `eps = 0.0` boundary pre-pass, fuel ceiling ≈
-       24–25% of module fuel) awaits its own scope plus the paired A/B. No fix,
-       commit or acceptance retry; ordinary remains production. Evidence:
+       21–27% of module fuel as a cross-domain bound) awaits its own scope plus
+       the paired A/B. No fix, commit or acceptance retry; ordinary remains
+       production. Evidence:
        [Arachne re-attribution findings](evidence/t25-arachne-attribution/FINDINGS.md).
 
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
-- [Arachne graph-construction attribution](issues/25-arachne-graph-attribution.md): **the module's cost is two guest per-vertex spatial queries — 86.4% of module fuel (`signed_distance_to_boundary` 48.3%, `overhang_quartile` 38.1%) — not the host pipeline, which is only ~18% of module elapsed** (the 75.3% ticket 06 measured was of the enclosing pipeline interval, not the module); inside the host service preprocess is 43.3% (stage-1 triple offset 41.6%) and graph construction 38.0% (boostvoronoi sweep 33.5%), closing the old 364.932 ms remainder; acceleration cuts the module 1.73x but the two queries still hold 82.0% accelerated; one candidate — the `overhang_quartile` predicate's `eps = 0.0` boundary pre-pass is a measured 62.8–66.3% of the predicate, fuel ceiling ≈ 24–25% of module fuel — awaits its own scope + paired A/B, with no fix, commit or acceptance retry.
+- [Arachne graph-construction attribution](issues/25-arachne-graph-attribution.md): **the module's cost is two guest per-vertex spatial queries — 86.4% of module fuel (`signed_distance_to_boundary` 48.3%, `overhang_quartile` 38.1%) — not the host pipeline, which is only ~18% of module elapsed** (the 75.3% ticket 06 measured was of the enclosing pipeline interval, not the module); inside the host service preprocess is 43.3% (stage-1 triple offset 41.6%) and graph construction 38.0% (boostvoronoi sweep 33.5%), closing the old 364.932 ms remainder; acceleration cuts the module 1.73x but the two queries still hold 82.0% accelerated; one candidate — the `overhang_quartile` predicate's `eps = 0.0` boundary pre-pass measures 56.5–71.2% of the predicate across four preserved synthetic-ring runs, fuel ceiling ≈ 21–27% of module fuel as a cross-domain bound — awaits its own scope + paired A/B, with no fix, commit or acceptance retry.
 
-- [infill-linker attribution](issues/21-infill-linker-attribution.md): the linker's cost is 97.65% the per-path re-clip — 64.84% of linker fuel is the per-call clip-universe pre-inflate, 32.65% the clipper execute — and the layers 1–2 tail is ~99.95% guest execution (host prep/marshalling ~1.7 ms); one candidate (hoist the universe preparation per invocation, fuel ceiling ≈ 61.4% of linker ≈ 28.1% of slice) awaits its own scope + paired A/B, with the split mode-invariant and the linker the #1 accelerated fuel consumer at 59.1%.
+- [infill-linker attribution](issues/21-infill-linker-attribution.md): the linker's cost is 97.65% the per-path re-clip — 64.84% of linker fuel is the per-call clip-universe pre-inflate, 32.65% the clipper execute — and the layers 1–2 tail is ~99.95% guest execution (host prep/marshalling ~1.7 ms); one candidate (hoist the universe preparation per invocation, fuel ceiling ≈ 61.4% of linker ≈ 28.1% of slice by the uniform-count estimate, 63.7% of linker layer-aware, both estimates under a same-cost assumption) awaits its own scope + paired A/B, with the split mode-invariant and the linker the #1 accelerated fuel consumer at 59.1%.
 
 - [Arachne critical-tail module attribution](issues/43-arachne-critical-tail-module-attribution.md): authorized diagnostic pair completed with clean byte-identical output and frozen inputs; infill-linker dispatch occupies 90.01–96.69% of layers 1/2 (its host-vs-guest subcosts were subsequently split by [infill-linker attribution](issues/21-infill-linker-attribution.md): ~99.95% guest); no acceptance retry or production change.
 
@@ -275,8 +281,9 @@ Standing decisions for this effort (2026-09-22):
   re-derived the module's shape: the two per-vertex queries are 86.4% of guest
   fuel and its candidate graduated the now-open
   [overhang-quartile predicate narrowing](issues/45-overhang-quartile-predicate-narrowing.md)
-  (fuel ceiling ≈ 24–25% of module fuel), which needs its own scope plus the
-  standing paired A/B; the paired `signed_distance_to_boundary` term (48.3% of
+  (fuel ceiling ≈ 21–27% of module fuel as a cross-domain bound), which needs
+  its own scope plus the standing paired A/B; the paired
+  `signed_distance_to_boundary` term (48.3% of
   guest fuel) is the larger but not-yet-candidate-shaped half and stays in this
   fog. [infill-linker
   attribution](issues/21-infill-linker-attribution.md)'s split graduated the
