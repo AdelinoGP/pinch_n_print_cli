@@ -6,20 +6,28 @@
 //!
 //! To avoid a vacuous literal-against-literal assertion, this test reads BOTH
 //! sides from their real sources. The manifest side is parsed from the committed
-//! `*.toml` at compile time; the code side is observed by driving
-//! `run_perimeters` with an EMPTY config and reading the fallback values back out
-//! of the emitted wall loops. A divergence on either side (e.g. someone edits the
-//! `unwrap_or(30.0)` arm but forgets the manifest, or vice-versa) fails the
-//! assertion.
+//! `*.toml` at compile time; the behavior side is observed by driving
+//! `run_perimeters` and reading the values back out of the emitted wall loops.
 //!
 //! Two layers of guard:
 //!
-//! 1. **Behavioral** (`classic_perimeters_defaults_match_manifest`): drives
-//!    `run_perimeters` with an empty config and reads 3 fallbacks back out of
-//!    the emitted walls. Strongest form, but only reaches keys with an
-//!    observable output path — which is exactly how classic's
-//!    `outer_wall_line_width` manifest default sat at a false `0.5` for months
-//!    (the code fallback was `0.4`; D-160's audit caught it by hand).
+//! 1. **Behavioral** (`classic_perimeters_defaults_match_manifest`): seeds the
+//!    observed keys at their manifest defaults (mirroring production's
+//!    `seed_registry_defaults`), drives `run_perimeters`, and reads the three
+//!    values back out of the emitted walls — so a module that read the wrong
+//!    key, or mis-plumbed a value, fails even though both sides cite the same
+//!    manifest. Its converse
+//!    (`classic_perimeters_absent_observed_keys_are_a_config_defect`) pins the
+//!    fail-closed half: with the keys absent, `from_config` aborts naming the
+//!    key instead of substituting a literal.
+//!
+//!    The original form of this leg omitted the keys and observed the module's
+//!    in-code fallbacks. That premise was retired by the packet-06 fail-closed
+//!    migration — `wall_count`, `outer_wall_speed` and `inner_wall_speed` are
+//!    `require_*` reads in `from_config` now, so absence aborts and there is no
+//!    fallback left to observe. Divergence between manifest and behavior is
+//!    correspondingly impossible for these keys: the manifest default is the
+//!    only value that can reach the reader.
 //!
 //! 2. **Exhaustive by enumeration** (`*_manifest_defaults_are_the_code_fallbacks`):
 //!    every `[config.schema.*]` key in the classic + arachne manifests must
@@ -43,10 +51,8 @@
 //!
 //! Exit condition: `cargo test -p slicer-runtime --test integration manifest_default_reconcile_tdd`
 
-use std::collections::HashMap;
-
 use classic_perimeters::ClassicPerimeters;
-use slicer_ir::{ConfigView, ExPolygon, Point2, Polygon};
+use slicer_ir::{ExPolygon, Point2, Polygon};
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
@@ -87,17 +93,37 @@ fn square_region(z: f32) -> SliceRegionView {
     region
 }
 
-/// Drive `run_perimeters` for module `M` with an empty config so every value is
-/// supplied by the code fallback, then recover those fallbacks from the emitted
-/// wall loops. Returns `(wall_count, outer_wall_speed, inner_wall_speed)`.
+/// Drive `run_perimeters` for `ClassicPerimeters` with the observed keys
+/// seeded at their manifest defaults (mirroring production's
+/// `seed_registry_defaults`), then read them back out of the emitted wall
+/// loops. Returns `(wall_count, outer_wall_speed, inner_wall_speed)`.
 ///
-/// A 10mm square at the default 0.4mm line width fits the default 3 walls, so the
-/// emitted loop count equals the `wall_count` code fallback, and the outer
-/// (perimeter_index 0) / inner (perimeter_index >= 1) loops carry the speed
-/// fallbacks as `speed_factor`.
-fn observed_code_fallbacks<M: LayerModule>() -> (usize, f32, f32) {
-    let empty = ConfigView::from_map(HashMap::new());
-    let module = M::from_config(&empty).expect("from_config should succeed");
+/// The baseline supplies every other contract-required key at its
+/// manifest-default value, and `line_width` supplies the already-expanded base
+/// width so the D-162 spacing gate passes. A 10mm square at the 0.4mm line
+/// width fits 3 walls, so the emitted loop count equals the seeded
+/// `wall_count`, and the outer (perimeter_index 0) / inner (perimeter_index
+/// >= 1) loops carry the seeded speeds as `speed_factor`.
+fn observed_seeded_defaults() -> (usize, f32, f32) {
+    // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
+    // reads need the full classic surface; the three observed keys are seeded
+    // here at the manifest defaults the host injects.
+    let config = crate::common::classic_perimeters_baseline()
+        .float("line_width", 0.4)
+        .int(
+            "wall_count",
+            manifest_default(CLASSIC_MANIFEST, "wall_count") as i64,
+        )
+        .float(
+            "outer_wall_speed",
+            manifest_default(CLASSIC_MANIFEST, "outer_wall_speed"),
+        )
+        .float(
+            "inner_wall_speed",
+            manifest_default(CLASSIC_MANIFEST, "inner_wall_speed"),
+        )
+        .build();
+    let module = ClassicPerimeters::from_config(&config).expect("from_config should succeed");
     let region = square_region(0.2);
     let mut output = PerimeterOutputBuilder::new();
     module
@@ -106,9 +132,9 @@ fn observed_code_fallbacks<M: LayerModule>() -> (usize, f32, f32) {
             &[region],
             &PaintRegionLayerView::new(0),
             &mut output,
-            &empty,
+            &config,
         )
-        .expect("run_perimeters with empty config should succeed");
+        .expect("run_perimeters with the seeded config should succeed");
 
     let walls = output.wall_loops();
     let outer = walls
@@ -146,8 +172,28 @@ fn assert_reconciled(manifest: &str, wall_count: usize, outer: f32, inner: f32) 
 
 #[test]
 fn classic_perimeters_defaults_match_manifest() {
-    let (wall_count, outer, inner) = observed_code_fallbacks::<ClassicPerimeters>();
+    let (wall_count, outer, inner) = observed_seeded_defaults();
     assert_reconciled(CLASSIC_MANIFEST, wall_count, outer, inner);
+}
+
+/// The converse half of the behavioral guard: with the observed keys absent
+/// from an otherwise-complete bound view, `from_config` must abort naming the
+/// key rather than substitute a literal. This is what makes the reconcile
+/// non-vacuous after the fail-closed migration — divergence between the
+/// manifest default and behavior is impossible because there is no fallback.
+#[test]
+fn classic_perimeters_absent_observed_keys_are_a_config_defect() {
+    let config = crate::common::classic_perimeters_baseline()
+        .float("line_width", 0.4)
+        .build();
+    let error = match ClassicPerimeters::from_config(&config) {
+        Ok(_) => panic!("an absent required key must abort, not fall back to a literal"),
+        Err(error) => error,
+    };
+    assert!(
+        error.message.contains("wall_count"),
+        "the abort must name the missing key, got: {error:?}"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -164,6 +210,10 @@ const ARACHNE_MANIFEST: &str =
 /// until the by-construction DEFAULTS refactor lands.
 enum CodeFallback {
     Float(f64),
+    FloatOrPercent {
+        value: f64,
+        is_percent: bool,
+    },
     Int(i64),
     Bool(bool),
     Str(&'static str),
@@ -195,7 +245,13 @@ const CLASSIC_FALLBACKS: &[(&str, CodeFallback)] = &[
     ("inner_wall_line_width", Float(0.0)),
     // Packet 185: `float_or_percent`; zero falls back to the resolved role
     // width — the empty-config fallback value is the auto sentinel `0`.
-    ("initial_layer_line_width", Float(0.0)),
+    (
+        "initial_layer_line_width",
+        FloatOrPercent {
+            value: 0.0,
+            is_percent: false,
+        },
+    ),
     ("bridge_line_width", Float(0.0)),
     // Packet 185: `percent` keys. The manifest default (canonical 15%/25%,
     // PrintConfig.cpp) is effective on live slices through schema-default
@@ -283,9 +339,15 @@ const ARACHNE_FALLBACKS: &[(&str, CodeFallback)] = &[
     // `defaults.optimal_width` (0.4 mm), diverging from classic on the
     // absent-key path — corrected 2026-08-03.
     ("line_width", Float(0.0)),
-    // Packet 185: `float` keys; zero falls back to the resolved role width —
+    // Packet 185: `float_or_percent` keys; zero falls back to the resolved role width —
     // the empty-config fallback value is the auto sentinel `0`.
-    ("initial_layer_line_width", Float(0.0)),
+    (
+        "initial_layer_line_width",
+        FloatOrPercent {
+            value: 0.0,
+            is_percent: false,
+        },
+    ),
     ("bridge_line_width", Float(0.0)),
     ("precise_outer_wall", Bool(false)),
     ("wall_sequence", Str("InnerOuter")),
@@ -363,6 +425,20 @@ fn assert_exhaustive_reconcile(module: &str, manifest: &str, table: &[(&str, Cod
                 assert!(
                     (got - v).abs() < 1e-9,
                     "{module}: `{key}` manifest default {got} != code fallback {v}"
+                );
+            }
+            FloatOrPercent { value, is_percent } => {
+                assert!(
+                    !is_percent,
+                    "{module}: `{key}` expected an absolute default"
+                );
+                let got = default
+                    .as_float()
+                    .or_else(|| default.as_integer().map(|i| i as f64))
+                    .unwrap_or_else(|| panic!("{module}: `{key}` default is not numeric"));
+                assert!(
+                    (got - value).abs() < 1e-9,
+                    "{module}: `{key}` manifest default {got} != code fallback {value}"
                 );
             }
             Int(v) => assert_eq!(

@@ -355,14 +355,45 @@ fn serialize_config_block(
     // count toward OrcaSlicer's minimum-keys gate.
     let mut emitted: BTreeSet<String> = BTreeSet::new();
 
+    // OrcaSlicer's `escape_string_cstyle` (`Config.cpp`, reached via
+    // `ConfigOptionString::serialize`) escapes these four characters so string
+    // values survive the `; key = value` footer round-trip through
+    // `ConfigBase::load_from_gcode_file`.
+    let escape_cstyle = |s: &str| -> String {
+        let mut escaped = String::with_capacity(s.len());
+        for c in s.chars() {
+            match c {
+                '\n' => escaped.push_str("\\n"),
+                '\r' => escaped.push_str("\\r"),
+                '\\' => escaped.push_str("\\\\"),
+                '"' => escaped.push_str("\\\""),
+                other => escaped.push(other),
+            }
+        }
+        escaped
+    };
+
     // OrcaSlicer's viewer (ConfigBase::load_from_gcode_file + GCodeProcessor::
     // apply_config) reads ONLY this block. It infers the filament COUNT from the
     // `filament_diameter` array length (ConfigOptionFloats, comma-separated) and
     // applies per-tool colours from `filament_colour` (ConfigOptionStrings,
-    // semicolon-separated) only when its length matches. Emit all three sized to
-    // the tools in use unless the user already supplied them (dumped below).
-    if !raw_config.contains_key("filament_diameter") {
-        let diam = vec!["1.75"; filament_count].join(",");
+    // semicolon-separated) only when its length matches. `filament_diameter` is
+    // therefore always rendered once per tool in use, from the map's effective
+    // value (the schema default `1.75` only when absent) instead of a
+    // hard-coded constant; a per-filament `List` from the map is already
+    // one-entry-per-tool and reaches the block via the passthrough below
+    // (`emitted` dedups it).
+    if !matches!(
+        raw_config.get("filament_diameter"),
+        Some(ConfigValue::List(_))
+    ) {
+        let effective = match raw_config.get("filament_diameter") {
+            Some(ConfigValue::Float(f)) => format_config_float(*f),
+            Some(ConfigValue::Int(i)) => format!("{i}"),
+            Some(ConfigValue::String(s)) => escape_cstyle(s),
+            _ => "1.75".to_string(),
+        };
+        let diam = vec![effective.as_str(); filament_count].join(",");
         emit_config_kv(&mut out, &mut emitted, "filament_diameter", &diam);
     }
     if !raw_config.contains_key("filament_colour") {
@@ -432,17 +463,14 @@ fn serialize_config_block(
             let value_str = match value {
                 ConfigValue::Bool(b) => b.to_string(),
                 ConfigValue::Int(i) => i.to_string(),
-                ConfigValue::Float(f) => {
-                    // Strip trailing zeros like "22.0" → "22" not wanted by test, keep "22.0"
-                    format!("{f}")
-                }
-                ConfigValue::String(s) => s.clone(),
+                ConfigValue::Float(f) => format_config_float(*f),
+                ConfigValue::String(s) => escape_cstyle(s),
                 ConfigValue::Percent(p) => format!("{p}%"),
                 ConfigValue::FloatOrPercent { value, is_percent } => {
                     if *is_percent {
                         format!("{value}%")
                     } else {
-                        format!("{value}")
+                        format_config_float(*value)
                     }
                 }
                 ConfigValue::List(items) => {
@@ -461,8 +489,8 @@ fn serialize_config_block(
                     let parts: Vec<String> = items
                         .iter()
                         .map(|v| match v {
-                            ConfigValue::String(s) => s.clone(),
-                            ConfigValue::Float(f) => format!("{f}"),
+                            ConfigValue::String(s) => escape_cstyle(s),
+                            ConfigValue::Float(f) => format_config_float(*f),
                             ConfigValue::Int(i) => format!("{i}"),
                             ConfigValue::Bool(b) => i64::from(*b).to_string(),
                             other => format!("{other:?}"),
@@ -488,6 +516,21 @@ fn serialize_config_block(
 
     writeln!(out, "; CONFIG_BLOCK_END").unwrap();
     out
+}
+
+/// Render a config float at its own precision. Some typed `ResolvedConfig`
+/// scalars are `f32` and widen to `f64` at `to_config_map`, so printing the
+/// `f64` directly leaks binary noise (`0.44999998807907104` for `0.45`).
+/// Values that round-trip through `f32` print with `f32`'s shortest form —
+/// the `format!("{}", v)` convention the header width block already uses —
+/// and genuine `f64` values keep `f64` shortest form.
+fn format_config_float(value: f64) -> String {
+    let narrow = f64::from(value as f32);
+    if narrow == value {
+        format!("{}", value as f32)
+    } else {
+        format!("{value}")
+    }
 }
 
 /// Emit one `; key = value` config line, skipping keys already written so padding
@@ -981,6 +1024,55 @@ mod tests {
             .expect("default GCodeIR must serialize");
 
         assert!(output.contains("; support_line_width = 0.42"));
+    }
+
+    #[test]
+    fn config_block_renders_f32_scalars_at_f32_precision() {
+        // Some typed `ResolvedConfig` scalars are `f32` and widen to `f64` in
+        // `to_config_map`; the block must render them at `f32` precision
+        // (`0.45`, the `format!("{}", f32)` shortest form the header width
+        // block already uses), not the widened `0.44999998807907104` that
+        // broke the AC-4 `; infill_overlap = 0.45` presence check while the
+        // 0.30 run's `0.30000001192092896` still prefix-matched `0.3`.
+        let cfg: HashMap<String, ConfigValue> = HashMap::from([(
+            "infill_overlap".to_string(),
+            ConfigValue::Float(f64::from(0.45_f32)),
+        )]);
+        let block = serialize_config_block(&cfg, &filament_colour_csv(4), GcodeFlavor::Marlin);
+        assert!(
+            block.contains("; infill_overlap = 0.45"),
+            "f32-derived floats must render at f32 precision; got:\n{block}"
+        );
+    }
+
+    #[test]
+    fn config_block_float_precision_is_consistent_across_scalars_and_numeric_lists() {
+        let widened = f64::from(0.45_f32);
+        let precise = 0.451_234_567_890_123_f64;
+        assert_ne!(precise, f64::from(precise as f32));
+        let cfg: HashMap<String, ConfigValue> = HashMap::from([
+            ("infill_overlap".to_string(), ConfigValue::Float(widened)),
+            ("line_width".to_string(), ConfigValue::Float(precise)),
+            ("filament_diameter".to_string(), ConfigValue::Float(widened)),
+            (
+                "filament_density".to_string(),
+                ConfigValue::List(vec![
+                    ConfigValue::Float(widened),
+                    ConfigValue::Float(precise),
+                ]),
+            ),
+        ]);
+        let block = serialize_config_block(&cfg, &filament_colour_csv(2), GcodeFlavor::Marlin);
+        assert!(block.lines().any(|line| line == "; infill_overlap = 0.45"));
+        assert!(block
+            .lines()
+            .any(|line| line == "; line_width = 0.451234567890123"));
+        assert!(block
+            .lines()
+            .any(|line| line == "; filament_diameter = 0.45,0.45"));
+        assert!(block
+            .lines()
+            .any(|line| line == "; filament_density = 0.45,0.451234567890123"));
     }
 
     #[test]

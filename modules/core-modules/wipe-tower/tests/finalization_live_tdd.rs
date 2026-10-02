@@ -112,6 +112,19 @@ fn make_layer(index: u32, z: f32, tool_changes: Vec<ToolChange>) -> LayerCollect
 
 fn config_with(pairs: &[(&str, ConfigValue)]) -> ConfigView {
     let mut map = HashMap::new();
+    // Declared keys (wipe-tower.toml) seeded at their manifest defaults,
+    // mirroring the production `seed_registry_defaults` step; per-test pairs
+    // remain the only overrides.
+    map.insert("wipe_tower_enabled".to_string(), ConfigValue::Bool(true));
+    map.insert("wipe_tower_x".to_string(), ConfigValue::Float(10.0));
+    map.insert("wipe_tower_y".to_string(), ConfigValue::Float(10.0));
+    map.insert("wipe_tower_width".to_string(), ConfigValue::Float(60.0));
+    map.insert(
+        "wipe_tower_purge_volume".to_string(),
+        ConfigValue::Float(10.0),
+    );
+    map.insert("line_width".to_string(), ConfigValue::Float(0.4));
+    map.insert("retract_length".to_string(), ConfigValue::Float(2.0));
     for (k, v) in pairs {
         map.insert(k.to_string(), v.clone());
     }

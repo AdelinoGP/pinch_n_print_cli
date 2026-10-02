@@ -2591,6 +2591,7 @@ dependencies = [
  "predicates",
  "serde",
  "serde_json",
+ "slicer-config",
  "slicer-helpers",
  "slicer-integrated-modules",
  "slicer-ir",
@@ -3406,6 +3407,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
+name = "slicer-config"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "toml 0.8.23",
+]
+
+[[package]]
 name = "slicer-core"
 version = "0.1.0"
 dependencies = [
@@ -3417,6 +3426,7 @@ dependencies = [
  "rstar",
  "serde",
  "serde_json",
+ "slicer-config",
  "slicer-ir",
  "slicer-model-io",
  "slicer-scheduler",
@@ -3557,6 +3567,7 @@ dependencies = [
  "serde",
  "serde_json",
  "skirt-brim",
+ "slicer-config",
  "slicer-core",
  "slicer-gcode",
  "slicer-helpers",
@@ -3593,6 +3604,7 @@ dependencies = [
  "pnp-cli-locator",
  "serde",
  "serde_json",
+ "slicer-config",
  "slicer-ir",
  "slicer-schema",
  "tempfile",
@@ -3622,6 +3634,7 @@ version = "0.1.0"
 dependencies = [
  "log",
  "rayon",
+ "slicer-config",
  "slicer-core",
  "slicer-ir",
  "slicer-scheduler",

@@ -500,7 +500,10 @@ fn wipe_speed_resolves_correctly() {
 #[test]
 fn internal_bridge_role_uses_internal_speed_and_label() {
     let config = slicer_ir::FeedrateConfig {
-        internal_bridge_speed: 37.5,
+        internal_bridge_speed: slicer_ir::resolved_config::ResolvedFloatOrPercent {
+            value: 37.5,
+            is_percent: false,
+        },
         ..Default::default()
     };
     let emitter = DefaultGCodeEmitter::new_with_config("1.0".to_string(), config);

@@ -52,6 +52,12 @@ fn integrated_parity_gyroid_infill() {
     let mut bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
     let mut region_map = RegionMapIR::default();
     let resolved = ResolvedConfig {
+        // The region pool is the effective config consumed by both transports;
+        // keep its declared width aligned with the module-level test config
+        // (host-expanded 1.125 x 0.4 nozzle), mirroring the rectilinear parity
+        // fixture. Left at the `ResolvedConfig::default()` 0.0 the native leg
+        // resolves a per-region width of zero and emits no paths at all.
+        line_width: 0.45,
         sparse_fill_holder: "com.core.gyroid-infill".to_string(),
         ..Default::default()
     };
@@ -116,7 +122,41 @@ fn integrated_parity_gyroid_infill() {
                 "claim:bottom-fill".into(),
                 "claim:bridge-fill".into(),
             ],
-            config: Arc::new(ConfigView::new()),
+            // Bound-view shape (packet 06 5c-prime): `bridge_line_width` /
+            // `initial_layer_line_width` are contract-required reads
+            // (`require_abs_value` over the fixed 0.4 nozzle base); a bound
+            // view holds them at their manifest defaults (0.0) and carries
+            // the host-expanded `line_width` (gyroid_infill_tdd.rs fixtures).
+            // `infill_density` / `infill_angle` / `infill_speed` are declared
+            // required reads since the guest's config-literal fallbacks
+            // migrated to `require_*`; seed the manifest defaults
+            // (gyroid-infill.toml).
+            config: Arc::new(ConfigView::from_map(std::collections::HashMap::from([
+                (
+                    "infill_density".to_string(),
+                    slicer_ir::ConfigValue::Float(0.2),
+                ),
+                (
+                    "infill_angle".to_string(),
+                    slicer_ir::ConfigValue::Float(45.0),
+                ),
+                (
+                    "infill_speed".to_string(),
+                    slicer_ir::ConfigValue::Float(60.0),
+                ),
+                (
+                    "bridge_line_width".to_string(),
+                    slicer_ir::ConfigValue::Float(0.0),
+                ),
+                (
+                    "initial_layer_line_width".to_string(),
+                    slicer_ir::ConfigValue::Float(0.0),
+                ),
+                (
+                    "line_width".to_string(),
+                    slicer_ir::ConfigValue::Float(0.45),
+                ),
+            ]))),
             native_entry: GyroidInfill::__slicer_native_entry(),
         },
         |dispatcher, native_live, wasm_live| {

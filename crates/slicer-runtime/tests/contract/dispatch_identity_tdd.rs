@@ -335,6 +335,7 @@ fn support_output_rejects_untagged_push_in_identity_mode() {
             Some(OriginId {
                 object_id: "obj-0".into(),
                 region_id: 0,
+                variant_chain: Vec::new(),
             }),
             None,
         ],
@@ -502,6 +503,7 @@ fn perimeter_postprocess_untagged_output_fails_with_diagnostic() {
         infill_areas_origins: vec![Some(OriginId {
             object_id: "dummy".into(),
             region_id: 0,
+            variant_chain: Vec::new(),
         })],
         rotated_wall_loops: Vec::new(),
         rotated_wall_loop_origins: Vec::new(),

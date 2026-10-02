@@ -206,8 +206,13 @@ fn lightning_producer_per_region_keying() {
     blackboard
         .commit_slice_ir(Arc::new(lightning_slice_ir_with_two_regions()))
         .expect("commit_slice_ir must succeed");
+    // `line_width = 0` is the auto sentinel (resolution expands it to the
+    // nozzle-based width): a hand-built `ResolvedConfig` bypassing resolution
+    // must pin the post-expansion width or the lightning seeding computes
+    // zero-width strokes and seeds nothing (bound-view fixture repair).
     let mut lightning_config = ResolvedConfig {
         sparse_fill_holder: String::from("lightning-infill"),
+        line_width: 0.4,
         ..ResolvedConfig::default()
     };
     let active_region = |region_id| {

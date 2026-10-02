@@ -117,9 +117,18 @@ fn contour_stub_lengths(path: &ExtrusionPath3D, input_endpoints: &[(f32, f32)]) 
 }
 
 fn config(line_width: f64, density: f64) -> ConfigView {
+    // Packet 06 (AC-3): `infill_density`, `layer_height`, and
+    // `infill_anchor_max` are required reads once a region config is present,
+    // so every fixture view holds them at manifest-default values
+    // (infill-linker.toml [config.schema]): layer_height 0.2 mm,
+    // infill_anchor_max 20.0 mm absolute. `infill_overlap` and `line_width`
+    // are the keys read on the module-config path, also at defaults.
     ConfigViewBuilder::new()
         .float("line_width", line_width)
         .float("infill_density", density)
+        .float("layer_height", 0.2)
+        .float("infill_overlap", 0.45)
+        .float_or_percent("infill_anchor_max", 20.0, false)
         .build()
 }
 
@@ -132,6 +141,8 @@ fn config_with_anchor(
     ConfigViewBuilder::new()
         .float("line_width", line_width)
         .float("infill_density", density)
+        .float("layer_height", 0.2)
+        .float("infill_overlap", 0.45)
         .float("infill_anchor", anchor_length)
         .float("infill_anchor_max", anchor_max)
         .build()
@@ -215,6 +226,7 @@ fn sparse_region(region_id: u64, paths: Vec<ExtrusionPath3D>) -> InfillRegion {
     InfillRegion {
         object_id: "object".to_string(),
         region_id,
+        variant_chain: Vec::new(),
         sparse_infill: paths,
         solid_infill: vec![],
         ironing: vec![],
@@ -233,6 +245,7 @@ fn bridge_region(region_id: u64, bridge: Vec<ExtrusionPath3D>) -> InfillRegion {
     InfillRegion {
         object_id: "object".to_string(),
         region_id,
+        variant_chain: Vec::new(),
         sparse_infill: vec![],
         solid_infill: bridge,
         ironing: vec![],
@@ -321,10 +334,22 @@ fn solid_bucket_ribbon_bridge_boundary_keeps_long_scan() {
     let ribbon = ExPolygon {
         contour: Polygon {
             points: vec![
-                Point2 { x: -164936, y: -55982 },
-                Point2 { x: -70410, y: -55982 },
-                Point2 { x: -70410, y: -55807 },
-                Point2 { x: -164936, y: -55807 },
+                Point2 {
+                    x: -164936,
+                    y: -55982,
+                },
+                Point2 {
+                    x: -70410,
+                    y: -55982,
+                },
+                Point2 {
+                    x: -70410,
+                    y: -55807,
+                },
+                Point2 {
+                    x: -164936,
+                    y: -55807,
+                },
             ],
         },
         holes: vec![],
@@ -476,6 +501,7 @@ fn all_none_locks_neutrality() {
         &[Some(slicer_sdk::builders::RegionOrigin {
             object_id: "object".to_string(),
             region_id: 1,
+            variant_chain: Vec::new(),
         })]
     );
 }
@@ -505,6 +531,7 @@ fn wall_sharing_same_config_union_link() {
                 == &Some(slicer_sdk::builders::RegionOrigin {
                     object_id: "object".to_string(),
                     region_id: 1,
+                    variant_chain: Vec::new(),
                 })
                 && path.points.iter().any(|point| point.x <= 0.1)
                 && path.points.iter().any(|point| point.x >= 14.9)
@@ -609,6 +636,7 @@ fn solid_bucket_forces_unlimited_anchor_while_sparse_obeys_the_key() {
         InfillRegion {
             object_id: "object".to_string(),
             region_id: 1,
+            variant_chain: Vec::new(),
             sparse_infill: sparse,
             solid_infill: vec![solid_a, solid_b],
             ironing: vec![],
@@ -777,7 +805,10 @@ fn length_outside_mm(ps: &[ExtrusionPath3D], role: &ExtrusionRole, boundary: &[E
         .filter(|p| &p.role == role)
         .map(|p| {
             let pl: Vec<Point2> = p.points.iter().map(|q| Point2::from_mm(q.x, q.y)).collect();
-            let inside: f64 = clip_polylines(&[pl.clone()], &grown).iter().map(|c| len(c)).sum();
+            let inside: f64 = clip_polylines(&[pl.clone()], &grown)
+                .iter()
+                .map(|c| len(c))
+                .sum();
             len(&pl) - inside
         })
         .sum()
@@ -826,9 +857,17 @@ fn internal_bridge_paths_stay_in_bridge_partition() {
         .tool_index(0)
         .build();
     view.set_config(
+        // Packet 06 (AC-3): `infill_density`, `layer_height`, and
+        // `infill_anchor_max` are required reads once a region config is
+        // present; this fixture also needs the module-config path's
+        // `line_width` and `infill_overlap`, all at manifest defaults — the
+        // same baseline `config()` holds, keyed to this fixture's 0.45 width.
         ConfigViewBuilder::new()
+            .float("line_width", 0.45)
             .float("infill_density", 0.2)
             .float("layer_height", 0.2)
+            .float("infill_overlap", 0.45)
+            .float_or_percent("infill_anchor_max", 20.0, false)
             .build(),
     );
     // 45° internal-bridge scan lines clipped to the 10×10 bridge, 0.5 mm apart.
@@ -856,6 +895,7 @@ fn internal_bridge_paths_stay_in_bridge_partition() {
     let prior = vec![InfillRegion {
         object_id: "0".to_string(),
         region_id: 0,
+        variant_chain: Vec::new(),
         sparse_infill: vec![],
         solid_infill: lines,
         ironing: vec![],

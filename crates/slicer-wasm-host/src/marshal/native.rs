@@ -61,6 +61,7 @@ fn origin(value: &Option<slicer_sdk::builders::RegionOrigin>) -> Option<OriginId
     value.as_ref().map(|origin| OriginId {
         object_id: origin.object_id.clone(),
         region_id: origin.region_id,
+        variant_chain: origin.variant_chain.clone(),
     })
 }
 
@@ -84,7 +85,9 @@ fn native_paint_layers(
                 .map(|stroke| slicer_sdk::prepass_types::PaintStrokeView {
                     triangles: stroke
                         .triangles
-                        .chunks_exact(3)
+                        .as_chunks::<3>()
+                        .0
+                        .iter()
                         .map(|points| {
                             [
                                 [points[0].x, points[0].y, points[0].z],
@@ -644,7 +647,9 @@ pub fn build_native_prepass_request(
             triangles: mesh
                 .mesh
                 .indices
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .map(|v| [v[0], v[1], v[2]])
                 .collect(),
             paint_layers: mesh
@@ -665,7 +670,9 @@ pub fn build_native_prepass_request(
                 triangles: mesh
                     .mesh
                     .indices
-                    .chunks_exact(3)
+                    .as_chunks::<3>()
+                    .0
+                    .iter()
                     .map(|v| [v[0], v[1], v[2]])
                     .collect(),
                 paint_layers: mesh
@@ -1326,6 +1333,7 @@ fn collect_perimeter(builder: &PerimeterOutputBuilder) -> PerimeterOutputCollect
         resolved_seam_origin: builder.resolved_seam_origin().map(|origin| OriginId {
             object_id: origin.object_id.clone(),
             region_id: origin.region_id,
+            variant_chain: origin.variant_chain.clone(),
         }),
     }
 }

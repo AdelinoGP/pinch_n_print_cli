@@ -101,6 +101,7 @@ fn layer_perimeters_origin_falls_back_to_slice_region_through_host_trait() {
     ctx.set_current_slice_region(Some(OriginId {
         object_id: TEST_UUID.to_string(),
         region_id: TEST_REGION_ID,
+        variant_chain: Vec::new(),
     }));
     assert!(
         ctx.current_perimeter_region().is_none(),

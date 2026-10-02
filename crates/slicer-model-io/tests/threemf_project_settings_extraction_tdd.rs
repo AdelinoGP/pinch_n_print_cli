@@ -3,12 +3,12 @@
 //!
 //! Replaces the prior narrow `read_3mf_filament_colours` (filament colours
 //! only) with `read_3mf_project_settings`, which returns every key in the
-//! JSON sidecar as a typed `ConfigValue`. Verifies:
+//! JSON sidecar with authored strings preserved. Verifies:
 //! - Array-valued keys (`filament_colour`, `chamber_temperature`) come
-//!   through as `ConfigValue::List` with per-element coercion.
-//! - String-valued numeric keys (`"4"`, `"25"`) get coerced to `Int`/`Float`.
-//! - String-valued boolean keys (`"0"`, `"1"`, `"true"`, `"false"`) get
-//!   coerced to `Bool`.
+//!   through as `ConfigValue::List` with string elements still authored strings.
+//! - String-valued numeric keys (`"4"`, `"25"`) remain exact `String` values.
+//! - String-valued boolean keys (`"0"`, `"1"`, `"true"`, `"false"`) remain
+//!   exact `String` values rather than becoming `Bool`.
 //! - Truly string keys stay as `ConfigValue::String`.
 //! - The `cube_4color.3mf` fixture has the documented `filament_colour`
 //!   palette, the `thumbnails` size/format list, and the
@@ -48,7 +48,8 @@ fn extracts_filament_colour_as_list_of_strings() {
     let json = r##"{
         "filament_colour": ["#FF9B00", "#02BF06", "#1800F2", "#EC0006"],
         "default_filament_colour": ["", "", "", ""],
-        "filament_colour_type": ["1", "1", "1", "1"]
+        "filament_colour_type": ["1", "1", "1", "1"],
+        "string_array": ["0", "1", "50%"]
     }"##;
     let tmp = write_zip_to_temp(json);
     let parsed = slicer_model_io::read_3mf_project_settings(tmp.path())
@@ -67,6 +68,16 @@ fn extracts_filament_colour_as_list_of_strings() {
         }
         other => panic!("expected List, got {other:?}"),
     }
+
+    assert_eq!(
+        parsed.get("string_array"),
+        Some(&slicer_ir::ConfigValue::List(vec![
+            slicer_ir::ConfigValue::String("0".to_owned()),
+            slicer_ir::ConfigValue::String("1".to_owned()),
+            slicer_ir::ConfigValue::String("50%".to_owned()),
+        ])),
+        "string-authored array elements must remain strings"
+    );
 }
 
 #[test]
@@ -127,12 +138,16 @@ fn extracts_thumbnails_key_as_string() {
 }
 
 #[test]
-fn coerces_string_numbers_to_int() {
-    // OrcaSlicer stores every value in `project_settings.config` as a
-    // string — including integers. The generic extractor must coerce
-    // these so downstream consumers reading `bottom_shell_layers`,
-    // `bridge_speed`, etc. see the typed `Int` they expect.
+fn preserves_string_authored_numbers_verbatim() {
+    // OrcaSlicer stores these values in `project_settings.config` as strings.
+    // The syntax-only adapter must preserve the exact spelling for registry
+    // ingestion rather than guessing `Int` from numeric-looking text.
     let json = r##"{
+        "wall_loops": "4",
+        "layer_height": "0.5",
+        "support_threshold_overlap": "50%",
+        "bridge_line_width": "100%",
+        "support_style": "normal(auto)",
         "bottom_shell_layers": "4",
         "bridge_speed": "25",
         "support_threshold_angle": "40"
@@ -142,24 +157,44 @@ fn coerces_string_numbers_to_int() {
         .expect("project_settings.config present");
 
     assert_eq!(
+        parsed.get("wall_loops"),
+        Some(&slicer_ir::ConfigValue::String("4".to_owned()))
+    );
+    assert_eq!(
+        parsed.get("layer_height"),
+        Some(&slicer_ir::ConfigValue::String("0.5".to_owned()))
+    );
+    assert_eq!(
+        parsed.get("support_threshold_overlap"),
+        Some(&slicer_ir::ConfigValue::String("50%".to_owned()))
+    );
+    assert_eq!(
+        parsed.get("bridge_line_width"),
+        Some(&slicer_ir::ConfigValue::String("100%".to_owned()))
+    );
+    assert_eq!(
+        parsed.get("support_style"),
+        Some(&slicer_ir::ConfigValue::String("normal(auto)".to_owned()))
+    );
+    assert_eq!(
         parsed.get("bottom_shell_layers"),
-        Some(&slicer_ir::ConfigValue::Int(4))
+        Some(&slicer_ir::ConfigValue::String("4".to_owned()))
     );
     assert_eq!(
         parsed.get("bridge_speed"),
-        Some(&slicer_ir::ConfigValue::Int(25))
+        Some(&slicer_ir::ConfigValue::String("25".to_owned()))
     );
     assert_eq!(
         parsed.get("support_threshold_angle"),
-        Some(&slicer_ir::ConfigValue::Int(40))
+        Some(&slicer_ir::ConfigValue::String("40".to_owned()))
     );
 }
 
 #[test]
-fn coerces_string_bools_to_bool() {
+fn preserves_string_authored_booleans_verbatim() {
     // OrcaSlicer uses `"0"` and `"1"` (sometimes `"true"`/`"false"`) for
-    // boolean-valued keys. The generic extractor must coerce these to
-    // `ConfigValue::Bool`.
+    // boolean-valued keys. The syntax-only adapter must not decide that
+    // declared type; in particular, these values must not become `Bool`.
     let json = r##"{
         "enable_support": "0",
         "enable_arc_fitting": "1",
@@ -172,27 +207,26 @@ fn coerces_string_bools_to_bool() {
 
     assert_eq!(
         parsed.get("enable_support"),
-        Some(&slicer_ir::ConfigValue::Bool(false))
+        Some(&slicer_ir::ConfigValue::String("0".to_owned()))
     );
     assert_eq!(
         parsed.get("enable_arc_fitting"),
-        Some(&slicer_ir::ConfigValue::Bool(true))
+        Some(&slicer_ir::ConfigValue::String("1".to_owned()))
     );
     assert_eq!(
         parsed.get("enable_prime_tower"),
-        Some(&slicer_ir::ConfigValue::Bool(false))
+        Some(&slicer_ir::ConfigValue::String("false".to_owned()))
     );
     assert_eq!(
         parsed.get("enable_overhang_bridge_fan_boost"),
-        Some(&slicer_ir::ConfigValue::Bool(true))
+        Some(&slicer_ir::ConfigValue::String("true".to_owned()))
     );
 }
 
 #[test]
 fn keeps_unparseable_strings_as_string() {
-    // Free-form strings (e.g. enums, mixed-content values) must remain as
-    // `ConfigValue::String`. A naive `parse::<i64>()` would fail; the
-    // coercion helper falls through to the `String` branch.
+    // Free-form strings (e.g. enums, mixed-content values) remain exact
+    // `ConfigValue::String` values at the loader boundary.
     let json = r##"{
         "support_type": "normal(auto)",
         "seam_position": "rear",
@@ -225,10 +259,11 @@ fn cube_4color_fixture_extracts_full_palette_thumbnails_and_extruder_colour() {
         env!("CARGO_MANIFEST_DIR"),
         "/../../resources/cube_4color.3mf"
     ));
-    if !path.exists() {
-        eprintln!("SKIP: cube_4color.3mf not found");
-        return;
-    }
+    assert!(
+        path.exists(),
+        "cube_4color.3mf fixture missing: {}",
+        path.display()
+    );
     let sidecar = slicer_model_io::read_3mf_project_settings(path)
         .expect("project_settings.config present in cube_4color.3mf");
 

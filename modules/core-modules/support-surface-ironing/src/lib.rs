@@ -16,9 +16,7 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
-use slicer_ir::{
-    ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point3WithWidth,
-};
+use slicer_ir::{ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point3WithWidth};
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::slicer_module;
@@ -173,38 +171,16 @@ impl SupportSurfaceIroning {
 #[slicer_module]
 impl LayerModule for SupportSurfaceIroning {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let enabled = match config.get("ironing_enabled") {
-            Some(ConfigValue::Bool(b)) => *b,
-            _ => false,
-        };
-
-        let ironing_speed = match config.get("ironing_speed") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => 15.0,
-        };
-
-        let ironing_flow_rate = match config.get("ironing_flow_rate") {
-            Some(ConfigValue::Float(f)) => *f as f32,
-            _ => 0.1,
-        };
-
-        let ironing_spacing = match config.get("ironing_spacing") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            _ => 0.1,
-        };
-
-        let line_width = match config.get("line_width") {
-            Some(ConfigValue::Float(w)) => *w as f32,
-            _ => 0.4,
-        };
-
+        // Required reads (config-scope-resolution plan): every key below is
+        // declared in `support-surface-ironing.toml`, so the bound view always
+        // holds its registry default. A missing key is a contract violation,
+        // not a fallback — `require_*` failures convert to fatal `ModuleError`s.
         Ok(Self {
-            enabled,
-            ironing_speed,
-            ironing_flow_rate,
-            ironing_spacing,
-            line_width,
+            enabled: config.require_bool("ironing_enabled")?,
+            ironing_speed: config.require_float("ironing_speed")? as f32,
+            ironing_flow_rate: config.require_float("ironing_flow_rate")? as f32,
+            ironing_spacing: config.require_float("ironing_spacing")? as f32,
+            line_width: config.require_float("line_width")? as f32,
         })
     }
 
@@ -228,14 +204,22 @@ impl LayerModule for SupportSurfaceIroning {
             // (empty object_id / family_id), and the native leg diverges from
             // the wasm leg — which recovers an origin anyway via the host's
             // `touch_slice_region` fallback on the first view accessor call.
-            output.begin_region(region.object_id(), *region.region_id());
+            output.begin_region(
+                region.object_id(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
             let z = region.z();
 
             let polygons = region.polygons();
             if polygons.is_empty() {
                 continue;
             }
-            output.begin_region(region.object_id().as_str(), *region.region_id());
+            output.begin_region(
+                region.object_id().as_str(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
 
             for expoly in polygons {
                 let paths = self.fill_expolygon(expoly, z, speed_factor);
@@ -267,11 +251,35 @@ mod tests {
 
     #[test]
     fn from_config_defaults() {
-        let config = ConfigView::from_map(std::collections::HashMap::new());
+        // Required-read baseline (config-scope-resolution plan): the
+        // classified match-arm fallbacks are now `require_*`, so the view
+        // holds every declared key at its manifest default (a bound view
+        // always does — the registry seeds each declared default). The old
+        // module literals disagreed with the manifest (`ironing_speed` 15.0
+        // vs 30.0, `ironing_flow_rate` 0.1 vs 100.0); the seeded defaults win.
+        let mut fields = std::collections::HashMap::new();
+        fields.insert(
+            "ironing_enabled".to_string(),
+            slicer_ir::ConfigValue::Bool(false),
+        );
+        fields.insert(
+            "ironing_speed".to_string(),
+            slicer_ir::ConfigValue::Float(30.0),
+        );
+        fields.insert(
+            "ironing_flow_rate".to_string(),
+            slicer_ir::ConfigValue::Float(100.0),
+        );
+        fields.insert(
+            "ironing_spacing".to_string(),
+            slicer_ir::ConfigValue::Float(0.1),
+        );
+        fields.insert("line_width".to_string(), slicer_ir::ConfigValue::Float(0.4));
+        let config = ConfigView::from_map(fields);
         let module = SupportSurfaceIroning::from_config(&config).unwrap();
         assert!(!module.enabled);
-        assert!((module.ironing_speed - 15.0).abs() < 0.001);
-        assert!((module.ironing_flow_rate - 0.1).abs() < 0.001);
+        assert!((module.ironing_speed - 30.0).abs() < 0.001);
+        assert!((module.ironing_flow_rate - 100.0).abs() < 0.001);
         assert!((module.ironing_spacing - 0.1).abs() < 0.001);
         assert!((module.line_width - 0.4).abs() < 0.001);
     }

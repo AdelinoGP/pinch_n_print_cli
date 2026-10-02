@@ -10,13 +10,12 @@
 
 use part_cooling::PartCooling;
 use slicer_ir::{
-    ConfigValue, ExtrusionPath3D, ExtrusionRole, LayerAnnotationKind, LayerCollectionIR,
-    Point3WithWidth, PrintEntity, RegionKey, SemVer,
+    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerAnnotationKind,
+    LayerCollectionIR, Point3WithWidth, PrintEntity, RegionKey, SemVer,
 };
-use slicer_sdk::test_prelude::config_with;
+use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_sdk::test_support::fixtures::print_entity_base;
 use slicer_sdk::traits::{FinalizationModule, FinalizationOutputBuilder, LayerCollectionView};
-use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -79,11 +78,33 @@ fn raws_for_layer(output: &FinalizationOutputBuilder, layer: u32) -> Vec<String>
         .collect()
 }
 
+/// Required declared keys (part-cooling.toml) seeded at their manifest
+/// defaults when a test config omits them, mirroring the production
+/// `seed_registry_defaults` step so per-test pairs remain the only overrides.
+fn seeded_config(config_pairs: &[(&str, ConfigValue)]) -> ConfigView {
+    let mut fields = std::collections::HashMap::from([
+        ("fan_max_speed".to_string(), ConfigValue::Int(255)),
+        (
+            "close_fan_the_first_x_layers".to_string(),
+            ConfigValue::Int(1),
+        ),
+        (
+            "enable_overhang_bridge_fan".to_string(),
+            ConfigValue::Bool(true),
+        ),
+        ("overhang_fan_speed".to_string(), ConfigValue::Int(100)),
+    ]);
+    for (key, value) in config_pairs {
+        fields.insert((*key).to_string(), value.clone());
+    }
+    ConfigView::from_map(fields)
+}
+
 fn run(
     config_pairs: &[(&str, ConfigValue)],
     layers: &[LayerCollectionView],
 ) -> FinalizationOutputBuilder {
-    let cfg = config_with(config_pairs);
+    let cfg = seeded_config(config_pairs);
     let module = PartCooling::from_config(&cfg).expect("config must be valid");
     let mut output = FinalizationOutputBuilder::new();
     module

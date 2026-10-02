@@ -87,7 +87,15 @@ Bounds and overflow policy:
 
 **Produced by:** Host mesh loader  
 **Consumed by:** PrePass stages (read-only via host-services API; never passed directly to modules)
-**Current schema_version: 1.1.0** (Bumped to 1.1.0 by packet 56b — populated `modifier_volumes` from `Metadata/model_settings.config`.)
+**Current schema_version: 1.2.0** (authoritative source:
+`CURRENT_MESH_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`; bumped
+to 1.1.0 by packet 56b — populated `modifier_volumes` from
+`Metadata/model_settings.config`). The 1.1.0 → 1.2.0 bump is the
+activation-derived minor bump for the typed `ModifierVolume.kind` field
+(`ModifierKind`): it preserves the recorded major, increments the recorded
+minor, and resets the patch to zero. Legacy pre-1.2.0 payloads deserialize
+one-way — their subtype-string classification maps onto the typed kind — while
+serialization always emits the typed field.
 
 The `MeshIR`, `ObjectMesh`, `FacetPaintData`, and `PaintLayer` definitions are
 in `crates/slicer-ir/src/slice_ir.rs`. `MeshIR` carries the object list and
@@ -226,14 +234,67 @@ obsolete — code keying `HashMap<PaintValue, _>` directly is the
 canonical pattern post-Packet 91. The same `to_bits()` portability
 caveat as `ResolvedConfig` applies.
 
-`ModifierVolume`, `ModifierScope`, and `ConfigDelta` are defined in
+`ModifierVolume`, `ModifierKind`, and `ConfigDelta` are defined in
 `crates/slicer-ir/src/slice_ir.rs`. A modifier volume carries its ID, mesh,
-sparse config delta, priority, and scope. `ConfigDelta` contains only explicit
-fields and never includes baked-in defaults.
+sparse config delta, priority, and typed `ModifierKind` classification —
+`ParameterModifier`, `NegativePart`, `SupportEnforcer`, or `SupportBlocker`.
+`ConfigDelta` contains only explicit fields and never includes baked-in
+defaults; its keys are registry-typed (see § "Modifier Resolution Contract").
 
 ### Modifier Resolution Contract
 
-Modifier deltas are merged deterministically during planning:
+The full scope-resolution order is deterministic, from lowest to highest:
+
+```text
+global < object < layer range < modifier < paint semantic < tool
+```
+
+The row-5 resolver implements the typed global/object/modifier/paint/tool path.
+Row 9 implements `layer range` in the same resolver (`ConfigScope::LayerRange`,
+`resolve_scope_stack`'s `ResolutionTarget.layer_top_z` input): a range matching
+the target's layer top Z contributes its typed values between the object and
+modifier scopes. Membership is world-Z **half-open** `[min_z, max_z)`, evaluated
+against the layer **top Z** (`GlobalLayer.z`), so a range's `max_z` is excluded
+and catch-up layers inherit a range that covers their own top Z.
+`LayerConfigRange::covers` is the single membership authority — the resolver and
+the runtime region-mapping kernel both call it, so the two cannot disagree. Each
+bound is compared as the smaller of its authored `f64` millimetre value and its
+`f32` image, because both representations reach it: a layer top travels as an
+`f32` (`GlobalLayer.z`, widened back) while callers may state the authored bound
+directly. Narrowing is monotonic, so the adjusted upper bound is never greater
+than its authored value and no top ordered at or above the authored `max_z` can
+be admitted; the minimum also excludes the transported image of a top placed on
+`max_z` (`f32(0.7)` is `0.69999998807…`, below its literal), while `f32(0.8)`
+sits above its literal and the `f64` value is what excludes it. The lower bound
+works symmetrically. Using each bound's own `f32` shape rather than a fixed
+epsilon keeps a power-of-two bound (where the neighbouring `f32` gaps differ by
+a factor of two) from excluding a genuinely interior layer.
+
+The unavoidable consequence is that a bound lying *between* two `f32` values
+cannot be honoured exactly: narrowing moves it by up to half a local `f32` ULP,
+so a top within that distance of the bound — in either direction — resolves to
+the bound rather than to its authored side. Where the authored bound is itself
+representable (every ordinary print height) the rule is exact in both
+representations; the band only matters for a bound that is not.
+
+A range whose `layer_height` is finite but non-positive is a named
+`LayerRangeLoadError::InvalidLayerHeight` **load error**, never a range that
+silently contributes its other values while the profile skips the unusable
+height. Non-finite `layer_height` text is rejected one step earlier as a
+`ConfigIngestionError::TypeMismatch` while the authored string is typed.
+
+Overlapping `layer_height` ranges compose by **earlier-starting** retention:
+ranges sort by `(min_z, max_z, source_index)`, the fixed first-layer interval is
+retained first, and each later range's low edge is **trimmed** to the last
+retained high, so an earlier range keeps the overlap. Uncovered intervals are
+**gap**-filled from the resolved object base height. Overlapping ranges that
+state the same `non-layer_height` key with conflicting typed values produce a
+`LayerRangeLoadError::ConflictingOverlap` **load error** before either
+resolution entry point runs; equal values may overlap. Row 9 owns and verifies
+this layer-range overlap handling.
+
+Modifier deltas that are available to the row-5 path are merged deterministically
+during planning:
 
 1. Start with global defaults.
 2. Apply object config.
@@ -242,6 +303,14 @@ Modifier deltas are merged deterministically during planning:
    `crates/slicer-core/src/algos/region_mapping.rs`; a stable priority sort
    with first-loaded tie ownership). There is no separate `load_order` concept.
 4. Apply paint-semantic overlays (`paint_config:`) on top.
+5. Apply the resolved tool overlay last.
+
+Modifier deltas reaching this path are registry-typed (ADR-0070): every key a
+modifier states is admitted through the config schema registry — type-checked,
+bounds-checked, and subject to ADR-0069 scope admission
+(`ResolutionError::ScopeDenied` on a denied key/scope) — rather than copied
+verbatim into the region config. The modifier's routing classification is the
+typed `ModifierVolume.kind` field, not a `config_delta` string.
 
 For the same key, the last applied value wins. If a later overlay omits a key,
 the previously resolved value remains unchanged (no implicit reset).
@@ -354,27 +423,28 @@ distinct sidecar sources in a single 3MF file:
    the complete object-level allowlist above. This object-level list is
    separate from the part-level allowlist and does not widen it.
 
-Subtype-key exclusion (Packet 68): the literal key `subtype` is
-routing metadata and is excluded from stamping into
-`RegionPlan.config.extensions`; only non-`subtype` keys flow through.
-Additionally, modifier volumes whose subtype value is
-`"support_enforcer"` or `"support_blocker"` are entirely SKIPPED
-during config stamping for OrcaSlicer parity — canonical
-`PrintApply.cpp` skips these volume subtypes when applying per-volume
-config overrides. Their semantics are exercised via
+Kind-based exclusion (Packet 68, retyped by the config-scope-resolution
+typed-modifier-kind packet): modifier volumes whose `kind` is
+`ModifierKind::SupportEnforcer` or `ModifierKind::SupportBlocker` are
+entirely SKIPPED during config stamping for OrcaSlicer parity — canonical
+`PrintApply.cpp` skips these volumes when applying per-volume config
+overrides. Their semantics are exercised via
 `PaintSemantic::SupportEnforcer` / `PaintSemantic::SupportBlocker`
 instead, never via `PaintValue::ToolIndex` — see also the
 "Support semantics use Flag, never ToolIndex" constraint in IR 4.
 
 `ConfigDelta` semantics:
 
-- Sparse — only explicitly set fields. No baked-in defaults.
-- `priority` (deterministic ordering hint): `ModifierPart = 0`,
-  `NegativePart = 100`, `SupportEnforcer = 200`, `SupportBlocker = 300`.
-  Consumers may ignore and apply their own ordering.
-- `applies_to`: for 3MF-sourced volumes, `ModifierScope::AllFeatures`
-  scoped to the parent `ObjectId` (the volume applies only to features
-  of its parent object, not the whole plate).
+- Sparse — only explicitly set fields. No baked-in defaults. Modifier deltas
+  are registry-typed (ADR-0070): every key is admitted through the config
+  schema registry like any other scope.
+- `priority` (deterministic ordering hint, by kind):
+  `ParameterModifier = 0`, `NegativePart = 100`, `SupportEnforcer = 200`,
+  `SupportBlocker = 300`. Consumers may ignore and apply their own ordering.
+- `kind`: every `ModifierVolume` carries its classification as the typed
+  `ModifierVolume.kind` field across the IR seam (ADR-0070). For 3MF-sourced
+  volumes the kind is classified at load time from the part subtype, and the
+  volume applies only to features of its parent object, not the whole plate.
 
 ### Canonical region-id parser (host-only — Packet 75)
 
@@ -479,23 +549,95 @@ must know:
   (default `"rectilinear-infill"`). The claim↔key mapping is in
   `03_wit_and_manifest.md` § "Known claim IDs"; resolution is in
   `04_host_scheduler.md` § "Claim Resolution".
-- **`extensions: BTreeMap<String, ConfigValue>` is the overflow bucket** for
-  keys contributed by modules outside the current schema snapshot. It
-  round-trips without corrupting config. It was migrated from `HashMap` to
+- **`extensions: BTreeMap<String, ConfigValue>` carries keys without fixed
+  fields**, including registry-declared host runtime keys and keys contributed
+  by modules outside the current fixed-field schema snapshot. Declared keys
+  receive normal registry validation, defaults, and scope resolution before
+  interning; this map is not a bypass for those rules. It round-trips without
+  corrupting config. It was migrated from `HashMap` to
   `BTreeMap` in Packet 91 so `ResolvedConfig` can derive `Hash`; deterministic
   iteration order is the upside. The `Hash` impl hashes `f32` fields via
   `to_bits()`, which is consistent within one process.
+
+### Phase B automatic-value expansion (Normative)
+
+Config-only automatic values are expanded by `slicer_config::expand_automatic_values`
+after each applicable scope merge (global/default, object, tool, paint-semantic)
+and before `RegionMapIR` interning (`RegionMapIR::intern_config`) or module
+`ConfigView` delivery. Covered placeholders — `line_width = 0`,
+`support_line_width = 0`, percent-authored values whose registry `base_key`
+names a scope-resolved absolute base (including the four `overhang_*_speed`
+percent forms over `outer_wall_speed`), `support_interface_bottom_layers = -1`,
+and `support_bottom_interface_spacing = -1` — never reach the interner or a
+`ConfigView`: a successful expansion leaves no covered placeholder in the
+target map, and a failed expansion commits nothing. Expansion is registry-driven
+via `ExpansionContext` (global nozzle diameter plus per-tool absolute bases);
+only `RegistryEntry.base_key`-typed percentages are expanded. Packet 10 retains
+configured role speed `0` as an emitter-owned automatic value (see Phase C),
+along with geometry-, layer-, flow-, or move-dependent `-1` sentinels, if
+declared. `filament_max_volumetric_speed = 0` means the limit is unavailable;
+it does not request derivation of the filament limit itself.
+
+### Phase C per-move automatic-value resolution (Normative)
+
+`filament_max_volumetric_speed` is a filament-scoped, registry-declared host
+runtime key carried in `ResolvedConfig.extensions`, not a fixed serialized
+field. `ResolvedConfig::filament_max_volumetric_speed` in
+`crates/slicer-ir/src/resolved_config.rs` is a typed `Result<f64, String>`
+accessor: absent means numeric `0.0`; Float, Int, or a finite numeric String is
+accepted either as the scalar value or as the first element of a non-empty
+List. Wrong types, empty Lists, non-finite values, and negative values are
+rejected. Numeric-string parsing is specific to this accessor and does not
+define a general config coercion rule. This scalar envelope is retained by
+resolution; it is not indexed by tool number. Registry default is `0.0` and
+minimum is `0`; zero is unavailable, not a Phase-B automatic filament limit.
+
+A configured role speed of exactly zero selects the Phase-C fallback when
+per-move width/flow and layer `height_delta` are available in
+`DefaultGCodeEmitter::emit_gcode` (`crates/slicer-gcode/src/emit.rs`). The active
+tool's resolved limit wins, with resolved global fallback when the tool config
+is absent. A finite positive limit divided by finite positive
+`width × height_delta × flow_factor` supplies the private automatic base in
+mm/s. Normal shared factor clamping and mm/min conversion still apply; the
+automatic path rejects non-finite factors, overflow, and a final rounded or
+narrowed `F` that is non-finite or non-positive. Explicit positive configured
+speeds intentionally remain uncapped by this volumetric fallback. This is
+scope-limited formula/tool parity with canonical `GCode.cpp::GCode::_extrude`,
+not full emitter parity: canonical separately caps explicit positive speeds.
+
+[ADR-0072](adr/0072-context-aware-feedrate-resolution-preserves-factor-contract.md)
+narrowly amends ADR-0052's resolver-body and direct-call mechanism: production
+extrusion uses private move-context base selection and one shared host-side
+factor clamp/conversion policy. The public context-free role/factor resolver
+retains its signature and role-zero placeholder; factor carriers, replacement
+and entity-factor fallback remain unchanged. `D-CSR10-ADR-0052-AMENDED` in
+`docs/DEVIATION_LOG.md` registers this amendment, not a WIT or IR layout change.
+
+Module `ConfigView` delivery is **always resolved and registry-complete**
+(normative — resolved-config-view packet): the live binding path
+(`bind_module_config_view` in `crates/slicer-scheduler/src/execution_plan.rs`)
+binds each module's view from `ResolvedConfig::to_config_map()`, never from a
+raw source map, so every declared key with a registry default or an authored
+value is present with its effective value, and an undeclared key is absent
+from the view by construction.
 
 ### Config Precedence Rules
 
 When two sources assign the same key:
 
-- `modifier` > `object config` > `global default` (modifier resolution itself
-  is specified in § "Modifier Resolution Contract")
+- `global < object < layer range < modifier < paint semantic < tool` (lowest to
+  highest; modifier resolution itself is specified in § "Modifier Resolution
+  Contract")
 - Between overlapping modifiers, higher `priority` wins
 - On equal modifier priority, first-loaded modifier wins
 
 These rules are the single source of truth for runtime-free config resolution in `LayerPlanIR`.
+
+`ResolvedObjectLayerConfig` is the host-side, exactly five-field record emitted
+for layer planning: `object_id: String`, `object_height: f64`,
+`layer_height: f64`, `first_layer_height: f64`, and
+`support_raft_layers: u32`. It carries the resolved per-object planning inputs
+without reintroducing a scoped key prefix across the WIT boundary.
 
 ### Config Float Handling (Normative)
 
@@ -512,17 +654,21 @@ Reproducibility requirements:
 
 ### ResolvedConfig Hash invariant (Normative — Packet 91)
 
-`ResolvedConfig` derives `PartialEq` + `Eq` + `Hash`. All `f32`/`f64`
-fields are hashed via `to_bits()` so that `a == b ⇒ hash(a) == hash(b)`
-holds (both equality and hashing use bit-pattern comparison, not float
-equality). This is required for the Packet 91 interner that dedupes
-configs into `RegionMapIR.configs` via linear scan keyed by `==`.
+The declaration macro drives `ResolvedConfig`'s fields, defaults, and
+config-map conversion; `PartialEq`/`Eq` and `Hash` are hand-written. Those
+implementations explicitly cover the declared typed fields and `extensions`.
+Floating-point values, including optional and sequence fields, are compared
+and hashed via `to_bits()` rather than native float equality, so bitwise
+equality keeps `a == b ⇒ hash(a) == hash(b)` coherent. This is required for
+the Packet 91 interner that dedupes configs into `RegionMapIR.configs` via
+linear scan keyed by `==`.
 
 Portability caveat: hash output is consistent within one process but is
 NOT portable across architectures with differing NaN bit patterns. Two
-configs differing only in NaN payload bit pattern would compare unequal
-and intern as distinct entries. NaN is already a fatal validation error
-(see top of this doc), so this is theoretical for real prints.
+configs differing only in NaN payload bit pattern would compare unequal,
+and their distinct bit patterns would be supplied to hashing, so they intern
+as distinct entries. NaN is already a fatal validation error (see top of this
+doc), so this is theoretical for real prints.
 
 ---
 
@@ -530,7 +676,16 @@ and intern as distinct entries. NaN is already a fatal validation error
 
 **Stage:** Output of `PrePass::RegionMapping` (host-built-in)  
 **Lifetime:** Blackboard (immutable after PrePass)  
-**Current schema_version: 3.0.0** (Major bump by F-19 — `ResolvedConfig` is interned in `RegionMapIR.configs`, and `ResolvedConfig.support_type` widened from the two-variant `Traditional` / `Tree` enum to canonical's four-value `s_keys_map_SupportType` (`normal(auto)` / `tree(auto)` / `normal(manual)` / `tree(manual)`); the serde tokens are now those canonical spellings, so `Traditional` / `Tree` no longer deserialize. Prior versions: 1.0.0 initial; 1.1.0 (Packet 51 — additive `paint_overrides` field on `RegionPlan`); 2.0.0 (Packet 91 — `RegionPlan.config` is now a `ConfigId` interner index, `RegionMapIR.configs` Vec added, `RegionKey.variant_chain` added).)
+**Current schema_version: 3.0.0** (`CURRENT_REGION_MAP_IR_SCHEMA_VERSION` in
+`crates/slicer-ir/src/slice_ir.rs`). Prior
+versions: 1.0.0 initial; 1.1.0 (Packet 51 — additive `paint_overrides` field on
+`RegionPlan`); 2.0.0 (Packet 91 — `RegionPlan.config` is now a `ConfigId` interner
+index, `RegionMapIR.configs` Vec added, `RegionKey.variant_chain` added); 3.0.0
+(F-19 — `ResolvedConfig` is interned in `RegionMapIR.configs`, and
+`ResolvedConfig.support_type` widened from the two-variant `Traditional` / `Tree`
+enum to canonical's four-value `s_keys_map_SupportType` (`normal(auto)` /
+`tree(auto)` / `normal(manual)` / `tree(manual)`), so the old tokens no longer
+deserialize).
 
 `RegionMapIR`, `RegionKey`, `RegionPlan`, `ModuleInvocation`, and `ConfigId` are
 defined in `crates/slicer-ir/src/slice_ir.rs`. `RegionMapIR.configs` is the
@@ -538,6 +693,19 @@ interned `ResolvedConfig` pool, `RegionPlan.config` is its per-plan index, and
 `RegionKey.variant_chain` carries ordered paint variants. Use
 `RegionMapIR::config_for` and `RegionMapIR::intern_config` rather than relying
 on the internal pool layout.
+
+Packet 10 adds map content in existing `ResolvedConfig.extensions` values in
+`RegionMapIR.configs` and `RegionPlan.paint_overrides`; it does not add a struct
+field or change the persisted 3.0.0 layout. The independent pre-change 3.0.0
+Postcard fixture remains an unchanged-layout regression oracle, deserialized
+directly by tests with the existing dev-only Postcard dependency. The unshipped
+experimental fixed-field 3.1.0 layout and its packet-added production decoder
+are abandoned without authorizing deletion or regeneration of existing
+experimental artifacts and without a reader compatibility promise. This
+preservation constraint does not assert that a 3.1.0 fixture was produced;
+Packet 10's [review remediation](spec_packets/config-scope-resolution_10_remaining-automatic-values/review-remediation.md)
+records the identified artifact inventory.
+No WIT, CLI-output, or manifest schema version changes.
 
 ### Config Interner Contract (Normative — Packet 91)
 
@@ -585,7 +753,7 @@ Config keys follow a structured namespace convention used in `ResolvedConfig` an
 **Override precedence** (lowest → highest):
 
 ```text
-global < per_object (object_config:<id>:<key>) < per_paint_semantic (paint_config:<semantic>:<key>) < per_tool (tool_config:<idx>:<key>)
+global < object < layer range < modifier < paint semantic < tool
 ```
 
 Per-tool config is applied **last (highest)**, mirroring OrcaSlicer's filament-override-last model (`PrintApply.cpp` applies the filament preset's overrides on top of print/object/modifier/material). At `RegionMapping` the per-tool overlay runs after the paint overlays for a painted tool's chain; at emit it overlays the global config.
@@ -600,6 +768,46 @@ counts). The first such overlap found by the per-region traversal wins
 the precedence vote for its semantic; all overlapping semantics
 contribute their `ResolvedConfig` snapshot to `RegionPlan.paint_overrides`
 for audit visibility.
+
+#### Typed config-scope ingestion (TASK-564)
+
+The three scope-carrying wire prefixes above are a **wire encoding**, not an
+internal representation (ADR-0068). `ConfigIngestor`
+(`crates/slicer-config/src/ingestion.rs`) is the single decoder: each flat
+wire key `object_config:<id>:<key>`, `paint_config:<semantic>:<key>`, and
+`tool_config:<u32>:<key>` is decoded at ingestion into a `ConfigScope`
+variant (`Object` / `PaintSemantic` / `Tool` respectively) and its values
+grouped into one `ScopeDelta` per scope. No module and no code outside
+`ConfigIngestor` decodes these prefixes into scopes: modules receive typed
+values, and the scheduler's compatibility resolvers consume the typed
+`ScopedConfig` deltas `ConfigIngestor` produces (`ingest_scoped_config` in
+`crates/slicer-scheduler/src/config_resolution.rs` routes its source map
+back through this one decoder; that re-ingestion is transitional).
+
+Values are typed against the assembled `ConfigSchemaRegistry` —
+registry-directed ingestion is the single typing authority for authored
+value shapes (bounds enforcement stays with the resolver's
+`ConfigBoundsIndex`). `crates/slicer-model-io`'s 3MF adapter is deliberately
+syntax-only: its JSON/sidecar conversions assign no declared type, so
+string-authored sidecar values stay strings until ingestion types them.
+
+A declared key whose authored shape the declaration cannot represent is
+warned about (`IngestionWarning::UntypedValue`) and keeps its authored
+value — loud, never silent. An undeclared key is likewise warned about and
+kept, carrying a nearest-canonical-key suggestion
+(`IngestionWarning::UnrecognizedKey`). This warn-and-keep contract is
+tolerant mode (`ConfigIngestor::tolerant`), the mode every production entry
+point constructs; the strict constructor `ConfigIngestor::new` instead
+rejects such a shape with a fatal `ConfigIngestionError::TypeMismatch`. Two
+classes remain fatal in **both** modes: malformed scope encodings
+(`ConfigIngestionError::MalformedScopeKey`) and non-finite declared numeric
+values.
+
+The dynamic per-object height keys `object_height:<id>` remain wire inputs, not
+an additional prefixed scope. The row-5 resolution module turns the applicable
+inputs into `ResolvedObjectLayerConfig` for layer planning; no host namespace is
+formatted across that WIT seam. Layer-range ingestion and the overlap behavior
+described above remain explicitly queued for row 9.
 
 ---
 
@@ -983,7 +1191,7 @@ while seam-first geometry is represented by the first point of the wall path.
 
 **Stage:** Output of `Layer::Infill`, mutated by `Layer::InfillPostProcess`
 
-**Current schema_version: 1.0.0** (authoritative source: `CURRENT_INFILL_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`).
+**Current schema_version: 1.1.0** (authoritative source: `CURRENT_INFILL_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`). 1.1.0 adds the additive `InfillRegion.variant_chain: Vec<(String, PaintValue)>` carrier (seam identity): the full paint variant chain of the source region, so the infill linker and post-process consumers re-attribute output to the painted variant rather than the chain-less base. The field is `#[serde(default)]`, so pre-1.1.0 fixtures parse to an empty chain (unchanged behaviour for unpainted regions). Prior version: 1.0.0.
 
 `InfillIR` and `InfillRegion` are defined in
 `crates/slicer-ir/src/slice_ir.rs`. Each layer carries region-scoped sparse,
@@ -1365,11 +1573,22 @@ change fatal-error behaviour.
 **Stage:** Output of `PrePass::SeamPlanning` (optional; only present when a
 `seam-planner` module is loaded — packet 23-rev1).
 
-**Producer:** A module holding the `seam-planner` claim. Ordered after
-`PrePass::LayerPlanning`, before `PrePass::PaintSegmentation`.
+**Producer:** A module holding the `seam-planner` claim. Runs in the **late
+prepass phase** — after `PrePass::PaintSegmentation` (a host builtin that
+commits the paint-split `SliceIR`) — because its declared reads include
+`RegionMap` (`crates/slicer-runtime/src/prepass.rs`,
+`required_slots("PrePass::SeamPlanning")`). `STAGE_ORDER`
+(`crates/slicer-scheduler/src/execution_plan.rs`) lists `SeamPlanning` before
+`PaintSegmentation` as the canonical ordering registry; the runtime's
+early/late phase split is what settles the actual execution order. Seam-plan
+entries are therefore keyed on the paint-split region identity, including the
+full `variant_chain`.
 
 **Consumers:** `Layer::PerimetersPostProcess` modules holding the
-`seam-placer` claim. Advisory — may fall back to per-layer scoring.
+`seam-placer` claim. Advisory — may fall back to per-layer scoring. A region
+whose exact `(layer, object_id, region_id, variant_chain)` has no entry gets
+no injected seam (degraded path), never the seam chosen for a different
+paint variant.
 
 **schema_version: 1.1.0** (`CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION`; packet 178
 added additive `variant_chain` propagation through harvest (the field already
@@ -1671,6 +1890,23 @@ PNP's `ORCA_CONFIG_PADDING` table must never emit keys whose names match
 `*speed*`, `*acceleration*`, `*jerk*`, or `machine_max_*`. These keys are always
 fork-supplied and are never synthesized as padding.
 
+**Block population (normative — resolved-config-view packet):** the block's
+key set is no longer a raw-config dump. `ConfigSchemaRegistry::config_block_map`
+(`crates/slicer-config/src/lib.rs`) projects the effective resolved config:
+a key of `ResolvedConfig::to_config_map()` is emitted when it is a registry
+entry without `omit_from_config_block`, or a
+`ResolvedConfig::typed_field_keys()` key with no registry entry (today
+`infill_type`). The registry's host channel is seeded from
+`HOST_RUNTIME_KEYS` (`crates/slicer-ir/src/resolved_config.rs`) — every key
+the host runtime reads directly — so registered host-consumed keys are
+registered before reconciliation and survive ingestion; `config_block_map`
+runs over the registered `HOST_RUNTIME_KEYS` plus every module manifest's
+`[config.schema]` declarations. Exactly four keys carry
+`config_block = false` (`omit_from_config_block = true`) and are absent from
+the block: the three `mmu_segmented_region_*` keys and `thumbnail_path`.
+String values are escaped per canonical `escape_string_cstyle`
+(`ConfigOptionString::serialize`, OrcaSlicer `Config.cpp`).
+
 **Minimum-key gate (normative — packet 167):** PNP pads `CONFIG_BLOCK` with
 `; key = value` entries until the block holds 96 entries even when `raw_config`
 is minimal (`serialize_config_block` in `crates/slicer-gcode/src/serialize.rs`
@@ -1930,7 +2166,7 @@ pre-packet-60 behavior at `{:.4}`).
 | Field removed            | Major (1.x → 2.0) | No — requires compatibility shim   |
 | New enum variant         | Minor (1.0 → 1.1) | Yes — old modules treat as unknown |
 
-The `extensions: BTreeMap<String, ConfigValue>` field on `ResolvedConfig` is the soft landing zone for config keys contributed by modules not present in the host's schema snapshot. Keys always round-trip safely.
+The existing `extensions: BTreeMap<String, ConfigValue>` field on `ResolvedConfig` carries declared host runtime and module keys without fixed fields in the host's schema snapshot. Adding content to that map does not itself add a serialized struct field; declared keys still follow normal registry validation, defaulting, and scope resolution before interning.
 
 ### Reservation Table — perimeter parity roadmap (P102–P112)
 

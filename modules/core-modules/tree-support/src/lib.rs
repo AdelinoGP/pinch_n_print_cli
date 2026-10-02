@@ -56,9 +56,24 @@ use slicer_sdk::LayerCollectionBuilder;
 /// Default base speed used for normalizing speed factors (mm/s).
 const BASE_SPEED: f32 = 50.0;
 
-/// Default gap between adjacent support-interface extrusions, matching
-/// OrcaSlicer's `support_interface_spacing` default of 0.4 mm.
-const DEFAULT_INTERFACE_SPACING_MM: f32 = 0.4;
+/// Required read of a `percent`-declared key's raw magnitude.
+///
+/// `support_interface_flow` is consumed here as a ratio
+/// (`resolved_interface_flow_ratio`), never resolved against a base, so
+/// neither `require_float` (which refuses `Percent` by design — no base is
+/// available) nor `require_abs_value` (appropriate only for width-like keys
+/// with a declared `base_key`) fits. The registry seeds the declared key as
+/// `ConfigValue::Percent(100.0)` and ingestion coerces every authored
+/// spelling to the same variant, so a missing or mistyped value is a config
+/// defect that must abort rather than fall back to a literal. The error
+/// travels the same `ConfigReadError` → fatal `ModuleError` path as the
+/// `require_*` accessors.
+fn required_percent_magnitude(config: &ConfigView, key: &str) -> Result<f32, ModuleError> {
+    match config.get(key) {
+        Some(ConfigValue::Percent(magnitude)) => Ok(*magnitude as f32),
+        _ => Err(slicer_ir::slice_ir::ConfigReadError::new(key, "percent").into()),
+    }
+}
 
 /// Tree-support renderer.
 ///
@@ -80,7 +95,8 @@ pub struct TreeSupport {
     /// `support_interface_spacing`). This is the *gap*, not the pitch.
     top_interface_spacing_mm: f32,
     /// Configured bottom-interface line gap in millimeters (canonical
-    /// `support_bottom_interface_spacing`). Negative mirrors the top value.
+    /// `support_bottom_interface_spacing`). Automatic values are expanded by
+    /// the host before this guest sees config.
     bottom_interface_spacing_mm: f32,
     /// Configured gap between adjacent body lines in millimeters.
     base_pattern_spacing_mm: f32,
@@ -113,13 +129,7 @@ impl TreeSupport {
             slicer_core::flow::line_width_to_spacing(interface_width, layer_height)
                 .map_err(|error| ModuleError::non_fatal(333, error.to_string()))?;
         let top_gap = self.top_interface_spacing_mm.max(0.0);
-        // Negative mirrors the top gap, per OrcaSlicer's `-1 == same as top`
-        // convention for the paired bottom-interface keys.
-        let bottom_gap = if self.bottom_interface_spacing_mm < 0.0 {
-            top_gap
-        } else {
-            self.bottom_interface_spacing_mm
-        };
+        let bottom_gap = self.bottom_interface_spacing_mm.max(0.0);
         let body_density = slicer_core::support_regularize::body_density(
             self.line_width,
             layer_height,
@@ -240,54 +250,47 @@ fn point_in_expolygon(expoly: &ExPolygon, x: f32, y: f32) -> bool {
 #[slicer_module]
 impl LayerModule for TreeSupport {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let enabled = match config.get("enable_support") {
-            Some(ConfigValue::Bool(b)) => *b,
-            _ => false,
-        };
+        // Every key below is declared in `tree-support.toml`, so the registry
+        // seeds its default into every bound view and absence is a contract
+        // violation. Required reads abort instead of silently restoring a
+        // stale in-code literal (the pre-migration fallbacks).
+        let enabled = config.require_bool("enable_support")?;
 
-        let support_speed = match config.get("support_speed") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => BASE_SPEED,
-        };
+        let support_speed = config.require_float("support_speed")? as f32;
 
-        let nozzle_diameter = config.get_float("nozzle_diameter").unwrap_or(0.4);
-        let line_width = config
-            .get_abs_value("support_line_width", nozzle_diameter)
-            .or_else(|| config.get_int("support_line_width").map(|v| v as f64))
-            .map(|w| {
-                if w > 0.0 {
-                    w as f32
-                } else {
-                    (1.125 * nozzle_diameter) as f32
-                }
-            })
-            .filter(|w| *w > 0.0)
-            .unwrap_or(1.125 * nozzle_diameter as f32);
-        let interface_flow_percent = match config.get("support_interface_flow") {
-            Some(ConfigValue::Float(value)) => *value as f32,
-            Some(ConfigValue::Int(value)) => *value as f32,
-            _ => 100.0,
+        // Required read (packet 06): `nozzle_diameter` is `float` in the
+        // manifest with a seeded 0.4 default (matching the registry's
+        // existing declarers), so absence is a contract violation, not a
+        // fallback case.
+        let nozzle_diameter = config.require_float("nozzle_diameter")?;
+        // `support_line_width` is declared `float_or_percent` with
+        // `base_key = "nozzle_diameter"` and an auto sentinel default of 0.0,
+        // so the required read resolves its absolute width; a non-positive
+        // resolved value keeps the existing auto semantic (1.125 × nozzle
+        // diameter) as an explicit value check, not a silent None-fallback.
+        let resolved_line_width =
+            config.require_abs_value("support_line_width", nozzle_diameter)?;
+        let line_width = if resolved_line_width > 0.0 {
+            resolved_line_width as f32
+        } else {
+            (1.125 * nozzle_diameter) as f32
         };
-        let wall_count = match config.get("tree_support_wall_count") {
-            Some(ConfigValue::Int(value)) => (*value).max(1) as usize,
-            Some(ConfigValue::Float(value)) => (*value).max(1.0) as usize,
-            _ => 2,
-        };
+        // `support_interface_flow` is declared `percent`: the registry seeds
+        // `ConfigValue::Percent(100.0)` and ingestion delivers authored values
+        // as `Percent` too. The raw magnitude is what
+        // `resolved_interface_flow_ratio` consumes (it is a ratio, not a
+        // width), so there is no base to resolve against and no literal
+        // fallback: a missing or mistyped value aborts.
+        let interface_flow_percent = required_percent_magnitude(config, "support_interface_flow")?;
+        // Declared `int` with the canonical `0 = auto` sentinel; the `.max(1)`
+        // clamp is the consumption-site semantic from canonical
+        // `generate_toolpaths`.
+        let wall_count = config.require_int("tree_support_wall_count")?.max(1) as usize;
 
-        let top_interface_spacing_mm = match config.get("support_interface_spacing") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => DEFAULT_INTERFACE_SPACING_MM,
-        };
-        let bottom_interface_spacing_mm = match config.get("support_bottom_interface_spacing") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => -1.0,
-        };
-        let base_pattern_spacing_mm = config
-            .get_float("support_base_pattern_spacing")
-            .unwrap_or(2.5) as f32;
+        let top_interface_spacing_mm = config.require_float("support_interface_spacing")? as f32;
+        let bottom_interface_spacing_mm =
+            config.require_float("support_bottom_interface_spacing")? as f32;
+        let base_pattern_spacing_mm = config.require_float("support_base_pattern_spacing")? as f32;
 
         Ok(Self {
             enabled,
@@ -326,7 +329,9 @@ impl LayerModule for TreeSupport {
             let layer_height = if region.effective_layer_height() > 0.0 {
                 region.effective_layer_height()
             } else {
-                _config.get_float("layer_height").unwrap_or(0.2) as f32
+                // Required read (packet 06): `layer_height` is `float`
+                // (seeded default 0.2) in the manifest.
+                _config.require_float("layer_height")? as f32
             };
             let (
                 interface_width_mm,
@@ -401,7 +406,11 @@ impl LayerModule for TreeSupport {
                 // Off-grid paths accumulate here in role order so they can be
                 // proposed as ONE anchored collection per dispatch (the
                 // builder rejects a second proposal).
-                output.begin_region(region.object_id(), *region.region_id());
+                output.begin_region(
+                    region.object_id(),
+                    *region.region_id(),
+                    region.variant_chain(),
+                );
                 // F-37: canonical `generate_interface_layers` regularizes every
                 // interface band (`closing` + `smooth_outward`) and subtracts
                 // the result from the base area before anything is filled.
@@ -765,7 +774,7 @@ impl TreeSupport {
         };
         let emit_scanline = |scan: f64, paths: &mut Vec<ExtrusionPath3D>| {
             let crossings = crossings_at(scan);
-            for pair in crossings.chunks_exact(2) {
+            for pair in crossings.as_chunks::<2>().0 {
                 if pair[1] > pair[0] && pair[0] >= min_x && pair[1] <= max_x {
                     paths.push(ExtrusionPath3D {
                         points: vec![
@@ -842,9 +851,49 @@ mod tests {
     use super::*;
     use slicer_ir::Point2;
 
+    /// Packet 06 made `nozzle_diameter`, `layer_height` and
+    /// `support_base_pattern_spacing` required reads (`require_float`) in
+    /// `from_config`/`run_support`; the fail-closed migration made every
+    /// other manifest-declared key required too. The host seeds all of these
+    /// at their manifest defaults, so unit fixtures seed the same values —
+    /// exactly the pre-B4 in-code fallbacks, keeping the assertion constants
+    /// below unchanged. `support_line_width` seeds its manifest default 0.0
+    /// (the auto sentinel; the explicit value check keeps the
+    /// 1.125 × nozzle_diameter auto semantic).
+    fn seeded_config_map() -> std::collections::HashMap<String, ConfigValue> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.4));
+        map.insert("layer_height".to_string(), ConfigValue::Float(0.2));
+        map.insert(
+            "support_base_pattern_spacing".to_string(),
+            ConfigValue::Float(2.5),
+        );
+        map.insert("enable_support".to_string(), ConfigValue::Bool(false));
+        map.insert("support_speed".to_string(), ConfigValue::Float(50.0));
+        map.insert("support_line_width".to_string(), ConfigValue::Float(0.0));
+        map.insert(
+            "support_interface_flow".to_string(),
+            ConfigValue::Percent(100.0),
+        );
+        map.insert("tree_support_wall_count".to_string(), ConfigValue::Int(1));
+        map.insert(
+            "support_interface_spacing".to_string(),
+            ConfigValue::Float(0.4),
+        );
+        map.insert(
+            "support_bottom_interface_spacing".to_string(),
+            ConfigValue::Float(0.4),
+        );
+        map
+    }
+
+    fn seeded_config() -> ConfigView {
+        ConfigView::from_map(seeded_config_map())
+    }
+
     #[test]
     fn from_config_defaults() {
-        let config = ConfigView::from_map(std::collections::HashMap::new());
+        let config = seeded_config();
         let module = TreeSupport::from_config(&config).unwrap();
         assert!(!module.enabled);
         assert!((module.line_width - 0.45).abs() < 0.001);
@@ -857,12 +906,12 @@ mod tests {
     /// resolution), so `line_width_to_spacing(0.45, 0.2) = 0.4070796` and the
     /// top pitch is 0.4 + 0.4070796 = 0.807 mm. With the key absent from the
     /// raw config map (as here) the in-code fallback stays the legacy −1.0
-    /// mirror-top sentinel, so bottom == top; in production the manifest
+    /// host-expanded default, so bottom == top; in production the manifest
     /// default 0.5 is host-injected and yields a 0.907 mm bottom
     /// pitch instead.
     #[test]
     fn interface_pitch_adds_flow_spacing() {
-        let config = ConfigView::from_map(std::collections::HashMap::new());
+        let config = seeded_config();
         let module = TreeSupport::from_config(&config).unwrap();
         let (_, _, _, top, bottom) = module.pitches_mm(0.2).unwrap();
         assert!(
@@ -871,7 +920,7 @@ mod tests {
         );
         assert_eq!(
             bottom, top,
-            "absent bottom-spacing key falls back to the mirror-top sentinel"
+            "the expanded default bottom spacing matches the top spacing"
         );
         // The interface pitch must not be the body pitch (line_width/density).
         let body_pitch = module.pitches_mm(0.2).unwrap().2;
@@ -887,7 +936,9 @@ mod tests {
         // coincident copies of the same contour and then scan-fill the whole
         // polygon at a `line_width` pitch, so a body was extruded several times
         // over the same area.
-        let mut map = std::collections::HashMap::new();
+        // `tree_support_wall_count` is this test's focus; every other
+        // declared key comes from `seeded_config_map` at its manifest default.
+        let mut map = seeded_config_map();
         map.insert("enable_support".to_string(), ConfigValue::Bool(true));
         map.insert("tree_support_wall_count".to_string(), ConfigValue::Int(2));
         let module = TreeSupport::from_config(&ConfigView::from_map(map)).unwrap();
@@ -937,9 +988,11 @@ mod tests {
     #[test]
     fn fill_pitch_derives_from_base_spacing() {
         let build = |density: f64| {
-            let mut map = std::collections::HashMap::new();
+            // `support_base_pattern_spacing` is this test's focus; every other
+            // declared key comes from `seeded_config_map` at its manifest
+            // default (the density override below is the point).
+            let mut map = seeded_config_map();
             map.insert("enable_support".to_string(), ConfigValue::Bool(true));
-            map.insert("tree_support_wall_count".to_string(), ConfigValue::Int(1));
             map.insert(
                 "support_base_pattern_spacing".to_string(),
                 ConfigValue::Float(density),
@@ -978,7 +1031,7 @@ mod tests {
 
     #[test]
     fn narrow_region_gets_one_fill_line_when_pitch_has_no_scan_rows() {
-        let config = ConfigView::from_map(std::collections::HashMap::new());
+        let config = seeded_config();
         let module = TreeSupport::from_config(&config).unwrap();
         let region = ExPolygon {
             contour: slicer_ir::Polygon {

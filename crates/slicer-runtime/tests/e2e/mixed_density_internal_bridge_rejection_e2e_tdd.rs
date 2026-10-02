@@ -20,7 +20,7 @@
 
 use slicer_core::algos::region_mapping::stamp_modifier_sub_region_configs;
 use slicer_ir::{
-    ConfigValue, ExPolygon, ModifierScope, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig,
+    ConfigValue, ExPolygon, ModifierKind, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig,
     SliceIR, SlicedRegion, CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
 use slicer_runtime::{commit_shell_classification_builtin, Blackboard};
@@ -61,6 +61,17 @@ fn region_config(density: f32) -> ResolvedConfig {
         infill_density: density,
         top_shell_layers: 2,
         bottom_shell_layers: 0,
+        // The gate resolves flow widths from resolved state
+        // (`gate_internal_bridge_sites`'s `RoleWidthContext`), and
+        // `line_width = 0` is the unresolved auto sentinel — resolution
+        // normally expands it to 1.125 × nozzle_diameter (the
+        // `line_width == 0` rule of `ExpansionResolver::expand_key`,
+        // `crates/slicer-config/src/lib.rs`; canonical
+        // `Flow::auto_extrusion_width`, `OrcaSlicerDocumented/src/libslic3r/Flow.cpp`).
+        // This fixture bypasses resolution, so pin the post-expansion value
+        // (1.125 × the gate's 0.4 fallback nozzle = 0.45); a zero width makes
+        // `line_width_to_spacing` reject every layer-visit.
+        line_width: 0.45,
         ..Default::default()
     }
 }
@@ -110,19 +121,18 @@ fn mixed_density_internal_bridge_rejection_e2e_tdd() {
     base_config
         .extensions
         .insert("bridge_line_width".into(), ConfigValue::Float(0.4));
-    // exhaustive: fixture explicitly pins every ModifierVolume field
-    let modifier_volume = slicer_ir::ModifierVolume {
-        id: "mod-dense".into(),
-        mesh: slicer_ir::IndexedTriangleSet::default(),
-        config_delta: slicer_ir::ConfigDelta {
+    let modifier_volume = slicer_ir::ModifierVolume::new(
+        "mod-dense".into(),
+        slicer_ir::IndexedTriangleSet::default(),
+        slicer_ir::ConfigDelta {
             fields: HashMap::from([(
                 "infill_density".into(),
                 ConfigValue::Float(f64::from(SPARSE_DENSITY)),
             )]),
         },
-        priority: 0,
-        applies_to: ModifierScope::AllFeatures,
-    };
+        0,
+        ModifierKind::ParameterModifier,
+    );
     let per_region =
         stamp_modifier_sub_region_configs(base_config.clone(), 0, sub_id, &[modifier_volume]);
     let mut base_cfg = per_region

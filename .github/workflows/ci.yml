@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: rustfmt
       - run: cargo fmt --all -- --check
@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.96.0
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
@@ -84,14 +84,18 @@ jobs:
       - name: Test Core (narrow)
         run: cargo test -p slicer-runtime --test contract core_module_ir_access_contract_tdd
       - name: Test All Crates (not workspace)
-        run: cargo test -p slicer-runtime && cargo test -p pnp-cli && cargo test -p slicer-helpers
+        # `--features perimeter-spatial-test-support` is required: packet 254's
+        # `perimeter_spatial_capture` integration module is always compiled and
+        # its only test without the feature is a guard that panics, so a
+        # feature-less run fails loudly rather than reporting zero tests.
+        run: cargo test -p slicer-runtime --features perimeter-spatial-test-support && cargo test -p pnp-cli && cargo test -p slicer-helpers
 
   dist-editions:
     name: Dist editions
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.96.0
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2

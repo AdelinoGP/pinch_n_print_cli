@@ -163,7 +163,7 @@ pub struct SupportPlanner {
     /// Explicit band below a roof contact rendered as base interface.
     num_top_base_interface_layers: i32,
     /// Number of dense interface layers where branches land on the model.
-    /// `-1` mirrors the top interface count (OrcaSlicer convention).
+    /// Automatic values are expanded by the host before this guest sees config.
     support_interface_bottom_layers: i32,
     /// Line spacing for interface layer dense fill in mm.
     /// When true, contacts whose XY lies inside the object's projected
@@ -1760,7 +1760,10 @@ impl PrepassModule for SupportPlanner {
             Some(ConfigValue::Int(a)) => *a as f32,
             _ => DEFAULT_BRANCH_ANGLE_DEG,
         };
-        let nozzle_diameter = config.get_float("nozzle_diameter").unwrap_or(0.0);
+        // Packet 06 (AC-3): `nozzle_diameter` is declared `float` with a
+        // registry default in the manifest, so a bound view always holds it;
+        // a missing value is a contract violation, not a fallback case.
+        let nozzle_diameter = config.require_float("nozzle_diameter")?;
         let support_line_width_mm = config
             .get_abs_value("support_line_width", nozzle_diameter)
             // Preserve hand-written legacy configs that encode an absolute
@@ -1815,10 +1818,20 @@ impl PrepassModule for SupportPlanner {
             Some(ConfigValue::Float(n)) => *n as i32,
             _ => 0,
         };
+        // `raft_first_layer_density` arrives as coPercent magnitude (90 = 90%)
+        // and is consumed as `value * 0.01` — exactly canonical
+        // `TreeSupport::generate_toolpaths`
+        // (`OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp`).
+        // `RaftPlan.raft_first_layer_density` keeps the 0..1 fraction semantic.
         let raft_first_layer_density = match config.get("raft_first_layer_density") {
-            Some(ConfigValue::Float(d)) => *d as f32,
-            Some(ConfigValue::Int(d)) => *d as f32,
-            _ => 0.4,
+            // Canonical computes `value * 0.01` in double before the float
+            // cast (`TreeSupport::generate_toolpaths`,
+            // `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp`);
+            // f32 math turns authored 40 into 0.39999998 and breaks exact
+            // RaftPlan equality.
+            Some(ConfigValue::Float(d)) => (*d * 0.01) as f32,
+            Some(ConfigValue::Int(d)) => (*d as f64 * 0.01) as f32,
+            _ => 0.9,
         };
         let base_raft_layers = match config.get("base_raft_layers") {
             Some(ConfigValue::Int(n)) => *n as u32,
@@ -1833,7 +1846,7 @@ impl PrepassModule for SupportPlanner {
         let support_interface_bottom_layers = match config.get("support_interface_bottom_layers") {
             Some(ConfigValue::Int(n)) => *n as i32,
             Some(ConfigValue::Float(n)) => *n as i32,
-            _ => -1,
+            _ => 2,
         };
         let support_interface_top_layers = match config.get("support_interface_top_layers") {
             Some(ConfigValue::Int(n)) => *n as i32,
@@ -1881,9 +1894,8 @@ impl PrepassModule for SupportPlanner {
         // When true, `plan_for_object` derives free-floating intermediate
         // support planes from `support_layer_height_mm`; when false the plan
         // is byte-identical to the pre-239c grid-exact behavior.
-        let independent_support_layer_height = config
-            .get_bool("independent_support_layer_height")
-            .unwrap_or(true);
+        let independent_support_layer_height =
+            config.require_bool("independent_support_layer_height")?;
         let max_bridge_length_mm = match config.get("max_bridge_length") {
             Some(ConfigValue::Float(length)) if *length > 0.0 => *length as f32,
             Some(ConfigValue::Int(length)) if *length > 0 => *length as f32,
@@ -2020,8 +2032,8 @@ impl PrepassModule for SupportPlanner {
         // `support_interface_bottom_layers` is implemented as of packet 224: it
         // is read in `from_config` into `self.support_interface_bottom_layers`
         // and drives the `BottomInterface` band (canonical `floor_areas`) where
-        // branches land on the model. `-1` mirrors the top interface count,
-        // matching canonical's `number_of_support_interface_bottom_layers`.
+        // branches land on the model. Automatic values have already been
+        // expanded by the host before construction of this guest's ConfigView.
         //
         // This site previously emitted a code 1003 "not yet implemented"
         // warning. That diagnostic is retired because the feature now exists —
@@ -3328,13 +3340,7 @@ impl SupportPlanner {
             // branch footprint.
             let top_n = self.support_interface_top_layers.max(0) as u32;
             let base_n = self.num_top_base_interface_layers as usize;
-            // `-1` mirrors the top interface count, matching canonical's
-            // `number_of_support_interface_bottom_layers` fallback.
-            let bottom_n = if self.support_interface_bottom_layers < 0 {
-                top_n
-            } else {
-                self.support_interface_bottom_layers.max(0) as u32
-            };
+            let bottom_n = self.support_interface_bottom_layers.max(0) as u32;
             let node_roles: Vec<InterfaceRole> = active_nodes
                 .iter()
                 .map(|id| {
@@ -6788,7 +6794,7 @@ mod tests {
             interface_raft_layers: 0,
             support_interface_top_layers: 2,
             num_top_base_interface_layers: 0,
-            support_interface_bottom_layers: -1,
+            support_interface_bottom_layers: 2,
             support_on_build_plate_only: false,
             support_top_z_distance_mm: DEFAULT_TOP_Z_DISTANCE_MM,
             support_layer_height_mm: 0.0,

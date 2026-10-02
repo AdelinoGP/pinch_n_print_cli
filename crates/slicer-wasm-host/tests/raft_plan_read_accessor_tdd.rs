@@ -213,7 +213,7 @@ fn native_infill_entry(
     *NATIVE_OBSERVED.lock().expect("observed mutex") =
         Some((paint.is_raft(), paint.raft_plan().cloned()));
     let mut infill = slicer_sdk::builders::InfillOutputBuilder::new();
-    infill.begin_region(OBJECT_ID, REGION_ID);
+    infill.begin_region(OBJECT_ID, REGION_ID, &[]);
     infill
         // exhaustive: ExtrusionPath3D has no Default; test-only witness path
         .push_sparse_path(ExtrusionPath3D {

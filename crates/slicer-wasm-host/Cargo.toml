@@ -11,6 +11,7 @@ wasmtime-wasi = { workspace = true }
 # Fan-out for the batched host services (see `batch.rs`, ADR-0049).
 rayon = "1.10"
 log = "0.4"
+slicer-config = { path = "../slicer-config" }
 slicer-core = { path = "../slicer-core", features = ["host-algos"] }
 slicer-ir = { path = "../slicer-ir" }
 slicer-scheduler = { path = "../slicer-scheduler" }

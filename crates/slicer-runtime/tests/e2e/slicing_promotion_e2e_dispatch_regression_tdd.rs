@@ -39,13 +39,16 @@ fn shared_staircase_paths() -> (&'static Path, &'static Path) {
         let stl = dir.path().join("staircase.stl");
         let cfg = dir.path().join("staircase_ironing.json");
         write_staircase_stl(&stl);
+        // `ironing_flow` = 15 is coPercent magnitude (15 = 15%) — canonical
+        // `ironing_flow` domain, `PrintConfigDef::init_fff_params`
+        // (`OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp`).
         std::fs::write(
             &cfg,
             "{\n  \
                 \"ironing_enabled\": true,\n  \
                 \"ironing_spacing_mm\": 0.2,\n  \
                 \"ironing_speed\": 15.0,\n  \
-                \"ironing_flow\": 0.15,\n  \
+                \"ironing_flow\": 15,\n  \
                 \"top_shell_layers\": 2,\n  \
                 \"bottom_shell_layers\": 2,\n  \
                 \"layer_height\": 0.2\n\
@@ -169,12 +172,15 @@ fn config_path(tmp: &tempfile::TempDir) -> PathBuf {
     std::fs::write(
         &p,
         // ironing_enabled = true with conservative defaults so the module
-        // actually fires on the staircase top surfaces.
+        // actually fires on the staircase top surfaces. `ironing_flow` = 15
+        // is coPercent magnitude (15 = 15%) — canonical `ironing_flow`
+        // domain, `PrintConfigDef::init_fff_params`
+        // (`OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp`).
         "{\n  \
             \"ironing_enabled\": true,\n  \
             \"ironing_spacing_mm\": 0.2,\n  \
             \"ironing_speed\": 15.0,\n  \
-            \"ironing_flow\": 0.15,\n  \
+            \"ironing_flow\": 15,\n  \
             \"top_shell_layers\": 2,\n  \
             \"bottom_shell_layers\": 2,\n  \
             \"layer_height\": 0.2\n\
@@ -263,12 +269,12 @@ fn staircase_ironing_g1_lines_within_top_fill_extents() {
     let gcode = outcome.gcode.as_str();
     let max_extent = TIER_HALF_EXTENTS_MM[0]; // 10 mm
     let tolerance = 0.5_f32; // mm — allow for centre-line offset + extrusion width
-    // The staircase STL is authored around the origin, but a bare mesh is
-    // placed on the plate at load (`place_bare_mesh_on_bed`), so its footprint
-    // is centred on the bed, not on (0, 0). Derive that centre the way
-    // production does rather than re-deriving the rule here; the config below
-    // declares no `bed_shape`, so the resolved default applies. The 10 mm bound
-    // itself is unchanged — only what it is measured from.
+                             // The staircase STL is authored around the origin, but a bare mesh is
+                             // placed on the plate at load (`place_bare_mesh_on_bed`), so its footprint
+                             // is centred on the bed, not on (0, 0). Derive that centre the way
+                             // production does rather than re-deriving the rule here; the config below
+                             // declares no `bed_shape`, so the resolved default applies. The 10 mm bound
+                             // itself is unchanged — only what it is measured from.
     let bed_shape = slicer_ir::ResolvedConfig::default().bed_shape;
     let (centre_x, centre_y) = slicer_model_io::bed_center_mm(&bed_shape)
         .expect("the default bed_shape must describe a plate");

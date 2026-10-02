@@ -54,7 +54,9 @@ fn precise_mode_inner_first_and_spacing2() {
     let outer_w = 0.5_f32;
     let inner_w = 0.4_f32;
 
-    let config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
+    // reads need the full classic surface; the fixture's own keys override it.
+    let config = crate::common::classic_perimeters_baseline()
         .int("wall_count", 3)
         .float("outer_wall_line_width", outer_w as f64)
         .float("inner_wall_line_width", inner_w as f64)
@@ -128,7 +130,8 @@ fn precise_mode_off_standard_spacing() {
     let outer_w = 0.5_f32;
     let inner_w = 0.4_f32;
 
-    let config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): see the precise-mode case above.
+    let config = crate::common::classic_perimeters_baseline()
         .int("wall_count", 3)
         .float("outer_wall_line_width", outer_w as f64)
         .float("inner_wall_line_width", inner_w as f64)
@@ -185,7 +188,10 @@ fn gate_off_case_precise_true_outer_inner_sequence() {
     let inner_w = 0.4_f32;
 
     // precise=true + OuterInner → should behave like precise=false + OuterInner
-    let config_precise = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): both views need the full classic
+    // surface; the fixture's own keys override it. Both `wall_count` values
+    // agree with the fixture's `_wall_count` argument to `run_with_config`.
+    let config_precise = crate::common::classic_perimeters_baseline()
         .int("wall_count", 3)
         .float("outer_wall_line_width", outer_w as f64)
         .float("inner_wall_line_width", inner_w as f64)
@@ -194,7 +200,7 @@ fn gate_off_case_precise_true_outer_inner_sequence() {
         .build();
 
     // precise=false + OuterInner → reference
-    let config_standard = ConfigViewBuilder::new()
+    let config_standard = crate::common::classic_perimeters_baseline()
         .int("wall_count", 3)
         .float("outer_wall_line_width", outer_w as f64)
         .float("inner_wall_line_width", inner_w as f64)

@@ -81,7 +81,7 @@ fn load_model_debug(metadata: &[(&str, &str)]) -> String {
 }
 
 #[test]
-fn extended_object_allowlist_types() {
+fn extended_object_allowlist_preserves_authored_strings() {
     let debug = load_model_debug(&[
         ("wall_loops", "3"),
         ("top_shell_layers", "4"),
@@ -102,16 +102,16 @@ fn extended_object_allowlist_types() {
     ]);
 
     for expected in [
-        "\"wall_loops\": Int(3)",
-        "\"top_shell_layers\": Int(4)",
-        "\"bottom_shell_layers\": Int(3)",
-        "\"raft_layers\": Int(2)",
-        "\"support_interface_top_layers\": Int(2)",
-        "\"support_interface_bottom_layers\": Int(2)",
-        "\"layer_height\": Float(0.28)",
-        "\"brim_width\": Float(5.0)",
-        "\"support_threshold_angle\": Float(40.0)",
-        "\"support_top_z_distance\": Float(0.2)",
+        "\"wall_loops\": String(\"3\")",
+        "\"top_shell_layers\": String(\"4\")",
+        "\"bottom_shell_layers\": String(\"3\")",
+        "\"raft_layers\": String(\"2\")",
+        "\"support_interface_top_layers\": String(\"2\")",
+        "\"support_interface_bottom_layers\": String(\"2\")",
+        "\"layer_height\": String(\"0.28\")",
+        "\"brim_width\": String(\"5.0\")",
+        "\"support_threshold_angle\": String(\"40\")",
+        "\"support_top_z_distance\": String(\"0.2\")",
         "\"seam_position\": String(\"rear\")",
         "\"sparse_infill_density\": String(\"20%\")",
         "\"sparse_infill_pattern\": String(\"gyroid\")",
@@ -124,7 +124,7 @@ fn extended_object_allowlist_types() {
 }
 
 #[test]
-fn non_finite_object_float_metadata_is_rejected() {
+fn non_finite_object_float_metadata_preserves_authored_strings() {
     let debug = load_model_debug(&[
         ("layer_height", "NaN"),
         ("brim_width", "inf"),
@@ -132,23 +132,30 @@ fn non_finite_object_float_metadata_is_rejected() {
         ("support_top_z_distance", "NaN"),
         ("sparse_infill_density", "NaN"),
     ]);
-    for key in [
-        "layer_height",
-        "brim_width",
-        "support_threshold_angle",
-        "support_top_z_distance",
-        "sparse_infill_density",
+    // Declared-type rejection of these non-finite float values belongs to
+    // slicer-config ingestion; this loader test owns syntax and authored-shape
+    // preservation, including the negative control against Float coercion.
+    for (key, authored) in [
+        ("layer_height", "NaN"),
+        ("brim_width", "inf"),
+        ("support_threshold_angle", "-inf"),
+        ("support_top_z_distance", "NaN"),
+        ("sparse_infill_density", "NaN"),
     ] {
         assert!(
-            !debug.contains(&format!("\"{key}\":")),
-            "non-finite object metadata must be skipped for {key}: {debug}"
+            debug.contains(&format!("\"{key}\": String(\"{authored}\")")),
+            "non-finite object metadata must retain authored String({authored}) for {key}: {debug}"
+        );
+        assert!(
+            !debug.contains(&format!("\"{key}\": Float(")),
+            "non-finite object metadata must not be coerced to ConfigValue::Float for {key}: {debug}"
         );
     }
 
     let numeric_density = load_model_debug(&[("sparse_infill_density", "0.4")]);
     assert!(
-        numeric_density.contains("\"sparse_infill_density\": Float(0.4)"),
-        "finite non-percentage density must remain Float: {numeric_density}"
+        numeric_density.contains("\"sparse_infill_density\": String(\"0.4\")"),
+        "finite numeric density must preserve its authored String: {numeric_density}"
     );
 
     let percentage_density = load_model_debug(&[("sparse_infill_density", "20%")]);
@@ -165,73 +172,36 @@ fn support_filament_keys_rebased() {
         ("support_interface_filament", "3"),
     ]);
     assert!(
-        debug.contains("\"support_filament\": Int(1)"),
-        "support_filament must be rebased to zero-based indexing: {debug}"
+        debug.contains("\"support_filament\": String(\"2\")"),
+        "support_filament key must retain its authored value for downstream rebasing: {debug}"
     );
     assert!(
-        debug.contains("\"support_interface_filament\": Int(2)"),
-        "support_interface_filament must be rebased to zero-based indexing: {debug}"
+        debug.contains("\"support_interface_filament\": String(\"3\")"),
+        "support_interface_filament key must retain its authored value for downstream rebasing: {debug}"
     );
 
     let zero = load_model_debug(&[("support_filament", "0")]);
     assert!(
-        zero.contains("\"support_filament\": Int(0)"),
-        "raw zero must stay zero: {zero}"
+        zero.contains("\"support_filament\": String(\"0\")"),
+        "raw zero must retain its authored value for downstream rebasing: {zero}"
     );
 }
-
-struct CapturedLogs {
-    records: std::sync::Mutex<Vec<(log::Level, String)>>,
-}
-
-impl log::Log for CapturedLogs {
-    fn enabled(&self, _: &log::Metadata<'_>) -> bool {
-        true
-    }
-
-    fn log(&self, record: &log::Record<'_>) {
-        self.records
-            .lock()
-            .unwrap()
-            .push((record.level(), record.args().to_string()));
-    }
-
-    fn flush(&self) {}
-}
-
-static CAPTURED_LOGS: std::sync::OnceLock<CapturedLogs> = std::sync::OnceLock::new();
 
 #[test]
-fn invalid_and_unknown_object_keys_logged() {
-    let logger = CAPTURED_LOGS.get_or_init(|| CapturedLogs {
-        records: std::sync::Mutex::new(Vec::new()),
-    });
-    let _ = log::set_logger(logger);
-    log::set_max_level(log::LevelFilter::Debug);
-    logger.records.lock().unwrap().clear();
-
+fn invalid_support_filament_is_retained_and_unknown_object_keys_are_dropped() {
     let debug = load_model_debug(&[("support_filament", "abc"), ("frobnicate_mode", "7")]);
     assert!(
-        !debug.contains("\"support_filament\""),
-        "invalid support_filament must be dropped: {debug}"
+        debug.contains("\"support_filament\": String(\"abc\")"),
+        "invalid support_filament must be retained verbatim as a String: {debug}"
     );
+    // `object_metadata_to_config_data` (crates/slicer-model-io/src/loader.rs)
+    // drops unknown per-object keys by allowlist design, so they never enter
+    // `object_config:<id>:<key>`. Authored-string preservation applies only to
+    // allowlisted keys; declared-type authority and validity rejection live at
+    // the registry-ingestion boundary downstream.
     assert!(
         !debug.contains("\"frobnicate_mode\""),
-        "unknown object keys must be dropped: {debug}"
-    );
-
-    let records = logger.records.lock().unwrap();
-    assert!(
-        records.iter().any(|(level, message)| {
-            *level == log::Level::Warn && message.contains("support_filament")
-        }),
-        "invalid support_filament must be warned about: {records:?}"
-    );
-    assert!(
-        records.iter().any(|(level, message)| {
-            *level == log::Level::Debug && message.contains("frobnicate_mode")
-        }),
-        "unknown frobnicate_mode must be debug-logged: {records:?}"
+        "unknown frobnicate_mode must be dropped, not entered into config: {debug}"
     );
 }
 
@@ -333,18 +303,18 @@ fn part_width_keys_survive_in_config_delta_fields() {
     let fields = &modifier_volumes[0].config_delta.fields;
     assert_eq!(
         fields.get("inner_wall_line_width"),
-        Some(&ConfigValue::Float(0.6)),
-        "inner_wall_line_width must survive into modifier config_delta.fields"
+        Some(&ConfigValue::String("0.6".to_string())),
+        "inner_wall_line_width must survive as authored text in modifier config_delta.fields"
     );
     assert_eq!(
         fields.get("outer_wall_line_width"),
-        Some(&ConfigValue::Float(0.5)),
-        "outer_wall_line_width must survive into modifier config_delta.fields"
+        Some(&ConfigValue::String("0.5".to_string())),
+        "outer_wall_line_width must survive as authored text in modifier config_delta.fields"
     );
     assert_eq!(
         fields.get("sparse_infill_line_width"),
-        Some(&ConfigValue::Float(0.4)),
-        "sparse_infill_line_width must survive into modifier config_delta.fields"
+        Some(&ConfigValue::String("0.4".to_string())),
+        "sparse_infill_line_width must survive as authored text in modifier config_delta.fields"
     );
 }
 
@@ -650,4 +620,102 @@ fn sidecar_parser_handles_missing_plate_section() {
         "no <plate> element should leave plate_metadata empty; got {:?}",
         result.plate_metadata
     );
+}
+
+fn make_cross_mesh_modifier_3mf() -> Vec<u8> {
+    let model = r#"<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <resources>
+    <object id="1" type="model">
+      <components>
+        <component objectid="2"/>
+        <component objectid="3"/>
+        <component objectid="4"/>
+        <component objectid="5"/>
+        <component objectid="6"/>
+      </components>
+    </object>
+    <object id="2" type="model"><mesh><vertices>
+      <vertex x="0" y="0" z="0"/><vertex x="1" y="0" z="0"/><vertex x="0" y="1" z="0"/>
+    </vertices><triangles><triangle v1="0" v2="1" v3="2"/></triangles></mesh></object>
+    <object id="3" type="model"><mesh><vertices>
+      <vertex x="2" y="0" z="0"/><vertex x="3" y="0" z="0"/><vertex x="2" y="1" z="0"/>
+    </vertices><triangles><triangle v1="0" v2="1" v3="2"/></triangles></mesh></object>
+    <object id="4" type="model"><mesh><vertices>
+      <vertex x="4" y="0" z="0"/><vertex x="5" y="0" z="0"/><vertex x="4" y="1" z="0"/>
+    </vertices><triangles><triangle v1="0" v2="1" v3="2"/></triangles></mesh></object>
+    <object id="5" type="model"><mesh><vertices>
+      <vertex x="6" y="0" z="0"/><vertex x="7" y="0" z="0"/><vertex x="6" y="1" z="0"/>
+    </vertices><triangles><triangle v1="0" v2="1" v3="2"/></triangles></mesh></object>
+    <object id="6" type="model"><mesh><vertices>
+      <vertex x="8" y="0" z="0"/><vertex x="9" y="0" z="0"/><vertex x="8" y="1" z="0"/>
+    </vertices><triangles><triangle v1="0" v2="1" v3="2"/></triangles></mesh></object>
+  </resources>
+  <build><item objectid="1"/></build>
+</model>"#;
+    let sidecar = r#"<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <object id="1">
+    <part id="2" subtype="modifier_part"><metadata key="name" value="parameter"/></part>
+    <part id="3" subtype="negative_part"><metadata key="name" value="negative"/></part>
+    <part id="4" subtype="support_enforcer"><metadata key="name" value="enforcer"/></part>
+    <part id="5" subtype="support_blocker"><metadata key="name" value="blocker"/></part>
+    <part id="6" subtype="normal_part"><metadata key="name" value="solid"/></part>
+  </object>
+</config>"#;
+
+    let buf = Cursor::new(Vec::new());
+    let mut writer = zip::ZipWriter::new(buf);
+    let opts = SimpleFileOptions::default();
+    writer.start_file("3D/3dmodel.model", opts).unwrap();
+    writer.write_all(model.as_bytes()).unwrap();
+    writer
+        .start_file("Metadata/model_settings.config", opts)
+        .unwrap();
+    writer.write_all(sidecar.as_bytes()).unwrap();
+    writer.finish().unwrap().into_inner()
+}
+
+#[test]
+fn modifier_parts_cross_mesh_ir_with_typed_kinds() {
+    use slicer_ir::ModifierKind;
+    use slicer_model_io::loader::load_model;
+
+    let suffix = NEXT_TEMP_MODEL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!(
+        "slicer-model-io-typed-modifier-kind-{}-{suffix}.3mf",
+        std::process::id(),
+    ));
+    std::fs::write(&path, make_cross_mesh_modifier_3mf()).unwrap();
+    let mesh_ir = load_model(&path).expect("cross-mesh typed modifier model should load");
+    let _ = std::fs::remove_file(&path);
+
+    let object = mesh_ir.objects.first().expect("build object should exist");
+    assert_eq!(
+        object.modifier_volumes.len(),
+        4,
+        "NormalPart must merge into solid geometry without creating a ModifierVolume"
+    );
+    assert!(
+        !object.mesh.indices.is_empty(),
+        "NormalPart must remain part of the merged solid mesh"
+    );
+
+    for (priority, expected_kind) in [
+        (0, ModifierKind::ParameterModifier),
+        (100, ModifierKind::NegativePart),
+        (200, ModifierKind::SupportEnforcer),
+        (300, ModifierKind::SupportBlocker),
+    ] {
+        let modifier = object
+            .modifier_volumes
+            .iter()
+            .find(|modifier| modifier.priority == priority)
+            .unwrap_or_else(|| panic!("missing modifier with priority {priority}"));
+        assert_eq!(modifier.kind(), expected_kind, "priority {priority} kind");
+        assert!(
+            !modifier.config_delta.fields.contains_key("subtype"),
+            "legacy subtype routing metadata must not be emitted for priority {priority}"
+        );
+    }
 }

@@ -48,9 +48,8 @@ pub use slicer_scheduler::validation;
 
 pub use blackboard::{Blackboard, DeferredRetract, DeferredTravelMove, LayerArena};
 pub use config_resolution::{
-    paint_semantic_namespace_key, resolve_global_config, resolve_per_object_configs,
-    resolve_per_paint_semantic_configs, resolve_per_tool_configs, validate_support_layer_heights,
-    BoundsDeclaration, ConfigBoundsIndex, ConfigResolutionError, UnknownSemanticWarning,
+    paint_semantic_namespace_key, validate_support_layer_heights, BoundsDeclaration,
+    ConfigBoundsIndex, ConfigResolutionError, UnknownSemanticWarning,
 };
 pub use dag::{
     build_global_dag, build_intra_stage_dag, BuiltinProducer, EdgeTo, GlobalEdge, ModuleNode,
@@ -137,8 +136,9 @@ pub use execution_plan::{
 // Live-path symbols moved to slicer-wasm-host (Step 3.5).
 pub use slicer_wasm_host::{
     build_live_execution_plan, execution_plan_live::load_live_modules_for_plan_with_integrated,
-    load_live_modules_for_plan, load_live_modules_for_plan_with_config, LiveModuleBinding,
-    LiveModuleLoadError, LiveModuleLoadOutput,
+    load_live_modules_for_plan, load_live_modules_for_plan_manifest_first,
+    load_live_modules_for_plan_with_config, LiveModuleBinding, LiveModuleLoadError,
+    LiveModuleLoadOutput, ManifestFirstLiveLoadOutput,
 };
 // CompiledModule alias (transitional compat: was deleted by Step 3.5, use CompiledModuleStatic directly).
 pub use crate::builtins::region_mapping_producer::{

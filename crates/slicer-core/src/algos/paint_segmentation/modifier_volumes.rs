@@ -57,14 +57,11 @@ pub fn slice_modifier_volumes(
 
     for object in &mesh.objects {
         for mv in &object.modifier_volumes {
-            let subtype = match mv.config_delta.fields.get("subtype") {
-                Some(slicer_ir::ConfigValue::String(s)) => s.as_str(),
-                _ => continue,
-            };
-            let semantic = match subtype {
-                "support_enforcer" => PaintSemantic::SupportEnforcer,
-                "support_blocker" => PaintSemantic::SupportBlocker,
-                _ => continue, // Material etc. are not modifier semantics
+            let semantic = match mv.kind() {
+                slicer_ir::ModifierKind::ParameterModifier => continue,
+                slicer_ir::ModifierKind::NegativePart => continue,
+                slicer_ir::ModifierKind::SupportEnforcer => PaintSemantic::SupportEnforcer,
+                slicer_ir::ModifierKind::SupportBlocker => PaintSemantic::SupportBlocker,
             };
             if mv.mesh.vertices.is_empty() || mv.mesh.indices.is_empty() {
                 continue;
@@ -170,9 +167,9 @@ pub(crate) fn any_expolygon_contains_point(polys: &[ExPolygon], point: slicer_ir
 mod tests {
     use super::*;
     use slicer_ir::{
-        BoundingBox3, ConfigDelta, ConfigValue, ExPolygon, IndexedTriangleSet, ModifierScope,
-        ModifierVolume, ObjectConfig, ObjectMesh, PaintSemantic, Point2, Point3, Polygon,
-        Transform3d, CURRENT_MESH_IR_SCHEMA_VERSION,
+        BoundingBox3, ConfigDelta, ExPolygon, IndexedTriangleSet, ModifierVolume, ObjectConfig,
+        ObjectMesh, PaintSemantic, Point2, Point3, Polygon, Transform3d,
+        CURRENT_MESH_IR_SCHEMA_VERSION,
     };
     use std::collections::HashMap;
 
@@ -239,23 +236,26 @@ mod tests {
         IndexedTriangleSet { vertices, indices }
     }
 
-    fn make_modifier_volume(subtype: &str, mesh: IndexedTriangleSet) -> ModifierVolume {
-        let mut fields = HashMap::new();
-        fields.insert(
-            "subtype".to_string(),
-            ConfigValue::String(subtype.to_string()),
-        );
-        // exhaustive: no Default impl for ModifierVolume; every field is a fixture input (packet 196)
-        ModifierVolume {
-            id: "mv1".to_string(),
+    fn make_modifier_volume(
+        kind: slicer_ir::ModifierKind,
+        mesh: IndexedTriangleSet,
+    ) -> ModifierVolume {
+        // Keep the fixture on the typed ModifierVolume construction path.
+        ModifierVolume::new(
+            "mv1".to_string(),
             mesh,
-            config_delta: ConfigDelta { fields },
-            priority: 0,
-            applies_to: ModifierScope::AllFeatures,
-        }
+            ConfigDelta {
+                fields: HashMap::new(),
+            },
+            0,
+            kind,
+        )
     }
 
-    fn mesh_with_modifier(subtype: &str, mv_mesh: IndexedTriangleSet) -> slicer_ir::MeshIR {
+    fn mesh_with_modifier(
+        kind: slicer_ir::ModifierKind,
+        mv_mesh: IndexedTriangleSet,
+    ) -> slicer_ir::MeshIR {
         slicer_ir::MeshIR {
             schema_version: CURRENT_MESH_IR_SCHEMA_VERSION,
             objects: vec![ObjectMesh {
@@ -265,7 +265,7 @@ mod tests {
                 config: ObjectConfig {
                     data: HashMap::new(),
                 },
-                modifier_volumes: vec![make_modifier_volume(subtype, mv_mesh)],
+                modifier_volumes: vec![make_modifier_volume(kind, mv_mesh)],
                 paint_data: None,
                 ..Default::default()
             }],
@@ -295,7 +295,7 @@ mod tests {
     fn slice_modifier_volumes_support_enforcer_routes_correctly() {
         // 1×1×1 mm cube, slice at z=0.5 (midpoint) — should produce polygons.
         let mv_mesh = cube_mesh(1.0);
-        let mesh = mesh_with_modifier("support_enforcer", mv_mesh);
+        let mesh = mesh_with_modifier(slicer_ir::ModifierKind::SupportEnforcer, mv_mesh);
         let layer_zs = vec![0.1, 0.5, 0.9];
         let result = slice_modifier_volumes(&mesh, &layer_zs);
 
@@ -328,9 +328,9 @@ mod tests {
 
     #[test]
     fn slice_modifier_volumes_skips_non_modifier_semantics() {
-        // Use subtype "material" — not SupportEnforcer/SupportBlocker, must be skipped.
+        // Use a parameter modifier kind — not SupportEnforcer/SupportBlocker, must be skipped.
         let mv_mesh = cube_mesh(1.0);
-        let mesh = mesh_with_modifier("material", mv_mesh);
+        let mesh = mesh_with_modifier(slicer_ir::ModifierKind::ParameterModifier, mv_mesh);
         let layer_zs = vec![0.1, 0.5, 0.9];
         let result = slice_modifier_volumes(&mesh, &layer_zs);
 

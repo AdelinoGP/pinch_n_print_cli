@@ -10,20 +10,23 @@
 #![allow(dead_code)]
 
 use crate::common;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use slicer_ir::{ConfigKey, ConfigValue, RegionKey, RegionPlan};
+use slicer_config::resolution::{query_z_grid, resolve_scope_stack};
+use slicer_config::{ExpansionContext, ResolutionTarget};
+use slicer_ir::{ConfigKey, ConfigValue, RegionKey, RegionPlan, ResolvedConfig};
 use slicer_model_io::load_model;
 use slicer_runtime::pipeline::{
     run_pipeline_with_raw_config, PipelineConfig, PipelineError, PipelineStageRunners,
 };
 use slicer_runtime::{
-    build_live_execution_plan, resolve_global_config, resolve_per_object_configs,
-    ConfigBoundsIndex, DefaultGCodeEmitter, DefaultGCodeSerializer, LoadDiagnostic,
-    NoopLayerProgressSink,
+    build_live_execution_plan, ConfigBoundsIndex, DefaultGCodeEmitter, DefaultGCodeSerializer,
+    LoadDiagnostic, NoopLayerProgressSink,
 };
+use slicer_scheduler::config_resolution::ingest_resolution_config;
+use slicer_sdk::traits::LayerPlanningObject;
 use slicer_wasm_host::WasmRuntimeDispatcher;
 
 use crate::common::wasm_cache;
@@ -104,7 +107,7 @@ fn try_slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> Result<String, Pi
     //       template values and emits M190/PRINT_END correctly.
     //
     //    b) `pipeline_source`: passed to `run_pipeline_with_raw_config` and
-    //       `resolve_global_config`. Uses empty-string sentinels for multiline string
+    //       typed scope resolution. Uses empty-string sentinels for multiline string
     //       keys that were not explicitly supplied by the caller. This prevents the
     //       raw template (M190...) and default "PRINT_END" from being embedded verbatim
     //       in the CONFIG_BLOCK, which would break AC-2 (PRINT_END count) and
@@ -179,25 +182,145 @@ fn try_slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> Result<String, Pi
     // 5. Resolve the global fallback config from the pipeline source.
     //    pipeline_source has int/float defaults and empty-string sentinels â€” no multiline
     //    template values â€” so the CONFIG_BLOCK won't contain M190 or PRINT_END.
-    let default_resolved = resolve_global_config(&pipeline_source, &config_bounds)
-        .expect("resolve_global_config must succeed");
-    let object_ids: Vec<&str> = mesh_ir.objects.iter().map(|o| o.id.as_str()).collect();
-    let resolved_configs_map = resolve_per_object_configs(
-        &default_resolved,
-        &pipeline_source,
-        &object_ids,
-        &config_bounds,
+    let scoped = ingest_resolution_config(&pipeline_source, &config_bounds)
+        .expect("typed config ingestion must succeed");
+    let expansion = ExpansionContext {
+        nozzle_diameter_mm: 0.4,
+        ..ExpansionContext::default()
+    };
+    let default_resolved = resolve_scope_stack(
+        config_bounds.registry(),
+        &scoped,
+        &ResolutionTarget::default(),
+        &expansion,
     )
-    .expect("resolve_per_object_configs must succeed");
+    .expect("global scope resolution must succeed");
+    let resolved_configs_map = mesh_ir
+        .objects
+        .iter()
+        .map(|object| {
+            let target = ResolutionTarget {
+                object_id: object.id.clone(),
+                ..ResolutionTarget::default()
+            };
+            resolve_scope_stack(config_bounds.registry(), &scoped, &target, &expansion)
+                .map(|config| (object.id.clone(), config))
+        })
+        .collect::<Result<_, _>>()
+        .expect("per-object scope resolution must succeed");
+
+    // 5b. Mirror production's `overlay_expanded_global` and
+    //     `overlay_object_layer_planning` onto the plan source: layer-tier
+    //     modules consume the expanded resolved defaults (notably `line_width`)
+    //     and the v2 `PrePass::LayerPlanning` dispatch reads
+    //     `layer_height:<id>`, `first_layer_height`, and `support_raft_layers`
+    //     from the module ConfigView. Production supplies all of these from the
+    //     unified resolver and `query_z_grid` rather than from the authored wire
+    //     config. `or_insert` preserves the real machine-gcode-emit templates
+    //     seeded above and any user override already in `binding_source`.
+    let unexpanded_defaults = slicer_ir::ResolvedConfig::default().to_config_map();
+    for (key, value) in default_resolved.to_config_map() {
+        if unexpanded_defaults.get(&key) != Some(&value) {
+            binding_source.entry(key).or_insert(value);
+        }
+    }
+    let object_heights: BTreeMap<String, f64> = mesh_ir
+        .objects
+        .iter()
+        .filter_map(|object| {
+            object
+                .world_z_extent
+                .map(|(z_min, z_max)| (object.id.clone(), (z_max - z_min) as f64))
+        })
+        .collect();
+    let object_layer_configs = query_z_grid(
+        config_bounds.registry(),
+        &scoped,
+        &object_heights,
+        &expansion,
+    )
+    .expect("typed Z-grid query must succeed");
+    for object in &object_layer_configs {
+        binding_source.insert(
+            format!("object_height:{}", object.object_id),
+            ConfigValue::Float(object.object_height),
+        );
+        binding_source.insert(
+            format!("layer_height:{}", object.object_id),
+            ConfigValue::Float(object.layer_height),
+        );
+    }
+    if let Some(first) = object_layer_configs.first() {
+        if object_layer_configs
+            .iter()
+            .all(|object| object.first_layer_height == first.first_layer_height)
+        {
+            binding_source.insert(
+                "first_layer_height".to_owned(),
+                ConfigValue::Float(first.first_layer_height),
+            );
+        }
+        if object_layer_configs
+            .iter()
+            .all(|object| object.support_raft_layers == first.support_raft_layers)
+        {
+            binding_source.insert(
+                "support_raft_layers".to_owned(),
+                ConfigValue::Int(i64::from(first.support_raft_layers)),
+            );
+        }
+    }
+
+    // Keep the CONFIG_BLOCK-driving pipeline source aligned with the same typed
+    // planning values; string templates stay as the empty sentinels seeded above.
+    for object in &object_layer_configs {
+        pipeline_source.insert(
+            format!("layer_height:{}", object.object_id),
+            ConfigValue::Float(object.layer_height),
+        );
+    }
+    if let Some(first) = object_layer_configs.first() {
+        if object_layer_configs
+            .iter()
+            .all(|object| object.first_layer_height == first.first_layer_height)
+        {
+            pipeline_source.insert(
+                "first_layer_height".to_owned(),
+                ConfigValue::Float(first.first_layer_height),
+            );
+        }
+    }
+
+    // 5c. Positional layer-planning records for the prepass dispatcher, mirroring
+    //     production `layer_planning_objects` (crates/slicer-runtime/src/run.rs):
+    //     `PrePass::LayerPlanning` dispatch validates one positional config per
+    //     mesh object (`validate_layer_planning_object_configs`); a dispatcher
+    //     built without them fails dispatch with a count mismatch.
+    let layer_planning_objects = object_layer_configs
+        .iter()
+        // exhaustive: the harness must forward every typed layer-planning field.
+        .map(|object| LayerPlanningObject {
+            object_id: object.object_id.clone(),
+            object_height: object.object_height,
+            layer_height: object.layer_height,
+            first_layer_height: object.first_layer_height,
+            support_raft_layers: object.support_raft_layers,
+            layer_zs: Vec::new(),
+        })
+        .collect();
 
     // 6. Build the execution plan using the binding_source (real defaults for module ConfigViews).
+    //    `binding_source` is reified to a `ResolvedConfig` first: the binding entry point now
+    //    takes the fully resolved config (Step 4a) and reads the merged `to_config_map`
+    //    (`resolved_from` routes the machine-gcode keys and per-object keys through
+    //    `extensions`, so the real template strings survive reification).
     //    Bindings/sorted_stages are cloned from the cached Arc<LiveModuleLoadOutput>
     //    (LiveModuleBinding is Clone; the inner instance_pool/wasm_component are Arc-backed).
     let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
     let plan = build_live_execution_plan(
         loaded.sorted_stages.clone(),
         loaded.bindings.clone(),
-        &binding_source,
+        &resolved_from(binding_source),
         Arc::new(Vec::<slicer_ir::GlobalLayer>::new()),
         Arc::new(HashMap::<RegionKey, RegionPlan>::new()),
         &mut diagnostics,
@@ -231,7 +354,10 @@ fn try_slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> Result<String, Pi
             plan,
             // exhaustive: PipelineStageRunners explicit boundary fixture for this integration test
             PipelineStageRunners {
-                prepass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
+                prepass: Box::new(
+                    WasmRuntimeDispatcher::new(Arc::clone(&engine))
+                        .with_layer_planning_objects(layer_planning_objects),
+                ),
                 layer: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
                 finalization: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
                 postpass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
@@ -255,6 +381,28 @@ fn try_slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> Result<String, Pi
 
 fn slice_default() -> String {
     slice_with_raw(HashMap::new())
+}
+
+/// Reify a raw source map into the `ResolvedConfig` a production run hands
+/// to `build_live_execution_plan` (packet config-scope-resolution Step 4a):
+/// `apply_cli_key` takes typed fields, and undeclared keys — here the
+/// machine-gcode-emit schema keys, `object_height:<id>` / `layer_height:<id>`
+/// per-object keys, and any module-contributed keys — route to `extensions`
+/// exactly as the host resolver routes the `Ok(false)` fall-through
+/// (crates/slicer-config/src/resolution.rs). Binding then reads the merged
+/// `to_config_map`, so the real template strings in `binding_source` still
+/// reach the module ConfigViews.
+fn resolved_from(source: HashMap<ConfigKey, ConfigValue>) -> ResolvedConfig {
+    let mut resolved = ResolvedConfig::default();
+    for (key, value) in source {
+        if !resolved
+            .apply_cli_key(&key, &value)
+            .expect("test config key must type-check against ResolvedConfig")
+        {
+            resolved.extensions.insert(key, value);
+        }
+    }
+    resolved
 }
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -657,13 +805,17 @@ fn user_override_replaces_default() {
 #[test]
 fn substitution_uses_overridden_temp_values() {
     let mut raw: HashMap<ConfigKey, ConfigValue> = HashMap::new();
+    // Both keys are declared `int` by `machine-gcode-emit.toml`; production
+    // ingestion coerces any authored spelling (including the GUI's string
+    // numbering) to `Int` before the module view is bound. This harness
+    // reifies the raw source directly, so seed the post-ingestion type.
     raw.insert(
         "bed_temperature_initial_layer_single".to_string(),
-        ConfigValue::String("65".to_string()),
+        ConfigValue::Int(65),
     );
     raw.insert(
         "nozzle_temperature_initial_layer".to_string(),
-        ConfigValue::String("220".to_string()),
+        ConfigValue::Int(220),
     );
     let gcode = slice_with_raw(raw);
 

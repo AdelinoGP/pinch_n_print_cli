@@ -1,6 +1,7 @@
 # Config Scope and Resolution — Approved Plan
 
-Status: approved; revised 2026-09-11 after a two-axis code review and a
+Status: implemented; plan closed 2026-10-01. Approved design revised
+2026-09-11 after a two-axis code review and a
 design-interview revision session. The revision decisions that amend governance
 are recorded in the Amendment sections of **ADR-0067**, **ADR-0068** and
 **ADR-0069** (ADR-0070 is unchanged). This revised file is the
@@ -9,6 +10,13 @@ review session that produced it.
 Source: architecture review of the config pipeline. Every count and
 divergence below was measured against a clean `master` working tree at review
 time; all are **ledger facts** — re-derive before acting on any of them.
+
+Closure reconciles the packet queue with the implementation decisions in the
+packet contracts and `docs/07_implementation_status.md`. Final-packet re-scope,
+acceptance evidence and limitations remain recorded in
+`docs/spec_packets/config-scope-resolution_10_remaining-automatic-values/packet.spec.md`
+and its `review-remediation.md`. The explicitly out-of-scope naming work below
+is not closed by this plan.
 
 Governing ADRs authored with this plan: **ADR-0067** (one config schema
 registry), **ADR-0068** (config scope is a wire encoding), **ADR-0069**
@@ -90,7 +98,9 @@ keys. No committed test observes any of it.
   guest cannot tell which it holds. 243 of 244 manifest entries declare a default but
   `ConfigBoundsIndex::schema_defaults` threads only the 18 percent-family ones, so
   the 54 `.unwrap_or(literal)` sites across 8 guest modules are load-bearing rather
-  than defensive.
+  than defensive. (The chain-aware census adopted by queue row 6 — config reads
+  through `.map`/`.filter`/`.or_else`/`.and_then` and small wrappers — counts 89
+  sites across 13 guests.)
 
 - **RC-6 — Modifier kind is a magic string and modifier values skip validation.**
   `PartSubtype` (`crates/slicer-model-io/src/sidecar.rs`) is parsed typed, then
@@ -342,8 +352,9 @@ after warning (warn-mode in packet 3; the drop flips in packet 6).
 
 - `ConfigView` has one meaning: always resolved. `bind_module_config_view`
   stops reading raw `config_source`. Every declared key is present with its
-  registry default, `None` becomes a real signal, and the 54
-  `.unwrap_or(literal)` fallbacks across 8 guest modules are deleted.
+  registry default, `None` becomes a real signal, and the 89 config-read
+  `.unwrap_or(literal)` fallbacks across 13 guest modules (queue row 6 census)
+  are deleted.
 - **Layer-planning seam:** `prepass-layer-planning.run` gains one typed
   per-object resolved record (object height, effective `layer_height`,
   `first_layer_height`, `support_raft_layers` — scope-resolved host-side) as a
@@ -377,6 +388,14 @@ readers migrate to `get_abs_value` semantics in the same packet, so no percent
 value is silently dropped. **`ResolvedConfig` fields stay scalar** (`f32` mm):
 the widening is at the declaration/ingestion layer and expansion output
 remains scalar — no IR field type change.
+*Revision note (2026-09-27):* `initial_layer_line_width` and
+`support_line_width` (`crates/slicer-ir/src/resolved_config.rs`) and
+`FeedrateConfig::internal_bridge_speed`
+(`crates/slicer-ir/src/feedrate.rs`) were widened to `ResolvedFloatOrPercent`
+during packets 2, 4 and 6 so percent-authored values survive the
+declaration/ingestion layer and resolve against their base at read/expansion
+time. The widening remains at the declaration/ingestion layer; expansion output
+delivered to consumers remains scalar mm, and no WIT or wire type changed.
 
 ## Owner decisions (recorded, overriding documented policy)
 
@@ -451,15 +470,15 @@ derive the next free one at authoring time
 (`grep -rhoE 'TASK-[0-9]{3}' docs/ | sort -u | tail -1`), never from this
 table.
 
-| # | packet slug | goal | depends on | status |
-|---|-------------|------|------------|--------|
-| 1 | config-schema-registry | Relocate `ConfigFieldEntry`/`ConfigSchema` and `AggregatedRegionSplitEntry` to `slicer-ir` (transitional re-exports; drop `slicer-core → slicer-scheduler`; amend ADR-0019 to Closed), create `slicer-config` (depends on `slicer-ir` only), assemble the registry from all four declaration channels plus manifests under the full reconciliation rules (type agreement, bounds intersection reported, host-then-alphabetical defaults with the claim-exclusive divergence warning, union `denied_scopes`, strict enum agreement, provenance), add and validate the typed `base-key` and `selector` entry fields, retire `ConfigFieldEntry.validate` and the `[[config.cross-validate]]` doc section (minor wire bump per owner decision), repair the 3 type conflicts and migrate the 5 plain-float readers, emit the schema doc under the `gen-config-docs --check` gate, and land the registry census test. | – | queued |
-| 2 | authored-value-oracle | Add the ingestion-fidelity oracle — for every key a fixture authors that the registry declares and that no narrower scope restates and no automatic rule expands, assert the value reaching the owning module's `ConfigView` equals the authored value — written **red**, failing on the five divergent keys. | #1 | queued |
-| 3 | typed-scope-ingestion | Decode the prefixed wire key once into a typed config scope, type every value against the registry, warn on unrecognised keys with near-miss suggestions (warn-mode; unknown keys kept), and move claim selection onto typed selector values. Turns #2 green. | #1, #2 | queued |
-| 4 | automatic-value-expansion | Implement Phase B — the resolution-phase expansion with `ExpansionContext` (nozzle diameter, tool bases): unify the width-family implementations, resolve percent values against their typed base-key, cover the config-only `-1 = auto` sentinels — and shrink `resolve_role_width`'s fallbacks to role dispatch over expanded bases. | #1 | queued |
-| 5 | scope-resolution-module | Replace the five scattered resolvers and `overlay_resolved` with one resolution module over scope deltas, exposing the Z-grid query and the scope-stack resolve under the normative precedence matrix; add the typed per-object resolved record to `prepass-layer-planning.run` (major package bump, accepted once) and delete the guest's `format!` prefix sites; assert independently derived resolution expectations. | #3, #4 | queued |
-| 6 | resolved-config-view | Give `ConfigView` one meaning (always resolved), make `extensions` registry-typed, make emission registry-driven with the per-key `config_block` flag (accepting the `CONFIG_BLOCK` byte change), delete the 54 guest `unwrap_or` literals, land the no-drop e2e, and flip warn→drop for unrecognised keys. | #5 | queued |
-| 7 | scope-eligibility | Author per-key `denied_scopes` on host and module schema entries (hand-authored machine/emitter denials cross-checked by the mechanical derivation and pinned by a drift test), derive the per-object admission set from the registry, and delete the two inert manifest sections. | #5 | queued |
-| 8 | typed-modifier-kind | Carry modifier kind typed across the IR seam, match exhaustively at the ten sites, route modifier deltas through the registry, and delete `ModifierScope` and `ModifierVolume.applies_to` (minor MeshIR bump per owner decision). | #5, #7 | queued |
-| 9 | layer-range-scope | Ingest `Metadata/layer_config_ranges.xml`, add the per-object layer-range scope wired to both entry points under the settled geometry semantics (world-Z, half-open, overlap rules, catch-up inheritance, selector-denial load error), and author a fixture carrying one range. | #5, #7 | queued |
-| 10 | remaining-automatic-values | Implement the remaining Phase C expansions — the speed family's `0 = volumetric auto` fallback in the emitter and any geometry-dependent `-1 = auto` sentinels not covered by #4. | #4, #5 | queued |
+| # | packet slug | goal | task ids | depends on | status | packet dir |
+|---|-------------|------|----------|------------|--------|------------|
+| 1 | config-schema-registry | Relocate `ConfigFieldEntry`/`ConfigSchema` and `AggregatedRegionSplitEntry` to `slicer-ir` (transitional re-exports; drop `slicer-core → slicer-scheduler`; amend ADR-0019 to Closed), create `slicer-config` (depends on `slicer-ir` only), assemble the registry from all four declaration channels plus manifests under the full reconciliation rules (type agreement, bounds intersection reported, host-then-alphabetical defaults with the claim-exclusive divergence warning, union `denied_scopes`, strict enum agreement, provenance), add and validate the typed `base-key` and `selector` entry fields, retire `ConfigFieldEntry.validate` and the `[[config.cross-validate]]` doc section (minor wire bump per owner decision), repair the 3 type conflicts and migrate the 5 plain-float readers, emit the schema doc under the `gen-config-docs --check` gate, and land the registry census test. | TASK-562 | – | implemented | docs/spec_packets/config-scope-resolution_01_config-schema-registry/ |
+| 2 | authored-value-oracle | Add the ingestion-fidelity oracle — for every key a fixture authors that the registry declares and that no narrower scope restates and no automatic rule expands, assert the value reaching the owning module's `ConfigView` equals the authored value — written **red**, failing on the five divergent keys. | TASK-563 | #1 | implemented | docs/spec_packets/config-scope-resolution_02_authored-value-oracle/ |
+| 3 | typed-scope-ingestion | Decode the prefixed wire key once into a typed config scope, type every value against the registry, warn on unrecognised keys with near-miss suggestions (warn-mode; unknown keys kept), and move claim selection onto typed selector values. Turns #2 green. | TASK-564 | #1, #2 | implemented | docs/spec_packets/config-scope-resolution_03_typed-scope-ingestion/ |
+| 4 | automatic-value-expansion | Implement Phase B — the resolution-phase expansion with `ExpansionContext` (nozzle diameter, tool bases): unify the width-family implementations, resolve percent values against their typed base-key, cover the config-only `-1 = auto` sentinels — and shrink `resolve_role_width`'s fallbacks to role dispatch over expanded bases. | TASK-565 | #1 | implemented | docs/spec_packets/config-scope-resolution_04_automatic-value-expansion/ |
+| 5 | scope-resolution-module | Replace the five scattered resolvers and `overlay_resolved` with one resolution module over scope deltas, exposing the Z-grid query and the scope-stack resolve under the normative precedence matrix; add the typed per-object resolved record to `prepass-layer-planning.run` (major package bump, accepted once) and delete the guest's `format!` prefix sites; assert independently derived resolution expectations. | TASK-566 | #3, #4 | implemented | docs/spec_packets/config-scope-resolution_05_scope-resolution-module/ |
+| 6 | resolved-config-view | Give `ConfigView` one meaning (always resolved), make `extensions` registry-typed, make emission registry-driven with the per-key `config_block` flag (accepting the `CONFIG_BLOCK` byte change), delete the 89 guest `unwrap_or` literals, land the no-drop e2e, and flip warn→drop for unrecognised keys. | TASK-567 | #5 | implemented | docs/spec_packets/config-scope-resolution_06_resolved-config-view/ |
+| 7 | scope-eligibility | Author per-key `denied_scopes` on host and module schema entries (hand-authored machine/emitter denials cross-checked by the mechanical derivation and pinned by a drift test), derive the per-object admission set from the registry, and delete the two inert manifest sections. | TASK-568 | #5 | implemented | docs/spec_packets/config-scope-resolution_07_scope-eligibility/ |
+| 8 | typed-modifier-kind | Carry modifier kind typed across the IR seam, match exhaustively at the ten sites, route modifier deltas through the registry, and delete `ModifierScope` and `ModifierVolume.applies_to` (minor MeshIR bump per owner decision). | TASK-569 | #5, #7 | implemented | docs/spec_packets/config-scope-resolution_08_typed-modifier-kind/ |
+| 9 | layer-range-scope | Ingest `Metadata/layer_config_ranges.xml`, add the per-object layer-range scope wired to both entry points under the settled geometry semantics (world-Z, half-open, overlap rules, catch-up inheritance, selector-denial load error), and author a fixture carrying one range. | TASK-570 | #5, #7 | implemented | docs/spec_packets/config-scope-resolution_09_layer-range-scope/ |
+| 10 | remaining-automatic-values | Implement the remaining Phase C expansions — the speed family's `0 = volumetric auto` fallback in the emitter and any geometry-dependent `-1 = auto` sentinels not covered by #4. | TASK-571 | #4, #5 | implemented | docs/spec_packets/config-scope-resolution_10_remaining-automatic-values/ |

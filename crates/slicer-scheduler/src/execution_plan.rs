@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use slicer_ir::{
     ActiveRegion, AnchoredEntity, CapabilityDerivedEventClosure, ConfigKey, ConfigValue,
-    ConfigView, GlobalLayer, ModuleId, RegionKey, RegionPlan, StageId,
+    ConfigView, GlobalLayer, ModuleId, RegionKey, RegionPlan, ResolvedConfig, StageId,
 };
 
 use crate::manifest::DiagnosticLevel;
@@ -50,10 +50,12 @@ pub const STAGE_ORDER: &[&str] = &[
 /// Build the `Arc<ConfigView>` bound for one `LoadedModule` on the live
 /// host/runtime path.
 ///
-/// Pre-filters `source` to the module's declared `config_schema.entries`
-/// keys (the canonical declared-read set per docs/03 §host-boundary
-/// enforcement and docs/02 §pre-filtered config), then freezes the result
-/// behind an `Arc` so downstream consumers cannot mutate the view they see.
+/// The per-module view is pre-filtered from the fully resolved config
+/// (`ResolvedConfig::to_config_map`) to the module's declared
+/// `config_schema.entries` keys (the canonical declared-read set per
+/// docs/03 §host-boundary enforcement and docs/02 §pre-filtered config),
+/// then frozen behind an `Arc` so downstream consumers cannot mutate the
+/// view they see.
 ///
 /// This is the ONLY supported construction path for live-runtime config
 /// views; test fixtures may still use `ConfigView::from_map`, but
@@ -62,8 +64,13 @@ pub const STAGE_ORDER: &[&str] = &[
 #[must_use]
 pub fn bind_module_config_view(
     module: &LoadedModule,
-    source: &HashMap<ConfigKey, ConfigValue>,
+    resolved: &ResolvedConfig,
 ) -> Arc<ConfigView> {
+    // The resolved config is the single source of truth for every module
+    // view: raw source keys that do not surface in `ResolvedConfig`
+    // (declared fields, `to_config_map`'s per-field rendering, and the
+    // `extensions` bucket) are invisible to modules by construction.
+    let source = resolved.to_config_map();
     // Support `prefix:*` wildcard entries in the module's declared
     // config schema so per-object keys (e.g. `object_height:<uuid>`)
     // can be consumed by planners that only know a static schema.
@@ -86,7 +93,10 @@ pub fn bind_module_config_view(
     // Support-family dispatch is a host-level selection shared by the
     // planner and renderers. Its keys are not module-specific tuning knobs,
     // so expose them to paired support modules even when their manifests do
-    // not repeat the common declaration.
+    // not repeat the common declaration. Both keys are read from the
+    // resolved map: `support_type` is a declared `ResolvedConfig` field
+    // (canonical spelling via `to_config_map`), and `support_family`
+    // surfaces through `extensions` when the raw config carries it.
     if module
         .claims()
         .iter()
@@ -99,7 +109,7 @@ pub fn bind_module_config_view(
         }
     }
     Arc::new(ConfigView::from_declared(
-        source,
+        &source,
         effective.iter().map(String::as_str),
     ))
 }
@@ -227,7 +237,7 @@ pub const SPIRAL_VASE_CONFIG_KEY: &str = "spiral_vase";
 /// Default `wall_generator` value used when the config key is absent.
 /// Keeps every existing golden/regression test slicing with
 /// `classic-perimeters` unchanged (packet 112 Step 10).
-pub const DEFAULT_WALL_GENERATOR: &str = "classic";
+pub use slicer_ir::resolved_config::DEFAULT_WALL_GENERATOR;
 
 const PERIMETER_GENERATOR_CLAIM: &str = "perimeter-generator";
 const CLASSIC_PERIMETERS_MODULE_ID: &str = "com.core.classic-perimeters";
@@ -365,13 +375,12 @@ pub fn validate_support_family_pairing(
     }
 }
 
-/// Resolve a raw `wall_generator` config value (`config_source.get("wall_generator")`,
-/// e.g. `Some("arachne")`) to the module id it selects for the
+/// Resolve an ingested `wall_generator` selector to the module id it selects for the
 /// `perimeter-generator` claim. Absent (`None`) or unrecognized values fall
 /// back to [`DEFAULT_WALL_GENERATOR`] (`"classic"`).
-fn wall_generator_preferred_module_id(wall_generator: Option<&str>) -> &'static str {
+fn wall_generator_preferred_module_id(wall_generator: Option<&ConfigValue>) -> &'static str {
     match wall_generator {
-        Some("arachne") => ARACHNE_PERIMETERS_MODULE_ID,
+        Some(ConfigValue::String(value)) if value == "arachne" => ARACHNE_PERIMETERS_MODULE_ID,
         _ => CLASSIC_PERIMETERS_MODULE_ID,
     }
 }
@@ -438,11 +447,13 @@ pub fn dedup_same_claim_modules_for_test(
 }
 
 /// Config-aware claim dedup: identical to [`dedup_same_claim_modules_for_test`]
-/// except `wall_generator` (the raw `config_source.get("wall_generator")`
-/// string value, or `None` if the key is absent), `spiral_vase` (the raw
-/// `config_source.get("spiral_vase")` bool value, or `false` if absent) and
-/// `support_type` (the raw `config_source.get("support_type")` string value,
-/// or `None` if the key is absent) are threaded through. Only
+/// except `wall_generator` (the **typed** selector value decoded by
+/// `slicer_config`'s ingestion from the global scope — see
+/// `IngestionOutcome.selector_values` — rendered as a string, or `None` if the
+/// key is absent), `spiral_vase` (the typed global value, or `false` if
+/// absent) and `support_type` (the typed global value, or `None` if absent)
+/// are threaded through. Callers pass values already produced by typed
+/// ingestion; no caller re-reads the raw config source. Only
 /// `wall_generator` / `spiral_vase` affect the outcome, resolving the
 /// `perimeter-generator` claim; when `spiral_vase` is `true`, the classic
 /// perimeter generator is forced for that claim regardless of
@@ -451,7 +462,7 @@ pub fn dedup_same_claim_modules_for_test(
 /// claims are not deduplicated post-packet-221 (see
 /// [`dedup_same_claim_modules_for_test`]'s doc comment). This is the entry
 /// point
-/// `slicer_wasm_host::load_live_modules_for_plan_with_config` (the
+/// `slicer_wasm_host::load_live_modules_for_plan_with_integrated` (the
 /// production live-loader) uses.
 pub fn dedup_same_claim_modules_with_wall_generator(
     modules: &mut Vec<LoadedModule>,
@@ -461,6 +472,27 @@ pub fn dedup_same_claim_modules_with_wall_generator(
     support_type: Option<&str>,
 ) -> Vec<LoadedModule> {
     dedup_same_claim_modules(
+        modules,
+        diagnostics,
+        wall_generator,
+        spiral_vase,
+        support_type,
+    )
+}
+
+/// Claim deduplication seam for a registry-typed `wall_generator` selector.
+///
+/// `wall_generator` should come from [`slicer_config::IngestionOutcome::selector_values`].
+/// `spiral_vase` and `support_type` remain ordinary typed global values rather
+/// than claim selectors.
+pub fn dedup_same_claim_modules_with_typed_wall_generator(
+    modules: &mut Vec<LoadedModule>,
+    diagnostics: &mut Vec<LoadDiagnostic>,
+    wall_generator: Option<&ConfigValue>,
+    spiral_vase: bool,
+    support_type: Option<&str>,
+) -> Vec<LoadedModule> {
+    dedup_same_claim_modules_typed(
         modules,
         diagnostics,
         wall_generator,
@@ -480,6 +512,25 @@ fn dedup_same_claim_modules(
     // `dedup_same_claim_modules_for_test` doc comment. Reading `support_type`
     // in this function would re-introduce the pre-221 mutual exclusion and
     // make one support family undispatchable.
+    _support_type: Option<&str>,
+) -> Vec<LoadedModule> {
+    let wall_generator = wall_generator.map(|value| ConfigValue::String(value.to_owned()));
+    dedup_same_claim_modules_typed(
+        modules,
+        diagnostics,
+        wall_generator.as_ref(),
+        spiral_vase,
+        _support_type,
+    )
+}
+
+fn dedup_same_claim_modules_typed(
+    modules: &mut Vec<LoadedModule>,
+    diagnostics: &mut Vec<LoadDiagnostic>,
+    wall_generator: Option<&ConfigValue>,
+    spiral_vase: bool,
+    // Support selection remains ordinary resolved config and does not enter
+    // the selector channel.
     _support_type: Option<&str>,
 ) -> Vec<LoadedModule> {
     use std::collections::BTreeMap;
@@ -663,12 +714,15 @@ pub struct ExecutionPlan {
     /// Precomputed index for O(1) lookup of active regions per (layer, module).
     /// Key: (global_layer_index, module_id) → Value: slice of ActiveRegion.
     pub module_region_index: HashMap<(u32, ModuleId), Vec<ActiveRegion>>,
-    /// Cross-manifest aggregate of `[[region_split]]` declarations
-    /// (semantic → priority/value-type/declaring modules).
+    /// Cross-manifest aggregate of `[[region_split]]` declarations.
     ///
-    /// Empty `BTreeMap` when no loaded module declares region-split semantics
-    /// — this is the production default today, which preserves AC-10
-    /// byte-identical g-code. See packet 93, AC-1.
+    /// Community and core semantics enter via module declarations (packet 93,
+    /// AC-1) — the aggregate is exactly the union of every loaded module's
+    /// `[[region_split]]` entries, keyed by semantic with the first-seen
+    /// priority/value-type and the declaring-module list. There is no implicit
+    /// seeding: a semantic is in this map iff some loaded module declares it
+    /// (ADR-0071). Chain expansion only materializes for objects that CARRY
+    /// those semantics' paint values.
     pub aggregated_region_split: BTreeMap<String, AggregatedRegionSplitEntry>,
 }
 
@@ -807,9 +861,14 @@ pub struct CompiledModuleStatic {
     /// `compute_serial_edges_from_compiled` can emit
     /// `EdgeReason::ExplicitRequires` rows alongside `IrWriteRead`.
     pub(crate) requires_modules: Vec<ModuleId>,
-    /// Pre-computed set of region-split semantic names declared by this module.
-    /// Empty for paint-transparent modules (the common case). Used by the
-    /// per-layer host dispatch filter in `layer_executor.rs` (packet 92).
+    /// Pre-computed per-layer dispatch set. Empty for every module that did
+    /// not opt into `paint_only = true` — including modules that declare
+    /// `[[region_split]]` semantics (declaration activates the semantic in
+    /// `aggregated_region_split`, but only paint-only dispatch gates
+    /// invocation). Non-empty only when the module's manifest sets
+    /// `paint_only = true`, in which case it is exactly the declared semantic
+    /// names. Used by the per-layer host dispatch filter in
+    /// `layer_executor.rs` (packet 92; ADR-0071).
     pub(crate) region_split_semantics: std::collections::HashSet<String>,
 }
 
@@ -844,8 +903,9 @@ impl CompiledModuleStatic {
         &self.requires_modules
     }
 
-    /// Pre-computed set of declared region-split semantic names.
-    /// Empty for paint-transparent modules (the common case).
+    /// Pre-computed per-layer dispatch set. Empty for modules without
+    /// `paint_only = true`; exactly the declared semantic names for
+    /// paint-only modules.
     pub fn region_split_semantics(&self) -> &std::collections::HashSet<String> {
         &self.region_split_semantics
     }
@@ -913,7 +973,9 @@ impl CompiledModuleBuilder {
         self
     }
 
-    /// Set the pre-computed region-split semantic name set.
+    /// Set the pre-computed per-layer dispatch set. Leave empty for a
+    /// module that must run on every layer; only `paint_only = true`
+    /// modules carry their declared semantic names here (ADR-0071).
     pub fn region_split_semantics(mut self, semantics: std::collections::HashSet<String>) -> Self {
         self.region_split_semantics = semantics;
         self
@@ -1177,6 +1239,14 @@ pub fn build_execution_plan(
                 config_view: Arc::clone(&binding.config_view),
                 claims: binding.module.claims.clone(),
                 requires_modules: binding.module.requires_modules.clone(),
+                // Dispatch transparency is derived from `paint_only`, not from
+                // the mere presence of `[[region_split]]` declarations: a
+                // module may declare a semantic (activating it in the
+                // aggregate) while still running on every layer. Only a
+                // `paint_only = true` manifest gates invocation by layer
+                // (ADR-0071). `LoadedModule.region_split_semantics` already
+                // encodes that split (empty unless paint_only), so the
+                // propagation is a plain clone.
                 region_split_semantics: binding.module.region_split_semantics.clone(),
             });
         }
@@ -1267,7 +1337,9 @@ pub fn build_execution_plan(
     // ── Cross-manifest aggregate of [[region_split]] declarations ─────
     // Computed once at plan-build time so the host's `PrePass::RegionMapping`
     // builtin can deterministically reference module declarations without
-    // re-walking the manifest set. AC-1 / packet 93.
+    // re-walking the manifest set. AC-1 / packet 93. The aggregate is exactly
+    // the declared union: no core semantics are seeded implicitly — a semantic
+    // exists iff a loaded module declares it (ADR-0071).
     let modules_for_agg: Vec<LoadedModule> = request
         .module_bindings
         .iter()
@@ -1712,8 +1784,10 @@ mod dedup_tests {
         // `layer-planner-default.toml` declares `"object_height:*"`, and
         // the bound ConfigView must preserve every matching source key
         // that was explicitly provided to the host/runtime plan builder.
-        use slicer_ir::ConfigValue;
-        use std::collections::HashMap;
+        // After packet 6a the binding reads the fully resolved config, so
+        // the per-object keys must ride through `extensions` (they are not
+        // declared `ResolvedConfig` fields) into `to_config_map`.
+        use slicer_ir::{ConfigValue, ResolvedConfig};
 
         let mut module = loaded("planner", "PrePass::LayerPlanning", &[]);
         module.config_schema.entries.insert(
@@ -1731,13 +1805,21 @@ mod dedup_tests {
             },
         );
 
-        let mut source: HashMap<String, ConfigValue> = HashMap::new();
-        source.insert("object_height:abc".into(), ConfigValue::Float(48.0));
-        source.insert("object_height:xyz".into(), ConfigValue::Float(12.5));
-        source.insert("layer_height".into(), ConfigValue::Float(0.2));
-        source.insert("unrelated_key".into(), ConfigValue::Float(1.0));
+        let mut resolved = ResolvedConfig::default();
+        resolved
+            .extensions
+            .insert("object_height:abc".into(), ConfigValue::Float(48.0));
+        resolved
+            .extensions
+            .insert("object_height:xyz".into(), ConfigValue::Float(12.5));
+        resolved
+            .extensions
+            .insert("layer_height".into(), ConfigValue::Float(0.2));
+        resolved
+            .extensions
+            .insert("unrelated_key".into(), ConfigValue::Float(1.0));
 
-        let view = super::bind_module_config_view(&module, &source);
+        let view = super::bind_module_config_view(&module, &resolved);
         let mut keys: Vec<String> = view.keys().to_vec();
         keys.sort();
         assert_eq!(

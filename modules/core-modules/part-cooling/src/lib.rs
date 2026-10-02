@@ -16,7 +16,7 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
-use slicer_ir::{ConfigValue, ConfigView, ExtrusionRole, LayerAnnotation, LayerAnnotationKind};
+use slicer_ir::{ConfigView, ExtrusionRole, LayerAnnotation, LayerAnnotationKind};
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::slicer_module;
 use slicer_sdk::traits::{FinalizationModule, FinalizationOutputBuilder, LayerCollectionView};
@@ -32,25 +32,18 @@ pub struct PartCooling {
 impl PartCooling {
     /// Construct from a config view, reading cooling settings with defaults.
     pub fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let fan_max_speed = match config.get("fan_max_speed") {
-            Some(ConfigValue::Int(v)) => *v as u8,
-            _ => 255,
-        };
+        // Required reads (packet 06 fail-closed semantics; mirrors
+        // arachne-perimeters): the registry seeds every declared default into
+        // a bound view, so an absent key is a contract violation, not a
+        // configurable fallback.
+        let fan_max_speed = config.require_int("fan_max_speed")? as u8;
 
-        let close_fan_the_first_x_layers = match config.get("close_fan_the_first_x_layers") {
-            Some(ConfigValue::Int(v)) => *v as u32,
-            _ => 1,
-        };
+        let close_fan_the_first_x_layers =
+            config.require_int("close_fan_the_first_x_layers")? as u32;
 
-        let enable_overhang_bridge_fan = match config.get("enable_overhang_bridge_fan") {
-            Some(ConfigValue::Bool(b)) => *b,
-            _ => true,
-        };
+        let enable_overhang_bridge_fan = config.require_bool("enable_overhang_bridge_fan")?;
 
-        let overhang_fan_speed = match config.get("overhang_fan_speed") {
-            Some(ConfigValue::Int(v)) => *v as u8,
-            _ => 100,
-        };
+        let overhang_fan_speed = config.require_int("overhang_fan_speed")? as u8;
 
         Ok(Self {
             fan_max_speed,

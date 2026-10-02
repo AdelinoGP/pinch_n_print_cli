@@ -498,6 +498,34 @@ no `"layer_index"` / `"layer_z"` keys. Framing is whole-file and
 **selection-independent**: a layer-subset request and an all-layers request over
 the same file record identical `world_bounds_mm`.
 
+## Layer Schedule Readout (schema 1.3.0)
+
+`schema_version: "1.3.0"` (config-scope-resolution packet 09) is a strict
+superset of `1.2.0`: everything a 1.2.0 request accepts stays accepted, and the
+manifest gains one additive optional field, `scheduled_layer_zs`.
+
+```json
+{"schema_version": "1.3.0",
+ "scheduled_layer_zs": [0.2, 0.4, 0.5, 0.6, 0.7, 0.8, 1.0]}
+```
+
+`scheduled_layer_zs` is the resolved layer-top Z schedule the model-source
+pipeline actually ran, in millimetres, ascending — one entry per
+`LayerPlanIR.global_layers` element, each entry that layer's **top** Z. A layer
+whose config ranges changed the layer height (see the layer-range scope in
+`docs/02_ir_schemas.md`) therefore shows up as the mixed sequence, not the
+uniform grid the same model would produce without ranges.
+
+The field is emitted **only** for a model source under a declared `1.3.0`
+request, and only when the request resolved at least one tap. It is absent (the
+JSON key is skipped entirely, never `null`) for a standalone G-code source,
+whose bundle has no `LayerPlanIR`, and for a model request with no taps, which
+never resolves a schedule. `1.0.0`/`1.1.0`/`1.2.0` model requests keep emitting
+byte-identical manifests with no `scheduled_layer_zs` key.
+
+`legend_version` for a `1.3.0` bundle is still `"1.1.0"`: the schedule readout
+adds no glyphs.
+
 ## Framing
 
 Every render is **aspect-preserving**: one uniform scale is applied to both

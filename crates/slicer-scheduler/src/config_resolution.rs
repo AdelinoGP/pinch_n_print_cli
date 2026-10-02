@@ -5,6 +5,12 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use slicer_config::{
+    assemble_registry, canonical_config_key, resolve_scope_stack, ConfigIngestionError,
+    ConfigIngestor, ConfigSchemaRegistry, ConfigScope, ExpansionContext, HostChannels,
+    ModuleDeclaration, ResolutionError, ResolutionTarget, ScopeDelta, ScopedConfig,
+    CONFIG_KEY_ALIASES,
+};
 use slicer_ir::{ConfigKey, ConfigValue, PaintSemantic, ResolvedConfig};
 
 use crate::manifest::LoadedModule;
@@ -67,17 +73,24 @@ impl NumericBounds {
 /// must hold simultaneously. If the intersection is empty (`min > max`), the
 /// resulting range is retained and rejects every value â€” a `log::warn!` is
 /// emitted naming the offending modules at construction time.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ConfigBoundsIndex {
     bounds: HashMap<String, NumericBounds>,
     enum_values: HashMap<String, Vec<String>>,
     /// Parsed schema defaults for `percent` / `float_or_percent` fields
     /// (packet 185 / AC-6, TASK-303). Threaded into
-    /// `ResolvedConfig.extensions` by [`resolve_global_config`] when the
+    /// `ResolvedConfig.extensions` during unified scope resolution when the
     /// profile supplies no value for the key, so module-owned percent keys
     /// reach the live transport as `Percent` / `FloatOrPercent` values
     /// instead of vanishing at the parser.
     schema_defaults: HashMap<String, ConfigValue>,
+    registry: ConfigSchemaRegistry,
+}
+
+impl Default for ConfigBoundsIndex {
+    fn default() -> Self {
+        Self::empty()
+    }
 }
 
 impl ConfigBoundsIndex {
@@ -88,6 +101,7 @@ impl ConfigBoundsIndex {
             bounds: HashMap::new(),
             enum_values: HashMap::new(),
             schema_defaults: HashMap::new(),
+            registry: assemble_config_registry(&[]),
         }
     }
 
@@ -100,13 +114,22 @@ impl ConfigBoundsIndex {
     ///
     /// Entries carrying a parsed `percent` / `float_or_percent` schema
     /// default (`ConfigFieldEntry::parsed_default`) additionally populate the
-    /// schema-default table consumed by [`resolve_global_config`]; on
+    /// schema-default table consumed by unified scope resolution; on
     /// collision the first module's default wins.
     pub fn from_modules<'a, I>(modules: I) -> Self
     where
         I: IntoIterator<Item = &'a LoadedModule>,
     {
         let modules: Vec<&LoadedModule> = modules.into_iter().collect();
+        let declarations = modules
+            .iter()
+            .map(|module| ModuleDeclaration {
+                module_id: module.id().to_owned(),
+                schema: module.config_schema().clone(),
+                claim_exclusive_group: None,
+            })
+            .collect::<Vec<_>>();
+        let registry = assemble_config_registry(&declarations);
         let mut schema_defaults: HashMap<String, ConfigValue> = HashMap::new();
         let mut enum_values: HashMap<String, Vec<String>> = HashMap::new();
         for module in &modules {
@@ -125,7 +148,7 @@ impl ConfigBoundsIndex {
                 }
             }
         }
-        let declarations = modules.into_iter().flat_map(|module| {
+        let bounds_declarations = modules.into_iter().flat_map(|module| {
             let module_id = module.id().to_string();
             module
                 .config_schema()
@@ -146,7 +169,7 @@ impl ConfigBoundsIndex {
                     })
                 })
         });
-        let mut index = Self::from_declarations(declarations);
+        let mut index = Self::from_declarations_with_registry(bounds_declarations, registry);
         index.schema_defaults = schema_defaults;
         index.enum_values = enum_values;
         index
@@ -159,6 +182,13 @@ impl ConfigBoundsIndex {
     /// integration tests so they can construct a bounds index without
     /// fabricating full `LoadedModule` values.
     pub fn from_declarations<I>(declarations: I) -> Self
+    where
+        I: IntoIterator<Item = BoundsDeclaration>,
+    {
+        Self::from_declarations_with_registry(declarations, assemble_config_registry(&[]))
+    }
+
+    fn from_declarations_with_registry<I>(declarations: I, registry: ConfigSchemaRegistry) -> Self
     where
         I: IntoIterator<Item = BoundsDeclaration>,
     {
@@ -198,6 +228,7 @@ impl ConfigBoundsIndex {
             bounds: index,
             enum_values: HashMap::new(),
             schema_defaults: HashMap::new(),
+            registry,
         }
     }
 
@@ -232,6 +263,92 @@ impl ConfigBoundsIndex {
     pub fn schema_defaults(&self) -> impl Iterator<Item = (&String, &ConfigValue)> {
         self.schema_defaults.iter()
     }
+
+    /// Registry used by the unified scope-stack resolver.
+    #[must_use]
+    pub fn registry(&self) -> &ConfigSchemaRegistry {
+        &self.registry
+    }
+}
+
+fn assemble_config_registry(declarations: &[ModuleDeclaration]) -> ConfigSchemaRegistry {
+    assemble_registry(declarations, &HostChannels::from_live())
+        .unwrap_or_else(|error| panic!("loaded module config schemas must reconcile: {error}"))
+        .registry
+}
+
+/// Compatibility ingestion for callers that still enter through the legacy
+/// flat-map resolver APIs.
+///
+/// Production composition roots must call the corresponding `*_scoped`
+/// entry points with their retained manifest-first ingestion result, avoiding
+/// this adapter and any second decoding of scope prefixes. This adapter stays
+/// tolerant so legacy callers preserve warn-and-keep behavior for authored
+/// shapes their declarations cannot represent. Absolute-value bounds
+/// enforcement remains in the resolver loop.
+fn ingest_scoped_config(
+    source: &HashMap<ConfigKey, ConfigValue>,
+    bounds: &ConfigBoundsIndex,
+) -> Result<ScopedConfig, ConfigResolutionError> {
+    let mut ingestor = ConfigIngestor::tolerant(&bounds.registry);
+    ingestor
+        .ingest_flat(source)
+        .map_err(|error| map_ingestion_error(error, source))?;
+    Ok(ingestor.finish().scoped)
+}
+
+fn map_ingestion_error(
+    error: ConfigIngestionError,
+    source: &HashMap<ConfigKey, ConfigValue>,
+) -> ConfigResolutionError {
+    match error {
+        ConfigIngestionError::TypeMismatch {
+            key,
+            expected,
+            authored,
+        } => {
+            let actual = source
+                .get(&key)
+                .map_or_else(|| authored.clone(), |value| format!("{value:?}"));
+            ConfigResolutionError::TypeMismatch {
+                key,
+                expected: resolution_type_name(&expected),
+                actual,
+            }
+        }
+        ConfigIngestionError::MalformedScopeKey { wire_key, expected } => {
+            ConfigResolutionError::TypeMismatch {
+                key: wire_key,
+                expected: malformed_scope_shape(&expected),
+                actual: "malformed scoped config key".to_owned(),
+            }
+        }
+    }
+}
+
+fn resolution_type_name(field_type: &str) -> &'static str {
+    match field_type {
+        "bool" => "Bool",
+        "int" => "Int",
+        "float" => "Float",
+        "string" => "String",
+        "enum" => "String",
+        "percent" => "Percent",
+        "float_or_percent" => "FloatOrPercent",
+        "float-list" => "List<Float>",
+        "int-list" => "List<Int>",
+        "string-list" => "List<String>",
+        _ => "registry-declared type",
+    }
+}
+
+fn malformed_scope_shape(expected: &str) -> &'static str {
+    match expected {
+        "object_config:<object_id>:<key>" => "object_config:<object_id>:<key>",
+        "paint_config:<semantic>:<key>" => "paint_config:<semantic>:<key>",
+        "tool_config:<u32>:<key>" => "tool_config:<u32>:<key>",
+        _ => "well-formed scoped config key",
+    }
 }
 
 fn is_numeric_field_type(field_type: &str) -> bool {
@@ -240,22 +357,6 @@ fn is_numeric_field_type(field_type: &str) -> bool {
         "int" | "float" | "float-list" | "int-list" | "percent" | "float_or_percent"
     )
 }
-
-/// Legacy config-key spellings and the canonical key each resolves to.
-///
-/// Entries are `(legacy, canonical)`. Supplying **both** spellings in one
-/// source is rejected rather than silently resolved: with a `HashMap` source
-/// there is no defined ordering between the two keys, so last-writer-wins would
-/// make the resolved value depend on hash iteration order — non-deterministic
-/// across runs. Rejecting is the pre-existing precedent set by
-/// `first_layer_line_width`, and is applied uniformly here.
-const CONFIG_KEY_ALIASES: [(&str, &str); 2] = [
-    ("first_layer_line_width", "initial_layer_line_width"),
-    // Renamed to the canonical OrcaSlicer spelling (`PrintConfig.cpp`'s
-    // `support_threshold_angle`); the old in-tree name stays accepted so
-    // existing profiles and 3MF project settings keep resolving.
-    ("support_overhang_angle", "support_threshold_angle"),
-];
 
 /// Rejects any source that supplies both spellings of an aliased key.
 fn reject_alias_conflicts<F>(contains: F) -> Result<(), ConfigResolutionError>
@@ -274,13 +375,93 @@ where
     Ok(())
 }
 
-fn canonical_config_key(key: &str) -> &str {
-    for (legacy, canonical) in CONFIG_KEY_ALIASES {
-        if key == legacy {
-            return canonical;
+/// Decode and validate a legacy flat source for the unified scope-stack resolver.
+///
+/// This adapter is the only scheduler-owned part of resolution: it preserves
+/// legacy aliases, manifest bounds, and schema defaults while returning the
+/// typed [`ScopedConfig`] consumed by [`slicer_config::resolve_scope_stack`].
+pub fn ingest_resolution_config(
+    source: &HashMap<ConfigKey, ConfigValue>,
+    bounds: &ConfigBoundsIndex,
+) -> Result<ScopedConfig, ConfigResolutionError> {
+    let scoped = ingest_scoped_config(source, bounds)?;
+    prepare_scoped_config(&scoped, bounds)
+}
+
+/// Resolve one complete scope stack through the canonical `slicer-config`
+/// resolver, including Phase-B automatic-value expansion after all deltas have
+/// merged.
+pub fn resolve_config(
+    source: &HashMap<ConfigKey, ConfigValue>,
+    bounds: &ConfigBoundsIndex,
+    target: &ResolutionTarget,
+    expansion: &ExpansionContext,
+) -> Result<ResolvedConfig, ResolutionError> {
+    let scoped = ingest_resolution_config(source, bounds)?;
+    resolve_scope_stack(bounds.registry(), &scoped, target, expansion)
+}
+
+/// Report paint-semantic deltas that do not correspond to a semantic present
+/// in the model. Resolution itself only applies semantics selected by its
+/// [`ResolutionTarget`], so warning production remains a separate host concern.
+pub fn unknown_paint_semantic_warnings(
+    scoped: &ScopedConfig,
+    present_semantics: &[PaintSemantic],
+) -> Vec<UnknownSemanticWarning> {
+    let mut warnings = Vec::new();
+    for (scope, delta) in scoped.iter() {
+        let ConfigScope::PaintSemantic(semantic_name) = scope else {
+            continue;
+        };
+        if present_semantics
+            .iter()
+            .any(|semantic| paint_semantic_namespace_key(semantic) == *semantic_name)
+        {
+            continue;
+        }
+        warnings.extend(delta.iter().map(|(key, _)| UnknownSemanticWarning {
+            semantic_name: semantic_name.clone(),
+            key: key.clone(),
+        }));
+    }
+    warnings
+}
+
+fn prepare_scoped_config(
+    scoped: &ScopedConfig,
+    bounds: &ConfigBoundsIndex,
+) -> Result<ScopedConfig, ConfigResolutionError> {
+    let mut prepared = ScopedConfig::default();
+
+    for (scope, delta) in scoped.iter() {
+        reject_alias_conflicts(|key| delta.values.contains_key(key))?;
+        let mut values = BTreeMap::new();
+        for (key, value) in delta.iter() {
+            if matches!(scope, ConfigScope::Global) && key.starts_with("object_height:") {
+                continue;
+            }
+            let resolved_key = canonical_config_key(key);
+            bounds.check(resolved_key, value)?;
+            values.insert(resolved_key.to_owned(), value.clone());
+        }
+        prepared.deltas.insert(scope.clone(), ScopeDelta { values });
+    }
+
+    let global = prepared.deltas.entry(ConfigScope::Global).or_default();
+    for (key, default) in bounds.schema_defaults() {
+        if global.values.contains_key(key) {
+            continue;
+        }
+        let mut probe = ResolvedConfig::default();
+        if matches!(
+            probe.apply_cli_key(canonical_config_key(key), default),
+            Ok(false)
+        ) {
+            global.values.insert(key.clone(), default.clone());
         }
     }
-    key
+
+    Ok(prepared)
 }
 
 fn check_value(
@@ -302,14 +483,19 @@ fn check_value(
         // `apply_cli_key`'s TypeMismatch path; numeric bounds don't apply.
         ConfigValue::Bool(_) | ConfigValue::String(_) => Ok(()),
         // `Percent` / `FloatOrPercent` (packet 150) ARE numeric per
-        // `is_numeric_field_type` above, so a module-declared `[min, max]`
-        // for a `percent` / `float_or_percent` key is enforced here against
-        // the raw percent number / literal value. The percent→absolute base
-        // is per-call-site and unknown at this point, so bounds cannot be
-        // applied to the resolved absolute value here — only to the raw
-        // number as declared in config.
-        ConfigValue::Percent(p) => check_scalar(key, *p, bounds, index),
-        ConfigValue::FloatOrPercent { value, .. } => check_scalar(key, *value, bounds, index),
+        // `is_numeric_field_type` above, but only their MIN side is checked
+        // here — see `check_percent_scalar`. A declared `[min, max]` is
+        // expressed in the key's absolute unit (e.g. mm) while a
+        // percent-authored value carries a relative magnitude whose absolute
+        // equivalent is only known at Phase-B expansion, which packet 04 owns.
+        ConfigValue::Percent(p) => check_percent_scalar(key, *p, bounds, index),
+        ConfigValue::FloatOrPercent { value, is_percent } => {
+            if *is_percent {
+                check_percent_scalar(key, *value, bounds, index)
+            } else {
+                check_scalar(key, *value, bounds, index)
+            }
+        }
     }
 }
 
@@ -323,6 +509,40 @@ fn check_scalar(
         && bounds.min.map_or(true, |lo| value >= lo)
         && bounds.max.map_or(true, |hi| value <= hi);
     if in_range {
+        Ok(())
+    } else {
+        Err(ConfigResolutionError::OutOfRange {
+            key: key.to_string(),
+            value,
+            min: bounds.min,
+            max: bounds.max,
+            index,
+        })
+    }
+}
+
+/// Bounds check for a percent-authored value (`Percent`, or
+/// `FloatOrPercent { is_percent: true }`).
+///
+/// Only the **min** side is enforced against the raw magnitude: a negative
+/// percent is invalid regardless of how it expands, so `min` is meaningful in
+/// both the relative and absolute domains. The **max** side is deliberately
+/// NOT enforced here because a declared `[min, max]` is expressed in the key's
+/// absolute unit (e.g. `overhang_reverse_threshold` declares `max = 10.0` mm)
+/// while a percent-authored value carries a relative magnitude whose absolute
+/// equivalent (`50%` × the percent base) is only known once Phase-B expansion
+/// runs — packet 04 owns that. Enforcing an absolute max against a raw
+/// percentage would reject valid Orca values: `resources/cube_4color.3mf`
+/// authors `overhang_reverse_threshold = "50%"`, which would compare `50.0`
+/// against `max = 10.0` mm.
+fn check_percent_scalar(
+    key: &str,
+    value: f64,
+    bounds: &NumericBounds,
+    index: Option<usize>,
+) -> Result<(), ConfigResolutionError> {
+    let satisfies_min = value.is_finite() && bounds.min.map_or(true, |lo| value >= lo);
+    if satisfies_min {
         Ok(())
     } else {
         Err(ConfigResolutionError::OutOfRange {
@@ -366,237 +586,6 @@ pub fn paint_semantic_namespace_key(s: &PaintSemantic) -> String {
         PaintSemantic::SupportBlocker => "support_blocker".to_string(),
         PaintSemantic::Custom(name) => name.clone(),
     }
-}
-
-/// Resolve `paint_config:<semantic>:<key>` overlays into per-semantic configs.
-///
-/// Mirrors [`resolve_per_object_configs`]: starts each per-semantic config from
-/// `global` and applies the overlay from keys matching the
-/// `paint_config:<namespace_key>:` prefix.
-///
-/// Returns `(map, warnings)`:
-/// - `map` keyed by [`PaintSemantic`] from `present_semantics` that had at
-///   least one matching override key.
-/// - `warnings` for `paint_config:NAME:<key>` entries whose NAME is not in
-///   `present_semantics`. The call does NOT fail; the caller forwards these.
-pub fn resolve_per_paint_semantic_configs(
-    global: &ResolvedConfig,
-    source: &HashMap<ConfigKey, ConfigValue>,
-    present_semantics: &[PaintSemantic],
-    bounds: &ConfigBoundsIndex,
-) -> Result<
-    (
-        BTreeMap<PaintSemantic, ResolvedConfig>,
-        Vec<UnknownSemanticWarning>,
-    ),
-    ConfigResolutionError,
-> {
-    let mut result: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
-    let mut warnings: Vec<UnknownSemanticWarning> = Vec::new();
-
-    // Collect all paint_config: keys from the source.
-    const PREFIX: &str = "paint_config:";
-    for (key, value) in source {
-        if let Some(rest) = key.strip_prefix(PREFIX) {
-            // rest is "<semantic>:<sub_key>"
-            if let Some(colon_pos) = rest.find(':') {
-                let semantic_name = &rest[..colon_pos];
-                let sub_key = &rest[colon_pos + 1..];
-
-                // Try to match semantic_name against a present semantic.
-                let matched = present_semantics
-                    .iter()
-                    .find(|s| paint_semantic_namespace_key(s) == semantic_name);
-
-                match matched {
-                    Some(semantic) => {
-                        // Clone semantic for map key use.
-                        let sem_key = semantic.clone();
-                        let entry = result
-                            .entry(sem_key.clone())
-                            .or_insert_with(|| global.clone());
-                        // Apply this single override key to the entry.
-                        let single: HashMap<String, ConfigValue> =
-                            [(sub_key.to_string(), value.clone())].into();
-                        let updated = apply_overlay(entry, &single, bounds)?;
-                        *entry = updated;
-                    }
-                    None => {
-                        warnings.push(UnknownSemanticWarning {
-                            semantic_name: semantic_name.to_string(),
-                            key: sub_key.to_string(),
-                        });
-                    }
-                }
-            }
-        }
-    }
-
-    Ok((result, warnings))
-}
-
-/// Resolve a flat `HashMap<ConfigKey, ConfigValue>` (as produced by
-/// [`parse_cli_config_source`]) into a global [`ResolvedConfig`].
-///
-/// Resolution rules
-/// ----------------
-/// * Keys matching declared `ResolvedConfig` fields are applied with strict
-///   type checking.  A wrong variant returns
-///   [`ConfigResolutionError::TypeMismatch`].
-/// * Keys with the prefix `object_config:` are per-object overlays; they are
-///   **not** applied here â€” see [`resolve_per_object_configs`].
-/// * Keys with the prefix `object_height:` are pre-existing host-injected keys
-///   consumed by other host code; they are silently skipped (not an error, not
-///   routed to `extensions`).
-/// * Any remaining key lands in `ResolvedConfig.extensions`.
-///
-/// Defaults come from [`ResolvedConfig::default()`].
-pub fn resolve_global_config(
-    source: &HashMap<ConfigKey, ConfigValue>,
-    bounds: &ConfigBoundsIndex,
-) -> Result<ResolvedConfig, ConfigResolutionError> {
-    let mut cfg = ResolvedConfig::default();
-
-    reject_alias_conflicts(|key| source.contains_key(key))?;
-
-    for (key, value) in source {
-        // Skip per-object overlay keys â€” handled by resolve_per_object_configs.
-        if key.starts_with("object_config:") {
-            continue;
-        }
-        // Skip per-paint-semantic overlay keys â€” handled by resolve_per_paint_semantic_configs.
-        if key.starts_with("paint_config:") {
-            continue;
-        }
-        // Skip per-tool overlay keys — handled by resolve_per_tool_configs.
-        if key.starts_with("tool_config:") {
-            continue;
-        }
-        // Skip host-injected object_height keys.
-        if key.starts_with("object_height:") {
-            continue;
-        }
-
-        // Enforce numeric min/max declared in any module's manifest before
-        // routing the value into a declared field or the extensions bucket.
-        let resolved_key = canonical_config_key(key.as_str());
-        bounds.check(resolved_key, value)?;
-
-        // Dispatch into the macro-generated per-field setter. Unknown keys
-        // fall through to the `extensions` overflow bucket. Single source of
-        // truth lives in `slicer-ir::resolved_config`.
-        if !cfg.apply_cli_key(resolved_key, value)? {
-            cfg.extensions.insert(key.clone(), value.clone());
-        }
-    }
-
-    // Packet 185 / AC-6 (TASK-303): thread parsed `percent` /
-    // `float_or_percent` schema defaults into the resolved config so
-    // module-owned percent keys cross the live transport when the profile
-    // supplies no value. Keys claimed by a declared `ResolvedConfig` field
-    // keep the macro default instead (a schema default whose variant the
-    // declared extractor rejects is skipped, not an error — the profile did
-    // not supply it).
-    for (key, default) in bounds.schema_defaults() {
-        if source.contains_key(key) || cfg.extensions.contains_key(key) {
-            continue;
-        }
-        match cfg.apply_cli_key(canonical_config_key(key.as_str()), default) {
-            Ok(true) | Err(_) => {}
-            Ok(false) => {
-                cfg.extensions.insert(key.clone(), default.clone());
-            }
-        }
-    }
-
-    Ok(cfg)
-}
-
-/// Build per-object [`ResolvedConfig`] overlays starting from the global base.
-///
-/// For each `object_id` in `object_ids`:
-/// 1. Clone the `global` config as the starting point.
-/// 2. Apply any `object_config:<object_id>:<config_key>` entries from `source`.
-///
-/// The returned map is a [`BTreeMap`] (sorted by `object_id`) to ensure
-/// deterministic ordering.
-pub fn resolve_per_object_configs(
-    global: &ResolvedConfig,
-    source: &HashMap<ConfigKey, ConfigValue>,
-    object_ids: &[&str],
-    bounds: &ConfigBoundsIndex,
-) -> Result<BTreeMap<String, ResolvedConfig>, ConfigResolutionError> {
-    let mut result = BTreeMap::new();
-
-    for &object_id in object_ids {
-        // Build a per-object sub-map with only the overrides for this object.
-        let prefix = format!("object_config:{object_id}:");
-        let mut per_object_source: HashMap<String, ConfigValue> = HashMap::new();
-        for (key, value) in source {
-            if let Some(sub_key) = key.strip_prefix(&prefix) {
-                per_object_source.insert(sub_key.to_string(), value.clone());
-            }
-        }
-
-        // Start from the global config and apply overrides.
-        let mut per_obj_cfg = global.clone();
-        if !per_object_source.is_empty() {
-            // Merge by running through resolve_global_config with the
-            // per-object sub-map, then selectively apply non-default fields.
-            // Simpler: rebuild from global + per_object_source overlay.
-            per_obj_cfg = apply_overlay(global, &per_object_source, bounds)?;
-        }
-
-        result.insert(object_id.to_string(), per_obj_cfg);
-    }
-
-    Ok(result)
-}
-
-/// Build per-tool/extruder [`ResolvedConfig`] overlays starting from the global
-/// base. For each `tool_config:<tool_index>:<config_key>` entry in `source`, the
-/// value overrides the global base for that integer tool index.
-///
-/// This is a clean additive config axis enabled by the region_id↔tool split
-/// (`PrintEntity.tool_index` is now a first-class selector). Precedence:
-/// `global < per_object < per_paint_semantic < per_tool` — per-tool is the
-/// highest-precedence override (mirroring OrcaSlicer's filament-preset overrides
-/// applied last, `PrintApply.cpp`). This function builds only the `global +
-/// per_tool` overlay; the per-object / per-paint overlays are composed at the
-/// region-mapping site (`region_mapping.rs`), where the per-tool result is
-/// applied last so a `tool_config:<idx>:<key>` wins over an object/paint value
-/// on the same key.
-///
-/// The returned map is a [`BTreeMap`] (sorted by tool index) for deterministic
-/// ordering. Entries with a non-numeric tool index are skipped.
-pub fn resolve_per_tool_configs(
-    global: &ResolvedConfig,
-    source: &HashMap<ConfigKey, ConfigValue>,
-    bounds: &ConfigBoundsIndex,
-) -> Result<BTreeMap<u32, ResolvedConfig>, ConfigResolutionError> {
-    const PREFIX: &str = "tool_config:";
-    // Group override sub-keys by tool index: "tool_config:<idx>:<sub_key>".
-    let mut per_tool_source: BTreeMap<u32, HashMap<String, ConfigValue>> = BTreeMap::new();
-    for (key, value) in source {
-        if let Some(rest) = key.strip_prefix(PREFIX) {
-            if let Some(colon_pos) = rest.find(':') {
-                let idx_str = &rest[..colon_pos];
-                let sub_key = &rest[colon_pos + 1..];
-                if let Ok(tool_index) = idx_str.parse::<u32>() {
-                    per_tool_source
-                        .entry(tool_index)
-                        .or_default()
-                        .insert(sub_key.to_string(), value.clone());
-                }
-            }
-        }
-    }
-
-    let mut result = BTreeMap::new();
-    for (tool_index, sub) in per_tool_source {
-        result.insert(tool_index, apply_overlay(global, &sub, bounds)?);
-    }
-    Ok(result)
 }
 
 /// Validate per-object `support_layer_height_mm` settings against each
@@ -651,41 +640,4 @@ pub fn validate_support_layer_heights(
         }
     }
     Ok(())
-}
-
-/// Apply a flat override map (already stripped of the `object_config:<id>:`
-/// prefix) on top of a base [`ResolvedConfig`].
-fn apply_overlay(
-    base: &ResolvedConfig,
-    overrides: &HashMap<String, ConfigValue>,
-    bounds: &ConfigBoundsIndex,
-) -> Result<ResolvedConfig, ConfigResolutionError> {
-    // Merge: start from a merged source where declared-field defaults come
-    // from base, then overrides win.
-    // Strategy: serialise base back to a source map, then merge overrides,
-    // then resolve. Alternatively, re-use resolve_global_config with a
-    // combined source. We use the simpler approach: re-run
-    // resolve_global_config seeded from base-as-source then override.
-    //
-    // Simplest correct approach: clone base, then patch each override key.
-    let mut cfg = base.clone();
-
-    reject_alias_conflicts(|key| overrides.contains_key(key))?;
-
-    for (key, value) in overrides {
-        // object_config / object_height prefixes won't appear here (already
-        // stripped), but skip them defensively.
-        if key.starts_with("object_config:") || key.starts_with("object_height:") {
-            continue;
-        }
-
-        let resolved_key = canonical_config_key(key.as_str());
-        bounds.check(resolved_key, value)?;
-
-        if !cfg.apply_cli_key(resolved_key, value)? {
-            cfg.extensions.insert(key.clone(), value.clone());
-        }
-    }
-
-    Ok(cfg)
 }

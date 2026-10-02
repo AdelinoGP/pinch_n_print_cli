@@ -41,10 +41,44 @@ fn square() -> ExPolygon {
 }
 
 fn config() -> Arc<ConfigView> {
+    // Bound-view shape (packet 06 5c-prime): this view feeds both the
+    // gyroid and rectilinear native entries, so it carries the union of
+    // their contract-required reads at manifest defaults
+    // (`make_config` in
+    // `modules/core-modules/gyroid-infill/tests/gyroid_infill_tdd.rs` and
+    // `baseline_config` in
+    // `modules/core-modules/rectilinear-infill/tests/rectilinear_infill_tdd.rs`),
+    // with this test's density/line_width winning.
     Arc::new(ConfigView::from_map(
         [
             ("infill_density".into(), ConfigValue::Float(0.5)),
+            // Declared required reads since the guests' config-literal
+            // fallbacks migrated to `require_*` (gyroid-infill.toml /
+            // rectilinear-infill.toml manifest defaults).
+            ("infill_angle".into(), ConfigValue::Float(45.0)),
+            ("infill_speed".into(), ConfigValue::Float(60.0)),
+            ("bridge_speed".into(), ConfigValue::Float(25.0)),
+            ("top_surface_speed".into(), ConfigValue::Float(60.0)),
+            (
+                "internal_solid_infill_speed".into(),
+                ConfigValue::Float(60.0),
+            ),
+            ("internal_bridge_angle".into(), ConfigValue::Float(0.0)),
+            ("infill_shift_step".into(), ConfigValue::Float(0.0)),
             ("line_width".into(), ConfigValue::Float(0.4)),
+            ("bridge_line_width".into(), ConfigValue::Float(0.0)),
+            ("initial_layer_line_width".into(), ConfigValue::Float(0.0)),
+            ("bridge_density".into(), ConfigValue::Float(1.0)),
+            ("bridge_flow".into(), ConfigValue::Float(1.0)),
+            ("thick_bridges".into(), ConfigValue::Bool(false)),
+            ("internal_bridge_density".into(), ConfigValue::Float(1.0)),
+            ("internal_bridge_flow".into(), ConfigValue::Float(1.0)),
+            ("thick_internal_bridges".into(), ConfigValue::Bool(true)),
+            (
+                "dont_filter_internal_bridges".into(),
+                ConfigValue::Bool(false),
+            ),
+            ("enable_extra_bridge_layer".into(), ConfigValue::Bool(false)),
         ]
         .into_iter()
         .collect(),

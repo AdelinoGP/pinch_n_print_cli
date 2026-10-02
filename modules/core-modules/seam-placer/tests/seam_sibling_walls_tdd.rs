@@ -187,23 +187,28 @@ fn multi_region_wall_counts_preserved() {
         &[
             Some(slicer_sdk::builders::RegionOrigin {
                 object_id: "obj-a".to_string(),
-                region_id: 0
+                region_id: 0,
+                variant_chain: Vec::new()
             }),
             Some(slicer_sdk::builders::RegionOrigin {
                 object_id: "obj-a".to_string(),
-                region_id: 0
+                region_id: 0,
+                variant_chain: Vec::new()
             }),
             Some(slicer_sdk::builders::RegionOrigin {
                 object_id: "obj-a".to_string(),
-                region_id: 0
+                region_id: 0,
+                variant_chain: Vec::new()
             }),
             Some(slicer_sdk::builders::RegionOrigin {
                 object_id: "obj-b".to_string(),
-                region_id: 1
+                region_id: 1,
+                variant_chain: Vec::new()
             }),
             Some(slicer_sdk::builders::RegionOrigin {
                 object_id: "obj-b".to_string(),
-                region_id: 1
+                region_id: 1,
+                variant_chain: Vec::new()
             }),
         ]
     );

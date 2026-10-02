@@ -11,6 +11,7 @@
 
 use std::collections::HashMap;
 
+use crate::common::classic_perimeters_baseline;
 use classic_perimeters::ClassicPerimeters;
 use slicer_ir::{ConfigView, PaintSemantic, PaintValue, WallBoundaryType};
 use slicer_sdk::builders::PerimeterOutputBuilder;
@@ -18,9 +19,10 @@ use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
-/// Build a config with wall_count=2, line_width=0.4.
+/// Build a config with wall_count=2, line_width=0.4 over the bound-view
+/// baseline (packet 06 5c-prime).
 fn config_2_walls() -> ConfigView {
-    ConfigViewBuilder::new()
+    classic_perimeters_baseline()
         .int("wall_count", 2)
         .float("line_width", 0.4)
         .build()

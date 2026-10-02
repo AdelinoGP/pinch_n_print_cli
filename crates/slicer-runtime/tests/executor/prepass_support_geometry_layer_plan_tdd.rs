@@ -277,6 +277,15 @@ fn default_planner_config_map() -> HashMap<String, ConfigValue> {
         ConfigValue::Int(1024),
     );
     map.insert("line_width".to_string(), ConfigValue::Float(0.4));
+    // Contract-required reads (packet 06): tree-support-planner's run
+    // `require_float`s `nozzle_diameter` and `require_bool`s
+    // `independent_support_layer_height` (manifest default true), so a
+    // partial view fails the typed call.
+    map.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.4));
+    map.insert(
+        "independent_support_layer_height".to_string(),
+        ConfigValue::Bool(true),
+    );
     map
 }
 

@@ -1,6 +1,9 @@
 //! TDD tests for TASK-201 / packet 60 Step 1: 7 new precision keys on `ResolvedConfig`.
 
-use slicer_ir::{resolved_config::ResolvedConfig, ConfigValue};
+use slicer_ir::{
+    resolved_config::{ResolvedConfig, ResolvedFloatOrPercent},
+    ConfigValue,
+};
 
 #[test]
 fn new_precision_keys_have_orca_defaults() {
@@ -46,8 +49,11 @@ fn line_width_defaults_are_auto_sentinels() {
 #[test]
 fn explicit_width_round_trips_with_canonical_initial_layer_name() {
     let cfg = ResolvedConfig {
-        line_width: 0.4_f32,
-        initial_layer_line_width: 0.4_f32,
+        line_width: f64::from(0.4_f32),
+        initial_layer_line_width: ResolvedFloatOrPercent {
+            value: f64::from(0.4_f32),
+            is_percent: false,
+        },
         ..ResolvedConfig::default()
     };
 
@@ -58,7 +64,26 @@ fn explicit_width_round_trips_with_canonical_initial_layer_name() {
     );
     assert_eq!(
         map.get("initial_layer_line_width"),
-        Some(&ConfigValue::Float(f64::from(0.4_f32)))
+        Some(&ConfigValue::FloatOrPercent {
+            value: f64::from(0.4_f32),
+            is_percent: false,
+        })
     );
     assert!(!map.contains_key("first_layer_line_width"));
+}
+
+#[test]
+fn resolved_line_width_retains_f64_precision_in_config_map() {
+    let authored = 0.451_234_567_890_123_f64;
+    assert_ne!(authored, f64::from(authored as f32));
+    let mut resolved = ResolvedConfig::default();
+    assert!(resolved
+        .apply_cli_key("line_width", &ConfigValue::Float(authored))
+        .expect("authored line_width should bind to the typed resolver"));
+
+    assert_eq!(
+        resolved.to_config_map().get("line_width"),
+        Some(&ConfigValue::Float(authored)),
+        "line_width must not narrow to f32 while crossing the resolved-config map"
+    );
 }

@@ -52,6 +52,14 @@ display     = "Maximum Infill Anchor"
 description = "Canonical default ConfigOptionFloatOrPercent(20, false); the parsed manifest default is threaded into the runtime ConfigView by scheduler schema-default injection, so get_abs_value resolves the absolute 20.0 mm value. AnchorParams::from_config's 20.0 mm fallback applies when get_abs_value returns None — i.e. when infill_anchor_max is absent or non-numeric."
 group       = "InfillLinker"
 
+[config.schema.infill_density]
+type    = "float"
+default = 0.2
+min     = 0.0
+max     = 1.0
+display = "Infill Density"
+group   = "Infill"
+
 [config.schema.layer_height]
 type        = "float"
 default     = 0.2
@@ -65,16 +73,10 @@ group       = "Quality"
 [config.schema.line_width]
 type    = "float"
 default = 0.4
-min     = 0.1
+min     = 0
 max     = 2.0
 display = "Line Width"
 group   = "Infill"
-
-[config.overridable-per-region]
-keys = []
-
-[config.overridable-per-layer]
-keys = []
 
 [hints]
 estimated-ms-per-layer = 30

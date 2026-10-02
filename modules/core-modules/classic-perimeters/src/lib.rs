@@ -85,27 +85,15 @@ const ERR_NEGATIVE_SPACING: u32 = 1;
 #[slicer_module]
 impl LayerModule for ClassicPerimeters {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let wall_count = match config.get("wall_count") {
-            Some(ConfigValue::Int(n)) => *n as u32,
-            _ => 3, // default
-        };
+        // Required reads: the registry seeds every declared key's default into
+        // a bound view, so an absent key is a contract violation, not a
+        // configurable fallback (packet 06 fail-closed semantics; mirrors
+        // arachne-perimeters).
+        let wall_count = config.require_int("wall_count")? as u32;
 
-        let outer_wall_speed = match config.get("outer_wall_speed") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => 30.0, // default
-        };
-
-        let inner_wall_speed = match config.get("inner_wall_speed") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => 45.0, // default
-        };
-
-        let perimeter_arc_tolerance = match config.get("perimeter_arc_tolerance") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 0.0125,
-        };
+        let outer_wall_speed = config.require_float("outer_wall_speed")? as f32;
+        let inner_wall_speed = config.require_float("inner_wall_speed")? as f32;
+        let perimeter_arc_tolerance = config.require_float("perimeter_arc_tolerance")? as f32;
 
         Ok(Self {
             wall_count,
@@ -159,18 +147,22 @@ impl LayerModule for ClassicPerimeters {
         let width_context = RoleWidthContext {
             line_width: legacy_line_width,
             nozzle_diameter,
+            // The four wall-width keys are typed `float_or_percent` with
+            // `base_key = "nozzle_diameter"` in the manifest: read with
+            // `require_abs_value` against the nozzle base, NOT `require_float`
+            // (packet 06 locked assumption, mirrors arachne-perimeters).
             bridge_line_width: _config
-                .get_abs_value("bridge_line_width", nozzle_diameter as f64)
-                .unwrap_or(0.0) as f32,
+                .require_abs_value("bridge_line_width", nozzle_diameter as f64)?
+                as f32,
             initial_layer_line_width: _config
-                .get_abs_value("initial_layer_line_width", nozzle_diameter as f64)
-                .unwrap_or(0.0) as f32,
+                .require_abs_value("initial_layer_line_width", nozzle_diameter as f64)?
+                as f32,
             outer_wall_line_width: _config
-                .get_abs_value("outer_wall_line_width", nozzle_diameter as f64)
-                .unwrap_or(0.0) as f32,
+                .require_abs_value("outer_wall_line_width", nozzle_diameter as f64)?
+                as f32,
             inner_wall_line_width: _config
-                .get_abs_value("inner_wall_line_width", nozzle_diameter as f64)
-                .unwrap_or(0.0) as f32,
+                .require_abs_value("inner_wall_line_width", nozzle_diameter as f64)?
+                as f32,
             ..RoleWidthContext::default()
         };
         let outer_wall_line_width = resolve_role_width(
@@ -194,21 +186,13 @@ impl LayerModule for ClassicPerimeters {
             },
             _ => WallSequence::InnerOuter,
         };
-        let detect_thin_wall = _config.get_bool("detect_thin_wall").unwrap_or(true);
+        let detect_thin_wall = _config.require_bool("detect_thin_wall")?;
         // Packet 108: absolute turn-angle threshold (degrees) gating seam-candidate
         // emission to sharp corners only, instead of every outer-wall vertex.
-        let seam_candidate_angle_threshold_deg = _config
-            .get_float("seam_candidate_angle_threshold_deg")
-            .map(|v| v as f32)
-            .unwrap_or(30.0);
-        let gap_infill_speed = _config
-            .get_float("gap_infill_speed")
-            .map(|s| s as f32)
-            .unwrap_or(30.0);
-        let filter_out_gap_fill = _config
-            .get_float("filter_out_gap_fill")
-            .map(|s| s as f32)
-            .unwrap_or(0.5);
+        let seam_candidate_angle_threshold_deg =
+            _config.require_float("seam_candidate_angle_threshold_deg")? as f32;
+        let gap_infill_speed = _config.require_float("gap_infill_speed")? as f32;
+        let filter_out_gap_fill = _config.require_float("filter_out_gap_fill")? as f32;
         // Medial-axis backend gate (diagnose 2026-06-24). On painted slices the
         // gap-fill / thin-wall medial axis can OOM-abort boostvoronoi on degenerate
         // per-color cell gaps (cube_fuzzyPainted). Until the medial axis is isolated
@@ -219,10 +203,9 @@ impl LayerModule for ClassicPerimeters {
         // actually injected by any host code, making this gate permanently
         // inert until `slicer_runtime::run_slice`/`run.rs` was fixed to set it
         // whenever any `ObjectMesh` carries `paint_data`.)
-        let gap_fill_medial_axis_on_painted = _config
-            .get_bool("gap_fill_medial_axis_on_painted")
-            .unwrap_or(false);
-        let slice_has_paint = _config.get_bool("slice_has_paint").unwrap_or(false);
+        let gap_fill_medial_axis_on_painted =
+            _config.require_bool("gap_fill_medial_axis_on_painted")?;
+        let slice_has_paint = _config.require_bool("slice_has_paint")?;
         let medial_axis_enabled = gap_fill_medial_axis_on_painted || !slice_has_paint;
         if !medial_axis_enabled && layer_index == 0 {
             slicer_sdk::host::log_warn(
@@ -232,7 +215,7 @@ impl LayerModule for ClassicPerimeters {
         }
         // R1: precise_outer_wall — gated on wall_sequence==InnerOuter (AC-7, P105).
         // OrcaSlicer PerimeterGenerator.cpp:1501-1506,1644
-        let precise_outer_wall_raw = _config.get_bool("precise_outer_wall").unwrap_or(false);
+        let precise_outer_wall_raw = _config.require_bool("precise_outer_wall")?;
         let precise_outer_wall =
             precise_outer_wall_raw && matches!(wall_sequence, WallSequence::InnerOuter);
 
@@ -240,10 +223,7 @@ impl LayerModule for ClassicPerimeters {
         // by bridging_flow's thick_bridges round-cross-section formula
         // (D-104g); threaded through emit_walls the same way nozzle_diameter
         // already is.
-        let layer_height = _config
-            .get_float("layer_height")
-            .map(|v| v as f32)
-            .unwrap_or(0.2);
+        let layer_height = _config.require_float("layer_height")? as f32;
 
         let base_wall_count = _config
             .get_int("wall_count")
@@ -254,7 +234,7 @@ impl LayerModule for ClassicPerimeters {
         // `int loop_number = this->config->wall_loops + surface.extra_perimeters - 1;`
         // (0-indexed loops). Translated to an actual wall count, this is simply
         // `wall_count + extra_perimeters`.
-        let extra_perimeters = _config.get_int("extra_perimeters").unwrap_or(0).max(0) as u32;
+        let extra_perimeters = _config.require_int("extra_perimeters")?.max(0) as u32;
         let base_wall_count = base_wall_count + extra_perimeters;
         // alternate_extra_wall: canonical `process_classic` and
         // `process_arachne` (`PerimeterGenerator.cpp`) carry a byte-identical
@@ -267,9 +247,9 @@ impl LayerModule for ClassicPerimeters {
         // the first layer, matching canonical's ordering. The arachne module
         // expresses the same +1 wall as `max_bead_count += 2`, per canonical's
         // `max_bead_count = 2 * inset_count` in `WallToolPaths::generate`.
-        let alternate_extra_wall = _config.get_bool("alternate_extra_wall").unwrap_or(false);
-        let spiral_vase = _config.get_bool("spiral_vase").unwrap_or(false);
-        let sparse_infill_density = _config.get_float("sparse_infill_density").unwrap_or(20.0);
+        let alternate_extra_wall = _config.require_bool("alternate_extra_wall")?;
+        let spiral_vase = _config.require_bool("spiral_vase")?;
+        let sparse_infill_density = _config.require_float("sparse_infill_density")?;
         let base_wall_count = if alternate_extra_wall
             && layer_index % 2 == 1
             && !spiral_vase
@@ -285,25 +265,18 @@ impl LayerModule for ClassicPerimeters {
         // with the plain extra_perimeters bonus above (independent branch in
         // the planar path); never applies to the non-planar shell branch,
         // which returns before this code runs.
-        let extra_perimeters_on_overhangs = _config
-            .get_bool("extra_perimeters_on_overhangs")
-            .unwrap_or(false);
+        let extra_perimeters_on_overhangs =
+            _config.require_bool("extra_perimeters_on_overhangs")?;
         // Narrow-island smaller-width override (T-072/T-073, P108). See
         // `classify_narrow_island` for the classification rule; these three
         // keys are per-invocation (not per-object/per-layer overridable yet).
-        let smaller_perimeter_line_width = _config
-            .get_float("smaller_perimeter_line_width")
-            .map(|v| v as f32)
-            .unwrap_or(0.25);
-        let smaller_perimeter_threshold_mm = _config
-            .get_float("smaller_perimeter_threshold_mm")
-            .map(|v| v as f32)
-            .unwrap_or(0.8);
-        let narrow_loop_length_threshold_mm = _config
-            .get_float("narrow_loop_length_threshold_mm")
-            .map(|v| v as f32)
-            .unwrap_or(10.0);
-        let only_one_wall_top = _config.get_bool("only_one_wall_top").unwrap_or(false);
+        let smaller_perimeter_line_width =
+            _config.require_float("smaller_perimeter_line_width")? as f32;
+        let smaller_perimeter_threshold_mm =
+            _config.require_float("smaller_perimeter_threshold_mm")? as f32;
+        let narrow_loop_length_threshold_mm =
+            _config.require_float("narrow_loop_length_threshold_mm")? as f32;
+        let only_one_wall_top = _config.require_bool("only_one_wall_top")?;
         // min_width_top_surface (D-152, packet 184): the erosion threshold that
         // gates the `only_one_wall_top` single-wall collapse. Canonical
         // `PerimeterGenerator::split_top_surfaces` resolves it with
@@ -317,12 +290,9 @@ impl LayerModule for ClassicPerimeters {
         // leaves the gate OFF. Canonical additionally floors the threshold at
         // `ext_perimeter_spacing/2 + 10`; packet 184 deliberately does not port
         // that floor ([FWD-2]), matching the already-landed arachne half.
-        let min_width_top = _config
-            .get_abs_value("min_width_top_surface", inner_wall_line_width as f64)
-            .unwrap_or(0.0);
-        let only_one_wall_first_layer = _config
-            .get_bool("only_one_wall_first_layer")
-            .unwrap_or(false);
+        let min_width_top =
+            _config.require_abs_value("min_width_top_surface", inner_wall_line_width as f64)?;
+        let only_one_wall_first_layer = _config.require_bool("only_one_wall_first_layer")?;
         // Canonical `process_classic` (`PerimeterGenerator.cpp`) gates
         // the single-wall clamp on `this->layer_id == object_config->raft_layers`
         // — the first *printed* layer, which is 0 only when no raft is
@@ -336,7 +306,7 @@ impl LayerModule for ClassicPerimeters {
         // PnP's `bottom_shell_layers` is a host `ResolvedConfig` field
         // constrained to [1, 10], so the predicate is unconditionally true here
         // and porting it would be dead code. Revisit if that range ever admits 0.
-        let raft_layers = _config.get_int("support_raft_layers").unwrap_or(0).max(0) as u32;
+        let raft_layers = _config.require_int("support_raft_layers")?.max(0) as u32;
         let layer_wall_count = if only_one_wall_first_layer && layer_index == raft_layers {
             1
         } else {
@@ -356,14 +326,15 @@ impl LayerModule for ClassicPerimeters {
         let inner_speed_factor = inner_wall_speed / BASE_SPEED;
         // bridge_flow / thick_bridges (packet 149, D4/D-104g): read once per
         // invocation, applied per-vertex in emit_walls wherever is_bridge is true.
-        let bridge_flow_ratio = _config
-            .get_float("bridge_flow")
-            .map(|v| v as f32)
-            .unwrap_or(1.0);
-        let thick_bridges = _config.get_bool("thick_bridges").unwrap_or(false);
+        let bridge_flow_ratio = _config.require_float("bridge_flow")? as f32;
+        let thick_bridges = _config.require_bool("thick_bridges")?;
 
         for region in regions {
-            output.begin_region(region.object_id(), *region.region_id());
+            output.begin_region(
+                region.object_id(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
             if region.polygons().is_empty() {
                 continue;
             }
@@ -406,9 +377,8 @@ impl LayerModule for ClassicPerimeters {
             } else {
                 "infill_wall_overlap"
             };
-            let infill_wall_overlap = _config
-                .get_abs_value(overlap_key, inner_wall_line_width as f64)
-                .unwrap_or(0.0) as f32;
+            let infill_wall_overlap =
+                _config.require_abs_value(overlap_key, inner_wall_line_width as f64)? as f32;
             // A topmost top sub-area unconditionally collapses to one wall. The
             // min_width_top_surface gate applies only to non-topmost sub-areas.
             let wall_count = if only_one_wall_top && top_shell == Some(0) {
@@ -1383,7 +1353,17 @@ mod tests {
 
     #[test]
     fn from_config_defaults() {
-        let config = ConfigView::from_map(HashMap::new());
+        // Declared keys (classic-perimeters.toml) seeded at their manifest
+        // defaults, mirroring the production `seed_registry_defaults` step.
+        let config = ConfigView::from_map(HashMap::from([
+            ("wall_count".to_string(), ConfigValue::Int(3)),
+            ("outer_wall_speed".to_string(), ConfigValue::Float(30.0)),
+            ("inner_wall_speed".to_string(), ConfigValue::Float(45.0)),
+            (
+                "perimeter_arc_tolerance".to_string(),
+                ConfigValue::Float(0.0125),
+            ),
+        ]));
         let module = ClassicPerimeters::from_config(&config).unwrap();
         assert_eq!(module.wall_count, 3);
         // R2: inner_wall_line_width is now read per-invocation, not cached.

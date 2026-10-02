@@ -120,10 +120,108 @@ fn arachne_perimeters_simple_square_produces_walls() {
             // sentinel: an ABSENT line_width now resolves to 1.125 × nozzle
             // (0.45 mm), not 0.4 mm. This test asserts "the configured 0.4mm",
             // so 0.4 must actually be configured.
-            std::collections::HashMap::from([(
-                "line_width".to_string(),
-                slicer_ir::ConfigValue::Float(0.4),
-            )]),
+            std::collections::HashMap::from([
+                ("line_width".to_string(), slicer_ir::ConfigValue::Float(0.4)),
+                // Required-read baseline (packet 06 5c): classified reads in
+                // run_perimeters/arachne_params_from_config are now
+                // require_*; the view holds every key the path reads at
+                // manifest-default values (role widths stay 0.0 so
+                // resolve_role_width falls through to the authored
+                // line_width above).
+                (
+                    "layer_height".to_string(),
+                    slicer_ir::ConfigValue::Float(0.2),
+                ),
+                (
+                    "nozzle_diameter".to_string(),
+                    slicer_ir::ConfigValue::Float(0.4),
+                ),
+                (
+                    "bridge_line_width".to_string(),
+                    slicer_ir::ConfigValue::Float(0.0),
+                ),
+                (
+                    "initial_layer_line_width".to_string(),
+                    slicer_ir::ConfigValue::Float(0.0),
+                ),
+                (
+                    "outer_wall_line_width".to_string(),
+                    slicer_ir::ConfigValue::Float(0.0),
+                ),
+                (
+                    "inner_wall_line_width".to_string(),
+                    slicer_ir::ConfigValue::Float(0.0),
+                ),
+                ("wall_count".to_string(), slicer_ir::ConfigValue::Int(3)),
+                (
+                    "extra_perimeters".to_string(),
+                    slicer_ir::ConfigValue::Int(0),
+                ),
+                (
+                    "precise_outer_wall".to_string(),
+                    slicer_ir::ConfigValue::Bool(false),
+                ),
+                (
+                    "wall_sequence".to_string(),
+                    slicer_ir::ConfigValue::String("InnerOuter".to_string()),
+                ),
+                (
+                    "support_raft_layers".to_string(),
+                    slicer_ir::ConfigValue::Int(0),
+                ),
+                (
+                    "only_one_wall_top".to_string(),
+                    slicer_ir::ConfigValue::Bool(false),
+                ),
+                (
+                    "wall_direction".to_string(),
+                    slicer_ir::ConfigValue::String("counter_clockwise".to_string()),
+                ),
+                (
+                    "alternate_extra_wall".to_string(),
+                    slicer_ir::ConfigValue::Bool(false),
+                ),
+                (
+                    "spiral_vase".to_string(),
+                    slicer_ir::ConfigValue::Bool(false),
+                ),
+                (
+                    "sparse_infill_density".to_string(),
+                    slicer_ir::ConfigValue::Float(20.0),
+                ),
+                (
+                    "only_one_wall_first_layer".to_string(),
+                    slicer_ir::ConfigValue::Bool(false),
+                ),
+                (
+                    "detect_overhang_wall".to_string(),
+                    slicer_ir::ConfigValue::Bool(true),
+                ),
+                (
+                    "overhang_reverse".to_string(),
+                    slicer_ir::ConfigValue::Bool(false),
+                ),
+                (
+                    "overhang_reverse_internal_only".to_string(),
+                    slicer_ir::ConfigValue::Bool(false),
+                ),
+                (
+                    "overhang_reverse_threshold".to_string(),
+                    slicer_ir::ConfigValue::Float(0.0),
+                ),
+                (
+                    "bridge_flow".to_string(),
+                    slicer_ir::ConfigValue::Float(1.0),
+                ),
+                (
+                    "thick_bridges".to_string(),
+                    slicer_ir::ConfigValue::Bool(false),
+                ),
+                (
+                    "seam_candidate_angle_threshold_deg".to_string(),
+                    slicer_ir::ConfigValue::Float(30.0),
+                ),
+            ]),
         )))
         .build();
 

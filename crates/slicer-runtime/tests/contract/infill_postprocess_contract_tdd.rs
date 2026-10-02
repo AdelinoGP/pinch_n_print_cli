@@ -280,6 +280,7 @@ fn infill_postprocess_prior_ir_multi_region_buckets() {
             InfillRegion {
                 object_id: "obj-a".into(),
                 region_id: 7,
+                variant_chain: Vec::new(),
                 sparse_infill: mk(2, ExtrusionRole::SparseInfill),
                 solid_infill: mk(1, ExtrusionRole::TopSolidInfill),
                 ironing: mk(3, ExtrusionRole::Ironing),

@@ -1,10 +1,9 @@
 // per_layer_config_override_tdd.rs — LayerOverrides per-layer config plumbing
 // (wall_count, outer_wall_speed, inner_wall_speed read per invocation)
 
-use std::collections::HashMap;
-
+use crate::common::classic_perimeters_baseline;
 use classic_perimeters::ClassicPerimeters;
-use slicer_ir::{ConfigValue, ConfigView, ExPolygon, Point2, Polygon};
+use slicer_ir::{ConfigView, ExPolygon, Point2, Polygon};
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
@@ -27,13 +26,27 @@ fn square_region(z: f32) -> SliceRegionView {
 }
 
 fn config_with_wall_count(n: i64) -> ConfigView {
-    ConfigView::from_map([("wall_count".to_string(), ConfigValue::Int(n))].into())
+    classic_perimeters_baseline()
+        .int("wall_count", n)
+        // Already-expanded base width (bound-view shape): the percent-typed
+        // overlap keys resolve against the role width derived from it.
+        .float("line_width", 0.4)
+        .build()
+}
+
+/// Base-module config for `from_config`: the bound-view baseline plus the
+/// declared `wall_count` at its manifest default (3), mirroring the
+/// production `seed_registry_defaults` step. The per-layer configs below
+/// carry their own `wall_count` (where the test requires an override), so
+/// this value only satisfies the fail-closed `require_int` read.
+fn base_module_config() -> ConfigView {
+    classic_perimeters_baseline().int("wall_count", 3).build()
 }
 
 #[test]
 fn per_layer_config_wall_count_override() {
-    let base_module = ClassicPerimeters::from_config(&ConfigView::from_map(HashMap::new()))
-        .expect("from_config should succeed");
+    let base_module =
+        ClassicPerimeters::from_config(&base_module_config()).expect("from_config should succeed");
 
     // Layer 0: base wall_count = 2 (default)
     let region0 = square_region(0.2);
@@ -76,8 +89,8 @@ fn per_layer_config_wall_count_override() {
 
 #[test]
 fn per_layer_config_wall_count_zero_emits_only_infill() {
-    let base_module = ClassicPerimeters::from_config(&ConfigView::from_map(HashMap::new()))
-        .expect("from_config should succeed");
+    let base_module =
+        ClassicPerimeters::from_config(&base_module_config()).expect("from_config should succeed");
 
     let region = square_region(0.2);
     let mut output = PerimeterOutputBuilder::new();
@@ -104,14 +117,20 @@ fn per_layer_config_wall_count_zero_emits_only_infill() {
 
 #[test]
 fn per_layer_config_missing_wall_count_falls_back_to_from_config() {
-    let config = ConfigView::from_map([("wall_count".to_string(), ConfigValue::Int(3))].into());
+    let config = classic_perimeters_baseline()
+        .int("wall_count", 3)
+        .float("line_width", 0.4)
+        .build();
     let module = ClassicPerimeters::from_config(&config)
         .expect("from_config with wall_count=3 should succeed");
 
     let region = square_region(0.2);
     let mut output = PerimeterOutputBuilder::new();
-    // No wall_count in per-layer config → falls back to from_config value (3)
-    let empty_config = ConfigView::from_map(HashMap::new());
+    // No wall_count in the per-layer config → falls back to the from_config
+    // value (3); the bound-view baseline carries every other required key.
+    let empty_config = classic_perimeters_baseline()
+        .float("line_width", 0.4)
+        .build();
     module
         .run_perimeters(
             0,
@@ -131,19 +150,17 @@ fn per_layer_config_missing_wall_count_falls_back_to_from_config() {
 
 #[test]
 fn per_layer_config_speed_override() {
-    let module = ClassicPerimeters::from_config(&ConfigView::from_map(HashMap::new()))
-        .expect("from_config should succeed");
+    let module =
+        ClassicPerimeters::from_config(&base_module_config()).expect("from_config should succeed");
 
     let region = square_region(0.2);
     let mut output = PerimeterOutputBuilder::new();
-    let config = ConfigView::from_map(
-        [
-            ("wall_count".to_string(), ConfigValue::Int(2)),
-            ("outer_wall_speed".to_string(), ConfigValue::Float(30.0)),
-            ("inner_wall_speed".to_string(), ConfigValue::Float(40.0)),
-        ]
-        .into(),
-    );
+    let config = classic_perimeters_baseline()
+        .int("wall_count", 2)
+        .float("line_width", 0.4)
+        .float("outer_wall_speed", 30.0)
+        .float("inner_wall_speed", 40.0)
+        .build();
     module
         .run_perimeters(
             0,

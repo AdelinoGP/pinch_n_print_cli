@@ -7,7 +7,7 @@
 //! Relocated from `crates/slicer-runtime/src/gcode_emit.rs` in packet 86 Step 3
 //! when that file was deleted as part of the slicer-gcode extraction.
 
-use slicer_ir::{FeedrateConfig, ResolvedConfig};
+use slicer_ir::{ConfigValue, FeedrateConfig, ResolvedConfig};
 use std::path::{Path, PathBuf};
 
 fn host_keys_path() -> PathBuf {
@@ -43,6 +43,9 @@ fn resolved_num(c: &ResolvedConfig, key: &str) -> Option<f64> {
         "support_bottom_z_distance" => c.support_bottom_z_distance as f64,
         "support_object_first_layer_gap" => c.support_object_first_layer_gap as f64,
         "enforce_support_layers" => c.enforce_support_layers as f64,
+        "filament_max_volumetric_speed" => c
+            .filament_max_volumetric_speed()
+            .expect("the declared volumetric setting must have a valid numeric value"),
         // Float-or-percent keys lock on the numeric magnitude; the doc rows'
         // notes carry the percent semantics.
         "support_threshold_overlap" => c.support_threshold_overlap.value,
@@ -70,6 +73,23 @@ fn resolved_str<'a>(c: &'a ResolvedConfig, key: &str) -> Option<&'a str> {
         "flat_bridge_closing_join" => c.flat_bridge_closing_join.as_str(),
         _ => return None,
     })
+}
+
+#[test]
+fn filament_volumetric_doc_lock_reads_effective_extension_value() {
+    let mut config = ResolvedConfig::default();
+    assert_eq!(
+        resolved_num(&config, "filament_max_volumetric_speed"),
+        Some(0.0)
+    );
+    config.extensions.insert(
+        "filament_max_volumetric_speed".to_owned(),
+        ConfigValue::Float(8.0),
+    );
+    assert_eq!(
+        resolved_num(&config, "filament_max_volumetric_speed"),
+        Some(8.0)
+    );
 }
 
 #[test]
@@ -113,7 +133,7 @@ fn speeds_match_feedrate_default() {
         ("bottom_surface_speed", bottom_surface_speed as f64),
         ("sparse_infill_speed", sparse_infill_speed as f64),
         ("bridge_speed", bridge_speed as f64),
-        ("internal_bridge_speed", internal_bridge_speed as f64),
+        ("internal_bridge_speed", internal_bridge_speed.value),
         ("support_speed", support_speed as f64),
         ("support_interface_speed", support_interface_speed as f64),
         ("gap_infill_speed", gap_infill_speed as f64),
@@ -206,7 +226,7 @@ fn resolved_config_keys_match_default() {
         } else {
             let doc = doc_num(spec);
             let code = resolved_num(&rc, key).unwrap_or_else(|| {
-                panic!("[resolved_config.{key}] has no matching ResolvedConfig numeric field")
+                panic!("[resolved_config.{key}] has no matching ResolvedConfig numeric field or accessor")
             });
             assert!(
                 (doc - code).abs() < 1e-6,

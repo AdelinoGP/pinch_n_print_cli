@@ -9,15 +9,23 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use slicer_ir::{ConfigKey, ConfigValue, GlobalLayer, ModuleId, RegionKey, RegionPlan, StageId};
+use slicer_config::{
+    assemble_registry, ConfigIngestionError, ConfigIngestor, ConfigSchemaRegistry, HostChannels,
+    IngestionOutcome, LayerRangeInput, LayerRangeLoadError, ModuleDeclaration, RegistryLoadError,
+    RegistryWarning,
+};
+use slicer_ir::{
+    ConfigKey, ConfigValue, GlobalLayer, ModuleId, RegionKey, RegionPlan, ResolvedConfig, StageId,
+};
 use slicer_sdk::native::NativeStageEntry;
 
 use slicer_scheduler::dag::{build_intra_stage_dag, Producer};
 use slicer_scheduler::execution_plan::{
-    bind_module_config_view, build_execution_plan, dedup_same_claim_modules_with_wall_generator,
-    validate_support_family_pairing, ExecutionModuleBinding, ExecutionPlan, ExecutionPlanError,
-    ExecutionPlanRequest, SortedStageModules, SPIRAL_VASE_CONFIG_KEY, STAGE_ORDER,
-    SUPPORT_FAMILY_CONFIG_KEY, SUPPORT_GENERATOR_CONFIG_KEY, WALL_GENERATOR_CONFIG_KEY,
+    bind_module_config_view, build_execution_plan,
+    dedup_same_claim_modules_with_typed_wall_generator, validate_support_family_pairing,
+    ExecutionModuleBinding, ExecutionPlan, ExecutionPlanError, ExecutionPlanRequest,
+    SortedStageModules, SPIRAL_VASE_CONFIG_KEY, STAGE_ORDER, SUPPORT_FAMILY_CONFIG_KEY,
+    SUPPORT_GENERATOR_CONFIG_KEY, WALL_GENERATOR_CONFIG_KEY,
 };
 use slicer_scheduler::manifest::{
     load_modules_from_roots_with_integrated, LoadDiagnostic, LoadError, LoadedModule,
@@ -54,11 +62,14 @@ pub struct LiveModuleBinding {
 /// Build the immutable `ExecutionPlan` used by the live host/runtime path.
 ///
 /// For every `LiveModuleBinding`, the per-module `Arc<ConfigView>` is
-/// synthesised via [`bind_module_config_view`] against `config_source`.
+/// synthesised via [`bind_module_config_view`] against `resolved` — the
+/// fully resolved `ResolvedConfig` whose `to_config_map` is the single
+/// source of truth for every module view (packet config-scope-resolution
+/// Step 4a).
 pub fn build_live_execution_plan(
     sorted_stages: Vec<SortedStageModules>,
     modules: Vec<LiveModuleBinding>,
-    config_source: &HashMap<ConfigKey, ConfigValue>,
+    resolved: &ResolvedConfig,
     global_layers: Arc<Vec<GlobalLayer>>,
     region_plans: Arc<HashMap<RegionKey, RegionPlan>>,
     diagnostics: &mut Vec<LoadDiagnostic>,
@@ -66,7 +77,7 @@ pub fn build_live_execution_plan(
     let module_bindings: Vec<ExecutionModuleBinding> = modules
         .into_iter()
         .map(|b| {
-            let config_view = bind_module_config_view(&b.module, config_source);
+            let config_view = bind_module_config_view(&b.module, resolved);
             ExecutionModuleBinding {
                 module: b.module,
                 config_view,
@@ -107,11 +118,36 @@ pub struct LiveModuleLoadOutput {
     pub engine: Arc<WasmEngine>,
 }
 
+/// Manifest-first live-loading result, including the single typed ingestion
+/// outcome retained by runtime composition roots.
+#[derive(Debug)]
+pub struct ManifestFirstLiveLoadOutput {
+    /// Loaded, claim-selected modules ready for execution-plan construction.
+    pub live: LiveModuleLoadOutput,
+    /// Registry-typed authored configuration and non-fatal ingestion warnings.
+    pub ingestion: IngestionOutcome,
+    /// The manifest-first config schema registry the ingestion typed against.
+    ///
+    /// Assembled from every discovered module's manifest, before claim dedup
+    /// drops modules from dispatch, so resolution sees the same key set the
+    /// ingestion did: a claim-losing module's keys stay declared and
+    /// resolvable even though the module itself does not run.
+    pub registry: ConfigSchemaRegistry,
+    /// Opaque non-fatal diagnostics produced while reconciling declarations.
+    pub registry_warnings: Vec<RegistryWarning>,
+}
+
 /// Structured failure for live module loading on the production path.
 #[derive(Debug)]
 pub enum LiveModuleLoadError {
     /// Manifest discovery/ingestion failed fatally.
     Load(LoadError),
+    /// Loaded config declarations could not be reconciled into one registry.
+    Registry(RegistryLoadError),
+    /// An authored config value could not be ingested according to the registry.
+    ConfigIngestion(ConfigIngestionError),
+    /// Authored layer ranges could not be ingested according to the registry.
+    LayerRangeIngestion(LayerRangeLoadError),
     /// Support planner and renderer family claims do not form pairs.
     SupportFamilyPairing(slicer_scheduler::SupportFamilyPairingError),
     /// A stage's intra-stage DAG could not be built.
@@ -145,6 +181,9 @@ impl std::fmt::Display for LiveModuleLoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Load(e) => write!(f, "module discovery failed: {e:?}"),
+            Self::Registry(e) => write!(f, "config registry assembly failed: {e}"),
+            Self::ConfigIngestion(e) => write!(f, "config ingestion failed: {e}"),
+            Self::LayerRangeIngestion(e) => write!(f, "layer range ingestion failed: {e}"),
             Self::SupportFamilyPairing(e) => write!(f, "{e}"),
             Self::Dag(e) => write!(f, "intra-stage DAG construction failed: {e:?}"),
             Self::Cycle { stage_id, unsorted } => write!(
@@ -174,6 +213,16 @@ impl std::error::Error for LiveModuleLoadError {}
 impl From<LoadError> for LiveModuleLoadError {
     fn from(e: LoadError) -> Self {
         Self::Load(e)
+    }
+}
+impl From<RegistryLoadError> for LiveModuleLoadError {
+    fn from(e: RegistryLoadError) -> Self {
+        Self::Registry(e)
+    }
+}
+impl From<ConfigIngestionError> for LiveModuleLoadError {
+    fn from(e: ConfigIngestionError) -> Self {
+        Self::ConfigIngestion(e)
     }
 }
 impl From<SchedulerError> for LiveModuleLoadError {
@@ -266,6 +315,7 @@ pub fn load_live_modules_for_plan_profiled(
         search_roots,
         host_parallelism,
         config_source,
+        &[],
         profile,
         &[],
         &[],
@@ -290,39 +340,91 @@ pub fn load_live_modules_for_plan_with_integrated(
     search_roots: &[PathBuf],
     host_parallelism: usize,
     config_source: &HashMap<ConfigKey, ConfigValue>,
+    layer_ranges: &[LayerRangeInput],
     profile: bool,
     integrated: &[IntegratedModuleRegistration],
     native_entries: &[(ModuleId, NativeStageEntry)],
 ) -> Result<LiveModuleLoadOutput, Box<LiveModuleLoadError>> {
+    load_live_modules_for_plan_manifest_first(
+        search_roots,
+        host_parallelism,
+        config_source,
+        layer_ranges,
+        profile,
+        integrated,
+        native_entries,
+    )
+    .map(|output| output.live)
+}
+
+/// Discover manifests before assembling their config registry, ingest authored
+/// config once, select claims from typed values, and prepare live bindings.
+///
+/// Unlike the compatibility loader entry points, this composition-root seam
+/// returns the typed ingestion result and opaque registry warnings alongside
+/// the live module output so callers can retain them through plan binding and
+/// config resolution.
+///
+/// When `layer_ranges` is non-empty, its typed world-Z ranges are ingested
+/// through the same registry immediately after the flat config; a denied,
+/// invalid, or conflicting range fails the load loudly instead of being
+/// dropped.
+pub fn load_live_modules_for_plan_manifest_first(
+    search_roots: &[PathBuf],
+    host_parallelism: usize,
+    config_source: &HashMap<ConfigKey, ConfigValue>,
+    layer_ranges: &[LayerRangeInput],
+    profile: bool,
+    integrated: &[IntegratedModuleRegistration],
+    native_entries: &[(ModuleId, NativeStageEntry)],
+) -> Result<ManifestFirstLiveLoadOutput, Box<LiveModuleLoadError>> {
+    // Manifest discovery is deliberately independent of authored config.
     let mut report = load_modules_from_roots_with_integrated(search_roots, integrated)?;
+
+    let declarations = report
+        .modules
+        .iter()
+        .map(|module| ModuleDeclaration {
+            module_id: module.id().to_owned(),
+            schema: module.config_schema().clone(),
+            claim_exclusive_group: None,
+        })
+        .collect::<Vec<_>>();
+    let assembly = assemble_registry(&declarations, &HostChannels::from_live())
+        .map_err(|error| Box::new(LiveModuleLoadError::Registry(error)))?;
+    let mut ingestor = ConfigIngestor::tolerant(&assembly.registry);
+    ingestor
+        .ingest_flat(config_source)
+        .map_err(|error| Box::new(LiveModuleLoadError::ConfigIngestion(error)))?;
+    if !layer_ranges.is_empty() {
+        ingestor
+            .ingest_layer_ranges(layer_ranges)
+            .map_err(|error| Box::new(LiveModuleLoadError::LayerRangeIngestion(error)))?;
+    }
+    let ingestion = ingestor.finish();
 
     validate_support_family_pairing(&report.modules)
         .map_err(|e| Box::new(LiveModuleLoadError::SupportFamilyPairing(e)))?;
 
-    let wall_generator = config_source
-        .get(WALL_GENERATOR_CONFIG_KEY)
-        .and_then(|v| match v {
-            ConfigValue::String(s) => Some(s.as_str()),
-            _ => None,
-        });
-
-    let spiral_vase = config_source
-        .get(SPIRAL_VASE_CONFIG_KEY)
+    let wall_generator = ingestion.selector_values.get(WALL_GENERATOR_CONFIG_KEY);
+    let global = ingestion.scoped.global();
+    let spiral_vase = global
+        .and_then(|delta| delta.values.get(SPIRAL_VASE_CONFIG_KEY))
         .and_then(|v| match v {
             ConfigValue::Bool(b) => Some(*b),
             _ => None,
         })
         .unwrap_or(false);
 
-    let support_type = config_source
-        .get(SUPPORT_GENERATOR_CONFIG_KEY)
+    let support_type = global
+        .and_then(|delta| delta.values.get(SUPPORT_GENERATOR_CONFIG_KEY))
         .and_then(|v| match v {
             ConfigValue::String(s) => Some(s.as_str()),
             _ => None,
         });
 
-    let support_family = config_source
-        .get(SUPPORT_FAMILY_CONFIG_KEY)
+    let support_family = global
+        .and_then(|delta| delta.values.get(SUPPORT_FAMILY_CONFIG_KEY))
         .and_then(|v| match v {
             ConfigValue::String(s) => Some(s.as_str()),
             _ => None,
@@ -333,7 +435,7 @@ pub fn load_live_modules_for_plan_with_integrated(
     // generator (Arachne is incompatible with spiral-vase mode);
     // `support_type` selects the `support-generator` claim holder
     // (traditional by default).
-    let filtered_modules = dedup_same_claim_modules_with_wall_generator(
+    let filtered_modules = dedup_same_claim_modules_with_typed_wall_generator(
         &mut report.modules,
         &mut report.diagnostics,
         wall_generator,
@@ -415,11 +517,16 @@ pub fn load_live_modules_for_plan_with_integrated(
         });
     }
 
-    Ok(LiveModuleLoadOutput {
-        bindings,
-        sorted_stages,
-        diagnostics,
-        engine,
+    Ok(ManifestFirstLiveLoadOutput {
+        live: LiveModuleLoadOutput {
+            bindings,
+            sorted_stages,
+            diagnostics,
+            engine,
+        },
+        ingestion,
+        registry: assembly.registry,
+        registry_warnings: assembly.warnings,
     })
 }
 

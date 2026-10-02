@@ -82,6 +82,7 @@ mod finalization_live_tdd;
 mod finalization_mutation_roundtrip_tdd;
 mod finalization_world_deep_copy_tdd;
 mod infill_linker_pipeline_smoke_tdd;
+mod ingestion_fidelity_oracle_tdd;
 mod layer_executor_tdd;
 mod layer_finalization_tdd;
 mod layer_slice_tdd;

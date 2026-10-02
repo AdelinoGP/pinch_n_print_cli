@@ -7,8 +7,8 @@ use std::process::Command;
 use crate::build_guests::{self, GuestSpec, GuestTree};
 use crate::editions;
 use crate::guest_namespaces::{
-    ACCELERATED_DIST_NAMESPACE, ACCELERATED_GUEST_NAMESPACE,
-    ACCELERATED_HOST_TARGET_NAMESPACE, TEST_SUPPORT_FEATURE,
+    ACCELERATED_DIST_NAMESPACE, ACCELERATED_GUEST_NAMESPACE, ACCELERATED_HOST_TARGET_NAMESPACE,
+    TEST_SUPPORT_FEATURE,
 };
 
 const ORDINARY_DIST_NAMESPACE: &str = "dist";

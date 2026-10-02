@@ -25,9 +25,9 @@ const PATH_OPT_WASM: &str = concat!(
     "/../../modules/core-modules/path-optimization-default/path-optimization-default.wasm"
 );
 use slicer_ir::{
-    ActiveRegion, BoundingBox3, ConfigView, ExtrusionPath3D, ExtrusionRole, GlobalLayer,
-    IndexedTriangleSet, InfillIR, InfillRegion, MeshIR, ObjectConfig, ObjectMesh, Point3,
-    Point3WithWidth, SemVer, StageId, Transform3d,
+    ActiveRegion, BoundingBox3, ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole,
+    GlobalLayer, IndexedTriangleSet, InfillIR, InfillRegion, MeshIR, ObjectConfig, ObjectMesh,
+    Point3, Point3WithWidth, SemVer, StageId, Transform3d,
 };
 
 // â"€â"€ Fixtures â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -140,8 +140,18 @@ fn same_object_nearest_neighbor_ordering_is_applied_before_path_optimization() {
         )
         .expect("fixture pool"),
     );
-    let path_opt_module =
-        Arc::new(CompiledModuleBuilder::new(path_opt_loaded.id().to_string()).build());
+    let path_opt_module = Arc::new(
+        CompiledModuleBuilder::new(path_opt_loaded.id().to_string())
+            .config_view(Arc::new(
+                // Fail-closed migration key (path-optimization-default.toml
+                // manifest default): a required read since the fallback removal.
+                ConfigView::from_map(HashMap::from([(
+                    "path_optimization_emit_layer_markers".to_string(),
+                    ConfigValue::Bool(true),
+                )])),
+            ))
+            .build(),
+    );
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let runner = LiveDispatcherWithInfill::with_module(
@@ -352,8 +362,18 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
         )
         .expect("fixture pool"),
     );
-    let path_opt_module =
-        Arc::new(CompiledModuleBuilder::new(path_opt_loaded.id().to_string()).build());
+    let path_opt_module = Arc::new(
+        CompiledModuleBuilder::new(path_opt_loaded.id().to_string())
+            .config_view(Arc::new(
+                // Fail-closed migration key (path-optimization-default.toml
+                // manifest default): a required read since the fallback removal.
+                ConfigView::from_map(HashMap::from([(
+                    "path_optimization_emit_layer_markers".to_string(),
+                    ConfigValue::Bool(true),
+                )])),
+            ))
+            .build(),
+    );
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let runner = LiveDispatcherWithInfill::with_module(
@@ -465,8 +485,18 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
         )
         .expect("fixture pool"),
     );
-    let path_opt_module =
-        Arc::new(CompiledModuleBuilder::new(path_opt_loaded.id().to_string()).build());
+    let path_opt_module = Arc::new(
+        CompiledModuleBuilder::new(path_opt_loaded.id().to_string())
+            .config_view(Arc::new(
+                // Fail-closed migration key (path-optimization-default.toml
+                // manifest default): a required read since the fallback removal.
+                ConfigView::from_map(HashMap::from([(
+                    "path_optimization_emit_layer_markers".to_string(),
+                    ConfigValue::Bool(true),
+                )])),
+            ))
+            .build(),
+    );
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let runner = LiveDispatcherWithInfill::with_module(
@@ -576,8 +606,14 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
             )
             .expect("fixture pool"),
         );
-        let path_opt_module =
-            Arc::new(CompiledModuleBuilder::new(path_opt_loaded.id().to_string()).build());
+        let path_opt_module = Arc::new(
+            CompiledModuleBuilder::new(path_opt_loaded.id().to_string())
+                .config_view(Arc::new(ConfigView::from_map(HashMap::from([(
+                    "path_optimization_emit_layer_markers".to_string(),
+                    ConfigValue::Bool(true),
+                )]))))
+                .build(),
+        );
 
         let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
         let runner = LiveDispatcherWithInfill::with_module(
@@ -677,8 +713,18 @@ fn single_or_already_optimal_sequence_is_left_unchanged() {
         )
         .expect("fixture pool"),
     );
-    let path_opt_module =
-        Arc::new(CompiledModuleBuilder::new(path_opt_loaded.id().to_string()).build());
+    let path_opt_module = Arc::new(
+        CompiledModuleBuilder::new(path_opt_loaded.id().to_string())
+            .config_view(Arc::new(
+                // Fail-closed migration key (path-optimization-default.toml
+                // manifest default): a required read since the fallback removal.
+                ConfigView::from_map(HashMap::from([(
+                    "path_optimization_emit_layer_markers".to_string(),
+                    ConfigValue::Bool(true),
+                )])),
+            ))
+            .build(),
+    );
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let runner = LiveDispatcherWithInfill::with_module(

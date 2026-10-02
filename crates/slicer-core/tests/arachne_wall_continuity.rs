@@ -94,7 +94,10 @@ fn thin_gap_beading_does_not_starve_the_wide_region_of_its_third_wall() {
 
     let outer = inset_len(&lines, 0);
     let third = inset_len(&lines, 2);
-    assert!(outer > 100.0, "the outer wall must run around the slab, got {outer:.1} mm");
+    assert!(
+        outer > 100.0,
+        "the outer wall must run around the slab, got {outer:.1} mm"
+    );
     // The third wall follows the outer one everywhere except where the gap
     // beside the hole has room for only 3 beads.
     assert!(
@@ -122,7 +125,10 @@ fn inner_contour_markers_close_around_a_square_hole() {
         .filter(|l| !l.is_closed)
         .map(|l| l.junctions.len())
         .collect();
-    assert!(open.is_empty(), "open inner-contour markers (junction counts): {open:?}");
+    assert!(
+        open.is_empty(),
+        "open inner-contour markers (junction counts): {open:?}"
+    );
     assert_eq!(markers.len(), 2, "one marker per outline ring");
 
     // Both markers sit 3 bead widths (3 x 0.40708 = 1.2212 mm) in from
@@ -150,7 +156,10 @@ fn inner_contour_marker_covers_the_thick_end_of_a_thin_ring() {
         .expect("thin ring produces walls");
 
     let markers: Vec<&ExtrusionLine> = inner_contour.iter().filter(|l| !l.is_odd).collect();
-    assert!(!markers.is_empty(), "the thick end must leave an infill marker");
+    assert!(
+        !markers.is_empty(),
+        "the thick end must leave an infill marker"
+    );
     assert!(
         markers.iter().all(|l| l.is_closed),
         "every inner-contour marker must be closed"
@@ -158,7 +167,10 @@ fn inner_contour_marker_covers_the_thick_end_of_a_thin_ring() {
     // The thick end's infill region is about [23.22, 28.78] x [1.22, 10.78]
     // = 53.2 mm^2.
     let area: f64 = markers.iter().map(|l| closed_area(l)).sum();
-    assert!(area >= 45.0, "marker area {area:.1} mm^2, expected about 53 mm^2");
+    assert!(
+        area >= 45.0,
+        "marker area {area:.1} mm^2, expected about 53 mm^2"
+    );
 }
 
 /// A 30 mm strip tapering from 1.8 to 2.2 mm: the bead count steps from 4

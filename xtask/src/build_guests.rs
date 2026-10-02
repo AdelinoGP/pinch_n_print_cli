@@ -10,12 +10,12 @@ pub const EXIT_FRESH: i32 = 0;
 pub const EXIT_STALE: i32 = 1;
 pub const EXIT_INFRA_ERROR: i32 = 3;
 pub const FINGERPRINT_VERSION: &str = "v2";
+/// Isolated fingerprint sidecar namespace for accelerated freshness metadata.
+pub use crate::guest_namespaces::ACCELERATED_FINGERPRINT_NAMESPACE;
 /// Isolated target/cache namespace for accelerated (controlled-compiler) guest
 /// artifacts. Canonical definition lives in `crate::guest_namespaces` so the
 /// `build-guests`, `test`, and `dist` entry points cannot desync.
 pub use crate::guest_namespaces::ACCELERATED_GUEST_NAMESPACE;
-/// Isolated fingerprint sidecar namespace for accelerated freshness metadata.
-pub use crate::guest_namespaces::ACCELERATED_FINGERPRINT_NAMESPACE;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum GuestTree {

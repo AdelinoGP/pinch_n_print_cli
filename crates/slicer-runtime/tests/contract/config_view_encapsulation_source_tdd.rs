@@ -63,16 +63,24 @@ fn config_view_backing_map_stays_private() {
 fn main_production_entry_path_uses_bind_module_config_view() {
     // The live-plan path constructs per-module ConfigViews via
     // `build_live_execution_plan` → `bind_module_config_view`
-    // → `ConfigView::from_declared`, which is the only docs-compliant
-    // constructor that pre-filters to the module's declared reads.
+    // → `ConfigView::from_declared`, which are the only docs-compliant
+    // constructors that pre-filter to the module's declared reads. Since
+    // packet config-scope-resolution Step 4a, binding sources from the fully
+    // resolved `ResolvedConfig` (`to_config_map`), so run.rs must hand
+    // `&default_resolved_config` to `build_live_execution_plan` — a raw
+    // source map at that parameter would regress the resolved-binding
+    // contract.
     //
     // After pnp-cli-unification, the binary's main.rs was deleted and the
     // entry point moved to slicer-runtime/src/run.rs.
     let run = fs::read_to_string(repo_root().join("crates/slicer-runtime/src/run.rs"))
         .expect("read run.rs");
     assert!(
-        run.contains("build_live_execution_plan"),
-        "run.rs Run arm must route through build_live_execution_plan so \
-         bind_module_config_view runs on the live path"
+        run.contains(
+            "build_live_execution_plan(\n        loaded.sorted_stages,\n        loaded.bindings,\n        &default_resolved_config,"
+        ),
+        "run.rs Run arm must route through build_live_execution_plan with the \
+         resolved config (`&default_resolved_config`) so bind_module_config_view \
+         sources the resolved map, not a raw source map, on the live path"
     );
 }

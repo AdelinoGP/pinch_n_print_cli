@@ -40,7 +40,7 @@
 #![allow(dead_code)]
 
 use slicer_ir::{
-    ConfigDelta, ExPolygon, IndexedTriangleSet, MeshIR, ModifierScope, ModifierVolume, ObjectMesh,
+    ConfigDelta, ExPolygon, IndexedTriangleSet, MeshIR, ModifierKind, ModifierVolume, ObjectMesh,
     PaintValue, PerimeterIR, PerimeterRegion, Point2, Point3, Polygon, SliceIR, SlicedRegion,
     CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
@@ -182,14 +182,13 @@ fn modifier_box_mesh(x0: f32, y0: f32, x1: f32, y1: f32) -> IndexedTriangleSet {
 }
 
 fn parameter_modifier(id: &str, priority: u32, mesh: IndexedTriangleSet) -> ModifierVolume {
-    // exhaustive: ModifierVolume has no Default impl; this fixture pins every field.
-    ModifierVolume {
-        id: id.to_string(),
+    ModifierVolume::new(
+        id.to_string(),
         mesh,
-        config_delta: ConfigDelta::default(),
+        ConfigDelta::default(),
         priority,
-        applies_to: ModifierScope::AllFeatures,
-    }
+        ModifierKind::ParameterModifier,
+    )
 }
 
 fn base_perimeter(object_id: &str, wall_inset: ExPolygon) -> PerimeterIR {

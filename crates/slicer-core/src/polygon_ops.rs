@@ -77,7 +77,7 @@ pub fn hatch_areas(areas: &[ExPolygon], spacing_mm: f32, angle_degrees: f32) -> 
             }
         }
         xs.sort_by(f64::total_cmp);
-        for pair in xs.chunks_exact(2) {
+        for pair in xs.as_chunks::<2>().0 {
             if (pair[1] - pair[0]).abs() > f64::EPSILON {
                 result.push(Line {
                     start: unrotate(pair[0], y),

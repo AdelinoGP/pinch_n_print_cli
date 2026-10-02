@@ -86,28 +86,31 @@ pub struct RectilinearInfill {
 #[slicer_module]
 impl LayerModule for RectilinearInfill {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let density = match config.get("infill_density") {
-            Some(ConfigValue::Float(d)) => *d as f32,
-            _ => 0.2,
-        };
+        // Required reads: the registry seeds every declared key's default into
+        // a bound view, so an absent key is a contract violation, not a
+        // configurable fallback (packet 06 fail-closed semantics; mirrors
+        // arachne-perimeters).
+        let density = config.require_float("infill_density")? as f32;
 
-        let base_angle = match config.get("infill_angle") {
-            Some(ConfigValue::Float(a)) => *a as f32,
-            _ => 0.0,
-        };
+        let base_angle = config.require_float("infill_angle")? as f32;
 
-        let infill_speed = match config.get("infill_speed") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => 60.0,
-        };
+        let infill_speed = config.require_float("infill_speed")? as f32;
 
-        let speed_value = |key: &str, default: f32| match config.get(key) {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => default,
-        };
+        // `top_surface_speed`, `internal_solid_infill_speed`, and
+        // `internal_bridge_angle` are declared `float` with literal defaults
+        // in the manifest: required reads. `sparse_infill_speed` keeps its
+        // computed `infill_speed` fallback (the resolved sparse speed is the
+        // natural default for an unset sparse-speed override; the manifest
+        // default 60.0 equals `infill_speed`'s default).
+        let required_speed =
+            |key: &str| -> Result<f32, ModuleError> { Ok(config.require_float(key)? as f32) };
 
+        // The three role line-width keys below are typed `float_or_percent`
+        // with `base_key = "nozzle_diameter"`; their `0.0` arms are the
+        // canonical auto sentinel consumed by `resolve_role_width` (zero role
+        // width falls through to the base width), NOT dead literal defaults,
+        // so they stay on the raw `get` read (matches `line_width` above and
+        // the sentinel exception in the packet-06 migration rules).
         let width_value = |key: &str| match config.get(key) {
             Some(ConfigValue::Float(w)) => *w as f32,
             Some(ConfigValue::Int(w)) => *w as f32,
@@ -116,15 +119,24 @@ impl LayerModule for RectilinearInfill {
         let width_context = RoleWidthContext {
             // Packet 185 (AC-5): absent `line_width` is the canonical auto-0
             // sentinel (resolved to 1.125 × nozzle by `resolve_role_width`),
-            // not the legacy 0.4 mm default.
+            // not the legacy 0.4 mm default. This per-invocation read keeps its
+            // documented sentinel arm: the 0.0 value is semantic (auto), not a
+            // dead literal default.
             line_width: match config.get("line_width") {
                 Some(ConfigValue::Float(w)) => *w as f32,
                 Some(ConfigValue::Int(w)) => *w as f32,
                 _ => 0.0,
             },
             nozzle_diameter: 0.4,
-            bridge_line_width: width_value("bridge_line_width"),
-            initial_layer_line_width: width_value("initial_layer_line_width"),
+            // Both keys are typed `float_or_percent` with
+            // `base_key = "nozzle_diameter"` in the manifest: read with
+            // `require_abs_value` against the module's fixed 0.4 mm nozzle
+            // base (the nozzle key is not part of this module's declared
+            // config set), NOT `require_float` (packet 06 locked assumption,
+            // mirrors arachne-perimeters).
+            bridge_line_width: config.require_abs_value("bridge_line_width", 0.4)? as f32,
+            initial_layer_line_width: config.require_abs_value("initial_layer_line_width", 0.4)?
+                as f32,
             top_surface_line_width: width_value("top_surface_line_width"),
             internal_solid_infill_line_width: width_value("internal_solid_infill_line_width"),
             sparse_infill_line_width: width_value("sparse_infill_line_width"),
@@ -133,50 +145,36 @@ impl LayerModule for RectilinearInfill {
         let line_width =
             resolve_role_width(ExtrusionRole::SparseInfill, false, false, &width_context);
 
-        let bridge_density = config
-            .get_abs_value("bridge_density", 1.0)
-            .map(|d| d as f32)
-            .unwrap_or(1.0);
-        let bridge_speed = match config.get("bridge_speed") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => 25.0,
-        };
-        let bridge_flow_ratio = config
-            .get_float("bridge_flow")
-            .map(|flow| flow as f32)
-            .unwrap_or(1.0);
-        let thick_bridges = config.get_bool("thick_bridges").unwrap_or(false);
+        // `bridge_density` and `internal_bridge_density` are typed
+        // `float_or_percent` in the manifest (declared without a base_key):
+        // read with `require_abs_value` against the identity base 1.0, NOT
+        // `require_float` (packet 06, mirrors arachne-perimeters).
+        let bridge_density = config.require_abs_value("bridge_density", 1.0)? as f32;
+        let bridge_speed = config.require_float("bridge_speed")? as f32;
+        let bridge_flow_ratio = config.require_float("bridge_flow")? as f32;
+        let thick_bridges = config.require_bool("thick_bridges")?;
 
-        let internal_bridge_density = config
-            .get_abs_value("internal_bridge_density", 1.0)
-            .map(|density| density as f32)
-            .unwrap_or(1.0);
+        let internal_bridge_density =
+            config.require_abs_value("internal_bridge_density", 1.0)? as f32;
         let internal_bridge_speed = config
             .get_abs_value("internal_bridge_speed", f64::from(bridge_speed))
             .map(|speed| speed as f32)
             .unwrap_or(bridge_speed * 1.5);
-        let internal_bridge_flow_ratio = config
-            .get_float("internal_bridge_flow")
-            .map(|flow| flow as f32)
-            .unwrap_or(1.0);
-        let thick_internal_bridges = config.get_bool("thick_internal_bridges").unwrap_or(true);
+        let internal_bridge_flow_ratio = config.require_float("internal_bridge_flow")? as f32;
+        let thick_internal_bridges = config.require_bool("thick_internal_bridges")?;
 
-        let top_surface_speed = speed_value("top_surface_speed", 60.0);
-        let internal_solid_infill_speed = speed_value("internal_solid_infill_speed", 60.0);
-        let sparse_infill_speed = speed_value("sparse_infill_speed", infill_speed);
-        let dont_filter_internal_bridges = config
-            .get_bool("dont_filter_internal_bridges")
-            .unwrap_or(false);
-        let enable_extra_bridge_layer = config
-            .get_bool("enable_extra_bridge_layer")
-            .unwrap_or(false);
-        let internal_bridge_angle = speed_value("internal_bridge_angle", 0.0);
-
-        let infill_shift_step = match config.get("infill_shift_step") {
+        let top_surface_speed = required_speed("top_surface_speed")?;
+        let internal_solid_infill_speed = required_speed("internal_solid_infill_speed")?;
+        let sparse_infill_speed = match config.get("sparse_infill_speed") {
             Some(ConfigValue::Float(s)) => *s as f32,
-            _ => 0.0,
+            Some(ConfigValue::Int(s)) => *s as f32,
+            _ => infill_speed,
         };
+        let dont_filter_internal_bridges = config.require_bool("dont_filter_internal_bridges")?;
+        let enable_extra_bridge_layer = config.require_bool("enable_extra_bridge_layer")?;
+        let internal_bridge_angle = required_speed("internal_bridge_angle")?;
+
+        let infill_shift_step = config.require_float("infill_shift_step")? as f32;
 
         Ok(Self {
             density,
@@ -262,7 +260,11 @@ impl LayerModule for RectilinearInfill {
         // each `scan_expolygon` call below.
         // See `crates/slicer-runtime/src/region_partition.rs`.
         for region in regions {
-            output.begin_region(region.object_id(), *region.region_id());
+            output.begin_region(
+                region.object_id(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
             let z = region.z();
             let std_cos_a = cos_a;
             let std_sin_a = sin_a;
@@ -809,14 +811,82 @@ fn rotate_point(x: i64, y: i64, cos_a: f64, sin_a: f64) -> (i64, i64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use slicer_ir::{ConfigKey, ConfigValue};
+    use std::collections::HashMap;
 
+    /// Item-11 migration (packet 06 5c'): the classified reads in
+    /// `from_config` are now `require_*`, so this view holds every key that
+    /// path reads, at the manifest-default values (rectilinear-infill.toml
+    /// [config.schema]). Percent-typed keys hold their resolved absolute
+    /// values (`bridge_density` "100%" → 1.0 against the identity base;
+    /// `internal_bridge_speed` "150%" → 37.5 against bridge_speed 25.0).
+    /// `line_width` holds its post-expansion default (1.125 ×
+    /// nozzle_diameter): the raw manifest default 0 is the auto sentinel
+    /// the host expands at Phase B (slicer-config
+    /// `expand_automatic_values`), and `resolve_role_width` no longer
+    /// expands — a raw 0 cancels every emission via the spacing gate.
     #[test]
     fn from_config_defaults() {
-        let config = ConfigView::from_map(std::collections::HashMap::new());
+        let mut fields: HashMap<ConfigKey, ConfigValue> = HashMap::new();
+        fields.insert("infill_density".to_string(), ConfigValue::Float(0.2));
+        fields.insert("infill_angle".to_string(), ConfigValue::Float(45.0));
+        fields.insert("infill_speed".to_string(), ConfigValue::Float(60.0));
+        fields.insert("line_width".to_string(), ConfigValue::Float(0.45));
+        fields.insert("bridge_line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert(
+            "initial_layer_line_width".to_string(),
+            ConfigValue::Float(0.0),
+        );
+        fields.insert(
+            "top_surface_line_width".to_string(),
+            ConfigValue::Float(0.0),
+        );
+        fields.insert(
+            "internal_solid_infill_line_width".to_string(),
+            ConfigValue::Float(0.0),
+        );
+        fields.insert(
+            "sparse_infill_line_width".to_string(),
+            ConfigValue::Float(0.0),
+        );
+        fields.insert("bridge_density".to_string(), ConfigValue::Float(1.0));
+        fields.insert("bridge_speed".to_string(), ConfigValue::Float(25.0));
+        fields.insert("bridge_flow".to_string(), ConfigValue::Float(1.0));
+        fields.insert("thick_bridges".to_string(), ConfigValue::Bool(false));
+        fields.insert(
+            "internal_bridge_density".to_string(),
+            ConfigValue::Float(1.0),
+        );
+        fields.insert(
+            "internal_bridge_speed".to_string(),
+            ConfigValue::Float(37.5),
+        );
+        fields.insert("internal_bridge_flow".to_string(), ConfigValue::Float(1.0));
+        fields.insert(
+            "thick_internal_bridges".to_string(),
+            ConfigValue::Bool(true),
+        );
+        fields.insert("top_surface_speed".to_string(), ConfigValue::Float(60.0));
+        fields.insert(
+            "internal_solid_infill_speed".to_string(),
+            ConfigValue::Float(60.0),
+        );
+        fields.insert("sparse_infill_speed".to_string(), ConfigValue::Float(60.0));
+        fields.insert(
+            "dont_filter_internal_bridges".to_string(),
+            ConfigValue::Bool(false),
+        );
+        fields.insert(
+            "enable_extra_bridge_layer".to_string(),
+            ConfigValue::Bool(false),
+        );
+        fields.insert("internal_bridge_angle".to_string(), ConfigValue::Float(0.0));
+        fields.insert("infill_shift_step".to_string(), ConfigValue::Float(0.0));
+        let config = ConfigView::from_map(fields);
         let module = RectilinearInfill::from_config(&config).unwrap();
         assert!((module.density - 0.2).abs() < 0.001);
-        // Packet 185 (AC-5): absent line_width resolves to the canonical
-        // auto width 1.125 × nozzle_diameter (0.45 at the module's fixed
+        // Packet 185 (AC-5): the view holds line_width at its post-expansion
+        // auto width (1.125 × nozzle_diameter = 0.45 at the module's fixed
         // 0.4 mm nozzle), not the legacy 0.4 mm default.
         assert!((module.line_width - 0.45).abs() < 0.001);
     }

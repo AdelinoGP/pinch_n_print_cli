@@ -41,12 +41,6 @@ max-ir-schema = "2.0.0"
 
 [config.schema]
 
-[config.overridable-per-region]
-keys = ["density"]
-
-[config.overridable-per-layer]
-keys = ["density"]
-
 [hints]
 layer-parallel-safe = true
 "#
@@ -82,12 +76,6 @@ min-ir-schema = "1.2.0"
 max-ir-schema = "2.0.0"
 
 [config.schema]
-
-[config.overridable-per-region]
-keys = ["density"]
-
-[config.overridable-per-layer]
-keys = ["density"]
 
 [hints]
 layer-parallel-safe = true

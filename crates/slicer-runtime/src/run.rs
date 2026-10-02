@@ -9,8 +9,17 @@ use std::path::PathBuf;
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
 use std::time::Instant;
 
-use slicer_ir::resolved_config::resolve_support_line_width_mm;
-use slicer_ir::{ConfigValue, MeshIR};
+use slicer_config::resolution::{
+    query_z_grid, resolve_scope_stack, ResolutionTarget, ResolvedObjectLayerConfig,
+};
+use slicer_config::{
+    ConfigIngestor, ConfigSchemaRegistry, ConfigScope, ExpansionContext, IngestionWarning,
+    RegistryWarning, ScopedConfig,
+};
+use slicer_ir::{
+    ConfigKey, ConfigValue, MeshIR, ModifierKind, PaintSemantic, PaintValue, ResolvedConfig,
+};
+use slicer_sdk::traits::LayerPlanningObject;
 
 /// Parse Orca-style 1-indexed support filament selections into the runtime's
 /// 0-indexed tool selection. Missing, zero, invalid, and out-of-range values
@@ -18,8 +27,8 @@ use slicer_ir::{ConfigValue, MeshIR};
 ///
 /// Also derives [`SupportToolSelection::tool_count`] from the same raw config
 /// map, using the `filament_density` list length. That is the identical source
-/// `ResolvedConfig.filament_density` is extracted from (`resolve_global_config`
-/// reads this map), and `extract_float_list` preserves element count, so the
+/// `ResolvedConfig.filament_density` is extracted from this same authored map,
+/// and `extract_float_list` preserves element count, so the
 /// value here equals `max(1, ResolvedConfig.filament_density.len())` without
 /// needing a resolved config threaded to this call site.
 ///
@@ -52,10 +61,7 @@ where
     }
 }
 
-use crate::config_resolution::{
-    resolve_global_config, resolve_per_object_configs, resolve_per_tool_configs,
-    validate_support_layer_heights, ConfigBoundsIndex,
-};
+use crate::config_resolution::{validate_support_layer_heights, ConfigBoundsIndex};
 use crate::dag::Producer;
 use crate::execution_plan::parse_cli_config_source;
 #[cfg(feature = "report")]
@@ -63,9 +69,10 @@ use crate::instrumentation::CompositeInstrumentation;
 use crate::layer_executor::LayerProgressSink;
 use crate::module_search_path::assemble_search_roots;
 use crate::pipeline::{
-    run_pipeline_with_instrumentation, run_pipeline_with_raw_config, PipelineConfig,
-    PipelineStageRunners,
+    run_pipeline_with_instrumentation_authority, run_pipeline_with_raw_config_authority,
+    PipelineConfig, PipelineStageRunners,
 };
+use crate::prepass::ConfigExpansionAuthority;
 use crate::profiling_report::{ProfileAggregator, ProfileSummary};
 use crate::progress_events::{
     JsonLinesEmitter, NullEmitter, ProgressError, ProgressEvent, ProgressEventEmitter,
@@ -79,8 +86,665 @@ use slicer_gcode::{
     estimate_print, DefaultGCodeEmitter, DefaultGCodeSerializer, EstimatorLimits, GcodeFlavor,
 };
 use slicer_wasm_host::build_live_execution_plan;
-use slicer_wasm_host::execution_plan_live::load_live_modules_for_plan_with_integrated;
+use slicer_wasm_host::execution_plan_live::load_live_modules_for_plan_manifest_first;
 use slicer_wasm_host::WasmRuntimeDispatcher;
+
+fn typed_global_config(scoped: &ScopedConfig) -> std::collections::HashMap<ConfigKey, ConfigValue> {
+    scoped
+        .global()
+        .into_iter()
+        .flat_map(|delta| delta.iter())
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect()
+}
+
+const RESOLVED_TARGET_PREFIX: &str = "\0resolved-target:";
+const RESOLVED_PAINT_PREFIX: &str = "\0resolved-paint:";
+const RESOLVED_TOOL_PREFIX: &str = "\0resolved-tool:";
+
+fn paint_semantic_name(semantic: &PaintSemantic) -> String {
+    match semantic {
+        PaintSemantic::Material => "material".to_owned(),
+        PaintSemantic::FuzzySkin => "fuzzy_skin".to_owned(),
+        PaintSemantic::SupportEnforcer => "support_enforcer".to_owned(),
+        PaintSemantic::SupportBlocker => "support_blocker".to_owned(),
+        PaintSemantic::Custom(name) => name.clone(),
+    }
+}
+
+fn append_key_part(key: &mut String, value: &str) {
+    use std::fmt::Write as _;
+    let _ = write!(key, "{}:{value}", value.len());
+}
+
+fn resolved_target_key(
+    object_id: &str,
+    modifier_ids: &[String],
+    paint_semantics: &[String],
+    tool_index: Option<u32>,
+) -> String {
+    if modifier_ids.is_empty() && paint_semantics.is_empty() && tool_index.is_none() {
+        return object_id.to_owned();
+    }
+    let mut key = RESOLVED_TARGET_PREFIX.to_owned();
+    append_key_part(&mut key, object_id);
+    key.push('|');
+    for modifier_id in modifier_ids {
+        append_key_part(&mut key, modifier_id);
+        key.push(',');
+    }
+    key.push('|');
+    for semantic in paint_semantics {
+        append_key_part(&mut key, semantic);
+        key.push(',');
+    }
+    key.push('|');
+    if let Some(tool_index) = tool_index {
+        use std::fmt::Write as _;
+        let _ = write!(key, "{tool_index}");
+    }
+    key
+}
+
+fn ordered_subsets(values: &[String]) -> Vec<Vec<String>> {
+    let mut subsets = vec![Vec::new()];
+    for value in values {
+        let additions: Vec<Vec<String>> = subsets
+            .iter()
+            .map(|subset| {
+                let mut next = subset.clone();
+                next.push(value.clone());
+                next
+            })
+            .collect();
+        subsets.extend(additions);
+    }
+    subsets
+}
+
+fn first_out_of_bounds_value(
+    value: &ConfigValue,
+    min: Option<f64>,
+    max: Option<f64>,
+) -> Option<f64> {
+    let numeric = match value {
+        ConfigValue::Float(value) => Some(*value),
+        ConfigValue::Int(value) => Some(*value as f64),
+        ConfigValue::FloatOrPercent {
+            value,
+            is_percent: false,
+        } => Some(*value),
+        ConfigValue::List(values) => {
+            return values
+                .iter()
+                .find_map(|value| first_out_of_bounds_value(value, min, max));
+        }
+        _ => None,
+    };
+    numeric
+        .filter(|value| min.is_some_and(|min| *value < min) || max.is_some_and(|max| *value > max))
+}
+
+fn validate_modifier_deltas(
+    registry: &ConfigSchemaRegistry,
+    scoped: &ScopedConfig,
+) -> Result<(), SliceRunError> {
+    for (scope, delta) in &scoped.deltas {
+        if !matches!(scope, ConfigScope::Modifier { .. }) {
+            continue;
+        }
+        for (key, value) in &delta.values {
+            let Some(entry) = registry.entry(key.as_str()) else {
+                continue;
+            };
+            if entry.denied_scopes.iter().any(|scope| scope == "modifier") {
+                return Err(SliceRunError(format!(
+                    "modifier config ingestion failed: ScopeDenied {{ key: \"{key}\", scope: Modifier }}"
+                )));
+            }
+            if let Some(value) = first_out_of_bounds_value(value, entry.min, entry.max) {
+                return Err(SliceRunError(format!(
+                    "modifier config ingestion failed: BoundsViolation {{ key: \"{key}\", value: {value}, min: {:?}, max: {:?}, scope: Modifier }}",
+                    entry.min, entry.max
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn merge_model_scopes(
+    registry: &ConfigSchemaRegistry,
+    scoped: &mut ScopedConfig,
+    mesh: &MeshIR,
+) -> Result<Vec<IngestionWarning>, SliceRunError> {
+    let mut modifier_ingestor = ConfigIngestor::new(registry);
+    for object in &mesh.objects {
+        for modifier in &object.modifier_volumes {
+            let scope = ConfigScope::Modifier {
+                object_id: object.id.clone(),
+                modifier_id: modifier.id.clone(),
+            };
+            let values = modifier
+                .config_delta
+                .fields
+                .iter()
+                .filter(|(key, value)| {
+                    key.as_str() != "subtype"
+                        && !matches!(value, ConfigValue::String(value) if value.is_empty())
+                        && !matches!(value, ConfigValue::List(value) if value.is_empty())
+                })
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect::<std::collections::HashMap<_, _>>();
+
+            modifier_ingestor
+                .ingest_delta(scope, &values)
+                .map_err(|error| {
+                    SliceRunError(format!("modifier config ingestion failed: {error}"))
+                })?;
+        }
+    }
+    let modifier_outcome = modifier_ingestor.finish();
+    validate_modifier_deltas(registry, &modifier_outcome.scoped)?;
+
+    for object in &mesh.objects {
+        let object_delta = scoped
+            .deltas
+            .entry(ConfigScope::Object(object.id.clone()))
+            .or_default();
+        for (key, value) in &object.config.data {
+            object_delta
+                .values
+                .entry(key.clone())
+                .or_insert_with(|| value.clone());
+        }
+    }
+    for (scope, delta) in modifier_outcome.scoped.deltas {
+        let target = scoped.deltas.entry(scope).or_default();
+        for (key, value) in delta.values {
+            target.values.entry(key).or_insert(value);
+        }
+    }
+
+    Ok(modifier_outcome.warnings)
+}
+
+struct RuntimeResolvedScopes {
+    default_config: ResolvedConfig,
+    target_configs: std::collections::BTreeMap<String, ResolvedConfig>,
+    tool_configs: std::collections::BTreeMap<u32, ResolvedConfig>,
+    object_layer_configs: Vec<ResolvedObjectLayerConfig>,
+    expansion_context: ExpansionContext,
+}
+
+fn resolve_runtime_scopes(
+    registry: &slicer_config::ConfigSchemaRegistry,
+    scoped: &ScopedConfig,
+    mesh: &MeshIR,
+) -> Result<RuntimeResolvedScopes, SliceRunError> {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    let configured_tools: BTreeSet<u32> = scoped
+        .deltas
+        .keys()
+        .filter_map(|scope| match scope {
+            ConfigScope::Tool(tool_index) => Some(*tool_index),
+            _ => None,
+        })
+        .collect();
+    let seed_context = seed_expansion_context(registry, scoped)?;
+    let preliminary_default = resolve_scope_stack(
+        registry,
+        scoped,
+        &ResolutionTarget::default(),
+        &seed_context,
+    )
+    .map_err(|error| SliceRunError(format!("config resolution failed: {error}")))?;
+    let mut preliminary_tools = BTreeMap::new();
+    for &tool_index in &configured_tools {
+        let target = ResolutionTarget {
+            tool_index: Some(tool_index),
+            ..ResolutionTarget::default()
+        };
+        preliminary_tools.insert(
+            tool_index,
+            resolve_scope_stack(registry, scoped, &target, &seed_context)
+                .map_err(|error| SliceRunError(format!("config resolution failed: {error}")))?,
+        );
+    }
+    let expansion_context = build_expansion_context(&preliminary_default, &preliminary_tools)?;
+
+    // Resolve every modifier once before composing target subsets. Parameter
+    // modifiers are resolved again below as applicable target combinations;
+    // support modifiers intentionally route through paint semantics, so this
+    // pass still subjects their authored deltas to the same admission, typing,
+    // and bounds contract. No resolved config escapes if any modifier fails.
+    for object in &mesh.objects {
+        for modifier in &object.modifier_volumes {
+            let target = ResolutionTarget {
+                object_id: object.id.clone(),
+                modifier_ids: vec![modifier.id.clone()],
+                ..ResolutionTarget::default()
+            };
+            resolve_scope_stack(registry, scoped, &target, &expansion_context)
+                .map_err(|error| SliceRunError(format!("config resolution failed: {error}")))?;
+        }
+    }
+
+    let default_config = resolve_scope_stack(
+        registry,
+        scoped,
+        &ResolutionTarget::default(),
+        &expansion_context,
+    )
+    .map_err(|error| SliceRunError(format!("config resolution failed: {error}")))?;
+
+    let mut tool_configs = BTreeMap::new();
+    for &tool_index in &configured_tools {
+        let target = ResolutionTarget {
+            tool_index: Some(tool_index),
+            ..ResolutionTarget::default()
+        };
+        tool_configs.insert(
+            tool_index,
+            resolve_scope_stack(registry, scoped, &target, &expansion_context)
+                .map_err(|error| SliceRunError(format!("config resolution failed: {error}")))?,
+        );
+    }
+
+    let mut target_configs = BTreeMap::new();
+    for object in &mesh.objects {
+        let mut modifiers: Vec<_> = object
+            .modifier_volumes
+            .iter()
+            .enumerate()
+            .filter(|(_, modifier)| {
+                !matches!(
+                    modifier.kind(),
+                    ModifierKind::SupportEnforcer | ModifierKind::SupportBlocker
+                )
+            })
+            .map(|(index, modifier)| {
+                (
+                    modifier.priority,
+                    std::cmp::Reverse(index),
+                    modifier.id.clone(),
+                )
+            })
+            .collect();
+        modifiers.sort_by_key(|(priority, reverse_index, _)| (*priority, *reverse_index));
+        let modifier_ids: Vec<String> = modifiers.into_iter().map(|(_, _, id)| id).collect();
+
+        let mut paint_semantics = BTreeSet::new();
+        let mut painted_tools = BTreeSet::new();
+        if let Some(paint_data) = &object.paint_data {
+            for layer in &paint_data.layers {
+                if layer.facet_values.iter().any(Option::is_some) || !layer.strokes.is_empty() {
+                    paint_semantics.insert(paint_semantic_name(&layer.semantic));
+                }
+                for value in layer.facet_values.iter().flatten() {
+                    if let PaintValue::ToolIndex(tool_index) = value {
+                        painted_tools.insert(*tool_index);
+                    }
+                }
+            }
+        }
+        for modifier in &object.modifier_volumes {
+            match modifier.kind() {
+                ModifierKind::SupportEnforcer => {
+                    paint_semantics.insert("support_enforcer".to_owned());
+                }
+                ModifierKind::SupportBlocker => {
+                    paint_semantics.insert("support_blocker".to_owned());
+                }
+                ModifierKind::ParameterModifier => {}
+                ModifierKind::NegativePart => {}
+            }
+        }
+
+        let paint_semantics: Vec<String> = paint_semantics.into_iter().collect();
+        let mut target_tools: Vec<Option<u32>> = vec![None];
+        target_tools.extend(configured_tools.union(&painted_tools).copied().map(Some));
+        for modifiers in ordered_subsets(&modifier_ids) {
+            for paints in ordered_subsets(&paint_semantics) {
+                for &tool_index in &target_tools {
+                    let target = ResolutionTarget {
+                        object_id: object.id.clone(),
+                        modifier_ids: modifiers.clone(),
+                        paint_semantics: paints.clone(),
+                        tool_index,
+                        layer_top_z: None,
+                    };
+                    let config = resolve_scope_stack(registry, scoped, &target, &expansion_context)
+                        .map_err(|error| {
+                            SliceRunError(format!("config resolution failed: {error}"))
+                        })?;
+                    target_configs.insert(
+                        resolved_target_key(&object.id, &modifiers, &paints, tool_index),
+                        config,
+                    );
+                }
+            }
+        }
+    }
+
+    for semantic in scoped.deltas.keys().filter_map(|scope| match scope {
+        ConfigScope::PaintSemantic(semantic) => Some(semantic.clone()),
+        _ => None,
+    }) {
+        let target = ResolutionTarget {
+            paint_semantics: vec![semantic.clone()],
+            ..ResolutionTarget::default()
+        };
+        let config = resolve_scope_stack(registry, scoped, &target, &expansion_context)
+            .map_err(|error| SliceRunError(format!("config resolution failed: {error}")))?;
+        target_configs.insert(format!("{RESOLVED_PAINT_PREFIX}{semantic}"), config);
+    }
+    for (&tool_index, config) in &tool_configs {
+        target_configs.insert(
+            format!("{RESOLVED_TOOL_PREFIX}{tool_index}"),
+            config.clone(),
+        );
+    }
+
+    let object_heights = mesh
+        .objects
+        .iter()
+        .filter_map(|object| {
+            object
+                .world_z_extent
+                .map(|(z_min, z_max)| (object.id.clone(), (z_max - z_min) as f64))
+        })
+        .collect();
+    let object_layer_configs = query_z_grid(registry, scoped, &object_heights, &expansion_context)
+        .map_err(|error| SliceRunError(format!("config resolution failed: {error}")))?;
+    // Positional layer-planning contract (`validate_layer_planning_object_configs`):
+    // object configs pair with `mesh.objects` index-wise at dispatch, so
+    // restore mesh order here — the z-grid query iterates its sorted
+    // object-height map and would otherwise swap pairs on multi-object prints.
+    let mut object_layer_configs = object_layer_configs;
+    let mesh_order: std::collections::HashMap<&str, usize> = mesh
+        .objects
+        .iter()
+        .enumerate()
+        .map(|(index, object)| (object.id.as_str(), index))
+        .collect();
+    object_layer_configs.sort_by_key(|config| {
+        mesh_order
+            .get(config.object_id.as_str())
+            .copied()
+            .unwrap_or(usize::MAX)
+    });
+
+    Ok(RuntimeResolvedScopes {
+        default_config,
+        target_configs,
+        tool_configs,
+        object_layer_configs,
+        expansion_context,
+    })
+}
+
+/// Preserve the retained authored shape so each host key's declared DSL
+/// extractor applies its documented leniency (for example,
+/// `extract_float_or_first` reads index 0 of a per-filament list).
+/// The matching `UntypedValue` warning is still surfaced by
+/// `append_config_startup_diagnostics`, so the fallback remains observable.
+/// Scheduler resolution in this composition root uses the retained
+/// `ScopedConfig` directly. This transitional module/prepass transport is
+/// therefore prefix-free: object, paint, and tool scope prefixes were decoded
+/// by the single manifest-first ingestion and are not forwarded for the
+/// prepass compatibility adapter to decode again.
+fn typed_module_config_source(
+    source: &std::collections::HashMap<ConfigKey, ConfigValue>,
+    typed_global: &std::collections::HashMap<ConfigKey, ConfigValue>,
+) -> std::collections::HashMap<ConfigKey, ConfigValue> {
+    const SCOPED_PREFIXES: [&str; 3] = ["object_config:", "paint_config:", "tool_config:"];
+
+    let mut compatibility: std::collections::HashMap<_, _> = source
+        .iter()
+        .filter(|(key, _)| !SCOPED_PREFIXES.iter().any(|prefix| key.starts_with(prefix)))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+    for (key, value) in typed_global {
+        compatibility.insert(key.clone(), value.clone());
+    }
+    debug_assert!(
+        compatibility
+            .keys()
+            .all(|key| !SCOPED_PREFIXES.iter().any(|prefix| key.starts_with(prefix))),
+        "module/prepass config transport must not contain raw scope prefixes"
+    );
+    compatibility
+}
+
+/// Build the seed `ExpansionContext` before any scope stack is resolved.
+///
+/// An authored `nozzle_diameter` always wins. When it is unauthored the
+/// fallback comes from the assembled registry's reconciled default for the
+/// key — never a code literal — so a registry-declared machine default (for
+/// example the 0.4 mm default in seven-plus core-module manifests) reaches
+/// expansion exactly like an authored value would.
+fn seed_expansion_context(
+    registry: &slicer_config::ConfigSchemaRegistry,
+    scoped: &ScopedConfig,
+) -> Result<ExpansionContext, SliceRunError> {
+    let authored = scoped
+        .global()
+        .and_then(|delta| delta.values.get("nozzle_diameter"));
+    let nozzle_diameter_mm = match authored {
+        // An authored entry is authoritative: a non-absolute authored value
+        // is still a hard error, never a silent fallback.
+        Some(authored) => absolute_config_number(authored).ok_or_else(|| {
+            SliceRunError(
+                "automatic value expansion failed: unknown base key nozzle_diameter required by line_width"
+                    .to_string(),
+            )
+        })?,
+        None => registry_numeric_default(registry, "nozzle_diameter").ok_or_else(|| {
+            SliceRunError(
+                "automatic value expansion failed: unknown base key nozzle_diameter required by line_width"
+                    .to_string(),
+            )
+        })?,
+    };
+    if !nozzle_diameter_mm.is_finite() || nozzle_diameter_mm <= 0.0 {
+        return Err(SliceRunError(format!(
+            "automatic value expansion failed: base key nozzle_diameter required by line_width must be positive and finite, got {nozzle_diameter_mm}"
+        )));
+    }
+
+    Ok(ExpansionContext {
+        nozzle_diameter_mm,
+        tool_bases: std::collections::BTreeMap::new(),
+    })
+}
+
+/// Render a registry entry's reconciled default as an absolute number.
+///
+/// The registry stores each declaration's default as its wire string; a
+/// numeric key's fallback is that string parsed per the entry's declared field
+/// type. Accepts exactly the shapes [`absolute_config_number`] accepts for an
+/// authored value, so a fallback and an authored entry resolve identically.
+/// Returns `None` when the key is undeclared, carries no default, or declares a
+/// type that cannot supply an absolute number.
+fn registry_numeric_default(
+    registry: &slicer_config::ConfigSchemaRegistry,
+    key: &str,
+) -> Option<f64> {
+    let entry = registry.entry(key)?;
+    let default = entry.default.as_deref()?.trim();
+    match entry.field_type.as_str() {
+        "float" => default.parse::<f64>().ok(),
+        "int" => default.parse::<i64>().ok().map(|value| value as f64),
+        "float_or_percent" => default.parse::<f64>().ok(),
+        _ => None,
+    }
+}
+
+fn absolute_config_number(value: &ConfigValue) -> Option<f64> {
+    match value {
+        ConfigValue::Float(value) => Some(*value),
+        ConfigValue::Int(value) => Some(*value as f64),
+        ConfigValue::FloatOrPercent {
+            value,
+            is_percent: false,
+        } => Some(*value),
+        // Orca wire shape leniency, matching `extract_float_or_first`: a real
+        // `project_settings.config` stores scalar options as JSON arrays of
+        // strings (e.g. `["0.4"]`), so a list resolves through its first
+        // element and a numeric string parses. A percent form stays
+        // non-absolute and remains a hard error.
+        ConfigValue::List(values) => values.first().and_then(absolute_config_number),
+        ConfigValue::String(text) => text.trim().parse::<f64>().ok(),
+        _ => None,
+    }
+}
+
+fn build_expansion_context(
+    global: &slicer_ir::ResolvedConfig,
+    per_tool: &std::collections::BTreeMap<u32, slicer_ir::ResolvedConfig>,
+) -> Result<ExpansionContext, SliceRunError> {
+    let global_values = global.to_config_map();
+    let nozzle_diameter_mm = global_values
+        .get("nozzle_diameter")
+        .and_then(absolute_config_number)
+        .ok_or_else(|| {
+            SliceRunError(
+                "automatic value expansion failed: unknown base key nozzle_diameter required by line_width"
+                    .to_string(),
+            )
+        })?;
+    if !nozzle_diameter_mm.is_finite() || nozzle_diameter_mm <= 0.0 {
+        return Err(SliceRunError(format!(
+            "automatic value expansion failed: base key nozzle_diameter required by line_width must be positive and finite, got {nozzle_diameter_mm}"
+        )));
+    }
+
+    let tool_bases = per_tool
+        .iter()
+        .map(|(&tool_index, config)| {
+            let bases = config
+                .to_config_map()
+                .into_iter()
+                .filter_map(|(key, value)| absolute_config_number(&value).map(|value| (key, value)))
+                .collect();
+            (tool_index, bases)
+        })
+        .collect();
+
+    Ok(ExpansionContext {
+        nozzle_diameter_mm,
+        tool_bases,
+    })
+}
+
+#[cfg(test)]
+fn expand_config(
+    registry: &slicer_config::ConfigSchemaRegistry,
+    config: &mut slicer_ir::ResolvedConfig,
+    context: &ExpansionContext,
+    tool_index: Option<u32>,
+    scope: &str,
+) -> Result<(), SliceRunError> {
+    slicer_config::expand_automatic_values(registry, config, context, tool_index).map_err(|error| {
+        SliceRunError(format!(
+            "automatic value expansion failed for {scope}: {error}"
+        ))
+    })
+}
+
+/// Expand every already-merged scope map in place: the global default, each
+/// per-object map, and each per-tool map with its tool index so
+/// `ExpansionContext.tool_bases` selects the matching absolute base.
+/// Runs after scope merge and before plan binding, feedrate construction, or
+/// emitter use on every production entry point; the first failure aborts
+/// before any consumer binds a map.
+#[cfg(test)]
+fn expand_scope_maps(
+    registry: &slicer_config::ConfigSchemaRegistry,
+    default_config: &mut slicer_ir::ResolvedConfig,
+    object_configs: &mut std::collections::BTreeMap<String, slicer_ir::ResolvedConfig>,
+    tool_configs: &mut std::collections::BTreeMap<u32, slicer_ir::ResolvedConfig>,
+    context: &ExpansionContext,
+) -> Result<(), SliceRunError> {
+    expand_config(registry, default_config, context, None, "global scope")?;
+    for (object_id, config) in object_configs.iter_mut() {
+        expand_config(
+            registry,
+            config,
+            context,
+            None,
+            &format!("object {object_id}"),
+        )?;
+    }
+    for (&tool_index, config) in tool_configs.iter_mut() {
+        expand_config(
+            registry,
+            config,
+            context,
+            Some(tool_index),
+            &format!("tool {tool_index}"),
+        )?;
+    }
+    Ok(())
+}
+
+fn overlay_expanded_global(
+    source: &std::collections::HashMap<ConfigKey, ConfigValue>,
+    expanded_global: &slicer_ir::ResolvedConfig,
+) -> std::collections::HashMap<ConfigKey, ConfigValue> {
+    let mut overlaid = source.clone();
+    for (key, value) in expanded_global.to_config_map() {
+        overlaid.insert(key, value);
+    }
+    overlaid
+}
+
+fn layer_planning_objects(object_layers: &[ResolvedObjectLayerConfig]) -> Vec<LayerPlanningObject> {
+    object_layers
+        .iter()
+        .map(|object| {
+            let object_id = object.object_id.clone();
+            let object_height = object.object_height;
+            let layer_height = object.layer_height;
+            let first_layer_height = object.first_layer_height;
+            let support_raft_layers = object.support_raft_layers;
+            let layer_zs = object.layer_z_tops.clone();
+            LayerPlanningObject {
+                object_id,
+                object_height,
+                layer_height,
+                first_layer_height,
+                support_raft_layers,
+                layer_zs,
+            }
+        })
+        .collect()
+}
+
+fn append_config_startup_diagnostics(
+    diagnostics: &mut Vec<crate::manifest::LoadDiagnostic>,
+    registry_warnings: &[RegistryWarning],
+    ingestion_warnings: &[IngestionWarning],
+) {
+    for warning in registry_warnings {
+        diagnostics.push(crate::manifest::LoadDiagnostic {
+            level: crate::manifest::DiagnosticLevel::Warning,
+            path: PathBuf::from("<config-registry>"),
+            field: None,
+            message: format!("{warning:?}"),
+        });
+    }
+    for warning in ingestion_warnings {
+        diagnostics.push(crate::manifest::LoadDiagnostic {
+            level: crate::manifest::DiagnosticLevel::Warning,
+            path: PathBuf::from("<config-ingestion>"),
+            field: None,
+            message: format!("{warning:?}"),
+        });
+    }
+}
 
 fn emit_host_support_diagnostics(
     sink: &RuntimeProgressSink,
@@ -170,6 +834,8 @@ pub struct SliceRunOptions {
     /// `filament_colour`) that seed `config_source` as defaults. An explicit
     /// `--config` key always wins over an override with the same name.
     pub config_overrides: std::collections::HashMap<String, ConfigValue>,
+    /// Model-authored layer configuration ranges, parsed once by the caller.
+    pub layer_ranges: Vec<slicer_config::LayerRangeInput>,
 }
 
 /// Quiet test baseline - `progress_events: false` deliberately differs from
@@ -193,6 +859,7 @@ impl Default for SliceRunOptions {
             progress_events: false,
             cancel_flag: None,
             config_overrides: std::collections::HashMap::new(),
+            layer_ranges: Vec::new(),
         }
     }
 }
@@ -212,6 +879,20 @@ pub struct SliceOutcome {
     /// Returned as well as emitted on the JSONL stream so `pnp_cli` can print
     /// its ranked table without parsing back the stream it just wrote.
     pub profile: Option<crate::profiling_report::ProfileSummary>,
+    /// Non-fatal ingestion warnings (retained mode) raised while the authored
+    /// configuration was ingested against the assembled registry — e.g.
+    /// [`IngestionWarning::UnrecognizedKey`] for genuinely undeclared keys.
+    /// In retained mode these keys still reach deltas and resolved config; the
+    /// warn-to-drop flip (packet config-scope-resolution_06, Step 6b) consumes
+    /// this list instead of dropping silently (docs/22 §4, AC-5).
+    pub ingestion_warnings: Vec<IngestionWarning>,
+    /// The `RegionMapIR` the prepass committed, when one was committed.
+    ///
+    /// The authoritative per-region resolved config for the slice that ran,
+    /// exposed so a caller can observe per-layer values the emitted G-code does
+    /// not carry (the emitter writes one config block per print, not per
+    /// region). `None` when no prepass committed a region map.
+    pub region_map: Option<Arc<slicer_ir::RegionMapIR>>,
 }
 
 /// Error returned by `run_slice`.
@@ -321,10 +1002,18 @@ fn run_pipeline_fork(
     channel: &ProgressChannel,
     config: PipelineConfig,
     config_source: &std::collections::HashMap<String, ConfigValue>,
+    registry: &slicer_config::ConfigSchemaRegistry,
+    scoped_config: &slicer_config::ScopedConfig,
+    expansion_context: &ExpansionContext,
     profile: Option<&Arc<ProfileAggregator>>,
     #[cfg(feature = "report")] dag_snapshot: Option<crate::report::ReportDagSnapshot>,
 ) -> Result<crate::pipeline::PipelineOutput, SliceRunError> {
     let sink_arc = Arc::clone(&channel.sink);
+    let expansion_authority = ConfigExpansionAuthority {
+        registry,
+        scoped: scoped_config,
+        expansion: expansion_context,
+    };
 
     // Profiling needs the adapter even under `--no-progress-events`: it is the
     // only thing that sees every module bracket. Nothing reaches stderr in that
@@ -353,6 +1042,18 @@ fn run_pipeline_fork(
         None
     };
 
+    // The registry-driven CONFIG_BLOCK projection is computed once and handed
+    // to every arm: the pre-resolved map is the effective config surface, so
+    // the production path never falls back to the legacy raw overlay (which
+    // leaked undeclared extension keys and the four `config_block = false`
+    // keys). `registry` is only borrowed here, so the projection outlives each
+    // call without changing any public signature.
+    //
+    // Claim selection affects dispatch, not the reconciled config schema.
+    // Packet 06's projection emits effective values for every non-omitted
+    // registered key, including keys declared only by a claim-losing module.
+    let config_block = registry.config_block_map(&config.default_resolved_config);
+
     let result = match (opts.report.as_ref(), progress_pi.as_ref()) {
         #[cfg(feature = "report")]
         (Some(report_path), maybe_progress_pi) => {
@@ -378,18 +1079,22 @@ fn run_pipeline_fork(
                     report_collector.as_ref()
                         as &dyn crate::instrumentation::PipelineInstrumentation,
                 );
-                run_pipeline_with_instrumentation(
+                run_pipeline_with_instrumentation_authority(
                     config,
                     config_source,
                     sink_arc.as_ref(),
                     &composite,
+                    expansion_authority,
+                    Some(&config_block),
                 )
             } else {
-                run_pipeline_with_instrumentation(
+                run_pipeline_with_instrumentation_authority(
                     config,
                     config_source,
                     sink_arc.as_ref(),
                     report_collector.as_ref(),
+                    expansion_authority,
+                    Some(&config_block),
                 )
             };
             report_alloc::disable();
@@ -405,10 +1110,21 @@ fn run_pipeline_fork(
                     .to_string(),
             ));
         }
-        (None, Some(progress_pi)) => {
-            run_pipeline_with_instrumentation(config, config_source, sink_arc.as_ref(), progress_pi)
-        }
-        (None, None) => run_pipeline_with_raw_config(config, config_source, sink_arc.as_ref()),
+        (None, Some(progress_pi)) => run_pipeline_with_instrumentation_authority(
+            config,
+            config_source,
+            sink_arc.as_ref(),
+            progress_pi,
+            expansion_authority,
+            Some(&config_block),
+        ),
+        (None, None) => run_pipeline_with_raw_config_authority(
+            config,
+            config_source,
+            sink_arc.as_ref(),
+            expansion_authority,
+            Some(&config_block),
+        ),
     };
 
     result.map_err(|e| {
@@ -562,17 +1278,6 @@ pub fn run_slice_with_collector(
         );
     }
 
-    // Seed planner-visible per-object world heights.
-    for object in &mesh_ir.objects {
-        let key = format!("object_height:{}", object.id);
-        if config_source.contains_key(&key) {
-            continue;
-        }
-        if let Some((z_min, z_max)) = object.world_z_extent {
-            config_source.insert(key, ConfigValue::Float((z_max - z_min) as f64));
-        }
-    }
-
     // Seed the host-injected `slice_has_paint` gate (classic-perimeters.toml
     // `[config.schema.slice_has_paint]`, "Slice contains painted regions
     // (host-injected)"): the module manifest declares this key expecting the
@@ -586,17 +1291,6 @@ pub fn run_slice_with_collector(
         && !config_source.contains_key("slice_has_paint")
     {
         config_source.insert("slice_has_paint".to_string(), ConfigValue::Bool(true));
-    }
-
-    // Seed per-object config from `ObjectMesh.config.data`.
-    for object in &mesh_ir.objects {
-        for (subkey, value) in &object.config.data {
-            let key = format!("object_config:{}:{}", object.id, subkey);
-            if config_source.contains_key(&key) {
-                continue;
-            }
-            config_source.insert(key, value.clone());
-        }
     }
 
     // MMU wipe-tower auto-enable (diagnose 2026-06-24, gap #3). OrcaSlicer turns
@@ -643,10 +1337,11 @@ pub fn run_slice_with_collector(
             slicer_integrated_modules::native_entries(),
         )
     };
-    let mut loaded = load_live_modules_for_plan_with_integrated(
+    let manifest_first = load_live_modules_for_plan_manifest_first(
         &search_roots,
         num_cpus_guess(),
         &config_source,
+        &opts.layer_ranges,
         opts.profile,
         &integrated_regs,
         &native_entries,
@@ -658,6 +1353,26 @@ pub fn run_slice_with_collector(
             search_roots
         ))
     })?;
+    let registry_warnings = manifest_first.registry_warnings;
+    let mut ingestion_warnings = manifest_first.ingestion.warnings;
+    let mut scoped_config = manifest_first.ingestion.scoped;
+    let typed_global_config = typed_global_config(&scoped_config);
+    let mut loaded = manifest_first.live;
+    // Resolution runs against the same manifest-first registry that typed the
+    // authored deltas. Claim dedup drops a module from dispatch only, never
+    // from the config schema, so a claim-losing module's keys stay declared
+    // and resolvable instead of failing `admission_set` as undeclared.
+    let registry = manifest_first.registry;
+    ingestion_warnings.extend(merge_model_scopes(
+        &registry,
+        &mut scoped_config,
+        mesh_ir.as_ref(),
+    )?);
+    append_config_startup_diagnostics(
+        &mut loaded.diagnostics,
+        &registry_warnings,
+        &ingestion_warnings,
+    );
     for diag in &loaded.diagnostics {
         eprintln!(
             "{level:?}: {path}: {msg}",
@@ -826,28 +1541,20 @@ pub fn run_slice_with_collector(
     }
 
     let config_bounds = ConfigBoundsIndex::from_modules(loaded.bindings.iter().map(|b| &b.module));
-
-    let default_resolved_config = resolve_global_config(&config_source, &config_bounds)
-        .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
-
-    let object_ids: Vec<&str> = mesh_ir.objects.iter().map(|o| o.id.as_str()).collect();
-    let resolved_configs_map = resolve_per_object_configs(
-        &default_resolved_config,
-        &config_source,
-        &object_ids,
-        &config_bounds,
-    )
-    .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
-
+    let RuntimeResolvedScopes {
+        default_config: default_resolved_config,
+        target_configs: resolved_configs_map,
+        tool_configs: per_tool_configs_map,
+        object_layer_configs,
+        expansion_context,
+    } = resolve_runtime_scopes(&registry, &scoped_config, mesh_ir.as_ref())?;
     validate_support_layer_heights(&resolved_configs_map)
         .map_err(|e| SliceRunError(format!("{e}")))?;
 
-    // Per-tool/extruder config overlays (`tool_config:<idx>:<key>`). Applied at
-    // emit time (the entity's tool is only known there). Empty unless the user
-    // sets `tool_config:` keys, so default behaviour is unchanged.
-    let per_tool_configs_map =
-        resolve_per_tool_configs(&default_resolved_config, &config_source, &config_bounds)
-            .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
+    let module_config_source = typed_module_config_source(&config_source, &typed_global_config);
+    let expanded_global_source =
+        overlay_expanded_global(&module_config_source, &default_resolved_config);
+    let layer_planning_objects = layer_planning_objects(&object_layer_configs);
 
     // Build wasm_handles side-table before consuming bindings.
     let wasm_handles: std::collections::HashMap<
@@ -875,7 +1582,7 @@ pub fn run_slice_with_collector(
     let plan = build_live_execution_plan(
         loaded.sorted_stages,
         loaded.bindings,
-        &config_source,
+        &default_resolved_config,
         Arc::new(Vec::new()),
         Arc::new(std::collections::HashMap::new()),
         &mut loaded.diagnostics,
@@ -891,14 +1598,7 @@ pub fn run_slice_with_collector(
         Some(ConfigValue::Bool(b)) => *b,
         _ => DEFAULT_USE_RELATIVE_E_DISTANCES,
     };
-    let nozzle_diameter_mm = match config_source.get("nozzle_diameter") {
-        Some(ConfigValue::Float(value)) => *value as f32,
-        Some(ConfigValue::Int(value)) => *value as f32,
-        _ => 0.4,
-    };
-    let support_line_width = default_resolved_config.support_line_width;
-    let support_line_width_mm =
-        resolve_support_line_width_mm(support_line_width, nozzle_diameter_mm);
+    let support_line_width_mm = default_resolved_config.support_line_width.value as f32;
 
     // Packet 169 Step 3: capture the estimator inputs the slice_stats event
     // needs before `default_resolved_config` / `per_tool_configs_map` are
@@ -917,7 +1617,10 @@ pub fn run_slice_with_collector(
         mesh_ir,
         plan,
         runners: PipelineStageRunners {
-            prepass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
+            prepass: Box::new(
+                WasmRuntimeDispatcher::new(Arc::clone(&engine))
+                    .with_layer_planning_objects(layer_planning_objects),
+            ),
             layer: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
             finalization: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
             postpass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
@@ -928,7 +1631,7 @@ pub fn run_slice_with_collector(
                 // speed factors.
                 DefaultGCodeEmitter::new_with_config(
                     concat!("pnp_cli ", env!("CARGO_PKG_VERSION")).into(),
-                    slicer_ir::FeedrateConfig::from_raw_config(&config_source),
+                    slicer_ir::FeedrateConfig::from_raw_config(&expanded_global_source),
                 )
                 .with_resolved_config(default_resolved_config.clone())
                 .with_tool_configs(per_tool_configs_map.clone()),
@@ -952,7 +1655,10 @@ pub fn run_slice_with_collector(
         &opts,
         &channel,
         pipeline_config,
-        &config_source,
+        &expanded_global_source,
+        &registry,
+        &scoped_config,
+        &expansion_context,
         profile.as_ref(),
         #[cfg(feature = "report")]
         dag_snapshot,
@@ -1054,6 +1760,8 @@ pub fn run_slice_with_collector(
         layer_count,
         wallclock_ms,
         profile: profile_summary,
+        ingestion_warnings,
+        region_map: pipeline_output.region_map,
     })
 }
 
@@ -1090,6 +1798,12 @@ pub struct PrepassContext {
     /// being the first. Per-object overlays are irrelevant to those keys: the
     /// bed is a property of the printer, not of any object on it.
     pub default_resolved_config: Arc<slicer_ir::ResolvedConfig>,
+    /// Per-tool resolved configs this context produced, keyed by tool index
+    /// (the same `resolve_runtime_scopes` result `run_slice` hands to the
+    /// emitter's `with_tool_configs`). Retained rather than discarded so the
+    /// visual-debug model `PostPass::GCodeEmit` seam can consume the normal
+    /// resolver's map instead of re-resolving (or silently defaulting) it.
+    pub tool_configs: std::collections::BTreeMap<u32, slicer_ir::ResolvedConfig>,
 }
 
 /// Load modules, resolve config, build the live execution plan, and run
@@ -1099,10 +1813,11 @@ pub struct PrepassContext {
 ///
 /// Deliberately narrower than `run_slice`'s setup: it skips the 14-pass
 /// startup DAG validation, thumbnail/CONFIG_BLOCK wiring, relative-E and
-/// MMU wipe-tower heuristics, `validate_support_layer_heights`, and
-/// per-tool config resolution — none of which affect per-layer arena
-/// commits, and all of which belong to gcode-emission concerns this entry
-/// point never reaches.
+/// MMU wipe-tower heuristics, and `validate_support_layer_heights` — none of
+/// which affect per-layer arena commits or the gcode-emission handoff this
+/// entry point serves. Per-tool configs are still resolved (they are part of
+/// `resolve_runtime_scopes` and are retained on [`PrepassContext`] for the
+/// emitter handoff).
 ///
 /// # Errors
 ///
@@ -1111,24 +1826,11 @@ pub struct PrepassContext {
 pub fn prepare_prepass_context(
     mesh_ir: Arc<MeshIR>,
     mut config_source: std::collections::HashMap<String, ConfigValue>,
+    layer_ranges: Vec<slicer_config::LayerRangeInput>,
     module_dirs: &[PathBuf],
     no_default_module_paths: bool,
     no_integrated_modules: bool,
 ) -> Result<PrepassContext, SliceRunError> {
-    // Seed planner-visible per-object world heights — required for
-    // `layer-planner-default` (and any layer planner) to produce a
-    // non-empty `LayerPlanIR`; without it prepass fails fatally with
-    // "no objects with positive height" (mirrors `run_slice`).
-    for object in &mesh_ir.objects {
-        let key = format!("object_height:{}", object.id);
-        if config_source.contains_key(&key) {
-            continue;
-        }
-        if let Some((z_min, z_max)) = object.world_z_extent {
-            config_source.insert(key, ConfigValue::Float((z_max - z_min) as f64));
-        }
-    }
-
     // Seed the host-injected `slice_has_paint` gate (mirrors `run_slice`):
     // set `true` whenever any object carries paint data, never overriding
     // an explicit user-supplied value.
@@ -1136,17 +1838,6 @@ pub fn prepare_prepass_context(
         && !config_source.contains_key("slice_has_paint")
     {
         config_source.insert("slice_has_paint".to_string(), ConfigValue::Bool(true));
-    }
-
-    // Seed per-object config from `ObjectMesh.config.data` (mirrors `run_slice`).
-    for object in &mesh_ir.objects {
-        for (subkey, value) in &object.config.data {
-            let key = format!("object_config:{}:{}", object.id, subkey);
-            if config_source.contains_key(&key) {
-                continue;
-            }
-            config_source.insert(key, value.clone());
-        }
     }
 
     let search_roots = assemble_search_roots(module_dirs, no_default_module_paths);
@@ -1160,10 +1851,11 @@ pub fn prepare_prepass_context(
     } else {
         slicer_integrated_modules::native_entries()
     };
-    let mut loaded = load_live_modules_for_plan_with_integrated(
+    let manifest_first = load_live_modules_for_plan_manifest_first(
         &search_roots,
         num_cpus_guess(),
         &config_source,
+        &layer_ranges,
         false,
         &integrated_registrations,
         &native_entries,
@@ -1175,19 +1867,48 @@ pub fn prepare_prepass_context(
             search_roots
         ))
     })?;
+    let registry_warnings = manifest_first.registry_warnings;
+    let mut ingestion_warnings = manifest_first.ingestion.warnings;
+    let mut scoped_config = manifest_first.ingestion.scoped;
+    let typed_global_config = typed_global_config(&scoped_config);
+    let mut loaded = manifest_first.live;
+    // Resolution runs against the same manifest-first registry that typed the
+    // authored deltas. Claim dedup drops a module from dispatch only, never
+    // from the config schema, so a claim-losing module's keys stay declared
+    // and resolvable instead of failing `admission_set` as undeclared.
+    let registry = manifest_first.registry;
+    ingestion_warnings.extend(merge_model_scopes(
+        &registry,
+        &mut scoped_config,
+        mesh_ir.as_ref(),
+    )?);
+    append_config_startup_diagnostics(
+        &mut loaded.diagnostics,
+        &registry_warnings,
+        &ingestion_warnings,
+    );
+
+    for diag in &loaded.diagnostics {
+        eprintln!(
+            "{level:?}: {path}: {msg}",
+            level = diag.level,
+            path = diag.path.display(),
+            msg = diag.message,
+        );
+    }
 
     let config_bounds = ConfigBoundsIndex::from_modules(loaded.bindings.iter().map(|b| &b.module));
-    let default_resolved_config = resolve_global_config(&config_source, &config_bounds)
-        .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
-
-    let object_ids: Vec<&str> = mesh_ir.objects.iter().map(|o| o.id.as_str()).collect();
-    let resolved_configs_map = resolve_per_object_configs(
-        &default_resolved_config,
-        &config_source,
-        &object_ids,
-        &config_bounds,
-    )
-    .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
+    let RuntimeResolvedScopes {
+        default_config: default_resolved_config,
+        target_configs: resolved_configs_map,
+        tool_configs: per_tool_configs_map,
+        object_layer_configs,
+        expansion_context,
+    } = resolve_runtime_scopes(&registry, &scoped_config, mesh_ir.as_ref())?;
+    let module_config_source = typed_module_config_source(&config_source, &typed_global_config);
+    let expanded_global_source =
+        overlay_expanded_global(&module_config_source, &default_resolved_config);
+    let layer_planning_objects = layer_planning_objects(&object_layer_configs);
 
     let wasm_handles: std::collections::HashMap<
         slicer_ir::ModuleId,
@@ -1214,7 +1935,7 @@ pub fn prepare_prepass_context(
     let mut plan = build_live_execution_plan(
         loaded.sorted_stages,
         loaded.bindings,
-        &config_source,
+        &default_resolved_config,
         Arc::new(Vec::new()),
         Arc::new(std::collections::HashMap::new()),
         &mut loaded.diagnostics,
@@ -1222,17 +1943,23 @@ pub fn prepare_prepass_context(
     .map_err(|e| SliceRunError(format!("failed to build execution plan: {e}")))?;
 
     let engine = Arc::clone(&loaded.engine);
-    let prepass_runner = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let prepass_runner = WasmRuntimeDispatcher::new(Arc::clone(&engine))
+        .with_layer_planning_objects(layer_planning_objects);
     let mut blackboard = crate::Blackboard::new(Arc::clone(&mesh_ir), 0);
-    crate::prepass::execute_prepass_with_builtins_configured(
+    crate::prepass::execute_prepass_with_builtins_configured_authority(
         &plan,
         &mut blackboard,
         &prepass_runner,
         &resolved_configs_map,
         &default_resolved_config,
-        &config_source,
+        &expanded_global_source,
         &config_bounds,
         &wasm_handles,
+        ConfigExpansionAuthority {
+            registry: &registry,
+            scoped: &scoped_config,
+            expansion: &expansion_context,
+        },
     )
     .map_err(|e| SliceRunError(format!("prepass failed: {e}")))?;
 
@@ -1246,51 +1973,119 @@ pub fn prepare_prepass_context(
         wasm_handles,
         layer_runner,
         default_resolved_config: Arc::new(default_resolved_config),
+        tool_configs: per_tool_configs_map,
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        emit_host_support_diagnostics, parse_support_tool_selection, resolve_support_line_width_mm,
-    };
-    use slicer_ir::resolved_config::ResolvedFloatOrPercent;
+    use super::{emit_host_support_diagnostics, parse_support_tool_selection};
     use slicer_ir::{ConfigValue, Diagnostic, DiagnosticSeverity};
     use slicer_scheduler::validation::ModuleAccessAudit;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
     #[test]
-    fn support_line_width_resolution_handles_mm_percent_and_auto() {
-        assert_eq!(
-            resolve_support_line_width_mm(
-                ResolvedFloatOrPercent {
-                    value: 0.42,
-                    is_percent: false
-                },
-                0.4,
-            ),
-            0.42
+    fn expand_scope_maps_uses_tool_index_for_tool_placeholders() {
+        use slicer_config::{assemble_registry, HostChannels, ModuleDeclaration};
+        use slicer_ir::config_schema::{ConfigFieldEntry, ConfigSchema};
+
+        let mut schema = ConfigSchema::default();
+        schema.entries.insert(
+            "nozzle_diameter".to_owned(),
+            ConfigFieldEntry {
+                field_type: "float".to_owned(),
+                ..ConfigFieldEntry::default()
+            },
         );
-        assert_eq!(
-            resolve_support_line_width_mm(
-                ResolvedFloatOrPercent {
-                    value: 50.0,
-                    is_percent: true
-                },
-                0.4,
-            ),
-            0.2
+        schema.entries.insert(
+            "outer_wall_line_width".to_owned(),
+            ConfigFieldEntry {
+                field_type: "float_or_percent".to_owned(),
+                base_key: Some("nozzle_diameter".to_owned()),
+                ..ConfigFieldEntry::default()
+            },
         );
-        assert_eq!(
-            resolve_support_line_width_mm(
-                ResolvedFloatOrPercent {
-                    value: 0.0,
-                    is_percent: false
-                },
-                0.4,
+        let registry = assemble_registry(
+            &[ModuleDeclaration {
+                module_id: "dev.pinch.test.scope-maps".to_owned(),
+                schema,
+                ..ModuleDeclaration::default()
+            }],
+            &HostChannels::from_parts(Vec::new(), Vec::new(), Vec::new()),
+        )
+        .expect("scope-maps fixture registry must be valid")
+        .registry;
+        let context = slicer_config::ExpansionContext {
+            nozzle_diameter_mm: 0.4,
+            tool_bases: std::collections::BTreeMap::from([(
+                1u32,
+                std::collections::BTreeMap::from([("nozzle_diameter".to_owned(), 0.6)]),
+            )]),
+        };
+
+        let mut scoped = slicer_ir::ResolvedConfig::default();
+        scoped.extensions.insert(
+            "outer_wall_line_width".to_owned(),
+            ConfigValue::Percent(150.0),
+        );
+        let mut global = scoped.clone();
+        let mut objects = std::collections::BTreeMap::from([("obj".to_owned(), scoped.clone())]);
+        let mut tools = std::collections::BTreeMap::from([(1u32, scoped)]);
+
+        super::expand_scope_maps(&registry, &mut global, &mut objects, &mut tools, &context)
+            .expect("literal fixture carries every required base");
+
+        let width = |config: &slicer_ir::ResolvedConfig, label: &str| match config
+            .to_config_map()
+            .get("outer_wall_line_width")
+        {
+            Some(ConfigValue::Float(value)) => *value,
+            other => panic!(
+                "{label}: outer_wall_line_width must expand to absolute float, got {other:?}"
             ),
-            0.4
+        };
+        assert!(
+            (width(&global, "global") - 0.6).abs() <= 1e-12,
+            "global must expand 150% of the 0.4 merged base"
+        );
+        assert!(
+            (width(&objects["obj"], "object") - 0.6).abs() <= 1e-12,
+            "object must expand 150% of the 0.4 merged base"
+        );
+        assert!(
+            (width(&tools[&1], "tool 1") - 0.9).abs() <= 1e-12,
+            "tool 1 must expand 150% of its 0.6 tool base; deleting the \
+             per-tool loop would leave the Percent placeholder"
+        );
+    }
+
+    #[test]
+    fn expanded_global_overlay_feeds_feedrate_config() {
+        use super::overlay_expanded_global;
+        // The raw source still carries the unexpanded overhang percent
+        // placeholder; the host-expanded global carries the absolute value.
+        let mut raw = HashMap::new();
+        raw.insert("outer_wall_speed".to_string(), ConfigValue::Float(60.0));
+        raw.insert("overhang_1_4_speed".to_string(), ConfigValue::Percent(25.0));
+        let mut expanded = slicer_ir::ResolvedConfig {
+            outer_wall_speed: 60.0,
+            ..slicer_ir::ResolvedConfig::default()
+        };
+        expanded
+            .extensions
+            .insert("overhang_1_4_speed".to_owned(), ConfigValue::Float(15.0));
+        let overlaid = overlay_expanded_global(&raw, &expanded);
+        let feed = slicer_ir::FeedrateConfig::from_raw_config(&overlaid);
+        assert_eq!(
+            feed.overhang_1_4_speed, 15.0,
+            "the expanded overlay must deliver absolute overhang mm/s"
+        );
+        // Without the overlay the percent placeholder keeps the 0.0 default.
+        let feed_raw = slicer_ir::FeedrateConfig::from_raw_config(&raw);
+        assert_eq!(
+            feed_raw.overhang_1_4_speed, 0.0,
+            "a raw percent placeholder must not leak into the feedrate table"
         );
     }
 
@@ -1418,5 +2213,126 @@ mod tests {
         assert_eq!(error.code, 1202);
         assert_eq!(error.message, "duplicate support region rejected");
         assert_eq!(error.fatal, false);
+    }
+
+    // ── Step 6a: seed_expansion_context nozzle_diameter fallback ────────────
+
+    /// Registry fixture declaring one module-manifest `nozzle_diameter` with the
+    /// given default — the same channel `assemble_registry` reads from
+    /// `modules/core-modules/*/*.toml` on the live path.
+    fn nozzle_registry(default: Option<&str>) -> slicer_config::ConfigSchemaRegistry {
+        use slicer_config::{HostChannels, ModuleDeclaration};
+        use slicer_ir::config_schema::{ConfigFieldEntry, ConfigSchema};
+
+        let mut schema = ConfigSchema::default();
+        schema.entries.insert(
+            "nozzle_diameter".to_owned(),
+            ConfigFieldEntry {
+                field_type: "float".to_owned(),
+                default: default.map(str::to_owned),
+                ..ConfigFieldEntry::default()
+            },
+        );
+        slicer_config::assemble_registry(
+            &[ModuleDeclaration {
+                module_id: "dev.pinch.test.seed-expansion".to_owned(),
+                schema,
+                ..ModuleDeclaration::default()
+            }],
+            &HostChannels::from_parts(Vec::new(), Vec::new(), Vec::new()),
+        )
+        .expect("seed-expansion fixture registry must be valid")
+        .registry
+    }
+
+    fn global_nozzle(value: Option<f64>) -> slicer_config::ScopedConfig {
+        let mut scoped = slicer_config::ScopedConfig::default();
+        if let Some(value) = value {
+            scoped.deltas.insert(
+                slicer_config::ConfigScope::Global,
+                slicer_config::ScopeDelta {
+                    values: std::collections::BTreeMap::from([(
+                        "nozzle_diameter".to_owned(),
+                        ConfigValue::Float(value),
+                    )]),
+                },
+            );
+        }
+        scoped
+    }
+
+    /// Residual-red session: `absolute_config_number` applies the Orca wire
+    /// shape leniency `extract_float_or_first` documents — a per-filament
+    /// `List` resolves through its first element and a numeric string parses —
+    /// while percent forms stay non-absolute and an empty envelope carries no
+    /// value.
+    #[test]
+    fn absolute_config_number_accepts_orca_wire_shapes() {
+        use slicer_ir::ConfigValue;
+        assert_eq!(
+            super::absolute_config_number(&ConfigValue::List(vec![ConfigValue::String(
+                "0.4".to_owned()
+            )])),
+            Some(0.4)
+        );
+        assert_eq!(
+            super::absolute_config_number(&ConfigValue::List(vec![ConfigValue::Float(0.6)])),
+            Some(0.6)
+        );
+        assert_eq!(
+            super::absolute_config_number(&ConfigValue::String(" 0.5 ".to_owned())),
+            Some(0.5)
+        );
+        assert_eq!(
+            super::absolute_config_number(&ConfigValue::String("50%".to_owned())),
+            None,
+            "percent forms are not absolute"
+        );
+        assert_eq!(
+            super::absolute_config_number(&ConfigValue::List(vec![])),
+            None,
+            "an empty envelope carries no value"
+        );
+    }
+
+    /// Exit condition 1: an authored value must keep winning over the
+    /// registry default. Deleting the authored branch and always reading the
+    /// registry would resolve 0.4 here and fail this assertion.
+    #[test]
+    fn seed_expansion_context_prefers_authored_nozzle_over_registry_default() {
+        let registry = nozzle_registry(Some("0.4"));
+        let context = super::seed_expansion_context(&registry, &global_nozzle(Some(0.7)))
+            .expect("authored nozzle_diameter must seed the expansion context");
+        assert_eq!(
+            context.nozzle_diameter_mm, 0.7,
+            "an authored nozzle_diameter must win over the registry default"
+        );
+    }
+
+    /// Exit condition 2: the unauthored fallback must be derived from the
+    /// assembled registry, never a pasted 0.4 literal. The fixture declares a
+    /// non-0.4 default (0.55) so a hardcoded literal fails this assertion.
+    #[test]
+    fn seed_expansion_context_falls_back_to_registry_default() {
+        let registry = nozzle_registry(Some("0.55"));
+        let context = super::seed_expansion_context(&registry, &global_nozzle(None))
+            .expect("unauthored nozzle_diameter must fall back to the registry default");
+        assert_eq!(
+            context.nozzle_diameter_mm, 0.55,
+            "the fallback must be the registry-declared default, not a code literal"
+        );
+    }
+
+    /// A registry that declares no default seeds nothing: the missing-base
+    /// error is preserved instead of inventing a value.
+    #[test]
+    fn seed_expansion_context_errors_when_registry_declares_no_default() {
+        let registry = nozzle_registry(None);
+        let error = super::seed_expansion_context(&registry, &global_nozzle(None))
+            .expect_err("absent authored value and absent registry default must error");
+        assert!(
+            error.0.contains("nozzle_diameter"),
+            "the missing-base error must name nozzle_diameter, got {error:?}"
+        );
     }
 }

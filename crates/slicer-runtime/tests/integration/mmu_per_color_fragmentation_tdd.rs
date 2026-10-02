@@ -19,7 +19,9 @@ use slicer_sdk::views::SliceRegionView;
 /// Build a config appropriate for fragmentation tests: 1 wall so the
 /// outer-wall count is simple to reason about.
 fn fragmentation_config() -> slicer_ir::ConfigView {
-    ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
+    // reads need the full classic surface; the fixture's own keys override it.
+    crate::common::classic_perimeters_baseline()
         .int("wall_count", 1)
         .float("outer_wall_line_width", 0.4_f64)
         .float("inner_wall_line_width", 0.4_f64)

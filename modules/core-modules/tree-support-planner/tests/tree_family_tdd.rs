@@ -157,6 +157,20 @@ fn planner_config_full_with(
     );
     values.insert("tree_support_wall_count".into(), ConfigValue::Int(1));
     values.insert(
+        "support_interface_bottom_layers".into(),
+        ConfigValue::Int(2),
+    );
+    // Packet 06 (AC-3): `nozzle_diameter` is a contract-required read
+    // (`require_float`); a bound view always holds it at the manifest
+    // default (0.4). Seed it so fixture configs behave like a bound view.
+    values.insert("nozzle_diameter".into(), ConfigValue::Float(0.4));
+    // Also contract-required (`require_bool`), manifest default `true`
+    // (packet 239c): a bound view always holds it.
+    values.insert(
+        "independent_support_layer_height".into(),
+        ConfigValue::Bool(true),
+    );
+    values.insert(
         "tree_support_branch_angle".into(),
         ConfigValue::Float(branch_angle_deg),
     );
@@ -1337,6 +1351,7 @@ fn run_near_distinct_interface_fixture() -> SupportGeometryOutput {
         &[
             ("support_layer_height_mm", ConfigValue::Float(0.3)),
             ("support_interface_top_layers", ConfigValue::Int(2)),
+            ("support_interface_bottom_layers", ConfigValue::Int(2)),
         ],
     ))
     .unwrap();
@@ -1372,6 +1387,7 @@ fn coarse_pitch_preserves_lone_interface_bracket() {
         &[
             ("support_layer_height_mm", ConfigValue::Float(0.3)),
             ("support_interface_top_layers", ConfigValue::Int(1)),
+            ("support_interface_bottom_layers", ConfigValue::Int(1)),
         ],
     ))
     .unwrap();
@@ -1805,6 +1821,7 @@ fn coarse_same_region_sources_keep_geometry_and_membership() {
         &[
             ("support_layer_height_mm", ConfigValue::Float(0.3)),
             ("support_interface_top_layers", ConfigValue::Int(1)),
+            ("support_interface_bottom_layers", ConfigValue::Int(1)),
         ],
     ))
     .unwrap();
@@ -1948,6 +1965,7 @@ fn run_mixed_source_tree_fixture() -> SupportGeometryOutput {
         &[
             ("support_layer_height_mm", ConfigValue::Float(0.45)),
             ("support_interface_top_layers", ConfigValue::Int(1)),
+            ("support_interface_bottom_layers", ConfigValue::Int(1)),
             ("support_top_z_distance_mm", ConfigValue::Float(0.0)),
         ],
     ))
@@ -2159,7 +2177,7 @@ fn intermediate_planes_generated_per_support_body_not_per_layer() {
         }
     }
     assert!(
-        off_grid_in_order.chunks_exact(2).all(|pair| {
+        off_grid_in_order.as_chunks::<2>().0.iter().all(|pair| {
             pair[0].0 == "0" && pair[1].0 == "1" && pair[0].1 == pair[1].1
         }),
         "239c finer candidates must retain object-level append order and per-region multiplicity: {off_grid_in_order:?}"
@@ -2460,7 +2478,10 @@ fn invalid_body_rejected() {
         "expected a max-body-extent rejection naming the body; got {:?}",
         diagnostics
             .iter()
-            .map(|attributed| (attributed.diagnostic.code, attributed.diagnostic.message.clone()))
+            .map(|attributed| (
+                attributed.diagnostic.code,
+                attributed.diagnostic.message.clone()
+            ))
             .collect::<Vec<_>>()
     );
     assert!(aggregated
@@ -2483,6 +2504,17 @@ fn non_tree_family_candidates_are_skipped() {
         ConfigValue::String("normal(auto)".into()),
     );
     values.insert("support_raft_layers".into(), ConfigValue::Int(0));
+    values.insert(
+        "support_interface_bottom_layers".into(),
+        ConfigValue::Int(2),
+    );
+    // Contract-required reads (packet 06 AC-3 / 239c): seed manifest
+    // defaults so the fixture behaves like a bound view.
+    values.insert("nozzle_diameter".into(), ConfigValue::Float(0.4));
+    values.insert(
+        "independent_support_layer_height".into(),
+        ConfigValue::Bool(true),
+    );
     let config = ConfigView::from_map(values);
 
     let planner = tree_support_planner::SupportPlanner::from_config(&config).expect("from_config");
@@ -2975,6 +3007,7 @@ fn coarse_epsilon_group_emits_one_row_per_region_identity() {
         &[
             ("support_layer_height_mm", ConfigValue::Float(0.0001)),
             ("support_interface_top_layers", ConfigValue::Int(1)),
+            ("support_interface_bottom_layers", ConfigValue::Int(1)),
         ],
     ))
     .unwrap();

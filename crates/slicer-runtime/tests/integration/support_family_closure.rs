@@ -175,8 +175,15 @@ fn prepare_model_support(
         return Err(format!("model is missing at {}", model.display()));
     }
     let mesh = cached_load_model(model);
-    slicer_runtime::run::prepare_prepass_context(mesh, config, &core_module_dirs(), true, false)
-        .map_err(|error| format!("{} prepass failed: {error:?}", model.display()))
+    slicer_runtime::run::prepare_prepass_context(
+        mesh,
+        config,
+        Vec::new(),
+        &core_module_dirs(),
+        true,
+        false,
+    )
+    .map_err(|error| format!("{} prepass failed: {error:?}", model.display()))
 }
 
 fn prepare_support_test(
@@ -1327,8 +1334,11 @@ pub fn final_gcode_roles() -> Result<(), String> {
 }
 
 /// Interface coverage must respond to the configured top band rather than to a
-/// renderer default. SupportTest terminates on the plate, so its bottom band is
-/// intentionally not expected to add interface blocks.
+/// renderer default. SupportTest terminates on the plate, so no floor-interface
+/// geometry is emitted; the traditional planner's G-18 widening still adds one
+/// top-band layer for a positive bottom count, so a raw negative bottom count
+/// is compared against an explicit `bottom = top` run (its canonical mirror
+/// target) rather than against the `bottom = 0` count.
 pub fn interface_layer_count_follows_config() -> Result<(), String> {
     for (family, support_type) in [("tree", "tree(auto)"), ("traditional", "normal(auto)")] {
         let one = interface_block_count(&run_slice_for_family_with_interface_layers(
@@ -1352,14 +1362,26 @@ pub fn interface_layer_count_follows_config() -> Result<(), String> {
             ));
         }
 
+        // Canonical mirrors a raw negative bottom count to the top count
+        // (`number_of_support_interface_bottom_layers`,
+        // `OrcaSlicerDocumented/src/libslic3r/Support/SupportParameters.hpp`),
+        // so it must equal an explicit `bottom = top` run. Comparing it to the
+        // `bottom = 0` run instead makes the traditional family fail on the
+        // G-18 widening, which legitimately adds one top-band layer for a
+        // positive bottom count (see `interface_band_counts_match_canonical_structure`).
+        let mirrored = interface_block_count(&run_slice_for_family_with_interface_layers(
+            support_type,
+            2,
+            2,
+        )?);
         let fallback = interface_block_count(&run_slice_for_family_with_interface_layers(
             support_type,
             2,
             -1,
         )?);
-        if fallback != two {
+        if fallback != mirrored {
             return Err(format!(
-                "{family}: negative bottom_layers did not fall back to top_layers: top=2,bottom=0->{two}, top=2,bottom=-1->{fallback}"
+                "{family}: negative bottom_layers must mirror top_layers: top=2,bottom=2->{mirrored}, top=2,bottom=-1->{fallback}"
             ));
         }
     }

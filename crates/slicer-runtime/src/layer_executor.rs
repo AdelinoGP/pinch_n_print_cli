@@ -890,11 +890,11 @@ fn execute_single_layer_inner(
         instrumentation.on_stage_start(&stage.stage_id, Some(layer.index));
         // Execute modules in topological order within each stage
         for module in &stage.modules {
-            // Per-layer host filter (packet 92): skip this module on this layer
-            // if it declares [[region_split]] semantics and no region's
-            // variant_chain matches any of them. The `continue` is placed
-            // BEFORE on_module_start so the skipped module is truly absent
-            // from the instrumentation and audit log.
+            // Per-layer host filter (packet 92; ADR-0071): skip this module on
+            // this layer only when its manifest opted into `paint_only = true`
+            // and no region's variant_chain matches a declared semantic. The
+            // `continue` is placed BEFORE on_module_start so the skipped module
+            // is truly absent from the instrumentation and audit log.
             if !module_invocation_allowed_on_layer(module.region_split_semantics(), arena.slice()) {
                 continue;
             }
@@ -1078,6 +1078,8 @@ fn execute_single_layer_inner(
             }
         }
 
+        ensure_infill_slot_committed(&mut arena, &stage.stage_id);
+
         // Host-built-in paint-annotation runs at the `Layer::PaintRegionAnnotation`
         // stage (docs/04 §Full Lifecycle and docs/10 §Paint Region Resolution).
         // If a WASM module is registered for this stage, it handles the annotation
@@ -1255,11 +1257,14 @@ fn stage_modifier_footprints(slice: &mut SliceIR, blackboard: &Blackboard, layer
         for modifier_index in modifier_indices {
             let mv = &object.modifier_volumes[modifier_index];
             // Skip support_* modifiers: those go through the existing support path.
-            if let Some(ConfigValue::String(s)) = mv.config_delta.fields.get("subtype") {
-                match s.as_str() {
-                    "support_enforcer" | "support_blocker" => continue,
-                    _ => {}
-                }
+            let is_support_modifier = match mv.kind() {
+                slicer_ir::ModifierKind::ParameterModifier => false,
+                slicer_ir::ModifierKind::NegativePart => false,
+                slicer_ir::ModifierKind::SupportEnforcer => true,
+                slicer_ir::ModifierKind::SupportBlocker => true,
+            };
+            if is_support_modifier {
+                continue;
             }
             if mv.mesh.vertices.is_empty() || mv.mesh.indices.is_empty() {
                 continue;
@@ -1642,6 +1647,24 @@ fn capture_ir_for_stage(stage_id: &str, arena: &LayerArena) -> Option<CapturedIr
     }
 }
 
+/// Commit an empty `InfillIR` when the `Layer::InfillPostProcess` stage ran
+/// without any module committing the arena slot.
+///
+/// Modules legitimately return no commit when a layer carries no infill work
+/// (walls-only tip layers, empty plans). `Layer::InfillPostProcess` is still
+/// the documented boundary for the final [`slicer_ir::InfillIR`], so the slot
+/// is committed empty-but-present here — the same always-commit discipline as
+/// [`prestage_layer_collection_if_path_optimization`] — and its typed tap
+/// captures the empty IR instead of failing. Slots of other stages and
+/// already-committed slots are untouched.
+fn ensure_infill_slot_committed(arena: &mut LayerArena, stage_id: &str) {
+    if stage_id != "Layer::InfillPostProcess" || arena.infill().is_some() {
+        return;
+    }
+    // Unoccupied (checked above) and write-once: cannot collide.
+    let _ = arena.set_infill(slicer_ir::InfillIR::default());
+}
+
 /// Request-gated, typed post-stage capture at the executor boundary
 /// (packet 158), using the compatibility default tool selection (support and
 /// interface tool 0).
@@ -1665,10 +1688,13 @@ fn capture_ir_for_stage(stage_id: &str, arena: &LayerArena) -> Option<CapturedIr
 ///
 /// A capture is taken immediately after [`apply`] returns `Ok` for a
 /// requested (tap, layer) pair — a post-commit, renderer-owned clone, never
-/// a borrow into `LayerArena` (ADR-0037). If a requested tap's arena slot is
-/// still empty once its stage has run (no module committed it), the whole
-/// call fails with [`CaptureExecutionError::TapSourceUnavailable`] rather
-/// than returning a partial bundle.
+/// a borrow into `LayerArena` (ADR-0037). `Layer::InfillPostProcess`'s slot
+/// is always committed at its stage boundary (an empty `InfillIR` when no
+/// module contributed — see [`ensure_infill_slot_committed`]), so its tap
+/// captures empty-but-present IR on work-free layers. For a tap whose slot is
+/// genuinely never committed (e.g. `Layer::Support` with support disabled)
+/// the whole call fails with [`CaptureExecutionError::TapSourceUnavailable`]
+/// rather than returning a partial bundle.
 pub fn execute_captured_stages(
     plan: &ExecutionPlan,
     blackboard: &Blackboard,
@@ -1860,6 +1886,8 @@ pub fn execute_captured_stages_with_support_tools(
                     })?;
                 }
             }
+
+            ensure_infill_slot_committed(&mut arena, &stage.stage_id);
 
             if requested.contains(stage.stage_id.as_str()) {
                 match capture_ir_for_stage(&stage.stage_id, &arena) {
@@ -3239,13 +3267,23 @@ fn backfill_resolved_seam(
         if region.resolved_seam.is_some() {
             continue;
         }
-        if let Some(entry) = seam_plan.entries.iter().find(|e| {
-            e.region_key.global_layer_index == layer_index
-                && e.region_key.object_id == region.object_id
-                && e.region_key.region_id == region.region_id
-                && e.region_key.variant_chain == region.variant_chain
-        }) {
-            region.resolved_seam = Some(entry.chosen_candidate.clone());
+        // Exact identity lookup only (mirrors `resolve_seam_for_perimeter_region`):
+        // seam planning runs in the LATE prepass phase, after paint segmentation
+        // has committed the paint-split SliceIR, so its entries carry the full
+        // variant chain. A painted variant without its own entry gets no seam
+        // (degraded path) rather than its unpainted sibling's seam.
+        let chosen = seam_plan
+            .entries
+            .iter()
+            .find(|e| {
+                e.region_key.global_layer_index == layer_index
+                    && e.region_key.object_id == region.object_id
+                    && e.region_key.region_id == region.region_id
+                    && e.region_key.variant_chain == region.variant_chain
+            })
+            .map(|entry| entry.chosen_candidate.clone());
+        if let Some(entry) = chosen {
+            region.resolved_seam = Some(entry);
         }
     }
 }
@@ -3758,10 +3796,15 @@ fn merge_infill_ir(existing: &mut InfillIR, incoming: InfillIR) {
     existing.raft_regions.extend(incoming.raft_regions);
 }
 
-/// Per-layer host dispatch filter (packet 92).
+/// Per-layer host dispatch filter (packet 92; dispatch semantics redefined by
+/// ADR-0071).
 ///
-/// Returns `true` iff the module either:
-/// - declares NO `[[region_split]]` semantics (paint-transparent default), OR
+/// `declared` is the compiled `paint_only` semantic set, non-empty only for
+/// modules whose manifest opts into `paint_only = true`. Returns `true` iff
+/// the module either:
+/// - carries NO paint-only semantics (paint-transparent default — this covers
+///   every module that merely *declares* `[[region_split]]` for aggregation,
+///   including the core perimeter and fuzzy-skin modules), OR
 /// - at least one region on the layer has a `variant_chain` entry whose
 ///   semantic name is in `declared`.
 ///
@@ -3772,7 +3815,7 @@ pub fn module_invocation_allowed_on_layer(
     declared: &std::collections::HashSet<String>,
     slice: Option<&SliceIR>,
 ) -> bool {
-    // Paint-transparent: no region-split declarations → always invoke.
+    // Paint-transparent: no paint-only semantics → always invoke.
     if declared.is_empty() {
         return true;
     }
@@ -3790,6 +3833,25 @@ pub fn module_invocation_allowed_on_layer(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn ensure_infill_slot_committed_fills_an_unoccupied_infill_slot() {
+        // Regression (wave_overhang_bridge_fill_e2e): work-free layers left
+        // the Layer::InfillPostProcess slot unoccupied, so its typed tap failed
+        // with TapSourceUnavailable mid-model instead of capturing the
+        // empty-but-present IR the stage boundary guarantees.
+        let mut arena = super::LayerArena::new();
+        assert!(arena.infill().is_none());
+        super::ensure_infill_slot_committed(&mut arena, "Layer::InfillPostProcess");
+        assert!(
+            arena.infill().is_some(),
+            "the InfillPostProcess boundary must commit even when no module did"
+        );
+
+        let mut other = super::LayerArena::new();
+        super::ensure_infill_slot_committed(&mut other, "Layer::Support");
+        assert!(other.infill().is_none(), "other stages keep skip-on-empty");
+    }
+
     fn anchored_entity(width: f32, flow_factor: f32) -> slicer_ir::AnchoredEntity {
         // Pins every AnchoredEntity field so a future transport widening
         // fails here instead of silently defaulting (E=0 class).

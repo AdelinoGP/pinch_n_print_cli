@@ -617,7 +617,8 @@ fn connect_junctions(
                 let mut from_junctions = canonical_fan(edge_junctions, edge_to_peak);
                 if peak_pos > 0 {
                     let from_prev = canonical_fan(edge_junctions, quad[peak_pos - 1]);
-                    while let (Some(back), Some(front)) = (from_junctions.last(), from_prev.first()) {
+                    while let (Some(back), Some(front)) = (from_junctions.last(), from_prev.first())
+                    {
                         if back.perimeter_index > front.perimeter_index {
                             break;
                         }
@@ -838,7 +839,10 @@ mod tests {
         add_toolpath_segment(&mut toolpaths, &d, &c, false, false, false, false);
         let lines = &toolpaths[&1];
         assert_eq!(lines.len(), 1);
-        assert_eq!(xy(&lines[0]), vec![(0.0, 0.0), (1.0, 0.0), (2.0, 0.0), (2.0, 1.0)]);
+        assert_eq!(
+            xy(&lines[0]),
+            vec![(0.0, 0.0), (1.0, 0.0), (2.0, 0.0), (2.0, 1.0)]
+        );
 
         // Not touching the last point: a new line, never a chord to it.
         add_toolpath_segment(&mut toolpaths, &far, &a, false, false, false, false);

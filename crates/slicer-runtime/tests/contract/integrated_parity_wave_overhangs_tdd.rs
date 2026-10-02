@@ -112,6 +112,13 @@ fn config() -> Arc<ConfigView> {
             "nozzle_diameter".to_string(),
             slicer_ir::ConfigValue::Float(0.4),
         ),
+        // Packet 06 (AC-3): `bridge_line_width` is a contract-required read
+        // (`require_abs_value` over the nozzle base); a bound view holds it —
+        // the resolved default, as in wave_overhangs_tdd.rs fixtures.
+        (
+            "bridge_line_width".to_string(),
+            slicer_ir::ConfigValue::Float(0.4),
+        ),
         (
             "layer_height".to_string(),
             slicer_ir::ConfigValue::Float(0.2),
@@ -133,6 +140,53 @@ fn config() -> Arc<ConfigView> {
             slicer_ir::ConfigValue::Float(3.0),
         ),
         ("wall_count".to_string(), slicer_ir::ConfigValue::Int(3)),
+        // Declared keys (wave-overhangs.toml) seeded at their manifest
+        // defaults, mirroring the production `seed_registry_defaults` step;
+        // the guest reads are fail-closed (`require_*`) since the config
+        // fallback migration.
+        (
+            "wave_overhang_pattern".to_string(),
+            slicer_ir::ConfigValue::String("smart".into()),
+        ),
+        (
+            "wave_overhang_line_spacing".to_string(),
+            slicer_ir::ConfigValue::Float(0.35),
+        ),
+        (
+            "wave_overhang_perimeter_overlap".to_string(),
+            slicer_ir::ConfigValue::Float(0.1),
+        ),
+        (
+            "wave_overhang_minimum_width".to_string(),
+            slicer_ir::ConfigValue::Float(0.7),
+        ),
+        (
+            "wave_overhang_min_new_area".to_string(),
+            slicer_ir::ConfigValue::Float(0.01),
+        ),
+        (
+            "wave_overhang_min_length".to_string(),
+            slicer_ir::ConfigValue::Float(0.0),
+        ),
+        (
+            "wave_overhang_max_iterations".to_string(),
+            slicer_ir::ConfigValue::Int(0),
+        ),
+        (
+            "bridge_flow".to_string(),
+            slicer_ir::ConfigValue::Float(1.0),
+        ),
+        (
+            "bridge_density".to_string(),
+            slicer_ir::ConfigValue::FloatOrPercent {
+                value: 100.0,
+                is_percent: false,
+            },
+        ),
+        (
+            "thick_bridges".to_string(),
+            slicer_ir::ConfigValue::Bool(false),
+        ),
     ])))
 }
 

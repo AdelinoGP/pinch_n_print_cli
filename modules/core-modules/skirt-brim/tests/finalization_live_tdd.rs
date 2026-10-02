@@ -47,6 +47,15 @@ fn make_layer(index: u32, z: f32, entities: Vec<PrintEntity>) -> LayerCollection
 
 fn config_with(pairs: &[(&str, ConfigValue)]) -> ConfigView {
     let mut map = HashMap::new();
+    // Declared keys (skirt-brim.toml) seeded at their manifest defaults,
+    // mirroring the production `seed_registry_defaults` step; per-test pairs
+    // remain the only overrides.
+    map.insert("skirt_brim_enabled".to_string(), ConfigValue::Bool(true));
+    map.insert("skirt_loops".to_string(), ConfigValue::Int(6));
+    map.insert("skirt_distance".to_string(), ConfigValue::Float(3.0));
+    map.insert("skirt_height".to_string(), ConfigValue::Int(1));
+    map.insert("brim_width".to_string(), ConfigValue::Float(8.0));
+    map.insert("line_width".to_string(), ConfigValue::Float(0.4));
     for (k, v) in pairs {
         map.insert(k.to_string(), v.clone());
     }

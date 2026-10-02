@@ -67,6 +67,7 @@ max-ir-schema     = "5.0.0"
   description = "Nozzle diameter in mm, plain float (matches classic-perimeters' own nozzle_diameter key convention). Consumed by arachne_params_from_config as the resolution base for percent-typed keys (min_feature_size, wall_transition_length). No longer feeds line_width_to_spacing: the vestigial nozzle parameter was removed with D-162 (canonical Flow::rounded_rectangle_extrusion_spacing never references the nozzle)."
   group       = "Arachne"
   advanced    = true
+  denied_scopes = ["object", "layer_range", "modifier", "paint_semantic"]
 
   [config.schema.min_feature_size]
   type        = "percent"
@@ -222,7 +223,8 @@ max-ir-schema     = "5.0.0"
   group       = "Walls"
 
   [config.schema.initial_layer_line_width]
-  type        = "float"
+  type        = "float_or_percent"
+  base_key    = "nozzle_diameter"
   default     = 0.0
   min         = 0.0
   max         = 2.0
@@ -232,7 +234,8 @@ max-ir-schema     = "5.0.0"
   group       = "Walls"
 
   [config.schema.bridge_line_width]
-  type        = "float"
+  type        = "float_or_percent"
+  base_key    = "nozzle_diameter"
   default     = 0.0
   min         = 0.0
   max         = 2.0
@@ -243,6 +246,7 @@ max-ir-schema     = "5.0.0"
 
   [config.schema.inner_wall_line_width]
   type        = "float_or_percent"
+  base_key    = "nozzle_diameter"
   default     = 0
   min         = 0.0
   max         = 2.0
@@ -260,6 +264,7 @@ max-ir-schema     = "5.0.0"
 
   [config.schema.outer_wall_line_width]
   type        = "float_or_percent"
+  base_key    = "nozzle_diameter"
   default     = 0
   min         = 0.0
   max         = 2.0
@@ -447,11 +452,14 @@ group       = "Support"
   description = "Allowed positional error (mm; squared internally) for Arachne's wall simplification, replacing meshfix_maximum_deviation for the wall path (canonical `WallToolPaths::simplifyToolPaths`). Code fallback is 0.005mm (ArachneParams::default's allowed_error_distance_squared = 0.000025 mm²); the manifest default states the code fallback per the reconcile guard. The previous 0.025 here was a 5x lie against the code fallback (see D-160's reconcile follow-up)."
   group       = "Walls"
 
-[config.overridable-per-region]
-keys = []
-
-[config.overridable-per-layer]
-keys = []
+# Region-split activation. Declaring `material` registers it in the
+# cross-manifest aggregate at plan-build time. `paint_only` is deliberately
+# absent (defaults to false): Arachne perimeters must run on unpainted layers
+# too, so their per-layer dispatch set stays empty (ADR-0071).
+[[region_split]]
+semantic   = "material"
+priority   = 100
+value_type = "tool_index"
 
 [hints]
 estimated-ms-per-layer = 10

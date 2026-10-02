@@ -119,8 +119,14 @@ fn union_merges_same_region_entries_regardless_of_distance() {
             exact_z: &exact_z,
             territory: Some(&analysis),
             producers: vec![
-                producer("com.core.traditional-support", &["support-family:traditional"]),
-                producer("com.core.traditional-support", &["support-family:traditional"]),
+                producer(
+                    "com.core.traditional-support",
+                    &["support-family:traditional"],
+                ),
+                producer(
+                    "com.core.traditional-support",
+                    &["support-family:traditional"],
+                ),
             ],
         },
         FamilyConflictPolicy::Degrade,

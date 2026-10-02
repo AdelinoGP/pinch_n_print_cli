@@ -1,8 +1,8 @@
 //! Geometric invariants for traditional support scan-line filling.
 
 use slicer_ir::{
-    ConfigView, ExPolygon, Point2, Polygon, SupportPlanEntry, SupportPlanIR, SupportPlanRole,
-    SupportPlanRoleRegion,
+    ConfigValue, ConfigView, ExPolygon, Point2, Polygon, SupportPlanEntry, SupportPlanIR,
+    SupportPlanRole, SupportPlanRoleRegion,
 };
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::test_prelude::*;
@@ -12,13 +12,23 @@ use std::sync::Arc;
 use traditional_support::TraditionalSupport;
 
 fn config(angle: f64, line_width: f64) -> ConfigView {
-    ConfigViewBuilder::new()
-        .bool("enable_support", true)
-        .float("support_base_pattern_spacing", 1.6429)
-        .float("support_angle", angle)
-        .float("support_speed", 50.0)
-        .float("line_width", line_width)
-        .build()
+    config_with(&[
+        ("enable_support", ConfigValue::Bool(true)),
+        // Required reads (`nozzle_diameter`, `support_base_pattern_spacing`
+        // in `from_config`; `layer_height` in `run_support` when the region
+        // carries no effective layer height) at their manifest defaults.
+        ("nozzle_diameter", ConfigValue::Float(0.4)),
+        ("layer_height", ConfigValue::Float(0.2)),
+        ("support_base_pattern_spacing", ConfigValue::Float(1.6429)),
+        ("support_angle", ConfigValue::Float(angle)),
+        ("support_speed", ConfigValue::Float(50.0)),
+        ("line_width", ConfigValue::Float(line_width)),
+        // `percent`-declared: the magnitude is consumed directly.
+        ("support_interface_flow", ConfigValue::Percent(100.0)),
+        ("support_interface_spacing", ConfigValue::Float(0.4)),
+        ("support_bottom_interface_spacing", ConfigValue::Float(0.4)),
+        ("support_style", ConfigValue::String("default".to_string())),
+    ])
 }
 
 fn region(points: &[(f32, f32)]) -> SliceRegionView {

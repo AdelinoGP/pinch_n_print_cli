@@ -38,7 +38,7 @@ fn default_config() -> ConfigView {
     config_with(&[
         ("ironing_enabled", ConfigValue::Bool(true)),
         ("ironing_speed", ConfigValue::Float(20.0)),
-        ("ironing_flow", ConfigValue::Float(0.10)),
+        ("ironing_flow", ConfigValue::Float(10.0)),
         ("ironing_spacing_mm", ConfigValue::Float(0.1)),
         (
             "ironing_pattern",
@@ -185,32 +185,29 @@ fn interior_top_shell_layers_emit_no_ironing() {
 }
 
 #[test]
-fn absent_ironing_enabled_defaults_to_disabled() {
-    // Regression: when the user config omits `ironing_enabled` entirely, the
-    // module MUST default to OFF (OrcaSlicer parity: `ironing_type = no
-    // ironing`). Previously the fallback was `true`, which silently ironed
-    // every top surface at 0.1 mm spacing and inflated default gcode ~16%.
+fn absent_ironing_enabled_is_a_config_defect_not_a_default() {
+    // Packet-06 fail-closed contract: `ironing_enabled` is a declared key
+    // (top-surface-ironing.toml, default false), so a bound view always
+    // carries it — the host seeds the registry default at resolution
+    // (`seed_registry_defaults`). A view that omits it is a host-side
+    // contract violation, not a "default to off" case: the module must
+    // abort rather than silently pick a value. (The old absent-key
+    // fallback is gone; a missing key can no longer select OFF.)
     let cfg = config_with(&[
         // deliberately NO ironing_enabled key
         ("ironing_speed", ConfigValue::Float(20.0)),
-        ("ironing_flow", ConfigValue::Float(0.10)),
+        ("ironing_flow", ConfigValue::Float(10.0)),
         ("ironing_spacing_mm", ConfigValue::Float(0.1)),
         (
             "ironing_pattern",
             ConfigValue::String("rectilinear".to_string()),
         ),
     ]);
-    let module = TopSurfaceIroning::from_config(&cfg).unwrap();
-    let region = region_with(Some(0), None, vec![square_polygon(0.0, 0.0, 10.0)]);
-    let mut output = InfillOutputBuilder::new();
-
-    module
-        .run_infill(0, &[region], &empty_paint_view(), &mut output, &cfg)
-        .unwrap();
-
+    let err = TopSurfaceIroning::from_config(&cfg)
+        .expect_err("a view omitting declared key ironing_enabled must fail closed");
     assert!(
-        output.ironing_paths().is_empty(),
-        "ironing must default to OFF when ironing_enabled is absent from config"
+        err.to_string().contains("ironing_enabled"),
+        "the failure must name the missing key, got: {err}"
     );
 }
 
@@ -219,7 +216,7 @@ fn disabled_config_emits_no_ironing() {
     let cfg = config_with(&[
         ("ironing_enabled", ConfigValue::Bool(false)),
         ("ironing_speed", ConfigValue::Float(20.0)),
-        ("ironing_flow", ConfigValue::Float(0.10)),
+        ("ironing_flow", ConfigValue::Float(10.0)),
         ("ironing_spacing_mm", ConfigValue::Float(0.1)),
         (
             "ironing_pattern",
@@ -306,11 +303,55 @@ fn zero_flow_config_rejected_at_from_config() {
 }
 
 #[test]
+fn ironing_flow_percent_magnitude_resolves_at_consumption() {
+    // `ironing_flow` is coPercent magnitude (10 = 10%) — canonical
+    // `PrintConfigDef::init_fff_params`
+    // (`OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp`) — and the ÷100
+    // happens at consumption, exactly canonical
+    // `ConfigOptionPercent::get_abs_value`
+    // (`OrcaSlicerDocumented/src/libslic3r/Config.hpp`). Regression for the
+    // domain migration: the old fraction-domain declaration authored 0.10
+    // for this same emission, and `slice --config` files authoring canonical
+    // percent magnitudes (the Orca project wire) were rejected as out of
+    // range.
+    let cfg = config_with(&[
+        ("ironing_enabled", ConfigValue::Bool(true)),
+        ("ironing_speed", ConfigValue::Float(20.0)),
+        ("ironing_flow", ConfigValue::Float(10.0)),
+        ("ironing_spacing_mm", ConfigValue::Float(0.1)),
+        (
+            "ironing_pattern",
+            ConfigValue::String("rectilinear".to_string()),
+        ),
+    ]);
+    let module = TopSurfaceIroning::from_config(&cfg).unwrap();
+    let region = region_with(Some(0), None, vec![square_polygon(0.0, 0.0, 10.0)]);
+    let mut output = InfillOutputBuilder::new();
+
+    module
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &cfg)
+        .unwrap();
+
+    let paths = output.ironing_paths();
+    assert!(!paths.is_empty(), "expected ironing paths");
+    for path in paths {
+        for point in &path.points {
+            assert!(
+                (point.flow_factor - 0.10).abs() < 1e-6,
+                "ironing_flow = 10 (coPercent magnitude) must resolve to \
+                 flow_factor 0.10 at consumption, got {}",
+                point.flow_factor
+            );
+        }
+    }
+}
+
+#[test]
 fn unsupported_pattern_rejected_at_from_config() {
     let cfg = config_with(&[
         ("ironing_enabled", ConfigValue::Bool(true)),
         ("ironing_speed", ConfigValue::Float(20.0)),
-        ("ironing_flow", ConfigValue::Float(0.10)),
+        ("ironing_flow", ConfigValue::Float(10.0)),
         ("ironing_spacing_mm", ConfigValue::Float(0.1)),
         (
             "ironing_pattern",
@@ -352,7 +393,7 @@ fn l_shape_clip_keeps_strokes_inside_concave_polygon() {
     // X must lie within the L-shape's solid mass, i.e. not in the upper-right
     // cut-out (x > 0 && y > 0).
     for path in paths {
-        for pair in path.points.chunks_exact(2) {
+        for pair in path.points.as_chunks::<2>().0 {
             let midx = (pair[0].x + pair[1].x) / 2.0;
             let midy = (pair[0].y + pair[1].y) / 2.0;
             assert!(
@@ -407,7 +448,7 @@ fn u_shape_top_fill_produces_disjoint_segments_per_row() {
     let mut saw_left_band = false;
     let mut saw_right_band = false;
     for path in paths {
-        for pair in path.points.chunks_exact(2) {
+        for pair in path.points.as_chunks::<2>().0 {
             let midx = (pair[0].x + pair[1].x) / 2.0;
             let midy = (pair[0].y + pair[1].y) / 2.0;
             assert!(

@@ -1,0 +1,15 @@
+[package]
+name = "slicer-config"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[dependencies]
+slicer-ir = { path = "../slicer-ir" }
+
+[dev-dependencies]
+toml = "0.8"
+
+[lints]
+workspace = true

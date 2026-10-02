@@ -11,3 +11,4 @@ mod holder_matching_tdd;
 mod module_manifest_tdd;
 mod spiral_vase_arachne_dispatch_tdd;
 mod stage_list_consistency_tdd;
+mod typed_selector_claim_selection_tdd;

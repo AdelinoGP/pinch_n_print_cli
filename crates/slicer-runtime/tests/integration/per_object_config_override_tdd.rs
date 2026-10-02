@@ -47,7 +47,9 @@ fn per_object_outer_wall_line_width_override() {
     let inner_w = 0.4_f64;
 
     // from_config config: global values.
-    let start_config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
+    // reads need the full classic surface; the fixture's own keys override it.
+    let start_config = crate::common::classic_perimeters_baseline()
         .int("wall_count", 3)
         .float("outer_wall_line_width", global_outer_w)
         .float("inner_wall_line_width", inner_w)
@@ -56,7 +58,7 @@ fn per_object_outer_wall_line_width_override() {
     let module = ClassicPerimeters::from_config(&start_config).unwrap();
 
     // Per-object override config: outer_wall_line_width bumped to 0.6.
-    let override_config = ConfigViewBuilder::new()
+    let override_config = crate::common::classic_perimeters_baseline()
         .int("wall_count", 3)
         .float("outer_wall_line_width", override_outer_w as f64)
         .float("inner_wall_line_width", inner_w)
@@ -124,7 +126,9 @@ fn per_object_inner_wall_line_width_override() {
     let global_inner_w = 0.4_f64;
     let override_inner_w = 0.3_f32;
 
-    let start_config = ConfigViewBuilder::new()
+    // Bound-view baseline (packet 06 5c-prime): contract-required `require_*`
+    // reads need the full classic surface; the fixture's own keys override it.
+    let start_config = crate::common::classic_perimeters_baseline()
         .int("wall_count", 3)
         .float("outer_wall_line_width", outer_w)
         .float("inner_wall_line_width", global_inner_w)
@@ -132,7 +136,7 @@ fn per_object_inner_wall_line_width_override() {
 
     let module = ClassicPerimeters::from_config(&start_config).unwrap();
 
-    let override_config = ConfigViewBuilder::new()
+    let override_config = crate::common::classic_perimeters_baseline()
         .int("wall_count", 3)
         .float("outer_wall_line_width", outer_w)
         .float("inner_wall_line_width", override_inner_w as f64)
@@ -196,7 +200,93 @@ fn matrix_config(as_percent: bool, bridge_width_mm: Option<f64>) -> ConfigView {
             "bridge_line_width".to_owned(),
             matrix_value(bridge_width_mm, as_percent),
         );
+    } else {
+        // The classified read on `bridge_line_width` is `require_*` (packet
+        // 06); the "no bridge width" case holds the manifest default 0.0
+        // instead of leaving the key absent.
+        resolved
+            .extensions
+            .insert("bridge_line_width".to_owned(), ConfigValue::Float(0.0));
     }
+    // Required-read baseline (packet 06 5c): classified reads in
+    // run_perimeters/arachne_params_from_config are now require_*; the view
+    // holds every key those paths read, at manifest-default values.
+    // line_width holds its post-expansion default (1.125 x nozzle_diameter =
+    // 0.45): the raw 0 is the auto sentinel expanded at Phase B and cannot
+    // survive the D-162 spacing gate.
+    resolved
+        .extensions
+        .insert("layer_height".to_owned(), ConfigValue::Float(0.2));
+    resolved
+        .extensions
+        .insert("nozzle_diameter".to_owned(), ConfigValue::Float(0.4));
+    resolved
+        .extensions
+        .insert("line_width".to_owned(), ConfigValue::Float(0.45));
+    resolved.extensions.insert(
+        "initial_layer_line_width".to_owned(),
+        ConfigValue::Float(0.0),
+    );
+    resolved
+        .extensions
+        .insert("wall_count".to_owned(), ConfigValue::Int(3));
+    resolved
+        .extensions
+        .insert("extra_perimeters".to_owned(), ConfigValue::Int(0));
+    resolved
+        .extensions
+        .insert("precise_outer_wall".to_owned(), ConfigValue::Bool(false));
+    resolved.extensions.insert(
+        "wall_sequence".to_owned(),
+        ConfigValue::String("InnerOuter".to_owned()),
+    );
+    resolved
+        .extensions
+        .insert("support_raft_layers".to_owned(), ConfigValue::Int(0));
+    resolved
+        .extensions
+        .insert("only_one_wall_top".to_owned(), ConfigValue::Bool(false));
+    resolved.extensions.insert(
+        "wall_direction".to_owned(),
+        ConfigValue::String("counter_clockwise".to_owned()),
+    );
+    resolved
+        .extensions
+        .insert("alternate_extra_wall".to_owned(), ConfigValue::Bool(false));
+    resolved
+        .extensions
+        .insert("spiral_vase".to_owned(), ConfigValue::Bool(false));
+    resolved
+        .extensions
+        .insert("sparse_infill_density".to_owned(), ConfigValue::Float(20.0));
+    resolved.extensions.insert(
+        "only_one_wall_first_layer".to_owned(),
+        ConfigValue::Bool(false),
+    );
+    resolved
+        .extensions
+        .insert("detect_overhang_wall".to_owned(), ConfigValue::Bool(true));
+    resolved
+        .extensions
+        .insert("overhang_reverse".to_owned(), ConfigValue::Bool(false));
+    resolved.extensions.insert(
+        "overhang_reverse_internal_only".to_owned(),
+        ConfigValue::Bool(false),
+    );
+    resolved.extensions.insert(
+        "overhang_reverse_threshold".to_owned(),
+        ConfigValue::Float(0.0),
+    );
+    resolved
+        .extensions
+        .insert("bridge_flow".to_owned(), ConfigValue::Float(1.0));
+    resolved
+        .extensions
+        .insert("thick_bridges".to_owned(), ConfigValue::Bool(false));
+    resolved.extensions.insert(
+        "seam_candidate_angle_threshold_deg".to_owned(),
+        ConfigValue::Float(30.0),
+    );
     ConfigView::from_map(resolved.to_config_map())
 }
 
