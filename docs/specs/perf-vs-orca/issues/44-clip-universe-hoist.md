@@ -1,7 +1,8 @@
 # Clip-universe preparation hoist: implementation + standing paired A/B
 
 Type: task
-Status: open
+Status: claimed
+Assignee: current OpenCode session (wayfinder), 2026-10-02
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: 21
 
