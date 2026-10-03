@@ -552,6 +552,24 @@ fn build_native_layer_request_impl(
         }
     }
 
+    // Ticket 47 (second projection): the two builder-consuming stages get the
+    // staged ordered-entities snapshot exactly as the WASM leg's
+    // `push_layer_collection_builder` snapshot carries it
+    // (`crate::dispatch::project_ordered_entities_from`), so the native
+    // module's `get_ordered_entities` sees the same content its WASM twin
+    // would. Every other stage's WIT world does not carry the builder.
+    let ordered_entities = if matches!(
+        stage_export,
+        "Layer::PathOptimization" | "Layer::AnchoredEvents"
+    ) {
+        crate::dispatch::project_ordered_entities_from(input.layer_collection)
+            .into_iter()
+            .map(crate::marshal::native::ordered_entity_to_sdk_view)
+            .collect()
+    } else {
+        Vec::new()
+    };
+
     NativeLayerRequest {
         layer_index,
         regions,
@@ -560,6 +578,26 @@ fn build_native_layer_request_impl(
         prior_infill: input.infill.map(|infill| infill.regions.clone()),
         config: (*module.config_view).clone(),
         stage_export,
+        ordered_entities,
+    }
+}
+
+/// Convert the host-local `OrderedEntityView` projection into the SDK's
+/// `OrderedEntityView` — the same content the WASM seam's
+/// `get_ordered_entities` returns (region-key variant-chain flattened to
+/// empty by the WIT record, points carried field-for-field).
+pub fn ordered_entity_to_sdk_view(
+    view: crate::dispatch::OrderedEntityView,
+) -> slicer_sdk::views::OrderedEntityView {
+    slicer_sdk::views::OrderedEntityView {
+        original_index: view.original_index,
+        tool_index: view.tool_index,
+        region_key: view.region_key,
+        role: view.role,
+        start_point: view.start_point,
+        end_point: view.end_point,
+        point_count: view.point_count,
+        order_lock: view.order_lock,
     }
 }
 

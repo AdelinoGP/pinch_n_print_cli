@@ -465,6 +465,118 @@ fn native_postprocess_without_slice_falls_back_to_perimeter_views() {
     );
 }
 
+/// The ordered-entities snapshot (ticket 47, second projection): the two
+/// builder-consuming stages must see the staged `LayerCollectionIR` content
+/// through the native request exactly as `get_ordered_entities` returns it on
+/// the WASM leg; every other stage carries an empty snapshot.
+#[test]
+fn native_ordered_entities_snapshot_matches_the_wasm_seam() {
+    let entity = |idx: u32, role: slicer_ir::ExtrusionRole, lock: Option<u64>| {
+        // exhaustive: the seam under test carries every PrintEntity field
+        slicer_ir::PrintEntity {
+            entity_id: u64::from(idx) + 1,
+            // exhaustive: fixture entity pins only the fields the seam carries
+            path: slicer_ir::ExtrusionPath3D {
+                points: vec![
+                    slicer_ir::Point3WithWidth {
+                        x: idx as f32,
+                        y: 2.0,
+                        ..slicer_ir::Point3WithWidth::default()
+                    },
+                    slicer_ir::Point3WithWidth {
+                        x: idx as f32 + 1.0,
+                        y: 3.0,
+                        ..slicer_ir::Point3WithWidth::default()
+                    },
+                ],
+                role: role.clone(),
+                speed_factor: 1.0,
+                tool_index: None,
+                order_lock: lock,
+            },
+            role,
+            region_key: slicer_ir::RegionKey {
+                global_layer_index: 4,
+                object_id: "obj-0".to_owned(),
+                region_id: 9,
+                variant_chain: Vec::new(),
+            },
+            topo_order: idx,
+            tool_index: 2,
+        }
+    };
+    let lc = slicer_ir::LayerCollectionIR {
+        ordered_entities: vec![
+            entity(0, slicer_ir::ExtrusionRole::SparseInfill, None),
+            entity(1, slicer_ir::ExtrusionRole::OuterWall, None),
+            entity(2, slicer_ir::ExtrusionRole::SparseInfill, Some(77)),
+            entity(3, slicer_ir::ExtrusionRole::SparseInfill, Some(77)),
+        ],
+        // exhaustive: fixture LayerCollectionIR carries no support attribution
+        ..slicer_ir::LayerCollectionIR::default()
+    };
+
+    let module_id = "ordered-entities-identity".to_owned();
+    let module = CompiledModuleLive::new(
+        &module_id,
+        WasmInstancePool::placeholder(),
+        None,
+        &[],
+        Arc::new(ConfigView::from_map(HashMap::new())),
+    );
+    let slice = SliceIR {
+        global_layer_index: 4,
+        z: 0.9,
+        ..Default::default()
+    };
+    // exhaustive: LayerStageInput has no Default; the fixture supplies every field
+    let input = LayerStageInput {
+        mesh: Arc::new(slicer_ir::MeshIR::default()),
+        paint_regions: None,
+        seam_plan: None,
+        support_plan: None,
+        lightning_tree_ir: None,
+        region_map: None,
+        slice: Some(&slice),
+        perimeter: None,
+        layer_collection: Some(&lc),
+        surface_classification: None,
+        prepared_regions: None,
+        prepared_perimeter_source_regions: None,
+        infill: None,
+    };
+
+    for (stage, expect_snapshot) in [
+        ("Layer::PathOptimization", true),
+        ("Layer::AnchoredEvents", true),
+        ("Layer::Infill", false),
+    ] {
+        let native = build_native_layer_request(stage, 4, &input, &module, &HashMap::new());
+        if !expect_snapshot {
+            assert!(
+                native.ordered_entities.is_empty(),
+                "{stage} must not carry the snapshot"
+            );
+            continue;
+        }
+        assert_eq!(native.ordered_entities.len(), 4, "{stage} snapshot size");
+        // Mirror the WASM seam's per-entry content: region-key variant chain
+        // flattens empty, start/end points and counts carry field-for-field.
+        for (view, entity) in native.ordered_entities.iter().zip(&lc.ordered_entities) {
+            assert_eq!(view.original_index, entity.topo_order, "original_index");
+            assert_eq!(view.tool_index, entity.tool_index, "tool_index");
+            assert_eq!(view.region_key.global_layer_index, 4, "region_key.layer");
+            assert_eq!(view.region_key.object_id, "obj-0", "region_key.object");
+            assert_eq!(view.region_key.region_id, 9, "region_key.region");
+            assert_eq!(view.role, entity.role, "role");
+            assert_eq!(view.start_point.x, entity.path.points[0].x, "start.x");
+            assert_eq!(view.end_point.x, entity.path.points[1].x, "end.x");
+            assert_eq!(view.point_count, 2, "point_count");
+            assert_eq!(view.order_lock, entity.path.order_lock, "order_lock");
+        }
+    }
+}
+
 /// `PerimeterIR` missing entirely → empty region list, never `None`
 /// (the wasm leg pushes zero regions; cf. 9685cd03).
 #[test]

@@ -248,6 +248,11 @@ fn generate_slicer_module_impl(
                 let regions = req.perimeter_regions.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native layer request is missing perimeter regions".to_string()))?;
                 let mut output = ::slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
                 let mut collection = ::slicer_sdk::layer_collection_builder::LayerCollectionBuilder::new();
+                // Ticket 47: the native request carries the same staged
+                // ordered-entities snapshot the WASM leg's
+                // `get-ordered-entities` returns, so `get_ordered_entities`
+                // observes identical content on both transports.
+                collection.set_ordered_entities(req.ordered_entities.clone());
                 <#self_ty as ::slicer_sdk::traits::LayerModule>::run_path_optimization(
                     &module, req.layer_index, regions, &mut output, &mut collection, &req.config,
                 )?;
@@ -261,6 +266,8 @@ fn generate_slicer_module_impl(
                 let module = <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&req.config)?;
                 let regions = req.perimeter_regions.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native layer request is missing perimeter regions".to_string()))?;
                 let mut collection = ::slicer_sdk::layer_collection_builder::LayerCollectionBuilder::new();
+                // Ticket 47: same snapshot the WASM leg's builder carries.
+                collection.set_ordered_entities(req.ordered_entities.clone());
                 <#self_ty as ::slicer_sdk::traits::LayerModule>::run_anchored_events(
                     &module, req.layer_index, regions, &mut collection, &req.config,
                 )?;
