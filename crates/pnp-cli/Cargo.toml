@@ -43,6 +43,7 @@ integrated-traditional-support = ["slicer-integrated-modules/traditional-support
 integrated-tree-support = ["slicer-integrated-modules/tree-support"]
 integrated-wipe-tower = ["slicer-integrated-modules/wipe-tower"]
 integrated-wave-overhangs = ["slicer-integrated-modules/wave-overhangs"]
+integrated-raft-default = ["slicer-integrated-modules/raft-default"]
 
 [dependencies]
 ctrlc = "3"

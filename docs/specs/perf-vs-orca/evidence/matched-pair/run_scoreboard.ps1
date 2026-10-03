@@ -37,7 +37,7 @@ param(
     [string[]]$Fixtures = @('benchy', 'base'),
     [ValidateSet('classic-off', 'arachne-off', 'classic-on', 'arachne-on')]
     [string[]]$Cells = @('classic-off', 'arachne-off', 'classic-on', 'arachne-on'),
-    [ValidateSet('orca', 'pnp-ordinary', 'pnp-accelerated')]
+    [ValidateSet('orca', 'pnp-ordinary', 'pnp-accelerated', 'pnp-integrated')]
     [string[]]$Tools = @('orca', 'pnp-ordinary', 'pnp-accelerated'),
     [int]$Runs = 3,
     [int]$Warmups = 1,
@@ -87,6 +87,13 @@ $ToolSpecs = @{
     'pnp-accelerated' = @{
         Exe = Join-Path $RepoRoot 'target\dist-accelerated\developer\pnp_cli.exe'
         ModuleDir = Join-Path $RepoRoot 'target\dist-accelerated\developer\modules'
+    }
+    # perf-vs-orca ticket 33: integrated edition (all core modules native).
+    # Stages zero external core modules; provenance expected 'integrated'.
+    'pnp-integrated' = @{
+        Exe = Join-Path $RepoRoot 'target\dist\integrated\pnp_cli.exe'
+        ModuleDir = Join-Path $RepoRoot 'target\dist\integrated\modules'
+        ExpectedProvenance = 'integrated'
     }
 }
 
@@ -314,9 +321,10 @@ function Assert-Preflight {
         $diag = & $spec.Exe module diagnose --module-dir $spec.ModuleDir | Out-String
         $parsed = $diag | ConvertFrom-Json
         if (-not $parsed.pass) { throw "preflight failed: module diagnose pass=false for $tool" }
-        $bad = @($parsed.modules | Where-Object { $_.provenance -ne 'external' })
+        $expectedProvenance = if ($spec.ExpectedProvenance) { $spec.ExpectedProvenance } else { 'external' }
+        $bad = @($parsed.modules | Where-Object { $_.provenance -ne $expectedProvenance })
         if ($bad.Count -gt 0) {
-            throw "preflight failed: $($bad.Count) non-external modules for $tool"
+            throw "preflight failed: $($bad.Count) modules not provenance '$expectedProvenance' for $tool (e.g. $($bad[0].id) = $($bad[0].provenance))"
         }
         if ([int]$parsed.modules_loaded -lt 24) {
             throw "preflight failed: modules_loaded=$($parsed.modules_loaded) for $tool (expected >= 24)"

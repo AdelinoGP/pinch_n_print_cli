@@ -3475,6 +3475,7 @@ dependencies = [
  "overhang-classifier-default",
  "part-cooling",
  "path-optimization-default",
+ "raft-default",
  "rectilinear-infill",
  "seam-placer",
  "seam-planner-default",
