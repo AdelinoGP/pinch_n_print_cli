@@ -726,13 +726,35 @@ of the Q23 approval:
 
 | # | packet slug | goal (one sentence) | task ids | depends on | status | packet dir |
 |---|-------------|---------------------|----------|------------|--------|------------|
-| 1 | routing-identity-prerequisite | Deliver the shared full-identity selection/configuration projection and fix variant-chain delivery so preparation and ordinary consumption target and configure identically. | - | - | pending | - |
-| 2 | preparation-capability-pilot | Prove the same-artifact preparation capability end to end: combined exports, resource/import composition, fresh-instance named-piece reads, native parity, ordinary-guest compatibility, and measured retention/transfer costs. | - | - | pending | - |
-| 3 | preparation-framework | Implement manifest declaration/validation, private plan storage, activation, runner adapters, declaration-gated whole-print input views, failure semantics, and lifecycle diagnostics for preparation-capable Layer modules. | - | #1, #2 | pending | - |
-| 4 | preparation-plan-visuals | Add optional declared XY diagnostic projections published atomically with the plan and captured/rendered through the existing visual-debug request/capture/manifest path. | - | #3 | pending | - |
-| 5 | lightning-geometry-gate | Establish the reproducible canonical planning-domain/grounding oracle and portable module-owned kernel proof, and record the verified input strategy in the source plan. | - | - | pending | - |
-| 6 | lightning-migration | Migrate lightning to module-owned preparation and directly retire the host producer, `LightningTreeIR`, and `lightning-tree-segments` accessor. | - | #3, #4, #5 (gate outcome recorded in this plan) | pending | - |
+| 01 | shared-selection-prerequisite | Repair full-identity variant delivery and provide the shared selection/configuration projection for preparation and ordinary invocations, including non-region work. | TASK-572 | - | generated | docs/spec_packets/layer-module-preparation_01_shared-selection-prerequisite/ |
+| 02 | preparation-capability-pilot | Prove the same-artifact preparation capability end to end: combined exports, resource/import composition, fresh-instance named-piece reads, native parity, ordinary-guest compatibility, and measured retention/transfer costs. | TASK-573 | - | generated | docs/spec_packets/layer-module-preparation_02_preparation-capability-pilot/ |
+| 03 | preparation-contract-transport | Add and validate preparation declarations and matching SDK, macro, native, and WASM adapters; implement owner-private immutable named-piece transport with bounded reads, atomic publication, explicit ready/no-work state, and print-scoped storage. | TASK-574 | #2 | generated | docs/spec_packets/layer-module-preparation_03_preparation-contract-transport/ |
+| 04 | whole-print-input-views | Expose declaration-gated typed whole-print PrePass read views and selected-target/configuration data through the shared projection. | TASK-574 | #1, #3 | generated | docs/spec_packets/layer-module-preparation_04_whole-print-input-views/ |
+| 05 | preparation-runtime-lifecycle | Integrate eligibility, late-PrePass execution before Layer calls, failure/cancellation handling, storage release, and truthful runtime lifecycle diagnostics. | TASK-574 | #3, #4 | generated | docs/spec_packets/layer-module-preparation_05_preparation-runtime-lifecycle/ |
+| 06 | preparation-plan-visuals | Publish validated optional XY diagnostic projections atomically with prepared plans, then capture and render them through the existing visual-debug request and bundle path with truthful execution metadata. | TASK-575 | #5 | generated | docs/spec_packets/layer-module-preparation_06_preparation-plan-visuals/ |
+| 07 | lightning-geometry-portability-gate | Establish the reproducible canonical planning-domain/input oracle and verify the module-owned kernel through native and WASM adapters; record both outcomes in this source plan. | TASK-576 | - | generated | docs/spec_packets/layer-module-preparation_07_lightning-geometry-portability-gate/ |
+| 08 | lightning-migration | Migrate lightning to module-owned preparation and directly retire the host producer, `LightningTreeIR`, and `lightning-tree-segments` accessor. | TASK-577 | #5, #6, #7; complete generic framework acceptance and both verified outcomes recorded in this plan | generated | docs/spec_packets/layer-module-preparation_08_lightning-migration/ |
 
-Row 6 is not generatable until row 5 records the verified input strategy in this
-plan. The plan's "Framework acceptance" workstream is realized by the acceptance
-criteria of rows 1–4, not by a separate closure packet.
+The merged rows retain their internal acceptance sub-gates: row 01 covers both
+variant-chain delivery and the shared projection, retaining the routing witnesses
+for painted variants, modifier children, merged perimeter sources, carriers, raft,
+and anchored invocations; row 03 keeps declaration/adapter proofs distinct from
+storage/transport proofs; row 06 retains projection-publication and visual-debug
+request, capture, rendering, bundle, and truthful-metadata witnesses; and row 07
+separately verifies canonical input fidelity and native/WASM portability. Merging
+rows does not waive these sub-gates. Generic framework acceptance is realized
+through rows 01–06 and may complete independently of lightning migration. Row 07
+is the feasibility gate. By explicit authoring approval, row 08 may be authored
+now as a blocked draft so the full packet set exists before implementation starts.
+This exception does not make it implementation-ready: activation and implementation
+remain blocked until complete generic framework acceptance and both verified gate
+outcomes, including the concrete migration design evidence required above, are
+recorded in this source plan. Failed or inconclusive evidence returns migration
+for a design decision; approximate geometry is not a fallback. The queue above
+records generation status; a blocked authored draft may list its directory, but
+only PREFLIGHT PASS permits `generated`. Generated packets remain drafts, and
+their preflight passes are not evidence of implemented acceptance or feasibility.
+Row 08's generated status covers blocked-draft authoring only: its B1–B5 design
+holds and the framework/feasibility evidence gates still prohibit activation and
+every production migration edit.
+No implementation is underway.
