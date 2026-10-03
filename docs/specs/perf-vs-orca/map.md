@@ -223,15 +223,19 @@ Standing decisions for this effort (2026-09-22):
        perf-split Finding 3's TYPE deltas on a fresh tree. Integrated timings
        stay disqualified and the integrated edition gains no timing evidence.
        The enabling `raft-default` integration-row repair (packet-240b
-       registry drift; `xtask dist --edition integrated` was unbuildable)
-       plus the named dispatch fix are left uncommitted — keep/drop to the
-       human.
+       registry drift; `xtask dist --edition integrated` was unbuildable) is
+       committed (`4a8330a6`); the named dispatch fix was never written, so
+       the tree is clean.
+       **Named fix taken (2026-10-02):** the human authorized the native
+       postprocess-view enrichment repair as this session's take; claimed as
+       [Native postprocess-view enrichment
+       repair](issues/47-native-postprocess-view-enrichment.md).
 
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
-- [Integrated/external matched-output oracle gate](issues/33-integrated-external-matched-output-oracle-gate.md): **gate FAILED (2026-10-02)** — integrated dispatch is not output-equivalent; the native `Layer::InfillPostProcess` request omits the partitioned-`SliceIR` view enrichment the WASM leg performs (`push_infill_postprocess_regions`), the infill linker silently falls back to the union boundary, and the native leg prints paths the external leg clips away (+572.5 mm sparse, +698.7 mm top surface etc. on the t44 job), reproducing Finding 3's TYPE deltas; integrated timings stay disqualified. Enabling repair: `raft-default` got its missing 24th integration row (packet-240b registry drift; `xtask dist --edition integrated` was unbuildable before it). Named fix scoped; needs its own authorization.
+- [Integrated/external matched-output oracle gate](issues/33-integrated-external-matched-output-oracle-gate.md): **gate FAILED (2026-10-02)** — integrated dispatch is not output-equivalent; the native `Layer::InfillPostProcess` request omits the partitioned-`SliceIR` view enrichment the WASM leg performs (`push_infill_postprocess_regions`), the infill linker silently falls back to the union boundary, and the native leg prints paths the external leg clips away (+572.5 mm sparse, +698.7 mm top surface etc. on the t44 job), reproducing Finding 3's TYPE deltas; integrated timings stay disqualified. Enabling repair: `raft-default` got its missing 24th integration row (packet-240b registry drift; `xtask dist --edition integrated` was unbuildable before it). Named fix scoped and now taken as [Native postprocess-view enrichment repair](issues/47-native-postprocess-view-enrichment.md).
 
 - [Clip-universe preparation hoist](issues/44-clip-universe-hoist.md): **KEEP approved (2026-10-02)** — immutable per-invocation preparation preserves the tested fresh-baseline output and passes the standing paired ordinary + accelerated wall/CPU gate; no adoption retry or default-mode switch, with pre-existing frozen-job drift disclosed separately in [Frozen-job output drift boundary](issues/46-frozen-job-output-drift-boundary.md).
 
@@ -285,17 +289,19 @@ Standing decisions for this effort (2026-09-22):
 
 ## Not yet specified
 
-- **Native postprocess-view enrichment repair (graduated question, awaiting
-  authorization).** Ticket 33's FAILED gate scopes the named correctness fix:
-  enrich the native `Layer::InfillPostProcess` request's perimeter views from
-  the arena's partitioned `SliceIR` identically to
-  `push_infill_postprocess_regions` (`crates/slicer-wasm-host/src/dispatch.rs`),
-  including `tool_index` and `wall_source_region_id`, so
-  `RoleBoundaries::is_partitioned` is reachable natively and ticket 37's
-  `Some(empty)` verdict applies on both legs. It is a native-dispatch
-  correctness repair (not a perf candidate): needs its own take, the direct
-  contract extension to view_seam identity for postprocess views, then the t33
-  gate re-run from proof before any integrated timing use. Ticket 33's
+- **Native postprocess-view enrichment repair: graduated and TAKEN
+  (2026-10-02).** The human authorized the fix as this session's take; it now
+  lives as [Native postprocess-view enrichment
+  repair](issues/47-native-postprocess-view-enrichment.md) (claimed by this
+  session). Ticket 33's FAILED gate scopes the repair: enrich the native
+  `Layer::InfillPostProcess` request's perimeter views from the arena's
+  partitioned `SliceIR` identically to `push_infill_postprocess_regions`
+  (`crates/slicer-wasm-host/src/dispatch.rs`), including `tool_index` and
+  `wall_source_region_id`, so `RoleBoundaries::is_partitioned` is reachable
+  natively and ticket 37's `Some(empty)` verdict applies on both legs. It is
+  a native-dispatch correctness repair (not a perf candidate): needs the
+  direct contract extension to view_seam identity for postprocess views, then
+  the t33 gate re-run from proof before any integrated timing use. Ticket 33's
   resolution holds the full localization.
 - **Painted-wall performance work.** No representative painted workload exists,
   so the painted path of `build_wall_flags` (nearest-original reprojection
