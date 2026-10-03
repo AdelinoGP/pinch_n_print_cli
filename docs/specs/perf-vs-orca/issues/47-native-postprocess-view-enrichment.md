@@ -1,8 +1,8 @@
 # Native postprocess-view enrichment repair (ticket 33's named fix)
 
 Type: task
-Status: claimed (2026-10-02; wayfinder session — human authorized this take)
-Assignee: this session (ses — local-markdown tracker, claim recorded below)
+Status: resolved (2026-10-03; three projection gaps fixed, t33 gate re-run from proof PASSES — see ## Answer)
+Assignee: this session (wayfinder; human-authorized take 2026-10-02)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 
@@ -46,6 +46,60 @@ all-empty partitions the linker's `is_partitioned()` is false, `for_role`
 hands every role the union boundary, and the integrated leg prints paths the
 external leg clips away (benchy classic-off: Sparse 204→143, Bridge 22→7,
 Bottom 24→7, Top 70→31 `;TYPE:` transitions external→integrated).
+
+## Answer
+
+**Resolved (2026-10-03): the t33 oracle gate re-runs from proof and PASSES on
+the examined cell (benchy classic supports-off), byte-identical arms
+(`e1088b3d…`, 4,332,881 bytes, 3 measured ABBA pairs + proof), and the frozen
+t44 job corroborates byte-identical (`11e7d38a…`).** Three projection gaps
+were fixed, not one:
+
+1. **The scoped repair** — native `Layer::InfillPostProcess` perimeter views
+   now enriched from the partitioned `SliceIR` exactly as
+   `push_infill_postprocess_regions` does (`native_infill_postprocess_regions`,
+   `crates/slicer-wasm-host/src/marshal/native.rs`): per-`SliceIR`-region
+   views, `PerimeterIR` wall donor (own entry → wall-source base → empty),
+   four role partitions + `raft_fill` verbatim, pinned
+   `resolve_region_tool_index`, `wall_source_region_id`, `Custom`→
+   `ToolIndex(0)` degrade, `config_by_region` config; both WASM fallbacks
+   mirrored. `RoleBoundaries::is_partitioned` is reachable natively and
+   ticket 37's `Some(empty)` verdict applies on both legs.
+2. **Ordered-entities snapshot** (surfaced by the re-run gate's residual
+   ordering deltas): the native `run_path_optimization`/`run_anchored_events`
+   arms handed modules an EMPTY `LayerCollectionBuilder`, so travel
+   reordering silently skipped natively. `NativeLayerRequest.ordered_entities`
+   now carries the staged snapshot (`project_ordered_entities_from`) for the
+   two builder-consuming stages, and the macro arms populate the SDK builder
+   — the same content the WASM seam's `get-ordered-entities` returns.
+3. **Finalization annotation channel** (surfaced as the last byte delta; the
+   direction is the reverse of the scoped gap): the external/WASM leg had
+   ALWAYS silently dropped every `FinalizationOutputBuilder` annotation —
+   `part-cooling`'s `M106`/`M107` fan commands never reached external output
+   — because the WIT builder had no annotation method and the macro drain-back
+   discarded `sdk_output.annotations()`. The human authorized the WIT repair
+   in-take: `finalization-output-builder.push-annotation`
+   (`annotation-view` 1:1 with `LayerAnnotation`), package
+   `slicer:finalization-layer-finalization` **1.0.0 → 1.1.0** (additive
+   method); host records + drains the stream in emission order;
+   `apply_finalization_pushes` merges it like the native `apply_to` already
+   did; the macro drain-back replays it. **Disclosure: both legs' output
+   changes** (external gains fan commands) — pre-repair external baselines
+   (e.g. t44's accepted `1b71f83d…`) are no longer current for jobs that run
+   part-cooling; post-repair references: classic-off `e1088b3d…`,
+   t44-job `11e7d38a…`.
+
+Contract pins (all in `crates/slicer-wasm-host/tests/contract/`):
+`infill_postprocess_view_identity_tdd` (native↔WASM postprocess-view
+identity + fallbacks + snapshot), `finalization_annotation_relay_tdd`
+(comment/raw/M107 round-trips, cross-kind emission order). Evidence:
+[t47 FINDINGS](../evidence/t47-native-postprocess-enrichment/FINDINGS.md)
+(three fix dossiers, attempt-by-attempt measured deltas, gate tables, rerun
+commands). Integrated timings are no longer disqualified **on the examined
+cell, bounded to it**; timing use and any adoption/default change still need
+their own authorization. Committed as `895aab98` (fix 1), `cd28edd1`
+(fix 2), `953fa0b1` (fix 3); keep/drop of the repair itself: human decision
+follows, recommended KEEP (the gate result depends on it).
 
 ## Work
 

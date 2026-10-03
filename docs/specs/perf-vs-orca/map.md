@@ -63,7 +63,11 @@ Standing decisions for this effort (2026-09-22):
   → **[clip-universe hoist](issues/44-clip-universe-hoist.md) candidate, subsequently
   resolved as KEEP approved under the human-approved fresh-baseline gate)** → **25 ✅ (attribution, 2026-10-01; produced the
   [overhang-quartile predicate narrowing](issues/45-overhang-quartile-predicate-narrowing.md)
-  candidate awaiting its own take)** → below-fold
+  candidate awaiting its own take; its gate prerequisite
+  [Frozen-job output drift boundary](issues/46-frozen-job-output-drift-boundary.md)
+  is open and unblocked, and post-ticket-47 the fan-command reference
+  boundary (see Decisions: ticket 47) also applies to any fresh reference
+  45 derives)** → below-fold
   polish — 15, 17, 22
   closed 2026-09-23/24); attribution-only tickets are parallel-takeable, but no
   substage split starts before [host:slice closing_ex span
@@ -226,16 +230,25 @@ Standing decisions for this effort (2026-09-22):
        registry drift; `xtask dist --edition integrated` was unbuildable) is
        committed (`4a8330a6`); the named dispatch fix was never written, so
        the tree is clean.
-       **Named fix taken (2026-10-02):** the human authorized the native
-       postprocess-view enrichment repair as this session's take; claimed as
-       [Native postprocess-view enrichment
-       repair](issues/47-native-postprocess-view-enrichment.md).
+       **Named fix taken and resolved (2026-10-02 → 2026-10-03):** the human
+        authorized the native postprocess-view enrichment repair; it
+        graduated to
+        [Native postprocess-view enrichment repair](issues/47-native-postprocess-view-enrichment.md)
+        and resolved with the t33 oracle gate re-run from proof PASSING
+        (byte-identical arms on the examined cell + the frozen t44 job), via
+        three fixes — the scoped postprocess-view enrichment, the
+        ordered-entities snapshot at native path-optimization, and the
+        finalization annotation channel (external output changes: fan
+        commands now emitted). See that ticket's answer for the reference-sha
+        disclosure.
 
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
-- [Integrated/external matched-output oracle gate](issues/33-integrated-external-matched-output-oracle-gate.md): **gate FAILED (2026-10-02)** — integrated dispatch is not output-equivalent; the native `Layer::InfillPostProcess` request omits the partitioned-`SliceIR` view enrichment the WASM leg performs (`push_infill_postprocess_regions`), the infill linker silently falls back to the union boundary, and the native leg prints paths the external leg clips away (+572.5 mm sparse, +698.7 mm top surface etc. on the t44 job), reproducing Finding 3's TYPE deltas; integrated timings stay disqualified. Enabling repair: `raft-default` got its missing 24th integration row (packet-240b registry drift; `xtask dist --edition integrated` was unbuildable before it). Named fix scoped and now taken as [Native postprocess-view enrichment repair](issues/47-native-postprocess-view-enrichment.md).
+- [Native postprocess-view enrichment repair](issues/47-native-postprocess-view-enrichment.md): **resolved (2026-10-03); t33 oracle gate re-run from proof PASSES (benchy-classic-off, byte-identical arms `e1088b3d…` across proof + 3 ABBA pairs; frozen t44-job corroborates `11e7d38a…`)** — three native-dispatch projection gaps fixed: (1) the scoped `Layer::InfillPostProcess` partitioned-`SliceIR` view enrichment (`native_infill_postprocess_regions`), (2) the ordered-entities snapshot the native path-optimization/anchored-events arms never received (travel reordering silently skipped), and (3) the finalization WIT annotation channel whose absence made the EXTERNAL leg silently drop part-cooling's `M106`/`M107` fan commands on every job (package `slicer:finalization-layer-finalization` 1.0.0→1.1.0; disclosed intentional output change on BOTH legs — pre-repair external baselines like t44's `1b71f83d…` are outdated for fan-bearing jobs; post-repair references: classic-off `e1088b3d…`, t44-job `11e7d38a…`). Integrated timings are usable as an oracle on the examined cell, bounded to it; timing campaigns/adoption/default changes still need their own authorization.
+
+- [Integrated/external matched-output oracle gate](issues/33-integrated-external-matched-output-oracle-gate.md): **gate FAILED (2026-10-02)** — integrated dispatch is not output-equivalent; the native `Layer::InfillPostProcess` request omits the partitioned-`SliceIR` view enrichment the WASM leg performs (`push_infill_postprocess_regions`), the infill linker silently falls back to the union boundary, and the native leg prints paths the external leg clips away (+572.5 mm sparse, +698.7 mm top surface etc. on the t44 job), reproducing Finding 3's TYPE deltas; integrated timings stay disqualified. Enabling repair: `raft-default` got its missing 24th integration row (packet-240b registry drift; `xtask dist --edition integrated` was unbuildable before it). Named fix scoped and now taken as [Native postprocess-view enrichment repair](issues/47-native-postprocess-view-enrichment.md) — **superseded there: the gate now PASSES from proof (2026-10-03, see that ticket's answer)**.
 
 - [Clip-universe preparation hoist](issues/44-clip-universe-hoist.md): **KEEP approved (2026-10-02)** — immutable per-invocation preparation preserves the tested fresh-baseline output and passes the standing paired ordinary + accelerated wall/CPU gate; no adoption retry or default-mode switch, with pre-existing frozen-job drift disclosed separately in [Frozen-job output drift boundary](issues/46-frozen-job-output-drift-boundary.md).
 
@@ -289,20 +302,17 @@ Standing decisions for this effort (2026-09-22):
 
 ## Not yet specified
 
-- **Native postprocess-view enrichment repair: graduated and TAKEN
-  (2026-10-02).** The human authorized the fix as this session's take; it now
-  lives as [Native postprocess-view enrichment
-  repair](issues/47-native-postprocess-view-enrichment.md) (claimed by this
-  session). Ticket 33's FAILED gate scopes the repair: enrich the native
-  `Layer::InfillPostProcess` request's perimeter views from the arena's
-  partitioned `SliceIR` identically to `push_infill_postprocess_regions`
-  (`crates/slicer-wasm-host/src/dispatch.rs`), including `tool_index` and
-  `wall_source_region_id`, so `RoleBoundaries::is_partitioned` is reachable
-  natively and ticket 37's `Some(empty)` verdict applies on both legs. It is
-  a native-dispatch correctness repair (not a perf candidate): needs the
-  direct contract extension to view_seam identity for postprocess views, then
-  the t33 gate re-run from proof before any integrated timing use. Ticket 33's
-  resolution holds the full localization.
+- **Fan-command reference boundary (graduated from ticket 47, 2026-10-03).**
+  The finalization annotation repair intentionally changed BOTH legs' output:
+  external now emits part-cooling's `M106`/`M107` fan commands. Every
+  pre-repair external reference (t44's accepted `1b71f83d…`, the t30-era
+  matched-pair captures) is outdated for fan-bearing jobs; ticket 46's
+  frozen-job drift question is unaffected (it predates and concerns
+  non-annotation drift). Any future keep/drop gate on a job with fan commands
+  must re-derive its external reference post-repair or strip `M106`/`M107`
+  before comparing. If a fresh-reference re-derivation is needed for a live
+  ticket (45 is the next chain link), graduate it into that ticket's gate
+  prerequisite rather than a standalone effort.
 - **Painted-wall performance work.** No representative painted workload exists,
   so the painted path of `build_wall_flags` (nearest-original reprojection
   reuse) is not even selectable as a candidate. Needs a fixture/scenario before
