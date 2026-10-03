@@ -2,7 +2,7 @@
 
 Type: task
 Status: resolved (2026-10-03; measured DROP/inconclusive recommending drop —
-see ## Answer)
+**human approved DROP 2026-10-03** — see ## Answer)
 Blocked by: 28
 
 ## Claim record
@@ -73,3 +73,47 @@ evidence-backed. Evidence: `evidence/t36-modal-zf/` (`FINDINGS.md`,
 `evidence.json`, `verify-t36.py`, `protocol.json`, `run-ab.ps1`,
 `run-campaign.ps1`, `source-worktree.diff`; raw captures under gitignored
 `target/t36-ab/`).
+
+## Audit and human decision (2026-10-03, second session)
+
+An independent review session re-derived every headline number from the raw
+captures with its own token census and per-move effective-Z/F walk (not
+`verify-t36.py`), and replayed both arms from the preserved sources:
+
+- Arm outputs reproduce byte-for-byte from `source-worktree.diff` plus
+  `git apply` and a fresh `--release` build: baseline classic-off
+  `e1088b3d…`, candidate classic-off `132f9501…`, candidate arachne-off
+  `8099ce5c…`; the frozen snapshots reproduce `c27461333c54eac6…` (arachne
+  baseline). `verify-t36.py --reduce target/t36-ab` regenerates the committed
+  `evidence.json` byte-for-byte; `--self-test` and `--oracle … --falsify` pass.
+- Byte, token, line and stream-SHA figures re-derive exactly, as do all four
+  batches' medians, paired deltas, gate outcomes and zero starvation
+  exclusions. `gcode_modal_zf_tdd` 7/7, full `slicer-gcode` suite green, no
+  `check-literals` or `check-test-quality` findings in touched files.
+- One prose defect found in `FINDINGS.md` (the opening gist said the paired
+  median CPU delta was positive in all three failing batches; only
+  classic-off accelerated is positive) and corrected there; the tables and
+  this answer were already right.
+- Environment repaired: the take had left candidate-built binaries in the
+  standing measurement dirs (`target/dist-accelerated/developer/` matched the
+  campaign's accelerated-candidate snapshot `86efd7e0…` and emitted
+  `132f9501…`; `target/debug/pnp_cli.exe` likewise). Both were rebuilt from
+  HEAD and now emit the `e1088b3d…` baseline; both guest-freshness checks
+  still exit 0.
+
+**Human decision (2026-10-03): DROP.** The gate was pre-declared and failed in
+three of four batches, and a ~1% wall effect cannot matter against the map
+destination's 6.28–26.24x gap ([Gap budget per cell](12-gap-budget-per-cell.md)).
+The candidate remains uncommitted; the semantics-preserving implementation and
+oracle stay preserved as `source-worktree.diff` for a future byte- or
+bandwidth-bound consumer, which would be a separate decision with its own
+justification (and would need `docs/03_wit_and_manifest.md`'s packet-52 note
+and the golden emit tests updated with it).
+
+**Related red test (not caused by this ticket):**
+`machine_start_end_gcode_emission_tdd::empty_end_gcode_emits_no_block`
+(`crates/slicer-runtime/tests/integration/`) fails at HEAD — reproduced by
+this audit on a clean tree with the candidate reverted. The offending line is
+a trailing `M107` in the span after the last `G1`, i.e. ticket 47's intentional
+external fan-command relay, so the assertion now needs re-scoping to exclude
+fan commands. Tracked here only as a disclosure; no fix was made.

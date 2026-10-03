@@ -89,6 +89,19 @@ ABBA pairs + proof), and the frozen t44 job corroborates byte-identical
    part-cooling; post-repair references: classic-off `e1088b3d…`,
    t44-job `11e7d38a…`.
 
+   **Known red test caused by this change (disclosed 2026-10-03 by the ticket-36
+   audit):** `machine_start_end_gcode_emission_tdd::empty_end_gcode_emits_no_block`
+   (`crates/slicer-runtime/tests/integration/machine_start_end_gcode_emission_tdd.rs`)
+   fails at HEAD on a clean tree — its span between the last `G1` and
+   `CONFIG_BLOCK_START` now contains a trailing `M107`, which is exactly this
+   ticket's fan-command relay. The test's assertion predates fan commands and
+   needs re-scoping to tolerate them (or the relay's placement reconsidered);
+   not fixed by the ticket-36 audit. The same test name also appears in
+   packet-136's recorded pre-existing-failure list in
+   `docs/07_implementation_status.md`, so it has prior red history — that
+   earlier failure predates the current assertion form, and whether it is the
+   same defect is not established here.
+
 Contract pins (all in `crates/slicer-wasm-host/tests/contract/`):
 `infill_postprocess_view_identity_tdd` (native↔WASM postprocess-view
 identity + fallbacks + snapshot), `finalization_annotation_relay_tdd`

@@ -6,10 +6,16 @@ Route ticket: [Modal G-code Z/F token redundancy and speed gate](../../issues/36
 semantically equivalent to the baseline on every measured batch and removes
 27.0–27.1% of G-code bytes, but it fails the pre-declared keep gate in 3 of the
 4 protocol batches: median wall improves slightly (0.3–1.7%) while process CPU
-does **not** corroborate — its paired median delta is positive (slower) in those
-three and below the wall effect in the fourth. This is a formatting/shape result,
-not a demonstrated speed win. No commit, no production change was made by this
-take; the candidate stays uncommitted for the human's keep/drop.
+does **not** corroborate — the candidate's median CPU is higher (slower) in
+three of the four batches, and in the one batch whose paired median CPU delta is
+positive (classic-off accelerated, +0.109 s) it contradicts the wall direction
+outright. This is a formatting/shape result, not a demonstrated speed win. No
+commit, no production change was made by this take.
+
+**Human decision (2026-10-03): DROP.** The gate was pre-declared and failed in
+three of four batches, and a ~1% wall effect cannot matter against the map
+destination's 6.28–26.24x gap. See the ticket's audit section for the
+independent re-derivation of these figures.
 
 ## What the candidate does
 
@@ -130,13 +136,16 @@ result, not a speed result.
 
 ## Recommendation
 
-**DROP / inconclusive.** Keep the finding (modal emission is provably
-semantics-preserving and removes ~27% of bytes) but do not keep the change on
-this evidence: it does not pass the map's standing keep gate (median wall and
-corroborating process CPU in every cell). The branch state for the human: the
-candidate diff is uncommitted; if a future byte- or bandwidth-bound consumer
+**DROP / inconclusive — human approved DROP 2026-10-03.** Keep the finding
+(modal emission is provably semantics-preserving and removes ~27% of bytes) but
+do not keep the change on this evidence: it does not pass the map's standing
+keep gate (median wall and corroborating process CPU in every cell). The
+candidate diff stays uncommitted; if a future byte- or bandwidth-bound consumer
 matters (e.g. SD-write time, serial transmission, viewer load), this
-semantics-preserving implementation and oracle are ready and evidence-backed.
+semantics-preserving implementation and oracle are ready and evidence-backed —
+that would be a separate decision needing its own justification, and would
+carry the `docs/03_wit_and_manifest.md` packet-52 note and the golden emit-test
+updates with it.
 
 ## Reproduce
 
