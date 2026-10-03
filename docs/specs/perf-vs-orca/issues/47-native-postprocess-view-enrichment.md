@@ -1,7 +1,7 @@
 # Native postprocess-view enrichment repair (ticket 33's named fix)
 
 Type: task
-Status: resolved (2026-10-03; three projection gaps fixed, t33 gate re-run from proof PASSES — see ## Answer)
+Status: resolved (2026-10-03; human-approved KEEP — three projection gaps fixed, t33 gate re-run from proof PASSES — see ## Answer)
 Assignee: this session (wayfinder; human-authorized take 2026-10-02)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
@@ -49,11 +49,11 @@ Bottom 24→7, Top 70→31 `;TYPE:` transitions external→integrated).
 
 ## Answer
 
-**Resolved (2026-10-03): the t33 oracle gate re-runs from proof and PASSES on
-the examined cell (benchy classic supports-off), byte-identical arms
-(`e1088b3d…`, 4,332,881 bytes, 3 measured ABBA pairs + proof), and the frozen
-t44 job corroborates byte-identical (`11e7d38a…`).** Three projection gaps
-were fixed, not one:
+**Resolved and KEEP-approved by the human (2026-10-03): the t33 oracle gate
+re-runs from proof and PASSES on the examined cell (benchy classic
+supports-off), byte-identical arms (`e1088b3d…`, 4,332,881 bytes, 3 measured
+ABBA pairs + proof), and the frozen t44 job corroborates byte-identical
+(`11e7d38a…`).** Three projection gaps were fixed, not one:
 
 1. **The scoped repair** — native `Layer::InfillPostProcess` perimeter views
    now enriched from the partitioned `SliceIR` exactly as
