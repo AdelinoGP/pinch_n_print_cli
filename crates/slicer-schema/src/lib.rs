@@ -249,7 +249,7 @@ pub const STAGES: &[StageSpec] = &[
         tier_id: TIER_FINALIZATION,
         trait_name: "FinalizationModule",
         wit_dir: "finalization-layer-finalization",
-        wit_package: "slicer:finalization-layer-finalization@1.0.0",
+        wit_package: "slicer:finalization-layer-finalization@1.1.0",
         wit_interface: "layer-finalization",
         wit_world: "layer-finalization-module",
     },
@@ -655,7 +655,7 @@ mod tests {
         let finalization = "PostPass::LayerFinalization";
         assert_eq!(
             package_for_stage_id(finalization),
-            Some("slicer:finalization-layer-finalization@1.0.0")
+            Some("slicer:finalization-layer-finalization@1.1.0")
         );
         assert_eq!(
             interface_for_stage_id(finalization),

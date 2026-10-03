@@ -10,6 +10,7 @@ mod anchored_events_both_legs_tdd;
 mod authored_coloring_grant_and_strip_tdd;
 mod effective_perimeter_origin_integration_tdd;
 mod exact_z_support_query;
+mod finalization_annotation_relay_tdd;
 mod finalization_role_round_trip_tdd;
 mod host_services_tdd;
 mod infill_holder_resolution_painted_region_tdd;

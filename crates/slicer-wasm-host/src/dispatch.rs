@@ -4215,6 +4215,14 @@ fn apply_finalization_pushes(
                     .set_entity_order(layer_index, items)
                     .unwrap_or_else(|e| log::warn!("finalization: set_entity_order rejected: {e}"));
             }
+            host::FinalizationBuilderPush::Annotation(layer_index, annotation) => {
+                // Ticket 47: the WASM annotation relay lands in the same
+                // merge the native leg's `apply_to` performs, so the two
+                // transports commit identical annotation streams.
+                sdk_builder
+                    .push_annotation(layer_index, annotation)
+                    .unwrap_or_else(|e| log::warn!("finalization: push_annotation rejected: {e}"));
+            }
         }
     }
 

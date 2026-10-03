@@ -865,7 +865,11 @@ pub enum WitSortKey {
 /// guest during `run-finalization`. Stored by resource rep so the
 /// post-call drain in `FinalizationStageRunner` can apply them.
 #[derive(Clone, Debug)]
+#[allow(missing_docs)]
 pub enum FinalizationBuilderPush {
+    // Ticket 47: guest-emitted annotation (comment/raw). Anchors and payload
+    // travel inside the recorded `LayerAnnotation`.
+    Annotation(u32, slicer_ir::LayerAnnotation),
     /// Guest requested `push-entity-to-layer(layer_index, path, tool_index, region_key)`.
     EntityToLayer {
         /// Layer index the entity was pushed to.
@@ -955,6 +959,9 @@ pub enum FinalizationBuilderPush {
 pub struct FinalizationOutputBuilderData {
     /// Captured push stream in guest-emission order.
     pub pushes: Vec<FinalizationBuilderPush>,
+    /// Guest-emitted annotation stream (comment/raw, per layer) in
+    /// emission order (ticket 47).
+    pub annotations: Vec<(u32, slicer_ir::LayerAnnotation)>,
     /// Layer indices that have already been permuted via `set-entity-order`
     /// within this builder's lifetime. Used to enforce the packet-58 locked
     /// invariant "single permutation per layer per `run_finalization`
@@ -1016,9 +1023,9 @@ pub use finalization_layer::LayerFinalizationModule;
 /// keeps the two `RegionKey`s in disjoint namespaces.
 pub mod finalization_types {
     pub use super::finalization_layer::slicer::finalization_layer_finalization::layer_finalization_types::{
-        EntityMutation, FinalizationOutputBuilder, HostFinalizationOutputBuilder,
-        HostLayerCollectionView, LayerCollectionView, PrintEntityView, RegionKey, SortKey,
-        SyntheticLayerData, ToolChangeView, ZHopView,
+        AnnotationKind, AnnotationView, EntityMutation, FinalizationOutputBuilder,
+        HostFinalizationOutputBuilder, HostLayerCollectionView, LayerCollectionView,
+        PrintEntityView, RegionKey, SortKey, SyntheticLayerData, ToolChangeView, ZHopView,
     };
     // The world-imports `Host` trait is generated inside the imported
     // `layer-finalization-types` interface (per packet 163, the world
@@ -4753,6 +4760,36 @@ mod finalization_impls {
     }
 
     impl fm::HostFinalizationOutputBuilder for HostExecutionContext {
+        // Ticket 47: the annotation relay. The SDK-side PartCooling
+        // `push_fan_speed`/`push_annotation` stream becomes a drainable
+        // carrier: the host records it here, the macro's WASM drain-back
+        // (build_finalization_world_glue) replays it, and
+        // `apply_finalization_pushes` merges it into the target layer — the
+        // same path the native leg's `apply_to` already takes. Before this
+        // method existed, the WIT channel was missing and the WASM drain-back
+        // silently dropped `sdk_output.annotations()`, so the external leg
+        // emitted zero fan commands while the integrated leg printed all of
+        // them (t47 gate proof, integrated `M106 S255` × 279 + `M107` × 2).
+        fn push_annotation(
+            &mut self,
+            self_: Resource<fm::FinalizationOutputBuilder>,
+            annotation: fm::AnnotationView,
+        ) -> wasmtime::Result<Result<(), String>> {
+            let typed: Resource<FinalizationOutputBuilderData> = Resource::new_borrow(self_.rep());
+            let data = self.table.get_mut(&typed)?;
+            let kind = match annotation.kind {
+                fm::AnnotationKind::Comment(text) => slicer_ir::LayerAnnotationKind::Comment(text),
+                fm::AnnotationKind::Raw(text) => slicer_ir::LayerAnnotationKind::Raw(text),
+            };
+            data.annotations.push((
+                annotation.layer_index,
+                slicer_ir::LayerAnnotation {
+                    after_entity_index: annotation.after_entity_index,
+                    kind,
+                },
+            ));
+            Ok(Ok(()))
+        }
         fn push_entity_to_layer(
             &mut self,
             self_: Resource<fm::FinalizationOutputBuilder>,
@@ -5079,9 +5116,15 @@ mod finalization_impls {
         fn drop(&mut self, rep: Resource<fm::FinalizationOutputBuilder>) -> wasmtime::Result<()> {
             // Move captured pushes onto the HostExecutionContext before
             // the resource's storage is reclaimed, so the dispatch path
-            // can drain them even after the guest drops its handle.
+            // can drain them even after the guest drops its handle. The
+            // annotation relay (ticket 47) rides the same stream so guest
+            // emission order is preserved across both channels.
             let typed: Resource<FinalizationOutputBuilderData> = Resource::new_own(rep.rep());
             let mut data = self.table.delete(typed)?;
+            for (layer_index, annotation) in data.annotations.drain(..) {
+                self.finalization_pushes
+                    .push(FinalizationBuilderPush::Annotation(layer_index, annotation));
+            }
             self.finalization_pushes.append(&mut data.pushes);
             Ok(())
         }

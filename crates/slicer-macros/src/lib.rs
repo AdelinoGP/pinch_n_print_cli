@@ -1234,9 +1234,9 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
             // here so the body below (a verbatim port of the pre-163
             // monomorphic `world-finalization` glue) still resolves.
             use slicer::finalization_layer_finalization::layer_finalization_types::{
-                EntityMutation, FinalizationOutputBuilder, LayerCollectionView,
-                PrintEntityView, RegionKey, SortKey, SyntheticLayerData, ToolChangeView,
-                ZHopView,
+                AnnotationKind, AnnotationView, EntityMutation, FinalizationOutputBuilder,
+                LayerCollectionView, PrintEntityView, RegionKey, SortKey, SyntheticLayerData,
+                ToolChangeView, ZHopView,
             };
             // Per packet 163: the `Guest` trait moved from the world root
             // to `exports::slicer::finalization_layer_finalization::layer_finalization::Guest`
@@ -1571,6 +1571,27 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                         let wit_paths: ::std::vec::Vec<ExtrusionPath3d> =
                             paths.iter().map(__slicer_path_ir_to_wit).collect();
                         let _ = output.insert_synthetic_layer(*z, &wit_paths);
+                    }
+                    // Ticket 47: replay the annotation stream (comment/raw)
+                    // across the WIT boundary — `push_fan_speed` /
+                    // `push_annotation` on the SDK builder previously had no
+                    // WIT channel, so every guest annotation (part-cooling's
+                    // M106/M107 fan commands) was silently dropped on this
+                    // transport while the native leg merged them.
+                    for (layer_index, annotation) in sdk_output.annotations() {
+                        let wit_kind = match &annotation.kind {
+                            ::slicer_ir::LayerAnnotationKind::Comment(text) => {
+                                AnnotationKind::Comment(text.clone())
+                            }
+                            ::slicer_ir::LayerAnnotationKind::Raw(text) => {
+                                AnnotationKind::Raw(text.clone())
+                            }
+                        };
+                        let _ = output.push_annotation(&AnnotationView {
+                            layer_index: *layer_index,
+                            after_entity_index: annotation.after_entity_index,
+                            kind: wit_kind,
+                        });
                     }
 
                     match out {
