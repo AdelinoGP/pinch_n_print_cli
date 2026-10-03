@@ -1,8 +1,19 @@
 # Modal G-code Z/F token redundancy and speed gate
 
 Type: task
-Status: open
+Status: claimed (2026-10-03; wayfinder session — human selected this take via
+the session's take-selection question)
 Blocked by: 28
+
+## Claim record
+
+Claimed 2026-10-03 by a wayfinder session after the human chose this as the
+next map take from the open frontier. Scope: prove a semantics-preserving modal
+Z/F state machine through `GCodeSerializer`'s move rendering with an
+independent G-code semantics oracle on tricky fixtures, then run the standing
+matched ordinary + accelerated pairs and return a measured keep/drop
+recommendation. No auto-commit; production/default-mode changes need their own
+authorization.
 
 ## Question
 

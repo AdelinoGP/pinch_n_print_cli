@@ -85,6 +85,11 @@ Standing decisions for this effort (2026-09-22):
    empty-output protocol](issues/37-infillpostprocess-empty-output-protocol.md),
    which touches the linker/host contract rather than the fill geometry and
    needs the standing paired A/B before any keep. 36 stays open and parallel.
+   **2026-10-03 update: 36 claimed.** The human selected the
+   [Modal G-code Z/F token redundancy and speed gate](issues/36-modal-gcode-token-redundancy.md)
+   as this session's take from the open frontier; the claim is recorded in
+   that ticket. Scope: semantics-preserving modal Z/F state machine +
+   independent semantics oracle, then the standing paired A/B; no auto-commit.
    2026-09-29 third update: **37 resolved and fixed** — a ran
    `Layer::InfillPostProcess` invocation now commits the empty replacement set,
    so the linker's clip verdict supersedes the raw envelope. Stage-local (only
