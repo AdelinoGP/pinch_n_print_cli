@@ -228,19 +228,12 @@ Standing decisions for this effort (2026-09-22):
        stay disqualified and the integrated edition gains no timing evidence.
        The enabling `raft-default` integration-row repair (packet-240b
        registry drift; `xtask dist --edition integrated` was unbuildable) is
-       committed (`4a8330a6`); the named dispatch fix was never written, so
-       the tree is clean.
-       **Named fix taken and resolved (2026-10-02 → 2026-10-03):** the human
-        authorized the native postprocess-view enrichment repair; it
-        graduated to
-        [Native postprocess-view enrichment repair](issues/47-native-postprocess-view-enrichment.md)
-        and resolved with the t33 oracle gate re-run from proof PASSING
-        (byte-identical arms on the examined cell + the frozen t44 job), via
-        three fixes — the scoped postprocess-view enrichment, the
-        ordered-entities snapshot at native path-optimization, and the
-        finalization annotation channel (external output changes: fan
-        commands now emitted). See that ticket's answer for the reference-sha
-        disclosure.
+       committed (`4a8330a6`); the named dispatch fix was resolved, verified
+       and KEEP-approved under
+       [Native postprocess-view enrichment repair](issues/47-native-postprocess-view-enrichment.md)
+       (2026-10-02 → 2026-10-03; supersedes this FAILED verdict — the gate now
+       PASSES from proof, so integrated timings are usable as an oracle on the
+       examined cell).
 
 ## Decisions so far
 
