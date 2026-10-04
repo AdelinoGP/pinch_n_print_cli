@@ -66,11 +66,54 @@ pub fn bind_module_config_view(
     module: &LoadedModule,
     resolved: &ResolvedConfig,
 ) -> Arc<ConfigView> {
+    let mut declared: Vec<&str> = module
+        .config_schema
+        .entries
+        .keys()
+        .map(String::as_str)
+        .collect();
+    // Support-family selection is shared host-level config, not module tuning.
+    if module
+        .claims()
+        .iter()
+        .any(|claim| claim.starts_with("support-family:"))
+    {
+        for key in [SUPPORT_GENERATOR_CONFIG_KEY, SUPPORT_FAMILY_CONFIG_KEY] {
+            if !declared.contains(&key) {
+                declared.push(key);
+            }
+        }
+    }
+    Arc::new(project_declared_config_view(resolved, declared))
+}
+
+/// Project resolved values into an already-authorized module read set.
+///
+/// Shared by stage binding and native/WASM regional transports. Canonical
+/// values replace stale legacy entries only for declared aliases; wildcard
+/// declarations expand without granting any undeclared alias or canonical key.
+#[must_use]
+pub fn project_declared_config_view<'a>(
+    resolved: &ResolvedConfig,
+    declared_keys: impl IntoIterator<Item = &'a str>,
+) -> ConfigView {
+    let declared: Vec<&str> = declared_keys.into_iter().collect();
     // The resolved config is the single source of truth for every module
     // view: raw source keys that do not surface in `ResolvedConfig`
     // (declared fields, `to_config_map`'s per-field rendering, and the
     // `extensions` bucket) are invisible to modules by construction.
-    let source = resolved.to_config_map();
+    let mut source = resolved.to_config_map();
+    // Resolution stores canonical identities only. A module that declares a
+    // legacy spelling still receives that declared read, without exposing it
+    // to modules that did not declare it.
+    for &declared_key in &declared {
+        let canonical = slicer_config::canonical_config_key(declared_key);
+        if canonical != declared_key {
+            if let Some(value) = source.get(canonical).cloned() {
+                source.insert(declared_key.to_owned(), value);
+            }
+        }
+    }
     // Support `prefix:*` wildcard entries in the module's declared
     // config schema so per-object keys (e.g. `object_height:<uuid>`)
     // can be consumed by planners that only know a static schema.
@@ -79,7 +122,7 @@ pub fn bind_module_config_view(
     // to require exact match (docs/03 §host-boundary enforcement;
     // docs/02 §pre-filtered config).
     let mut effective: Vec<String> = Vec::new();
-    for declared_key in module.config_schema.entries.keys() {
+    for &declared_key in &declared {
         if declared_key.ends_with(":*") {
             for src_key in source.keys() {
                 if source_key_matches_declared(declared_key, src_key) {
@@ -87,36 +130,15 @@ pub fn bind_module_config_view(
                 }
             }
         } else {
-            effective.push(declared_key.clone());
+            effective.push(declared_key.to_owned());
         }
     }
-    // Support-family dispatch is a host-level selection shared by the
-    // planner and renderers. Its keys are not module-specific tuning knobs,
-    // so expose them to paired support modules even when their manifests do
-    // not repeat the common declaration. Both keys are read from the
-    // resolved map: `support_type` is a declared `ResolvedConfig` field
-    // (canonical spelling via `to_config_map`), and `support_family`
-    // surfaces through `extensions` when the raw config carries it.
-    if module
-        .claims()
-        .iter()
-        .any(|claim| claim.starts_with("support-family:"))
-    {
-        for key in [SUPPORT_GENERATOR_CONFIG_KEY, SUPPORT_FAMILY_CONFIG_KEY] {
-            if source.contains_key(key) && !effective.iter().any(|entry| entry == key) {
-                effective.push(key.to_string());
-            }
-        }
-    }
-    Arc::new(ConfigView::from_declared(
-        &source,
-        effective.iter().map(String::as_str),
-    ))
+    ConfigView::from_declared(&source, effective.iter().map(String::as_str))
 }
 
 /// Returns true when `candidate` is satisfied by `declared_key`, treating a
 /// trailing `:*` on `declared_key` as a `<prefix>:` wildcard; a static declared
-/// key requires an exact match. Shared by [`bind_module_config_view`] (wildcard
+/// key requires an exact match. Shared by [`project_declared_config_view`] (wildcard
 /// expansion) and [`config_key_declared`] so the two stay in lockstep
 /// (docs/03 §host-boundary enforcement).
 fn source_key_matches_declared(declared_key: &str, candidate: &str) -> bool {

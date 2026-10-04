@@ -8088,6 +8088,7 @@ mod tests {
             &branch_circle(CIRCLE_RESOLUTION_FINE, mm_to_units(0.6).max(1) as f64, 0.0),
             Point2::from_mm(2.0, 2.0),
             1.0,
+            // Exact movement fixture in 100 nm units: 0.08 mm X, 0.02 mm Y.
             Point2 { x: 800, y: 200 },
             mm_to_units(0.6).max(1) as f64,
             false,

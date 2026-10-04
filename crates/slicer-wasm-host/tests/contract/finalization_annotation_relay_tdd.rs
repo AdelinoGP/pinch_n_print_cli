@@ -32,7 +32,9 @@ fn push_and_drain(
 /// preserves anchors.
 #[test]
 fn annotation_relay_round_trips_comment_and_raw() {
-    let mut ctx = HostExecutionContextBuilder::new("t47-annotation-relay", 0.0, 0.2).build();
+    let mut ctx = HostExecutionContextBuilder::new("t47-annotation-relay", 0.0, 0.2)
+        .build()
+        .with_finalization_ir_writes(&["LayerCollectionIR.annotations".into()]);
 
     let builder_handle = ctx
         .push_finalization_output_builder()
@@ -53,6 +55,7 @@ fn annotation_relay_round_trips_comment_and_raw() {
         push_result.is_ok(),
         "push_annotation rejected: {push_result:?}"
     );
+    assert_eq!(ctx.runtime_writes(), &["LayerCollectionIR.annotations"]);
 
     let pushes = push_and_drain(&mut ctx, builder_rep);
     assert_eq!(pushes.len(), 1, "exactly one relayed annotation");
@@ -70,11 +73,37 @@ fn annotation_relay_round_trips_comment_and_raw() {
     }
 }
 
+/// Raw WIT callers receive the same denial before any annotation or audit write.
+#[test]
+fn annotation_raw_wit_denial_records_neither_output_nor_write_audit() {
+    for writes in [
+        vec![],
+        vec!["LayerCollectionIR".into()],
+        vec!["LayerCollectionIR.cooling".into()],
+    ] {
+        let mut ctx = HostExecutionContextBuilder::new("raw-denial", 0.0, 0.2)
+            .build()
+            .with_finalization_ir_writes(&writes);
+        let handle = ctx.push_finalization_output_builder().expect("builder");
+        let rep = handle.rep();
+        let error = <slicer_wasm_host::host::HostExecutionContext as fm::HostFinalizationOutputBuilder>::push_annotation(
+            &mut ctx, handle, fm::AnnotationView {
+                layer_index: 0, after_entity_index: 0, kind: fm::AnnotationKind::Raw("M107".into()),
+            },
+        ).expect("contract denial is a typed error").expect_err("exact permission required");
+        assert!(error.contains("attempted write requested path LayerCollectionIR.annotations"));
+        assert!(ctx.runtime_writes().is_empty());
+        assert!(push_and_drain(&mut ctx, rep).is_empty());
+    }
+}
+
 /// A fan-speed zero relays as the raw `M107` text the SDK builder authored
 /// (the relay is content-transparent; the SDK side owns rendering).
 #[test]
 fn annotation_relay_carries_fan_off_as_raw_m107() {
-    let mut ctx = HostExecutionContextBuilder::new("t47-fan-off", 0.0, 0.2).build();
+    let mut ctx = HostExecutionContextBuilder::new("t47-fan-off", 0.0, 0.2)
+        .build()
+        .with_finalization_ir_writes(&["LayerCollectionIR.annotations".into()]);
     let builder_handle = ctx
         .push_finalization_output_builder()
         .expect("push builder");
@@ -108,7 +137,9 @@ fn annotation_relay_carries_fan_off_as_raw_m107() {
 /// emission order relative to other annotations.
 #[test]
 fn annotation_relay_preserves_emission_order_across_kinds() {
-    let mut ctx = HostExecutionContextBuilder::new("t47-order", 0.0, 0.2).build();
+    let mut ctx = HostExecutionContextBuilder::new("t47-order", 0.0, 0.2)
+        .build()
+        .with_finalization_ir_writes(&["LayerCollectionIR.annotations".into()]);
     // Each annotation gets its own builder resource; dropping all three moves
     // every annotation onto the context's stream in emission order.
     let mut builder_reps: Vec<u32> = Vec::new();

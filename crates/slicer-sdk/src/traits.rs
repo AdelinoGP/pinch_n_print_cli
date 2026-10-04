@@ -1904,12 +1904,11 @@ impl FinalizationOutputBuilder {
 
         // Merge guest-emitted annotations into target layers.
         for (layer_index, annotation) in &self.annotations {
-            if let Some(layer) = layers
+            let layer = layers
                 .iter_mut()
                 .find(|l| l.global_layer_index == *layer_index)
-            {
-                layer.annotations.push(annotation.clone());
-            }
+                .ok_or_else(|| format!("annotation references unknown layer {layer_index}"))?;
+            layer.annotations.push(annotation.clone());
         }
 
         // Finalization is an output boundary for invocation-local lock tags.

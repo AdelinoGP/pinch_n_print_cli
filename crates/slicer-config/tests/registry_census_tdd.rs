@@ -245,7 +245,7 @@ fn assembled_real_registry() -> slicer_config::ConfigSchemaRegistry {
 
 #[test]
 fn host_runtime_rows_are_exact() {
-    assert_eq!(HOST_RUNTIME_KEYS.len(), 15);
+    assert_eq!(HOST_RUNTIME_KEYS.len(), 17);
 
     let relative_e_distances = &HOST_RUNTIME_KEYS[0];
     assert_eq!(relative_e_distances.key, "use_relative_e_distances");
@@ -348,6 +348,8 @@ fn host_runtime_step_2a_rows_are_registered_with_option_defaults() {
             "machine_max_acceleration_retracting",
             "extruder",
             "filament_max_volumetric_speed",
+            "support_filament",
+            "support_interface_filament",
         ]
     );
 
@@ -425,6 +427,29 @@ fn registry_covers_every_declared_key_from_every_channel() {
         assert!(
             registry.entry(&key).is_some(),
             "registry omitted manifest key {key} declared by {module_id}"
+        );
+    }
+}
+
+#[test]
+fn host_support_filament_keys_are_typed_without_shadow_defaults() {
+    let registry = assemble_registry(&[], &HostChannels::from_live())
+        .unwrap()
+        .registry;
+    for key in ["support_filament", "support_interface_filament"] {
+        let entry = registry
+            .entry(key)
+            .expect("host routing key must be registered");
+        assert_eq!(entry.field_type, "int");
+        assert_eq!(
+            entry.default, None,
+            "absence must not seed a selection override"
+        );
+        assert_eq!(entry.min, Some(0.0));
+        assert_eq!(entry.max, None);
+        assert!(
+            entry.denied_scopes.is_empty(),
+            "object-authored selections remain admissible"
         );
     }
 }

@@ -59,9 +59,9 @@ use slicer_sdk::views::SliceRegionView;
 pub struct ClassicPerimeters {
     /// Number of wall loops to generate.
     wall_count: u32,
-    /// Speed factor for outer walls (outer_wall_speed / BASE_SPEED).
+    /// Outer-wall multiplier: neutral for AUTO, otherwise speed / BASE_SPEED.
     outer_speed_factor: f32,
-    /// Speed factor for inner walls (inner_wall_speed / BASE_SPEED).
+    /// Inner-wall multiplier: neutral for AUTO, otherwise speed / BASE_SPEED.
     inner_speed_factor: f32,
     /// Arc tolerance for polygon offset operations (mm).
     perimeter_arc_tolerance: f32,
@@ -82,6 +82,17 @@ const DEGENERATE_MIN_AREA_SQ_UNITS: f64 = 1.0;
 /// named constant in `arachne-perimeters`.
 const ERR_NEGATIVE_SPACING: u32 = 1;
 
+/// AUTO selects the host's geometry-dependent base, not a zero multiplier.
+/// Keep positive configured-speed scaling and the emitter's clamp unchanged
+/// (docs/adr/0072-context-aware-feedrate-resolution-preserves-factor-contract.md).
+fn configured_speed_factor(speed: f32) -> f32 {
+    if speed == 0.0 {
+        1.0
+    } else {
+        speed / BASE_SPEED
+    }
+}
+
 #[slicer_module]
 impl LayerModule for ClassicPerimeters {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
@@ -97,8 +108,8 @@ impl LayerModule for ClassicPerimeters {
 
         Ok(Self {
             wall_count,
-            outer_speed_factor: outer_wall_speed / BASE_SPEED,
-            inner_speed_factor: inner_wall_speed / BASE_SPEED,
+            outer_speed_factor: configured_speed_factor(outer_wall_speed),
+            inner_speed_factor: configured_speed_factor(inner_wall_speed),
             perimeter_arc_tolerance,
         })
     }
@@ -322,8 +333,8 @@ impl LayerModule for ClassicPerimeters {
             .map(|s| s as f32)
             .or_else(|| _config.get_int("inner_wall_speed").map(|s| s as f32))
             .unwrap_or(self.inner_speed_factor * BASE_SPEED);
-        let outer_speed_factor = outer_wall_speed / BASE_SPEED;
-        let inner_speed_factor = inner_wall_speed / BASE_SPEED;
+        let outer_speed_factor = configured_speed_factor(outer_wall_speed);
+        let inner_speed_factor = configured_speed_factor(inner_wall_speed);
         // bridge_flow / thick_bridges (packet 149, D4/D-104g): read once per
         // invocation, applied per-vertex in emit_walls wherever is_bridge is true.
         let bridge_flow_ratio = _config.require_float("bridge_flow")? as f32;
@@ -1109,7 +1120,7 @@ impl ClassicPerimeters {
                         for pt in &mut path.points {
                             pt.z = z;
                         }
-                        path.speed_factor = gap_infill_speed / BASE_SPEED;
+                        path.speed_factor = configured_speed_factor(gap_infill_speed);
                         let flags =
                             vec![slicer_core::perimeter_utils::default_feature_flags(); num_pts];
                         output.push_wall_loop(WallLoop {

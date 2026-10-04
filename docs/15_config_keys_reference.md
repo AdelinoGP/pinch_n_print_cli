@@ -104,11 +104,11 @@ is the authoritative catalog of their defaults and ranges.
 | `extra_perimeters_on_overhangs` | bool | `false` | — | — | `classic-perimeters` |
 | `filter_out_gap_fill` | float | `0.5` | [0.0, 5.0] | — | `classic-perimeters` |
 | `gap_fill_medial_axis_on_painted` | bool | `false` | — | — | `classic-perimeters` |
-| `gap_infill_speed` | float | `30.0` | [1.0, 300.0] | — | `classic-perimeters` |
+| `gap_infill_speed` | float | `30.0` | [0.0, 300.0] | — | `classic-perimeters` |
 | `infill_wall_overlap` | percent | `"15%"` | — | — | `classic-perimeters` |
 | `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `classic-perimeters` |
 | `inner_wall_line_width` | float_or_percent | `0` | [0.0, 2.0] | base `nozzle_diameter` | `classic-perimeters` |
-| `inner_wall_speed` | float | `45.0` | [1.0, 300.0] | — | `classic-perimeters` |
+| `inner_wall_speed` | float | `45.0` | [0.0, 300.0] | — | `classic-perimeters` |
 | `layer_height` | float | `0.2` | [0.01, 2.0] | — | `classic-perimeters` |
 | `line_width` | float | `0` | [0.0, 2.0] | — | `classic-perimeters` |
 | `min_width_top_surface` | float_or_percent | `"0.0"` | >= 0.0 | — | `classic-perimeters` |
@@ -117,7 +117,7 @@ is the authoritative catalog of their defaults and ranges.
 | `only_one_wall_first_layer` | bool | `false` | — | — | `classic-perimeters` |
 | `only_one_wall_top` | bool | `false` | — | — | `classic-perimeters` |
 | `outer_wall_line_width` | float_or_percent | `0` | [0.0, 2.0] | base `nozzle_diameter` | `classic-perimeters` |
-| `outer_wall_speed` | float | `30.0` | [1.0, 300.0] | — | `classic-perimeters` |
+| `outer_wall_speed` | float | `30.0` | [0.0, 300.0] | — | `classic-perimeters` |
 | `overhang_reverse` | bool | `false` | — | — | `classic-perimeters` |
 | `overhang_reverse_internal_only` | bool | `false` | — | — | `classic-perimeters` |
 | `perimeter_arc_tolerance` | float | `0.0125` | [0.0, 1.0] | — | `classic-perimeters` |
@@ -400,14 +400,14 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `bottom_surface_speed` | float | `100.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
 | `bridge_speed` | float | `25.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
 | `filament_ironing_speed` | float | `0.0` | >= 0 (0 = use ironing_speed) | — | `feedrate.rs::FeedrateConfig` |
-| `gap_infill_speed` | float | `30.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `gap_infill_speed` | float | `30.0` | >= 0 (0 selects emitter-owned volumetric AUTO (ADR-0072)) | — | `feedrate.rs::FeedrateConfig` |
 | `initial_layer_infill_speed` | float | `60.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
 | `initial_layer_speed` | float | `30.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
 | `initial_layer_travel_speed` | float | `120.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
-| `inner_wall_speed` | float | `60.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `inner_wall_speed` | float | `60.0` | >= 0 (0 selects emitter-owned volumetric AUTO (ADR-0072)) | — | `feedrate.rs::FeedrateConfig` |
 | `internal_bridge_speed` | float_or_percent | `37.5` | > 0 | — | `feedrate.rs::FeedrateConfig` |
 | `ironing_speed` | float | `20.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
-| `outer_wall_speed` | float | `60.0` | > 0 | — | `feedrate.rs::FeedrateConfig` |
+| `outer_wall_speed` | float | `60.0` | >= 0 (0 selects emitter-owned volumetric AUTO (ADR-0072)) | — | `feedrate.rs::FeedrateConfig` |
 | `overhang_1_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | — | `feedrate.rs::FeedrateConfig` |
 | `overhang_2_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | — | `feedrate.rs::FeedrateConfig` |
 | `overhang_3_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | — | `feedrate.rs::FeedrateConfig` |
@@ -453,6 +453,19 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `use_relative_e_distances` | bool | `true` | — (false selects M82; serializer issues G92 E0 on mode change (packet 54)) | — | `run.rs::DEFAULT_USE_RELATIVE_E_DISTANCES` |
 | `wall_generator` | string | `"classic"` | — (values classic or arachne; selects the perimeter-generator claim holder (com.core.classic-perimeters vs com.core.arachne-perimeters) at module-load time, before ResolvedConfig exists (packet 112 Step 10)) | — | `slicer-scheduler::execution_plan::DEFAULT_WALL_GENERATOR` |
 <!-- END GENERATED: host-speeds -->
+
+**Support filament selection:** `support_filament` and
+`support_interface_filament` are host-registered `int` keys with minimum `0`,
+following canonical `PrintConfigDef::init_fff_params` (`PrintConfig.cpp`). They
+carry Orca's authored 1-based selection: `2` (including the string `"2"` at
+ingestion) selects runtime tool `1`. Missing or zero selections retain the
+host's default tool `0`. Their registry defaults are absent, so resolution does
+not manufacture a selection override. Registration is in `HOST_RUNTIME_KEYS`
+(`crates/slicer-ir/src/resolved_config.rs`); the host reads the resolved global
+map through `resolved_host_options` and `parse_support_tool_selection`
+(`crates/slicer-runtime/src/run.rs`), then routes body and interface paths in
+`assemble_ordered_entities_with_support_identities`
+(`crates/slicer-runtime/src/layer_executor.rs`).
 
 `filament_ironing_speed > 0.0` overrides `ironing_speed` for the `Ironing` role.
 The four `overhang_*_4_speed` keys all-zero short-circuits the overhang

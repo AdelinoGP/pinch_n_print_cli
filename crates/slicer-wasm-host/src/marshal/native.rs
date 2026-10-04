@@ -328,8 +328,79 @@ fn native_region_config(
     key: &slicer_ir::RegionKey,
     declared_keys: &[String],
 ) -> slicer_ir::ConfigView {
-    let resolved = map.config_for(key).to_config_map();
-    slicer_ir::ConfigView::from_declared(&resolved, declared_keys.iter().map(String::as_str))
+    slicer_scheduler::execution_plan::project_declared_config_view(
+        map.config_for(key),
+        declared_keys.iter().map(String::as_str),
+    )
+}
+
+/// Project only the module-facing copy to the existing guest SDK view. The
+/// arena's wall geometry and metadata remain untouched.
+/// `layer_glue_helpers` in `crates/slicer-macros/src/lib.rs` reconstructs absent
+/// width profiles and candidate reasons, and resets point distance metadata.
+/// The host's resolved-seam projection carries XYZ only. Mirror these existing
+/// adapters rather than widening WIT or exposing extra native-only metadata.
+fn native_perimeter_view(region: &slicer_ir::PerimeterRegion) -> PerimeterRegionView {
+    let mut view = PerimeterRegionView::from_ir(region);
+    let mut walls = region.walls.clone();
+    for wall in &mut walls {
+        wall.width_profile.widths = vec![0.4; wall.path.points.len()];
+        for point in &mut wall.path.points {
+            point.dist_to_top_mm = 0.0;
+        }
+        for flag in &mut wall.feature_flags {
+            for value in flag.custom.values_mut() {
+                if matches!(value, slicer_ir::PaintValue::Custom(_)) {
+                    *value = slicer_ir::PaintValue::ToolIndex(0);
+                }
+            }
+        }
+    }
+    view.set_wall_loops(walls);
+    view.set_variant_chain(
+        region
+            .variant_chain
+            .iter()
+            .map(|(name, value)| {
+                (
+                    name.clone(),
+                    match value {
+                        slicer_ir::PaintValue::Custom(_) => slicer_ir::PaintValue::ToolIndex(0),
+                        value => value.clone(),
+                    },
+                )
+            })
+            .collect(),
+    );
+    view.set_seam_candidates(
+        region
+            .seam_candidates
+            .iter()
+            .map(|candidate| slicer_ir::SeamCandidate {
+                position: slicer_ir::Point3WithWidth {
+                    x: candidate.position.x,
+                    y: candidate.position.y,
+                    z: candidate.position.z,
+                    width: 0.0,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
+                },
+                score: candidate.score,
+                reason: slicer_ir::SeamReason::Aligned,
+            })
+            .collect(),
+    );
+    view.set_resolved_seam(region.resolved_seam.clone().map(|mut seam| {
+        seam.point.width = 0.0;
+        seam.point.flow_factor = 1.0;
+        seam.point.overhang_quartile = None;
+        seam.point.dist_to_top_mm = 0.0;
+        seam.point.overhang_distance_mm = None;
+        seam
+    }));
+    view
 }
 
 fn build_native_layer_request_impl(
@@ -498,7 +569,7 @@ fn build_native_layer_request_impl(
                     .regions
                     .iter()
                     .map(|region| {
-                        let mut view = PerimeterRegionView::from_ir(region);
+                        let mut view = native_perimeter_view(region);
                         // WASM's perimeter accessor uses the same SliceIR-derived
                         // table, falling back for perimeter-only identities.
                         view.set_config(
@@ -585,10 +656,14 @@ fn build_native_layer_request_impl(
 /// Convert the host-local `OrderedEntityView` projection into the SDK's
 /// `OrderedEntityView` — the same content the WASM seam's
 /// `get_ordered_entities` returns (region-key variant-chain flattened to
-/// empty by the WIT record, points carried field-for-field).
+/// empty by the WIT record, endpoint distance-to-top reset by the guest SDK
+/// adapter).
 pub fn ordered_entity_to_sdk_view(
-    view: crate::dispatch::OrderedEntityView,
+    mut view: crate::dispatch::OrderedEntityView,
 ) -> slicer_sdk::views::OrderedEntityView {
+    view.region_key.variant_chain.clear();
+    view.start_point.dist_to_top_mm = 0.0;
+    view.end_point.dist_to_top_mm = 0.0;
     slicer_sdk::views::OrderedEntityView {
         original_index: view.original_index,
         tool_index: view.tool_index,
@@ -620,16 +695,11 @@ pub fn ordered_entity_to_sdk_view(
 ///
 /// Deliberately NOT shared code with the wasm leg: that one operates on WIT
 /// data inside a `wasmtime::Store`, this one on SDK views over IR directly.
-/// View content is pinned equal field-for-field where the paths can agree by
-/// `infill_postprocess_view_identity_tdd` (`crates/slicer-wasm-host`).
+/// Actual SDK transport parity is pinned by `sdk_view_transport_parity_tdd`
+/// (`crates/slicer-wasm-host/tests/contract/sdk_view_transport_parity_tdd.rs`).
 ///
-/// Disclosed seam difference (pre-existing class, unobservable to the tested
-/// consumer): the WASM shim reconstructs donor wall `width_profile` as 0.4 per
-/// vertex (WIT `wall-loop-view` does not carry the profile), while this
-/// projection keeps the donor IR's true profile. The infill linker reads no
-/// wall geometry (only `wall_source_region_id` for grouping identity), so the
-/// t33 oracle gate is unaffected; a hypothetical native postprocess module
-/// that read wall widths would see more than its WASM twin.
+/// Donor metadata is projected through `native_perimeter_view`, matching the
+/// generated guest SDK adapter without mutating the committed donor IR.
 fn native_infill_postprocess_regions(
     input: &LayerStageInput<'_>,
     layer_index: u32,
@@ -694,7 +764,7 @@ fn native_infill_postprocess_regions(
             .regions
             .iter()
             .map(|region| {
-                let mut view = PerimeterRegionView::from_ir(region);
+                let mut view = native_perimeter_view(region);
                 view.set_config(
                     config_by_region
                         .get(&(region.object_id.clone(), region.region_id))
@@ -720,7 +790,7 @@ fn native_infill_postprocess_regions(
                 wall_source.and_then(|base| perim_index.get(&(&region.object_id, base)).copied())
             });
             let mut view = match donor {
-                Some(p) => PerimeterRegionView::from_ir(p),
+                Some(p) => native_perimeter_view(p),
                 None => PerimeterRegionView::default(),
             };
             set_enriched_fields(
@@ -1431,12 +1501,23 @@ pub fn build_native_finalization_request(
 /// Commit finalization through the SDK builder's full merge applier.
 pub fn commit_native_finalization_response(
     response: NativeFinalizationResponse,
+    module: &CompiledModuleLive<'_>,
+    stage_id: &str,
     layers: &mut Vec<slicer_ir::LayerCollectionIR>,
 ) -> Result<slicer_ir::FinalizationOutput, String> {
+    if !response.output.annotations().is_empty() {
+        crate::host::check_finalization_annotation_write(
+            module.module_id.as_str(),
+            stage_id,
+            module.ir_writes,
+        )?;
+    }
+    let mut candidate = layers.clone();
     response
         .output
-        .apply_to(layers)
+        .apply_to(&mut candidate)
         .map_err(|message| format!("finalization merge failed: {message}"))?;
+    *layers = candidate;
     Ok(slicer_ir::FinalizationOutput::Success)
 }
 

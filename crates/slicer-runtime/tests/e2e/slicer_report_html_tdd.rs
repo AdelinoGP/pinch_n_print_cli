@@ -363,14 +363,14 @@ fn collector_layer_duration_is_non_zero_after_busy_work() {
     let c = Collector::new("dur.stl");
     c.on_phase_start(Phase::PerLayer);
     c.on_layer_start(0, 0.2);
-    busy_work_long();
+    busy_work();
     c.on_layer_end(0);
     c.on_phase_end(Phase::PerLayer);
     let report = c.finalize();
     assert_eq!(report.layers.len(), 1);
     assert!(
         report.layers[0].duration_ns() > 0,
-        "layer duration must be > 0 ns after spinning for ~1ms"
+        "layer duration must be > 0 ns after joined worker work"
     );
 }
 
@@ -388,12 +388,20 @@ fn collector_worker_thread_is_recorded() {
 }
 
 fn busy_work() {
-    // Tiny sleep so start_ns != end_ns even on fast machines.
-    thread::sleep(std::time::Duration::from_micros(50));
-}
-
-fn busy_work_long() {
-    thread::sleep(std::time::Duration::from_millis(1));
+    // Explicit completion rather than hoping a sleeping worker has run.
+    // Work stays inside the Collector's public start/end brackets; keep the
+    // non-zero JSON, HTML and nanosecond duration assertions above intact.
+    let worker = thread::spawn(|| {
+        let mut values: Vec<u64> = (0..100_000u64)
+            .map(|i| i.wrapping_mul(6364136223846793005))
+            .collect();
+        values.sort_unstable();
+        std::hint::black_box(values)
+    });
+    assert_eq!(
+        worker.join().expect("report worker must finish").len(),
+        100_000
+    );
 }
 
 /// Regression: the Per-Stage Aggregate must render rows in canonical

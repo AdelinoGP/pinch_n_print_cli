@@ -39,6 +39,8 @@ members = [
     "modules/core-modules/arachne-perimeters",
     "modules/core-modules/wave-overhangs",
     "crates/slicer-wasm-host/test-guests/sdk-finalization-guest",
+    "crates/slicer-wasm-host/test-guests/sdk-layer-pathopt-guest",
+    "crates/slicer-wasm-host/test-guests/sdk-infill-postprocess-view-guest",
     "crates/slicer-wasm-host/test-guests/sdk-layer-infill-guest",
     "crates/slicer-wasm-host/test-guests/sdk-postpass-text-guest",
     "crates/slicer-wasm-host/test-guests/sdk-prepass-guest",

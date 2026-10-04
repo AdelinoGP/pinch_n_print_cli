@@ -860,9 +860,12 @@ fn substitution_uses_overridden_temp_values() {
     );
 }
 
-/// AC-8: empty machine_end_gcode emits no end block.
+/// AC-8 integration: an empty end template omits PRINT_END without deleting
+/// the independent part-cooling shutdown. Raw-block omission is isolated in
+/// `explicit_empty_end_template_emits_no_raw_end_block_and_preserves_shutdown`
+/// (modules/core-modules/machine-gcode-emit/tests/machine_gcode_emit_tdd.rs).
 #[test]
-fn empty_end_gcode_emits_no_block() {
+fn empty_end_gcode_preserves_cooling_shutdown() {
     let mut raw: HashMap<ConfigKey, ConfigValue> = HashMap::new();
     raw.insert(
         "machine_end_gcode".to_string(),
@@ -875,58 +878,57 @@ fn empty_end_gcode_emits_no_block() {
         "PRINT_END must NOT appear when machine_end_gcode is empty"
     );
 
-    // The span between the last G1 and CONFIG_BLOCK_START must contain no
-    // *end-gcode block* — not that it is empty.
-    //
-    // This used to assert the span was whitespace-only, which has no canonical
-    // basis: `GCode::_do_export` always fills that region regardless of
-    // `end_gcode` — the final M73 progress pair, the filament statistics, and
-    // the estimated-time comment all land there. Demanding emptiness would
-    // require deleting the print summary to satisfy a test about end-gcode.
-    //
-    // So the invariant is stated in terms of what an end-gcode block actually
-    // looks like: executable G-code. Every line in the span must be blank, a
-    // comment, or an M73 progress report. Any command line — `PRINT_END`, `G28`,
-    // `M104 S0`, a user's custom epilogue — fails it.
+    // The tail belongs to several producers, not just machine-gcode-emit.
+    // In particular, part-cooling must still turn the fan off after the moves.
     let config_start = gcode
         .find("; CONFIG_BLOCK_START")
         .expect("CONFIG_BLOCK_START must be present â€” not yet emitted (red)");
 
-    let last_g1_end = gcode
-        .lines()
-        .scan(0usize, |pos, line| {
-            let line_start = *pos;
-            *pos += line.len() + 1;
-            Some((line_start, line))
-        })
-        .filter(|(_, line)| line.starts_with("G1"))
-        .map(|(offset, line)| offset + line.len() + 1) // end of line incl. \n
-        .collect::<Vec<_>>()
-        .into_iter()
-        .last()
-        .unwrap_or(0);
-
-    // Guard: this port writes CONFIG_BLOCK at the file tail. Canonical writes it
-    // at the *head* for BBL printers, in which case the slice below would be
-    // inverted and panic with an opaque message.
+    let commands: Vec<&str> = gcode[..config_start].lines().collect();
+    let last_move = commands
+        .iter()
+        .rposition(|line| line.starts_with("G1 "))
+        .expect("fixture must contain a move");
+    let shutdown = commands
+        .iter()
+        .rposition(|line| *line == "M107")
+        .expect("empty machine_end_gcode must preserve cooling's M107");
     assert!(
-        last_g1_end <= config_start,
-        "CONFIG_BLOCK_START appears before the last G1 (offset {config_start} < {last_g1_end}). \
-         This test assumes the tail-emitted CONFIG_BLOCK; a head-emitted block (canonical's \
-         BBL-printer path) needs a different span."
+        shutdown > last_move,
+        "fan shutdown must follow the last move"
     );
+}
 
-    let between = &gcode[last_g1_end..config_start];
-    let offending: Vec<&str> = between
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty() && !line.starts_with(';') && !line.starts_with("M73 "))
+/// A literal custom end block is still observable as executable output, not
+/// just as a CONFIG_BLOCK value, while the default PRINT_END is replaced.
+#[test]
+fn custom_end_gcode_emits_literal_block_before_config_metadata() {
+    let gcode = slice_with_raw(HashMap::from([(
+        "machine_end_gcode".to_string(),
+        ConfigValue::String("M104 S0 ; PNP_CUSTOM_END".to_string()),
+    )]));
+    let config_start = gcode
+        .find("; CONFIG_BLOCK_START")
+        .expect("CONFIG_BLOCK_START must be present");
+    let commands: Vec<&str> = gcode[..config_start].lines().collect();
+    let custom_positions: Vec<usize> = commands
+        .iter()
+        .enumerate()
+        .filter_map(|(index, line)| (*line == "M104 S0 ; PNP_CUSTOM_END").then_some(index))
         .collect();
+    assert_eq!(
+        custom_positions.len(),
+        1,
+        "custom end block must execute once"
+    );
+    let last_move = commands
+        .iter()
+        .rposition(|line| line.starts_with("G1 "))
+        .expect("fixture must contain a move");
+    assert!(custom_positions[0] > last_move);
     assert!(
-        offending.is_empty(),
-        "region between last G1 and CONFIG_BLOCK_START must contain no end-gcode \
-         commands when machine_end_gcode is empty; found: {offending:?}\n\
-         full span: {between:?}"
+        !gcode.contains("PRINT_END"),
+        "custom template replaces default"
     );
 }
 

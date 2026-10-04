@@ -1,3 +1,13 @@
+// -----------------------------------------------------------------------------
+// Portions of this file are derived from OrcaSlicer, Bambu Studio, PrusaSlicer,
+// and Slic3r, which are licensed under the GNU Affero General Public License,
+// version 3 (AGPLv3).
+//
+// Original C++ source path: src/libslic3r/PrintConfig.cpp
+//
+// This file is an LLM-generated Rust port of the original C++ implementation,
+// adapted for the Pinch 'n Print architecture.
+// -----------------------------------------------------------------------------
 //! Single-source-of-truth declaration of [`ResolvedConfig`].
 //!
 //! Every declared field is described exactly once via the
@@ -649,7 +659,13 @@ pub fn extract_f64(key: &str, value: &ConfigValue) -> Result<f64, ConfigResoluti
 #[doc(hidden)]
 pub fn extract_int_as_u32(key: &str, value: &ConfigValue) -> Result<u32, ConfigResolutionError> {
     match value {
-        ConfigValue::Int(i) => Ok(*i as u32),
+        ConfigValue::Int(i) => u32::try_from(*i).map_err(|_| ConfigResolutionError::OutOfRange {
+            key: key.to_owned(),
+            value: *i as f64,
+            min: Some(0.0),
+            max: Some(f64::from(u32::MAX)),
+            index: None,
+        }),
         other => Err(ConfigResolutionError::TypeMismatch {
             key: key.to_string(),
             expected: "Int",
@@ -1182,6 +1198,33 @@ pub const HOST_RUNTIME_KEYS: &[HostRuntimeKey] = &[
         },
         selector: false,
         denied_scopes: TOOL_CAPABLE_SCOPES,
+    },
+    // Support path routing is host-owned, not a support module config read.
+    // Keep absence unseeded: the consumer handles absent/zero selections.
+    // Canonical PrintConfig.cpp::PrintConfigDef::init_fff_params declares both as coInt >= 0.
+    HostRuntimeKey {
+        key: "support_filament",
+        field_type: "int",
+        scope: SCOPE_PRINT,
+        default: None,
+        meta: HostKeyMeta {
+            min: Some(0.0),
+            ..HostKeyMeta::NONE
+        },
+        selector: false,
+        denied_scopes: &[],
+    },
+    HostRuntimeKey {
+        key: "support_interface_filament",
+        field_type: "int",
+        scope: SCOPE_PRINT,
+        default: None,
+        meta: HostKeyMeta {
+            min: Some(0.0),
+            ..HostKeyMeta::NONE
+        },
+        selector: false,
+        denied_scopes: &[],
     },
 ];
 

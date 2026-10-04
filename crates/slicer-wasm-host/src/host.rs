@@ -1193,6 +1193,10 @@ impl wasmtime::ResourceLimiter for MemTracker {
 /// After the call returns, the dispatcher extracts collected outputs from
 /// this context and integrates them into the pipeline state.
 pub struct HostExecutionContext {
+    /// Manifest write paths for finalization annotation authorization.
+    pub(crate) finalization_ir_writes: Vec<String>,
+    /// First denied annotation write, retained even if a guest ignores Err.
+    pub(crate) finalization_write_denial: Option<String>,
     /// Resource handle table — manages lifetimes of host-provided resources.
     pub(crate) table: ResourceTable,
     /// Default-deny WASI execution state for foreign-language components.
@@ -1415,6 +1419,24 @@ impl wasmtime_wasi::WasiView for HostExecutionContext {
     }
 }
 
+/// Authorize the annotation operation using exact manifest membership.
+pub fn check_finalization_annotation_write(
+    module_id: &str,
+    stage_id: &str,
+    writes: &[String],
+) -> Result<(), String> {
+    const PATH: &str = "LayerCollectionIR.annotations";
+    if writes.iter().any(|path| path == PATH) {
+        return Ok(());
+    }
+    let mut sorted = writes.to_vec();
+    sorted.sort();
+    sorted.dedup();
+    Err(format!(
+        "module {module_id} stage {stage_id}: attempted write requested path {PATH}; manifest writes={sorted:?}"
+    ))
+}
+
 /// Consuming builder for [`HostExecutionContext`].
 ///
 /// Per spec §6.4 — required positional args are `module_id`, `layer_z`,
@@ -1476,6 +1498,8 @@ impl HostExecutionContextBuilder {
     /// Finalize the builder into a fresh `HostExecutionContext`.
     pub fn build(self) -> HostExecutionContext {
         HostExecutionContext {
+            finalization_ir_writes: Vec::new(),
+            finalization_write_denial: None,
             table: ResourceTable::new(),
             wasi: wasmtime_wasi::WasiCtxBuilder::new().build(),
             module_id: self.module_id,
@@ -1522,6 +1546,11 @@ impl HostExecutionContextBuilder {
 }
 
 impl HostExecutionContext {
+    /// Install the exact manifest write set for a finalization call.
+    pub fn with_finalization_ir_writes(mut self, writes: &[String]) -> Self {
+        self.finalization_ir_writes = writes.to_vec();
+        self
+    }
     /// Module identifier (from manifest).
     pub fn module_id(&self) -> &str {
         &self.module_id
@@ -4775,6 +4804,15 @@ mod finalization_impls {
             self_: Resource<fm::FinalizationOutputBuilder>,
             annotation: fm::AnnotationView,
         ) -> wasmtime::Result<Result<(), String>> {
+            if let Err(message) = check_finalization_annotation_write(
+                &self.module_id,
+                "PostPass::LayerFinalization",
+                &self.finalization_ir_writes,
+            ) {
+                self.finalization_write_denial
+                    .get_or_insert_with(|| message.clone());
+                return Ok(Err(message));
+            }
             let typed: Resource<FinalizationOutputBuilderData> = Resource::new_borrow(self_.rep());
             let data = self.table.get_mut(&typed)?;
             let kind = match annotation.kind {
@@ -4788,6 +4826,7 @@ mod finalization_impls {
                     kind,
                 },
             ));
+            self.record_write("LayerCollectionIR.annotations");
             Ok(Ok(()))
         }
         fn push_entity_to_layer(

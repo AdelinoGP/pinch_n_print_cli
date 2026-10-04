@@ -184,10 +184,48 @@ fn synthesize_population(registry: &ConfigSchemaRegistry) -> serde_json::Value {
         let entry = registry
             .entry(key)
             .expect("registry keys must resolve to entries");
+        // Aliases are alternate authored spellings of one identity, not
+        // independent values. Keep every identity without authoring conflicts;
+        // the owning-view loop below still checks every declared alias.
+        let canonical = slicer_config::canonical_config_key(key);
+        let entry = registry.entry(canonical).unwrap_or(entry);
         let wire = wire_value_for(entry);
-        object.insert(key.to_owned(), wire_to_json(&entry.field_type, &wire));
+        object.insert(canonical.to_owned(), wire_to_json(&entry.field_type, &wire));
     }
     serde_json::Value::Object(object)
+}
+
+#[test]
+fn declared_support_angle_alias_binds_canonical_value_only_to_its_owner() {
+    let (modules, _, _) = live_registry();
+    let owner = modules
+        .iter()
+        .find(|module| module.id() == "com.core.traditional-support-planner")
+        .expect("traditional support planner must be loaded");
+    assert!(owner
+        .config_schema()
+        .entries
+        .contains_key("support_overhang_angle"));
+    let resolved = slicer_ir::ResolvedConfig {
+        support_threshold_angle: 47.0,
+        ..Default::default()
+    };
+    assert_eq!(
+        bind_module_config_view(owner, &resolved).get("support_overhang_angle"),
+        Some(&slicer_ir::ConfigValue::Float(47.0))
+    );
+    let nonowner = modules
+        .iter()
+        .find(|module| {
+            !module
+                .config_schema()
+                .entries
+                .contains_key("support_overhang_angle")
+        })
+        .expect("a module without an alias declaration must exist");
+    assert!(bind_module_config_view(nonowner, &resolved)
+        .get("support_overhang_angle")
+        .is_none());
 }
 
 #[test]

@@ -414,12 +414,14 @@ fn identity_aggregate_spread_across_the_plate_is_measured_per_body() {
     let service = ExactZQueryService::new(Arc::new(mesh()));
     let mut packed = entry("packed-bodies", 20_000_000);
     packed.region_id = 12;
-    // Two 5 mm bodies 110 mm apart: each is far inside any body cap, while the
-    // combined envelope (1,200,000 units) exceeds the deleted routing cell's
-    // `1 << 20` the old whole-entry measurement was calibrated to.
+    // ADR-0059 Ruling 3 pins the private MAX_BODY_EXTENT_UNITS to 1 << 22.
+    // Two 5 mm bodies have a 450 mm combined envelope (4_500_000 units),
+    // exceeding that CURRENT cap while each cross-section is within it.
+    // The old 120 mm envelope only exceeded the historical 1 << 20 cap and
+    // could not falsify a whole-entry measurement under today's calibration.
     packed.roles[0].regions = vec![
         square(20_000_000, 5_000, 50_000),
-        square(21_150_000, 5_000, 50_000),
+        square(24_450_000, 5_000, 50_000),
     ];
 
     let plans = vec![slicer_ir::SupportPlanIR {
@@ -441,6 +443,44 @@ fn identity_aggregate_spread_across_the_plate_is_measured_per_body() {
     );
     assert_eq!(result.retained.len(), 1);
     assert!(!result.degraded);
+    assert_eq!(result.retained[0].body_ids, vec!["packed-bodies"]);
+    assert_eq!(
+        result.retained[0].roles[0].regions,
+        vec![
+            square(20_000_000, 5_000, 50_000),
+            square(24_450_000, 5_000, 50_000),
+        ],
+        "both disjoint 5 mm cross-sections must survive, not just the identity"
+    );
+}
+
+/// Negative control for the per-body bound: a single cross-section one unit
+/// wider than ADR-0059's current cap is rejected through the public aggregator.
+#[test]
+fn single_body_exceeding_current_extent_cap_is_rejected() {
+    let service = ExactZQueryService::new(Arc::new(mesh()));
+    let mut oversized = entry("oversized-body", 20_000_000);
+    oversized.roles[0].regions = vec![square(20_000_000, 5_000, 4_194_305)];
+    let plans = vec![SupportPlanIR {
+        entries: vec![oversized],
+        ..Default::default()
+    }];
+    let owned = family_assignments_for(&all_entries(&plans));
+    let result = aggregate_support_plans(SupportAggregationInput {
+        producers: producers_for(&plans),
+        plans,
+        exact_z: &service,
+        territory: Some(&owned),
+    });
+
+    assert!(
+        result.retained.is_empty(),
+        "an oversized body cannot survive"
+    );
+    assert!(result.degraded);
+    assert_eq!(result.unmet.len(), 1);
+    assert_eq!(result.unmet[0].demand_id, "oversized-body");
+    assert!(result.unmet[0].reason.contains("max-body-extent"));
 }
 
 /// Regression (DEV-174 class, ticket 14): the body cap is the build-plate

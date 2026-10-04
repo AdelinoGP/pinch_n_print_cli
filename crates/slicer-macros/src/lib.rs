@@ -956,6 +956,15 @@ fn build_postpass_gcode_glue(self_ty: &syn::Type) -> TokenStream2 {
                      ExtrusionRole::BridgeInfill => ::slicer_sdk::ir::ExtrusionRole::BridgeInfill,
                      ExtrusionRole::InternalBridgeInfill => ::slicer_sdk::ir::ExtrusionRole::InternalBridgeInfill,
                     ExtrusionRole::WipeTower => ::slicer_sdk::ir::ExtrusionRole::WipeTower,
+                    ExtrusionRole::Custom(s) if s == "slicer.builtin/prime-tower@1" => {
+                        ::slicer_sdk::ir::ExtrusionRole::PrimeTower
+                    }
+                    ExtrusionRole::Custom(s) if s == "slicer.builtin/skirt@1" => {
+                        ::slicer_sdk::ir::ExtrusionRole::Skirt
+                    }
+                    ExtrusionRole::Custom(s) if s == "slicer.builtin/brim@1" => {
+                        ::slicer_sdk::ir::ExtrusionRole::Brim
+                    }
                     ExtrusionRole::Custom(s) if s == "slicer.builtin/internal-solid-infill@1" => {
                         ::slicer_sdk::ir::ExtrusionRole::InternalSolidInfill
                     }
@@ -1281,6 +1290,15 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                      ExtrusionRole::BridgeInfill => ::slicer_ir::ExtrusionRole::BridgeInfill,
                      ExtrusionRole::InternalBridgeInfill => ::slicer_ir::ExtrusionRole::InternalBridgeInfill,
                     ExtrusionRole::WipeTower => ::slicer_ir::ExtrusionRole::WipeTower,
+                    ExtrusionRole::Custom(s) if s == "slicer.builtin/prime-tower@1" => {
+                        ::slicer_ir::ExtrusionRole::PrimeTower
+                    }
+                    ExtrusionRole::Custom(s) if s == "slicer.builtin/skirt@1" => {
+                        ::slicer_ir::ExtrusionRole::Skirt
+                    }
+                    ExtrusionRole::Custom(s) if s == "slicer.builtin/brim@1" => {
+                        ::slicer_ir::ExtrusionRole::Brim
+                    }
                     ExtrusionRole::Custom(s) if s == "slicer.builtin/internal-solid-infill@1" => {
                         ::slicer_ir::ExtrusionRole::InternalSolidInfill
                     }
@@ -2752,6 +2770,15 @@ fn layer_glue_helpers() -> TokenStream2 {
                  WitExtrusionRole::BridgeInfill => ::slicer_ir::ExtrusionRole::BridgeInfill,
                  WitExtrusionRole::InternalBridgeInfill => ::slicer_ir::ExtrusionRole::InternalBridgeInfill,
                 WitExtrusionRole::WipeTower => ::slicer_ir::ExtrusionRole::WipeTower,
+                WitExtrusionRole::Custom(s) if s == "slicer.builtin/prime-tower@1" => {
+                    ::slicer_ir::ExtrusionRole::PrimeTower
+                }
+                WitExtrusionRole::Custom(s) if s == "slicer.builtin/skirt@1" => {
+                    ::slicer_ir::ExtrusionRole::Skirt
+                }
+                WitExtrusionRole::Custom(s) if s == "slicer.builtin/brim@1" => {
+                    ::slicer_ir::ExtrusionRole::Brim
+                }
                 WitExtrusionRole::Custom(s) if s == "slicer.builtin/internal-solid-infill@1" => {
                     ::slicer_ir::ExtrusionRole::InternalSolidInfill
                 }
@@ -2878,6 +2905,7 @@ fn layer_glue_helpers() -> TokenStream2 {
                 perimeter_view.set_raft_fill(r.raft_fill().iter().map(__slicer_wit_expolygon_to_ir).collect());
                 perimeter_view.set_tool_index(r.tool_index());
                 perimeter_view.set_wall_source_region_id(r.wall_source_region_id().map(|s| s.parse().unwrap_or(0)));
+                perimeter_view.set_config(__slicer_adapt_config(&r.config()));
                 out.push(perimeter_view);
             }
             out

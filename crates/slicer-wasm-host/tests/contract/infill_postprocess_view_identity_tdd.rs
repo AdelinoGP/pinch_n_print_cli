@@ -20,9 +20,8 @@
 //!
 //! The two legs operate on different transports (SDK views vs WIT resources in
 //! a wasmtime store), so this is a mirrored-content contract, not shared code.
-//! The WASM-leg expectation is reconstructed here from the same shared host
-//! predicates the dispatch arm uses, so the contract fails if either leg's
-//! observable view content changes independently.
+//! Real SDK guest/native transport parity is covered by
+//! `sdk_view_transport_parity_tdd`; this file pins native projection and fallbacks.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -33,9 +32,6 @@ use slicer_ir::{
 };
 use slicer_sdk::views::PerimeterRegionView;
 use slicer_wasm_host::binding::LayerStageInput;
-use slicer_wasm_host::dispatch::{
-    perimeter_region_index, resolve_region_tool_index, wall_source_region_id,
-};
 use slicer_wasm_host::marshal::native::build_native_layer_request;
 use slicer_wasm_host::{CompiledModuleLive, WasmInstancePool};
 
@@ -50,77 +46,6 @@ fn expoly(x0: i64, y0: i64, x1: i64, y1: i64) -> ExPolygon {
         },
         holes: Vec::new(),
     }
-}
-
-/// The donor/enrichment shape the WASM leg produces, reconstructed per region
-/// from the same shared host predicates (`push_infill_postprocess_regions`'s
-/// loop). Where the WASM seam is lossy in ways a module observes, the loss is
-/// mirrored here (documented per field).
-fn wasm_leg_expected_view(
-    perimeter: &PerimeterIR,
-    region: &SlicedRegion,
-    region_map: Option<&RegionMapIR>,
-    layer_index: u32,
-) -> PerimeterRegionView {
-    let perim_index = perimeter_region_index(perimeter);
-    let own_entry = perim_index
-        .get(&(&region.object_id, region.region_id))
-        .copied();
-    let wall_source = wall_source_region_id(own_entry.is_some(), region);
-    let donor = own_entry.or_else(|| {
-        wall_source.and_then(|base| perim_index.get(&(&region.object_id, base)).copied())
-    });
-    let mut view = match donor {
-        Some(p) => {
-            // WASM: PerimeterRegion → `perimeter_region_to_data` (WIT) → the
-            // guest glue's reverse adapter → a fresh SDK view. Its walls
-            // reconstruct `width_profile` at 0.4/vertex (WIT has no profile)
-            // and its seam candidates lose `reason`; the postprocess consumer
-            // reads neither, so this mirror keeps the donor as-is and the
-            // wall-equality assertions below compare like-for-like.
-            PerimeterRegionView::from_ir(p)
-        }
-        None => PerimeterRegionView::default(),
-    };
-    // The view's identity is the slice region's, not the wall donor's.
-    view.set_object_id(region.object_id.clone());
-    view.set_region_id(region.region_id);
-    // WIT carries no `Custom` paint value: a WASM module observes ToolIndex(0).
-    view.set_variant_chain(
-        region
-            .variant_chain
-            .iter()
-            .map(|(name, value)| {
-                (
-                    name.clone(),
-                    match value {
-                        PaintValue::Flag(v) => PaintValue::Flag(*v),
-                        PaintValue::Scalar(v) => PaintValue::Scalar(*v),
-                        PaintValue::ToolIndex(v) => PaintValue::ToolIndex(*v),
-                        PaintValue::Custom(_) => PaintValue::ToolIndex(0),
-                    },
-                )
-            })
-            .collect(),
-    );
-    view.set_sparse_infill_area(region.sparse_infill_area.clone());
-    view.set_top_solid_fill(region.top_solid_fill.clone());
-    view.set_bottom_solid_fill(region.bottom_solid_fill.clone());
-    view.set_bridge_areas(region.bridge_areas.clone());
-    view.set_raft_fill(region.raft_fill.clone());
-    view.set_tool_index(resolve_region_tool_index(
-        &region.variant_chain,
-        region_map,
-        layer_index,
-        &region.object_id,
-        region.region_id,
-    ));
-    view.set_wall_source_region_id(wall_source);
-    // The wasm leg's per-region `config` accessor falls back to the
-    // object-level config (module.config_view) when no RegionMap pool entry
-    // exists; the native leg's `set_config` fallback mirrors it.
-    view.set_config(ConfigView::default());
-    view
 }
 
 struct Fixture {
@@ -163,7 +88,7 @@ fn native_views(fx: &Fixture, stage: &'static str) -> Vec<PerimeterRegionView> {
 }
 
 #[test]
-fn native_postprocess_views_match_the_wasm_enrichment() {
+fn native_postprocess_projects_slice_partitions_and_donor_identity() {
     let fixture = Fixture {
         slice: SliceIR {
             global_layer_index: 0,
@@ -219,58 +144,45 @@ fn native_postprocess_views_match_the_wasm_enrichment() {
     };
 
     let native = native_views(&fixture, "Layer::InfillPostProcess");
-    let expected: Vec<PerimeterRegionView> = fixture
-        .slice
-        .regions
-        .iter()
-        .map(|region| {
-            wasm_leg_expected_view(&fixture.perimeter, region, fixture.region_map.as_ref(), 0)
-        })
-        .collect();
-    assert_eq!(native.len(), expected.len(), "one view per slice region");
-    for (i, (got, want)) in native.iter().zip(&expected).enumerate() {
-        assert_eq!(got.object_id(), want.object_id(), "view {i} object_id");
-        assert_eq!(got.region_id(), want.region_id(), "view {i} region_id");
+    assert_eq!(native.len(), 3, "one view per slice region");
+    for (i, (got, want)) in native.iter().zip(&fixture.slice.regions).enumerate() {
+        assert_eq!(got.object_id(), &want.object_id, "view {i} object_id");
+        assert_eq!(got.region_id(), &want.region_id, "view {i} region_id");
         assert_eq!(
             got.variant_chain(),
-            want.variant_chain(),
+            &want.variant_chain,
             "view {i} variant_chain"
         );
         assert_eq!(
             got.sparse_infill_area(),
-            want.sparse_infill_area(),
+            &want.sparse_infill_area,
             "view {i} sparse_infill_area"
         );
         assert_eq!(
             got.top_solid_fill(),
-            want.top_solid_fill(),
+            &want.top_solid_fill,
             "view {i} top_solid_fill"
         );
         assert_eq!(
             got.bottom_solid_fill(),
-            want.bottom_solid_fill(),
+            &want.bottom_solid_fill,
             "view {i} bottom_solid_fill"
         );
         assert_eq!(
             got.bridge_areas(),
-            want.bridge_areas(),
+            &want.bridge_areas,
             "view {i} bridge_areas"
         );
-        assert_eq!(got.raft_fill(), want.raft_fill(), "view {i} raft_fill");
-        assert_eq!(got.tool_index(), want.tool_index(), "view {i} tool_index");
-        assert_eq!(
-            got.wall_source_region_id(),
-            want.wall_source_region_id(),
-            "view {i} wall_source_region_id"
-        );
-        assert_eq!(
-            got.infill_areas(),
-            want.infill_areas(),
-            "view {i} infill_areas"
-        );
-        assert_eq!(got.wall_loops(), want.wall_loops(), "view {i} wall_loops");
-        assert_eq!(got.config(), want.config(), "view {i} config");
+        assert_eq!(got.raft_fill(), &want.raft_fill, "view {i} raft_fill");
     }
+    assert_eq!(native[0].wall_source_region_id(), None);
+    assert_eq!(native[1].wall_source_region_id(), Some(&2));
+    assert_eq!(native[1].tool_index(), 2);
+    assert_eq!(
+        native[1].infill_areas(),
+        &fixture.perimeter.regions[1].infill_areas
+    );
+    assert!(native[2].wall_loops().is_empty());
 }
 
 /// The one region the linker must NOT see through the union fallback: a

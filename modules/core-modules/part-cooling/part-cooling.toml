@@ -11,7 +11,7 @@ id = "PostPass::LayerFinalization"
 
 [ir-access]
 reads  = ["LayerCollectionIR"]
-writes = ["LayerCollectionIR.cooling"]
+writes = ["LayerCollectionIR.annotations"]
 
 [claims]
 holds    = []

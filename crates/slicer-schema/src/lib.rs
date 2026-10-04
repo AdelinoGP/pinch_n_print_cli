@@ -672,7 +672,7 @@ mod tests {
         assert_eq!(export_for_stage_id(finalization), Some("run"));
         assert_eq!(
             qualified_export_for_stage_id(finalization).as_deref(),
-            Some("slicer:finalization-layer-finalization/layer-finalization@1.0.0#run"),
+            Some("slicer:finalization-layer-finalization/layer-finalization@1.1.0#run"),
         );
 
         let perimeters = "Layer::Perimeters";

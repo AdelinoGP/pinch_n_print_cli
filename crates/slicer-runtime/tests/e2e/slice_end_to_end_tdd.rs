@@ -517,8 +517,8 @@ fn wedge_per_region_config_delivery_structural_canary() {
     // the emitted block and the registry instead of a re-blessed number.
     //
     // Manifest-first assembly precedes claim dedup. The emitted block covers
-    // all non-omitted registered keys, including keys declared solely by the
-    // arachne perimeter generator when classic holds the claim. Dedup affects
+    // all non-omitted effective registered keys, including keys declared solely
+    // by the arachne perimeter generator when classic holds the claim. Dedup affects
     // dispatch, not the CONFIG_BLOCK's registry-derived public surface.
     let modules = load_modules_from_roots(std::slice::from_ref(&core_modules_dir()))
         .unwrap_or_else(|error| panic!("load core module schemas failed: {error:?}"))
@@ -565,15 +565,18 @@ fn wedge_per_region_config_delivery_structural_canary() {
     // `omit_from_config_block`) carries an effective value, or it is a typed
     // field with no registry entry (`infill_type`, `support_type`). The
     // effective map is reproduced the way the default run resolves it: typed
-    // fields at their declared defaults, plus every non-typed registry
-    // default seeded as an extension (module and host-runtime keys). Typed
-    // fields whose default renders no value (`filament_density`'s empty list)
-    // and default-less runtime rows (`extruder`, `printable_area`, ...) carry
-    // no effective value and are therefore not projected.
+    // fields at their declared defaults, plus every registry default whose
+    // canonical identity is non-typed, seeded as an extension (module and
+    // host-runtime keys). Legacy declarations of typed keys do not seed a
+    // second identity: docs/03_wit_and_manifest.md's Config-Key Wildcard Syntax
+    // contract stores canonical identities and projects aliases only to owners.
+    // Typed fields whose default renders no value (`filament_density`'s empty
+    // list) and default-less runtime rows (`extruder`, `printable_area`, ...)
+    // carry no effective value and are therefore not projected.
     let typed_fields = slicer_sdk::ir::ResolvedConfig::typed_field_keys();
     let mut effective = slicer_sdk::ir::ResolvedConfig::default().to_config_map();
     for key in registry.keys() {
-        if typed_fields.contains(&key) {
+        if typed_fields.contains(&slicer_config::canonical_config_key(key)) {
             continue; // typed fields carry their own default; seeding would shadow it
         }
         let entry = registry
@@ -643,6 +646,18 @@ fn wedge_per_region_config_delivery_structural_canary() {
             .iter()
             .any(|key| key == "initial_layer_min_bead_width"),
         "the real registry must include an arachne-only default even when classic holds the claim"
+    );
+    assert!(
+        registry.entry("support_overhang_angle").is_some(),
+        "the legacy support-angle declaration must remain available to its owning module"
+    );
+    assert!(
+        keys.contains(&"support_threshold_angle"),
+        "CONFIG_BLOCK must carry the canonical support-angle identity"
+    );
+    assert!(
+        !keys.contains(&"support_overhang_angle"),
+        "a legacy typed-key default must not leak a second identity into CONFIG_BLOCK"
     );
     assert_eq!(
         keys, expected,

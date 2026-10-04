@@ -1,3 +1,13 @@
+// -----------------------------------------------------------------------------
+// Portions of this file are derived from OrcaSlicer, Bambu Studio, PrusaSlicer,
+// and Slic3r, which are licensed under the GNU Affero General Public License,
+// version 3 (AGPLv3).
+//
+// Original C++ source path: src/libslic3r/Slicing.cpp
+//
+// This file is an LLM-generated Rust port of the original C++ implementation,
+// adapted for the Pinch 'n Print architecture.
+// -----------------------------------------------------------------------------
 //! Deterministic resolution of typed configuration scope deltas.
 
 use std::collections::BTreeMap;
@@ -7,8 +17,9 @@ use slicer_ir::slice_ir::cli_bool_spelling;
 use slicer_ir::{ConfigResolutionError, ConfigValue, ResolvedConfig};
 
 use crate::{
-    expand_automatic_values, scope_denial_label, ConfigSchemaRegistry, ConfigScope,
-    ExpansionContext, ExpansionError, RegistryEntry, ScopeDelta, ScopedConfig,
+    canonical_config_key, expand_automatic_values, scope_denial_label, ConfigSchemaRegistry,
+    ConfigScope, ExpansionContext, ExpansionError, RegistryEntry, ScopeDelta, ScopedConfig,
+    CONFIG_KEY_ALIASES,
 };
 
 /// The object-level planning values needed to construct the shared Z grid.
@@ -150,6 +161,19 @@ fn apply_delta(
         return Ok(());
     };
 
+    // Ingestion deliberately retains authored spellings. Reject ambiguity
+    // within a scope before canonicalization; different scopes still override.
+    for (legacy, canonical) in CONFIG_KEY_ALIASES {
+        if delta.values.contains_key(legacy) && delta.values.contains_key(canonical) {
+            return Err(ConfigResolutionError::TypeMismatch {
+                key: format!("{canonical} and {legacy}"),
+                expected: "one config key",
+                actual: "both config keys supplied".to_owned(),
+            }
+            .into());
+        }
+    }
+
     // Eligibility gate: every authored key must be statable at the scope
     // carrying it. Scope instances share their family's policy, so `scope`
     // itself is the authority rather than a caller-supplied roster. The check
@@ -157,18 +181,22 @@ fn apply_delta(
     // never leave a partially applied scope behind.
     let admission = registry.admission_set(scope);
     for (key, _) in delta.iter() {
+        let key = canonical_config_key(key);
         if !admission.contains(key) {
             return Err(ResolutionError::ScopeDenied {
-                key: key.clone(),
+                key: key.to_owned(),
                 scope: scope.clone(),
             });
         }
     }
 
     for (key, value) in delta.iter() {
+        let key = canonical_config_key(key);
+        // Typed fields and extensions share the registry's numerical contract.
+        // Validate before extraction, including before any unsigned conversion.
+        validate_extension(registry, key, value)?;
         if !config.apply_cli_key(key, value)? {
-            validate_extension(registry, key, value)?;
-            config.extensions.insert(key.clone(), value.clone());
+            config.extensions.insert(key.to_owned(), value.clone());
         }
     }
     Ok(())
@@ -182,9 +210,10 @@ fn apply_delta(
 /// - it has a registry default;
 /// - it is not a `selector` (a selector value travels as a selector value, not
 ///   as a delta);
-/// - it is not a `declare_resolved_config!` field. Typed fields carry their own
-///   defaults through `ResolvedConfig::default()`, and a seeded extension would
-///   shadow the typed value because `to_config_map` merges `extensions` last.
+/// - its canonical identity is not a `declare_resolved_config!` field. Typed
+///   fields carry their own defaults through `ResolvedConfig::default()`, and a
+///   seeded extension would shadow the typed value because `to_config_map`
+///   merges `extensions` last.
 ///   `apply_cli_key` cannot test this because `plain` rows also return
 ///   `Ok(false)`; membership in `ResolvedConfig::typed_field_keys()` is the
 ///   authority.
@@ -206,7 +235,9 @@ fn seed_registry_defaults(
         if entry.selector {
             continue;
         }
-        if ResolvedConfig::typed_field_keys().contains(&key) {
+        // Alias declarations must not seed a second extension identity that
+        // diverges from the typed canonical field after scoped resolution.
+        if ResolvedConfig::typed_field_keys().contains(&canonical_config_key(key)) {
             continue;
         }
         let Some(default) = entry.default.as_ref() else {
@@ -313,7 +344,7 @@ fn render_type_name(field_type: &str) -> &'static str {
     }
 }
 
-/// Validate one `extensions` value against its registry declaration.
+/// Validate one authored or seeded value against its registry declaration.
 ///
 /// An undeclared key is retained untyped (the registry cannot type it); a
 /// declared key must match the declared wire type and, for numeric types, its

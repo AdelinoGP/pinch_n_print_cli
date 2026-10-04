@@ -191,9 +191,9 @@ fn stage_layer_finalization_uses_its_per_stage_package() {
     let tmp = run_new("layer-finalizer", "PostPass::LayerFinalization").unwrap();
     let manifest =
         fs::read_to_string(tmp.path().join("layer-finalizer/layer-finalizer.toml")).unwrap();
-    assert!(
-        manifest.contains("slicer:finalization-layer-finalization/layer-finalization@1.0.0#run")
-    );
+    let expected_export =
+        slicer_schema::qualified_export_for_stage_id("PostPass::LayerFinalization").unwrap();
+    assert!(manifest.contains(&expected_export));
     let lib = fs::read_to_string(tmp.path().join("layer-finalizer/src/lib.rs")).unwrap();
     assert!(lib.contains("run_finalization"));
 }

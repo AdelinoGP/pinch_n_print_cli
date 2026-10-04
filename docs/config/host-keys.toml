@@ -18,8 +18,8 @@
 # Per-role print speeds (packet 52, 57). mm/s.
 # Consumer: crates/slicer-ir/src/feedrate.rs `FeedrateConfig::default()`.
 [speeds]
-outer_wall_speed           = { default = 60.0,  range = "> 0" }
-inner_wall_speed           = { default = 60.0,  range = "> 0" }
+outer_wall_speed           = { default = 60.0,  range = ">= 0", note = "0 selects emitter-owned volumetric AUTO (ADR-0072)" }
+inner_wall_speed           = { default = 60.0,  range = ">= 0", note = "0 selects emitter-owned volumetric AUTO (ADR-0072)" }
 thin_wall_speed            = { default = 30.0,  range = "> 0" }
 top_surface_speed          = { default = 100.0, range = "> 0" }
 bottom_surface_speed       = { default = 100.0, range = "> 0" }
@@ -28,7 +28,7 @@ bridge_speed               = { default = 25.0,  range = "> 0" }
 internal_bridge_speed      = { default = 37.5,  range = "> 0", type = "float_or_percent" }
 support_speed              = { default = 80.0,  range = "> 0" }
 support_interface_speed    = { default = 80.0,  range = "> 0" }
-gap_infill_speed           = { default = 30.0,  range = "> 0" }
+gap_infill_speed           = { default = 30.0,  range = ">= 0", note = "0 selects emitter-owned volumetric AUTO (ADR-0072)" }
 ironing_speed              = { default = 20.0,  range = "> 0" }
 skirt_speed                = { default = 50.0,  range = "> 0" }
 wipe_tower_speed           = { default = 90.0,  range = "> 0" }

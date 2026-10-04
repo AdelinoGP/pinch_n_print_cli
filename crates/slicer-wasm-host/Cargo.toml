@@ -19,6 +19,9 @@ slicer-schema = { path = "../slicer-schema" }
 slicer-sdk = { path = "../slicer-sdk" }
 
 [dev-dependencies]
+sdk-finalization-guest = { path = "test-guests/sdk-finalization-guest" }
+sdk-layer-pathopt-guest = { path = "test-guests/sdk-layer-pathopt-guest" }
+sdk-infill-postprocess-view-guest = { path = "test-guests/sdk-infill-postprocess-view-guest" }
 log = "0.4"
 witness = { path = "test-guests/witness" }
 wat = "1.0"

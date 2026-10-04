@@ -1,5 +1,5 @@
 [package]
-name = "sdk-layer-pathopt-guest"
+name = "sdk-infill-postprocess-view-guest"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,5 +9,5 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 wit-bindgen = "0.60.0"
 slicer-sdk = { path = "../../../slicer-sdk" }
-slicer-ir  = { path = "../../../slicer-ir" }
+slicer-ir = { path = "../../../slicer-ir" }
 slicer-schema = { path = "../../../slicer-schema" }

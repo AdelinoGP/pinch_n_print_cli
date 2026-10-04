@@ -18,7 +18,7 @@
 
 use slicer_ir::{BoundingBox3, Point3};
 use slicer_macros::module_test;
-use slicer_sdk::host::{self, test_support as host_test_support, MeshSource};
+use slicer_sdk::host::{self, test_support as host_test_support, LogLevel, MeshSource};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 // ============================================================================
@@ -68,16 +68,19 @@ fn mesh_source_installed() -> bool {
 
 #[module_test]
 fn test_fn_with_module_test_attribute() {
-    // The macro should apply without compilation errors.
-    // This test passes if the code compiles and runs.
-    assert!(true);
+    host::log_warn("module_test_attribute_marker");
+    assert_eq!(
+        host_test_support::take_log_messages(),
+        vec![(LogLevel::Warn, "module_test_attribute_marker".to_string())],
+        "the expanded function must run with SDK log capture installed"
+    );
 }
 
+// test-quality: compile witness — #[module_test] retains a callable parameterless fn() surface
 #[test]
 fn test_01_macro_applies_to_function() {
-    // This meta-test verifies test_fn_with_module_test_attribute exists and compiles.
-    // The test passes if we reach here without compilation errors.
-    assert!(true, "Macro applied to function successfully");
+    let expanded: fn() = test_fn_with_module_test_attribute;
+    expanded();
 }
 
 // ============================================================================
@@ -113,25 +116,32 @@ fn test_02_macro_preserves_function_body() {
 // Test 3: Macro generates proper #[test] attribute
 // ============================================================================
 
-// Note: This test is structural - the #[module_test] macro should internally
-// add #[test] so that cargo test discovers the function.
-// We can verify this by the fact that test discovery works.
+// Inspect the compiled harness's roster, not source text or direct-callability.
 
 #[module_test]
 fn test_03_fn_for_test_attribute_generation() {
-    // This function should be discoverable by cargo test
-    // because #[module_test] generates #[test]
-    assert!(true);
+    // The harness listing supplies the registration witness; the body checks
+    // that the discovered test executes with the SDK host installed.
+    host::log_warn("module_test_registration_marker");
+    let messages = host_test_support::take_log_messages();
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].1, "module_test_registration_marker");
 }
 
 #[test]
 fn test_03_macro_generates_test_attribute() {
-    // The presence (and execution by `cargo test`) of
-    // `test_03_fn_for_test_attribute_generation` IS the proof that
-    // `#[module_test]` emits a `#[test]` attribute. We additionally
-    // assert that calling it directly succeeds — which it can only do
-    // if the macro generated a well-formed parameterless fn.
-    test_03_fn_for_test_attribute_generation();
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--list", "--format", "terse"])
+        .output()
+        .expect("list compiled test harness");
+    assert!(output.status.success(), "compiled harness listing failed");
+    let listing = String::from_utf8(output.stdout).expect("UTF-8 test listing");
+    assert!(
+        listing
+            .lines()
+            .any(|line| line == "test_03_fn_for_test_attribute_generation: test"),
+        "#[module_test] function must be registered, not merely callable: {listing}"
+    );
 }
 
 // ============================================================================
@@ -398,17 +408,12 @@ fn test_11_setup_teardown_order() {
 // Test 12: Test functions with parameters are handled (or rejected)
 // ============================================================================
 
+// test-quality: compile witness — #[module_test] emits a callable parameterless test function
 #[test]
-fn test_12_parameter_handling() {
-    // Documented policy: `#[module_test]` mirrors `#[test]` semantics —
-    // only parameterless fns. Compile-time enforcement: any attempt to
-    // apply `#[module_test]` to a fn with parameters would be flagged
-    // by `cargo test` when the generated `#[test] fn name() { ... }`
-    // tries to satisfy the harness's parameterless-fn requirement.
-    assert!(
-        true,
-        "policy: parameterless fns only, enforced at compile time"
-    );
+fn test_12_parameterless_function_is_callable() {
+    // This pins the positive callable surface, not rejection of parameters.
+    let expanded: fn() = test_03_fn_for_test_attribute_generation;
+    expanded();
 }
 
 // ============================================================================
