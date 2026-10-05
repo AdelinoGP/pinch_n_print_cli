@@ -3,7 +3,7 @@
 Type: task
 Status: open
 Parent: [Slice performance vs OrcaSlicer](../map.md)
-Blocked by: 25, 46
+Blocked by: 25 (46 resolved 2026-10-05 — gate prerequisite satisfied; see ## Work)
 
 ## Question
 
@@ -39,10 +39,13 @@ transfer is 0-16%.
 ## Work (only after explicit human authorization of this take)
 
 Gate prerequisite surfaced by [Clip-universe preparation hoist](44-clip-universe-hoist.md):
-fresh HEAD does not reproduce the old frozen job even before a candidate edit.
-[Frozen-job output drift boundary](46-frozen-job-output-drift-boundary.md) must
-resolve that reference/job boundary, or the human must explicitly authorize a
-fresh-baseline gate for this take too. The hoist's exception is not map-wide.
+**resolved by [Frozen-job output drift boundary](46-frozen-job-output-drift-boundary.md)
+(2026-10-05)** — the drift is intended (config-scope-resolution + the t47 fan
+repair), the boundary is current refs `5a61a106…` (t44 job) / `e1088b3d…`+alias
+(classic-off), and frozen `7049a06d…` / t44-era `1b71f83d…` retire as timing
+baselines for this job. A fresh-baseline gate for this take may proceed against
+the current references with the t47 fan-command disclosure; the hoist's
+exception is still not map-wide.
 
 - Choose the shape: narrow `point_in_contour_winding` /
   `point_in_polygon_winding` (`crates/slicer-ir/src/polygon_predicate.rs`) so

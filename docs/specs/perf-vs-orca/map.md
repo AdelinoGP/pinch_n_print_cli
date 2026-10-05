@@ -65,7 +65,8 @@ Standing decisions for this effort (2026-09-22):
   [overhang-quartile predicate narrowing](issues/45-overhang-quartile-predicate-narrowing.md)
   candidate awaiting its own take; its gate prerequisite
   [Frozen-job output drift boundary](issues/46-frozen-job-output-drift-boundary.md)
-  is open and unblocked, and post-ticket-47 the fan-command reference
+  **is resolved (2026-10-05: intended behavior; current refs `5a61a106…` and `e1088b3d…`+alias;
+  frozen `7049a06d…` / t44 `1b71f83d…` retire as this job's timing baselines)** — post-ticket-47 the fan-command reference
   boundary (see Decisions: ticket 47) also applies to any fresh reference
   45 derives)** → below-fold
   polish — 15, 17, 22
@@ -259,6 +260,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Frozen-job output drift boundary](issues/46-frozen-job-output-drift-boundary.md): **intended behavior, not a defect (2026-10-05)** — the frozen→current drift decomposes into exactly two documented intent programs: t44-era→current is identical move stream (92,519 moves) + the t47 fan repair (+277 lines) − the `support_overhang_angle` alias line (30 B), with `current + alias == 11e7d38a…` (t44 job) and `== e1088b3d…` (classic-off) byte-for-byte; frozen→t44-era is the config-scope-resolution resolved-view program (start block / fill 45° / wall F3000 / registry CONFIG_BLOCK 102→240 keys). All eras re-derive their own references (`7049a06d…`, `1b71f83d…`), all complete clean, zero containment violations. **Boundary: frozen `7049a06d…` and t44 `1b71f83d…` retire as timing baselines for this job; current refs are `5a61a106…` (t44 job) and `e1088b3d…`+alias (classic-off); fan-bearing jobs need post-t47 refs.** Ticket 45's gate prerequisite is satisfied; not map-wide authorization.
+
 - [Native postprocess-view enrichment repair](issues/47-native-postprocess-view-enrichment.md): **KEEP approved by the human (2026-10-03); t33 oracle gate re-run from proof PASSES (benchy-classic-off, byte-identical arms `e1088b3d…` across proof + 3 ABBA pairs; frozen t44-job corroborates `11e7d38a…`)** — three native-dispatch projection gaps fixed: (1) the scoped `Layer::InfillPostProcess` partitioned-`SliceIR` view enrichment (`native_infill_postprocess_regions`), (2) the ordered-entities snapshot the native path-optimization/anchored-events arms never received (travel reordering silently skipped), and (3) the finalization WIT annotation channel whose absence made the EXTERNAL leg silently drop part-cooling's `M106`/`M107` fan commands on every job (package `slicer:finalization-layer-finalization` 1.0.0→1.1.0; disclosed intentional output change on BOTH legs — pre-repair external baselines like t44's `1b71f83d…` are outdated for fan-bearing jobs; post-repair references: classic-off `e1088b3d…`, t44-job `11e7d38a…`). Integrated timings are usable as an oracle on the examined cell, bounded to it; timing campaigns/adoption/default changes still need their own authorization.
 
 - [Integrated/external matched-output oracle gate](issues/33-integrated-external-matched-output-oracle-gate.md): **gate FAILED (2026-10-02)** — integrated dispatch is not output-equivalent; the native `Layer::InfillPostProcess` request omits the partitioned-`SliceIR` view enrichment the WASM leg performs (`push_infill_postprocess_regions`), the infill linker silently falls back to the union boundary, and the native leg prints paths the external leg clips away (+572.5 mm sparse, +698.7 mm top surface etc. on the t44 job), reproducing Finding 3's TYPE deltas; integrated timings stay disqualified. Enabling repair: `raft-default` got its missing 24th integration row (packet-240b registry drift; `xtask dist --edition integrated` was unbuildable before it). Named fix scoped and now taken as [Native postprocess-view enrichment repair](issues/47-native-postprocess-view-enrichment.md) — **superseded there: the gate now PASSES from proof (2026-10-03, see that ticket's answer)**.
@@ -316,17 +319,20 @@ Standing decisions for this effort (2026-09-22):
 
 ## Not yet specified
 
-- **Fan-command reference boundary (graduated from ticket 47, 2026-10-03).**
+- **Fan-command reference boundary (graduated from ticket 47, 2026-10-03;
+  boundary settled by ticket 46, 2026-10-05).**
   The finalization annotation repair intentionally changed BOTH legs' output:
   external now emits part-cooling's `M106`/`M107` fan commands. Every
   pre-repair external reference (t44's accepted `1b71f83d…`, the t30-era
-  matched-pair captures) is outdated for fan-bearing jobs; ticket 46's
-  frozen-job drift question is unaffected (it predates and concerns
-  non-annotation drift). Any future keep/drop gate on a job with fan commands
-  must re-derive its external reference post-repair or strip `M106`/`M107`
-  before comparing. If a fresh-reference re-derivation is needed for a live
-  ticket (45 is the next chain link), graduate it into that ticket's gate
-  prerequisite rather than a standalone effort.
+  matched-pair captures) is outdated for fan-bearing jobs. Ticket 46's
+  frozen-job drift question is **resolved**: current refs `5a61a106…` (t44
+  job) / `e1088b3d…`+alias (classic-off); frozen `7049a06d…` and t44
+  `1b71f83d…` retire as this job's timing baselines. Any future keep/drop gate
+  on a job with fan commands must use post-repair references or strip
+  `M106`/`M107` before comparing (the ticket-46 evidence set carries the
+  reconstruction: current + `; support_overhang_angle = 30` == the t47 refs).
+  For ticket 45 (next chain link), the fresh-baseline gate may proceed against
+  the current references; it is not map-wide authorization.
 - **Painted-wall performance work.** No representative painted workload exists,
   so the painted path of `build_wall_flags` (nearest-original reprojection
   reuse) is not even selectable as a candidate. Needs a fixture/scenario before

@@ -1,0 +1,883 @@
+{
+ "kind": "frozen-job output drift boundary (wayfinder ticket 46)",
+ "model_sha256": "6a07f34cc7769b1c852635212c91a1b354532f4222a9a8105c1035a1a7b284f7",
+ "config_t44_sha256": "2b8314edca85538e3725de9b008f6086dff322121cfc6ea47ba3157caeb6111d",
+ "eras": {
+  "frozen_t38_snapshot": {
+   "tree": "2ebc372a",
+   "gcode_sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+   "bytes": 3821661,
+   "type_sections": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 703,
+    "Inner wall": 754,
+    "Bottom surface": 21,
+    "Bridge": 19,
+    "Sparse infill": 124,
+    "Internal solid infill": 6,
+    "Top surface": 28,
+    "Internal Bridge": 12
+   },
+   "per_role": {
+    "Skirt": {
+     "moves": 24,
+     "e_mm": 28.217
+    },
+    "Brim": {
+     "moves": 80,
+     "e_mm": 95.121
+    },
+    "Outer wall": {
+     "moves": 28867,
+     "e_mm": 1088.815
+    },
+    "Inner wall": {
+     "moves": 52619,
+     "e_mm": 1983.807
+    },
+    "Bottom surface": {
+     "moves": 616,
+     "e_mm": 74.776
+    },
+    "Bridge": {
+     "moves": 290,
+     "e_mm": 28.682
+    },
+    "Sparse infill": {
+     "moves": 3163,
+     "e_mm": 805.702
+    },
+    "Internal solid infill": {
+     "moves": 582,
+     "e_mm": 65.26
+    },
+    "Top surface": {
+     "moves": 1691,
+     "e_mm": 85.159
+    },
+    "Internal Bridge": {
+     "moves": 659,
+     "e_mm": 65.502
+    }
+   },
+   "e_total_mm": 4321.041,
+   "fan_lines": 0,
+   "appendix_key_lines": 102,
+   "sparse_containment": {
+    "sparse_points_checked": 3069,
+    "violating_points": 0,
+    "worst_overshoot_mm": 0.0
+   },
+   "angles_top4": {
+    "Sparse infill": {
+     "0": 983,
+     "90": 557,
+     "135": 29,
+     "89": 28
+    },
+    "Bottom surface": {
+     "0": 232,
+     "90": 80,
+     "125": 8,
+     "45": 7
+    },
+    "Top surface": {
+     "0": 727,
+     "90": 700,
+     "91": 32,
+     "89": 25
+    }
+   },
+   "unclosed_warnings": {
+    "total": 975,
+    "per_role": {
+     "InnerWall": 973,
+     "OuterWall": 2
+    },
+    "min_gap_mm": 0.175676,
+    "p50_gap_mm": 2.345,
+    "max_gap_mm": 18.396
+   },
+   "completion": {
+    "status": "ok",
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   }
+  },
+  "t44_snapshot": {
+   "tree": "0d65dbd9",
+   "gcode_sha256": "1b71f83db378d33c2c52ee84028a7180b8b65d26edffde7eff0b06b40b2d403b",
+   "bytes": 3806297,
+   "type_sections": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 698,
+    "Inner wall": 744,
+    "Bottom surface": 23,
+    "Bridge": 18,
+    "Sparse infill": 139,
+    "Internal solid infill": 6,
+    "Top surface": 32,
+    "Internal Bridge": 12
+   },
+   "per_role": {
+    "Skirt": {
+     "moves": 24,
+     "e_mm": 28.217
+    },
+    "Brim": {
+     "moves": 80,
+     "e_mm": 95.121
+    },
+    "Outer wall": {
+     "moves": 28632,
+     "e_mm": 1091.127
+    },
+    "Inner wall": {
+     "moves": 51206,
+     "e_mm": 2119.085
+    },
+    "Bottom surface": {
+     "moves": 854,
+     "e_mm": 76.751
+    },
+    "Bridge": {
+     "moves": 288,
+     "e_mm": 27.082
+    },
+    "Sparse infill": {
+     "moves": 3940,
+     "e_mm": 952.325
+    },
+    "Internal solid infill": {
+     "moves": 778,
+     "e_mm": 74.415
+    },
+    "Top surface": {
+     "moves": 1414,
+     "e_mm": 93.291
+    },
+    "Internal Bridge": {
+     "moves": 659,
+     "e_mm": 79.902
+    }
+   },
+   "e_total_mm": 4637.315,
+   "fan_lines": 0,
+   "appendix_key_lines": 241,
+   "sparse_containment": {
+    "sparse_points_checked": 3843,
+    "violating_points": 0,
+    "worst_overshoot_mm": 0.0
+   },
+   "angles_top4": {
+    "Sparse infill": {
+     "45": 1279,
+     "90": 411,
+     "174": 67,
+     "176": 64
+    },
+    "Bottom surface": {
+     "45": 337,
+     "90": 44,
+     "177": 37,
+     "176": 29
+    },
+    "Top surface": {
+     "45": 567,
+     "90": 439,
+     "91": 28,
+     "0": 21
+    }
+   },
+   "unclosed_warnings": {
+    "total": 1110,
+    "per_role": {
+     "InnerWall": 1095,
+     "OuterWall": 15
+    },
+    "min_gap_mm": 0.000112,
+    "p50_gap_mm": 2.301,
+    "max_gap_mm": 20.796
+   },
+   "completion": {
+    "status": "ok",
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   }
+  },
+  "current_head": {
+   "tree": "a21f119c + t46 claim",
+   "gcode_sha256": "5a61a1066a4607c6968cc038eb221a38ed39d30b5d26d8448ad87895abc92c4a",
+   "bytes": 3809027,
+   "type_sections": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 698,
+    "Inner wall": 744,
+    "Bottom surface": 23,
+    "Bridge": 18,
+    "Sparse infill": 139,
+    "Internal solid infill": 6,
+    "Top surface": 32,
+    "Internal Bridge": 12
+   },
+   "per_role": {
+    "Skirt": {
+     "moves": 24,
+     "e_mm": 28.217
+    },
+    "Brim": {
+     "moves": 80,
+     "e_mm": 95.121
+    },
+    "Outer wall": {
+     "moves": 28632,
+     "e_mm": 1091.127
+    },
+    "Inner wall": {
+     "moves": 51206,
+     "e_mm": 2119.085
+    },
+    "Bottom surface": {
+     "moves": 854,
+     "e_mm": 76.751
+    },
+    "Bridge": {
+     "moves": 288,
+     "e_mm": 27.082
+    },
+    "Sparse infill": {
+     "moves": 3940,
+     "e_mm": 952.325
+    },
+    "Internal solid infill": {
+     "moves": 778,
+     "e_mm": 74.415
+    },
+    "Top surface": {
+     "moves": 1414,
+     "e_mm": 93.291
+    },
+    "Internal Bridge": {
+     "moves": 659,
+     "e_mm": 79.902
+    }
+   },
+   "e_total_mm": 4637.315,
+   "fan_lines": 277,
+   "appendix_key_lines": 240,
+   "sparse_containment": {
+    "sparse_points_checked": 3843,
+    "violating_points": 0,
+    "worst_overshoot_mm": 0.0
+   },
+   "angles_top4": {
+    "Sparse infill": {
+     "45": 1279,
+     "90": 411,
+     "174": 67,
+     "176": 64
+    },
+    "Bottom surface": {
+     "45": 337,
+     "90": 44,
+     "177": 37,
+     "176": 29
+    },
+    "Top surface": {
+     "45": 567,
+     "90": 439,
+     "91": 28,
+     "0": 21
+    }
+   },
+   "unclosed_warnings": {
+    "total": 1110,
+    "per_role": {
+     "InnerWall": 1095,
+     "OuterWall": 15
+    },
+    "min_gap_mm": 0.000112,
+    "p50_gap_mm": 2.301,
+    "max_gap_mm": 20.796
+   },
+   "completion": {
+    "status": "ok",
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   }
+  },
+  "current_head_classic_off": {
+   "gcode_sha256": "00fe84697dc4b69d7c2156d3f302c31267c40e9eff822da4e8d9524e7e99e050",
+   "bytes": 4332851,
+   "type_sections": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 240,
+    "Inner wall": 240,
+    "Gap infill": 110,
+    "Bottom surface": 24,
+    "Bridge": 22,
+    "Sparse infill": 204,
+    "Internal solid infill": 13,
+    "Top surface": 70,
+    "Internal Bridge": 12
+   },
+   "per_role": {
+    "Skirt": {
+     "moves": 24,
+     "e_mm": 28.22
+    },
+    "Brim": {
+     "moves": 80,
+     "e_mm": 95.129
+    },
+    "Outer wall": {
+     "moves": 33310,
+     "e_mm": 1088.029
+    },
+    "Inner wall": {
+     "moves": 31258,
+     "e_mm": 1172.503
+    },
+    "Gap infill": {
+     "moves": 608,
+     "e_mm": 49.992
+    },
+    "Bottom surface": {
+     "moves": 984,
+     "e_mm": 85.842
+    },
+    "Bridge": {
+     "moves": 322,
+     "e_mm": 35.895
+    },
+    "Sparse infill": {
+     "moves": 32108,
+     "e_mm": 1015.757
+    },
+    "Internal solid infill": {
+     "moves": 995,
+     "e_mm": 92.17
+    },
+    "Top surface": {
+     "moves": 1949,
+     "e_mm": 107.41
+    },
+    "Internal Bridge": {
+     "moves": 653,
+     "e_mm": 79.9
+    }
+   },
+   "e_total_mm": 3850.847,
+   "fan_lines": 281,
+   "appendix_key_lines": 240,
+   "sparse_containment": {
+    "sparse_points_checked": 31996,
+    "violating_points": 0,
+    "worst_overshoot_mm": 0.0
+   },
+   "angles_top4": {
+    "Sparse infill": {
+     "38": 619,
+     "142": 612,
+     "52": 559,
+     "128": 542
+    },
+    "Bottom surface": {
+     "45": 373,
+     "90": 69,
+     "176": 33,
+     "3": 32
+    },
+    "Top surface": {
+     "45": 771,
+     "90": 558,
+     "0": 95,
+     "91": 37
+    }
+   },
+   "unclosed_warnings": {
+    "total": 0,
+    "per_role": {},
+    "min_gap_mm": null,
+    "p50_gap_mm": null,
+    "max_gap_mm": null
+   },
+   "completion": {
+    "status": "ok",
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+   }
+  }
+ },
+ "byte_arithmetic": {
+  "alias_line_bytes": 30,
+  "fan_bytes": 2760,
+  "t47_t44job_reference_sha256": "11e7d38a60f5018badd9c06424c296fcfc12e5d87bc785800fa2c803ba555a58",
+  "t47_classic_off_reference_sha256": "e1088b3df78b51b4d0add0c64b3cf143d44ca95cfb5c15db14080772b4e77fbf",
+  "t44_reference_sha256": "1b71f83db378d33c2c52ee84028a7180b8b65d26edffde7eff0b06b40b2d403b",
+  "frozen_reference_sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+  "expected": {
+   "current_plus_alias_equals_t47_t44job": true,
+   "current_classic_plus_alias_equals_t47_classic_off": true,
+   "current_minus_fans_plus_alias_equals_t44": true,
+   "note": "sizes measured: current 3809027 = t44 3806297 + fans 2760 - alias 30 = 3809027"
+  }
+ },
+ "layer_type_deltas_frozen_vs_t44": [
+  {
+   "layer": 1,
+   "deltas": {
+    "Bottom surface": [
+     18,
+     15
+    ],
+    "Bridge": [
+     16,
+     14
+    ]
+   }
+  },
+  {
+   "layer": 12,
+   "deltas": {
+    "Sparse infill": [
+     1,
+     2
+    ]
+   }
+  },
+  {
+   "layer": 25,
+   "deltas": {
+    "Outer wall": [
+     2,
+     1
+    ]
+   }
+  },
+  {
+   "layer": 26,
+   "deltas": {
+    "Outer wall": [
+     2,
+     1
+    ]
+   }
+  },
+  {
+   "layer": 29,
+   "deltas": {
+    "Outer wall": [
+     2,
+     1
+    ]
+   }
+  },
+  {
+   "layer": 31,
+   "deltas": {
+    "Sparse infill": [
+     2,
+     3
+    ],
+    "Top surface": [
+     1,
+     2
+    ]
+   }
+  },
+  {
+   "layer": 41,
+   "deltas": {
+    "Sparse infill": [
+     3,
+     6
+    ],
+    "Top surface": [
+     4,
+     7
+    ]
+   }
+  },
+  {
+   "layer": 43,
+   "deltas": {
+    "Outer wall": [
+     4,
+     5
+    ]
+   }
+  },
+  {
+   "layer": 44,
+   "deltas": {
+    "Outer wall": [
+     4,
+     5
+    ]
+   }
+  },
+  {
+   "layer": 45,
+   "deltas": {
+    "Inner wall": [
+     6,
+     5
+    ]
+   }
+  },
+  {
+   "layer": 46,
+   "deltas": {
+    "Inner wall": [
+     6,
+     5
+    ]
+   }
+  },
+  {
+   "layer": 47,
+   "deltas": {
+    "Inner wall": [
+     6,
+     5
+    ]
+   }
+  },
+  {
+   "layer": 48,
+   "deltas": {
+    "Inner wall": [
+     6,
+     5
+    ]
+   }
+  },
+  {
+   "layer": 49,
+   "deltas": {
+    "Outer wall": [
+     4,
+     5
+    ]
+   }
+  },
+  {
+   "layer": 50,
+   "deltas": {
+    "Outer wall": [
+     4,
+     5
+    ]
+   }
+  },
+  {
+   "layer": 51,
+   "deltas": {
+    "Outer wall": [
+     4,
+     5
+    ]
+   }
+  },
+  {
+   "layer": 52,
+   "deltas": {
+    "Outer wall": [
+     4,
+     5
+    ]
+   }
+  },
+  {
+   "layer": 101,
+   "deltas": {
+    "Sparse infill": [
+     1,
+     0
+    ]
+   }
+  },
+  {
+   "layer": 175,
+   "deltas": {
+    "Sparse infill": [
+     0,
+     1
+    ]
+   }
+  },
+  {
+   "layer": 176,
+   "deltas": {
+    "Inner wall": [
+     2,
+     3
+    ]
+   }
+  },
+  {
+   "layer": 178,
+   "deltas": {
+    "Sparse infill": [
+     0,
+     1
+    ]
+   }
+  },
+  {
+   "layer": 179,
+   "deltas": {
+    "Inner wall": [
+     2,
+     3
+    ],
+    "Sparse infill": [
+     0,
+     1
+    ]
+   }
+  },
+  {
+   "layer": 180,
+   "deltas": {
+    "Inner wall": [
+     2,
+     3
+    ]
+   }
+  },
+  {
+   "layer": 181,
+   "deltas": {
+    "Sparse infill": [
+     1,
+     0
+    ]
+   }
+  },
+  {
+   "layer": 182,
+   "deltas": {
+    "Inner wall": [
+     3,
+     2
+    ],
+    "Sparse infill": [
+     1,
+     0
+    ]
+   }
+  },
+  {
+   "layer": 183,
+   "deltas": {
+    "Bridge": [
+     2,
+     3
+    ],
+    "Sparse infill": [
+     2,
+     4
+    ]
+   }
+  },
+  {
+   "layer": 184,
+   "deltas": {
+    "Bottom surface": [
+     1,
+     3
+    ],
+    "Sparse infill": [
+     1,
+     4
+    ]
+   }
+  },
+  {
+   "layer": 185,
+   "deltas": {
+    "Bottom surface": [
+     1,
+     4
+    ],
+    "Sparse infill": [
+     1,
+     3
+    ]
+   }
+  },
+  {
+   "layer": 189,
+   "deltas": {
+    "Sparse infill": [
+     1,
+     2
+    ],
+    "Top surface": [
+     1,
+     2
+    ]
+   }
+  },
+  {
+   "layer": 191,
+   "deltas": {
+    "Sparse infill": [
+     1,
+     2
+    ]
+   }
+  },
+  {
+   "layer": 193,
+   "deltas": {
+    "Top surface": [
+     3,
+     2
+    ]
+   }
+  },
+  {
+   "layer": 196,
+   "deltas": {
+    "Top surface": [
+     2,
+     1
+    ]
+   }
+  },
+  {
+   "layer": 197,
+   "deltas": {
+    "Sparse infill": [
+     0,
+     1
+    ],
+    "Top surface": [
+     1,
+     2
+    ]
+   }
+  },
+  {
+   "layer": 200,
+   "deltas": {
+    "Inner wall": [
+     2,
+     1
+    ]
+   }
+  },
+  {
+   "layer": 201,
+   "deltas": {
+    "Outer wall": [
+     1,
+     0
+    ]
+   }
+  },
+  {
+   "layer": 204,
+   "deltas": {
+    "Inner wall": [
+     2,
+     1
+    ],
+    "Outer wall": [
+     2,
+     1
+    ]
+   }
+  },
+  {
+   "layer": 207,
+   "deltas": {
+    "Inner wall": [
+     2,
+     1
+    ],
+    "Outer wall": [
+     2,
+     1
+    ]
+   }
+  },
+  {
+   "layer": 209,
+   "deltas": {
+    "Inner wall": [
+     2,
+     1
+    ],
+    "Outer wall": [
+     2,
+     1
+    ]
+   }
+  },
+  {
+   "layer": 212,
+   "deltas": {
+    "Inner wall": [
+     2,
+     1
+    ],
+    "Outer wall": [
+     2,
+     1
+    ]
+   }
+  },
+  {
+   "layer": 213,
+   "deltas": {
+    "Inner wall": [
+     2,
+     1
+    ],
+    "Outer wall": [
+     2,
+     1
+    ]
+   }
+  },
+  {
+   "layer": 214,
+   "deltas": {
+    "Inner wall": [
+     2,
+     1
+    ],
+    "Outer wall": [
+     2,
+     1
+    ]
+   }
+  },
+  {
+   "layer": 215,
+   "deltas": {
+    "Inner wall": [
+     2,
+     1
+    ],
+    "Outer wall": [
+     2,
+     1
+    ]
+   }
+  }
+ ],
+ "note": "frozen vs t44 layer deltas listed; current shares the t44 move stream exactly (see FINDINGS)."
+}
