@@ -25,12 +25,9 @@ use slicer_sdk::traits::LayerPlanningObject;
 /// 0-indexed tool selection. Missing, zero, invalid, and out-of-range values
 /// retain the default tool 0 behavior.
 ///
-/// Also derives [`SupportToolSelection::tool_count`] from the same raw config
-/// map, using the `filament_density` list length. That is the identical source
-/// `ResolvedConfig.filament_density` is extracted from this same authored map,
-/// and `extract_float_list` preserves element count, so the
-/// value here equals `max(1, ResolvedConfig.filament_density.len())` without
-/// needing a resolved config threaded to this call site.
+/// Callers must pass a typed resolved config map, not the authored source map.
+/// Also derives [`SupportToolSelection::tool_count`] from that map using the
+/// `filament_density` list length.
 ///
 /// [`SupportToolSelection::tool_count`]: crate::layer_executor::SupportToolSelection::tool_count
 pub fn parse_support_tool_selection<K>(
@@ -59,6 +56,17 @@ where
         interface_tool: rebase("support_interface_filament"),
         tool_count,
     }
+}
+
+fn resolved_host_options(
+    config: &ResolvedConfig,
+) -> (bool, crate::layer_executor::SupportToolSelection) {
+    let map = config.to_config_map();
+    let relative = match map.get("use_relative_e_distances") {
+        Some(ConfigValue::Bool(value)) => *value,
+        _ => DEFAULT_USE_RELATIVE_E_DISTANCES,
+    };
+    (relative, parse_support_tool_selection(&map))
 }
 
 use crate::config_resolution::{validate_support_layer_heights, ConfigBoundsIndex};
@@ -99,8 +107,8 @@ fn typed_global_config(scoped: &ScopedConfig) -> std::collections::HashMap<Confi
 }
 
 const RESOLVED_TARGET_PREFIX: &str = "\0resolved-target:";
-const RESOLVED_PAINT_PREFIX: &str = "\0resolved-paint:";
-const RESOLVED_TOOL_PREFIX: &str = "\0resolved-tool:";
+pub(crate) const RESOLVED_PAINT_PREFIX: &str = "\0resolved-paint:";
+pub(crate) const RESOLVED_TOOL_PREFIX: &str = "\0resolved-tool:";
 
 fn paint_semantic_name(semantic: &PaintSemantic) -> String {
     match semantic {
@@ -218,8 +226,14 @@ fn merge_model_scopes(
     scoped: &mut ScopedConfig,
     mesh: &MeshIR,
 ) -> Result<Vec<IngestionWarning>, SliceRunError> {
-    let mut modifier_ingestor = ConfigIngestor::new(registry);
+    // Model adapters preserve source spelling. Admit every model-authored
+    // scope through the same registry boundary before merging authored deltas;
+    // explicit flat-config entries retain precedence within each scope.
+    let mut model_ingestor = ConfigIngestor::new(registry);
     for object in &mesh.objects {
+        model_ingestor
+            .ingest_delta(ConfigScope::Object(object.id.clone()), &object.config.data)
+            .map_err(|error| SliceRunError(format!("object config ingestion failed: {error}")))?;
         for modifier in &object.modifier_volumes {
             let scope = ConfigScope::Modifier {
                 object_id: object.id.clone(),
@@ -237,36 +251,32 @@ fn merge_model_scopes(
                 .map(|(key, value)| (key.clone(), value.clone()))
                 .collect::<std::collections::HashMap<_, _>>();
 
-            modifier_ingestor
+            model_ingestor
                 .ingest_delta(scope, &values)
                 .map_err(|error| {
                     SliceRunError(format!("modifier config ingestion failed: {error}"))
                 })?;
         }
     }
-    let modifier_outcome = modifier_ingestor.finish();
-    validate_modifier_deltas(registry, &modifier_outcome.scoped)?;
-
-    for object in &mesh.objects {
-        let object_delta = scoped
-            .deltas
-            .entry(ConfigScope::Object(object.id.clone()))
-            .or_default();
-        for (key, value) in &object.config.data {
-            object_delta
-                .values
-                .entry(key.clone())
-                .or_insert_with(|| value.clone());
-        }
-    }
-    for (scope, delta) in modifier_outcome.scoped.deltas {
+    let model_outcome = model_ingestor.finish();
+    validate_modifier_deltas(registry, &model_outcome.scoped)?;
+    for (scope, delta) in model_outcome.scoped.deltas {
         let target = scoped.deltas.entry(scope).or_default();
+        let explicit_keys: std::collections::BTreeSet<_> = target
+            .values
+            .keys()
+            .map(|key| slicer_config::canonical_config_key(key).to_owned())
+            .collect();
         for (key, value) in delta.values {
+            let canonical = slicer_config::canonical_config_key(&key);
+            if explicit_keys.contains(canonical) {
+                continue;
+            }
             target.values.entry(key).or_insert(value);
         }
     }
 
-    Ok(modifier_outcome.warnings)
+    Ok(model_outcome.warnings)
 }
 
 struct RuntimeResolvedScopes {
@@ -637,57 +647,6 @@ fn build_expansion_context(
         nozzle_diameter_mm,
         tool_bases,
     })
-}
-
-#[cfg(test)]
-fn expand_config(
-    registry: &slicer_config::ConfigSchemaRegistry,
-    config: &mut slicer_ir::ResolvedConfig,
-    context: &ExpansionContext,
-    tool_index: Option<u32>,
-    scope: &str,
-) -> Result<(), SliceRunError> {
-    slicer_config::expand_automatic_values(registry, config, context, tool_index).map_err(|error| {
-        SliceRunError(format!(
-            "automatic value expansion failed for {scope}: {error}"
-        ))
-    })
-}
-
-/// Expand every already-merged scope map in place: the global default, each
-/// per-object map, and each per-tool map with its tool index so
-/// `ExpansionContext.tool_bases` selects the matching absolute base.
-/// Runs after scope merge and before plan binding, feedrate construction, or
-/// emitter use on every production entry point; the first failure aborts
-/// before any consumer binds a map.
-#[cfg(test)]
-fn expand_scope_maps(
-    registry: &slicer_config::ConfigSchemaRegistry,
-    default_config: &mut slicer_ir::ResolvedConfig,
-    object_configs: &mut std::collections::BTreeMap<String, slicer_ir::ResolvedConfig>,
-    tool_configs: &mut std::collections::BTreeMap<u32, slicer_ir::ResolvedConfig>,
-    context: &ExpansionContext,
-) -> Result<(), SliceRunError> {
-    expand_config(registry, default_config, context, None, "global scope")?;
-    for (object_id, config) in object_configs.iter_mut() {
-        expand_config(
-            registry,
-            config,
-            context,
-            None,
-            &format!("object {object_id}"),
-        )?;
-    }
-    for (&tool_index, config) in tool_configs.iter_mut() {
-        expand_config(
-            registry,
-            config,
-            context,
-            Some(tool_index),
-            &format!("tool {tool_index}"),
-        )?;
-    }
-    Ok(())
 }
 
 fn overlay_expanded_global(
@@ -1590,14 +1549,11 @@ pub fn run_slice_with_collector(
     .map_err(|e| SliceRunError(format!("failed to build execution plan: {e}")))?;
 
     let engine = Arc::clone(&loaded.engine);
-    let flavor = match config_source.get("gcode_flavor") {
+    let flavor = match expanded_global_source.get("gcode_flavor") {
         Some(ConfigValue::String(value)) => GcodeFlavor::from_config_str(value),
         _ => GcodeFlavor::Marlin,
     };
-    let relative = match config_source.get("use_relative_e_distances") {
-        Some(ConfigValue::Bool(b)) => *b,
-        _ => DEFAULT_USE_RELATIVE_E_DISTANCES,
-    };
+    let (relative, support_tools) = resolved_host_options(&default_resolved_config);
     let support_line_width_mm = default_resolved_config.support_line_width.value as f32;
 
     // Packet 169 Step 3: capture the estimator inputs the slice_stats event
@@ -1633,6 +1589,7 @@ pub fn run_slice_with_collector(
                     concat!("pnp_cli ", env!("CARGO_PKG_VERSION")).into(),
                     slicer_ir::FeedrateConfig::from_raw_config(&expanded_global_source),
                 )
+                .with_extrusion_mode(relative)
                 .with_resolved_config(default_resolved_config.clone())
                 .with_tool_configs(per_tool_configs_map.clone()),
             ),
@@ -1642,7 +1599,7 @@ pub fn run_slice_with_collector(
                     .with_support_line_width(support_line_width_mm),
             ),
         },
-        support_tools: parse_support_tool_selection(&config_source),
+        support_tools,
         resolved_configs: Arc::new(resolved_configs_map),
         default_resolved_config: Arc::new(default_resolved_config),
         bounds: Arc::new(config_bounds),
@@ -1986,7 +1943,50 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     #[test]
-    fn expand_scope_maps_uses_tool_index_for_tool_placeholders() {
+    fn model_object_strings_are_typed_before_production_resolution() {
+        let registry = nozzle_registry(Some("0.4"));
+        let mut scoped = global_nozzle(Some(0.4));
+        let mesh = slicer_ir::MeshIR {
+            // exhaustive: ObjectMesh has no Default; empty geometry isolates config admission.
+            objects: vec![slicer_ir::ObjectMesh {
+                id: "object".into(),
+                mesh: slicer_ir::IndexedTriangleSet {
+                    vertices: Vec::new(),
+                    indices: Vec::new(),
+                },
+                transform: slicer_ir::Transform3d { matrix: [0.0; 16] },
+                config: slicer_ir::ObjectConfig {
+                    data: HashMap::from([(
+                        "nozzle_diameter".into(),
+                        ConfigValue::String("0.6".into()),
+                    )]),
+                },
+                modifier_volumes: Vec::new(),
+                paint_data: None,
+                world_z_extent: Some((0.0, 1.0)),
+            }],
+            ..Default::default()
+        };
+        super::merge_model_scopes(&registry, &mut scoped, &mesh).unwrap();
+        let resolved = super::resolve_runtime_scopes(&registry, &scoped, &mesh)
+            .expect("runtime must ingest model strings before resolving typed keys");
+        assert_eq!(
+            resolved.target_configs["object"].to_config_map()["nozzle_diameter"],
+            ConfigValue::Float(0.6)
+        );
+        assert_eq!(
+            scoped
+                .delta(&slicer_config::ConfigScope::Object("object".into()))
+                .unwrap()
+                .values
+                .len(),
+            1,
+            "model ingestion must not manufacture defaults"
+        );
+    }
+
+    #[test]
+    fn public_scope_resolution_uses_tool_index_for_tool_placeholders() {
         use slicer_config::{assemble_registry, HostChannels, ModuleDeclaration};
         use slicer_ir::config_schema::{ConfigFieldEntry, ConfigSchema};
 
@@ -2024,40 +2024,102 @@ mod tests {
             )]),
         };
 
-        let mut scoped = slicer_ir::ResolvedConfig::default();
-        scoped.extensions.insert(
-            "outer_wall_line_width".to_owned(),
-            ConfigValue::Percent(150.0),
-        );
-        let mut global = scoped.clone();
-        let mut objects = std::collections::BTreeMap::from([("obj".to_owned(), scoped.clone())]);
-        let mut tools = std::collections::BTreeMap::from([(1u32, scoped)]);
-
-        super::expand_scope_maps(&registry, &mut global, &mut objects, &mut tools, &context)
-            .expect("literal fixture carries every required base");
+        let mut ingestor = slicer_config::ConfigIngestor::new(&registry);
+        ingestor
+            .ingest_delta(
+                slicer_config::ConfigScope::Global,
+                &HashMap::from([(
+                    "outer_wall_line_width".to_owned(),
+                    ConfigValue::Percent(150.0),
+                )]),
+            )
+            .unwrap();
+        let scoped = ingestor.finish().scoped;
+        let resolve = |target| {
+            slicer_config::resolve_scope_stack(&registry, &scoped, &target, &context).unwrap()
+        };
+        let global = resolve(slicer_config::ResolutionTarget::default());
+        let object = resolve(slicer_config::ResolutionTarget {
+            object_id: "obj".to_owned(),
+            ..Default::default()
+        });
+        let tool = resolve(slicer_config::ResolutionTarget {
+            tool_index: Some(1),
+            ..Default::default()
+        });
 
         let width = |config: &slicer_ir::ResolvedConfig, label: &str| match config
             .to_config_map()
             .get("outer_wall_line_width")
         {
-            Some(ConfigValue::Float(value)) => *value,
-            other => panic!(
-                "{label}: outer_wall_line_width must expand to absolute float, got {other:?}"
-            ),
+            Some(ConfigValue::FloatOrPercent {
+                value,
+                is_percent: false,
+            }) => *value,
+            other => panic!("{label}: expected absolute FloatOrPercent, got {other:?}"),
         };
         assert!(
             (width(&global, "global") - 0.6).abs() <= 1e-12,
             "global must expand 150% of the 0.4 merged base"
         );
         assert!(
-            (width(&objects["obj"], "object") - 0.6).abs() <= 1e-12,
+            (width(&object, "object") - 0.6).abs() <= 1e-12,
             "object must expand 150% of the 0.4 merged base"
         );
         assert!(
-            (width(&tools[&1], "tool 1") - 0.9).abs() <= 1e-12,
+            (width(&tool, "tool 1") - 0.9).abs() <= 1e-12,
             "tool 1 must expand 150% of its 0.6 tool base; deleting the \
-             per-tool loop would leave the Percent placeholder"
+             resolver's tool context would use the global base"
         );
+    }
+
+    #[test]
+    fn resolved_host_options_use_authored_boolean_and_tool_strings() {
+        let registry =
+            slicer_config::assemble_registry(&[], &slicer_config::HostChannels::from_live())
+                .unwrap()
+                .registry;
+        let mut ingestor = slicer_config::ConfigIngestor::new(&registry);
+        ingestor
+            .ingest_delta(
+                slicer_config::ConfigScope::Global,
+                &HashMap::from([
+                    (
+                        "use_relative_e_distances".into(),
+                        ConfigValue::String("0".into()),
+                    ),
+                    ("support_filament".into(), ConfigValue::String("2".into())),
+                    (
+                        "support_interface_filament".into(),
+                        ConfigValue::String("3".into()),
+                    ),
+                    (
+                        "filament_density".into(),
+                        ConfigValue::List(vec![ConfigValue::Float(1.24); 3]),
+                    ),
+                ]),
+            )
+            .unwrap();
+        let outcome = ingestor.finish();
+        assert!(
+            outcome.warnings.is_empty(),
+            "host keys must be recognized by the live registry"
+        );
+        let config = slicer_config::resolve_scope_stack(
+            &registry,
+            &outcome.scoped,
+            &slicer_config::ResolutionTarget::default(),
+            &slicer_config::ExpansionContext {
+                nozzle_diameter_mm: 0.4,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let (relative, tools) = super::resolved_host_options(&config);
+        assert!(!relative, "authored string 0 must select absolute E");
+        assert_eq!(tools.support_tool, 1);
+        assert_eq!(tools.interface_tool, 2);
+        assert_eq!(tools.tool_count, 3);
     }
 
     #[test]

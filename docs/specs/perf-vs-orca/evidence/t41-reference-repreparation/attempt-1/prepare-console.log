@@ -1,0 +1,22 @@
+CHECK snapshot-toolchain
+CHECK ordinary-dist-build
+CHECK snapshot-ordinary-freshness
+PREPARE ordinary supports-off-benchy/classic (no benchmark)
+CHECK supports-off-benchy-classic-status
+PASS supports-off-benchy/classic: clean status, settings, sparse bbox
+PREPARE ordinary supports-off-benchy/arachne (no benchmark)
+CHECK supports-off-benchy-arachne-status
+PASS supports-off-benchy/arachne: clean status, settings, sparse bbox
+PREPARE ordinary tree-support-benchy/classic (no benchmark)
+CHECK tree-support-benchy-classic-status
+PASS tree-support-benchy/classic: clean status, settings, sparse bbox
+PREPARE ordinary tree-support-benchy/arachne (no benchmark)
+CHECK tree-support-benchy-arachne-status
+PASS tree-support-benchy/arachne: clean status, settings, sparse bbox
+PREPARE ordinary tree-support-base/classic (no benchmark)
+CHECK tree-support-base-classic-status
+PASS tree-support-base/classic: clean status, settings, sparse bbox
+PREPARE ordinary tree-support-base/arachne (no benchmark)
+CHECK tree-support-base-arachne-status
+PASS tree-support-base/arachne: clean status, settings, sparse bbox
+FROZEN: D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t41-20260930T232255Z\corpus; payload D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t41-20260930T232255Z; no campaign timing or accelerated validation ran.

@@ -1,7 +1,8 @@
 # Accelerated perimeter-spatial adoption decision
 
 Type: grilling
-Status: open
+Status: resolved
+Assignee: current wayfinder session, 2026-09-30
 Blocked by: 11
 
 ## Question
@@ -24,3 +25,24 @@ acceptance); and the recipe traps around the accelerated snapshot.
 
 Record the human's decision under `## Answer` — adoption or not, with the
 acceptance campaign's remaining checklist state.
+
+## Resolution comment — 2026-09-30
+
+The human chose **pursue accelerated adoption**, then confirmed conditional
+adoption under the existing controlled-build acceptance policy. Accelerated
+is the intended production mode; ordinary remains the actual default until
+fresh acceptance passes. This is not permission to change build defaults now.
+
+The gate is `docs/23_controlled_perimeter_builds.md`'s campaign: verified
+mode-specific artifacts, reference exactness and dispatch/status validation,
+and strict favorable CPU and wall sample separation in every campaign cell.
+An inconclusive result returns to the human; do not weaken the gate or
+automatically retry. Paired ordinary + accelerated measurements continue.
+Until adoption, production-default claims refer to ordinary and accelerated
+claims remain explicitly mode-labelled. Adoption does not replace the map's
+separate matched eight-cell Orca win criterion.
+
+No acceptance campaign or freshness check ran in this decision session.
+The historical matched scoreboard predates recent correctness fixes and is
+not fresh adoption evidence. Remaining preparation and verification are
+carried by [Accelerated production adoption acceptance campaign](38-accelerated-adoption-acceptance-campaign.md).

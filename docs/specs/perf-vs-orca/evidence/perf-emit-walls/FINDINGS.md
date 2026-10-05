@@ -129,7 +129,11 @@ cannot both be wall. Most likely the span fold sums per-thread spans
 spans were stable across three runs (22.7 / 23.5 / 22.3 s). **Verify
 `fold_marks` thread handling before treating this as a hotspot.** Repro
 captures: `fuel-profile.jsonl`, `probe-fuel-profile.jsonl`,
-`drill-fuel-profile.jsonl`.
+`drill-fuel-profile.jsonl` (scratch; not retained).
+**Resolved 2026-09-23:** the first hypothesis is correct — accumulated
+per-thread spans vs wall, `fold_marks` is thread-correct — so this retires as
+a hotspot. See `../../issues/24-host-slice-closing-span-contradiction.md` and
+`../t24-span-contradiction/SAME-RUN.md`.
 
 ## Re-ranked leads (user decision required; nothing implemented)
 

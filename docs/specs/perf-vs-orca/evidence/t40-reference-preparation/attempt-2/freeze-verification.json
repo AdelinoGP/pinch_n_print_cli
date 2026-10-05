@@ -1,0 +1,170 @@
+{
+  "verified_utc": "2026-09-30T07:09:17.589429+00:00",
+  "status": "PASS",
+  "evidence_sha256": {
+    "frozen-manifest.json": "69e8749ffefde3d883259c86b525cd35fdd8618b725a86a32bc7881fa2410beb",
+    "source-inputs.json": "832ed3416454dd4f861ae1dd150487a1a14695df0398ccd67f2fe550b9951dd2",
+    "historical-corpus-hashes.json": "4600b571146327739e46b686b92a558d3a84eb05f852047fb5592b9ec45787ab",
+    "source-worktree.diff": "cc66a7e5b8abc6ea7fe4bf1760c485504adc4ac0b1dc3e33cae41aae8b25e01e",
+    "source-worktree-status.txt": "899a35cd177524f079a282b92f2a8d8c72d2f2d0ffe7b6f03f802e8d997f7c46",
+    "ordinary-dist-build.log": "436841d91f4cbe003a18255530fb68cb371c3338a5a21fc392cfcb03026d1cf3",
+    "snapshot-ordinary-freshness.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "snapshot-toolchain.log": "2efe229f7908c2c19f459ca734101a5b35cb482476b8bee1357f94a18c766078",
+    "../preflight-results.json": "73c8ae8dce45a0a894611ca9d80adfb449d68bab4dcca4d17708135f1451211e"
+  },
+  "corpus_root": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-reference-preparation\\t40-20260930T065207Z\\corpus",
+  "ordinary_snapshot_root": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-reference-preparation\\t40-20260930T065207Z\\ordinary",
+  "claims": "identity and targeted preparation checks only; no adoption acceptance or full geometry oracle",
+  "cells": [
+    {
+      "workload": "supports-off-benchy",
+      "generator": "classic",
+      "completion": {
+        "ValidatedGenerator": "classic",
+        "CompletionStatus": "ok",
+        "FatalErrorCount": 0,
+        "NonFatalErrorCount": 0,
+        "Degraded": false
+      },
+      "sparse_segments": 2886,
+      "worst_out_of_deposited_wall_bbox_mm": 0.0,
+      "effective_job": {
+        "layer_height": "0.2",
+        "first_layer_height": "0.2",
+        "nozzle_diameter": "0.5",
+        "line_width": "0.4",
+        "wall_loops": "3",
+        "infill_density": "0.20000000298023224",
+        "sparse_fill_holder": "rectilinear-infill",
+        "sparse_infill_density": "25",
+        "enable_support": "false",
+        "support_type": "normal(auto)"
+      }
+    },
+    {
+      "workload": "supports-off-benchy",
+      "generator": "arachne",
+      "completion": {
+        "ValidatedGenerator": "arachne",
+        "CompletionStatus": "ok",
+        "FatalErrorCount": 0,
+        "NonFatalErrorCount": 0,
+        "Degraded": false
+      },
+      "sparse_segments": 3069,
+      "worst_out_of_deposited_wall_bbox_mm": 0.0,
+      "effective_job": {
+        "layer_height": "0.2",
+        "first_layer_height": "0.2",
+        "nozzle_diameter": "0.5",
+        "line_width": "0.4",
+        "wall_loops": "3",
+        "infill_density": "0.20000000298023224",
+        "sparse_fill_holder": "rectilinear-infill",
+        "sparse_infill_density": "25",
+        "enable_support": "false",
+        "support_type": "normal(auto)"
+      }
+    },
+    {
+      "workload": "tree-support-benchy",
+      "generator": "classic",
+      "completion": {
+        "ValidatedGenerator": "classic",
+        "CompletionStatus": "ok",
+        "FatalErrorCount": 0,
+        "NonFatalErrorCount": 0,
+        "Degraded": false
+      },
+      "sparse_segments": 2886,
+      "worst_out_of_deposited_wall_bbox_mm": 0.0,
+      "effective_job": {
+        "layer_height": "0.2",
+        "first_layer_height": "0.2",
+        "nozzle_diameter": "0.5",
+        "line_width": "0.4",
+        "wall_loops": "3",
+        "infill_density": "0.20000000298023224",
+        "sparse_fill_holder": "rectilinear-infill",
+        "sparse_infill_density": "25",
+        "enable_support": "true",
+        "support_type": "tree(auto)"
+      }
+    },
+    {
+      "workload": "tree-support-benchy",
+      "generator": "arachne",
+      "completion": {
+        "ValidatedGenerator": "arachne",
+        "CompletionStatus": "ok",
+        "FatalErrorCount": 0,
+        "NonFatalErrorCount": 0,
+        "Degraded": false
+      },
+      "sparse_segments": 3069,
+      "worst_out_of_deposited_wall_bbox_mm": 0.0,
+      "effective_job": {
+        "layer_height": "0.2",
+        "first_layer_height": "0.2",
+        "nozzle_diameter": "0.5",
+        "line_width": "0.4",
+        "wall_loops": "3",
+        "infill_density": "0.20000000298023224",
+        "sparse_fill_holder": "rectilinear-infill",
+        "sparse_infill_density": "25",
+        "enable_support": "true",
+        "support_type": "tree(auto)"
+      }
+    },
+    {
+      "workload": "tree-support-base",
+      "generator": "classic",
+      "completion": {
+        "ValidatedGenerator": "classic",
+        "CompletionStatus": "ok",
+        "FatalErrorCount": 0,
+        "NonFatalErrorCount": 0,
+        "Degraded": false
+      },
+      "sparse_segments": 25719,
+      "worst_out_of_deposited_wall_bbox_mm": 0.0,
+      "effective_job": {
+        "layer_height": "0.2",
+        "first_layer_height": "0.2",
+        "nozzle_diameter": "0.5",
+        "line_width": "0.4",
+        "wall_loops": "3",
+        "infill_density": "0.20000000298023224",
+        "sparse_fill_holder": "rectilinear-infill",
+        "sparse_infill_density": "25",
+        "enable_support": "true",
+        "support_type": "tree(auto)"
+      }
+    },
+    {
+      "workload": "tree-support-base",
+      "generator": "arachne",
+      "completion": {
+        "ValidatedGenerator": "arachne",
+        "CompletionStatus": "ok",
+        "FatalErrorCount": 0,
+        "NonFatalErrorCount": 0,
+        "Degraded": false
+      },
+      "sparse_segments": 25899,
+      "worst_out_of_deposited_wall_bbox_mm": 0.0,
+      "effective_job": {
+        "layer_height": "0.2",
+        "first_layer_height": "0.2",
+        "nozzle_diameter": "0.5",
+        "line_width": "0.4",
+        "wall_loops": "3",
+        "infill_density": "0.20000000298023224",
+        "sparse_fill_holder": "rectilinear-infill",
+        "sparse_infill_density": "25",
+        "enable_support": "true",
+        "support_type": "tree(auto)"
+      }
+    }
+  ]
+}

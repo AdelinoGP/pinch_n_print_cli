@@ -814,8 +814,8 @@ fn execute_prepass_with_builtins_configured_instr_collecting(
         blackboard: &Blackboard,
         resolved_configs: &BTreeMap<String, ResolvedConfig>,
     ) -> BTreeMap<slicer_ir::PaintSemantic, ResolvedConfig> {
+        use crate::run::RESOLVED_PAINT_PREFIX;
         use slicer_ir::PaintSemantic;
-        const RESOLVED_PAINT_PREFIX: &str = "\0resolved-paint:";
 
         fn semantic_name(semantic: &PaintSemantic) -> &str {
             match semantic {
@@ -906,7 +906,7 @@ fn execute_prepass_with_builtins_configured_instr_collecting(
     let region_mapping_should_run =
         blackboard.layer_plan().is_some() && blackboard.region_map().is_none();
     let region_mapping_configs = if region_mapping_should_run {
-        const RESOLVED_TOOL_PREFIX: &str = "\0resolved-tool:";
+        use crate::run::RESOLVED_TOOL_PREFIX;
         let expanded_default = default_resolved_config.clone();
         let expanded_objects = resolved_configs.clone();
         let paint_semantic_configs = build_paint_semantic_configs(blackboard, resolved_configs);

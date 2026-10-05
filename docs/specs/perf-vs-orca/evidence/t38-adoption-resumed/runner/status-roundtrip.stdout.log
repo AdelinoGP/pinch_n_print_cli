@@ -1,0 +1,14 @@
+PASS nonfatal-count-changed: DROP
+PASS identical-degraded-counts: KEEP
+PASS identical-clean-status: KEEP
+PASS completion-status-changed: DROP
+PASS degraded-flag-changed: DROP
+PASS candidate-fatal: DROP
+PASS baseline-fatal: DROP
+PASS validated-generator-changed: DROP
+PASS exactness-failed: DROP
+PASS cpu-ranges-touch: inconclusive
+PASS wall-ranges-touch: inconclusive
+PASS cpu-regresses: DROP
+PASS wall-regresses: DROP
+PASS: 13 CSV status round-trip cases; synthetic timings only

@@ -1,0 +1,30 @@
+{
+  "kind": "output-sha256-manifest",
+  "note": "Every measured output is byte-identical to the frozen Arachne reference; regenerate with reduce_captures.py.",
+  "frozen_reference": {
+    "path": "t41-20260930T232255Z/corpus/supports-off-benchy/reference-arachne.gcode",
+    "sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161"
+  },
+  "captures": [
+    {
+      "capture": "accelerated-probe2",
+      "output": "accelerated/probe2-output.gcode",
+      "sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161"
+    },
+    {
+      "capture": "ordinary",
+      "output": "ordinary/output.gcode",
+      "sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161"
+    },
+    {
+      "capture": "ordinary-probe",
+      "output": "ordinary/probe-output.gcode",
+      "sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161"
+    },
+    {
+      "capture": "ordinary-probe2",
+      "output": "ordinary/probe2-output.gcode",
+      "sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161"
+    }
+  ]
+}

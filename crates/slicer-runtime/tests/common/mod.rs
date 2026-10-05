@@ -401,7 +401,14 @@ pub fn commit_hec_for_test(
                     .map_err(|r| mk_fatal("infill", r))?;
                 Some(LayerStageCommit::InfillPostProcess(ir))
             } else {
-                None
+                // Production mirror: the wasm and native legs both commit the
+                // EMPTY replacement set for a ran `Layer::InfillPostProcess`
+                // invocation that re-emitted nothing (ADR-0028 §Amendment
+                // Change 3; wayfinder ticket 37). `None` here would preserve the
+                // raw prior IR, which is the containment hole the fix closes.
+                Some(LayerStageCommit::InfillPostProcess(
+                    slicer_runtime::wit_host::empty_infill_replacement(layer_index),
+                ))
             }
         }
         "Layer::Support" => {

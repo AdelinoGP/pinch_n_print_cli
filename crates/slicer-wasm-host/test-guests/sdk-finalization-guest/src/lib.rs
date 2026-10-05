@@ -23,6 +23,46 @@ impl FinalizationModule for SdkFinalizationModule {
         output: &mut FinalizationOutputBuilder,
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
+        if let Some(target) = config.get_int("annotation_target") {
+            output
+                .push_fan_speed(0, 255)
+                .map_err(|e| ModuleError::fatal(3, e))?;
+            if target == -1 {
+                output
+                    .push_entity_to_layer(
+                        0,
+                        ExtrusionPath3D {
+                            points: Vec::new(),
+                            role: ExtrusionRole::OuterWall,
+                            speed_factor: 1.0,
+                            tool_index: None,
+                            order_lock: None,
+                        },
+                        0,
+                        RegionKey {
+                            global_layer_index: 0,
+                            object_id: "rollback-witness".into(),
+                            region_id: 1,
+                            variant_chain: Vec::new(),
+                        },
+                    )
+                    .map_err(|e| ModuleError::fatal(4, e))?;
+                output
+                    .set_entity_order(0, vec![(99, false)])
+                    .map_err(|e| ModuleError::fatal(4, e))?;
+                return Ok(());
+            }
+            output
+                .push_annotation(
+                    target as u32,
+                    slicer_ir::LayerAnnotation {
+                        after_entity_index: 0,
+                        kind: slicer_ir::LayerAnnotationKind::Comment("annotation witness".into()),
+                    },
+                )
+                .map_err(|e| ModuleError::fatal(3, e))?;
+            return Ok(());
+        }
         // Intentional-error path: preserved from the earlier TASK-109
         // round-trip step so a test can still assert the typed
         // `ModuleError { code, fatal, message }` marshalling.

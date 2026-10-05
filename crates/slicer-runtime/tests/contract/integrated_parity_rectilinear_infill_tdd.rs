@@ -160,6 +160,9 @@ fn integrated_parity_rectilinear_infill() {
     let mut bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
     let mut region_map = RegionMapIR::default();
     let config_id = region_map.intern_config(ResolvedConfig {
+        // The region pool is the effective config consumed by both transports;
+        // keep its declared width aligned with the module-level test config.
+        line_width: 0.4,
         sparse_fill_holder: "com.core.rectilinear-infill".to_string(),
         ..Default::default()
     });

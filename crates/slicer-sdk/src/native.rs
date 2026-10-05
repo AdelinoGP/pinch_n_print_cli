@@ -11,7 +11,7 @@ use slicer_ir::ConfigView;
 use crate::error::ModuleError;
 use crate::postpass_types::{GcodeCommand, GcodeOutputCommand};
 use crate::traits::{FinalizationOutputBuilder, LayerCollectionView, PaintRegionLayerView};
-use crate::views::{PerimeterRegionView, SliceRegionView};
+use crate::views::{OrderedEntityView, PerimeterRegionView, SliceRegionView};
 use crate::{builders, prepass_builders};
 
 /// Input to a native layer-stage entry.
@@ -30,6 +30,12 @@ pub struct NativeLayerRequest {
     pub config: ConfigView,
     /// Identifier of the stage this entry is bound to.
     pub stage_export: &'static str,
+    /// Snapshot of the host-staged `LayerCollectionIR.ordered_entities` for
+    /// the consuming stage, projected exactly as the WASM leg's
+    /// `push_layer_collection_builder` snapshot is (ticket 47). Populated for
+    /// `Layer::PathOptimization` and `Layer::AnchoredEvents` only; empty for
+    /// every other stage (their WIT worlds do not carry the builder).
+    pub ordered_entities: Vec<OrderedEntityView>,
 }
 
 /// Output accumulated by a native layer-stage entry.

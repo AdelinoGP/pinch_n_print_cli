@@ -248,6 +248,11 @@ fn generate_slicer_module_impl(
                 let regions = req.perimeter_regions.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native layer request is missing perimeter regions".to_string()))?;
                 let mut output = ::slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
                 let mut collection = ::slicer_sdk::layer_collection_builder::LayerCollectionBuilder::new();
+                // Ticket 47: the native request carries the same staged
+                // ordered-entities snapshot the WASM leg's
+                // `get-ordered-entities` returns, so `get_ordered_entities`
+                // observes identical content on both transports.
+                collection.set_ordered_entities(req.ordered_entities.clone());
                 <#self_ty as ::slicer_sdk::traits::LayerModule>::run_path_optimization(
                     &module, req.layer_index, regions, &mut output, &mut collection, &req.config,
                 )?;
@@ -261,6 +266,8 @@ fn generate_slicer_module_impl(
                 let module = <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&req.config)?;
                 let regions = req.perimeter_regions.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native layer request is missing perimeter regions".to_string()))?;
                 let mut collection = ::slicer_sdk::layer_collection_builder::LayerCollectionBuilder::new();
+                // Ticket 47: same snapshot the WASM leg's builder carries.
+                collection.set_ordered_entities(req.ordered_entities.clone());
                 <#self_ty as ::slicer_sdk::traits::LayerModule>::run_anchored_events(
                     &module, req.layer_index, regions, &mut collection, &req.config,
                 )?;
@@ -949,6 +956,15 @@ fn build_postpass_gcode_glue(self_ty: &syn::Type) -> TokenStream2 {
                      ExtrusionRole::BridgeInfill => ::slicer_sdk::ir::ExtrusionRole::BridgeInfill,
                      ExtrusionRole::InternalBridgeInfill => ::slicer_sdk::ir::ExtrusionRole::InternalBridgeInfill,
                     ExtrusionRole::WipeTower => ::slicer_sdk::ir::ExtrusionRole::WipeTower,
+                    ExtrusionRole::Custom(s) if s == "slicer.builtin/prime-tower@1" => {
+                        ::slicer_sdk::ir::ExtrusionRole::PrimeTower
+                    }
+                    ExtrusionRole::Custom(s) if s == "slicer.builtin/skirt@1" => {
+                        ::slicer_sdk::ir::ExtrusionRole::Skirt
+                    }
+                    ExtrusionRole::Custom(s) if s == "slicer.builtin/brim@1" => {
+                        ::slicer_sdk::ir::ExtrusionRole::Brim
+                    }
                     ExtrusionRole::Custom(s) if s == "slicer.builtin/internal-solid-infill@1" => {
                         ::slicer_sdk::ir::ExtrusionRole::InternalSolidInfill
                     }
@@ -1227,9 +1243,9 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
             // here so the body below (a verbatim port of the pre-163
             // monomorphic `world-finalization` glue) still resolves.
             use slicer::finalization_layer_finalization::layer_finalization_types::{
-                EntityMutation, FinalizationOutputBuilder, LayerCollectionView,
-                PrintEntityView, RegionKey, SortKey, SyntheticLayerData, ToolChangeView,
-                ZHopView,
+                AnnotationKind, AnnotationView, EntityMutation, FinalizationOutputBuilder,
+                LayerCollectionView, PrintEntityView, RegionKey, SortKey, SyntheticLayerData,
+                ToolChangeView, ZHopView,
             };
             // Per packet 163: the `Guest` trait moved from the world root
             // to `exports::slicer::finalization_layer_finalization::layer_finalization::Guest`
@@ -1274,6 +1290,15 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                      ExtrusionRole::BridgeInfill => ::slicer_ir::ExtrusionRole::BridgeInfill,
                      ExtrusionRole::InternalBridgeInfill => ::slicer_ir::ExtrusionRole::InternalBridgeInfill,
                     ExtrusionRole::WipeTower => ::slicer_ir::ExtrusionRole::WipeTower,
+                    ExtrusionRole::Custom(s) if s == "slicer.builtin/prime-tower@1" => {
+                        ::slicer_ir::ExtrusionRole::PrimeTower
+                    }
+                    ExtrusionRole::Custom(s) if s == "slicer.builtin/skirt@1" => {
+                        ::slicer_ir::ExtrusionRole::Skirt
+                    }
+                    ExtrusionRole::Custom(s) if s == "slicer.builtin/brim@1" => {
+                        ::slicer_ir::ExtrusionRole::Brim
+                    }
                     ExtrusionRole::Custom(s) if s == "slicer.builtin/internal-solid-infill@1" => {
                         ::slicer_ir::ExtrusionRole::InternalSolidInfill
                     }
@@ -1564,6 +1589,27 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                         let wit_paths: ::std::vec::Vec<ExtrusionPath3d> =
                             paths.iter().map(__slicer_path_ir_to_wit).collect();
                         let _ = output.insert_synthetic_layer(*z, &wit_paths);
+                    }
+                    // Ticket 47: replay the annotation stream (comment/raw)
+                    // across the WIT boundary — `push_fan_speed` /
+                    // `push_annotation` on the SDK builder previously had no
+                    // WIT channel, so every guest annotation (part-cooling's
+                    // M106/M107 fan commands) was silently dropped on this
+                    // transport while the native leg merged them.
+                    for (layer_index, annotation) in sdk_output.annotations() {
+                        let wit_kind = match &annotation.kind {
+                            ::slicer_ir::LayerAnnotationKind::Comment(text) => {
+                                AnnotationKind::Comment(text.clone())
+                            }
+                            ::slicer_ir::LayerAnnotationKind::Raw(text) => {
+                                AnnotationKind::Raw(text.clone())
+                            }
+                        };
+                        let _ = output.push_annotation(&AnnotationView {
+                            layer_index: *layer_index,
+                            after_entity_index: annotation.after_entity_index,
+                            kind: wit_kind,
+                        });
                     }
 
                     match out {
@@ -2724,6 +2770,15 @@ fn layer_glue_helpers() -> TokenStream2 {
                  WitExtrusionRole::BridgeInfill => ::slicer_ir::ExtrusionRole::BridgeInfill,
                  WitExtrusionRole::InternalBridgeInfill => ::slicer_ir::ExtrusionRole::InternalBridgeInfill,
                 WitExtrusionRole::WipeTower => ::slicer_ir::ExtrusionRole::WipeTower,
+                WitExtrusionRole::Custom(s) if s == "slicer.builtin/prime-tower@1" => {
+                    ::slicer_ir::ExtrusionRole::PrimeTower
+                }
+                WitExtrusionRole::Custom(s) if s == "slicer.builtin/skirt@1" => {
+                    ::slicer_ir::ExtrusionRole::Skirt
+                }
+                WitExtrusionRole::Custom(s) if s == "slicer.builtin/brim@1" => {
+                    ::slicer_ir::ExtrusionRole::Brim
+                }
                 WitExtrusionRole::Custom(s) if s == "slicer.builtin/internal-solid-infill@1" => {
                     ::slicer_ir::ExtrusionRole::InternalSolidInfill
                 }
@@ -2850,6 +2905,7 @@ fn layer_glue_helpers() -> TokenStream2 {
                 perimeter_view.set_raft_fill(r.raft_fill().iter().map(__slicer_wit_expolygon_to_ir).collect());
                 perimeter_view.set_tool_index(r.tool_index());
                 perimeter_view.set_wall_source_region_id(r.wall_source_region_id().map(|s| s.parse().unwrap_or(0)));
+                perimeter_view.set_config(__slicer_adapt_config(&r.config()));
                 out.push(perimeter_view);
             }
             out

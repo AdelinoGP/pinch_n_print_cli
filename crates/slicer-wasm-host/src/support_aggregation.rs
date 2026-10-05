@@ -10,11 +10,18 @@ use crate::exact_z_query::ExactZQueryService;
 use crate::support_territory::TerritoryClipper;
 
 /// Maximum envelope a single support body may span on either axis, in
-/// canonical coordinate units. A body wider or taller than this has escaped
-/// the territory one body is permitted to claim and is rejected by
-/// [`in_routing_cell`]. It is purely an extent bound: it does not partition
-/// space, and it takes no part in deciding which entries merge.
-const MAX_BODY_EXTENT_UNITS: i64 = 1 << 20;
+/// canonical coordinate units. `1 << 22` units = 419.43 mm, larger than the
+/// diagonal of the matched BBL X1C 256 mm bed: any single body that fits the
+/// build plate passes, and runaway or malformed geometry fails. (The previous
+/// `1 << 20` = 104.86 mm was the deleted routing cell's size retained by
+/// ADR-0059 Ruling 2; it sat below legitimate fused support bodies —
+/// measured 111.13 mm wide on `tmp/base.stl`, which is what dropped the
+/// DEV-174 support band. Calibration moved with the ADR-0059 Ruling 3
+/// amendment.) A body wider or taller than this has escaped the territory one
+/// body is permitted to claim and is rejected by [`in_routing_cell`]. It is
+/// purely an extent bound: it does not partition space, and it takes no part
+/// in deciding which entries merge.
+const MAX_BODY_EXTENT_UNITS: i64 = 1 << 22;
 
 /// Inputs to the single host multi-writer support merge point.
 pub struct SupportAggregationInput<'a> {
@@ -976,14 +983,19 @@ pub fn aggregate_declined_support_plans(plans: &[SupportPlanIR]) -> DeclinedSupp
     result
 }
 
-/// True when a single body's own envelope spans no more than
-/// [`MAX_BODY_EXTENT_UNITS`] (`1 << 20` units) on each axis.
+/// True when every body cross-section the entry carries spans no more than
+/// [`MAX_BODY_EXTENT_UNITS`] (`1 << 22` units) on each axis.
 ///
 /// This is a **pure per-body extent bound**, not a partitioning scheme. It
 /// assigns the body to nothing, it compares the body against no grid and
 /// against no other body, and it takes no part in deciding which entries
-/// merge. Only the width and height of this one body's own bounding box are
-/// measured, so absolute position is irrelevant: a body straddling x = 0 or
+/// merge. The measurement unit is each body's own bounding box: one role
+/// region is one body cross-section (`build_roles` fuses touching columns
+/// into one outline; `validate_entry`'s occupancy gate reads regions the same
+/// way). An entry is its declared identity's aggregate and legitimately packs
+/// every body its region carries at the plane — the producer contract admits
+/// exactly one entry per `(layer, object, region)` — so bodies are measured
+/// one by one and absolute position is irrelevant: a body straddling x = 0 or
 /// y = 0 is treated exactly like the same body translated anywhere else. A
 /// body is rejected only when it is genuinely larger than the maximum extent
 /// one support body is permitted to claim.
@@ -995,34 +1007,17 @@ pub fn aggregate_declined_support_plans(plans: &[SupportPlanIR]) -> DeclinedSupp
 /// `saturating_sub` is deliberate: a malformed guest plan can place `minx`
 /// near `i64::MIN`, and a plain subtraction would panic in debug builds.
 fn in_routing_cell(entry: &SupportPlanEntry) -> bool {
-    let regions: Vec<&ExPolygon> = entry
+    entry
         .roles
         .iter()
         .flat_map(|role| role.regions.iter())
-        .collect();
-    let Some((minx, maxx, miny, maxy)) = body_bounds(&regions) else {
-        return true;
-    };
-    maxx.saturating_sub(minx) <= MAX_BODY_EXTENT_UNITS
-        && maxy.saturating_sub(miny) <= MAX_BODY_EXTENT_UNITS
-}
-
-/// Envelope union across all role regions of a support body.
-fn body_bounds(polys: &[&ExPolygon]) -> Option<(i64, i64, i64, i64)> {
-    let mut acc: Option<(i64, i64, i64, i64)> = None;
-    for poly in polys {
-        let Some(b) = bounds(poly) else { continue };
-        acc = Some(match acc {
-            None => b,
-            Some((aminx, amaxx, aminy, amaxy)) => (
-                aminx.min(b.0),
-                amaxx.max(b.1),
-                aminy.min(b.2),
-                amaxy.max(b.3),
-            ),
-        });
-    }
-    acc
+        .all(|region| match bounds(region) {
+            Some((minx, maxx, miny, maxy)) => {
+                maxx.saturating_sub(minx) <= MAX_BODY_EXTENT_UNITS
+                    && maxy.saturating_sub(miny) <= MAX_BODY_EXTENT_UNITS
+            }
+            None => true,
+        })
 }
 
 fn overlaps_any(a: &ExPolygon, others: &[ExPolygon]) -> bool {

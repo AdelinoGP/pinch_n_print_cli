@@ -1,0 +1,80 @@
+   Compiling quote v1.0.45
+   Compiling syn v2.0.117
+   Compiling zerocopy-derive v0.8.48
+   Compiling zerocopy v0.8.48
+   Compiling serde_derive v1.0.228
+   Compiling serde v1.0.228
+   Compiling windows-sys v0.61.2
+   Compiling hashbrown v0.17.0
+   Compiling indexmap v2.14.0
+   Compiling thiserror-impl v2.0.18
+   Compiling thiserror v2.0.18
+   Compiling ppv-lite86 v0.2.21
+   Compiling thiserror-impl v1.0.69
+   Compiling simd-adler32 v0.3.9
+   Compiling thiserror v1.0.69
+   Compiling rand_chacha v0.9.0
+   Compiling serde_spanned v0.6.9
+   Compiling toml_datetime v0.6.11
+   Compiling getrandom v0.4.2
+   Compiling smallvec v1.15.1
+   Compiling toml_edit v0.22.27
+   Compiling miniz_oxide v0.8.9
+   Compiling dirs-sys v0.5.0
+   Compiling rand v0.9.4
+   Compiling slicer-ir v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-ir)
+   Compiling winapi-util v0.1.11
+   Compiling half v2.7.1
+   Compiling bumpalo v3.20.2
+   Compiling regex-syntax v0.8.10
+   Compiling regex-automata v0.4.14
+   Compiling zopfli v0.8.3
+   Compiling clap_builder v4.6.0
+   Compiling ciborium-ll v0.2.2
+   Compiling same-file v1.0.6
+   Compiling ahash v0.8.12
+   Compiling cpp_map v0.2.0
+   Compiling directories v6.0.0
+   Compiling flate2 v1.1.9
+   Compiling toml v0.8.23
+   Compiling displaydoc v0.2.5
+   Compiling slicer-core v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-core)
+   Compiling slicer-scheduler v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-scheduler)
+   Compiling uuid v1.23.0
+   Compiling boostvoronoi v0.12.1
+   Compiling zip v2.4.2
+   Compiling tobj v4.0.3
+   Compiling walkdir v2.5.0
+   Compiling ciborium v0.2.2
+   Compiling rstar v0.12.2
+   Compiling clap v4.6.1
+   Compiling regex v1.12.3
+   Compiling tinytemplate v1.2.1
+   Compiling is-terminal v0.4.17
+   Compiling criterion v0.5.1
+   Compiling slicer-model-io v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-model-io)
+warning: missing documentation for the crate
+   --> crates\slicer-core\tests\perimeter_spatial_tdd.rs:1:1
+    |
+  1 | / use slicer_core::perimeter_utils::{
+  2 | |     expolygon_to_path3d, point_in_any_polygon, signed_distance_to_boundary,
+  3 | | };
+  4 | | use slicer_ir::slice_ir::QuartileBand;
+...   |
+759 | |     assert_eq!(fault_counters.indexed_queries, 0);
+760 | | }
+    | |_^
+    |
+    = note: requested on the command line with `-W missing-docs`
+
+warning: `slicer-core` (test "perimeter_spatial_tdd") generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 50s
+     Running tests\perimeter_spatial_tdd.rs (target\debug\deps\perimeter_spatial_tdd-c592fe13816eb0d0.exe)
+
+running 3 tests
+test fallback_paths_are_nonvacuous ... ok
+test accelerated_mode_exercised_not_vacuous ... ok
+test exact_queries_match_legacy ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

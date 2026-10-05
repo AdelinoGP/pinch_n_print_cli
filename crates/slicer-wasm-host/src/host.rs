@@ -865,7 +865,11 @@ pub enum WitSortKey {
 /// guest during `run-finalization`. Stored by resource rep so the
 /// post-call drain in `FinalizationStageRunner` can apply them.
 #[derive(Clone, Debug)]
+#[allow(missing_docs)]
 pub enum FinalizationBuilderPush {
+    // Ticket 47: guest-emitted annotation (comment/raw). Anchors and payload
+    // travel inside the recorded `LayerAnnotation`.
+    Annotation(u32, slicer_ir::LayerAnnotation),
     /// Guest requested `push-entity-to-layer(layer_index, path, tool_index, region_key)`.
     EntityToLayer {
         /// Layer index the entity was pushed to.
@@ -955,6 +959,9 @@ pub enum FinalizationBuilderPush {
 pub struct FinalizationOutputBuilderData {
     /// Captured push stream in guest-emission order.
     pub pushes: Vec<FinalizationBuilderPush>,
+    /// Guest-emitted annotation stream (comment/raw, per layer) in
+    /// emission order (ticket 47).
+    pub annotations: Vec<(u32, slicer_ir::LayerAnnotation)>,
     /// Layer indices that have already been permuted via `set-entity-order`
     /// within this builder's lifetime. Used to enforce the packet-58 locked
     /// invariant "single permutation per layer per `run_finalization`
@@ -1016,9 +1023,9 @@ pub use finalization_layer::LayerFinalizationModule;
 /// keeps the two `RegionKey`s in disjoint namespaces.
 pub mod finalization_types {
     pub use super::finalization_layer::slicer::finalization_layer_finalization::layer_finalization_types::{
-        EntityMutation, FinalizationOutputBuilder, HostFinalizationOutputBuilder,
-        HostLayerCollectionView, LayerCollectionView, PrintEntityView, RegionKey, SortKey,
-        SyntheticLayerData, ToolChangeView, ZHopView,
+        AnnotationKind, AnnotationView, EntityMutation, FinalizationOutputBuilder,
+        HostFinalizationOutputBuilder, HostLayerCollectionView, LayerCollectionView,
+        PrintEntityView, RegionKey, SortKey, SyntheticLayerData, ToolChangeView, ZHopView,
     };
     // The world-imports `Host` trait is generated inside the imported
     // `layer-finalization-types` interface (per packet 163, the world
@@ -1129,7 +1136,7 @@ pub use crate::marshal::accumulators::{
 };
 pub use crate::marshal::out::{
     collect_postpass_output, convert_infill_output, convert_perimeter_output,
-    convert_support_output, merge_slice_postprocess_into,
+    convert_support_output, empty_infill_replacement, merge_slice_postprocess_into,
 };
 pub use crate::marshal::OriginId;
 
@@ -1186,6 +1193,10 @@ impl wasmtime::ResourceLimiter for MemTracker {
 /// After the call returns, the dispatcher extracts collected outputs from
 /// this context and integrates them into the pipeline state.
 pub struct HostExecutionContext {
+    /// Manifest write paths for finalization annotation authorization.
+    pub(crate) finalization_ir_writes: Vec<String>,
+    /// First denied annotation write, retained even if a guest ignores Err.
+    pub(crate) finalization_write_denial: Option<String>,
     /// Resource handle table — manages lifetimes of host-provided resources.
     pub(crate) table: ResourceTable,
     /// Default-deny WASI execution state for foreign-language components.
@@ -1408,6 +1419,24 @@ impl wasmtime_wasi::WasiView for HostExecutionContext {
     }
 }
 
+/// Authorize the annotation operation using exact manifest membership.
+pub fn check_finalization_annotation_write(
+    module_id: &str,
+    stage_id: &str,
+    writes: &[String],
+) -> Result<(), String> {
+    const PATH: &str = "LayerCollectionIR.annotations";
+    if writes.iter().any(|path| path == PATH) {
+        return Ok(());
+    }
+    let mut sorted = writes.to_vec();
+    sorted.sort();
+    sorted.dedup();
+    Err(format!(
+        "module {module_id} stage {stage_id}: attempted write requested path {PATH}; manifest writes={sorted:?}"
+    ))
+}
+
 /// Consuming builder for [`HostExecutionContext`].
 ///
 /// Per spec §6.4 — required positional args are `module_id`, `layer_z`,
@@ -1469,6 +1498,8 @@ impl HostExecutionContextBuilder {
     /// Finalize the builder into a fresh `HostExecutionContext`.
     pub fn build(self) -> HostExecutionContext {
         HostExecutionContext {
+            finalization_ir_writes: Vec::new(),
+            finalization_write_denial: None,
             table: ResourceTable::new(),
             wasi: wasmtime_wasi::WasiCtxBuilder::new().build(),
             module_id: self.module_id,
@@ -1515,6 +1546,11 @@ impl HostExecutionContextBuilder {
 }
 
 impl HostExecutionContext {
+    /// Install the exact manifest write set for a finalization call.
+    pub fn with_finalization_ir_writes(mut self, writes: &[String]) -> Self {
+        self.finalization_ir_writes = writes.to_vec();
+        self
+    }
     /// Module identifier (from manifest).
     pub fn module_id(&self) -> &str {
         &self.module_id
@@ -4753,6 +4789,46 @@ mod finalization_impls {
     }
 
     impl fm::HostFinalizationOutputBuilder for HostExecutionContext {
+        // Ticket 47: the annotation relay. The SDK-side PartCooling
+        // `push_fan_speed`/`push_annotation` stream becomes a drainable
+        // carrier: the host records it here, the macro's WASM drain-back
+        // (build_finalization_world_glue) replays it, and
+        // `apply_finalization_pushes` merges it into the target layer — the
+        // same path the native leg's `apply_to` already takes. Before this
+        // method existed, the WIT channel was missing and the WASM drain-back
+        // silently dropped `sdk_output.annotations()`, so the external leg
+        // emitted zero fan commands while the integrated leg printed all of
+        // them (t47 gate proof, integrated `M106 S255` × 279 + `M107` × 2).
+        fn push_annotation(
+            &mut self,
+            self_: Resource<fm::FinalizationOutputBuilder>,
+            annotation: fm::AnnotationView,
+        ) -> wasmtime::Result<Result<(), String>> {
+            if let Err(message) = check_finalization_annotation_write(
+                &self.module_id,
+                "PostPass::LayerFinalization",
+                &self.finalization_ir_writes,
+            ) {
+                self.finalization_write_denial
+                    .get_or_insert_with(|| message.clone());
+                return Ok(Err(message));
+            }
+            let typed: Resource<FinalizationOutputBuilderData> = Resource::new_borrow(self_.rep());
+            let data = self.table.get_mut(&typed)?;
+            let kind = match annotation.kind {
+                fm::AnnotationKind::Comment(text) => slicer_ir::LayerAnnotationKind::Comment(text),
+                fm::AnnotationKind::Raw(text) => slicer_ir::LayerAnnotationKind::Raw(text),
+            };
+            data.annotations.push((
+                annotation.layer_index,
+                slicer_ir::LayerAnnotation {
+                    after_entity_index: annotation.after_entity_index,
+                    kind,
+                },
+            ));
+            self.record_write("LayerCollectionIR.annotations");
+            Ok(Ok(()))
+        }
         fn push_entity_to_layer(
             &mut self,
             self_: Resource<fm::FinalizationOutputBuilder>,
@@ -5079,9 +5155,15 @@ mod finalization_impls {
         fn drop(&mut self, rep: Resource<fm::FinalizationOutputBuilder>) -> wasmtime::Result<()> {
             // Move captured pushes onto the HostExecutionContext before
             // the resource's storage is reclaimed, so the dispatch path
-            // can drain them even after the guest drops its handle.
+            // can drain them even after the guest drops its handle. The
+            // annotation relay (ticket 47) rides the same stream so guest
+            // emission order is preserved across both channels.
             let typed: Resource<FinalizationOutputBuilderData> = Resource::new_own(rep.rep());
             let mut data = self.table.delete(typed)?;
+            for (layer_index, annotation) in data.annotations.drain(..) {
+                self.finalization_pushes
+                    .push(FinalizationBuilderPush::Annotation(layer_index, annotation));
+            }
             self.finalization_pushes.append(&mut data.pushes);
             Ok(())
         }

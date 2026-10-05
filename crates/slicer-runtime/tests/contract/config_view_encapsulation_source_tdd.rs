@@ -9,8 +9,18 @@
 
 #![allow(missing_docs)]
 
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
+
+use slicer_config::{ExpansionContext, ResolutionTarget};
+use slicer_ir::{ConfigValue, SemVer};
+use slicer_runtime::{
+    build_live_execution_plan, build_wasm_instance_pool, ConfigFieldEntry, ConfigSchema,
+    LiveModuleBinding, LoadedModuleBuilder, SortedStageModules, WasmArtifactMetadata,
+};
+use slicer_scheduler::config_resolution::{resolve_config, ConfigBoundsIndex};
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -61,26 +71,106 @@ fn config_view_backing_map_stays_private() {
 
 #[test]
 fn main_production_entry_path_uses_bind_module_config_view() {
-    // The live-plan path constructs per-module ConfigViews via
-    // `build_live_execution_plan` → `bind_module_config_view`
-    // → `ConfigView::from_declared`, which are the only docs-compliant
-    // constructors that pre-filter to the module's declared reads. Since
-    // packet config-scope-resolution Step 4a, binding sources from the fully
-    // resolved `ResolvedConfig` (`to_config_map`), so run.rs must hand
-    // `&default_resolved_config` to `build_live_execution_plan` — a raw
-    // source map at that parameter would regress the resolved-binding
-    // contract.
-    //
-    // After pnp-cli-unification, the binary's main.rs was deleted and the
-    // entry point moved to slicer-runtime/src/run.rs.
-    let run = fs::read_to_string(repo_root().join("crates/slicer-runtime/src/run.rs"))
-        .expect("read run.rs");
-    assert!(
-        run.contains(
-            "build_live_execution_plan(\n        loaded.sorted_stages,\n        loaded.bindings,\n        &default_resolved_config,"
-        ),
-        "run.rs Run arm must route through build_live_execution_plan with the \
-         resolved config (`&default_resolved_config`) so bind_module_config_view \
-         sources the resolved map, not a raw source map, on the live path"
+    // Exercise the exact production plan builder called by `run_slice`
+    // (`crates/slicer-runtime/src/run.rs`). Inspect the compiled module view
+    // dispatched to the guest, rather than matching text in the caller.
+    let sem = SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    };
+    let module = LoadedModuleBuilder::new(
+        "com.example.binding-probe",
+        sem,
+        "PrePass::MeshAnalysis",
+        slicer_schema::TIER_PREPASS,
+        PathBuf::from("fixtures/binding-probe.wasm"),
+    )
+    .min_host_version(SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    })
+    .min_ir_schema(sem)
+    .max_ir_schema(SemVer {
+        major: 2,
+        minor: 0,
+        patch: 0,
+    })
+    .config_schema(ConfigSchema {
+        entries: BTreeMap::from([
+            (
+                "layer_height".to_string(),
+                ConfigFieldEntry {
+                    field_type: "float".to_string(),
+                    ..Default::default()
+                },
+            ),
+            (
+                "binding_probe".to_string(),
+                ConfigFieldEntry {
+                    field_type: "float".to_string(),
+                    default: Some("7.0".to_string()),
+                    ..Default::default()
+                },
+            ),
+        ]),
+    })
+    .build();
+    let source = HashMap::from([("layer_height".to_string(), ConfigValue::Float(0.28))]);
+    let bounds = ConfigBoundsIndex::from_modules([&module]);
+    let default_resolved_config = resolve_config(
+        &source,
+        &bounds,
+        &ResolutionTarget::default(),
+        &ExpansionContext {
+            nozzle_diameter_mm: 0.4,
+            ..Default::default()
+        },
+    )
+    .expect("resolve production default config");
+    let pool = Arc::new(
+        build_wasm_instance_pool(
+            module.id(),
+            module.stage(),
+            module.layer_parallel_safe(),
+            1,
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .expect("build module pool"),
+    );
+    let plan = build_live_execution_plan(
+        vec![SortedStageModules {
+            stage_id: module.stage().to_string(),
+            module_ids: vec![module.id().to_string()],
+        }],
+        vec![LiveModuleBinding {
+            module,
+            instance_pool: pool,
+            wasm_component: None,
+            native_entry: None,
+        }],
+        &default_resolved_config,
+        Arc::new(Vec::new()),
+        Arc::new(HashMap::new()),
+        &mut Vec::new(),
+    )
+    .expect("build production live plan");
+    assert_eq!(plan.prepass_stages.len(), 1);
+    assert_eq!(plan.prepass_stages[0].modules.len(), 1);
+    let view = plan.prepass_stages[0].modules[0].config_view();
+    // A blank/default replacement loses the authored value. A raw-map
+    // replacement loses the seeded extension. An unfiltered map leaks host keys.
+    assert_eq!(view.require_float("layer_height"), Ok(0.28));
+    assert_eq!(view.require_float("binding_probe"), Ok(7.0));
+    assert_eq!(
+        view.keys(),
+        vec!["binding_probe".to_string(), "layer_height".to_string()]
+    );
+    assert_eq!(
+        view.require_float("nozzle_diameter").unwrap_err().key,
+        "nozzle_diameter"
     );
 }

@@ -86,7 +86,8 @@ pub fn execute_layer_finalization_with_instrumentation(
                 wasm_component,
                 module.claims(),
                 Arc::clone(module.config_view()),
-            );
+            )
+            .with_ir_writes(&module.ir_write_mask().paths);
             if let Some(entry) = native_entry {
                 live_module = live_module.with_native_entry(entry);
             }
@@ -94,7 +95,8 @@ pub fn execute_layer_finalization_with_instrumentation(
                 mesh: std::sync::Arc::clone(blackboard.mesh()),
                 _phantom: std::marker::PhantomData,
             };
-            let res = runner.run_stage(&stage.stage_id, &live_module, input, layers);
+            let mut candidate = layers.clone();
+            let res = runner.run_stage(&stage.stage_id, &live_module, input, &mut candidate);
             // Drain module log messages (already forwarded to the human `log`
             // facade inside the dispatcher; this clears the thread-local stash)
             // and forward each onto the structured stream as a `module_log`
@@ -119,20 +121,38 @@ pub fn execute_layer_finalization_with_instrumentation(
                 runner.last_call_fuel(),
             );
             instrumentation.on_module_end(&stage.stage_id, None, module.module_id(), 0, 0);
-            res?;
+            if let Err(error) = res {
+                instrumentation.on_module_error(
+                    &stage.stage_id,
+                    None,
+                    module.module_id(),
+                    &error.to_string(),
+                    true,
+                );
+                return Err(error);
+            }
 
             // Synthesized anchored rows reuse their upper model layer's index,
             // so equal adjacent indices are valid while reversals are not.
-            for window in layers.windows(2) {
+            for window in candidate.windows(2) {
                 if window[0].global_layer_index > window[1].global_layer_index {
-                    return Err(FinalizationError::Validation {
+                    let error = FinalizationError::Validation {
                         message: format!(
                             "layer indices must be monotonic, found {} followed by {}",
                             window[0].global_layer_index, window[1].global_layer_index
                         ),
-                    });
+                    };
+                    instrumentation.on_module_error(
+                        &stage.stage_id,
+                        None,
+                        module.module_id(),
+                        &error.to_string(),
+                        true,
+                    );
+                    return Err(error);
                 }
             }
+            *layers = candidate;
         }
     }
 

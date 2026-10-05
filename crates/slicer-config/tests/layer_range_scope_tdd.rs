@@ -431,6 +431,111 @@ fn assert_top_zs(actual: &[f64], expected: &[f64]) {
     }
 }
 
+fn scoped_height_range(registry: &ConfigSchemaRegistry, min_z: f64, max_z: f64) -> ScopedConfig {
+    let mut ingestor = ConfigIngestor::new(registry);
+    ingestor
+        .ingest_flat(&HashMap::from([
+            ("layer_height".to_owned(), ConfigValue::Float(0.2)),
+            ("first_layer_height".to_owned(), ConfigValue::Float(0.2)),
+        ]))
+        .expect("base heights are admitted");
+    ingestor
+        .ingest_layer_ranges(&[range_input(
+            "obj-a",
+            0,
+            min_z,
+            max_z,
+            &[("layer_height", "0.1")],
+        )])
+        .expect("authored world-Z range is admitted");
+    ingestor.finish().scoped
+}
+
+/// World [0.4, 0.8) shifts to local [0, 0.4), but the object's fixed
+/// first-layer interval retains [0, 0.2). These are authored-literal oracles.
+#[test]
+fn raft_offset_shifts_world_range_and_retains_first_layer() {
+    let registry = range_registry();
+    let scoped = scoped_height_range(&registry, 0.4, 0.8);
+    let profile = query_layer_height_profile(&registry, &scoped, "obj-a", 1.0, 0.4, &expansion())
+        .expect("raft-shifted profile must compose");
+    assert_eq!(
+        profile,
+        vec![
+            HeightProfileSegment {
+                z_start: 0.0,
+                z_end: 0.2,
+                height: 0.2
+            },
+            HeightProfileSegment {
+                z_start: 0.2,
+                z_end: 0.4,
+                height: 0.1
+            },
+            HeightProfileSegment {
+                z_start: 0.4,
+                z_end: 1.0,
+                height: 0.2
+            },
+        ]
+    );
+    assert_top_zs(
+        &layer_top_zs(&profile, 1.0),
+        &[0.2, 0.3, 0.4, 0.6, 0.8, 1.0],
+    );
+}
+
+/// An authored range entirely below the raft cannot alter object layers.
+#[test]
+fn raft_offset_skips_world_range_below_object() {
+    let registry = range_registry();
+    let scoped = scoped_height_range(&registry, 0.1, 0.3);
+    let profile = query_layer_height_profile(&registry, &scoped, "obj-a", 1.0, 0.4, &expansion())
+        .expect("range below the object must be skipped");
+    assert_eq!(
+        profile,
+        vec![HeightProfileSegment {
+            z_start: 0.0,
+            z_end: 1.0,
+            height: 0.2
+        },]
+    );
+    assert_top_zs(&layer_top_zs(&profile, 1.0), &[0.2, 0.4, 0.6, 0.8, 1.0]);
+}
+
+/// A zero offset preserves the fixture's original no-raft profile and tops.
+#[test]
+fn zero_raft_offset_preserves_no_raft_fixture() {
+    let registry = range_registry();
+    let scoped = scoped_height_range(&registry, 0.4, 0.8);
+    let profile = query_layer_height_profile(&registry, &scoped, "obj-a", 1.0, 0.0, &expansion())
+        .expect("zero-offset profile must compose");
+    assert_eq!(
+        profile,
+        vec![
+            HeightProfileSegment {
+                z_start: 0.0,
+                z_end: 0.4,
+                height: 0.2
+            },
+            HeightProfileSegment {
+                z_start: 0.4,
+                z_end: 0.8,
+                height: 0.1
+            },
+            HeightProfileSegment {
+                z_start: 0.8,
+                z_end: 1.0,
+                height: 0.2
+            },
+        ]
+    );
+    assert_top_zs(
+        &layer_top_zs(&profile, 1.0),
+        &[0.2, 0.4, 0.5, 0.6, 0.7, 0.8, 1.0],
+    );
+}
+
 /// AC-3: an earlier-starting `layer_height` range keeps an overlap and trims a
 /// later range's low edge, uncovered intervals use the base height, and the
 /// derived top-Z schedule steps through the trimmed profile. The negative
@@ -454,7 +559,7 @@ fn earlier_starting_layer_height_range_retains_overlap_and_gap_fills() {
         .expect("overlapping layer_height ranges are exempt from conflict checks");
     let scoped = ingestor.finish().scoped;
 
-    let profile = query_layer_height_profile(&registry, &scoped, "obj-a", 1.0, &expansion())
+    let profile = query_layer_height_profile(&registry, &scoped, "obj-a", 1.0, 0.0, &expansion())
         .expect("a valid object profile must compose");
     assert_eq!(
         profile,
@@ -585,7 +690,7 @@ fn range_boundary_does_not_truncate_the_object_top_layer() {
         .expect("the single range is admitted");
     let scoped = ingestor.finish().scoped;
 
-    let profile = query_layer_height_profile(&registry, &scoped, "obj-a", 1.0, &expansion())
+    let profile = query_layer_height_profile(&registry, &scoped, "obj-a", 1.0, 0.0, &expansion())
         .expect("a valid object profile must compose");
     assert_eq!(
         profile,
@@ -943,8 +1048,9 @@ fn profile_rejects_invalid_heights_and_top_zs_are_pure() {
     let scoped = scoped_with_ranges(&registry, &[]);
 
     for invalid in [0.0, -1.0, f64::NAN, f64::INFINITY] {
-        let error = query_layer_height_profile(&registry, &scoped, "obj-a", invalid, &expansion())
-            .expect_err("an invalid object height must be rejected");
+        let error =
+            query_layer_height_profile(&registry, &scoped, "obj-a", invalid, 0.0, &expansion())
+                .expect_err("an invalid object height must be rejected");
         assert_eq!(
             error,
             ResolutionError::InvalidObjectHeight {
@@ -971,7 +1077,7 @@ fn profile_rejects_invalid_heights_and_top_zs_are_pure() {
             .expect("non-positive floats are still typable");
         let scoped = ingestor.finish().scoped;
 
-        let error = query_layer_height_profile(&registry, &scoped, "obj-a", 1.0, &expansion())
+        let error = query_layer_height_profile(&registry, &scoped, "obj-a", 1.0, 0.0, &expansion())
             .expect_err("a non-positive resolved base height must be rejected");
         assert_eq!(
             error,

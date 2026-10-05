@@ -284,7 +284,13 @@ height. Non-finite `layer_height` text is rejected one step earlier as a
 `ConfigIngestionError::TypeMismatch` while the authored string is typed.
 
 Overlapping `layer_height` ranges compose by **earlier-starting** retention:
-ranges sort by `(min_z, max_z, source_index)`, the fixed first-layer interval is
+their authored world-space endpoints are translated to the object-local profile
+axis by subtracting the global highest raft top resolved from all object configs.
+The fixed first-layer interval represents world Z
+`[raft_offset, raft_offset + first_layer_height)` and retains against shifted
+ranges; ranges ending at or below local zero are skipped and starts are clamped
+to local zero. The guest adds the same global raft offset to every object.
+Ranges sort by `(min_z, max_z, source_index)`, the fixed first-layer interval is
 retained first, and each later range's low edge is **trimmed** to the last
 retained high, so an earlier range keeps the overlap. Uncovered intervals are
 **gap**-filled from the resolved object base height. Overlapping ranges that
@@ -1196,6 +1202,17 @@ while seam-first geometry is represented by the first point of the wall path.
 `InfillIR` and `InfillRegion` are defined in
 `crates/slicer-ir/src/slice_ir.rs`. Each layer carries region-scoped sparse,
 solid, and ironing extrusion paths.
+
+**Empty-commit protocol (ADR-0028 §Amendment 2026-09-29).** `Layer::Infill` is a
+merge stage: an invocation that emits no paths commits nothing (`Ok(None)`), and
+the prior `InfillIR` is preserved. `Layer::InfillPostProcess` is
+replace-with-complete-re-emit: an invocation that *ran* and re-emitted no paths
+commits the **empty replacement set** (no regions, no raft regions), because
+zero paths there is a clip verdict, not an absence. Only genuinely absent
+invocations — zero registered modules, a region-split skip, a missing component
+— leave the prior `InfillIR` in place. Conflating the two resurrected the raw,
+unclipped emitter envelope the infill linker had just rejected (wayfinder
+perf-vs-orca tickets 35/37).
 
 Infill is the only producer that may set `ExtrusionPath3D.tool_index` to
 `Some(t)` (authored coloring, packet 226 / ADR-0058); see the

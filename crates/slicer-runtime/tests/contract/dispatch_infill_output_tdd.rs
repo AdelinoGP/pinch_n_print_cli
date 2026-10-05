@@ -624,9 +624,12 @@ fn infill_output_correct_when_slice_regions_present() {
 
 #[test]
 fn empty_perimeter_input_valid_for_infill_postprocess() {
-    // When no PerimeterIR is staged, guest sees zero regions and emits no
-    // output (per-region loop). The empty-bypass keeps the infill slot empty
-    // — this is the documented empty case and must not fail.
+    // When no PerimeterIR is staged, the guest sees zero regions and emits no
+    // output (per-region loop). `Layer::InfillPostProcess` is replace-with-
+    // complete-re-emit (ADR-0028 §Amendment Change 3), so the *ran* invocation's
+    // empty output is the empty replacement set — the slot holds `Some(empty)`,
+    // not `None`. The invariant this test exists for is the first one: the empty
+    // case must not fail.
     let mut fx = dispatch_fixture::for_stage("Layer::InfillPostProcess").build();
 
     // exhaustive: boundary fixture preserves explicit test data
@@ -642,9 +645,13 @@ fn empty_perimeter_input_valid_for_infill_postprocess() {
 
     fx.run_layer(&layer).unwrap();
 
+    let infill = fx
+        .arena
+        .infill()
+        .expect("a ran InfillPostProcess invocation commits the empty replacement set");
     assert!(
-        fx.arena.infill().is_none(),
-        "no input regions → no output → empty bypass"
+        infill.regions.is_empty() && infill.raft_regions.is_empty(),
+        "the empty replacement set carries no paths and no raft regions"
     );
 }
 

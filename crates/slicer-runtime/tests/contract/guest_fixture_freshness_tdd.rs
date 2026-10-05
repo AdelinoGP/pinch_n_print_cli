@@ -75,10 +75,6 @@ fn guest_components_are_not_stale() {
         let toml = dir.join(guest_name).join("Cargo.toml");
         let wasm = dir.join(wasm_name);
 
-        if !wasm.exists() || !src.exists() {
-            continue; // caught by all_guest_component_files_exist
-        }
-
         let wasm_mtime = std::fs::metadata(&wasm).unwrap().modified().unwrap();
         let src_mtime = std::fs::metadata(&src).unwrap().modified().unwrap();
 
@@ -88,7 +84,7 @@ fn guest_components_are_not_stale() {
              Run: ./test-guests/build-test-guests.sh"
         );
 
-        if toml.exists() {
+        {
             let toml_mtime = std::fs::metadata(&toml).unwrap().modified().unwrap();
             assert!(
                 toml_mtime <= wasm_mtime,
@@ -110,10 +106,6 @@ fn guest_components_are_valid_wasm_components() {
 
     for (_guest_name, wasm_name) in GUESTS {
         let wasm_path = dir.join(wasm_name);
-        if !wasm_path.exists() {
-            continue; // caught by all_guest_component_files_exist
-        }
-
         let bytes = std::fs::read(&wasm_path).unwrap();
         let result = engine.compile_component(&bytes);
         assert!(
@@ -125,52 +117,30 @@ fn guest_components_are_valid_wasm_components() {
 }
 
 #[test]
-fn xtask_build_guests_subcommand_is_wired() {
-    // Guests are regenerated via `cargo xtask build-guests` (the previous
-    // test-guests/build-test-guests.sh was removed when the test-guests were
-    // co-located under slicer-runtime, TASK-215). Verify that build mechanism
-    // still exists and exposes the `--check` freshness mode the docs reference.
-    let xtask_main = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("xtask")
-        .join("src")
-        .join("main.rs");
-    assert!(
-        xtask_main.exists(),
-        "xtask/src/main.rs not found at {}",
-        xtask_main.display()
-    );
-    let src = std::fs::read_to_string(&xtask_main).unwrap();
-    assert!(
-        src.contains("build-guests"),
-        "xtask does not wire the `build-guests` subcommand that rebuilds test guests"
-    );
-    assert!(
-        src.contains("--check"),
-        "xtask `build-guests` must expose `--check` for freshness verification"
-    );
-}
-
-#[test]
-fn build_script_check_mode_reports_freshness() {
-    let script = test_guests_dir().join("build-test-guests.sh");
-    if !script.exists() {
-        return;
-    }
-
-    let output = std::process::Command::new("bash")
-        .arg(&script)
+fn xtask_check_mode_reports_freshness() {
+    // cargo xtask test builds this executable before checking guests. Locate
+    // it beside the test binary's deps directory, respecting Cargo's target
+    // directory and debug/release profile rather than pinning target/debug.
+    let test_exe = std::env::current_exe().expect("test executable path");
+    let profile_dir = test_exe.parent().unwrap().parent().unwrap();
+    let xtask = profile_dir.join(format!("xtask{}", std::env::consts::EXE_SUFFIX));
+    let output = std::process::Command::new(&xtask)
+        .arg("build-guests")
         .arg("--check")
         .output()
-        .expect("failed to run build-test-guests.sh --check");
+        .unwrap_or_else(|err| {
+            panic!(
+                "cannot run {}: {err}; run cargo xtask test",
+                xtask.display()
+            )
+        });
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    // If all components are fresh, exit code should be 0
-    // If any are stale, exit code should be 1
-    // We just verify it runs without crashing
-    assert!(
-        output.status.code().is_some(),
-        "build-test-guests.sh --check should exit cleanly, got: {stdout}"
+    // EXIT_FRESH is 0; stale (1) and infrastructure failure (3) must not pass.
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "xtask build-guests --check must confirm fresh artifacts; stdout: {}; stderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
     );
 }

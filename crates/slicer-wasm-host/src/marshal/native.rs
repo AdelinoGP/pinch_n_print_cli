@@ -259,8 +259,8 @@ fn populate_surface_classification_fields(
     view.set_prev_layer_boundary(prev_layer_boundary);
 }
 
-/// Build a native layer request without passing any wasm-host type across the
-/// SDK boundary.
+/// Build a standalone native layer projection without a `GlobalLayer` eligibility
+/// gate. Live dispatch uses [`build_native_layer_request_for_layer`] instead.
 pub fn build_native_layer_request(
     stage_export: &'static str,
     layer_index: u32,
@@ -280,9 +280,10 @@ pub fn build_native_layer_request(
 
 /// Variant of [`build_native_layer_request`] that also carries the current
 /// layer's `GlobalLayer.is_raft` onto the paint view, mirroring the wasm leg's
-/// `paint-region-layer-view.is-raft` accessor. `dispatch_layer_call` calls
-/// this one; without it the native `PaintRegionLayerView::is_raft` would
-/// compile and silently return `false` on every layer.
+/// `paint-region-layer-view.is-raft` accessor. Live native dispatch calls
+/// [`build_native_layer_request_for_layer`]; without raft
+/// propagation the native `PaintRegionLayerView::is_raft` would silently return
+/// `false` on every layer.
 pub fn build_native_layer_request_with_raft(
     stage_export: &'static str,
     layer_index: u32,
@@ -291,6 +292,163 @@ pub fn build_native_layer_request_with_raft(
     held_claims_map: &HashMap<(String, String), Vec<String>>,
     is_raft: bool,
 ) -> NativeLayerRequest {
+    build_native_layer_request_impl(
+        stage_export,
+        layer_index,
+        input,
+        module,
+        held_claims_map,
+        is_raft,
+        None,
+    )
+}
+
+/// Build the live native request with the same active-region gate and
+/// per-region config resolution used by WASM dispatch.
+pub fn build_native_layer_request_for_layer(
+    stage_export: &'static str,
+    layer: &slicer_ir::GlobalLayer,
+    input: &LayerStageInput<'_>,
+    module: &CompiledModuleLive<'_>,
+    held_claims_map: &HashMap<(String, String), Vec<String>>,
+) -> NativeLayerRequest {
+    build_native_layer_request_impl(
+        stage_export,
+        layer.index,
+        input,
+        module,
+        held_claims_map,
+        layer.is_raft,
+        Some(layer),
+    )
+}
+
+fn native_region_config(
+    map: &slicer_ir::RegionMapIR,
+    key: &slicer_ir::RegionKey,
+    declared_keys: &[String],
+) -> slicer_ir::ConfigView {
+    slicer_scheduler::execution_plan::project_declared_config_view(
+        map.config_for(key),
+        declared_keys.iter().map(String::as_str),
+    )
+}
+
+/// Project only the module-facing copy to the existing guest SDK view. The
+/// arena's wall geometry and metadata remain untouched.
+/// `layer_glue_helpers` in `crates/slicer-macros/src/lib.rs` reconstructs absent
+/// width profiles and candidate reasons, and resets point distance metadata.
+/// The host's resolved-seam projection carries XYZ only. Mirror these existing
+/// adapters rather than widening WIT or exposing extra native-only metadata.
+fn native_perimeter_view(region: &slicer_ir::PerimeterRegion) -> PerimeterRegionView {
+    let mut view = PerimeterRegionView::from_ir(region);
+    let mut walls = region.walls.clone();
+    for wall in &mut walls {
+        wall.width_profile.widths = vec![0.4; wall.path.points.len()];
+        for point in &mut wall.path.points {
+            point.dist_to_top_mm = 0.0;
+        }
+        for flag in &mut wall.feature_flags {
+            for value in flag.custom.values_mut() {
+                if matches!(value, slicer_ir::PaintValue::Custom(_)) {
+                    *value = slicer_ir::PaintValue::ToolIndex(0);
+                }
+            }
+        }
+    }
+    view.set_wall_loops(walls);
+    view.set_variant_chain(
+        region
+            .variant_chain
+            .iter()
+            .map(|(name, value)| {
+                (
+                    name.clone(),
+                    match value {
+                        slicer_ir::PaintValue::Custom(_) => slicer_ir::PaintValue::ToolIndex(0),
+                        value => value.clone(),
+                    },
+                )
+            })
+            .collect(),
+    );
+    view.set_seam_candidates(
+        region
+            .seam_candidates
+            .iter()
+            .map(|candidate| slicer_ir::SeamCandidate {
+                position: slicer_ir::Point3WithWidth {
+                    x: candidate.position.x,
+                    y: candidate.position.y,
+                    z: candidate.position.z,
+                    width: 0.0,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
+                    overhang_distance_mm: None,
+                },
+                score: candidate.score,
+                reason: slicer_ir::SeamReason::Aligned,
+            })
+            .collect(),
+    );
+    view.set_resolved_seam(region.resolved_seam.clone().map(|mut seam| {
+        seam.point.width = 0.0;
+        seam.point.flow_factor = 1.0;
+        seam.point.overhang_quartile = None;
+        seam.point.dist_to_top_mm = 0.0;
+        seam.point.overhang_distance_mm = None;
+        seam
+    }));
+    view
+}
+
+fn build_native_layer_request_impl(
+    stage_export: &'static str,
+    layer_index: u32,
+    input: &LayerStageInput<'_>,
+    module: &CompiledModuleLive<'_>,
+    held_claims_map: &HashMap<(String, String), Vec<String>>,
+    is_raft: bool,
+    layer: Option<&slicer_ir::GlobalLayer>,
+) -> NativeLayerRequest {
+    // Match the WASM host context's (object, region) config table: only
+    // eligible SliceIR identities with a RegionMap entry get an override.
+    // Build once so perimeter-region access does not re-scan the whole slice.
+    let config_by_region: HashMap<(String, u64), slicer_ir::ConfigView> =
+        match (input.slice, input.region_map.as_deref()) {
+            (Some(slice), Some(map)) => {
+                let declared_keys = module.config_view.keys();
+                slice
+                    .regions
+                    .iter()
+                    .filter(|region| {
+                        layer.is_none_or(|layer| {
+                            crate::dispatch::module_receives_slice_region(
+                                module.claims,
+                                layer,
+                                region,
+                            )
+                        })
+                    })
+                    .filter_map(|region| {
+                        let key = slicer_ir::RegionKey {
+                            global_layer_index: layer_index,
+                            object_id: region.object_id.clone(),
+                            region_id: region.region_id,
+                            variant_chain: region.variant_chain.clone(),
+                        };
+                        map.entries.get(&key).map(|_| {
+                            (
+                                (region.object_id.clone(), region.region_id),
+                                native_region_config(map, &key, &declared_keys),
+                            )
+                        })
+                    })
+                    .collect()
+            }
+            _ => HashMap::new(),
+        };
     // Ticket 19: support carriers for planned bodies with no slice geometry
     // on this layer (see `dispatch::support_carrier_regions`).
     let carriers: Vec<slicer_ir::SlicedRegion> = if stage_export == "Layer::Support" {
@@ -323,6 +481,19 @@ pub fn build_native_layer_request_with_raft(
                         .enumerate()
                         .map(move |(i, region)| (region_count + i, region)),
                 )
+                .filter(|(index, region)| {
+                    if *index >= region_count {
+                        return true; // synthetic support carriers bypass the slice-region gate
+                    }
+                    layer.is_none_or(|layer| {
+                        region.region_id != slicer_ir::MODIFIER_FOOTPRINT_REGION_ID
+                            && crate::dispatch::module_receives_slice_region(
+                                module.claims,
+                                layer,
+                                region,
+                            )
+                    })
+                })
                 .map(|(index, region)| {
                     let mut view = SliceRegionView::from_ir(
                         region,
@@ -343,7 +514,12 @@ pub fn build_native_layer_request_with_raft(
                         || view.derive_needs_support(input.surface_classification),
                         |data| data.needs_support,
                     ));
-                    view.set_config((*module.config_view).clone());
+                    view.set_config(
+                        config_by_region
+                            .get(&(region.object_id.clone(), region.region_id))
+                            .cloned()
+                            .unwrap_or_else(|| (*module.config_view).clone()),
+                    );
                     if let Some(data) = prepared {
                         view.set_surface_group(data.surface_group.clone());
                         view.set_overhang_quartile_polygons(
@@ -371,7 +547,21 @@ pub fn build_native_layer_request_with_raft(
     // `run_path_optimization`) require `perimeter_regions` to be `Some`; the
     // wasm leg tolerates a missing perimeter by pushing zero regions, so the
     // native leg must too (native/wasm leg parity, cf. 9685cd03).
-    let perimeter_regions = Some(
+    //
+    // `Layer::InfillPostProcess` is the one stage whose perimeter views must be
+    // enriched from the arena's partitioned `SliceIR` (ticket 47; native/wasm
+    // leg parity for `push_infill_postprocess_regions`): the four role
+    // partitions, `raft_fill`, `tool_index` and `wall_source_region_id` live
+    // only on the `SliceIR` regions, and the infill linker's
+    // `RoleBoundaries::is_partitioned` is unreachable without them.
+    let perimeter_regions = Some(if stage_export == "Layer::InfillPostProcess" {
+        native_infill_postprocess_regions(
+            input,
+            layer_index,
+            &config_by_region,
+            &module.config_view,
+        )
+    } else {
         input
             .perimeter
             .map(|perimeter| {
@@ -379,14 +569,21 @@ pub fn build_native_layer_request_with_raft(
                     .regions
                     .iter()
                     .map(|region| {
-                        let mut view = PerimeterRegionView::from_ir(region);
-                        view.set_config((*module.config_view).clone());
+                        let mut view = native_perimeter_view(region);
+                        // WASM's perimeter accessor uses the same SliceIR-derived
+                        // table, falling back for perimeter-only identities.
+                        view.set_config(
+                            config_by_region
+                                .get(&(region.object_id.clone(), region.region_id))
+                                .cloned()
+                                .unwrap_or_else(|| (*module.config_view).clone()),
+                        );
                         view
                     })
                     .collect()
             })
-            .unwrap_or_default(),
-    );
+            .unwrap_or_default()
+    });
 
     let mut paint = input
         .paint_regions
@@ -426,6 +623,24 @@ pub fn build_native_layer_request_with_raft(
         }
     }
 
+    // Ticket 47 (second projection): the two builder-consuming stages get the
+    // staged ordered-entities snapshot exactly as the WASM leg's
+    // `push_layer_collection_builder` snapshot carries it
+    // (`crate::dispatch::project_ordered_entities_from`), so the native
+    // module's `get_ordered_entities` sees the same content its WASM twin
+    // would. Every other stage's WIT world does not carry the builder.
+    let ordered_entities = if matches!(
+        stage_export,
+        "Layer::PathOptimization" | "Layer::AnchoredEvents"
+    ) {
+        crate::dispatch::project_ordered_entities_from(input.layer_collection)
+            .into_iter()
+            .map(crate::marshal::native::ordered_entity_to_sdk_view)
+            .collect()
+    } else {
+        Vec::new()
+    };
+
     NativeLayerRequest {
         layer_index,
         regions,
@@ -434,7 +649,166 @@ pub fn build_native_layer_request_with_raft(
         prior_infill: input.infill.map(|infill| infill.regions.clone()),
         config: (*module.config_view).clone(),
         stage_export,
+        ordered_entities,
     }
+}
+
+/// Convert the host-local `OrderedEntityView` projection into the SDK's
+/// `OrderedEntityView` — the same content the WASM seam's
+/// `get_ordered_entities` returns (region-key variant-chain flattened to
+/// empty by the WIT record, endpoint distance-to-top reset by the guest SDK
+/// adapter).
+pub fn ordered_entity_to_sdk_view(
+    mut view: crate::dispatch::OrderedEntityView,
+) -> slicer_sdk::views::OrderedEntityView {
+    view.region_key.variant_chain.clear();
+    view.start_point.dist_to_top_mm = 0.0;
+    view.end_point.dist_to_top_mm = 0.0;
+    slicer_sdk::views::OrderedEntityView {
+        original_index: view.original_index,
+        tool_index: view.tool_index,
+        region_key: view.region_key,
+        role: view.role,
+        start_point: view.start_point,
+        end_point: view.end_point,
+        point_count: view.point_count,
+        order_lock: view.order_lock,
+    }
+}
+
+/// Native-transport mirror of the WASM leg's `push_infill_postprocess_regions`
+/// (`crate::dispatch`): the `Layer::InfillPostProcess` perimeter views, one per
+/// `SliceIR` region, enriched with the four partitioned fill polygons +
+/// `raft_fill` copied verbatim from the slice region, wall geometry from the
+/// region's own `PerimeterIR` entry (else the `wall_source_region_id` base
+/// region's entry — shared walls), the host-resolved tool index, and the
+/// wall-source id. A virtual view without any `PerimeterIR` entry carries empty
+/// walls and no seam data; the view's identity is always the slice region's.
+///
+/// Fallbacks mirror the WASM leg exactly: no `PerimeterIR` → empty region list
+/// (not `None`); missing `SliceIR` → the legacy `PerimeterIR`-driven views
+/// (ADR-0028 fields default empty). Config is applied here by the caller's
+/// `config_by_region` table (same table the legacy path uses; the wasm leg's
+/// `config` accessor resolves the identical table with the identical
+/// object-level fallback), so the postprocess config contract is unaffected by
+/// this projection.
+///
+/// Deliberately NOT shared code with the wasm leg: that one operates on WIT
+/// data inside a `wasmtime::Store`, this one on SDK views over IR directly.
+/// Actual SDK transport parity is pinned by `sdk_view_transport_parity_tdd`
+/// (`crates/slicer-wasm-host/tests/contract/sdk_view_transport_parity_tdd.rs`).
+///
+/// Donor metadata is projected through `native_perimeter_view`, matching the
+/// generated guest SDK adapter without mutating the committed donor IR.
+fn native_infill_postprocess_regions(
+    input: &LayerStageInput<'_>,
+    layer_index: u32,
+    config_by_region: &HashMap<(String, u64), slicer_ir::ConfigView>,
+    fallback_config: &slicer_ir::ConfigView,
+) -> Vec<PerimeterRegionView> {
+    use crate::dispatch::{
+        perimeter_region_index, resolve_region_tool_index, wall_source_region_id,
+    };
+
+    fn set_enriched_fields(
+        view: &mut PerimeterRegionView,
+        region: &slicer_ir::SlicedRegion,
+        region_map: Option<&slicer_ir::RegionMapIR>,
+        layer_index: u32,
+        wall_source: Option<slicer_ir::RegionId>,
+    ) {
+        // The view's identity is the slice region's, not the wall donor's.
+        view.set_object_id(region.object_id.clone());
+        view.set_region_id(region.region_id);
+        // Mirror the wasm view seam's observable variant chain: WIT carries no
+        // `Custom` paint value, so a WASM module observes `ToolIndex(0)`
+        // (`ir_to_wit_paint_value` + the glue's reverse adapter); a native
+        // module must not observe more.
+        view.set_variant_chain(
+            region
+                .variant_chain
+                .iter()
+                .map(|(name, value)| {
+                    let value = match value {
+                        slicer_ir::PaintValue::Flag(v) => slicer_ir::PaintValue::Flag(*v),
+                        slicer_ir::PaintValue::Scalar(v) => slicer_ir::PaintValue::Scalar(*v),
+                        slicer_ir::PaintValue::ToolIndex(v) => slicer_ir::PaintValue::ToolIndex(*v),
+                        slicer_ir::PaintValue::Custom(_) => slicer_ir::PaintValue::ToolIndex(0),
+                    };
+                    (name.clone(), value)
+                })
+                .collect(),
+        );
+        view.set_sparse_infill_area(region.sparse_infill_area.clone());
+        view.set_top_solid_fill(region.top_solid_fill.clone());
+        view.set_bottom_solid_fill(region.bottom_solid_fill.clone());
+        view.set_bridge_areas(region.bridge_areas.clone());
+        view.set_raft_fill(region.raft_fill.clone());
+        view.set_tool_index(resolve_region_tool_index(
+            &region.variant_chain,
+            region_map,
+            layer_index,
+            &region.object_id,
+            region.region_id,
+        ));
+        view.set_wall_source_region_id(wall_source);
+    }
+
+    let Some(perimeter) = input.perimeter else {
+        return Vec::new();
+    };
+    // Defensive fallback: without a SliceIR there is nothing to enrich from —
+    // keep the legacy PerimeterIR-driven views (fields default empty/0/None).
+    let Some(slice) = input.slice else {
+        return perimeter
+            .regions
+            .iter()
+            .map(|region| {
+                let mut view = native_perimeter_view(region);
+                view.set_config(
+                    config_by_region
+                        .get(&(region.object_id.clone(), region.region_id))
+                        .cloned()
+                        .unwrap_or_else(|| fallback_config.clone()),
+                );
+                view
+            })
+            .collect();
+    };
+
+    let perim_index = perimeter_region_index(perimeter);
+    slice
+        .regions
+        .iter()
+        .map(|region| {
+            let own_entry = perim_index
+                .get(&(&region.object_id, region.region_id))
+                .copied();
+            let wall_source = wall_source_region_id(own_entry.is_some(), region);
+            // Wall donor: own entry, else the base region's entry (shared walls).
+            let donor = own_entry.or_else(|| {
+                wall_source.and_then(|base| perim_index.get(&(&region.object_id, base)).copied())
+            });
+            let mut view = match donor {
+                Some(p) => native_perimeter_view(p),
+                None => PerimeterRegionView::default(),
+            };
+            set_enriched_fields(
+                &mut view,
+                region,
+                input.region_map.as_deref(),
+                layer_index,
+                wall_source,
+            );
+            view.set_config(
+                config_by_region
+                    .get(&(region.object_id.clone(), region.region_id))
+                    .cloned()
+                    .unwrap_or_else(|| fallback_config.clone()),
+            );
+            view
+        })
+        .collect()
 }
 
 /// Project the host-owned `SupportAnalysisIR` onto the SDK's read-only view.
@@ -1127,12 +1501,23 @@ pub fn build_native_finalization_request(
 /// Commit finalization through the SDK builder's full merge applier.
 pub fn commit_native_finalization_response(
     response: NativeFinalizationResponse,
+    module: &CompiledModuleLive<'_>,
+    stage_id: &str,
     layers: &mut Vec<slicer_ir::LayerCollectionIR>,
 ) -> Result<slicer_ir::FinalizationOutput, String> {
+    if !response.output.annotations().is_empty() {
+        crate::host::check_finalization_annotation_write(
+            module.module_id.as_str(),
+            stage_id,
+            module.ir_writes,
+        )?;
+    }
+    let mut candidate = layers.clone();
     response
         .output
-        .apply_to(layers)
+        .apply_to(&mut candidate)
         .map_err(|message| format!("finalization merge failed: {message}"))?;
+    *layers = candidate;
     Ok(slicer_ir::FinalizationOutput::Success)
 }
 
@@ -1275,10 +1660,29 @@ pub fn commit_native_layer_response(
                 return Ok(None);
             };
             let collected = collect_infill(builder);
+            // Keep this predicate identical to the wasm leg's (`raft_fill`
+            // included): a raft-only output is NOT the empty case, so it must
+            // fall through and commit its raft regions rather than be collapsed
+            // into the empty replacement set.
             if collected.sparse_paths.is_empty()
                 && collected.solid_paths.is_empty()
                 && collected.ironing_paths.is_empty()
+                && collected.raft_fill.is_empty()
             {
+                if stage_export.ends_with("PostProcess") {
+                    // Native mirror of the wasm leg's empty-replacement rule:
+                    // `Layer::InfillPostProcess` is replace-with-complete-
+                    // re-emit (ADR-0028 §Amendment Change 3), so a ran
+                    // invocation that produced zero paths has committed the
+                    // empty replacement set, not "no commit". The absent-builder
+                    // arm above stays `Ok(None)`: the macro's
+                    // `run_infill_postprocess` shim always populates `infill`,
+                    // so a missing builder is a mis-bound entry, not a ran-and-
+                    // emitted-nothing linker.
+                    return Ok(Some(LayerStageCommit::InfillPostProcess(
+                        crate::marshal::empty_infill_replacement(layer_index),
+                    )));
+                }
                 return Ok(None);
             }
             // Native modules author no per-path tool today; pass `None` so the

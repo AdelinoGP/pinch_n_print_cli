@@ -1,0 +1,950 @@
+
+running 3 tests
+test perimeter_spatial_capture::perimeter_spatial_tests::perimeter_spatial_self_baseline_native_indexed ... ok
+test perimeter_spatial_capture::perimeter_spatial_tests::perimeter_spatial_self_baseline_native_legacy ... ok
+test perimeter_spatial_capture::perimeter_spatial_tests::perimeter_spatial_self_baseline_wasm has been running for over 60 seconds
+test perimeter_spatial_capture::perimeter_spatial_tests::perimeter_spatial_self_baseline_wasm ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 368 filtered out; finished in 71.89s
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.10s
+warning: the following packages contain code that will be rejected by a future version of Rust: nom v3.2.1, quick-xml v0.22.0
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running tests\integration\main.rs (target\debug\deps\integration-5d533ff748883118.exe)
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12344) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12344) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12344) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (3552) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (3552) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (3552) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (7076) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (7076) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (7076) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24064) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24064) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24064) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12612) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12612) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12612) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12344) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12344) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12344) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (3552) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (3552) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (3552) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (7076) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (7076) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (7076) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12612) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12612) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12612) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12344) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12344) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12344) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (3552) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (3552) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (3552) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12612) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12612) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12612) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (7076) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (7076) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (7076) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24064) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24064) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24064) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12344) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12344) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12344) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12612) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12612) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12612) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (3552) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (3552) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (3552) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (7076) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (7076) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (7076) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24064) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24064) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24064) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12612) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12612) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12612) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12344) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12344) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (7076) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (7076) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (7076) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12344) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (3552) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (3552) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24064) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24064) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (3552) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24064) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12344) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12344) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12344) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (3552) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (3552) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (3552) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12612) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12612) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12612) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (3552) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24064) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24064) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24064) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (3552) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (3552) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (23032) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (7076) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (7076) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2856) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (7076) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (19936) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12612) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12612) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12612) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (17784) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (2636) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (12656) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()
+
+thread '<unnamed>' (24052) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+assertion failed: rhs.fpv_.is_finite()

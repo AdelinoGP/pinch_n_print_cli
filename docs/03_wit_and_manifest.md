@@ -61,7 +61,7 @@ crates/slicer-schema/wit/
     prepass-support-geometry/prepass-support-geometry.wit                    # package slicer:prepass-support-geometry@1.0.0
     postpass-gcode-postprocess/postpass-gcode-postprocess.wit          # package slicer:postpass-gcode-postprocess@1.0.0
     postpass-text-postprocess/postpass-text-postprocess.wit             # package slicer:postpass-text-postprocess@1.0.0
-    finalization-layer-finalization/finalization-layer-finalization.wit  # package slicer:finalization-layer-finalization@1.0.0
+    finalization-layer-finalization/finalization-layer-finalization.wit  # package slicer:finalization-layer-finalization@1.1.0
 ```
 
 **Host** consumption is defined in `crates/slicer-wasm-host/src/host.rs`. That file
@@ -680,7 +680,12 @@ is the idiomatic component-model spelling (cf. `wasi:cli/run@0.2.0#run`).
 ### `finalization-layer-finalization/finalization-layer-finalization.wit`
 
 **Source of truth:** `crates/slicer-schema/wit/deps/finalization-layer-finalization/finalization-layer-finalization.wit`
-(package `slicer:finalization-layer-finalization@1.0.0`).
+(package `slicer:finalization-layer-finalization@1.1.0` — 1.0.0 → 1.1.0 added
+the `finalization-output-builder.push-annotation` relay, ticket 47: without it
+the WASM drain-back silently dropped `FinalizationOutputBuilder`'s
+`push_annotation`/`push_fan_speed` stream — part-cooling's `M106`/`M107` fan
+commands — while the native leg merged them via `apply_to`, so the external
+leg's emitted G-code carried zero fan commands).
 
 Read `crates/slicer-schema/wit/deps/finalization-layer-finalization/finalization-layer-finalization.wit`
 for the exact field order, parameter names, and return types. The imported
@@ -695,6 +700,15 @@ The exported `layer-finalization` interface has one `run` function receiving
 layer views, the output builder, and a config view; the
 `layer-finalization-module` world imports the shared host services, profiling,
 config, and local types.
+
+`finalization-output-builder.push-annotation` requires the exact manifest write
+path `LayerCollectionIR.annotations`, for both comment and raw annotations
+(including fan commands). Empty write sets, unrelated field declarations,
+and a bare `LayerCollectionIR` declaration do not authorize this operation.
+Both transports must report undeclared annotation writes as fatal contract
+errors and retain the pre-call layers. Successful WASM pushes record
+`LayerCollectionIR.annotations` in the runtime write audit. This maps the
+existing annotation operation to its IR carrier; it does not change WIT.
 
 Host validation: the host validates that `entity-id` in `modify-entity`
 resolves to a real entity within `layer`; unknown IDs are rejected with an `Err(string)` diagnostic and no mutation. The closure-based API from packet 40 is
@@ -986,7 +1000,14 @@ wildcard form. A declared key of the form
 `<prefix>:*` matches all runtime keys whose name begins with `<prefix>:`,
 enabling modules to declare a single schema entry for dynamically-named
 keys such as `object_height:<uuid>` or `paint_config:<semantic>:<key>`.
-Static keys (without the `:*` suffix) continue to require exact-match.
+Static keys (without the `:*` suffix) require exact-match, except for registered
+legacy config-key spellings: resolution stores canonical identities, and
+`bind_module_config_view` (`crates/slicer-scheduler/src/execution_plan.rs`)
+binds the canonical value under a module's declared legacy spelling through
+`project_declared_config_view` in the same file. Native and WASM regional config
+transports use that same ownership-preserving projection. This does
+not expose aliases to undeclared readers or permit authoring both spellings in
+the same scope.
 The matcher is `source_key_matches_declared` in
 `crates/slicer-scheduler/src/execution_plan.rs`.
 

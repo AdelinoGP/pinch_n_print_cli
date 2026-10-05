@@ -820,10 +820,123 @@ fn inflate_model_occupancy(polys: &[ExPolygon], xy_distance_mm: f32) -> Vec<ExPo
     host::offset_polygons(polys, xy_distance_mm, OffsetJoinType::Miter, 0.0)
 }
 
+/// Whether two bounding boxes (scaled units) are provably disjoint.
+/// Touching boxes count as overlapping — they are NOT disjoint.
+fn bboxes_disjoint(a: Option<(i64, i64, i64, i64)>, b: Option<(i64, i64, i64, i64)>) -> bool {
+    match (a, b) {
+        (Some((aminx, amaxx, aminy, amaxy)), Some((bminx, bmaxx, bminy, bmaxy))) => {
+            amaxx < bminx || aminx > bmaxx || amaxy < bminy || aminy > bmaxy
+        }
+        _ => false,
+    }
+}
+
+/// Bounding box (contour + holes) of one region, in scaled units.
+fn region_bbox(region: &ExPolygon) -> Option<(i64, i64, i64, i64)> {
+    let mut bbox: Option<(i64, i64, i64, i64)> = None;
+    let mut include = |point: &Point2| {
+        bbox = Some(match bbox {
+            None => (point.x, point.x, point.y, point.y),
+            Some((min_x, max_x, min_y, max_y)) => (
+                min_x.min(point.x),
+                max_x.max(point.x),
+                min_y.min(point.y),
+                max_y.max(point.y),
+            ),
+        });
+    };
+    for point in &region.contour.points {
+        include(point);
+    }
+    for hole in &region.holes {
+        for point in &hole.points {
+            include(point);
+        }
+    }
+    bbox
+}
+
+/// Whether one region carries Slic3r-convention winding: contour CCW
+/// (positive signed area), every hole CW (negative). A region that fails this
+/// is never gated — the clip normalizes winding, and under Clipper's NonZero
+/// fill rule a verbatim non-canonical ring can describe a different *set*.
+fn region_has_canonical_winding(region: &ExPolygon) -> bool {
+    ring_area(&region.contour) > 0.0 && region.holes.iter().all(|hole| ring_area(hole) < 0.0)
+}
+
+/// The emit-time carve with the ticket-32 bounding-box gate.
+///
+/// A region whose bounding box is disjoint from the collision set's cannot
+/// intersect it, so `Difference` is the region *as a set* and the clip is
+/// skippable. The clip still normalizes the ring (winding, start vertex), and
+/// `expolygons_simplify`'s Douglas–Peucker is start-vertex sensitive, so the
+/// gate only fires where the chain after the carve provably erases the
+/// difference before anything observes it:
+///
+/// - canonical-winding regions only (see [`region_has_canonical_winding`]);
+/// - `union_expolys` normalizes whenever two or more regions reach it, and
+///   the final set-wide difference (which runs whenever collision is
+///   non-empty) is a fixed point for canonical rings, so multi-region outputs
+///   stay byte-identical;
+/// - a **lone** gated region under an active simplify tolerance is not. The
+///   RDP anchor is `points[0]`, so a verbatim ring can select a different
+///   vertex set than the clip-normalized one (measured ~0.02% area delta on a
+///   curved single-disc body). That case is re-clipped to today's exact
+///   representation; it is one region, so the repair is O(1) clip and rare.
+///
+/// `simplify_active` must be `role_simplify_tolerance(...).is_some()` for the
+/// role being carved. `collision_bbox` is `expolygons_bbox(collision_polys)`,
+/// precomputed by the caller so the scan is shared across the roles.
+fn carve_emitted_regions_with_bbox_gate(
+    regions: &[ExPolygon],
+    collision_polys: &[ExPolygon],
+    collision_bbox: Option<(i64, i64, i64, i64)>,
+    simplify_active: bool,
+) -> Vec<ExPolygon> {
+    if collision_polys.is_empty() || regions.is_empty() {
+        return regions.to_vec();
+    }
+    let mut gated_any = false;
+    let mut carved: Vec<ExPolygon> = Vec::with_capacity(regions.len());
+    for region in regions {
+        if region_has_canonical_winding(region)
+            && bboxes_disjoint(region_bbox(region), collision_bbox)
+        {
+            gated_any = true;
+            carved.push(region.clone());
+            continue;
+        }
+        carved.extend(
+            host::clip_polygons(
+                std::slice::from_ref(region),
+                collision_polys,
+                ClipOperation::Difference,
+            )
+            .into_iter()
+            .max_by(|a, b| {
+                expolygon_area(a)
+                    .total_cmp(&expolygon_area(b))
+                    .then_with(|| a.contour.points.cmp(&b.contour.points))
+            }),
+        );
+    }
+    // Every gated region survives the carve, so `carved.len() == 1` with
+    // `gated_any` means that lone survivor is the gated one.
+    if simplify_active && gated_any && carved.len() == 1 {
+        carved = carve_emitted_regions(&carved, collision_polys);
+    }
+    carved
+}
+
 /// Apply the final emit-time collision carve to already-drawn support regions.
 ///
 /// This is public so contract tests can verify that post-smoothing geometry is
 /// passed through the same final gate as an unsmoothed baseline.
+///
+/// The production call site (`build_roles`' `with_areas`) uses
+/// [`carve_emitted_regions_with_bbox_gate`], which skips the per-region clip
+/// for bounding-box-disjoint regions; this unconditional form remains the
+/// reference implementation those tests compare against.
 #[doc(hidden)]
 pub fn carve_emitted_regions(
     regions: &[ExPolygon],
@@ -875,6 +988,10 @@ pub fn build_roles(
     // Canonical simplifies only `base_areas`, only for square support, at half
     // the support line width. Roof and floor areas, and every normal-density
     // circle, retain their drawn resolution.
+    //
+    // Ticket 32: the collision bounding box is shared by every role's carve
+    // gate, so it is computed once here rather than per role.
+    let collision_bbox = expolygons_bbox(collision_polys);
     let with_areas =
         |segments: &[Vec<Point3WithWidth>], areas: &[ExPolygon], is_base_area: bool| {
             let mut regions = structural_body_regions(segments, branch_radius);
@@ -882,7 +999,19 @@ pub fn build_roles(
             // Canonical carves each drawn node circle before appending it to
             // the role area. Carving after this union can join separate node
             // circles through collision and then retain only one fragment.
-            let regions = carve_emitted_regions(&regions, collision_polys);
+            // Ticket 32: the carve skips bounding-box-disjoint regions (the
+            // clip is a no-op set-wise); a lone gated region under an active
+            // simplify tolerance is re-clipped because the Douglas–Peucker
+            // anchor is start-vertex sensitive (see
+            // `carve_emitted_regions_with_bbox_gate`).
+            let simplify_tolerance =
+                role_simplify_tolerance(is_base_area, avg_node_per_layer, line_width_mm);
+            let regions = carve_emitted_regions_with_bbox_gate(
+                &regions,
+                collision_polys,
+                collision_bbox,
+                simplify_tolerance.is_some(),
+            );
             // Canonical accumulates the carved circles into `base_areas` /
             // `roof_areas` and then runs them through Clipper boolean ops
             // (`diff_ex(base_areas, roofs)`, `intersection_ex(base_areas,
@@ -894,11 +1023,10 @@ pub fn build_roles(
             // the branch silhouette pop between layers as neighbouring circles
             // drift in and out of contact.
             let regions = union_expolys(regions);
-            let regions =
-                match role_simplify_tolerance(is_base_area, avg_node_per_layer, line_width_mm) {
-                    Some(tolerance) => expolygons_simplify(&regions, tolerance),
-                    None => regions,
-                };
+            let regions = match simplify_tolerance {
+                Some(tolerance) => expolygons_simplify(&regions, tolerance),
+                None => regions,
+            };
             if collision_polys.is_empty() {
                 regions
             } else {
@@ -7657,6 +7785,823 @@ mod tests {
             zero > 0,
             "plain (non-extra-wall) nodes must stay at 0, but every \
              wall_counts entry was nonzero"
+        );
+    }
+
+    // ========================================================================
+    // [t32-gate] Regression suite for wayfinder ticket 32 (emit-pass carve
+    // bbox gate). The gate skips the per-region clip for regions whose bbox
+    // is disjoint from the collision set; these tests pin the representation
+    // contract that makes the skip output-preserving:
+    // 1. `disjoint_difference_*` — what the skipped clip actually returns.
+    // 2. `chain_*` — the production gate is byte-identical to the
+    //    unconditional carve across representative inputs and configs, while
+    //    the naive gate (no winding guard, no lone-region repair) is not.
+    // 3. `windings_*` — every reachable producer emits canonical CCW rings.
+    // 4. `coarse_single_disc_*` — the one reachable unsafe case, and proof the
+    //    lone-region repair handles it.
+    // Evidence and the measured firing counts live in
+    // `docs/specs/perf-vs-orca/evidence/t32-carve-gate/`.
+    // ========================================================================
+
+    /// [t32-gate] Axis-aligned rectangle, CCW contour.
+    fn t32_rect(x0: f32, y0: f32, x1: f32, y1: f32) -> ExPolygon {
+        ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(x0, y0),
+                    Point2::from_mm(x1, y0),
+                    Point2::from_mm(x1, y1),
+                    Point2::from_mm(x0, y1),
+                ],
+            },
+            holes: Vec::new(),
+        }
+    }
+
+    /// [t32-gate] Concave (L-shaped) contour, CCW.
+    fn t32_l_shape() -> ExPolygon {
+        ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(0.0, 0.0),
+                    Point2::from_mm(3.0, 0.0),
+                    Point2::from_mm(3.0, 1.0),
+                    Point2::from_mm(1.0, 1.0),
+                    Point2::from_mm(1.0, 3.0),
+                    Point2::from_mm(0.0, 3.0),
+                ],
+            },
+            holes: Vec::new(),
+        }
+    }
+
+    /// [t32-gate] Square with a square hole (hole ring CW).
+    fn t32_holed() -> ExPolygon {
+        ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(0.0, 0.0),
+                    Point2::from_mm(4.0, 0.0),
+                    Point2::from_mm(4.0, 4.0),
+                    Point2::from_mm(0.0, 4.0),
+                ],
+            },
+            holes: vec![Polygon {
+                points: vec![
+                    Point2::from_mm(1.0, 1.0),
+                    Point2::from_mm(1.0, 3.0),
+                    Point2::from_mm(3.0, 3.0),
+                    Point2::from_mm(3.0, 1.0),
+                ],
+            }],
+        }
+    }
+
+    /// [t32-gate] Rectangle with reversed (CW) winding.
+    fn t32_reversed() -> ExPolygon {
+        ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(3.0, 2.0),
+                    Point2::from_mm(3.0, 0.0),
+                    Point2::from_mm(0.0, 0.0),
+                    Point2::from_mm(0.0, 2.0),
+                ],
+            },
+            holes: Vec::new(),
+        }
+    }
+
+    /// [t32-gate] Same point set as `t32_rect(0, 0, 3, 2)`, start vertex
+    /// rotated to the second point.
+    fn t32_rotated_start() -> ExPolygon {
+        ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(3.0, 0.0),
+                    Point2::from_mm(3.0, 2.0),
+                    Point2::from_mm(0.0, 2.0),
+                    Point2::from_mm(0.0, 0.0),
+                ],
+            },
+            holes: Vec::new(),
+        }
+    }
+
+    /// [t32-gate] Rectangle carrying a redundant collinear vertex.
+    fn t32_collinear() -> ExPolygon {
+        ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(0.0, 0.0),
+                    Point2::from_mm(1.5, 0.0),
+                    Point2::from_mm(3.0, 0.0),
+                    Point2::from_mm(3.0, 2.0),
+                    Point2::from_mm(0.0, 2.0),
+                ],
+            },
+            holes: Vec::new(),
+        }
+    }
+
+    /// [t32-gate] Collision set used for the disjoint cases.
+    fn t32_far_collision() -> Vec<ExPolygon> {
+        vec![t32_rect(100.0, 100.0, 101.0, 101.0)]
+    }
+
+    /// [t32-gate] The `with_areas` chain with the carve in one of three
+    /// modes. `Unconditional` is today's reference; `UnconstrainedGate` is the
+    /// naive gate (characterization only — proves where it diverges);
+    /// `ProductionGate` calls the real
+    /// `carve_emitted_regions_with_bbox_gate` (with its lone-region repair).
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum T32Mode {
+        Unconditional,
+        UnconstrainedGate,
+        ProductionGate,
+    }
+
+    fn t32_chain(
+        areas: &[ExPolygon],
+        collision: &[ExPolygon],
+        is_base_area: bool,
+        avg_node_per_layer: usize,
+        line_width_mm: f32,
+        mode: T32Mode,
+    ) -> Vec<ExPolygon> {
+        let regions: Vec<ExPolygon> = areas.to_vec();
+        let simplify_tolerance =
+            role_simplify_tolerance(is_base_area, avg_node_per_layer, line_width_mm);
+        let regions: Vec<ExPolygon> = match mode {
+            T32Mode::Unconditional => carve_emitted_regions(&regions, collision),
+            T32Mode::ProductionGate => carve_emitted_regions_with_bbox_gate(
+                &regions,
+                collision,
+                expolygons_bbox(collision),
+                simplify_tolerance.is_some(),
+            ),
+            T32Mode::UnconstrainedGate => {
+                if collision.is_empty() {
+                    regions
+                } else {
+                    let collision_bbox = expolygons_bbox(collision);
+                    regions
+                        .into_iter()
+                        .filter_map(|region| {
+                            let disjoint = bboxes_disjoint(
+                                expolygons_bbox(std::slice::from_ref(&region)),
+                                collision_bbox,
+                            );
+                            if disjoint {
+                                Some(region)
+                            } else {
+                                host::clip_polygons(
+                                    std::slice::from_ref(&region),
+                                    collision,
+                                    ClipOperation::Difference,
+                                )
+                                .into_iter()
+                                .max_by(|a, b| {
+                                    expolygon_area(a)
+                                        .total_cmp(&expolygon_area(b))
+                                        .then_with(|| a.contour.points.cmp(&b.contour.points))
+                                })
+                            }
+                        })
+                        .collect()
+                }
+            }
+        };
+        let regions = union_expolys(regions);
+        let regions = match simplify_tolerance {
+            Some(tolerance) => expolygons_simplify(&regions, tolerance),
+            None => regions,
+        };
+        if collision.is_empty() {
+            regions
+        } else {
+            host::clip_polygons(&regions, collision, ClipOperation::Difference)
+        }
+    }
+
+    #[test]
+    fn t32_gate_disjoint_difference_observation() {
+        let collision = t32_far_collision();
+        let shapes: Vec<(&str, ExPolygon)> = vec![
+            ("rect", t32_rect(0.0, 0.0, 3.0, 2.0)),
+            ("l_shape", t32_l_shape()),
+            ("holed", t32_holed()),
+            ("reversed", t32_reversed()),
+            ("rotated_start", t32_rotated_start()),
+            ("collinear", t32_collinear()),
+        ];
+        for (name, shape) in shapes {
+            let subject = vec![shape.clone()];
+            let out = host::clip_polygons(&subject, &collision, ClipOperation::Difference);
+            assert_eq!(
+                out.len(),
+                1,
+                "[t32-gate] {name}: disjoint difference must keep one region"
+            );
+            let sym = host::clip_polygons(&out, &subject, ClipOperation::Xor);
+            let sym_area: f64 = sym.iter().map(expolygon_area).sum();
+            assert!(
+                sym_area < 1.0,
+                "[t32-gate] {name}: disjoint difference must be set-equal; sym-diff area {sym_area}"
+            );
+            let again = host::clip_polygons(&out, &collision, ClipOperation::Difference);
+            println!(
+                "[t32-gate] disjoint {name}: verbatim={} fixed_point={} pts={}->{}",
+                out == subject,
+                again == out,
+                shape.contour.points.len(),
+                out[0].contour.points.len()
+            );
+        }
+    }
+
+    /// [t32-gate] Signed area of an `ExPolygon`: positive = CCW contour.
+    fn t32_signed_area(poly: &ExPolygon) -> f64 {
+        ring_area(&poly.contour)
+    }
+
+    /// [t32-gate] Which representation attributes `a` and `b` differ on.
+    fn t32_repr_delta(a: &[ExPolygon], b: &[ExPolygon]) -> String {
+        if a == b {
+            return "identical".into();
+        }
+        if a.len() != b.len() {
+            return format!("region_count {}!={}", a.len(), b.len());
+        }
+        let mut notes = Vec::new();
+        for (i, (x, y)) in a.iter().zip(b.iter()).enumerate() {
+            if x.contour.points != y.contour.points {
+                let same_set: std::collections::BTreeSet<(i64, i64)> =
+                    x.contour.points.iter().map(|p| (p.x, p.y)).collect();
+                let also_set: std::collections::BTreeSet<(i64, i64)> =
+                    y.contour.points.iter().map(|p| (p.x, p.y)).collect();
+                let set_equal = same_set == also_set;
+                notes.push(format!(
+                    "region[{i}]: start={:?}->{:?} set_equal={set_equal} winding {:.0}->{:.0}",
+                    x.contour.points.first(),
+                    y.contour.points.first(),
+                    t32_signed_area(x),
+                    t32_signed_area(y)
+                ));
+            }
+            if x.holes != y.holes {
+                notes.push(format!("region[{i}]: holes differ"));
+            }
+        }
+        notes.join("; ")
+    }
+
+    #[test]
+    fn t32_gate_chain_gate_matches_unconditional() {
+        let collision = t32_far_collision();
+        // Realistic producer outputs: fine circles and coarse quads, at
+        // ordinary and tiny radii, plus an elongated (moving) ellipse.
+        let fine = |r: f32| {
+            node_ellipse(
+                &branch_circle(CIRCLE_RESOLUTION_FINE, mm_to_units(r).max(1) as f64, 0.0),
+                Point2::from_mm(2.0, 2.0),
+                1.0,
+                Point2 { x: 0, y: 0 },
+                mm_to_units(r).max(1) as f64,
+                false,
+            )
+            .expect("fine circle")
+        };
+        let quad = |r: f32| {
+            node_ellipse(
+                &branch_circle(CIRCLE_RESOLUTION_COARSE, mm_to_units(r).max(1) as f64, 0.0),
+                Point2::from_mm(2.0, 2.0),
+                1.0,
+                Point2 { x: 0, y: 0 },
+                mm_to_units(r).max(1) as f64,
+                true,
+            )
+            .expect("coarse quad")
+        };
+        let elongated = node_ellipse(
+            &branch_circle(CIRCLE_RESOLUTION_FINE, mm_to_units(0.6).max(1) as f64, 0.0),
+            Point2::from_mm(2.0, 2.0),
+            1.0,
+            // Exact movement fixture in 100 nm units: 0.08 mm X, 0.02 mm Y.
+            Point2 { x: 800, y: 200 },
+            mm_to_units(0.6).max(1) as f64,
+            false,
+        )
+        .expect("elongated ellipse");
+        let cases: Vec<(&str, Vec<ExPolygon>)> = vec![
+            ("single_rect", vec![t32_rect(0.0, 0.0, 3.0, 2.0)]),
+            ("single_l", vec![t32_l_shape()]),
+            ("single_holed", vec![t32_holed()]),
+            ("single_reversed_cw", vec![t32_reversed()]),
+            ("single_rotated_start", vec![t32_rotated_start()]),
+            ("single_collinear", vec![t32_collinear()]),
+            ("fine_circle_r1", vec![fine(1.0)]),
+            ("fine_circle_r006", vec![fine(0.06)]),
+            ("coarse_quad_r1", vec![quad(1.0)]),
+            ("coarse_quad_r006", vec![quad(0.06)]),
+            ("elongated_ellipse", vec![elongated.clone()]),
+            (
+                "multi_ellipses",
+                vec![fine(1.0), fine(0.3), elongated.clone()],
+            ),
+            ("multi_small_quads", vec![quad(0.06), quad(0.1), quad(0.2)]),
+            (
+                "multi_mixed",
+                vec![t32_rect(0.0, 0.0, 3.0, 2.0), t32_l_shape(), t32_holed()],
+            ),
+            // Multi-region adversarially-represented members: a rotated start
+            // vertex and a collinear vertex, each disjoint, alongside an
+            // overlapping member so the union runs.
+            (
+                "multi_rotated_member",
+                vec![
+                    t32_rect(100.0, 100.0, 101.0, 101.0),
+                    t32_rotated_start(),
+                    t32_rect(5.0, 0.0, 8.0, 2.0),
+                ],
+            ),
+            (
+                "multi_collinear_member",
+                vec![
+                    t32_rect(100.0, 100.0, 101.0, 101.0),
+                    t32_collinear(),
+                    t32_rect(5.0, 0.0, 8.0, 2.0),
+                ],
+            ),
+            (
+                "multi_reversed_member",
+                vec![
+                    t32_rect(100.0, 100.0, 101.0, 101.0),
+                    t32_reversed(),
+                    t32_rect(5.0, 0.0, 8.0, 2.0),
+                ],
+            ),
+            (
+                "multi_curved_members",
+                vec![
+                    t32_rect(100.0, 100.0, 101.0, 101.0),
+                    fine(1.0),
+                    fine(0.4),
+                    t32_rect(5.0, 0.0, 8.0, 2.0),
+                ],
+            ),
+            (
+                "multi_mixed_with_overlap",
+                vec![
+                    t32_rect(0.0, 0.0, 3.0, 2.0),
+                    t32_l_shape(),
+                    t32_holed(),
+                    fine(1.0),
+                ],
+            ),
+            // Mixed disjointness: one region overlaps the collision set (so
+            // today's code and the gate both clip it), another is disjoint
+            // (the gate skips it). This is the typical real case.
+            (
+                "multi_one_overlapping",
+                vec![
+                    t32_rect(100.0, 100.0, 101.0, 101.0),
+                    t32_rect(0.0, 0.0, 3.0, 2.0),
+                ],
+            ),
+            (
+                "multi_one_overlapping_simplify",
+                vec![t32_rect(100.0, 100.0, 101.0, 101.0), fine(1.0), fine(0.4)],
+            ),
+            (
+                "multi_all_overlapping",
+                vec![
+                    t32_rect(100.0, 100.0, 101.0, 101.0),
+                    t32_rect(0.0, 0.0, 3.0, 2.0),
+                ],
+            ),
+            // The coarse-resolve case: when `avg_node_per_layer` exceeds the
+            // threshold, `circle_resolution` is COARSE (4-gon) for the node
+            // areas — but `structural_body_regions` builds its discs through
+            // `swept_region`'s 16-segment hull, so a simplified body can still
+            // carry a curved contour.
+            (
+                "disc_only_coarse",
+                vec![swept_region(
+                    &Point3WithWidth {
+                        x: 2.0,
+                        y: 2.0,
+                        z: 0.0,
+                        width: 1.0,
+                        ..Default::default()
+                    },
+                    &Point3WithWidth {
+                        x: 2.0,
+                        y: 2.0,
+                        z: 0.0,
+                        width: 1.0,
+                        ..Default::default()
+                    },
+                )
+                .expect("disc")],
+            ),
+            (
+                "disc_plus_quad_coarse",
+                vec![
+                    quad(1.0),
+                    swept_region(
+                        &Point3WithWidth {
+                            x: 2.0,
+                            y: 2.0,
+                            z: 0.0,
+                            width: 1.0,
+                            ..Default::default()
+                        },
+                        &Point3WithWidth {
+                            x: 2.0,
+                            y: 2.0,
+                            z: 0.0,
+                            width: 1.0,
+                            ..Default::default()
+                        },
+                    )
+                    .expect("disc"),
+                ],
+            ),
+            // All regions gated (disjoint from collision) and mutually
+            // disjoint: `union_expolys` still runs on ≥2 regions, so the two
+            // representations must normalize to the same bytes there.
+            (
+                "two_disjoint_rects",
+                vec![
+                    t32_rect(0.0, 0.0, 3.0, 2.0),
+                    t32_rect(10.0, 10.0, 13.0, 12.0),
+                ],
+            ),
+            (
+                "three_disjoint_rects",
+                vec![
+                    t32_rect(0.0, 0.0, 3.0, 2.0),
+                    t32_rect(10.0, 10.0, 13.0, 12.0),
+                    t32_rect(-8.0, 4.0, -5.0, 6.0),
+                ],
+            ),
+            (
+                "two_disjoint_rotated_rects",
+                vec![t32_rotated_start(), t32_rect(10.0, 10.0, 13.0, 12.0)],
+            ),
+            (
+                "two_disjoint_reversed_rects",
+                vec![t32_reversed(), t32_rect(10.0, 10.0, 13.0, 12.0)],
+            ),
+            (
+                "two_disjoint_collinear_rects",
+                vec![t32_collinear(), t32_rect(10.0, 10.0, 13.0, 12.0)],
+            ),
+        ];
+        let configs: [(&str, bool, usize, f32); 3] = [
+            ("base_default", true, 0, 0.4),
+            ("base_coarse_simplify", true, 500, 0.4),
+            ("non_base_default", false, 0, 0.4),
+        ];
+        let mut mismatches = 0usize;
+        let mut unconstrained_mismatches = 0usize;
+        for (case, areas) in cases {
+            for (config, is_base, avg, line_width) in configs {
+                let today = t32_chain(
+                    &areas,
+                    &collision,
+                    is_base,
+                    avg,
+                    line_width,
+                    T32Mode::Unconditional,
+                );
+                // The production gate (with the lone-region repair) must match
+                // today byte-for-byte on every reachable input.
+                let production = t32_chain(
+                    &areas,
+                    &collision,
+                    is_base,
+                    avg,
+                    line_width,
+                    T32Mode::ProductionGate,
+                );
+                let same = production == today;
+                if !same {
+                    mismatches += 1;
+                }
+                println!(
+                    "[t32-gate] chain {case}/{config}: production_gate_eq_today={same} delta={}",
+                    t32_repr_delta(&production, &today)
+                );
+                // Characterization of the naive gate, to show the repair is
+                // load-bearing rather than decorative.
+                let naive = t32_chain(
+                    &areas,
+                    &collision,
+                    is_base,
+                    avg,
+                    line_width,
+                    T32Mode::UnconstrainedGate,
+                );
+                if naive != today {
+                    unconstrained_mismatches += 1;
+                    println!(
+                        "[t32-gate] naive gate diverges on {case}/{config}: delta={}",
+                        t32_repr_delta(&naive, &today)
+                    );
+                }
+            }
+        }
+        println!(
+            "[t32-gate] chain mismatches: production={mismatches} naive={unconstrained_mismatches}"
+        );
+        assert_eq!(
+            mismatches, 0,
+            "[t32-gate] the production gate must match the unconditional chain"
+        );
+        // The naive gate MUST diverge on this corpus: if a refactor ever makes
+        // it agree everywhere, these fixtures have stopped exercising the
+        // winding guard / lone-region repair and the suite is vacuous.
+        assert!(
+            unconstrained_mismatches >= 6,
+            "[t32-gate] expected the naive gate to diverge on >= 6 combinations \
+             (winding guard + lone-region repair cases); got {unconstrained_mismatches} — \
+             the fixtures no longer exercise the guards"
+        );
+    }
+
+    /// [t32-gate] What winding do the *real* emit-pass inputs carry?
+    ///
+    /// `build_roles` receives node cross-sections from `node_ellipse` and
+    /// degenerate node discs from `structural_body_regions`/`swept_region`.
+    /// The gate question only matters for representations the pipeline can
+    /// actually produce, so sweep representative radii/movements and record
+    /// each producer's contour winding.
+    #[test]
+    fn t32_gate_real_input_windings_are_canonical() {
+        let mut negative = 0usize;
+        let mut checked = 0usize;
+        for radius_mm in [0.05_f32, 0.2, 0.4, 1.0, 2.0] {
+            for (mx, my) in [
+                (0_i64, 0_i64),
+                (500, 0),
+                (0, 500),
+                (300, 300),
+                (-700, 250),
+                (5000, -3000),
+            ] {
+                for (res, square) in [
+                    (CIRCLE_RESOLUTION_FINE, false),
+                    (CIRCLE_RESOLUTION_COARSE, true),
+                ] {
+                    let radius_units = mm_to_units(radius_mm).max(1) as f64;
+                    if let Some(poly) = node_ellipse(
+                        &branch_circle(res, radius_units, 0.0),
+                        Point2::from_mm(0.0, 0.0),
+                        1.0,
+                        Point2 { x: mx, y: my },
+                        radius_units,
+                        square,
+                    ) {
+                        checked += 1;
+                        if t32_signed_area(&poly) <= 0.0 {
+                            negative += 1;
+                            println!(
+                                "[t32-gate] NEGATIVE winding: radius={radius_mm} move=({mx},{my}) res={res} square={square} area={:.0}",
+                                t32_signed_area(&poly)
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        println!("[t32-gate] windings checked={checked} non_positive={negative}");
+        assert_eq!(
+            checked, 60,
+            "[t32-gate] the sweep must cover all 60 radius/movement/resolution \
+             combinations; a smaller count means the fixture stopped exercising them"
+        );
+        assert_eq!(
+            negative, 0,
+            "[t32-gate] every reachable node_ellipse must be CCW"
+        );
+        // Degenerate per-node discs use the convex hull, documented CCW.
+        let disc = swept_region(
+            &Point3WithWidth {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+                width: 1.0,
+                ..Default::default()
+            },
+            &Point3WithWidth {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+                width: 1.0,
+                ..Default::default()
+            },
+        )
+        .expect("degenerate disc");
+        assert!(
+            t32_signed_area(&disc) >= 0.0,
+            "[t32-gate] swept disc must be CCW"
+        );
+    }
+
+    /// [t32-gate] The gate path is actually taken for a disjoint region: a
+    /// fired gate returns the subject ring verbatim, while the unconditional
+    /// carve normalizes it. This pins the firing itself, so the equivalence
+    /// tests above cannot pass vacuously with a gate that never triggers.
+    #[test]
+    fn t32_gate_fires_and_returns_the_subject_for_a_disjoint_region() {
+        let subject = t32_rect(0.0, 0.0, 3.0, 2.0);
+        let collision = t32_far_collision();
+        let gated = carve_emitted_regions_with_bbox_gate(
+            std::slice::from_ref(&subject),
+            &collision,
+            expolygons_bbox(&collision),
+            false,
+        );
+        let unconditional = carve_emitted_regions(std::slice::from_ref(&subject), &collision);
+        assert_eq!(
+            gated,
+            vec![subject.clone()],
+            "[t32-gate] a fired gate must return the subject verbatim"
+        );
+        assert_ne!(
+            gated, unconditional,
+            "[t32-gate] the unconditional carve must normalize the ring, otherwise \
+             this test proves nothing about the gate firing"
+        );
+    }
+
+    #[test]
+    fn t32_gate_touching_bbox_is_not_gated() {
+        let subject = t32_rect(0.0, 0.0, 3.0, 2.0);
+        let touching = vec![t32_rect(3.0, 0.0, 5.0, 2.0)];
+        // Use the production helper, not a re-implementation: a test that
+        // re-derives the predicate can pass while the real one is broken.
+        assert!(
+            !bboxes_disjoint(region_bbox(&subject), expolygons_bbox(&touching)),
+            "[t32-gate] a shared edge must count as overlapping"
+        );
+        let direct_reference = carve_emitted_regions(std::slice::from_ref(&subject), &touching);
+        assert_ne!(
+            direct_reference,
+            vec![subject.clone()],
+            "[t32-gate] the reference must normalize this ring so a mistaken skip is observable"
+        );
+        let direct_gate = carve_emitted_regions_with_bbox_gate(
+            std::slice::from_ref(&subject),
+            &touching,
+            expolygons_bbox(&touching),
+            false,
+        );
+        assert_eq!(
+            direct_gate, direct_reference,
+            "[t32-gate] touching bboxes must use the clip, not return the verbatim region"
+        );
+        let reference = t32_chain(
+            &[subject.clone()],
+            &touching,
+            true,
+            0,
+            0.4,
+            T32Mode::Unconditional,
+        );
+        let gated = t32_chain(&[subject], &touching, true, 0, 0.4, T32Mode::ProductionGate);
+        assert_eq!(
+            gated, reference,
+            "[t32-gate] gate must not fire on touching bboxes"
+        );
+    }
+
+    #[test]
+    fn t32_gate_replication_matches_real_build_roles_body() {
+        let collision = t32_far_collision();
+        let areas = vec![t32_rect(0.0, 0.0, 3.0, 2.0), t32_l_shape()];
+        let roles = build_roles(
+            &[],
+            &[],
+            &[],
+            &[],
+            &areas,
+            &[],
+            &[],
+            &[],
+            1.0,
+            &collision,
+            0,
+            0.4,
+        );
+        let body = &roles
+            .iter()
+            .find(|role| role.role == slicer_ir::SupportPlanRole::SupportBody)
+            .expect("[t32-gate] body role must be present")
+            .regions;
+        let replication = t32_chain(&areas, &collision, true, 0, 0.4, T32Mode::ProductionGate);
+        assert_eq!(
+            body, &replication,
+            "[t32-gate] the chain replication must match the real build_roles body path (production gate)"
+        );
+        let unconditional = t32_chain(&areas, &collision, true, 0, 0.4, T32Mode::Unconditional);
+        assert_eq!(
+            body, &unconditional,
+            "[t32-gate] build_roles' production gate must be output-identical to the unconditional carve here"
+        );
+    }
+
+    /// [t32-gate] The decisive reachability check for the unsafe case:
+    /// a coarse-resolve (`avg_node_per_layer` above the threshold) body layer
+    /// whose only drawn region is a degenerate node disc from
+    /// `structural_body_regions`.
+    ///
+    /// Asserts three things:
+    /// 1. the replication equals the real `build_roles` body — the model is
+    ///    faithful;
+    /// 2. the production gate still equals the unconditional carve on this
+    ///    input — the lone-region repair works;
+    /// 3. the *naive* gate differs — so the repair is load-bearing, not
+    ///    decorative.
+    #[test]
+    fn t32_gate_coarse_single_disc_is_the_unsafe_case() {
+        let collision = t32_far_collision();
+        let disc_point = Point3WithWidth {
+            x: 2.0,
+            y: 2.0,
+            z: 0.0,
+            width: 1.0,
+            ..Default::default()
+        };
+        // `structural_body_regions` keeps only degenerate segments; passing
+        // the same point twice is exactly how the emit pass feeds a single
+        // disc into the body region list.
+        let branch_segments = vec![vec![disc_point, disc_point]];
+        let roles = build_roles(
+            &branch_segments,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            1.0,
+            &collision,
+            500,
+            0.4,
+        );
+        let body = &roles
+            .iter()
+            .find(|role| role.role == slicer_ir::SupportPlanRole::SupportBody)
+            .expect("[t32-gate] body role must be present")
+            .regions;
+        let disc = structural_body_regions(&branch_segments, 1.0)
+            .into_iter()
+            .next()
+            .expect("[t32-gate] structural_body_regions must yield the disc");
+        let unconditional = t32_chain(
+            &[disc.clone()],
+            &collision,
+            true,
+            500,
+            0.4,
+            T32Mode::Unconditional,
+        );
+        assert_eq!(
+            body, &unconditional,
+            "[t32-gate] replication must match the real coarse body path"
+        );
+        let production = t32_chain(
+            &[disc.clone()],
+            &collision,
+            true,
+            500,
+            0.4,
+            T32Mode::ProductionGate,
+        );
+        assert_eq!(
+            &production, body,
+            "[t32-gate] the production gate's lone-region repair must preserve the coarse body output"
+        );
+        let naive = t32_chain(
+            &[disc],
+            &collision,
+            true,
+            500,
+            0.4,
+            T32Mode::UnconstrainedGate,
+        );
+        assert_ne!(
+            &naive, body,
+            "[t32-gate] the naive gate must demonstrably change the real coarse body output"
+        );
+        println!(
+            "[t32-gate] unsafe case: naive gate diverges, production gate repairs; naive delta={}",
+            t32_repr_delta(&naive, body)
         );
     }
 }

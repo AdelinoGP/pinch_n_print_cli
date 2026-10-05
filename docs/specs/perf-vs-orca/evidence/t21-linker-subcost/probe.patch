@@ -1,0 +1,525 @@
+diff --git a/crates/slicer-core/src/polygon_ops.rs b/crates/slicer-core/src/polygon_ops.rs
+index 872e25bb..9c2872b9 100644
+--- a/crates/slicer-core/src/polygon_ops.rs
++++ b/crates/slicer-core/src/polygon_ops.rs
+@@ -234,6 +234,9 @@ pub fn clip_polylines(polylines: &[Vec<Point2>], clip: &[ExPolygon]) -> Vec<Vec<
+     use clipper2_rust::core::FillRule;
+     use clipper2_rust::{inflate_paths_64, ClipType, Clipper64, EndType, JoinType};
+ 
++    // [T21-PROBE] wayfinder ticket 21; removed before any commit.
++    let _t21_total = crate::profile::scope(crate::profile::ScopeId::T21_CLIP_POLYLINES);
++
+     if polylines.is_empty() || clip.is_empty() {
+         return Vec::new();
+     }
+@@ -255,6 +258,8 @@ pub fn clip_polylines(polylines: &[Vec<Point2>], clip: &[ExPolygon]) -> Vec<Vec<
+     // spans count as inside too. NonZero winding downstream keeps hole
+     // semantics intact.
+     let raw_clip_paths: Vec<Vec<Point64>> = clip.iter().flat_map(expolygon_to_paths).collect();
++    // [T21-PROBE]
++    let _t21_inflate = crate::profile::scope(crate::profile::ScopeId::T21_CLIP_INFLATE);
+     let clip_paths = inflate_paths_64(
+         &raw_clip_paths,
+         1.0, // delta in integer units, matching `offset2_ex`'s delta_units convention
+@@ -263,7 +268,10 @@ pub fn clip_polylines(polylines: &[Vec<Point2>], clip: &[ExPolygon]) -> Vec<Vec<
+         2.0,
+         0.0,
+     );
++    drop(_t21_inflate);
+ 
++    // [T21-PROBE]
++    let _t21_execute = crate::profile::scope(crate::profile::ScopeId::T21_CLIP_EXECUTE);
+     let mut clipper = Clipper64::default();
+     clipper.add_open_subject(&open_subjects);
+     clipper.add_clip(&clip_paths);
+diff --git a/crates/slicer-core/src/profile.rs b/crates/slicer-core/src/profile.rs
+index 9095cec9..3997900a 100644
+--- a/crates/slicer-core/src/profile.rs
++++ b/crates/slicer-core/src/profile.rs
+@@ -109,8 +109,21 @@ impl ScopeId {
+         ScopeId::OFFSET2_EX,
+         ScopeId::OPENING,
+         ScopeId::CLOSING_EX,
++        // [T21-PROBE] Temporary sub-scopes for the infill-linker re-clip
++        // attribution (wayfinder ticket 21); removed before any commit.
++        ScopeId::T21_CLIP_POLYLINES,
++        ScopeId::T21_CLIP_INFLATE,
++        ScopeId::T21_CLIP_EXECUTE,
+     ];
+ 
++    // [T21-PROBE] wayfinder ticket 21; removed before any commit.
++    /// The whole `clip_polylines` call.
++    pub const T21_CLIP_POLYLINES: ScopeId = ScopeId(6);
++    /// The 1-unit clip-universe pre-inflate inside `clip_polylines`.
++    pub const T21_CLIP_INFLATE: ScopeId = ScopeId(7);
++    /// The clipper add/execute inside `clip_polylines`.
++    pub const T21_CLIP_EXECUTE: ScopeId = ScopeId(8);
++
+     /// Constructs a scope id from its raw representation.
+     ///
+     /// Callers outside `slicer-core` should pass a value at or above
+@@ -139,6 +152,10 @@ impl ScopeId {
+             3 => Some("polygon_ops::offset2_ex"),
+             4 => Some("polygon_ops::opening"),
+             5 => Some("polygon_ops::closing_ex"),
++            // [T21-PROBE] wayfinder ticket 21; removed before any commit.
++            6 => Some("t21::clip_polylines_total"),
++            7 => Some("t21::clip_polylines_inflate"),
++            8 => Some("t21::clip_polylines_execute"),
+             _ => None,
+         }
+     }
+diff --git a/modules/core-modules/infill-linker/src/connect.rs b/modules/core-modules/infill-linker/src/connect.rs
+index e964159f..4a3e5d31 100644
+--- a/modules/core-modules/infill-linker/src/connect.rs
++++ b/modules/core-modules/infill-linker/src/connect.rs
+@@ -121,6 +121,9 @@ pub fn connect_infill(
+         };
+ 
+     let mut candidates = nearest_pair_candidates(&active, graph);
++    crate::t21::add(|c| {
++        c.cands += candidates.len() as u64;
++    });
+     candidates.sort_by(|left, right| {
+         left.distance
+             .total_cmp(&right.distance)
+@@ -236,6 +239,9 @@ pub fn connect_infill(
+             let (lower, upper) = (first_index.min(second_index), first_index.max(second_index));
+             active[lower] = Some(first);
+             merged_with[upper] = lower;
++            crate::t21::add(|c| {
++                c.merges += 1;
++            });
+         } else if anchor_length_units > 0.0 {
+             let direction = ring
+                 .directed_distance(
+@@ -419,6 +425,9 @@ fn nearest_pair_candidates(
+         })
+         .flatten()
+         .collect::<Vec<_>>();
++    crate::t21::add(|c| {
++        c.endpoints += endpoints.len() as u64;
++    });
+     endpoints.sort_by(endpoint_order);
+ 
+     let mut candidates = Vec::new();
+@@ -569,12 +578,15 @@ fn boundary_position(
+     // Strictly-inside-a-hole test up front: hole rings below are found by
+     // `hole_index`, and the point-in-ring test runs on the hole polygon
+     // itself (units space, exact integer arithmetic where it matters).
+-    let inside_hole: Option<usize> = graph.rings().iter().enumerate().find_map(
+-        |(ring_index, ring)| {
+-            (ring.hole_index.is_some() && point_strictly_in_ring(point, &ring.polygon))
+-                .then_some(ring_index)
+-        },
+-    );
++    let inside_hole: Option<usize> =
++        graph
++            .rings()
++            .iter()
++            .enumerate()
++            .find_map(|(ring_index, ring)| {
++                (ring.hole_index.is_some() && point_strictly_in_ring(point, &ring.polygon))
++                    .then_some(ring_index)
++            });
+     if let Some(hole_ring) = inside_hole {
+         // Inside a void: only that hole's own ring can anchor, and only when
+         // the point sits on it (a scan line clipped exactly at the hole
+diff --git a/modules/core-modules/infill-linker/src/lib.rs b/modules/core-modules/infill-linker/src/lib.rs
+index 93b04a2a..5f5e7b82 100644
+--- a/modules/core-modules/infill-linker/src/lib.rs
++++ b/modules/core-modules/infill-linker/src/lib.rs
+@@ -4,6 +4,8 @@ pub mod connect;
+ pub mod graph;
+ pub mod offset;
+ pub mod orchestrate;
++// [T21-PROBE] Temporary linker subcost attribution (wayfinder ticket 21).
++pub mod t21;
+ 
+ use slicer_ir::{ConfigValue, ConfigView, InfillRegion};
+ use slicer_sdk::builders::InfillOutputBuilder;
+@@ -69,6 +71,8 @@ impl LayerModule for InfillLinker {
+         output: &mut InfillOutputBuilder,
+         config: &ConfigView,
+     ) -> Result<(), ModuleError> {
++        // [T21-PROBE] Export-call entry timestamp (host clock for this call).
++        let t21_entry_us = slicer_sdk::host::now_us();
+         let spacing_mm = match config.get("line_width") {
+             Some(ConfigValue::Float(value)) if value.is_finite() && *value > 0.0 => *value as f32,
+             Some(ConfigValue::Int(value)) if *value > 0 => *value as f32,
+@@ -85,6 +89,8 @@ impl LayerModule for InfillLinker {
+         for region in prior_infill {
+             Self::copy_ironing(region, output)?;
+         }
++        // [T21-PROBE]
++        crate::t21::flush(_layer_index, t21_entry_us);
+         Ok(())
+     }
+ }
+diff --git a/modules/core-modules/infill-linker/src/orchestrate.rs b/modules/core-modules/infill-linker/src/orchestrate.rs
+index 40c4bbe4..48c5a93b 100644
+--- a/modules/core-modules/infill-linker/src/orchestrate.rs
++++ b/modules/core-modules/infill-linker/src/orchestrate.rs
+@@ -170,9 +170,13 @@ pub fn orchestrate_infill(
+     default_line_width: f32,
+     output: &mut InfillOutputBuilder,
+ ) -> Result<(), String> {
++    // [T21-PROBE] Whole-orchestration wall bracket and fuel scope.
++    let t21_orch_start_us = slicer_sdk::host::now_us();
++    let _t21_orch = crate::t21::t21_scope!("t21::orchestrate_total");
+     let mut records = Vec::with_capacity(prior_infill.len());
+     let mut buckets = vec![BucketPaths::default(); prior_infill.len()];
+ 
++    let _t21_records = crate::t21::t21_scope!("t21::records_build");
+     for (prior_index, region) in prior_infill.iter().enumerate() {
+         let Some(view) = regions.iter().find(|view| {
+             view.object_id() == &region.object_id && view.region_id() == &region.region_id
+@@ -181,6 +185,9 @@ pub fn orchestrate_infill(
+             buckets[prior_index].solid = region.solid_infill.clone();
+             continue;
+         };
++        crate::t21::add(|c| {
++            c.matched += 1;
++        });
+ 
+         let line_width = config_float(view.config(), "line_width")
+             .filter(|value| value.is_finite() && *value > 0.0)
+@@ -218,20 +225,36 @@ pub fn orchestrate_infill(
+             solid_paths: region.solid_infill.clone(),
+         });
+     }
++    crate::t21::add(|c| {
++        c.regions = prior_infill.len() as u64;
++    });
++    drop(_t21_records);
+ 
++    let _t21_buckets = crate::t21::t21_scope!("t21::bucket_process");
+     process_bucket(&records, PathBucket::Sparse, infill_overlap, &mut buckets);
+     process_bucket(&records, PathBucket::Solid, infill_overlap, &mut buckets);
++    drop(_t21_buckets);
+ 
++    let _t21_emit = crate::t21::t21_scope!("t21::output_emit");
+     for (index, region) in prior_infill.iter().enumerate() {
+         output.begin_region(&region.object_id, region.region_id);
+         for path in buckets[index].sparse.drain(..) {
++            crate::t21::add(|c| {
++                c.out += 1;
++            });
+             output.push_sparse_path(path)?;
+         }
+         for path in buckets[index].solid.drain(..) {
++            crate::t21::add(|c| {
++                c.out += 1;
++            });
+             output.push_solid_path(path)?;
+         }
+     }
+ 
++    // [T21-PROBE] Record the orchestration wall span; the export-call flush
++    // reads it back.
++    crate::t21::set_orch_us(slicer_sdk::host::now_us().saturating_sub(t21_orch_start_us));
+     Ok(())
+ }
+ 
+@@ -262,6 +285,10 @@ fn process_bucket_role(
+         append_paths(&mut buckets[record.prior_index], bucket, locked);
+     }
+ 
++    crate::t21::add(|c| {
++        c.roles += 1;
++    });
++
+     let mut unlocked_records = records.to_vec();
+     for record in &mut unlocked_records {
+         record.sparse_paths.retain(|path| path.order_lock.is_none());
+@@ -270,6 +297,7 @@ fn process_bucket_role(
+ 
+     // Per-role, per-region: `role`'s own partitioned polygon, never the union
+     // of all four (see `RoleBoundaries::for_role`).
++    let _t21_bnd = crate::t21::t21_scope!("t21::boundary_prep");
+     let boundaries = records
+         .iter()
+         .map(|record| {
+@@ -290,6 +318,7 @@ fn process_bucket_role(
+             })
+         })
+         .collect::<Vec<_>>();
++    drop(_t21_bnd);
+     let records = unlocked_records.as_slice();
+ 
+     let active = (0..records.len())
+@@ -300,6 +329,15 @@ fn process_bucket_role(
+ 
+     for (index, record) in records.iter().enumerate() {
+         let selected = selected_paths(record, bucket, role);
++        crate::t21::add(|c| {
++            c.selected += selected.len() as u64;
++            c.locked += record
++                .sparse_paths
++                .iter()
++                .chain(&record.solid_paths)
++                .filter(|path| path.order_lock.is_some())
++                .count() as u64;
++        });
+         if selected.is_empty() || boundaries[index].is_none() {
+             append_paths(
+                 &mut buckets[record.prior_index],
+@@ -314,7 +352,11 @@ fn process_bucket_role(
+         .filter_map(|record| record.wall_source_region_id)
+         .collect::<Vec<_>>();
+     let groups = wall_groups(records, &active, &shared_sources);
++    crate::t21::add(|c| {
++        c.rgroups += groups.len() as u64;
++    });
+ 
++    let _t21_groups = crate::t21::t21_scope!("t21::group_link");
+     for group in groups {
+         let same_config = group
+             .windows(2)
+@@ -358,6 +400,7 @@ fn process_bucket_role(
+ 
+ fn swept_footprint_polygons(paths: &[ExtrusionPath3D]) -> Vec<ExPolygon> {
+     const DISK_SEGMENTS: usize = 16;
++    let _t21_footprint = crate::t21::t21_scope!("t21::locked_footprint");
+ 
+     let mut pieces = Vec::new();
+     for path in paths {
+@@ -522,7 +565,12 @@ fn link_union_group(
+         .iter()
+         .flat_map(|&index| boundary_for(boundaries, index).iter().cloned())
+         .collect::<Vec<_>>();
++    let _t21_union = crate::t21::t21_scope!("t21::union_boundary");
+     let boundary = union_ex(&source);
++    drop(_t21_union);
++    crate::t21::add(|c| {
++        c.unions += 1;
++    });
+     let spacing = spacing(records, group[0], bucket);
+     let tagged = group
+         .iter()
+@@ -541,7 +589,12 @@ fn link_union_group(
+         anchor(records, group[0], bucket),
+     );
+     for path in linked {
++        let _t21_owner = crate::t21::t21_scope!("t21::majority_owner");
+         let owner = majority_owner(&path, &source_segments, records, group);
++        crate::t21::add(|c| {
++            c.owners += 1;
++        });
++        drop(_t21_owner);
+         append_paths(&mut buckets[records[owner].prior_index], bucket, vec![path]);
+     }
+ }
+@@ -559,6 +612,7 @@ fn link_region_group(
+         let spacing_mm = spacing(records, index, bucket);
+         let anchor = anchor(records, index, bucket);
+         let raw = boundary_for(boundaries, index);
++        let _t21_offset = crate::t21::t21_scope!("t21::overlap_offset");
+         let boundary = if group.len() == 1 {
+             ExPolygonWithOffset::for_infill_overlap(raw, infill_overlap, spacing_mm)
+                 .polygons_outer()
+@@ -566,6 +620,7 @@ fn link_region_group(
+         } else {
+             mixed_boundary(boundaries, group, index, infill_overlap, spacing_mm)
+         };
++        drop(_t21_offset);
+         let tagged = selected_paths(&records[index], bucket, role)
+             .into_iter()
+             .cloned()
+@@ -751,7 +806,13 @@ fn link_paths(
+     anchor: AnchorParams,
+ ) -> (Vec<ExtrusionPath3D>, Vec<SourceSegment>) {
+     let offset = ExPolygonWithOffset::for_infill_overlap(boundary, infill_overlap, spacing_mm);
+-    link_paths_against(tagged, offset.polygons_outer(), boundary, spacing_mm, anchor)
++    link_paths_against(
++        tagged,
++        offset.polygons_outer(),
++        boundary,
++        spacing_mm,
++        anchor,
++    )
+ }
+ 
+ /// Clips and links `tagged` against the overlap-offset `boundary`, falling
+@@ -781,6 +842,9 @@ fn link_paths_against(
+     if !linked.is_empty() {
+         return (linked, source_segments);
+     }
++    crate::t21::add(|c| {
++        c.fallbacks += 1;
++    });
+     link_paths_without_offset(tagged, raw_boundary, spacing_mm, anchor)
+ }
+ 
+@@ -790,6 +854,7 @@ fn link_paths_without_offset(
+     spacing_mm: f32,
+     anchor: AnchorParams,
+ ) -> (Vec<ExtrusionPath3D>, Vec<SourceSegment>) {
++    let _t21_clip = crate::t21::t21_scope!("t21::path_reclip");
+     let mut clipped = Vec::new();
+     let mut source_segments = Vec::new();
+     for (owner, path) in tagged {
+@@ -798,7 +863,20 @@ fn link_paths_without_offset(
+             .iter()
+             .map(|point| Point2::from_mm(point.x, point.y))
+             .collect::<Vec<_>>();
++        crate::t21::add(|c| {
++            c.clip_calls += 1;
++            c.clip_in_pts += polyline.len() as u64;
++            c.clip_bnd_pts += boundary
++                .iter()
++                .map(|ex| {
++                    ex.contour.points.len() + ex.holes.iter().map(|h| h.points.len()).sum::<usize>()
++                })
++                .sum::<usize>() as u64;
++        });
+         let clipped_polylines = clip_to_offset_boundary(&[polyline], boundary);
++        crate::t21::add(|c| {
++            c.clip_out += clipped_polylines.len() as u64;
++        });
+         for points in remove_short_polylines(&clipped_polylines, spacing_mm) {
+             source_segments.extend(points.windows(2).filter_map(|segment| {
+                 let length = ((segment[1].x - segment[0].x) as f64)
+@@ -818,14 +896,24 @@ fn link_paths_without_offset(
+             clipped.push(clipped_path);
+         }
+     }
+-    (
+-        chain_or_connect_infill(
+-            clipped,
+-            &crate::graph::BoundaryInfillGraph::new(boundary),
+-            anchor,
+-        ),
+-        source_segments,
+-    )
++    drop(_t21_clip);
++
++    let _t21_graph = crate::t21::t21_scope!("t21::graph_build");
++    let graph = crate::graph::BoundaryInfillGraph::new(boundary);
++    crate::t21::add(|c| {
++        c.rings += graph.rings().len() as u64;
++        c.bpts += graph
++            .rings()
++            .iter()
++            .map(|ring| ring.polygon.points.len() as u64)
++            .sum::<u64>();
++    });
++    drop(_t21_graph);
++
++    let _t21_connect = crate::t21::t21_scope!("t21::connect_infill");
++    let linked = chain_or_connect_infill(clipped, &graph, anchor);
++    drop(_t21_connect);
++    (linked, source_segments)
+ }
+ 
+ fn majority_owner(
+diff --git a/modules/core-modules/infill-linker/src/t21.rs b/modules/core-modules/infill-linker/src/t21.rs
+new file mode 100644
+index 00000000..b8d64440
+--- /dev/null
++++ b/modules/core-modules/infill-linker/src/t21.rs
+@@ -0,0 +1,104 @@
++//! [T21-PROBE] Temporary linker subcost attribution (wayfinder ticket 21).
++//!
++//! Removed before any commit; preserved as
++//! `docs/specs/perf-vs-orca/evidence/t21-linker-subcost/probe.patch`.
++//!
++//! Fuel scopes (`t21::*`) resolve only under `--profile`; fuel ratios are exact
++//! (ADR-0055). The counters and the export-call wall bracket (`fn_us`) and the
++//! `orchestrate_infill` bracket (`orch_us`) come from
++//! [`slicer_sdk::host::now_us`] and are flushed as one `module_log` line per
++//! layer.
++
++use std::cell::{Cell, RefCell};
++
++
++/// Opens a fuel scope for `$name`, resolving (and caching) its id per call site.
++macro_rules! t21_scope {
++    ($name:expr) => {{
++        static T21_SCOPE_ID: ::std::sync::OnceLock<Option<slicer_core::profile::ScopeId>> =
++            ::std::sync::OnceLock::new();
++        let t21_id = *T21_SCOPE_ID.get_or_init(|| slicer_sdk::profile::register_scope($name));
++        t21_id.map(slicer_core::profile::scope)
++    }};
++}
++pub(crate) use t21_scope;
++
++/// [T21-PROBE] Per-layer counters.
++#[derive(Default)]
++pub(crate) struct Counters {
++    pub regions: u64,
++    pub matched: u64,
++    pub roles: u64,
++    pub selected: u64,
++    pub locked: u64,
++    pub clip_calls: u64,
++    pub clip_in_pts: u64,
++    pub clip_bnd_pts: u64,
++    pub clip_out: u64,
++    pub fallbacks: u64,
++    pub endpoints: u64,
++    pub cands: u64,
++    pub merges: u64,
++    pub rings: u64,
++    pub bpts: u64,
++    pub unions: u64,
++    pub rgroups: u64,
++    pub owners: u64,
++    pub out: u64,
++}
++
++thread_local! {
++    static COUNTERS: RefCell<Counters> = const { RefCell::new(Counters {
++        regions: 0, matched: 0, roles: 0, selected: 0, locked: 0,
++        clip_calls: 0, clip_in_pts: 0, clip_bnd_pts: 0, clip_out: 0,
++        fallbacks: 0, endpoints: 0, cands: 0, merges: 0,
++        rings: 0, bpts: 0, unions: 0, rgroups: 0, owners: 0, out: 0,
++    }) };
++    static ORCH_US: Cell<u64> = const { Cell::new(0) };
++}
++
++/// [T21-PROBE] Mutates the current layer's counters.
++pub(crate) fn add(f: impl FnOnce(&mut Counters)) {
++    COUNTERS.with(|counters| f(&mut counters.borrow_mut()));
++}
++
++/// [T21-PROBE] Records the `orchestrate_infill` wall span for this call.
++pub fn set_orch_us(us: u64) {
++    ORCH_US.with(|cell| cell.set(us));
++}
++
++/// [T21-PROBE] Flushes and resets counters as one `module_log` line.
++/// `entry_us` is the export-call entry timestamp from
++/// [`slicer_sdk::host::now_us`]; the same per-call host clock backstops both
++/// deltas.
++pub fn flush(layer: u32, entry_us: u64) {
++    let c = COUNTERS.with(|counters| std::mem::take(&mut *counters.borrow_mut()));
++    let orch_us = ORCH_US.with(|cell| cell.replace(0));
++    let fn_us = slicer_sdk::host::now_us().saturating_sub(entry_us);
++    slicer_sdk::host::log_warn(&format!(
++        "T21-PROBE layer={layer} fn_us={fn_us} orch_us={orch_us} \
++         regions={} matched={} roles={} selected={} locked={} \
++         clip_calls={} clip_in_pts={} clip_bnd_pts={} clip_out={} \
++         fallbacks={} endpoints={} cands={} merges={} rings={} bpts={} \
++         unions={} rgroups={} owners={} out={}",
++        c.regions,
++        c.matched,
++        c.roles,
++        c.selected,
++        c.locked,
++        c.clip_calls,
++        c.clip_in_pts,
++        c.clip_bnd_pts,
++        c.clip_out,
++        c.fallbacks,
++        c.endpoints,
++        c.cands,
++        c.merges,
++        c.rings,
++        c.bpts,
++        c.unions,
++        c.rgroups,
++        c.owners,
++        c.out
++    ));
++}

@@ -123,6 +123,12 @@ fn integrated_parity_part_cooling() {
     );
     assert!(!native_layers.is_empty());
     assert!(!wasm_layers.is_empty());
+    assert!(native_layers
+        .iter()
+        .any(|layer| !layer.annotations.is_empty()));
+    assert!(wasm_layers
+        .iter()
+        .any(|layer| !layer.annotations.is_empty()));
     assert_finalization_parity_structural(&native_layers, &wasm_layers, ParityTolerance::default())
         .expect("part cooling native/wasm parity");
 }

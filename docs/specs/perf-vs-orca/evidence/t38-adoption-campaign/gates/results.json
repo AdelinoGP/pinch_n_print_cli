@@ -1,0 +1,33 @@
+{
+  "terminal_status": "BLOCKED_BY_STEERING",
+  "completed": [
+    {
+      "command": "rustc -vV",
+      "status": "identity_recorded",
+      "rustc_exit_code": null,
+      "shell_pipeline_exit_code": 0,
+      "note": "The identity output was captured, but the initial tee pipeline did not preserve rustc's exit code.",
+      "log": "rustc-vV.log"
+    },
+    {
+      "command": "cargo check --workspace --all-targets",
+      "status": "passed",
+      "exit_code": 0,
+      "log": "cargo-check-workspace-all-targets.log"
+    }
+  ],
+  "not_run": [
+    "cargo clippy --workspace --all-targets -- -D warnings",
+    "cargo xtask check-literals",
+    "cargo xtask check-test-quality --report",
+    "cargo xtask build-guests --check",
+    "cargo xtask build-guests --accelerated --check",
+    "cargo xtask test -p xtask --bin xtask -- accelerated_",
+    "cargo test -p slicer-core --features host-algos,perimeter-spatial-test-support --test perimeter_spatial_tdd",
+    "cargo test -p slicer-runtime --features perimeter-spatial-test-support --test integration -- perimeter_spatial_capture_and_nonvacuity",
+    "cargo xtask test --summary -p slicer-runtime --features perimeter-spatial-test-support --test integration -- perimeter_spatial_self_baseline --nocapture",
+    "cargo test -p slicer-runtime --test integration -- overlap_is_inconclusive_and_never_keep"
+  ],
+  "reason": "Main session's read-only verify-freeze.py failed snapshot inventory identity; steering prohibited launching further gates after the running cargo check completed.",
+  "campaign_or_snapshot_build": "not_run"
+}

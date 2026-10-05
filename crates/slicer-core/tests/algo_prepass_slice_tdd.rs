@@ -309,6 +309,44 @@ fn square_expoly(cx: f32, cy: f32, half_mm: f32) -> ExPolygon {
     }
 }
 
+/// The emitted bridge component must cover the whole gap, not the
+/// morphological closing's contour, while a free-edge bottom is not a bridge.
+/// The two kinds of unsupported bottom deliberately coexist in one layer.
+#[test]
+fn flat_bridge_gap_and_free_edge_keep_only_the_gap_component() {
+    use slicer_core::polygon_ops::OffsetJoinType;
+
+    let body = square_expoly(2.0, 0.0, 22.0);
+    let gap = square_expoly(0.0, 0.0, 2.0);
+    let free_edge = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(20.0, -22.0),
+                Point2::from_mm(24.0, -22.0),
+                Point2::from_mm(24.0, 22.0),
+                Point2::from_mm(20.0, 22.0),
+            ],
+        },
+        holes: vec![],
+    };
+    let mut region = SlicedRegion {
+        polygons: vec![body.clone()],
+        infill_areas: vec![body],
+        ..Default::default()
+    };
+    assemble_flat_bridge_areas(
+        &mut region,
+        &[gap.clone(), free_edge.clone()],
+        &[gap.clone(), free_edge],
+        OffsetJoinType::Miter,
+    );
+
+    assert!(region.is_bridge, "the enclosed gap must be recognized");
+    assert_eq!(region.bridge_areas.len(), 1, "the free edge must stay out");
+    assert!(difference(&region.bridge_areas, &[gap.clone()]).is_empty());
+    assert!(difference(&[gap], &region.bridge_areas).is_empty());
+}
+
 /// Regression test for the flat-bridge enclosure closing that dominated
 /// `PrePass::Slice` (~28s of a ~30s stage on 3D Benchy — 92% of it, per
 /// sub-stage instrumentation). `assemble_flat_bridge_areas`'s enclosure

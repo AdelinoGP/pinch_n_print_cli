@@ -10,7 +10,7 @@
 // -----------------------------------------------------------------------------
 
 use slicer_core::flow::line_width_to_spacing;
-use slicer_core::polygon_ops::union_ex;
+use slicer_core::polygon_ops::{union_ex, PreparedPolylineClip};
 use slicer_ir::{
     ConfigValue, ExPolygon, ExtrusionPath3D, ExtrusionRole, InfillRegion, Point2, Point3WithWidth,
     Polygon,
@@ -19,7 +19,7 @@ use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::views::PerimeterRegionView;
 
 use crate::connect::{chain_or_connect_infill, AnchorParams};
-use crate::offset::{clip_to_offset_boundary, remove_short_polylines, ExPolygonWithOffset};
+use crate::offset::{remove_short_polylines, ExPolygonWithOffset};
 
 const WIDTH_EPSILON_MM: f32 = 0.000001;
 
@@ -813,13 +813,22 @@ fn link_paths_without_offset(
 ) -> (Vec<ExtrusionPath3D>, Vec<SourceSegment>) {
     let mut clipped = Vec::new();
     let mut source_segments = Vec::new();
+    // Keep independent per-path intersections (and their owner/metadata), but
+    // flatten and inflate this invocation's immutable boundary only once.
+    let mut prepared_clip = None;
     for (owner, path) in tagged {
         let polyline = path
             .points
             .iter()
             .map(|point| Point2::from_mm(point.x, point.y))
             .collect::<Vec<_>>();
-        let clipped_polylines = clip_to_offset_boundary(&[polyline], boundary);
+        // Match the one-shot early-out: invalid paths do not prepare a universe.
+        if polyline.len() < 2 {
+            continue;
+        }
+        let clipped_polylines = prepared_clip
+            .get_or_insert_with(|| PreparedPolylineClip::new(boundary))
+            .clip(&[polyline]);
         for points in remove_short_polylines(&clipped_polylines, spacing_mm) {
             source_segments.extend(points.windows(2).filter_map(|segment| {
                 let length = ((segment[1].x - segment[0].x) as f64)

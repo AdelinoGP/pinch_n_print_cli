@@ -523,6 +523,7 @@ name = "classic-perimeters"
 version = "0.1.0"
 dependencies = [
  "slicer-core",
+ "slicer-gcode",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
@@ -3220,6 +3221,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "sdk-infill-postprocess-view-guest"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
 name = "sdk-layer-infill-guest"
 version = "0.1.0"
 dependencies = [
@@ -3228,6 +3239,16 @@ dependencies = [
  "slicer-sdk",
  "wit-bindgen 0.60.0",
  "witness",
+]
+
+[[package]]
+name = "sdk-layer-pathopt-guest"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
 ]
 
 [[package]]
@@ -3475,6 +3496,7 @@ dependencies = [
  "overhang-classifier-default",
  "part-cooling",
  "path-optimization-default",
+ "raft-default",
  "rectilinear-infill",
  "seam-placer",
  "seam-planner-default",
@@ -3634,6 +3656,9 @@ version = "0.1.0"
 dependencies = [
  "log",
  "rayon",
+ "sdk-finalization-guest",
+ "sdk-infill-postprocess-view-guest",
+ "sdk-layer-pathopt-guest",
  "slicer-config",
  "slicer-core",
  "slicer-ir",

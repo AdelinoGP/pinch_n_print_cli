@@ -852,6 +852,8 @@ fn object_metadata_to_config_data(
             | "support_top_z_distance"
             | "inner_wall_line_width"
             | "outer_wall_line_width"
+            | "first_layer_line_width"
+            | "initial_layer_line_width"
             | "sparse_infill_line_width"
             | "sparse_infill_density" => {
                 out.insert(key.clone(), ConfigValue::String(value.clone()));

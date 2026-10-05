@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "D:\slicerProject\pinch_n_print_cli_2\docs\specs\perf-vs-orca\evidence\t41-reference-repreparation\verify-freeze.py", line 297, in <module>
+    main()
+    ~~~~^^
+  File "D:\slicerProject\pinch_n_print_cli_2\docs\specs\perf-vs-orca\evidence\t41-reference-repreparation\verify-freeze.py", line 118, in main
+    digest(manifest_path)
+    == (attempt / "frozen-manifest.sha256").read_text().strip()
+AssertionError: manifest identity changed

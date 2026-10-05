@@ -1,0 +1,68 @@
+[
+  {
+    "scenario": "policy rejects target-nested frozen root",
+    "expected": "FROZEN ROOT UNDER TARGET IS REJECTED",
+    "observed": "FROZEN ROOT UNDER TARGET IS REJECTED: C:\\Users\\agpen\\AppData\\Local\\Temp\\tmp6bcs0c07\\ws\\target\\perimeter-reference-preparation\\attempt; frozen payloads must survive a build target cleanup (issue 41)",
+    "passed": true
+  },
+  {
+    "scenario": "target cleanup removes the target-nested payload",
+    "expected": "payload missing",
+    "observed": "missing",
+    "passed": true
+  },
+  {
+    "scenario": "reconstructed t40 gate fails after cleanup",
+    "expected": "inventory mismatch",
+    "observed": "mismatch",
+    "passed": true
+  },
+  {
+    "scenario": "policy accepts the durable frozen root",
+    "expected": "C:\\Users\\agpen\\AppData\\Local\\Temp\\tmp6bcs0c07\\ws\\.local-artifacts\\perimeter-reference-preparation\\attempt",
+    "observed": "C:\\Users\\agpen\\AppData\\Local\\Temp\\tmp6bcs0c07\\ws\\.local-artifacts\\perimeter-reference-preparation\\attempt",
+    "passed": true
+  },
+  {
+    "scenario": "durable payload survives a target cleanup",
+    "expected": {
+      "corpus/frozen-reference.gcode": "f4c474c5c276dd97434c38159bd6881c3f822272d4ccdf0ca05b097342c2bff7",
+      "corpus/frozen-reference.jsonl": "3f4fdf031eb57e0cc355b2b281675643d32bda57e16ff3d884b8d34574fb3eaf"
+    },
+    "observed": {
+      "corpus/frozen-reference.gcode": "f4c474c5c276dd97434c38159bd6881c3f822272d4ccdf0ca05b097342c2bff7",
+      "corpus/frozen-reference.jsonl": "3f4fdf031eb57e0cc355b2b281675643d32bda57e16ff3d884b8d34574fb3eaf"
+    },
+    "passed": true
+  },
+  {
+    "scenario": "t40 inventory agrees the durable payload is intact",
+    "expected": {
+      "corpus/frozen-reference.gcode": "f4c474c5c276dd97434c38159bd6881c3f822272d4ccdf0ca05b097342c2bff7",
+      "corpus/frozen-reference.jsonl": "3f4fdf031eb57e0cc355b2b281675643d32bda57e16ff3d884b8d34574fb3eaf"
+    },
+    "observed": {
+      "corpus/frozen-reference.gcode": "f4c474c5c276dd97434c38159bd6881c3f822272d4ccdf0ca05b097342c2bff7",
+      "corpus/frozen-reference.jsonl": "3f4fdf031eb57e0cc355b2b281675643d32bda57e16ff3d884b8d34574fb3eaf"
+    },
+    "passed": true
+  },
+  {
+    "scenario": "missing durable root is reported loudly",
+    "expected": "MISSING FROZEN ROOT",
+    "observed": "MISSING FROZEN ROOT: corpus root C:\\Users\\agpen\\AppData\\Local\\Temp\\tmp6bcs0c07\\ws\\.local-artifacts\\perimeter-reference-preparation\\attempt-missing does not exist",
+    "passed": true
+  },
+  {
+    "scenario": "tampered frozen file changes its inventory digest",
+    "expected": "inventory mismatch",
+    "observed": "mismatch",
+    "passed": true
+  },
+  {
+    "scenario": "changed manifest fails its recorded digest",
+    "expected": "manifest identity changed",
+    "observed": "manifest identity changed",
+    "passed": true
+  }
+]

@@ -69,10 +69,7 @@ fn enabled_config() -> ConfigView {
     fields.insert("wipe_tower_enabled".to_string(), ConfigValue::Bool(true));
     fields.insert("wipe_tower_x".to_string(), ConfigValue::Float(10.0));
     fields.insert("wipe_tower_y".to_string(), ConfigValue::Float(10.0));
-    fields.insert(
-        "wipe_tower_width".to_string(),
-        ConfigValue::Float(60.0),
-    );
+    fields.insert("wipe_tower_width".to_string(), ConfigValue::Float(60.0));
     fields.insert(
         "wipe_tower_purge_volume".to_string(),
         ConfigValue::Float(10.0),

@@ -16,7 +16,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use slicer_ir::{
-    ConfigKey, ConfigValue, GlobalLayer, LayerCollectionIR, LayerStageCommit, SemVer, StageId,
+    ConfigKey, ConfigValue, GlobalLayer, LayerCollectionIR, LayerStageCommit, ResolvedConfig,
+    SemVer, StageId,
 };
 use slicer_model_io::load_model;
 use slicer_runtime::pipeline::{
@@ -548,6 +549,38 @@ fn config_block_includes_user_passed() {
             || config_region.contains("; sparse_infill_density = 22.0"),
         "CONFIG_BLOCK must contain '; sparse_infill_density = 22[.0]', region:\n{config_region}"
     );
+}
+
+#[test]
+fn config_block_uses_resolved_wall_count_and_precision_over_raw_orca_aliases() {
+    let mesh_ir = Arc::new(load_model(&stl_fixture_path()).expect("fixture load"));
+    let config = PipelineConfig {
+        default_resolved_config: Arc::new(ResolvedConfig {
+            wall_count: 3,
+            gcode_resolution: 0.025,
+            ..ResolvedConfig::default()
+        }),
+        ..common::pipeline_config_base(mesh_ir, empty_plan(), default_runners())
+    };
+    let raw = HashMap::from([
+        ("wall_loops".into(), ConfigValue::Int(99)),
+        ("resolution".into(), ConfigValue::Float(0.5)),
+    ]);
+
+    let gcode = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)
+        .expect("pipeline should succeed")
+        .gcode_text;
+    let block = region_between(&gcode, "; CONFIG_BLOCK_START", "; CONFIG_BLOCK_END");
+    let wall_lines: Vec<_> = block
+        .lines()
+        .filter(|line| line.starts_with("; wall_loops = "))
+        .collect();
+    let resolution_lines: Vec<_> = block
+        .lines()
+        .filter(|line| line.starts_with("; resolution = "))
+        .collect();
+    assert_eq!(wall_lines, ["; wall_loops = 3"], "{block}");
+    assert_eq!(resolution_lines, ["; resolution = 0.025"], "{block}");
 }
 
 /// AC-9: CONFIG_BLOCK is non-empty and has no duplicate keys.

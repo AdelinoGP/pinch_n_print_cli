@@ -664,7 +664,9 @@ support paths.
   produced which body and independent of plan arrival order.
 - **Complete-body validation.** A complete body is validated against the
   exact-Z occupancy and a maximum body extent bound (`MAX_BODY_EXTENT_UNITS`,
-  `1 << 20` units on each axis; see the host `exact_z_query` service in
+  `1 << 22` units = 419.43 mm on each axis — the build-plate bound from the
+  ADR-0059 Ruling 3 amendment; measured per body cross-section, not per
+  identity aggregate. See the host `exact_z_query` service in
   `crates/slicer-wasm-host/src/exact_z_query.rs`). The extent bound is a pure
   check — it neither assigns nor partitions. An invalid complete body is
   dropped, not clipped or replaced by a fallback filler.
@@ -883,7 +885,12 @@ the scattered resolvers and `overlay_resolved`:
 - `query_layer_height_profile` is the shared producer of the canonical
   layer-height profile: it composes the resolved object base height, the fixed
   first-layer interval, and every matching **layer range**'s `layer_height`
-  into literal `(z_start, z_end, height)` segments. `layer_top_zs` evaluates
+  into literal `(z_start, z_end, height)` segments. Range endpoints are authored
+  world-space Z: `query_z_grid` resolves all objects first and subtracts the
+  shared highest raft top before composing each object-local profile. The fixed
+  first-layer interval retains world Z `[raft_offset, raft_offset + first_layer_height)`;
+  ranges below the object are skipped or clamped at local zero. The guest adds
+  that same shared offset to every object's schedule. `layer_top_zs` evaluates
   that profile into the object-local top-Z schedule, so the schedule the guest
   plans against and the profile the host composed can never disagree.
 - `resolve_scope_stack` is called by `PrePass::RegionMapping` to resolve the
@@ -1267,7 +1274,10 @@ packet-local limitation, not evidence that module execution failed.
 Native commit is lossless for every declared supported stage output: it
 preserves all output variants, commits explicit empty postprocess results,
 retains region IDs and seam reasons, and does not fatal on outputless
-`PrePass::PaintSegmentation` when the WASM leg is also outputless.
+`PrePass::PaintSegmentation` when the WASM leg is also outputless. For
+`Layer::InfillPostProcess` specifically, an invocation that ran and re-emitted
+nothing commits the empty replacement set on both legs (ADR-0028 §Amendment
+2026-09-29); `Layer::Infill` treats empty output as no contribution.
 
 The orchestrator constructs the input struct at each dispatch call
 site by projecting field-level borrows from `Blackboard` / `LayerArena`,

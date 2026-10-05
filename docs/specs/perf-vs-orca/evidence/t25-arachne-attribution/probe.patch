@@ -1,0 +1,746 @@
+diff --git a/crates/slicer-core/src/arachne/generate_toolpaths.rs b/crates/slicer-core/src/arachne/generate_toolpaths.rs
+index 377499d2..0cf8726c 100644
+--- a/crates/slicer-core/src/arachne/generate_toolpaths.rs
++++ b/crates/slicer-core/src/arachne/generate_toolpaths.rs
+@@ -617,7 +617,8 @@ fn connect_junctions(
+                 let mut from_junctions = canonical_fan(edge_junctions, edge_to_peak);
+                 if peak_pos > 0 {
+                     let from_prev = canonical_fan(edge_junctions, quad[peak_pos - 1]);
+-                    while let (Some(back), Some(front)) = (from_junctions.last(), from_prev.first()) {
++                    while let (Some(back), Some(front)) = (from_junctions.last(), from_prev.first())
++                    {
+                         if back.perimeter_index > front.perimeter_index {
+                             break;
+                         }
+@@ -788,12 +789,21 @@ pub fn generate_toolpaths(
+     graph: &SkeletalTrapezoidationGraph,
+     strategy: &dyn BeadingStrategy,
+ ) -> Vec<VariableWidthLines> {
++    // [T25-PROBE]
++    let _t25_junc = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::Junctions);
+     let edge_junctions = generate_junctions(graph, strategy);
++    drop(_t25_junc);
++    // [T25-PROBE]
++    let _t25_conn = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::Connect);
+     let mut buckets = connect_junctions(graph, &edge_junctions);
++    drop(_t25_conn);
+ 
+     // N9: emit hexagonal micro-loops at isolated local-maxima thick spots
+     // with odd bead count (OrcaSlicer `generateLocalMaximaSingleBeads`).
++    // [T25-PROBE]
++    let _t25_maxima = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::LocalMaxima);
+     generate_local_maxima_single_beads(graph, &mut buckets);
++    drop(_t25_maxima);
+ 
+     buckets.into_values().collect()
+ }
+@@ -838,7 +848,10 @@ mod tests {
+         add_toolpath_segment(&mut toolpaths, &d, &c, false, false, false, false);
+         let lines = &toolpaths[&1];
+         assert_eq!(lines.len(), 1);
+-        assert_eq!(xy(&lines[0]), vec![(0.0, 0.0), (1.0, 0.0), (2.0, 0.0), (2.0, 1.0)]);
++        assert_eq!(
++            xy(&lines[0]),
++            vec![(0.0, 0.0), (1.0, 0.0), (2.0, 0.0), (2.0, 1.0)]
++        );
+ 
+         // Not touching the last point: a new line, never a chord to it.
+         add_toolpath_segment(&mut toolpaths, &far, &a, false, false, false, false);
+diff --git a/crates/slicer-core/src/arachne/pipeline.rs b/crates/slicer-core/src/arachne/pipeline.rs
+index 1c40d7b7..78f517ea 100644
+--- a/crates/slicer-core/src/arachne/pipeline.rs
++++ b/crates/slicer-core/src/arachne/pipeline.rs
+@@ -412,10 +412,19 @@ pub fn run_arachne_pipeline(
+     params: &ArachneParams,
+     is_initial_layer: bool,
+ ) -> Result<(Vec<ExtrusionLine>, Vec<ExtrusionLine>), ArachnePipelineError> {
++    // [T25-PROBE]
++    let _t25_pipe = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::PipelineTotal);
++    crate::perf_t25_probe::add_count(
++        crate::perf_t25_probe::Counter::MetaPolygons,
++        polygons.len() as u64,
++    );
+     let mut params = params.clone();
+     params.is_initial_layer = is_initial_layer;
+     let preprocess_params = PreprocessParams::default();
++    // [T25-PROBE]
++    let _t25_pre = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::PreprocessTotal);
+     let cleaned = preprocess_input_outline(polygons, &preprocess_params);
++    drop(_t25_pre);
+     if cleaned.is_empty() {
+         return Err(ArachnePipelineError::EmptyAfterPreprocess);
+     }
+@@ -424,38 +433,71 @@ pub fn run_arachne_pipeline(
+     // rib/spine topology directly (faithful `transferEdge`/`makeRib` port),
+     // so the separate `build_quad_rib_topology` pass (packet 113b's
+     // reflex-corner-only approximation) is no longer needed here.
++    // [T25-PROBE]
++    let _t25_graph = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::GraphTotal);
+     let mut graph = SkeletalTrapezoidationGraph::from_polygons(&cleaned)?;
++    drop(_t25_graph);
+ 
+     let beading_params = to_beading_factory_params(&params);
++    // [T25-PROBE]
++    let _t25_strat = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::StrategyCreate);
+     let strategy = BeadingStrategyFactory::create_stack(&beading_params);
++    drop(_t25_strat);
+     // Canonical order (`SkeletalTrapezoidation::generateToolpaths`):
+     // `updateIsCentral` (which derives the outer-edge filter from the
+     // strategy) -> `filterCentral` -> `updateBeadCount` ->
+     // `filterNoncentralRegions`. The strategy therefore has to exist before
+     // the centrality filter runs.
+     let centrality_params = to_centrality_params(&params, strategy.as_ref());
++    // [T25-PROBE]
++    let _t25_cent = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::Centrality);
+     filter_central(
+         &mut graph,
+         &centrality_params,
+         beading_params.wall_transition_angle,
+     );
++    drop(_t25_cent);
++    // [T25-PROBE]
++    let _t25_beads = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::BeadCounts);
+     assign_bead_counts(&mut graph, strategy.as_ref())?;
++    drop(_t25_beads);
++    // [T25-PROBE]
++    let _t25_noncent =
++        crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::FilterNoncentral);
+     filter_noncentral_regions(&mut graph, strategy.as_ref());
++    drop(_t25_noncent);
+ 
++    // [T25-PROBE]
++    let _t25_tmgen = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::TransMidsGen);
+     generate_transition_mids(&mut graph, strategy.as_ref());
++    drop(_t25_tmgen);
+     // Canonical `WallToolPaths::generate` hands `SkeletalTrapezoidation` a
+     // fixed `transition_filter_dist` (100 mm) and the configured
+     // `wall_transition_filter_deviation` as `allowed_filter_deviation`; the
+     // latter is what `ArachneParams::transition_filter_dist` carries.
++    // [T25-PROBE]
++    let _t25_tmfilt =
++        crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::TransMidsFilter);
+     filter_transition_mids(
+         &mut graph,
+         strategy.as_ref(),
+         TRANSITION_FILTER_DIST_UNITS,
+         params.transition_filter_dist * UNITS_PER_MM,
+     );
++    drop(_t25_tmfilt);
++    // [T25-PROBE]
++    let _t25_ends = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::AllEnds);
+     generate_all_transition_ends(&mut graph, strategy.as_ref());
++    drop(_t25_ends);
++    // [T25-PROBE]
++    let _t25_apply =
++        crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::ApplyTransitions);
+     apply_transitions(&mut graph);
++    drop(_t25_apply);
++    // [T25-PROBE]
++    let _t25_ribs = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::ExtraRibs);
+     generate_extra_ribs(&mut graph, strategy.as_ref());
++    drop(_t25_ribs);
+ 
+     // Populate the `BeadingPropagation` side table BEFORE the propagation
+     // passes, matching canonical's order (`SkeletalTrapezoidation.cpp`'s
+@@ -473,9 +515,15 @@ pub fn run_arachne_pipeline(
+     // `compute(19.7mm, 3)` = `[0.4, 18.9, 0.4]` — a ~19mm-wide extruded "wall"
+     // (43x the nozzle): the inner-wall over-extrusion defect.
+     // Side-table reads in upward and downward propagation passes depend on this population pass running first.
++    // [T25-PROBE]
++    let _t25_pop = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::Populate);
+     populate_beading_propagation(&mut graph, strategy.as_ref());
++    drop(_t25_pop);
+ 
++    // [T25-PROBE]
++    let _t25_up = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::Upward);
+     propagate_beadings_upward(&mut graph);
++    drop(_t25_up);
+     // Packet 113c Step 8b: thread the pipeline's *actual* configured
+     // beading-propagation transition distance (`wall_transition_length`,
+     // already converted to slicer units in `beading_params`) rather than
+@@ -483,18 +531,27 @@ pub fn run_arachne_pipeline(
+     // `propagation.rs`'s doc comments for why the frozen no-arg entry point
+     // exists at all (every existing test call site invokes it directly) and
+     // why this pipeline uses the richer variant instead.
++    // [T25-PROBE]
++    let _t25_down = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::Downward);
+     propagate_beadings_downward_with_transition_dist(
+         &mut graph,
+         beading_params.default_transition_length,
+     );
++    drop(_t25_down);
+ 
+     let max_gap = stitch_max_gap(&params);
+     let mut final_lines = Vec::new();
+     let mut inner_contour = Vec::new();
+     for lines in generate_toolpaths(&graph, strategy.as_ref()) {
++        // [T25-PROBE]
++        let _t25_stitch = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::Stitch);
+         let stitched = stitch_extrusions(lines, max_gap);
++        drop(_t25_stitch);
+         // Canonical post-process order (WallToolPaths.cpp:679-699):
+         // stitch → removeSmallLines → separateOutInnerContour → simplify → removeEmpty
++        // [T25-PROBE]
++        let _t25_rmsmall =
++            crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::RemoveSmall);
+         let without_small = remove_small_lines(
+             stitched,
+             params.min_length_factor,
+@@ -502,21 +559,44 @@ pub fn run_arachne_pipeline(
+             params.is_initial_layer,
+             params.is_topmost_layer || params.is_bottom_layer,
+         );
++        drop(_t25_rmsmall);
++        // [T25-PROBE]
++        let _t25_sep = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::Separate);
+         let (toolpaths, mut group_inner_contour) = separate_out_inner_contour(without_small);
++        drop(_t25_sep);
++        // [T25-PROBE]
++        let _t25_simp = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::Simplify);
+         let simplified = simplify_toolpaths(
+             toolpaths,
+             params.smallest_line_segment_squared,
+             params.allowed_error_distance_squared,
+             params.maximum_extrusion_area_deviation,
+         );
++        drop(_t25_simp);
++        // [T25-PROBE]
++        let _t25_rmempty =
++            crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::RemoveEmpty);
+         final_lines.extend(remove_empty_toolpaths(simplified));
++        drop(_t25_rmempty);
+         inner_contour.append(&mut group_inner_contour);
+     }
+ 
++    // [T25-PROBE]
++    let _t25_reorder = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::Reorder);
+     reorder_by_region_order(
+         &mut final_lines,
+         matches!(params.wall_sequence, WallSequence::OuterInner),
+     );
++    drop(_t25_reorder);
++    // [T25-PROBE]
++    crate::perf_t25_probe::add_count(
++        crate::perf_t25_probe::Counter::MetaLines,
++        final_lines.len() as u64,
++    );
++    crate::perf_t25_probe::add_count(
++        crate::perf_t25_probe::Counter::MetaInner,
++        inner_contour.len() as u64,
++    );
+     Ok((final_lines, inner_contour))
+ }
+ 
+diff --git a/crates/slicer-core/src/arachne/preprocess.rs b/crates/slicer-core/src/arachne/preprocess.rs
+index 95daa8a6..d275ac1c 100644
+--- a/crates/slicer-core/src/arachne/preprocess.rs
++++ b/crates/slicer-core/src/arachne/preprocess.rs
+@@ -141,7 +141,10 @@ pub fn preprocess_input_outline(polys: &[ExPolygon], params: &PreprocessParams)
+     let stages = run_nine_stage_pipeline(polys, params);
+     let stage9 = stages.into_iter().last().unwrap_or_default();
+ 
++    // [T25-PROBE]
++    let _t25_warn = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::PreprocessWarn);
+     warn_dropped_features(polys, &stage9, params.epsilon_offset_mm);
++    drop(_t25_warn);
+ 
+     stage9
+ }
+@@ -175,19 +178,39 @@ pub fn preprocess_input_outline_with_stages(
+ /// whichever output they treat as final, so the diagnostic fires exactly
+ /// once regardless of which public entry point is used.
+ fn run_nine_stage_pipeline(polys: &[ExPolygon], params: &PreprocessParams) -> Vec<Vec<ExPolygon>> {
++    // [T25-PROBE]
++    use crate::perf_t25_probe::{bracket, Counter};
++    let _t25_s1 = bracket(Counter::PreStage1);
+     let stage1 = triple_offset(polys, params);
++    drop(_t25_s1);
++    let _t25_s2 = bracket(Counter::PreStage2);
+     let stage2 = simplify_stage(
+         &stage1,
+         params.smallest_segment_mm,
+         params.allowed_distance_mm,
+     );
++    drop(_t25_s2);
++    let _t25_s3 = bracket(Counter::PreStage3);
+     let stage3 = fix_self_intersections(&stage2);
++    drop(_t25_s3);
++    let _t25_s4 = bracket(Counter::PreStage4);
+     let stage4 = remove_degenerate_verts(&stage3);
++    drop(_t25_s4);
++    let _t25_s5 = bracket(Counter::PreStage5);
+     let stage5 = remove_colinear_edges(&stage4, params.colinear_angle_tolerance_rad);
++    drop(_t25_s5);
++    let _t25_s6 = bracket(Counter::PreStage6);
+     let stage6 = fix_self_intersections(&stage5);
++    drop(_t25_s6);
++    let _t25_s7 = bracket(Counter::PreStage7);
+     let stage7 = remove_degenerate_verts(&stage6);
++    drop(_t25_s7);
++    let _t25_s8 = bracket(Counter::PreStage8);
+     let stage8 = remove_small_areas_stage(stage7.clone(), params.small_area_length_mm);
++    drop(_t25_s8);
++    let _t25_s9 = bracket(Counter::PreStage9);
+     let stage9 = union_ex(&stage8);
++    drop(_t25_s9);
+ 
+     vec![
+         stage1, stage2, stage3, stage4, stage5, stage6, stage7, stage8, stage9,
+@@ -203,11 +226,18 @@ fn run_nine_stage_pipeline(polys: &[ExPolygon], params: &PreprocessParams) -> Ve
+ /// call; pass 3 (`-epsilon_offset`) is a follow-up [`offset`] call.
+ fn triple_offset(polys: &[ExPolygon], params: &PreprocessParams) -> Vec<ExPolygon> {
+     let eps = params.epsilon_offset_mm;
++    // [T25-PROBE]
++    let _t25_o2 = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::PreStage1Offset2);
+     let shrink_grow = offset2_ex(polys, -eps, 2.0 * eps, params.join, params.miter_limit);
++    drop(_t25_o2);
+     if shrink_grow.is_empty() {
+         return Vec::new();
+     }
+-    offset(&shrink_grow, -eps as f32, params.join, 0.0)
++    // [T25-PROBE]
++    let _t25_off = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::PreStage1Offset);
++    let out = offset(&shrink_grow, -eps as f32, params.join, 0.0);
++    drop(_t25_off);
++    out
+ }
+ 
+ /// Stage 2: simplify (`WallToolPaths.cpp:86-201`'s `simplify()`, called from
+diff --git a/crates/slicer-core/src/lib.rs b/crates/slicer-core/src/lib.rs
+index 0ac2d6a3..80152c74 100644
+--- a/crates/slicer-core/src/lib.rs
++++ b/crates/slicer-core/src/lib.rs
+@@ -26,6 +26,9 @@ pub mod geometry;
+ #[cfg(feature = "host-algos")]
+ pub mod medial_axis;
+ pub mod paint_policy;
++/// [T25-PROBE] Temporary host-side Arachne-pipeline substage timing for
++/// wayfinder ticket 25. Probe-only; removed before any commit.
++pub mod perf_t25_probe;
+ pub mod perimeter_spatial;
+ pub mod perimeter_utils;
+ pub mod polygon_ops;
+diff --git a/crates/slicer-core/src/polygon_ops.rs b/crates/slicer-core/src/polygon_ops.rs
+index 872e25bb..894c79b8 100644
+--- a/crates/slicer-core/src/polygon_ops.rs
++++ b/crates/slicer-core/src/polygon_ops.rs
+@@ -484,7 +484,11 @@ fn inflate_once(
+     }
+ 
+     // Convert polygons to paths
++    // [T25-PROBE]
++    let _t25_ofp =
++        crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::PreStage1OffPaths);
+     let paths: Vec<Vec<Point64>> = polygons.iter().flat_map(expolygon_to_paths).collect();
++    drop(_t25_ofp);
+     if paths.is_empty() {
+         return Vec::new();
+     }
+@@ -505,9 +509,17 @@ fn inflate_once(
+     clip_offset.add_paths(&paths, join_type, EndType::Polygon);
+ 
+     let mut tree = PolyTree64::new();
++    // [T25-PROBE]
++    let _t25_ofe =
++        crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::PreStage1OffExecute);
+     clip_offset.execute_tree(delta_units, &mut tree);
++    drop(_t25_ofe);
+ 
+-    expolygons_from_tree(&tree)
++    // [T25-PROBE]
++    let _t25_oft = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::PreStage1OffTree);
++    let out = expolygons_from_tree(&tree);
++    drop(_t25_oft);
++    out
+ }
+ 
+ /// Union of all subject ExPolygons with each other (no separate clip set).
+@@ -625,6 +637,9 @@ pub fn offset2_ex(
+     // flat output is equivalent to feeding it ExPolygons.
+     let paths1: Vec<Vec<Point64>> = polys.iter().flat_map(expolygon_to_paths).collect();
+     let delta1_units = delta1_mm * slicer_ir::UNITS_PER_MM;
++    // [T25-PROBE]
++    let _t25_o2p1 =
++        crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::PreStage1O2Pass1);
+     let intermediate = inflate_paths_64(
+         &paths1,
+         delta1_units,
+@@ -633,6 +648,7 @@ pub fn offset2_ex(
+         miter_limit,
+         0.0,
+     );
++    drop(_t25_o2p1);
+ 
+     if intermediate.is_empty() {
+         return Vec::new();
+@@ -645,9 +661,17 @@ pub fn offset2_ex(
+     let mut clip_offset = ClipperOffset::new(miter_limit, 0.0, false, false);
+     clip_offset.add_paths(&intermediate, join_type, EndType::Polygon);
+     let mut tree = PolyTree64::new();
++    // [T25-PROBE]
++    let _t25_o2p2 =
++        crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::PreStage1O2Pass2);
+     clip_offset.execute_tree(delta2_units, &mut tree);
++    drop(_t25_o2p2);
+ 
+-    expolygons_from_tree(&tree)
++    // [T25-PROBE]
++    let _t25_o2tr = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::PreStage1O2Tree);
++    let out = expolygons_from_tree(&tree);
++    drop(_t25_o2tr);
++    out
+ }
+ 
+ /// Morphological open using configurable join type and miter limit.
+diff --git a/crates/slicer-core/src/skeletal_trapezoidation/graph.rs b/crates/slicer-core/src/skeletal_trapezoidation/graph.rs
+index d30feefa..fde26732 100644
+--- a/crates/slicer-core/src/skeletal_trapezoidation/graph.rs
++++ b/crates/slicer-core/src/skeletal_trapezoidation/graph.rs
+@@ -692,21 +692,36 @@ impl SkeletalTrapezoidationGraph {
+             return Err(SktError::EmptyInput);
+         }
+ 
++        // [T25-PROBE]
++        let _t25_flat =
++            crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::GraphFlatten);
+         let (segments, rings, seg_prov) = flatten_polys(polys)?;
++        drop(_t25_flat);
++        // [T25-PROBE]
++        crate::perf_t25_probe::add_count(
++            crate::perf_t25_probe::Counter::MetaSegments,
++            segments.len() as u64,
++        );
+         if segments.is_empty() {
+             return Err(SktError::EmptyInput);
+         }
+ 
++        // [T25-PROBE]
++        let _t25_vor = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::GraphVoronoi);
+         let he = voronoi::voronoi_from_segments(&segments)?;
++        drop(_t25_vor);
+ 
+         // Defensive bounds-clamp on raw boostvoronoi vertex positions
+         // See `clamp_implausible_vertex`'s doc comment for the full rationale.
+         let input_bbox = segments_bbox(&segments);
++        // [T25-PROBE]
++        let _t25_clamp = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::GraphClamp);
+         let clamped: Vec<Vertex> = he
+             .vertices
+             .iter()
+             .map(|v| clamp_implausible_vertex(*v, input_bbox))
+             .collect();
++        drop(_t25_clamp);
+ 
+         let inp = Inputs {
+             he: &he,
+@@ -724,7 +739,11 @@ impl SkeletalTrapezoidationGraph {
+             vd_node_to_he_node: vec![NO_INDEX; he.vertices.len()],
+             vd_edge_to_he_edge: vec![NO_INDEX; he.edges.len()],
+         };
++        // [T25-PROBE]
++        let _t25_build =
++            crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::GraphBuilder);
+         builder.build(&inp);
++        drop(_t25_build);
+ 
+         // N10 construction epilogue (OrcaSlicer
+         // `constructFromPolygons` in `SkeletalTrapezoidation.cpp`):
+@@ -736,13 +755,27 @@ impl SkeletalTrapezoidationGraph {
+         // (STVertex has no `incident_edge` field — confirmed as fan-walk
+         // optimization, not correctness; PNP's all-edges scans produce the
+         // same results for all 6 canonical read sites).
++        // [T25-PROBE]
++        let _t25_sep =
++            crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::GraphSepPointy);
+         separate_pointy_quad_end_nodes(&mut builder.vertices, &mut builder.edges);
++        drop(_t25_sep);
++        // [T25-PROBE]
++        let _t25_coll =
++            crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::GraphCollapse);
+         collapse_small_edges(&mut builder.vertices, &mut builder.edges);
++        drop(_t25_coll);
++        // [T25-PROBE]
++        let _t25_comp =
++            crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::GraphCompact);
+         compact_graph_after_collapse(&mut builder.vertices, &mut builder.edges)?;
++        drop(_t25_comp);
+ 
+         // Finalize radius bounds from the compacted endpoints. Collapse can
+         // merge an endpoint, so Builder's pre-collapse `edge_to` side table is
+         // deliberately not used here.
++        // [T25-PROBE]
++        let _t25_rad = crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::GraphRadius);
+         for i in 0..builder.edges.len() {
+             let twin = builder.edges[i].twin;
+             let to_vertex = if twin == NO_INDEX {
+@@ -759,6 +792,7 @@ impl SkeletalTrapezoidationGraph {
+             builder.edges[i].r_min = r_min;
+             builder.edges[i].r_max = r_max;
+         }
++        drop(_t25_rad);
+ 
+         let n = builder.vertices.len();
+         Ok(Self {
+diff --git a/crates/slicer-core/src/voronoi.rs b/crates/slicer-core/src/voronoi.rs
+index db8f293a..f8754f40 100644
+--- a/crates/slicer-core/src/voronoi.rs
++++ b/crates/slicer-core/src/voronoi.rs
+@@ -274,16 +274,24 @@ pub fn voronoi_from_segments(segments: &[Segment]) -> Result<HalfEdgeGraph, Voro
+         return Err(VoronoiError::EmptyInput);
+     }
+ 
+-    let lines: Vec<BvLine<i64>> = segments
+-        .iter()
+-        .map(|s| {
+-            BvLine::new(
+-                BvPoint { x: s.a.x, y: s.a.y },
+-                BvPoint { x: s.b.x, y: s.b.y },
+-            )
+-        })
+-        .collect();
++    let lines: Vec<BvLine<i64>> = {
++        // [T25-PROBE]
++        let _t25_vmap =
++            crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::GraphVoronoiMap);
++        segments
++            .iter()
++            .map(|s| {
++                BvLine::new(
++                    BvPoint { x: s.a.x, y: s.a.y },
++                    BvPoint { x: s.b.x, y: s.b.y },
++                )
++            })
++            .collect()
++    };
+ 
++    // [T25-PROBE]
++    let _t25_vbuild =
++        crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::GraphVoronoiBuild);
+     let builder = Builder::<i64>::default()
+         .with_segments(lines.iter())
+         .map_err(map_bv_error)?;
+@@ -351,7 +359,11 @@ pub fn voronoi_from_segments(segments: &[Segment]) -> Result<HalfEdgeGraph, Voro
+             });
+         }
+     };
++    drop(_t25_vbuild);
+ 
++    // [T25-PROBE]
++    let _t25_vconv =
++        crate::perf_t25_probe::bracket(crate::perf_t25_probe::Counter::GraphVoronoiConvert);
+     let vertices = diagram
+         .vertices()
+         .iter()
+diff --git a/crates/slicer-wasm-host/src/host.rs b/crates/slicer-wasm-host/src/host.rs
+index 19f9ce25..2f0a413d 100644
+--- a/crates/slicer-wasm-host/src/host.rs
++++ b/crates/slicer-wasm-host/src/host.rs
+@@ -2787,7 +2787,15 @@ impl hs::Host for HostExecutionContext {
+         polygons: Vec<ExPolygon>,
+         params: hs::ArachneParams,
+     ) -> wasmtime::Result<Result<(Vec<ir::ExtrusionLine>, Vec<ir::ExtrusionLine>), String>> {
++        // [T25-PROBE]
++        slicer_core::perf_t25_probe::arm();
++        let _t25_svc = slicer_core::perf_t25_probe::bracket(
++            slicer_core::perf_t25_probe::Counter::ServiceTotal,
++        );
++        let _t25_in =
++            slicer_core::perf_t25_probe::bracket(slicer_core::perf_t25_probe::Counter::WitIn);
+         let ir_polygons = wit_to_ir_expolygons(&polygons);
++        drop(_t25_in);
+         HOST_ARACHNE_WALL_SEQUENCE_CAPTURE
+             .lock()
+             .expect("Arachne wall-sequence capture mutex poisoned")
+@@ -2862,9 +2870,27 @@ impl hs::Host for HostExecutionContext {
+             core_params.is_initial_layer,
+         ) {
+             Ok((toolpaths, inner_contour)) => {
+-                Ok(Ok((to_wit_lines(toolpaths), to_wit_lines(inner_contour))))
++                // [T25-PROBE]
++                let _t25_out = slicer_core::perf_t25_probe::bracket(
++                    slicer_core::perf_t25_probe::Counter::WitOut,
++                );
++                let result = (to_wit_lines(toolpaths), to_wit_lines(inner_contour));
++                drop(_t25_out);
++                drop(_t25_svc);
++                // [T25-PROBE]
++                if let Some(line) = slicer_core::perf_t25_probe::flush_and_reset() {
++                    eprintln!("{line}");
++                }
++                Ok(Ok(result))
++            }
++            Err(e) => {
++                drop(_t25_svc);
++                // [T25-PROBE]
++                if let Some(line) = slicer_core::perf_t25_probe::flush_and_reset() {
++                    eprintln!("{line}");
++                }
++                Ok(Err(format!("{:?}", e)))
+             }
+-            Err(e) => Ok(Err(format!("{:?}", e))),
+         }
+     }
+ 
+diff --git a/modules/core-modules/arachne-perimeters/src/lib.rs b/modules/core-modules/arachne-perimeters/src/lib.rs
+index 4818bba3..e307dbce 100644
+--- a/modules/core-modules/arachne-perimeters/src/lib.rs
++++ b/modules/core-modules/arachne-perimeters/src/lib.rs
+@@ -471,6 +471,12 @@ impl LayerModule for ArachnePerimeters {
+         output: &mut PerimeterOutputBuilder,
+         config: &ConfigView,
+     ) -> Result<(), ModuleError> {
++        // [T25-PROBE] Guest-side scope: whole invocation.
++        let _t25_run =
++            slicer_sdk::profile::register_scope("t25::run_total").map(slicer_core::profile::scope);
++        // [T25-PROBE] Guest-side scope: config/params setup.
++        let _t25_setup =
++            slicer_sdk::profile::register_scope("t25::setup").map(slicer_core::profile::scope);
+         let mut params = arachne_params_from_config(config, layer_index == 0)?;
+         // is_bottom_layer keys the classic "first/last layer" threshold (layer 0
+         // in object coordinates). PnP historically folded this into
+@@ -634,6 +640,10 @@ impl LayerModule for ArachnePerimeters {
+         // to it for non-topmost regions (a topmost region in a mixed layer must
+         // not clamp its siblings).
+         let base_max_bead_count = params.max_bead_count;
++        drop(_t25_setup);
++        // [T25-PROBE] Guest-side scope: per-region loop.
++        let _t25_regions = slicer_sdk::profile::register_scope("t25::region_loop")
++            .map(slicer_core::profile::scope);
+         for region in regions {
+             // G3 part 1: a single wall on the topmost shell when only_one_wall_top
+             // is enabled. top_shell_index == Some(0) marks the exposed top
+@@ -685,6 +695,9 @@ impl LayerModule for ArachnePerimeters {
+             } else {
+                 rounded_rectangle_bump / 2.0
+             };
++            // [T25-PROBE] Guest-side scope: precise-outer-wall pre-shrink.
++            let _t25_shrink = slicer_sdk::profile::register_scope("t25::shrunk_outline")
++                .map(slicer_core::profile::scope);
+             let shrunk_storage: Vec<ExPolygon>;
+             let wall_outline: &[ExPolygon] = if shrink_mm > 0.0 {
+                 // `offset_with_miter_limit` (not the bare `offset`) because
+@@ -707,6 +720,7 @@ impl LayerModule for ArachnePerimeters {
+             } else {
+                 polygons
+             };
++            drop(_t25_shrink);
+             let z = region.z();
+             let spatial_context = PerimeterSpatialContext::new(
+                 region.prev_layer_boundary(),
+@@ -765,6 +779,9 @@ impl LayerModule for ArachnePerimeters {
+                 continue;
+             }
+ 
++            // [T25-PROBE] Guest-side scope: the host Arachne service call.
++            let _t25_svc = slicer_sdk::profile::register_scope("t25::host_arachne_svc")
++                .map(slicer_core::profile::scope);
+             let (lines, inner_contour) =
+                 match slicer_sdk::host::generate_arachne_walls(wall_outline, &params) {
+                     Ok(result) => result,
+@@ -783,12 +800,16 @@ impl LayerModule for ArachnePerimeters {
+                         continue;
+                     }
+                 };
++            drop(_t25_svc);
+ 
+             // Walls are built from the Arachne `ExtrusionLine`s via `build_walls`
+             // (the same path the G3 part-2 second pass uses). The immutable
+             // spatial context above is shared by this pass and any second pass;
+             // the region slices retained in `build_walls` only preserve the
+             // existing empty-data gates.
++            // [T25-PROBE] Guest-side scope: wall building.
++            let _t25_build = slicer_sdk::profile::register_scope("t25::build_walls")
++                .map(slicer_core::profile::scope);
+             let mut walls = self.build_walls(
+                 &lines,
+                 region,
+@@ -803,10 +824,15 @@ impl LayerModule for ArachnePerimeters {
+                 thick_bridges,
+                 &spatial_context,
+             )?;
++            drop(_t25_build);
+             commit_wall_sequence(&mut walls, sequence);
++            // [T25-PROBE] Guest-side scope: output push.
++            let _t25_push = slicer_sdk::profile::register_scope("t25::push_walls")
++                .map(slicer_core::profile::scope);
+             for wall in walls {
+                 output.push_wall_loop(wall)?;
+             }
++            drop(_t25_push);
+             // AC-6 (packet 148): sharp-corner seam candidates, once per
+             // region polygon (island), against each input polygon's outer
+             // contour (units-space `slicer_ir::Polygon`) — NOT the mm-space
+@@ -820,6 +846,9 @@ impl LayerModule for ArachnePerimeters {
+             let seam_candidate_angle_threshold_deg = config
+                 .get_float("seam_candidate_angle_threshold_deg")
+                 .unwrap_or(30.0) as f32;
++            // [T25-PROBE] Guest-side scope: seam candidates.
++            let _t25_seams = slicer_sdk::profile::register_scope("t25::seam_candidates")
++                .map(slicer_core::profile::scope);
+             for (poly_idx, polygon) in polygons.iter().enumerate() {
+                 let mut candidates = generate_sharp_corner_seam_candidates(
+                     &polygon.contour,
+@@ -843,9 +872,15 @@ impl LayerModule for ArachnePerimeters {
+                     output.push_seam_candidate(candidate.position, candidate.score)?;
+                 }
+             }
++            drop(_t25_seams);
+ 
++            // [T25-PROBE] Guest-side scope: infill-area publish.
++            let _t25_inf = slicer_sdk::profile::register_scope("t25::publish_infill")
++                .map(slicer_core::profile::scope);
+             publish_infill_areas(&inner_contour, &[], output)?;
++            drop(_t25_inf);
+         }
++        drop(_t25_regions);
+ 
+         Ok(())
+     }
+@@ -924,6 +959,11 @@ impl ArachnePerimeters {
+         let bridge_areas = region.bridge_areas();
+         let overhang_bands = region.overhang_quartile_polygons();
+         let prev_layer_boundary = region.prev_layer_boundary();
++        // [T25-PROBE] Register the per-vertex query scopes once per call (a
++        // `register_scope` is a WIT host call; `scope()` marks are cheap). Marks
++        // burn no fuel, so fuel shares — the guest unit — stay exact.
++        let t25_sd_scope = slicer_sdk::profile::register_scope("t25::signed_distance");
++        let t25_oq_scope = slicer_sdk::profile::register_scope("t25::overhang_quartile");
+         let mut walls: Vec<WallLoop> = Vec::with_capacity(lines.len());
+         for line in lines {
+             let (role, loop_type) = classify_line(line, params.print_thin_walls);
+@@ -964,6 +1004,9 @@ impl ArachnePerimeters {
+             // original vertex/edge) rather than its index-based fallback.
+             // `ring_pts_units` (mm→units, matching `polygons`' coordinate
+             // space) is also reused below for the bridge-area lookup.
++            // [T25-PROBE] Guest-side scope: wall flags (paint reprojection).
++            let _t25_flags = slicer_sdk::profile::register_scope("t25::wall_flags")
++                .map(slicer_core::profile::scope);
+             let ring_pts_units: Vec<Point2> = path
+                 .points
+                 .iter()
+@@ -982,6 +1025,7 @@ impl ArachnePerimeters {
+                 Some(polygons),
+                 false, // D14 painted-variant fuzzy skin (variant_chain) is not wired into arachne-perimeters yet — out of scope here
+             );
++            drop(_t25_flags);
+ 
+             // AC-3 (packet 148): is_thin_wall is set on every vertex of a
+             // ThinWall wall only — never on Outer/Inner walls, even if
+@@ -1029,6 +1073,8 @@ impl ArachnePerimeters {
+                 pt.overhang_distance_mm = if prev_layer_boundary.is_empty() {
+                     None
+                 } else {
++                    // [T25-PROBE] Guest-side scope: signed-distance query.
++                    let _t25_sd = t25_sd_scope.map(slicer_core::profile::scope);
+                     Some(context.signed_distance_to_boundary(pt.x, pt.y) + 0.5 * pt.width)
+                 };
+             }
+@@ -1037,6 +1083,8 @@ impl ArachnePerimeters {
+             // every wall type, for every vertex whose path point lies
+             // inside a `overhang_quartile_polygons` band's polygon(s).
+             if !overhang_bands.is_empty() {
++                // [T25-PROBE] Guest-side scope: overhang quartile query.
++                let _t25_oq = t25_oq_scope.map(slicer_core::profile::scope);
+                 for pt in &mut path.points {
+                     pt.overhang_quartile = context.overhang_quartile(pt.x, pt.y);
+                 }

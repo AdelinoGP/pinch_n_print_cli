@@ -130,6 +130,12 @@ where
     ) -> R,
 {
     assert_guest_freshness(&spec.wasm_path);
+    let manifest = slicer_scheduler::manifest::load_module_from_paths(
+        &spec.wasm_path.with_extension("toml"),
+        &spec.wasm_path,
+    )
+    .expect("parity component must have a valid paired manifest");
+    assert_eq!(manifest.id(), spec.module_id);
     let layer_planning_objects = layer_planning_objects_from_config(&spec.config);
     let wasm_module = CompiledModuleBuilder::new(spec.module_id.clone())
         .claims(spec.claims.clone())
@@ -170,7 +176,8 @@ where
         Some(component),
         wasm_module.claims(),
         Arc::clone(wasm_module.config_view()),
-    );
+    )
+    .with_ir_writes(manifest.ir_writes());
     let native_live = CompiledModuleLive::new(
         native_module.module_id(),
         WasmInstancePool::placeholder(),
@@ -178,7 +185,8 @@ where
         native_module.claims(),
         Arc::clone(native_module.config_view()),
     )
-    .with_native_entry(spec.native_entry);
+    .with_native_entry(spec.native_entry)
+    .with_ir_writes(manifest.ir_writes());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&wasm_cache::shared_engine()))
         .with_layer_planning_objects(layer_planning_objects);
     execute(&dispatcher, &native_live, &wasm_live)

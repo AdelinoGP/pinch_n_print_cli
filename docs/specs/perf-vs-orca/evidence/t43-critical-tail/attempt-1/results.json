@@ -1,0 +1,1919 @@
+{
+  "kind": "instrumented-attribution-not-acceptance",
+  "status": "completed-diagnostics-not-acceptance",
+  "authorization": "one ordinary plus one accelerated instrumented Arachne slice; no retries",
+  "durable_raw_root": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t43-diagnostics-20261001T162918Z",
+  "helper_sha256": "817d12065b562e91bd3f9b8200a6f7b12b81ad7253e90b11e0197173015a871f",
+  "commands": [
+    {
+      "name": "reference-freeze-before",
+      "argv": [
+        "C:\\Users\\agpen\\.vfox\\sdks\\python\\python.exe",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t41-reference-repreparation\\verify-freeze.py",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t41-reference-repreparation\\attempt-1"
+      ],
+      "cwd": "D:\\slicerProject\\pinch_n_print_cli_2",
+      "exit_code": 0
+    },
+    {
+      "name": "slice-ordinary",
+      "argv": [
+        "pwsh",
+        "-NoProfile",
+        "-File",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\resources\\perimeter-acceptance\\run_bench.ps1",
+        "-ExePath",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\ordinary\\pnp_cli.exe",
+        "-InputModel",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\model.stl",
+        "-Config",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\arachne.json",
+        "-ModuleDir",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\ordinary\\modules",
+        "-OutputPath",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t43-diagnostics-20261001T162918Z\\ordinary\\output.gcode",
+        "-Threads",
+        "12",
+        "-Runs",
+        "1",
+        "-Label",
+        "ordinary",
+        "-ResultsPath",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t43-diagnostics-20261001T162918Z\\ordinary\\diagnostic.csv",
+        "-Instrumented",
+        "-ExpectedGenerator",
+        "arachne"
+      ],
+      "cwd": "D:\\slicerProject\\pinch_n_print_cli_2",
+      "exit_code": 0
+    },
+    {
+      "name": "slice-accelerated",
+      "argv": [
+        "pwsh",
+        "-NoProfile",
+        "-File",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\resources\\perimeter-acceptance\\run_bench.ps1",
+        "-ExePath",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\accelerated\\pnp_cli.exe",
+        "-InputModel",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\model.stl",
+        "-Config",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\arachne.json",
+        "-ModuleDir",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\accelerated\\modules",
+        "-OutputPath",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t43-diagnostics-20261001T162918Z\\accelerated\\output.gcode",
+        "-Threads",
+        "12",
+        "-Runs",
+        "1",
+        "-Label",
+        "accelerated",
+        "-ResultsPath",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t43-diagnostics-20261001T162918Z\\accelerated\\diagnostic.csv",
+        "-Instrumented",
+        "-ExpectedGenerator",
+        "arachne"
+      ],
+      "cwd": "D:\\slicerProject\\pinch_n_print_cli_2",
+      "exit_code": 0
+    },
+    {
+      "name": "reference-freeze-after",
+      "argv": [
+        "C:\\Users\\agpen\\.vfox\\sdks\\python\\python.exe",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t41-reference-repreparation\\verify-freeze.py",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t41-reference-repreparation\\attempt-1"
+      ],
+      "cwd": "D:\\slicerProject\\pinch_n_print_cli_2",
+      "exit_code": 0
+    }
+  ],
+  "slices_launched": 2,
+  "runs": {
+    "ordinary": {
+      "output_sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+      "reference_byte_identical": true,
+      "trace_sha256": "324e97ab1cc8c801ab686194baec0dff197fbfab9523c9bbf93b06a42ed724d9",
+      "trace_path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t43-diagnostics-20261001T162918Z\\ordinary\\ordinary.jsonl",
+      "reduction": {
+        "event_counts": {
+          "phase_start": 4,
+          "phase_complete": 4,
+          "stage_start": 1935,
+          "module_start": 3379,
+          "module_complete": 3379,
+          "stage_complete": 1935,
+          "layer_start": 240,
+          "layer_complete": 240,
+          "module_log": 128,
+          "slice_stats": 1,
+          "slice_complete": 1
+        },
+        "completion": {
+          "schema_version": "1.5.0",
+          "event": "slice_complete",
+          "timestamp_ms": 1790872190850,
+          "slice_id": "slice-1790872174631",
+          "status": "ok",
+          "elapsed_ms": 16210,
+          "degraded": false,
+          "fatal_error_count": 0,
+          "non_fatal_error_count": 0
+        },
+        "tail_layers": {
+          "1": {
+            "elapsed_ms": 4584,
+            "modules_by_elapsed": [
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872187615,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::InfillPostProcess",
+                "layer_index": 1,
+                "module_id": "com.core.infill-linker",
+                "status": "ok",
+                "elapsed_ms": 4126,
+                "wasm_peak_kb": 8320
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872183157,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::Perimeters",
+                "layer_index": 1,
+                "module_id": "com.core.arachne-perimeters",
+                "status": "ok",
+                "elapsed_ms": 105,
+                "wasm_peak_kb": 7616
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872183454,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 1,
+                "module_id": "com.core.raft-default",
+                "status": "ok",
+                "elapsed_ms": 36,
+                "wasm_peak_kb": 3200
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872183460,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 1,
+                "module_id": "com.core.gyroid-infill",
+                "status": "ok",
+                "elapsed_ms": 5,
+                "wasm_peak_kb": 3200
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872183466,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 1,
+                "module_id": "com.core.lightning-infill",
+                "status": "ok",
+                "elapsed_ms": 4,
+                "wasm_peak_kb": 3200
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872183473,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 1,
+                "module_id": "com.core.rectilinear-infill",
+                "status": "ok",
+                "elapsed_ms": 4,
+                "wasm_peak_kb": 3200
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872183479,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 1,
+                "module_id": "com.core.top-surface-ironing",
+                "status": "ok",
+                "elapsed_ms": 4,
+                "wasm_peak_kb": 3200
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872183484,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 1,
+                "module_id": "com.core.wave-overhangs",
+                "status": "ok",
+                "elapsed_ms": 3,
+                "wasm_peak_kb": 3200
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872183244,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::PerimetersPostProcess",
+                "layer_index": 1,
+                "module_id": "com.core.fuzzy-skin",
+                "status": "ok",
+                "elapsed_ms": 2,
+                "wasm_peak_kb": 1152
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872187618,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::Support",
+                "layer_index": 1,
+                "module_id": "com.core.traditional-support",
+                "status": "ok",
+                "elapsed_ms": 2,
+                "wasm_peak_kb": 3200
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872187621,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::SupportPostProcess",
+                "layer_index": 1,
+                "module_id": "com.core.support-surface-ironing",
+                "status": "ok",
+                "elapsed_ms": 2,
+                "wasm_peak_kb": 3200
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872183043,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::PaintRegionAnnotation",
+                "layer_index": 1,
+                "module_id": "host:paint_annotator",
+                "status": "ok",
+                "elapsed_ms": 1,
+                "wasm_peak_kb": 0
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872183334,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::PerimetersPostProcess",
+                "layer_index": 1,
+                "module_id": "com.core.seam-placer",
+                "status": "ok",
+                "elapsed_ms": 1,
+                "wasm_peak_kb": 1216
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872187622,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::PathOptimization",
+                "layer_index": 1,
+                "module_id": "com.core.path-optimization-default",
+                "status": "ok",
+                "elapsed_ms": 0,
+                "wasm_peak_kb": 1216
+              }
+            ],
+            "stages_by_elapsed": [
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872187615,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::InfillPostProcess",
+                "layer_index": 1,
+                "status": "ok",
+                "elapsed_ms": 4126
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872183238,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::Perimeters",
+                "layer_index": 1,
+                "status": "ok",
+                "elapsed_ms": 191
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872183415,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::PerimetersPostProcess",
+                "layer_index": 1,
+                "status": "ok",
+                "elapsed_ms": 174
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872183486,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 1,
+                "status": "ok",
+                "elapsed_ms": 69
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872183044,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::PaintRegionAnnotation",
+                "layer_index": 1,
+                "status": "ok",
+                "elapsed_ms": 4
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872187618,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::Support",
+                "layer_index": 1,
+                "status": "ok",
+                "elapsed_ms": 3
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872187621,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::SupportPostProcess",
+                "layer_index": 1,
+                "status": "ok",
+                "elapsed_ms": 2
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872187622,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::PathOptimization",
+                "layer_index": 1,
+                "status": "ok",
+                "elapsed_ms": 1
+              }
+            ]
+          },
+          "2": {
+            "elapsed_ms": 2808,
+            "modules_by_elapsed": [
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872190426,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::InfillPostProcess",
+                "layer_index": 2,
+                "module_id": "com.core.infill-linker",
+                "status": "ok",
+                "elapsed_ms": 2715,
+                "wasm_peak_kb": 4992
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872187642,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::Perimeters",
+                "layer_index": 2,
+                "module_id": "com.core.arachne-perimeters",
+                "status": "ok",
+                "elapsed_ms": 17,
+                "wasm_peak_kb": 2304
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872187702,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 2,
+                "module_id": "com.core.raft-default",
+                "status": "ok",
+                "elapsed_ms": 4,
+                "wasm_peak_kb": 1536
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872187708,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 2,
+                "module_id": "com.core.rectilinear-infill",
+                "status": "ok",
+                "elapsed_ms": 2,
+                "wasm_peak_kb": 1984
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872187704,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 2,
+                "module_id": "com.core.gyroid-infill",
+                "status": "ok",
+                "elapsed_ms": 1,
+                "wasm_peak_kb": 1536
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872187705,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 2,
+                "module_id": "com.core.lightning-infill",
+                "status": "ok",
+                "elapsed_ms": 1,
+                "wasm_peak_kb": 1536
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872190428,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::Support",
+                "layer_index": 2,
+                "module_id": "com.core.traditional-support",
+                "status": "ok",
+                "elapsed_ms": 1,
+                "wasm_peak_kb": 1536
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872187623,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::PaintRegionAnnotation",
+                "layer_index": 2,
+                "module_id": "host:paint_annotator",
+                "status": "ok",
+                "elapsed_ms": 0,
+                "wasm_peak_kb": 0
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872187661,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::PerimetersPostProcess",
+                "layer_index": 2,
+                "module_id": "com.core.fuzzy-skin",
+                "status": "ok",
+                "elapsed_ms": 0,
+                "wasm_peak_kb": 1152
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872187679,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::PerimetersPostProcess",
+                "layer_index": 2,
+                "module_id": "com.core.seam-placer",
+                "status": "ok",
+                "elapsed_ms": 0,
+                "wasm_peak_kb": 1216
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872187709,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 2,
+                "module_id": "com.core.top-surface-ironing",
+                "status": "ok",
+                "elapsed_ms": 0,
+                "wasm_peak_kb": 1536
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872187710,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 2,
+                "module_id": "com.core.wave-overhangs",
+                "status": "ok",
+                "elapsed_ms": 0,
+                "wasm_peak_kb": 1536
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872190430,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::SupportPostProcess",
+                "layer_index": 2,
+                "module_id": "com.core.support-surface-ironing",
+                "status": "ok",
+                "elapsed_ms": 0,
+                "wasm_peak_kb": 1536
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872190431,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::PathOptimization",
+                "layer_index": 2,
+                "module_id": "com.core.path-optimization-default",
+                "status": "ok",
+                "elapsed_ms": 0,
+                "wasm_peak_kb": 1152
+              }
+            ],
+            "stages_by_elapsed": [
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872190426,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::InfillPostProcess",
+                "layer_index": 2,
+                "status": "ok",
+                "elapsed_ms": 2716
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872187697,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::PerimetersPostProcess",
+                "layer_index": 2,
+                "status": "ok",
+                "elapsed_ms": 37
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872187660,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::Perimeters",
+                "layer_index": 2,
+                "status": "ok",
+                "elapsed_ms": 36
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872187710,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 2,
+                "status": "ok",
+                "elapsed_ms": 12
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872190428,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::Support",
+                "layer_index": 2,
+                "status": "ok",
+                "elapsed_ms": 1
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872190430,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::SupportPostProcess",
+                "layer_index": 2,
+                "status": "ok",
+                "elapsed_ms": 1
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872190431,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::PathOptimization",
+                "layer_index": 2,
+                "status": "ok",
+                "elapsed_ms": 1
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872187624,
+                "slice_id": "slice-1790872174631",
+                "phase": "per_layer",
+                "stage": "Layer::PaintRegionAnnotation",
+                "layer_index": 2,
+                "status": "ok",
+                "elapsed_ms": 0
+              }
+            ]
+          }
+        },
+        "phase_completions": [
+          {
+            "schema_version": "1.5.0",
+            "event": "phase_complete",
+            "timestamp_ms": 1790872175688,
+            "slice_id": "slice-1790872174631",
+            "phase": "validation",
+            "status": "ok",
+            "elapsed_ms": 160
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "phase_complete",
+            "timestamp_ms": 1790872182629,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "status": "ok",
+            "elapsed_ms": 6940
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "phase_complete",
+            "timestamp_ms": 1790872190432,
+            "slice_id": "slice-1790872174631",
+            "phase": "per_layer",
+            "status": "ok",
+            "elapsed_ms": 7801
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "phase_complete",
+            "timestamp_ms": 1790872190811,
+            "slice_id": "slice-1790872174631",
+            "phase": "postpass",
+            "status": "ok",
+            "elapsed_ms": 378
+          }
+        ],
+        "prepass_stages_by_elapsed": [
+          {
+            "schema_version": "1.5.0",
+            "event": "stage_complete",
+            "timestamp_ms": 1790872182469,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::ShellClassification",
+            "status": "ok",
+            "elapsed_ms": 3204
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "stage_complete",
+            "timestamp_ms": 1790872178443,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::Slice",
+            "status": "ok",
+            "elapsed_ms": 2512
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "stage_complete",
+            "timestamp_ms": 1790872179264,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::OverhangAnnotation",
+            "status": "ok",
+            "elapsed_ms": 821
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "stage_complete",
+            "timestamp_ms": 1790872175925,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::MeshAnalysis",
+            "status": "ok",
+            "elapsed_ms": 236
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "stage_complete",
+            "timestamp_ms": 1790872182588,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::SeamPlanning",
+            "status": "ok",
+            "elapsed_ms": 101
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "stage_complete",
+            "timestamp_ms": 1790872182629,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::SupportGeometry",
+            "status": "ok",
+            "elapsed_ms": 40
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "stage_complete",
+            "timestamp_ms": 1790872182483,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::PaintSegmentation",
+            "status": "ok",
+            "elapsed_ms": 13
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "stage_complete",
+            "timestamp_ms": 1790872175930,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::RegionMapping",
+            "status": "ok",
+            "elapsed_ms": 2
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "stage_complete",
+            "timestamp_ms": 1790872175927,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::LayerPlanning",
+            "status": "ok",
+            "elapsed_ms": 1
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "stage_complete",
+            "timestamp_ms": 1790872182486,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::SupportGeometry",
+            "status": "ok",
+            "elapsed_ms": 1
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "stage_complete",
+            "timestamp_ms": 1790872182484,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::SupportAnalysis",
+            "status": "ok",
+            "elapsed_ms": 0
+          }
+        ],
+        "prepass_modules_by_elapsed": [
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872182469,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::ShellClassification",
+            "module_id": "host:shell_classification",
+            "status": "ok",
+            "elapsed_ms": 3204,
+            "wasm_peak_kb": 0
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872178443,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::Slice",
+            "module_id": "host:slice",
+            "status": "ok",
+            "elapsed_ms": 2512,
+            "wasm_peak_kb": 0
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872179264,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::OverhangAnnotation",
+            "module_id": "host:overhang_annotation",
+            "status": "ok",
+            "elapsed_ms": 820,
+            "wasm_peak_kb": 0
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872175925,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::MeshAnalysis",
+            "module_id": "host:mesh_analysis",
+            "status": "ok",
+            "elapsed_ms": 235,
+            "wasm_peak_kb": 0
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872182588,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::SeamPlanning",
+            "module_id": "com.core.seam-planner-default",
+            "status": "ok",
+            "elapsed_ms": 101,
+            "wasm_peak_kb": 0
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872182628,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::SupportGeometry",
+            "module_id": "com.core.tree-support-planner",
+            "status": "ok",
+            "elapsed_ms": 20,
+            "wasm_peak_kb": 0
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872182607,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::SupportGeometry",
+            "module_id": "com.core.traditional-support-planner",
+            "status": "ok",
+            "elapsed_ms": 18,
+            "wasm_peak_kb": 0
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872182482,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::PaintSegmentation",
+            "module_id": "host:paint_segmentation",
+            "status": "ok",
+            "elapsed_ms": 12,
+            "wasm_peak_kb": 0
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872175930,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::RegionMapping",
+            "module_id": "host:region_mapping",
+            "status": "ok",
+            "elapsed_ms": 2,
+            "wasm_peak_kb": 0
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872175927,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::LayerPlanning",
+            "module_id": "com.core.layer-planner-default",
+            "status": "ok",
+            "elapsed_ms": 1,
+            "wasm_peak_kb": 0
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872182485,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::SupportGeometry",
+            "module_id": "host:support_geometry",
+            "status": "ok",
+            "elapsed_ms": 1,
+            "wasm_peak_kb": 0
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872182483,
+            "slice_id": "slice-1790872174631",
+            "phase": "prepass",
+            "stage": "PrePass::SupportAnalysis",
+            "module_id": "host:support_analysis",
+            "status": "ok",
+            "elapsed_ms": 0,
+            "wasm_peak_kb": 0
+          }
+        ]
+      }
+    },
+    "accelerated": {
+      "output_sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+      "reference_byte_identical": true,
+      "trace_sha256": "b3dad90bb88f9e8fb1fc466b07799b6ed0a5eb95a1f3bb2ea3bdf0879d186b1d",
+      "trace_path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t43-diagnostics-20261001T162918Z\\accelerated\\accelerated.jsonl",
+      "reduction": {
+        "event_counts": {
+          "phase_start": 4,
+          "phase_complete": 4,
+          "stage_start": 1935,
+          "module_start": 3379,
+          "module_complete": 3379,
+          "stage_complete": 1935,
+          "layer_start": 240,
+          "layer_complete": 240,
+          "module_log": 128,
+          "slice_stats": 1,
+          "slice_complete": 1
+        },
+        "completion": {
+          "schema_version": "1.5.0",
+          "event": "slice_complete",
+          "timestamp_ms": 1790872210113,
+          "slice_id": "slice-1790872193054",
+          "status": "ok",
+          "elapsed_ms": 17050,
+          "degraded": false,
+          "fatal_error_count": 0,
+          "non_fatal_error_count": 0
+        },
+        "tail_layers": {
+          "1": {
+            "elapsed_ms": 4451,
+            "modules_by_elapsed": [
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872207034,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::InfillPostProcess",
+                "layer_index": 1,
+                "module_id": "com.core.infill-linker",
+                "status": "ok",
+                "elapsed_ms": 4047,
+                "wasm_peak_kb": 8320
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872202667,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::Perimeters",
+                "layer_index": 1,
+                "module_id": "com.core.arachne-perimeters",
+                "status": "ok",
+                "elapsed_ms": 64,
+                "wasm_peak_kb": 7616
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872202953,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 1,
+                "module_id": "com.core.raft-default",
+                "status": "ok",
+                "elapsed_ms": 33,
+                "wasm_peak_kb": 3200
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872202972,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 1,
+                "module_id": "com.core.rectilinear-infill",
+                "status": "ok",
+                "elapsed_ms": 6,
+                "wasm_peak_kb": 3200
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872202965,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 1,
+                "module_id": "com.core.lightning-infill",
+                "status": "ok",
+                "elapsed_ms": 4,
+                "wasm_peak_kb": 3200
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872202982,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 1,
+                "module_id": "com.core.wave-overhangs",
+                "status": "ok",
+                "elapsed_ms": 4,
+                "wasm_peak_kb": 3200
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872207043,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::SupportPostProcess",
+                "layer_index": 1,
+                "module_id": "com.core.support-surface-ironing",
+                "status": "ok",
+                "elapsed_ms": 4,
+                "wasm_peak_kb": 3200
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872202959,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 1,
+                "module_id": "com.core.gyroid-infill",
+                "status": "ok",
+                "elapsed_ms": 3,
+                "wasm_peak_kb": 3200
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872202976,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 1,
+                "module_id": "com.core.top-surface-ironing",
+                "status": "ok",
+                "elapsed_ms": 3,
+                "wasm_peak_kb": 3200
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872207038,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::Support",
+                "layer_index": 1,
+                "module_id": "com.core.traditional-support",
+                "status": "ok",
+                "elapsed_ms": 3,
+                "wasm_peak_kb": 3200
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872202840,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::PerimetersPostProcess",
+                "layer_index": 1,
+                "module_id": "com.core.seam-placer",
+                "status": "ok",
+                "elapsed_ms": 2,
+                "wasm_peak_kb": 1216
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872202598,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::PaintRegionAnnotation",
+                "layer_index": 1,
+                "module_id": "host:paint_annotator",
+                "status": "ok",
+                "elapsed_ms": 0,
+                "wasm_peak_kb": 0
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872202757,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::PerimetersPostProcess",
+                "layer_index": 1,
+                "module_id": "com.core.fuzzy-skin",
+                "status": "ok",
+                "elapsed_ms": 0,
+                "wasm_peak_kb": 1152
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872207045,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::PathOptimization",
+                "layer_index": 1,
+                "module_id": "com.core.path-optimization-default",
+                "status": "ok",
+                "elapsed_ms": 0,
+                "wasm_peak_kb": 1216
+              }
+            ],
+            "stages_by_elapsed": [
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872207035,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::InfillPostProcess",
+                "layer_index": 1,
+                "status": "ok",
+                "elapsed_ms": 4049
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872202915,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::PerimetersPostProcess",
+                "layer_index": 1,
+                "status": "ok",
+                "elapsed_ms": 161
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872202752,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::Perimeters",
+                "layer_index": 1,
+                "status": "ok",
+                "elapsed_ms": 151
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872202983,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 1,
+                "status": "ok",
+                "elapsed_ms": 66
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872202601,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::PaintRegionAnnotation",
+                "layer_index": 1,
+                "status": "ok",
+                "elapsed_ms": 5
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872207044,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::SupportPostProcess",
+                "layer_index": 1,
+                "status": "ok",
+                "elapsed_ms": 4
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872207039,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::Support",
+                "layer_index": 1,
+                "status": "ok",
+                "elapsed_ms": 3
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872207045,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::PathOptimization",
+                "layer_index": 1,
+                "status": "ok",
+                "elapsed_ms": 1
+              }
+            ]
+          },
+          "2": {
+            "elapsed_ms": 2735,
+            "modules_by_elapsed": [
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872209777,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::InfillPostProcess",
+                "layer_index": 2,
+                "module_id": "com.core.infill-linker",
+                "status": "ok",
+                "elapsed_ms": 2633,
+                "wasm_peak_kb": 4992
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872207068,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::Perimeters",
+                "layer_index": 2,
+                "module_id": "com.core.arachne-perimeters",
+                "status": "ok",
+                "elapsed_ms": 21,
+                "wasm_peak_kb": 2304
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872207136,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 2,
+                "module_id": "com.core.raft-default",
+                "status": "ok",
+                "elapsed_ms": 4,
+                "wasm_peak_kb": 1536
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872207140,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 2,
+                "module_id": "com.core.rectilinear-infill",
+                "status": "ok",
+                "elapsed_ms": 1,
+                "wasm_peak_kb": 1984
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872207046,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::PaintRegionAnnotation",
+                "layer_index": 2,
+                "module_id": "host:paint_annotator",
+                "status": "ok",
+                "elapsed_ms": 0,
+                "wasm_peak_kb": 0
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872207092,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::PerimetersPostProcess",
+                "layer_index": 2,
+                "module_id": "com.core.fuzzy-skin",
+                "status": "ok",
+                "elapsed_ms": 0,
+                "wasm_peak_kb": 1152
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872207112,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::PerimetersPostProcess",
+                "layer_index": 2,
+                "module_id": "com.core.seam-placer",
+                "status": "ok",
+                "elapsed_ms": 0,
+                "wasm_peak_kb": 1216
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872207137,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 2,
+                "module_id": "com.core.gyroid-infill",
+                "status": "ok",
+                "elapsed_ms": 0,
+                "wasm_peak_kb": 1536
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872207138,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 2,
+                "module_id": "com.core.lightning-infill",
+                "status": "ok",
+                "elapsed_ms": 0,
+                "wasm_peak_kb": 1536
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872207141,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 2,
+                "module_id": "com.core.top-surface-ironing",
+                "status": "ok",
+                "elapsed_ms": 0,
+                "wasm_peak_kb": 1536
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872207142,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 2,
+                "module_id": "com.core.wave-overhangs",
+                "status": "ok",
+                "elapsed_ms": 0,
+                "wasm_peak_kb": 1536
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872209778,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::Support",
+                "layer_index": 2,
+                "module_id": "com.core.traditional-support",
+                "status": "ok",
+                "elapsed_ms": 0,
+                "wasm_peak_kb": 1536
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872209779,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::SupportPostProcess",
+                "layer_index": 2,
+                "module_id": "com.core.support-surface-ironing",
+                "status": "ok",
+                "elapsed_ms": 0,
+                "wasm_peak_kb": 1536
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "module_complete",
+                "timestamp_ms": 1790872209780,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::PathOptimization",
+                "layer_index": 2,
+                "module_id": "com.core.path-optimization-default",
+                "status": "ok",
+                "elapsed_ms": 0,
+                "wasm_peak_kb": 1152
+              }
+            ],
+            "stages_by_elapsed": [
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872209777,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::InfillPostProcess",
+                "layer_index": 2,
+                "status": "ok",
+                "elapsed_ms": 2634
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872207091,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::Perimeters",
+                "layer_index": 2,
+                "status": "ok",
+                "elapsed_ms": 44
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872207131,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::PerimetersPostProcess",
+                "layer_index": 2,
+                "status": "ok",
+                "elapsed_ms": 39
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872207143,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::Infill",
+                "layer_index": 2,
+                "status": "ok",
+                "elapsed_ms": 11
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872209778,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::Support",
+                "layer_index": 2,
+                "status": "ok",
+                "elapsed_ms": 1
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872209780,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::SupportPostProcess",
+                "layer_index": 2,
+                "status": "ok",
+                "elapsed_ms": 1
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872207046,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::PaintRegionAnnotation",
+                "layer_index": 2,
+                "status": "ok",
+                "elapsed_ms": 0
+              },
+              {
+                "schema_version": "1.5.0",
+                "event": "stage_complete",
+                "timestamp_ms": 1790872209781,
+                "slice_id": "slice-1790872193054",
+                "phase": "per_layer",
+                "stage": "Layer::PathOptimization",
+                "layer_index": 2,
+                "status": "ok",
+                "elapsed_ms": 0
+              }
+            ]
+          }
+        },
+        "phase_completions": [
+          {
+            "schema_version": "1.5.0",
+            "event": "phase_complete",
+            "timestamp_ms": 1790872194081,
+            "slice_id": "slice-1790872193054",
+            "phase": "validation",
+            "status": "ok",
+            "elapsed_ms": 90
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "phase_complete",
+            "timestamp_ms": 1790872202284,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "status": "ok",
+            "elapsed_ms": 8202
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "phase_complete",
+            "timestamp_ms": 1790872209781,
+            "slice_id": "slice-1790872193054",
+            "phase": "per_layer",
+            "status": "ok",
+            "elapsed_ms": 7495
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "phase_complete",
+            "timestamp_ms": 1790872210080,
+            "slice_id": "slice-1790872193054",
+            "phase": "postpass",
+            "status": "ok",
+            "elapsed_ms": 299
+          }
+        ],
+        "prepass_stages_by_elapsed": [
+          {
+            "schema_version": "1.5.0",
+            "event": "stage_complete",
+            "timestamp_ms": 1790872197809,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::Slice",
+            "status": "ok",
+            "elapsed_ms": 3437
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "stage_complete",
+            "timestamp_ms": 1790872202144,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::ShellClassification",
+            "status": "ok",
+            "elapsed_ms": 3325
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "stage_complete",
+            "timestamp_ms": 1790872198818,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::OverhangAnnotation",
+            "status": "ok",
+            "elapsed_ms": 1008
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "stage_complete",
+            "timestamp_ms": 1790872194363,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::MeshAnalysis",
+            "status": "ok",
+            "elapsed_ms": 281
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "stage_complete",
+            "timestamp_ms": 1790872202248,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::SeamPlanning",
+            "status": "ok",
+            "elapsed_ms": 90
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "stage_complete",
+            "timestamp_ms": 1790872202284,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::SupportGeometry",
+            "status": "ok",
+            "elapsed_ms": 35
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "stage_complete",
+            "timestamp_ms": 1790872202156,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::PaintSegmentation",
+            "status": "ok",
+            "elapsed_ms": 11
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "stage_complete",
+            "timestamp_ms": 1790872194371,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::RegionMapping",
+            "status": "ok",
+            "elapsed_ms": 4
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "stage_complete",
+            "timestamp_ms": 1790872194366,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::LayerPlanning",
+            "status": "ok",
+            "elapsed_ms": 2
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "stage_complete",
+            "timestamp_ms": 1790872202158,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::SupportGeometry",
+            "status": "ok",
+            "elapsed_ms": 1
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "stage_complete",
+            "timestamp_ms": 1790872202156,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::SupportAnalysis",
+            "status": "ok",
+            "elapsed_ms": 0
+          }
+        ],
+        "prepass_modules_by_elapsed": [
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872197809,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::Slice",
+            "module_id": "host:slice",
+            "status": "ok",
+            "elapsed_ms": 3437,
+            "wasm_peak_kb": 0
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872202144,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::ShellClassification",
+            "module_id": "host:shell_classification",
+            "status": "ok",
+            "elapsed_ms": 3324,
+            "wasm_peak_kb": 0
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872198818,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::OverhangAnnotation",
+            "module_id": "host:overhang_annotation",
+            "status": "ok",
+            "elapsed_ms": 1008,
+            "wasm_peak_kb": 0
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872194363,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::MeshAnalysis",
+            "module_id": "host:mesh_analysis",
+            "status": "ok",
+            "elapsed_ms": 280,
+            "wasm_peak_kb": 0
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872202248,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::SeamPlanning",
+            "module_id": "com.core.seam-planner-default",
+            "status": "ok",
+            "elapsed_ms": 89,
+            "wasm_peak_kb": 0
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872202267,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::SupportGeometry",
+            "module_id": "com.core.traditional-support-planner",
+            "status": "ok",
+            "elapsed_ms": 17,
+            "wasm_peak_kb": 0
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872202284,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::SupportGeometry",
+            "module_id": "com.core.tree-support-planner",
+            "status": "ok",
+            "elapsed_ms": 17,
+            "wasm_peak_kb": 0
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872202155,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::PaintSegmentation",
+            "module_id": "host:paint_segmentation",
+            "status": "ok",
+            "elapsed_ms": 11,
+            "wasm_peak_kb": 0
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872194371,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::RegionMapping",
+            "module_id": "host:region_mapping",
+            "status": "ok",
+            "elapsed_ms": 3,
+            "wasm_peak_kb": 0
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872194366,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::LayerPlanning",
+            "module_id": "com.core.layer-planner-default",
+            "status": "ok",
+            "elapsed_ms": 1,
+            "wasm_peak_kb": 0
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872202158,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::SupportGeometry",
+            "module_id": "host:support_geometry",
+            "status": "ok",
+            "elapsed_ms": 1,
+            "wasm_peak_kb": 0
+          },
+          {
+            "schema_version": "1.5.0",
+            "event": "module_complete",
+            "timestamp_ms": 1790872202156,
+            "slice_id": "slice-1790872193054",
+            "phase": "prepass",
+            "stage": "PrePass::SupportAnalysis",
+            "module_id": "host:support_analysis",
+            "status": "ok",
+            "elapsed_ms": 0,
+            "wasm_peak_kb": 0
+          }
+        ]
+      }
+    }
+  },
+  "identity_before": {
+    "snapshot_manifest_sha256": "5c58b30145413df82ea9dc93a6b81bb778c69256550dc14d89ead7a61b654ec5",
+    "snapshots": {
+      "ordinary": {
+        "root": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\ordinary",
+        "files_verified": 49
+      },
+      "accelerated": {
+        "root": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\accelerated",
+        "files_verified": 50
+      }
+    },
+    "campaign_inputs": {
+      "resources/perimeter-acceptance/run_bench.ps1": "b4e67d12e3bd04a5c865cbe99f5a1286b2c14af51d5098441a5dfbaea0e52962",
+      "resources/perimeter-acceptance/run-acceptance.ps1": "525f2ae408728dc4caa288dfc522e7ba603f730f17625a494f77c90ca995c76f",
+      "resources/perimeter-acceptance/validate_measurement.ps1": "a8641f1fa6d5ab9aaa4c60a9bdd8ab984dabab25a5976af66af79ef04c37b96d",
+      "resources/perimeter-acceptance/test-status-roundtrip.ps1": "b587f123499a75b2ebb7187d02b2dcf31cf2cb9b2bf17b616cd15c84018fdf57",
+      "xtask/src/rustc_driver.rs": "c1d1a8ab21212a2715cf8eb1024e089f64cf370c4525d20fe26803052ea94a28",
+      "docs/23_controlled_perimeter_builds.md": "0a99277d882c28c19a88ea7dcd45a016fc2c5d9ce21467f90ec218fdcd786789"
+    },
+    "durable_raw_archive_files_excluding_its_inventory": 101,
+    "tracked_evidence_files_excluding_this_inventory": 91
+  },
+  "identity_after": {
+    "snapshot_manifest_sha256": "5c58b30145413df82ea9dc93a6b81bb778c69256550dc14d89ead7a61b654ec5",
+    "snapshots": {
+      "ordinary": {
+        "root": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\ordinary",
+        "files_verified": 49
+      },
+      "accelerated": {
+        "root": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\accelerated",
+        "files_verified": 50
+      }
+    },
+    "campaign_inputs": {
+      "resources/perimeter-acceptance/run_bench.ps1": "b4e67d12e3bd04a5c865cbe99f5a1286b2c14af51d5098441a5dfbaea0e52962",
+      "resources/perimeter-acceptance/run-acceptance.ps1": "525f2ae408728dc4caa288dfc522e7ba603f730f17625a494f77c90ca995c76f",
+      "resources/perimeter-acceptance/validate_measurement.ps1": "a8641f1fa6d5ab9aaa4c60a9bdd8ab984dabab25a5976af66af79ef04c37b96d",
+      "resources/perimeter-acceptance/test-status-roundtrip.ps1": "b587f123499a75b2ebb7187d02b2dcf31cf2cb9b2bf17b616cd15c84018fdf57",
+      "xtask/src/rustc_driver.rs": "c1d1a8ab21212a2715cf8eb1024e089f64cf370c4525d20fe26803052ea94a28",
+      "docs/23_controlled_perimeter_builds.md": "0a99277d882c28c19a88ea7dcd45a016fc2c5d9ce21467f90ec218fdcd786789"
+    },
+    "durable_raw_archive_files_excluding_its_inventory": 101,
+    "tracked_evidence_files_excluding_this_inventory": 91
+  },
+  "raw_inventory_sha256": {
+    "accelerated/accelerated.jsonl": "b3dad90bb88f9e8fb1fc466b07799b6ed0a5eb95a1f3bb2ea3bdf0879d186b1d",
+    "accelerated/diagnostic.csv": "a2140093ce378a9cadc331676bdcac2a8bac9e049cc0d3ef609e4da94243bda0",
+    "accelerated/output.gcode": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+    "ordinary/diagnostic.csv": "a2140093ce378a9cadc331676bdcac2a8bac9e049cc0d3ef609e4da94243bda0",
+    "ordinary/ordinary.jsonl": "324e97ab1cc8c801ab686194baec0dff197fbfab9523c9bbf93b06a42ed724d9",
+    "ordinary/output.gcode": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161"
+  },
+  "finished_utc": "2026-10-01T16:30:15.933810+00:00"
+}

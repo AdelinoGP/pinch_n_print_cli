@@ -1,0 +1,13 @@
+crates/slicer-macros/tests/module_test_tdd.rs:73: R1 assert!(true)
+crates/slicer-macros/tests/module_test_tdd.rs:124: R1 assert!(true)
+crates/slicer-model-io/src/loader.rs:3240: R3 silent fixture-skip early return (bare `return` in an if-arm)
+crates/slicer-model-io/src/loader.rs:3274: R3 silent fixture-skip early return (bare `return` in an if-arm)
+crates/slicer-model-io/src/loader.rs:3295: R3 silent fixture-skip early return (bare `return` in an if-arm)
+crates/slicer-runtime/src/progress_instrumentation.rs:492: R8 std::thread::sleep in test code (use a gated/bench target or an explicit join)
+crates/slicer-runtime/tests/contract/guest_fixture_freshness_tdd.rs:158: R3 silent fixture-skip early return (bare `return` in an if-arm)
+crates/slicer-runtime/tests/e2e/slicer_report_html_tdd.rs:392: R8 std::thread::sleep in test code (use a gated/bench target or an explicit join)
+crates/slicer-runtime/tests/e2e/slicer_report_html_tdd.rs:396: R8 std::thread::sleep in test code (use a gated/bench target or an explicit join)
+crates/slicer-runtime/tests/executor/layer_slice_tdd.rs:274: R3 silent fixture-skip early return (bare `return` in an if-arm)
+crates/slicer-runtime/tests/executor/layer_slice_tdd.rs:336: R3 silent fixture-skip early return (bare `return` in an if-arm)
+crates/slicer-wasm-host/src/host.rs:5039: R6 duplicate test-fn name `ir_to_wit_extrusion_role_preserves_reserved_builtin_roles` in one file
+check-test-quality: 12 finding(s) in 7 file(s) [report mode]

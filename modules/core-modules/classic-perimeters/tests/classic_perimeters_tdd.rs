@@ -98,6 +98,146 @@ fn make_region(side_mm: f32, z: f32) -> SliceRegionView {
         .build()
 }
 
+/// Exercise live module factors, not a hand-authored neutral entity. Absolute F
+/// pins catch a shared slowdown that a tool/global feedrate ratio cannot detect.
+#[test]
+fn auto_wall_factors_emit_absolute_volumetric_feedrates() {
+    use slicer_gcode::{DefaultGCodeEmitter, GCodeEmitter};
+    use slicer_ir::{
+        ConfigValue, FeedrateConfig, GCodeCommand, LayerCollectionIR, PrintEntity, ResolvedConfig,
+    };
+    use slicer_sdk::test_support::fixtures::print_entity_base;
+
+    for (outer_speed, inner_speed, max, outer_f, inner_f) in [
+        // 8 / (0.4 * 0.2 * 1) * 60 = F6000; 12 gives F9000.
+        (0.0, 0.0, 8.0, 6000.0, 6000.0),
+        (0.0, 0.0, 12.0, 9000.0, 9000.0),
+        // Preserve explicit factor scaling: 30/50 and 45/50, respectively.
+        (30.0, 45.0, 0.0, 1080.0, 2430.0),
+    ] {
+        // Construct with positive speeds, then override at invocation time:
+        // this also catches incorrectly retaining cached non-AUTO factors.
+        let module = ClassicPerimeters::from_config(&make_config(2, 0.4)).unwrap();
+        let config = make_speed_config(2, 0.4, outer_speed, inner_speed);
+        let mut output = PerimeterOutputBuilder::new();
+        module
+            .run_perimeters(
+                0,
+                &[make_region(10.0, 0.2)],
+                &PaintRegionLayerView::new(0),
+                &mut output,
+                &config,
+            )
+            .unwrap();
+        let layer = LayerCollectionIR {
+            z: 0.2,
+            ordered_entities: output
+                .wall_loops()
+                .iter()
+                .enumerate()
+                .map(|(index, wall)| PrintEntity {
+                    entity_id: index as u64,
+                    path: wall.path.clone(),
+                    ..print_entity_base(wall.path.role.clone())
+                })
+                .collect(),
+            ..Default::default()
+        };
+        let mut resolved = ResolvedConfig {
+            first_layer_height: 0.2,
+            ..Default::default()
+        };
+        resolved.extensions.insert(
+            "filament_max_volumetric_speed".into(),
+            ConfigValue::Float(max),
+        );
+        let emitter = DefaultGCodeEmitter::new_with_config(
+            "1.0".into(),
+            FeedrateConfig {
+                outer_wall_speed: outer_speed as f32,
+                inner_wall_speed: inner_speed as f32,
+                ..Default::default()
+            },
+        )
+        .with_resolved_config(resolved);
+        let gcode = emitter.emit_gcode(&[layer]).unwrap();
+        for (role, expected_f) in [
+            (ExtrusionRole::OuterWall, outer_f),
+            (ExtrusionRole::InnerWall, inner_f),
+        ] {
+            let feeds: Vec<_> = gcode
+                .commands
+                .iter()
+                .filter_map(|command| match command {
+                    GCodeCommand::Move {
+                        role: move_role,
+                        e: Some(e),
+                        f: Some(f),
+                        ..
+                    } if *move_role == role && *e > 0.0 => Some(*f),
+                    _ => None,
+                })
+                .collect();
+            assert!(
+                !feeds.is_empty(),
+                "live module must emit extruding {role:?} moves"
+            );
+            assert!(feeds.iter().all(|f| *f == expected_f), "{role:?}, speeds={outer_speed}/{inner_speed}, max={max}: expected F{expected_f}, got {feeds:?}");
+        }
+    }
+}
+
+#[test]
+fn auto_gap_fill_produces_neutral_factor_and_preserves_explicit_factor() {
+    for (speed, expected_factor) in [(0.0, 1.0), (30.0, 0.6)] {
+        let config = baseline_config()
+            .int("wall_count", 2)
+            .float("line_width", 0.4)
+            .float("gap_infill_speed", speed)
+            .bool("detect_thin_wall", false)
+            .build();
+        let module = ClassicPerimeters::from_config(&config).unwrap();
+        let region = SliceRegionViewBuilder::new()
+            .object_id("rib")
+            .region_id(1)
+            .z(0.2)
+            .add_polygon(ExPolygon {
+                contour: Polygon {
+                    points: vec![
+                        slicer_ir::Point2::from_mm(0.0, 0.0),
+                        slicer_ir::Point2::from_mm(1.7, 0.0),
+                        slicer_ir::Point2::from_mm(1.7, 10.0),
+                        slicer_ir::Point2::from_mm(0.0, 10.0),
+                    ],
+                },
+                holes: vec![],
+            })
+            .build();
+        let mut output = PerimeterOutputBuilder::new();
+        module
+            .run_perimeters(
+                0,
+                &[region],
+                &PaintRegionLayerView::new(0),
+                &mut output,
+                &config,
+            )
+            .unwrap();
+        let gaps: Vec<_> = output
+            .wall_loops()
+            .iter()
+            .filter(|wall| wall.loop_type == LoopType::GapFill)
+            .collect();
+        assert!(
+            !gaps.is_empty(),
+            "the narrow rib must produce live medial-axis gap fill"
+        );
+        for gap in gaps {
+            assert_eq!(gap.path.speed_factor, expected_factor, "gap speed={speed}");
+        }
+    }
+}
+
 /// Audit-gap closure: a per-region `line_width` config reaches the emitted wall
 /// geometry. Two runs with different `line_width` must produce proportionally
 /// different outer-wall extrusion widths. Combined with

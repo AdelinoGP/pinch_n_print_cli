@@ -1,0 +1,23 @@
+{
+  "supports-off-benchy/arachne.json": "2b8314edca85538e3725de9b008f6086dff322121cfc6ea47ba3157caeb6111d",
+  "supports-off-benchy/classic.json": "0c3ff8f6c428b91a3e309336db2949f2b5f5736465f881d52f0862cc21d2bb25",
+  "supports-off-benchy/model.stl": "6a07f34cc7769b1c852635212c91a1b354532f4222a9a8105c1035a1a7b284f7",
+  "supports-off-benchy/reference-arachne.gcode": "6e5db7054580c37d3abf6fb45f0335b90cc0997e9c4b771c3dfc6b8500723c08",
+  "supports-off-benchy/reference-arachne.jsonl": "8ad2a06cb0c32ca9c113251c0fb303e939f4036b4557c7e03add37cf8463c793",
+  "supports-off-benchy/reference-classic.gcode": "ab698efe6555048fa4d66d18b2d7e7be48af79fe15b9657e0f8b26da0c86232e",
+  "supports-off-benchy/reference-classic.jsonl": "209387278ab82d3adf05081a3b14312f312b3d4fec97293aa57b1197fcc901a7",
+  "tree-support-base/arachne.json": "40269f2f2076f04f1f8bcc039248ffb69742084865a1a7e8d751299c2ea696f5",
+  "tree-support-base/classic.json": "a1350ac1b0824f12308287b4a944a4a80e207720a491a2227e1e9971fd25e1c6",
+  "tree-support-base/model.stl": "b26c8c79158bd009119e13c89aa0cb9b6f8100bef1de63f58c0d58e2c1c178af",
+  "tree-support-base/reference-arachne.gcode": "ced7c9fe383159f3a8b3116633775144fc33b3dd77ec72d400de19015a3afd04",
+  "tree-support-base/reference-arachne.jsonl": "7c6455a39fd2ef43be6aeb6d068ae1fa666d3ac2cfeca45b167ee222387fc5e9",
+  "tree-support-base/reference-classic.gcode": "65a0955a10cd712e7b87fcfe4fd7e7751aa487447fb861b9bc029323a99de5c1",
+  "tree-support-base/reference-classic.jsonl": "97f9b81b72de3fda35aaf707a88c496d771cc2b8b2a1b0f7826ff0cd26ffebf9",
+  "tree-support-benchy/arachne.json": "40269f2f2076f04f1f8bcc039248ffb69742084865a1a7e8d751299c2ea696f5",
+  "tree-support-benchy/classic.json": "a1350ac1b0824f12308287b4a944a4a80e207720a491a2227e1e9971fd25e1c6",
+  "tree-support-benchy/model.stl": "6a07f34cc7769b1c852635212c91a1b354532f4222a9a8105c1035a1a7b284f7",
+  "tree-support-benchy/reference-arachne.gcode": "5b3a004c9424e0a2a85f4f2c0e53771e417518116779dc91433246122ba9a6d5",
+  "tree-support-benchy/reference-arachne.jsonl": "df96d66e1ddc8cc2204adb0c1b2aab394551cb5788b50e012acf41eeb9e595ff",
+  "tree-support-benchy/reference-classic.gcode": "527a1717a2b7d24bcbac1a4a634c7f24fd509148771c5a9f58f389b41a1ec39e",
+  "tree-support-benchy/reference-classic.jsonl": "3beffa2e62927530106adb6a157990e46c4f0677e24e990f36cd7e27adbe83db"
+}

@@ -26,8 +26,8 @@ const PATH_OPT_WASM: &str = concat!(
 );
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole,
-    GlobalLayer, IndexedTriangleSet, LayerCollectionIR, MeshIR, ObjectConfig, ObjectMesh,
-    Point3, Point3WithWidth, PrintEntity, RegionKey, ResolvedConfig, SemVer, StageId, ToolChange,
+    GlobalLayer, IndexedTriangleSet, LayerCollectionIR, MeshIR, ObjectConfig, ObjectMesh, Point3,
+    Point3WithWidth, PrintEntity, RegionKey, ResolvedConfig, SemVer, StageId, ToolChange,
     Transform3d,
 };
 

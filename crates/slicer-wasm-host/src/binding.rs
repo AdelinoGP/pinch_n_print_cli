@@ -36,6 +36,8 @@ pub struct CompiledModuleLive<'a> {
     pub config_view: Arc<ConfigView>,
     /// Optional direct native SDK entry for integrated modules.
     pub native_entry: Option<NativeStageEntry>,
+    /// Manifest-derived write paths for host-boundary finalization checks.
+    pub ir_writes: &'a [String],
 }
 
 impl<'a> CompiledModuleLive<'a> {
@@ -54,12 +56,19 @@ impl<'a> CompiledModuleLive<'a> {
             claims,
             config_view,
             native_entry: None,
+            ir_writes: &[],
         }
     }
 
     /// Attach a direct native SDK entry to this live dispatch view.
     pub fn with_native_entry(mut self, entry: NativeStageEntry) -> Self {
         self.native_entry = Some(entry);
+        self
+    }
+
+    /// Attach the owning compiled module's declared IR write paths.
+    pub fn with_ir_writes(mut self, paths: &'a [String]) -> Self {
+        self.ir_writes = paths;
         self
     }
 }

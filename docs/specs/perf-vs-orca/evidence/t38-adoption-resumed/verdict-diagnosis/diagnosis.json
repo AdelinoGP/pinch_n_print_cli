@@ -1,0 +1,58 @@
+{
+  "status": "DIAGNOSIS_CONFIRMED",
+  "primary_cause": "xtask test summary classifies recovered boostvoronoi panic-hook lines as failed-test evidence, despite the captured libtest result passing.",
+  "original_capture": {
+    "command": "cargo xtask test --summary -p slicer-runtime --features perimeter-spatial-test-support --test integration -- perimeter_spatial_capture_and_nonvacuity --nocapture",
+    "outer_shell_exit_code": 0,
+    "libtest_result": {
+      "status": "ok",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "filtered_out": 370
+    },
+    "xtask_verdict": "FAIL",
+    "evidence": "../gates/continuation-runtime-capture-summary.log"
+  },
+  "summary_replay": {
+    "command": "cargo xtask test --summary-from docs/specs/perf-vs-orca/evidence/t38-adoption-resumed/gates/continuation-runtime-capture-full.log",
+    "command_exit_code": 0,
+    "printed_verdict": "FAIL",
+    "verdict_interpretation": "Not independent: --summary-from invokes print_summary with succeeded=false, so it always prints FAIL.",
+    "output": "runtime-summary-replay.log",
+    "exit_file": "runtime-summary-replay.exit"
+  },
+  "ordinary_guest_freshness": {
+    "command": "cargo xtask build-guests --check",
+    "exit_code": 0,
+    "output": "ordinary-guest-freshness.log",
+    "exit_file": "ordinary-guest-freshness.exit"
+  },
+  "hypotheses": [
+    {
+      "name": "summary treats recovered panic-hook output as test failure",
+      "result": "CONFIRMED",
+      "evidence_symbols": [
+        "xtask::test::print_summary (xtask/src/test.rs)",
+        "xtask::test::collect_bare_panics (xtask/src/test.rs)",
+        "slicer_core::medial_axis::medial_axis (crates/slicer-core/src/medial_axis.rs)"
+      ]
+    },
+    {
+      "name": "runtime test is vacuous or silently accepts absent spatial work",
+      "result": "NOT_SUPPORTED_FOR_SPATIAL_QUERY_CONTRACT",
+      "caveat": "The test asserts nonempty output, query/capture populations and strict pruning, but does not certify complete geometry after every medial-axis fallback.",
+      "evidence_symbol": "perimeter_spatial_capture_and_nonvacuity (crates/slicer-runtime/tests/integration/perimeter_spatial_capture.rs)"
+    },
+    {
+      "name": "stale or mode-confused guest artifacts",
+      "result": "NOT_SUPPORTED",
+      "caveat": "Ordinary freshness returned 0; no xtask accelerated mode was requested.",
+      "evidence_symbol": "run_integrated_parity (crates/slicer-runtime/tests/common/integrated_parity_harness.rs)"
+    }
+  ],
+  "geometry_correctness_claim": false,
+  "test_reruns": [],
+  "source_edits": false,
+  "timing_or_dist_builds": false
+}

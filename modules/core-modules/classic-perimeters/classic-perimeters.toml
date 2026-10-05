@@ -138,7 +138,8 @@ group   = "Seam"
 [config.schema.gap_infill_speed]
 type    = "float"
 default = 30.0
-min     = 1.0
+# Zero selects emitter-owned volumetric AUTO (ADR-0072).
+min     = 0.0
 max     = 300.0
 display = "Gap infill speed"
 group   = "Quality"
@@ -167,7 +168,8 @@ group   = "Quality"
 [config.schema.outer_wall_speed]
 type    = "float"
 default = 30.0
-min     = 1.0
+# Zero selects emitter-owned volumetric AUTO (ADR-0072).
+min     = 0.0
 max     = 300.0
 display = "Outer Wall Speed"
 group   = "Walls"
@@ -176,7 +178,8 @@ denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 [config.schema.inner_wall_speed]
 type    = "float"
 default = 45.0
-min     = 1.0
+# Zero selects emitter-owned volumetric AUTO (ADR-0072).
+min     = 0.0
 max     = 300.0
 display = "Inner Wall Speed"
 group   = "Walls"

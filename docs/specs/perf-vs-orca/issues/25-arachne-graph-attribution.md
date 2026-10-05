@@ -1,7 +1,8 @@
 # Arachne graph-construction attribution
 
 Type: task
-Status: open
+Status: resolved
+Assignee: current OpenCode session (wayfinder), 2026-10-01
 Blocked by: 12, 21
 
 ## Question
@@ -29,3 +30,68 @@ indexing changes only with measured justification.
 
 If a candidate emerges it joins the timing chain and returns a keep/drop
 recommendation to the human. Timing chain position 7.
+
+## Answer — the module's cost is two guest per-vertex queries, not the host pipeline
+
+Measured 2026-10-01 on the frozen supports-off Benchy Arachne job (ordinary and
+accelerated, every output byte-identical to the frozen reference `7049a06d…`).
+Full evidence: [FINDINGS.md](../evidence/t25-arachne-attribution/FINDINGS.md);
+probe preserved in `probe.patch` + the `*.rs.txt` copies; reduced captures and
+the output-hash manifest committed at
+`evidence/t25-arachne-attribution/captures/`; re-derivation in
+`verify-t25.py` (exit 0, in-repo and against the raw tree).
+
+- **The boundary the old study could not see.** Ticket 06 measured the
+  *enclosing host pipeline interval* (75.3% preprocess+graph there) — that
+  interval is only **~18% of the module's own elapsed** at HEAD. The rest is
+  guest work the old probe never covered.
+- **Where the module's fuel goes.** `PerimeterSpatialContext`'s two per-vertex
+  spatial queries (`crates/slicer-core/src/perimeter_spatial.rs`) are **86.4% of
+  module fuel**: `signed_distance_to_boundary` 48.3% (112,606 calls) and
+  `overhang_quartile` 38.1% (3,289 calls); `build_walls` plumbing 5.3%, the
+  precise-outer-wall `polygon_ops::offset` 4.1%, the region loop's own glue
+  3.8%, everything else ≤0.2%. The host service call is 0.04% of module fuel and
+  20.6% of module wall.
+- **Not a tail.** 239 of 240 dispatches call both queries (layer 0 calls
+  neither); the top 12 of those 239 carry 17.3% of their fuel. This is an
+  every-layer, per-vertex cost.
+- **Inside the host service** (the ticket's named targets, re-measured): the
+  old study's two tied leads keep their shape — preprocess 43.3% (stage 1
+  triple offset alone 41.6%, split evenly across `offset2_ex`'s two clipper
+  passes and the follow-up `offset`) and graph construction 38.0% (boostvoronoi
+  `Builder::build` 33.5%). Named stages close within 1% of the pipeline (`attrib3`:
+  99.2%; `attrib8-final`: 98.7%), so the 364.932 ms remainder is answered.
+  `connect_junctions` 5.8% and `reorder_by_region_order` 3.0% are the next two.
+- **Modes.** Acceleration cuts module fuel 1.73x, the distance query 1.93x and
+  the quartile query 1.71x, and the two queries still dominate at 82.0%
+  accelerated — the ticket-18 shape re-measured on Arachne. The host split is
+  mode-invariant (service wall ratio 1.13).
+
+**One candidate: the `overhang_quartile` query (38.1% of module fuel,
+~1.64 ms/call ordinary).** Its classification goes through
+`point_in_polygon_winding(..., eps = 0.0)`
+(`crates/slicer-ir/src/polygon_predicate.rs`), whose boundary-tolerance
+pre-pass is **measured at 56.5-71.2% of the predicate's own cost** across four
+preserved runs of synthetic rings (the first draft's 62.8-66.3% came from
+probe runs that were not preserved), with identical verdicts to a winding-only
+replica, while `0.0` is the documented strict-containment contract. The
+exact-on-edge verdict is the open question: at `eps = 0.0` the pre-pass admits
+a point exactly on an edge, and a straight skip is probably — not provably —
+value-preserving; ticket 45 owns that decision. Fuel ceiling ≈ 21-27% of module
+fuel, a bound derived from a synthetic-predicate share, not a measured fuel
+saving; wall unmeasured (the map's measured fuel→wall transfer is 0-16%). Two
+candidate shapes (narrow the predicate for `eps = 0.0` — pending the
+exact-on-edge decision — or an inclusive bbox prefilter in the query) are
+design work for the candidate's own take.
+
+**No keep/drop is claimed here.** The ticket's acceptance line requires a
+paired-mode A/B before a keep/drop, and this take authorized attribution only
+(no fix, no A/B); the recommendation is handed to the candidate's own take,
+which carries the exactness proof and the standing paired measurement. That is
+a deliberate scope boundary, not an omitted deliverable.
+
+No implementation, authorization, A/B, keep/drop or commit occurred; the
+candidate joins the timing chain awaiting its own scope plus the standing paired
+ordinary + accelerated A/B — graduated as
+[Overhang-quartile query: predicate narrowing + standing paired
+A/B](45-overhang-quartile-predicate-narrowing.md).

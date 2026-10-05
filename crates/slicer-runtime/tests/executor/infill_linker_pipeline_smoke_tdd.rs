@@ -151,6 +151,15 @@ fn linker_bundle() -> TestModuleBundle {
         .expect("instance pool must build"),
     );
     let config = slicer_ir::ConfigView::from_map(HashMap::from([
+        // Bound-view required reads at infill-linker.toml manifest defaults.
+        ("layer_height".to_string(), ConfigValue::Float(0.2)),
+        (
+            "infill_anchor_max".to_string(),
+            ConfigValue::FloatOrPercent {
+                value: 20.0,
+                is_percent: false,
+            },
+        ),
         ("infill_overlap".to_string(), ConfigValue::Float(0.45)),
         ("line_width".to_string(), ConfigValue::Float(0.4)),
         ("infill_density".to_string(), ConfigValue::Float(0.2)),

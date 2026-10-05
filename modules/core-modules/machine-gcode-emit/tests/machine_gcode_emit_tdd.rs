@@ -139,6 +139,42 @@ fn empty_templates_emit_no_raw_wrappers() {
 }
 
 #[test]
+fn explicit_empty_end_template_emits_no_raw_end_block_and_preserves_shutdown() {
+    let output = run(
+        &[("machine_end_gcode", ConfigValue::String(String::new()))],
+        &[GCodeCommand::FanSpeed { value: 0 }],
+    );
+    assert!(
+        raw_texts(&output).is_empty(),
+        "empty end template adds no Raw block"
+    );
+    assert_eq!(
+        output.commands(),
+        &[GcodeOutputCommand::Command(GCodeCommand::FanSpeed {
+            value: 0
+        })],
+        "cooling shutdown is input, not an end-template wrapper"
+    );
+
+    // Literal nonempty control proves this boundary can observe a custom end
+    // block rather than mistaking all terminal commands for template output.
+    let nonempty = run(
+        &[("machine_end_gcode", ConfigValue::String("M104 S0".into()))],
+        &[GCodeCommand::FanSpeed { value: 0 }],
+    );
+    assert_eq!(raw_texts(&nonempty), vec!["M104 S0"]);
+    assert_eq!(
+        nonempty.commands(),
+        &[
+            GcodeOutputCommand::Command(GCodeCommand::FanSpeed { value: 0 }),
+            GcodeOutputCommand::Command(GCodeCommand::Raw {
+                text: "M104 S0".into()
+            }),
+        ]
+    );
+}
+
+#[test]
 fn whitespace_only_template_is_skipped() {
     install_log_capture();
     let output = run(

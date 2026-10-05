@@ -1,0 +1,16 @@
+{
+  "layer_height": 0.2,
+  "first_layer_height": 0.2,
+  "line_width": 0.4,
+  "nozzle_diameter": 0.4,
+  "filament_diameter": 1.75,
+
+  "wall_count": 2,
+  "wall_generator": "arachne",
+  "sparse_infill_density": 20.0,
+  "sparse_infill_pattern": "gyroid",
+  "sparse_fill_holder": "gyroid-infill",
+
+  "enable_support": false,
+  "support_type": "tree(auto)"
+}

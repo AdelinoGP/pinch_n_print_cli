@@ -19,14 +19,63 @@ impl LayerModule for SdkLayerPathoptGuest {
         _layer_index: u32,
         regions: &[PerimeterRegionView],
         output: &mut GcodeOutputBuilder,
-        _collection: &mut LayerCollectionBuilder,
-        _config: &ConfigView,
+        collection: &mut LayerCollectionBuilder,
+        config: &ConfigView,
     ) -> Result<(), ModuleError> {
+        if config.get_int("emit_view_witness") == Some(1) {
+            let mut witness = String::from("SDK-VIEW");
+            witness.push_str(&format!(
+                " stage_alias={:?} stage_canonical={:?}",
+                config.get("support_overhang_angle"),
+                config.get("support_threshold_angle"),
+            ));
+            for region in regions {
+                witness.push_str(&format!(
+                    " region={}:{} chain={:?} anchor={:?}",
+                    region.object_id(),
+                    region.region_id(),
+                    region.variant_chain(),
+                    region
+                        .config()
+                        .and_then(|config| config.get("infill_anchor_max")),
+                ));
+                witness.push_str(&format!(
+                    " alias={:?} canonical={:?}",
+                    region
+                        .config()
+                        .and_then(|config| config.get("support_overhang_angle")),
+                    region
+                        .config()
+                        .and_then(|config| config.get("support_threshold_angle")),
+                ));
+                for wall in region.wall_loops() {
+                    witness.push_str(&format!(
+                        " path_role={:?} path={:?} profile={:?}",
+                        wall.path.role, wall.path.points, wall.width_profile.widths
+                    ));
+                }
+                witness.push_str(&format!(
+                    " candidates={:?} resolved={:?}",
+                    region.seam_candidates(),
+                    region.resolved_seam()
+                ));
+            }
+            for entity in collection.get_ordered_entities() {
+                witness.push_str(&format!(" ordered={:?}", entity));
+            }
+            return Err(ModuleError::fatal(99, witness));
+        }
         let comment = format!(
             "regions={} walls={} infill={}",
             regions.len(),
-            regions.iter().map(|region| region.wall_loops().len()).sum::<usize>(),
-            regions.iter().map(|region| region.infill_areas().len()).sum::<usize>(),
+            regions
+                .iter()
+                .map(|region| region.wall_loops().len())
+                .sum::<usize>(),
+            regions
+                .iter()
+                .map(|region| region.infill_areas().len())
+                .sum::<usize>(),
         );
         output
             .push_comment(comment)

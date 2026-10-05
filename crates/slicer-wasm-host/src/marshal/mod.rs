@@ -34,8 +34,9 @@ pub use prepared::{prepare_perimeter_source_regions, prepare_regions, prepare_sl
 pub use out::{
     authored_coloring_granted, collect_postpass_output, convert_anchored_events,
     convert_infill_output, convert_perimeter_output, convert_support_output,
-    convert_support_output_with_plan, infill_ir_to_prior_regions, merge_slice_postprocess_into,
-    validate_anchored_entity_geometry, AuthoredColoringContext, AUTHORED_COLORING_CLAIM,
+    convert_support_output_with_plan, empty_infill_replacement, infill_ir_to_prior_regions,
+    merge_slice_postprocess_into, validate_anchored_entity_geometry, AuthoredColoringContext,
+    AUTHORED_COLORING_CLAIM,
 };
 
 /// Return the effective height for a global layer across all participating objects.

@@ -1,0 +1,428 @@
+{
+ "probe-stage2": {
+  "benchy": {
+   "module_total_fuel": 467502502399,
+   "degraded": false,
+   "non_fatal_errors": 0,
+   "gcode_bytes": 7444413,
+   "scopes": {
+    "inside_scan": {
+     "calls": 617996,
+     "total_fuel": 147127339698,
+     "self_fuel": 147127339698
+    },
+    "quartile_scan": {
+     "calls": 617996,
+     "total_fuel": 141479087490,
+     "self_fuel": 141479087490
+    },
+    "distance_seed": {
+     "calls": 617996,
+     "total_fuel": 9291875654,
+     "self_fuel": 9291875654
+    },
+    "quartile_collect": {
+     "calls": 617996,
+     "total_fuel": 6709246532,
+     "self_fuel": 6709246532
+    },
+    "fallback_bridge": {
+     "calls": 230920,
+     "total_fuel": 6369164358,
+     "self_fuel": 6369164358
+    },
+    "inside_collect": {
+     "calls": 617996,
+     "total_fuel": 6079157683,
+     "self_fuel": 6079157683
+    },
+    "context": {
+     "calls": 240,
+     "total_fuel": 4715969196,
+     "self_fuel": 4715969196
+    },
+    "distance_range": {
+     "calls": 617996,
+     "total_fuel": 3949239133,
+     "self_fuel": 3949239133
+    },
+    "bridge_scan": {
+     "calls": 397755,
+     "total_fuel": 2553791717,
+     "self_fuel": 2553791717
+    },
+    "bridge_collect": {
+     "calls": 397755,
+     "total_fuel": 352626201,
+     "self_fuel": 352626201
+    },
+    "indexed_distance": {
+     "calls": 617996,
+     "total_fuel": 13523538959,
+     "self_fuel": 282424172
+    },
+    "distance": {
+     "calls": 617996,
+     "total_fuel": 166974729849,
+     "self_fuel": 145196153
+    },
+    "bridge_arithmetic_check": {
+     "calls": 397755,
+     "total_fuel": 114155685,
+     "self_fuel": 114155685
+    },
+    "bridge": {
+     "calls": 628675,
+     "total_fuel": 9579703771,
+     "self_fuel": 107005060
+    },
+    "indexed_inside": {
+     "calls": 617996,
+     "total_fuel": 153305994737,
+     "self_fuel": 99497356
+    },
+    "indexed_quartile": {
+     "calls": 617996,
+     "total_fuel": 148287831378,
+     "self_fuel": 99497356
+    },
+    "quartile": {
+     "calls": 628675,
+     "total_fuel": 148374815559,
+     "self_fuel": 85457084
+    },
+    "indexed_bridge": {
+     "calls": 397755,
+     "total_fuel": 2967672188,
+     "self_fuel": 61254270
+    },
+    "linear_fallback": {
+     "calls": 241599,
+     "total_fuel": 6392397935,
+     "self_fuel": 22731664
+    },
+    "fallback_quartile": {
+     "calls": 10679,
+     "total_fuel": 501913,
+     "self_fuel": 501913
+    }
+   }
+  },
+  "base": {
+   "module_total_fuel": 6598342799069,
+   "degraded": false,
+   "non_fatal_errors": 0,
+   "gcode_bytes": 21936098,
+   "scopes": {
+    "inside_scan": {
+     "calls": 3408985,
+     "total_fuel": 2814514587399,
+     "self_fuel": 2814514587399
+    },
+    "quartile_scan": {
+     "calls": 3408985,
+     "total_fuel": 1004661367894,
+     "self_fuel": 1004661367894
+    },
+    "distance_seed": {
+     "calls": 3408985,
+     "total_fuel": 60361915560,
+     "self_fuel": 60361915560
+    },
+    "quartile_collect": {
+     "calls": 3408985,
+     "total_fuel": 59079027678,
+     "self_fuel": 59079027678
+    },
+    "inside_collect": {
+     "calls": 3408985,
+     "total_fuel": 51092340965,
+     "self_fuel": 51092340965
+    },
+    "bridge_scan": {
+     "calls": 3382467,
+     "total_fuel": 49994019605,
+     "self_fuel": 49994019605
+    },
+    "context": {
+     "calls": 495,
+     "total_fuel": 30949611570,
+     "self_fuel": 30949611570
+    },
+    "distance_range": {
+     "calls": 3408985,
+     "total_fuel": 26754647327,
+     "self_fuel": 26754647327
+    },
+    "bridge_collect": {
+     "calls": 3382467,
+     "total_fuel": 4807971782,
+     "self_fuel": 4807971782
+    },
+    "fallback_bridge": {
+     "calls": 33640,
+     "total_fuel": 2934010151,
+     "self_fuel": 2934010151
+    },
+    "indexed_distance": {
+     "calls": 3408985,
+     "total_fuel": 88674469030,
+     "self_fuel": 1557906143
+    },
+    "bridge_arithmetic_check": {
+     "calls": 3382467,
+     "total_fuel": 970768029,
+     "self_fuel": 970768029
+    },
+    "distance": {
+     "calls": 3408985,
+     "total_fuel": 2955630765984,
+     "self_fuel": 800522005
+    },
+    "bridge": {
+     "calls": 3416107,
+     "total_fuel": 59924622593,
+     "self_fuel": 693790948
+    },
+    "indexed_inside": {
+     "calls": 3408985,
+     "total_fuel": 2866155774949,
+     "self_fuel": 548846585
+    },
+    "indexed_quartile": {
+     "calls": 3408985,
+     "total_fuel": 1064289242157,
+     "self_fuel": 548846585
+    },
+    "indexed_bridge": {
+     "calls": 3382467,
+     "total_fuel": 55322891305,
+     "self_fuel": 520899918
+    },
+    "quartile": {
+     "calls": 3416107,
+     "total_fuel": 1064754822667,
+     "self_fuel": 464562064
+    },
+    "linear_fallback": {
+     "calls": 40762,
+     "total_fuel": 2938190757,
+     "self_fuel": 3845872
+    },
+    "fallback_quartile": {
+     "calls": 7122,
+     "total_fuel": 334734,
+     "self_fuel": 334734
+    }
+   }
+  }
+ },
+ "arachne-stage2": {
+  "benchy": {
+   "module_total_fuel": 51871819043,
+   "degraded": false,
+   "non_fatal_errors": 0,
+   "gcode_bytes": 4705596,
+   "scopes": {
+    "inside_scan": {
+     "calls": 75661,
+     "total_fuel": 18576481888,
+     "self_fuel": 18576481888
+    },
+    "quartile_scan": {
+     "calls": 75661,
+     "total_fuel": 18073138170,
+     "self_fuel": 18073138170
+    },
+    "context": {
+     "calls": 240,
+     "total_fuel": 4698024452,
+     "self_fuel": 4698024452
+    },
+    "distance_seed": {
+     "calls": 75661,
+     "total_fuel": 1186107048,
+     "self_fuel": 1186107048
+    },
+    "quartile_collect": {
+     "calls": 75661,
+     "total_fuel": 843387867,
+     "self_fuel": 843387867
+    },
+    "inside_collect": {
+     "calls": 75661,
+     "total_fuel": 770960524,
+     "self_fuel": 770960524
+    },
+    "fallback_bridge": {
+     "calls": 21303,
+     "total_fuel": 705191934,
+     "self_fuel": 705191934
+    },
+    "distance_range": {
+     "calls": 75661,
+     "total_fuel": 522716364,
+     "self_fuel": 522716364
+    },
+    "bridge_scan": {
+     "calls": 49607,
+     "total_fuel": 353864932,
+     "self_fuel": 353864932
+    },
+    "bridge_collect": {
+     "calls": 49607,
+     "total_fuel": 46616387,
+     "self_fuel": 46616387
+    },
+    "indexed_distance": {
+     "calls": 75661,
+     "total_fuel": 1743400489,
+     "self_fuel": 34577077
+    },
+    "distance": {
+     "calls": 75661,
+     "total_fuel": 21120801333,
+     "self_fuel": 17777011
+    },
+    "bridge_arithmetic_check": {
+     "calls": 49607,
+     "total_fuel": 14237209,
+     "self_fuel": 14237209
+    },
+    "bridge": {
+     "calls": 70910,
+     "total_fuel": 1142058186,
+     "self_fuel": 12505764
+    },
+    "indexed_inside": {
+     "calls": 75661,
+     "total_fuel": 19359623833,
+     "self_fuel": 12181421
+    },
+    "indexed_quartile": {
+     "calls": 75661,
+     "total_fuel": 18928707458,
+     "self_fuel": 12181421
+    },
+    "quartile": {
+     "calls": 75661,
+     "total_fuel": 18938997354,
+     "self_fuel": 10289896
+    },
+    "indexed_bridge": {
+     "calls": 49607,
+     "total_fuel": 408120797,
+     "self_fuel": 7639478
+    },
+    "linear_fallback": {
+     "calls": 21303,
+     "total_fuel": 707194416,
+     "self_fuel": 2002482
+    }
+   }
+  },
+  "base": {
+   "module_total_fuel": 471589281230,
+   "degraded": false,
+   "non_fatal_errors": 0,
+   "gcode_bytes": 20994802,
+   "scopes": {
+    "inside_scan": {
+     "calls": 322576,
+     "total_fuel": 267174374404,
+     "self_fuel": 267174374404
+    },
+    "quartile_scan": {
+     "calls": 322576,
+     "total_fuel": 89736286074,
+     "self_fuel": 89736286074
+    },
+    "context": {
+     "calls": 495,
+     "total_fuel": 30713398561,
+     "self_fuel": 30713398561
+    },
+    "distance_seed": {
+     "calls": 322576,
+     "total_fuel": 5978308706,
+     "self_fuel": 5978308706
+    },
+    "quartile_collect": {
+     "calls": 322576,
+     "total_fuel": 5492294141,
+     "self_fuel": 5492294141
+    },
+    "inside_collect": {
+     "calls": 322576,
+     "total_fuel": 4776788272,
+     "self_fuel": 4776788272
+    },
+    "bridge_scan": {
+     "calls": 320187,
+     "total_fuel": 4557187926,
+     "self_fuel": 4557187926
+    },
+    "distance_range": {
+     "calls": 322576,
+     "total_fuel": 2863822210,
+     "self_fuel": 2863822210
+    },
+    "bridge_collect": {
+     "calls": 320187,
+     "total_fuel": 461179966,
+     "self_fuel": 461179966
+    },
+    "fallback_bridge": {
+     "calls": 2389,
+     "total_fuel": 274739827,
+     "self_fuel": 274739827
+    },
+    "indexed_distance": {
+     "calls": 322576,
+     "total_fuel": 8989548148,
+     "self_fuel": 147417232
+    },
+    "bridge_arithmetic_check": {
+     "calls": 320187,
+     "total_fuel": 91893669,
+     "self_fuel": 91893669
+    },
+    "distance": {
+     "calls": 322576,
+     "total_fuel": 281068396659,
+     "self_fuel": 75751099
+    },
+    "bridge": {
+     "calls": 322576,
+     "total_fuel": 5500120468,
+     "self_fuel": 65585716
+    },
+    "indexed_inside": {
+     "calls": 322576,
+     "total_fuel": 272003097412,
+     "self_fuel": 51934736
+    },
+    "indexed_quartile": {
+     "calls": 322576,
+     "total_fuel": 95280514951,
+     "self_fuel": 51934736
+    },
+    "indexed_bridge": {
+     "calls": 320187,
+     "total_fuel": 5067676690,
+     "self_fuel": 49308798
+    },
+    "quartile": {
+     "calls": 322576,
+     "total_fuel": 95324385287,
+     "self_fuel": 43870336
+    },
+    "linear_fallback": {
+     "calls": 2389,
+     "total_fuel": 274964393,
+     "self_fuel": 224566
+    }
+   }
+  }
+ }
+}

@@ -1,3 +1,13 @@
+// -----------------------------------------------------------------------------
+// Portions of this file are derived from OrcaSlicer, Bambu Studio, PrusaSlicer,
+// and Slic3r, which are licensed under the GNU Affero General Public License,
+// version 3 (AGPLv3).
+//
+// Original C++ source path: src/libslic3r/Slicing.cpp
+//
+// This file is an LLM-generated Rust port of the original C++ implementation,
+// adapted for the Pinch 'n Print architecture.
+// -----------------------------------------------------------------------------
 //! Deterministic resolution of typed configuration scope deltas.
 
 use std::collections::BTreeMap;
@@ -7,8 +17,9 @@ use slicer_ir::slice_ir::cli_bool_spelling;
 use slicer_ir::{ConfigResolutionError, ConfigValue, ResolvedConfig};
 
 use crate::{
-    expand_automatic_values, scope_denial_label, ConfigSchemaRegistry, ConfigScope,
-    ExpansionContext, ExpansionError, RegistryEntry, ScopeDelta, ScopedConfig,
+    canonical_config_key, expand_automatic_values, scope_denial_label, ConfigSchemaRegistry,
+    ConfigScope, ExpansionContext, ExpansionError, RegistryEntry, ScopeDelta, ScopedConfig,
+    CONFIG_KEY_ALIASES,
 };
 
 /// The object-level planning values needed to construct the shared Z grid.
@@ -150,6 +161,19 @@ fn apply_delta(
         return Ok(());
     };
 
+    // Ingestion deliberately retains authored spellings. Reject ambiguity
+    // within a scope before canonicalization; different scopes still override.
+    for (legacy, canonical) in CONFIG_KEY_ALIASES {
+        if delta.values.contains_key(legacy) && delta.values.contains_key(canonical) {
+            return Err(ConfigResolutionError::TypeMismatch {
+                key: format!("{canonical} and {legacy}"),
+                expected: "one config key",
+                actual: "both config keys supplied".to_owned(),
+            }
+            .into());
+        }
+    }
+
     // Eligibility gate: every authored key must be statable at the scope
     // carrying it. Scope instances share their family's policy, so `scope`
     // itself is the authority rather than a caller-supplied roster. The check
@@ -157,18 +181,22 @@ fn apply_delta(
     // never leave a partially applied scope behind.
     let admission = registry.admission_set(scope);
     for (key, _) in delta.iter() {
+        let key = canonical_config_key(key);
         if !admission.contains(key) {
             return Err(ResolutionError::ScopeDenied {
-                key: key.clone(),
+                key: key.to_owned(),
                 scope: scope.clone(),
             });
         }
     }
 
     for (key, value) in delta.iter() {
+        let key = canonical_config_key(key);
+        // Typed fields and extensions share the registry's numerical contract.
+        // Validate before extraction, including before any unsigned conversion.
+        validate_extension(registry, key, value)?;
         if !config.apply_cli_key(key, value)? {
-            validate_extension(registry, key, value)?;
-            config.extensions.insert(key.clone(), value.clone());
+            config.extensions.insert(key.to_owned(), value.clone());
         }
     }
     Ok(())
@@ -182,9 +210,10 @@ fn apply_delta(
 /// - it has a registry default;
 /// - it is not a `selector` (a selector value travels as a selector value, not
 ///   as a delta);
-/// - it is not a `declare_resolved_config!` field. Typed fields carry their own
-///   defaults through `ResolvedConfig::default()`, and a seeded extension would
-///   shadow the typed value because `to_config_map` merges `extensions` last.
+/// - its canonical identity is not a `declare_resolved_config!` field. Typed
+///   fields carry their own defaults through `ResolvedConfig::default()`, and a
+///   seeded extension would shadow the typed value because `to_config_map`
+///   merges `extensions` last.
 ///   `apply_cli_key` cannot test this because `plain` rows also return
 ///   `Ok(false)`; membership in `ResolvedConfig::typed_field_keys()` is the
 ///   authority.
@@ -206,7 +235,9 @@ fn seed_registry_defaults(
         if entry.selector {
             continue;
         }
-        if ResolvedConfig::typed_field_keys().contains(&key) {
+        // Alias declarations must not seed a second extension identity that
+        // diverges from the typed canonical field after scoped resolution.
+        if ResolvedConfig::typed_field_keys().contains(&canonical_config_key(key)) {
             continue;
         }
         let Some(default) = entry.default.as_ref() else {
@@ -313,7 +344,7 @@ fn render_type_name(field_type: &str) -> &'static str {
     }
 }
 
-/// Validate one `extensions` value against its registry declaration.
+/// Validate one authored or seeded value against its registry declaration.
 ///
 /// An undeclared key is retained untyped (the registry cannot type it); a
 /// declared key must match the declared wire type and, for numeric types, its
@@ -628,8 +659,12 @@ fn validate_height(object_id: &str, height: f64) -> Result<(), ResolutionError> 
 ///
 /// The composed profile follows canonical `layer_height_profile_from_ranges`
 /// (`Slicing.cpp`): the fixed first-layer interval `[0, first_layer_height)` is
-/// retained first; ranges then iterate in ascending `(min_z, max_z,
-/// range_index)` order, so an earlier-starting range keeps an overlap and trims
+/// retained first, representing world Z `[raft_offset, raft_offset +
+/// first_layer_height)`. Authored range endpoints are world-space Z millimetres;
+/// subtracting `raft_offset` translates them onto the object-local profile axis.
+/// Ranges below that axis are skipped or clamped at zero. Ranges then iterate in
+/// ascending authored `(min_z, max_z, range_index)` order, so an earlier-starting
+/// range keeps an overlap and trims
 /// a later range's low edge to the last retained high. Uncovered gaps — and the
 /// tail up to `object_height` — use the resolved base `layer_height`. Adjacent
 /// equal-height segments are coalesced, so the result is the minimal exact
@@ -650,6 +685,7 @@ pub fn query_layer_height_profile(
     scoped: &ScopedConfig,
     object_id: &str,
     object_height: f64,
+    raft_offset: f64,
     expansion: &ExpansionContext,
 ) -> Result<Vec<HeightProfileSegment>, ResolutionError> {
     validate_height(object_id, object_height)?;
@@ -700,6 +736,11 @@ pub fn query_layer_height_profile(
     });
 
     for (min_z, max_z, _, height) in ranges {
+        let min_z = (min_z - raft_offset).max(0.0);
+        let max_z = max_z - raft_offset;
+        if max_z <= 0.0 {
+            continue;
+        }
         // A range fully inside retained coverage contributes nothing; this is
         // also what stops a range at `0.0` from duplicating the synthetic
         // first-layer interval.
@@ -824,7 +865,11 @@ pub fn layer_top_zs(segments: &[HeightProfileSegment], object_height: f64) -> Ve
 /// All object heights are validated before any scope stack is resolved, so an
 /// invalid height rejects the query atomically. Each record carries the
 /// explicit object-local layer-top schedule derived from the object's composed
-/// layer-height profile alongside the base scalars.
+/// layer-height profile alongside the base scalars. All object configs resolve
+/// before computing the shared raft offset, matching the guest's displacement
+/// of every object by the highest raft top. Authored world-space range endpoints
+/// are shifted by that offset before composition; the retained fixed first-layer
+/// interval represents world Z `[raft_offset, raft_offset + first_layer_height)`.
 pub fn query_z_grid(
     registry: &ConfigSchemaRegistry,
     scoped: &ScopedConfig,
@@ -840,7 +885,7 @@ pub fn query_z_grid(
         }
     }
 
-    object_heights
+    let configs = object_heights
         .iter()
         .map(|(object_id, object_height)| {
             let config = resolve_scope_stack(
@@ -853,16 +898,41 @@ pub fn query_z_grid(
                 expansion,
             )?;
             let support_raft_layers = support_raft_layers(&config)?;
-            let profile =
-                query_layer_height_profile(registry, scoped, object_id, *object_height, expansion)?;
+            validate_height(object_id, config.layer_height)?;
+            validate_height(object_id, config.first_layer_height)?;
+            Ok((object_id, *object_height, config, support_raft_layers))
+        })
+        .collect::<Result<Vec<_>, ResolutionError>>()?;
+
+    // Mirror `raft_top` in modules/core-modules/layer-planner-default/src/lib.rs:
+    // the guest adds this global displacement even to objects without a raft.
+    let raft_offset = configs
+        .iter()
+        .filter(|(_, _, _, raft_layers)| *raft_layers > 0)
+        .map(|(_, _, config, raft_layers)| {
+            config.first_layer_height + (f64::from(*raft_layers) - 1.0) * config.layer_height
+        })
+        .fold(0.0, f64::max);
+
+    configs
+        .into_iter()
+        .map(|(object_id, object_height, config, support_raft_layers)| {
+            let profile = query_layer_height_profile(
+                registry,
+                scoped,
+                object_id,
+                object_height,
+                raft_offset,
+                expansion,
+            )?;
 
             Ok(ResolvedObjectLayerConfig {
                 object_id: object_id.clone(),
-                object_height: *object_height,
+                object_height,
                 layer_height: config.layer_height,
                 first_layer_height: config.first_layer_height,
                 support_raft_layers,
-                layer_z_tops: layer_top_zs(&profile, *object_height),
+                layer_z_tops: layer_top_zs(&profile, object_height),
             })
         })
         .collect()

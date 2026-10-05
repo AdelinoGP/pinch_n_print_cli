@@ -1007,6 +1007,18 @@ identical inputs and comparing the results — which claims stability, not
 correctness, and never substitutes for an independent expectation.
 _Avoid_: self-test, mirror.
 
+### Adoption reference
+A preserved ordinary-mode output for a fixed supported job, used to judge
+whether a proposed execution mode preserves that job's output. Establishes
+equivalence to ordinary behavior, not independent geometric correctness or
+acceptance of the proposed mode.
+_Avoid_: correctness oracle (for an ordinary-generated reference).
+
+### Reference freeze
+The boundary after which a reference set's identity is fixed before evaluating
+the proposed execution mode. A changed reference belongs to a new preparation
+attempt, not a repair of the evidence for a comparison already underway.
+
 ### Loud skip
 The discipline governing fixture-dependent coverage: a test that cannot obtain
 its fixture must fail loudly, or be explicitly gated behind a feature or

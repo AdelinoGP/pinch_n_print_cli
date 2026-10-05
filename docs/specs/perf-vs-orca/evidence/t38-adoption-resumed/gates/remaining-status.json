@@ -1,0 +1,88 @@
+{
+  "status": "FACT_PASS_WITH_DISPLAY_CONFLICTS",
+  "authorization": "Executed only the previously unrun AC-5 self-baseline and AC-N3 overlap commands after main determination.",
+  "presenter_conflict_diagnosis": "../verdict-diagnosis/diagnosis.md",
+  "original_blocked_records_preserved": [
+    "verification-status.json",
+    "continuation-status.json",
+    "test-slicer-core-perimeter-spatial-tdd-command-error.log"
+  ],
+  "actual_focused_results": {
+    "AC1_AC3N_ACN2_core": {
+      "command": "cargo test -p slicer-core --features host-algos,perimeter-spatial-test-support --test perimeter_spatial_tdd -- --nocapture",
+      "cargo_exit_code": 0,
+      "passed": 3,
+      "failed": 0,
+      "test_names": [
+        "exact_queries_match_legacy",
+        "accelerated_mode_exercised_not_vacuous",
+        "fallback_paths_are_nonvacuous"
+      ],
+      "log": "continuation-core-spatial.log",
+      "original_malformed_invocation_executed_zero_tests_and_was_not_retried": true
+    },
+    "AC2_capture": {
+      "command": "cargo xtask test --summary -p slicer-runtime --features perimeter-spatial-test-support --test integration -- perimeter_spatial_capture_and_nonvacuity --nocapture",
+      "cargo_exit_code": 0,
+      "passed": 1,
+      "failed": 0,
+      "test_name": "perimeter_spatial_capture_and_nonvacuity",
+      "xtask_display_verdict": "FAIL",
+      "classification": "DISPLAY_CONFLICT",
+      "diagnosis": "The known bare-panics scanner treats recovered panic-hook lines as failures; the passing Cargo result and named assertion test are authoritative for this AC result.",
+      "diagnosis_evidence": "../verdict-diagnosis/diagnosis.md",
+      "full_log": "continuation-runtime-capture-full.log",
+      "summary_log": "continuation-runtime-capture-summary.log",
+      "capture_was_not_rerun": true
+    },
+    "AC5_self_baseline": {
+      "command": "cargo xtask test --summary -p slicer-runtime --features perimeter-spatial-test-support --test integration -- perimeter_spatial_self_baseline --nocapture",
+      "cargo_exit_code": 0,
+      "passed": 3,
+      "failed": 0,
+      "ignored": 0,
+      "test_names": [
+        "perimeter_spatial_capture::perimeter_spatial_tests::perimeter_spatial_self_baseline_native_indexed",
+        "perimeter_spatial_capture::perimeter_spatial_tests::perimeter_spatial_self_baseline_native_legacy",
+        "perimeter_spatial_capture::perimeter_spatial_tests::perimeter_spatial_self_baseline_wasm"
+      ],
+      "baseline_assertions": "All three passed tests compare complete PerimeterIR postcard bytes against their own per-mode baselines; the WASM test also checks at least two captured prepared-region identities against the native identity set.",
+      "fixture_regeneration_or_update": false,
+      "xtask_display_verdict": "FAIL",
+      "classification": "DISPLAY_CONFLICT",
+      "diagnosis_evidence": "../verdict-diagnosis/diagnosis.md",
+      "full_log": "continuation-runtime-self-baseline-full.log",
+      "summary_log": "continuation-runtime-self-baseline-summary.log"
+    },
+    "ACN3_overlap": {
+      "command": "cargo xtask test --summary -p slicer-runtime --test integration -- overlap_is_inconclusive_and_never_keep --nocapture",
+      "cargo_exit_code": 0,
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "test_name": "overlap_is_inconclusive_and_never_keep",
+      "xtask_display_verdict": "PASS",
+      "classification": "PASS",
+      "full_log": "continuation-runtime-overlap-full.log",
+      "summary_log": "continuation-runtime-overlap-summary.log"
+    }
+  },
+  "freshness_and_preflight": {
+    "gated_runtime_commands_use_cargo_xtask_test": true,
+    "ordinary_guest_freshness_preflight": "Ran by each cargo xtask test invocation before Cargo tests; no preflight/freshness error was reported.",
+    "test_quality_report_preflight": "Report mode emitted 12 findings in 7 files; report-only and no focused test failure.",
+    "pnp_cli_artifact": "cargo xtask test rebuilt the stale/absent development target artifact; no dist build was run."
+  },
+  "gaps": [],
+  "scope": {
+    "tests_rerun": [
+      "The syntax-corrected core test ran once under the explicit new main authorization.",
+      "AC2 capture was not rerun."
+    ],
+    "dist_build": false,
+    "acceptance_campaign": false,
+    "workspace_test": false,
+    "baseline_fixtures_changed": false,
+    "protected_sources_tools_references_or_tracker_edited": false
+  }
+}

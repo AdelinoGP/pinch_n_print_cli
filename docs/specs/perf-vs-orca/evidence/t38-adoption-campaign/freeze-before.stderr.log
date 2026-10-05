@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "D:\slicerProject\pinch_n_print_cli_2\docs\specs\perf-vs-orca\evidence\t40-reference-preparation\verify-freeze.py", line 126, in <module>
+    main()
+    ~~~~^^
+  File "D:\slicerProject\pinch_n_print_cli_2\docs\specs\perf-vs-orca\evidence\t40-reference-preparation\verify-freeze.py", line 48, in main
+    assert inventory(Path(manifest["snapshot_root"])) == manifest["snapshot_sha256"], (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ordinary snapshot identity changed

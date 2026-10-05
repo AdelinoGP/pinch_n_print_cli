@@ -76,8 +76,14 @@ fn integrated_parity_traditional_support() {
         ),
         // Fail-closed migration keys (traditional-support.toml manifest
         // defaults).
-        ("support_angle".to_string(), slicer_ir::ConfigValue::Float(60.0)),
-        ("support_speed".to_string(), slicer_ir::ConfigValue::Float(50.0)),
+        (
+            "support_angle".to_string(),
+            slicer_ir::ConfigValue::Float(60.0),
+        ),
+        (
+            "support_speed".to_string(),
+            slicer_ir::ConfigValue::Float(50.0),
+        ),
         (
             "support_interface_spacing".to_string(),
             slicer_ir::ConfigValue::Float(0.4),

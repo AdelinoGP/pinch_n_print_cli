@@ -72,11 +72,17 @@ fn integrated_parity_tree_support() {
             "support_bottom_interface_spacing".to_string(),
             ConfigValue::Float(0.4),
         ),
-        ("support_interface_flow".to_string(), ConfigValue::Percent(100.0)),
+        (
+            "support_interface_flow".to_string(),
+            ConfigValue::Percent(100.0),
+        ),
         ("tree_support_wall_count".to_string(), ConfigValue::Int(1)),
         (
             "support_line_width".to_string(),
-            ConfigValue::FloatOrPercent { value: 0.0, is_percent: false },
+            ConfigValue::FloatOrPercent {
+                value: 0.0,
+                is_percent: false,
+            },
         ),
     ])));
     let mut wasm_arena = LayerArena::new();

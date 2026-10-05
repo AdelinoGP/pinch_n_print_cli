@@ -133,7 +133,12 @@ fn run_wasm(layer: u32) -> Vec<Vec<ExPolygon>> {
         pool,
         Some(wasm_cache::compiled_component_at(
             &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("..\\..\\modules\\core-modules\\raft-default\\raft-default.wasm"),
+                .join("..")
+                .join("..")
+                .join("modules")
+                .join("core-modules")
+                .join("raft-default")
+                .join("raft-default.wasm"),
         )),
         module.claims(),
         Arc::clone(module.config_view()),

@@ -52,6 +52,12 @@ fn integrated_parity_gyroid_infill() {
     let mut bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
     let mut region_map = RegionMapIR::default();
     let resolved = ResolvedConfig {
+        // The region pool is the effective config consumed by both transports;
+        // keep its declared width aligned with the module-level test config
+        // (host-expanded 1.125 x 0.4 nozzle), mirroring the rectilinear parity
+        // fixture. Left at the `ResolvedConfig::default()` 0.0 the native leg
+        // resolves a per-region width of zero and emits no paths at all.
+        line_width: 0.45,
         sparse_fill_holder: "com.core.gyroid-infill".to_string(),
         ..Default::default()
     };

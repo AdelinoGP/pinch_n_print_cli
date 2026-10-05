@@ -1613,6 +1613,7 @@ impl WasmRuntimeDispatcher {
         config_view: &slicer_ir::ConfigView,
         mesh_ir: Arc<slicer_ir::MeshIR>,
         layers: &[slicer_ir::LayerCollectionIR],
+        ir_writes: &[String],
     ) -> Result<Vec<host::FinalizationBuilderPush>, DispatchError> {
         use slicer_schema::export_for_stage_id;
         let export_name = export_for_stage_id(stage_id).unwrap_or("unknown");
@@ -1643,7 +1644,8 @@ impl WasmRuntimeDispatcher {
 
         let ctx = HostExecutionContextBuilder::new(module_id.to_string(), 0.0, 0.0)
             .mesh_ir(Some(mesh_ir))
-            .build();
+            .build()
+            .with_finalization_ir_writes(ir_writes);
         let mut store = self.new_call_store(ctx);
 
         let config_handle = store
@@ -1715,6 +1717,15 @@ impl WasmRuntimeDispatcher {
                 reason: e.to_string(),
             })?;
 
+        if let Some(reason) = store.data().finalization_write_denial.clone() {
+            return Err(DispatchError {
+                module_id: module_id.to_string(),
+                stage_id: stage_id.clone(),
+                export_name: export_name.to_string(),
+                phase: DispatchPhase::TypedExportCall,
+                reason,
+            });
+        }
         call_result.map_err(|module_err| DispatchError {
             module_id: module_id.to_string(),
             stage_id: stage_id.clone(),
@@ -2348,7 +2359,7 @@ pub fn support_carrier_regions(
     carriers
 }
 
-fn module_receives_slice_region(
+pub(crate) fn module_receives_slice_region(
     module_claims: &[String],
     layer: &GlobalLayer,
     region: &slicer_ir::SlicedRegion,
@@ -3063,13 +3074,12 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
                     message: "native entry family does not match layer runner".to_string(),
                 });
             };
-            let request = crate::marshal::native::build_native_layer_request_with_raft(
+            let request = crate::marshal::native::build_native_layer_request_for_layer(
                 stage_export,
-                layer.index,
+                layer,
                 &input,
                 module,
                 &held_claims_map,
-                layer.is_raft,
             );
             let response =
                 entry(&request).map_err(|e| slicer_ir::LayerStageError::FatalModule {
@@ -3142,11 +3152,11 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
                     let fields = by_config
                         .entry(plan.config)
                         .or_insert_with(|| {
-                            let region_config_map = resolved_config_to_map(map.config_for(&key));
-                            let view = slicer_ir::ConfigView::from_declared(
-                                &region_config_map,
-                                declared_keys.iter().map(String::as_str),
-                            );
+                            let view =
+                                slicer_scheduler::execution_plan::project_declared_config_view(
+                                    map.config_for(&key),
+                                    declared_keys.iter().map(String::as_str),
+                                );
                             host::config_view_to_data(&view).fields
                         })
                         .clone();
@@ -3293,12 +3303,14 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
                     e.code, e.fatal, e.message
                 ),
             })?;
-            return crate::marshal::native::commit_native_finalization_response(response, layers)
-                .map_err(|message| slicer_ir::FinalizationError::FatalModule {
-                    stage_id: stage_id.clone(),
-                    module_id: module.module_id.clone(),
-                    message,
-                });
+            return crate::marshal::native::commit_native_finalization_response(
+                response, module, stage_id, layers,
+            )
+            .map_err(|message| slicer_ir::FinalizationError::FatalModule {
+                stage_id: stage_id.clone(),
+                module_id: module.module_id.clone(),
+                message,
+            });
         }
         let module_id_str = module.module_id.as_str();
 
@@ -3310,6 +3322,7 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
             &module.config_view,
             input.mesh.clone(),
             layers,
+            module.ir_writes,
         ) {
             Ok(p) => p,
             Err(e) if e.phase == DispatchPhase::MissingComponent => {
@@ -3522,13 +3535,6 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
 // Safety: WasmRuntimeDispatcher is Sync because WasmEngine (wrapping wasmtime::Engine)
 // is Send+Sync, and all mutable state is created per-call (not shared).
 unsafe impl Sync for WasmRuntimeDispatcher {}
-
-/// Convert a [`ResolvedConfig`] struct into a flat `HashMap<ConfigKey, ConfigValue>`.
-fn resolved_config_to_map(
-    cfg: &slicer_ir::ResolvedConfig,
-) -> std::collections::HashMap<String, slicer_ir::ConfigValue> {
-    cfg.to_config_map()
-}
 
 // ── Layer-envelope helper (no LayerArena) ─────────────────────────────────────
 
@@ -3832,11 +3838,25 @@ pub fn deconstruct_layer_ctx(
     match stage_id {
         "Layer::Infill" | "Layer::InfillPostProcess" => {
             let infill = &ctx.infill_output;
-            if infill.sparse_paths.is_empty()
+            let empty = infill.sparse_paths.is_empty()
                 && infill.solid_paths.is_empty()
                 && infill.ironing_paths.is_empty()
-                && infill.raft_fill.is_empty()
-            {
+                && infill.raft_fill.is_empty();
+            if empty && stage_id == "Layer::InfillPostProcess" {
+                // The stage's contract is replace-with-complete-re-emit
+                // (ADR-0028 §Amendment Change 3), so an invocation that ran and
+                // re-emitted nothing has committed the EMPTY replacement set —
+                // a verdict, not an absence. Returning `Ok(None)` here instead
+                // preserved the prior `InfillIR` (the raw emitter envelope the
+                // infill-linker had just clipped to nothing), the containment
+                // hole localized by wayfinder ticket 35 and fixed by ticket 37.
+                // The `Layer::Infill` merge semantics below are unaffected: for
+                // that stage an empty output really is "no contribution".
+                return Ok(Some(LayerStageCommit::InfillPostProcess(
+                    crate::marshal::empty_infill_replacement(layer_index),
+                )));
+            }
+            if empty {
                 return Ok(None);
             }
             let ir = crate::marshal::convert_infill_output(infill, layer_index, authored)
@@ -4202,19 +4222,28 @@ fn apply_finalization_pushes(
                     .set_entity_order(layer_index, items)
                     .unwrap_or_else(|e| log::warn!("finalization: set_entity_order rejected: {e}"));
             }
+            host::FinalizationBuilderPush::Annotation(layer_index, annotation) => {
+                // Ticket 47: the WASM annotation relay lands in the same
+                // merge the native leg's `apply_to` performs, so the two
+                // transports commit identical annotation streams.
+                sdk_builder
+                    .push_annotation(layer_index, annotation)
+                    .unwrap_or_else(|e| log::warn!("finalization: push_annotation rejected: {e}"));
+            }
         }
     }
 
-    sdk_builder
-        .apply_to(layers)
-        .map_err(|msg| slicer_ir::FinalizationError::FatalModule {
+    let mut candidate = layers.clone();
+    sdk_builder.apply_to(&mut candidate).map_err(|msg| {
+        slicer_ir::FinalizationError::FatalModule {
             stage_id: stage_id.clone(),
             module_id: module_id.to_string(),
             message: format!("finalization merge failed: {msg}"),
-        })?;
+        }
+    })?;
 
     for (z, paths) in legacy_synthetic_layers {
-        let new_index = layers.len() as u32;
+        let new_index = candidate.len() as u32;
         let id_gen = LayerEntityIdGen::new();
         let entities: Vec<_> = paths
             .into_iter()
@@ -4236,7 +4265,7 @@ fn apply_finalization_pushes(
                 }
             })
             .collect();
-        layers.push(LayerCollectionIR {
+        candidate.push(LayerCollectionIR {
             global_layer_index: new_index,
             z,
             ordered_entities: entities,
@@ -4244,5 +4273,6 @@ fn apply_finalization_pushes(
         });
     }
 
+    *layers = candidate;
     Ok(slicer_ir::FinalizationOutput::Success)
 }

@@ -494,6 +494,11 @@ const GETTERS: &[&str] = &[
     "get_float",
     "get_string",
     "get_abs_value",
+    "require_bool",
+    "require_int",
+    "require_float",
+    "require_string",
+    "require_abs_value",
 ];
 
 /// Connector methods a chain may pass through between the read and the
@@ -1074,13 +1079,9 @@ fn reads_all() -> Vec<(String, String, String)> {
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
-            for (key, loc) in find_config_reads(guest, &name, &text) {
-                if declared.contains(&key) {
-                    continue;
-                }
-                if claims_support_family && (key == "support_type" || key == "support_family") {
-                    continue;
-                }
+            for (key, loc) in
+                undeclared_config_reads(guest, &name, &text, &declared, claims_support_family)
+            {
                 if seen.insert((guest.to_string(), key.clone())) {
                     reads.push((guest.to_string(), key, loc));
                 }
@@ -1088,6 +1089,22 @@ fn reads_all() -> Vec<(String, String, String)> {
         }
     }
     reads
+}
+
+fn undeclared_config_reads(
+    guest: &str,
+    name: &str,
+    text: &str,
+    declared: &BTreeSet<String>,
+    claims_support_family: bool,
+) -> Vec<(String, String)> {
+    find_config_reads(guest, name, text)
+        .into_iter()
+        .filter(|(key, _)| {
+            !declared.contains(key)
+                && !(claims_support_family && (key == "support_type" || key == "support_family"))
+        })
+        .collect()
 }
 
 /// Declared `[config.schema.<key>]` table header keys (indented or not).
@@ -1158,7 +1175,8 @@ fn guest_config_literal_fallback_census_is_zero() {
 fn guest_fallback_detector_is_calibrated() {
     // ── Flagged shapes (verbatim baseline snippets) ────────────────────────
     let flagged: &[(&str, &str)] = &[
-        // direct — arachne-perimeters/src/lib.rs:153
+        // Historical direct read in `arachne_params_from_config`
+        // (`modules/core-modules/arachne-perimeters/src/lib.rs`).
         (
             "direct",
             r#"    let layer_height_mm = config.get_float("layer_height").unwrap_or(0.2);"#,
@@ -1203,7 +1221,8 @@ fn guest_fallback_detector_is_calibrated() {
             .filter(|value| value.is_finite() && *value > 0.0)
             .unwrap_or(0.2);"#,
         ),
-        // `config.and_then(|c| c.get_abs_value(..))` — infill-linker/src/connect.rs:49-51
+        // Historical `config.and_then(|c| c.get_abs_value(..))` read in
+        // `AnchorParams::from_config` (`modules/core-modules/infill-linker/src/connect.rs`).
         (
             "config.and_then(get_abs_value)",
             r#"        let anchor_length_max = config
@@ -1286,6 +1305,40 @@ mod tests {
         assert!(
             sites.is_empty(),
             "excluded form '{shape}' must not be flagged, found: {sites:?}"
+        );
+    }
+}
+
+#[test]
+fn guest_declared_read_detector_is_calibrated() {
+    let declared = manifest_declared_keys("[config.schema.declared_key]\ntype = \"float\"\n");
+    // Independent negative controls for every required accessor on
+    // `ConfigView` (`crates/slicer-ir/src/slice_ir.rs`), not generated from GETTERS.
+    let flagged = [
+        r#"config.require_bool("undeclared_key")?;"#,
+        r#"config.require_int("undeclared_key")?;"#,
+        r#"config.require_float("undeclared_key")?;"#,
+        r#"config.require_string("undeclared_key")?;"#,
+        r#"config.require_abs_value("undeclared_key", 0.4)?;"#,
+    ];
+    for snippet in flagged {
+        let reads =
+            undeclared_config_reads("calibration", "required.rs", snippet, &declared, false);
+        assert_eq!(
+            reads,
+            vec![("undeclared_key".to_string(), "required.rs:1".to_string())],
+            "must reject undeclared required read: {snippet}"
+        );
+    }
+    for snippet in [
+        r#"config.require_float("declared_key")?;"#,
+        r#"// config.require_float("undeclared_key")?;"#,
+        r#"#[cfg(test)] fn test_only() { config.require_float("undeclared_key")?; }"#,
+    ] {
+        assert!(
+            undeclared_config_reads("calibration", "required.rs", snippet, &declared, false)
+                .is_empty(),
+            "declared or non-production read must not be flagged: {snippet}"
         );
     }
 }

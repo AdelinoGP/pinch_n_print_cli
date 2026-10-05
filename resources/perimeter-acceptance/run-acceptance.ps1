@@ -182,11 +182,11 @@ function Convert-BenchRows {
         $cpu = Convert-ToDouble (Get-PropertyValue $raw @('cpu_s', 'cpu_seconds', 'process_cpu_s', 'process_cpu_seconds', 'cpu'))
         $wall = Convert-ToDouble (Get-PropertyValue $raw @('wall_s', 'wall_seconds', 'process_wall_s', 'process_wall_seconds', 'wall'))
         if ($null -eq $cpu -or $null -eq $wall) { throw "benchmark result lacks CPU/wall seconds: $ResultsPath" }
-        $markerValue = Get-PropertyValue $raw @('generator_marker', 'generator', 'marker', 'generator_claim', 'generator_name')
+        $markerValue = Get-PropertyValue $raw @('validated_generator', 'generator_marker', 'generator', 'marker', 'generator_claim', 'generator_name')
         $marker = if ($null -eq $markerValue -or [string]::IsNullOrWhiteSpace([string]$markerValue)) { $fallbackMarker } else { ([string]$markerValue).Trim().ToLowerInvariant() }
         $statusValue = Get-PropertyValue $raw @('status', 'completion_status', 'result')
         $degradedValue = Get-PropertyValue $raw @('degraded', 'degraded_count', 'preexisting_degraded')
-        $nonfatalValue = Get-PropertyValue $raw @('nonfatal_errors', 'non_fatal_errors', 'nonfatal', 'non_fatal', 'nonfatal_count')
+        $nonfatalValue = Get-PropertyValue $raw @('non_fatal_error_count', 'nonfatal_errors', 'non_fatal_errors', 'nonfatal', 'non_fatal', 'nonfatal_count')
         $fatalValue = Get-PropertyValue $raw @('fatal_errors', 'fatal_error_count', 'fatal')
         $rows.Add([PSCustomObject]@{
             label = $Label

@@ -1,0 +1,15 @@
+
+running 1 test
+test overlap_is_inconclusive_and_never_keep ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 366 filtered out; finished in 0.00s
+
+   Compiling sdk-finalization-guest v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host\test-guests\sdk-finalization-guest)
+   Compiling sdk-layer-infill-guest v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host\test-guests\sdk-layer-infill-guest)
+   Compiling sdk-postpass-text-guest v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host\test-guests\sdk-postpass-text-guest)
+   Compiling sdk-prepass-guest v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host\test-guests\sdk-prepass-guest)
+   Compiling slicer-runtime v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 10s
+warning: the following packages contain code that will be rejected by a future version of Rust: nom v3.2.1, quick-xml v0.22.0
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running tests\integration\main.rs (target\debug\deps\integration-8f33d9475ff30e07.exe)
