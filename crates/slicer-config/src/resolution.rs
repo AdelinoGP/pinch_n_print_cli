@@ -659,8 +659,12 @@ fn validate_height(object_id: &str, height: f64) -> Result<(), ResolutionError> 
 ///
 /// The composed profile follows canonical `layer_height_profile_from_ranges`
 /// (`Slicing.cpp`): the fixed first-layer interval `[0, first_layer_height)` is
-/// retained first; ranges then iterate in ascending `(min_z, max_z,
-/// range_index)` order, so an earlier-starting range keeps an overlap and trims
+/// retained first, representing world Z `[raft_offset, raft_offset +
+/// first_layer_height)`. Authored range endpoints are world-space Z millimetres;
+/// subtracting `raft_offset` translates them onto the object-local profile axis.
+/// Ranges below that axis are skipped or clamped at zero. Ranges then iterate in
+/// ascending authored `(min_z, max_z, range_index)` order, so an earlier-starting
+/// range keeps an overlap and trims
 /// a later range's low edge to the last retained high. Uncovered gaps — and the
 /// tail up to `object_height` — use the resolved base `layer_height`. Adjacent
 /// equal-height segments are coalesced, so the result is the minimal exact
@@ -681,6 +685,7 @@ pub fn query_layer_height_profile(
     scoped: &ScopedConfig,
     object_id: &str,
     object_height: f64,
+    raft_offset: f64,
     expansion: &ExpansionContext,
 ) -> Result<Vec<HeightProfileSegment>, ResolutionError> {
     validate_height(object_id, object_height)?;
@@ -731,6 +736,11 @@ pub fn query_layer_height_profile(
     });
 
     for (min_z, max_z, _, height) in ranges {
+        let min_z = (min_z - raft_offset).max(0.0);
+        let max_z = max_z - raft_offset;
+        if max_z <= 0.0 {
+            continue;
+        }
         // A range fully inside retained coverage contributes nothing; this is
         // also what stops a range at `0.0` from duplicating the synthetic
         // first-layer interval.
@@ -855,7 +865,11 @@ pub fn layer_top_zs(segments: &[HeightProfileSegment], object_height: f64) -> Ve
 /// All object heights are validated before any scope stack is resolved, so an
 /// invalid height rejects the query atomically. Each record carries the
 /// explicit object-local layer-top schedule derived from the object's composed
-/// layer-height profile alongside the base scalars.
+/// layer-height profile alongside the base scalars. All object configs resolve
+/// before computing the shared raft offset, matching the guest's displacement
+/// of every object by the highest raft top. Authored world-space range endpoints
+/// are shifted by that offset before composition; the retained fixed first-layer
+/// interval represents world Z `[raft_offset, raft_offset + first_layer_height)`.
 pub fn query_z_grid(
     registry: &ConfigSchemaRegistry,
     scoped: &ScopedConfig,
@@ -871,7 +885,7 @@ pub fn query_z_grid(
         }
     }
 
-    object_heights
+    let configs = object_heights
         .iter()
         .map(|(object_id, object_height)| {
             let config = resolve_scope_stack(
@@ -884,16 +898,41 @@ pub fn query_z_grid(
                 expansion,
             )?;
             let support_raft_layers = support_raft_layers(&config)?;
-            let profile =
-                query_layer_height_profile(registry, scoped, object_id, *object_height, expansion)?;
+            validate_height(object_id, config.layer_height)?;
+            validate_height(object_id, config.first_layer_height)?;
+            Ok((object_id, *object_height, config, support_raft_layers))
+        })
+        .collect::<Result<Vec<_>, ResolutionError>>()?;
+
+    // Mirror `raft_top` in modules/core-modules/layer-planner-default/src/lib.rs:
+    // the guest adds this global displacement even to objects without a raft.
+    let raft_offset = configs
+        .iter()
+        .filter(|(_, _, _, raft_layers)| *raft_layers > 0)
+        .map(|(_, _, config, raft_layers)| {
+            config.first_layer_height + (f64::from(*raft_layers) - 1.0) * config.layer_height
+        })
+        .fold(0.0, f64::max);
+
+    configs
+        .into_iter()
+        .map(|(object_id, object_height, config, support_raft_layers)| {
+            let profile = query_layer_height_profile(
+                registry,
+                scoped,
+                object_id,
+                object_height,
+                raft_offset,
+                expansion,
+            )?;
 
             Ok(ResolvedObjectLayerConfig {
                 object_id: object_id.clone(),
-                object_height: *object_height,
+                object_height,
                 layer_height: config.layer_height,
                 first_layer_height: config.first_layer_height,
                 support_raft_layers,
-                layer_z_tops: layer_top_zs(&profile, *object_height),
+                layer_z_tops: layer_top_zs(&profile, object_height),
             })
         })
         .collect()

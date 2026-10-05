@@ -1605,10 +1605,10 @@ fn region_map_for_synthetic_objects(objects: Vec<ObjectMesh>, object_id: &str) -
 // AC-1: config_delta_extruder_stamped_into_extensions
 //
 // Packet text says "for a region that overlaps a support_enforcer modifier
-// volume". However, the locked typed-kind filter (AC-Filter, PrintApply.cpp:590-594
-// parity) excludes support_enforcer / support_blocker from stamping. The test
-// therefore exercises the equivalent semantics on a modifier kind that IS in the
-// stamp list â€” cube_positive_n_negative.3mf's `negative_part` modifier whose
+// volume". However, the locked typed-kind filter (AC-Filter, `Print::apply` in
+// `PrintApply.cpp` parity) excludes support_enforcer / support_blocker from
+// stamping. The test therefore exercises the equivalent semantics on a
+// modifier kind that IS in the stamp list â€” cube_positive_n_negative.3mf's `negative_part` modifier whose
 // config_delta carries extruder=Int(0). Asserts that at least one RegionPlan
 // keyed on the parent object_id carries extensions["extruder"]=Int(0).
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

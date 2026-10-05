@@ -280,6 +280,31 @@ fn both_production_entry_points_share_range_resolution() {
     );
 }
 
+/// Regression: world-Z height ranges must be translated before the guest adds
+/// the shared raft displacement, not displaced along with the object afterwards.
+#[test]
+fn raft_offset_keeps_height_range_in_authored_world_z() {
+    let mesh = fixture_mesh();
+    let mut source = config_source();
+    source.insert("support_raft_layers".to_owned(), ConfigValue::Int(2));
+    let module_dirs = vec![core_modules_dir()];
+    let ranges = layer_ranges();
+    let expected = [0.2, 0.4, 0.6, 0.7, 0.8, 1.0, 1.2, 1.4];
+
+    // Observe the production layer plan, not emitted G-code: empty raft layers
+    // need not emit a ;Z: marker, but still belong to the scheduled Z grid.
+    let context = prepare_prepass_context(mesh, source, ranges, &module_dirs, true, false)
+        .expect("raft visual-debug prepass must succeed");
+    let prepass_tops: Vec<f32> = context
+        .plan
+        .global_layers
+        .iter()
+        .map(|layer| layer.z)
+        .collect();
+    assert_literal_schedule(&prepass_tops, &expected, "raft visual-debug prepass");
+    println!("raft world tops: prepass={prepass_tops:?}");
+}
+
 /// Assert that the region config at the layer whose top is `layer_top` carries
 /// `expected_infill_density`, resolved through the committed `RegionMapIR`.
 ///

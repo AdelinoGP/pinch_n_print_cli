@@ -11,6 +11,10 @@
 
 Perimeter generation repeatedly scans region-specific geometry for distance, sign, quartile, and bridge queries. TASK-561 needs an exact spatial acceleration that preserves current floating/integer arithmetic and source-order semantics, is shared only within one region invocation, and is evaluated under a reproducible compiler contract rather than an uncontrolled numerical build. The same coherent slice must also prove real Classic/Arachne pipeline use and provide strict CPU and wall evidence.
 
+### Amendment 1 (toolchain pin, owner-approved 2026-10-04 merge review)
+
+The Out of Scope exclusion of a repo-wide `rust-toolchain.toml` pin is superseded for this packet's own surfaces by the owner-approved amendment recorded during merge review on 2026-10-04. Commit `ee3ea8fe` added the pin deliberately to address CI Format/Clippy toolchain skew (floating stable was 1.98.1 while local development used 1.96.0, whose rustfmt output and Clippy lint set differed) and to keep the compiler aligned with the controlled-perimeter policy's exact identity, since that policy rejects other toolchains and a floating stable would break accelerated invocations after a rustup update. The run-time identity verification described in the original Out of Scope line is retained; the repository pin supplements it rather than replacing it.
+
 ## In Scope
 
 - Add `crates/slicer-core/src/perimeter_spatial.rs` with four separate trees in one immutable per-region context: f64 distance edges, neutral-X f64 sign intervals, neutral-X f64 quartile intervals, and outward-rounded f64 bridge boxes over integer coordinates.

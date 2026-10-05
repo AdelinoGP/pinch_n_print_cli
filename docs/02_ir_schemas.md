@@ -284,7 +284,13 @@ height. Non-finite `layer_height` text is rejected one step earlier as a
 `ConfigIngestionError::TypeMismatch` while the authored string is typed.
 
 Overlapping `layer_height` ranges compose by **earlier-starting** retention:
-ranges sort by `(min_z, max_z, source_index)`, the fixed first-layer interval is
+their authored world-space endpoints are translated to the object-local profile
+axis by subtracting the global highest raft top resolved from all object configs.
+The fixed first-layer interval represents world Z
+`[raft_offset, raft_offset + first_layer_height)` and retains against shifted
+ranges; ranges ending at or below local zero are skipped and starts are clamped
+to local zero. The guest adds the same global raft offset to every object.
+Ranges sort by `(min_z, max_z, source_index)`, the fixed first-layer interval is
 retained first, and each later range's low edge is **trimmed** to the last
 retained high, so an earlier range keeps the overlap. Uncovered intervals are
 **gap**-filled from the resolved object base height. Overlapping ranges that

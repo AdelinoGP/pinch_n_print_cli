@@ -668,8 +668,9 @@ const ORCA_CONFIG_ALIAS_KEYS: &[(&str, &str)] = &[
     // seam-placer / seam-planner-default read `seam_mode`; Orca names the
     // enum `seam_position`.
     ("seam_position", "seam_mode"),
-    // slicer-scheduler reads `spiral_vase` (execution_plan.rs
-    // `SPIRAL_VASE_CONFIG_KEY`); Orca names the bool `spiral_mode`.
+    // slicer-scheduler reads `spiral_vase` (`SPIRAL_VASE_CONFIG_KEY` in
+    // `crates/slicer-scheduler/src/execution_plan.rs`); Orca names the bool
+    // `spiral_mode`.
     ("spiral_mode", "spiral_vase"),
     // fuzzy-skin reads the non-namespaced `thickness` / `point_distance`;
     // Orca names them `fuzzy_skin_thickness` / `fuzzy_skin_point_distance`

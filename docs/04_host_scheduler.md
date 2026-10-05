@@ -885,7 +885,12 @@ the scattered resolvers and `overlay_resolved`:
 - `query_layer_height_profile` is the shared producer of the canonical
   layer-height profile: it composes the resolved object base height, the fixed
   first-layer interval, and every matching **layer range**'s `layer_height`
-  into literal `(z_start, z_end, height)` segments. `layer_top_zs` evaluates
+  into literal `(z_start, z_end, height)` segments. Range endpoints are authored
+  world-space Z: `query_z_grid` resolves all objects first and subtracts the
+  shared highest raft top before composing each object-local profile. The fixed
+  first-layer interval retains world Z `[raft_offset, raft_offset + first_layer_height)`;
+  ranges below the object are skipped or clamped at local zero. The guest adds
+  that same shared offset to every object's schedule. `layer_top_zs` evaluates
   that profile into the object-local top-Z schedule, so the schedule the guest
   plans against and the profile the host composed can never disagree.
 - `resolve_scope_stack` is called by `PrePass::RegionMapping` to resolve the
