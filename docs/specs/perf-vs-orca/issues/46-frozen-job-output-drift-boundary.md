@@ -1,7 +1,9 @@
 # Frozen-job output drift boundary
 
 Type: task
-Status: open
+Status: claimed
+Assignee: current OpenCode session (wayfinder), 2026-10-05 — human authorized
+this take from the open frontier; diagnosis only (no repair/re-measure/commit)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 
