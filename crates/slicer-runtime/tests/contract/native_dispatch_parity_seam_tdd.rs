@@ -124,6 +124,35 @@ fn module_id() -> slicer_ir::ModuleId {
     "com.test.sdk-layer-infill-parity".to_string()
 }
 
+fn commit_fixture_region_map(blackboard: &mut Blackboard, slice: &SliceIR, config: &ConfigView) {
+    use slicer_ir::{RegionKey, RegionMapIR, RegionPlan, ResolvedConfig};
+    let mut map = RegionMapIR::default();
+    let config = map.intern_config(ResolvedConfig {
+        extensions: config
+            .iter_entries()
+            .map(|(key, value)| (key.to_owned(), value.clone()))
+            .collect(),
+        ..Default::default()
+    });
+    for region in &slice.regions {
+        map.entries.insert(
+            RegionKey {
+                global_layer_index: slice.global_layer_index,
+                object_id: region.object_id.clone(),
+                region_id: region.region_id,
+                variant_chain: region.variant_chain.clone(),
+            },
+            RegionPlan {
+                config,
+                ..Default::default()
+            },
+        );
+    }
+    blackboard
+        .commit_region_map(Arc::new(map))
+        .expect("commit exact fixture region map");
+}
+
 fn wasm_live<'a>(
     module: &'a slicer_runtime::CompiledModule,
 ) -> (CompiledModuleLive<'a>, Arc<slicer_runtime::WasmComponent>) {
@@ -216,7 +245,8 @@ fn run_pair() -> (LayerStageCommit, LayerStageCommit) {
         Arc::clone(native_module.config_view()),
     )
     .with_native_entry(SdkLayerInfillModule::__slicer_native_entry());
-    let bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+    let mut bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+    commit_fixture_region_map(&mut bb, &non_empty_slice(), wasm_module.config_view());
     let mut wasm_arena = LayerArena::new();
     let mut native_arena = LayerArena::new();
     wasm_arena
@@ -231,8 +261,38 @@ fn run_pair() -> (LayerStageCommit, LayerStageCommit) {
         ..Default::default()
     };
     let stage: StageId = "Layer::Infill".to_string();
-    let mut wasm_input = crate::common::layer_input(&bb, &wasm_arena);
-    let mut native_input = crate::common::layer_input(&bb, &native_arena);
+    let wasm_index = crate::common::selection_for_module(
+        &stage,
+        &layer,
+        &wasm_module,
+        &bb,
+        wasm_arena.slice(),
+        None,
+    )
+    .expect("build wasm selection index");
+    let native_index = crate::common::selection_for_module(
+        &stage,
+        &layer,
+        &native_module,
+        &bb,
+        native_arena.slice(),
+        None,
+    )
+    .expect("build native selection index");
+    let mut wasm_input = crate::common::layer_input(
+        &bb,
+        &wasm_arena,
+        wasm_index
+            .selection_for(layer.index, wasm_module.module_id())
+            .expect("bound wasm selection"),
+    );
+    let mut native_input = crate::common::layer_input(
+        &bb,
+        &native_arena,
+        native_index
+            .selection_for(layer.index, native_module.module_id())
+            .expect("bound native selection"),
+    );
     wasm_input.paint_regions = Some(());
     native_input.paint_regions = Some(());
     let wasm = LayerStageRunner::run_stage(&dispatcher, &stage, &layer, &wasm_live, wasm_input)
@@ -259,7 +319,8 @@ fn run_native_only() -> LayerStageCommit {
         Arc::clone(native_module.config_view()),
     )
     .with_native_entry(SdkLayerInfillModule::__slicer_native_entry());
-    let bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+    let mut bb = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+    commit_fixture_region_map(&mut bb, &non_empty_slice(), native_module.config_view());
     let mut arena = LayerArena::new();
     arena
         .set_slice(non_empty_slice())
@@ -270,7 +331,22 @@ fn run_native_only() -> LayerStageCommit {
         ..Default::default()
     };
     let stage: StageId = "Layer::Infill".to_string();
-    let mut input = crate::common::layer_input(&bb, &arena);
+    let index = crate::common::selection_for_module(
+        &stage,
+        &layer,
+        &native_module,
+        &bb,
+        arena.slice(),
+        None,
+    )
+    .expect("build native selection index");
+    let mut input = crate::common::layer_input(
+        &bb,
+        &arena,
+        index
+            .selection_for(layer.index, native_module.module_id())
+            .expect("bound native selection"),
+    );
     input.paint_regions = Some(());
     LayerStageRunner::run_stage(&dispatcher, &stage, &layer, &native_live, input)
         .expect("native dispatch")
@@ -303,7 +379,8 @@ fn native_support_dispatch_preserves_per_region_origins() {
         Arc::clone(module.config_view()),
     )
     .with_native_entry(NativeStageEntry::Layer(native_support_entry));
-    let blackboard = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+    let mut blackboard = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+    commit_fixture_region_map(&mut blackboard, &support_slice(), module.config_view());
     let mut arena = LayerArena::new();
     arena.set_slice(support_slice()).expect("set support slice");
     let layer = GlobalLayer {
@@ -311,7 +388,22 @@ fn native_support_dispatch_preserves_per_region_origins() {
         z: 1.0,
         ..Default::default()
     };
-    let input = crate::common::layer_input(&blackboard, &arena);
+    let index = crate::common::selection_for_module(
+        "Layer::Support",
+        &layer,
+        &module,
+        &blackboard,
+        arena.slice(),
+        None,
+    )
+    .expect("build support selection index");
+    let input = crate::common::layer_input(
+        &blackboard,
+        &arena,
+        index
+            .selection_for(layer.index, module.module_id())
+            .expect("bound support selection"),
+    );
     let commit = LayerStageRunner::run_stage(
         &dispatcher,
         &"Layer::Support".to_string(),

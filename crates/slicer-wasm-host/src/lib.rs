@@ -19,6 +19,7 @@ pub mod pool;
 /// Host-side fuel/scope profiling: mark records, the scope-stack fold, and the
 /// process-global scope-name registry (ADR-0055).
 pub mod profiling;
+pub mod selection;
 pub mod support_aggregation;
 pub mod support_territory;
 pub mod traits;

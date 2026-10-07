@@ -63,6 +63,7 @@ fn native_and_wasm_layer_views_are_field_identical() {
         prepared_regions: None,
         prepared_perimeter_source_regions: None,
         infill: None,
+        selection: None,
     };
     let native = slicer_wasm_host::marshal::native::build_native_layer_request(
         "Layer::Infill",
@@ -373,6 +374,7 @@ fn native_projection_filters_and_resolves_configured_regions() {
         prepared_regions: None,
         prepared_perimeter_source_regions: None,
         infill: None,
+        selection: None,
     };
     let native = slicer_wasm_host::marshal::native::build_native_layer_request_for_layer(
         "Layer::Infill",

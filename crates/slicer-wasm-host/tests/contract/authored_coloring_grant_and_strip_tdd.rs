@@ -71,7 +71,13 @@ fn collected_with_tool(tool_index: Option<u32>) -> InfillOutputCollected {
 fn granting_ctx(tool_count: u32) -> AuthoredColoringContext {
     AuthoredColoringContext {
         tool_count,
-        granted_regions: [(OBJECT_ID.to_string(), REGION_ID)].into_iter().collect(),
+        granted_regions: [OriginId {
+            object_id: OBJECT_ID.to_string(),
+            region_id: REGION_ID,
+            variant_chain: Vec::new(),
+        }]
+        .into_iter()
+        .collect(),
     }
 }
 
@@ -131,9 +137,13 @@ fn granted_region_out_of_range_tool_is_stripped_to_none() {
 fn granted_but_different_region_is_stripped_to_none() {
     let ctx = AuthoredColoringContext {
         tool_count: 4,
-        granted_regions: [("other-object".to_string(), REGION_ID)]
-            .into_iter()
-            .collect(),
+        granted_regions: [OriginId {
+            object_id: "other-object".to_string(),
+            region_id: REGION_ID,
+            variant_chain: Vec::new(),
+        }]
+        .into_iter()
+        .collect(),
     };
     let ir = convert_infill_output(&collected_with_tool(Some(2)), 0, Some(&ctx))
         .expect("strip must be silent");
@@ -155,7 +165,337 @@ fn absent_tool_index_is_unchanged_under_a_grant() {
     );
 }
 
+#[test]
+fn variant_grant_does_not_authorize_sibling() {
+    let variant_a = OriginId {
+        object_id: OBJECT_ID.to_string(),
+        region_id: REGION_ID,
+        variant_chain: vec![(
+            "tool_index".to_string(),
+            slicer_ir::PaintValue::ToolIndex(1),
+        )],
+    };
+    let variant_b = OriginId {
+        variant_chain: vec![(
+            "tool_index".to_string(),
+            slicer_ir::PaintValue::ToolIndex(2),
+        )],
+        ..variant_a.clone()
+    };
+    let ctx = AuthoredColoringContext {
+        tool_count: 4,
+        granted_regions: [variant_a.clone()].into_iter().collect(),
+    };
+    let mut collected = collected_with_tool(Some(2));
+    collected.sparse_path_origins = vec![Some(variant_a.clone())];
+    let authorized = convert_infill_output(&collected, 0, Some(&ctx))
+        .expect("exact variant grant must commit successfully");
+    assert_eq!(authorized.regions[0].variant_chain, variant_a.variant_chain);
+    assert_eq!(committed_tool_index(&authorized), Some(2));
+
+    collected.sparse_path_origins = vec![Some(variant_b.clone())];
+    let sibling = convert_infill_output(&collected, 0, Some(&ctx))
+        .expect("sibling variant strip must be silent");
+    assert_eq!(sibling.regions[0].variant_chain, variant_b.variant_chain);
+    assert_eq!(
+        committed_tool_index(&sibling),
+        None,
+        "a grant for variant A must not authorize variant B with the same object and base region"
+    );
+}
+
 // ── authored_coloring_granted predicate ──────────────────────────────────
+
+#[test]
+fn variant_grants_cover_native_and_wasm_boundaries() {
+    use std::sync::Arc;
+
+    use slicer_ir::{
+        ConfigView, ExPolygon, GlobalLayer, LayerStageCommit, PaintValue, Point2, Polygon,
+        RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SliceIR, SlicedRegion,
+    };
+    use slicer_sdk::{
+        builders::InfillOutputBuilder,
+        native::{NativeLayerRequest, NativeLayerResponse, NativeStageEntry},
+    };
+    use slicer_wasm_host::{
+        binding::LayerStageInput,
+        selection::{
+            build_layer_selection_index, LayerSelectionIndexInput, LayerSelectionModuleInput,
+            LayerTargetSource, STAGES,
+        },
+        CompiledModuleLive, LayerStageRunner, WasmInstancePool, WasmRuntimeDispatcher,
+    };
+
+    thread_local! {
+        static AUTHORED_TOOL: std::cell::Cell<u32> = const { std::cell::Cell::new(1) };
+        static EMITTED: std::cell::RefCell<Vec<(OriginId, u32)>> = const { std::cell::RefCell::new(Vec::new()) };
+    }
+
+    fn native_authored_witness(
+        request: &NativeLayerRequest,
+    ) -> Result<NativeLayerResponse, slicer_sdk::error::ModuleError> {
+        let tool = AUTHORED_TOOL.with(std::cell::Cell::get);
+        let mut output = InfillOutputBuilder::new();
+        // Deliberately author BOTH selected variants, including the denied
+        // sibling. Only the production dispatch-to-commit boundary may strip.
+        for region in &request.regions {
+            let origin = OriginId {
+                object_id: region.object_id().clone(),
+                region_id: *region.region_id(),
+                variant_chain: region.variant_chain().to_vec(),
+            };
+            output.begin_region(&origin.object_id, origin.region_id, &origin.variant_chain);
+            let wire_path = path_with_tool(Some(tool));
+            output
+                // exhaustive: extrusion path has no Default; witness pins authored metadata.
+                .push_sparse_path(slicer_ir::ExtrusionPath3D {
+                    points: wire_path
+                        .points
+                        .iter()
+                        .map(|p| slicer_ir::Point3WithWidth {
+                            x: p.x,
+                            y: p.y,
+                            z: p.z,
+                            width: p.width,
+                            flow_factor: p.flow_factor,
+                            ..Default::default()
+                        })
+                        .collect(),
+                    role: slicer_ir::ExtrusionRole::SparseInfill,
+                    speed_factor: 1.0,
+                    tool_index: Some(tool),
+                    order_lock: None,
+                })
+                .expect("emit even the denied sibling's authored path");
+            EMITTED.with(|records| records.borrow_mut().push((origin, tool)));
+        }
+        // exhaustive: native response explicitly populates only infill output.
+        Ok(NativeLayerResponse {
+            infill: Some(output),
+            perimeters: None,
+            support: None,
+            slice_postprocess: None,
+            path_optimization: None,
+            anchored_events: None,
+        })
+    }
+
+    let origins = [1, 2].map(|tool| OriginId {
+        object_id: OBJECT_ID.into(),
+        region_id: REGION_ID,
+        variant_chain: vec![("material".into(), PaintValue::ToolIndex(tool))],
+    });
+    let layer = GlobalLayer::default();
+    // Declared read enables exact-config projection. The single-tool baseline
+    // must be overridden by the three-filament per-variant printer config.
+    let invocation = ConfigView::from_map(std::collections::HashMap::from([(
+        "filament_density".into(),
+        slicer_ir::ConfigValue::List(vec![slicer_ir::ConfigValue::Float(1.24)]),
+    )]));
+    let module_id = "authored-variant-witness";
+    let native_module_id = module_id.to_string();
+    let claims = vec!["claim:sparse-fill".into(), CLAIM.into()];
+    let live_module = CompiledModuleLive::new(
+        &native_module_id,
+        WasmInstancePool::placeholder(),
+        None,
+        &claims,
+        Arc::new(invocation.clone()),
+    )
+    .with_native_entry(NativeStageEntry::Layer(native_authored_witness));
+    let dispatcher = WasmRuntimeDispatcher::new(crate::common::wasm_cache::shared_engine());
+    // exhaustive: borrowed selection binding supplies all static authority.
+    let binding = LayerSelectionModuleInput {
+        stage_id: "Layer::Infill",
+        module_id,
+        claims: &claims,
+        paint_semantics: None,
+        invocation_config: &invocation,
+    };
+
+    // Independently permute slice order and map insertion/config-interning order.
+    for slice_order in [[0, 1], [1, 0]] {
+        for map_order in [[0, 1], [1, 0]] {
+            let slice = SliceIR {
+                regions: slice_order
+                    .iter()
+                    .map(|&i| SlicedRegion {
+                        object_id: OBJECT_ID.into(),
+                        region_id: slicer_core::algos::paint_segmentation::paint_variant_region_id(
+                            REGION_ID,
+                            &origins[i].variant_chain,
+                        ),
+                        variant_chain: origins[i].variant_chain.clone(),
+                        polygons: vec![ExPolygon {
+                            contour: Polygon {
+                                points: vec![
+                                    Point2::from_mm(0.0, 0.0),
+                                    Point2::from_mm(10.0, 0.0),
+                                    Point2::from_mm(10.0, 10.0),
+                                    Point2::from_mm(0.0, 10.0),
+                                ],
+                            },
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    })
+                    .collect(),
+                ..Default::default()
+            };
+            let mut map = RegionMapIR::default();
+            for i in map_order {
+                let config = map.intern_config(ResolvedConfig {
+                    sparse_fill_holder: module_id.into(),
+                    // Production derive_tool_count reads this per-tool list.
+                    filament_density: vec![1.24; 3],
+                    fill_authored_coloring: if i == 0 {
+                        vec!["claim:sparse-fill".into()]
+                    } else {
+                        Vec::new()
+                    },
+                    ..Default::default()
+                });
+                map.entries.insert(
+                    RegionKey {
+                        global_layer_index: layer.index,
+                        object_id: OBJECT_ID.into(),
+                        region_id: REGION_ID,
+                        variant_chain: origins[i].variant_chain.clone(),
+                    },
+                    RegionPlan {
+                        config,
+                        ..Default::default()
+                    },
+                );
+            }
+            // exhaustive: public whole-print constructor receives every product channel.
+            let index = build_layer_selection_index(LayerSelectionIndexInput {
+                stage_roster: STAGES,
+                global_layers: std::slice::from_ref(&layer),
+                modules: std::slice::from_ref(&binding),
+                slices: std::slice::from_ref(&slice),
+                region_map: Some(&map),
+                support_plan: None,
+                perimeters: &[],
+            })
+            .expect("exact-key production selection");
+            let selection = index.selection_for(layer.index, module_id).unwrap();
+            assert_eq!(selection.targets.len(), 2, "both variants must be selected");
+            let granted_origins: std::collections::HashSet<_> = selection
+                .targets
+                .iter()
+                .filter(|target| target.authored_coloring)
+                .filter_map(|target| match &target.source {
+                    LayerTargetSource::Model { key, .. } => Some(OriginId {
+                        object_id: key.object_id.clone(),
+                        region_id: key.region_id,
+                        variant_chain: key.variant_chain.clone(),
+                    }),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(granted_origins, [origins[0].clone()].into_iter().collect());
+
+            let run = |tool| {
+                AUTHORED_TOOL.with(|value| value.set(tool));
+                EMITTED.with(|records| records.borrow_mut().clear());
+                // exhaustive: runner input pins every product and committed selection channel.
+                let input = LayerStageInput {
+                    mesh: Arc::new(slicer_ir::MeshIR::default()),
+                    paint_regions: None,
+                    seam_plan: None,
+                    support_plan: None,
+                    lightning_tree_ir: None,
+                    region_map: Some(Arc::new(map.clone())),
+                    slice: Some(&slice),
+                    perimeter: None,
+                    layer_collection: None,
+                    surface_classification: None,
+                    prepared_regions: None,
+                    prepared_perimeter_source_regions: None,
+                    infill: None,
+                    selection: Some(selection),
+                };
+                let commit = LayerStageRunner::run_stage(
+                    &dispatcher,
+                    &"Layer::Infill".into(),
+                    &layer,
+                    &live_module,
+                    input,
+                )
+                .expect("production native authored dispatch")
+                .expect("both nonempty variants must commit");
+                EMITTED.with(|records| {
+                    let records = records.borrow();
+                    assert_eq!(records.len(), 2, "native entry emits both variants");
+                    for origin in &origins {
+                        assert!(
+                            records.contains(&(origin.clone(), tool)),
+                            "native entry must author the tool even for the denied sibling"
+                        );
+                    }
+                });
+                let LayerStageCommit::Infill(native) = commit else {
+                    panic!("expected native infill commit");
+                };
+                native
+            };
+            let native = run(1);
+            // Independent conversion-only context: NEVER passed to native dispatch.
+            let ctx = AuthoredColoringContext {
+                tool_count: 3,
+                granted_regions: [origins[0].clone()].into_iter().collect(),
+            };
+            assert_eq!(native.regions.len(), 2);
+            for (i, expected) in [Some(1), None].into_iter().enumerate() {
+                let region = native
+                    .regions
+                    .iter()
+                    .find(|r| r.variant_chain == origins[i].variant_chain)
+                    .expect("native commit preserves each variant identity");
+                assert_eq!(region.object_id, OBJECT_ID);
+                assert_eq!(region.region_id, REGION_ID);
+                assert_eq!(region.sparse_infill.len(), 1);
+                assert_eq!(region.sparse_infill[0].points.len(), 2);
+                assert_eq!(region.sparse_infill[0].tool_index, expected);
+
+                // Independent wire fixture, not the native builder's collected
+                // output. Exercise the real WASM conversion boundary directly.
+                for (tool, context, expected_tool) in [
+                    (Some(1), Some(&ctx), expected),
+                    (Some(1), None, None),
+                    (Some(3), Some(&ctx), None),
+                ] {
+                    let mut collected = collected_with_tool(tool);
+                    collected.sparse_path_origins = vec![Some(origins[i].clone())];
+                    let wasm = convert_infill_output(&collected, layer.index, context)
+                        .expect("WASM boundary stripping is silent");
+                    assert_eq!(wasm.regions[0].variant_chain, origins[i].variant_chain);
+                    assert_eq!(committed_tool_index(&wasm), expected_tool);
+                }
+            }
+            // Pin the production-derived range to exactly three tools, not
+            // merely a count large enough for the primary authored tool 1.
+            for (tool, granted_tool) in [(2, Some(2)), (3, None)] {
+                let native = run(tool);
+                assert_eq!(native.regions.len(), 2);
+                for (i, expected) in [granted_tool, None].into_iter().enumerate() {
+                    let region = native
+                        .regions
+                        .iter()
+                        .find(|r| r.variant_chain == origins[i].variant_chain)
+                        .expect("native range control preserves each variant");
+                    assert_eq!(region.sparse_infill.len(), 1);
+                    assert_eq!(
+                        region.sparse_infill[0].tool_index, expected,
+                        "production dispatch must derive tool_count = 3"
+                    );
+                }
+            }
+        }
+    }
+}
 
 const CLAIM: &str = "claim:authored-coloring";
 

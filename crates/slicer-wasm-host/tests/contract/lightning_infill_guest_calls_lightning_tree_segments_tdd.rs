@@ -9,6 +9,9 @@ use slicer_ir::{
     ConfigValue, ConfigView, GlobalLayer, LightningTreeEntry, LightningTreeIR, Point2, RegionKey,
     RegionMapIR, RegionPlan, ResolvedConfig, SemVer, SliceIR, SlicedRegion,
 };
+use slicer_wasm_host::selection::{
+    build_layer_selection_index, LayerSelectionIndexInput, LayerSelectionModuleInput, STAGES,
+};
 use slicer_wasm_host::{
     binding::LayerStageInput, CompiledModuleLive, LayerStageRunner, WasmInstancePool,
 };
@@ -87,6 +90,24 @@ fn lightning_infill_guest_calls_lightning_tree_segments() {
         z: 0.2,
         ..GlobalLayer::default()
     };
+    // exhaustive: committed snapshot pins every selection authority channel.
+    let selection_index = build_layer_selection_index(LayerSelectionIndexInput {
+        stage_roster: STAGES,
+        global_layers: std::slice::from_ref(&layer),
+        // exhaustive: binding supplies all static module metadata.
+        modules: &[LayerSelectionModuleInput {
+            stage_id: "Layer::Infill",
+            module_id: &module_id,
+            claims: &claims,
+            paint_semantics: None,
+            invocation_config: &module.config_view,
+        }],
+        slices: std::slice::from_ref(&slice_ir),
+        region_map: Some(&region_map),
+        support_plan: None,
+        perimeters: &[],
+    })
+    .expect("lightning selection index");
     // exhaustive: LayerStageInput has no Default and this test supplies the complete stage input
     let input = LayerStageInput {
         mesh: Arc::new(slicer_ir::MeshIR::default()),
@@ -102,6 +123,11 @@ fn lightning_infill_guest_calls_lightning_tree_segments() {
         prepared_regions: None,
         prepared_perimeter_source_regions: None,
         infill: None,
+        selection: Some(
+            selection_index
+                .selection_for(layer.index, &module_id)
+                .expect("bound lightning module"),
+        ),
     };
 
     let commit = LayerStageRunner::run_stage(

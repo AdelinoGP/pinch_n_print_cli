@@ -8,6 +8,7 @@
 
 use std::collections::HashMap;
 
+use slicer_ir::SupportPlanIR;
 use slicer_sdk::builders::{InfillOutputBuilder, PerimeterOutputBuilder, SupportOutputBuilder};
 use slicer_sdk::native::{
     NativeFinalizationRequest, NativeFinalizationResponse, NativeLayerRequest, NativeLayerResponse,
@@ -22,6 +23,7 @@ use slicer_sdk::traits::LayerCollectionView;
 use slicer_sdk::traits::PaintRegionLayerView;
 use slicer_sdk::views::{PerimeterRegionView, SliceRegionView};
 
+use super::out::AuthoredColoringContext;
 use crate::binding::{
     CompiledModuleLive, FinalizationStageInput, LayerStageInput, PostpassStageInput,
     PrepassStageInput,
@@ -32,6 +34,7 @@ use crate::marshal::{
     ir_to_wit_extrusion_role, ir_to_wit_wall_loop, GcodeCommandCollected, InfillOutputCollected,
     OriginId, PerimeterOutputCollected, SupportOutputCollected,
 };
+use crate::selection::{LayerSelection, LayerTargetSource};
 
 pub(crate) fn native_support_plan_roles(
     roles: &[slicer_ir::SupportPlanRoleRegion],
@@ -334,6 +337,318 @@ fn native_region_config(
     )
 }
 
+fn native_region_origin(
+    object_id: &str,
+    region_id: u64,
+    variant_chain: &[(String, slicer_ir::PaintValue)],
+) -> OriginId {
+    OriginId {
+        object_id: object_id.to_owned(),
+        region_id: crate::selection::map_space_region_id(region_id, variant_chain),
+        variant_chain: variant_chain.to_vec(),
+    }
+}
+
+fn native_slice_region_view(
+    region: &slicer_ir::SlicedRegion,
+    z: f32,
+    held_claims: Vec<String>,
+    config: slicer_ir::ConfigView,
+    input: &LayerStageInput<'_>,
+    layer_index: u32,
+    prepared: Option<&slicer_ir::PreparedRegionData>,
+) -> SliceRegionView {
+    let mut view = SliceRegionView::from_ir(region, z, held_claims);
+    view.set_needs_support(prepared.map_or_else(
+        || view.derive_needs_support(input.surface_classification),
+        |data| data.needs_support,
+    ));
+    view.set_config(config);
+    if let Some(data) = prepared {
+        view.set_surface_group(data.surface_group.clone());
+        view.set_overhang_quartile_polygons(data.overhang_quartile_polygons.clone());
+        view.set_overhang_areas(data.overhang_areas.clone());
+        view.set_prev_layer_boundary(data.prev_layer_boundary.clone());
+    } else {
+        populate_surface_classification_fields(
+            &mut view,
+            region,
+            input.surface_classification,
+            layer_index,
+        );
+    }
+    view
+}
+
+/// Consume indexed identities and authority while projecting only call-local
+/// products. Coloring grants remain host-local and are supplied to the authored
+/// commit entry point; the SDK request envelope carries no coloring authority.
+pub fn build_native_layer_request_from_selection(
+    stage_export: &'static str,
+    layer_index: u32,
+    input: &LayerStageInput<'_>,
+    module: &CompiledModuleLive<'_>,
+    selection: &LayerSelection,
+    is_raft: bool,
+) -> NativeLayerRequest {
+    let _ = module; // Selection already owns the declared-key-filtered authority.
+    let current_slice = input
+        .slice
+        .filter(|slice| slice.global_layer_index == layer_index);
+    let mut model_targets = HashMap::new();
+    for target in &selection.targets {
+        if let LayerTargetSource::Model { key, members } = &target.source {
+            for member in std::iter::once(key).chain(members.iter()) {
+                if member.global_layer_index == layer_index {
+                    model_targets.insert(
+                        OriginId {
+                            object_id: member.object_id.clone(),
+                            region_id: member.region_id,
+                            variant_chain: member.variant_chain.clone(),
+                        },
+                        target,
+                    );
+                }
+            }
+        }
+    }
+
+    // Retain current order, and make missing selected identities explicitly
+    // empty. Build-time slice handles contribute identity only, never payload.
+    let mut selected_regions = Vec::new();
+    let mut present = std::collections::HashSet::new();
+    if let Some(slice) = current_slice {
+        for region in &slice.regions {
+            let origin =
+                native_region_origin(&region.object_id, region.region_id, &region.variant_chain);
+            if model_targets.contains_key(&origin) {
+                present.insert(origin);
+                selected_regions.push(region.clone());
+            }
+        }
+    }
+    for target in &selection.targets {
+        if let LayerTargetSource::Model { key, members } = &target.source {
+            for member in std::iter::once(key).chain(members.iter()) {
+                let origin = OriginId {
+                    object_id: member.object_id.clone(),
+                    region_id: member.region_id,
+                    variant_chain: member.variant_chain.clone(),
+                };
+                if member.global_layer_index != layer_index || !present.insert(origin.clone()) {
+                    continue;
+                }
+                let identity = selection.slice_regions.iter().find(|region| {
+                    native_region_origin(&region.object_id, region.region_id, &region.variant_chain)
+                        == origin
+                });
+                selected_regions.push(slicer_ir::SlicedRegion {
+                    object_id: member.object_id.clone(),
+                    region_id: identity.map_or(member.region_id, |region| region.region_id),
+                    variant_chain: member.variant_chain.clone(),
+                    ..slicer_ir::SlicedRegion::default()
+                });
+            }
+        }
+    }
+    let selected_slice = slicer_ir::SliceIR {
+        global_layer_index: layer_index,
+        z: current_slice.map_or(0.0, |slice| slice.z),
+        regions: selected_regions,
+        ..slicer_ir::SliceIR::default()
+    };
+    let projected;
+    let current_projected;
+    let (regions, current_regions, prepared) = if stage_export == "Layer::Perimeters" {
+        projected = super::perimeter_source_regions(&selected_slice);
+        current_projected = current_slice
+            .map(super::perimeter_source_regions)
+            .unwrap_or_default();
+        (
+            projected.as_slice(),
+            current_projected.as_slice(),
+            input.prepared_perimeter_source_regions,
+        )
+    } else {
+        (
+            selected_slice.regions.as_slice(),
+            current_slice.map_or(&[][..], |slice| slice.regions.as_slice()),
+            input.prepared_regions,
+        )
+    };
+    let mut views: Vec<_> = regions
+        .iter()
+        .filter_map(|region| {
+            let origin =
+                native_region_origin(&region.object_id, region.region_id, &region.variant_chain);
+            let target = model_targets.get(&origin)?;
+            let prepared = current_regions
+                .iter()
+                .position(|current| {
+                    native_region_origin(
+                        &current.object_id,
+                        current.region_id,
+                        &current.variant_chain,
+                    ) == origin
+                })
+                .and_then(|index| prepared.and_then(|data| data.get(index)));
+            let mut delivered_region = region.clone();
+            if stage_export == "Layer::Infill" {
+                delivered_region.region_id =
+                    crate::selection::map_space_region_id(region.region_id, &region.variant_chain);
+            }
+            Some(native_slice_region_view(
+                &delivered_region,
+                selected_slice.z,
+                target.held_claims.clone(),
+                (*target.config).clone(),
+                input,
+                layer_index,
+                prepared,
+            ))
+        })
+        .collect();
+    for target in &selection.targets {
+        match &target.source {
+            LayerTargetSource::SupportCarrier {
+                object_id,
+                region_id,
+                ..
+            } => {
+                // Carrier provenance (family/body/demand/anchor) stays on the
+                // call-local support plan attached by finish_native_layer_request.
+                // The empty slice view is its identity handle, not a model key.
+                let carrier = slicer_ir::SlicedRegion {
+                    object_id: object_id.clone(),
+                    region_id: *region_id,
+                    effective_layer_height: current_slice
+                        .and_then(|slice| {
+                            slice
+                                .regions
+                                .iter()
+                                .find(|region| region.object_id == *object_id)
+                        })
+                        .map_or(0.0, |region| region.effective_layer_height),
+                    ..slicer_ir::SlicedRegion::default()
+                };
+                views.push(native_slice_region_view(
+                    &carrier,
+                    selected_slice.z,
+                    target.held_claims.clone(),
+                    (*selection.invocation_config).clone(),
+                    input,
+                    layer_index,
+                    None,
+                ));
+            }
+            LayerTargetSource::Raft { .. } | LayerTargetSource::AnchoredStage { .. } => {
+                // Explicit non-region contexts use the request-wide invocation
+                // config and paint/collection channels, never a model RegionKey.
+            }
+            LayerTargetSource::Model { .. } => {}
+        }
+    }
+    let config_for = |origin: &OriginId| {
+        selection
+            .perimeter_configs
+            .get(origin)
+            .map(|config| (**config).clone())
+    };
+    let perimeter_regions = native_layer_perimeter_regions(
+        stage_export,
+        input,
+        layer_index,
+        &config_for,
+        &selection.invocation_config,
+        Some(selection),
+    );
+    // The SDK carrier view is identity-only. Its selected provenance remains
+    // on the paint plan, while analysis geometry comes from the current plan.
+    let support_plan = input.support_plan.as_ref().map(|plan| {
+        let mut projected = (**plan).clone();
+        projected.entries = plan
+            .entries
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| {
+                for target in &selection.targets {
+                    match &target.source {
+                        LayerTargetSource::SupportCarrier {
+                            entry_index,
+                            object_id,
+                            region_id,
+                            family,
+                            demand_ids,
+                            body_ids,
+                            provenance,
+                            anchor_layer_index,
+                        } if *entry_index == index
+                            && entry.object_id == *object_id
+                            && entry.region_id == *region_id =>
+                        {
+                            let mut current = entry.clone();
+                            current.family_id = family.clone();
+                            current.demand_ids = demand_ids.clone();
+                            current.body_ids = body_ids.clone();
+                            current.provenance = provenance.clone();
+                            current.anchor_layer_index = *anchor_layer_index;
+                            return Some(current);
+                        }
+                        LayerTargetSource::Model { key, members }
+                            if std::iter::once(key).chain(members.iter()).any(|member| {
+                                member.global_layer_index == layer_index
+                                    && member.object_id == entry.object_id
+                                    && member.region_id
+                                        == crate::selection::map_space_region_id(
+                                            entry.region_id,
+                                            &member.variant_chain,
+                                        )
+                            }) =>
+                        {
+                            return Some(entry.clone())
+                        }
+                        _ => {}
+                    }
+                }
+                None
+            })
+            .collect();
+        if !selection
+            .targets
+            .iter()
+            .any(|target| matches!(target.source, LayerTargetSource::Raft { .. }))
+        {
+            projected.raft_plan = None;
+        }
+        std::sync::Arc::new(projected)
+    });
+    let selected_input = LayerStageInput {
+        selection: Some(selection),
+        mesh: std::sync::Arc::clone(&input.mesh),
+        paint_regions: input.paint_regions,
+        seam_plan: input.seam_plan.clone(),
+        support_plan,
+        lightning_tree_ir: input.lightning_tree_ir.clone(),
+        region_map: input.region_map.clone(),
+        slice: current_slice.map(|_| &selected_slice),
+        perimeter: input.perimeter,
+        layer_collection: input.layer_collection,
+        surface_classification: input.surface_classification,
+        prepared_regions: None,
+        prepared_perimeter_source_regions: None,
+        infill: input.infill,
+    };
+    finish_native_layer_request(
+        stage_export,
+        layer_index,
+        &selected_input,
+        &selection.invocation_config,
+        is_raft,
+        views,
+        perimeter_regions,
+    )
+}
+
 /// Project only the module-facing copy to the existing guest SDK view. The
 /// arena's wall geometry and metadata remain untouched.
 /// `layer_glue_helpers` in `crates/slicer-macros/src/lib.rs` reconstructs absent
@@ -435,7 +750,10 @@ fn build_native_layer_request_impl(
                         let key = slicer_ir::RegionKey {
                             global_layer_index: layer_index,
                             object_id: region.object_id.clone(),
-                            region_id: region.region_id,
+                            region_id: crate::selection::map_space_region_id(
+                                region.region_id,
+                                &region.variant_chain,
+                            ),
                             variant_chain: region.variant_chain.clone(),
                         };
                         map.entries.get(&key).map(|_| {
@@ -495,14 +813,6 @@ fn build_native_layer_request_impl(
                     })
                 })
                 .map(|(index, region)| {
-                    let mut view = SliceRegionView::from_ir(
-                        region,
-                        slice.z,
-                        held_claims_map
-                            .get(&(region.object_id.clone(), region.region_id.to_string()))
-                            .cloned()
-                            .unwrap_or_default(),
-                    );
                     let prepared = if stage_export == "Layer::Perimeters" {
                         input
                             .prepared_perimeter_source_regions
@@ -510,37 +820,60 @@ fn build_native_layer_request_impl(
                     } else {
                         input.prepared_regions.and_then(|data| data.get(index))
                     };
-                    view.set_needs_support(prepared.map_or_else(
-                        || view.derive_needs_support(input.surface_classification),
-                        |data| data.needs_support,
-                    ));
-                    view.set_config(
+                    native_slice_region_view(
+                        region,
+                        slice.z,
+                        held_claims_map
+                            .get(&(region.object_id.clone(), region.region_id.to_string()))
+                            .cloned()
+                            .unwrap_or_default(),
                         config_by_region
                             .get(&(region.object_id.clone(), region.region_id))
                             .cloned()
                             .unwrap_or_else(|| (*module.config_view).clone()),
-                    );
-                    if let Some(data) = prepared {
-                        view.set_surface_group(data.surface_group.clone());
-                        view.set_overhang_quartile_polygons(
-                            data.overhang_quartile_polygons.clone(),
-                        );
-                        view.set_overhang_areas(data.overhang_areas.clone());
-                        view.set_prev_layer_boundary(data.prev_layer_boundary.clone());
-                    } else {
-                        populate_surface_classification_fields(
-                            &mut view,
-                            region,
-                            input.surface_classification,
-                            slice.global_layer_index,
-                        );
-                    }
-                    view
+                        input,
+                        slice.global_layer_index,
+                        prepared,
+                    )
                 })
                 .collect()
         })
         .unwrap_or_default();
 
+    // Direct callers retain their legacy raw-id config lookup. The selection
+    // path supplies full-origin authority to the same perimeter marshaller.
+    let config_for = |origin: &OriginId| {
+        config_by_region
+            .get(&(origin.object_id.clone(), origin.region_id))
+            .cloned()
+    };
+    let perimeter_regions = native_layer_perimeter_regions(
+        stage_export,
+        input,
+        layer_index,
+        &config_for,
+        &module.config_view,
+        None,
+    );
+    finish_native_layer_request(
+        stage_export,
+        layer_index,
+        input,
+        &module.config_view,
+        is_raft,
+        regions,
+        perimeter_regions,
+    )
+}
+
+fn native_layer_perimeter_regions(
+    stage_export: &str,
+    input: &LayerStageInput<'_>,
+    layer_index: u32,
+    config_for: &dyn Fn(&OriginId) -> Option<slicer_ir::ConfigView>,
+    fallback_config: &slicer_ir::ConfigView,
+    selection: Option<&LayerSelection>,
+) -> Option<Vec<PerimeterRegionView>> {
     // Mirror the wasm leg (`push_perimeter_regions`): a layer with no committed
     // `PerimeterIR` yields an empty region list, never `None`. The postprocess
     // native entries (`run_wall_postprocess` / `run_infill_postprocess` /
@@ -554,12 +887,13 @@ fn build_native_layer_request_impl(
     // partitions, `raft_fill`, `tool_index` and `wall_source_region_id` live
     // only on the `SliceIR` regions, and the infill linker's
     // `RoleBoundaries::is_partitioned` is unreachable without them.
-    let perimeter_regions = Some(if stage_export == "Layer::InfillPostProcess" {
+    let mut regions = if stage_export == "Layer::InfillPostProcess" {
         native_infill_postprocess_regions(
             input,
             layer_index,
-            &config_by_region,
-            &module.config_view,
+            config_for,
+            fallback_config,
+            selection,
         )
     } else {
         input
@@ -568,23 +902,117 @@ fn build_native_layer_request_impl(
                 perimeter
                     .regions
                     .iter()
+                    .filter(|region| {
+                        selection.is_none_or(|selection| {
+                            perimeter.global_layer_index == layer_index
+                                && selection
+                                    .perimeter_configs
+                                    .contains_key(&native_region_origin(
+                                        &region.object_id,
+                                        region.region_id,
+                                        &region.variant_chain,
+                                    ))
+                        })
+                    })
                     .map(|region| {
                         let mut view = native_perimeter_view(region);
                         // WASM's perimeter accessor uses the same SliceIR-derived
                         // table, falling back for perimeter-only identities.
+                        let origin = if selection.is_some() {
+                            native_region_origin(
+                                &region.object_id,
+                                region.region_id,
+                                &region.variant_chain,
+                            )
+                        } else {
+                            OriginId {
+                                object_id: region.object_id.clone(),
+                                region_id: region.region_id,
+                                variant_chain: region.variant_chain.clone(),
+                            }
+                        };
                         view.set_config(
-                            config_by_region
-                                .get(&(region.object_id.clone(), region.region_id))
-                                .cloned()
-                                .unwrap_or_else(|| (*module.config_view).clone()),
+                            config_for(&origin).unwrap_or_else(|| fallback_config.clone()),
                         );
                         view
                     })
                     .collect()
             })
             .unwrap_or_default()
-    });
+    };
+    if let Some(selection) = selection {
+        // No geometry or prepared fields are cached in the selection. Missing
+        // selected perimeter identities receive an explicitly empty SDK view.
+        for (origin, config) in &selection.perimeter_configs {
+            let present = if stage_export == "Layer::InfillPostProcess" && input.slice.is_some() {
+                input.slice.is_some_and(|slice| {
+                    slice.global_layer_index == layer_index
+                        && slice.regions.iter().any(|region| {
+                            native_region_origin(
+                                &region.object_id,
+                                region.region_id,
+                                &region.variant_chain,
+                            ) == *origin
+                        })
+                })
+            } else {
+                input.perimeter.is_some_and(|perimeter| {
+                    perimeter.global_layer_index == layer_index
+                        && perimeter.regions.iter().any(|region| {
+                            native_region_origin(
+                                &region.object_id,
+                                region.region_id,
+                                &region.variant_chain,
+                            ) == *origin
+                        })
+                })
+            };
+            if !present {
+                let identity = input
+                    .slice
+                    .filter(|slice| slice.global_layer_index == layer_index)
+                    .and_then(|slice| {
+                        slice.regions.iter().find(|region| {
+                            native_region_origin(
+                                &region.object_id,
+                                region.region_id,
+                                &region.variant_chain,
+                            ) == *origin
+                        })
+                    })
+                    .or_else(|| {
+                        selection.slice_regions.iter().find(|region| {
+                            native_region_origin(
+                                &region.object_id,
+                                region.region_id,
+                                &region.variant_chain,
+                            ) == *origin
+                        })
+                    });
+                let empty = slicer_ir::PerimeterRegion {
+                    object_id: origin.object_id.clone(),
+                    region_id: identity.map_or(origin.region_id, |region| region.region_id),
+                    variant_chain: origin.variant_chain.clone(),
+                    ..slicer_ir::PerimeterRegion::default()
+                };
+                let mut view = native_perimeter_view(&empty);
+                view.set_config((**config).clone());
+                regions.push(view);
+            }
+        }
+    }
+    Some(regions)
+}
 
+fn finish_native_layer_request(
+    stage_export: &'static str,
+    layer_index: u32,
+    input: &LayerStageInput<'_>,
+    config: &slicer_ir::ConfigView,
+    is_raft: bool,
+    regions: Vec<SliceRegionView>,
+    perimeter_regions: Option<Vec<PerimeterRegionView>>,
+) -> NativeLayerRequest {
     let mut paint = input
         .paint_regions
         .as_ref()
@@ -647,7 +1075,7 @@ fn build_native_layer_request_impl(
         perimeter_regions,
         paint: Some(paint),
         prior_infill: input.infill.map(|infill| infill.regions.clone()),
-        config: (*module.config_view).clone(),
+        config: config.clone(),
         stage_export,
         ordered_entities,
     }
@@ -688,7 +1116,8 @@ pub fn ordered_entity_to_sdk_view(
 /// Fallbacks mirror the WASM leg exactly: no `PerimeterIR` → empty region list
 /// (not `None`); missing `SliceIR` → the legacy `PerimeterIR`-driven views
 /// (ADR-0028 fields default empty). Config is applied here by the caller's
-/// `config_by_region` table (same table the legacy path uses; the wasm leg's
+/// full-origin config resolver (the direct wrapper retains its legacy table;
+/// the wasm leg's
 /// `config` accessor resolves the identical table with the identical
 /// object-level fallback), so the postprocess config contract is unaffected by
 /// this projection.
@@ -703,11 +1132,13 @@ pub fn ordered_entity_to_sdk_view(
 fn native_infill_postprocess_regions(
     input: &LayerStageInput<'_>,
     layer_index: u32,
-    config_by_region: &HashMap<(String, u64), slicer_ir::ConfigView>,
+    config_for: &dyn Fn(&OriginId) -> Option<slicer_ir::ConfigView>,
     fallback_config: &slicer_ir::ConfigView,
+    selection: Option<&LayerSelection>,
 ) -> Vec<PerimeterRegionView> {
     use crate::dispatch::{
-        perimeter_region_index, resolve_region_tool_index, wall_source_region_id,
+        perimeter_region_index, resolve_region_tool_index_with_selection, selected_model_target,
+        wall_source_region_id,
     };
 
     fn set_enriched_fields(
@@ -716,6 +1147,7 @@ fn native_infill_postprocess_regions(
         region_map: Option<&slicer_ir::RegionMapIR>,
         layer_index: u32,
         wall_source: Option<slicer_ir::RegionId>,
+        selection: Option<&LayerSelection>,
     ) {
         // The view's identity is the slice region's, not the wall donor's.
         view.set_object_id(region.object_id.clone());
@@ -744,50 +1176,129 @@ fn native_infill_postprocess_regions(
         view.set_bottom_solid_fill(region.bottom_solid_fill.clone());
         view.set_bridge_areas(region.bridge_areas.clone());
         view.set_raft_fill(region.raft_fill.clone());
-        view.set_tool_index(resolve_region_tool_index(
+        // Indexed calls use build-time host tool authority; only legacy calls read the map.
+        view.set_tool_index(resolve_region_tool_index_with_selection(
             &region.variant_chain,
             region_map,
             layer_index,
             &region.object_id,
             region.region_id,
+            selection,
         ));
         view.set_wall_source_region_id(wall_source);
     }
 
-    let Some(perimeter) = input.perimeter else {
-        return Vec::new();
+    let empty_perimeter = slicer_ir::PerimeterIR {
+        global_layer_index: layer_index,
+        ..slicer_ir::PerimeterIR::default()
     };
+    let perimeter = match input.perimeter {
+        Some(perimeter) => perimeter,
+        None if selection.is_some() => &empty_perimeter,
+        None => return Vec::new(),
+    };
+    if selection.is_some() && perimeter.global_layer_index != layer_index {
+        return Vec::new();
+    }
     // Defensive fallback: without a SliceIR there is nothing to enrich from —
     // keep the legacy PerimeterIR-driven views (fields default empty/0/None).
     let Some(slice) = input.slice else {
         return perimeter
             .regions
             .iter()
+            .filter(|region| {
+                selection.is_none_or(|selection| {
+                    selection
+                        .perimeter_configs
+                        .contains_key(&native_region_origin(
+                            &region.object_id,
+                            region.region_id,
+                            &region.variant_chain,
+                        ))
+                })
+            })
             .map(|region| {
                 let mut view = native_perimeter_view(region);
-                view.set_config(
-                    config_by_region
-                        .get(&(region.object_id.clone(), region.region_id))
-                        .cloned()
-                        .unwrap_or_else(|| fallback_config.clone()),
-                );
+                let origin = if selection.is_some() {
+                    native_region_origin(&region.object_id, region.region_id, &region.variant_chain)
+                } else {
+                    OriginId {
+                        object_id: region.object_id.clone(),
+                        region_id: region.region_id,
+                        variant_chain: region.variant_chain.clone(),
+                    }
+                };
+                view.set_config(config_for(&origin).unwrap_or_else(|| fallback_config.clone()));
                 view
             })
             .collect();
     };
 
     let perim_index = perimeter_region_index(perimeter);
+    let full_perim_index: HashMap<_, _> = if selection.is_some() {
+        perimeter
+            .regions
+            .iter()
+            .map(|region| {
+                (
+                    native_region_origin(
+                        &region.object_id,
+                        region.region_id,
+                        &region.variant_chain,
+                    ),
+                    region,
+                )
+            })
+            .collect()
+    } else {
+        HashMap::new()
+    };
     slice
         .regions
         .iter()
+        .filter(|region| {
+            selection.is_none_or(|selection| {
+                slice.global_layer_index == layer_index
+                    && selected_model_target(
+                        selection,
+                        &native_region_origin(
+                            &region.object_id,
+                            region.region_id,
+                            &region.variant_chain,
+                        ),
+                    )
+                    .is_some()
+            })
+        })
         .map(|region| {
-            let own_entry = perim_index
-                .get(&(&region.object_id, region.region_id))
-                .copied();
+            let origin = if selection.is_some() {
+                native_region_origin(&region.object_id, region.region_id, &region.variant_chain)
+            } else {
+                OriginId {
+                    object_id: region.object_id.clone(),
+                    region_id: region.region_id,
+                    variant_chain: region.variant_chain.clone(),
+                }
+            };
+            let own_entry = if selection.is_some() {
+                full_perim_index.get(&origin).copied()
+            } else {
+                perim_index
+                    .get(&(&region.object_id, region.region_id))
+                    .copied()
+            };
             let wall_source = wall_source_region_id(own_entry.is_some(), region);
             // Wall donor: own entry, else the base region's entry (shared walls).
             let donor = own_entry.or_else(|| {
-                wall_source.and_then(|base| perim_index.get(&(&region.object_id, base)).copied())
+                wall_source.and_then(|base| {
+                    if selection.is_some() {
+                        let source =
+                            native_region_origin(&region.object_id, base, &region.variant_chain);
+                        full_perim_index.get(&source).copied()
+                    } else {
+                        perim_index.get(&(&region.object_id, base)).copied()
+                    }
+                })
             });
             let mut view = match donor {
                 Some(p) => native_perimeter_view(p),
@@ -799,13 +1310,18 @@ fn native_infill_postprocess_regions(
                 input.region_map.as_deref(),
                 layer_index,
                 wall_source,
+                selection,
             );
-            view.set_config(
-                config_by_region
-                    .get(&(region.object_id.clone(), region.region_id))
-                    .cloned()
-                    .unwrap_or_else(|| fallback_config.clone()),
-            );
+            let config = if let Some(selection) = selection {
+                // Membership filtering above established exact target authority.
+                (*selected_model_target(selection, &origin)
+                    .expect("selected model target")
+                    .config)
+                    .clone()
+            } else {
+                config_for(&origin).unwrap_or_else(|| fallback_config.clone())
+            };
+            view.set_config(config);
             view
         })
         .collect()
@@ -1653,6 +2169,24 @@ pub fn commit_native_layer_response(
     layer_index: u32,
     support_plan: Option<&slicer_ir::SupportPlanIR>,
 ) -> Result<Option<slicer_ir::LayerStageCommit>, String> {
+    commit_native_layer_response_with_authored(
+        response,
+        stage_export,
+        layer_index,
+        support_plan,
+        None,
+    )
+}
+
+/// Commit with explicit call-local authored-coloring authority. The direct
+/// transport wrapper supplies no context and remains deny-by-default.
+pub fn commit_native_layer_response_with_authored(
+    response: &NativeLayerResponse,
+    stage_export: &str,
+    layer_index: u32,
+    support_plan: Option<&SupportPlanIR>,
+    authored: Option<&AuthoredColoringContext>,
+) -> Result<Option<slicer_ir::LayerStageCommit>, String> {
     use slicer_ir::LayerStageCommit;
     match stage_export {
         "Layer::Infill" | "Layer::InfillPostProcess" => {
@@ -1685,9 +2219,7 @@ pub fn commit_native_layer_response(
                 }
                 return Ok(None);
             }
-            // Native modules author no per-path tool today; pass `None` so the
-            // authored-coloring grant defaults to deny at this boundary too.
-            let ir = convert_infill_output(&collected, layer_index, None)?;
+            let ir = convert_infill_output(&collected, layer_index, authored)?;
             Ok(Some(if stage_export.ends_with("PostProcess") {
                 LayerStageCommit::InfillPostProcess(ir)
             } else {

@@ -199,7 +199,7 @@ mod perimeter_spatial_tests {
             .ok_or_else(|| PerimeterHarnessError("missing core module root".to_string()))?;
         let (module_id, parity) = parity_spec(module_root, wall_generator);
         let native_entry = parity.native_entry;
-        run_integrated_parity(parity, |_dispatcher, _native_live, _wasm_live| {
+        run_integrated_parity(parity, |_dispatcher, _native_live, _wasm_live, _native_module, _wasm_module| {
             run_native_pipeline_bound(
                 mesh_path,
                 config_path,

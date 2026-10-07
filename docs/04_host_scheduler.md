@@ -1056,6 +1056,64 @@ the load-time view is registry-complete; and the per-region overlay rides on
 the same resolved base, so a region view also contains every declared key —
 authored or seeded default — with the region's overlay applied on top.
 
+### Ordinary full-identity delivery (Normative — TASK-572 row 1)
+
+`build_layer_selection_index(LayerSelectionIndexInput)` (`crates/slicer-wasm-host/src/selection.rs`)
+builds the whole-print `LayerSelectionIndex` once, after late PrePass and global-layer promotion,
+via the runtime late-bind seam `build_and_commit_layer_selection_index` (`crates/slicer-runtime/src/layer_executor.rs`).
+The index is committed as one immutable
+Blackboard product, with no partial publication. `selection_for(global_layer_index, module_id)`
+is O(1); a missing index or missing bound pair is an internal-consistency fatal, never a fallback resolver.
+The index contains selection metadata only: delivered geometry always comes from current call-local products associated by full `RegionKey`/`OriginId`.
+
+During construction, model authority requires `entries.get(&key)` before `config_for(&key)`
+(the Config Interner Contract in `docs/02_ir_schemas.md`). A missing exact key produces
+`SelectionError::MissingModelConfig`, wrapped by `LayerSelectionBuildError` and mapped by the runtime seam
+to `LayerStageError::FatalModule`, naming stage, module and exact key before any Layer invocation.
+Default, sibling and first-match config authority are forbidden.
+
+`variant_chain` is ordered and is never sorted or regenerated. `SelectedLayerTarget`'s
+`LayerTargetSource::Model { key, members }` retains the base plus matching merged modifier
+sources; config authority is the base's exact key. This section owns the painted-id encoding:
+`RegionMapIR.entries` keys painted variants by BASE region id plus ordered chain, whereas
+post-paint `SliceIR`/`PerimeterIR` ids are DERIVED by `paint_variant_region_id` (`crates/slicer-core/src/algos/paint_segmentation/mod.rs`)
+as `base * PAINT_VARIANT_REGION_ID_STRIDE + h`.
+The builder inverts non-modifier nonempty-chain ids by `id / PAINT_VARIANT_REGION_ID_STRIDE`;
+modifier-namespace ids and empty-chain ids stay verbatim. This is identity addressing, not fallback.
+Ordinary `Layer::Infill` delivery and commit use map space; perimeter and postprocess identities remain raw.
+
+Non-region contexts use explicit `LayerTargetSource` provenance, never a fabricated model key.
+Support carriers retain `SupportPlanEntry` provenance and use the resolved, declared-key-filtered
+`invocation_config` from `bind_module_config_view`. Carrier layer eligibility is `global_layer_index == layer.index`;
+`anchor_layer_index` is provenance only.
+Eligible carriers are delivered even with `slice = None`. Raft context derives from `GlobalLayer.is_raft` for `Layer::Infill`/`Layer::Support`.
+`AnchoredStage` records the physical layer index with invocation config as module execution context, not a synthetic anchored closure/entity.
+
+`OptionalProductPresence::{Absent, Present}` distinguishes absence from present-empty; `invoke`
+is not `!targets.is_empty()`: under `paint_allows_layer`, a paint-transparent
+non-support module on an empty present slice retains `invoke = true` with no targets. `Ok(None)` preserves no-output semantics.
+
+Both native and WASM legs consume the same call-local `LayerStageInput.selection` (`crates/slicer-wasm-host/src/binding.rs`).
+`WasmRuntimeDispatcher::run_stage` (`crates/slicer-wasm-host/src/dispatch.rs`) returns `LayerStageError::FatalModule`
+for a scheduled module with `selection = None`, invoking and committing nothing.
+With a selection and `invoke = false`, neither leg invokes. Native production uses
+`build_native_layer_request_from_selection` and `commit_native_layer_response_with_authored`
+(`crates/slicer-wasm-host/src/marshal/native.rs`); old direct builder/commit wrappers remain
+for legacy direct callers only and are deny-by-default for coloring.
+
+`AuthoredColoringContext` grants are full-origin `HashSet<OriginId>` values derived from selected model targets.
+`allows` checks the complete origin and tool range; a sibling variant is never authorized by another variant's grant.
+Enforcement remains at the marshal/commit boundary in `enforce_authored_coloring` (`crates/slicer-wasm-host/src/marshal/out.rs`),
+silently stripping unauthorized or out-of-range authored tool indices to `None`.
+
+This rule supersedes Packet 51 for module-backed Layer stages bound to the whole-print selection index:
+config authority is build-time exact-key resolution carried by `LayerSelection`
+(per-target `config` and `perimeter_configs`), not fresh per-invocation `RegionPlan.config`
+reconstruction inside `dispatch_layer_call`. Both rules must be read together. The Packet 51
+section is retained unchanged for stages outside this indexed contract: `is_indexed_module_stage` (`crates/slicer-runtime/src/layer_executor.rs`)
+distinguishes the roster slice the index is built from; host-built-in/non-roster stages keep the pre-index path.
+`bind_module_config_view`'s frozen view and explicit `invocation_config` remain authoritative only for invocation-wide/non-region reads.
+
 ### PrePass Config-View Plumbing (Normative — Packet 73)
 
 Every module-implementable PrePass export (`mesh-analysis`, `layer-planning`,

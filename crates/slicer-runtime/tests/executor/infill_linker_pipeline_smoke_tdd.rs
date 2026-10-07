@@ -109,6 +109,23 @@ fn perimeter_ir() -> PerimeterIR {
     }
 }
 
+fn linker_config_fields() -> HashMap<String, ConfigValue> {
+    HashMap::from([
+        // Bound-view required reads at infill-linker.toml manifest defaults.
+        ("layer_height".to_string(), ConfigValue::Float(0.2)),
+        (
+            "infill_anchor_max".to_string(),
+            ConfigValue::FloatOrPercent {
+                value: 20.0,
+                is_percent: false,
+            },
+        ),
+        ("infill_overlap".to_string(), ConfigValue::Float(0.45)),
+        ("line_width".to_string(), ConfigValue::Float(0.4)),
+        ("infill_density".to_string(), ConfigValue::Float(0.2)),
+    ])
+}
+
 fn linker_bundle() -> TestModuleBundle {
     let wasm_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -150,20 +167,7 @@ fn linker_bundle() -> TestModuleBundle {
         )
         .expect("instance pool must build"),
     );
-    let config = slicer_ir::ConfigView::from_map(HashMap::from([
-        // Bound-view required reads at infill-linker.toml manifest defaults.
-        ("layer_height".to_string(), ConfigValue::Float(0.2)),
-        (
-            "infill_anchor_max".to_string(),
-            ConfigValue::FloatOrPercent {
-                value: 20.0,
-                is_percent: false,
-            },
-        ),
-        ("infill_overlap".to_string(), ConfigValue::Float(0.45)),
-        ("line_width".to_string(), ConfigValue::Float(0.4)),
-        ("infill_density".to_string(), ConfigValue::Float(0.2)),
-    ]));
+    let config = slicer_ir::ConfigView::from_map(linker_config_fields());
     let module = CompiledModuleBuilder::new(loaded.id().to_string())
         .config_view(Arc::new(config))
         .build();
@@ -185,7 +189,21 @@ fn infill_linker_pipeline_smoke() {
         active_regions: Vec::new(),
         ..Default::default()
     };
-    let blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
+    let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
+    let mut resolved = slicer_ir::ResolvedConfig::default();
+    for (key, value) in linker_config_fields() {
+        if !resolved
+            .apply_cli_key(&key, &value)
+            .expect("linker fixture config must be typed correctly")
+        {
+            resolved.extensions.insert(key, value);
+        }
+    }
+    blackboard
+        .commit_region_map(Arc::new(
+            crate::common::dispatch_fixture::region_map_for_slice(&slice_ir(), 0, resolved),
+        ))
+        .expect("linker region authority must commit");
     let mut arena = LayerArena::new();
     arena.set_slice(slice_ir()).expect("SliceIR must stage");
     arena

@@ -41,7 +41,14 @@ fn slice_region_view_contract() {
     let mut ctx = HostExecutionContextBuilder::new("slice-region-contract", 1.25, 0.2).build();
     let mut config = HashMap::new();
     config.insert("region_metadata".to_string(), ConfigValueStorage::Int(17));
-    ctx.set_default_config_fields(config);
+    ctx.set_config_fields_per_region(HashMap::from([(
+        OriginId {
+            object_id: "object-172".into(),
+            region_id: 7,
+            variant_chain: Vec::new(),
+        },
+        config,
+    )]));
 
     let polygon = square();
     let region = ctx
@@ -224,6 +231,14 @@ fn prev_layer_boundary_reaches_live_perimeters_guest_view() {
         "overhang_reverse_threshold".into(),
         ConfigValueStorage::Float(0.0),
     );
+    ctx.set_config_fields_per_region(HashMap::from([(
+        OriginId {
+            object_id: "object-live".into(),
+            region_id: 7,
+            variant_chain: Vec::new(),
+        },
+        fields.clone(),
+    )]));
     let config_handle = ctx
         .push_config_view(ConfigViewData { fields })
         .expect("config resource");

@@ -107,6 +107,7 @@ mod prepass_slice_and_shell_tdd;
 mod prepass_support_geometry_layer_plan_tdd;
 mod prepass_support_geometry_tdd;
 mod raft_positional_tdd;
+mod shared_selection_runtime_tdd;
 mod slicing_promotion_e2e_regression_tdd;
 mod support_anchored_reach_tdd;
 mod support_config_surface_tdd;

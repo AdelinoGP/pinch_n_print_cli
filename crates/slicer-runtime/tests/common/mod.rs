@@ -580,9 +580,14 @@ pub fn commit_hec_for_test(
 // Construct *StageInput borrow structs from the legacy Blackboard/LayerArena
 // so existing test call sites can use the new trait boundary with minimal churn.
 
-pub fn layer_input<'a>(blackboard: &'a Blackboard, arena: &'a LayerArena) -> LayerStageInput<'a> {
+pub fn layer_input<'a>(
+    blackboard: &'a Blackboard,
+    arena: &'a LayerArena,
+    selection: &'a slicer_wasm_host::selection::LayerSelection,
+) -> LayerStageInput<'a> {
     // exhaustive: LayerStageInput is a boundary carrier with borrowed runtime state.
     LayerStageInput {
+        selection: Some(selection),
         mesh: blackboard.mesh().clone(),
         paint_regions: None,
         seam_plan: blackboard.seam_plan().cloned(),
@@ -673,6 +678,53 @@ impl TestModuleBundle {
     }
 }
 
+/// Build the owned index for a direct dispatcher fixture from static metadata
+/// and committed products. Hold it across dispatch and borrow via `selection_for`.
+/// Executor-entry fixtures instead use production `build_and_commit_layer_selection_index`.
+#[allow(dead_code)]
+pub fn selection_for_module(
+    stage_id: &str,
+    layer: &slicer_ir::GlobalLayer,
+    module: &slicer_runtime::CompiledModule,
+    blackboard: &Blackboard,
+    staged_slice: Option<&slicer_ir::SliceIR>,
+    staged_perimeter: Option<&slicer_ir::PerimeterIR>,
+) -> Result<slicer_wasm_host::selection::LayerSelectionIndex, slicer_ir::LayerStageError> {
+    use slicer_wasm_host::selection::{
+        build_layer_selection_index, LayerSelectionIndexInput, LayerSelectionModuleInput, STAGES,
+    };
+    // exhaustive: static binding authority is taken directly from the compiled module.
+    let modules = [LayerSelectionModuleInput {
+        stage_id,
+        module_id: module.module_id(),
+        claims: module.claims(),
+        paint_semantics: Some(module.region_split_semantics()),
+        invocation_config: module.config_view().as_ref(),
+    }];
+    // exhaustive: the fixture snapshot preserves absent products without synthetic entries.
+    let input = LayerSelectionIndexInput {
+        stage_roster: STAGES,
+        global_layers: std::slice::from_ref(layer),
+        modules: &modules,
+        // Direct-dispatch fixtures carry the call-local staged slice; the
+        // committed whole-print product is only the fallback when no staged
+        // slice exists (executor-driven fixtures provision there instead).
+        slices: staged_slice
+            .map(std::slice::from_ref)
+            .or_else(|| blackboard.slice_ir().map(|v| v.as_slice()))
+            .unwrap_or(&[]),
+        region_map: blackboard.region_map().map(|a| a.as_ref()),
+        support_plan: blackboard.support_plan().map(|a| a.as_ref()),
+        // Blackboard exposes no whole-print perimeter product.
+        perimeters: staged_perimeter.map(std::slice::from_ref).unwrap_or(&[]),
+    };
+    build_layer_selection_index(input).map_err(|e| slicer_ir::LayerStageError::FatalModule {
+        stage_id: e.stage_id,
+        module_id: e.module_id,
+        message: format!("{:?}", e.error),
+    })
+}
+
 /// Real-wasm variant of `run_layer_and_commit` that uses the bundle's actual
 /// `pool` and `component` (not the placeholder). dispatch_tdd needs this to
 /// drive real guest execution.
@@ -688,7 +740,22 @@ pub fn run_layer_and_commit_with_bundle(
     use slicer_runtime::StageApplyContext;
     use slicer_wasm_host::LayerStageRunner;
     let live = bundle.as_live();
-    let input = layer_input(blackboard, arena);
+    let index = selection_for_module(
+        stage_id,
+        layer,
+        &bundle.module,
+        blackboard,
+        arena.slice(),
+        arena.perimeter(),
+    )?;
+    let selection = index
+        .selection_for(layer.index, bundle.module.module_id())
+        .ok_or_else(|| slicer_ir::LayerStageError::FatalModule {
+            stage_id: stage_id.to_string(),
+            module_id: bundle.module.module_id().to_owned(),
+            message: "fixture layer selection bound pair is missing".into(),
+        })?;
+    let input = layer_input(blackboard, arena, selection);
     let commit_opt =
         LayerStageRunner::run_stage(dispatcher, &stage_id.to_string(), layer, &live, input)?;
     let seam_plan_arc = blackboard.seam_plan().cloned();

@@ -304,12 +304,24 @@ fn typed_instantiation_failure_produces_structured_error() {
     let arena = LayerArena::new();
 
     let live = fx.bundle.as_live();
+    let index = crate::common::selection_for_module(
+        "Layer::Infill",
+        &layer,
+        &fx.bundle.module,
+        &fx.blackboard,
+        None,
+        None,
+    )
+    .expect("build fixture selection");
+    let selection = index
+        .selection_for(layer.index, fx.bundle.module.module_id())
+        .expect("fixture selection");
     let result = LayerStageRunner::run_stage(
         &fx.dispatcher,
         &"Layer::Infill".to_string(),
         &layer,
         &live,
-        layer_input(&fx.blackboard, &arena),
+        layer_input(&fx.blackboard, &arena, selection),
     );
 
     assert!(
@@ -371,12 +383,24 @@ fn pool_slot_released_after_successful_typed_call() {
     for _i in 0..3 {
         let arena = LayerArena::new();
         let live = fx.bundle.as_live();
+        let index = crate::common::selection_for_module(
+            "Layer::Infill",
+            &layer,
+            &fx.bundle.module,
+            &fx.blackboard,
+            None,
+            None,
+        )
+        .expect("build fixture selection");
+        let selection = index
+            .selection_for(layer.index, fx.bundle.module.module_id())
+            .expect("fixture selection");
         let result = LayerStageRunner::run_stage(
             &fx.dispatcher,
             &"Layer::Infill".to_string(),
             &layer,
             &live,
-            layer_input(&fx.blackboard, &arena),
+            layer_input(&fx.blackboard, &arena, selection),
         );
         result.expect("Layer::Infill dispatch should succeed");
     }
@@ -398,12 +422,24 @@ fn pool_slot_released_after_failed_typed_call() {
     for i in 0..3 {
         let arena = LayerArena::new();
         let live = fx.bundle.as_live();
+        let index = crate::common::selection_for_module(
+            "Layer::Infill",
+            &layer,
+            &fx.bundle.module,
+            &fx.blackboard,
+            None,
+            None,
+        )
+        .expect("build fixture selection");
+        let selection = index
+            .selection_for(layer.index, fx.bundle.module.module_id())
+            .expect("fixture selection");
         let result = LayerStageRunner::run_stage(
             &fx.dispatcher,
             &"Layer::Infill".to_string(),
             &layer,
             &live,
-            layer_input(&fx.blackboard, &arena),
+            layer_input(&fx.blackboard, &arena, selection),
         );
         assert!(result.is_err(), "call #{} should fail", i);
     }
@@ -618,12 +654,24 @@ fn stage_miss_is_fatal_at_instantiation() {
         is_raft: false,
     };
     let layer_live = layer_bundle.as_live();
+    let index = crate::common::selection_for_module(
+        "Layer::Perimeters",
+        &layer,
+        &layer_bundle.module,
+        &layer_blackboard,
+        None,
+        None,
+    )
+    .expect("build fixture selection");
+    let selection = index
+        .selection_for(layer.index, layer_bundle.module.module_id())
+        .expect("fixture selection");
     let layer_result = LayerStageRunner::run_stage(
         &dispatcher,
         &"Layer::Perimeters".to_string(),
         &layer,
         &layer_live,
-        layer_input(&layer_blackboard, &layer_arena),
+        layer_input(&layer_blackboard, &layer_arena, selection),
     );
 
     use slicer_ir::LayerStageError;

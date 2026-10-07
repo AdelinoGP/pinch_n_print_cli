@@ -90,10 +90,6 @@ fn integrated_parity_gyroid_infill() {
         ..Default::default()
     };
     let stage: StageId = "Layer::Infill".to_string();
-    let mut wasm_input = crate::common::layer_input(&bb, &wasm_arena);
-    let mut native_input = crate::common::layer_input(&bb, &native_arena);
-    wasm_input.paint_regions = Some(());
-    native_input.paint_regions = Some(());
     let (native, wasm) = run_integrated_parity(
         IntegratedParitySpec {
             module_id: "com.core.gyroid-infill".into(),
@@ -159,7 +155,41 @@ fn integrated_parity_gyroid_infill() {
             ]))),
             native_entry: GyroidInfill::__slicer_native_entry(),
         },
-        |dispatcher, native_live, wasm_live| {
+        |dispatcher, native_live, wasm_live, native_module, wasm_module| {
+            let wasm_index = crate::common::selection_for_module(
+                &stage,
+                &layer,
+                wasm_module,
+                &bb,
+                wasm_arena.slice(),
+                None,
+            )
+            .expect("build wasm selection index");
+            let native_index = crate::common::selection_for_module(
+                &stage,
+                &layer,
+                native_module,
+                &bb,
+                native_arena.slice(),
+                None,
+            )
+            .expect("build native selection index");
+            let mut wasm_input = crate::common::layer_input(
+                &bb,
+                &wasm_arena,
+                wasm_index
+                    .selection_for(layer.index, wasm_module.module_id())
+                    .expect("bound wasm selection"),
+            );
+            let mut native_input = crate::common::layer_input(
+                &bb,
+                &native_arena,
+                native_index
+                    .selection_for(layer.index, native_module.module_id())
+                    .expect("bound native selection"),
+            );
+            wasm_input.paint_regions = Some(());
+            native_input.paint_regions = Some(());
             let wasm =
                 LayerStageRunner::run_stage(dispatcher, &stage, &layer, wasm_live, wasm_input)
                     .expect("wasm dispatch")

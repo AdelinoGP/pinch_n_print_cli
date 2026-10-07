@@ -23,6 +23,9 @@ use slicer_ir::{
     ConfigValue, ConfigView, ExPolygon, GlobalLayer, PaintValue, Point2, Polygon, RegionKey,
     RegionMapIR, RegionPlan, ResolvedConfig, SemVer, SliceIR, SlicedRegion,
 };
+use slicer_wasm_host::selection::{
+    build_layer_selection_index, LayerSelectionIndexInput, LayerSelectionModuleInput, STAGES,
+};
 use slicer_wasm_host::{
     binding::LayerStageInput, CompiledModuleLive, LayerStageRunner, WasmInstancePool,
 };
@@ -63,6 +66,7 @@ fn load_component(name: &str) -> Arc<slicer_wasm_host::WasmComponent> {
 
 fn build_painted_region_map(sparse_holder: &str) -> RegionMapIR {
     let cfg = ResolvedConfig {
+        line_width: 0.4,
         sparse_fill_holder: sparse_holder.to_string(),
         top_fill_holder: "rectilinear-infill".to_string(),
         bottom_fill_holder: "rectilinear-infill".to_string(),
@@ -75,7 +79,7 @@ fn build_painted_region_map(sparse_holder: &str) -> RegionMapIR {
     let key = RegionKey {
         global_layer_index: 0,
         object_id: "painted-cube".into(),
-        region_id: 1_000_001,
+        region_id: 1,
         variant_chain: vec![("material".to_string(), PaintValue::ToolIndex(1))],
     };
     region_map.entries.insert(
@@ -92,7 +96,8 @@ fn build_painted_region_map(sparse_holder: &str) -> RegionMapIR {
 fn build_slice_ir() -> SliceIR {
     let region = SlicedRegion {
         object_id: "painted-cube".into(),
-        region_id: 1_000_001,
+        region_id: 1_000_002,
+        variant_chain: vec![("material".to_string(), PaintValue::ToolIndex(1))],
         polygons: vec![square(0, 0, 100_000, 100_000)],
         effective_layer_height: 0.2,
         sparse_infill_area: vec![square(10_000, 10_000, 90_000, 90_000)],
@@ -111,7 +116,8 @@ fn build_slice_ir() -> SliceIR {
 }
 
 fn build_module_config() -> Arc<ConfigView> {
-    // Bound-view shape (packet 06 5c-prime): mirrors
+    // Module-level fallback config, not a substitute for the exact painted
+    // region config in RegionMapIR. Bound-view shape (packet 06 5c-prime): mirrors
     // rectilinear_infill_tdd.rs::baseline_config — every contract-required
     // read at manifest defaults, with this fixture's density/line_width
     // winning (same set as `integrated_parity_rectilinear_infill_tdd`, a
@@ -166,6 +172,24 @@ fn run_infill_stage(
         ..Default::default()
     };
     let mesh = Arc::new(slicer_ir::MeshIR::default());
+    // exhaustive: committed snapshot pins every selection authority channel.
+    let selection_index = build_layer_selection_index(LayerSelectionIndexInput {
+        stage_roster: STAGES,
+        global_layers: std::slice::from_ref(&layer),
+        // exhaustive: binding supplies all static module metadata.
+        modules: &[LayerSelectionModuleInput {
+            stage_id: "Layer::Infill",
+            module_id: module.module_id,
+            claims: module.claims,
+            paint_semantics: None,
+            invocation_config: &module.config_view,
+        }],
+        slices: std::slice::from_ref(slice_ir),
+        region_map: Some(region_map),
+        support_plan: None,
+        perimeters: &[],
+    })
+    .expect("painted holder selection index");
     // exhaustive: LayerStageInput has no Default and this test supplies the complete stage input
     let input = LayerStageInput {
         mesh,
@@ -181,6 +205,11 @@ fn run_infill_stage(
         prepared_regions: None,
         prepared_perimeter_source_regions: None,
         infill: None,
+        selection: Some(
+            selection_index
+                .selection_for(layer.index, module.module_id)
+                .expect("bound painted holder module"),
+        ),
     };
     let stage_id = "Layer::Infill".to_string();
     LayerStageRunner::run_stage(dispatcher, &stage_id, &layer, module, input)

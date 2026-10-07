@@ -318,7 +318,32 @@ fn run_real_arachne_guest(layer_index: u32, wall_sequence: &str) {
             ..Default::default()
         })
         .unwrap();
-    let blackboard = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+    let mut blackboard = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+    // Direct-dispatch fixture: the staged arena slice supplies selection
+    // candidates, and every candidate carries exact build-time config
+    // authority (the helper's fallback map is absent here).
+    let mut region_map = slicer_ir::RegionMapIR::default();
+    let config_id = region_map.intern_config(slicer_ir::ResolvedConfig {
+        layer_height: 0.2,
+        line_width: 0.45,
+        wall_count: 3,
+        ..Default::default()
+    });
+    region_map.entries.insert(
+        slicer_ir::RegionKey {
+            global_layer_index: layer_index,
+            object_id: "obj-a".into(),
+            region_id: 0,
+            variant_chain: Vec::new(),
+        },
+        slicer_ir::RegionPlan {
+            config: config_id,
+            ..Default::default()
+        },
+    );
+    blackboard
+        .commit_region_map(Arc::new(region_map))
+        .expect("commit exact arachne fixture map");
     let layer = slicer_ir::GlobalLayer {
         index: layer_index,
         z: 0.2,

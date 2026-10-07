@@ -25,7 +25,10 @@
 
 #![allow(missing_docs)]
 
-use slicer_ir::{mm_to_units, ExPolygon, Point2, Polygon, SemVer, SliceIR, SlicedRegion};
+use slicer_ir::{
+    mm_to_units, ExPolygon, Point2, Polygon, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig,
+    SemVer, SliceIR, SlicedRegion,
+};
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::manifest::LoadedModuleBuilder;
 use slicer_runtime::{Blackboard, CompiledModuleBuilder, LayerArena, WasmRuntimeDispatcher};
@@ -262,7 +265,29 @@ fn arachne_perimeters_simple_square_produces_walls() {
         })
         .expect("set_slice must succeed");
 
-    let blackboard = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+    let mut blackboard = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+    let mut region_map = RegionMapIR::default();
+    let config = region_map.intern_config(ResolvedConfig {
+        wall_count: 3,
+        line_width: 0.4,
+        layer_height: 0.2,
+        ..Default::default()
+    });
+    region_map.entries.insert(
+        RegionKey {
+            global_layer_index: layer_index,
+            object_id: object_id.to_string(),
+            region_id,
+            variant_chain: Vec::new(),
+        },
+        RegionPlan {
+            config,
+            ..Default::default()
+        },
+    );
+    blackboard
+        .commit_region_map(Arc::new(region_map))
+        .expect("RegionMapIR must stage");
 
     let layer = slicer_ir::GlobalLayer {
         index: layer_index,

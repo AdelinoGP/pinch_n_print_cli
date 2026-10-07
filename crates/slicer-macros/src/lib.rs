@@ -2590,6 +2590,7 @@ fn layer_light_helpers() -> TokenStream2 {
                     .collect();
                 sdk_view.set_raft_fill(raft_fill);
                 sdk_view.set_held_claims(r.held_claims());
+                sdk_view.set_config(__slicer_adapt_config(&r.config()));
                 let overhang_areas: ::std::vec::Vec<::slicer_ir::ExPolygon> = r
                     .overhang_areas()
                     .iter()

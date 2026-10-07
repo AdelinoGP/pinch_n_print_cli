@@ -240,27 +240,49 @@ fn macro_adapter_round_trips_every_slice_region_view_field() {
     // assertion side has stable references to the populated inputs.
     let fixture_region_id: RegionId = slice.regions[0].region_id;
     let fixture_object_id = slice.regions[0].object_id.clone();
+    let mut bb = Blackboard::new(empty_mesh_ir(), 1);
+    let mut map = slicer_ir::RegionMapIR::default();
+    let config = map.intern_config(slicer_ir::ResolvedConfig {
+        extensions: std::collections::BTreeMap::from([(
+            "emit_field_witness".to_owned(),
+            ConfigValue::Int(1),
+        )]),
+        ..Default::default()
+    });
+    map.entries.insert(
+        slicer_ir::RegionKey {
+            global_layer_index: layer_index,
+            object_id: fixture_object_id.clone(),
+            region_id: fixture_region_id,
+            variant_chain: slice.regions[0].variant_chain.clone(),
+        },
+        slicer_ir::RegionPlan {
+            config,
+            ..Default::default()
+        },
+    );
+    bb.commit_region_map(Arc::new(map))
+        .expect("commit exact holder and witness config");
+    bb.commit_slice_ir(Arc::new(vec![slice.clone()]))
+        .expect("commit selection slice");
     arena.set_slice(slice).expect("commit slice ir");
 
-    // No region_map committed: the dispatcher's `held_claims` resolver then
-    // takes the `ResolvedConfig::default()` branch (`unwrap_or_default()` in
-    // `slicer-wasm-host/src/dispatch.rs::run_stage`), whose
-    // `*_fill_holder` defaults are all `"rectilinear-infill"`. Combined with
-    // `module_id = "rectilinear-infill"` and `module.claims =
-    // ["claim:sparse-fill"]`, the per-region holder filter matches and
-    // emits `held_claims = ["claim:sparse-fill"]` — the value the SDK
-    // accessor must witness. Skipping the region_map also avoids
-    // `ConfigView::from_declared`'s key-filter pass dropping the test's
-    // `emit_field_witness` sentinel key.
-    let bb = Blackboard::new(empty_mesh_ir(), 1);
+    // Exact config retains the rectilinear sparse holder and declared witness
+    // extension; no missing-map default authority is used.
 
     let stage: StageId = "Layer::Infill".to_string();
+    let index =
+        crate::common::selection_for_module(&stage, &layer, &module.module, &bb, None, None)
+            .expect("build fixture selection");
+    let selection = index
+        .selection_for(layer.index, module.module.module_id())
+        .expect("fixture selection");
     let commit = LayerStageRunner::run_stage(
         &dispatcher,
         &stage,
         &layer,
         &module.as_live(),
-        layer_input(&bb, &arena),
+        layer_input(&bb, &arena, selection),
     )
     .expect("dispatch must succeed under the field-witness config")
     .expect("dispatch must produce a commit for the field-witness config");

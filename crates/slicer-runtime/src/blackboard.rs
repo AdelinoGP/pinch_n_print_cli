@@ -3,6 +3,7 @@
 //! This module defines the TASK-026 public API surface and minimal runtime
 //! behavior for blackboard and layer-arena ownership.
 
+use slicer_wasm_host::selection::LayerSelectionIndex;
 use std::sync::Arc;
 
 use slicer_ir::slice_ir::SupportAnalysisIR;
@@ -67,6 +68,18 @@ pub struct DeferredTravelMove {
     pub f: Option<f32>,
 }
 
+/// A second attempt to publish the host-only immutable selection product.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LayerSelectionIndexCommitError;
+
+impl std::fmt::Display for LayerSelectionIndexCommitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("layer selection index already committed")
+    }
+}
+
+impl std::error::Error for LayerSelectionIndexCommitError {}
+
 /// Host-owned immutable global IR store plus write-once per-layer output slots.
 #[derive(Debug)]
 pub struct Blackboard {
@@ -77,6 +90,7 @@ pub struct Blackboard {
     support_plan: Option<Arc<SupportPlanIR>>,
     region_map: Option<Arc<RegionMapIR>>,
     slice_ir: Option<Arc<Vec<SliceIR>>>,
+    layer_selection_index: Option<Arc<LayerSelectionIndex>>,
     support_geometry: Option<Arc<SupportGeometryIR>>,
     support_analysis: Option<Arc<SupportAnalysisIR>>,
     lightning_tree_ir: Option<Arc<LightningTreeIR>>,
@@ -95,6 +109,7 @@ impl Blackboard {
             support_plan: None,
             region_map: None,
             slice_ir: None,
+            layer_selection_index: None,
             support_geometry: None,
             support_analysis: None,
             lightning_tree_ir: None,
@@ -338,6 +353,24 @@ impl Blackboard {
     #[must_use]
     pub fn slice_ir(&self) -> Option<&Arc<Vec<SliceIR>>> {
         self.slice_ir.as_ref()
+    }
+
+    /// Return the immutable whole-print selection authority, if committed.
+    #[must_use]
+    pub fn layer_selection_index(&self) -> Option<&Arc<LayerSelectionIndex>> {
+        self.layer_selection_index.as_ref()
+    }
+
+    /// Publish a complete selection index exactly once, without an IR slot label.
+    pub fn commit_layer_selection_index(
+        &mut self,
+        index: Arc<LayerSelectionIndex>,
+    ) -> Result<(), LayerSelectionIndexCommitError> {
+        if self.layer_selection_index.is_some() {
+            return Err(LayerSelectionIndexCommitError);
+        }
+        self.layer_selection_index = Some(index);
+        Ok(())
     }
 
     /// Commit `SupportGeometryIR` exactly once.
@@ -864,4 +897,31 @@ fn set_arena_slot<T>(
 
     *slot = Some(ir);
     Ok(())
+}
+
+#[cfg(test)]
+mod selection_index_tests {
+    use super::*;
+
+    #[test]
+    fn selection_index_duplicate_commit_preserves_original_product() {
+        let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 0);
+        assert!(blackboard.layer_selection_index().is_none());
+        let original = Arc::new(LayerSelectionIndex::default());
+        blackboard
+            .commit_layer_selection_index(Arc::clone(&original))
+            .unwrap();
+        assert!(Arc::ptr_eq(
+            blackboard.layer_selection_index().unwrap(),
+            &original
+        ));
+        assert_eq!(
+            blackboard.commit_layer_selection_index(Arc::new(LayerSelectionIndex::default())),
+            Err(LayerSelectionIndexCommitError)
+        );
+        assert!(Arc::ptr_eq(
+            blackboard.layer_selection_index().unwrap(),
+            &original
+        ));
+    }
 }

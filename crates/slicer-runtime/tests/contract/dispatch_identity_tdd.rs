@@ -6,6 +6,22 @@
 use crate::common::{dispatch_fixture, ir_builders};
 use slicer_ir::GlobalLayer;
 
+fn map_for_count(count: usize, layer_index: u32) -> slicer_ir::RegionMapIR {
+    dispatch_fixture::region_map_for_slice(
+        &ir_builders::slice_ir::with_count(count).build(),
+        layer_index,
+        slicer_ir::ResolvedConfig::default(),
+    )
+}
+
+fn map_for_ids(ids: &[(&str, u64)]) -> slicer_ir::RegionMapIR {
+    dispatch_fixture::region_map_for_slice(
+        &ir_builders::slice_ir::with_ids(ids).build(),
+        0,
+        slicer_ir::ResolvedConfig::default(),
+    )
+}
+
 fn default_layer() -> GlobalLayer {
     // exhaustive: boundary fixture preserves explicit test data
     GlobalLayer {
@@ -73,6 +89,7 @@ fn slice_postprocess_merge_replaces_polygons_preserving_identity() {
 fn perimeter_postprocess_commit_preserves_distinct_region_identities() {
     let ids = [("alpha", 11u64), ("beta", 22u64), ("gamma", 33u64)];
     let mut fx = dispatch_fixture::for_stage("Layer::PerimetersPostProcess")
+        .with_region_map(map_for_ids(&ids))
         .with_slice(ir_builders::slice_ir::with_ids(&ids).build())
         .with_perimeter(
             ir_builders::perimeter_ir::with_ids(&ids)
@@ -110,6 +127,7 @@ fn perimeter_postprocess_commit_preserves_distinct_region_identities() {
 fn infill_postprocess_commit_preserves_distinct_region_identities() {
     let ids = [("part-A", 7u64), ("part-B", 9u64)];
     let mut fx = dispatch_fixture::for_stage("Layer::InfillPostProcess")
+        .with_region_map(map_for_ids(&ids))
         .with_perimeter(
             ir_builders::perimeter_ir::with_ids(&ids)
                 .walls(1)
@@ -137,6 +155,7 @@ fn perimeter_postprocess_identity_preservation_deterministic() {
     let mut results = Vec::new();
     for _ in 0..3 {
         let mut fx = dispatch_fixture::for_stage("Layer::PerimetersPostProcess")
+            .with_region_map(map_for_ids(&ids))
             .with_slice(ir_builders::slice_ir::with_ids(&ids).build())
             .with_perimeter(
                 ir_builders::perimeter_ir::with_ids(&ids)
@@ -156,6 +175,7 @@ fn perimeter_postprocess_identity_preservation_deterministic() {
 fn perimeter_postprocess_identity_isolation_across_dispatches() {
     let ids1 = [("first", 100u64), ("second", 200u64)];
     let mut fx1 = dispatch_fixture::for_stage("Layer::PerimetersPostProcess")
+        .with_region_map(map_for_ids(&ids1))
         .with_slice(ir_builders::slice_ir::with_ids(&ids1).build())
         .with_perimeter(
             ir_builders::perimeter_ir::with_ids(&ids1)
@@ -168,6 +188,7 @@ fn perimeter_postprocess_identity_isolation_across_dispatches() {
 
     let ids2 = [("alt", 999u64)];
     let mut fx2 = dispatch_fixture::for_stage("Layer::PerimetersPostProcess")
+        .with_region_map(map_for_ids(&ids2))
         .with_slice(ir_builders::slice_ir::with_ids(&ids2).build())
         .with_perimeter(
             ir_builders::perimeter_ir::with_ids(&ids2)
@@ -200,6 +221,7 @@ fn perimeter_postprocess_identity_isolation_across_dispatches() {
 #[test]
 fn slice_postprocess_commit_preserves_distinct_region_identities() {
     let mut fx = dispatch_fixture::for_stage("Layer::SlicePostProcess")
+        .with_region_map(map_for_count(3, 0))
         .with_slice(ir_builders::slice_ir::with_count(3).at_z(0.2).build())
         .build();
 
@@ -241,6 +263,7 @@ fn slice_postprocess_commit_preserves_distinct_region_identities() {
 #[test]
 fn support_postprocess_commit_preserves_distinct_region_identities() {
     let mut fx = dispatch_fixture::for_stage("Layer::SupportPostProcess")
+        .with_region_map(map_for_count(2, 0))
         .with_slice(ir_builders::slice_ir::with_count(2).at_z(0.2).build())
         .build();
 
@@ -270,6 +293,7 @@ fn slice_postprocess_identity_preservation_deterministic() {
     let mut results = Vec::new();
     for _ in 0..3 {
         let mut fx = dispatch_fixture::for_stage("Layer::SlicePostProcess")
+            .with_region_map(map_for_count(4, 0))
             .with_slice(ir_builders::slice_ir::with_count(4).at_z(0.2).build())
             .build();
         fx.run_layer(&default_layer()).unwrap();
@@ -282,11 +306,13 @@ fn slice_postprocess_identity_preservation_deterministic() {
 #[test]
 fn support_postprocess_identity_isolation_across_dispatches() {
     let mut fx1 = dispatch_fixture::for_stage("Layer::SupportPostProcess")
+        .with_region_map(map_for_count(3, 0))
         .with_slice(ir_builders::slice_ir::with_count(3).at_z(0.2).build())
         .build();
     fx1.run_layer(&default_layer()).unwrap();
 
     let mut fx2 = dispatch_fixture::for_stage("Layer::SupportPostProcess")
+        .with_region_map(map_for_count(1, 0))
         .with_slice(ir_builders::slice_ir::with_count(1).at_z(0.2).build())
         .build();
     fx2.run_layer(&default_layer()).unwrap();
@@ -360,7 +386,13 @@ fn real_perimeter_region_data_visible_through_infill_postprocess_dispatch() {
     //   point[0].y = total wall_loops
     //   point[0].z = total infill polygons
     let mut fx = dispatch_fixture::for_stage("Layer::InfillPostProcess")
-        .with_slice(ir_builders::slice_ir::with_count(3).at_z(0.4).build())
+        .with_slice(
+            ir_builders::slice_ir::with_count(3)
+                .at_layer(2)
+                .at_z(0.4)
+                .build(),
+        )
+        .with_region_map(map_for_count(3, 2))
         .with_perimeter(
             ir_builders::perimeter_ir::with_count(3)
                 .at_layer(2)
@@ -396,6 +428,7 @@ fn real_perimeter_region_data_visible_through_infill_postprocess_dispatch() {
 #[test]
 fn perimeter_region_isolation_across_sequential_dispatches() {
     let mut a1 = dispatch_fixture::for_stage("Layer::InfillPostProcess")
+        .with_region_map(map_for_count(5, 0))
         .with_perimeter(
             ir_builders::perimeter_ir::with_count(5)
                 .at_layer(0)
@@ -407,6 +440,7 @@ fn perimeter_region_isolation_across_sequential_dispatches() {
     a1.run_layer(&default_layer()).unwrap();
 
     let mut a2 = dispatch_fixture::for_stage("Layer::InfillPostProcess")
+        .with_region_map(map_for_count(1, 0))
         .with_perimeter(
             ir_builders::perimeter_ir::with_count(1)
                 .at_layer(0)
@@ -434,6 +468,7 @@ fn perimeter_region_deterministic_across_repeated_dispatches() {
     let mut results = Vec::new();
     for _ in 0..3 {
         let mut fx = dispatch_fixture::for_stage("Layer::InfillPostProcess")
+            .with_region_map(map_for_count(2, 0))
             .with_perimeter(
                 ir_builders::perimeter_ir::with_count(2)
                     .at_layer(0)

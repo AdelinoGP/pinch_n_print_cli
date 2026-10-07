@@ -1,7 +1,5 @@
 #![allow(missing_docs)]
 
-use crate::common::seed::seed_slice_ir;
-
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -281,7 +279,23 @@ fn layer_world_builder_commit_preserves_entities_tool_changes_and_z_hops() {
         aggregated_region_split: BTreeMap::new(),
     };
     let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
-    seed_slice_ir(&mut blackboard, &plan);
+    let slice = crate::common::ir_builders::slice_ir::with_ids(&ids)
+        .at_layer(0)
+        .at_z(0.2)
+        .build();
+    let region_map = crate::common::dispatch_fixture::region_map_for_slice(
+        &slice,
+        0,
+        slicer_ir::ResolvedConfig::default(),
+    );
+    blackboard
+        .commit_slice_ir(Arc::new(vec![slice]))
+        .expect("commit seeded perimeter model sources");
+    blackboard
+        .commit_region_map(Arc::new(region_map))
+        .expect("commit seeded perimeter authority");
+    slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .expect("commit layer selection index");
     let runner = SeedingRunner {
         inner: &dispatcher,
         perimeter: Mutex::new(Some(seeded_perimeter)),

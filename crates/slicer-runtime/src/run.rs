@@ -1921,6 +1921,8 @@ pub fn prepare_prepass_context(
     .map_err(|e| SliceRunError(format!("prepass failed: {e}")))?;
 
     crate::layer_executor::promote_global_layers(&mut plan, &blackboard);
+    crate::layer_executor::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .map_err(|e| SliceRunError(format!("layer selection construction failed: {e}")))?;
 
     let layer_runner = WasmRuntimeDispatcher::new(Arc::clone(&engine));
 

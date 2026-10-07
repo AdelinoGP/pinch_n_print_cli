@@ -74,6 +74,33 @@ fn integrated_parity_seam_placer() {
         ConfigValue::String("nearest".into()),
     )])));
     let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
+    let mut region_map = slicer_ir::RegionMapIR::default();
+    let config_id = region_map.intern_config(slicer_ir::ResolvedConfig {
+        extensions: config
+            .keys()
+            .into_iter()
+            .map(|key| {
+                let value = config.get(&key).expect("fixture config key").clone();
+                (key, value)
+            })
+            .collect(),
+        ..Default::default()
+    });
+    region_map.entries.insert(
+        RegionKey {
+            global_layer_index: 0,
+            object_id: "parity-object".into(),
+            region_id: 0,
+            variant_chain: Vec::new(),
+        },
+        slicer_ir::RegionPlan {
+            config: config_id,
+            ..Default::default()
+        },
+    );
+    blackboard
+        .commit_region_map(Arc::new(region_map))
+        .expect("commit fixture region map");
     blackboard
         .commit_seam_plan(Arc::new(SeamPlanIR {
             entries: vec![SeamPlanEntry {
@@ -111,6 +138,22 @@ fn integrated_parity_seam_placer() {
         ..Default::default()
     };
     let stage: StageId = "Layer::PerimetersPostProcess".into();
+    let selection_module = CompiledModuleBuilder::new("com.core.seam-placer")
+        .claims(vec!["seam-placer".into()])
+        .config_view(Arc::clone(&config))
+        .build();
+    let selection_index = crate::common::selection_for_module(
+        &stage,
+        &layer,
+        &selection_module,
+        &blackboard,
+        None,
+        wasm_arena.perimeter(),
+    )
+    .expect("build fixture selection index");
+    let selection = selection_index
+        .selection_for(layer.index, selection_module.module_id())
+        .expect("fixture layer selection");
     let (native, wasm) = run_integrated_parity(
         IntegratedParitySpec {
             module_id: "com.core.seam-placer".into(),
@@ -137,13 +180,13 @@ fn integrated_parity_seam_placer() {
             config,
             native_entry: SeamPlacer::__slicer_native_entry(),
         },
-        |dispatcher, native_live, wasm_live| {
+        |dispatcher, native_live, wasm_live, _native_module, _wasm_module| {
             let wasm = LayerStageRunner::run_stage(
                 dispatcher,
                 &stage,
                 &layer,
                 wasm_live,
-                crate::common::layer_input(&blackboard, &wasm_arena),
+                crate::common::layer_input(&blackboard, &wasm_arena, selection),
             )
             .expect("wasm dispatch")
             .expect("wasm commit");
@@ -152,7 +195,7 @@ fn integrated_parity_seam_placer() {
                 &stage,
                 &layer,
                 native_live,
-                crate::common::layer_input(&blackboard, &native_arena),
+                crate::common::layer_input(&blackboard, &native_arena, selection),
             )
             .expect("native dispatch")
             .expect("native commit");
@@ -239,6 +282,34 @@ fn native_seam_placer_aligned_commits_resolved_seam_with_origin() {
     native_arena
         .set_perimeter(perim)
         .expect("set native perimeter");
+    let config = native_module.config_view();
+    let mut region_map = slicer_ir::RegionMapIR::default();
+    let config_id = region_map.intern_config(slicer_ir::ResolvedConfig {
+        extensions: config
+            .keys()
+            .into_iter()
+            .map(|key| {
+                let value = config.get(&key).expect("fixture config key").clone();
+                (key, value)
+            })
+            .collect(),
+        ..Default::default()
+    });
+    region_map.entries.insert(
+        RegionKey {
+            global_layer_index: 0,
+            object_id: "source-object".into(),
+            region_id: 7,
+            variant_chain: Vec::new(),
+        },
+        slicer_ir::RegionPlan {
+            config: config_id,
+            ..Default::default()
+        },
+    );
+    blackboard
+        .commit_region_map(Arc::new(region_map))
+        .expect("commit fixture region map");
 
     let layer = GlobalLayer {
         index: 0,
@@ -246,12 +317,24 @@ fn native_seam_placer_aligned_commits_resolved_seam_with_origin() {
         ..Default::default()
     };
     let stage: StageId = "Layer::PerimetersPostProcess".into();
+    let selection_index = crate::common::selection_for_module(
+        &stage,
+        &layer,
+        &native_module,
+        &blackboard,
+        None,
+        native_arena.perimeter(),
+    )
+    .expect("build fixture selection index");
+    let selection = selection_index
+        .selection_for(layer.index, native_module.module_id())
+        .expect("fixture layer selection");
     let commit = LayerStageRunner::run_stage(
         &dispatcher,
         &stage,
         &layer,
         &native_live,
-        crate::common::layer_input(&blackboard, &native_arena),
+        crate::common::layer_input(&blackboard, &native_arena, selection),
     )
     .expect("native dispatch must not fatal on an aligned resolved_seam");
     let perim = match commit {

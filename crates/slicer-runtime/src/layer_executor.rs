@@ -409,6 +409,76 @@ pub fn promote_global_layers(plan: &mut ExecutionPlan, blackboard: &Blackboard) 
     plan.global_layers = Arc::new(global_layers);
 }
 
+/// True when `stage_id` is a module-backed schema Layer stage — the exact
+/// roster slice the whole-print selection index is built from. Host-built-in
+/// stages (e.g. `Layer::Slice`) and hand-built plans binding mock modules to
+/// non-roster stages have no indexed pair by construction and keep the legacy
+/// invoke path; they must not trip the internal-consistency fatal.
+fn is_indexed_module_stage(stage_id: &StageId) -> bool {
+    use slicer_wasm_host::selection::STAGES;
+    STAGES.iter().any(|spec| {
+        spec.stage_id == stage_id.as_str() && spec.tier_id == "layer" && !spec.wit_export.is_empty()
+    })
+}
+
+/// Build and publish selection authority after late prepass and layer promotion.
+/// No partial index is committed when any binding lacks exact config authority.
+pub fn build_and_commit_layer_selection_index(
+    plan: &ExecutionPlan,
+    blackboard: &mut Blackboard,
+) -> Result<(), slicer_ir::LayerStageError> {
+    use slicer_wasm_host::selection::{
+        build_layer_selection_index, LayerSelectionIndexInput, LayerSelectionModuleInput, STAGES,
+    };
+
+    let modules: Vec<_> = plan
+        .per_layer_stages
+        .iter()
+        .filter(|stage| {
+            STAGES
+                .iter()
+                .any(|spec| spec.stage_id == stage.stage_id.as_str() && spec.tier_id == "layer")
+        })
+        .flat_map(|stage| {
+            stage
+                .modules
+                .iter()
+                .map(|module| LayerSelectionModuleInput {
+                    stage_id: stage.stage_id.as_str(),
+                    module_id: module.module_id().as_str(),
+                    claims: module.claims(),
+                    paint_semantics: Some(module.region_split_semantics()),
+                    invocation_config: module.config_view().as_ref(),
+                })
+        })
+        .collect();
+    let index = build_layer_selection_index(LayerSelectionIndexInput {
+        stage_roster: STAGES,
+        global_layers: plan.global_layers.as_slice(),
+        modules: &modules,
+        slices: blackboard
+            .slice_ir()
+            .map_or(&[], |slices| slices.as_slice()),
+        region_map: blackboard.region_map().map(Arc::as_ref),
+        support_plan: blackboard.support_plan().map(Arc::as_ref),
+        // Blackboard has no committed whole-print perimeter product; arena
+        // perimeters arrive later and use build-time source-key authority.
+        perimeters: &[],
+    })
+    .map_err(|failure| slicer_ir::LayerStageError::FatalModule {
+        stage_id: failure.stage_id,
+        module_id: failure.module_id,
+        message: failure.error.to_string(),
+    })?;
+    blackboard
+        .commit_layer_selection_index(Arc::new(index))
+        .map_err(|error| slicer_ir::LayerStageError::FatalModule {
+            stage_id: StageId::from("Layer::Selection"),
+            module_id: ModuleId::from("host"),
+            message: error.to_string(),
+        })
+}
+
 /// Backfill every `ActiveRegion.resolved_config` from the committed `RegionMapIR`.
 ///
 /// `PrePass::LayerPlanning` runs before `PrePass::RegionMapping` (the latter's
@@ -890,39 +960,44 @@ fn execute_single_layer_inner(
         instrumentation.on_stage_start(&stage.stage_id, Some(layer.index));
         // Execute modules in topological order within each stage
         for module in &stage.modules {
-            // Per-layer host filter (packet 92; ADR-0071): skip this module on
-            // this layer only when its manifest opted into `paint_only = true`
-            // and no region's variant_chain matches a declared semantic. The
-            // `continue` is placed BEFORE on_module_start so the skipped module
-            // is truly absent from the instrumentation and audit log.
-            if !module_invocation_allowed_on_layer(module.region_split_semantics(), arena.slice()) {
-                continue;
-            }
-            if module
-                .claims()
-                .iter()
-                .any(|claim| claim.starts_with("support-family:"))
-                // `resolved_config` is backfilled from `RegionMapIR` at plan
-                // promotion (`promote_global_layers`), so the region can be
-                // matched as-is. This gate used to patch a local clone here,
-                // which left every other consumer of `layer.active_regions`
-                // — `module_receives_slice_region`, `module_region_index` —
-                // reading defaults and resolving the wrong family.
-                && !layer.active_regions.iter().any(|region| {
-                    slicer_scheduler::execution_plan::module_claims_match_active_region(
-                        module.claims(),
-                        region,
-                    )
-                })
-                // Ticket 19: a family renderer must also run where its plan
-                // holds bodies but no region has geometry (support carriers).
-                && slicer_wasm_host::dispatch::support_carrier_regions(
-                    module.claims(),
-                    layer.index,
-                    blackboard.support_plan().map(Arc::as_ref),
-                    arena.slice(),
+            // Only module-backed schema Layer stages have indexed selection pairs.
+            let selection = if is_indexed_module_stage(&stage.stage_id) {
+                Some(
+                    blackboard
+                        .layer_selection_index()
+                        .ok_or_else(|| slicer_ir::LayerStageError::FatalModule {
+                            stage_id: stage.stage_id.clone(),
+                            module_id: module.module_id().to_owned(),
+                            message: "internal consistency: layer selection index is not committed"
+                                .into(),
+                        })
+                        .and_then(|index| {
+                            index
+                                .selection_for(layer.index, module.module_id())
+                                .ok_or_else(|| slicer_ir::LayerStageError::FatalModule {
+                                    stage_id: stage.stage_id.clone(),
+                                    module_id: module.module_id().to_owned(),
+                                    message: format!(
+                                        "internal consistency: layer selection is missing for layer {}",
+                                        layer.index
+                                    ),
+                                })
+                        })
+                        .map_err(|error| LayerExecutionError::FatalLayer {
+                            layer_index: layer.index,
+                            stage_id: stage.stage_id.clone(),
+                            module_id: module.module_id().to_owned(),
+                            message: error.to_string(),
+                        })?,
                 )
-                .is_empty()
+            } else {
+                None
+            };
+            // Skip before instrumentation so an ineligible module remains absent
+            // from the instrumentation and audit log.
+            if selection
+                .as_ref()
+                .is_some_and(|selection| !selection.invoke)
             {
                 continue;
             }
@@ -949,6 +1024,7 @@ fn execute_single_layer_inner(
             let prepared_regions = arena.prepared_regions();
             let prepared_perimeter_source_regions = arena.prepared_perimeter_source_regions();
             let input = LayerStageInput {
+                selection,
                 mesh: Arc::clone(blackboard.mesh()),
                 paint_regions: None,
                 seam_plan: blackboard.seam_plan().cloned(),
@@ -1810,10 +1886,44 @@ pub fn execute_captured_stages_with_support_tools(
             );
 
             for module in &stage.modules {
-                if !module_invocation_allowed_on_layer(
-                    module.region_split_semantics(),
-                    arena.slice(),
-                ) {
+                // Only module-backed schema Layer stages have indexed selection pairs.
+                let selection = if is_indexed_module_stage(&stage.stage_id) {
+                    Some(
+                        blackboard
+                            .layer_selection_index()
+                            .ok_or_else(|| slicer_ir::LayerStageError::FatalModule {
+                                stage_id: stage.stage_id.clone(),
+                                module_id: module.module_id().to_owned(),
+                                message:
+                                    "internal consistency: layer selection index is not committed"
+                                        .into(),
+                            })
+                            .and_then(|index| {
+                                index
+                                    .selection_for(layer.index, module.module_id())
+                                    .ok_or_else(|| slicer_ir::LayerStageError::FatalModule {
+                                        stage_id: stage.stage_id.clone(),
+                                        module_id: module.module_id().to_owned(),
+                                        message: format!(
+                                            "internal consistency: layer selection is missing for layer {}",
+                                            layer.index
+                                        ),
+                                    })
+                            })
+                            .map_err(|error| LayerExecutionError::FatalLayer {
+                                layer_index: layer.index,
+                                stage_id: stage.stage_id.clone(),
+                                module_id: module.module_id().to_owned(),
+                                message: error.to_string(),
+                            })?,
+                    )
+                } else {
+                    None
+                };
+                if selection
+                    .as_ref()
+                    .is_some_and(|selection| !selection.invoke)
+                {
                     continue;
                 }
                 let (instance_pool, wasm_component, native_entry) = wasm_handles
@@ -1834,6 +1944,7 @@ pub fn execute_captured_stages_with_support_tools(
                 let prepared_regions = arena.prepared_regions();
                 let prepared_perimeter_source_regions = arena.prepared_perimeter_source_regions();
                 let input = LayerStageInput {
+                    selection,
                     mesh: Arc::clone(blackboard.mesh()),
                     paint_regions: None,
                     seam_plan: blackboard.seam_plan().cloned(),
@@ -2160,7 +2271,7 @@ fn run_paint_annotation(
 /// region's own `walls` slice, whose order is guest-preserved); then for each
 /// `InfillRegion` in committed order, emit sparse / solid / ironing paths in
 /// that order, then internal-bridge paths; finally emit `SupportIR` paths (support / interface / raft /
-/// ironing). `region_key` carries `(global_layer_index, object_id, region_id)`
+/// ironing). `region_key` carries `(global_layer_index, object_id, region_id, variant_chain)`
 /// for perimeter and infill entities. `SupportIR` entries are attributed with
 /// their own `(object_id, region_id)`, so support `PrintEntity`s carry the
 /// owning identity from the `SupportEntry` rather than inventing synthetic
@@ -2226,7 +2337,7 @@ pub fn assemble_ordered_entities_with_support_identities(
     // Fix 2 (Step 19 / Option B′): build two lookup tables from the SliceIR
     // to drive the per-wall and per-infill tool resolution.
     //
-    // (a) `variant_tool_by_region` maps `(object_id, region_id) → ToolIndex`
+    // (a) `variant_tool_by_region` maps full `RegionKey` identity → ToolIndex
     //     for the painted variants. Used when the host's per-region bucketing
     //     correctly attributes a `PerimeterRegion` / `InfillRegion` to a
     //     painted variant (via the synthesized `region_id` from
@@ -2243,17 +2354,28 @@ pub fn assemble_ordered_entities_with_support_identities(
     //     is the path-of-least-disturbance fix that avoids changing the WIT
     //     surface or the SDK adapter pattern (which would be a P95 + P96
     //     architectural change; tracked as a follow-up).
-    let variant_tool_by_region: HashMap<(String, u64), u64> = slice
+    let material_tool = |chain: &[(String, slicer_ir::PaintValue)]| {
+        chain
+            .iter()
+            .find_map(|(semantic, value)| match (semantic.as_str(), value) {
+                ("material", slicer_ir::PaintValue::ToolIndex(n)) => Some(u64::from(*n)),
+                _ => None,
+            })
+    };
+    let variant_tool_by_region: HashMap<RegionKey, u64> = slice
         .map(|s| {
-            let mut m: HashMap<(String, u64), u64> = HashMap::new();
+            let mut m: HashMap<RegionKey, u64> = HashMap::new();
             for r in &s.regions {
-                for (sem_name, value) in &r.variant_chain {
-                    if sem_name == "material" {
-                        if let slicer_ir::PaintValue::ToolIndex(n) = value {
-                            m.insert((r.object_id.clone(), r.region_id), *n as u64);
-                            break;
-                        }
-                    }
+                if let Some(tool) = material_tool(&r.variant_chain) {
+                    m.insert(
+                        RegionKey {
+                            global_layer_index,
+                            object_id: r.object_id.clone(),
+                            region_id: r.region_id,
+                            variant_chain: r.variant_chain.clone(),
+                        },
+                        tool,
+                    );
                 }
             }
             m
@@ -2278,8 +2400,8 @@ pub fn assemble_ordered_entities_with_support_identities(
             v
         })
         .unwrap_or_default();
-    // MMU topology closure: build a parallel set of (object_id,
-    // region_id) keys for BASE (unpainted) SlicedRegions. The wall/infill
+    // MMU topology closure: build a parallel set of full RegionKey
+    // identities for BASE (unpainted) SlicedRegions. The wall/infill
     // tool resolver below uses this set to *skip* the spatial fallback for
     // BASE walls — a BASE outer wall's first vertex may sit inside a
     // per-color cell (the bisector is shared), and the previous
@@ -2288,12 +2410,17 @@ pub fn assemble_ordered_entities_with_support_identities(
     // outer outline) escapes its attributed per-color cell. BASE walls
     // must stay on `DEFAULT_TOOL` and not pick up a per-color attribution
     // from the spatial point-in-polygon test.
-    let base_region_keys: HashSet<(String, u64)> = slice
+    let base_region_keys: HashSet<RegionKey> = slice
         .map(|s| {
             s.regions
                 .iter()
                 .filter(|r| r.variant_chain.is_empty())
-                .map(|r| (r.object_id.clone(), r.region_id))
+                .map(|r| RegionKey {
+                    global_layer_index,
+                    object_id: r.object_id.clone(),
+                    region_id: r.region_id,
+                    variant_chain: r.variant_chain.clone(),
+                })
                 .collect()
         })
         .unwrap_or_default();
@@ -2350,13 +2477,23 @@ pub fn assemble_ordered_entities_with_support_identities(
                     }
                 });
                 // Per Step 19 Fix 2: look up the source SlicedRegion's
-                // Material/ToolIndex by the region's (object_id, region_id). This
+                // Material/ToolIndex by the region's full identity. This
                 // wins over modifier-tool but yields to a paint-pipeline-emitted
                 // per-point Material tool (forward compat: paint v2 doesn't write
                 // segment_annotations[Material] today).
-                let variant_tool: Option<u64> = variant_tool_by_region
-                    .get(&(region.object_id.clone(), region.region_id))
-                    .copied();
+                let region_key = RegionKey {
+                    global_layer_index,
+                    object_id: region.object_id.clone(),
+                    region_id: region.region_id,
+                    variant_chain: region.variant_chain.clone(),
+                };
+                // Ordinary infill uses map-space ids while slices retain raw
+                // painted ids. The committed ordered chain still carries the
+                // material selector; never borrow a sibling's pair-keyed tool.
+                let variant_tool = variant_tool_by_region
+                    .get(&region_key)
+                    .copied()
+                    .or_else(|| material_tool(&region.variant_chain));
                 for wl in &region.walls {
                     let paint_tool = dominant_tool_index(&wl.feature_flags);
                     // MMU topology closure: prefer `variant_tool` (the
@@ -2372,7 +2509,7 @@ pub fn assemble_ordered_entities_with_support_identities(
                     // The spatial fallback is reserved for the LIFO-touch case
                     // (when a PerimeterRegion was emitted with the wrong region
                     // id by the guest): when `variant_tool` is None for this
-                    // (object_id, region_id) — i.e. the region has no material
+                    // full identity — i.e. the region has no material
                     // variant chain (BASE) or the SDK adapter lost the origin
                     // (untagged) — fall through to spatial classification. BASE
                     // regions are explicitly excluded: their walls are the
@@ -2380,9 +2517,8 @@ pub fn assemble_ordered_entities_with_support_identities(
                     // and reattributing them to a per-color tool produces
                     // per-color headers that escape their own per-color cells
                     // (MMU topology closure).
-                    let region_key = (region.object_id.clone(), region.region_id);
                     let region_is_base = base_region_keys.contains(&region_key);
-                    let region_is_tagged = variant_tool_by_region.contains_key(&region_key);
+                    let region_is_tagged = variant_tool.is_some();
                     // Spatial fallback: when the host's per-region bucketing
                     // collapsed all wall_loops under a single PerimeterRegion
                     // (SDK adapter LIFO touch — see comment on `painted_regions`
@@ -2409,7 +2545,7 @@ pub fn assemble_ordered_entities_with_support_identities(
                         // Pure region IDENTITY (restored — packet 125 had overwritten
                         // this with the tool). Postpass back-refs key on this.
                         region_id: region.region_id,
-                        variant_chain: Vec::new(),
+                        variant_chain: region.variant_chain.clone(),
                     };
                     let role = wl.path.role.clone();
                     push(
@@ -2429,17 +2565,20 @@ pub fn assemble_ordered_entities_with_support_identities(
     if !global_layer_is_raft {
         if let Some(inf) = infill {
             for region in &inf.regions {
-                // Per Step 19 Fix 2: derive tool from the SlicedRegion variant
-                // chain when available; otherwise fall back to `region_id`.
-                let variant_tool: Option<u64> = variant_tool_by_region
-                    .get(&(region.object_id.clone(), region.region_id))
-                    .copied();
+                let infill_region_key = RegionKey {
+                    global_layer_index,
+                    object_id: region.object_id.clone(),
+                    region_id: region.region_id,
+                    variant_chain: region.variant_chain.clone(),
+                };
+                let variant_tool = variant_tool_by_region
+                    .get(&infill_region_key)
+                    .copied()
+                    .or_else(|| material_tool(&region.variant_chain));
                 // Per-path spatial fallback (same reasoning as the wall loop).
                 // Infill paths are likely emitted in a single guest batch and
                 // need per-path tool resolution when host bucketing collapsed.
-                let infill_region_key = (region.object_id.clone(), region.region_id);
-                let infill_region_is_tagged =
-                    variant_tool_by_region.contains_key(&infill_region_key);
+                let infill_region_is_tagged = variant_tool.is_some();
                 let mut infill_push =
                     |path: &slicer_ir::ExtrusionPath3D,
                      role: slicer_ir::ExtrusionRole,
@@ -2485,7 +2624,7 @@ pub fn assemble_ordered_entities_with_support_identities(
                             object_id: region.object_id.clone(),
                             // Pure region IDENTITY (restored — see wall-loop note above).
                             region_id: region.region_id,
-                            variant_chain: Vec::new(),
+                            variant_chain: region.variant_chain.clone(),
                         };
                         push(
                             path.clone(),
@@ -3772,16 +3911,16 @@ pub(crate) fn apply(
 /// the dispatch layer calls this helper to append per-region paths
 /// instead of failing with `SlotAlreadyOccupied`.
 ///
-/// Regions match on `(object_id, region_id)`. A region present in
-/// `incoming` but not `existing` is pushed as-is. The schema_version /
+/// Regions match on `(object_id, region_id, variant_chain)` with ordered chains.
+/// A region present in `incoming` but not `existing` is pushed as-is. The schema_version /
 /// global_layer_index of `existing` win on conflict.
 fn merge_infill_ir(existing: &mut InfillIR, incoming: InfillIR) {
     for new_region in incoming.regions {
-        match existing
-            .regions
-            .iter_mut()
-            .find(|r| r.object_id == new_region.object_id && r.region_id == new_region.region_id)
-        {
+        match existing.regions.iter_mut().find(|r| {
+            r.object_id == new_region.object_id
+                && r.region_id == new_region.region_id
+                && r.variant_chain == new_region.variant_chain
+        }) {
             Some(target) => {
                 target.sparse_infill.extend(new_region.sparse_infill);
                 target.solid_infill.extend(new_region.solid_infill);
@@ -3815,20 +3954,7 @@ pub fn module_invocation_allowed_on_layer(
     declared: &std::collections::HashSet<String>,
     slice: Option<&SliceIR>,
 ) -> bool {
-    // Paint-transparent: no paint-only semantics → always invoke.
-    if declared.is_empty() {
-        return true;
-    }
-    // No SliceIR available: conservatively allow.
-    let Some(slice_ir) = slice else {
-        return true;
-    };
-    slice_ir.regions.iter().any(|region| {
-        region
-            .variant_chain
-            .iter()
-            .any(|(semantic, _value)| declared.contains(semantic))
-    })
+    slicer_wasm_host::selection::paint_allows_layer(declared, slice)
 }
 
 #[cfg(test)]

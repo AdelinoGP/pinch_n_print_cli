@@ -6,7 +6,7 @@
 
 #![allow(missing_docs)]
 
-use crate::common::seed::seed_slice_ir;
+use crate::common::seed::seed_slice_ir as seed_mesh_slice_ir;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -44,6 +44,8 @@ fn layer_executor_processes_layers_in_parallel_with_deterministic_stage_ordering
         4,
     );
     seed_slice_ir(&mut blackboard, &plan);
+    slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .expect("commit layer selection index");
 
     let runner = ScriptedRunner::new()
         .with_stage_sequence(vec![
@@ -102,6 +104,8 @@ fn layer_executor_runs_modules_in_topological_order_within_each_stage() {
         2,
     );
     seed_slice_ir(&mut blackboard, &plan);
+    slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .expect("commit layer selection index");
 
     let runner = ScriptedRunner::new()
         .with_stage_sequence(vec![
@@ -152,6 +156,8 @@ fn layer_executor_provides_isolated_layer_arena_per_layer() {
         3,
     );
     seed_slice_ir(&mut blackboard, &plan);
+    slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .expect("commit layer selection index");
 
     let runner = ArenaIsolationRunner::new();
 
@@ -195,6 +201,8 @@ fn layer_executor_commits_layer_outputs_to_blackboard_slots() {
         3,
     );
     seed_slice_ir(&mut blackboard, &plan);
+    slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .expect("commit layer selection index");
 
     let runner = ScriptedRunner::new().with_default_success();
 
@@ -231,6 +239,8 @@ fn layer_executor_propagates_fatal_module_error_and_aborts_layer() {
         2,
     );
     seed_slice_ir(&mut blackboard, &plan);
+    slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .expect("commit layer selection index");
 
     let runner = ScriptedRunner::new()
         .with_fatal_error(
@@ -273,6 +283,8 @@ fn layer_executor_continues_on_non_fatal_module_error() {
         2,
     );
     seed_slice_ir(&mut blackboard, &plan);
+    slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .expect("commit layer selection index");
 
     let runner = ScriptedRunner::new()
         .with_non_fatal_error(0, "Layer::Perimeters", "com.example.perimeters")
@@ -317,6 +329,8 @@ fn layer_executor_drains_all_layer_outputs_after_parallel_completion() {
         5,
     );
     seed_slice_ir(&mut blackboard, &plan);
+    slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .expect("commit layer selection index");
 
     let runner = ScriptedRunner::new().with_default_success();
 
@@ -496,6 +510,35 @@ fn group_by_layer(invocations: &[(u32, String, String)]) -> HashMap<u32, Vec<(St
             .push((stage_id.clone(), module_id.clone()));
     }
     result
+}
+
+fn add_fixture_region_plans(region_map: &mut RegionMapIR, plan: &ExecutionPlan) {
+    for layer in plan.global_layers.iter() {
+        for region in &layer.active_regions {
+            let config = region_map.intern_config(region.resolved_config.clone());
+            region_map.entries.insert(
+                RegionKey {
+                    global_layer_index: layer.index,
+                    object_id: region.object_id.clone(),
+                    region_id: region.region_id,
+                    variant_chain: Vec::new(),
+                },
+                RegionPlan {
+                    config,
+                    ..Default::default()
+                },
+            );
+        }
+    }
+}
+
+fn seed_slice_ir(blackboard: &mut Blackboard, plan: &ExecutionPlan) {
+    seed_mesh_slice_ir(blackboard, plan);
+    let mut region_map = RegionMapIR::default();
+    add_fixture_region_plans(&mut region_map, plan);
+    blackboard
+        .commit_region_map(Arc::new(region_map))
+        .expect("commit exact fixture region map");
 }
 
 fn execution_plan_fixture(
@@ -857,13 +900,15 @@ fn ordered_entities_assembled_with_preserved_region_identity() {
     let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
     let plan = execution_plan_fixture(
         vec![
-            compiled_stage("Layer::Perimeters", &["com.example.stage"]),
-            compiled_stage("Layer::Infill", &["com.example.stage"]),
-            compiled_stage("Layer::Support", &["com.example.stage"]),
+            compiled_stage("Layer::Perimeters", &["com.example.perimeters"]),
+            compiled_stage("Layer::Infill", &["com.example.infill"]),
+            compiled_stage("Layer::Support", &["com.example.support"]),
         ],
         1,
     );
     seed_slice_ir(&mut blackboard, &plan);
+    slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .expect("commit layer selection index");
     let runner = StagingRunner::new(
         Some(perim_ir_two_regions()),
         Some(infill_ir_two_regions()),
@@ -911,6 +956,8 @@ fn ordered_entities_empty_when_arena_has_no_committed_content() {
         1,
     );
     seed_slice_ir(&mut blackboard, &plan);
+    slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .expect("commit layer selection index");
     let runner = StagingRunner::new(None, None, None);
     let layers =
         execute_per_layer(&plan, &blackboard, &runner, &Default::default()).expect("layer exec");
@@ -926,9 +973,9 @@ fn ordered_entities_assembly_is_deterministic_across_repeated_runs() {
     let mesh = Arc::new(mesh_fixture());
     let plan = execution_plan_fixture(
         vec![
-            compiled_stage("Layer::Perimeters", &["com.example.stage"]),
-            compiled_stage("Layer::Infill", &["com.example.stage"]),
-            compiled_stage("Layer::Support", &["com.example.stage"]),
+            compiled_stage("Layer::Perimeters", &["com.example.perimeters"]),
+            compiled_stage("Layer::Infill", &["com.example.infill"]),
+            compiled_stage("Layer::Support", &["com.example.support"]),
         ],
         1,
     );
@@ -937,6 +984,8 @@ fn ordered_entities_assembly_is_deterministic_across_repeated_runs() {
     for _ in 0..3 {
         let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
         seed_slice_ir(&mut blackboard, &plan);
+        slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+            .expect("commit layer selection index");
         let runner = StagingRunner::new(
             Some(perim_ir_two_regions()),
             Some(infill_ir_two_regions()),
@@ -1031,6 +1080,8 @@ fn catchup_metadata_remains_stable_across_all_per_layer_stages() {
     let mesh = Arc::new(mesh_fixture());
     let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
     seed_slice_ir(&mut blackboard, &plan);
+    slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .expect("commit layer selection index");
 
     // RecordingRunner captures the active_regions surface at each stage call.
     let runner = CatchupMetadataRecordingRunner::new();
@@ -1354,11 +1405,14 @@ fn extruder_synthetic_t0_t1_emission() {
         plan_b,
     );
 
+    add_fixture_region_plans(&mut region_map, &plan);
     let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
     blackboard
         .commit_region_map(Arc::new(region_map))
         .expect("commit region map");
-    seed_slice_ir(&mut blackboard, &plan);
+    seed_mesh_slice_ir(&mut blackboard, &plan);
+    slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+        .expect("commit layer selection index");
 
     let runner = StagingRunner::new(
         Some(perim_ir_two_regions_for_objects("obj-A", 1, "obj-B", 2)),

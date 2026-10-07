@@ -87,6 +87,36 @@ fn witness_config() -> ConfigView {
     ConfigView::from_map(fields)
 }
 
+fn fixture_region_map(
+    layer_index: u32,
+    keys: &[(&str, u64, Vec<(String, PaintValue)>)],
+    config: &ConfigView,
+) -> RegionMapIR {
+    let mut map = RegionMapIR::default();
+    let config = map.intern_config(ResolvedConfig {
+        extensions: config
+            .iter_entries()
+            .map(|(key, value)| (key.to_owned(), value.clone()))
+            .collect(),
+        ..Default::default()
+    });
+    for (object_id, region_id, variant_chain) in keys {
+        map.entries.insert(
+            RegionKey {
+                global_layer_index: layer_index,
+                object_id: (*object_id).into(),
+                region_id: *region_id,
+                variant_chain: variant_chain.clone(),
+            },
+            RegionPlan {
+                config,
+                ..Default::default()
+            },
+        );
+    }
+    map
+}
+
 fn layer_at(index: u32, z: f32) -> GlobalLayer {
     // exhaustive: postprocess fixture explicitly defines every GlobalLayer field
     GlobalLayer {
@@ -224,6 +254,11 @@ type DispatchFixtureHarness = dispatch_fixture::DispatchFixture;
 #[test]
 fn infill_postprocess_prior_ir() {
     let mut fx = dispatch_fixture::for_stage("Layer::Infill")
+        .with_region_map(fixture_region_map(
+            3,
+            &[("obj-0", 0, Vec::new())],
+            &ConfigView::new(),
+        ))
         .with_slice(
             ir_builders::slice_ir::with_count(1)
                 .at_layer(3)
@@ -351,6 +386,11 @@ fn infill_postprocess_partitioned_polygons() {
     let mut fx = dispatch_fixture::for_stage("Layer::InfillPostProcess")
         .with_slice(slice)
         .with_perimeter(ir_builders::perimeter_ir::with_ids(&[("obj-0", 0)]).build())
+        .with_region_map(fixture_region_map(
+            0,
+            &[("obj-0", 0, Vec::new())],
+            &witness_config(),
+        ))
         .build();
     let layer = layer_at(0, 0.0);
 
@@ -431,6 +471,38 @@ fn infill_postprocess_tool_index_precedence() {
         },
     );
 
+    rm.entries.insert(
+        RegionKey {
+            global_layer_index: 0,
+            object_id: "obj-0".into(),
+            region_id: 1,
+            variant_chain: slice.regions[0].variant_chain.clone(),
+        },
+        RegionPlan {
+            config: cfg_id,
+            ..Default::default()
+        },
+    );
+    let default_config = rm.intern_config(ResolvedConfig {
+        extensions: std::collections::BTreeMap::from([(
+            "emit_view_witness".into(),
+            ConfigValue::Int(1),
+        )]),
+        ..Default::default()
+    });
+    rm.entries.insert(
+        RegionKey {
+            global_layer_index: 0,
+            object_id: "obj-1".into(),
+            region_id: 5,
+            variant_chain: Vec::new(),
+        },
+        RegionPlan {
+            config: default_config,
+            ..Default::default()
+        },
+    );
+
     let mut fx = dispatch_fixture::for_stage("Layer::InfillPostProcess")
         .with_slice(slice)
         .with_perimeter(ir_builders::perimeter_ir::with_ids(&[("obj-0", 0), ("obj-1", 5)]).build())
@@ -480,6 +552,14 @@ fn infill_postprocess_wall_source() {
     slice.regions[0].variant_chain = vec![("material".to_string(), PaintValue::ToolIndex(0))];
 
     let mut fx = dispatch_fixture::for_stage("Layer::InfillPostProcess")
+        .with_region_map(fixture_region_map(
+            0,
+            &[
+                ("obj-0", 2, slice.regions[0].variant_chain.clone()),
+                ("obj-0", 3, Vec::new()),
+            ],
+            &witness_config(),
+        ))
         .with_slice(slice)
         .with_perimeter(ir_builders::perimeter_ir::with_ids(&[("obj-0", 3)]).build())
         .build();
@@ -566,6 +646,11 @@ fn infill_postprocess_never_constructs_internal_bridge_paths() {
                 .infill(1)
                 .build(),
         )
+        .with_region_map(fixture_region_map(
+            0,
+            &[("obj-0", 0, Vec::new())],
+            &ConfigView::new(),
+        ))
         .build();
     fx.arena.set_infill(prior).expect("stage prior InfillIR");
     let layer = layer_at(0, 0.2);
@@ -780,6 +865,13 @@ fn infill_postprocess_empty_replacement_supersedes_prior_ir() {
 
     let layer = layer_at(0, 0.2);
     let bundle = linker_bundle();
+    fx.blackboard
+        .commit_region_map(Arc::new(fixture_region_map(
+            0,
+            &[("obj-0", 0, Vec::new())],
+            bundle.module.config_view(),
+        )))
+        .expect("commit linker region map");
     run_layer_and_commit_with_bundle(
         &fx.dispatcher,
         "Layer::InfillPostProcess",
@@ -845,6 +937,13 @@ fn infill_postprocess_inside_path_survives_so_the_clip_is_real() {
 
     let layer = layer_at(0, 0.2);
     let bundle = linker_bundle();
+    fx.blackboard
+        .commit_region_map(Arc::new(fixture_region_map(
+            0,
+            &[("obj-0", 0, Vec::new())],
+            bundle.module.config_view(),
+        )))
+        .expect("commit linker region map");
     run_layer_and_commit_with_bundle(
         &fx.dispatcher,
         "Layer::InfillPostProcess",

@@ -77,7 +77,7 @@ fn integrated_parity_machine_gcode_emit() {
             config: Arc::clone(&config),
             native_entry: MachineGcodeEmit::__slicer_native_entry(),
         },
-        |dispatcher, native_live, wasm_live| {
+        |dispatcher, native_live, wasm_live, _native_module, _wasm_module| {
             let native = PostpassStageRunner::run_gcode_postprocess(
                 dispatcher,
                 &stage,

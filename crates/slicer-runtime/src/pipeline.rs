@@ -25,6 +25,7 @@ use slicer_gcode::{
 };
 
 use crate::layer_executor::{
+    build_and_commit_layer_selection_index,
     execute_per_layer_with_committed_anchored_events_and_support_tools,
     execute_per_layer_with_committed_anchored_events_instrumented, promote_global_layers,
     SupportToolSelection,
@@ -246,6 +247,23 @@ pub fn run_pipeline_with_events(
     // before prepass runs (global_layers = []) because the layer schedule is
     // determined by modules such as layer-planner-default during prepass itself.
     promote_global_layers(&mut plan, &blackboard);
+    build_and_commit_layer_selection_index(&plan, &mut blackboard).map_err(|error| {
+        let slicer_ir::LayerStageError::FatalModule {
+            stage_id,
+            module_id,
+            message,
+        } = error
+        else {
+            unreachable!("selection construction returns only FatalModule errors")
+        };
+        LayerExecutionError::FatalLayer {
+            // Construction fails before the first layer is invoked.
+            layer_index: plan.global_layers.first().map_or(0, |layer| layer.index),
+            stage_id,
+            module_id,
+            message,
+        }
+    })?;
 
     // Step 3: Execute per-layer stages in parallel via rayon
     let (committed_events, layer_audits) =
@@ -447,6 +465,23 @@ fn run_pipeline_core(
     dump_prepass_ir_if_requested(&blackboard);
 
     promote_global_layers(&mut plan, &blackboard);
+    build_and_commit_layer_selection_index(&plan, &mut blackboard).map_err(|error| {
+        let slicer_ir::LayerStageError::FatalModule {
+            stage_id,
+            module_id,
+            message,
+        } = error
+        else {
+            unreachable!("selection construction returns only FatalModule errors")
+        };
+        LayerExecutionError::FatalLayer {
+            // Construction fails before the first layer is invoked.
+            layer_index: plan.global_layers.first().map_or(0, |layer| layer.index),
+            stage_id,
+            module_id,
+            message,
+        }
+    })?;
 
     if cancel_flag
         .as_ref()

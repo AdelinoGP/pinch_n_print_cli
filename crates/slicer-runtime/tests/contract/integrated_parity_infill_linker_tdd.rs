@@ -134,7 +134,7 @@ fn integrated_parity_infill_linker() {
             slicer_ir::ConfigValue::Float(20.0),
         ),
     ])));
-    let blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
+    let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
     let mut wasm_arena = LayerArena::new();
     let mut native_arena = LayerArena::new();
     for arena in [&mut wasm_arena, &mut native_arena] {
@@ -148,6 +148,57 @@ fn integrated_parity_infill_linker() {
         ..Default::default()
     };
     let stage: StageId = "Layer::InfillPostProcess".to_string();
+    let mut region_map = slicer_ir::RegionMapIR::default();
+    let mut resolved = slicer_ir::ResolvedConfig {
+        line_width: 0.4,
+        infill_overlap: 0.45,
+        ..Default::default()
+    };
+    for (key, value) in config.iter_entries() {
+        if !resolved
+            .apply_cli_key(key, value)
+            .expect("resolve fixture config")
+        {
+            resolved.extensions.insert(key.into(), value.clone());
+        }
+    }
+    let config_id = region_map.intern_config(resolved);
+    for region in &wasm_arena.slice().expect("staged fixture slice").regions {
+        region_map.entries.insert(
+            slicer_ir::RegionKey {
+                global_layer_index: layer.index,
+                object_id: region.object_id.clone(),
+                region_id: if region.variant_chain.is_empty() {
+                    region.region_id
+                } else {
+                    region.region_id / 1_000_000
+                },
+                variant_chain: region.variant_chain.clone(),
+            },
+            slicer_ir::RegionPlan {
+                config: config_id,
+                ..Default::default()
+            },
+        );
+    }
+    blackboard
+        .commit_region_map(Arc::new(region_map))
+        .expect("commit fixture region map");
+    let selection_module = slicer_runtime::CompiledModuleBuilder::new("com.core.infill-linker")
+        .config_view(Arc::clone(&config))
+        .build();
+    let selection_index = crate::common::selection_for_module(
+        &stage,
+        &layer,
+        &selection_module,
+        &blackboard,
+        wasm_arena.slice(),
+        None,
+    )
+    .expect("build fixture selection index");
+    let selection = selection_index
+        .selection_for(layer.index, selection_module.module_id())
+        .expect("fixture layer selection");
     let (native, wasm) = run_integrated_parity(
         IntegratedParitySpec {
             module_id: "com.core.infill-linker".into(),
@@ -174,13 +225,13 @@ fn integrated_parity_infill_linker() {
             config,
             native_entry: InfillLinker::__slicer_native_entry(),
         },
-        |dispatcher, native_live, wasm_live| {
+        |dispatcher, native_live, wasm_live, _native_module, _wasm_module| {
             let wasm = LayerStageRunner::run_stage(
                 dispatcher,
                 &stage,
                 &layer,
                 wasm_live,
-                crate::common::layer_input(&blackboard, &wasm_arena),
+                crate::common::layer_input(&blackboard, &wasm_arena, selection),
             )
             .expect("wasm dispatch")
             .expect("wasm commit");
@@ -189,7 +240,7 @@ fn integrated_parity_infill_linker() {
                 &stage,
                 &layer,
                 native_live,
-                crate::common::layer_input(&blackboard, &native_arena),
+                crate::common::layer_input(&blackboard, &native_arena, selection),
             )
             .expect("native dispatch")
             .expect("native commit");

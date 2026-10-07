@@ -154,7 +154,8 @@ pub use layer_executor::{
     StageApplyContext,
 };
 pub use layer_executor::{
-    execute_per_layer, execute_per_layer_with_anchored_events, execute_per_layer_with_events,
+    build_and_commit_layer_selection_index, execute_per_layer,
+    execute_per_layer_with_anchored_events, execute_per_layer_with_events,
     execute_per_layer_with_instrumentation, ir_path_for_layer_stage, LayerExecutionError,
     LayerProgressSink, NoopLayerProgressSink,
 };

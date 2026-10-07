@@ -1357,20 +1357,22 @@ pub struct HostExecutionContext {
     /// `SliceRegionData.held_claims`. Empty for non-`Layer::Infill` calls
     /// (the WIT accessor returns the empty list, which the SDK convention
     /// treats as "holds all" — packet 36 / 12-rev1 behavior).
-    pub(crate) held_claims_per_region: std::collections::HashMap<(String, String), Vec<String>>,
+    pub(crate) held_claims_per_region: std::collections::HashMap<OriginId, Vec<String>>,
 
-    /// Per-region effective config fields keyed by `(object_id, region_id)`,
-    /// resolved host-side from `RegionMapIR::config_for(&RegionKey)` before the
-    /// WIT call (packet 131). Looked up by the `config-view` accessor on the
-    /// slice-/perimeter-region-view resources. Regions without a pool entry are
-    /// absent here and fall back to `default_config_fields`.
+    /// Full-origin config authority for slice/perimeter resources. Indexed
+    /// delivery explicitly includes invocation config for support carriers.
     pub(crate) config_fields_per_region:
-        std::collections::HashMap<(String, String), HashMap<String, ConfigValueStorage>>,
+        std::collections::HashMap<OriginId, HashMap<String, ConfigValueStorage>>,
 
-    /// Object-level effective config fields used as the fallback for regions
-    /// that have no per-region pool entry (packet 131 AC-N1/AC-N2 invariant:
-    /// single-region layers resolve to the same config the legacy first-match
-    /// derivation produced).
+    /// Whether region resources require explicit full-origin authority.
+    pub(crate) indexed_delivery: bool,
+
+    /// Source authority keyed by delivered resource handle. WIT may project
+    /// unsupported Custom paint values; that must not change config identity.
+    pub(crate) indexed_region_origins: HashMap<u32, OriginId>,
+
+    /// Invocation config fields; only legacy non-indexed region access may
+    /// fall back to these when no explicit region entry exists.
     pub(crate) default_config_fields: HashMap<String, ConfigValueStorage>,
 
     /// Linear-memory tracker, installed as the store's `ResourceLimiter`
@@ -1520,6 +1522,8 @@ impl HostExecutionContextBuilder {
             seam_plan_entries: Vec::new(),
             support_plan_entries: Vec::new(),
             config_fields_per_region: HashMap::new(),
+            indexed_delivery: false,
+            indexed_region_origins: HashMap::new(),
             default_config_fields: HashMap::new(),
             raft_plan: None,
             diagnostics: Vec::new(),
@@ -1783,7 +1787,7 @@ impl HostExecutionContext {
     /// against the active module's manifest claims.
     pub fn set_held_claims_per_region(
         &mut self,
-        map: std::collections::HashMap<(String, String), Vec<String>>,
+        map: std::collections::HashMap<OriginId, Vec<String>>,
     ) {
         self.held_claims_per_region = map;
     }
@@ -1792,42 +1796,39 @@ impl HostExecutionContext {
     /// entry exists (the SDK convention is that empty `held_claims` means the
     /// module holds no fill claims for this region, so emission is suppressed;
     /// see `slicer-sdk/src/views.rs`).
-    pub fn held_claims_for(&self, object_id: &str, region_id: &str) -> &[String] {
+    pub fn held_claims_for(&self, origin: &OriginId) -> &[String] {
         self.held_claims_per_region
-            .get(&(object_id.to_string(), region_id.to_string()))
+            .get(origin)
             .map(Vec::as_slice)
             .unwrap_or(&[])
     }
 
-    /// Replace the per-region effective-config map (packet 131, Step 3).
-    /// Called by the dispatcher after resolving each region's effective config
-    /// via `RegionMapIR::config_for(&RegionKey)`. Keyed by `(object_id, region_id)`.
+    /// Replace the full-origin config map projected from indexed authority.
     pub fn set_config_fields_per_region(
         &mut self,
-        map: std::collections::HashMap<(String, String), HashMap<String, ConfigValueStorage>>,
+        map: std::collections::HashMap<OriginId, HashMap<String, ConfigValueStorage>>,
     ) {
         self.config_fields_per_region = map;
     }
 
-    /// Set the object-level fallback config fields used for regions without a
-    /// per-region pool entry (packet 131 AC-N1/AC-N2 invariant).
+    /// Set invocation fields, also used by legacy non-indexed region fallback.
     pub fn set_default_config_fields(&mut self, fields: HashMap<String, ConfigValueStorage>) {
         self.default_config_fields = fields;
     }
 
-    /// Resolve the effective config fields for a specific region, falling back
-    /// to the object-level config when the region has no per-region pool entry
-    /// (packet 131). Clones so the caller can hand the map to a fresh
-    /// `ConfigViewData` resource.
-    fn config_fields_for(
+    /// Clone explicit region authority for a fresh `ConfigViewData` resource.
+    /// Missing indexed origins are inconsistent, never invocation defaults.
+    pub(crate) fn config_fields_for(
         &self,
-        object_id: &str,
-        region_id: &str,
-    ) -> HashMap<String, ConfigValueStorage> {
-        self.config_fields_per_region
-            .get(&(object_id.to_string(), region_id.to_string()))
-            .cloned()
-            .unwrap_or_else(|| self.default_config_fields.clone())
+        origin: &OriginId,
+    ) -> wasmtime::Result<HashMap<String, ConfigValueStorage>> {
+        match self.config_fields_per_region.get(origin) {
+            Some(fields) => Ok(fields.clone()),
+            None if self.indexed_delivery => Err(wasmtime::Error::msg(format!(
+                "internal consistency: indexed region has no full-origin config authority: {origin:?}"
+            ))),
+            None => Ok(self.default_config_fields.clone()),
+        }
     }
 
     /// Returns the Z envelope floor for this layer.
@@ -3515,24 +3516,41 @@ impl ir::HostSliceRegionView for HostExecutionContext {
         Ok(self.table.get(&self_)?.surface_group.clone())
     }
     fn drop(&mut self, rep: Resource<SliceRegionData>) -> wasmtime::Result<()> {
+        let handle = rep.rep();
         self.table.delete(rep)?;
+        self.indexed_region_origins.remove(&handle);
         Ok(())
     }
-    /// Per-region config view (packet 131, Step 3): returns the host-resolved
-    /// effective config for this slice region, derived from
-    /// `RegionMapIR::config_for(&RegionKey)` at dispatch time and pre-filtered
-    /// to the module's declared reads. Regions without a per-region pool entry
-    /// fall back to the object-level config (AC-N1/AC-N2 invariant).
+    /// Declared-key-filtered config from full-origin delivery authority.
+    /// Indexed resources without an explicit entry are rejected.
     fn config(
         &mut self,
         self_: Resource<SliceRegionData>,
     ) -> wasmtime::Result<Resource<ConfigViewData>> {
         self.runtime_reads.push(String::from("SliceIR.config"));
-        let (object_id, region_id) = {
+        let origin = {
             let data = self.table.get(&self_)?;
-            (data.object_id.clone(), data.region_id.clone())
+            OriginId {
+                object_id: data.object_id.clone(),
+                region_id: parse_canonical_region_id(&data.region_id)
+                    .map_err(wasmtime::Error::msg)?,
+                variant_chain: data
+                    .variant_chain
+                    .iter()
+                    .map(|(name, value)| {
+                        (
+                            name.clone(),
+                            crate::marshal::leaf::convert_paint_value(value),
+                        )
+                    })
+                    .collect(),
+            }
         };
-        let fields = self.config_fields_for(&object_id, &region_id);
+        let origin = self
+            .indexed_region_origins
+            .get(&self_.rep())
+            .unwrap_or(&origin);
+        let fields = self.config_fields_for(origin)?;
         self.push_config_view(ConfigViewData { fields })
     }
 }
@@ -3728,24 +3746,41 @@ impl ir::HostPerimeterRegionView for HostExecutionContext {
         Ok(self.table.get(&self_)?.variant_chain.clone())
     }
     fn drop(&mut self, rep: Resource<PerimeterRegionData>) -> wasmtime::Result<()> {
+        let handle = rep.rep();
         self.table.delete(rep)?;
+        self.indexed_region_origins.remove(&handle);
         Ok(())
     }
-    /// Per-region config view (packet 131, Step 3): returns the host-resolved
-    /// effective config for this perimeter region, derived from
-    /// `RegionMapIR::config_for(&RegionKey)` at dispatch time and pre-filtered
-    /// to the module's declared reads. Regions without a per-region pool entry
-    /// fall back to the object-level config (AC-N1/AC-N2 invariant).
+    /// Declared-key-filtered config from full-origin delivery authority.
+    /// Indexed resources without an explicit entry are rejected.
     fn config(
         &mut self,
         self_: Resource<PerimeterRegionData>,
     ) -> wasmtime::Result<Resource<ConfigViewData>> {
         self.runtime_reads.push(String::from("PerimeterIR.config"));
-        let (object_id, region_id) = {
+        let origin = {
             let data = self.table.get(&self_)?;
-            (data.object_id.clone(), data.region_id.clone())
+            OriginId {
+                object_id: data.object_id.clone(),
+                region_id: parse_canonical_region_id(&data.region_id)
+                    .map_err(wasmtime::Error::msg)?,
+                variant_chain: data
+                    .variant_chain
+                    .iter()
+                    .map(|(name, value)| {
+                        (
+                            name.clone(),
+                            crate::marshal::leaf::convert_paint_value(value),
+                        )
+                    })
+                    .collect(),
+            }
         };
-        let fields = self.config_fields_for(&object_id, &region_id);
+        let origin = self
+            .indexed_region_origins
+            .get(&self_.rep())
+            .unwrap_or(&origin);
+        let fields = self.config_fields_for(origin)?;
         self.push_config_view(ConfigViewData { fields })
     }
 }

@@ -345,7 +345,7 @@ pub fn authored_coloring_granted(
 /// Per-dispatch authority for the authored-coloring strip performed at the
 /// commit boundary in [`convert_infill_output`].
 ///
-/// `granted_regions` holds `(object_id, region_id)` for every region where
+/// `granted_regions` holds the full [`OriginId`] for every region where
 /// [`authored_coloring_granted`] returned `true` for the dispatching module.
 /// Absence from the set is a denial — the default is deny.
 #[derive(Debug, Clone, Default)]
@@ -353,17 +353,14 @@ pub struct AuthoredColoringContext {
     /// Number of tools visible to the guest via the `tool-count` host function.
     /// Authored indices must be strictly less than this.
     pub tool_count: u32,
-    /// `(object_id, region_id)` pairs the module is granted to color.
-    pub granted_regions: std::collections::HashSet<(String, u64)>,
+    /// Full origins, including ordered variant chains, the module is granted to color.
+    pub granted_regions: std::collections::HashSet<OriginId>,
 }
 
 impl AuthoredColoringContext {
     /// True when `path_tool` may be kept for the given region.
-    fn allows(&self, object_id: &str, region_id: u64, path_tool: u32) -> bool {
-        path_tool < self.tool_count
-            && self
-                .granted_regions
-                .contains(&(object_id.to_string(), region_id))
+    fn allows(&self, origin: &OriginId, path_tool: u32) -> bool {
+        path_tool < self.tool_count && self.granted_regions.contains(origin)
     }
 }
 
@@ -378,8 +375,11 @@ fn enforce_authored_coloring(
     authored: Option<&AuthoredColoringContext>,
 ) {
     for region in regions.iter_mut() {
-        let object_id = region.object_id.clone();
-        let region_id = region.region_id;
+        let origin = OriginId {
+            object_id: region.object_id.clone(),
+            region_id: region.region_id,
+            variant_chain: region.variant_chain.clone(),
+        };
         for path in region
             .sparse_infill
             .iter_mut()
@@ -388,7 +388,7 @@ fn enforce_authored_coloring(
         {
             let keep = match (path.tool_index, authored) {
                 (None, _) => continue,
-                (Some(t), Some(ctx)) => ctx.allows(&object_id, region_id, t),
+                (Some(t), Some(ctx)) => ctx.allows(&origin, t),
                 (Some(_), None) => false,
             };
             if !keep {

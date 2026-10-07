@@ -9,6 +9,9 @@ use slicer_ir::{
     ConfigView, ExPolygon, GlobalLayer, Point2, Polygon, RegionKey, RegionMapIR, RegionPlan,
     SemVer, SliceIR, SlicedRegion, SupportPlanEntry, SupportPlanIR,
 };
+use slicer_wasm_host::selection::{
+    build_layer_selection_index, LayerSelectionIndexInput, LayerSelectionModuleInput, STAGES,
+};
 use slicer_wasm_host::{
     binding::LayerStageInput, CompiledModuleLive, LayerStageRunner, WasmInstancePool,
 };
@@ -35,6 +38,7 @@ fn support_layer_dispatch_joins_plan_identity() {
     let region_id = 7;
 
     let mut region_map = RegionMapIR::default();
+    let config_id = region_map.intern_config(slicer_ir::ResolvedConfig::default());
     region_map.entries.insert(
         RegionKey {
             global_layer_index: 0,
@@ -42,7 +46,10 @@ fn support_layer_dispatch_joins_plan_identity() {
             region_id,
             variant_chain: Vec::new(),
         },
-        RegionPlan::default(),
+        RegionPlan {
+            config: config_id,
+            ..Default::default()
+        },
     );
     let slice = SliceIR {
         schema_version: SemVer {
@@ -98,22 +105,6 @@ fn support_layer_dispatch_joins_plan_identity() {
         ],
         raft_plan: None,
     };
-    // exhaustive: no Default impl for LayerStageInput; dispatch input fixture pins every projected borrow
-    let input = LayerStageInput {
-        mesh: Arc::new(slicer_ir::MeshIR::default()),
-        paint_regions: None,
-        seam_plan: None,
-        support_plan: Some(Arc::new(support_plan)),
-        lightning_tree_ir: None,
-        region_map: Some(Arc::new(region_map)),
-        slice: Some(&slice),
-        perimeter: None,
-        layer_collection: None,
-        surface_classification: None,
-        prepared_regions: None,
-        prepared_perimeter_source_regions: None,
-        infill: None,
-    };
     let module_id = "support-dispatch-fixture".to_string();
     let claims = Vec::<String>::new();
     let module = CompiledModuleLive::new(
@@ -129,6 +120,45 @@ fn support_layer_dispatch_joins_plan_identity() {
         index: 0,
         z: 0.2,
         ..Default::default()
+    };
+    // exhaustive: committed snapshot pins every selection authority channel.
+    let selection_index = build_layer_selection_index(LayerSelectionIndexInput {
+        stage_roster: STAGES,
+        global_layers: std::slice::from_ref(&layer),
+        // exhaustive: binding supplies all static module metadata.
+        modules: &[LayerSelectionModuleInput {
+            stage_id: "Layer::SupportPostProcess",
+            module_id: &module_id,
+            claims: &claims,
+            paint_semantics: None,
+            invocation_config: &module.config_view,
+        }],
+        slices: std::slice::from_ref(&slice),
+        region_map: Some(&region_map),
+        support_plan: Some(&support_plan),
+        perimeters: &[],
+    })
+    .expect("support selection index");
+    // exhaustive: no Default impl for LayerStageInput; dispatch input fixture pins every projected borrow
+    let input = LayerStageInput {
+        mesh: Arc::new(slicer_ir::MeshIR::default()),
+        paint_regions: None,
+        seam_plan: None,
+        support_plan: Some(Arc::new(support_plan)),
+        lightning_tree_ir: None,
+        region_map: Some(Arc::new(region_map)),
+        slice: Some(&slice),
+        perimeter: None,
+        layer_collection: None,
+        surface_classification: None,
+        prepared_regions: None,
+        prepared_perimeter_source_regions: None,
+        infill: None,
+        selection: Some(
+            selection_index
+                .selection_for(layer.index, &module_id)
+                .expect("bound support module"),
+        ),
     };
 
     let commit = LayerStageRunner::run_stage(

@@ -4,7 +4,13 @@
 use sdk_infill_postprocess_view_guest as infill_guest;
 use sdk_layer_pathopt_guest as guest;
 
+use slicer_core::algos::paint_segmentation::{
+    paint_variant_region_id, PAINT_VARIANT_REGION_ID_STRIDE,
+};
 use slicer_ir::*;
+use slicer_wasm_host::selection::{
+    build_layer_selection_index, LayerSelectionIndexInput, LayerSelectionModuleInput, STAGES,
+};
 use slicer_wasm_host::{
     CompiledModuleLive, LayerStageInput, LayerStageRunner, WasmInstancePool, WasmRuntimeDispatcher,
 };
@@ -42,7 +48,7 @@ fn fixture() -> (SliceIR, PerimeterIR, LayerCollectionIR, Arc<RegionMapIR>) {
     let slice = SliceIR {
         regions: vec![SlicedRegion {
             object_id: "obj".into(),
-            region_id: 9,
+            region_id: 9_000_003,
             variant_chain: chain.clone(),
             ..Default::default()
         }],
@@ -52,7 +58,7 @@ fn fixture() -> (SliceIR, PerimeterIR, LayerCollectionIR, Arc<RegionMapIR>) {
     let mut perimeter = PerimeterIR {
         regions: vec![PerimeterRegion {
             object_id: "obj".into(),
-            region_id: 9,
+            region_id: 9_000_003,
             variant_chain: chain.clone(),
             // exhaustive: wall projection fixture has no safe Default
             walls: vec![WallLoop {
@@ -102,7 +108,7 @@ fn fixture() -> (SliceIR, PerimeterIR, LayerCollectionIR, Arc<RegionMapIR>) {
                     region_key: RegionKey {
                         global_layer_index: 0,
                         object_id: "obj".into(),
-                        region_id: 9,
+                        region_id: 9_000_003,
                         variant_chain: chain.clone(),
                     },
                     topo_order: index as u32,
@@ -164,13 +170,14 @@ fn observation_with_alias_owner(
         slice.regions[0].bottom_solid_fill = vec![polygon.clone()];
         slice.regions[0].bridge_areas = vec![polygon.clone()];
         slice.regions[0].raft_fill = vec![polygon];
+        let chain = vec![
+            ("material".into(), PaintValue::ToolIndex(3)),
+            ("custom".into(), PaintValue::Custom("payload".into())),
+        ];
         slice.regions.push(SlicedRegion {
             object_id: "obj".into(),
-            region_id: 9_000_001,
-            variant_chain: vec![
-                ("material".into(), PaintValue::ToolIndex(3)),
-                ("custom".into(), PaintValue::Custom("payload".into())),
-            ],
+            region_id: paint_variant_region_id(9, &chain),
+            variant_chain: chain,
             ..Default::default()
         });
         slice.regions.push(SlicedRegion {
@@ -296,8 +303,10 @@ fn observation_with_alias_owner(
         config = bind_module_config_view(&loaded, &global);
         let mut regional_map = RegionMapIR::default();
         let id = regional_map.intern_config(regional);
+        let mut regional_key = collection.ordered_entities[0].region_key.clone();
+        regional_key.region_id /= PAINT_VARIANT_REGION_ID_STRIDE;
         regional_map.entries.insert(
-            collection.ordered_entities[0].region_key.clone(),
+            regional_key,
             RegionPlan {
                 config: id,
                 ..Default::default()
@@ -319,6 +328,68 @@ fn observation_with_alias_owner(
             guest::SdkLayerPathoptGuest::__slicer_native_entry()
         });
     }
+    let stage_id = if infill {
+        "Layer::InfillPostProcess"
+    } else {
+        "Layer::PathOptimization"
+    };
+    let layer = GlobalLayer {
+        z: 0.2,
+        ..Default::default()
+    };
+    // Commit exact authority for every model identity in the selection snapshot.
+    // The transport's optional map remains unchanged: its absent-map case still
+    // exercises the existing builder fallback rather than a selection rejection.
+    let mut selection_map = if with_map {
+        (*map).clone()
+    } else {
+        RegionMapIR::default()
+    };
+    let fallback_id = selection_map.intern_config(ResolvedConfig {
+        extensions: std::collections::BTreeMap::from([
+            ("emit_view_witness".into(), ConfigValue::Int(1)),
+            ("infill_anchor_max".into(), ConfigValue::Float(20.0)),
+            ("layer_height".into(), ConfigValue::Float(0.37)),
+            ("infill_density".into(), ConfigValue::Float(0.31)),
+        ]),
+        ..Default::default()
+    });
+    for region in &slice.regions {
+        selection_map
+            .entries
+            .entry(RegionKey {
+                global_layer_index: layer.index,
+                object_id: region.object_id.clone(),
+                region_id: if region.variant_chain.is_empty() || region.region_id >= (1u64 << 63) {
+                    region.region_id
+                } else {
+                    region.region_id / PAINT_VARIANT_REGION_ID_STRIDE
+                },
+                variant_chain: region.variant_chain.clone(),
+            })
+            .or_insert(RegionPlan {
+                config: fallback_id,
+                ..Default::default()
+            });
+    }
+    // exhaustive: committed snapshot pins every selection authority channel.
+    let selection_index = build_layer_selection_index(LayerSelectionIndexInput {
+        stage_roster: STAGES,
+        global_layers: std::slice::from_ref(&layer),
+        // exhaustive: binding supplies all static module metadata.
+        modules: &[LayerSelectionModuleInput {
+            stage_id,
+            module_id: &module_id,
+            claims: &[],
+            paint_semantics: None,
+            invocation_config: &module.config_view,
+        }],
+        slices: std::slice::from_ref(&slice),
+        region_map: Some(&selection_map),
+        support_plan: None,
+        perimeters: std::slice::from_ref(&perimeter),
+    })
+    .expect("SDK transport selection index");
     // exhaustive: stage borrow input has no Default
     let input = LayerStageInput {
         mesh: Arc::new(MeshIR::default()),
@@ -334,22 +405,14 @@ fn observation_with_alias_owner(
         prepared_regions: None,
         prepared_perimeter_source_regions: None,
         infill: None,
+        selection: Some(
+            selection_index
+                .selection_for(layer.index, &module_id)
+                .expect("bound SDK module"),
+        ),
     };
     let error = dispatcher
-        .run_stage(
-            &if infill {
-                "Layer::InfillPostProcess"
-            } else {
-                "Layer::PathOptimization"
-            }
-            .to_owned(),
-            &GlobalLayer {
-                z: 0.2,
-                ..Default::default()
-            },
-            &module,
-            input,
-        )
+        .run_stage(&stage_id.to_owned(), &layer, &module, input)
         .expect_err("diagnostic SDK guest returns its observed input");
     assert_eq!(
         perimeter.regions[0].walls[0].width_profile.widths,
@@ -410,7 +473,9 @@ fn actual_sdk_infill_postprocess_without_region_map_inherits_declared_stage_sett
     let wasm = observation_with_region_map(false, true, false);
     let native = observation_with_region_map(true, true, false);
     assert!(
-        wasm.contains("region=obj:9 chain=[(\"material\", ToolIndex(2))] anchor=Some(Float(20.0))"),
+        wasm.contains(
+            "region=obj:9000003 chain=[(\"material\", ToolIndex(2))] anchor=Some(Float(20.0))"
+        ),
         "missing region config must inherit stage anchor: {wasm}"
     );
     assert!(
@@ -459,7 +524,7 @@ fn actual_sdk_guest_and_native_observe_current_wire_projection() {
         "candidate reason is not carried by WIT: {native}"
     );
     assert!(
-        native.contains("region_id: 9, variant_chain: []"),
+        native.contains("region_id: 9000003, variant_chain: []"),
         "ordered identity is wire-observable: {native}"
     );
     assert!(
@@ -506,7 +571,7 @@ fn actual_sdk_infill_postprocess_guest_and_native_observe_donor_projection() {
         "nonempty candidates: {wasm}"
     );
     assert!(wasm.contains("wall_index: 3"), "resolved seam: {wasm}");
-    assert!(wasm.contains("region=obj:9000001 chain=[(\"material\", ToolIndex(3)), (\"custom\", ToolIndex(0))] anchor=Some(Float(20.0))"), "virtual variant and stage fallback: {wasm}");
+    assert!(wasm.contains("region=obj:9549873 chain=[(\"material\", ToolIndex(3)), (\"custom\", ToolIndex(0))] anchor=Some(Float(20.0))"), "virtual variant and stage fallback: {wasm}");
     assert!(
         wasm.contains("tool=3 donor=Some(9)"),
         "borrowed nonempty wall donor: {wasm}"

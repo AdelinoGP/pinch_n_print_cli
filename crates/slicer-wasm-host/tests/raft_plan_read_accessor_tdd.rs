@@ -24,6 +24,9 @@ use slicer_ir::{
     ConfigValue, ConfigView, ExtrusionPath3D, GlobalLayer, RaftPlan, RegionKey, RegionMapIR,
     RegionPlan, ResolvedConfig, SemVer, SliceIR, SlicedRegion, SupportPlanIR,
 };
+use slicer_wasm_host::selection::{
+    build_layer_selection_index, LayerSelectionIndexInput, LayerSelectionModuleInput, STAGES,
+};
 use slicer_wasm_host::{
     binding::LayerStageInput, CompiledModuleLive, LayerStageRunner, WasmInstancePool,
     WasmRuntimeDispatcher,
@@ -106,6 +109,25 @@ fn run_wasm_guest(is_raft: bool, support_plan: Option<SupportPlanIR>) -> Vec<Ext
         is_raft,
         ..GlobalLayer::default()
     };
+    let region_map = region_map();
+    // exhaustive: committed snapshot pins every selection authority channel.
+    let selection_index = build_layer_selection_index(LayerSelectionIndexInput {
+        stage_roster: STAGES,
+        global_layers: std::slice::from_ref(&layer),
+        // exhaustive: binding supplies all static module metadata.
+        modules: &[LayerSelectionModuleInput {
+            stage_id: "Layer::Infill",
+            module_id: &module_id,
+            claims: &claims,
+            paint_semantics: None,
+            invocation_config: &module.config_view,
+        }],
+        slices: std::slice::from_ref(&slice),
+        region_map: Some(&region_map),
+        support_plan: support_plan.as_ref(),
+        perimeters: &[],
+    })
+    .expect("raft selection index");
     // exhaustive: LayerStageInput has no Default and this test supplies the complete stage input
     let input = LayerStageInput {
         mesh: Arc::new(slicer_ir::MeshIR::default()),
@@ -113,7 +135,7 @@ fn run_wasm_guest(is_raft: bool, support_plan: Option<SupportPlanIR>) -> Vec<Ext
         seam_plan: None,
         support_plan: support_plan.map(Arc::new),
         lightning_tree_ir: None,
-        region_map: Some(Arc::new(region_map())),
+        region_map: Some(Arc::new(region_map)),
         slice: Some(&slice),
         perimeter: None,
         layer_collection: None,
@@ -121,6 +143,11 @@ fn run_wasm_guest(is_raft: bool, support_plan: Option<SupportPlanIR>) -> Vec<Ext
         prepared_regions: None,
         prepared_perimeter_source_regions: None,
         infill: None,
+        selection: Some(
+            selection_index
+                .selection_for(layer.index, &module_id)
+                .expect("bound raft module"),
+        ),
     };
     let commit = LayerStageRunner::run_stage(
         &dispatcher,
@@ -277,6 +304,25 @@ fn run_native_entry(
         is_raft,
         ..GlobalLayer::default()
     };
+    let region_map = region_map();
+    // exhaustive: committed snapshot pins every selection authority channel.
+    let selection_index = build_layer_selection_index(LayerSelectionIndexInput {
+        stage_roster: STAGES,
+        global_layers: std::slice::from_ref(&layer),
+        // exhaustive: binding supplies all static module metadata.
+        modules: &[LayerSelectionModuleInput {
+            stage_id: "Layer::Infill",
+            module_id: &module_id,
+            claims: &claims,
+            paint_semantics: None,
+            invocation_config: &module.config_view,
+        }],
+        slices: std::slice::from_ref(&slice),
+        region_map: Some(&region_map),
+        support_plan: support_plan.as_ref(),
+        perimeters: &[],
+    })
+    .expect("native raft selection index");
     // exhaustive: LayerStageInput has no Default and this test supplies the complete stage input
     let input = LayerStageInput {
         mesh: Arc::new(slicer_ir::MeshIR::default()),
@@ -284,7 +330,7 @@ fn run_native_entry(
         seam_plan: None,
         support_plan: support_plan.map(Arc::new),
         lightning_tree_ir: None,
-        region_map: Some(Arc::new(region_map())),
+        region_map: Some(Arc::new(region_map)),
         slice: Some(&slice),
         perimeter: None,
         layer_collection: None,
@@ -292,6 +338,11 @@ fn run_native_entry(
         prepared_regions: None,
         prepared_perimeter_source_regions: None,
         infill: None,
+        selection: Some(
+            selection_index
+                .selection_for(layer.index, &module_id)
+                .expect("bound native raft module"),
+        ),
     };
     LayerStageRunner::run_stage(
         &dispatcher,

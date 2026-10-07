@@ -11,7 +11,8 @@ use std::sync::{Arc, Mutex};
 
 use slicer_ir::{
     ActiveRegion, ConfigValue, ConfigView, ExPolygon, LayerStageCommit, LayerStageError, Point2,
-    Polygon, SemVer, SliceIR, SlicedRegion, StageId,
+    Polygon, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SemVer, SliceIR, SlicedRegion,
+    StageId,
 };
 use slicer_runtime::{
     execute_per_layer, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledModuleLive,
@@ -126,6 +127,7 @@ fn live_arachne_layer_one_sandwich_reaches_path_optimizer_unchanged() {
         );
 
         let committed_layer_one = Arc::new(Mutex::new(None));
+        let plan = plan(&arachne.module, &path_opt.module);
         let runner = LiveArachneThenPathOpt {
             dispatcher: Arc::new(dispatcher),
             arachne,
@@ -133,12 +135,47 @@ fn live_arachne_layer_one_sandwich_reaches_path_optimizer_unchanged() {
             committed_layer_one: Arc::clone(&committed_layer_one),
         };
 
-        let plan = plan();
         let mesh = Arc::new(slicer_ir::MeshIR::default());
         let mut blackboard = Blackboard::new(mesh, 2);
         blackboard
             .commit_slice_ir(Arc::new(vec![slice(0), slice(1)]))
             .expect("slice fixture must be accepted");
+
+        let mut map = RegionMapIR::default();
+        let config = map.intern_config(ResolvedConfig {
+            wall_count: 3,
+            layer_height: 0.2,
+            line_width: 0.45,
+            extensions: [
+                (
+                    "wall_sequence".to_string(),
+                    ConfigValue::String(wall_sequence.to_string()),
+                ),
+                ("nozzle_diameter".to_string(), ConfigValue::Float(0.4)),
+            ]
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        });
+        for global_layer_index in 0..2 {
+            map.entries.insert(
+                RegionKey {
+                    global_layer_index,
+                    object_id: "arachne-fixture".to_string(),
+                    region_id: 0,
+                    variant_chain: Vec::new(),
+                },
+                RegionPlan {
+                    config,
+                    ..Default::default()
+                },
+            );
+        }
+        blackboard
+            .commit_region_map(Arc::new(map))
+            .expect("region map fixture must be accepted");
+        slicer_runtime::build_and_commit_layer_selection_index(&plan, &mut blackboard)
+            .expect("live fixture selection index must be accepted");
 
         let layers = execute_per_layer(&plan, &blackboard, &runner, &Default::default())
             .expect("live Arachne and path optimization must execute");
@@ -323,15 +360,18 @@ fn slice(layer: u32) -> SliceIR {
     }
 }
 
-fn plan() -> ExecutionPlan {
-    let stages = |(stage_id, module_id): (&str, &str)| CompiledStage {
+fn plan(arachne: &CompiledModule, path_opt: &CompiledModule) -> ExecutionPlan {
+    let stages = |stage_id: &str, module: &CompiledModule| CompiledStage {
         stage_id: stage_id.to_string(),
-        modules: vec![CompiledModuleBuilder::new(module_id.to_string()).build()],
+        // Selection indexing snapshots the plan config, not the runner's module config.
+        modules: vec![CompiledModuleBuilder::new(module.module_id().to_string())
+            .config_view(Arc::clone(module.config_view()))
+            .build()],
     };
     ExecutionPlan {
         per_layer_stages: vec![
-            stages(("Layer::Perimeters", ARACHNE_ID)),
-            stages(("Layer::PathOptimization", PATH_OPT_ID)),
+            stages("Layer::Perimeters", arachne),
+            stages("Layer::PathOptimization", path_opt),
         ],
         global_layers: Arc::new(
             (0..2)

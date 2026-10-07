@@ -100,66 +100,83 @@ fn integrated_parity_lightning_infill() {
         ..Default::default()
     };
     let stage: StageId = "Layer::Infill".to_string();
-    let mut wasm_input = crate::common::layer_input(&bb, &wasm_arena);
-    let mut native_input = crate::common::layer_input(&bb, &native_arena);
+    let spec = IntegratedParitySpec {
+        module_id: "com.core.lightning-infill".into(),
+        wasm_path: std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../modules/core-modules/lightning-infill/lightning-infill.wasm"),
+        stage: stage.clone(),
+        version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        min_ir_schema: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        max_ir_schema: SemVer {
+            major: 2,
+            minor: 0,
+            patch: 0,
+        },
+        tier: String::new(),
+        claims: vec!["claim:sparse-fill".into()],
+        // Bound-view shape (packet 06 5c-prime): `bridge_line_width` /
+        // `initial_layer_line_width` are contract-required reads
+        // (`require_abs_value` over the fixed 0.4 nozzle base); a bound
+        // view holds them at their resolved defaults (lightning_infill_tdd.rs
+        // fixtures) and carries the host-expanded `line_width`.
+        // `infill_density` / `infill_speed` are declared required reads
+        // since the guest's config-literal fallbacks migrated to
+        // `require_*`; seed the manifest defaults (lightning-infill.toml).
+        config: Arc::new(ConfigView::from_map(std::collections::HashMap::from([
+            (
+                "infill_density".to_string(),
+                slicer_ir::ConfigValue::Float(0.2),
+            ),
+            (
+                "infill_speed".to_string(),
+                slicer_ir::ConfigValue::Float(60.0),
+            ),
+            (
+                "bridge_line_width".to_string(),
+                slicer_ir::ConfigValue::Float(0.4),
+            ),
+            (
+                "initial_layer_line_width".to_string(),
+                slicer_ir::ConfigValue::Float(0.4),
+            ),
+            (
+                "line_width".to_string(),
+                slicer_ir::ConfigValue::Float(0.45),
+            ),
+        ]))),
+        native_entry: LightningInfill::__slicer_native_entry(),
+    };
+    let selection_module = slicer_runtime::CompiledModuleBuilder::new(spec.module_id.clone())
+        .claims(spec.claims.clone())
+        .config_view(Arc::clone(&spec.config))
+        .build();
+    let selection_index = crate::common::selection_for_module(
+        &stage,
+        &layer,
+        &selection_module,
+        &bb,
+        wasm_arena.slice(),
+        None,
+    )
+    .expect("build fixture selection index");
+    let selection = selection_index
+        .selection_for(layer.index, selection_module.module_id())
+        .expect("fixture layer selection");
+    let mut wasm_input = crate::common::layer_input(&bb, &wasm_arena, selection);
+    let mut native_input = crate::common::layer_input(&bb, &native_arena, selection);
     wasm_input.paint_regions = Some(());
     native_input.paint_regions = Some(());
     let (native, wasm) = run_integrated_parity(
-        IntegratedParitySpec {
-            module_id: "com.core.lightning-infill".into(),
-            wasm_path: std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../../modules/core-modules/lightning-infill/lightning-infill.wasm"),
-            stage: stage.clone(),
-            version: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
-            min_ir_schema: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
-            max_ir_schema: SemVer {
-                major: 2,
-                minor: 0,
-                patch: 0,
-            },
-            tier: String::new(),
-            claims: vec!["claim:sparse-fill".into()],
-            // Bound-view shape (packet 06 5c-prime): `bridge_line_width` /
-            // `initial_layer_line_width` are contract-required reads
-            // (`require_abs_value` over the fixed 0.4 nozzle base); a bound
-            // view holds them at their resolved defaults (lightning_infill_tdd.rs
-            // fixtures) and carries the host-expanded `line_width`.
-            // `infill_density` / `infill_speed` are declared required reads
-            // since the guest's config-literal fallbacks migrated to
-            // `require_*`; seed the manifest defaults (lightning-infill.toml).
-            config: Arc::new(ConfigView::from_map(std::collections::HashMap::from([
-                (
-                    "infill_density".to_string(),
-                    slicer_ir::ConfigValue::Float(0.2),
-                ),
-                (
-                    "infill_speed".to_string(),
-                    slicer_ir::ConfigValue::Float(60.0),
-                ),
-                (
-                    "bridge_line_width".to_string(),
-                    slicer_ir::ConfigValue::Float(0.4),
-                ),
-                (
-                    "initial_layer_line_width".to_string(),
-                    slicer_ir::ConfigValue::Float(0.4),
-                ),
-                (
-                    "line_width".to_string(),
-                    slicer_ir::ConfigValue::Float(0.45),
-                ),
-            ]))),
-            native_entry: LightningInfill::__slicer_native_entry(),
-        },
-        |dispatcher, native_live, wasm_live| {
+        spec,
+        |dispatcher, native_live, wasm_live, _native_module, _wasm_module| {
             let wasm =
                 LayerStageRunner::run_stage(dispatcher, &stage, &layer, wasm_live, wasm_input)
                     .expect("wasm dispatch")

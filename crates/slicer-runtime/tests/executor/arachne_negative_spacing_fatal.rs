@@ -193,6 +193,15 @@ fn arachne_negative_spacing_config_fails_the_slice_with_actionable_error() {
         slicer_ir::ConfigValue::Float(30.0),
     );
 
+    let mut resolved = slicer_ir::ResolvedConfig::default();
+    for (key, value) in &fields {
+        if !resolved
+            .apply_cli_key(key, value)
+            .expect("fixture config must be typed correctly")
+        {
+            resolved.extensions.insert(key.clone(), value.clone());
+        }
+    }
     let module = CompiledModuleBuilder::new(loaded.id().to_string())
         .config_view(Arc::new(slicer_ir::ConfigView::from_map(fields)))
         .build();
@@ -230,7 +239,16 @@ fn arachne_negative_spacing_config_fails_the_slice_with_actionable_error() {
         })
         .expect("set_slice must succeed");
 
-    let blackboard = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+    let mut blackboard = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+    blackboard
+        .commit_region_map(Arc::new(
+            crate::common::dispatch_fixture::region_map_for_slice(
+                arena.slice().expect("authored slice must be staged"),
+                layer_index,
+                resolved,
+            ),
+        ))
+        .expect("invalid-spacing authority must commit");
 
     let layer = slicer_ir::GlobalLayer {
         index: layer_index,
