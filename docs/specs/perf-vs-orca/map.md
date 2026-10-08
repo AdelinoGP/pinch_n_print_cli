@@ -253,6 +253,11 @@ Standing decisions for this effort (2026-09-22):
    still cannot satisfy Orca's `>= 80` loadable-pair gate on its own because the
    remainder are PnP's own key names, which no table edit can fix — is recorded on
    the ticket rather than silently patched.
+   **Next route (2026-10-08):** with the small non-timing family complete, the
+   human reopened [offset2_ex call reduction](issues/19-offset2-ex-call-reduction.md) —
+   its below-fold park is lifted for that candidate's take; its blockers 12/17
+   are resolved; acceptance is the standing paired ordinary + accelerated A/B
+   (timing chain position 4, keep/drop to the human, no auto-commit).
 - **Production-mode route (2026-09-30):** pursue conditional accelerated
   adoption; ordinary stays the actual default pending the existing acceptance
   gate. See [Accelerated perimeter-spatial adoption decision](issues/13-accelerated-adoption-decision.md)

@@ -2,7 +2,7 @@
 
 Type: task
 Status: open
-Assignee: agpen (current OpenCode wayfinder route session), 2026-10-07 — routing claim only; below-fold park remains in force
+Assignee: agpen — reopened by human decision 2026-10-08; below-fold park lifted for this candidate's take (no experiment started by this record)
 Blocked by: 12, 17
 
 ## Question
@@ -74,3 +74,23 @@ order; 30/31/34, the family's other open tickets, were resolved later the
 same day). This candidate stays parked and
 the routing claim is released; no experiment, timing campaign, adoption retry,
 default change or commit is authorized by this claim.
+
+### Reopen — 2026-10-08
+
+**Human decision: reopen this lead.** With the small non-timing family complete
+([Config padding disclosure boundary](34-config-padding-disclosure-boundary.md)
+closed the last take), the human confirmed the reopen the 2026-10-05 and
+2026-10-06 claims awaited. The below-fold park in
+[Gap budget per cell](12-gap-budget-per-cell.md) is lifted **for this
+candidate's take only**; the routing claim is released into the take.
+
+The take evaluates the measured candidate shapes — redundant shrink/expand
+pairs around `split_top_surfaces`, result reuse across the top-surface flow,
+gap-fill width-band coalescing — under the standing constraints (intended
+geometry preserved exactly; `opening_ex` through the same primitive if touched)
+and acceptance (paired ordinary + accelerated A/B, interleaved repeats with
+starvation exclusion, uninstrumented probe-free runs, isolated host/guest
+snapshots; fuel alone is not a wall win). No candidate implementation,
+experiment, timing campaign, adoption retry, default change or commit is
+started by this record; keep/drop still returns to the human with no
+auto-commit.
