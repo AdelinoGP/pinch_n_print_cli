@@ -1,7 +1,11 @@
 # Consume-only-when-read annotations
 
 Type: task
-Status: open
+Status: claimed
+Assignee: agpen (current OpenCode wayfinder route session), 2026-10-08 —
+routing/premise-audit claim only; the below-fold park in
+[Gap budget per cell](12-gap-budget-per-cell.md) remains in force pending the
+human's route decision
 Blocked by: 12, 18, 19
 
 ## Question
