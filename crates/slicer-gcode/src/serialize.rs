@@ -441,7 +441,7 @@ fn serialize_config_block(
     for (appendix_key, pnp_key) in ORCA_CONFIG_ALIAS_KEYS {
         if let Some(rendered) = raw_config
             .get(*pnp_key)
-            .and_then(render_appendix_alias_value)
+            .and_then(|value| render_appendix_alias_value(value, appendix_key))
         {
             emit_config_kv(&mut out, &mut emitted, appendix_key, &rendered);
         }
@@ -461,10 +461,25 @@ fn serialize_config_block(
     for key in keys {
         if let Some(value) = raw_config.get(key) {
             let value_str = match value {
-                ConfigValue::Bool(b) => b.to_string(),
+                // OrcaSlicer's `ConfigOptionBool::serialize` writes `1`/`0` and
+                // `deserialize` accepts *only* those two literals; anything else
+                // falls into the substitution path (`enum_looks_like_true_value`
+                // is true only for `enabled`/`on`), so `true`/`false` would load
+                // every boolean as `false`. Measured against the pinned
+                // `PrintConfig.cpp` 2026-10-07 and OrcaSlicer 2.4.1 output.
+                //
+                // The two keys PnP models as booleans but OrcaSlicer declares as
+                // `coEnum`s (`dont_filter_internal_bridges`,
+                // `enable_extra_bridge_layer`) are routed through the translator
+                // so their `0`/`1` becomes the enum's wire spelling — Orca's
+                // strict `enum_keys_map` lookup would otherwise substitute the
+                // option's default and hide a `true`.
+                ConfigValue::Bool(b) => {
+                    translate_appendix_enum(key, if *b { "1" } else { "0" }).to_string()
+                }
                 ConfigValue::Int(i) => i.to_string(),
                 ConfigValue::Float(f) => format_config_float(*f),
-                ConfigValue::String(s) => escape_cstyle(s),
+                ConfigValue::String(s) => escape_cstyle(translate_appendix_enum(key, s)),
                 ConfigValue::Percent(p) => format!("{p}%"),
                 ConfigValue::FloatOrPercent { value, is_percent } => {
                     if *is_percent {
@@ -546,46 +561,109 @@ fn emit_config_kv(
     }
 }
 
+/// Translate a PnP-internal enum spelling into OrcaSlicer's wire spelling.
+///
+/// The `CONFIG_BLOCK` is read by OrcaSlicer's `ConfigBase::load_from_gcode_file`
+/// → `set_deserialize` → `ConfigOptionEnum::deserialize`, which is a strict
+/// `enum_keys_map` lookup (`from_string`). A value outside that map is not a
+/// near-miss: it falls to the substitution branch, which *replaces the option
+/// with its own default* (`opt->set(optdef->default_value.get())`), so the
+/// viewer silently displays a setting the slice did not use.
+///
+/// Three keys in the resolved view carry a PnP-internal spelling that differs
+/// from OrcaSlicer's wire value. Each is a pure rename — the value is otherwise
+/// identical — so this is a disclosure fix, not a semantics change. Only the
+/// appendix is translated; module `ConfigView`s keep reading the PnP spelling.
+///
+/// Measured 2026-10-07 against the pinned `PrintConfig.cpp`
+/// (`s_keys_map_WallSequence`, `s_keys_map_PerimeterGeneratorType`,
+/// `s_keys_map_WallDirection`, `s_keys_map_InternalBridgeFilter`) and OrcaSlicer
+/// 2.4.1 output (`; wall_sequence = inner wall/outer wall`,
+/// `; wall_generator = arachne`, `; wall_direction = ccw`).
+fn translate_appendix_enum<'a>(key: &str, value: &'a str) -> &'a str {
+    match (key, value) {
+        // PnP's `wall_sequence` values are the Rust variant names; canonical
+        // `s_keys_map_WallSequence` spells them as wall-order phrases.
+        ("wall_sequence", "InnerOuter") => "inner wall/outer wall",
+        ("wall_sequence", "OuterInner") => "outer wall/inner wall",
+        ("wall_sequence", "InnerOuterInner") => "inner-outer-inner wall",
+        // `WallGenerator::Classic` is a Rust variant name; the Orca enum value
+        // is lowercase.
+        ("wall_generator", "Classic") => "classic",
+        ("wall_generator", "Arachne") => "arachne",
+        // PnP reads `counter_clockwise` / `clockwise`; Orca's
+        // `s_keys_map_WallDirection` is `ccw` / `cw`.
+        ("wall_direction", "counter_clockwise") => "ccw",
+        ("wall_direction", "clockwise") => "cw",
+        // The appendix alias renders `seam_mode` under Orca's `seam_position`
+        // name. PnP spells the rear-position variant `rear`; Orca's
+        // `s_keys_map_SeamPosition` is `back`.
+        ("seam_position", "rear") => "back",
+        // `dont_filter_internal_bridges` is a *bool* in PnP (a deliberate
+        // compatibility surface, `docs/15_config_keys_reference.md`) but a
+        // three-value `coEnum` in Orca. `false` is PnP's "full filtering",
+        // which is canonical `ibfDisabled`.
+        ("dont_filter_internal_bridges", "0") => "disabled",
+        ("dont_filter_internal_bridges", "1") => "nofilter",
+        ("dont_filter_internal_bridges", "false") => "disabled",
+        ("dont_filter_internal_bridges", "true") => "nofilter",
+        // Same shape: `enable_extra_bridge_layer` is a bool in PnP (the extra
+        // bridge layer is authored by the ShellClassification prepass) and a
+        // four-value `coEnum` in Orca. PnP's `true` authors the layer for every
+        // qualified bridge, which is canonical `eblApplyToAll`.
+        ("enable_extra_bridge_layer", "0") => "disabled",
+        ("enable_extra_bridge_layer", "1") => "apply_to_all",
+        ("enable_extra_bridge_layer", "false") => "disabled",
+        ("enable_extra_bridge_layer", "true") => "apply_to_all",
+        _ => value,
+    }
+}
+
 /// Padding table contains only neutral cosmetic CONFIG_BLOCK keys. PNP never
 /// emits speed/accel/jerk/machine-limit values here; those are the fork's
 /// responsibility per the CONFIG_BLOCK viewer-key contract in
 /// `docs/02_ir_schemas.md`.
 const ORCA_CONFIG_PADDING: &[(&str, &str)] = &[
-    ("single_extruder_multi_material", "1"),
+    // Not `single_extruder_multi_material`, `ooze_prevention`, `printable_height`
+    // or `z_offset`: each of those is read by the viewer's `GCodeProcessor`
+    // (`printable_height` into the height check, `z_offset` into every emitted
+    // position, `ooze_prevention` into `backtrace_enabled`,
+    // `single_extruder_multi_material` into the extruder-offset branch), and the
+    // minimum-key contract forbids padding that "the viewer's `GCodeProcessor`"
+    // feeds into motion/time computation. `spiral_mode` is retained because it is
+    // not a fabrication — `ORCA_CONFIG_ALIAS_KEYS` renders it from PnP's real
+    // `spiral_vase` setting.
     ("seam_position", "aligned"),
     ("spiral_mode", "0"),
-    ("detect_thin_wall", "1"),
+    ("detect_thin_wall", "0"),
     ("detect_overhang_wall", "1"),
     ("enable_support", "0"),
-    ("support_material", "0"),
     ("raft_layers", "0"),
     ("brim_type", "auto_brim"),
     ("brim_width", "0"),
     ("skirt_loops", "1"),
     ("skirt_distance", "2"),
     ("sparse_infill_density", "20%"),
-    ("sparse_infill_pattern", "grid"),
-    ("top_surface_pattern", "monotonic"),
+    ("sparse_infill_pattern", "crosshatch"),
+    ("top_surface_pattern", "monotonicline"),
     ("bottom_surface_pattern", "monotonic"),
     ("ironing_type", "no ironing"),
-    ("fuzzy_skin", "none"),
+    ("fuzzy_skin", "disabled_fuzzy"),
     ("bottom_shell_layers", "3"),
     ("reduce_crossing_wall", "0"),
     ("max_travel_detour_distance", "0"),
-    ("resolution", "0.012"),
+    ("resolution", "0.01"),
     ("xy_hole_compensation", "0"),
     ("xy_contour_compensation", "0"),
     ("elefant_foot_compensation", "0"),
     ("seam_gap", "10%"),
-    ("wipe_on_loops", "1"),
-    ("reduce_infill_retraction", "1"),
-    ("z_offset", "0"),
-    ("printable_height", "250"),
+    ("wipe_on_loops", "0"),
+    ("reduce_infill_retraction", "0"),
     ("print_sequence", "by layer"),
     ("slow_down_for_layer_cooling", "1"),
-    ("slow_down_layer_time", "8"),
-    ("fan_cooling_layer_time", "100"),
-    ("reduce_fan_stop_start_freq", "1"),
+    ("slow_down_layer_time", "5"),
+    ("fan_cooling_layer_time", "60"),
+    ("reduce_fan_stop_start_freq", "0"),
     ("prime_tower_brim_width", "3"),
     ("wipe_tower_rotation_angle", "0"),
     ("wall_loops", "2"),
@@ -611,15 +689,26 @@ const ORCA_CONFIG_PADDING: &[(&str, &str)] = &[
     ("wipe_tower_x", "15"),
     ("wipe_tower_y", "220"),
     ("wipe_tower_width", "60"),
-    ("ooze_prevention", "0"),
     ("gap_fill_target", "nowhere"),
-    ("extra_perimeters", "0"),
+    ("enable_arc_fitting", "0"),
     ("extra_perimeters_on_overhangs", "0"),
     ("wall_direction", "ccw"),
-    ("outer_wall_direction", "ccw"),
-    ("infill_first", "0"),
-    ("solid_infill_filament", "0"),
-    ("top_fill_pattern", "monotonic"),
+    // Not `outer_wall_direction` / `infill_first` / `solid_infill_filament` /
+    // `top_fill_pattern`: those are not OrcaSlicer keys at all (absent from the
+    // pinned `PrintConfig.cpp` and from OrcaSlicer 2.4.1 output), so they cannot
+    // count toward the viewer's minimum-key gate. These four replace them with
+    // real cosmetic Orca keys at their upstream defaults.
+    ("solid_infill_direction", "45"),
+    ("is_infill_first", "0"),
+    ("top_solid_infill_flow_ratio", "1.0"),
+    ("top_surface_density", "100%"),
+    // Replacing the four forbidden viewer-consumed rows above: same class of
+    // neutral toggle/count/geometry-cosmetic keys, none of them read by
+    // `GCodeProcessor`.
+    ("precise_z_height", "0"),
+    ("hole_to_polyhole", "0"),
+    ("staggered_inner_seams", "0"),
+    ("wall_distribution_count", "1"),
 ];
 
 const SUPPORT_CONFIG_DEFAULTS: &[(&str, &str)] = &[
@@ -682,13 +771,16 @@ const ORCA_CONFIG_ALIAS_KEYS: &[(&str, &str)] = &[
 /// Render an alias source value into the appendix's scalar spelling, or `None`
 /// when the variant has no scalar rendering (the [`ORCA_CONFIG_PADDING`]
 /// default then stands). Bools render as `1`/`0` — the only two literals
-/// OrcaSlicer's `ConfigOptionBool::deserialize` accepts.
-fn render_appendix_alias_value(value: &ConfigValue) -> Option<String> {
+/// OrcaSlicer's `ConfigOptionBool::deserialize` accepts. String values pass
+/// through [`translate_appendix_enum`] keyed by the *appendix* name, so an
+/// alias whose PnP-internal spelling differs from OrcaSlicer's wire value
+/// (`seam_mode`'s `rear` → `seam_position`'s `back`) is canonicalized too.
+fn render_appendix_alias_value(value: &ConfigValue, appendix_key: &str) -> Option<String> {
     match value {
         ConfigValue::Bool(b) => Some(u8::from(*b).to_string()),
         ConfigValue::Int(i) => Some(i.to_string()),
         ConfigValue::Float(f) => Some(format!("{f}")),
-        ConfigValue::String(s) => Some(s.clone()),
+        ConfigValue::String(s) => Some(translate_appendix_enum(appendix_key, s).to_string()),
         ConfigValue::List(_) | ConfigValue::Percent(_) | ConfigValue::FloatOrPercent { .. } => None,
     }
 }
@@ -1243,5 +1335,267 @@ mod tests {
             .filter(|line| line.starts_with("; sparse_infill_density = "))
             .collect();
         assert_eq!(density, ["; sparse_infill_density = 20%"], "{block}");
+    }
+
+    /// OrcaSlicer's `ConfigOptionBool::serialize`/`deserialize` speak `1`/`0`
+    /// only. Emitting `true`/`false` sends every boolean down the substitution
+    /// branch (`enum_looks_like_true_value` is true only for `enabled`/`on`), so
+    /// the viewer would load `false` for *every* boolean the fork did not
+    /// itself supply — including `enable_support = 1`.
+    #[test]
+    fn config_block_renders_booleans_as_orca_wire_literals() {
+        // Explicit inputs: the rendered literal must be *exactly* `1`/`0`, not
+        // merely "not true/false" — this is the block path OrcaSlicer reads.
+        let cfg: HashMap<String, ConfigValue> = HashMap::from([
+            ("enable_support".to_string(), ConfigValue::Bool(true)),
+            ("detect_overhang_wall".to_string(), ConfigValue::Bool(false)),
+            (
+                "support_remove_small_overhang".to_string(),
+                ConfigValue::Bool(true),
+            ),
+        ]);
+        let explicit = serialize_config_block(&cfg, &filament_colour_csv(1), GcodeFlavor::Marlin);
+        for (key, literal) in [
+            ("enable_support", "1"),
+            ("detect_overhang_wall", "0"),
+            ("support_remove_small_overhang", "1"),
+        ] {
+            let expected = format!("; {key} = {literal}");
+            assert!(
+                explicit.lines().any(|line| line == expected.as_str()),
+                "`{key}` must render as the Orca wire literal `{literal}`; got:\n{explicit}"
+            );
+        }
+
+        let block = serialize_config_block(
+            &resolved_config_to_map(&ResolvedConfig::default()),
+            &filament_colour_csv(1),
+            GcodeFlavor::Marlin,
+        );
+        let offenders: Vec<&str> = block
+            .lines()
+            .filter(|line| line.starts_with("; ") && line.contains(" = "))
+            .filter(|line| {
+                let value = line.split(" = ").nth(1).unwrap_or_default();
+                value == "true" || value == "false"
+            })
+            .collect();
+        assert!(
+            offenders.is_empty(),
+            "CONFIG_BLOCK must use OrcaSlicer's 1/0 wire literals for booleans; \
+             OrcaSlicer's parser rejects `true`/`false` and substitutes `false`. \
+             Offending lines: {offenders:#?}\n{block}"
+        );
+    }
+
+    /// Helper coverage ({`appendix_enum_translation_is_a_pure_rename`}) is not
+    /// path coverage: a PnP-internal spelling reaching
+    /// `serialize_config_block` must be canonicalized in the emitted line —
+    /// including the `seam_mode` alias (rendered under Orca's `seam_position`)
+    /// and the two keys PnP models as bools but Orca declares as `coEnum`s.
+    /// Wire tokens follow the pinned `s_keys_map_WallSequence`,
+    /// `s_keys_map_PerimeterGeneratorType`, `s_keys_map_WallDirection`,
+    /// `s_keys_map_SeamPosition`, and `s_keys_map_InternalBridgeFilter` maps.
+    #[test]
+    fn config_block_canonicalizes_enum_spellings_on_the_wire() {
+        let cfg: HashMap<String, ConfigValue> = HashMap::from([
+            (
+                "wall_sequence".to_string(),
+                ConfigValue::String("InnerOuter".to_string()),
+            ),
+            (
+                "wall_generator".to_string(),
+                ConfigValue::String("Classic".to_string()),
+            ),
+            (
+                "wall_direction".to_string(),
+                ConfigValue::String("counter_clockwise".to_string()),
+            ),
+            (
+                "dont_filter_internal_bridges".to_string(),
+                ConfigValue::Bool(true),
+            ),
+            (
+                "seam_mode".to_string(),
+                ConfigValue::String("rear".to_string()),
+            ),
+        ]);
+        let block = serialize_config_block(&cfg, &filament_colour_csv(1), GcodeFlavor::Marlin);
+        for expected in [
+            "; wall_sequence = inner wall/outer wall",
+            "; wall_generator = classic",
+            "; wall_direction = ccw",
+            "; dont_filter_internal_bridges = nofilter",
+            "; seam_position = back",
+        ] {
+            assert!(
+                block.lines().any(|line| line == expected),
+                "block must carry `{expected}`; got:\n{block}"
+            );
+        }
+        assert!(
+            !block.contains("; wall_generator = Classic"),
+            "the PnP-internal spelling must not reach the wire; got:\n{block}"
+        );
+    }
+
+    /// The `CONFIG_BLOCK` is an OrcaSlicer *viewer* surface: `set_deserialize`
+    /// ignores unknown keys silently and does not count them toward the `>= 80`
+    /// pair gate. A padding row naming a key OrcaSlicer cannot load is therefore
+    /// worse than useless — it pads the line count without satisfying the gate
+    /// the padding exists to satisfy.
+    ///
+    /// The reference snapshot (`docs/ORCA_CONFIG_REFERENCE.md`) is the in-repo
+    /// record of OrcaSlicer's declared keys; `handle_legacy` renames are accepted
+    /// too because the loader applies them before the map lookup.
+    #[test]
+    fn config_block_padding_rows_name_orca_loadable_keys() {
+        let reference = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../docs/ORCA_CONFIG_REFERENCE.md"),
+        )
+        .expect("ORCA_CONFIG_REFERENCE.md must be present");
+
+        // Keys the loader can reach: a reference row, or a `handle_legacy`
+        // rename source (those are re-keyed before lookup, e.g.
+        // `wipe_tower_width` -> `prime_tower_width`).
+        let legacy_renames: [&str; 1] = ["wipe_tower_width"];
+
+        let block = serialize_config_block(
+            // The table alone: an empty map reproduces the bare fallback.
+            &std::collections::HashMap::new(),
+            &filament_colour_csv(1),
+            GcodeFlavor::Marlin,
+        );
+        let padding_lines: Vec<&str> = block
+            .lines()
+            .filter(|line| line.starts_with("; ") && line.contains(" = "))
+            .filter(|line| {
+                let key = line[2..].split(" = ").next().unwrap_or_default();
+                // Only rows that came from the padding table are judged here;
+                // the synthetic keys are asserted by their own test.
+                ORCA_CONFIG_PADDING.iter().any(|(k, _)| *k == key)
+            })
+            .collect();
+
+        let unloadable: Vec<&&str> = padding_lines
+            .iter()
+            .filter(|line| {
+                let key = &line[2..line.find(" = ").unwrap_or(line.len())];
+                !legacy_renames.contains(&key) && !reference.contains(&format!("\"{key}\""))
+            })
+            .collect();
+
+        assert!(
+            unloadable.is_empty(),
+            "every ORCA_CONFIG_PADDING row must name a key OrcaSlicer's loader \
+             recognizes (silently-ignored keys do not count toward its minimum-key \
+             gate); unloadable rows: {unloadable:#?}"
+        );
+    }
+
+    /// The minimum-key contract (`docs/02_ir_schemas.md`) forbids padding rows
+    /// that the viewer's `GCodeProcessor` feeds into motion or time computation,
+    /// and forbids the `*speed*` / `*acceleration*` / `*jerk*` / `machine_max_*`
+    /// family outright. This pins the PnP-side half of that rule (a reader can
+    /// check the Orca side in `GCodeProcessor.cpp`).
+    #[test]
+    fn padding_never_fabricates_viewer_consumed_keys() {
+        let banned_family = |key: &str| {
+            ["speed", "acceleration", "jerk", "machine_max"]
+                .iter()
+                .any(|needle| key.to_ascii_lowercase().contains(needle))
+        };
+        // Keys the viewer's `GCodeProcessor` reads. `spiral_mode` is exempt
+        // because it is not a fabrication: `ORCA_CONFIG_ALIAS_KEYS` renders it
+        // from PnP's real `spiral_vase` setting.
+        let viewer_consumed: [&str; 4] = [
+            "single_extruder_multi_material",
+            "ooze_prevention",
+            "printable_height",
+            "z_offset",
+        ];
+
+        let offenders: Vec<&str> = ORCA_CONFIG_PADDING
+            .iter()
+            .map(|(key, _)| *key)
+            .filter(|key| banned_family(key) || viewer_consumed.contains(key))
+            .collect();
+        assert!(
+            offenders.is_empty(),
+            "padding rows must not name motion/time keys or the banned \
+             speed/accel/jerk/machine_max family; offenders: {offenders:?}"
+        );
+    }
+
+    /// The wire-spelling translator is a pure rename: it must map the three
+    /// PnP-internal spellings onto OrcaSlicer's `enum_keys_map` literals and
+    /// leave everything else untouched, so a module `ConfigView` never receives
+    /// a canonicalized value.
+    #[test]
+    fn appendix_enum_translation_is_a_pure_rename() {
+        assert_eq!(
+            translate_appendix_enum("wall_sequence", "InnerOuter"),
+            "inner wall/outer wall"
+        );
+        assert_eq!(
+            translate_appendix_enum("wall_sequence", "OuterInner"),
+            "outer wall/inner wall"
+        );
+        assert_eq!(
+            translate_appendix_enum("wall_sequence", "InnerOuterInner"),
+            "inner-outer-inner wall"
+        );
+        assert_eq!(
+            translate_appendix_enum("wall_generator", "Classic"),
+            "classic"
+        );
+        assert_eq!(
+            translate_appendix_enum("wall_generator", "Arachne"),
+            "arachne"
+        );
+        assert_eq!(
+            translate_appendix_enum("wall_direction", "counter_clockwise"),
+            "ccw"
+        );
+        assert_eq!(translate_appendix_enum("wall_direction", "clockwise"), "cw");
+        // The appendix alias renders `seam_mode` under `seam_position`; PnP's
+        // `rear` is Orca's `back`.
+        assert_eq!(translate_appendix_enum("seam_position", "rear"), "back");
+        assert_eq!(
+            translate_appendix_enum("seam_position", "aligned"),
+            "aligned"
+        );
+        assert_eq!(translate_appendix_enum("seam_mode", "rear"), "rear");
+        // `dont_filter_internal_bridges` is a bool in PnP and a three-value
+        // enum in Orca; the mapping is the documented one. Both the rendered
+        // wire literal (`0`/`1`) and the manifest text are accepted.
+        assert_eq!(
+            translate_appendix_enum("dont_filter_internal_bridges", "0"),
+            "disabled"
+        );
+        assert_eq!(
+            translate_appendix_enum("dont_filter_internal_bridges", "1"),
+            "nofilter"
+        );
+        assert_eq!(
+            translate_appendix_enum("enable_extra_bridge_layer", "0"),
+            "disabled"
+        );
+        assert_eq!(
+            translate_appendix_enum("enable_extra_bridge_layer", "1"),
+            "apply_to_all"
+        );
+        // Untouched cases, including a value that happens to be a variant name
+        // for a *different* key.
+        assert_eq!(
+            translate_appendix_enum("wall_generator", "arachne"),
+            "arachne"
+        );
+        assert_eq!(
+            translate_appendix_enum("unrelated_key", "Classic"),
+            "Classic"
+        );
+        assert_eq!(translate_appendix_enum("wall_direction", "ccw"), "ccw");
     }
 }

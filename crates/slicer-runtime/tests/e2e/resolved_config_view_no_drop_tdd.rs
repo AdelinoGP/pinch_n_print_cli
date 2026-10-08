@@ -329,7 +329,17 @@ fn run_slice_config_block_is_registry_projection() {
         .default
         .as_ref()
         .expect("picked key must declare a default");
-    let expected_line = format!("; {picked} = {default}");
+    // `CONFIG_BLOCK` values are OrcaSlicer *wire* literals, not the manifest's
+    // literal text: a `coBool` renders as `1`/`0` because
+    // `ConfigOptionBool::deserialize` accepts only those two (`true`/`false`
+    // falls to the substitution branch and loads as `false`). The registry
+    // stores the manifest text, so normalize it the way the serializer does.
+    let expected_value = match default.as_str() {
+        "true" => "1",
+        "false" => "0",
+        other => other,
+    };
+    let expected_line = format!("; {picked} = {expected_value}");
     let occurrences = block_lines
         .iter()
         .filter(|line| **line == expected_line.as_str())
