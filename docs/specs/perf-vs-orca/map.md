@@ -63,7 +63,9 @@ Standing decisions for this effort (2026-09-22):
   → **[clip-universe hoist](issues/44-clip-universe-hoist.md) candidate, subsequently
   resolved as KEEP approved under the human-approved fresh-baseline gate)** → **25 ✅ (attribution, 2026-10-01; produced the
   [overhang-quartile predicate narrowing](issues/45-overhang-quartile-predicate-narrowing.md)
-  candidate awaiting its own take; its gate prerequisite
+   candidate **resolved as human-approved DROP/inconclusive (2026-10-05;
+   output-identical bbox alternative fails the ordinary-wall clause; candidate
+   source and active artifacts restored)**; its gate prerequisite
   [Frozen-job output drift boundary](issues/46-frozen-job-output-drift-boundary.md)
   **is resolved (2026-10-05: intended behavior; current refs `5a61a106…` and `e1088b3d…`+alias;
   frozen `7049a06d…` / t44 `1b71f83d…` retire as this job's timing baselines)** — post-ticket-47 the fan-command reference
@@ -136,7 +138,10 @@ Standing decisions for this effort (2026-09-22):
   accumulated per-thread spans (`flush_native` sums concurrent worker spans),
   never wall — do not compare them to `module_complete`/phase walls
   ([host:slice closing_ex span contradiction](issues/24-host-slice-closing-span-contradiction.md),
-  2026-09-23); `--module-dir modules/core-modules` is mandatory
+  2026-09-23; the semantics are now stated at the definition sites, the
+  rendered table, and `17_agent_debugging.md` — see [profile wall-column
+  semantics](issues/30-profile-wall-column-semantics.md), 2026-10-07);
+  `--module-dir modules/core-modules` is mandatory
   (§3.4); `cargo xtask build-guests --check` must exit 0 first (§3.5); base.stl
   wall varies ±13% so take repeats (§3.6); accelerated runs use the complete
   `cargo xtask dist --accelerated` snapshot at `target/dist-accelerated/developer/`
@@ -164,7 +169,90 @@ Standing decisions for this effort (2026-09-22):
   ([Tree-planner substage
   attribution](issues/22-tree-planner-substage-attribution.md), 2026-09-24).
 - Measured keep/drop recommendations return to the human; candidates are never
-  auto-committed.
+   auto-committed.
+  **Prepared-cache experiment completed; DROP approved (2026-10-06):**
+  [Prepared winding-coordinate cache](issues/51-prepared-winding-coordinate-cache-experiment.md)
+  implemented the exact cache and passed exactness/output-identity, but the
+  initial campaign was inconclusive and the one explicitly authorized repeat
+  failed accelerated wall under the unchanged both-modes gate (ordinary passed).
+  The human approved **DROP and restore**: candidate source/tests retired to
+  `HEAD`, the preserved patch remains re-appliable, rebuilt guests are
+  byte-identical to archived baselines, and both freshness checks are green.
+  No commit, adoption retry, one-sided exception or new ticket; see
+   [findings](evidence/t51-winding-cache/FINDINGS.md).
+   **Current route (2026-10-07):** the human confirmed the
+   [Scanbeam TopX projection-cache experiment scope](issues/56-scanbeam-topx-cache-experiment-scope.md)
+   after the completed large-body-union diagnostic. Its
+   [execution child](issues/57-scanbeam-topx-cache-experiment.md): the isolated
+   shared-engine candidate passed exactness and the entire fresh 16-cell output
+   matrix byte-for-byte in both modes, but the frozen paired timing campaign
+   **stopped at its first cell — `ordinary-benchy-classic-on` — with the
+   candidate slower on both wall and process CPU in 6 of 6 retained pairs**
+   (wall +2.14%, CPU +2.78%, no starvation exclusions). Because the both-modes
+   gate requires every timed cell to pass, the remaining three cells were not
+   run by rule, and the measured recommendation is **DROP — human accepted
+   2026-10-07** (no commit, adoption or retry; the standing authorization was
+   confirmed to cover the externally interrupted-cell rerun). Two external
+   orchestration stops
+   (a self-inflicted command timeout and a harness session eviction) were
+   recovered by re-proving completed cells from raw bytes and rerunning only
+   untouched cells; no gate-failing cell was ever rerun. Production restored,
+   both freshness checks green; see
+   [findings](evidence/t57-topx-cache/FINDINGS.md). Earlier
+   below-fold/serial-floor parking remains in force.
+   **Next route (2026-10-07):** after t57's DROP the human selected the small
+   non-timing ticket family. This session took the first in number order,
+   [mesh_ops fixture limits](issues/29-mesh-ops-fixture-limits.md), and
+   resolved it (fixture strategy recorded, both criterion leaves replaced,
+   guards + negative control, fresh baselines). Tickets 30/31/34 remain open
+   frontier; no route-performance work was authorized or performed by that take.
+   **Same route, continued (2026-10-07):** this session then took the next in
+   number order, [profile wall-column semantics](issues/30-profile-wall-column-semantics.md),
+   and resolved it — the accumulated-thread-time unit is now stated at the type
+   docs, module docs, rendered table, ADR-0055, `09_progress_events.md`, and
+   `17_agent_debugging.md`, with the rendered note pinned by a test.
+   **Same route, third take (2026-10-07):** the session then took
+   [clipper2 1.2.0 geometry delta](issues/31-clipper2-1-2-0-geometry-delta.md) and
+   resolved it — **stay on 1.1.0, no bump**. The 2-of-367 fixture delta was
+   reproduced and attributed to `clean_collinear`, which is a
+   **canonical-convergence fix** the repo's bundled canonical Clipper2 1.5.2
+   already has, so 1.1.0 is the diverging side; DEV-173's posture is unchanged
+   and the bump buys nothing this map needs. `PolyFace64` is a 1.1.0 addition
+   (premise corrected) and remains unused. Ticket 34 was then the last open
+   frontier ticket in this family; no timing run, candidate, adoption or commit
+   was part of the take.
+   **Same route, fourth take (2026-10-07) — the family is now complete:** the
+   session took that last one,
+   [Config padding disclosure boundary and viewer-key gate](issues/34-config-padding-disclosure-boundary.md),
+   and resolved it. The premise was **corrected before acting**: `ORCA_CONFIG_PADDING`
+   is inert in every production path (the registry projection reaches 233 pairs
+   while the padding loop breaks at 96, so it never fires; the table only serves
+   the test/legacy callers). The audit nevertheless found **two real wire-format
+   defects in the block itself** and fixed both: booleans were rendered
+   `true`/`false` where OrcaSlicer's wire literals are `1`/`0` (23 production
+   lines; the substitution branch in `ConfigBase::set_deserialize_raw` —
+   `enum_looks_like_true_value` is true only for `enabled`/`on` — loaded every
+   rendered `true` as `false`, e.g. `detect_overhang_wall` and
+   `support_remove_small_overhang`), and
+   four enum values used PnP-internal spellings
+   (`wall_sequence`, `wall_generator`, `wall_direction`, and the `seam_mode` alias
+   rendering `rear` for Orca's `back`), which Orca's strict map lookup answers by
+   substituting the option's own default. Two more keys PnP models as `bool` but
+   Orca declares as `coEnum` (`dont_filter_internal_bridges`,
+   `enable_extra_bridge_layer`) went through the same translator. The table itself
+   was audited row by row: 10 values were corrected (7 to the pinned upstream
+   default, 3 more in enum domain), 4 rows fabricated keys the viewer's
+   `GCodeProcessor` consumes (contract-forbidden; swapped for neutral keys), 3 rows
+   named keys OrcaSlicer cannot load
+   (`support_material`, `extra_perimeters` removed; `wipe_tower_width` retained as
+   a `handle_legacy` rename), and 4 rows named keys absent from OrcaSlicer entirely
+   and were replaced with real cosmetic keys. A freshly generated production block
+   now shows **0 strict wire violations** against the pinned source. No timing,
+   geometry, adoption or default change; no guest touched; both freshness gates and
+   all required code gates pass. The residual — the padding-only fallback block
+   still cannot satisfy Orca's `>= 80` loadable-pair gate on its own because the
+   remainder are PnP's own key names, which no table edit can fix — is recorded on
+   the ticket rather than silently patched.
 - **Production-mode route (2026-09-30):** pursue conditional accelerated
   adoption; ordinary stays the actual default pending the existing acceptance
   gate. See [Accelerated perimeter-spatial adoption decision](issues/13-accelerated-adoption-decision.md)
@@ -260,6 +348,24 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Large body-union exact corpus and native-internals investigation](issues/55-large-body-union-corpus-and-internals.md): largest/hole-bearing full-role replay and paired-mode output identity pass; native sweep counters establish unchanged-edge `TopX` recomputation and recommend a separately scoped projection cache, while exact polygon deduplication is falsified for the selected corpus. No candidate or speedup claim; sources/artifacts restored and both freshness gates pass.
+
+- [Large body-union investigation scope](issues/54-large-body-union-investigation-scope.md): human authorized immediate largest/hole-bearing real-input capture, exact full-role replay and native-union internal attribution on the unchanged paired-mode matched jobs; production candidate and speed campaign remain separate approvals.
+
+- [Tree-planner union/simplify current-job attribution](issues/53-tree-planner-union-simplify-current-job-attribution.md): measured all four cells with byte-identical clean baseline/probe outputs; simplification never executes, native body union dominates, and no expensive removable call was established. Recommendation: park simplify/four-role batching; a separate large-body-union scope must address largest/hole-bearing replay gaps. Production sources/artifacts restored and both freshness gates pass.
+
+- [Tree-planner union/simplify investigation scope](issues/52-tree-planner-union-simplify-investigation-scope.md): human authorized fresh Benchy/base classic supports-on attribution in both modes, preserving the exact current chain and qualifying temporary probes against fresh outputs; diagnostic execution is separate, with no candidate or speed campaign authorized.
+
+- [Prepared winding-coordinate cache: exactness + standing paired A/B](issues/51-prepared-winding-coordinate-cache-experiment.md): **DROP approved by the human (2026-10-06)** — the exact per-context contour-coordinate cache passed seven exactness tests in both modes, the precision negative control, byte-identical current outputs, and all code gates, but the standing both-modes wall/CPU gate failed on accelerated wall: the initial campaign was inconclusive (2/6 ordinary, 1/6 accelerated pairs retained) and the one human-authorized repeat retained 6/6 in both modes with ordinary passing (−1.35% wall / −2.08% CPU medians) and accelerated failing (+1.35% wall / −1.16% CPU, ranges overlapping). Candidate source/tests retired to `HEAD`, re-appliable patch and both campaigns preserved, rebuilt guests byte-identical to archived baselines, both freshness gates green. No commit, adoption retry, one-sided exception, further retry or new ticket.
+
+- [Prepared winding-coordinate cache scope](issues/50-prepared-winding-coordinate-cache-scope.md): human authorized one eager per-context contour-coordinate cache experiment for signed-distance sign on the same supports-off Benchy Arachne job, with independent exactness and the unchanged paired-mode end-to-end wall/CPU gate; execution graduated separately, no candidate or speed claim yet.
+
+- [Signed-distance sign-versus-distance attribution](issues/49-signed-distance-sign-versus-distance-attribution.md): fresh paired-mode probes localize the accelerated residual to exact winding classification; output checks, non-overlapping fuel accounting and production restoration pass. An exact prepared winding-coordinate cache is recommended for a separate scope decision, not implemented or speed-approved.
+
+- [Signed-distance investigation scope](issues/48-signed-distance-investigation-scope.md): human authorized fresh supports-off Benchy Arachne sign-versus-distance attribution in ordinary and accelerated modes; diagnosis only, with current-output checks. No candidate implementation, speed campaign, commit, adoption retry, or default change authorized.
+
+- [Overhang-quartile query: predicate narrowing + standing paired A/B](issues/45-overhang-quartile-predicate-narrowing.md): **DROP approved by the human (2026-10-05)** — blanket boundary-pass removal changes exact-edge verdicts; the output-identical inclusive-bbox alternative fails the standing paired-mode speed gate on ordinary wall. Candidate code/tests retired together into a re-applicable patch, evidence preserved, active distributions restored; no commit, adoption retry or default switch.
+
 - [Frozen-job output drift boundary](issues/46-frozen-job-output-drift-boundary.md): **intended behavior, not a defect (2026-10-05)** — the frozen→current drift decomposes into exactly two documented intent programs: t44-era→current is identical move stream (92,519 moves) + the t47 fan repair (+277 lines) − the `support_overhang_angle` alias line (30 B), with `current + alias == 11e7d38a…` (t44 job) and `== e1088b3d…` (classic-off) byte-for-byte; frozen→t44-era is the config-scope-resolution resolved-view program (start block / fill 45° / wall F3000 / registry CONFIG_BLOCK 102→240 keys). All eras re-derive their own references (`7049a06d…`, `1b71f83d…`), all complete clean, zero containment violations. **Boundary: frozen `7049a06d…` and t44 `1b71f83d…` retire as timing baselines for this job; current refs are `5a61a106…` (t44 job) and `e1088b3d…`+alias (classic-off); fan-bearing jobs need post-t47 refs.** Ticket 45's gate prerequisite is satisfied; not map-wide authorization.
 
 - [Native postprocess-view enrichment repair](issues/47-native-postprocess-view-enrichment.md): **KEEP approved by the human (2026-10-03); t33 oracle gate re-run from proof PASSES (benchy-classic-off, byte-identical arms `e1088b3d…` across proof + 3 ABBA pairs; frozen t44-job corroborates `11e7d38a…`)** — three native-dispatch projection gaps fixed: (1) the scoped `Layer::InfillPostProcess` partitioned-`SliceIR` view enrichment (`native_infill_postprocess_regions`), (2) the ordered-entities snapshot the native path-optimization/anchored-events arms never received (travel reordering silently skipped), and (3) the finalization WIT annotation channel whose absence made the EXTERNAL leg silently drop part-cooling's `M106`/`M107` fan commands on every job (package `slicer:finalization-layer-finalization` 1.0.0→1.1.0; disclosed intentional output change on BOTH legs — pre-repair external baselines like t44's `1b71f83d…` are outdated for fan-bearing jobs; post-repair references: classic-off `e1088b3d…`, t44-job `11e7d38a…`). Integrated timings are usable as an oracle on the examined cell, bounded to it; timing campaigns/adoption/default changes still need their own authorization.
@@ -317,6 +423,18 @@ Standing decisions for this effort (2026-09-22):
 - [InfillPostProcess empty-output protocol](issues/37-infillpostprocess-empty-output-protocol.md): **fixed — a ran `Layer::InfillPostProcess` that re-emits nothing commits the empty replacement set, so the linker's clip verdict supersedes the raw envelope.** The fix is stage-local (only this stage's contract is replace-with-complete-re-emit; `Layer::Infill` keeps merge semantics and `Layer::SupportPostProcess` stays additive) and lands at the producer on both legs (`deconstruct_layer_ctx`, `commit_native_layer_response`) plus the test mirror, all sharing `empty_infill_replacement`. `RoleBoundaries::for_role`'s `Some(empty)`-vs-`None` containment distinction is untouched (`modules/` diff empty). Real-G-code verification: the 60 classic burst layers go to zero sparse output and every other layer is byte-identical (classic 106,442 → 34,307 segments, 79,939.9 → 25,616.2 mm; Arachne 47,659 → 37,606), worst overshoot past the layer's own wall bbox 21.78 mm → 0.00 mm, and base.stl is byte-identical as the negative control (225,004 segments both sides, 0 differing layers). Paired ordinary + accelerated A/B (6 repeats/arm/cell, quiet machine, no starvation exclusions) measures **no wall win with corroborating CPU** in any of four benchy supports-off batches: paired median wall −0.17/−0.13/−0.03/−0.01 s, and the one directional cell (classic-off ordinary, 6/6) has flat CPU (+0.04 s, 3/6) — the case is containment, not speed, so this is a correctness keep, not a route-performance step. Contract recorded in ADR-0028 §Amendment 2026-09-29, `docs/02_ir_schemas.md` IR 8, the `run_infill_postprocess` trait doc, and DEV-196. **KEEP recommended to the human; not auto-committed.** Evidence: `evidence/t37-empty-commit-protocol/`.
 - [Modal G-code Z/F token redundancy and speed gate](issues/36-modal-gcode-token-redundancy.md): **DROP approved by the human (2026-10-03)** — an audit session re-derived every figure from the raw captures with its own census and per-move effective-Z/F walk (not the take's verifier), replayed both arms from `source-worktree.diff` byte-for-byte (baseline `e1088b3d…`, candidate `132f9501…` / `8099ce5c…`; `--reduce` regenerates `evidence.json` exactly), and found one `FINDINGS.md` gist sentence wrong on the CPU deltas (only classic-off accelerated has a positive paired median CPU delta; corrected in place). The candidate modal `Z`/`F` serializer (`ModalZfState` in `DefaultGCodeSerializer::serialize_gcode`; non-comment `Raw` and `ToolChange` invalidation; bare no-op lines for neutral moves) is proven **semantics-preserving by an independent interpreter** (`verify-t36.py`, normalized move-stream SHA identical per cell/mode: classic-off `f49b5ec5…`, arachne-off `c237fb01…`; E tokens and line counts identical; `--falsify` detects sabotage) and removes **27.10% / 26.98% of bytes** (4,332,881→3,158,453; 4,126,888→3,013,383; Z tokens 105,070→520 / 99,716→521, F 105,549→1,039 / 100,195→955), but it **fails the pre-declared CPU-corroboration gate in 3 of 4 batches** (wall −0.3…−1.7%, inside the job's own 0.38–1.41 s spread; CPU flat-to-higher; only arachne-off ordinary passes both clauses) and a ~1% effect cannot matter against the destination's 6.28–26.24x gap. **No commit, no production change; the candidate stays uncommitted** — if a byte/bandwidth-bound consumer matters later the implementation and oracle are ready (a separate decision). The take's candidate-built binaries were purged from `target/dist-accelerated/developer/` and `target/debug/` (rebuilt from HEAD; both emitted the candidate byte stream until then) and the ticket discloses the t47-caused `empty_end_gcode_emits_no_block` red test as a non-caused pre-existing failure. Evidence: `evidence/t36-modal-zf/`.
 
+- [Scanbeam TopX projection-cache experiment scope](issues/56-scanbeam-topx-cache-experiment-scope.md): human confirmed one conservative exact-version shared host/guest trial, with independent engine tests, full-matrix output qualification and paired-mode timing bounded to the measured classic supports-on jobs; temporary integration only, execution handed off separately without implementation or speed approval.
+
+- [Scanbeam TopX projection-cache experiment](issues/57-scanbeam-topx-cache-experiment.md): **DROP accepted by the human (2026-10-07)** — the isolated shared-engine projection cache passed independent native/actual-WASM exactness and the full fresh 16-cell output matrix byte-for-byte in both modes, but the frozen paired campaign stopped by rule at its first cell with the candidate slower on both wall (+2.14%) and process CPU (+2.78%) in 6 of 6 retained pairs; candidate preserved, production restored, both freshness gates exit 0, no commit or adoption.
+
+- [mesh_ops fixture limits](issues/29-mesh-ops-fixture-limits.md): **resolved (2026-10-07)** — the two fixture-limited criterion leaves now measure successful operations: `repair/wedge` on tracked `resources/regression_wedge.stl` (real damage: 12 reoriented, 56 open edges closed) and `decimate/calicat_default` on tracked `resources/calicat.stl` (default error budget reaches 876→438); `cube.step` untouched, in-bench guards plus a companion test with a `cube.step` negative control make the no-op shape falsifiable, fresh `base == new` baselines in `evidence/t29-mesh-ops-fixtures/`, pre-ticket leaves (2.947 µs / 3.745 µs) superseded and not comparable. Bench-trustworthiness only; moves no cell.
+
+- [clipper2 1.2.0 geometry delta](issues/31-clipper2-1-2-0-geometry-delta.md): **stay on 1.1.0; the bump is parked, no manifest change (2026-10-07)** — ticket 17's "2 of 367 fixtures differ" is reproduced exactly (both a single deleted, (near-)collinear spur vertex: `benchy__layer01_opening` cross 0, `benchy__layer07_closing` cross −3) and attributed to `clean_collinear`, but the delta is a **canonical-convergence fix, not a divergence**: the repo's bundled canonical Clipper2 1.5.2 matches **1.2.0**'s `startOp = op2; continue` restart, 1.1.0's is the non-canonical one, and upstream's 1.2.0 note names the fix (zero-width spurs in union output; `preserve_collinear` defaults on and this repo never clears it on `Clipper64`). DEV-173's posture does **not** improve: `check_split_owner`, `recursive_check_owners`, `is_valid_owner`, `fix_self_intersects` and the poly-creation helpers are byte-identical across the bump. The rest of the feature-off delta is plumbing plus additive API; `using_z` is off by default so it is no cost argument, and `PolyFace64`/`poly_tree_to_faces64` is a **1.1.0** addition (corrected), unused here, and does not expose the island-in-hole nesting `expolygons_from_tree` needs. Matched-cell disclosure not run (nothing moved). No bump, pin, vendoring, timing run or commit; `slicer-core` compiles unmodified against 1.2.0. Evidence: `evidence/t31-clipper2-120/` (`verify.py` exits 0 against the in-repo set).
+
+- [profile wall-column semantics](issues/30-profile-wall-column-semantics.md): **resolved (2026-10-07, docs/comments only)** — the `--profile` wall columns are now documented as accumulated thread-time, never wall: each value sums one span per completed activation and `flush_native` adds concurrent worker activations, so a run-wide total can exceed the run's own wall-clock by the mean concurrency and is never comparable to `module_complete`/phase walls or process CPU. Semantics recorded in the `profiling_report.rs` module doc (with ticket 24's `closing_ex` ≈34 s vs 3,889 ms exemplar) and type docs (`ScopeTotals`, `ProfileScopeRow`, `ProfileModuleRow`, `ProfileSummary::wall_total_ns`, `ProfileUnit::WallNs`, `flush_native`), `slicer-wasm-host`'s `ScopeTotals` docs, the rendered wall heading and closing note, ADR-0055, `docs/09_progress_events.md`, and `docs/17_agent_debugging.md`; the rendered note is pinned by `summary_always_states_the_observer_effect_contract`. No behavior change, timing run, candidate or commit.
+
+- [Config padding disclosure boundary and viewer-key gate](issues/34-config-padding-disclosure-boundary.md): **resolved (2026-10-07, disclosure/correctness only)** — premise corrected: `ORCA_CONFIG_PADDING` never fires on any production path (the registry projection reaches 233 pairs; the loop breaks at 96), so its values are unreachable there and only the test/legacy callers consume the table. The audit nonetheless found two **live** wire-format defects in the emitted block: booleans rendered as `true`/`false` where OrcaSlicer's wire literals are `1`/`0` (23 production lines; `ConfigBase::set_deserialize_raw`'s substitution branch — `enum_looks_like_true_value` is true only for `enabled`/`on` — loaded every rendered `true` as `false`, e.g. `detect_overhang_wall` and `support_remove_small_overhang`), and four enum values carrying PnP-internal spellings (`wall_sequence` `InnerOuter`, `wall_generator` `Classic`, `wall_direction` `counter_clockwise`, and the `seam_mode` alias rendering `rear`) that Orca's strict `enum_keys_map` lookup answers by replacing the option with its own default; two keys PnP models as `bool` but Orca declares `coEnum` (`dont_filter_internal_bridges`, `enable_extra_bridge_layer`) needed the same treatment. Fixed in one documented `translate_appendix_enum` table applied only at the appendix (module `ConfigView`s unchanged). Table audited row by row: 10 values were corrected (7 to the pinned upstream default, 3 more in enum domain), 3 rows named keys OrcaSlicer cannot load (`support_material`/`extra_perimeters` removed as non-Orca keys; `wipe_tower_width` kept — `handle_legacy` renames it), and 4 rows named keys absent from OrcaSlicer entirely, replaced with real cosmetic keys. A freshly generated production block now measures **0 strict wire violations**; the edited table compares **0 default mismatches** against the pinned `PrintConfig.cpp`. Residual: the padding-only fallback block still cannot satisfy Orca's `>= 80` loadable-pair gate because the remaining unloadable lines are PnP's own key names (registry-projected, not table rows) — recorded, not patched. No timing, geometry, adoption, default or guest change; all required gates pass.
+
 ## Not yet specified
 
 - **Fan-command reference boundary (graduated from ticket 47, 2026-10-03;
@@ -343,13 +461,16 @@ Standing decisions for this effort (2026-09-22):
   residual; graduate each as it appears. [Arachne graph-construction
   attribution](issues/25-arachne-graph-attribution.md)'s split (2026-10-01)
   re-derived the module's shape: the two per-vertex queries are 86.4% of guest
-  fuel and its candidate graduated the now-open
+   fuel and its candidate graduated the now-resolved
   [overhang-quartile predicate narrowing](issues/45-overhang-quartile-predicate-narrowing.md)
-  (fuel ceiling ≈ 21–27% of module fuel as a cross-domain bound), which needs
-  its own scope plus the standing paired A/B; the paired
-  `signed_distance_to_boundary` term (48.3% of
-  guest fuel) is the larger but not-yet-candidate-shaped half and stays in this
-  fog. [infill-linker
+   (2026-10-05: human-approved DROP of the bbox alternative; blanket boundary
+   removal is not output-preserving). That take did not measure fuel or turn
+    the synthetic pre-pass bound into a slice-wall saving. Additional query
+     candidate shapes beyond the graduated signed-distance investigation and
+      its completed exact prepared winding-coordinate cache experiment
+      (human-approved DROP, 2026-10-06) remain
+     unspecified; distance-query alternatives need their own reason and scope,
+     not implicit permission from that split. [infill-linker
   attribution](issues/21-infill-linker-attribution.md)'s split graduated the
   now-resolved [clip-universe preparation hoist](issues/44-clip-universe-hoist.md)
   (2026-10-01); its measured mode-invariance also re-ranks the *remaining*
@@ -359,10 +480,24 @@ Standing decisions for this effort (2026-09-22):
   shape. [Tree-planner substage
   attribution](issues/22-tree-planner-substage-attribution.md) graduated the
    now-resolved [Emit-pass carve gate: representation safety + paired
-  A/B](issues/32-emit-carve-gate-representation-and-ab.md). Its sibling
-  sub-term (`union_expolys` + simplify, 72.8 s base) remains in this fog:
-  investigate whether a representation-safe call reduction exists before
-  graduating a concrete candidate. [Serial host
+   A/B](issues/32-emit-carve-gate-representation-and-ab.md). Its sibling
+   union/simplify lead graduated to
+   [Tree-planner union/simplify investigation scope](issues/52-tree-planner-union-simplify-investigation-scope.md)
+   and its now-completed diagnostic after the human selected that route
+   on 2026-10-06. The clarified large-body-union question graduated to
+   [Large body-union investigation scope](issues/54-large-body-union-investigation-scope.md)
+   and its completed exact-corpus/native-internals diagnostic. The now-concrete
+    projection-cache question graduated to
+    [Scanbeam TopX projection-cache experiment scope](issues/56-scanbeam-topx-cache-experiment-scope.md)
+     and its [completed execution child](issues/57-scanbeam-topx-cache-experiment.md):
+     candidate exactness and the full fresh 16-cell output matrix passed
+     byte-for-byte in both modes, but paired timing measured the candidate
+     **slower in 6 of 6 retained pairs** on the first cell (wall +2.14%, CPU
+     +2.78%), so the campaign stopped by rule and the **DROP was accepted by
+     the human on 2026-10-07**. The isolated candidate is preserved, not
+     adopted. Permanent dependency adoption and alternative algorithmic shapes
+     remain unspecified.
+   [Serial host
   floor](issues/27-serial-host-prepass-floor.md)'s probe batches (items 1–5 +
   iteration 2) surfaced three graduate-when-probed questions resolved on
   2026-09-28 (phase-B = two costly offsets, sibling memo dropped for the matched job by human decision on 2026-09-29;
@@ -402,3 +537,10 @@ Standing decisions for this effort (2026-09-22):
 - **OrcaSlicer geometry-parity work.** The repo's parity program runs as spec
   packets; this map treats output as disclosed evidence only (the fairness
   contract), not as a parity target.
+- **Making the resolved-config-less fallback block satisfy Orca's viewer gate.**
+  Ticket 34's residual — the test/legacy path's `CONFIG_BLOCK` cannot reach 80
+  *loadable* pairs because the remainder are PnP's own key names — is past this
+  destination: every measured production path passes a registry projection (233
+  pairs, 161 loadable), so no cell's disclosure depends on it. Whether those
+  entry points should synthesize a viewer block at all is a product decision, not
+  route work; it returns only if the destination is redrawn.

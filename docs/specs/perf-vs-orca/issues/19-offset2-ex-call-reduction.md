@@ -2,6 +2,7 @@
 
 Type: task
 Status: open
+Assignee: agpen (current OpenCode wayfinder route session), 2026-10-07 — routing claim only; below-fold park remains in force
 Blocked by: 12, 17
 
 ## Question
@@ -28,3 +29,48 @@ Acceptance: paired ordinary + accelerated A/B, interleaved repeats with
 starvation exclusion, uninstrumented probe-free runs, isolated host/guest
 snapshots. Fuel alone is not a wall win — gate before keeping. Keep/drop
 recommendation to the human; no auto-commit. Timing chain position 4.
+
+## Comments
+
+### Resumption claim — 2026-10-05
+
+Selected as the first numbered open, unblocked, unclaimed ticket on resumption.
+The below-fold park in [Gap budget per cell](12-gap-budget-per-cell.md) still
+applies; this claim does not silently reopen candidate implementation or timing.
+The human must confirm whether to reopen this lead after the structural takes,
+or leave it parked and redirect the route. No experiment, timing campaign,
+adoption retry, default switch, or commit has been started by this claim.
+
+After the human's continuation request, the session followed the recommended
+scoping-only route: leave this candidate parked and sharpen the signed-distance
+lead from the map's fog. Claim released without resolving this ticket or
+authorizing its implementation. See [Signed-distance investigation scope](48-signed-distance-investigation-scope.md).
+
+### Resumption route claim — 2026-10-06
+
+Claimed as the first numbered open, unblocked, unclaimed child after
+[Prepared winding-coordinate cache: exactness + standing paired A/B](51-prepared-winding-coordinate-cache-experiment.md)
+closed with human-approved DROP. The below-fold park remains binding: this
+claim is for the live route decision only, not permission to implement or time
+this candidate. No cache retry, adoption retry, default change or commit is
+authorized by resumption. Await the human's choice between reopening this
+lead and scoping a remaining structural investigation from the map's fog.
+
+The human selected **Scope union/simplify**. Leave this candidate parked and
+release the routing claim without resolving it or authorizing experiments.
+Continue with [Tree-planner union/simplify investigation scope](52-tree-planner-union-simplify-investigation-scope.md).
+
+### Resumption route claim — 2026-10-07
+
+Claimed as the first numbered open, unblocked, unclaimed child after
+[Scanbeam TopX projection-cache experiment](57-scanbeam-topx-cache-experiment.md)
+closed with a human-accepted DROP. The below-fold park in
+[Gap budget per cell](12-gap-budget-per-cell.md) remains binding.
+
+**Route decision (2026-10-07):** the human selected the small non-timing
+ticket family. The take is
+[mesh_ops fixture limits](29-mesh-ops-fixture-limits.md) (first in number
+order; 30/31/34, the family's other open tickets, were resolved later the
+same day). This candidate stays parked and
+the routing claim is released; no experiment, timing campaign, adoption retry,
+default change or commit is authorized by this claim.
