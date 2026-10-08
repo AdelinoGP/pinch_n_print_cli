@@ -15,6 +15,10 @@
 /docs/specs/perf-vs-orca/evidence/t25-arachne-attribution/captures/** -text whitespace=cr-at-eol
 /docs/specs/perf-vs-orca/evidence/t25-arachne-attribution/probe_outputs/** -text whitespace=cr-at-eol
 
+# T19's verifier hash-pins protocol.json (its sha is recorded in evidence.json),
+# so preserve the evidence set's bytes on add/checkout.
+/docs/specs/perf-vs-orca/evidence/t19-offset2-call-graph/** -text whitespace=cr-at-eol
+
 # Captured command output and source diffs retain the producer's whitespace.
 /docs/specs/perf-vs-orca/evidence/t3[89]-*/**/*.log -whitespace
 /docs/specs/perf-vs-orca/evidence/t4[0-3]-*/**/*.log -whitespace

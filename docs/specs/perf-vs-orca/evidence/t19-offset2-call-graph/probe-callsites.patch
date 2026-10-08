@@ -1,0 +1,130 @@
+diff --git a/modules/core-modules/classic-perimeters/src/lib.rs b/modules/core-modules/classic-perimeters/src/lib.rs
+index ee70ad2f..5c05928b 100644
+--- a/modules/core-modules/classic-perimeters/src/lib.rs
++++ b/modules/core-modules/classic-perimeters/src/lib.rs
+@@ -46,6 +46,16 @@ use slicer_sdk::slicer_module;
+ use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
+ use slicer_sdk::views::SliceRegionView;
+ 
++// [T19-PROBE] temporary per-call-site fuel scopes; removed after measurement.
++macro_rules! t19_scope {
++    ($name:expr) => {{
++        static T19_SCOPE_ID: ::std::sync::OnceLock<Option<slicer_core::profile::ScopeId>> =
++            ::std::sync::OnceLock::new();
++        let t19_id = *T19_SCOPE_ID.get_or_init(|| slicer_sdk::profile::register_scope($name));
++        t19_id.map(slicer_core::profile::scope)
++    }};
++}
++
+ /// Classic perimeter generator.
+ ///
+ /// Produces wall loops via iterative constant-width polygon insets.
+@@ -509,13 +519,16 @@ impl LayerModule for ClassicPerimeters {
+                         .top_portion
+                         .into_iter()
+                         .partition(|ep| (ex_polygon_min_width_mm(ep) as f64) >= min_width_top);
+-                    let expanded = offset2_ex(
+-                        &kept,
+-                        -min_width_top,
+-                        min_width_top + 0.85 * inner_wall_line_width as f64,
+-                        CoreJoin::Miter,
+-                        3.0,
+-                    );
++                    let expanded = {
++                        let _t19_mwt = t19_scope!("t19::min_width_top_expand");
++                        offset2_ex(
++                            &kept,
++                            -min_width_top,
++                            min_width_top + 0.85 * inner_wall_line_width as f64,
++                            CoreJoin::Miter,
++                            3.0,
++                        )
++                    };
+                     let top_portion = if expanded.is_empty() { kept } else { expanded };
+                     let mut non_top_portion = split.non_top_portion;
+                     non_top_portion.extend(dropped);
+@@ -993,12 +1006,15 @@ impl ClassicPerimeters {
+             // R4 (P105): OrcaSlicer parity thin-wall min_width.
+             // OrcaSlicer PerimeterGenerator.cpp:1603: min_width = nozzle_diameter()/3
+             let min_width = nozzle_diameter / 3.0;
+-            let thick_core = opening_ex(
+-                polygons,
+-                min_width as f64,
+-                CoreJoin::Miter,
+-                self.perimeter_arc_tolerance as f64,
+-            );
++            let thick_core = {
++                let _t19_thin = t19_scope!("t19::thinwall_opening");
++                opening_ex(
++                    polygons,
++                    min_width as f64,
++                    CoreJoin::Miter,
++                    self.perimeter_arc_tolerance as f64,
++                )
++            };
+             let thin_protrusions =
+                 slicer_sdk::host::clip_polygons(polygons, &thick_core, ClipOperation::Difference);
+             for protrusion in &thin_protrusions {
+@@ -1069,19 +1085,25 @@ impl ClassicPerimeters {
+             // derived from `inner_wall_line_width`, not a width average.
+             let max_gap_fill_width = 2.0 * perimeter_spacing;
+             // diff(open(gaps, min/2), open(gaps, max/2)) = gaps in width band [min, max].
+-            let opened_min = opening_ex(
+-                &gaps,
+-                (min_gap_fill_width / 2.0) as f64,
+-                CoreJoin::Miter,
+-                self.perimeter_arc_tolerance as f64,
+-            );
+-            let opened_max = offset2_ex(
+-                &gaps,
+-                -((max_gap_fill_width / 2.0) as f64),
+-                (max_gap_fill_width / 2.0) as f64,
+-                CoreJoin::Miter,
+-                self.perimeter_arc_tolerance as f64,
+-            );
++            let opened_min = {
++                let _t19_gfmin = t19_scope!("t19::gapfill_open_min");
++                opening_ex(
++                    &gaps,
++                    (min_gap_fill_width / 2.0) as f64,
++                    CoreJoin::Miter,
++                    self.perimeter_arc_tolerance as f64,
++                )
++            };
++            let opened_max = {
++                let _t19_gfmax = t19_scope!("t19::gapfill_open_max");
++                offset2_ex(
++                    &gaps,
++                    -((max_gap_fill_width / 2.0) as f64),
++                    (max_gap_fill_width / 2.0) as f64,
++                    CoreJoin::Miter,
++                    self.perimeter_arc_tolerance as f64,
++                )
++            };
+             let filtered_gaps = slicer_sdk::host::clip_polygons(
+                 &opened_min,
+                 &opened_max,
+@@ -1330,12 +1352,17 @@ fn classify_narrow_island(
+     if polygons.is_empty() {
+         return false;
+     }
+-    let opened = opening_ex(
+-        polygons,
+-        (threshold_mm / 2.0) as f64,
+-        CoreJoin::Miter,
+-        arc_tolerance as f64,
+-    );
++    // [T19-PROBE] temporary single-pass erosion measurement; revert after.
++    let opened = {
++        let _t19_narrow = t19_scope!("t19::narrow_island_opening");
++        slicer_core::polygon_ops::offset_with_miter_limit(
++            polygons,
++            -(threshold_mm / 2.0) as f32,
++            CoreJoin::Miter,
++            arc_tolerance,
++            0.0,
++        )
++    };
+     if !opened.is_empty() {
+         return false;
+     }

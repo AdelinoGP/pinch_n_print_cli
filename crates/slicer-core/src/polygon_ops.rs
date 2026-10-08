@@ -640,38 +640,29 @@ pub fn offset2_ex(
     join: OffsetJoinType,
     miter_limit: f64,
 ) -> Vec<ExPolygon> {
-    use clipper2_rust::{inflate_paths_64, ClipperOffset, EndType, JoinType, PolyTree64};
+    use clipper2_rust::{ClipperOffset, EndType, JoinType, PolyTree64};
 
     // Profiling mark: the two-pass clipper2 inflate entry point. It does not go
     // through `offset`, so it needs its own scope. `opening_ex` is not marked —
     // it forwards straight here, and marking it would double-count.
     let _profile = crate::profile::scope(crate::profile::ScopeId::OFFSET2_EX);
 
-    let join_type = match join {
-        OffsetJoinType::Miter => JoinType::Miter,
-        OffsetJoinType::Round => JoinType::Round,
-        OffsetJoinType::Square => JoinType::Square,
-    };
-
     // Pass 1: delta1 (typically negative / erode). Flat paths only — hole
     // nesting is re-derived once, from pass 2's PolyTree below. Clipper2's
     // offset cleanup pass always emits correctly-wound rings regardless of
     // whether the caller captures a tree, so feeding pass 2 with pass 1's
     // flat output is equivalent to feeding it ExPolygons.
-    let paths1: Vec<Vec<Point64>> = polys.iter().flat_map(expolygon_to_paths).collect();
-    let delta1_units = delta1_mm * slicer_ir::UNITS_PER_MM;
-    let intermediate = inflate_paths_64(
-        &paths1,
-        delta1_units,
-        join_type,
-        EndType::Polygon,
-        miter_limit,
-        0.0,
-    );
+    let intermediate = offset2_ex_first_pass(polys, delta1_mm, join, miter_limit);
 
     if intermediate.is_empty() {
         return Vec::new();
     }
+
+    let join_type = match join {
+        OffsetJoinType::Miter => JoinType::Miter,
+        OffsetJoinType::Round => JoinType::Round,
+        OffsetJoinType::Square => JoinType::Square,
+    };
 
     // Pass 2: delta2 (typically positive / dilate). Capture the PolyTree so
     // the two-pass result's hole/island nesting survives — see
@@ -683,6 +674,84 @@ pub fn offset2_ex(
     clip_offset.execute_tree(delta2_units, &mut tree);
 
     expolygons_from_tree(&tree)
+}
+
+/// Pass 1 of [`offset2_ex`], shared by the two-pass entry point and the
+/// emptiness predicate so both observe **byte-identical** erosion output.
+///
+/// Flat paths only (the caller re-derives nesting from pass 2's tree). The
+/// conversion and Clipper2 parameters are exactly `offset2_ex`'s: same
+/// `flat_map(expolygon_to_paths)` order, same mm→unit delta, same join type,
+/// same `EndType::Polygon`, same caller-supplied `miter_limit`, same zero arc
+/// tolerance.
+fn offset2_ex_first_pass(
+    polys: &[ExPolygon],
+    delta1_mm: f64,
+    join: OffsetJoinType,
+    miter_limit: f64,
+) -> Vec<Vec<Point64>> {
+    use clipper2_rust::{inflate_paths_64, EndType, JoinType};
+
+    let join_type = match join {
+        OffsetJoinType::Miter => JoinType::Miter,
+        OffsetJoinType::Round => JoinType::Round,
+        OffsetJoinType::Square => JoinType::Square,
+    };
+    let paths1: Vec<Vec<Point64>> = polys.iter().flat_map(expolygon_to_paths).collect();
+    let delta1_units = delta1_mm * slicer_ir::UNITS_PER_MM;
+    inflate_paths_64(
+        &paths1,
+        delta1_units,
+        join_type,
+        EndType::Polygon,
+        miter_limit,
+        0.0,
+    )
+}
+
+/// True when morphological opening by `delta_mm` would produce nothing.
+///
+/// Exact, not an approximation, for every reachable input. For `delta_mm > 0`
+/// the opening is `dilate(erode(X, d), d)`; a positive polygon offset maps
+/// `∅ → ∅` and contains its input on non-empty inputs, so
+/// `dilate(Y) = ∅ ⟺ Y = ∅`, hence `opening(X, d) = ∅ ⟺ erode(X, d) = ∅` and the
+/// single erosion pass decides it. Shares [`offset2_ex`]'s first pass verbatim —
+/// the same primitive, not a re-parameterised copy.
+///
+/// Outside `delta_mm > 0` this delegates to the full two-pass [`opening_ex`]:
+///
+/// - At `delta_mm == 0`, `inflate_paths_64` short-circuits to a clone, so the
+///   "erosion" pass would skip the union cleanup the real second pass still
+///   runs, and a degenerate (zero-area) ring can survive the clone yet be
+///   dropped by the opening.
+/// - At `delta_mm < 0` the two passes have opposite signs, so the second pass
+///   can empty a non-empty first pass (a negative offset on a degenerate ring
+///   does exactly that).
+/// - A non-finite `delta_mm` is not proven either and takes the same
+///   behaviour-preserving path.
+///
+/// `smaller_perimeter_threshold_mm` admits 0.0 (manifest minimum), so the first
+/// case is reachable and must stay exact.
+#[must_use]
+pub fn opening_is_empty(
+    polys: &[ExPolygon],
+    delta_mm: f64,
+    join: OffsetJoinType,
+    miter_limit: f64,
+) -> bool {
+    if polys.is_empty() {
+        return true;
+    }
+    if !(delta_mm > 0.0) {
+        // `opening_ex` marks this op itself; do not double-mark the delegate.
+        // Covers zero, negative and NaN: the delegate is exactly the previous
+        // behaviour, so anything the fast path has not proven stays there.
+        return opening_ex(polys, delta_mm, join, miter_limit).is_empty();
+    }
+    // Marked under the `offset2_ex` umbrella: the op *is* `opening_ex`'s
+    // emptiness answer, computed with one pass instead of two.
+    let _profile = crate::profile::scope(crate::profile::ScopeId::OFFSET2_EX);
+    offset2_ex_first_pass(polys, -delta_mm, join, miter_limit).is_empty()
 }
 
 /// Morphological open using configurable join type and miter limit.

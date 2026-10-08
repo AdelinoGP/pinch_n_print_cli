@@ -32,7 +32,8 @@ use slicer_core::perimeter_utils::{
     seam_paint_boxes, wall_sequence_reorder, WallSequence, BASE_SPEED,
 };
 use slicer_core::polygon_ops::{
-    offset2_ex, opening_ex, remove_small_and_small_holes, OffsetJoinType as CoreJoin,
+    offset2_ex, opening_ex, opening_is_empty, remove_small_and_small_holes,
+    OffsetJoinType as CoreJoin,
 };
 use slicer_core::top_surface_split::split_top_surfaces;
 use slicer_ir::{
@@ -1330,13 +1331,16 @@ fn classify_narrow_island(
     if polygons.is_empty() {
         return false;
     }
-    let opened = opening_ex(
+    // Only the emptiness of the opening is consumed; `opening_is_empty` answers
+    // it with the shared single erosion pass instead of materialising the
+    // erode-then-dilate geometry. Exact, not an approximation — see the
+    // predicate's docs in `slicer_core::polygon_ops`.
+    if !opening_is_empty(
         polygons,
         (threshold_mm / 2.0) as f64,
         CoreJoin::Miter,
         arc_tolerance as f64,
-    );
-    if !opened.is_empty() {
+    ) {
         return false;
     }
     let mut min_x = i64::MAX;

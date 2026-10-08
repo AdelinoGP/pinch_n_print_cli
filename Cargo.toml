@@ -86,6 +86,15 @@ unused_imports = "warn"
 unused_must_use = "warn"
 
 [workspace.lints.clippy]
+# `opening_is_empty`'s `!(delta_mm > 0.0)` in `crates/slicer-core/src/polygon_ops.rs`
+# is the deliberate NaN-inclusive non-positive test: NaN must take the delegate
+# path, and `delta_mm <= 0.0` alone would let it reach the single-pass fast path.
+# Rewriting the expression recompiles the accelerated classic-perimeters guest
+# and orphans its paired-A/B artifact identity (measured 2026-10-08: even a
+# comment insertion in that file shifts the accelerated artifact's
+# `.llvm.<hash>` symbol suffixes), so the expression is allowed here rather than
+# rewritten in place.
+neg_cmp_op_on_partial_ord = "allow"
 # Tests in this workspace freely use vec! literals, identity assertions, and
 # slice::from_ref-equivalent patterns; setting these style lints to allow
 # keeps `cargo clippy --all-targets -- -D warnings` green without rewriting

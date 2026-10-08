@@ -258,6 +258,25 @@ Standing decisions for this effort (2026-09-22):
    its below-fold park is lifted for that candidate's take; its blockers 12/17
    are resolved; acceptance is the standing paired ordinary + accelerated A/B
    (timing chain position 4, keep/drop to the human, no auto-commit).
+   **Take complete (2026-10-08):** the reopen's premise was re-derived at HEAD
+   and **is stale** — the ticket's 720-call `min_width_top` headline site does
+   not execute on the matched classic job (0 calls; 13 layers / 0.037% of module
+   fuel with its gate forced on), and the two other named shapes are dead or not
+   output-preserving. The surviving candidate is a shape the ticket did not
+   name: the `classify_narrow_island` opening-emptiness short-circuit (two-pass
+   `opening_ex` → shared single-erosion predicate; site calls 720 → 480, module
+   fuel 750.03 B → 732.43 B ≈ −2.35% at the probe, output byte-identical). The
+   standing paired A/B **passes both modes** — ordinary −0.65% median wall /
+   −2.08% median CPU, accelerated −1.47% / −1.04%, six retained pairs per mode,
+   no starvation exclusions, all 32 outputs byte-identical to `34886ccb…`.
+   Measured **KEEP approved by the human and committed with this ticket
+   (2026-10-08)**; both freshness gates are green. A
+   provenance constraint was measured: any text change to `polygon_ops.rs`
+   shifts the accelerated guest's artifact hash (name-section `.llvm.<hash>`
+   suffixes) even for a comment, so the shipped source keeps the measured bytes
+   and takes a manifest-level lint allow instead of rewriting the expression.
+   See [findings](evidence/t19-offset2-call-graph/RESULTS.md) and the ticket's
+   Answer for the full evidence set.
 - **Production-mode route (2026-09-30):** pursue conditional accelerated
   adoption; ordinary stays the actual default pending the existing acceptance
   gate. See [Accelerated perimeter-spatial adoption decision](issues/13-accelerated-adoption-decision.md)
@@ -352,6 +371,8 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+
+- [offset2_ex call reduction](issues/19-offset2-ex-call-reduction.md): the reopen's premise was re-derived at HEAD and **is stale** — the ticket's 720-call `min_width_top` headline site does not execute on the matched classic job (0 calls; 13 layers / 0.037% of module fuel with its gate forced on), and its other two named shapes are dead or not output-preserving. The surviving candidate is a shape the ticket did not name: the `classify_narrow_island` opening-emptiness short-circuit (two-pass `opening_ex` → shared single-erosion predicate; site calls 720 → 480, attributed module fuel 750.03 B → 732.43 B ≈ −2.35%; output byte-identical). The standing paired A/B **passes both modes** — ordinary −0.65% median wall / −2.08% median CPU, accelerated −1.47% / −1.04%, six retained pairs per mode, no starvation exclusions, all 32 outputs byte-identical to `34886ccb…` — with the effect small and not a gap-closer. Measured **KEEP approved by the human and committed with this ticket (2026-10-08)**; both freshness gates green. A provenance constraint was measured: any text change to `polygon_ops.rs` shifts the accelerated guest's artifact hash (name-section `.llvm.<hash>` suffixes) even for a comment, so the shipped source keeps the measured bytes and takes a manifest-level lint allow instead of rewriting the expression. Evidence: [findings](evidence/t19-offset2-call-graph/RESULTS.md) and the ticket's Answer.
 
 - [Large body-union exact corpus and native-internals investigation](issues/55-large-body-union-corpus-and-internals.md): largest/hole-bearing full-role replay and paired-mode output identity pass; native sweep counters establish unchanged-edge `TopX` recomputation and recommend a separately scoped projection cache, while exact polygon deduplication is falsified for the selected corpus. No candidate or speedup claim; sources/artifacts restored and both freshness gates pass.
 

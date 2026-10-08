@@ -792,3 +792,80 @@ fn polygon_area_mm(poly: &Polygon) -> f64 {
     // Convert from scaled units^2 to mm^2
     (area.abs() / 2.0) / (10_000.0 * 10_000.0)
 }
+
+/// Ticket 19: `classify_narrow_island` must classify both polarities through
+/// the live `run_perimeters` path.
+///
+/// The classification is consumed as a wall-width swap: a narrow island gets
+/// `smaller_perimeter_line_width`, everything else the configured
+/// `outer_wall_line_width`. The candidate replaced the two-pass opening with
+/// the single-erosion emptiness predicate; an inverted predicate, a forgotten
+/// `/ 2`, or a wrong threshold would flip this observable.
+///
+/// Wide-island control keeps the test from passing on a predicate that is
+/// simply always true (or always false): the two arms demand opposite verdicts
+/// from the same code path.
+#[test]
+fn narrow_island_classification_selects_outer_wall_width_in_both_polarities() {
+    let outer_width_for = |width_mm: f32, height_mm: f32| -> f32 {
+        // threshold 0.8 mm -> opening distance 0.4 mm, so 1.6 mm is wide and
+        // 0.3 mm is narrow (and >= the 10 mm min-length filter is waived by
+        // setting it to 0 — this test isolates the width predicate).
+        let config = baseline_config()
+            .int("wall_count", 1)
+            .float("line_width", 0.4)
+            .float("outer_wall_line_width", 0.4)
+            .float("inner_wall_line_width", 0.4)
+            .float("smaller_perimeter_line_width", 0.25)
+            .float("smaller_perimeter_threshold_mm", 0.8)
+            .float("narrow_loop_length_threshold_mm", 0.0)
+            .build();
+        let module = ClassicPerimeters::from_config(&config).unwrap();
+        let region = SliceRegionViewBuilder::new()
+            .object_id("obj-1")
+            .region_id(1)
+            .z(0.2)
+            .add_polygon(ExPolygon {
+                contour: Polygon {
+                    points: vec![
+                        slicer_ir::Point2::from_mm(0.0, 0.0),
+                        slicer_ir::Point2::from_mm(width_mm, 0.0),
+                        slicer_ir::Point2::from_mm(width_mm, height_mm),
+                        slicer_ir::Point2::from_mm(0.0, height_mm),
+                    ],
+                },
+                holes: vec![],
+            })
+            .build();
+        let mut output = PerimeterOutputBuilder::new();
+        module
+            .run_perimeters(
+                0,
+                &[region],
+                &PaintRegionLayerView::new(0),
+                &mut output,
+                &config,
+            )
+            .unwrap();
+        output
+            .wall_loops()
+            .iter()
+            .find(|w| w.loop_type == LoopType::Outer)
+            .expect("an outer wall loop must be emitted")
+            .path
+            .points[0]
+            .width
+    };
+
+    let narrow = outer_width_for(0.3, 20.0);
+    let wide = outer_width_for(4.0, 20.0);
+    assert!(
+        (narrow - 0.25).abs() < 1e-4,
+        "a rib narrower than smaller_perimeter_threshold_mm must take the smaller \
+         outer width 0.25; got {narrow}"
+    );
+    assert!(
+        (wide - 0.4).abs() < 1e-4,
+        "a wide island must keep the configured outer width 0.4; got {wide}"
+    );
+}
