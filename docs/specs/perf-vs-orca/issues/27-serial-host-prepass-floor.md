@@ -1,8 +1,10 @@
 # Serial host floor: prepass built-ins and slice-outside wall
 
 Type: task
-Status: open
-Assignee: unassigned — last take: ses_f14ba59b7ffeteaZ0tDfSNEjpc (human route decision); earlier takes: ses_f1507d458ffetnZ0plQLQ4yUmf, ses_f1b6563ccffeO4IE3vsBNXl6QL and ses_f1994dd16ffeSxSBJeKjScCYRW
+Status: claimed
+Assignee: agpen (current OpenCode wayfinder session), 2026-10-08 — human
+selected this ticket as the session's take after the t19 KEEP and the t20
+premise audit; the take re-derives the parked candidate premise at HEAD
 Blocked by: 24
 
 ## Question
