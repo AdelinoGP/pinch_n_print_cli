@@ -277,6 +277,26 @@ Standing decisions for this effort (2026-09-22):
    and takes a manifest-level lint allow instead of rewriting the expression.
    See [findings](evidence/t19-offset2-call-graph/RESULTS.md) and the ticket's
    Answer for the full evidence set.
+   **Second take (2026-10-08, routing claim + premise audit):** the session took
+   the first numbered open child, [consume-only-when-read
+   annotations](issues/20-consume-only-when-read-annotations.md), as a routing
+   claim only — t19's lift was candidate-scoped and the below-fold park in
+   [Gap budget per cell](issues/12-gap-budget-per-cell.md) still binds, so no
+   implementation, experiment or timing started. The claim resolved into a
+   read-only premise audit whose verdict **keeps the premise and sharpens it**:
+   the only production site making a decision on the two per-vertex stamps is
+   `OverhangClassifierDefault::run_finalization`
+   (`modules/core-modules/overhang-classifier-default/src/lib.rs`), and it
+   early-returns — twice — before reading any stamp whenever
+   `enable_overhang_speed` is false or all four `overhang_1_4_speed` …
+   `overhang_4_4_speed` bands are 0; none of the four matched configs authors
+   those keys (manifest defaults `true` / `0.0`), so **on every matched cell the
+   dominant measured query cost is stamped and never read**. The surviving
+   candidate shape is therefore a conditional stamp gated on the consumer's own
+   liveness predicate (value-identical when live) — a fuel→wall question the
+   standing paired A/B still decides. Route returned to the human: t20 take vs
+   [serial host floor](issues/27-serial-host-prepass-floor.md). See the ticket's
+   Comments for the full consumer/gate audit.
 - **Production-mode route (2026-09-30):** pursue conditional accelerated
   adoption; ordinary stays the actual default pending the existing acceptance
   gate. See [Accelerated perimeter-spatial adoption decision](issues/13-accelerated-adoption-decision.md)
