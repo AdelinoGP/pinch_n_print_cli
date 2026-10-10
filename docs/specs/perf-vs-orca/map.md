@@ -297,6 +297,28 @@ Standing decisions for this effort (2026-09-22):
    standing paired A/B still decides. Route returned to the human: t20 take vs
    [serial host floor](issues/27-serial-host-prepass-floor.md). See the ticket's
    Comments for the full consumer/gate audit.
+   **Closure (2026-10-09):** the human-selected
+   [serial host floor](issues/27-serial-host-prepass-floor.md) take completed —
+   probe-3 attributed 99.8% of `commit_support_analysis_builtin`'s serial sweep
+   to one predicate (`SliceRegionView::derive_needs_support`'s per-region
+   `intersection_ex` against the object-global overhang footprint: 24.19 s of
+   the 38.20 s base supports-on stage wall) and moved it to an order-preserving
+   indexed rayon pre-pass (dual-compute 0 mismatches on 495 base + 240 benchy
+   regions; 8.7x on the predicate). The standing four-cell paired A/B measured
+   base median wall −18.198 s ordinary / −19.380 s accelerated at ≈+0.5% median
+   process CPU (benchy −1.105 s / −0.943 s, the only cell passing the strict
+   wall-and-CPU clause; base was accepted as a serialization fix), all 48
+   outputs byte-identical, and the **human KEPT the candidate 2026-10-09**;
+   committed with the ticket. The ticket resolves with this keep; the bbox
+   filter was refuted and the `from_ir` clone hypothesis measured dead.
+   Frontier: [consume-only-when-read annotations](issues/20-consume-only-when-read-annotations.md)
+   is now the only open child — premise audited, unblocked — awaiting the
+   human's route decision; the below-fold park in
+   [Gap budget per cell](issues/12-gap-budget-per-cell.md) is unchanged, and
+   the structural route it conditions on is now fully resolved (24/22/27/28 +
+   the re-scoped 18), with no cell inside its ~1.5x release bound. The
+   remaining serial-floor leads stay in the fog above. This closure session
+   started no candidate, experiment or timing run.
 - **Production-mode route (2026-09-30):** pursue conditional accelerated
   adoption; ordinary stays the actual default pending the existing acceptance
   gate. See [Accelerated perimeter-spatial adoption decision](issues/13-accelerated-adoption-decision.md)
@@ -391,6 +413,8 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+
+- [Serial host floor](issues/27-serial-host-prepass-floor.md): **resolved (2026-10-09)** — the post-park premise search found the new safe call reduction the ticket waited for: 99.8% of `commit_support_analysis_builtin`'s serial sweep (`crates/slicer-runtime/src/builtins/support_analysis_producer.rs`) was one predicate — `SliceRegionView::derive_needs_support`'s per-region exact `intersection_ex` against the object-global overhang footprint (`crates/slicer-sdk/src/views.rs`), 24.19 s of the 38.20 s base supports-on stage wall — now moved to an order-preserving indexed rayon pre-pass (dual-compute 495/495 base + 240/240 benchy regions, 0 mismatches; 8.7x on the predicate). Standing paired A/B: base median wall **−18.198 s ordinary / −19.380 s accelerated** (6/6 and 5/6 pairs) at ≈+0.5% median process CPU; benchy −1.105 s / −0.943 s. All 48 outputs byte-identical; the strict wall-and-CPU clause passes on ordinary/benchy only and the **human KEPT the base wall win 2026-10-09** (≈3.4–3.7% of arm-median wall; accepted as a serialization fix, not a scoreboard claim), committed with the ticket. The probe-3 bbox-index filter alternative was refuted (~45% pruning, ~12% saving) and the `from_ir` deep-clone hypothesis measured dead. Remaining leads (flat-bridge representation analysis, `apply_opening` parity, teardown early release) stay in the fog. Evidence: `evidence/t27-serial-floor/FINDINGS-PROBE3.md`.
 
 - [offset2_ex call reduction](issues/19-offset2-ex-call-reduction.md): the reopen's premise was re-derived at HEAD and **is stale** — the ticket's 720-call `min_width_top` headline site does not execute on the matched classic job (0 calls; 13 layers / 0.037% of module fuel with its gate forced on), and its other two named shapes are dead or not output-preserving. The surviving candidate is a shape the ticket did not name: the `classify_narrow_island` opening-emptiness short-circuit (two-pass `opening_ex` → shared single-erosion predicate; site calls 720 → 480, attributed module fuel 750.03 B → 732.43 B ≈ −2.35%; output byte-identical). The standing paired A/B **passes both modes** — ordinary −0.65% median wall / −2.08% median CPU, accelerated −1.47% / −1.04%, six retained pairs per mode, no starvation exclusions, all 32 outputs byte-identical to `34886ccb…` — with the effect small and not a gap-closer. Measured **KEEP approved by the human and committed with this ticket (2026-10-08)**; both freshness gates green. A provenance constraint was measured: any text change to `polygon_ops.rs` shifts the accelerated guest's artifact hash (name-section `.llvm.<hash>` suffixes) even for a comment, so the shipped source keeps the measured bytes and takes a manifest-level lint allow instead of rewriting the expression. Evidence: [findings](evidence/t19-offset2-call-graph/RESULTS.md) and the ticket's Answer.
 

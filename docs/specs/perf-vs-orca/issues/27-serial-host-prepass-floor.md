@@ -1,10 +1,11 @@
 # Serial host floor: prepass built-ins and slice-outside wall
 
 Type: task
-Status: claimed
-Assignee: agpen (current OpenCode wayfinder session), 2026-10-08 — human
-selected this ticket as the session's take after the t19 KEEP and the t20
-premise audit; the take re-derives the parked candidate premise at HEAD
+Status: resolved (2026-10-09; probe-3 SupportAnalysis parallel eligibility
+pre-pass KEPT by the human and committed — see the 2026-10-09 comment)
+Assignee: agpen (OpenCode wayfinder sessions), 2026-10-08/09 — human selected
+this ticket as the take after the t19 KEEP and the t20 premise audit; the take
+completed with the human-kept probe-3 candidate; closure recorded 2026-10-09
 Blocked by: 24
 
 ## Question
@@ -246,7 +247,9 @@ removed; details and the canonical `apply_opening` reassessment are in
 [`FLAT-BRIDGE-EXPERIMENT.md`](../evidence/t27-serial-floor/FLAT-BRIDGE-EXPERIMENT.md).
 The `apply_opening` lead is a geometry-parity investigation (canonical Miter/3,
 width/10, versus current Round/0, width/2), not a representation-preserving
-performance drop-in. The ticket remains open for a new safe call reduction.
+performance drop-in. The ticket remained open for a new safe call reduction
+until the probe-3 take (comment below) delivered one — the SupportAnalysis
+parallel eligibility pre-pass, KEPT by the human 2026-10-09.
 
 ## Comments
 
@@ -285,3 +288,11 @@ per protocol (sensitivity-only exclusion leaves wall −20.4 s / CPU +8.25 s).
 Evidence:
 [`FINDINGS-PROBE3.md`](../evidence/t27-serial-floor/FINDINGS-PROBE3.md),
 `protocol-ab.json`, `t27-ab-reduction.json`.
+
+**Resolution.** The ticket closes with this keep: the serial floor is
+attributed (work items 1–5, `PrePass::Slice`, and the teardown), the reduction
+it waited for has landed, and the remaining leads — flat-bridge representation
+analysis, the `apply_opening` geometry-parity question, and the
+pipeline-teardown early release — stay in the map's **Not yet specified** fog
+rather than in an open ticket. This closure records the decision only; the
+take's commit is the code change.
