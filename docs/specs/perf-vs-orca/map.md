@@ -319,6 +319,26 @@ Standing decisions for this effort (2026-09-22):
    the re-scoped 18), with no cell inside its ~1.5x release bound. The
    remaining serial-floor leads stay in the fog above. This closure session
    started no candidate, experiment or timing run.
+   **Refresh (2026-10-09):** a re-run attribution session executed the fresh
+   classic-cell pass (four matched classic cells at HEAD, profiled +
+   instrumented; the 2026-10-09 t27 A/B base captures re-reduced; evidence in
+   `evidence/perf-refresh-2026-10-09/`, `verify.py` exit 0). Headline finding:
+   `PostPass::LayerFinalization` on base classic supports-on measures
+   100.2–121.3 s in **all 24** probe-free 2026-10-09 A/B runs — never
+   attributed — and decomposes to the four finalization modules' per-module
+   whole-print `layers.clone()` + drop (stage 110.1 s = module brackets 62.7 s
+   + gaps 47.4 s; module guest fuel ≤ 1.4 B of 13,090 B) plus a further pre-emit
+   `to_vec`+reconcile copy (≈11.1 s between stage brackets); base supports-off
+   is the 2.0 s control. Also refreshed: `host:slice`'s `closing_ex` remains the
+   largest host scope on base (384–389 s accumulated; the flat-bridge enclosure
+   in `assemble_flat_bridge_areas`), `host:native` carries 197.2 s accumulated
+   on base supports-off with no named owner, and guest fuel remains
+   `classic-perimeters` self (the ticket-20 target). **Three new tickets were
+   brought to the table for the human's selection — none parked, none claimed:
+   [58](issues/58-layerfinalization-whole-print-copying.md),
+   [59](issues/59-prep-slice-flat-bridge-closing-reduction.md),
+   [60](issues/60-host-native-attribution.md).** The below-fold park is
+   unchanged; no candidate, experiment or timing campaign ran in the refresh.
 - **Production-mode route (2026-09-30):** pursue conditional accelerated
   adoption; ordinary stays the actual default pending the existing acceptance
   gate. See [Accelerated perimeter-spatial adoption decision](issues/13-accelerated-adoption-decision.md)
@@ -572,10 +592,12 @@ Standing decisions for this effort (2026-09-22):
   iteration 2) surfaced three graduate-when-probed questions resolved on
   2026-09-28 (phase-B = two costly offsets, sibling memo dropped for the matched job by human decision on 2026-09-29;
   estimate_print tail = pipeline teardown, below-fold; OverhangAnnotation
-  wall = parallel) and one still-open (flat-bridge reduction inside
-   `PrePass::Slice`, representation analysis first; the tested `refilled`-mask
-   elimination failed real-layer IR equivalence and was dropped — see
-   `evidence/t27-serial-floor/FLAT-BRIDGE-EXPERIMENT.md`). The smaller
+  wall = parallel) and one since graduated: the flat-bridge reduction inside
+   `PrePass::Slice` is now
+   [ticket 59](issues/59-prep-slice-flat-bridge-closing-reduction.md)
+   (representation analysis first — the tested `refilled`-mask elimination
+   failed real-layer IR equivalence and was dropped; fresh 2026-10-09
+   anchors: `closing_ex` 384–389 s accumulated on base cells). The smaller
    `apply_opening` lead is a separate geometry-parity question, not a
    representation-preserving replacement. Below-fold polish (`offset2_ex` call
   reduction, consume-only-when-read, `split_top_surfaces` secondary work, the
