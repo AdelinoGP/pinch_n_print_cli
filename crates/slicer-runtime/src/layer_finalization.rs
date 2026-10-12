@@ -73,75 +73,67 @@ pub fn execute_layer_finalization_with_instrumentation(
     >,
 ) -> Result<(), FinalizationError> {
     if let Some(stage) = &plan.layer_finalization_stage {
-        for module in &stage.modules {
-            instrumentation.on_module_start(&stage.stage_id, None, module.module_id());
-            // Build IR-typed borrow structs for the new slicer-wasm-host trait boundary.
-            let (instance_pool, wasm_component, native_entry) = wasm_handles
-                .get(module.module_id().as_str())
-                .map(|(p, c, e)| (Arc::clone(p), c.clone(), *e))
-                .unwrap_or_else(|| (WasmInstancePool::placeholder(), None, None));
-            let mut live_module = CompiledModuleLive::new(
-                module.module_id(),
-                instance_pool,
-                wasm_component,
-                module.claims(),
-                Arc::clone(module.config_view()),
-            )
-            .with_ir_writes(&module.ir_write_mask().paths);
-            if let Some(entry) = native_entry {
-                live_module = live_module.with_native_entry(entry);
-            }
-            let input = FinalizationStageInput {
-                mesh: std::sync::Arc::clone(blackboard.mesh()),
-                _phantom: std::marker::PhantomData,
-            };
+        if !stage.modules.is_empty() {
+            // One whole-print working copy per stage run (`PostPass::LayerFinalization`
+            // perf finding, 2026-10-09 refresh): every module runs on this copy and the
+            // stage commits it back once, after the last module succeeds and validates.
+            // The previous per-module `layers.clone()` + replaced-vector drop paid eight
+            // whole-print copy/drop operations per slice and dominated base supports-on
+            // (~100–121 s of host copy time per run; guest fuel ≤0.01% of the cell).
+            // Module failure and validation still discard the working copy without
+            // touching `layers`; the one semantic delta is that `layers` holds the
+            // pre-stage snapshot after a mid-stage abort instead of the last committed
+            // module's output — unobservable in production, where `fin_result?` aborts
+            // the slice and drops `layers`.
             let mut candidate = layers.clone();
-            let res = runner.run_stage(&stage.stage_id, &live_module, input, &mut candidate);
-            // Drain module log messages (already forwarded to the human `log`
-            // facade inside the dispatcher; this clears the thread-local stash)
-            // and forward each onto the structured stream as a `module_log`
-            // event.
-            for (level, message) in runner.last_log_messages() {
-                instrumentation.on_module_log(
+            for module in &stage.modules {
+                instrumentation.on_module_start(&stage.stage_id, None, module.module_id());
+                // Build IR-typed borrow structs for the new slicer-wasm-host trait boundary.
+                let (instance_pool, wasm_component, native_entry) = wasm_handles
+                    .get(module.module_id().as_str())
+                    .map(|(p, c, e)| (Arc::clone(p), c.clone(), *e))
+                    .unwrap_or_else(|| (WasmInstancePool::placeholder(), None, None));
+                let mut live_module = CompiledModuleLive::new(
+                    module.module_id(),
+                    instance_pool,
+                    wasm_component,
+                    module.claims(),
+                    Arc::clone(module.config_view()),
+                )
+                .with_ir_writes(&module.ir_write_mask().paths);
+                if let Some(entry) = native_entry {
+                    live_module = live_module.with_native_entry(entry);
+                }
+                let input = FinalizationStageInput {
+                    mesh: std::sync::Arc::clone(blackboard.mesh()),
+                    _phantom: std::marker::PhantomData,
+                };
+                let res = runner.run_stage(&stage.stage_id, &live_module, input, &mut candidate);
+                // Drain module log messages (already forwarded to the human `log`
+                // facade inside the dispatcher; this clears the thread-local stash)
+                // and forward each onto the structured stream as a `module_log`
+                // event.
+                for (level, message) in runner.last_log_messages() {
+                    instrumentation.on_module_log(
+                        &stage.stage_id,
+                        None,
+                        module.module_id(),
+                        &level,
+                        &message,
+                    );
+                }
+                // Must precede `on_module_end`, which is what emits the
+                // `module_complete` the verbose scope detail attaches to. Both
+                // accessors return empty/zero when profiling is off.
+                instrumentation.on_module_profile(
                     &stage.stage_id,
                     None,
                     module.module_id(),
-                    &level,
-                    &message,
+                    &runner.last_profile_marks(),
+                    runner.last_call_fuel(),
                 );
-            }
-            // Must precede `on_module_end`, which is what emits the
-            // `module_complete` the verbose scope detail attaches to. Both
-            // accessors return empty/zero when profiling is off.
-            instrumentation.on_module_profile(
-                &stage.stage_id,
-                None,
-                module.module_id(),
-                &runner.last_profile_marks(),
-                runner.last_call_fuel(),
-            );
-            instrumentation.on_module_end(&stage.stage_id, None, module.module_id(), 0, 0);
-            if let Err(error) = res {
-                instrumentation.on_module_error(
-                    &stage.stage_id,
-                    None,
-                    module.module_id(),
-                    &error.to_string(),
-                    true,
-                );
-                return Err(error);
-            }
-
-            // Synthesized anchored rows reuse their upper model layer's index,
-            // so equal adjacent indices are valid while reversals are not.
-            for window in candidate.windows(2) {
-                if window[0].global_layer_index > window[1].global_layer_index {
-                    let error = FinalizationError::Validation {
-                        message: format!(
-                            "layer indices must be monotonic, found {} followed by {}",
-                            window[0].global_layer_index, window[1].global_layer_index
-                        ),
-                    };
+                instrumentation.on_module_end(&stage.stage_id, None, module.module_id(), 0, 0);
+                if let Err(error) = res {
                     instrumentation.on_module_error(
                         &stage.stage_id,
                         None,
@@ -151,7 +143,31 @@ pub fn execute_layer_finalization_with_instrumentation(
                     );
                     return Err(error);
                 }
+
+                // Synthesized anchored rows reuse their upper model layer's index,
+                // so equal adjacent indices are valid while reversals are not.
+                for window in candidate.windows(2) {
+                    if window[0].global_layer_index > window[1].global_layer_index {
+                        let error = FinalizationError::Validation {
+                            message: format!(
+                                "layer indices must be monotonic, found {} followed by {}",
+                                window[0].global_layer_index, window[1].global_layer_index
+                            ),
+                        };
+                        instrumentation.on_module_error(
+                            &stage.stage_id,
+                            None,
+                            module.module_id(),
+                            &error.to_string(),
+                            true,
+                        );
+                        return Err(error);
+                    }
+                }
             }
+            // The stage commits exactly once: every module ran on the shared working
+            // copy, so the final assignment both publishes the result and drops the
+            // pre-stage vector that this clone replaced.
             *layers = candidate;
         }
     }

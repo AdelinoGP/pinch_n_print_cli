@@ -246,10 +246,51 @@ pub fn execute_postpass_with_capture(
     >,
     capture: Option<&mut PostPassCapture>,
 ) -> Result<(String, Vec<ModuleAccessAudit>), PostpassError> {
+    execute_postpass_with_owned_capture(
+        plan,
+        layer_irs.to_vec(),
+        blackboard,
+        emitter,
+        serializer,
+        runner,
+        instrumentation,
+        wasm_handles,
+        capture,
+    )
+}
+
+/// [`execute_postpass_with_capture`] taking the finalized layers by value, so
+/// the pre-emit travel reconciliation mutates the production caller's own
+/// vector in place instead of paying one extra whole-print clone + drop
+/// (`PostPass::GCodeEmit` perf finding, 2026-10-09 refresh). Behavioral
+/// contract is unchanged: the reconciled layer contents are identical to the
+/// copy-then-mutate form, callers take ownership and never see the layers
+/// again (`run_pipeline_core` drops `layer_irs` right after), and capture
+/// sinks still receive an independent clone.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_postpass_with_owned_capture(
+    plan: &ExecutionPlan,
+    layer_irs: Vec<LayerCollectionIR>,
+    blackboard: &Blackboard,
+    emitter: &dyn GCodeEmitter,
+    serializer: &dyn GCodeSerializer,
+    runner: &mut dyn PostpassStageRunner,
+    instrumentation: &(dyn PipelineInstrumentation + Sync),
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<slicer_sdk::native::NativeStageEntry>,
+        ),
+    >,
+    capture: Option<&mut PostPassCapture>,
+) -> Result<(String, Vec<ModuleAccessAudit>), PostpassError> {
     // Step 1a: Reconcile finalization-aware travel moves before emission.
     // This adjusts travel_moves to route through Skirt/Brim and WipeTower
-    // geometry without modifying ordered_entities.
-    let mut reconciled_layers: Vec<LayerCollectionIR> = layer_irs.to_vec();
+    // geometry without modifying ordered_entities. The layers arrive owned;
+    // reconciling in place avoids the historical whole-print `to_vec` copy.
+    let mut reconciled_layers: Vec<LayerCollectionIR> = layer_irs;
     let travel_f = emitter.travel_feedrate_mm_per_min();
     for layer in &mut reconciled_layers {
         slicer_gcode::reconcile_finalization_travel(layer, travel_f);

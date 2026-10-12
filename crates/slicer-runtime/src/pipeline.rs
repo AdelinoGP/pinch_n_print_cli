@@ -510,7 +510,7 @@ fn run_pipeline_core(
             raw_config_source,
             &default_resolved_config,
             config_block,
-            &layer_irs,
+            layer_irs,
             instrumentation,
             &wasm_handles,
         )
@@ -588,7 +588,10 @@ fn run_postpass_with_thumbnail(
     raw_config_source: &HashMap<ConfigKey, ConfigValue>,
     default_resolved_config: &ResolvedConfig,
     config_block: Option<&BTreeMap<String, ConfigValue>>,
-    layer_irs: &[LayerCollectionIR],
+    // Owned: the production pipeline drops `layer_irs` right after this call,
+    // so the postpass reconciles and emits against the caller's vector itself
+    // (see `execute_postpass_with_owned_capture`).
+    layer_irs: Vec<LayerCollectionIR>,
     instrumentation: &(dyn PipelineInstrumentation + Sync),
     wasm_handles: &HashMap<
         ModuleId,
@@ -682,7 +685,7 @@ fn run_postpass_with_thumbnail(
         effective_config,
     ));
 
-    crate::postpass::execute_postpass_with_instrumentation(
+    crate::postpass::execute_postpass_with_owned_capture(
         plan,
         layer_irs,
         blackboard,
@@ -691,6 +694,9 @@ fn run_postpass_with_thumbnail(
         runners.postpass.as_mut(),
         instrumentation,
         wasm_handles,
+        // An ordinary pipeline slice never captures; the visual-debug taps call
+        // `execute_postpass_with_capture` themselves.
+        None,
     )
     .map_err(PipelineError::from)
 }
