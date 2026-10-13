@@ -1,0 +1,129 @@
+     Locking 3 packages to latest compatible versions
+      Adding clipper2-rust v1.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\clipper2-rust)
+      Adding clipper2-rust-oracle v1.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\clipper2-original)
+      Adding slicer-core-oracle v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\slicer-core-original)
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.45
+   Compiling unicode-ident v1.0.24
+   Compiling syn v2.0.117
+   Compiling autocfg v1.5.0
+   Compiling libm v0.2.16
+   Compiling num-traits v0.2.19
+   Compiling serde_core v1.0.228
+   Compiling thiserror v1.0.69
+   Compiling serde v1.0.228
+   Compiling thiserror-impl v1.0.69
+   Compiling serde_derive v1.0.228
+   Compiling byteorder v1.5.0
+   Compiling heapless v0.8.0
+   Compiling hash32 v0.3.1
+   Compiling stable_deref_trait v1.2.1
+   Compiling slicer-ir v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\crates\slicer-ir)
+   Compiling smallvec v1.15.1
+   Compiling rstar v0.12.2
+   Compiling slicer-config v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\crates\slicer-config)
+   Compiling log v0.4.29
+   Compiling slicer-core v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\crates\slicer-core)
+   Compiling clipper2-rust-oracle v1.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\clipper2-original)
+   Compiling clipper2-rust v1.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\clipper2-rust)
+   Compiling slicer-core-oracle v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\slicer-core-original)
+warning: unexpected `cfg` condition name: `pnp_perimeter_spatial_accelerated`
+   --> D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\slicer-core-original\src\perimeter_spatial.rs:300:11
+    |
+300 |     #[cfg(pnp_perimeter_spatial_accelerated)]
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: expected names are: `docsrs`, `feature`, and `test` and 31 more
+    = help: consider using a Cargo feature instead
+    = help: or consider adding in `Cargo.toml` the `check-cfg` lint config for the lint:
+             [lints.rust]
+             unexpected_cfgs = { level = "warn", check-cfg = ['cfg(pnp_perimeter_spatial_accelerated)'] }
+    = help: or consider adding `println!("cargo::rustc-check-cfg=cfg(pnp_perimeter_spatial_accelerated)");` to the top of the `build.rs`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+    = note: `#[warn(unexpected_cfgs)]` on by default
+
+warning: unexpected `cfg` condition name: `pnp_perimeter_spatial_accelerated`
+   --> D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\slicer-core-original\src\perimeter_spatial.rs:308:15
+    |
+308 |     #[cfg(not(pnp_perimeter_spatial_accelerated))]
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: consider using a Cargo feature instead
+    = help: or consider adding in `Cargo.toml` the `check-cfg` lint config for the lint:
+             [lints.rust]
+             unexpected_cfgs = { level = "warn", check-cfg = ['cfg(pnp_perimeter_spatial_accelerated)'] }
+    = help: or consider adding `println!("cargo::rustc-check-cfg=cfg(pnp_perimeter_spatial_accelerated)");` to the top of the `build.rs`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: `slicer-core-oracle` (lib) generated 2 warnings
+   Compiling t57-consumer-checks v0.0.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\consumers)
+error[E0599]: no associated function or constant named `new` found for struct `slicer_ir::Point2` in the current scope
+   --> src\lib.rs:77:25
+    |
+ 77 |                 Point2::new(shift + a, a),
+    |                         ^^^ associated function or constant not found in `slicer_ir::Point2`
+    |
+note: if you're trying to build a new `slicer_ir::Point2`, consider using `slicer_ir::Point2::from_mm` which returns `slicer_ir::Point2`
+   --> D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\crates\slicer-ir\src\slice_ir.rs:125:5
+    |
+125 |     pub fn from_mm(x: f32, y: f32) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: there is a method `ne` with a similar name, but with different arguments
+   --> C:\Users\agpen\.rustup\toolchains\1.96.0-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\core\src\cmp.rs:263:5
+    |
+263 |     fn ne(&self, other: &Rhs) -> bool {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no associated function or constant named `new` found for struct `slicer_ir::Point2` in the current scope
+   --> src\lib.rs:78:25
+    |
+ 78 |                 Point2::new(shift + b, a),
+    |                         ^^^ associated function or constant not found in `slicer_ir::Point2`
+    |
+note: if you're trying to build a new `slicer_ir::Point2`, consider using `slicer_ir::Point2::from_mm` which returns `slicer_ir::Point2`
+   --> D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\crates\slicer-ir\src\slice_ir.rs:125:5
+    |
+125 |     pub fn from_mm(x: f32, y: f32) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: there is a method `ne` with a similar name, but with different arguments
+   --> C:\Users\agpen\.rustup\toolchains\1.96.0-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\core\src\cmp.rs:263:5
+    |
+263 |     fn ne(&self, other: &Rhs) -> bool {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no associated function or constant named `new` found for struct `slicer_ir::Point2` in the current scope
+   --> src\lib.rs:79:25
+    |
+ 79 |                 Point2::new(shift + b, b),
+    |                         ^^^ associated function or constant not found in `slicer_ir::Point2`
+    |
+note: if you're trying to build a new `slicer_ir::Point2`, consider using `slicer_ir::Point2::from_mm` which returns `slicer_ir::Point2`
+   --> D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\crates\slicer-ir\src\slice_ir.rs:125:5
+    |
+125 |     pub fn from_mm(x: f32, y: f32) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: there is a method `ne` with a similar name, but with different arguments
+   --> C:\Users\agpen\.rustup\toolchains\1.96.0-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\core\src\cmp.rs:263:5
+    |
+263 |     fn ne(&self, other: &Rhs) -> bool {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no associated function or constant named `new` found for struct `slicer_ir::Point2` in the current scope
+   --> src\lib.rs:80:25
+    |
+ 80 |                 Point2::new(shift + a, b),
+    |                         ^^^ associated function or constant not found in `slicer_ir::Point2`
+    |
+note: if you're trying to build a new `slicer_ir::Point2`, consider using `slicer_ir::Point2::from_mm` which returns `slicer_ir::Point2`
+   --> D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\crates\slicer-ir\src\slice_ir.rs:125:5
+    |
+125 |     pub fn from_mm(x: f32, y: f32) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: there is a method `ne` with a similar name, but with different arguments
+   --> C:\Users\agpen\.rustup\toolchains\1.96.0-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\core\src\cmp.rs:263:5
+    |
+263 |     fn ne(&self, other: &Rhs) -> bool {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+For more information about this error, try `rustc --explain E0599`.
+error: could not compile `t57-consumer-checks` (lib test) due to 4 previous errors

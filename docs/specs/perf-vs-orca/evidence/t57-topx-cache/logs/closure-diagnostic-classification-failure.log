@@ -1,0 +1,21 @@
+     Locking 1 package to latest compatible version
+      Adding clipper2-rust v1.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\clipper2-rust)
+   Compiling xtask v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\xtask)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.08s
+     Running unittests src\main.rs (target\debug\deps\xtask-a6687e42e444f4e5.exe)
+
+running 1 test
+
+thread 'build_guests::t57_dependency_closure::t57_explicit_clipper_source_is_fingerprint_sensitive_in_each_affected_guest' (22980) panicked at xtask\src\build_guests.rs:21:9:
+guest discovery errors: ["SKIP: crates/slicer-wasm-host/test-guests/witness/Cargo.toml ([lib].crate-type does not contain cdylib)"]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test build_guests::t57_dependency_closure::t57_explicit_clipper_source_is_fingerprint_sensitive_in_each_affected_guest ... FAILED
+
+failures:
+
+failures:
+    build_guests::t57_dependency_closure::t57_explicit_clipper_source_is_fingerprint_sensitive_in_each_affected_guest
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 176 filtered out; finished in 0.19s
+
+error: test failed, to rerun pass `-p xtask --bin xtask`

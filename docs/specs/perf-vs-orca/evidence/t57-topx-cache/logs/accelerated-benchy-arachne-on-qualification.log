@@ -1,0 +1,2 @@
+[t57] accelerated-benchy-arachne-on-baseline-w0 wall=24.698s cpu=87.000s sha=4d4f1e10a925c39b67e1c50bbe5fbe7fdb42cf9e8dcc5d75eac25ebd7bad60ca
+[t57] accelerated-benchy-arachne-on-candidate-w0 wall=25.203s cpu=90.641s sha=4d4f1e10a925c39b67e1c50bbe5fbe7fdb42cf9e8dcc5d75eac25ebd7bad60ca

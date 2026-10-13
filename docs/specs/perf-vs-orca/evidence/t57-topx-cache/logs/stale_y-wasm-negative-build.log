@@ -1,0 +1,26 @@
+   Compiling num-traits v0.2.19
+   Compiling clipper2-rust v1.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\negative-controls\stale_y\engine)
+warning: unused variable: `y`
+   --> engine\src\engine.rs:378:51
+    |
+378 |     fn get(&self, edge_idx: usize, edge: &Active, y: i64) -> Option<i64> {
+    |                                                   ^ help: if this is intentional, prefix it with an underscore: `_y`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `y` is never read
+   --> engine\src\engine.rs:356:5
+    |
+354 | struct ScanbeamProjection {
+    |        ------------------ field in this struct
+355 |     edge_idx: usize,
+356 |     y: i64,
+    |     ^
+    |
+    = note: `ScanbeamProjection` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `clipper2-rust` (lib) generated 2 warnings (run `cargo fix --lib -p clipper2-rust` to apply 1 suggestion)
+   Compiling clipper2-rust-oracle v1.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\clipper2-original)
+   Compiling t57-negative-stale-y v0.0.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\negative-controls\stale_y)
+    Finished `release` profile [optimized] target(s) in 8.00s

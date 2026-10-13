@@ -1,0 +1,11 @@
+RuntimeError: unreachable
+    at t57_negative_stale_y.wasm._RNvCsGIExRX8pES_7___rustc12___rust_abort (wasm://wasm/t57_negative_stale_y.wasm-0011f662:wasm-function[236]:0x377ce)
+    at t57_negative_stale_y.wasm._RNvCsGIExRX8pES_7___rustc18___rust_start_panic (wasm://wasm/t57_negative_stale_y.wasm-0011f662:wasm-function[220]:0x35e15)
+    at t57_negative_stale_y.wasm._RNvCsGIExRX8pES_7___rustc10rust_panic (wasm://wasm/t57_negative_stale_y.wasm-0011f662:wasm-function[232]:0x36239)
+    at t57_negative_stale_y.wasm._RNvNtCsljiztaTWNn0_3std9panicking15panic_with_hook (wasm://wasm/t57_negative_stale_y.wasm-0011f662:wasm-function[230]:0x3621d)
+    at t57_negative_stale_y.wasm._RNCNvNtCsljiztaTWNn0_3std9panicking13panic_handler0B5_ (wasm://wasm/t57_negative_stale_y.wasm-0011f662:wasm-function[228]:0x3600d)
+    at t57_negative_stale_y.wasm._RINvNtNtCsljiztaTWNn0_3std3sys9backtrace26___rust_end_short_backtraceNCNvNtB6_9panicking13panic_handler0zEB6_ (wasm://wasm/t57_negative_stale_y.wasm-0011f662:wasm-function[227]:0x35f71)
+    at t57_negative_stale_y.wasm._RNvCsGIExRX8pES_7___rustc17rust_begin_unwind (wasm://wasm/t57_negative_stale_y.wasm-0011f662:wasm-function[242]:0x3835d)
+    at t57_negative_stale_y.wasm._RNvNtCs3O6bguQwcd4_4core9panicking9panic_fmt (wasm://wasm/t57_negative_stale_y.wasm-0011f662:wasm-function[268]:0x38c84)
+    at t57_negative_stale_y.wasm._RNvNtCs3O6bguQwcd4_4core9panicking19assert_failed_inner (wasm://wasm/t57_negative_stale_y.wasm-0011f662:wasm-function[265]:0x38b8f)
+    at t57_negative_stale_y.wasm._RINvNtCs3O6bguQwcd4_4core9panicking13assert_failedjjEB4_ (wasm://wasm/t57_negative_stale_y.wasm-0011f662:wasm-function[266]:0x38c26)

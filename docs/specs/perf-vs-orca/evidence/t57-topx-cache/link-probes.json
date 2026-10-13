@@ -1,0 +1,48 @@
+[
+  {
+    "command": [
+      "rustc",
+      "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t57-topx-cache\\source\\crates\\slicer-macros\\build.rs",
+      "--crate-name",
+      "build_script_build",
+      "--edition",
+      "2021",
+      "-C",
+      "embed-bitcode=no",
+      "-C",
+      "debug-assertions=off",
+      "-C",
+      "metadata=b09057b44ad3c736",
+      "-C",
+      "extra-filename=-fa3ea2bf0df70a86",
+      "-C",
+      "strip=debuginfo",
+      "--out-dir",
+      "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t57-topx-cache\\source\\target\\guests-accelerated\\release\\build\\t57-verbatim-probe-1234567890123456"
+    ],
+    "exit": 0
+  },
+  {
+    "command": [
+      "rustc",
+      "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t57-topx-cache\\source\\crates\\slicer-macros\\build.rs",
+      "--crate-name",
+      "build_script_build",
+      "--edition",
+      "2021",
+      "-C",
+      "embed-bitcode=no",
+      "-C",
+      "debug-assertions=off",
+      "-C",
+      "metadata=b09057b44ad3c736",
+      "-C",
+      "extra-filename=-fa3ea2bf0df70a86",
+      "-C",
+      "strip=debuginfo",
+      "--out-dir",
+      "\\\\?\\D:\\slicerProject\\pinch_n_print_cli_2\\target\\t57-link-probe"
+    ],
+    "exit": 0
+  }
+]

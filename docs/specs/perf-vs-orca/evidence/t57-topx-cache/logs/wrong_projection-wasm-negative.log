@@ -1,0 +1,11 @@
+RuntimeError: unreachable
+    at t57_negative_wrong_projection.wasm._RNvCsGIExRX8pES_7___rustc12___rust_abort (wasm://wasm/t57_negative_wrong_projection.wasm-0011e812:wasm-function[241]:0x37112)
+    at t57_negative_wrong_projection.wasm._RNvCsGIExRX8pES_7___rustc18___rust_start_panic (wasm://wasm/t57_negative_wrong_projection.wasm-0011e812:wasm-function[225]:0x35759)
+    at t57_negative_wrong_projection.wasm._RNvCsGIExRX8pES_7___rustc10rust_panic (wasm://wasm/t57_negative_wrong_projection.wasm-0011e812:wasm-function[237]:0x35b7d)
+    at t57_negative_wrong_projection.wasm._RNvNtCsljiztaTWNn0_3std9panicking15panic_with_hook (wasm://wasm/t57_negative_wrong_projection.wasm-0011e812:wasm-function[235]:0x35b61)
+    at t57_negative_wrong_projection.wasm._RNCNvNtCsljiztaTWNn0_3std9panicking13panic_handler0B5_ (wasm://wasm/t57_negative_wrong_projection.wasm-0011e812:wasm-function[233]:0x35951)
+    at t57_negative_wrong_projection.wasm._RINvNtNtCsljiztaTWNn0_3std3sys9backtrace26___rust_end_short_backtraceNCNvNtB6_9panicking13panic_handler0zEB6_ (wasm://wasm/t57_negative_wrong_projection.wasm-0011e812:wasm-function[232]:0x358b5)
+    at t57_negative_wrong_projection.wasm._RNvCsGIExRX8pES_7___rustc17rust_begin_unwind (wasm://wasm/t57_negative_wrong_projection.wasm-0011e812:wasm-function[247]:0x37ca1)
+    at t57_negative_wrong_projection.wasm._RNvNtCs3O6bguQwcd4_4core9panicking9panic_fmt (wasm://wasm/t57_negative_wrong_projection.wasm-0011e812:wasm-function[273]:0x385c8)
+    at t57_negative_wrong_projection.wasm._RNvNtCs3O6bguQwcd4_4core9panicking19assert_failed_inner (wasm://wasm/t57_negative_wrong_projection.wasm-0011e812:wasm-function[270]:0x38521)
+    at t57_negative_wrong_projection.wasm._ZN4core9panicking13assert_failed17hf0b40f6b4296da59E (wasm://wasm/t57_negative_wrong_projection.wasm-0011e812:wasm-function[201]:0x32dec)

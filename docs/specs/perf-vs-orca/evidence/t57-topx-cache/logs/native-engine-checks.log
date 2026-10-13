@@ -1,0 +1,16 @@
+     Locking 2 packages to latest compatible versions
+      Adding clipper2-rust v1.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\clipper2-rust)
+      Adding clipper2-rust-oracle v1.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\clipper2-original)
+   Compiling autocfg v1.5.0
+   Compiling num-traits v0.2.19
+   Compiling clipper2-rust v1.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\clipper2-rust)
+   Compiling clipper2-rust-oracle v1.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\clipper2-original)
+   Compiling t57-engine-checks v0.0.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\checks)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.84s
+     Running unittests src\lib.rs (.local-artifacts\perimeter-reference-preparation\t57-topx-cache\checks\target\debug\deps\t57_engine_checks-9933f592a0d1564e.exe)
+
+running 1 test
+test native_shared_engine_cache_and_ordered_geometry_contract ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+

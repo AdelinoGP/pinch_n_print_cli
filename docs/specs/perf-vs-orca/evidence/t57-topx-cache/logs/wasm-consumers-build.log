@@ -1,0 +1,20 @@
+   Compiling libm v0.2.16
+   Compiling serde_core v1.0.228
+   Compiling num-traits v0.2.19
+   Compiling thiserror v1.0.69
+   Compiling serde v1.0.228
+   Compiling byteorder v1.5.0
+   Compiling heapless v0.8.0
+   Compiling hash32 v0.3.1
+   Compiling stable_deref_trait v1.2.1
+   Compiling slicer-ir v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\crates\slicer-ir)
+   Compiling smallvec v1.15.1
+   Compiling rstar v0.12.2
+   Compiling slicer-config v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\crates\slicer-config)
+   Compiling log v0.4.29
+   Compiling slicer-core v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\crates\slicer-core)
+   Compiling slicer-core-oracle v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\slicer-core-original)
+   Compiling clipper2-rust v1.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\clipper2-rust)
+   Compiling clipper2-rust-oracle v1.1.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\source\.local-libs\clipper2-original)
+   Compiling t57-consumer-checks v0.0.0 (D:\slicerProject\pinch_n_print_cli_2\.local-artifacts\perimeter-reference-preparation\t57-topx-cache\consumers)
+    Finished `release` profile [optimized] target(s) in 41.51s

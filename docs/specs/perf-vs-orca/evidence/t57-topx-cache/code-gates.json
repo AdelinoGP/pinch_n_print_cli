@@ -1,0 +1,58 @@
+{
+  "candidate-workspace-build": {
+    "command": [
+      "cargo",
+      "build",
+      "--workspace"
+    ],
+    "exit_code": 0
+  },
+  "candidate-workspace-all-targets-clippy": {
+    "command": [
+      "cargo",
+      "clippy",
+      "--workspace",
+      "--all-targets",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "exit_code": 0
+  },
+  "candidate-literals": {
+    "command": [
+      "cargo",
+      "xtask",
+      "check-literals"
+    ],
+    "exit_code": 0
+  },
+  "candidate-test-quality": {
+    "command": [
+      "cargo",
+      "xtask",
+      "check-test-quality",
+      "--report"
+    ],
+    "exit_code": 0
+  },
+  "ordinary-final-candidate-freshness": {
+    "command": [
+      "cargo",
+      "xtask",
+      "build-guests",
+      "--check"
+    ],
+    "exit_code": 0
+  },
+  "accelerated-final-candidate-freshness": {
+    "command": [
+      "cargo",
+      "xtask",
+      "build-guests",
+      "--accelerated",
+      "--check"
+    ],
+    "exit_code": 0
+  }
+}
