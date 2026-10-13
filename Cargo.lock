@@ -3474,6 +3474,7 @@ dependencies = [
  "nalgebra",
  "serde",
  "slicer-ir",
+ "slicer-model-io",
  "thiserror 1.0.69",
  "truck-meshalgo",
  "truck-modeling",
