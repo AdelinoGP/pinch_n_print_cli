@@ -30,7 +30,7 @@ Existing public structs, ordinary WIT signatures and version constants are not w
 - Objective: Introduce `LayerPreparation` without a default method and lazy call-local facade wrappers.
 - Precondition: new canonical operation/error names fixed by Step 1; no production input projection is assumed.
 - Postcondition: SDK can express controlled input/output, implicit-owner open/len/read, error propagation and unwind-safe native read binding without retaining indices or copying the whole plan.
-- Allowed reads: `crates/slicer-sdk/src/lib.rs` 18–60; `crates/slicer-sdk/src/traits.rs` 377–405, 558–578; existing error type by symbol; SDK test target Cargo metadata; docs/05 lifecycle 958–1001.
+- Allowed reads: `crates/slicer-sdk/src/lib.rs` 18–60; `crates/slicer-sdk/src/traits.rs` `LayerModule` 377–405, `run_path_optimization` 577–598; existing error type by symbol; SDK test target Cargo metadata; docs/05 lifecycle 958–1001.
 - Allowed edits (3): NET-NEW `crates/slicer-sdk/src/preparation.rs`; `crates/slicer-sdk/src/lib.rs`; `crates/slicer-sdk/tests/layer_module_tdd.rs`.
 - Out of bounds: `LayerModule` signatures, production PrePass projections, host algorithm APIs, existing config/IR shape changes.
 - Blast radius: new facade structs only; update all new test literals in layer_module_tdd with FRU/waiver. No existing version assertion fallout.
@@ -94,7 +94,7 @@ Existing public structs, ordinary WIT signatures and version constants are not w
 - Objective: Author a real same-source module with explicit macro opt-in, numeric codec and complete named-piece preparation.
 - Precondition: preparation trait/macro generated paired adapters exist; freshness checker recognizes the capability.
 - Postcondition: new `preparation-pilot-infill` crate is discovered, stages `preparation-pilot-infill.component.wasm`, compiles native rlib and guest cdylib, and supplies required preparation/ordinary methods.
-- Allowed reads: `xtask/src/build_guests.rs` discover_guests 217–299; schema ordinary infill WIT; macro infill glue 3598–3641; SDK InfillOutputBuilder by symbol; IR Point3WithWidth 2614–2644 and ExtrusionPath3D 2818–2838; existing guest Cargo manifests located through glob, not invented names.
+- Allowed reads: `xtask/src/build_guests.rs` discover_guests 217–299; schema ordinary infill WIT; macro `build_layer_infill_glue` 3880; SDK InfillOutputBuilder by symbol; IR `Point3WithWidth` 2700 and `ExtrusionPath3D` 2904; existing guest Cargo manifests located through glob, not invented names.
 - Allowed edits (3): NET-NEW `crates/slicer-wasm-host/test-guests/preparation-pilot-infill/Cargo.toml`; NET-NEW `crates/slicer-wasm-host/test-guests/preparation-pilot-infill/src/lib.rs`; `crates/slicer-wasm-host/Cargo.toml` (native dev-dependency).
 - Out of bounds: community/core production modules, host algorithm kernel, production declarations/activation.
 - Blast radius: every new guest struct literal authored exhaustively with existing IR fields; no IR/WIT version mutation. Test driver uses FRU/waivers later. Empty `[workspace]` sentinel plus explicit dependency paths follows current standalone discovery; no new per-guest target directory.
@@ -110,7 +110,7 @@ Existing public structs, ordinary WIT signatures and version constants are not w
 - Objective: Prove the authoring shape is not Infill-specific using PathOptimization's actual perimeter/collection/G-code input/output family.
 - Precondition: macro composition and first fixture discover/build; no production routing needed.
 - Postcondition: new `preparation-pilot-path` native rlib/guest cdylib artifact stages correctly and module uses its own text codec and ordinary comment builder.
-- Allowed reads: path-optimization.wit complete small file; SDK traits 558–578; GcodeOutputBuilder::push_comment/commands symbol windows in postpass_builders.rs; discover_guests 217–299; approved design fixture contract.
+- Allowed reads: path-optimization.wit complete small file; SDK `LayerModule::run_path_optimization` 577–598; GcodeOutputBuilder::push_comment/commands symbol windows in postpass_builders.rs; discover_guests 217–299; approved design fixture contract.
 - Allowed edits (3): NET-NEW `crates/slicer-wasm-host/test-guests/preparation-pilot-path/Cargo.toml`; NET-NEW `crates/slicer-wasm-host/test-guests/preparation-pilot-path/src/lib.rs`; `crates/slicer-wasm-host/Cargo.toml` (second native dev-dependency).
 - Out of bounds: real path optimizer algorithm/production modules, manifests/routing/activation, infill fixture's independent numeric codec.
 - Blast radius: new local fixture literals only, no existing type/version changes.
@@ -126,7 +126,7 @@ Existing public structs, ordinary WIT signatures and version constants are not w
 - Objective: Implement pilot-local imported resources, canonical shared type aliases and typed combined driver without changing production HostExecutionContext.
 - Precondition: both real fixture artifacts and native adapters exist and checker can validate them.
 - Postcondition: NET-NEW pilot host has fresh capability resource tables, ordinary host projection, owner/ready/staging storage and actual typed calls; preparer store drops before consumer stores are constructed.
-- Allowed reads: host.rs canonical definer/alias 363–458, context 1188–1212 and resource insertion/output getter symbol windows; production_guest_smoke_tdd.rs complete small file; contract main.rs; new capability WIT and native fixture entries; docs/03 isolation 100–142.
+- Allowed reads: host.rs canonical definer/alias 400–485, context `HostExecutionContext` 1224 and resource insertion/output getter symbol windows; production_guest_smoke_tdd.rs complete small file; contract main.rs; new capability WIT and native fixture entries; docs/03 isolation 100–142.
 - Allowed edits (2): NET-NEW `crates/slicer-wasm-host/tests/contract/preparation_pilot_host.rs`; `crates/slicer-wasm-host/tests/contract/main.rs` (register helper).
 - Out of bounds: production host.rs/context fields, runtime runner/lifecycle/blackboard, manifest activation, ordinary WIT resource defs.
 - Blast radius: all new host backings/ctx/storage literals local to helper; no `HostExecutionContext` fields or native envelope expansion. Keep mapped capability resource types identical across prepare/plan-access bindings.
