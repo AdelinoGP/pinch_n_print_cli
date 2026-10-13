@@ -360,10 +360,22 @@ Standing decisions for this effort (2026-09-22):
    re-run per the t57 recovery discipline; one harness 600 s-timeout
    self-stop → per-run timeout raised to 1800 s, infrastructure-only and
    disclosed), and closed with the standing snapshots restored and both
-   freshness gates green. **Recommendation to the human: KEEP — no
-   auto-commit; the three-file diff stays uncommitted pending the ruling.**
+   freshness gates green. **Recommendation to the human: KEEP — human KEPT
+   it 2026-10-12; no auto-commit was made before the ruling — the
+   candidate and evidence are committed (code `e7159687`, docs
+   `e4e93dea`).**
    Evidence: `evidence/t58-finalization-copies/FINDINGS.md` (+
    `qualification.json`, `ab-reduction.json`).
+   **Tracker catch-up (2026-10-12, same session):** the previously
+   uncommitted t29/t30 source changes and the t29/t31/t45/t49-t57 tracker
+   and evidence sets are now committed (byte-pinned in `.gitattributes`;
+   every checkout-only evidence verifier exits 0); t58's tracker text was
+   reconciled to the committed KEEP. The frontier is unchanged and still
+   awaits the human's selection:
+   [20](issues/20-consume-only-when-read-annotations.md) (audited, parked
+   by the below-fold park),
+   [59](issues/59-prep-slice-flat-bridge-closing-reduction.md),
+   [60](issues/60-host-native-attribution.md).
 - **Production-mode route (2026-09-30):** pursue conditional accelerated
   adoption; ordinary stays the actual default pending the existing acceptance
   gate. See [Accelerated perimeter-spatial adoption decision](issues/13-accelerated-adoption-decision.md)
@@ -459,7 +471,7 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
-- [LayerFinalization whole-print copying](issues/58-layerfinalization-whole-print-copying.md): **measured (2026-10-12), recommendation returned to the human: KEEP (pending ruling, no auto-commit)** — the clone-once finalization stage + owned pre-emit capture candidate (three uncommitted runtime files) passed the fresh 16-cell output-identity qualification (ordinary cells reproduce the preserved production references; base-arachne-on fresh ref `a1bc8110…`), then the standing paired gate **in all four pre-declared cells, 6/6 pairs each, zero starvation exclusions**: base-classic-on wall medians **−10.48 % ordinary (610.0 → 539.5 s) / −8.76 % accelerated (601.0 → 547.9 s)**, CPU corroborating (−2.33 % / −2.45 %); benchy-classic-on −1.21 % / −1.44 % with byte-identical outputs everywhere. Attribution: LayerFinalization stage 113.2 → 70.4 s (−37.7 %), inter-bracket drop gaps → 0 ms, one 2.7 s upfront clone + 10.1 s commit tail; postpass phase 132.3 → 87.4 s. Campaign context disclosed (background load; three interruption recoveries incl. a harness-timeout raise to 1800 s, infrastructure-only); snapshots restored, freshness gates green. Evidence: `evidence/t58-finalization-copies/FINDINGS.md`.
+- [LayerFinalization whole-print copying](issues/58-layerfinalization-whole-print-copying.md): **resolved (2026-10-12); human-approved KEEP — committed with this ticket (`e7159687`, docs `e4e93dea`)** — the clone-once finalization stage + owned pre-emit capture candidate (three runtime files) passed the fresh 16-cell output-identity qualification (ordinary cells reproduce the preserved production references; base-arachne-on fresh ref `a1bc8110…`), then the standing paired gate **in all four pre-declared cells, 6/6 pairs each, zero starvation exclusions**: base-classic-on wall medians **−10.48 % ordinary (610.0 → 539.5 s) / −8.76 % accelerated (601.0 → 547.9 s)**, CPU corroborating (−2.33 % / −2.45 %); benchy-classic-on −1.21 % / −1.44 % with byte-identical outputs everywhere. Attribution: LayerFinalization stage 113.2 → 70.4 s (−37.7 %), inter-bracket drop gaps → 0 ms, one 2.7 s upfront clone + 10.1 s commit tail; postpass phase 132.3 → 87.4 s. Campaign context disclosed (background load; three interruption recoveries incl. a harness-timeout raise to 1800 s, infrastructure-only); snapshots restored, freshness gates green. Evidence: `evidence/t58-finalization-copies/FINDINGS.md`.
 
 - [Serial host floor](issues/27-serial-host-prepass-floor.md): **resolved (2026-10-09)** — the post-park premise search found the new safe call reduction the ticket waited for: 99.8% of `commit_support_analysis_builtin`'s serial sweep (`crates/slicer-runtime/src/builtins/support_analysis_producer.rs`) was one predicate — `SliceRegionView::derive_needs_support`'s per-region exact `intersection_ex` against the object-global overhang footprint (`crates/slicer-sdk/src/views.rs`), 24.19 s of the 38.20 s base supports-on stage wall — now moved to an order-preserving indexed rayon pre-pass (dual-compute 495/495 base + 240/240 benchy regions, 0 mismatches; 8.7x on the predicate). Standing paired A/B: base median wall **−18.198 s ordinary / −19.380 s accelerated** (6/6 and 5/6 pairs) at ≈+0.5% median process CPU; benchy −1.105 s / −0.943 s. All 48 outputs byte-identical; the strict wall-and-CPU clause passes on ordinary/benchy only and the **human KEPT the base wall win 2026-10-09** (≈3.4–3.7% of arm-median wall; accepted as a serialization fix, not a scoreboard claim), committed with the ticket. The probe-3 bbox-index filter alternative was refuted (~45% pruning, ~12% saving) and the `from_ir` deep-clone hypothesis measured dead. Remaining leads (flat-bridge representation analysis, `apply_opening` parity, teardown early release) stay in the fog. Evidence: `evidence/t27-serial-floor/FINDINGS-PROBE3.md`.
 

@@ -2,8 +2,8 @@
 
 Type: task
 Label: wayfinder:task
-Status: claimed (2026-10-10) — measured 2026-10-12, recommendation
-returned to the human (KEEP)
+Status: resolved (2026-10-12; human-approved KEEP — candidate committed, see the
+Measured answer below)
 Assignee: claimed by the 2026-10-10 session (human-selected take from the four-ticket table)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
@@ -145,7 +145,8 @@ generator-independent) and must be qualified inside the take, not assumed.
 ## Measured answer (2026-10-11 → 2026-10-12 session)
 
 **Implemented, qualified, timed. Standing paired gate: PASS in all four
-cells; recommendation to the human: KEEP.** Full record:
+cells; recommendation returned to the human: KEEP — human KEPT it
+2026-10-12.** Full record:
 `evidence/t58-finalization-copies/FINDINGS.md` (+ `qualification.json`,
 `ab-reduction.json`).
 
@@ -172,8 +173,9 @@ cells; recommendation to the human: KEEP.** Full record:
    (8.0/13.9/13.1 s) + 13.6 s commit tail become **0 ms gaps**, one
    2.7 s upfront clone, one 10.1 s commit tail; postpass phase
    132.3 → 87.4 s.
-5. The three-file diff plus tracker/evidence files remain **uncommitted**
-   pending the human's KEEP/DROP ruling (no auto-commit rule).
+5. The three-file diff plus evidence files were **committed with the
+   resolution** after the human's KEEP ruling (2026-10-12); no auto-commit
+   was made before the ruling.
 
 Measured machine context, disclosed: the campaign ran under real
 background load (Opera churn; one other-checkout test binary for a
