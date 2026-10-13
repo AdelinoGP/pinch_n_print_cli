@@ -1,0 +1,26 @@
+{
+  "benchy": {
+    "hole_bearing_union_rows": 16,
+    "selected_union_holes": 0,
+    "selected_count": 4,
+    "largest_union_holes": 2,
+    "body_union_output_maxima": [
+      12,
+      2,
+      3487,
+      2140
+    ]
+  },
+  "base": {
+    "hole_bearing_union_rows": 158,
+    "selected_union_holes": 0,
+    "selected_count": 6,
+    "largest_union_holes": 12,
+    "body_union_output_maxima": [
+      18,
+      12,
+      5420,
+      4242
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+   Compiling slicer-core v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-core)
+warning: slicer-wasm-host@0.1.0: Test guest prepass-layer-planning-guest.component.wasm is stale (source is newer). Run: cargo xtask build-guests
+   Compiling slicer-scheduler v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-scheduler)
+   Compiling slicer-sdk v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-sdk)
+   Compiling slicer-wasm-host v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host)
+   Compiling tree-support-planner v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\tree-support-planner)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 47s
+     Running unittests src\lib.rs (target\debug\deps\tree_support_planner-dfd4f6147124dd20.exe)
+
+running 1 test
+test t53_replay::t53_current_chain_native_replays_exact_ordered_wasm_intermediates ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 61 filtered out; finished in 0.04s
+

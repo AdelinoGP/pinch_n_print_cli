@@ -1,0 +1,104 @@
+{
+  "pass": true,
+  "modules_loaded": 24,
+  "stages": 12,
+  "modules": [
+    {
+      "id": "com.core.arachne-perimeters",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.classic-perimeters",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.fuzzy-skin",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.gyroid-infill",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.infill-linker",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.layer-planner-default",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.lightning-infill",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.machine-gcode-emit",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.overhang-classifier-default",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.part-cooling",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.path-optimization-default",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.raft-default",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.rectilinear-infill",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.seam-placer",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.seam-planner-default",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.skirt-brim",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.support-surface-ironing",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.top-surface-ironing",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.traditional-support",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.traditional-support-planner",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.tree-support",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.tree-support-planner",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.wave-overhangs",
+      "provenance": "external"
+    },
+    {
+      "id": "com.core.wipe-tower",
+      "provenance": "external"
+    }
+  ],
+  "diagnostics": []
+}

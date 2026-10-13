@@ -1,0 +1,100 @@
+{
+  "final_gates": [
+    {
+      "command": [
+        "python",
+        "docs\\specs\\perf-vs-orca\\evidence\\t53-union-simplify\\verify.py",
+        "--falsify"
+      ],
+      "exit_code": 0,
+      "log": "verifier.log"
+    },
+    {
+      "command": [
+        "git",
+        "apply",
+        "--check",
+        "docs\\specs\\perf-vs-orca\\evidence\\t53-union-simplify\\probe.patch"
+      ],
+      "exit_code": 0,
+      "log": "probe-patch.log"
+    },
+    {
+      "command": [
+        "git",
+        "apply",
+        "--check",
+        "docs\\specs\\perf-vs-orca\\evidence\\t53-union-simplify\\replay-hook.patch"
+      ],
+      "exit_code": 0,
+      "log": "replay-hook.log"
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "log": "diff-check.log"
+    },
+    {
+      "command": [
+        "cargo",
+        "xtask",
+        "build-guests",
+        "--check"
+      ],
+      "exit_code": 0,
+      "log": "ordinary-final-freshness.log"
+    },
+    {
+      "command": [
+        "cargo",
+        "xtask",
+        "build-guests",
+        "--accelerated",
+        "--check"
+      ],
+      "exit_code": 0,
+      "log": "accelerated-final-freshness.log"
+    }
+  ],
+  "native_replay": {
+    "command": [
+      "cargo",
+      "test",
+      "-p",
+      "tree-support-planner",
+      "--lib",
+      "--",
+      "t53_current_chain_native_replays_exact_ordered_wasm_intermediates",
+      "--nocapture"
+    ],
+    "exit_code": 0,
+    "passed": 1,
+    "log": "native-replay.log",
+    "output_teed_and_read": true
+  },
+  "builds": {
+    "commands": [
+      "cargo xtask dist --edition developer",
+      "cargo xtask dist --edition developer --accelerated"
+    ],
+    "baseline_and_probe_exit_codes": 0
+  },
+  "slice_cells": {
+    "baseline_and_probe": [
+      "ordinary-benchy",
+      "ordinary-base",
+      "accelerated-benchy",
+      "accelerated-base"
+    ],
+    "all_eight_exit_codes": 0,
+    "streamed_actual_byte_matches": 4
+  },
+  "source_and_input_hashes_still_match": true,
+  "inventoried_artifact_bytes_still_match": true,
+  "raw_archive": ".local-artifacts\\perimeter-reference-preparation\\t53-union-simplify",
+  "no_candidate_or_commit": true
+}
