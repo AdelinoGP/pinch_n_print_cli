@@ -1,0 +1,126 @@
+{
+  "recommendation": "DROP/inconclusive",
+  "automatic_commit": false,
+  "modes": {
+    "ordinary": {
+      "retained_pairs": 6,
+      "excluded_pairs": [],
+      "starvation_cutoffs": {
+        "baseline": 3.826633808512537,
+        "candidate": 3.7335838466688474
+      },
+      "medians": {
+        "baseline": {
+          "wall_seconds": 13.72259915,
+          "cpu_seconds": 69.2109375,
+          "cpu_wall_range": [
+            4.706833932169452,
+            5.1021784113500495
+          ]
+        },
+        "candidate": {
+          "wall_seconds": 13.8161574,
+          "cpu_seconds": 67.265625,
+          "cpu_wall_range": [
+            4.584740458949534,
+            4.978111795558463
+          ]
+        }
+      },
+      "paired_median_deltas": {
+        "wall_seconds": 0.07650030000000019,
+        "cpu_seconds": -1.5078125
+      },
+      "reduction_percent": {
+        "wall_seconds": -0.6817822846628907,
+        "cpu_seconds": 2.81070098205215
+      },
+      "pairs_favoring_candidate": {
+        "wall_seconds": 2,
+        "cpu_seconds": 5
+      },
+      "strict_range_separation": {
+        "wall_seconds": false,
+        "cpu_seconds": false
+      },
+      "output": {
+        "sha256": "5a61a1066a4607c6968cc038eb221a38ed39d30b5d26d8448ad87895abc92c4a",
+        "bytes": 3809027,
+        "type_counts": {
+          "Skirt": 1,
+          "Brim": 1,
+          "Outer wall": 698,
+          "Inner wall": 744,
+          "Bottom surface": 23,
+          "Bridge": 18,
+          "Sparse infill": 139,
+          "Internal solid infill": 6,
+          "Top surface": 32,
+          "Internal Bridge": 12
+        },
+        "open_loop_warnings": 1110
+      },
+      "gate_passed": false
+    },
+    "accelerated": {
+      "retained_pairs": 6,
+      "excluded_pairs": [],
+      "starvation_cutoffs": {
+        "baseline": 3.640589098684908,
+        "candidate": 3.6020794426391083
+      },
+      "medians": {
+        "baseline": {
+          "wall_seconds": 14.24602975,
+          "cpu_seconds": 66.1640625,
+          "cpu_wall_range": [
+            4.457319378252817,
+            4.854118798246544
+          ]
+        },
+        "candidate": {
+          "wall_seconds": 13.963873499999998,
+          "cpu_seconds": 65.875,
+          "cpu_wall_range": [
+            4.465494857562807,
+            4.802772590185477
+          ]
+        }
+      },
+      "paired_median_deltas": {
+        "wall_seconds": -0.2821562500000008,
+        "cpu_seconds": -0.1171875
+      },
+      "reduction_percent": {
+        "wall_seconds": 1.9805956814038073,
+        "cpu_seconds": 0.43688747195654853
+      },
+      "pairs_favoring_candidate": {
+        "wall_seconds": 5,
+        "cpu_seconds": 4
+      },
+      "strict_range_separation": {
+        "wall_seconds": false,
+        "cpu_seconds": false
+      },
+      "output": {
+        "sha256": "5a61a1066a4607c6968cc038eb221a38ed39d30b5d26d8448ad87895abc92c4a",
+        "bytes": 3809027,
+        "type_counts": {
+          "Skirt": 1,
+          "Brim": 1,
+          "Outer wall": 698,
+          "Inner wall": 744,
+          "Bottom surface": 23,
+          "Bridge": 18,
+          "Sparse infill": 139,
+          "Internal solid infill": 6,
+          "Top surface": 32,
+          "Internal Bridge": 12
+        },
+        "open_loop_warnings": 1110
+      },
+      "gate_passed": true
+    }
+  }
+}

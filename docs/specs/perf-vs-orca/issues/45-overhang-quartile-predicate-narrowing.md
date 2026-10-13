@@ -1,7 +1,8 @@
 # Overhang-quartile query: predicate narrowing + standing paired A/B
 
 Type: task
-Status: open
+Status: resolved (2026-10-05; human-approved DROP/inconclusive; source and active artifacts restored)
+Assignee: agpen (current OpenCode wayfinder session), 2026-10-05 — human authorized full gated take
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: 25 (46 resolved 2026-10-05 — gate prerequisite satisfied; see ## Work)
 
@@ -38,6 +39,13 @@ transfer is 0-16%.
 
 ## Work (only after explicit human authorization of this take)
 
+**Authorization recorded 2026-10-05:** human selected the full gated take:
+behavior-preserving implementation experiment and equivalence proof first,
+then paired ordinary + accelerated wall/CPU measurement only if correctness
+passes, using fresh post-repair baselines. Preserve existing exactly-on-edge
+verdicts; return KEEP/DROP to the human. No automatic commit, adoption retry,
+or default-mode switch.
+
 Gate prerequisite surfaced by [Clip-universe preparation hoist](44-clip-universe-hoist.md):
 **resolved by [Frozen-job output drift boundary](46-frozen-job-output-drift-boundary.md)
 (2026-10-05)** — the drift is intended (config-scope-resolution + the t47 fan
@@ -56,9 +64,10 @@ exception is still not map-wide.
   `indexed_overhang_quartile` (`crates/slicer-core/src/perimeter_spatial.rs`),
   which is value-preserving by construction but whose saving is unmeasured
   (the y-interval lookups may already reject most candidates).
-- Prove output equivalence first: the frozen supports-off Benchy Arachne
-  reference (`7049a06d…`) is byte-identical for the ordinary and accelerated
-  cells this take wants to claim; add a regression test that fails if the
+- Prove output equivalence first against freshly captured current-tree,
+  post-repair supports-off Benchy Arachne references in each mode (the retired
+  frozen `7049a06d…` is a historical control, not this take's oracle); add a
+  regression test that fails if the
   narrowed predicate ever disagrees with the full one on any in/out verdict.
 - Then the standing measurement: paired ordinary + accelerated, interleaved
   repeats with starvation exclusion, uninstrumented probe-free runs, isolated
@@ -68,10 +77,33 @@ exception is still not map-wide.
 
 ## Not authorized
 
-Any implementation, benchmark, or production change until the human explicitly
-authorizes this take; the ticket 25 study authorized attribution only.
+Any automatic commit, adoption retry, or default-mode switch. The human's
+2026-10-05 authorization above covers this take only; the ticket 25 study
+authorized attribution only.
 
-## Evidence
+## Resolution comment — human-approved DROP/inconclusive (2026-10-05)
+
+Human-authorized full gated take completed. Straight zero-epsilon boundary-pass
+removal changes existing edge verdicts and was not implemented. The alternate
+inclusive contour-bbox prefilter preserves both real proof pairs and every
+measured output against the current post-repair reference. Ordinary median wall
+increases despite lower CPU; accelerated medians improve slightly, with sample
+ranges overlapping in both modes. The standing paired-mode gate fails, so
+**DROP approved by the human**, not a CPU-only or one-sided KEEP exception.
+
+Detail, reduced samples/inventories, re-derivation, negative control and
+re-applicable candidate patch:
+[Quartile bbox findings](../evidence/t45-quartile-bbox/FINDINGS.md).
+The human selected **DROP and restore**. Candidate production code and tests
+were removed together; both Rust files match the pre-experiment tree exactly.
+The preserved patch passes `git apply --check`. Restored ordinary/accelerated
+active distribution inventories match their archived baseline snapshots, both
+guest freshness checks return exit 0, and normal workspace/debug binaries were
+rebuilt from the restored tree. The restored original spatial suite passes all
+three tests with the required features explicitly enabled. No commit, adoption
+retry, default switch or second ticket take occurred.
+
+## Originating attribution evidence
 
 [Arachne re-attribution findings](../evidence/t25-arachne-attribution/FINDINGS.md),
 probe preserved at `evidence/t25-arachne-attribution/probe.patch` +
