@@ -1,0 +1,26 @@
+   Compiling slicer-core v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-core)
+warning: missing documentation for the crate
+   --> crates\slicer-core\tests\perimeter_spatial_tdd.rs:1:1
+    |
+  1 | / use slicer_core::perimeter_utils::{
+  2 | |     expolygon_to_path3d, point_in_any_polygon, signed_distance_to_boundary,
+  3 | | };
+  4 | | use slicer_ir::slice_ir::QuartileBand;
+...   |
+759 | |     assert_eq!(fault_counters.indexed_queries, 0);
+760 | | }
+    | |_^
+    |
+    = note: requested on the command line with `-W missing-docs`
+
+warning: `slicer-core` (test "perimeter_spatial_tdd") generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 12.92s
+     Running tests\perimeter_spatial_tdd.rs (target\debug\deps\perimeter_spatial_tdd-2ff546618d325e2a.exe)
+
+running 3 tests
+test fallback_paths_are_nonvacuous ... ok
+test accelerated_mode_exercised_not_vacuous ... ok
+test exact_queries_match_legacy ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

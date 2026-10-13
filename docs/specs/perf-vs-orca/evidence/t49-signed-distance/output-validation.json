@@ -1,0 +1,68 @@
+[
+  {
+    "mode": "ordinary",
+    "phase": "baseline",
+    "evidence": {
+      "ValidatedGenerator": "arachne",
+      "CompletionStatus": "ok",
+      "FatalErrorCount": 0,
+      "NonFatalErrorCount": 0,
+      "Degraded": false
+    }
+  },
+  {
+    "mode": "ordinary",
+    "phase": "probe",
+    "evidence": {
+      "ValidatedGenerator": "arachne",
+      "CompletionStatus": "ok",
+      "FatalErrorCount": 0,
+      "NonFatalErrorCount": 0,
+      "Degraded": false
+    }
+  },
+  {
+    "mode": "ordinary",
+    "phase": "baseline-profile",
+    "evidence": {
+      "ValidatedGenerator": "arachne",
+      "CompletionStatus": "ok",
+      "FatalErrorCount": 0,
+      "NonFatalErrorCount": 0,
+      "Degraded": false
+    }
+  },
+  {
+    "mode": "accelerated",
+    "phase": "baseline",
+    "evidence": {
+      "ValidatedGenerator": "arachne",
+      "CompletionStatus": "ok",
+      "FatalErrorCount": 0,
+      "NonFatalErrorCount": 0,
+      "Degraded": false
+    }
+  },
+  {
+    "mode": "accelerated",
+    "phase": "probe",
+    "evidence": {
+      "ValidatedGenerator": "arachne",
+      "CompletionStatus": "ok",
+      "FatalErrorCount": 0,
+      "NonFatalErrorCount": 0,
+      "Degraded": false
+    }
+  },
+  {
+    "mode": "accelerated",
+    "phase": "baseline-profile",
+    "evidence": {
+      "ValidatedGenerator": "arachne",
+      "CompletionStatus": "ok",
+      "FatalErrorCount": 0,
+      "NonFatalErrorCount": 0,
+      "Degraded": false
+    }
+  }
+]
