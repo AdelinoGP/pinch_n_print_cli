@@ -160,6 +160,16 @@ per-difference analysis.
 
 ## Onward finding — 1.2.0 does change output (outside this ticket's question)
 
+> **Resolved 2026-10-07 by [clipper2 1.2.0 geometry delta](../../issues/31-clipper2-1-2-0-geometry-delta.md).**
+> The 2-of-367 result below was **reproduced exactly** and attributed to
+> `clean_collinear`, which turns out to be a **canonical-convergence fix**: the
+> repo's bundled canonical Clipper2 1.5.2 (what OrcaSlicer bundles) matches
+> **1.2.0**, not 1.1.0, and upstream's 1.2.0 note names the fix ("zero-width
+> spurs in union output"). The verdict there is **stay on 1.1.0** — the bump is
+> geometry-touching but buys no speed and does not improve DEV-173. Evidence:
+> [`../t31-clipper2-120/`](../t31-clipper2-120/FINDINGS.md). One correction to
+> the text below: `PolyFace64` is a **1.1.0** addition, not a 1.2.0 one.
+
 Recorded because the harness trap above surfaced it, and because
 [clipper2 1.1.0 upstream evidence](../../issues/16-clipper2-1-1-0-upstream-evidence.md)
 flagged v1.2.0 (tagged 2026-09-18) as unexamined. **This is not part of ticket

@@ -84,7 +84,7 @@ leaves are the high-CV ones; t15's slope-vs-mean rule for any comparison).
 
 **Onward context (not this ticket's question, no recommendation attached):**
 the harness trap that produced a false "real difference" also produced a real
-onward finding — **1.1.0 → 1.2.0 is *not* output-neutral.** 2 of 367 fixtures
+onward finding — **1.1.0 → 1.2.0 is *not* the same output.** 2 of 367 fixtures
 differ (a benchy `opening` and a `closing_ex` result each lose one collinear /
 near-collinear vertex), and the mechanism is a real code change in 1.2.0's
 `clean_collinear` (the tracked `start_op` replaces 1.1.0's re-read of
@@ -92,6 +92,14 @@ near-collinear vertex), and the mechanism is a real code change in 1.2.0's
 so an upgrade does not improve the DEV-173 posture. A future bump toward 1.2.0
 needs its own geometry A/B; the 1.1.0 bump, this ticket now establishes, did
 not.
+
+**Resolved 2026-10-07** by [clipper2 1.2.0 geometry delta](31-clipper2-1-2-0-geometry-delta.md):
+re-ran this ticket's preserved harness, reproduced the 2-of-367 result, and
+attributed the delta to `clean_collinear` — which is a **canonical-convergence
+fix**, not a divergence. Canonical Clipper2 1.5.2 (what OrcaSlicer bundles)
+matches **1.2.0** here, and upstream's 1.2.0 note names the fix ("zero-width
+spurs in union output"). Verdict there: **stay on 1.1.0**, unpinned-but-fixed —
+the bump buys no speed and does not improve DEV-173.
 
 **Process hazard recorded for future dependency A/Bs.** A scratch harness in
 its own workspace inherits only the *caret* requirement, so its lock floats to
