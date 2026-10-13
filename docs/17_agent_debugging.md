@@ -86,7 +86,8 @@ com.core.classic-perimeters                fuel  11.6%     1,500,901,794  calls 
   polygon_ops::clip_polygons                 0.8%        97,614,703  calls 880
   <module self>                              1.3%       166,245,964
 
-units: wall-clock (native host built-ins are NOT fuel-metered)
+units: wall-clock accumulated thread-time, not run wall
+(native host built-ins are NOT fuel-metered; parallel activations are summed)
 total: 916.6 ms across 5 built-in(s)
 
 host:slice                                 wall  61.6%          564.6 ms  calls 1832
@@ -103,6 +104,15 @@ Reading it:
   not meter, so they can only be ranked by wall-clock. They share the
   `polygon_ops::*` vocabulary but are never mixed into one ranking — each
   section's percentages are shares of *its own* total.
+- **The wall columns are accumulated thread-time, never wall.** Each value
+  sums one span per completed activation, and `flush_native`
+  (`crates/slicer-runtime/src/profiling_report.rs`) adds concurrently-running
+  rayon worker activations too, so a run-wide wall total can exceed the whole
+  run's wall-clock by roughly the mean concurrency — a 240-layer benchy once
+  read `polygon_ops::closing_ex` at ~34 s inside a `host:slice` block whose
+  `module_complete` was 3,889 ms of real wall. Use it to rank scopes (work
+  share) and never compare it to `module_complete`/phase walls or process CPU;
+  wall claims need a same-run stopwatch bracket from `--instrument-stderr`.
 - **Percentages decompose exactly.** A module's scope rows plus its
   `<module self>` row sum to the module's own percentage. `<module self>` is
   `module total − Σ scope self` — the module's own code plus anything it called
@@ -128,6 +138,11 @@ Reading it:
   section and the wall columns as *indicative only*: use them to see which
   scopes dominate, never as an absolute timing. **Absolute milliseconds come
   from a profiling-off run** (`--instrument-stderr` alone).
+- **Wall columns are accumulated thread-time, never wall.** Inflation is not
+  the only reason: each column also sums one span per completed activation
+  across *every thread*, so a run-wide value can exceed the run's own
+  wall-clock by the mean concurrency (detail above). A wall claim needs a same-run
+  `--instrument-stderr` bracket, not a profile-table column.
 - Fuel metering costs throughput, which is why it rides its own flag: a plain
   `--instrument-stderr` run is completely unaffected, and so is a run with no
   flags. Without `--profile`, no `profile_summary` event is emitted and no
@@ -168,6 +183,10 @@ is the single source for the current value.
   calls, total_fuel, total_wall_ns, self_fuel, self_wall_ns, scopes: [{scope,
   scope_id, calls, self_fuel, total_fuel, self_wall_ns, total_wall_ns}]}]}`.
   `unit` is `"fuel"` or `"wall_ns"` — always branch on it before comparing rows.
+  The `wall_ns` fields are accumulated thread-time, not run wall: every
+  activation's span is summed and parallel activations are added, so a run-wide
+  value can exceed the run's own wall-clock by the mean concurrency (see the
+  observer-effect contract above).
 - `profile_scopes` on `module_complete` — `--profile-verbose` only.
 
 ### `pnp_cli profile --from`
