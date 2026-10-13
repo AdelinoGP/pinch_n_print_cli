@@ -1,0 +1,8 @@
+{
+  "rejected": [
+    "vertex",
+    "hole",
+    "role",
+    "native_report"
+  ]
+}

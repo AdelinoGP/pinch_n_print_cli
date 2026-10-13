@@ -1,0 +1,66 @@
+{
+  "sha256": "7a4d7f0f081c331b3fe5289dec5286dd093ec68a5ebd547325aff6987e336e2e",
+  "bytes": 43912905,
+  "types": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 495,
+    "Inner wall": 494,
+    "Gap infill": 245,
+    "Support": 431,
+    "Bridge": 66,
+    "Bottom surface": 56,
+    "Sparse infill": 672,
+    "Support interface": 70,
+    "Top surface": 71,
+    "Internal Bridge": 6,
+    "Internal solid infill": 2
+  },
+  "generator": [
+    "; wall_generator = classic"
+  ],
+  "fan_commands": 628,
+  "support_extruding_xy_moves": {
+    "Support": 505179,
+    "Support interface": 3536
+  },
+  "completion": {
+    "schema_version": "1.5.0",
+    "event": "slice_complete",
+    "timestamp_ms": 1791342694556,
+    "slice_id": "slice-1791341886910",
+    "status": "ok",
+    "elapsed_ms": 807546,
+    "degraded": false,
+    "fatal_error_count": 0,
+    "non_fatal_error_count": 0
+  },
+  "stats": [
+    {
+      "schema_version": "1.5.0",
+      "event": "slice_stats",
+      "timestamp_ms": 1791342694556,
+      "slice_id": "slice-1791341886910",
+      "status": "ok",
+      "gcode_prediction_seconds": 38184,
+      "gcode_filament_length_mm": 30558.4921875,
+      "layer_count": 495,
+      "first_layer_height_mm": 0.2,
+      "extruded_volume_mm3": {
+        "0": 73501.78739828942
+      },
+      "toolchange_count": 0
+    },
+    {
+      "schema_version": "1.5.0",
+      "event": "slice_complete",
+      "timestamp_ms": 1791342694556,
+      "slice_id": "slice-1791341886910",
+      "status": "ok",
+      "elapsed_ms": 807546,
+      "degraded": false,
+      "fatal_error_count": 0,
+      "non_fatal_error_count": 0
+    }
+  ]
+}
