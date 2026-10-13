@@ -1,7 +1,8 @@
 # mesh_ops fixture limits: repair/cube no-op scan and decimate/cube_default rejected target
 
 Type: task
-Status: open
+Status: resolved (2026-10-07; fixture strategy recorded, both leaves replaced, fresh baselines captured — see ## Answer)
+Assignee: agpen (current OpenCode wayfinder session), 2026-10-07 — human selected the small non-timing family; 29 first in number order
 
 ## Question
 
@@ -64,3 +65,51 @@ on the timing chain.
 
 Deliverable: `repair` and `decimate` leaves that measure a successful
 operation, with fresh baselines and a check that fails on a no-op fixture.
+
+## Answer — resolved 2026-10-07
+
+**Both leaves now measure a successful operation; the fixture choice is
+recorded and the no-op shape is falsifiable.** Full evidence:
+[`evidence/t29-mesh-ops-fixtures/FINDINGS.md`](../evidence/t29-mesh-ops-fixtures/FINDINGS.md);
+machine-readable baselines in
+[`baselines.json`](../evidence/t29-mesh-ops-fixtures/baselines.json) (reduced by
+`reduce-baselines.py`, checkout-verified by `verify-t29.py`, whose sabotage
+control exits 1).
+
+**Strategy (recorded, not silent):**
+
+- `mesh_ops/repair/cube` → `mesh_ops/repair/wedge` on
+  `resources/regression_wedge.stl` (tracked): real damage
+  (`faces_reoriented: 12`, `open_edges_closed: 56` at HEAD).
+- `mesh_ops/decimate/cube_default` → `mesh_ops/decimate/calicat_default` on
+  `resources/calicat.stl` (tracked): the **default** `max_error = 0.01`
+  reaches `target_ratio(0.5)` (876 → 438); `regression_wedge` could not
+  (80 → 80), so no `max_error` change was needed — the fixture density is the
+  fix, keeping the declared target and default budget intact.
+- `cube.step` is **untouched**; no fixture any other test depends on was
+  swapped. The bench loads fixtures through `slicer_model_io::load_model` (the
+  production `pnp_cli mesh repair|decimate` STL path) via a new dev-dependency
+  on `slicer-model-io` (no cycle; `slicer-model-io` does not depend on
+  `slicer-helpers`).
+
+**Falsifiability:** in-bench guards in `benches/mesh_ops.rs` panic before
+timing if repair touches nothing or decimate stops above target;
+`tests/mesh_ops_bench_fixtures_tdd.rs` repeats both predicates plus a negative
+control (`pre_ticket_cube_fixture_would_fail_both_guards`) that asserts the
+pre-ticket `cube.step` load path fails both — proving the predicates catch the
+historical defect rather than being vacuously true.
+
+**Fresh baselines** (`cargo bench -p slicer-helpers --bench mesh_ops`,
+2026-10-07, HEAD `3d7dc946`, `base == new` on all four leaves):
+`repair/wedge` 36.296 µs mean / 32.892 µs median; `decimate/calicat_default`
+185.572 µs / 178.290 µs; `import_step/cube` 1.4108 ms / 1.3570 ms;
+`import_step/assembly` 2.4065 ms / 2.3872 ms. The pre-ticket leaves
+(2.947 µs / 3.745 µs) are superseded and not comparable; the note lives in the
+bench doc comment, `baselines.json`, and a pointer added to t15's
+`BASELINES.md`/`FINDINGS.md`.
+
+**Gates:** `cargo test -p slicer-helpers` all green (guard file 3/3);
+`cargo build --workspace`; `cargo clippy --workspace --all-targets -- -D
+warnings`; `cargo fmt --check`; `cargo xtask check-literals`; touched-file
+`check-test-quality --report` — all clean. No timing campaign, adoption,
+commit or route claim is part of this ticket; it moves no map cell.

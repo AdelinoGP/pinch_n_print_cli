@@ -45,6 +45,13 @@ stage-id strings, so its 6.73 ns is 13 lookups (see FINDINGS.md #4).
 
 ## `mesh_ops`
 
+> **Superseded leaves (2026-10-07).** `mesh_ops/decimate/cube_default` and
+> `mesh_ops/repair/cube` were replaced by
+> [mesh_ops fixture limits](../../issues/29-mesh-ops-fixture-limits.md)
+> (`decimate/calicat_default`, `repair/wedge`); their values below are kept as
+> the pre-ticket record and are not comparable to the current leaves. Fresh
+> baselines: [`evidence/t29-mesh-ops-fixtures/baselines.json`](../t29-mesh-ops-fixtures/baselines.json).
+
 | benchmark | mean | median | 95% CI (mean) | CV | outliers | n | iters | mode |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `mesh_ops/decimate/cube_default` | 3.745 µs | 3.693 µs | 3.707 µs – 3.795 µs | 6.02% | 5 (1lm/0ls/2hm/2hs) | 100 | 236–23600 | Linear |
