@@ -1,0 +1,55 @@
+{
+  "provenance": "Completed manage.py gates invocation recorded PASS for each command; archived original logs, no gate rerun or source change during timing.",
+  "candidate_patch_sha256": "ecc20349dd2365cabd065b87949add7a5b8a69fd6941107394c7aee614a4d0f0",
+  "gates": {
+    "workspace-build": {
+      "command": [
+        "cargo",
+        "build",
+        "--workspace"
+      ],
+      "observed_checked_exit_code": 0,
+      "log": "workspace-build.log",
+      "log_sha256": "c9a071db36ab5b68c42612471d546b3073ab8fa0f70ae64744a343d25a702bf5"
+    },
+    "clippy": {
+      "command": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--features",
+        "slicer-core/perimeter-spatial-test-support",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "observed_checked_exit_code": 0,
+      "log": "clippy.log",
+      "log_sha256": "edbcdd26518799d8da4c213a234c4ce3108426c7c3405f14cc1b1c8ffe39e772"
+    },
+    "literals": {
+      "command": [
+        "cargo",
+        "xtask",
+        "check-literals"
+      ],
+      "observed_checked_exit_code": 0,
+      "log": "literals.log",
+      "log_sha256": "34c769cab96a338feec2e8de65e3185f1ccf3bd0805d02df53e7dd155ea2e7df"
+    },
+    "test-quality": {
+      "command": [
+        "cargo",
+        "xtask",
+        "check-test-quality",
+        "--report",
+        "crates/slicer-core/src/perimeter_spatial.rs",
+        "crates/slicer-core/tests/perimeter_spatial_tdd.rs"
+      ],
+      "observed_checked_exit_code": 0,
+      "log": "test-quality.log",
+      "log_sha256": "ea0190500a9c25ccd583481c759c772d16a820d7d2dcbe8d2e27b00f508a005a"
+    }
+  }
+}
