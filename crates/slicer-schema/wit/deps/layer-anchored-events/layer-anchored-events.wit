@@ -1,7 +1,7 @@
 package slicer:layer-anchored-events@1.0.0;
 
 interface anchored-events {
-    use slicer:ir-handles/ir-handles.{layer-idx, slice-region-view,
+    use slicer:ir-handles/ir-handles@1.0.0.{layer-idx, slice-region-view,
         layer-collection-builder};
     use slicer:config/config-types.{config-view};
     use slicer:common/module-errors.{module-error};
@@ -14,6 +14,6 @@ world anchored-events-module {
     import slicer:common/host-services;
     import slicer:common/profiling;
     import slicer:config/config-types;
-    import slicer:ir-handles/ir-handles;
+    import slicer:ir-handles/ir-handles@1.0.0;
     export anchored-events;
 }

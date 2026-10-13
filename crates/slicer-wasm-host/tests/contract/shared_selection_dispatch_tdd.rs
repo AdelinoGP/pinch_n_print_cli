@@ -19,6 +19,7 @@ use slicer_sdk::layer_collection_builder::LayerCollectionBuilder;
 use slicer_sdk::native::{
     NativeLayerRequest, NativeLayerResponse, NativeStageEntry, NativeSupportOutput,
 };
+use slicer_sdk::PaintRegionLayerView;
 use slicer_wasm_host::host::layer::slicer::config::config_types::HostConfigView;
 use slicer_wasm_host::host::layer::slicer::ir_handles::ir_handles::HostSliceRegionView;
 use slicer_wasm_host::host::{config_view_to_data, HostExecutionContextBuilder};
@@ -392,6 +393,18 @@ fn merged_sources_and_multiple_roles() {
         variant_chain: chain(tool),
     });
     let raw_ids = [7_000_002, 7_000_003];
+    // Repaired stored selection identity is SOURCE space; `keys` stay the
+    // exact derived map-space config addresses seeded into the map below.
+    let source_keys = [
+        RegionKey {
+            region_id: raw_ids[0],
+            ..keys[0].clone()
+        },
+        RegionKey {
+            region_id: raw_ids[1],
+            ..keys[1].clone()
+        },
+    ];
     let child_id = slicer_ir::modifier_sub_region_id(raw_ids[0], "modifier", &[]);
     let child_key = RegionKey {
         region_id: child_id,
@@ -457,8 +470,12 @@ fn merged_sources_and_multiple_roles() {
         "exactly two model source targets"
     );
     for (key, members, width) in [
-        (&keys[0], vec![keys[0].clone(), child_key.clone()], 0.4),
-        (&keys[1], vec![keys[1].clone()], 0.6),
+        (
+            &source_keys[0],
+            vec![source_keys[0].clone(), child_key.clone()],
+            0.4,
+        ),
+        (&source_keys[1], vec![source_keys[1].clone()], 0.6),
     ] {
         let target = selection
             .targets
@@ -587,7 +604,7 @@ fn merged_sources_and_multiple_roles() {
         .iter()
         .find(|t| {
             matches!(&t.source,
-        LayerTargetSource::Model { key, .. } if key == &keys[0])
+        LayerTargetSource::Model { key, .. } if key == &source_keys[0])
         })
         .unwrap();
     assert_eq!(
@@ -647,6 +664,7 @@ fn support_entry(index: usize, global: i32, anchor: u32) -> SupportPlanEntry {
         capabilities: vec![],
         provenance: vec!["planner-fixture".into()],
         decline_reason: None,
+        variant_chain: vec![], // genuinely chain-empty plan source (AC-B2 transport handle)
     }
 }
 
@@ -658,7 +676,11 @@ fn native_support(
     let paint = request.paint.as_ref().expect("support paint plan view");
     let mut output = SupportOutputBuilder::new();
     for region in &request.regions {
-        for entry in paint.support_plan_entries_for(region.object_id(), *region.region_id()) {
+        for entry in paint.support_plan_entries_for(
+            region.object_id(),
+            *region.region_id(),
+            region.variant_chain(),
+        ) {
             if entry.anchor_layer_index != request.layer_index || entry.decline_reason.is_some() {
                 continue;
             }
@@ -748,6 +770,7 @@ fn carrier_selection_delivery_fixture() {
             entry_index: 0,
             object_id: "carrier-0".into(),
             region_id: 70,
+            variant_chain: vec![],
             family: "traditional".into(),
             demand_ids: vec!["demand-0".into()],
             body_ids: vec!["body-0".into()],
@@ -827,13 +850,19 @@ fn carrier_selection_delivery_fixture() {
         .unwrap(),
         Some(0.8)
     );
-    let paint = slicer_wasm_host::dispatch::build_support_plan_layer_data_for_test(7, &plan);
+    // The module-facing support view independently retains anchor-layer
+    // filtering: the eligible carrier-0 plan entry is anchored at layer 3 and
+    // must not surface through a layer-7 view, while the anchor-7 carrier-1
+    // entry does.
+    let view = PaintRegionLayerView::new(7).with_support_plan(Arc::new(plan));
     assert!(
-        !paint
-            .support_plan_entries
-            .contains_key(&("carrier-0".into(), "70".into())),
-        "paint view independently retains anchor-layer filtering"
+        view.support_plan_entries_for("carrier-0", 70, &[])
+            .is_empty(),
+        "support view independently retains anchor-layer filtering"
     );
+    assert!(!view
+        .support_plan_entries_for("carrier-1", 71, &[])
+        .is_empty());
 }
 
 fn support_rendering_positive_control() {

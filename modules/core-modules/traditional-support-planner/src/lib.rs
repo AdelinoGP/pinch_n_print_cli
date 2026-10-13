@@ -304,12 +304,15 @@ impl SupportPlanner {
         support_analysis: &SupportAnalysisView,
         object_id: &str,
         region_id: &str,
+        variant_chain: &[(String, PaintValue)],
         layer: u32,
     ) -> Vec<ExPolygon> {
         if polys.is_empty() {
             return polys;
         }
-        if let Some(own) = support_analysis.region_territory(object_id, layer, region_id) {
+        if let Some(own) =
+            support_analysis.region_territory(object_id, layer, region_id, variant_chain)
+        {
             return host::clip_polygons(&polys, own, ClipOperation::Intersection);
         }
         let Some(partition) = support_analysis.territory_partition(object_id, layer, "traditional")
@@ -423,6 +426,7 @@ impl SupportPlanner {
             .filter(|surface| {
                 surface.object_id == obj.object_id
                     && surface.region_id == candidate.region_id
+                    && surface.variant_chain == candidate.variant_chain
                     && surface.global_support_layer_index < emit_top_layer
                     && expolygons_overlap(&contact_geometry, &surface.polygons)
             })
@@ -495,6 +499,7 @@ impl SupportPlanner {
                 support_analysis,
                 &obj.object_id,
                 &candidate.region_id,
+                &candidate.variant_chain,
                 layer,
             );
             let trimming: Vec<ExPolygon> = if occupancy.is_empty() {
@@ -524,6 +529,7 @@ impl SupportPlanner {
                 support_analysis,
                 &obj.object_id,
                 &candidate.region_id,
+                &candidate.variant_chain,
                 layer,
             );
             if carry.is_empty() {
@@ -595,6 +601,7 @@ impl SupportPlanner {
                         support_analysis,
                         &obj.object_id,
                         &candidate.region_id,
+                        &candidate.variant_chain,
                         layer,
                     );
                     self.clip_to_territory(
@@ -602,6 +609,7 @@ impl SupportPlanner {
                         support_analysis,
                         &obj.object_id,
                         &candidate.region_id,
+                        &candidate.variant_chain,
                         layer,
                     )
                 }
@@ -667,6 +675,7 @@ impl SupportPlanner {
                     .filter(|surface| {
                         surface.object_id == obj.object_id
                             && surface.region_id == candidate.region_id
+                            && surface.variant_chain == candidate.variant_chain
                             && surface.global_support_layer_index == term_layer
                     })
                     .flat_map(|surface| surface.polygons.iter().cloned())
@@ -806,6 +815,7 @@ impl SupportPlanner {
                 )],
                 provenance: vec!["traditional-support-planner".to_string()],
                 decline_reason: None,
+                variant_chain: candidate.variant_chain.clone(),
             };
             // Every planned entry is buffered: `plan_for_object` unions the
             // ones that share a support-region identity before any of them
@@ -1293,7 +1303,8 @@ fn packet239d_coarse_planes(below_units: i64, above_units: i64, pitch_mm: f64) -
 }
 
 /// The `global_layer_index` of a retained GRID row that already occupies this
-/// synthesized row's `(object_id, region_id, anchor_z)`, if one does.
+/// synthesized row's `(object_id, region_id, variant_chain, anchor_z)`, if one
+/// does.
 ///
 /// Packet 239c inserts an intermediate row wherever the gap between two
 /// consecutive surviving rows of one body exceeds the support pitch. That
@@ -1328,6 +1339,7 @@ fn grid_index_at_plane<'a>(
                 && row.global_layer_index >= 0
                 && row.object_id == synthesized.object_id
                 && row.region_id == synthesized.region_id
+                && row.variant_chain == synthesized.variant_chain
                 && row.anchor_z == synthesized.anchor_z
         })
         .map(|row| row.global_layer_index)
@@ -1348,8 +1360,8 @@ fn next_intermediate_plane_index(
 }
 
 /// Union the planned entries that share one `(global_layer_index, object_id,
-/// region_id, anchor_z)` support-region identity, so the plan this module
-/// publishes satisfies the identity the IR enforces.
+/// region_id, ordered variant_chain, anchor_z)` support-region identity, so the
+/// plan this module publishes satisfies the identity the IR enforces.
 ///
 /// This is the producer-side invariant, deliberately retained: **one
 /// `SupportPlanEntry` exists per support-region identity, and the producer is
@@ -1363,7 +1375,7 @@ fn next_intermediate_plane_index(
 /// `SupportPlanIR::duplicate_region_identity` (`crates/slicer-ir/src/slice_ir.rs`),
 /// checked by `Blackboard::commit_support_plan`
 /// (`crates/slicer-runtime/src/blackboard.rs`), admits exactly ONE entry per
-/// `(global_layer_index, object_id, region_id)`. This planner emits one entry
+/// `(global_layer_index, object_id, region_id, variant_chain)`. This planner emits one entry
 /// per *candidate* per layer, so an object/region carrying several demands
 /// whose columns reach a common layer produces several entries for one
 /// identity; without this merge the commit is rejected outright.
@@ -1371,21 +1383,23 @@ fn next_intermediate_plane_index(
 /// Merge semantics: role regions are concatenated per role kind (no clipping,
 /// so no planned area is lost), and the identity lists are extended then
 /// deduplicated. `anchor_z` is part of the key rather than merged over: within
-/// one object a layer index maps to a single physical plane (the direct path
-/// derives `anchor_z` from the layer's `z`, and `next_intermediate_plane_index`
-/// mints one synthetic index per plane), so no group can hold two planes, and
-/// independent support rows that deliberately carry distinct planes keep
-/// distinct indices.
+/// one exact source `(object_id, region_id, variant_chain)` a layer index maps
+/// to a single physical plane (the direct path derives `anchor_z` from the
+/// layer's `z`, and `next_intermediate_plane_index` mints one synthetic index
+/// per plane), so no group can hold two planes, and independent support rows
+/// that deliberately carry distinct planes keep distinct indices.
 ///
 /// That last sentence is an invariant, not a hope, so the strict public helper
 /// checks it. The strict merge REJECTS - returning `ModuleError::fatal` rather
 /// than publishing - when
 /// either direction of the layer/plane correspondence breaks within one plan:
 ///
-/// - two entries share `(global_layer_index, object_id, region_id)` but carry
-///   different `anchor_z` (one layer index claiming two planes); or
-/// - two entries share `(object_id, region_id, anchor_z)` but carry different
-///   `global_layer_index` (one plane claiming two layer indices).
+/// - two entries share `(global_layer_index, object_id, region_id,
+///   variant_chain)` but carry different `anchor_z` (one layer index claiming
+///   two planes); or
+/// - two entries share `(object_id, region_id, variant_chain, anchor_z)` but
+///   carry different `global_layer_index` (one plane claiming two layer
+///   indices).
 ///
 /// The second rule was scoped by index space in packet 241b and is UNSCOPED
 /// again for the strict helper. It was scoped because the coarse
@@ -1394,8 +1408,9 @@ fn next_intermediate_plane_index(
 /// fixed at the producer by `grid_index_at_plane`. Every entry is born with a
 /// grid index (`layer as i32`), and the only negative indices come from
 /// `next_intermediate_plane_index`, whose two call sites both consult
-/// `grid_index_at_plane` first - so a plane of one object/region is owned by a
-/// grid index or by one minted index, never both, and the literal rule holds.
+/// `grid_index_at_plane` first - so a plane of one object/region/chain is
+/// owned by a grid index or by one minted index, never both, and the literal
+/// rule holds.
 /// The planner's private layer-plan-aware wrapper is the one deliberate
 /// exception: 240a's unshifted Z representation gives a raft grid row and a
 /// model grid row the same `anchor_z`, while their global indices remain
@@ -1457,15 +1472,20 @@ fn merge_region_identity_entries_with_plane_aliases(
     plane_aliases: &BTreeMap<i64, BTreeSet<i32>>,
 ) -> Result<(), ModuleError> {
     let mut merged: Vec<SupportPlanEntry> = Vec::with_capacity(entries.len());
-    let mut index_by_identity: BTreeMap<(i32, String, String, i64), usize> = BTreeMap::new();
+    let mut index_by_identity: BTreeMap<
+        (i32, String, String, Vec<(String, PaintValue)>, i64),
+        usize,
+    > = BTreeMap::new();
     // The two directions of the layer-index <-> plane correspondence, each
     // recording the first witness so a disagreement can name both sides.
-    let mut plane_of_layer: BTreeMap<(i32, String, String), i64> = BTreeMap::new();
+    let mut plane_of_layer: BTreeMap<(i32, String, String, Vec<(String, PaintValue)>), i64> =
+        BTreeMap::new();
     // Unscoped: every entry is born with a grid index, and the only
     // negative indices come from `next_intermediate_plane_index`, whose two
     // call sites both defer to `grid_index_at_plane` first. So a plane is owned
     // by a grid index or by one minted index, never both.
-    let mut layer_of_plane: BTreeMap<(String, String, i64), i32> = BTreeMap::new();
+    let mut layer_of_plane: BTreeMap<(String, String, Vec<(String, PaintValue)>, i64), i32> =
+        BTreeMap::new();
     for entry in entries.drain(..) {
         if entry.decline_reason.is_some() {
             merged.push(entry);
@@ -1475,6 +1495,7 @@ fn merge_region_identity_entries_with_plane_aliases(
             entry.global_layer_index,
             entry.object_id.clone(),
             entry.region_id.clone(),
+            entry.variant_chain.clone(),
         )) {
             btree_map::Entry::Vacant(slot) => {
                 slot.insert(entry.anchor_z);
@@ -1497,6 +1518,7 @@ fn merge_region_identity_entries_with_plane_aliases(
         match layer_of_plane.entry((
             entry.object_id.clone(),
             entry.region_id.clone(),
+            entry.variant_chain.clone(),
             entry.anchor_z,
         )) {
             btree_map::Entry::Vacant(slot) => {
@@ -1526,6 +1548,7 @@ fn merge_region_identity_entries_with_plane_aliases(
             entry.global_layer_index,
             entry.object_id.clone(),
             entry.region_id.clone(),
+            entry.variant_chain.clone(),
             entry.anchor_z,
         );
         let Some(&index) = index_by_identity.get(&identity) else {
@@ -1591,6 +1614,7 @@ fn push_declined(
             capabilities: Vec::new(),
             provenance: vec!["traditional-support-planner".to_string()],
             decline_reason: Some(reason),
+            variant_chain: candidate.variant_chain.clone(),
         })
         .map_err(|e| ModuleError::fatal(1, format!("push_support_plan failed: {e}")))?;
     Ok(())
@@ -1616,33 +1640,34 @@ fn push_policy_declined(
             capabilities: Vec::new(),
             provenance: vec!["traditional-support-planner".to_string()],
             decline_reason: Some(SupportPlanDeclineReason::DeclinedPolicy),
+            variant_chain: candidate.variant_chain.clone(),
         })
         .map_err(|e| ModuleError::fatal(1, format!("push_support_plan failed: {e}")))?;
     Ok(())
 }
 
-/// Resolve the canonical support family for a candidate from the host's
-/// per-region family assignments, falling back to the planner's own family.
-/// Resolve the canonical support family for a candidate from the host's
-/// per-region family assignments.
+/// Resolve the canonical support family for one candidate from the host's
+/// exact full-source assignments `(object_id, region_id, ordered
+/// variant_chain)`.
 ///
-/// Returns `None` when the host made no assignment for this region, in which
-/// case the planner plans nothing for it. `PrePass::SupportAnalysis` is the
-/// single authority; a planner that falls back to its own family can publish
-/// entries for regions region routing assigned elsewhere, and the resulting
-/// disagreement is silent (see the tree planner's `candidate_family`).
+/// Returns `None` when the host made no assignment for this exact source, in
+/// which case the planner plans nothing for it. `PrePass::SupportAnalysis` is
+/// the single authority; a planner that falls back to its own family can
+/// publish entries for regions region routing assigned elsewhere, and the
+/// resulting disagreement is silent (see the tree planner's `candidate_family`).
+/// A pair-only match is never a fallback: two sources of one region that differ
+/// only by ordered chain carry independent assignments.
 fn candidate_family(
     candidate: &SupportAnalysisCandidate,
     analysis: &SupportAnalysisView,
 ) -> Option<String> {
     analysis
-        .family_assignments
-        .iter()
-        .find(|assignment| {
-            assignment.object_id == candidate.object_id
-                && assignment.region_id == candidate.region_id
-        })
-        .map(|assignment| canonical_support_family_alias(Some(&assignment.family_id)))
+        .family_of(
+            &candidate.object_id,
+            &candidate.region_id,
+            &candidate.variant_chain,
+        )
+        .map(|family| canonical_support_family_alias(Some(family)))
 }
 
 /// Resolve the global support selection to the family vocabulary shared by
@@ -1701,6 +1726,7 @@ fn occupancy_at(
     analysis: &SupportAnalysisView,
     object_id: &str,
     region_id: &str,
+    variant_chain: &[(String, PaintValue)],
     layer: u32,
 ) -> Vec<ExPolygon> {
     analysis
@@ -1709,6 +1735,7 @@ fn occupancy_at(
         .filter(|entry| {
             entry.object_id == object_id
                 && entry.region_id == region_id
+                && entry.variant_chain.as_slice() == variant_chain
                 && entry.global_support_layer_index == layer
         })
         .flat_map(|entry| entry.polygons.iter().cloned())

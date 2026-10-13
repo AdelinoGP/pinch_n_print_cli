@@ -321,6 +321,11 @@ fn lightning_paint(segments: &[((f32, f32), (f32, f32))]) -> PaintRegionLayerVie
                     ]
                 })
                 .collect(),
+            // Chainless fixture: every region in this file is built without a
+            // variant chain, so the empty chain is the exact source identity —
+            // `lightning_tree_segments_for` matches the chain exactly and a
+            // pair-only lookup is never a fallback.
+            ..LightningTreeEntry::default()
         }],
         ..Default::default()
     };

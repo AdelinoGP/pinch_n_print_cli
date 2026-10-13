@@ -13,8 +13,8 @@ fn binding_surface_matches_manifest() {
     assert_eq!(TreeSupport::__slicer_stage_export_name(), "run");
     assert_eq!(
         TreeSupport::__slicer_module_schema().stage_export,
-        "slicer:layer-support/support@1.0.0#run"
+        "slicer:layer-support/support@2.0.0#run"
     );
     let exports = TreeSupport::__slicer_wit_exports();
-    assert!(exports.contains(&"slicer:layer-support/support@1.0.0#run"));
+    assert!(exports.contains(&"slicer:layer-support/support@2.0.0#run"));
 }

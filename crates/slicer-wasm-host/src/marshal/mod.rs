@@ -7,6 +7,7 @@ pub mod native;
 pub mod origin;
 pub mod out;
 pub mod prepared;
+pub(crate) mod transport;
 
 pub use accumulators::{
     AnchoredEventsCollected, GcodeCommandCollected, GcodeOutputCollected, InfillOutputCollected,

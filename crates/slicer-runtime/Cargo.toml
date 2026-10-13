@@ -111,6 +111,10 @@ path = "../../modules/core-modules/classic-perimeters"
 [dev-dependencies.tree-support-planner]
 path = "../../modules/core-modules/tree-support-planner"
 
+# AC-R8: exercise the real macro-generated native prepass entry alongside WASM.
+[dev-dependencies.traditional-support-planner]
+path = "../../modules/core-modules/traditional-support-planner"
+
 # packet 148 (AC-9): arachne_parity.rs drives ArachnePerimeters::run_perimeters
 # natively (mirroring the module's own canonical tdd tests) instead of
 # substring-matching its source text.

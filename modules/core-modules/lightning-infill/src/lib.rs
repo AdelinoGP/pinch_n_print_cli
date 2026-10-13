@@ -120,9 +120,15 @@ impl LayerModule for LightningInfill {
             }
 
             let z = region.z();
-            for segment in
-                _paint.lightning_tree_segments_for(region.object_id(), *region.region_id())
-            {
+            // Exact source query: the full `(object_id, region_id, ordered
+            // variant_chain)` must match the committed tree entry. A pair-only
+            // lookup is never a fallback (SDK `lightning_tree_segments_for`
+            // contract; AC-R9).
+            for segment in _paint.lightning_tree_segments_for(
+                region.object_id(),
+                *region.region_id(),
+                region.variant_chain(),
+            ) {
                 let points = segment
                     .into_iter()
                     .map(|point| Point3WithWidth {

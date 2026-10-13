@@ -185,63 +185,106 @@ pub fn project_seam_planning_view(
     host::SeamPlanningViewData { regions }
 }
 
-/// Project `RegionMapIR` into a deterministic WIT `RegionSegmentationView`.
+/// Project committed SOURCE origins plus `RegionMapIR` configuration into the
+/// deterministic WIT `RegionSegmentationView`.
 ///
-/// Entries are sorted by `(global_layer_index ASC, object_id ASC)` with each
-/// entry's `region_ids` sorted ASC. This ensures byte-identical projections
-/// across consecutive runs.
+/// Origins are enumerated from the authoritative committed `SliceIR` sources in
+/// committed identity order — one row per full SOURCE origin, ordered by first
+/// appearance and never sorted or deduplicated. `region_origins` carries each
+/// origin's SOURCE region id together with that origin's own ordered
+/// `variant_chain` (from `SlicedRegion.variant_chain`), in that order.
+/// `region_support_configs` emits one
+/// row per full SOURCE origin; the support-family aliases resolve through the
+/// exact source-to-map address conversion (`region_map_key_for_sliced_region`),
+/// so a sibling or base id can never satisfy the lookup.
 pub fn project_region_segmentation_view(
     region_map_ir: &slicer_ir::RegionMapIR,
+    slice_ir: &[slicer_ir::SliceIR],
 ) -> host::prepass::RegionSegmentationView {
-    // Group by (global_layer_index, object_id).
-    use std::collections::BTreeMap;
-    let mut grouped: BTreeMap<(u32, String), Vec<String>> = BTreeMap::new();
-    for key in region_map_ir.entries.keys() {
-        let entry = grouped
-            .entry((key.global_layer_index, key.object_id.clone()))
-            .or_default();
-        entry.push(key.region_id.to_string());
+    use host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::RegionSourceOrigin;
+
+    // Group SOURCE origins by (layer, object) in committed first-appearance
+    // order. Distinct origins that share a region id stay distinct rows.
+    let mut grouped: Vec<((u32, String), Vec<&slicer_ir::SlicedRegion>)> = Vec::new();
+    for slice in slice_ir {
+        for region in &slice.regions {
+            let index = grouped.iter().position(|((layer, object), _)| {
+                *layer == slice.global_layer_index && *object == region.object_id
+            });
+            let origins = match index {
+                Some(index) => &mut grouped[index].1,
+                None => {
+                    grouped.push((
+                        (slice.global_layer_index, region.object_id.clone()),
+                        Vec::new(),
+                    ));
+                    &mut grouped.last_mut().expect("group was just pushed").1
+                }
+            };
+            origins.push(region);
+        }
     }
-    let mut entries: Vec<host::prepass::RegionSegmentationViewEntry> = grouped
+    let entries: Vec<host::prepass::RegionSegmentationViewEntry> = grouped
         .into_iter()
-        .map(|((layer_index, object_id), mut region_ids)| {
-            region_ids.sort(); // ASC by region_id string
-            host::prepass::RegionSegmentationViewEntry {
+        .map(
+            |((layer_index, object_id), origins)| host::prepass::RegionSegmentationViewEntry {
                 object_id,
                 layer_index,
-                region_ids,
-            }
-        })
-        .collect();
-    // Already sorted by BTreeMap key order, but explicit sort for clarity.
-    entries.sort_by(|a, b| {
-        a.layer_index
-            .cmp(&b.layer_index)
-            .then_with(|| a.object_id.cmp(&b.object_id))
-    });
-    let mut region_support_configs = Vec::new();
-    for key in region_map_ir.entries.keys() {
-        let config = region_map_ir.config_for(key).to_config_map();
-        let string_value = |name: &str| match config.get(name) {
-            Some(slicer_ir::ConfigValue::String(value)) => Some(value.clone()),
-            _ => None,
-        };
-        region_support_configs.push(
-            crate::host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::RegionSupportConfig {
-            object_id: key.object_id.clone(),
-            layer_index: key.global_layer_index,
-            region_id: key.region_id.to_string(),
-            support_family: string_value("support_family"),
-            support_type: string_value("support_type"),
+                // One row per full SOURCE origin: each origin carries the
+                // committed `SlicedRegion.variant_chain` it was sliced with —
+                // never a config-map address or an empty placeholder.
+                region_origins: origins
+                    .iter()
+                    .map(|region| RegionSourceOrigin {
+                        region_id: region.region_id.to_string(),
+                        variant_chain: region
+                            .variant_chain
+                            .iter()
+                            .map(|(name, value)| (name.clone(), ir_to_wit_paint_value(value)))
+                            .collect(),
+                    })
+                    .collect(),
             },
-        );
+        )
+        .collect();
+    let mut region_support_configs = Vec::new();
+    for slice in slice_ir {
+        for region in &slice.regions {
+            // Exact source-to-map address; never a map base or a sibling id.
+            let address = crate::selection::region_map_key_for_sliced_region(
+                slice.global_layer_index,
+                region,
+            );
+            let (support_family, support_type) = match region_map_ir.entries.get(&address) {
+                Some(plan) => {
+                    let config = region_map_ir.config_for_raw(plan.config).to_config_map();
+                    let string_value = |name: &str| match config.get(name) {
+                        Some(slicer_ir::ConfigValue::String(value)) => Some(value.clone()),
+                        _ => None,
+                    };
+                    (string_value("support_family"), string_value("support_type"))
+                }
+                None => (None, None),
+            };
+            region_support_configs.push(
+                crate::host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::RegionSupportConfig {
+                    object_id: region.object_id.clone(),
+                    layer_index: slice.global_layer_index,
+                    region_id: region.region_id.to_string(),
+                    // Full SOURCE origin: the config row carries the chain of
+                    // the committed `SlicedRegion` it describes, in exact
+                    // committed order — never normalized or empty.
+                    variant_chain: region
+                        .variant_chain
+                        .iter()
+                        .map(|(name, value)| (name.clone(), ir_to_wit_paint_value(value)))
+                        .collect(),
+                    support_family,
+                    support_type,
+                },
+            );
+        }
     }
-    region_support_configs.sort_by(|a, b| {
-        a.layer_index
-            .cmp(&b.layer_index)
-            .then_with(|| a.object_id.cmp(&b.object_id))
-            .then_with(|| a.region_id.cmp(&b.region_id))
-    });
     host::prepass::RegionSegmentationView {
         entries,
         region_support_configs,
@@ -250,38 +293,39 @@ pub fn project_region_segmentation_view(
 
 /// Project `SupportGeometryIR` into a deterministic WIT `SupportGeometryView`.
 ///
-/// Entries are sorted by `(global_support_layer_index ASC, object_id ASC, region_id ASC)`.
-/// This mirrors the RegionSegmentationView ordering pattern.
+/// One row per full SOURCE origin: entries that differ only by ordered
+/// `variant_chain` stay distinct and are never collapsed. Rows are sorted by
+/// complete identity (layer, object, region, exact chain order) so HashMap
+/// iteration order cannot leak into the view. The generated record carries
+/// each origin's exact ordered chain, so two chain-differing origins project
+/// as two rows with distinct visible chains, never one dropped row.
 pub fn project_support_geometry_view(
     support_geometry_ir: &slicer_ir::SupportGeometryIR,
 ) -> host::prepass::SupportGeometryView {
-    use std::collections::BTreeMap;
-    let mut sorted_entries: Vec<host::prepass::SupportGeometryViewEntry> = {
-        let mut btree: BTreeMap<(u32, String, String), host::prepass::SupportGeometryViewEntry> =
-            BTreeMap::new();
-        for (key, polygons) in &support_geometry_ir.entries {
-            btree.insert(
-                (
-                    key.global_support_layer_index,
-                    key.object_id.clone(),
-                    key.region_id.to_string(),
-                ),
-                host::prepass::SupportGeometryViewEntry {
-                    global_support_layer_index: key.global_support_layer_index,
-                    object_id: key.object_id.clone(),
-                    region_id: key.region_id.to_string(),
-                    outlines: ir_to_wit_expolygons(polygons),
-                },
-            );
-        }
-        btree.into_values().collect()
-    };
-    sorted_entries.sort_by(|a, b| {
-        a.global_support_layer_index
-            .cmp(&b.global_support_layer_index)
-            .then_with(|| a.object_id.cmp(&b.object_id))
-            .then_with(|| a.region_id.cmp(&b.region_id))
+    let mut ordered: Vec<_> = support_geometry_ir.entries.iter().collect();
+    ordered.sort_by(|(left, _), (right, _)| {
+        left.global_support_layer_index
+            .cmp(&right.global_support_layer_index)
+            .then_with(|| left.object_id.cmp(&right.object_id))
+            .then_with(|| left.region_id.cmp(&right.region_id))
+            .then_with(|| left.variant_chain.cmp(&right.variant_chain))
     });
+    let sorted_entries: Vec<host::prepass::SupportGeometryViewEntry> = ordered
+        .into_iter()
+        .map(|(key, polygons)| host::prepass::SupportGeometryViewEntry {
+            global_support_layer_index: key.global_support_layer_index,
+            object_id: key.object_id.clone(),
+            region_id: key.region_id.to_string(),
+            // The chain distinguishes sibling origins even though the outlines
+            // remain object-wide; taken verbatim from the IR key, no sorting.
+            variant_chain: key
+                .variant_chain
+                .iter()
+                .map(|(name, value)| (name.clone(), ir_to_wit_paint_value(value)))
+                .collect(),
+            outlines: ir_to_wit_expolygons(polygons),
+        })
+        .collect();
     host::prepass::SupportGeometryView {
         entries: sorted_entries,
     }
@@ -301,6 +345,14 @@ pub fn project_support_analysis_view(
             geometry: ir_to_wit_expolygons(&candidate.geometry),
             object_id: candidate.source.object_id.clone(),
             region_id: candidate.source.region_id.to_string(),
+            // Full SOURCE origin: the candidate's own `variant_chain` from
+            // `SupportCandidateSource`, verbatim — never a pair-only identity.
+            variant_chain: candidate
+                .source
+                .variant_chain
+                .iter()
+                .map(|(name, value)| (name.clone(), ir_to_wit_paint_value(value)))
+                .collect(),
             global_layer_index: candidate.source.global_layer_index,
             z_units: candidate.source.z_units,
             enforced: candidate.enforced,
@@ -318,22 +370,33 @@ pub fn project_support_analysis_view(
         slicer_ir::SupportGeometryKey,
         Vec<slicer_ir::ExPolygon>,
     >| {
-        let mut projected: Vec<_> = entries
-            .iter()
-            .map(|(key, polygons)| types::SupportAnalysisGeometryEntry {
-                global_support_layer_index: key.global_support_layer_index,
-                object_id: key.object_id.clone(),
-                region_id: key.region_id.to_string(),
-                polygons: ir_to_wit_expolygons(polygons),
-            })
-            .collect();
-        projected.sort_by(|left, right| {
+        // One row per full SOURCE origin; sort the IR keys by complete identity
+        // (exact chain order included) so HashMap order cannot leak out.
+        let mut ordered: Vec<_> = entries.iter().collect();
+        ordered.sort_by(|(left, _), (right, _)| {
             left.global_support_layer_index
                 .cmp(&right.global_support_layer_index)
                 .then_with(|| left.object_id.cmp(&right.object_id))
                 .then_with(|| left.region_id.cmp(&right.region_id))
+                .then_with(|| left.variant_chain.cmp(&right.variant_chain))
         });
-        projected
+        ordered
+            .into_iter()
+            .map(|(key, polygons)| types::SupportAnalysisGeometryEntry {
+                global_support_layer_index: key.global_support_layer_index,
+                object_id: key.object_id.clone(),
+                region_id: key.region_id.to_string(),
+                // The chain distinguishes sibling origins even though the
+                // polygons remain object-wide; taken verbatim from the IR
+                // key, no sorting.
+                variant_chain: key
+                    .variant_chain
+                    .iter()
+                    .map(|(name, value)| (name.clone(), ir_to_wit_paint_value(value)))
+                    .collect(),
+                polygons: ir_to_wit_expolygons(polygons),
+            })
+            .collect::<Vec<_>>()
     };
     host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::SupportAnalysisView {
         candidates,
@@ -348,9 +411,17 @@ pub fn project_support_analysis_view(
         family_assignments: analysis
             .family_assignments
             .iter()
-            .map(|((object_id, region_id), family_id)| types::SupportFamilyAssignment {
-                object_id: object_id.clone(),
-                region_id: region_id.to_string(),
+            .map(|(key, family_id)| types::SupportFamilyAssignment {
+                object_id: key.object_id.clone(),
+                region_id: key.region_id.to_string(),
+                // Keyed by `SupportSourceKey`: chain-differing regions get
+                // independent assignments, never a pair-only match; taken
+                // verbatim from the key, no sorting.
+                variant_chain: key
+                    .variant_chain
+                    .iter()
+                    .map(|(name, value)| (name.clone(), ir_to_wit_paint_value(value)))
+                    .collect(),
                 family_id: family_id.clone(),
             })
             .collect(),
@@ -1058,6 +1129,11 @@ pub(crate) fn harvest_support_plan_ir_from(
                     SupportPlanDeclineReason::UnsupportedMode
                 }
             }),
+            // Full plan source chain: the WIT `support-plan-entry` now carries
+            // the authored origin chain; convert it verbatim (no sorting,
+            // never a sibling's chain or an empty placeholder). Mirrors the
+            // native leg's `entry.variant_chain.clone()` harvest.
+            variant_chain: convert_variant_chain(&entry.variant_chain)?,
         });
     }
 
@@ -1160,6 +1236,7 @@ mod tests {
             global_layer_index: 3,
             object_id: "object-a".into(),
             region_id: "7".into(),
+            variant_chain: Vec::new(), // empty is exact, never a wildcard
             family_id: "tree".into(),
             demand_ids: vec![],
             body_ids: vec![],

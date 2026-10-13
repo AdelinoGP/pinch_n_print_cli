@@ -33,6 +33,8 @@ bindings:
 		$(WIT)/deps/types/types.wit \
 		$(WIT)/deps/ir-types/ir-types.wit \
 		$(WIT)/deps/common/common.wit \
+		$(WIT)/deps/support-queries/support-queries.wit \
+		$(WIT)/deps/lightning-queries/lightning-queries.wit \
 		$(WIT)/layer-infill.wit \
 		--out-dir . --derive-show --derive-eq --derive-error -w $(WORLD)
 	# wit-bindgen forward-declares `run` in the exported interface package, so

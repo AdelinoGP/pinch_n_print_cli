@@ -439,3 +439,306 @@ fn macro_adapter_round_trips_every_slice_region_view_field() {
         "field `held_claims[0]`: adapter dropped string content (byte-sum mismatch)"
     );
 }
+
+// ── per-region config + invocation config witness (AC-R5) ────────────────────
+//
+// The guest emits one witness path per incoming region under the
+// `emit_config_witness = 1` gate. The producer layout is specified in
+// `crates/slicer-wasm-host/test-guests/sdk-layer-infill-guest/src/lib.rs`; the
+// decoder below is authored independently against literal expectations rather
+// than sharing an adapter resolver.
+
+/// Marker for the config-witness paths. Decoded from the header
+/// `point[0].flow_factor` and asserted before any payload slot is read.
+const CONFIG_WITNESS_MARKER: f32 = 9.0;
+
+/// Independently authored decoder for the guest's config-witness path.
+#[derive(Debug)]
+struct ConfigWitnessObservation {
+    region_width: f32,
+    invocation_width: f32,
+    region_private_probe: f32,
+    invocation_private_probe: f32,
+    has_region_config: f32,
+    region_id: f32,
+    marker: f32,
+}
+
+/// Decode three `Point3WithWidth` slots: header, payload, identity.
+fn decode_config_witness(points: &[slicer_ir::Point3WithWidth]) -> ConfigWitnessObservation {
+    assert!(
+        points.len() >= 3,
+        "config witness path must carry 3 points, got {}",
+        points.len()
+    );
+    ConfigWitnessObservation {
+        region_width: points[1].x,
+        invocation_width: points[1].y,
+        region_private_probe: points[1].z,
+        invocation_private_probe: points[1].width,
+        has_region_config: points[1].flow_factor,
+        region_id: points[2].x,
+        marker: points[0].flow_factor,
+    }
+}
+
+/// Invocation config declaring exactly `line_width` and the witness gate.
+/// Declared keys are the module's read set: the per-region projection keeps
+/// only these keys, so a region's undeclared `private_probe` extension must be
+/// rejected from its SDK config view.
+fn invocation_config_witness() -> ConfigView {
+    let mut fields: HashMap<String, ConfigValue> = HashMap::new();
+    fields.insert("emit_config_witness".to_string(), ConfigValue::Int(1));
+    fields.insert("line_width".to_string(), ConfigValue::Float(0.8));
+    ConfigView::from_map(fields)
+}
+
+/// Two source regions whose resolved configs carry distinct `line_width`
+/// values (0.4 / 0.6) plus an undeclared `private_probe` extension.
+fn build_config_witness_slice_ir(layer_index: u32, region_z: f32) -> SliceIR {
+    let region = |region_id: u64, x: f32| SlicedRegion {
+        object_id: ObjectId::from("config-witness-obj-01"),
+        region_id,
+        polygons: vec![square(x, x, x + 1.0, x + 1.0)],
+        effective_layer_height: 0.35,
+        ..Default::default()
+    };
+    SliceIR {
+        schema_version: semver(4, 1, 0),
+        global_layer_index: layer_index,
+        z: region_z,
+        regions: vec![region(42, 0.0), region(43, 1.0)],
+    }
+}
+
+/// AC-R5: the real SDK guest observes the invocation-wide config, the
+/// per-region slice config reached through `SliceRegionView::config()`, and
+/// the rejection of the undeclared `private_probe` key. The invocation value
+/// (0.8) must stay distinguishable from both per-region values (0.4 / 0.6).
+#[test]
+fn per_region_config_and_invocation_config_are_observed() {
+    use slicer_runtime::LayerStageRunner;
+
+    let guest_artifact = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("slicer-wasm-host")
+        .join("test-guests")
+        .join("sdk-layer-infill-guest.component.wasm");
+    assert!(
+        guest_artifact.exists(),
+        "missing real SDK guest artifact (never skip): {}",
+        guest_artifact.display()
+    );
+
+    let engine = wasm_cache::shared_engine();
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let component = wasm_cache::compiled_guest("sdk-layer-infill-guest");
+
+    let module = make_module_bundle(
+        "rectilinear-infill",
+        "Layer::Infill",
+        component,
+        invocation_config_witness(),
+        vec!["claim:sparse-fill".to_string()],
+    );
+
+    let layer_index = 7u32;
+    let region_z = 7.7f32;
+    let layer = GlobalLayer {
+        index: layer_index,
+        z: region_z,
+        has_nonplanar: true,
+        is_sync_layer: false,
+        ..Default::default()
+    };
+
+    let slice = build_config_witness_slice_ir(layer_index, region_z);
+    assert_eq!(
+        slice.regions.len(),
+        2,
+        "fixture must carry two source regions"
+    );
+    let fixture_region_ids: Vec<u64> = slice
+        .regions
+        .iter()
+        .map(|region| region.region_id)
+        .collect();
+    assert_eq!(
+        fixture_region_ids,
+        vec![42, 43],
+        "fixture identity guard before dispatching the witness"
+    );
+
+    let mut arena = LayerArena::new();
+    let mut bb = Blackboard::new(empty_mesh_ir(), 1);
+    let mut map = slicer_ir::RegionMapIR::default();
+    let mut cfg_a = slicer_ir::ResolvedConfig {
+        line_width: 0.4,
+        ..Default::default()
+    };
+    cfg_a
+        .extensions
+        .insert("private_probe".to_string(), ConfigValue::Int(99));
+    let mut cfg_b = slicer_ir::ResolvedConfig {
+        line_width: 0.6,
+        ..Default::default()
+    };
+    cfg_b
+        .extensions
+        .insert("private_probe".to_string(), ConfigValue::Int(99));
+    let id_a = map.intern_config(cfg_a);
+    let id_b = map.intern_config(cfg_b);
+    assert_ne!(
+        id_a, id_b,
+        "distinct per-region widths must intern distinct configs"
+    );
+    for (region_index, config_id) in [(0usize, id_a), (1usize, id_b)] {
+        let region = &slice.regions[region_index];
+        map.entries.insert(
+            slicer_ir::RegionKey {
+                global_layer_index: layer_index,
+                object_id: region.object_id.clone(),
+                region_id: region.region_id,
+                variant_chain: region.variant_chain.clone(),
+            },
+            slicer_ir::RegionPlan {
+                config: config_id,
+                ..Default::default()
+            },
+        );
+    }
+    bb.commit_region_map(Arc::new(map))
+        .expect("commit per-region configs carrying undeclared private_probe");
+    bb.commit_slice_ir(Arc::new(vec![slice.clone()]))
+        .expect("commit selection slice");
+    arena.set_slice(slice).expect("commit slice ir");
+
+    let stage: StageId = "Layer::Infill".to_string();
+    let index =
+        crate::common::selection_for_module(&stage, &layer, &module.module, &bb, None, None)
+            .expect("build fixture selection");
+    let selection = index
+        .selection_for(layer.index, module.module.module_id())
+        .expect("fixture selection");
+    let commit = LayerStageRunner::run_stage(
+        &dispatcher,
+        &stage,
+        &layer,
+        &module.as_live(),
+        layer_input(&bb, &arena, selection),
+    )
+    .expect("dispatch must succeed under the config-witness gate")
+    .expect("dispatch must produce a commit for the config-witness gate");
+    slicer_runtime::apply_for_test(
+        &mut arena,
+        commit,
+        // exhaustive: adapter fixture explicitly pins all apply context metadata.
+        &slicer_runtime::StageApplyContext {
+            stage_id: &stage,
+            module_id: module.module.module_id(),
+            layer_index,
+            seam_plan: None,
+            config_view: None,
+            committed_slices: None,
+        },
+    )
+    .expect("commit must succeed");
+
+    let infill = arena
+        .infill()
+        .expect("drain-back must commit InfillIR into the arena");
+    // Untagged paths are bucketed together, so gather across regions; the
+    // witness payload itself carries the source region id.
+    let all_paths: Vec<&slicer_ir::ExtrusionPath3D> = infill
+        .regions
+        .iter()
+        .flat_map(|region| region.sparse_infill.iter())
+        .collect();
+    assert!(
+        !all_paths.is_empty(),
+        "guest emitted no sparse paths; output guard failed"
+    );
+
+    let witness_paths: Vec<&slicer_ir::ExtrusionPath3D> = all_paths
+        .iter()
+        .copied()
+        .filter(|path| {
+            path.points
+                .first()
+                .map(|point| point.flow_factor == CONFIG_WITNESS_MARKER)
+                .unwrap_or(false)
+        })
+        .collect();
+    assert_eq!(
+        witness_paths.len(),
+        2,
+        "guest must emit exactly one config-witness path per incoming region; got {}",
+        witness_paths.len()
+    );
+
+    let observations: Vec<ConfigWitnessObservation> = witness_paths
+        .iter()
+        .map(|path| decode_config_witness(&path.points))
+        .collect();
+
+    for observation in &observations {
+        assert_eq!(
+            observation.marker, CONFIG_WITNESS_MARKER,
+            "decoded path is not a config-witness path (marker mismatch)"
+        );
+        assert_eq!(
+            observation.has_region_config, 1.0,
+            "region {}: SDK SliceRegionView carried no per-region config (adapter did not forward it)",
+            observation.region_id
+        );
+        assert_eq!(
+            observation.region_private_probe, 0.0,
+            "region {}: undeclared private_probe leaked into the SDK per-region config",
+            observation.region_id
+        );
+        assert_eq!(
+            observation.invocation_private_probe, 0.0,
+            "invocation config leaked undeclared private_probe"
+        );
+        assert!(
+            (observation.invocation_width - 0.8).abs() < 1e-4,
+            "invocation line_width: expected 0.8, got {}",
+            observation.invocation_width
+        );
+    }
+
+    let region_a = observations
+        .iter()
+        .find(|observation| observation.region_id == 42.0)
+        .expect("no config witness for source region 42");
+    let region_b = observations
+        .iter()
+        .find(|observation| observation.region_id == 43.0)
+        .expect("no config witness for source region 43");
+    assert!(
+        (region_a.region_width - 0.4).abs() < 1e-4,
+        "region 42 per-region line_width: expected 0.4, got {}",
+        region_a.region_width
+    );
+    assert!(
+        (region_b.region_width - 0.6).abs() < 1e-4,
+        "region 43 per-region line_width: expected 0.6, got {}",
+        region_b.region_width
+    );
+    // The invocation value must be distinguishable from both per-region
+    // reads, so a resolver that collapsed the two channels would fail.
+    assert!(
+        (region_a.invocation_width - region_a.region_width).abs() > 0.1,
+        "invocation width 0.8 collapsed onto region 42 width {}",
+        region_a.region_width
+    );
+    assert!(
+        (region_b.invocation_width - region_b.region_width).abs() > 0.1,
+        "invocation width 0.8 collapsed onto region 43 width {}",
+        region_b.region_width
+    );
+    assert!(
+        (region_a.region_width - region_b.region_width).abs() > 0.1,
+        "per-region widths collapsed to the same value"
+    );
+}

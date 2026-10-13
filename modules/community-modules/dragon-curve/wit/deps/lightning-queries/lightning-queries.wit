@@ -1,0 +1,11 @@
+package slicer:lightning-queries@1.0.0;
+
+interface lightning-queries {
+    use slicer:ir-handles/ir-handles@1.0.0.{object-id, region-id, paint-value};
+    use slicer:types/geometry.{point3-with-width};
+
+    resource lightning-query-view {
+        lightning-tree-segments: func(object-id: object-id, region-id: region-id, variant-chain: list<tuple<string, paint-value>>)
+            -> list<list<point3-with-width>>;
+    }
+}

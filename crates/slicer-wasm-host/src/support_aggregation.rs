@@ -1,5 +1,6 @@
 //! Host-owned support-family aggregation and degraded validation.
 
+use slicer_ir::slice_ir::SupportSourceKey;
 use slicer_ir::{
     units_to_mm, ExPolygon, RaftPlan, SupportAnalysisIR, SupportPlanDeclineReason,
     SupportPlanEntry, SupportPlanIR,
@@ -75,8 +76,9 @@ pub enum FamilyConflictPolicy {
 /// mismatch — denies.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OwnershipReason {
-    /// No `family_assignments` row exists for `(object_id, region_id)`, so the
-    /// region has no owner and nobody may write it.
+    /// No `family_assignments` row exists for
+    /// `(object_id, region_id, variant_chain)`, so the region has no owner and
+    /// nobody may write it.
     NoAssignment,
     /// The region is owned by a different family than the entry declares.
     WrongFamily {
@@ -302,10 +304,11 @@ pub fn try_aggregate_support_plans(
 /// Decide whether one entry is allowed to write the region it names.
 ///
 /// Ownership is declared, never raced for: the host's `family_assignments` map
-/// names the owning family of every `(object_id, region_id)`, and only a module
-/// holding that family's `support-family:<id>` claim may act for it. There is
-/// no fallback — a region with no assignment row has no owner, so a wholly
-/// absent `territory` denies every entry.
+/// names the owning family of every full source origin
+/// `(object_id, region_id, variant_chain)`, and only a module holding that
+/// family's `support-family:<id>` claim may act for it. There is no fallback —
+/// a region with no assignment row has no owner, so a wholly absent `territory`
+/// denies every entry.
 ///
 /// This mirrors the policy shape of `enforce_authored_coloring`
 /// (`crates/slicer-wasm-host/src/marshal/out.rs`): default-deny in policy, but
@@ -327,9 +330,11 @@ fn check_ownership(
     let owner = input
         .territory
         .and_then(|analysis| {
-            analysis
-                .family_assignments
-                .get(&(entry.object_id.clone(), entry.region_id))
+            analysis.family_assignments.get(&SupportSourceKey {
+                object_id: entry.object_id.clone(),
+                region_id: entry.region_id,
+                variant_chain: entry.variant_chain.clone(),
+            })
         })
         .cloned();
     let reason = match owner {
@@ -395,10 +400,15 @@ pub fn try_aggregate_support_plans_with_policy(
         result.raft_plan = merge_raft_plans(result.raft_plan.take(), plan.raft_plan.clone());
     }
     for (plan_index, entry) in entries {
+        // The conflict identity is the full source origin: entries for two
+        // chain-differing regions of one object never collapse into one row.
         let identity = (
             entry.global_layer_index,
-            entry.object_id.clone(),
-            entry.region_id,
+            SupportSourceKey {
+                object_id: entry.object_id.clone(),
+                region_id: entry.region_id,
+                variant_chain: entry.variant_chain.clone(),
+            },
         );
         if let Err(violation) = check_ownership(&entry, plan_index, &input) {
             match conflict_policy {
@@ -490,6 +500,7 @@ pub fn try_aggregate_support_plans_with_policy(
                     &entry.object_id,
                     layer,
                     &region_id,
+                    &entry.variant_chain,
                     &entry.family_id,
                     &role.regions,
                 ) {
@@ -599,6 +610,7 @@ fn compare_entries(left: &SupportPlanEntry, right: &SupportPlanEntry) -> std::cm
         left.global_layer_index,
         &left.object_id,
         left.region_id,
+        &left.variant_chain,
         left_candidate,
         &left.family_id,
         &left.demand_ids,
@@ -608,6 +620,7 @@ fn compare_entries(left: &SupportPlanEntry, right: &SupportPlanEntry) -> std::cm
             right.global_layer_index,
             &right.object_id,
             right.region_id,
+            &right.variant_chain,
             right_candidate,
             &right.family_id,
             &right.demand_ids,
@@ -620,6 +633,7 @@ fn validate_entry(entry: &SupportPlanEntry, exact_z: &ExactZQueryService) -> Opt
         .query(
             &entry.object_id,
             entry.region_id,
+            &entry.variant_chain,
             units_to_mm(entry.anchor_z),
         )
         .map(|query| {
@@ -681,11 +695,12 @@ fn merge_raft_plans(current: Option<RaftPlan>, incoming: Option<RaftPlan>) -> Op
 
 /// Combine validated entries that one family contributed to a single DECLARED
 /// support region. The merge key is the declared identity
-/// `(family_id, global_layer_index, object_id, region_id, anchor_z)` -- never
-/// where the geometry happens to sit, so two contributions to one region merge
-/// no matter how far apart their bodies are. The first entry supplies scalar
-/// attribution; geometry, body identities, and demands are accumulated without
-/// duplicates.
+/// `(family_id, global_layer_index, object_id, region_id, variant_chain,
+/// anchor_z)` -- never where the geometry happens to sit, so two contributions
+/// to one region merge no matter how far apart their bodies are, while regions
+/// that differ only by ordered chain stay distinct. The first entry supplies
+/// scalar attribution; geometry, body identities, and demands are accumulated
+/// without duplicates.
 fn union_same_family_entries(entries: &mut Vec<SupportPlanEntry>) {
     let mut merged: Vec<SupportPlanEntry> = Vec::new();
     for entry in entries.drain(..) {
@@ -694,6 +709,7 @@ fn union_same_family_entries(entries: &mut Vec<SupportPlanEntry>) {
                 && existing.global_layer_index == entry.global_layer_index
                 && existing.object_id == entry.object_id
                 && existing.region_id == entry.region_id
+                && existing.variant_chain == entry.variant_chain
                 // Independent support rows share the dispatch layer but
                 // intentionally carry distinct physical planes.
                 && existing.anchor_z == entry.anchor_z
@@ -824,7 +840,8 @@ pub fn aggregate_support_plan_irs_with_policy_attributed(
     // rather than a plan ordinal; these maps invert that back to the producing
     // plan. First plan wins for a given key, which is exact as long as a family
     // (and a body identity) is written by a single module -- the property the
-    // `(layer, object, region)` conflict logic above already enforces.
+    // `(layer, object, region, variant_chain)` conflict logic above already
+    // enforces.
     let mut family_to_plan: HashMap<&str, usize> = HashMap::new();
     let mut body_to_plan: HashMap<&str, usize> = HashMap::new();
     for (plan_index, plan) in plans.iter().enumerate() {

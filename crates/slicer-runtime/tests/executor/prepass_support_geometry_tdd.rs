@@ -27,6 +27,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use slicer_ir::slice_ir::SupportSourceKey;
 use slicer_ir::PrepassRunnerError;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigValue, ConfigView, GlobalLayer, IndexedTriangleSet,
@@ -385,7 +386,17 @@ fn blackboard_with_layer_plan(mesh: MeshIR) -> Blackboard {
     // The live support merge is default-deny. This fixture bypasses SliceIR
     // and therefore seeds the host's region ownership explicitly.
     bb.commit_support_analysis(Arc::new(SupportAnalysisIR {
-        family_assignments: BTreeMap::from([(("plate".to_string(), 0), "tree".to_string())]),
+        // The fixture bypasses SliceIR and its `RegionKey` rows carry the exact
+        // empty chain (see the region-map build above), so `("plate", 0)` is a
+        // genuinely chain-empty source: grant that exact empty chain.
+        family_assignments: BTreeMap::from([(
+            SupportSourceKey {
+                object_id: "plate".to_string(),
+                region_id: 0,
+                variant_chain: Vec::new(),
+            },
+            "tree".to_string(),
+        )]),
         ..Default::default()
     }))
     .expect("commit_support_analysis must succeed");
@@ -582,6 +593,9 @@ fn blackboard_accepts_and_returns_support_plan_ir() {
             capabilities: vec![],
             provenance: vec![],
             decline_reason: None,
+            // Chain-less fixture source (`plate` is unpainted here): the exact
+            // empty chain is this entry's source identity.
+            variant_chain: Vec::new(),
         }],
         ..SupportPlanIR::default()
     });
@@ -606,6 +620,9 @@ fn blackboard_accepts_and_returns_support_plan_ir() {
             capabilities: vec![],
             provenance: vec![],
             decline_reason: None,
+            // Chain-less fixture source (`plate` is unpainted here): the exact
+            // empty chain is this entry's source identity.
+            variant_chain: Vec::new(),
         }],
         ..SupportPlanIR::default()
     });
@@ -619,10 +636,14 @@ fn blackboard_accepts_and_returns_support_plan_ir() {
             global_layer_index,
             object_id,
             region_id,
+            variant_chain,
         }) => {
             assert_eq!(global_layer_index, 0);
             assert_eq!(object_id, "plate");
             assert_eq!(region_id, 0);
+            // Both fixture sources are chain-less; the duplicate identity is
+            // chain-exact, so the reported chain is the exact empty one.
+            assert!(variant_chain.is_empty());
         }
         other => panic!("expected duplicate support-plan identity; got {other:?}"),
     }

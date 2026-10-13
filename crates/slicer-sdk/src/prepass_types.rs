@@ -293,6 +293,11 @@ pub struct SupportPlanEntry {
     pub provenance: Vec<String>,
     /// Structured reason when this candidate was declined.
     pub decline_reason: Option<slicer_ir::SupportPlanDeclineReason>,
+    /// Ordered `(paint_semantic_name, value)` chain of the source region this
+    /// entry was derived from. Empty is an exact identity for a genuinely
+    /// chain-less source, never a wildcard.
+    #[serde(default)]
+    pub variant_chain: Vec<(String, PaintValue)>,
 }
 
 /// Configuration-only raft plan emitted by the support planner.
@@ -356,15 +361,32 @@ pub struct SeamPlanningView {
     pub regions: Vec<SeamPlanningRegionInput>,
 }
 
-/// Entry in the region segmentation view, listing regions for one (object, layer) pair.
+/// One full source origin active for an `(object, layer)` pair.
+///
+/// A source origin is the exact `(region_id, ordered variant_chain)` identity:
+/// two origins that differ only by ordered chain remain distinct and must
+/// never be collapsed. `variant_chain` stays in committed order; empty is an
+/// exact identity for a genuinely chain-less source, never a wildcard.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct RegionSourceOrigin {
+    /// Region identifier within the object.
+    pub region_id: RegionId,
+    /// Ordered `(paint_semantic_name, value)` chain of the source region.
+    #[serde(default)]
+    pub variant_chain: Vec<(String, PaintValue)>,
+}
+
+/// Entry in the region segmentation view, listing full source origins for one
+/// (object, layer) pair.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct RegionSegmentationViewEntry {
     /// Object this entry belongs to.
     pub object_id: ObjectId,
     /// Global layer index.
     pub layer_index: u32,
-    /// Region IDs active for this object on this layer (ascending order).
-    pub region_ids: Vec<RegionId>,
+    /// Full source origins active for this object on this layer, ordered by
+    /// complete identity. Chain members are never sorted or deduplicated.
+    pub region_origins: Vec<RegionSourceOrigin>,
 }
 
 /// Read-only view of the committed RegionMapIR entries.
@@ -372,11 +394,12 @@ pub struct RegionSegmentationViewEntry {
 pub struct RegionSegmentationView {
     /// Ordered list of entries (ascending by (layer_index, object_id)).
     pub entries: Vec<RegionSegmentationViewEntry>,
-    /// Per-region support-family aliases resolved from the region config.
+    /// Per-full-source-origin support-family aliases resolved from the region
+    /// config.
     pub region_support_configs: Vec<RegionSupportConfig>,
 }
 
-/// Support-family config aliases for one active region.
+/// Support-family config aliases for one full source origin.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct RegionSupportConfig {
     /// Object this region belongs to.
@@ -385,6 +408,10 @@ pub struct RegionSupportConfig {
     pub layer_index: u32,
     /// Region identifier.
     pub region_id: RegionId,
+    /// Ordered `(paint_semantic_name, value)` chain of the source origin this
+    /// row describes. Each row represents exactly one full source origin.
+    #[serde(default)]
+    pub variant_chain: Vec<(String, PaintValue)>,
     /// Canonical family override, when configured.
     pub support_family: Option<String>,
     /// Orca-style family alias, when configured.
@@ -400,6 +427,11 @@ pub struct SupportGeometryViewEntry {
     pub object_id: ObjectId,
     /// Region identifier within the object.
     pub region_id: RegionId,
+    /// Ordered `(paint_semantic_name, value)` chain of the source region.
+    /// Empty is an exact identity for a genuinely chain-less source, never a
+    /// wildcard.
+    #[serde(default)]
+    pub variant_chain: Vec<(String, PaintValue)>,
     /// Coarse support outlines at this support layer boundary.
     pub outlines: Vec<slicer_ir::ExPolygon>,
 }
@@ -426,13 +458,18 @@ pub struct SupportAnalysisCandidate {
     pub global_layer_index: u32,
     /// Exact source height in canonical units.
     pub z_units: i64,
+    /// Ordered `(paint_semantic_name, value)` chain of the source region.
+    /// Empty is an exact identity for a genuinely chain-less source, never a
+    /// wildcard.
+    #[serde(default)]
+    pub variant_chain: Vec<(String, PaintValue)>,
     /// Whether policy requires retaining this candidate.
     pub enforced: bool,
     /// Whether geometry blocks this candidate.
     pub blocked: bool,
 }
 
-/// Analysis geometry keyed by support-layer identity.
+/// Analysis geometry keyed by full support-layer source identity.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SupportAnalysisGeometryEntry {
     /// Support layer identity.
@@ -441,17 +478,27 @@ pub struct SupportAnalysisGeometryEntry {
     pub object_id: ObjectId,
     /// Region identity.
     pub region_id: RegionId,
+    /// Ordered `(paint_semantic_name, value)` chain of the source region.
+    /// Empty is an exact identity for a genuinely chain-less source, never a
+    /// wildcard.
+    #[serde(default)]
+    pub variant_chain: Vec<(String, PaintValue)>,
     /// Analysis polygons.
     pub polygons: Vec<ExPolygon>,
 }
 
-/// Host-selected support family for an object region.
+/// Host-selected support family for one full source origin.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SupportFamilyAssignment {
     /// Object identity.
     pub object_id: ObjectId,
     /// Region identity.
     pub region_id: RegionId,
+    /// Ordered `(paint_semantic_name, value)` chain of the source region.
+    /// Empty is an exact identity for a genuinely chain-less source, never a
+    /// wildcard.
+    #[serde(default)]
+    pub variant_chain: Vec<(String, PaintValue)>,
     /// Canonical family identity.
     pub family_id: String,
 }
@@ -461,20 +508,22 @@ pub struct SupportFamilyAssignment {
 pub struct SupportAnalysisView {
     /// Candidates shared by support families.
     pub candidates: Vec<SupportAnalysisCandidate>,
-    /// Model occupancy by support-layer identity.
+    /// Model occupancy by full support-layer source identity.
     pub model_occupancy: Vec<SupportAnalysisGeometryEntry>,
-    /// Termination surfaces by support-layer identity.
+    /// Termination surfaces by full support-layer source identity.
     pub termination_surfaces: Vec<SupportAnalysisGeometryEntry>,
     /// Shared host-derived settings.
     pub shared_settings: Vec<(String, String)>,
     /// Conservative feasible envelope.
     pub baseline_feasible_envelope: Vec<ExPolygon>,
-    /// Per-object/per-region family assignments.
+    /// Per-object/per-region family assignments keyed by full source origin
+    /// `(object_id, region_id, ordered variant_chain)`. Two regions that
+    /// differ only by ordered chain receive independent assignments.
     pub family_assignments: Vec<SupportFamilyAssignment>,
     /// Support territory owned by each minted modifier sub-region, keyed by
-    /// `(global_support_layer_index, object_id, region_id)`. The polygons are
-    /// the modifier mesh's full cross-section at the layer Z, unclipped by the
-    /// model. Base regions have no entry.
+    /// `(global_support_layer_index, object_id, region_id, variant_chain)`.
+    /// The polygons are the modifier mesh's full cross-section at the layer Z,
+    /// unclipped by the model. Base regions have no entry.
     pub support_territory: Vec<SupportAnalysisGeometryEntry>,
 }
 
@@ -490,23 +539,36 @@ pub struct TerritoryPartition {
 }
 
 impl SupportAnalysisView {
-    /// Family of an object region, when the host assigned one.
-    pub fn family_of(&self, object_id: &str, region_id: &str) -> Option<&str> {
+    /// Family of one full source origin, when the host assigned one.
+    ///
+    /// The lookup is exact over `(object_id, region_id, ordered
+    /// variant_chain)`; a pair-only match is never a fallback.
+    pub fn family_of(
+        &self,
+        object_id: &str,
+        region_id: &str,
+        variant_chain: &[(String, PaintValue)],
+    ) -> Option<&str> {
         self.family_assignments
             .iter()
             .find(|assignment| {
-                assignment.object_id == object_id && assignment.region_id == region_id
+                assignment.object_id == object_id
+                    && assignment.region_id == region_id
+                    && assignment.variant_chain.as_slice() == variant_chain
             })
             .map(|assignment| assignment.family_id.as_str())
     }
 
-    /// Territory owned by one region at one layer, or `None` when the region
-    /// is a base region (holds no territory) or the layer carries none.
+    /// Territory owned by one full source origin at one layer, or `None` when
+    /// the origin is a base region (holds no territory) or the layer carries
+    /// none. The lookup is exact over
+    /// `(object_id, layer, region_id, ordered variant_chain)`.
     pub fn region_territory(
         &self,
         object_id: &str,
         layer: u32,
         region_id: &str,
+        variant_chain: &[(String, PaintValue)],
     ) -> Option<&[ExPolygon]> {
         self.support_territory
             .iter()
@@ -514,6 +576,7 @@ impl SupportAnalysisView {
                 entry.object_id == object_id
                     && entry.global_support_layer_index == layer
                     && entry.region_id == region_id
+                    && entry.variant_chain.as_slice() == variant_chain
             })
             .map(|entry| entry.polygons.as_slice())
     }
@@ -521,7 +584,8 @@ impl SupportAnalysisView {
     /// Split one object's territory at one layer into the parts owned by
     /// `family_id` and the parts owned by other families. Pure collection: no
     /// geometry is computed, so both host and guest can consume it and apply
-    /// their own clipping.
+    /// their own clipping. Every entry is classified by its exact full source
+    /// origin `(object_id, region_id, ordered variant_chain)`.
     ///
     /// Returns `None` when the object carries no territory at that layer, so a
     /// consumer can tell "no modifier here" apart from "everything is foreign".
@@ -542,7 +606,8 @@ impl SupportAnalysisView {
             entry.object_id == object_id && entry.global_support_layer_index == layer
         }) {
             found = true;
-            let owned = self.family_of(object_id, &entry.region_id) == Some(family_id);
+            let owned = self.family_of(object_id, &entry.region_id, &entry.variant_chain)
+                == Some(family_id);
             let bucket = if owned {
                 &mut partition.own
             } else {

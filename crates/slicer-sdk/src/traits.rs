@@ -26,8 +26,8 @@ use crate::prepass_types::{
 use crate::views::{PerimeterRegionView, SliceRegionView};
 use slicer_ir::{
     ConfigView, EntitySpeedProfile, ExPolygon, ExtrusionPath3D, InfillRegion, LayerAnnotation,
-    LayerAnnotationKind, LayerCollectionIR, LightningTreeIR, PaintSemantic, Point3WithWidth,
-    PrintEntity, RegionKey, SliceIR, SupportPlanIR,
+    LayerAnnotationKind, LayerCollectionIR, LightningTreeIR, PaintSemantic, PaintValue,
+    Point3WithWidth, PrintEntity, RegionKey, SliceIR, SupportPlanIR,
 };
 
 /// Support-paint policy for a per-region eligibility decision.
@@ -174,12 +174,17 @@ impl PaintRegionLayerView {
         self.is_raft
     }
 
-    /// Returns structural support entries for the `(layer, object_id,
-    /// region_id)` triple matching this view's `layer_index`.
+    /// Returns structural support entries for the exact
+    /// `(layer, object_id, region_id, ordered variant_chain)` source matching
+    /// this view's `layer_index`.
+    ///
+    /// The match is exact over the full source identity; a pair-only lookup is
+    /// never a fallback.
     pub fn support_plan_entries_for(
         &self,
         object_id: &str,
         region_id: u64,
+        variant_chain: &[(String, PaintValue)],
     ) -> Vec<&slicer_ir::SupportPlanEntry> {
         let Some(plan) = self.support_plan.as_ref() else {
             return Vec::new();
@@ -191,6 +196,7 @@ impl PaintRegionLayerView {
                 entry.anchor_layer_index == self.layer_index
                     && entry.object_id == object_id
                     && entry.region_id == region_id
+                    && entry.variant_chain.as_slice() == variant_chain
             })
             .collect();
         entries.sort_by_key(|entry| (entry.anchor_z, entry.global_layer_index));
@@ -198,11 +204,14 @@ impl PaintRegionLayerView {
     }
 
     /// Legacy branch-path view. Structural plans intentionally contain no
-    /// printable paths, so this always returns an empty collection.
+    /// printable paths, so this always returns an empty collection. The exact
+    /// `(object_id, region_id, ordered variant_chain)` source is still part of
+    /// the signature so callers carry full source identity.
     pub fn support_plan_segments_for(
         &self,
         _object_id: &str,
         _region_id: u64,
+        _variant_chain: &[(String, PaintValue)],
     ) -> Vec<&ExtrusionPath3D> {
         Vec::new()
     }
@@ -217,10 +226,11 @@ impl PaintRegionLayerView {
         self.lightning_tree_ir.as_ref()
     }
 
-    /// Returns the 2-point tree-edge segments for the `(layer, object_id,
-    /// region_id)` triple matching this view's `layer_index`. Returns an empty
-    /// vector if no tree IR is committed (skip-when-no-lightning) or no entry
-    /// matches.
+    /// Returns the 2-point tree-edge segments for the exact
+    /// `(layer, object_id, region_id, ordered variant_chain)` source matching
+    /// this view's `layer_index`. Returns an empty vector if no tree IR is
+    /// committed (skip-when-no-lightning) or no entry matches. A pair-only
+    /// lookup is never a fallback.
     ///
     /// The 137 contract returns empty segments for the empty-but-valid IR
     /// committed by the skeleton producer; the real algorithm (138/139)
@@ -229,6 +239,7 @@ impl PaintRegionLayerView {
         &self,
         object_id: &str,
         region_id: u64,
+        variant_chain: &[(String, PaintValue)],
     ) -> Vec<[slicer_ir::Point2; 2]> {
         let Some(ir) = self.lightning_tree_ir.as_ref() else {
             return Vec::new();
@@ -239,6 +250,7 @@ impl PaintRegionLayerView {
                 entry.global_layer_index == self.layer_index as i32
                     && entry.object_id == object_id
                     && entry.region_id == region_id
+                    && entry.variant_chain.as_slice() == variant_chain
             })
             .flat_map(|entry| entry.tree_edge_segments.iter().copied())
             .collect()

@@ -1,22 +1,24 @@
 //! Contract tests for the traditional support family seam.
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use slicer_ir::slice_ir::SupportSourceKey;
 use slicer_ir::{ConfigKey, ConfigValue, ConfigView};
 use slicer_ir::{
-    ExPolygon, IndexedTriangleSet, MeshIR, ObjectMesh, Point2, Point3, Polygon, SupportAnalysisIR,
-    SupportPlanDeclineReason, SupportPlanEntry, SupportPlanIR, SupportPlanRole,
+    ExPolygon, IndexedTriangleSet, MeshIR, ObjectMesh, PaintValue, Point2, Point3, Polygon,
+    SupportAnalysisIR, SupportPlanDeclineReason, SupportPlanEntry, SupportPlanIR, SupportPlanRole,
     SupportPlanRoleRegion, Transform3d,
 };
 use slicer_sdk::host::{self, ClipOperation};
 use slicer_sdk::prepass_builders::SupportGeometryOutput;
 use slicer_sdk::prepass_types::{
     LayerPlanView, LayerPlanViewEntry, MeshObjectView, RegionSegmentationView,
-    RegionSegmentationViewEntry, SupportAnalysisCandidate, SupportAnalysisGeometryEntry,
-    SupportAnalysisView, SupportFamilyAssignment, SupportGeometryView,
-    SupportPlanEntry as SdkSupportPlanEntry,
+    RegionSegmentationViewEntry, RegionSourceOrigin, SupportAnalysisCandidate,
+    SupportAnalysisGeometryEntry, SupportAnalysisView, SupportFamilyAssignment,
+    SupportGeometryView, SupportPlanEntry as SdkSupportPlanEntry,
 };
 use slicer_sdk::traits::PrepassModule;
 use slicer_wasm_host::exact_z_query::ExactZQueryService;
@@ -190,7 +192,10 @@ fn regions(object_id: &str) -> RegionSegmentationView {
             .map(|layer_index| RegionSegmentationViewEntry {
                 object_id: object_id.into(),
                 layer_index,
-                region_ids: vec!["0".into()],
+                region_origins: vec![RegionSourceOrigin {
+                    region_id: "0".into(),
+                    ..Default::default()
+                }],
             })
             .collect(),
         region_support_configs: vec![],
@@ -219,6 +224,7 @@ fn traditional_assignment(object_id: &str) -> SupportFamilyAssignment {
         object_id: object_id.into(),
         region_id: "0".into(),
         family_id: "traditional".into(),
+        variant_chain: vec![],
     }
 }
 
@@ -517,6 +523,7 @@ fn coarse_pitch_produces_free_floating_anchor_z() {
             object_id: "coarse-traditional".into(),
             region_id: "0".into(),
             polygons: vec![contact_region()],
+            ..Default::default()
         }],
         family_assignments: vec![traditional_assignment("coarse-traditional")],
         ..Default::default()
@@ -743,6 +750,7 @@ fn coarse_candidates_within_epsilon_group_before_identity_assignment() {
                 object_id: "grouped-traditional".into(),
                 region_id: region_id.into(),
                 family_id: "traditional".into(),
+                variant_chain: vec![],
             })
             .collect(),
         ..Default::default()
@@ -946,6 +954,7 @@ fn mixed_coarse_and_finer_ranges_are_ordered_as_one_object_stack() {
                 object_id: "mixed-traditional".into(),
                 region_id: region_id.into(),
                 family_id: "traditional".into(),
+                variant_chain: vec![],
             })
             .collect(),
         ..Default::default()
@@ -1116,6 +1125,7 @@ fn run_step_local_fixture() -> SupportGeometryOutput {
             object_id: "step-local-traditional".into(),
             region_id: "0".into(),
             polygons: vec![contact_region()],
+            ..Default::default()
         }],
         model_occupancy: vec![SupportAnalysisGeometryEntry {
             global_support_layer_index: 4,
@@ -1132,6 +1142,7 @@ fn run_step_local_fixture() -> SupportGeometryOutput {
                 },
                 holes: vec![],
             }],
+            ..Default::default()
         }],
         family_assignments: ["0", "1"]
             .into_iter()
@@ -1139,6 +1150,7 @@ fn run_step_local_fixture() -> SupportGeometryOutput {
                 object_id: "step-local-traditional".into(),
                 region_id: region_id.into(),
                 family_id: "traditional".into(),
+                variant_chain: vec![],
             })
             .collect(),
         ..Default::default()
@@ -1239,6 +1251,7 @@ fn coarse_same_region_sources_keep_distinct_body_membership() {
             object_id: "same-region-traditional".into(),
             region_id: "0".into(),
             polygons: vec![contact_region()],
+            ..Default::default()
         }],
         family_assignments: vec![traditional_assignment("same-region-traditional")],
         ..Default::default()
@@ -1367,6 +1380,7 @@ fn coarse_source_preference_keeps_mixed_source_memberships() {
             object_id: object_id.into(),
             region_id: "0".into(),
             polygons: vec![contact_region()],
+            ..Default::default()
         }],
         family_assignments: vec![traditional_assignment(object_id)],
         ..Default::default()
@@ -1597,6 +1611,7 @@ fn expanded_bottom_interface_layer_count_is_consumed_without_guest_mirroring() {
             object_id: "expanded-bottom-count".into(),
             region_id: "0".into(),
             polygons: vec![contact_region()],
+            ..Default::default()
         }],
         family_assignments: vec![traditional_assignment("expanded-bottom-count")],
         ..Default::default()
@@ -1674,6 +1689,7 @@ fn base_interface_obstacle() {
             object_id: "base".into(),
             region_id: "0".into(),
             polygons: vec![obstacle_region()],
+            ..Default::default()
         }],
         // A bottom interface exists only where the column lands ON the model.
         // Without a termination surface this column runs to the build plate,
@@ -1683,6 +1699,7 @@ fn base_interface_obstacle() {
             object_id: "base".into(),
             region_id: "0".into(),
             polygons: vec![contact_region()],
+            ..Default::default()
         }],
         family_assignments: vec![traditional_assignment("base")],
         ..Default::default()
@@ -1942,6 +1959,7 @@ fn disabled_and_declined() {
         capabilities: vec![],
         provenance: vec!["traditional-support-planner".into()],
         decline_reason: Some(SupportPlanDeclineReason::NoRoute),
+        variant_chain: vec![],
     };
     let recorded = aggregate_declined_support_plans(&[SupportPlanIR {
         entries: vec![declined],
@@ -2060,6 +2078,7 @@ fn model_termination_surface_stops_descent() {
             object_id: "model-termination".into(),
             region_id: "0".into(),
             polygons: vec![contact_region()],
+            ..Default::default()
         }],
         family_assignments: vec![traditional_assignment("model-termination")],
         ..Default::default()
@@ -2100,6 +2119,7 @@ fn invalid_body_rejected() {
             object_id: "invalid".into(),
             region_id: "0".into(),
             polygons: vec![contact_region()],
+            ..Default::default()
         }],
         family_assignments: vec![traditional_assignment("invalid")],
         ..Default::default()
@@ -2180,6 +2200,7 @@ fn invalid_body_rejected() {
             capabilities: vec![],
             provenance: vec!["traditional-support-planner".into()],
             decline_reason: None,
+            variant_chain: vec![],
         }],
         ..Default::default()
     };
@@ -2194,7 +2215,11 @@ fn invalid_body_rejected() {
     // wrong reason, testing nothing about extent.
     let territory = SupportAnalysisIR {
         family_assignments: BTreeMap::from([(
-            ("object-a".to_string(), 9u64),
+            SupportSourceKey {
+                object_id: "object-a".to_string(),
+                region_id: 9,
+                variant_chain: vec![],
+            },
             "traditional".to_string(),
         )]),
         ..Default::default()
@@ -2271,6 +2296,7 @@ fn candidate_with_no_downward_route_is_declined() {
             object_id: "blocked-route".into(),
             region_id: "0".into(),
             polygons: vec![full_region],
+            ..Default::default()
         }],
         family_assignments: vec![traditional_assignment("blocked-route")],
         ..Default::default()
@@ -2315,6 +2341,7 @@ fn real_candidate_contact_derivation() {
             object_id: "real".into(),
             region_id: "0".into(),
             polygons: vec![full_region],
+            ..Default::default()
         }],
         family_assignments: vec![traditional_assignment("real")],
         ..Default::default()
@@ -2403,6 +2430,7 @@ fn bottom_interface_is_limited_to_the_model_landing_area() {
             object_id: "partial".into(),
             region_id: "0".into(),
             polygons: vec![landing],
+            ..Default::default()
         }],
         family_assignments: vec![traditional_assignment("partial")],
         ..Default::default()
@@ -2513,6 +2541,7 @@ fn territory_entries(region_id: &str, footprint: &ExPolygon) -> Vec<SupportAnaly
             object_id: "territory".into(),
             region_id: region_id.into(),
             polygons: vec![footprint.clone()],
+            ..Default::default()
         })
         .collect()
 }
@@ -2586,6 +2615,7 @@ fn base_column_keeps_clear_of_foreign_territory() {
                     object_id: "territory".into(),
                     region_id: "1".into(),
                     family_id: "tree".into(),
+                    variant_chain: vec![],
                 },
             ],
             support_territory: territory_entries("1", &foreign),
@@ -2739,6 +2769,7 @@ fn coarse_intermediate_plane_on_occupied_grid_plane_publishes_one_entry() {
             object_id: "same-region-traditional".into(),
             region_id: "0".into(),
             polygons: vec![contact_region()],
+            ..Default::default()
         }],
         family_assignments: vec![traditional_assignment("same-region-traditional")],
         ..Default::default()
@@ -2827,5 +2858,278 @@ fn merge_rejects_grid_and_synthesized_rows_claiming_one_plane() {
     assert!(
         result.is_err(),
         "one plane of one region claiming two layer indices must be rejected, not published"
+    );
+}
+
+/// AC-R8: the planner's family lookup is an exact full-source query over
+/// `(object_id, region_id, ordered variant_chain)`. Two sources of one region
+/// that differ only by ordered chain carry independent assignments, so a
+/// pair-only lookup is never a fallback.
+#[test]
+fn family_lookup_is_exact_over_ordered_source_chain() {
+    let object_id = "chain-exact-traditional";
+    let painted_chain = vec![("region".to_string(), PaintValue::Flag(true))];
+    let object = overhang_object(object_id);
+    let analysis = SupportAnalysisView {
+        candidates: vec![
+            // The chain-less sibling belongs to the tree family; the painted
+            // sibling is this planner's. Ordering the tree assignment first
+            // makes a pair-only `.find` resolve BOTH candidates through it.
+            SupportAnalysisCandidate {
+                id: 1,
+                object_id: object_id.into(),
+                region_id: "0".into(),
+                global_layer_index: 8,
+                z_units: slicer_ir::mm_to_units(1.8),
+                geometry: vec![obstacle_region()],
+                ..Default::default()
+            },
+            SupportAnalysisCandidate {
+                id: 2,
+                object_id: object_id.into(),
+                region_id: "0".into(),
+                global_layer_index: 8,
+                z_units: slicer_ir::mm_to_units(1.8),
+                geometry: vec![contact_region()],
+                variant_chain: painted_chain.clone(),
+                ..Default::default()
+            },
+        ],
+        family_assignments: vec![
+            SupportFamilyAssignment {
+                object_id: object_id.into(),
+                region_id: "0".into(),
+                family_id: "tree".into(),
+                variant_chain: vec![],
+            },
+            SupportFamilyAssignment {
+                object_id: object_id.into(),
+                region_id: "0".into(),
+                family_id: "traditional".into(),
+                variant_chain: painted_chain.clone(),
+            },
+        ],
+        ..Default::default()
+    };
+    let output = run_planner_with_analysis(true, object, analysis);
+
+    assert!(
+        !output.entries().is_empty(),
+        "the painted traditional source must be planned; a pair-only family \
+         lookup would resolve it through the chain-less tree sibling"
+    );
+    for entry in output.entries() {
+        assert_eq!(
+            entry.variant_chain, painted_chain,
+            "every planned entry must carry its source's exact ordered chain"
+        );
+        assert_eq!(
+            entry.demand_ids,
+            vec!["demand-2".to_string()],
+            "the planned entries must belong to the painted source only"
+        );
+        assert!(
+            entry
+                .body_ids
+                .iter()
+                .all(|body| body == "traditional-body-chain-exact-traditional-2"),
+            "the chain-less tree sibling must contribute no body membership, got {:?}",
+            entry.body_ids
+        );
+    }
+}
+
+/// AC-R8 producer-side: the ordered chain is part of the support-region
+/// identity, so two sources of one `(layer, object, region)` carrying distinct
+/// chains publish DISTINCT entries. A chain-ignoring merge would fuse them and
+/// silently drop one source's chain.
+#[test]
+fn same_plane_distinct_chains_publish_distinct_entries() {
+    let object_id = "chain-split-traditional";
+    let chain_a = vec![("region".to_string(), PaintValue::Flag(true))];
+    let chain_b = vec![("region".to_string(), PaintValue::Flag(false))];
+    let object = overhang_object(object_id);
+    let analysis = SupportAnalysisView {
+        candidates: vec![
+            SupportAnalysisCandidate {
+                id: 1,
+                object_id: object_id.into(),
+                region_id: "0".into(),
+                global_layer_index: 8,
+                z_units: slicer_ir::mm_to_units(1.8),
+                geometry: vec![contact_region()],
+                variant_chain: chain_a.clone(),
+                ..Default::default()
+            },
+            SupportAnalysisCandidate {
+                id: 2,
+                object_id: object_id.into(),
+                region_id: "0".into(),
+                global_layer_index: 8,
+                z_units: slicer_ir::mm_to_units(1.8),
+                geometry: vec![obstacle_region()],
+                variant_chain: chain_b.clone(),
+                ..Default::default()
+            },
+        ],
+        family_assignments: vec![
+            SupportFamilyAssignment {
+                object_id: object_id.into(),
+                region_id: "0".into(),
+                family_id: "traditional".into(),
+                variant_chain: chain_a.clone(),
+            },
+            SupportFamilyAssignment {
+                object_id: object_id.into(),
+                region_id: "0".into(),
+                family_id: "traditional".into(),
+                variant_chain: chain_b.clone(),
+            },
+        ],
+        ..Default::default()
+    };
+    let output = run_planner_with_analysis(true, object, analysis);
+
+    let mut by_layer: BTreeMap<i32, Vec<&SdkSupportPlanEntry>> = BTreeMap::new();
+    for entry in output
+        .entries()
+        .iter()
+        .filter(|entry| entry.decline_reason.is_none())
+    {
+        by_layer
+            .entry(entry.global_layer_index)
+            .or_default()
+            .push(entry);
+    }
+    assert!(!by_layer.is_empty(), "both chained sources must be planned");
+    for (layer, entries) in &by_layer {
+        assert_eq!(
+            entries.len(),
+            2,
+            "layer {layer}: each ordered chain is its own support-region \
+             identity, so both sources must survive as separate entries"
+        );
+        let chains: BTreeSet<Vec<(String, PaintValue)>> = entries
+            .iter()
+            .map(|entry| entry.variant_chain.clone())
+            .collect();
+        assert_eq!(
+            chains,
+            BTreeSet::from([chain_a.clone(), chain_b.clone()]),
+            "layer {layer}: the two entries must carry the two exact chains"
+        );
+        let bodies: BTreeSet<String> = entries
+            .iter()
+            .flat_map(|entry| entry.body_ids.iter().cloned())
+            .collect();
+        assert_eq!(
+            bodies,
+            BTreeSet::from([
+                format!("traditional-body-{object_id}-1"),
+                format!("traditional-body-{object_id}-2"),
+            ]),
+            "layer {layer}: a fused entry (both bodies under one chain) would \
+             mean the chain is not part of the identity"
+        );
+    }
+}
+
+/// AC-R8: the planner's direct model-occupancy and termination scans are
+/// exact full-source queries too. A chain-less sibling surface of the same
+/// `(object, region, layer)` must not trim the chained column nor stop it
+/// early.
+#[test]
+fn occupancy_and_termination_scans_require_the_exact_source_chain() {
+    let object_id = "chain-filter-traditional";
+    let chain = vec![("region".to_string(), PaintValue::Flag(true))];
+    let object = overhang_object(object_id);
+    let analysis = SupportAnalysisView {
+        candidates: vec![SupportAnalysisCandidate {
+            id: 1,
+            object_id: object_id.into(),
+            region_id: "0".into(),
+            global_layer_index: 8,
+            z_units: slicer_ir::mm_to_units(1.8),
+            geometry: vec![contact_region()],
+            variant_chain: chain.clone(),
+            ..Default::default()
+        }],
+        model_occupancy: vec![SupportAnalysisGeometryEntry {
+            // Chain-less sibling covering the whole contact at layer 7: a
+            // pair-only occupancy scan would trim the carry to nothing and
+            // decline the column.
+            global_support_layer_index: 7,
+            object_id: object_id.into(),
+            region_id: "0".into(),
+            polygons: vec![contact_region()],
+            ..Default::default()
+        }],
+        termination_surfaces: vec![
+            SupportAnalysisGeometryEntry {
+                // Chain-less decoy below the contact: a pair-only termination
+                // scan would stop the column here (layer 5) instead of at the
+                // chained surface at layer 2.
+                global_support_layer_index: 5,
+                object_id: object_id.into(),
+                region_id: "0".into(),
+                polygons: vec![contact_region()],
+                ..Default::default()
+            },
+            // exhaustive: chain is part of this row's match key; FRU would let it default to the chain-less sibling identity
+            SupportAnalysisGeometryEntry {
+                global_support_layer_index: 2,
+                object_id: object_id.into(),
+                region_id: "0".into(),
+                variant_chain: chain.clone(),
+                polygons: vec![contact_region()],
+            },
+        ],
+        family_assignments: vec![SupportFamilyAssignment {
+            object_id: object_id.into(),
+            region_id: "0".into(),
+            family_id: "traditional".into(),
+            variant_chain: chain.clone(),
+        }],
+        ..Default::default()
+    };
+    let output = run_planner_with_analysis(true, object, analysis);
+
+    assert!(
+        output
+            .entries()
+            .iter()
+            .all(|entry| entry.decline_reason.is_none()),
+        "the chain-less occupancy decoy must not trim the chained column: {:?}",
+        output
+            .entries()
+            .iter()
+            .filter(|entry| entry.decline_reason.is_some())
+            .map(|entry| (entry.global_layer_index, entry.decline_reason))
+            .collect::<Vec<_>>()
+    );
+    let lowest = output
+        .entries()
+        .iter()
+        .map(|entry| entry.global_layer_index)
+        .min()
+        .expect("the chained column must be planned");
+    assert_eq!(
+        lowest, 2,
+        "only the chain-matched termination surface (layer 2) may stop the \
+         column; the chain-less decoy at layer 5 must be ignored"
+    );
+    assert!(
+        output
+            .entries()
+            .iter()
+            .all(|entry| entry.variant_chain == chain),
+        "every planned entry must carry the chained source's exact chain"
+    );
+    assert!(
+        output.entries().iter().any(|entry| entry
+            .roles
+            .iter()
+            .any(|role| role.role == SupportPlanRole::BottomInterface && !role.regions.is_empty())),
+        "the chain-matched landing must still emit its bottom interface"
     );
 }

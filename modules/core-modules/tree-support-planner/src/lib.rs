@@ -1499,8 +1499,10 @@ impl TreeVolumes {
             if layer_idx >= layer_count {
                 continue;
             }
+            // Exact full source origin lookup: a chain variant is never
+            // classified by its chain-less sibling's family.
             let owned_by_tree = support_analysis
-                .family_of(&entry.object_id, &entry.region_id)
+                .family_of(&entry.object_id, &entry.region_id, &entry.variant_chain)
                 .is_some_and(|family| canonical_support_family_alias(Some(family)) == "tree");
             if !owned_by_tree {
                 foreign_territory[layer_idx].extend(entry.polygons.iter().cloned());
@@ -2153,17 +2155,25 @@ impl SupportPlanner {
         // an independent compatibility input for collision avoidance below.
         let mut arena = NodeArena::default();
         let mut contacts_by_layer: Vec<Vec<NodeId>> = vec![Vec::new(); num_layers as usize];
-        // Region ids the RegionMap carries for this object on *any* layer.
-        // Family assignments are per `(object, region)`, not per layer, so an
-        // assigned region that segmentation already carries must take its
-        // layer presence from segmentation; widening it below would stamp one
-        // region's column onto every layer of the object (packet 241b).
-        let segmented_region_ids: std::collections::BTreeSet<&str> = region_segmentation
-            .entries
-            .iter()
-            .filter(|entry| entry.object_id == obj.object_id)
-            .flat_map(|entry| entry.region_ids.iter().map(String::as_str))
-            .collect();
+        // Full source origins `(region_id, ordered variant_chain)` the
+        // RegionMap carries for this object on *any* layer. Family assignments
+        // are per full source origin, not per layer, so an assigned origin
+        // segmentation already carries must take its layer presence from
+        // segmentation; widening it below would stamp one origin's column onto
+        // every layer of the object (packet 241b). Chains stay exact so a
+        // chain-bearing origin is never confused with its chain-less sibling.
+        let segmented_sources: std::collections::BTreeSet<(&str, &[(String, PaintValue)])> =
+            region_segmentation
+                .entries
+                .iter()
+                .filter(|entry| entry.object_id == obj.object_id)
+                .flat_map(|entry| {
+                    entry
+                        .region_origins
+                        .iter()
+                        .map(|origin| (origin.region_id.as_str(), origin.variant_chain.as_slice()))
+                })
+                .collect();
         let base_radius = MIN_BRANCH_RADIUS.max(self.tree_support_branch_diameter / 2.0);
         // Canonical builds `grid_points` once per object over the whole-object
         // bounding box, rotated 22 degrees (F-35).
@@ -2329,11 +2339,15 @@ impl SupportPlanner {
         // `entries_in_order`, so the family-assignment stamping pass below
         // cannot see them. Remember their identities or that pass will stamp
         // a second entry onto the same
-        // `(global_layer_index, object_id, region_id)` triple, which
-        // `SupportPlanIR::duplicate_region_identity` rejects at the host
-        // commit seam.
-        let mut declined_identities: std::collections::BTreeSet<(String, i32, String)> =
-            std::collections::BTreeSet::new();
+        // `(global_layer_index, object_id, region_id, variant_chain)` source
+        // origin, which `SupportPlanIR::duplicate_region_identity` rejects at
+        // the host commit seam.
+        let mut declined_identities: std::collections::BTreeSet<(
+            String,
+            i32,
+            String,
+            Vec<(String, PaintValue)>,
+        )> = std::collections::BTreeSet::new();
         for candidate in support_analysis.candidates.iter().filter(|candidate| {
             candidate.object_id == obj.object_id
                 && candidate.blocked
@@ -2343,6 +2357,7 @@ impl SupportPlanner {
                 obj.object_id.clone(),
                 candidate.global_layer_index as i32,
                 candidate.region_id.clone(),
+                candidate.variant_chain.clone(),
             ));
             let _ = output.push_support_plan_entry(slicer_sdk::prepass_types::SupportPlanEntry {
                 global_layer_index: candidate.global_layer_index as i32,
@@ -2358,6 +2373,7 @@ impl SupportPlanner {
                 capabilities: Vec::new(),
                 provenance: vec!["support-planner".to_string()],
                 decline_reason: Some(slicer_ir::SupportPlanDeclineReason::Blocked),
+                variant_chain: candidate.variant_chain.clone(),
             });
         }
         for candidate in support_analysis.candidates.iter().filter(|candidate| {
@@ -2371,10 +2387,10 @@ impl SupportPlanner {
                 && region_segmentation.entries.iter().any(|entry| {
                     entry.object_id == obj.object_id
                         && entry.layer_index == candidate.global_layer_index
-                        && entry
-                            .region_ids
-                            .iter()
-                            .any(|region_id| region_id == &candidate.region_id)
+                        && entry.region_origins.iter().any(|origin| {
+                            origin.region_id == candidate.region_id
+                                && origin.variant_chain == candidate.variant_chain
+                        })
                 })
         }) {
             let layer_idx = layer_plan
@@ -3638,16 +3654,24 @@ impl SupportPlanner {
                 || !interface_areas.is_empty()
                 || !floor_areas.is_empty()
             {
-                // Find all regions for this (layer, object) pair.
-                let mut regions_for_this: Vec<String> = region_segmentation
-                    .entries
-                    .iter()
-                    .filter(|e| {
-                        e.object_id == obj.object_id && e.layer_index == current_global_layer_index
-                    })
-                    .flat_map(|e| e.region_ids.iter().cloned())
-                    .collect();
-                regions_for_this.extend(
+                // Find all full source origins for this (layer, object) pair.
+                // `(region_id, ordered variant_chain)` is the exact identity:
+                // two origins that differ only by chain stay distinct columns.
+                let mut origins_for_this: Vec<(String, Vec<(String, PaintValue)>)> =
+                    region_segmentation
+                        .entries
+                        .iter()
+                        .filter(|e| {
+                            e.object_id == obj.object_id
+                                && e.layer_index == current_global_layer_index
+                        })
+                        .flat_map(|e| {
+                            e.region_origins.iter().map(|origin| {
+                                (origin.region_id.clone(), origin.variant_chain.clone())
+                            })
+                        })
+                        .collect();
+                origins_for_this.extend(
                     support_analysis
                         .family_assignments
                         .iter()
@@ -3655,28 +3679,32 @@ impl SupportPlanner {
                             assignment.object_id == obj.object_id
                                 && canonical_support_family_alias(Some(&assignment.family_id))
                                     == "tree"
-                                // Only regions segmentation does not carry at
-                                // all (host-minted modifier sub-regions).
-                                && !segmented_region_ids
-                                    .contains(assignment.region_id.as_str())
-                        })
-                        .map(|assignment| assignment.region_id.clone()),
-                );
-                regions_for_this.sort();
-                regions_for_this.dedup();
-                for region_id in regions_for_this {
-                    // No self-default: a region the host did not assign to this
-                    // family is not this planner's to plan. See `candidate_family`.
-                    let Some(support_family) = support_analysis
-                        .family_assignments
-                        .iter()
-                        .find(|assignment| {
-                            assignment.object_id == obj.object_id
-                                && assignment.region_id == *region_id
+                                // Only full origins segmentation does not
+                                // carry at all (host-minted modifier
+                                // sub-regions).
+                                && !segmented_sources.contains(&(
+                                    assignment.region_id.as_str(),
+                                    assignment.variant_chain.as_slice(),
+                                ))
                         })
                         .map(|assignment| {
-                            canonical_support_family_alias(Some(&assignment.family_id))
-                        })
+                            (
+                                assignment.region_id.clone(),
+                                assignment.variant_chain.clone(),
+                            )
+                        }),
+                );
+                origins_for_this.sort();
+                origins_for_this.dedup();
+                for (region_id, variant_chain) in origins_for_this {
+                    // No self-default: an origin the host did not assign to
+                    // this family is not this planner's to plan. The lookup is
+                    // exact over `(object_id, region_id, ordered
+                    // variant_chain)` — a chain-less or chain-shifted sibling
+                    // never matches. See `candidate_family`.
+                    let Some(support_family) = support_analysis
+                        .family_of(&obj.object_id, &region_id, &variant_chain)
+                        .map(|family| canonical_support_family_alias(Some(family)))
                     else {
                         continue;
                     };
@@ -3684,16 +3712,18 @@ impl SupportPlanner {
                         continue;
                     }
                     // A blocked candidate already published a declined record
-                    // for this identity. Emitting a planned entry as well
+                    // for this full origin. Emitting a planned entry as well
                     // would put two entries on the same
-                    // `(global_layer_index, object_id, region_id)` triple,
-                    // which `SupportPlanIR::duplicate_region_identity`
-                    // rejects at the host commit seam — and would contradict
-                    // the decline besides.
+                    // `(global_layer_index, object_id, region_id,
+                    // variant_chain)` origin, which
+                    // `SupportPlanIR::duplicate_region_identity` rejects at
+                    // the host commit seam — and would contradict the decline
+                    // besides.
                     if declined_identities.contains(&(
                         obj.object_id.clone(),
                         current_global_layer_index as i32,
                         region_id.clone(),
+                        variant_chain.clone(),
                     )) {
                         continue;
                     }
@@ -3705,7 +3735,8 @@ impl SupportPlanner {
                                 entry.object_id == obj.object_id
                                     && entry.global_support_layer_index
                                         == current_global_layer_index
-                                    && entry.region_id == *region_id
+                                    && entry.region_id == region_id
+                                    && entry.variant_chain.as_slice() == variant_chain.as_slice()
                             })
                             .flat_map(|entry| entry.polygons.iter().cloned())
                             .collect::<Vec<_>>(),
@@ -3724,11 +3755,13 @@ impl SupportPlanner {
                     // only what falls inside its own footprint; a base region
                     // keeps what the foreign carve above left. Skeleton points
                     // follow the same rule so the renderer never draws a
-                    // branch through the other family's half.
+                    // branch through the other family's half. The lookup is
+                    // exact over the full source origin, chain included.
                     let own_territory = support_analysis.region_territory(
                         &obj.object_id,
                         current_global_layer_index,
                         &region_id,
+                        &variant_chain,
                     );
                     let territory_allows = |x: f32, y: f32| -> bool {
                         match own_territory {
@@ -3849,34 +3882,40 @@ impl SupportPlanner {
                             vec!["support-planner".to_string()]
                         },
                         decline_reason: None,
+                        variant_chain: variant_chain.clone(),
                     });
                 }
             }
         }
 
-        // Family assignments can cover regions absent from either the
-        // segmentation projection or the candidate geometry path. Stamp each
-        // object/layer from one deterministic successful entry, without
-        // replacing a blocked candidate record. Only regions segmentation
+        // Family assignments can cover full source origins absent from either
+        // the segmentation projection or the candidate geometry path. Stamp
+        // each object/layer from one deterministic successful entry, without
+        // replacing a blocked candidate record. Only full origins segmentation
         // does not carry at all are stamped: an assignment is per
-        // `(object, region)` and carries no layer extent, so stamping a
-        // segmented region here would copy one region's column onto every
-        // layer of the object (packet 241b).
+        // `(object, region, ordered variant_chain)` and carries no layer
+        // extent, so stamping a segmented origin here would copy one origin's
+        // column onto every layer of the object (packet 241b).
         let mut templates: std::collections::BTreeMap<(String, i32), SupportPlanEntry> =
             std::collections::BTreeMap::new();
-        let mut covered_regions: std::collections::BTreeSet<(String, i32, String)> =
-            declined_identities;
+        let mut covered_regions: std::collections::BTreeSet<(
+            String,
+            i32,
+            String,
+            Vec<(String, PaintValue)>,
+        )> = declined_identities;
         for entry in &entries_in_order {
-            // Coverage is "this (object, layer, region) already has an
+            // Coverage is "this (object, layer, full origin) already has an
             // entry", which includes blocked/declined records: stamping over
             // one would publish two entries sharing
-            // `(global_layer_index, object_id, region_id)` and trip
-            // `SupportPlanIR::duplicate_region_identity` at the host commit
-            // seam. Only *successful* entries may serve as a template.
+            // `(global_layer_index, object_id, region_id, variant_chain)` and
+            // trip `SupportPlanIR::duplicate_region_identity` at the host
+            // commit seam. Only *successful* entries may serve as a template.
             covered_regions.insert((
                 entry.object_id.clone(),
                 entry.global_layer_index,
                 entry.region_id.clone(),
+                entry.variant_chain.clone(),
             ));
             if entry.decline_reason.is_none() && entry.skeleton.is_some() {
                 templates
@@ -3885,22 +3924,36 @@ impl SupportPlanner {
             }
         }
         for ((object_id, layer_index), template) in templates {
-            let mut assigned_regions: Vec<String> = support_analysis
+            let mut assigned_origins: Vec<(String, Vec<(String, PaintValue)>)> = support_analysis
                 .family_assignments
                 .iter()
                 .filter(|assignment| {
                     assignment.object_id == object_id
                         && canonical_support_family_alias(Some(&assignment.family_id)) == "tree"
-                        && !segmented_region_ids.contains(assignment.region_id.as_str())
+                        && !segmented_sources.contains(&(
+                            assignment.region_id.as_str(),
+                            assignment.variant_chain.as_slice(),
+                        ))
                 })
-                .map(|assignment| assignment.region_id.clone())
+                .map(|assignment| {
+                    (
+                        assignment.region_id.clone(),
+                        assignment.variant_chain.clone(),
+                    )
+                })
                 .collect();
-            assigned_regions.sort();
-            assigned_regions.dedup();
-            for region_id in assigned_regions {
-                if covered_regions.insert((object_id.clone(), layer_index, region_id.clone())) {
+            assigned_origins.sort();
+            assigned_origins.dedup();
+            for (region_id, variant_chain) in assigned_origins {
+                if covered_regions.insert((
+                    object_id.clone(),
+                    layer_index,
+                    region_id.clone(),
+                    variant_chain.clone(),
+                )) {
                     let mut stamped = template.clone();
                     stamped.region_id = region_id;
+                    stamped.variant_chain = variant_chain;
                     entries_in_order.push(stamped);
                 }
             }
@@ -3944,12 +3997,12 @@ impl SupportPlanner {
                 .unwrap_or(0.0)
         };
         if self.independent_support_layer_height && self.support_layer_height_mm > 0.0 {
-            // Support-bearing rows, ascending by global layer index. A row
-            // prints iff it survived with real geometry (the same predicate
-            // the template pass above uses); declined/empty rows print
-            // nothing and therefore bracket nothing.
+            // Support-bearing rows, ascending by global layer index, keyed by
+            // full source origin. A row prints iff it survived with real
+            // geometry (the same predicate the template pass above uses);
+            // declined/empty rows print nothing and therefore bracket nothing.
             let mut support_rows_by_object: std::collections::BTreeMap<
-                (String, String),
+                (String, String, Vec<(String, PaintValue)>),
                 std::collections::BTreeMap<u32, Vec<&SupportPlanEntry>>,
             > = std::collections::BTreeMap::new();
             let mut support_rows_239c_by_object: std::collections::BTreeMap<
@@ -3961,7 +4014,11 @@ impl SupportPlanner {
                 .filter(|entry| entry.decline_reason.is_none() && entry.skeleton.is_some())
             {
                 support_rows_by_object
-                    .entry((entry.object_id.clone(), entry.region_id.clone()))
+                    .entry((
+                        entry.object_id.clone(),
+                        entry.region_id.clone(),
+                        entry.variant_chain.clone(),
+                    ))
                     .or_default()
                     .entry(entry.anchor_layer_index)
                     .or_default()
@@ -3979,11 +4036,14 @@ impl SupportPlanner {
             let mut interpolated: Vec<SupportPlanEntry> = Vec::new();
             let mut coarse_candidates = Vec::<(f64, i32, SupportPlanEntry)>::new();
             let mut intermediate_plane_indices = std::collections::BTreeMap::<i64, i32>::new();
-            let mut coarse_ranges = Vec::<(String, String, u32, u32)>::new();
+            let mut coarse_ranges =
+                Vec::<(String, String, Vec<(String, PaintValue)>, u32, u32)>::new();
             let mut coarse_used = false;
             let explicit_pitch = self.support_layer_height_mm > 0.0;
             let pitch_units = slicer_ir::mm_to_units(support_pitch_mm as f32);
-            for ((object_id, region_id), support_rows_by_layer) in &support_rows_by_object {
+            for ((object_id, region_id, variant_chain), support_rows_by_layer) in
+                &support_rows_by_object
+            {
                 let demanded_layers: Vec<u32> = support_rows_by_layer.keys().copied().collect();
                 for run in demanded_layers.chunk_by(|a, b| *b == *a + 1) {
                     if run.len() < 2 {
@@ -4055,6 +4115,7 @@ impl SupportPlanner {
                             coarse_ranges.push((
                                 object_id.clone(),
                                 region_id.clone(),
+                                variant_chain.clone(),
                                 below_layer,
                                 above_layer,
                             ));
@@ -4103,7 +4164,9 @@ impl SupportPlanner {
             if coarse_used {
                 // Coarse brackets replace only their covered row pairs. Every other
                 // pair keeps the 239c candidate multiplicity and insertion order.
-                for ((object_id, region_id), support_rows_by_layer) in &support_rows_by_object {
+                for ((object_id, region_id, variant_chain), support_rows_by_layer) in
+                    &support_rows_by_object
+                {
                     let demanded_layers: Vec<u32> = support_rows_by_layer.keys().copied().collect();
                     for run in demanded_layers.chunk_by(|a, b| *b == *a + 1) {
                         for pair in run.windows(2) {
@@ -4119,9 +4182,16 @@ impl SupportPlanner {
                                 ) {
                                     for lower_entry in &support_rows_by_layer[&prev] {
                                         let belongs_to_coarse_range = coarse_ranges.iter().any(
-                                            |(coarse_object, coarse_region, below, above)| {
+                                            |(
+                                                coarse_object,
+                                                coarse_region,
+                                                coarse_chain,
+                                                below,
+                                                above,
+                                            )| {
                                                 object_id == coarse_object
                                                     && region_id == coarse_region
+                                                    && variant_chain == coarse_chain
                                                     && prev >= *below
                                                     && layer <= *above
                                             },
@@ -4159,8 +4229,14 @@ impl SupportPlanner {
                     }
                 }
 
-                let mut synthesized_seen =
-                    std::collections::BTreeSet::<(i32, String, String, Vec<String>, i64)>::new();
+                let mut synthesized_seen = std::collections::BTreeSet::<(
+                    i32,
+                    String,
+                    String,
+                    Vec<(String, PaintValue)>,
+                    Vec<String>,
+                    i64,
+                )>::new();
                 coarse_candidates.sort_by(|a, b| a.0.total_cmp(&b.0));
                 let mut first = 0;
                 while first < coarse_candidates.len() {
@@ -4193,11 +4269,12 @@ impl SupportPlanner {
                         })
                         .map(|(index, _)| index as u32)
                         .unwrap_or(0);
-                    // One emitted row per `(global_layer_index,
-                    // object_id, region_id)` is the PRODUCER's contract.
+                    // One emitted row per `(global_layer_index, object_id,
+                    // region_id, variant_chain)` full origin is the
+                    // PRODUCER's contract.
                     // Candidates in one EPSILON group all receive this
                     // group's `global_layer_index` / `anchor_z`, so two
-                    // candidates of the same region that came from
+                    // candidates of the same origin that came from
                     // DIFFERENT source layers used to be published as two
                     // rows sharing one region identity -- the exact shape
                     // `SupportPlanIR::duplicate_region_identity` rejects.
@@ -4209,8 +4286,10 @@ impl SupportPlanner {
                     // `union_same_family_entries`, which is what folded the
                     // pair downstream until now, so committed output is
                     // unchanged.
-                    let mut region_slots =
-                        std::collections::BTreeMap::<(String, String), usize>::new();
+                    let mut region_slots = std::collections::BTreeMap::<
+                        (String, String, Vec<(String, PaintValue)>),
+                        usize,
+                    >::new();
                     for (_, source_global_layer_index, mut clone) in
                         coarse_candidates[first..=last].iter().cloned()
                     {
@@ -4221,12 +4300,17 @@ impl SupportPlanner {
                             source_global_layer_index,
                             clone.object_id.clone(),
                             clone.region_id.clone(),
+                            clone.variant_chain.clone(),
                             clone.body_ids.clone(),
                             clone.anchor_z,
                         )) {
                             continue;
                         }
-                        let region_identity = (clone.object_id.clone(), clone.region_id.clone());
+                        let region_identity = (
+                            clone.object_id.clone(),
+                            clone.region_id.clone(),
+                            clone.variant_chain.clone(),
+                        );
                         match region_slots.get(&region_identity) {
                             Some(index) => {
                                 merge_synthesized_region_row(&mut interpolated[*index], clone)
@@ -4240,11 +4324,11 @@ impl SupportPlanner {
                     first = last + 1;
                 }
                 entries_in_order.retain(|entry| {
-                    !coarse_ranges
-                        .iter()
-                        .any(|(object_id, region_id, below, above)| {
+                    !coarse_ranges.iter().any(
+                        |(object_id, region_id, variant_chain, below, above)| {
                             entry.object_id == *object_id
                                 && entry.region_id == *region_id
+                                && entry.variant_chain == *variant_chain
                                 && entry.anchor_layer_index > *below
                                 && entry.anchor_layer_index < *above
                                 && !entry.roles.iter().any(|role| {
@@ -4255,7 +4339,8 @@ impl SupportPlanner {
                                             | slicer_ir::SupportPlanRole::BottomInterface
                                     )
                                 })
-                        })
+                        },
+                    )
                 });
                 entries_in_order.extend(interpolated);
                 // A coarse-active object is emitted Z-first as one stack. A
@@ -4314,13 +4399,21 @@ impl SupportPlanner {
                 // Preserve the pre-239c final identity gate on the finer-only
                 // path. Coarse synthesis has its own source-aware key above;
                 // applying that key here would change legacy identity and
-                // multiplicity semantics.
-                let mut seen = std::collections::BTreeSet::<(String, i32, String, i64)>::new();
+                // multiplicity semantics. The full-source key keeps chain
+                // variants of one region as distinct rows.
+                let mut seen = std::collections::BTreeSet::<(
+                    String,
+                    i32,
+                    String,
+                    Vec<(String, PaintValue)>,
+                    i64,
+                )>::new();
                 entries_in_order.retain(|entry| {
                     seen.insert((
                         entry.object_id.clone(),
                         entry.global_layer_index,
                         entry.region_id.clone(),
+                        entry.variant_chain.clone(),
                         entry.anchor_z,
                     ))
                 });
@@ -4349,7 +4442,8 @@ impl SupportPlanner {
 }
 
 /// Fold `incoming` into `existing`, which already occupies this
-/// physical plane for the same `(object_id, region_id)`.
+/// physical plane for the same `(object_id, region_id, ordered variant_chain)`
+/// full source origin.
 ///
 /// Membership is unioned, never dropped: a synthesized coarse row stands for
 /// every source body that reached its plane. The field-by-field behaviour is
@@ -4904,6 +4998,9 @@ fn canonical_support_family_alias(value: Option<&str>) -> String {
 /// There is deliberately no self-default onto the planner's configured
 /// `support_family` — that would let this planner claim regions the host
 /// never assigned to it, and the host merge point would drop them anyway.
+/// The lookup is exact over the full source origin `(object_id, region_id,
+/// ordered variant_chain)`: a missing-chain or chain-shifted sibling's
+/// assignment is never a fallback.
 fn candidate_family(
     candidate: &SupportAnalysisCandidate,
     analysis: &SupportAnalysisView,
@@ -4914,13 +5011,16 @@ fn candidate_family(
         .find(|assignment| {
             assignment.object_id == candidate.object_id
                 && assignment.region_id == candidate.region_id
+                && assignment.variant_chain == candidate.variant_chain
         })
         .map(|assignment| canonical_support_family_alias(Some(&assignment.family_id)))
 }
 
-/// Group `SupportPlanEntry` indices by `(object_id, region_id)`, each group
+/// Group `SupportPlanEntry` indices by full source origin
+/// `(object_id, region_id, ordered variant_chain)`, each group
 /// sorted by `global_layer_index` descending (tip → root). Returns the list of
-/// index groups referencing positions in the original `entries` slice.
+/// index groups referencing positions in the original `entries` slice. Chain
+/// variants of one region stay in separate columns.
 pub fn group_branches_into_columns(
     entries: &[slicer_sdk::prepass_types::SupportPlanEntry],
 ) -> Vec<Vec<usize>> {
@@ -4928,12 +5028,17 @@ pub fn group_branches_into_columns(
         (
             slicer_sdk::prepass_types::ObjectId,
             slicer_sdk::prepass_types::RegionId,
+            Vec<(String, PaintValue)>,
         ),
         Vec<usize>,
     > = std::collections::BTreeMap::new();
     for (idx, entry) in entries.iter().enumerate() {
         groups
-            .entry((entry.object_id.clone(), entry.region_id.clone()))
+            .entry((
+                entry.object_id.clone(),
+                entry.region_id.clone(),
+                entry.variant_chain.clone(),
+            ))
             .or_default()
             .push(idx);
     }
@@ -5935,6 +6040,7 @@ mod tests {
     }
 
     use super::*;
+    use slicer_sdk::prepass_types::RegionSourceOrigin;
 
     #[test]
     fn coarse_source_selection_prefers_body_per_membership() {
@@ -6547,6 +6653,7 @@ mod tests {
                 object_id: "outline-order".to_string(),
                 region_id: "0".to_string(),
                 outlines,
+                ..Default::default()
             }],
         };
 
@@ -6765,6 +6872,10 @@ mod tests {
                     |region_id| slicer_sdk::prepass_types::SupportFamilyAssignment {
                         object_id: object_id.to_string(),
                         region_id: region_id.to_string(),
+                        // These fixtures describe genuinely chain-less
+                        // sources: the empty chain is an exact identity, not
+                        // a wildcard.
+                        variant_chain: Vec::new(),
                         family_id: "tree".to_string(),
                     },
                 )
@@ -6822,7 +6933,10 @@ mod tests {
                 .map(|i| RegionSegmentationViewEntry {
                     object_id: object_id.to_string(),
                     layer_index: i,
-                    region_ids: vec!["0".to_string()],
+                    region_origins: vec![slicer_sdk::prepass_types::RegionSourceOrigin {
+                        region_id: "0".to_string(),
+                        variant_chain: Vec::new(),
+                    }],
                 })
                 .collect(),
             region_support_configs: Vec::new(),
@@ -6931,12 +7045,22 @@ mod tests {
         let lp = default_layer_plan(10, 0.0, 0.2);
         let mut rs = default_region_segmentation("plate", 10);
         for layer_index in 0..10 {
-            rs.entries[layer_index as usize].region_ids = vec!["0".to_string(), "1".to_string()];
+            rs.entries[layer_index as usize].region_origins = vec![
+                RegionSourceOrigin {
+                    region_id: "0".to_string(),
+                    variant_chain: Vec::new(),
+                },
+                RegionSourceOrigin {
+                    region_id: "1".to_string(),
+                    variant_chain: Vec::new(),
+                },
+            ];
             rs.region_support_configs
                 .push(slicer_sdk::prepass_types::RegionSupportConfig {
                     object_id: "plate".to_string(),
                     layer_index,
                     region_id: "1".to_string(),
+                    variant_chain: Vec::new(),
                     support_family: None,
                     support_type: Some("tree(auto)".to_string()),
                 });
@@ -6945,6 +7069,7 @@ mod tests {
                     object_id: "plate".to_string(),
                     layer_index,
                     region_id: "0".to_string(),
+                    variant_chain: Vec::new(),
                     support_family: Some("traditional".to_string()),
                     support_type: None,
                 });
@@ -7030,6 +7155,7 @@ mod tests {
                     object_id: "lone-contact".to_string(),
                     region_id: "0".to_string(),
                     outlines: vec![collision_box.clone()],
+                    ..Default::default()
                 })
                 .collect(),
         };

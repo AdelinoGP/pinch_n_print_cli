@@ -57,6 +57,7 @@ fn lightning_infill_guest_calls_lightning_tree_segments() {
         }],
     };
     let lightning_tree_ir = LightningTreeIR {
+        // exhaustive: guest query identity fixture pins every lightning entry field.
         entries: vec![LightningTreeEntry {
             object_id: object_id.to_string(),
             global_layer_index: 0,
@@ -65,6 +66,13 @@ fn lightning_infill_guest_calls_lightning_tree_segments() {
                 [Point2 { x: 0, y: 0 }, Point2 { x: 10, y: 10 }],
                 [Point2 { x: 20, y: 20 }, Point2 { x: 30, y: 30 }],
             ],
+            // Genuinely chain-empty source: `region_id` 7 is a plain base id (not
+            // a painted-variant or modifier-encoded id), the slice region and the
+            // region-map key both carry the exact empty chain, and this fixture
+            // feeds no paint annotations. The typed literal still carries that
+            // exact empty chain explicitly (no serde-default reliance) so the
+            // guest's chain-aware query matches this source and never a wildcard.
+            variant_chain: Vec::new(),
         }],
         ..LightningTreeIR::default()
     };

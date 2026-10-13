@@ -2691,7 +2691,10 @@ pub fn assemble_ordered_entities_with_support_identities(
                     global_layer_index,
                     object_id: slice_region.object_id.clone(),
                     region_id: slice_region.region_id,
-                    variant_chain: Vec::new(),
+                    // The raft entity's back-reference preserves the source
+                    // region's ordered chain (empty only for a genuinely
+                    // chain-less source, never a wildcard).
+                    variant_chain: slice_region.variant_chain.clone(),
                 };
                 push(
                     path,
@@ -2713,7 +2716,11 @@ pub fn assemble_ordered_entities_with_support_identities(
                     global_layer_index,
                     object_id: entry.object_id.clone(),
                     region_id: entry.region_id,
-                    variant_chain: Vec::new(),
+                    // The support entity's back-reference preserves the owning
+                    // entry's ordered source chain (empty only for a genuinely
+                    // chain-less source, never a wildcard). The physical
+                    // family/body/demand side table below is unchanged.
+                    variant_chain: entry.variant_chain.clone(),
                 };
                 // Canonical (OrcaSlicer `GCode.cpp::process_layer` / `ToolOrdering`)
                 // selects the interface extruder per EXTRUSION ROLE of the path
@@ -3264,11 +3271,15 @@ fn slicer_runtime_order_lock_remap(
 
 fn validate_infill_order_locks(previous: &InfillIR, replacement: &InfillIR) -> Result<(), String> {
     for old_region in &previous.regions {
-        let Some(new_region) = replacement
-            .regions
-            .iter()
-            .find(|r| r.object_id == old_region.object_id && r.region_id == old_region.region_id)
-        else {
+        // Full-source join: `(object_id, region_id)` alone collapses chained
+        // variants sharing both. The ordered chain is part of the identity —
+        // equal empty chains still match exactly (empty is a real value, never
+        // a wildcard).
+        let Some(new_region) = replacement.regions.iter().find(|r| {
+            r.object_id == old_region.object_id
+                && r.region_id == old_region.region_id
+                && r.variant_chain == old_region.variant_chain
+        }) else {
             if old_region
                 .sparse_infill
                 .iter()
@@ -3569,13 +3580,18 @@ pub(crate) fn apply(
             if let (Some(seam_plan), Some(orig_perim)) = (ctx.seam_plan, original.as_mut()) {
                 backfill_resolved_seam(orig_perim, seam_plan, ctx.layer_index);
             }
-            // Pair by `(object_id, region_id)`, not positional index: a post-process
-            // module that drops a region must not mis-route preserved fields.
+            // Full-source join by `(object_id, region_id, ordered chain)`, not
+            // positional index and not the pair alone: a post-process module
+            // that drops a region must not mis-route preserved fields, and a
+            // sibling variant differing only by chain must not borrow another
+            // variant's preserved fields.
             match (incoming, original) {
                 (Some(mut ir_owned), Some(orig_perim)) => {
                     for region in ir_owned.regions.iter_mut() {
                         let Some(orig_region) = orig_perim.regions.iter().find(|r| {
-                            r.object_id == region.object_id && r.region_id == region.region_id
+                            r.object_id == region.object_id
+                                && r.region_id == region.region_id
+                                && r.variant_chain == region.variant_chain
                         }) else {
                             continue;
                         };
@@ -3626,9 +3642,12 @@ pub(crate) fn apply(
             if !ir.raft_regions.is_empty() {
                 if let Some(mut slice) = arena.take_slice() {
                     for raft_region in &ir.raft_regions {
+                        // Delivery and commit retain raw source IDs; join the
+                        // slice by the same complete ordered source identity.
                         if let Some(slice_region) = slice.regions.iter_mut().find(|candidate| {
                             candidate.object_id == raft_region.object_id
                                 && candidate.region_id == raft_region.region_id
+                                && candidate.variant_chain == raft_region.variant_chain
                         }) {
                             slice_region.raft_fill.extend(raft_region.polygons.clone());
                         }
@@ -3774,10 +3793,19 @@ pub(crate) fn apply(
                     })?;
 
             for (i, (key, polys)) in polygon_updates.iter().enumerate() {
+                // Full-source join: the ordered chain is part of the target
+                // identity, so a chain-B update can never resolve to a
+                // pair-matching chain-A sibling. An update keyed to a chain
+                // absent from the slice has no full-source region and is
+                // rejected (unknown region) rather than borrowed.
                 let ridx = existing
                     .regions
                     .iter()
-                    .position(|r| r.object_id == key.object_id && r.region_id == key.region_id)
+                    .position(|r| {
+                        r.object_id == key.object_id
+                            && r.region_id == key.region_id
+                            && r.variant_chain == key.variant_chain
+                    })
                     .ok_or_else(|| {
                         mk_validation_err(
                             "slice postprocess",
@@ -3795,7 +3823,11 @@ pub(crate) fn apply(
                 let ridx = existing
                     .regions
                     .iter()
-                    .position(|r| r.object_id == key.object_id && r.region_id == key.region_id)
+                    .position(|r| {
+                        r.object_id == key.object_id
+                            && r.region_id == key.region_id
+                            && r.variant_chain == key.variant_chain
+                    })
                     .ok_or_else(|| {
                         mk_validation_err(
                             "slice postprocess",

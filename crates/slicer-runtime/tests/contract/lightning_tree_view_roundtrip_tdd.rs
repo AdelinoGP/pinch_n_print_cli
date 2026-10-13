@@ -20,11 +20,14 @@ fn fixture_entry(
     pts: &[(Point2, Point2)],
 ) -> LightningTreeEntry {
     let segments = pts.iter().map(|(a, b)| [*a, *b]).collect::<Vec<_>>();
+    // exhaustive: the fixture helper pins the full exact source identity; every fixture source is genuinely chain-empty.
     LightningTreeEntry {
         object_id: object_id.to_string(),
         global_layer_index: layer_index,
         region_id,
         tree_edge_segments: segments,
+        // Genuinely chain-empty source: the exact empty chain is the query key.
+        variant_chain: Vec::new(),
     }
 }
 
@@ -50,16 +53,16 @@ fn sdk_accessor_returns_host_committed_segments_count_and_endpoints() {
 
     let view = PaintRegionLayerView::new(7).with_lightning_tree_ir(ir);
 
-    let segs = view.lightning_tree_segments_for("cube", 0);
+    let segs = view.lightning_tree_segments_for("cube", 0, &[]);
     assert_eq!(segs.len(), 3, "layer 7 + object cube must yield 3 segments");
     assert_eq!(segs[0], [p00, p11]);
     assert_eq!(segs[1], [p11, p22]);
     assert_eq!(segs[2], [p33, p44]);
 
-    let region_one = view.lightning_tree_segments_for("cube", 1);
+    let region_one = view.lightning_tree_segments_for("cube", 1, &[]);
     assert_eq!(region_one, vec![[p44, p55]]);
 
-    let segs_other = view.lightning_tree_segments_for("other", 0);
+    let segs_other = view.lightning_tree_segments_for("other", 0, &[]);
     assert_eq!(segs_other.len(), 1);
     assert_eq!(segs_other[0], [p22, p33]);
 
@@ -71,7 +74,7 @@ fn sdk_accessor_returns_host_committed_segments_count_and_endpoints() {
 fn sdk_accessor_returns_empty_when_no_ir_attached() {
     let view = PaintRegionLayerView::new(0);
     assert!(view.lightning_tree_ir().is_none());
-    assert!(view.lightning_tree_segments_for("cube", 0).is_empty());
+    assert!(view.lightning_tree_segments_for("cube", 0, &[]).is_empty());
 }
 
 #[test]
@@ -94,7 +97,7 @@ fn sdk_accessor_filters_by_layer_index() {
         ..LightningTreeIR::default()
     });
     let view = PaintRegionLayerView::new(6).with_lightning_tree_ir(ir);
-    let segs = view.lightning_tree_segments_for("cube", 0);
+    let segs = view.lightning_tree_segments_for("cube", 0, &[]);
     assert_eq!(segs.len(), 1);
     assert_eq!(segs[0][0], Point2 { x: 3, y: 3 });
     assert_eq!(segs[0][1], Point2 { x: 4, y: 4 });

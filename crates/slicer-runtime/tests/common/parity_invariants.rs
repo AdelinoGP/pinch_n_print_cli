@@ -6,11 +6,13 @@
 //! `contract/parity_invariants_selftest_tdd.rs` before any pilot module is
 //! compared, so it cannot certify a broken path vacuously.
 
+use slicer_ir::slice_ir::InfillRaftRegion;
 use slicer_ir::{
     ExPolygon, ExtrusionPath3D, GCodeCommand, InfillIR, InfillRegion, LayerCollectionIR,
-    LayerPlanIR, LayerStageCommit, PathOptimizationCommit, PerimeterIR, PerimeterRegion,
-    Point3WithWidth, Polygon, RetractSpec, SeamPlanEntry, SeamPlanIR, SupportIR, SupportPlanEntry,
-    SupportPlanIR, SupportPlanRoleRegion, SupportPlanSkeleton, TravelMoveDest, WallLoop,
+    LayerPlanIR, LayerStageCommit, PaintValue, PathOptimizationCommit, PerimeterIR,
+    PerimeterRegion, Point3WithWidth, Polygon, RetractSpec, SeamPlanEntry, SeamPlanIR, SupportIR,
+    SupportPlanEntry, SupportPlanIR, SupportPlanRoleRegion, SupportPlanSkeleton, TravelMoveDest,
+    WallLoop,
 };
 use slicer_runtime::PrepassStageOutput;
 
@@ -665,20 +667,28 @@ fn compare_infill_ir(
             wasm.regions.len()
         ));
     }
-    for n_region in &native.regions {
-        let w_region = wasm
-            .regions
-            .iter()
-            .find(|r| r.object_id == n_region.object_id && r.region_id == n_region.region_id)
-            .ok_or_else(|| {
-                format!(
-                    "region key set mismatch: wasm missing region (object_id={}, region_id={})",
-                    n_region.object_id, n_region.region_id
-                )
-            })?;
+    // Match on the FULL source key `(object_id, region_id, variant_chain)` and
+    // sort by it so duplicate rows stay distinct rather than being collapsed by
+    // a pair-only lookup. A region that differs only by a wrong or reversed
+    // ordered chain is a key-set failure, not an accepted equal row.
+    let region_key = |r: &InfillRegion| (r.object_id.clone(), r.region_id, r.variant_chain.clone());
+    let mut native_regions: Vec<_> = native.regions.iter().collect();
+    let mut wasm_regions: Vec<_> = wasm.regions.iter().collect();
+    native_regions.sort_by_key(|r| region_key(r));
+    wasm_regions.sort_by_key(|r| region_key(r));
+    for (n_region, w_region) in native_regions.iter().zip(&wasm_regions) {
+        let n_key = region_key(n_region);
+        let w_key = region_key(w_region);
+        if n_key != w_key {
+            return Err(format!(
+                "region key set mismatch: native=(object_id={}, region_id={}, variant_chain={:?}) \
+                 wasm=(object_id={}, region_id={}, variant_chain={:?})",
+                n_key.0, n_key.1, n_key.2, w_key.0, w_key.1, w_key.2
+            ));
+        }
         compare_infill_region(n_region, w_region, tol)?;
     }
-    Ok(())
+    compare_infill_raft_regions(&native.raft_regions, &wasm.raft_regions)
 }
 
 fn compare_infill_region(
@@ -708,6 +718,61 @@ fn compare_infill_region(
         tol,
         &format!("{region_label} ironing"),
     )?;
+    Ok(())
+}
+
+/// Raft-fill rows carry their own full source chain and polygon geometry.
+/// `InfillRaftRegion` is not an `InfillRegion`, so without this comparison a
+/// raft-only divergence (including a chain-only one) was invisible to the
+/// infill parity gate. Row multiplicity is preserved by sorting on the full
+/// source key rather than collapsing rows through a pair-only lookup.
+fn compare_infill_raft_regions(
+    native: &[InfillRaftRegion],
+    wasm: &[InfillRaftRegion],
+) -> Result<(), String> {
+    if native.len() != wasm.len() {
+        return Err(format!(
+            "raft region count mismatch: native={} wasm={}",
+            native.len(),
+            wasm.len()
+        ));
+    }
+    let raft_key =
+        |r: &InfillRaftRegion| (r.object_id.clone(), r.region_id, r.variant_chain.clone());
+    let mut native_rows: Vec<_> = native.iter().collect();
+    let mut wasm_rows: Vec<_> = wasm.iter().collect();
+    native_rows.sort_by_key(|r| raft_key(r));
+    wasm_rows.sort_by_key(|r| raft_key(r));
+    for (row, (n_raft, w_raft)) in native_rows.iter().zip(&wasm_rows).enumerate() {
+        let n_key = raft_key(n_raft);
+        let w_key = raft_key(w_raft);
+        if n_key != w_key {
+            return Err(format!(
+                "raft region key set mismatch at row {row}: \
+                 native=(object_id={}, region_id={}, variant_chain={:?}) \
+                 wasm=(object_id={}, region_id={}, variant_chain={:?})",
+                n_key.0, n_key.1, n_key.2, w_key.0, w_key.1, w_key.2
+            ));
+        }
+        if n_raft.polygons.len() != w_raft.polygons.len() {
+            return Err(format!(
+                "raft region polygon count mismatch at row {row} \
+                 (object_id={}, region_id={}): native={} wasm={}",
+                n_key.0,
+                n_key.1,
+                n_raft.polygons.len(),
+                w_raft.polygons.len()
+            ));
+        }
+        for (poly_idx, (n_poly, w_poly)) in n_raft.polygons.iter().zip(&w_raft.polygons).enumerate()
+        {
+            compare_expolygon(
+                n_poly,
+                w_poly,
+                &format!("raft row {row} polygon {poly_idx}"),
+            )?;
+        }
+    }
     Ok(())
 }
 
@@ -747,6 +812,14 @@ fn compare_support_ir(
         {
             return Err(format!("entry[{index}] identity mismatch"));
         }
+        // `SupportEntry.variant_chain` is part of the source identity: an
+        // entry whose ordered chain diverges while its geometry is identical
+        // must fail here rather than pass as an equal-role row.
+        compare_variant_chain(
+            &n.variant_chain,
+            &w.variant_chain,
+            &format!("entry[{index}]"),
+        )?;
         compare_path_vector(&n.paths, &w.paths, tol, &format!("entry[{index}] paths"))?;
     }
     Ok(())
@@ -769,6 +842,37 @@ fn compare_path_vector(
     }
     for (idx, (n_path, w_path)) in native.iter().zip(wasm).enumerate() {
         compare_segment(n_path, w_path, tol, &format!("{label} path {idx}"))?;
+    }
+    Ok(())
+}
+
+// ── Shared ordered source-chain comparison ──────────────────────────────────
+
+/// Ordered `(paint_semantic_name, value)` source chain: element-wise exact
+/// comparison naming the first diverging position. `PaintValue`'s `PartialEq`
+/// carries its established bit-level scalar semantics, and the chain order is
+/// part of the source identity, so neither a wrong value nor a reversed order
+/// is a tolerance-governed float comparison.
+fn compare_variant_chain(
+    native: &[(String, PaintValue)],
+    wasm: &[(String, PaintValue)],
+    label: &str,
+) -> Result<(), String> {
+    if native.len() != wasm.len() {
+        return Err(format!(
+            "variant_chain length mismatch at {label}: native={} wasm={}",
+            native.len(),
+            wasm.len()
+        ));
+    }
+    for (index, (n_pair, w_pair)) in native.iter().zip(wasm).enumerate() {
+        if n_pair != w_pair {
+            return Err(format!(
+                "variant_chain mismatch at {label} element {index}: \
+                 native=({:?}, {:?}) wasm=({:?}, {:?})",
+                n_pair.0, n_pair.1, w_pair.0, w_pair.1
+            ));
+        }
     }
     Ok(())
 }
@@ -822,7 +926,8 @@ fn compare_support_plan_ir(
         ));
     }
     // Sort by the FULL triple so duplicate keys remain distinct and are
-    // compared pairwise rather than collapsed by a map.
+    // compared pairwise rather than collapsed by a map; the ordered chain is
+    // then compared per entry by `compare_support_plan_entry`.
     let mut native_entries: Vec<_> = native.entries.iter().collect();
     let mut wasm_entries: Vec<_> = wasm.entries.iter().collect();
     let key = |e: &SupportPlanEntry| (e.global_layer_index, e.object_id.clone(), e.region_id);
@@ -914,6 +1019,10 @@ fn compare_support_plan_entry(
             native.decline_reason, wasm.decline_reason
         ));
     }
+    // Ordered source chain: part of the entry's full identity. Entries are
+    // matched pairwise on the triple above, so this check is what stops a
+    // wrong or reversed chain from passing as an equal-geometry row.
+    compare_variant_chain(&native.variant_chain, &wasm.variant_chain, label)?;
     Ok(())
 }
 

@@ -275,8 +275,10 @@ fn lightning_producer_per_region_keying() {
     assert!(ir.entries.iter().all(|entry| entry.global_layer_index == 1));
 
     let view = PaintRegionLayerView::new(1).with_lightning_tree_ir(Arc::clone(ir));
-    let region_one = view.lightning_tree_segments_for("cube", 1);
-    let region_two = view.lightning_tree_segments_for("cube", 2);
+    // The fixture's committed regions carry the exact empty chain; the query
+    // key must be that exact chain, never a wildcard.
+    let region_one = view.lightning_tree_segments_for("cube", 1, &[]);
+    let region_two = view.lightning_tree_segments_for("cube", 2, &[]);
     assert!(!region_one.is_empty());
     assert!(!region_two.is_empty());
     assert!(region_one

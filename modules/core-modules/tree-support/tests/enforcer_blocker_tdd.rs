@@ -131,6 +131,8 @@ fn paint_view_with_annotations(z: f32, semantics: &[PaintSemantic]) -> PaintRegi
             capabilities: vec![],
             provenance: vec!["test".into()],
             decline_reason: None,
+            // Chain-less fixture region: empty chain is the exact query identity.
+            variant_chain: vec![],
         }],
         ..Default::default()
     };
@@ -432,6 +434,8 @@ fn l_shape_paint_view(z: f32, semantics: &[PaintSemantic]) -> PaintRegionLayerVi
                 capabilities: vec![],
                 provenance: vec!["test".into()],
                 decline_reason: None,
+                // Chain-less fixture region: empty chain is the exact query identity.
+                variant_chain: vec![],
             }],
             ..Default::default()
         }))

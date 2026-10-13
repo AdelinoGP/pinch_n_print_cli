@@ -2657,7 +2657,7 @@ mod tests {
         // Fix: matching stage is fresh (fingerprint matches, artifact decodable).
         // Rewrite the artifact to infill and rebuild the context so canonical
         // matches the rewritten embedded world.
-        let wit_infill = "package slicer:layer-infill@1.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@1.0.0; } }";
+        let wit_infill = "package slicer:layer-infill@2.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@2.0.0; } }";
         fs::write(&artifact_path, wit_infill).expect("overwrite artifact");
         let mut ctx2 = fresh_ctx(&temp, &spec);
         assert!(stale_reason(&spec, &temp.0, &mut ctx2).is_none());
@@ -2671,7 +2671,7 @@ mod tests {
         let manifest_path = guest_dir.join("Cargo.toml");
         fs::write(&manifest_path, "[package]\nname = \"tg\"\n").expect("write manifest");
         fs::write(guest_dir.join("src/lib.rs"), "").expect("write src");
-        let wit_infill = "package slicer:layer-infill@1.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@1.0.0; } }";
+        let wit_infill = "package slicer:layer-infill@2.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@2.0.0; } }";
         let artifact_rel = wit_artifact(&temp, "tg", wit_infill);
         let spec = GuestSpec {
             crate_name: "tg".to_string(),
@@ -2761,7 +2761,7 @@ mod tests {
             stale_reason(&spec_missing, &temp.0, &mut ctx).is_some()
         );
         // Fresh case
-        let wit_infill = "package slicer:layer-infill@1.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@1.0.0; } }";
+        let wit_infill = "package slicer:layer-infill@2.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@2.0.0; } }";
         let artifact_rel = wit_artifact(&temp, "del2", wit_infill);
         let spec_fresh = GuestSpec {
             crate_name: "del2".to_string(),
@@ -2875,7 +2875,7 @@ mod tests {
         let manifest_path = guest_dir.join("Cargo.toml");
         fs::write(&manifest_path, "[package]\nname = \"fresh-guest\"\n").expect("write manifest");
         fs::write(guest_dir.join("src/lib.rs"), "").expect("write src");
-        let wit = "package slicer:layer-infill@1.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@1.0.0; } }";
+        let wit = "package slicer:layer-infill@2.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@2.0.0; } }";
         let artifact_rel = wit_artifact(&temp, "fresh-guest", wit);
         let spec = GuestSpec {
             // exhaustive: 7-field GuestSpec (AC-7 fixture)
@@ -3484,7 +3484,7 @@ mod tests {
         )
         .unwrap();
         fs::write(guest_dir.join("src/lib.rs"), "").unwrap();
-        let wit = "package slicer:layer-infill@1.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@1.0.0; } }";
+        let wit = "package slicer:layer-infill@2.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@2.0.0; } }";
         let artifact_rel = wit_artifact(&temp, "my-module-guest", wit);
         let spec = GuestSpec {
             crate_name: "my-module-guest".to_string(),
@@ -3610,7 +3610,7 @@ mod tests {
         )
         .unwrap();
         fs::write(guest_dir.join("src/lib.rs"), "pub fn guest() {}\n").unwrap();
-        let wit = "package slicer:layer-infill@1.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@1.0.0; } }";
+        let wit = "package slicer:layer-infill@2.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@2.0.0; } }";
         let artifact_rel = wit_artifact(&temp, "guest-isolated", wit);
         let spec = GuestSpec {
             crate_name: "guest-isolated".to_string(),
@@ -3986,7 +3986,7 @@ mod tests {
         );
     }
 
-    const MEMO_WIT: &str = "package slicer:layer-infill@1.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@1.0.0; } }";
+    const MEMO_WIT: &str = "package slicer:layer-infill@2.0.0 { interface infill { run: func() -> string; } } package root:component { world root { export slicer:layer-infill/infill@2.0.0; } }";
 
     /// Build a guest source tree plus a WIT-text artifact that `stale_reason`
     /// can decode, so the freshness path is genuinely reached.

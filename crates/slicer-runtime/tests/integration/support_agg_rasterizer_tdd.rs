@@ -548,8 +548,11 @@ fn compute_metrics_for(
     for (layer, z_mm) in &layer_z_mm {
         let mut occupancy: Vec<ExPolygon> = Vec::new();
         for (object_id, region_id) in &targets {
+            // The call site's source identity is the `(object_id, region_id)`
+            // target pair (see `targets` above); it carries no variant chain,
+            // so the empty chain is the exact identity here.
             let query = exact_z
-                .query(object_id.as_str(), *region_id, *z_mm)
+                .query(object_id.as_str(), *region_id, &[], *z_mm)
                 .map_err(|error| {
                     format!("exact-Z query at layer {layer} (z={z_mm:.4}mm) failed: {error}")
                 })?;

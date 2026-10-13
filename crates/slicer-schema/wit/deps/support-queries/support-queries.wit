@@ -1,0 +1,57 @@
+package slicer:support-queries@1.0.0;
+
+interface support-queries {
+    use slicer:ir-handles/ir-handles@1.0.0.{object-id, region-id, paint-value};
+    use slicer:types/geometry.{ex-polygon, point3, point3-with-width};
+
+    // One-way host projection of structural support plans into the paint
+    // boundary. These VIEW records are owned here to avoid importing the
+    // prepass package (which already imports ir-handles).
+    enum support-plan-view-role { support-body, top-interface, base-interface, bottom-interface, raft-related }
+    record support-plan-view-role-region {
+        role: support-plan-view-role,
+        regions: list<ex-polygon>,
+    }
+    record support-plan-view-skeleton {
+        points: list<point3>,
+        wall-counts: list<u32>,
+    }
+    enum support-plan-view-decline-reason { declined-policy, no-route, blocked, unsupported-mode }
+    record support-plan-entry-view {
+        global-layer-index: s32,
+        object-id: object-id,
+        region-id: region-id,
+        family-id: string,
+        demand-ids: list<string>,
+        body-ids: list<string>,
+        anchor-layer-index: u32,
+        anchor-z: s64,
+        roles: list<support-plan-view-role-region>,
+        skeleton: option<support-plan-view-skeleton>,
+        capabilities: list<string>,
+        provenance: list<string>,
+        decline-reason: option<support-plan-view-decline-reason>,
+    }
+
+    // Local mirror of the prepass `RaftPlan` config record. Declared here
+    // rather than imported across worlds: `ir-handles` is imported by the
+    // prepass package, so importing back would risk a world-satisfaction
+    // failure. Mirrors `support-plan-entry-view` above, same reason.
+    record raft-plan-view {
+        raft-layers: u32,
+        raft-first-layer-density: f32,
+        base-raft-layers: u32,
+        interface-raft-layers: u32,
+    }
+
+    resource support-query-view {
+        support-plan-segments: func(object-id: object-id, region-id: region-id, variant-chain: list<tuple<string, paint-value>>)
+            -> list<list<point3-with-width>>;
+        support-plan-entries: func(object-id: object-id, region-id: region-id, variant-chain: list<tuple<string, paint-value>>)
+            -> list<support-plan-entry-view>;
+        /// Configuration-only raft plan for this print, projected from
+        /// `SupportPlanIR.raft_plan`. Layer-independent: the same value is
+        /// returned on every layer. `none` when no raft was planned.
+        raft-plan: func() -> option<raft-plan-view>;
+    }
+}

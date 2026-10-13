@@ -1,6 +1,7 @@
 /// Host-owned support plan aggregation and complete-body validation contract.
 use std::sync::Arc;
 
+use slicer_ir::slice_ir::SupportSourceKey;
 use slicer_ir::{
     ExPolygon, IndexedTriangleSet, MeshIR, ObjectMesh, Point2, Point3, SupportAnalysisIR,
     SupportPlanEntry, SupportPlanIR, Transform3d,
@@ -12,16 +13,22 @@ use slicer_wasm_host::support_aggregation::{
 
 /// Ownership at the merge point is default-deny: a region with no
 /// `family_assignments` row has no owner, so a fixture that expects its entries
-/// to be RETAINED has to say who owns what. This grants every entry's
-/// `(object_id, region_id)` to that entry's own family, which is the "no
-/// contested region" baseline the pre-ownership fixtures implicitly assumed.
+/// to be RETAINED has to say who owns what. This grants every entry's exact
+/// `(object_id, region_id, variant_chain)` source key to that entry's own
+/// family, cloning the entry's own chain so the key stays coherent with the
+/// identity aggregation looks up -- the "no contested region" baseline the
+/// pre-ownership fixtures implicitly assumed.
 fn family_assignments_for(entries: &[SupportPlanEntry]) -> SupportAnalysisIR {
     SupportAnalysisIR {
         family_assignments: entries
             .iter()
             .map(|entry| {
                 (
-                    (entry.object_id.clone(), entry.region_id),
+                    SupportSourceKey {
+                        object_id: entry.object_id.clone(),
+                        region_id: entry.region_id,
+                        variant_chain: entry.variant_chain.clone(),
+                    },
                     entry.family_id.clone(),
                 )
             })
@@ -153,6 +160,7 @@ fn entry(body: &str, x: i64) -> slicer_ir::SupportPlanEntry {
         capabilities: vec![],
         provenance: vec!["test".into()],
         decline_reason: None,
+        variant_chain: Vec::new(),
     }
 }
 
@@ -246,7 +254,11 @@ fn support_plan_aggregation_diagnoses_duplicate_identity() {
     // The host assigned the contested region to `traditional`.
     let owned = SupportAnalysisIR {
         family_assignments: [(
-            (tree.object_id.clone(), tree.region_id),
+            SupportSourceKey {
+                object_id: tree.object_id.clone(),
+                region_id: tree.region_id,
+                variant_chain: tree.variant_chain.clone(),
+            },
             "traditional".to_string(),
         )]
         .into_iter()

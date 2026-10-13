@@ -326,9 +326,10 @@ pub enum BlackboardError {
         /// The first duplicate `RegionKey` encountered, in entry order.
         region_key: crate::slice_ir::RegionKey,
     },
-    /// A merged `SupportPlanIR` contains two entries sharing the same
-    /// `(global_layer_index, object_id, region_id)` identity. Family
-    /// provenance does not make two entries distinct at this seam.
+    /// A merged `SupportPlanIR` contains two entries sharing the same full
+    /// source origin `(global_layer_index, object_id, region_id,
+    /// variant_chain)`. Family provenance does not make two entries distinct
+    /// at this seam; the ordered chain does.
     DuplicateSupportPlanEntry {
         /// Global layer index of the duplicate support region.
         global_layer_index: i32,
@@ -336,6 +337,10 @@ pub enum BlackboardError {
         object_id: crate::slice_ir::ObjectId,
         /// Region ID of the duplicate support region.
         region_id: crate::slice_ir::RegionId,
+        /// Ordered `(paint_semantic_name, value)` chain of the duplicate
+        /// source region. Empty is the exact identity of a genuinely
+        /// chain-less source, never a wildcard.
+        variant_chain: Vec<(String, crate::slice_ir::PaintValue)>,
     },
     /// A requested prepass output has not been committed yet.
     MissingRequiredPrepass {
@@ -383,10 +388,11 @@ impl fmt::Display for BlackboardError {
                 global_layer_index,
                 object_id,
                 region_id,
+                variant_chain,
             } => write!(
                 f,
-                "SupportPlanIR contains duplicate entries for support region (layer={}, object='{}', region={})",
-                global_layer_index, object_id, region_id
+                "SupportPlanIR contains duplicate entries for support region (layer={}, object='{}', region={}, variant_chain={:?})",
+                global_layer_index, object_id, region_id, variant_chain
             ),
             Self::MissingRequiredPrepass { slot } => {
                 write!(f, "required prepass output missing for {slot}")

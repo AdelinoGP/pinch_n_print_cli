@@ -5,6 +5,10 @@ edition = "2021"
 authors = ["Pinch 'n Print Team"]
 description = "WIT/wasmtime marshalling and dispatch for Pinch 'n Print's WASM module host"
 
+[features]
+# Mirrors crates/slicer-runtime for delivery-capture observations in contract tests.
+perimeter-spatial-test-support = ["slicer-core/perimeter-spatial-test-support"]
+
 [dependencies]
 wasmtime = { workspace = true }
 wasmtime-wasi = { workspace = true }

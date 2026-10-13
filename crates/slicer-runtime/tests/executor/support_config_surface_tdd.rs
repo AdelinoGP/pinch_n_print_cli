@@ -5,6 +5,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
+use slicer_ir::slice_ir::SupportSourceKey;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigValue, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
     ObjectLayerRef, ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SemVer,
@@ -262,7 +263,17 @@ fn run(values: HashMap<String, ConfigValue>) -> SupportPlanIR {
     // ownership row required by the default-deny support-family merge.
     blackboard
         .commit_support_analysis(Arc::new(SupportAnalysisIR {
-            family_assignments: BTreeMap::from([(("plate".to_string(), 0), "tree".to_string())]),
+            // The fixture bypasses SliceIR and its `RegionKey` rows carry the
+            // exact empty chain (see `inputs`), so `("plate", 0)` is a
+            // genuinely chain-empty source: grant that exact empty chain.
+            family_assignments: BTreeMap::from([(
+                SupportSourceKey {
+                    object_id: "plate".to_string(),
+                    region_id: 0,
+                    variant_chain: Vec::new(),
+                },
+                "tree".to_string(),
+            )]),
             ..Default::default()
         }))
         .unwrap();

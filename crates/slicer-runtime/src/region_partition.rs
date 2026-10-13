@@ -56,6 +56,8 @@
 //! See `cube_4color_ironing_per_painted_top_color_tdd` in
 //! `tests/executor/` for the regression.
 
+use std::collections::HashMap;
+
 use slicer_core::polygon_ops::{difference, intersection, union};
 use slicer_ir::{LayerStageError, MeshIR, StageId};
 
@@ -316,15 +318,28 @@ pub fn sync_perimeter_infill_areas_into_slice(
         }
     };
 
-    // Build a (object_id, region_id) → PerimeterRegion index once before the
-    // slice-region loop. Replaces a linear `perimeter.regions.iter().find()`
-    // per slice region (review finding #7; O(N×M) → O(N+M)). With
-    // variant_chain work (packets 92–95) growing both N and M, the linear
-    // scan was real wall-clock cost on multi-color prints.
-    // Shared with the Layer::InfillPostProcess dispatch arm's wall-source
-    // predicate (ADR-0028 §Amendment): a slice region missing from this index
-    // is a virtual variant sharing its base region's walls.
-    let perim_index = slicer_wasm_host::dispatch::perimeter_region_index(&perimeter);
+    // Build a `(object_id, region_id, variant_chain) → PerimeterRegion` index
+    // once before the slice-region loop — the FULL source identity, not the
+    // `(object_id, region_id)` pair. Two paint-minted variants of one base
+    // region can share the pair while carrying different ordered chains; a
+    // pair-keyed index would collapse them onto whichever perimeter entry was
+    // collected last, silently re-attributing wall geometry across sources
+    // (AC-R7: guest and partition joins must preserve source identity). Chain
+    // equality is exact — never sorted or normalized — and an empty chain is
+    // a real value. A slice region missing from this index is a virtual
+    // variant sharing its base region's walls (ADR-0028 §Amendment).
+    let perim_index: HashMap<
+        (
+            &slicer_ir::ObjectId,
+            slicer_ir::RegionId,
+            &[(String, slicer_ir::PaintValue)],
+        ),
+        &slicer_ir::PerimeterRegion,
+    > = perimeter
+        .regions
+        .iter()
+        .map(|r| ((&r.object_id, r.region_id, r.variant_chain.as_slice()), r))
+        .collect();
 
     for slice_region in &mut slice.regions {
         // Raw footprint staging is consumed after this loop and is never a
@@ -343,7 +358,11 @@ pub fn sync_perimeter_infill_areas_into_slice(
             slice_region.region_id
         };
         let Some(perim) = perim_index
-            .get(&(&slice_region.object_id, perimeter_region_id))
+            .get(&(
+                &slice_region.object_id,
+                perimeter_region_id,
+                slice_region.variant_chain.as_slice(),
+            ))
             .copied()
         else {
             if is_modifier_region {

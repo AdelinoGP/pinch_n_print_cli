@@ -10,6 +10,7 @@ use lightning_infill::LightningInfill;
 use slicer_ir::{
     ConfigView, ExPolygon, GlobalLayer, LightningTreeEntry, LightningTreeIR, Point2, Polygon,
     RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SemVer, SliceIR, SlicedRegion, StageId,
+    CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION,
 };
 use slicer_runtime::{Blackboard, LayerArena, LayerStageRunner};
 
@@ -70,11 +71,9 @@ fn integrated_parity_lightning_infill() {
     bb.commit_region_map(Arc::new(region_map))
         .expect("commit region map");
     bb.commit_lightning_tree_ir(Arc::new(LightningTreeIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
+        // Owned by LightningTreeIR, not the adjacent global-style SliceIR pin.
+        schema_version: CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION,
+        // exhaustive: the integrated-parity fixture pins the full exact source identity of a genuinely chain-empty region.
         entries: vec![LightningTreeEntry {
             object_id: "parity-object".to_string(),
             global_layer_index: 5,
@@ -83,6 +82,8 @@ fn integrated_parity_lightning_infill() {
                 Point2 { x: 1_000, y: 1_000 },
                 Point2 { x: 8_000, y: 8_000 },
             ]],
+            // Genuinely chain-empty source: the fixture's slice region and region-map key declare no paint variant.
+            variant_chain: Vec::new(),
         }],
     }))
     .expect("commit lightning tree");

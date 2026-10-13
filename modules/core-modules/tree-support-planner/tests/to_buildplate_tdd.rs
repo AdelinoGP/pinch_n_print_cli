@@ -34,8 +34,8 @@ use slicer_ir::{ConfigKey, ConfigValue, ConfigView, ExPolygon, Point2, Polygon};
 use slicer_sdk::prepass_builders::SupportGeometryOutput;
 use slicer_sdk::prepass_types::{
     LayerPlanView, LayerPlanViewEntry, MeshObjectView, RegionSegmentationView,
-    RegionSegmentationViewEntry, SupportAnalysisView, SupportFamilyAssignment, SupportGeometryView,
-    SupportGeometryViewEntry,
+    RegionSegmentationViewEntry, RegionSourceOrigin, SupportAnalysisView, SupportFamilyAssignment,
+    SupportGeometryView, SupportGeometryViewEntry,
 };
 use slicer_sdk::traits::PrepassModule;
 
@@ -62,6 +62,7 @@ fn tree_analysis(object_id: &str) -> SupportAnalysisView {
         family_assignments: vec![SupportFamilyAssignment {
             object_id: object_id.to_string(),
             region_id: "0".to_string(),
+            variant_chain: Vec::new(),
             family_id: "tree".to_string(),
         }],
         ..Default::default()
@@ -164,6 +165,7 @@ fn contact_xy_outside_footprint_sets_to_buildplate_true() {
             object_id: "ac2".to_string(),
             region_id: "0".to_string(),
             outlines: vec![small_footprint.clone()],
+            ..Default::default()
         }],
     };
     let analysis = tree_analysis("ac2");
@@ -282,6 +284,7 @@ fn unreachable_buildplate_node_pruned() {
             object_id: "ac3".to_string(),
             region_id: "0".to_string(),
             outlines: vec![outline],
+            ..Default::default()
         });
     }
     let sg = SupportGeometryView { entries };
@@ -390,6 +393,7 @@ fn buildplate_only_rejects_to_model_contacts() {
                 object_id: "ac4".to_string(),
                 region_id: "0".to_string(),
                 outlines: vec![covering_box.clone()],
+                ..Default::default()
             })
             .collect(),
     };
@@ -488,6 +492,7 @@ fn default_config_does_not_reject_to_model_contacts() {
             object_id: "ac-n1".to_string(),
             region_id: "0".to_string(),
             outlines: vec![covering_box.clone()],
+            ..Default::default()
         }],
     };
 
@@ -581,6 +586,7 @@ fn to_model_node_with_collision_not_pruned_by_new_rule() {
             object_id: "ac-n2".to_string(),
             region_id: "0".to_string(),
             outlines: vec![covering_box.clone()],
+            ..Default::default()
         });
     }
     let sg = SupportGeometryView { entries };
@@ -663,7 +669,10 @@ fn make_region_segmentation(object_id: &str, n: u32) -> RegionSegmentationView {
             .map(|i| RegionSegmentationViewEntry {
                 object_id: object_id.to_string(),
                 layer_index: i,
-                region_ids: vec!["0".to_string()],
+                region_origins: vec![RegionSourceOrigin {
+                    region_id: "0".to_string(),
+                    variant_chain: Vec::new(),
+                }],
             })
             .collect(),
         region_support_configs: Vec::new(),

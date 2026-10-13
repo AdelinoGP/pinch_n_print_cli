@@ -15,6 +15,7 @@ fn main() {
         "../slicer-schema/wit/deps/layer-slice-postprocess/layer-slice-postprocess.wit",
         "../slicer-schema/wit/deps/layer-support-postprocess/layer-support-postprocess.wit",
         "../slicer-schema/wit/deps/layer-support/layer-support.wit",
+        "../slicer-schema/wit/deps/lightning-queries/lightning-queries.wit",
         "../slicer-schema/wit/deps/postpass-gcode-postprocess/postpass-gcode-postprocess.wit",
         "../slicer-schema/wit/deps/postpass-text-postprocess/postpass-text-postprocess.wit",
         "../slicer-schema/wit/deps/prepass-layer-planning/prepass-layer-planning.wit",
@@ -22,6 +23,7 @@ fn main() {
         "../slicer-schema/wit/deps/prepass-seam-planning/prepass-seam-planning.wit",
         "../slicer-schema/wit/deps/prepass-support-geometry/prepass-support-geometry.wit",
         "../slicer-schema/wit/deps/prepass-types.wit",
+        "../slicer-schema/wit/deps/support-queries/support-queries.wit",
         "../slicer-schema/wit/deps/types.wit",
     ] {
         println!("cargo:rerun-if-changed={path}");

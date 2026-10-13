@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use slicer_ir::slice_ir::SupportSourceKey;
 use slicer_ir::{
     ExPolygon, ExtrusionPath3D, ExtrusionRole, LayerStageCommit, Point2, Point3WithWidth, Polygon,
     SupportAnalysisIR, SupportEntry, SupportGeometryKey, SupportIR, SupportPlanDeclineReason,
@@ -62,6 +63,7 @@ fn entry(
         capabilities: Vec::new(),
         provenance: vec![family_id.into()],
         decline_reason: None,
+        variant_chain: Vec::new(),
     }
 }
 
@@ -130,18 +132,23 @@ fn exact_z() -> ExactZQueryService {
 
 /// Ownership at the merge point is default-deny: a region with no
 /// `family_assignments` row has no owner, so a fixture that expects retention
-/// must say who owns what. This grants each entry's `(object_id, region_id)` to
-/// that entry's own family -- the "no contested region" baseline these routing
-/// fixtures assumed before ownership became a declared property. It publishes
-/// no `support_territory`, so the territory clipper stays disarmed and the
-/// legacy routing/overlap guards are exercised unchanged.
+/// must say who owns what. This grants each entry's
+/// `(object_id, region_id, ordered variant_chain)` origin to that entry's own
+/// family -- the "no contested region" baseline these routing fixtures assumed
+/// before ownership became a declared property. It publishes no
+/// `support_territory`, so the territory clipper stays disarmed and the legacy
+/// routing/overlap guards are exercised unchanged.
 fn family_assignments_for(entries: &[SupportPlanEntry]) -> SupportAnalysisIR {
     SupportAnalysisIR {
         family_assignments: entries
             .iter()
             .map(|entry| {
                 (
-                    (entry.object_id.clone(), entry.region_id),
+                    SupportSourceKey {
+                        object_id: entry.object_id.clone(),
+                        region_id: entry.region_id,
+                        variant_chain: entry.variant_chain.clone(),
+                    },
                     entry.family_id.clone(),
                 )
             })
@@ -249,6 +256,7 @@ fn support_entry(
             tool_index: None,
             order_lock: None,
         }],
+        variant_chain: Vec::new(),
     }
 }
 
@@ -589,14 +597,29 @@ fn cross_family_body_overlap() {
     // is arbitrated by clipping, not by rejecting both sides.
     let analysis = SupportAnalysisIR {
         family_assignments: std::collections::BTreeMap::from([
-            (("object".to_string(), 0), "tree".to_string()),
-            (("object".to_string(), 1), "traditional".to_string()),
+            (
+                SupportSourceKey {
+                    object_id: "object".into(),
+                    region_id: 0,
+                    variant_chain: Vec::new(),
+                },
+                "tree".to_string(),
+            ),
+            (
+                SupportSourceKey {
+                    object_id: "object".into(),
+                    region_id: 1,
+                    variant_chain: Vec::new(),
+                },
+                "traditional".to_string(),
+            ),
         ]),
         support_territory: std::collections::HashMap::from([(
             SupportGeometryKey {
                 global_support_layer_index: 0,
                 object_id: "object".into(),
                 region_id: 1,
+                variant_chain: Vec::new(),
             },
             vec![polygon(200, 200, 400, 400)],
         )]),
@@ -781,7 +804,11 @@ fn mismatched_family_fatal() {
     // nothing at all.
     let owned = SupportAnalysisIR {
         family_assignments: std::collections::BTreeMap::from([(
-            ("object".to_string(), 0),
+            SupportSourceKey {
+                object_id: "object".into(),
+                region_id: 0,
+                variant_chain: Vec::new(),
+            },
             "traditional".to_string(),
         )]),
         ..SupportAnalysisIR::default()

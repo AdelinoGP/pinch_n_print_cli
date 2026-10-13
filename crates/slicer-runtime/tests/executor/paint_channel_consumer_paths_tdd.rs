@@ -2,15 +2,17 @@
 //! reach `execute_paint_segmentation` and produce observable SlicedRegion effects,
 //! per channel.
 //!
-//! # Routing confirmed (Step A):
+//! # Routing confirmed (Step A; revised by the seam/support exclusions):
 //!
-//! All paint semantics flow through the same `painted_subsets` BTreeMap path in
-//! `execute_paint_segmentation` (mod.rs ~L860-1030). Both `facet_values` and
-//! `strokes` contribute triangles to that map. The resulting per-layer polygons are
-//! merged into `SlicedRegion.variant_chain` as `(sem_name, value)` pairs — for
-//! every semantic including Material, FuzzySkin, SupportEnforcer, SupportBlocker,
-//! and Custom("seam_enforcer" / "seam_blocker").
+//! Region-splitting paint semantics (Material, FuzzySkin) flow through the same
+//! `painted_subsets` BTreeMap path in `execute_paint_segmentation`. Both
+//! `facet_values` and `strokes` contribute triangles to that map. The resulting
+//! per-layer polygons are merged into `SlicedRegion.variant_chain` as
+//! `(sem_name, value)` pairs.
 //!
+//! SupportEnforcer/SupportBlocker and Custom("seam_enforcer" / "seam_blocker")
+//! paint is a planner hint and never partitions regions: it must NOT reach
+//! `variant_chain` (no RegionMapIR entry can resolve such a chain).
 //! Modifier-volume SupportEnforcer/Blocker land in `segment_annotations` (D14 path,
 //! separate from the PaintLayer/hex-stroke path).
 //!
@@ -460,11 +462,14 @@ fn paint_channel_fuzzy_skin_strokes_reach_fuzzy_variant_chain() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 3: SupportEnforcer channel — end-to-end disk fixture (bridge_support_enforcers.3mf)
+// Test 3: SupportEnforcer channel — disk fixture (bridge_support_enforcers.3mf),
+//         planner hint never partitions regions
 // ---------------------------------------------------------------------------
 
-/// SupportEnforcer paint strokes loaded from `bridge_support_enforcers.3mf` reach
-/// `execute_paint_segmentation` and populate SlicedRegion.variant_chain.
+/// SupportEnforcer paint (facet_values + strokes) loaded from
+/// `bridge_support_enforcers.3mf` reaches `execute_paint_segmentation` but must
+/// NOT populate `SlicedRegion.variant_chain` — support paint never partitions
+/// regions.
 ///
 /// # Fixture layout (post P98 edit):
 ///
@@ -472,18 +477,20 @@ fn paint_channel_fuzzy_skin_strokes_reach_fuzzy_variant_chain() {
 ///   obj[0], obj[1] — modifier-volume objects (paint_data=None)
 ///   obj[2] — NEW bridge body with PaintLayer SupportEnforcer: 2 facet_values + 8899 sub-facet strokes
 ///
-/// # Routing confirmed:
+/// # Support paint must NOT partition regions
 ///
-/// PaintLayer SupportEnforcer (paint_supports hex strokes) flows through the same
-/// `painted_subsets` path as Material and FuzzySkin. The resulting polygons are merged
-/// into variant_chain as ("support_enforcer", Flag(true)) — NOT into segment_annotations.
-/// segment_annotations is populated ONLY by the D14 modifier-volume path.
-///
-/// NOTE: painted-support-hex has NO live downstream consumer reading variant_chain
-/// ("support_enforcer"). The support-planner module reads `paint_layers` (WIT side)
-/// from the mesh, not from SlicedRegion.variant_chain. This is a variant_chain dead-end
-/// analogous to seam (pre-existing, not the paint-channel change). See the
-/// seam consumer-gap pattern.
+/// `region_mapping` keeps support semantics out of `aggregated_region_split`
+/// (only module-declared region-split semantics — material/fuzzy_skin — are
+/// registered), so no RegionMapIR entry can exist for a
+/// `("support_enforcer" | "support_blocker", _)` chain. A support-chained
+/// SlicedRegion therefore produces a `MissingModelConfig` fatal under the
+/// strict late-bind. The live support signal flows through paint layers (read
+/// by the support planner on the WIT side) and through modifier volumes
+/// (D14 → `segment_annotations`), not through variant_chain. This test
+/// previously asserted the opposite — that support paint reaches
+/// `variant_chain` — recording the defect as if it were the contract. It now
+/// pins the canonical-correct behaviour, mirroring the corrected seam
+/// precedent `paint_channel_seam_strokes_do_not_partition_regions`.
 #[test]
 fn paint_channel_supports_strokes_reach_consumer() {
     let path = bridge_support_enforcers_path();
@@ -604,21 +611,23 @@ fn paint_channel_supports_strokes_reach_consumer() {
 
     assert!(!result.is_empty(), "result must have at least one layer");
 
-    // Routing assertion: SupportEnforcer PaintLayer (facet_values + strokes) ->
-    // variant_chain ("support_enforcer", Flag(true)).
-    // This is the PAINT-LAYER path, NOT the modifier-volume (D14) path.
-    let has_support_enforcer_variant_chain = result.iter().any(|layer| {
+    // Routing assertion: SupportEnforcer PaintLayer (facet_values + strokes)
+    // must NOT mint a variant chain. This is the PAINT-LAYER path; the
+    // modifier-volume (D14) path is observed separately via the
+    // segment_annotations diagnostic below.
+    let has_support_variant_chain = result.iter().any(|layer| {
         layer.regions.iter().any(|r| {
             r.variant_chain
                 .iter()
-                .any(|(sem, pv)| sem == "support_enforcer" && matches!(pv, PaintValue::Flag(true)))
+                .any(|(sem, _pv)| sem == "support_enforcer" || sem == "support_blocker")
         })
     });
 
-    // NOTE: bridge_support_enforcers.3mf has modifier volumes (support_enforcer / support_blocker)
-    // on obj[0] and obj[1]. When the full MeshIR is passed to execute_paint_segmentation, those
-    // modifier volumes are sliced via the D14 path and populate segment_annotations on BASE chains
-    // for ALL objects (including obj[2]). This is correct D14 behavior, not a routing regression.
+    // Diagnostic only: bridge_support_enforcers.3mf has modifier volumes (support_enforcer /
+    // support_blocker) on obj[0] and obj[1]. When the full MeshIR is passed to
+    // execute_paint_segmentation, those modifier volumes are sliced via the D14 path and
+    // populate segment_annotations on BASE chains for ALL objects (including obj[2]). This
+    // is correct D14 behavior and must survive the variant-mint exclusion.
     // We do NOT assert that segment_annotations is empty here.
     let has_support_enforcer_in_annotations = result.iter().any(|layer| {
         layer.regions.iter().any(|r| {
@@ -629,19 +638,22 @@ fn paint_channel_supports_strokes_reach_consumer() {
 
     eprintln!(
         "DIAGNOSTIC [P98-supports disk]: SupportEnforcer via PaintLayer strokes — \
-         variant_chain={has_support_enforcer_variant_chain}, \
+         variant_chain={has_support_variant_chain}, \
          segment_annotations={has_support_enforcer_in_annotations}\n\
          (segment_annotations=true is expected: obj[0]/obj[1] have modifier volumes → D14 path)"
     );
 
-    // Primary assertion: painted hex strokes from obj[2] reach variant_chain.
+    // Support paint is a planner hint (paint layers / modifier volumes), never a
+    // region-split axis: minting a variant chain for it also notched the painted
+    // area out of BASE and produced a RegionKey that no RegionMapIR entry can
+    // resolve (strict late-bind MissingModelConfig).
     assert!(
-        has_support_enforcer_variant_chain,
-        "AC-7: SupportEnforcer PaintLayer (facet_values + hex strokes) from \
-         bridge_support_enforcers.3mf obj[{painted_obj_idx}] must reach at least one \
-         SlicedRegion.variant_chain as (\"support_enforcer\", Flag(true)).\n\
-         facet_value_count={facet_value_count}, stroke_count={stroke_count}.\n\
-         Routing: PaintLayer strokes -> painted_subsets/top_bottom -> variant_chain."
+        !has_support_variant_chain,
+        "SupportEnforcer PaintLayer (facet_values + hex strokes) from \
+         bridge_support_enforcers.3mf obj[{painted_obj_idx}] must NOT reach any \
+         SlicedRegion.variant_chain — support painting is a support-planner hint \
+         and never partitions regions.\n\
+         facet_value_count={facet_value_count}, stroke_count={stroke_count}."
     );
 }
 

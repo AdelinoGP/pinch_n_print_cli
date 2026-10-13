@@ -100,3 +100,20 @@ wired up (`SUPPORTED_WIT_WORLDS` — defined, zero consumers).
 - **Read the version from the guest binary.** The obvious fix, and impossible: the
   binary does not carry it (above). This was proposed during review and killed by
   `wasm-tools`.
+
+## Clarification — 2026-10-11 (packet `layer-module-preparation_01_shared-selection-prerequisite`, step G2)
+
+**Manifest `wit-world` annotation language is distinct from typed versioned
+shared-package identity.** The Decision's "unversioned" language is scoped to the
+manifest `wit-world` key — legacy tolerated-and-ignored metadata since packets
+163/164, per the 2026-08-05 amendment in
+[ADR-0045](./0045-per-stage-versioned-interfaces-over-monolithic-tier-worlds.md) —
+and to the tier-world `package` lines it described. A manifest annotation is a
+hand-written declaration and carries no claim against typed shared resources;
+this ADR likewise does not forbid versioned shared resources. The typed channel
+is a different mechanism: versioned package identity carried in `package` lines
+and in component import/export names, enforced by wasmtime typed instantiation —
+core `slicer:ir-handles@1.0.0` and independent specialist packages
+`slicer:support-queries@1.0.0` / `slicer:lightning-queries@1.0.0`, per
+[ADR-0073](./0073-full-source-variant-chain-identity-and-versioned-specialist-queries.md).
+Accepted history above stands as written.

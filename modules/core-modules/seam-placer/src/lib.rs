@@ -456,6 +456,15 @@ impl LayerModule for SeamPlacer {
                 *region.region_id(),
                 region.variant_chain(),
             );
+            let mut wall_loops = region.wall_loops().to_vec();
+            if wall_loops.is_empty() {
+                // A selected-but-absent identity is delivered as an explicit
+                // empty view (AC-R4): no walls, no plan entry, nothing to
+                // seam. That is not a degraded placement, so the missing-plan
+                // check below only applies to regions that actually carry
+                // wall loops.
+                continue;
+            }
             if matches!(self.mode, SeamMode::Aligned | SeamMode::AlignedBack)
                 && region.resolved_seam().is_none()
                 && degraded_error.is_none()
@@ -470,10 +479,6 @@ impl LayerModule for SeamPlacer {
                         region.variant_chain(),
                     ),
                 ));
-            }
-            let mut wall_loops = region.wall_loops().to_vec();
-            if wall_loops.is_empty() {
-                continue;
             }
 
             // A region with an empty `seam_candidates` list AND no

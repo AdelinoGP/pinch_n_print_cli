@@ -1078,16 +1078,64 @@ sources; config authority is the base's exact key. This section owns the painted
 `RegionMapIR.entries` keys painted variants by BASE region id plus ordered chain, whereas
 post-paint `SliceIR`/`PerimeterIR` ids are DERIVED by `paint_variant_region_id` (`crates/slicer-core/src/algos/paint_segmentation/mod.rs`)
 as `base * PAINT_VARIANT_REGION_ID_STRIDE + h`.
-The builder inverts non-modifier nonempty-chain ids by `id / PAINT_VARIANT_REGION_ID_STRIDE`;
-modifier-namespace ids and empty-chain ids stay verbatim. This is identity addressing, not fallback.
-Ordinary `Layer::Infill` delivery and commit use map space; perimeter and postprocess identities remain raw.
+Only inside config resolution, the builder derives a temporary map-space address by
+`id / PAINT_VARIANT_REGION_ID_STRIDE` for non-modifier nonempty-chain ids;
+modifier-namespace ids and empty-chain ids stay verbatim. This is exact config addressing, not fallback.
+Ordinary `Layer::Infill` delivery and commit preserve source-space object/region IDs and the complete ordered chain,
+exactly like perimeter and postprocess delivery and commit; stored source identities are never normalized.
 
 Non-region contexts use explicit `LayerTargetSource` provenance, never a fabricated model key.
+The selection describes EVERY role the module holds on the layer, each from its own
+`LayerTargetSource`: model targets (the perimeter/fill products selected by full
+`RegionKey`), `Layer::Support` carriers, the raft context (`LayerTargetSource::Raft`,
+`GlobalLayer.is_raft`) and the anchored stage (`LayerTargetSource::AnchoredStage`).
+Targets are ordered source outputs enumerated in deterministic source order — model
+regions in committed slice order, carriers in immutable plan-entry order
+(`LayerTargetSource::SupportCarrier.entry_index`) — never temporary config-map
+addresses: each target's config is resolved once at build time through exact-key
+identity addressing, and invoke-time delivery re-associates CURRENT call-local
+geometry by full `RegionKey`/`OriginId` on top of that ordered identity.
 Support carriers retain `SupportPlanEntry` provenance and use the resolved, declared-key-filtered
-`invocation_config` from `bind_module_config_view`. Carrier layer eligibility is `global_layer_index == layer.index`;
+`invocation_config` from `bind_module_config_view` — the frozen invocation/non-region
+config, never a per-region config-map read.
+Carrier layer eligibility is `global_layer_index == layer.index`;
 `anchor_layer_index` is provenance only.
-Eligible carriers are delivered even with `slice = None`. Raft context derives from `GlobalLayer.is_raft` for `Layer::Infill`/`Layer::Support`.
+Carrier exclusions are complete and exact (`eligible_carrier_entries`,
+`crates/slicer-wasm-host/src/selection.rs`) — an entry failing any one of the
+following is not selected and not delivered as a carrier:
+
+- it belongs to a support family the module does not claim (the
+  `support-family:` claim prefix);
+- its `global_layer_index` differs from the physical layer;
+- it carries a decline reason;
+- every one of its roles is empty geometry;
+- the committed slice already contains a region of the SAME full origin
+  (object + source region + exact ordered chain) — presence exclusion is
+  full-origin, so a slice row differing only by chain never excludes a
+  carrier, and a present-but-EMPTY slice row excludes by identity presence
+  alone, polygon content being irrelevant (covered by
+  `model_identity_and_non_region_authority` in
+  `crates/slicer-wasm-host/src/selection.rs`).
+
+Eligible carriers are delivered even with `slice = None` (plan present, slice
+product absent). Carrier wire handles (`support_carrier_regions`, same file)
+are one `SlicedRegion` per full source origin, copied exactly from the plan
+entry (chain-differing carriers stay distinct handles) and sorted
+deterministically by `(object_id, region_id)`. Carriers hold NO model or
+coloring authority: they receive the non-fill claim set, never resolve the
+model config map, and are granted no authored coloring and no role-tool
+authority (`authored_coloring = false`, `resolved_role_tool = None` on the
+`SelectedLayerTarget`). Raft context derives from `GlobalLayer.is_raft` for
+`Layer::Infill`/`Layer::Support`.
 `AnchoredStage` records the physical layer index with invocation config as module execution context, not a synthetic anchored closure/entity.
+
+Extruder/tool authority is host-only. The host resolves the tool authority of
+each selected model target at build time from the target's resolved config
+(`extruder` extension → `SelectedLayerTarget.resolved_role_tool`,
+`crates/slicer-wasm-host/src/selection.rs`), and the marshal/commit boundary
+applies it to committed output; carriers, raft and anchored targets carry
+`None`, so a module can never mint, override or extend tool selection — it
+only reads what the host delivers.
 
 `OptionalProductPresence::{Absent, Present}` distinguishes absence from present-empty; `invoke`
 is not `!targets.is_empty()`: under `paint_allows_layer`, a paint-transparent

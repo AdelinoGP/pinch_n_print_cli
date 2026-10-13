@@ -7,6 +7,7 @@ use std::sync::Arc;
 use slicer_ir::{
     ConfigValue, ExPolygon, ExtrusionPath3D, ExtrusionRole, InfillIR, InfillRegion, MeshIR,
     PerimeterIR, PerimeterRegion, Point2, Point3WithWidth, Polygon, SemVer, SliceIR, SlicedRegion,
+    CURRENT_INFILL_IR_SCHEMA_VERSION,
 };
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::manifest::LoadedModuleBuilder;
@@ -63,7 +64,8 @@ fn square() -> ExPolygon {
 
 fn infill_ir() -> InfillIR {
     InfillIR {
-        schema_version: semver(1, 0, 0),
+        // Current-behavior output fixture: sources the owning InfillIR constant (V1).
+        schema_version: CURRENT_INFILL_IR_SCHEMA_VERSION,
         global_layer_index: 0,
         regions: vec![InfillRegion {
             object_id: "object-a".to_string(),

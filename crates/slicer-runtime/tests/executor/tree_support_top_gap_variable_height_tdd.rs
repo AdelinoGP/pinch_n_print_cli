@@ -6,9 +6,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
-    BoundingBox3, ConfigValue, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
-    ObjectLayerRef, ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SemVer,
-    SupportPlanIR, SupportType, Transform3d,
+    ActiveRegion, BoundingBox3, ConfigValue, ConfigView, GlobalLayer, IndexedTriangleSet,
+    LayerPlanIR, MeshIR, ObjectLayerRef, ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan,
+    ResolvedConfig, SemVer, SupportPlanIR, SupportType, Transform3d,
 };
 use slicer_runtime::{
     build_wasm_instance_pool, execute_prepass_with_builtins_configured_collecting,
@@ -87,6 +87,11 @@ fn variable_height_layer_plan() -> LayerPlanIR {
     // The final model layer is 0.6 mm high. An accumulated-Z walk for a
     // 0.2 mm gap would stop at layer 6; canonical count placement prints first
     // on layer 5 after propagating through the virtual node on layer 6.
+    // The plan carries the committed `active_regions` that `region_map()` pairs
+    // with: `PrePass::Slice` slices exactly these regions, so without them the
+    // committed SliceIR would be empty — and the post-migration planner derives
+    // its per-layer source origins (and SupportAnalysis family assignments) from
+    // committed SliceIR, leaving it nothing to emit on.
     let layer_z = [0.2_f32, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 2.0];
     let heights = [0.2_f32, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.6];
     LayerPlanIR {
@@ -96,6 +101,12 @@ fn variable_height_layer_plan() -> LayerPlanIR {
             .map(|(index, z)| GlobalLayer {
                 index: index as u32,
                 z: *z,
+                active_regions: vec![ActiveRegion {
+                    object_id: OBJECT_ID.to_string(),
+                    region_id: 0,
+                    effective_layer_height: heights[index],
+                    ..Default::default()
+                }],
                 ..Default::default()
             })
             .collect(),

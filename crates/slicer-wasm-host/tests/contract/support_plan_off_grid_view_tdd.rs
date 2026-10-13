@@ -10,7 +10,7 @@ use slicer_ir::{
     SupportPlanEntry, SupportPlanIR,
 };
 use slicer_sdk::PaintRegionLayerView;
-use slicer_wasm_host::dispatch::{build_support_plan_layer_data_for_test, deconstruct_layer_ctx};
+use slicer_wasm_host::dispatch::deconstruct_layer_ctx;
 use slicer_wasm_host::host::{
     ExtrusionPath3d, ExtrusionRole, HostExecutionContextBuilder, Point3WithWidth,
 };
@@ -31,6 +31,9 @@ fn entry(global_layer_index: i32, anchor_z: i64) -> SupportPlanEntry {
         capabilities: Vec::new(),
         provenance: Vec::new(),
         decline_reason: None,
+        // Grid and off-grid planes share one genuinely chain-empty source
+        // identity; empty is exact, never a wildcard.
+        variant_chain: Vec::new(),
     }
 }
 
@@ -41,26 +44,26 @@ fn support_plan_view_retains_grid_and_off_grid_planes_on_one_anchor_layer() {
         ..SupportPlanIR::default()
     };
 
-    let data = build_support_plan_layer_data_for_test(1, &plan);
-    let bucket = data
-        .support_plan_entries
-        .get(&("object-a".into(), "7".into()))
-        .expect("support-plan dispatch bucket");
+    // The dispatch-built `support-query-view` resource (W7a split) is not
+    // publicly observable in-crate; the module-facing view below asserts the
+    // same anchor-layer bucket: the on-grid plane and the i32::MIN off-grid
+    // plane coexist on one anchor layer, sorted by anchor-z.
+    let view = PaintRegionLayerView::new(1).with_support_plan(Arc::new(plan));
     assert_eq!(
-        bucket
+        view.support_plan_entries_for("object-a", 7, &[])
             .iter()
             .map(|entry| entry.anchor_z)
             .collect::<Vec<_>>(),
         vec![4_000, 5_000]
     );
-
-    let view = PaintRegionLayerView::new(1).with_support_plan(Arc::new(plan));
-    assert_eq!(
-        view.support_plan_entries_for("object-a", 7)
-            .iter()
-            .map(|entry| entry.anchor_z)
-            .collect::<Vec<_>>(),
-        vec![4_000, 5_000]
+    assert!(
+        view.support_plan_entries_for(
+            "object-a",
+            7,
+            &[("material".to_string(), slicer_ir::PaintValue::ToolIndex(1))],
+        )
+        .is_empty(),
+        "a chained query cannot borrow chain-empty grid/off-grid planes"
     );
 }
 

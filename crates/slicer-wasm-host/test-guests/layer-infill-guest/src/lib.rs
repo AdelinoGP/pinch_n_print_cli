@@ -10,6 +10,8 @@ use slicer::config::config_types::ConfigView;
 use slicer::ir_handles::ir_handles::{
     InfillOutputBuilder, LayerIdx, PaintRegionLayerView, SliceRegionView,
 };
+use slicer::lightning_queries::lightning_queries::LightningQueryView;
+use slicer::support_queries::support_queries::SupportQueryView;
 
 struct Component;
 
@@ -18,17 +20,32 @@ impl Guest for Component {
         layer_index: LayerIdx,
         regions: Vec<SliceRegionView>,
         paint: PaintRegionLayerView,
+        support_queries: SupportQueryView,
+        lightning_queries: LightningQueryView,
         output: InfillOutputBuilder,
         config: ConfigView,
     ) -> Result<(), ModuleError> {
+        let support_entry_count: usize = regions
+            .iter()
+            .map(|region| {
+                support_queries
+                    .support_plan_entries(
+                        region.object_id().as_str(),
+                        region.region_id().as_str(),
+                        &region.variant_chain(),
+                    )
+                    .len()
+            })
+            .sum();
         let spacing = config.get_float("infill-spacing").unwrap_or(2.0);
         slicer::common::host_services::log(
             slicer::common::host_services::LogLevel::Info,
             &format!(
-                "run-infill: layer={}, spacing={}, regions={}",
+                "run-infill: layer={}, spacing={}, regions={}, support_entries={}",
                 layer_index,
                 spacing,
-                regions.len()
+                regions.len(),
+                support_entry_count
             ),
         );
 
@@ -40,10 +57,11 @@ impl Guest for Component {
         let lightning_segment_count: usize = regions
             .iter()
             .map(|region| {
-                paint
+                lightning_queries
                     .lightning_tree_segments(
                         region.object_id().as_str(),
                         region.region_id().as_str(),
+                        &region.variant_chain(),
                     )
                     .len()
             })
@@ -107,7 +125,7 @@ impl Guest for Component {
                 .push_sparse_path(&witness_path(240.0, 1.0, 0.0, 1.0, z))
                 .expect("push is-raft witness failed");
         }
-        if let Some(raft) = paint.raft_plan() {
+        if let Some(raft) = support_queries.raft_plan() {
             output
                 .push_sparse_path(&witness_path(
                     241.0,

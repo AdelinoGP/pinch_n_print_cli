@@ -23,6 +23,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use slicer_core::polygon_ops::intersection_ex;
+use slicer_ir::slice_ir::SupportSourceKey;
 use slicer_ir::{
     ConfigValue, ExPolygon, MeshIR, Point2, Point3, Polygon, SupportPlanDeclineReason,
     SupportPlanEntry, SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion, SupportPlanSkeleton,
@@ -36,7 +37,8 @@ use slicer_wasm_host::support_aggregation::{
 /// Ownership at the merge point is default-deny: a region with no
 /// `family_assignments` row has no owner, so a fixture that expects its entries
 /// to reach validation at all must say who owns what. This grants each entry's
-/// `(object_id, region_id)` to that entry's own family.
+/// `(object_id, region_id, ordered variant_chain)` source to that entry's own
+/// family.
 fn owning_analysis(plans: &[SupportPlanIR]) -> slicer_ir::SupportAnalysisIR {
     slicer_ir::SupportAnalysisIR {
         family_assignments: plans
@@ -44,7 +46,11 @@ fn owning_analysis(plans: &[SupportPlanIR]) -> slicer_ir::SupportAnalysisIR {
             .flat_map(|plan| plan.entries.iter())
             .map(|entry| {
                 (
-                    (entry.object_id.clone(), entry.region_id),
+                    SupportSourceKey {
+                        object_id: entry.object_id.clone(),
+                        region_id: entry.region_id,
+                        variant_chain: entry.variant_chain.clone(),
+                    },
                     entry.family_id.clone(),
                 )
             })
@@ -720,6 +726,7 @@ pub fn fixture_invariants() -> Result<(), String> {
             let query = exact_z.query(
                 query_object_id,
                 entry.region_id,
+                &entry.variant_chain,
                 slicer_ir::units_to_mm(entry.anchor_z),
             );
             let query = query.map_err(|error| {
@@ -784,6 +791,7 @@ pub fn invalid_geometry_fails() -> Result<(), String> {
         capabilities: Vec::new(),
         provenance: vec!["synthetic-invalid-geometry".into()],
         decline_reason: Some(SupportPlanDeclineReason::Blocked),
+        variant_chain: Vec::new(),
     };
     // exhaustive: synthetic negative-test entry; every field is pinned so the aggregation gate is exercised against a fully-specified body
     let invalid_body = SupportPlanEntry {
@@ -800,6 +808,7 @@ pub fn invalid_geometry_fails() -> Result<(), String> {
         capabilities: Vec::new(),
         provenance: vec!["synthetic-invalid-body".into()],
         decline_reason: None,
+        variant_chain: Vec::new(),
     };
     // exhaustive: synthetic negative-test entry; every field is pinned so the aggregation gate is exercised against a fully-specified body
     let valid = SupportPlanEntry {
@@ -826,6 +835,7 @@ pub fn invalid_geometry_fails() -> Result<(), String> {
         capabilities: Vec::new(),
         provenance: vec!["synthetic-valid".into()],
         decline_reason: None,
+        variant_chain: Vec::new(),
     };
     let mesh = Arc::new(MeshIR {
         objects: vec![slicer_ir::ObjectMesh {
@@ -881,6 +891,7 @@ pub fn invalid_geometry_fails() -> Result<(), String> {
         capabilities: Vec::new(),
         provenance: vec!["synthetic-overlap-tree".into()],
         decline_reason: None,
+        variant_chain: Vec::new(),
     };
     // exhaustive: synthetic negative-test entry; every field is pinned so the aggregation gate is exercised against a fully-specified body
     let trad_body = SupportPlanEntry {
@@ -900,6 +911,7 @@ pub fn invalid_geometry_fails() -> Result<(), String> {
         capabilities: Vec::new(),
         provenance: vec!["synthetic-overlap-trad".into()],
         decline_reason: None,
+        variant_chain: Vec::new(),
     };
     // Cross-family overlap on same (layer, object, region) is a fatal family conflict per support_aggregation.
     // Prove degraded handling via try_aggregate that must error on conflicting families at same identity.
@@ -918,7 +930,11 @@ pub fn invalid_geometry_fails() -> Result<(), String> {
     }];
     let overlap_owned = slicer_ir::SupportAnalysisIR {
         family_assignments: std::collections::BTreeMap::from([(
-            ("overlap-obj".to_string(), 0),
+            SupportSourceKey {
+                object_id: "overlap-obj".to_string(),
+                region_id: 0,
+                variant_chain: Vec::new(),
+            },
             "traditional".to_string(),
         )]),
         ..slicer_ir::SupportAnalysisIR::default()
@@ -1636,7 +1652,12 @@ pub fn support_never_intersects_model_at_exact_z() -> Result<(), String> {
                     slicer_ir::units_to_mm(entry.anchor_z)
                 };
                 let query = exact_z
-                    .query(entry.object_id.as_str(), entry.region_id, z_mm)
+                    .query(
+                        entry.object_id.as_str(),
+                        entry.region_id,
+                        &entry.variant_chain,
+                        z_mm,
+                    )
                     .map_err(|error| {
                         format!(
                             "{model_rel} [{hazard}] {family}: exact-Z query at z={z_mm:.4}mm failed: {error}"
@@ -1705,7 +1726,12 @@ pub fn accepted_demands_terminate_on_plate_or_model() -> Result<(), String> {
                     continue; // terminates on the build plate
                 }
                 let query = exact_z
-                    .query(entry.object_id.as_str(), entry.region_id, anchor_z_mm)
+                    .query(
+                        entry.object_id.as_str(),
+                        entry.region_id,
+                        &entry.variant_chain,
+                        anchor_z_mm,
+                    )
                     .map_err(|error| {
                         format!(
                             "{model_rel} [{hazard}] {family}: exact-Z query at anchor z={anchor_z_mm:.4}mm failed: {error}"

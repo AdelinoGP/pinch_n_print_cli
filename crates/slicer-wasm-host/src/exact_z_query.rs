@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use slicer_core::algos::mesh_cross_section::cross_section_at_z;
-use slicer_ir::{mm_to_units, ExPolygon, MeshIR, ObjectMesh, Point2, Point3, Polygon};
+use slicer_ir::{mm_to_units, ExPolygon, MeshIR, ObjectMesh, PaintValue, Point2, Point3, Polygon};
 
 /// Immutable result of one normalized support geometry query.
 #[derive(Debug, Clone, PartialEq)]
@@ -21,7 +21,11 @@ pub struct ExactZSupportQuery {
     pub baseline_envelope: Vec<ExPolygon>,
 }
 
-type QueryKey = (String, u64, i64);
+/// Full immutable-cache identity: object, region, ordered source chain, and Z.
+/// The chain is part of the identity even though occupancy remains object-wide;
+/// an empty chain is the exact identity of a genuinely chain-less source,
+/// never a wildcard.
+type QueryKey = (String, u64, Vec<(String, PaintValue)>, i64);
 
 /// Thread-safe, immutable-result cache for exact-Z support geometry.
 pub struct ExactZQueryService {
@@ -38,21 +42,28 @@ impl ExactZQueryService {
         }
     }
 
-    /// Query one object and region at an exact physical Z in millimeters.
-    /// The region is part of the cache identity even though mesh occupancy is
-    /// currently object-wide; future region clipping can therefore be added
-    /// without changing the service contract.
+    /// Query one object and source region at an exact physical Z in millimeters.
+    /// The region and ordered `variant_chain` are part of the cache identity
+    /// even though mesh occupancy is currently object-wide, so two queries that
+    /// differ only by chain (including chain order) never share a cached
+    /// result; an empty slice is the exact identity of a chain-less source.
     pub fn query(
         &self,
         object_id: &str,
         region_id: u64,
+        variant_chain: &[(String, PaintValue)],
         physical_z_mm: f32,
     ) -> Result<Arc<ExactZSupportQuery>, String> {
         if !physical_z_mm.is_finite() {
             return Err("exact-z-support-query: Z must be finite".into());
         }
         let z_units = mm_to_units(physical_z_mm);
-        let key = (object_id.to_owned(), region_id, z_units);
+        let key = (
+            object_id.to_owned(),
+            region_id,
+            variant_chain.to_vec(),
+            z_units,
+        );
         if let Some(result) = self
             .cache
             .lock()
@@ -148,5 +159,200 @@ fn rectangle(min_x: i64, max_x: i64, min_y: i64, max_y: i64) -> ExPolygon {
             ],
         },
         holes: Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ExactZQueryService, QueryKey};
+    use slicer_ir::{IndexedTriangleSet, MeshIR, ObjectMesh, PaintValue, Point3, Transform3d};
+    use std::collections::BTreeSet;
+    use std::sync::Arc;
+
+    /// One nonempty physical object (a 10 mm cube) shared by every query in
+    /// `query_cache_identity_includes_ordered_source_chain`; only the chain
+    /// varies across calls.
+    fn cube_mesh() -> MeshIR {
+        MeshIR {
+            objects: vec![ObjectMesh {
+                id: "object-a".into(),
+                mesh: IndexedTriangleSet {
+                    vertices: vec![
+                        Point3 {
+                            x: 0.0,
+                            y: 0.0,
+                            z: 0.0,
+                        },
+                        Point3 {
+                            x: 10.0,
+                            y: 0.0,
+                            z: 0.0,
+                        },
+                        Point3 {
+                            x: 10.0,
+                            y: 10.0,
+                            z: 0.0,
+                        },
+                        Point3 {
+                            x: 0.0,
+                            y: 10.0,
+                            z: 0.0,
+                        },
+                        Point3 {
+                            x: 0.0,
+                            y: 0.0,
+                            z: 10.0,
+                        },
+                        Point3 {
+                            x: 10.0,
+                            y: 0.0,
+                            z: 10.0,
+                        },
+                        Point3 {
+                            x: 10.0,
+                            y: 10.0,
+                            z: 10.0,
+                        },
+                        Point3 {
+                            x: 0.0,
+                            y: 10.0,
+                            z: 10.0,
+                        },
+                    ],
+                    indices: vec![
+                        0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6, 0, 4, 5, 0, 5, 1, 1, 5, 6, 1, 6, 2, 2,
+                        6, 7, 2, 7, 3, 3, 7, 4, 3, 4, 0,
+                    ],
+                },
+                transform: Transform3d {
+                    matrix: [
+                        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
+                        1.0,
+                    ],
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn query_cache_identity_includes_ordered_source_chain() {
+        let service = ExactZQueryService::new(Arc::new(cube_mesh()));
+        let object_id = "object-a";
+        let region_id = 7u64;
+        // Intermediate Z through the 10 mm cube: nonempty physical occupancy,
+        // shared by every call below.
+        let physical_z_mm = 4.321f32;
+
+        let empty: Vec<(String, PaintValue)> = Vec::new();
+        let chain_a: Vec<(String, PaintValue)> = vec![
+            ("wall".to_string(), PaintValue::ToolIndex(1)),
+            ("top".to_string(), PaintValue::Flag(true)),
+        ];
+        let reversed: Vec<(String, PaintValue)> = chain_a.iter().cloned().rev().collect();
+        let sibling: Vec<(String, PaintValue)> = vec![
+            ("wall".to_string(), PaintValue::ToolIndex(2)),
+            ("top".to_string(), PaintValue::Flag(true)),
+        ];
+
+        let empty_result = service
+            .query(object_id, region_id, &empty, physical_z_mm)
+            .expect("empty-chain query");
+        let chain_a_result = service
+            .query(object_id, region_id, &chain_a, physical_z_mm)
+            .expect("chain query");
+        let chain_a_cached = service
+            .query(object_id, region_id, &chain_a, physical_z_mm)
+            .expect("cached chain query");
+        let reversed_result = service
+            .query(object_id, region_id, &reversed, physical_z_mm)
+            .expect("reversed-chain query");
+        let sibling_result = service
+            .query(object_id, region_id, &sibling, physical_z_mm)
+            .expect("sibling-chain query");
+
+        // Same full key (object, region, ordered chain, Z) reuses the immutable
+        // cached Arc; differing chains never do.
+        assert!(
+            Arc::ptr_eq(&chain_a_result, &chain_a_cached),
+            "same full key must reuse one cached Arc"
+        );
+        assert!(
+            !Arc::ptr_eq(&chain_a_result, &reversed_result),
+            "reordered chain must not reuse another chain's Arc"
+        );
+        assert!(
+            !Arc::ptr_eq(&chain_a_result, &sibling_result),
+            "sibling chain must not reuse another chain's Arc"
+        );
+        assert!(
+            !Arc::ptr_eq(&empty_result, &chain_a_result),
+            "empty chain must not reuse a nonempty chain's Arc"
+        );
+
+        // Actual cached entries: one per distinct full identity. The expected
+        // keys are built independently from the literal unit conversion
+        // (4.321 mm = 43_210 canonical units).
+        let cached: BTreeSet<QueryKey> = service
+            .cache
+            .lock()
+            .expect("exact-z cache lock")
+            .keys()
+            .cloned()
+            .collect();
+        let expected: BTreeSet<QueryKey> = [
+            (object_id.to_string(), region_id, empty.clone(), 43_210i64),
+            (object_id.to_string(), region_id, chain_a.clone(), 43_210i64),
+            (
+                object_id.to_string(),
+                region_id,
+                reversed.clone(),
+                43_210i64,
+            ),
+            (object_id.to_string(), region_id, sibling.clone(), 43_210i64),
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(
+            cached.len(),
+            4,
+            "each distinct full source identity has its own cache entry"
+        );
+        assert_eq!(
+            cached, expected,
+            "cached keys are exactly the independently expected full identities"
+        );
+
+        // The query geometry stays object-wide: every result is the identical
+        // physical result, regardless of which source chain asked.
+        assert_eq!(empty_result.z_units, 43_210);
+        assert!(
+            !empty_result.occupancy.is_empty(),
+            "the cube intersects the intermediate Z with nonempty occupancy"
+        );
+        for (label, result) in [
+            ("nonempty chain", &chain_a_result),
+            ("reversed chain", &reversed_result),
+            ("sibling chain", &sibling_result),
+        ] {
+            assert_eq!(result.z_units, empty_result.z_units, "{label}: z_units");
+            assert_eq!(
+                result.occupancy, empty_result.occupancy,
+                "{label}: occupancy remains object-wide"
+            );
+            assert_eq!(
+                result.blockers, empty_result.blockers,
+                "{label}: blockers remain object-wide"
+            );
+            assert_eq!(
+                result.termination_surfaces, empty_result.termination_surfaces,
+                "{label}: termination surfaces remain object-wide"
+            );
+            assert_eq!(
+                result.baseline_envelope, empty_result.baseline_envelope,
+                "{label}: baseline envelope remains object-wide"
+            );
+        }
     }
 }

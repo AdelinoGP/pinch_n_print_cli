@@ -15,10 +15,10 @@ fn binding_surface_matches_documented_layer_infill_stage() {
     assert_eq!(RectilinearInfill::__slicer_stage_export_name(), "run");
     assert_eq!(
         RectilinearInfill::__slicer_module_schema().stage_export,
-        "slicer:layer-infill/infill@1.0.0#run"
+        "slicer:layer-infill/infill@2.0.0#run"
     );
     let exports = RectilinearInfill::__slicer_wit_exports();
-    assert!(exports.contains(&"slicer:layer-infill/infill@1.0.0#run"));
+    assert!(exports.contains(&"slicer:layer-infill/infill@2.0.0#run"));
 }
 
 #[test]
@@ -27,5 +27,5 @@ fn binding_schema_json_includes_stage_and_tier() {
     assert!(json.contains(&format!(r#""tier":"{}""#, slicer_schema::TIER_LAYER)));
     assert!(json.contains(r#""stage_id":"Layer::Infill""#));
     assert!(json.contains(r#""trait":"LayerModule""#));
-    assert!(json.contains(r#""stage_export":"slicer:layer-infill/infill@1.0.0#run""#));
+    assert!(json.contains(r#""stage_export":"slicer:layer-infill/infill@2.0.0#run""#));
 }

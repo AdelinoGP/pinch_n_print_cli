@@ -12,17 +12,17 @@ use slicer_core::polygon_ops::{difference_ex, intersection_ex, offset, union_ex,
 use slicer_ir::mm_to_units;
 use slicer_ir::resolved_config::ResolvedFloatOrPercent;
 use slicer_ir::slice_ir::{
-    ExPolygon, Point2, Polygon, SupportAnalysisIR, SupportCandidate, SupportCandidateSource,
-    SupportGeometryKey, SupportType,
+    ExPolygon, PaintValue, Point2, Polygon, RegionKey, SupportAnalysisIR, SupportCandidate,
+    SupportCandidateSource, SupportGeometryKey, SupportSourceKey, SupportType,
 };
 use slicer_ir::{ConfigValue, PaintSemantic, ResolvedConfig};
 use slicer_scheduler::execution_plan::{
     select_support_family, SUPPORT_FAMILY_CONFIG_KEY, SUPPORT_GENERATOR_CONFIG_KEY,
 };
+use slicer_wasm_host::selection::region_map_key_for_sliced_region;
 use slicer_wasm_host::support_territory::SUPPORT_TERRITORY_CLEARANCE_KEY;
 
 use crate::blackboard::Blackboard;
-use crate::layer_executor::config_for_region_smallest_chain;
 
 /// Build conservative candidates without propagating support bodies.
 ///
@@ -74,7 +74,7 @@ pub fn commit_support_analysis_builtin(
             let mut object_layer_polygons: BTreeMap<(String, u32), Vec<ExPolygon>> =
                 BTreeMap::new();
             let surface_classification = blackboard.surface_classification().cloned();
-            let mut contact_work: Vec<(u32, String, u64, Vec<ExPolygon>, bool)> = Vec::new();
+            let mut contact_work: Vec<ContactWork> = Vec::new();
             for slice in slices.iter() {
                 for region in &slice.regions {
                     if region.polygons.is_empty() {
@@ -84,6 +84,7 @@ pub fn commit_support_analysis_builtin(
                         global_support_layer_index: slice.global_layer_index,
                         object_id: region.object_id.clone(),
                         region_id: region.region_id,
+                        variant_chain: region.variant_chain.clone(),
                     };
                     ir.model_occupancy.insert(key, region.polygons.clone());
                     let bounds = object_bounds.entry(region.object_id.clone()).or_insert((
@@ -116,13 +117,20 @@ pub fn commit_support_analysis_builtin(
                     let needs_support =
                         slicer_sdk::views::SliceRegionView::from_ir(region, 0.0, Vec::new())
                             .derive_needs_support(surface_classification.as_deref());
-                    contact_work.push((
-                        slice.global_layer_index,
-                        region.object_id.clone(),
-                        region.region_id,
-                        region.polygons.clone(),
+                    contact_work.push(ContactWork {
+                        layer_index: slice.global_layer_index,
+                        object_id: region.object_id.clone(),
+                        region_id: region.region_id,
+                        polygons: region.polygons.clone(),
                         needs_support,
-                    ));
+                        variant_chain: region.variant_chain.clone(),
+                        // Captured once from this actual `SlicedRegion`: the
+                        // exact PREPASS config address, kept separately from
+                        // the SOURCE identity the candidate records. Normalizes
+                        // painted non-modifier ids once; modifiers and
+                        // genuinely empty chains stay unchanged.
+                        address: region_map_key_for_sliced_region(slice.global_layer_index, region),
+                    });
                 }
             }
 
@@ -154,112 +162,137 @@ pub fn commit_support_analysis_builtin(
             // committed candidate stream is byte-stable (the same
             // order-independence property the previous per-series `par_iter`
             // had).
-            contact_work.sort_by(|a, b| (a.0, &a.1, a.2).cmp(&(b.0, &b.1, b.2)));
+            contact_work.sort_by(|a, b| {
+                (a.layer_index, &a.object_id, a.region_id).cmp(&(
+                    b.layer_index,
+                    &b.object_id,
+                    b.region_id,
+                ))
+            });
             let contacts: Vec<Contact> = contact_work
                 .par_iter()
-                .filter_map(
-                    |(layer_index, object_id, region_id, polygons, needs_support)| {
-                        // Layer 0 rests on the bed and has no layer below it.
-                        let lower_index = layer_index.checked_sub(1)?;
-                        let empty: Vec<ExPolygon> = Vec::new();
-                        let lower = object_layer_union
-                            .get(&(object_id.clone(), lower_index))
-                            .unwrap_or(&empty);
-                        let params = SupportContactParams {
-                            // Canonical scales the offset by the *lower* layer's
-                            // height.
-                            lower_layer_height_mm: layer_height_mm(
-                                &plan.global_layers,
-                                lower_index,
-                            ),
-                            // `layer_id` is trivially available here; the other
-                            // new knobs ride neutral from `base_params` (OFF).
-                            // Clone (not move) the base: `bridge_polygons` is a
-                            // non-Copy field and this `Fn` closure may run
-                            // multiple times under rayon.
-                            layer_id: *layer_index,
-                            ..base_params.clone()
-                        };
-                        let enforcers = modifiers.enforcers_at(object_id, *layer_index);
-                        let blockers = modifiers.blockers_at(object_id, *layer_index);
-                        // F-19: the auto/manual axis is a *per-region* setting --
-                        // an object's regions may carry different `support_type`
-                        // values -- so it is resolved from the region's own config,
-                        // never from the run config.
-                        let support_type = effective_support_type(
-                            region_config(
-                                region_map.as_deref(),
-                                *layer_index,
-                                object_id,
-                                *region_id,
-                            )
-                            .unwrap_or(config),
+                .filter_map(|work| {
+                    let ContactWork {
+                        layer_index,
+                        object_id,
+                        region_id,
+                        polygons,
+                        needs_support,
+                        variant_chain,
+                        address,
+                    } = work;
+                    // Layer 0 rests on the bed and has no layer below it.
+                    let lower_index = layer_index.checked_sub(1)?;
+                    let empty: Vec<ExPolygon> = Vec::new();
+                    let lower = object_layer_union
+                        .get(&(object_id.clone(), lower_index))
+                        .unwrap_or(&empty);
+                    let params = SupportContactParams {
+                        // Canonical scales the offset by the *lower* layer's
+                        // height.
+                        lower_layer_height_mm: layer_height_mm(&plan.global_layers, lower_index),
+                        // `layer_id` is trivially available here; the other
+                        // new knobs ride neutral from `base_params` (OFF).
+                        // Clone (not move) the base: `bridge_polygons` is a
+                        // non-Copy field and this `Fn` closure may run
+                        // multiple times under rayon.
+                        layer_id: *layer_index,
+                        ..base_params.clone()
+                    };
+                    let enforcers = modifiers.enforcers_at(object_id, *layer_index);
+                    let blockers = modifiers.blockers_at(object_id, *layer_index);
+                    // F-19: the auto/manual axis is a *per-region* setting --
+                    // an object's regions may carry different `support_type`
+                    // values -- so it is resolved from the region's own config,
+                    // never from the run config. The address was captured from
+                    // the actual `SlicedRegion` above: exact `entries.get`, no
+                    // smallest-chain or sibling-region fallback.
+                    let region_config = region_map.as_deref().and_then(|map| {
+                        map.entries
+                            .get(address)
+                            .map(|plan| map.config_for_raw(plan.config))
+                    });
+                    let support_type = effective_support_type(region_config.unwrap_or(config));
+                    // Canonical `detect_contacts` applies enforcers under every
+                    // support type; only its angle-thresholded branch is
+                    // auto-gated. Keep the annotation attached to the
+                    // thresholded result, before the enforcer union.
+                    let mut cantilever_surfaces = Vec::new();
+                    let mut geometry = if support_type.is_auto() && *needs_support {
+                        let annotations = detect_support_contacts_with_annotations(
+                            polygons, lower, blockers, &params,
                         );
-                        // Canonical `detect_contacts` applies enforcers under every
-                        // support type; only its angle-thresholded branch is
-                        // auto-gated. Keep the annotation attached to the
-                        // thresholded result, before the enforcer union.
-                        let mut cantilever_surfaces = Vec::new();
-                        let mut geometry = if support_type.is_auto() && *needs_support {
-                            let annotations = detect_support_contacts_with_annotations(
-                                polygons, lower, blockers, &params,
-                            );
-                            cantilever_surfaces = annotations.cantilever_surfaces;
-                            annotations.contacts
-                        } else {
-                            Vec::new()
-                        };
-                        if !enforcers.is_empty() {
-                            if let Some(enforcer_geometry) = enforcer_contacts(
-                                polygons,
-                                lower,
-                                enforcers,
-                                blockers,
-                                params.external_perimeter_width_mm,
-                            ) {
-                                geometry.extend(enforcer_geometry);
-                                geometry = union_ex(&geometry);
-                            }
+                        cantilever_surfaces = annotations.cantilever_surfaces;
+                        annotations.contacts
+                    } else {
+                        Vec::new()
+                    };
+                    if !enforcers.is_empty() {
+                        if let Some(enforcer_geometry) = enforcer_contacts(
+                            polygons,
+                            lower,
+                            enforcers,
+                            blockers,
+                            params.external_perimeter_width_mm,
+                        ) {
+                            geometry.extend(enforcer_geometry);
+                            geometry = union_ex(&geometry);
                         }
-                        if geometry.is_empty() {
-                            return None;
-                        }
-                        // `enforced` / `blocked` describe how the region relates to
-                        // the painted modifier volumes. `blocked` is tested against
-                        // the region's own cross-section, not the surviving
-                        // geometry, so it stays true for a candidate whose blocked
-                        // part has already been subtracted away.
-                        let enforced = !intersection_ex(&geometry, enforcers).is_empty();
-                        let blocked = !intersection_ex(polygons, blockers).is_empty();
-                        Some(Contact {
-                            layer_index: *layer_index,
-                            object_id: object_id.clone(),
-                            region_id: *region_id,
-                            geometry,
-                            cantilever_surfaces,
-                            enforced,
-                            blocked,
-                        })
-                    },
-                )
+                    }
+                    if geometry.is_empty() {
+                        return None;
+                    }
+                    // `enforced` / `blocked` describe how the region relates to
+                    // the painted modifier volumes. `blocked` is tested against
+                    // the region's own cross-section, not the surviving
+                    // geometry, so it stays true for a candidate whose blocked
+                    // part has already been subtracted away.
+                    let enforced = !intersection_ex(&geometry, enforcers).is_empty();
+                    let blocked = !intersection_ex(polygons, blockers).is_empty();
+                    Some(Contact {
+                        layer_index: *layer_index,
+                        object_id: object_id.clone(),
+                        region_id: *region_id,
+                        variant_chain: variant_chain.clone(),
+                        address: address.clone(),
+                        geometry,
+                        cantilever_surfaces,
+                        enforced,
+                        blocked,
+                    })
+                })
                 .collect();
 
+            let mut candidate_addresses: BTreeMap<SupportSourceKey, RegionKey> = BTreeMap::new();
             for Contact {
                 layer_index,
                 object_id,
                 region_id,
+                variant_chain,
+                address,
                 geometry,
                 cantilever_surfaces,
                 enforced,
                 blocked,
             } in contacts
             {
+                // Contacts are emitted in deterministic (layer, object, region)
+                // order, so the first entry for a source keeps the previous
+                // first-candidate-layer resolution.
+                candidate_addresses
+                    .entry(SupportSourceKey {
+                        object_id: object_id.clone(),
+                        region_id,
+                        variant_chain: variant_chain.clone(),
+                    })
+                    .or_insert(address);
                 if !cantilever_surfaces.is_empty() {
                     ir.cantilever_surfaces.insert(
                         SupportGeometryKey {
                             global_support_layer_index: layer_index,
                             object_id: object_id.clone(),
                             region_id,
+                            variant_chain: variant_chain.clone(),
                         },
                         cantilever_surfaces,
                     );
@@ -276,6 +309,7 @@ pub fn commit_support_analysis_builtin(
                         region_id,
                         global_layer_index: layer_index,
                         z_units: mm_to_units(z),
+                        variant_chain,
                     },
                     enforced,
                     blocked,
@@ -290,53 +324,42 @@ pub fn commit_support_analysis_builtin(
                     candidate.id,
                 )
             });
-            let mut candidate_layers: BTreeMap<(String, u64), u32> = BTreeMap::new();
-            for candidate in &ir.candidates {
-                candidate_layers
-                    .entry((
-                        candidate.source.object_id.clone(),
-                        candidate.source.region_id,
-                    ))
-                    .or_insert(candidate.source.global_layer_index);
-            }
             if let Some(map) = region_map.as_deref() {
-                // Mint one assignment for every mapped region, including regions
-                // with no support contact. Candidate regions use their first
-                // candidate layer to preserve the previous resolution.
-                for region_key in map.entries.keys() {
-                    let assignment_key = (region_key.object_id.clone(), region_key.region_id);
-                    let layer_index = candidate_layers
-                        .get(&assignment_key)
-                        .copied()
-                        .unwrap_or(region_key.global_layer_index);
-                    ir.family_assignments
-                        .entry(assignment_key)
-                        .or_insert_with(|| {
-                            // Must use the same two-stage lookup the executor uses to
-                            // route the region (`backfill_active_region_configs`), or a
-                            // painted region — keyed by a non-empty `variant_chain` —
-                            // goes to the tree planner while being recorded here as
-                            // "traditional" (F-44).
-                            config_for_region_smallest_chain(
-                                map,
-                                layer_index,
-                                &region_key.object_id,
-                                region_key.region_id,
-                            )
-                            .map(|config| map.config_for_raw(config))
-                            .map(support_family)
-                            .unwrap_or_else(|| "traditional".to_string())
-                        });
+                // Publish exactly one family assignment per committed SOURCE
+                // origin — including eligible origins with no support contact —
+                // resolved through the exact PREPASS config address captured from
+                // the actual `SlicedRegion`. `entries.get` then `config_for`; no
+                // smallest-chain or sibling-region fallback.
+                for slice in slices.iter() {
+                    for region in &slice.regions {
+                        let source_key = SupportSourceKey {
+                            object_id: region.object_id.clone(),
+                            region_id: region.region_id,
+                            variant_chain: region.variant_chain.clone(),
+                        };
+                        let address = candidate_addresses
+                            .get(&source_key)
+                            .cloned()
+                            .unwrap_or_else(|| {
+                                region_map_key_for_sliced_region(slice.global_layer_index, region)
+                            });
+                        let Some(plan) = map.entries.get(&address) else {
+                            continue;
+                        };
+                        let family = support_family(map.config_for_raw(plan.config));
+                        ir.family_assignments.entry(source_key).or_insert(family);
+                    }
                 }
             } else {
                 // Unit fixtures may omit RegionMapIR; retain their candidate-based
                 // traditional fallback in that case.
                 for candidate in &ir.candidates {
                     ir.family_assignments
-                        .entry((
-                            candidate.source.object_id.clone(),
-                            candidate.source.region_id,
-                        ))
+                        .entry(SupportSourceKey {
+                            object_id: candidate.source.object_id.clone(),
+                            region_id: candidate.source.region_id,
+                            variant_chain: candidate.source.variant_chain.clone(),
+                        })
                         .or_insert_with(|| "traditional".to_string());
                 }
             }
@@ -420,17 +443,17 @@ fn collect_support_territory(
         if object.modifier_volumes.is_empty() {
             continue;
         }
-        let base_region_ids: Vec<u64> = ir
+        let base_sources: Vec<(u64, Vec<(String, PaintValue)>)> = ir
             .family_assignments
             .keys()
-            .filter(|(object_id, region_id)| {
-                object_id == &object.id
-                    && !slicer_ir::is_modifier_namespace_id(*region_id)
-                    && slicer_ir::modifier_sub_region_id_fits(*region_id)
+            .filter(|key| {
+                key.object_id == object.id
+                    && !slicer_ir::is_modifier_namespace_id(key.region_id)
+                    && slicer_ir::modifier_sub_region_id_fits(key.region_id)
             })
-            .map(|(_, region_id)| *region_id)
+            .map(|key| (key.region_id, key.variant_chain.clone()))
             .collect();
-        if base_region_ids.is_empty() {
+        if base_sources.is_empty() {
             continue;
         }
         for modifier in &object.modifier_volumes {
@@ -454,13 +477,16 @@ fn collect_support_territory(
                 if footprint.is_empty() {
                     continue;
                 }
-                for base_region_id in &base_region_ids {
+                for (base_region_id, base_chain) in &base_sources {
                     let sub_region_id =
                         slicer_ir::modifier_sub_region_id(*base_region_id, &object.id, &footprint);
-                    if !ir
-                        .family_assignments
-                        .contains_key(&(object.id.clone(), sub_region_id))
-                    {
+                    // The child inherits its parent's exact ordered chain; the
+                    // lookup is the child's full source origin, not a pair key.
+                    if !ir.family_assignments.contains_key(&SupportSourceKey {
+                        object_id: object.id.clone(),
+                        region_id: sub_region_id,
+                        variant_chain: base_chain.clone(),
+                    }) {
                         continue;
                     }
                     ir.support_territory.insert(
@@ -468,6 +494,7 @@ fn collect_support_territory(
                             global_support_layer_index: slice.global_layer_index,
                             object_id: object.id.clone(),
                             region_id: sub_region_id,
+                            variant_chain: base_chain.clone(),
                         },
                         footprint.clone(),
                     );
@@ -540,11 +567,30 @@ fn enforcer_contacts(
     (!contacts.is_empty()).then(|| union_ex(&contacts))
 }
 
+/// One unit of contact-detection work, captured per actual `SlicedRegion`.
+///
+/// Carries the SOURCE ordered chain (candidate identity) and the exact PREPASS
+/// config address (derived once via `region_map_key_for_sliced_region`) side by
+/// side; the two are never conflated. `address` is kept so the parallel pass
+/// does not re-derive or widen it into a sibling lookup.
+struct ContactWork {
+    layer_index: u32,
+    object_id: String,
+    region_id: u64,
+    polygons: Vec<ExPolygon>,
+    needs_support: bool,
+    variant_chain: Vec<(String, PaintValue)>,
+    address: RegionKey,
+}
+
 /// One detected support contact, before it becomes a [`SupportCandidate`].
 struct Contact {
     layer_index: u32,
     object_id: String,
     region_id: u64,
+    variant_chain: Vec<(String, PaintValue)>,
+    /// Exact PREPASS config address captured from the source region.
+    address: RegionKey,
     geometry: Vec<ExPolygon>,
     cantilever_surfaces: Vec<ExPolygon>,
     enforced: bool,
@@ -668,24 +714,6 @@ fn effective_support_type(config: &ResolvedConfig) -> SupportType {
             _ => None,
         })
         .unwrap_or(config.support_type)
-}
-
-/// The per-region `ResolvedConfig` for one `(layer, object, region)`, or `None`
-/// when no region map is committed (unit fixtures) or the region is absent.
-fn region_config<'a>(
-    region_map: Option<&'a slicer_ir::RegionMapIR>,
-    global_layer_index: u32,
-    object_id: &str,
-    region_id: u64,
-) -> Option<&'a ResolvedConfig> {
-    let map = region_map?;
-    crate::layer_executor::config_for_region_smallest_chain(
-        map,
-        global_layer_index,
-        &object_id.to_string(),
-        region_id,
-    )
-    .map(|config| map.config_for_raw(config))
 }
 
 /// Resolves the config half of [`SupportContactParams`] once per slice.
@@ -1013,6 +1041,7 @@ mod tests {
             global_support_layer_index: 0,
             object_id: "object".to_string(),
             region_id: 3,
+            variant_chain: Vec::new(),
         };
         assert_eq!(
             analysis.shared_settings.get("support_enabled"),
@@ -1040,6 +1069,7 @@ mod tests {
             global_support_layer_index: 1,
             object_id: "object".to_string(),
             region_id: 3,
+            variant_chain: Vec::new(),
         };
         assert_eq!(analysis.termination_surfaces.len(), 1);
         assert_eq!(analysis.termination_surfaces[&termination_key].len(), 2);
@@ -1051,7 +1081,11 @@ mod tests {
             4
         );
         assert_eq!(
-            analysis.family_assignments.get(&("object".to_string(), 3)),
+            analysis.family_assignments.get(&SupportSourceKey {
+                object_id: "object".to_string(),
+                region_id: 3,
+                variant_chain: Vec::new(),
+            }),
             Some(&"traditional".to_string())
         );
     }
@@ -1231,19 +1265,47 @@ mod tests {
 
         commit_support_analysis_builtin(&mut blackboard, &support_enabled_config()).unwrap();
         let assignments = &blackboard.support_analysis().unwrap().family_assignments;
-        assert_eq!(assignments[&(String::from("object"), 3)], "tree");
-        assert_eq!(assignments[&(String::from("object"), 4)], "traditional");
-        assert_eq!(assignments[&(String::from("object"), 5)], "tree");
+        assert_eq!(
+            assignments[&SupportSourceKey {
+                object_id: String::from("object"),
+                region_id: 3,
+                variant_chain: Vec::new(),
+            }],
+            "tree"
+        );
+        assert_eq!(
+            assignments[&SupportSourceKey {
+                object_id: String::from("object"),
+                region_id: 4,
+                variant_chain: Vec::new(),
+            }],
+            "traditional"
+        );
+        assert_eq!(
+            assignments[&SupportSourceKey {
+                object_id: String::from("object"),
+                region_id: 5,
+                variant_chain: Vec::new(),
+            }],
+            "tree"
+        );
     }
 
-    /// F-44: a painted region is keyed in the region map by a **non-empty**
-    /// `variant_chain`, so the exact empty-chain `RegionKey` lookup misses it.
-    /// The executor's `backfill_active_region_configs` routes such a region to
-    /// the tree planner via its smallest-chain fallback; before the fix this
-    /// stage recorded it as "traditional", so the routing decision and the
-    /// recorded `family_assignments` string disagreed.
+    /// F-44: a painted region reaches the committed slice under the
+    /// paint-variant encoding of its base id, while the region map keys it by
+    /// the decoded base id plus the same **non-empty** `variant_chain`. The
+    /// stage derives that exact PREPASS address from the committed
+    /// `SlicedRegion` (`region_map_key_for_sliced_region`) — no smallest-chain
+    /// fallback — or it records "traditional" for a region the executor routes
+    /// to the tree planner.
     #[test]
     fn support_analysis_resolves_painted_region_family_via_variant_chain() {
+        let chain = vec![(
+            "support_paint".to_string(),
+            slicer_ir::slice_ir::PaintValue::Flag(true),
+        )];
+        let painted_region_id =
+            slicer_core::algos::paint_segmentation::paint_variant_region_id(7, &chain);
         let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
         blackboard
             .commit_layer_plan(Arc::new(LayerPlanIR {
@@ -1259,7 +1321,8 @@ mod tests {
                         global_layer_index,
                         regions: vec![SlicedRegion {
                             object_id: "object".to_string(),
-                            region_id: 7,
+                            region_id: painted_region_id,
+                            variant_chain: chain.clone(),
                             polygons: vec![square(0.0, 0.0, size)],
                             ..SlicedRegion::default()
                         }],
@@ -1282,10 +1345,7 @@ mod tests {
                     region_id: 7,
                     // Painted: the only entry for this region carries a
                     // non-empty chain, exactly as RegionMapping emits it.
-                    variant_chain: vec![(
-                        "support_paint".to_string(),
-                        slicer_ir::slice_ir::PaintValue::Flag(true),
-                    )],
+                    variant_chain: chain.clone(),
                 },
                 RegionPlan {
                     config: config_id,
@@ -1297,7 +1357,298 @@ mod tests {
 
         commit_support_analysis_builtin(&mut blackboard, &support_enabled_config()).unwrap();
         let assignments = &blackboard.support_analysis().unwrap().family_assignments;
-        assert_eq!(assignments[&(String::from("object"), 7)], "tree");
+        assert_eq!(
+            assignments[&SupportSourceKey {
+                object_id: String::from("object"),
+                region_id: painted_region_id,
+                variant_chain: chain,
+            }],
+            "tree"
+        );
+    }
+
+    /// The I3 witness: exact PREPASS config addresses are captured once from the
+    /// actual committed `SlicedRegion`s and used separately from the SOURCE
+    /// identity the analysis stores.
+    ///
+    /// Two sibling regions share base region 7 on the same layer and carry
+    /// identical geometry, distinguished only by their exact ordered chains;
+    /// the region map carries their decoded-base addresses with different
+    /// families and only one sibling's address config is `normal(auto)`. A
+    /// parameter-modifier child inherits a non-empty chain and has no contact at
+    /// all. If config resolution looked up SOURCE ids instead of the decoded
+    /// address, reused one sibling's chain for the other (smallest-chain or
+    /// sibling fallback), substituted the run config, or normalized a modifier
+    /// SOURCE id, these independently expected families, candidate cardinality,
+    /// occupancy keys and territory rows cannot all hold.
+    #[test]
+    fn support_analysis_preserves_source_identity_and_exact_normalized_config_address() {
+        let chain_a = vec![
+            ("material".to_string(), PaintValue::ToolIndex(1)),
+            ("density".to_string(), PaintValue::Scalar(0.5)),
+        ];
+        let chain_b = vec![("material".to_string(), PaintValue::ToolIndex(1))];
+        let source_a = slicer_core::algos::paint_segmentation::paint_variant_region_id(7, &chain_a);
+        let source_b = slicer_core::algos::paint_segmentation::paint_variant_region_id(7, &chain_b);
+        assert_ne!(
+            source_a, source_b,
+            "ordered sibling chains mint distinct SOURCE ids"
+        );
+
+        // The parameter modifier that owns the no-contact sub-region child.
+        let parameter_box = modifier_box(0.5, 0.5, 2.5, 2.5);
+        let footprint = slicer_core::slice_mesh_ex(&parameter_box, &[0.0])
+            .into_iter()
+            .next()
+            .expect("parameter modifier slices at z = 0");
+        assert!(!footprint.is_empty());
+        // `region_partition::split_modifier_sub_regions_for_prepass` encodes the
+        // parent's raw SOURCE id and the child inherits the parent's chain.
+        let child_id = slicer_ir::modifier_sub_region_id(source_a, "object", &footprint);
+
+        let mut blackboard = Blackboard::new(
+            Arc::new(mesh_with_modifiers(&[("parameter", parameter_box)])),
+            2,
+        );
+        blackboard
+            .commit_layer_plan(Arc::new(LayerPlanIR {
+                global_layers: global_layers(2),
+                ..LayerPlanIR::default()
+            }))
+            .unwrap();
+        let child_region = || SlicedRegion {
+            object_id: "object".to_string(),
+            region_id: child_id,
+            variant_chain: chain_a.clone(),
+            // No contact: an empty cross-section still resolves and publishes
+            // its family from the committed origin.
+            ..SlicedRegion::default()
+        };
+        blackboard
+            .commit_slice_ir(Arc::new(vec![
+                SliceIR {
+                    global_layer_index: 0,
+                    regions: vec![
+                        SlicedRegion {
+                            object_id: "object".to_string(),
+                            region_id: 7,
+                            polygons: vec![square(1.0, 2.0, 3.0)],
+                            ..SlicedRegion::default()
+                        },
+                        child_region(),
+                    ],
+                    ..SliceIR::default()
+                },
+                SliceIR {
+                    global_layer_index: 1,
+                    regions: vec![
+                        SlicedRegion {
+                            object_id: "object".to_string(),
+                            region_id: source_a,
+                            variant_chain: chain_a.clone(),
+                            polygons: vec![square(0.0, 1.0, 5.0)],
+                            ..SlicedRegion::default()
+                        },
+                        SlicedRegion {
+                            object_id: "object".to_string(),
+                            region_id: source_b,
+                            variant_chain: chain_b.clone(),
+                            polygons: vec![square(0.0, 1.0, 5.0)],
+                            ..SlicedRegion::default()
+                        },
+                        child_region(),
+                    ],
+                    ..SliceIR::default()
+                },
+            ]))
+            .unwrap();
+
+        let mut region_map = RegionMapIR::default();
+        let config_a = region_map.intern_config(ResolvedConfig {
+            // Typed default `normal(auto)`: the auto half of the placement axis.
+            extensions: [(
+                "support_family".to_string(),
+                ConfigValue::String("tree".to_string()),
+            )]
+            .into_iter()
+            .collect(),
+            ..ResolvedConfig::default()
+        });
+        let config_b = region_map.intern_config(ResolvedConfig {
+            support_type: SupportType::NormalManual,
+            ..ResolvedConfig::default()
+        });
+        let config_child = region_map.intern_config(ResolvedConfig {
+            support_type: SupportType::TreeManual,
+            ..ResolvedConfig::default()
+        });
+        for (global_layer_index, region_id, variant_chain, config) in [
+            (1, 7, chain_a.clone(), config_a),
+            (1, 7, chain_b.clone(), config_b),
+            (0, child_id, chain_a.clone(), config_child),
+            (1, child_id, chain_a.clone(), config_child),
+        ] {
+            region_map.entries.insert(
+                RegionKey {
+                    global_layer_index,
+                    object_id: "object".to_string(),
+                    region_id,
+                    variant_chain,
+                },
+                RegionPlan {
+                    config,
+                    ..RegionPlan::default()
+                },
+            );
+        }
+        blackboard.commit_region_map(Arc::new(region_map)).unwrap();
+
+        commit_support_analysis_builtin(&mut blackboard, &support_enabled_config()).unwrap();
+        let analysis = blackboard.support_analysis().unwrap();
+
+        // Candidate routing: identical geometry, yet only the auto sibling's own
+        // decoded-base address resolves to `normal(auto)`. Run-config fallback,
+        // the other sibling's entry or its SOURCE key changes this cardinality.
+        assert_eq!(
+            analysis.candidates.len(),
+            1,
+            "exactly the normal(auto) sibling emits a contact"
+        );
+        let candidate = &analysis.candidates[0];
+        assert_eq!(candidate.source.global_layer_index, 1);
+        assert_eq!(
+            candidate.source.region_id, source_a,
+            "candidate keeps the minted SOURCE id, not the decoded map-space base"
+        );
+        assert_eq!(
+            candidate.source.variant_chain, chain_a,
+            "candidate keeps the sibling's exact ordered chain"
+        );
+        assert!(
+            !candidate.geometry.is_empty(),
+            "the auto sibling's contact payload is non-empty"
+        );
+
+        // Layered geometry keys keep SOURCE identity and ordered chains.
+        let occupancy_a = SupportGeometryKey {
+            global_support_layer_index: 1,
+            object_id: "object".to_string(),
+            region_id: source_a,
+            variant_chain: chain_a.clone(),
+        };
+        let occupancy_b = SupportGeometryKey {
+            global_support_layer_index: 1,
+            object_id: "object".to_string(),
+            region_id: source_b,
+            variant_chain: chain_b.clone(),
+        };
+        assert_eq!(
+            analysis.model_occupancy[&occupancy_a],
+            vec![square(0.0, 1.0, 5.0)]
+        );
+        assert_eq!(
+            analysis.model_occupancy[&occupancy_b],
+            vec![square(0.0, 1.0, 5.0)]
+        );
+        assert_eq!(
+            analysis.model_occupancy.len(),
+            3,
+            "substrate plus both siblings; neither sibling merges into the other"
+        );
+        assert!(
+            !analysis.model_occupancy.contains_key(&SupportGeometryKey {
+                global_support_layer_index: 1,
+                object_id: "object".to_string(),
+                region_id: 7,
+                variant_chain: chain_a.clone(),
+            }),
+            "the map-space address never becomes a stored geometry key"
+        );
+
+        // Family assignments come from committed SOURCE origins — the
+        // no-contact sibling and modifier child included — with exact identity.
+        assert_eq!(
+            analysis.family_assignments[&SupportSourceKey {
+                object_id: "object".to_string(),
+                region_id: source_a,
+                variant_chain: chain_a.clone(),
+            }],
+            "tree"
+        );
+        assert_eq!(
+            analysis.family_assignments[&SupportSourceKey {
+                object_id: "object".to_string(),
+                region_id: source_b,
+                variant_chain: chain_b.clone(),
+            }],
+            "traditional",
+            "the manual sibling has no contact but still resolves its own family"
+        );
+        assert_eq!(
+            analysis.family_assignments[&SupportSourceKey {
+                object_id: "object".to_string(),
+                region_id: child_id,
+                variant_chain: chain_a.clone(),
+            }],
+            "tree",
+            "modifier SOURCE id and inherited chain survive with no contact"
+        );
+        assert!(
+            !analysis.family_assignments.contains_key(&SupportSourceKey {
+                object_id: "object".to_string(),
+                region_id: 7,
+                variant_chain: chain_a.clone(),
+            }),
+            "the decoded address is config space, never assignment identity"
+        );
+        assert!(
+            !analysis.family_assignments.contains_key(&SupportSourceKey {
+                object_id: "object".to_string(),
+                region_id: 7,
+                variant_chain: Vec::new(),
+            }),
+            "a committed origin without exact authority gains no default family"
+        );
+        assert!(
+            !analysis.family_assignments.contains_key(&SupportSourceKey {
+                object_id: "object".to_string(),
+                region_id: source_a,
+                variant_chain: chain_b.clone(),
+            }),
+            "a sibling's chain is never substituted"
+        );
+
+        // Territory: the modifier child is published once per committed layer
+        // under its own SOURCE id + inherited chain, carrying the modifier
+        // footprint — not a model square and not either sibling.
+        assert_eq!(analysis.support_territory.len(), 2);
+        for global_support_layer_index in 0..=1 {
+            let key = SupportGeometryKey {
+                global_support_layer_index,
+                object_id: "object".to_string(),
+                region_id: child_id,
+                variant_chain: chain_a.clone(),
+            };
+            let territory = analysis
+                .support_territory
+                .get(&key)
+                .expect("territory under the modifier child's SOURCE identity");
+            assert_eq!(territory, &footprint);
+            let xs: Vec<i64> = territory[0]
+                .contour
+                .points
+                .iter()
+                .map(|point| point.x)
+                .collect();
+            assert_eq!(
+                (xs.iter().min().copied(), xs.iter().max().copied()),
+                (
+                    Some(Point2::from_mm(0.5, 0.0).x),
+                    Some(Point2::from_mm(2.5, 0.0).x)
+                ),
+                "payload is the parameter modifier's footprint, not a model region"
+            );
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -1404,6 +1755,19 @@ mod tests {
             .expect("modifier box slices at z = 0");
         assert!(!footprint.is_empty());
         let sub_region_id = slicer_ir::modifier_sub_region_id(3, "object", &footprint);
+        // Tier-2 partitioning also mints the materialized child into the
+        // committed slice; assignment publication iterates those committed
+        // source origins, so this fixture commits the child that it maps.
+        let mut slices = (**blackboard.slice_ir().unwrap()).clone();
+        for slice in &mut slices {
+            slice.regions.push(SlicedRegion {
+                object_id: "object".to_string(),
+                region_id: sub_region_id,
+                variant_chain: Vec::new(),
+                ..SlicedRegion::default()
+            });
+        }
+        blackboard.replace_slice_ir(Arc::new(slices)).unwrap();
         let mut region_map = RegionMapIR::default();
         let tree = region_map.intern_config(ResolvedConfig {
             support_type: slicer_ir::SupportType::TreeAuto,
@@ -1434,7 +1798,11 @@ mod tests {
         commit_support_analysis_builtin(&mut blackboard, &support_enabled_config()).unwrap();
         let analysis = blackboard.support_analysis().unwrap();
         assert_eq!(
-            analysis.family_assignments[&(String::from("object"), sub_region_id)],
+            analysis.family_assignments[&SupportSourceKey {
+                object_id: String::from("object"),
+                region_id: sub_region_id,
+                variant_chain: Vec::new(),
+            }],
             "traditional"
         );
         let mut keys: Vec<_> = analysis.support_territory.keys().cloned().collect();
@@ -1446,11 +1814,13 @@ mod tests {
                     global_support_layer_index: 0,
                     object_id: "object".to_string(),
                     region_id: sub_region_id,
+                    variant_chain: Vec::new(),
                 },
                 SupportGeometryKey {
                     global_support_layer_index: 1,
                     object_id: "object".to_string(),
                     region_id: sub_region_id,
+                    variant_chain: Vec::new(),
                 },
             ],
             "exactly the parameter modifier's sub-region, on every layer; never the base region or the enforcer"

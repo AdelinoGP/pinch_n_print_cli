@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionRole, LightningTreeEntry, LightningTreeIR, Point2,
+    ConfigValue, ConfigView, ExtrusionRole, LightningTreeEntry, LightningTreeIR, PaintValue, Point2,
 };
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::test_prelude::*;
@@ -30,14 +30,42 @@ fn empty_paint_view() -> PaintRegionLayerView {
     PaintRegionLayerView::new(0)
 }
 
+/// Exact ordered source chain shared by the square region fixture
+/// (`make_square_region`) and its matching tree entry. A chainless sibling
+/// entry in `paint_view_with_segments` carries the same
+/// `(object_id, region_id, global_layer_index)` numbers with different
+/// segments, so the existing count/coordinate assertions below also falsify
+/// any pair-only fallback in `lightning_tree_segments_for` (AC-R9).
+fn fixture_variant_chain() -> Vec<(String, PaintValue)> {
+    vec![("fuzzy_skin".to_string(), PaintValue::Flag(true))]
+}
+
 fn paint_view_with_segments(segments: Vec<[Point2; 2]>) -> PaintRegionLayerView {
     let ir = LightningTreeIR {
-        entries: vec![LightningTreeEntry {
-            object_id: "obj1".to_string(),
-            global_layer_index: 0,
-            region_id: 1,
-            tree_edge_segments: segments,
-        }],
+        entries: vec![
+            // Chain-bearing entry: the region fixture carries this same
+            // ordered chain, so the exact source query must select it.
+            LightningTreeEntry {
+                object_id: "obj1".to_string(),
+                region_id: 1,
+                tree_edge_segments: segments,
+                variant_chain: fixture_variant_chain(),
+                ..LightningTreeEntry::default()
+            },
+            // Chainless sibling: same source numbers, different segments.
+            // The empty chain is the exact identity for a genuinely
+            // chain-less source (never a wildcard), so this entry must not
+            // be selected by the chain-bearing query.
+            LightningTreeEntry {
+                object_id: "obj1".to_string(),
+                region_id: 1,
+                tree_edge_segments: vec![[
+                    Point2::from_mm(90.0, 90.0),
+                    Point2::from_mm(91.0, 91.0),
+                ]],
+                ..LightningTreeEntry::default()
+            },
+        ],
         ..LightningTreeIR::default()
     };
     PaintRegionLayerView::new(0).with_lightning_tree_ir(Arc::new(ir))
@@ -72,6 +100,10 @@ fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
     // Lightning manifest declares only `claim:sparse-fill`; set held_claims
     // so should_emit gates correctly (empty held_claims = emit nothing).
     region.set_held_claims(vec!["claim:sparse-fill".into()]);
+    // Arm the region with the same exact ordered chain as the fixture's
+    // chain-bearing tree entry, so the exact source query selects that entry
+    // and not the same-number chainless sibling.
+    region.set_variant_chain(fixture_variant_chain());
     region
 }
 

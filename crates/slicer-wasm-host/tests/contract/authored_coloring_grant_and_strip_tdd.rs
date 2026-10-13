@@ -78,6 +78,7 @@ fn granting_ctx(tool_count: u32) -> AuthoredColoringContext {
         }]
         .into_iter()
         .collect(),
+        ..Default::default()
     }
 }
 
@@ -144,6 +145,7 @@ fn granted_but_different_region_is_stripped_to_none() {
         }]
         .into_iter()
         .collect(),
+        ..Default::default()
     };
     let ir = convert_infill_output(&collected_with_tool(Some(2)), 0, Some(&ctx))
         .expect("strip must be silent");
@@ -185,6 +187,7 @@ fn variant_grant_does_not_authorize_sibling() {
     let ctx = AuthoredColoringContext {
         tool_count: 4,
         granted_regions: [variant_a.clone()].into_iter().collect(),
+        ..Default::default()
     };
     let mut collected = collected_with_tool(Some(2));
     collected.sparse_path_origins = vec![Some(variant_a.clone())];
@@ -286,6 +289,19 @@ fn variant_grants_cover_native_and_wasm_boundaries() {
         region_id: REGION_ID,
         variant_chain: vec![("material".into(), PaintValue::ToolIndex(tool))],
     });
+    // Delivered/output/grant identity is the SOURCE-space id minted by
+    // `paint_variant_region_id`; `RegionMapIR` entries use the temporary
+    // map-space address only.
+    let source_origins: Vec<OriginId> = origins
+        .iter()
+        .map(|origin| OriginId {
+            region_id: slicer_core::algos::paint_segmentation::paint_variant_region_id(
+                origin.region_id,
+                &origin.variant_chain,
+            ),
+            ..origin.clone()
+        })
+        .collect();
     let layer = GlobalLayer::default();
     // Declared read enables exact-config projection. The single-tool baseline
     // must be overridden by the three-filament per-variant printer config.
@@ -322,10 +338,7 @@ fn variant_grants_cover_native_and_wasm_boundaries() {
                     .iter()
                     .map(|&i| SlicedRegion {
                         object_id: OBJECT_ID.into(),
-                        region_id: slicer_core::algos::paint_segmentation::paint_variant_region_id(
-                            REGION_ID,
-                            &origins[i].variant_chain,
-                        ),
+                        region_id: source_origins[i].region_id,
                         variant_chain: origins[i].variant_chain.clone(),
                         polygons: vec![ExPolygon {
                             contour: Polygon {
@@ -395,7 +408,11 @@ fn variant_grants_cover_native_and_wasm_boundaries() {
                     _ => None,
                 })
                 .collect();
-            assert_eq!(granted_origins, [origins[0].clone()].into_iter().collect());
+            assert_eq!(
+                granted_origins,
+                [source_origins[0].clone()].into_iter().collect(),
+                "the production projection must grant the SOURCE-space identity of variant 1"
+            );
 
             let run = |tool| {
                 AUTHORED_TOOL.with(|value| value.set(tool));
@@ -429,7 +446,8 @@ fn variant_grants_cover_native_and_wasm_boundaries() {
                 EMITTED.with(|records| {
                     let records = records.borrow();
                     assert_eq!(records.len(), 2, "native entry emits both variants");
-                    for origin in &origins {
+                    // Raw delivery law: the native entry receives each selected painted source verbatim.
+                    for origin in &source_origins {
                         assert!(
                             records.contains(&(origin.clone(), tool)),
                             "native entry must author the tool even for the denied sibling"
@@ -441,21 +459,38 @@ fn variant_grants_cover_native_and_wasm_boundaries() {
                 };
                 native
             };
-            let native = run(1);
-            // Independent conversion-only context: NEVER passed to native dispatch.
-            let ctx = AuthoredColoringContext {
-                tool_count: 3,
-                granted_regions: [origins[0].clone()].into_iter().collect(),
-            };
+            let (native, contexts) =
+                slicer_wasm_host::dispatch::with_authored_coloring_capture_for_test(|| run(1));
+            assert_eq!(
+                contexts.len(),
+                1,
+                "one production dispatch computes one context"
+            );
+            let ctx = &contexts[0];
+            assert_eq!(
+                ctx.tool_count, 3,
+                "dispatch derives the per-variant tool range"
+            );
+            assert_eq!(
+                ctx.granted_regions, granted_origins,
+                "dispatch grants must retain the full selected SOURCE-space origin"
+            );
+            assert!(
+                ctx.region_tools.is_empty(),
+                "painted sources retain paint authority"
+            );
+            // Independent tagged wire paths consume the EXACT context observed
+            // during native production dispatch, not a reconstructed grant set.
             assert_eq!(native.regions.len(), 2);
             for (i, expected) in [Some(1), None].into_iter().enumerate() {
                 let region = native
                     .regions
                     .iter()
-                    .find(|r| r.variant_chain == origins[i].variant_chain)
+                    .find(|r| r.variant_chain == source_origins[i].variant_chain)
                     .expect("native commit preserves each variant identity");
                 assert_eq!(region.object_id, OBJECT_ID);
-                assert_eq!(region.region_id, REGION_ID);
+                // Raw delivery law: commit preserves the native entry's selected painted source ID.
+                assert_eq!(region.region_id, source_origins[i].region_id);
                 assert_eq!(region.sparse_infill.len(), 1);
                 assert_eq!(region.sparse_infill[0].points.len(), 2);
                 assert_eq!(region.sparse_infill[0].tool_index, expected);
@@ -463,15 +498,18 @@ fn variant_grants_cover_native_and_wasm_boundaries() {
                 // Independent wire fixture, not the native builder's collected
                 // output. Exercise the real WASM conversion boundary directly.
                 for (tool, context, expected_tool) in [
-                    (Some(1), Some(&ctx), expected),
+                    (Some(1), Some(ctx), expected),
                     (Some(1), None, None),
-                    (Some(3), Some(&ctx), None),
+                    (Some(3), Some(ctx), None),
                 ] {
                     let mut collected = collected_with_tool(tool);
-                    collected.sparse_path_origins = vec![Some(origins[i].clone())];
+                    collected.sparse_path_origins = vec![Some(source_origins[i].clone())];
                     let wasm = convert_infill_output(&collected, layer.index, context)
                         .expect("WASM boundary stripping is silent");
-                    assert_eq!(wasm.regions[0].variant_chain, origins[i].variant_chain);
+                    assert_eq!(
+                        wasm.regions[0].variant_chain,
+                        source_origins[i].variant_chain
+                    );
                     assert_eq!(committed_tool_index(&wasm), expected_tool);
                 }
             }

@@ -9,8 +9,8 @@ use slicer_core::algos::lightning::layer::Layer;
 use slicer_core::algos::lightning::tree_node::Node;
 use slicer_core::{difference, offset, OffsetJoinType};
 use slicer_ir::{
-    mm_to_units, slice_ir::BoundingBox2, units_to_mm, ExPolygon, Point2, Polygon, ResolvedConfig,
-    SliceIR, SlicedRegion,
+    mm_to_units, slice_ir::BoundingBox2, units_to_mm, ExPolygon, PaintValue, Point2, Polygon,
+    ResolvedConfig, SliceIR, SlicedRegion,
 };
 
 fn square(size_mm: f32) -> Vec<Point2> {
@@ -855,6 +855,173 @@ fn lightning_generator_no_overhang_no_trees() {
     assert!(
         ir.entries.is_empty(),
         "uniform prism with no internal overhangs must not produce spurious trees"
+    );
+}
+
+/// The lightning generator groups sources by their exact ordered
+/// `(object_id, region_id, variant_chain)` identity. Two same-number sibling
+/// sources whose chains hold the same members in reversed order must stay
+/// distinct: each source keeps its own nonempty tree payload, and each
+/// source's payload is identical to the payload it produces alone.
+#[test]
+fn source_ordered_chains_remain_distinct_in_generated_lightning() {
+    let chain_forward = vec![
+        ("alpha".to_string(), PaintValue::ToolIndex(0)),
+        ("beta".to_string(), PaintValue::ToolIndex(1)),
+    ];
+    let chain_reversed = vec![
+        ("beta".to_string(), PaintValue::ToolIndex(1)),
+        ("alpha".to_string(), PaintValue::ToolIndex(0)),
+    ];
+    assert_ne!(
+        chain_forward, chain_reversed,
+        "reversed ordered chains are distinct source identities"
+    );
+
+    let left_outlines = lightning_prism_outlines();
+    let right_outlines = vec![
+        translated_square(10.0, 30.0),
+        translated_square(10.0, 30.0),
+        translated_square(10.0, 30.0),
+        translated_square(12.0, 30.0),
+    ];
+
+    let make_slices = |include_forward: bool, include_reversed: bool| -> Vec<SliceIR> {
+        (0..left_outlines.len())
+            .map(|global_layer_index| {
+                let mut regions = Vec::new();
+                if include_forward {
+                    regions.push(SlicedRegion {
+                        object_id: String::from("cube"),
+                        region_id: 1,
+                        polygons: vec![expolygon(left_outlines[global_layer_index].clone())],
+                        variant_chain: chain_forward.clone(),
+                        ..SlicedRegion::default()
+                    });
+                }
+                if include_reversed {
+                    regions.push(SlicedRegion {
+                        object_id: String::from("cube"),
+                        region_id: 1,
+                        polygons: vec![expolygon(right_outlines[global_layer_index].clone())],
+                        variant_chain: chain_reversed.clone(),
+                        ..SlicedRegion::default()
+                    });
+                }
+                SliceIR {
+                    global_layer_index: global_layer_index as u32,
+                    regions,
+                    ..SliceIR::default()
+                }
+            })
+            .collect()
+    };
+
+    let config = ResolvedConfig {
+        sparse_fill_holder: String::from("lightning-infill"),
+        // Expanded `line_width = 0` auto sentinel, as the host supplies it
+        // (see `lightning_generator_deterministic`).
+        line_width: 0.45,
+        ..ResolvedConfig::default()
+    };
+
+    let combined =
+        slicer_core::algos::lightning::generate_lightning_trees(&make_slices(true, true), &config)
+            .expect("combined sibling-source lightning IR must generate");
+    let forward_only =
+        slicer_core::algos::lightning::generate_lightning_trees(&make_slices(true, false), &config)
+            .expect("forward-chain-only lightning IR must generate");
+    let reversed_only =
+        slicer_core::algos::lightning::generate_lightning_trees(&make_slices(false, true), &config)
+            .expect("reversed-chain-only lightning IR must generate");
+
+    fn entries_for<'a>(
+        ir: &'a slicer_ir::LightningTreeIR,
+        chain: &[(String, PaintValue)],
+    ) -> Vec<&'a slicer_ir::LightningTreeEntry> {
+        ir.entries
+            .iter()
+            .filter(|entry| entry.variant_chain == chain)
+            .collect()
+    }
+
+    // SOURCE origins: every combined entry carries exactly one of the two
+    // ordered chains. A chain-less, sorted, or digested group is a collapse.
+    for entry in &combined.entries {
+        assert!(
+            entry.variant_chain == chain_forward || entry.variant_chain == chain_reversed,
+            "combined IR entry carries an unexpected source chain: {:?}",
+            entry.variant_chain
+        );
+    }
+
+    let forward_combined = entries_for(&combined, &chain_forward);
+    let reversed_combined = entries_for(&combined, &chain_reversed);
+    assert!(
+        !forward_combined.is_empty() && !reversed_combined.is_empty(),
+        "both same-number sibling sources must produce nonempty grouped entries"
+    );
+
+    // Membership/cardinality: the sibling sources cover the same layers, each
+    // (layer, source) pair yields exactly one entry, and adding the sibling
+    // changes neither source's layer membership.
+    let layers = |entries: &[&slicer_ir::LightningTreeEntry]| -> BTreeSet<i32> {
+        entries
+            .iter()
+            .map(|entry| entry.global_layer_index)
+            .collect()
+    };
+    assert_eq!(
+        layers(&forward_combined),
+        layers(&reversed_combined),
+        "same-number sibling sources must produce trees on the same layers"
+    );
+    assert_eq!(
+        combined.entries.len(),
+        forward_combined.len() + reversed_combined.len(),
+        "no folded or duplicated (layer, source) entry is permitted"
+    );
+    assert_eq!(
+        layers(&entries_for(&forward_only, &chain_forward)),
+        layers(&forward_combined),
+        "forward source layer membership must not change when a sibling is present"
+    );
+    assert_eq!(
+        layers(&entries_for(&reversed_only, &chain_reversed)),
+        layers(&reversed_combined),
+        "reversed source layer membership must not change when a sibling is present"
+    );
+
+    // Distinguishable payloads: the forward source's trees live at x < 20mm
+    // and the reversed source's at x > 20mm, and each combined payload equals
+    // the payload the source produces alone.
+    let segments = |entries: &[&slicer_ir::LightningTreeEntry]| -> Vec<[Point2; 2]> {
+        entries
+            .iter()
+            .flat_map(|entry| entry.tree_edge_segments.iter().copied())
+            .collect()
+    };
+    let forward_segments = segments(&forward_combined);
+    let reversed_segments = segments(&reversed_combined);
+    assert!(!forward_segments.is_empty() && !reversed_segments.is_empty());
+    assert_ne!(forward_segments, reversed_segments);
+    assert!(forward_segments
+        .iter()
+        .flatten()
+        .all(|point| point.x < mm_to_units(20.0)));
+    assert!(reversed_segments
+        .iter()
+        .flatten()
+        .all(|point| point.x > mm_to_units(20.0)));
+    assert_eq!(
+        forward_segments,
+        segments(&entries_for(&forward_only, &chain_forward)),
+        "forward source payload must not absorb or lose segments when a sibling shares its numbers"
+    );
+    assert_eq!(
+        reversed_segments,
+        segments(&entries_for(&reversed_only, &chain_reversed)),
+        "reversed source payload must not absorb or lose segments when a sibling shares its numbers"
     );
 }
 

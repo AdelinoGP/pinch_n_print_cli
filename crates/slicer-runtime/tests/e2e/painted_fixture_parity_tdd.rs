@@ -64,8 +64,13 @@ fn painted_seam_fixture_reaches_emitted_outer_wall() {
     let gcode = slice_fixture("resources/painted_seams.3mf", config);
     let (x, y) = first_outer_wall_start(&gcode);
 
-    assert!((x - 129.0471).abs() < 0.5, "unexpected seam X: {x}");
-    assert!((y - 87.4170).abs() < 0.5, "unexpected seam Y: {y}");
+    // Packet layer-module-preparation_01_shared-selection-prerequisite's
+    // complete-identity ordering mandate (design; SW-DET amendment) selects
+    // this object's seam first. Per-source first-layer PerimeterRegion/seam
+    // snapshots were byte-identical with previous-drop/HashMap delivery;
+    // only the emitted object order changed.
+    assert!((x - 102.496).abs() < 0.5, "unexpected seam X: {x}");
+    assert!((y - 88.628).abs() < 0.5, "unexpected seam Y: {y}");
 }
 
 #[test]

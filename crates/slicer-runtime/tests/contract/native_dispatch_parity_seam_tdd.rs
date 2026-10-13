@@ -582,7 +582,7 @@ fn native_prepass_commit_preserves_layer_support_and_mesh_outputs() {
     .unwrap();
     let mut support = SupportGeometryOutput::new();
     support
-        // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
+        // FRU: SDK SupportPlanEntry is Default-bearing; the base supplies this fixture's intended empty roles/capabilities/provenance, no decline, and the exact empty chain of its genuinely chain-empty source.
         .push_support_plan_entry(SupportPlanEntry {
             global_layer_index: 0,
             object_id: "object".into(),
@@ -592,14 +592,11 @@ fn native_prepass_commit_preserves_layer_support_and_mesh_outputs() {
             body_ids: vec!["body".into()],
             anchor_layer_index: 0,
             anchor_z: 200,
-            roles: vec![],
             skeleton: Some(slicer_ir::SupportPlanSkeleton {
                 points: vec![],
                 wall_counts: vec![],
             }),
-            capabilities: vec![],
-            provenance: vec![],
-            decline_reason: None,
+            ..Default::default()
         })
         .unwrap();
     // exhaustive: test-only native prepass response; every stage slot named explicitly by this parity fixture

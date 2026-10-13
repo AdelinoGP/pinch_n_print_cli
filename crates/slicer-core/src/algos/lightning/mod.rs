@@ -9,7 +9,8 @@
 use std::sync::Arc;
 
 use slicer_ir::{
-    mm_to_units, ExPolygon, LightningTreeEntry, LightningTreeIR, Point2, ResolvedConfig, SliceIR,
+    mm_to_units, ExPolygon, LightningTreeEntry, LightningTreeIR, PaintValue, Point2,
+    ResolvedConfig, SliceIR,
 };
 
 use crate::algos::lightning::error::LightningTreeError;
@@ -53,13 +54,22 @@ pub fn generate_lightning_trees(
         .iter()
         .map(|slice| slice.global_layer_index)
         .collect();
-    let mut region_polygons: std::collections::BTreeMap<(String, u64), Vec<Vec<ExPolygon>>> =
-        std::collections::BTreeMap::new();
+    // Group source regions by their exact ordered identity: two regions that
+    // share `(object_id, region_id)` but differ in ordered `variant_chain` are
+    // distinct sources and must never share a generator or an output entry.
+    let mut region_polygons: std::collections::BTreeMap<
+        (String, u64, Vec<(String, PaintValue)>),
+        Vec<Vec<ExPolygon>>,
+    > = std::collections::BTreeMap::new();
 
     for slice in slice_ir {
         for region in &slice.regions {
             let polygons = region_polygons
-                .entry((region.object_id.clone(), region.region_id))
+                .entry((
+                    region.object_id.clone(),
+                    region.region_id,
+                    region.variant_chain.clone(),
+                ))
                 .or_insert_with(|| vec![Vec::new(); layer_indices.len()]);
             if let Some(layer_id) = layer_indices
                 .iter()
@@ -70,9 +80,11 @@ pub fn generate_lightning_trees(
         }
     }
 
-    let mut entries_by_key: std::collections::BTreeMap<(String, i32, u64), Vec<[Point2; 2]>> =
-        std::collections::BTreeMap::new();
-    for ((object_id, region_id), polygons_by_layer) in region_polygons {
+    let mut entries_by_key: std::collections::BTreeMap<
+        (String, i32, u64, Vec<(String, PaintValue)>),
+        Vec<[Point2; 2]>,
+    > = std::collections::BTreeMap::new();
+    for ((object_id, region_id, variant_chain), polygons_by_layer) in region_polygons {
         let polygon_count = polygons_by_layer.iter().map(Vec::len).max().unwrap_or(0);
         for polygon_id in 0..polygon_count {
             let outlines = polygons_by_layer
@@ -115,7 +127,12 @@ pub fn generate_lightning_trees(
                     .collect();
                 for polyline in clip_polylines(&polylines, std::slice::from_ref(polygon)) {
                     entries_by_key
-                        .entry((object_id.clone(), *global_layer_index as i32, region_id))
+                        .entry((
+                            object_id.clone(),
+                            *global_layer_index as i32,
+                            region_id,
+                            variant_chain.clone(),
+                        ))
                         .or_default()
                         .extend(polyline.windows(2).map(|pair| [pair[0], pair[1]]));
                 }
@@ -126,11 +143,14 @@ pub fn generate_lightning_trees(
     let entries = entries_by_key
         .into_iter()
         .map(
-            |((object_id, global_layer_index, region_id), tree_edge_segments)| LightningTreeEntry {
-                object_id,
-                global_layer_index,
-                region_id,
-                tree_edge_segments,
+            |((object_id, global_layer_index, region_id, variant_chain), tree_edge_segments)| {
+                LightningTreeEntry {
+                    object_id,
+                    global_layer_index,
+                    region_id,
+                    tree_edge_segments,
+                    variant_chain,
+                }
             },
         )
         .collect();

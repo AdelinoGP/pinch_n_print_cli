@@ -20,7 +20,7 @@
 
 use slicer_ir::{
     ExtrusionPath3D, ExtrusionRole as IrExtrusionRole, LayerStageCommit, Point3WithWidth, SemVer,
-    SupportEntry, SupportIR, SupportRole,
+    SupportEntry, SupportIR, SupportRole, CURRENT_SUPPORT_IR_SCHEMA_VERSION,
 };
 use slicer_runtime::{apply_for_test, StageApplyContext};
 
@@ -68,11 +68,8 @@ fn support_commit(paths: Vec<ExtrusionPath3D>) -> Option<LayerStageCommit> {
     }
     // exhaustive: SupportIR support-commit fixture specifies every commit field.
     Some(LayerStageCommit::Support(SupportIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
+        // Owned by SupportIR, not an OLD codec control: this is a current-behavior commit fixture.
+        schema_version: CURRENT_SUPPORT_IR_SCHEMA_VERSION,
         global_layer_index: 0,
         // exhaustive: support identity contract fixture pins the full family/body/demand/object/region/role tuple
         entries: vec![SupportEntry {
@@ -83,6 +80,8 @@ fn support_commit(paths: Vec<ExtrusionPath3D>) -> Option<LayerStageCommit> {
             region_id: 0,
             role: SupportRole::SupportBody,
             paths,
+            // Genuinely chain-empty source: the fixture support row is an unpainted base region.
+            variant_chain: Vec::new(),
         }],
     }))
 }
@@ -710,6 +709,8 @@ fn plan_for_obj0(
             capabilities: vec![],
             provenance: vec![],
             decline_reason: None,
+            // Genuinely chain-empty source: the planned obj-0/region-0 row is an unpainted base region.
+            variant_chain: Vec::new(),
         }],
         ..Default::default()
     })
@@ -1642,6 +1643,8 @@ mod planner_consuming_tier {
                     capabilities: vec![],
                     provenance: vec![],
                     decline_reason: None,
+                    // Genuinely chain-empty source: this planned obj-0/region-7 sibling row is an unpainted base region.
+                    variant_chain: Vec::new(),
                 },
                 // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
                 SupportPlanEntry {
@@ -1675,6 +1678,8 @@ mod planner_consuming_tier {
                     capabilities: vec![],
                     provenance: vec![],
                     decline_reason: None,
+                    // Genuinely chain-empty source: this planned obj-0/region-42 row is an unpainted base region.
+                    variant_chain: Vec::new(),
                 },
             ],
             ..Default::default()

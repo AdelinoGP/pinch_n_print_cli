@@ -737,6 +737,10 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
     const IR_TYPES_WIT: &str = include_str!("../../slicer-schema/wit/deps/ir-types.wit");
     const COMMON_WIT: &str = include_str!("../../slicer-schema/wit/deps/common.wit");
     const PREPASS_TYPES_WIT: &str = include_str!("../../slicer-schema/wit/deps/prepass-types.wit");
+    const SUPPORT_QUERIES_WIT: &str =
+        include_str!("../../slicer-schema/wit/deps/support-queries/support-queries.wit");
+    const LIGHTNING_QUERIES_WIT: &str =
+        include_str!("../../slicer-schema/wit/deps/lightning-queries/lightning-queries.wit");
 
     // Strip the statement-form `package <X>;` header from a dep WIT file,
     // returning the body for brace-wrapping into a nested package block.
@@ -755,8 +759,9 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
         dep_wit
     }
 
-    // Extract package name (without version) for brace-wrapping: e.g.
-    // "package slicer:types;" → "slicer:types".
+    // Extract the package name for brace-wrapping, keeping any declared
+    // version suffix: e.g. "package slicer:types;" → "slicer:types", and
+    // "package slicer:ir-handles@1.0.0;" → "slicer:ir-handles@1.0.0".
     fn extract_dep_pkg_name(dep_wit: &str) -> &str {
         for (i, c) in dep_wit.char_indices() {
             if c == '\n' {
@@ -787,7 +792,11 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
 
     // Assemble nested-package inline blob (Option A):
     // - World file is the top-level statement (begins with "package slicer:world-X@<version>;")
-    // - Dep packages are nested `package slicer:X { ... }` blocks (UNVERSIONED)
+    // - Dep packages are nested `package slicer:X { ... }` blocks, keeping
+    //   their version suffix where declared: the core `slicer:ir-handles`
+    //   package is versioned `@1.0.0`, and the two specialist query
+    //   packages (`slicer:support-queries`, `slicer:lightning-queries`)
+    //   are `@1.0.0` too
     // - Cross-package `use slicer:...` in the world file resolve over the whole group
     // - ir-handles is nested unconditionally for every world: `COMMON_WIT`'s
     //   `host-services` interface (nested below, also unconditionally, into
@@ -801,7 +810,7 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
     //   Step 9B fix).
     let ir_block = format!("\n\n{}", nest_dep(IR_TYPES_WIT));
 
-    let expanded_inline_wit = format!(
+    let mut expanded_inline_wit = format!(
         "{}\n\n{}\n\n{}{}\n\n{}\n\n{}",
         inline_wit,
         nest_dep(TYPES_WIT),
@@ -810,6 +819,20 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
         nest_dep(COMMON_WIT),
         nest_dep(PREPASS_TYPES_WIT),
     );
+
+    // Specialist query packages (layer-module-preparation packet, W7b).
+    // `layer-infill@2.0.0` imports both support-queries and
+    // lightning-queries into its world; `layer-support@2.0.0` imports
+    // support-queries only. Every other world keeps its exact current
+    // closure: these packages are nested into exactly the two worlds
+    // whose inline WIT imports them, so no non-consuming stage ever
+    // sees the specialist types.
+    if world_name == "infill-module" || world_name == "support-module" {
+        expanded_inline_wit.push_str(&format!("\n\n{}", nest_dep(SUPPORT_QUERIES_WIT)));
+    }
+    if world_name == "infill-module" {
+        expanded_inline_wit.push_str(&format!("\n\n{}", nest_dep(LIGHTNING_QUERIES_WIT)));
+    }
 
     // With Option A, ConfigValue lives in the slicer:config package, not the world package.
     // Path: self::slicer::config::config_types::ConfigValue
@@ -1462,6 +1485,18 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                                     global_layer_index: entity.region_key.layer_index,
                                     object_id: entity.region_key.object_id,
                                     region_id,
+                                    // The finalization world deliberately keeps a
+                                    // local `region-key` record
+                                    // (`layer-finalization-types` in
+                                    // finalization-layer-finalization.wit) with no
+                                    // `variant-chain` field: the byte-identity
+                                    // contract that lets this mod alias the
+                                    // record without importing the
+                                    // `ir-handles` package forbids adding one,
+                                    // so the chain is genuinely out of scope
+                                    // at this boundary. The explicit empty
+                                    // chain is the exact identity of this
+                                    // chain-less source — never fabricate one.
                                     variant_chain: Vec::new(),
                                 },
                                 topo_order: entity.topo_order,
@@ -2105,10 +2140,55 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
     );
     let preamble = emit_world_preamble("support-geometry-module", "support_geometry", &wit_inline);
     let profile_install = profile_install_stmt();
+    let chain_converters = quote! {
+        // WIT→IR chain conversion for the now-chain-bearing prepass
+        // records (layer-module-preparation packet, W7b). Mirrors the
+        // light-stage `__slicer_wit_paintvalue_to_ir` primitive;
+        // `PaintValue` is the WIT ir-handles enum imported by this mod
+        // (seam-planning precedent).
+        fn __slicer_wit_paintvalue_to_ir(v: &PaintValue) -> ::slicer_ir::PaintValue {
+            match v {
+                PaintValue::Flag(b) => ::slicer_ir::PaintValue::Flag(*b),
+                PaintValue::Scalar(f) => ::slicer_ir::PaintValue::Scalar(*f),
+                PaintValue::ToolIndex(i) => ::slicer_ir::PaintValue::ToolIndex(*i),
+            }
+        }
+
+        fn __slicer_wit_variant_chain_to_ir(
+            chain: &[(::std::string::String, PaintValue)],
+        ) -> ::std::vec::Vec<(::std::string::String, ::slicer_ir::PaintValue)> {
+            chain
+                .iter()
+                .map(|(semantic, value)| (semantic.clone(), __slicer_wit_paintvalue_to_ir(value)))
+                .collect()
+        }
+
+        // IR→WIT chain for the output drain: the WIT `support-plan-entry`
+        // now REQUIRES variant-chain. Same degrade convention as the
+        // established `__slicer_ir_variant_chain_to_wit`:
+        // `PaintValue::Custom` has no WIT counterpart and degrades to
+        // `ToolIndex(0)`.
+        fn __slicer_ir_variant_chain_to_wit(
+            chain: &[(::std::string::String, ::slicer_ir::PaintValue)],
+        ) -> ::std::vec::Vec<(::std::string::String, PaintValue)> {
+            chain
+                .iter()
+                .map(|(semantic, value)| {
+                    let value = match value {
+                        ::slicer_ir::PaintValue::Flag(v) => PaintValue::Flag(*v),
+                        ::slicer_ir::PaintValue::Scalar(v) => PaintValue::Scalar(*v),
+                        ::slicer_ir::PaintValue::ToolIndex(v) => PaintValue::ToolIndex(*v),
+                        ::slicer_ir::PaintValue::Custom(_) => PaintValue::ToolIndex(0),
+                    };
+                    (semantic.clone(), value)
+                })
+                .collect()
+        }
+    };
     let helpers = {
         let mesh = prepass_mesh_helpers();
         let geometry = prepass_geometry_helpers();
-        quote! { #mesh #geometry }
+        quote! { #mesh #geometry #chain_converters }
     };
     let arm = quote! {
         let ir_config = __slicer_adapt_config(&config);
@@ -2131,12 +2211,20 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
             entries: region_segmentation.entries.iter().map(|e| ::slicer_sdk::prepass_types::RegionSegmentationViewEntry {
                 object_id: e.object_id.clone(),
                 layer_index: e.layer_index,
-                region_ids: e.region_ids.clone(),
+                // Real chain propagation (W7b): the WIT record carries
+                // `region-origins: list<region-source-origin>` — each
+                // origin is the exact (region-id, variant-chain)
+                // identity of its source region.
+                region_origins: e.region_origins.iter().map(|o| ::slicer_sdk::prepass_types::RegionSourceOrigin {
+                    region_id: o.region_id.clone(),
+                    variant_chain: __slicer_wit_variant_chain_to_ir(&o.variant_chain),
+                }).collect(),
             }).collect(),
             region_support_configs: region_segmentation.region_support_configs.iter().map(|e| ::slicer_sdk::prepass_types::RegionSupportConfig {
                 object_id: e.object_id.clone(),
                 layer_index: e.layer_index,
                 region_id: e.region_id.clone(),
+                variant_chain: __slicer_wit_variant_chain_to_ir(&e.variant_chain),
                 support_family: e.support_family.clone(),
                 support_type: e.support_type.clone(),
             }).collect(),
@@ -2146,6 +2234,7 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
                 global_support_layer_index: e.global_support_layer_index,
                 object_id: e.object_id.clone(),
                 region_id: e.region_id.clone(),
+                variant_chain: __slicer_wit_variant_chain_to_ir(&e.variant_chain),
                 outlines: e.outlines.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
             }).collect(),
         };
@@ -2154,22 +2243,28 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
                 id: e.id, geometry: e.geometry.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
                 object_id: e.object_id.clone(), region_id: e.region_id.clone(), global_layer_index: e.global_layer_index,
                 z_units: e.z_units, enforced: e.enforced, blocked: e.blocked,
+                variant_chain: __slicer_wit_variant_chain_to_ir(&e.variant_chain),
             }).collect(),
             model_occupancy: support_analysis.model_occupancy.iter().map(|e| ::slicer_sdk::prepass_types::SupportAnalysisGeometryEntry {
                 global_support_layer_index: e.global_support_layer_index, object_id: e.object_id.clone(), region_id: e.region_id.clone(),
+                variant_chain: __slicer_wit_variant_chain_to_ir(&e.variant_chain),
                 polygons: e.polygons.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
             }).collect(),
             termination_surfaces: support_analysis.termination_surfaces.iter().map(|e| ::slicer_sdk::prepass_types::SupportAnalysisGeometryEntry {
                 global_support_layer_index: e.global_support_layer_index, object_id: e.object_id.clone(), region_id: e.region_id.clone(),
+                variant_chain: __slicer_wit_variant_chain_to_ir(&e.variant_chain),
                 polygons: e.polygons.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
             }).collect(),
             shared_settings: support_analysis.shared_settings.clone(),
             baseline_feasible_envelope: support_analysis.baseline_feasible_envelope.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
             family_assignments: support_analysis.family_assignments.iter().map(|e| ::slicer_sdk::prepass_types::SupportFamilyAssignment {
-                object_id: e.object_id.clone(), region_id: e.region_id.clone(), family_id: e.family_id.clone(),
+                object_id: e.object_id.clone(), region_id: e.region_id.clone(),
+                variant_chain: __slicer_wit_variant_chain_to_ir(&e.variant_chain),
+                family_id: e.family_id.clone(),
             }).collect(),
             support_territory: support_analysis.support_territory.iter().map(|e| ::slicer_sdk::prepass_types::SupportAnalysisGeometryEntry {
                 global_support_layer_index: e.global_support_layer_index, object_id: e.object_id.clone(), region_id: e.region_id.clone(),
+                variant_chain: __slicer_wit_variant_chain_to_ir(&e.variant_chain),
                 polygons: e.polygons.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
             }).collect(),
         };
@@ -2182,6 +2277,7 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
                 global_layer_index: __slicer_entry.global_layer_index,
                 object_id: __slicer_entry.object_id.clone(),
                 region_id: __slicer_entry.region_id.clone(),
+                variant_chain: __slicer_ir_variant_chain_to_wit(&__slicer_entry.variant_chain),
                 family_id: __slicer_entry.family_id.clone(),
                 demand_ids: __slicer_entry.demand_ids.clone(),
                 body_ids: __slicer_entry.body_ids.clone(),
@@ -2259,6 +2355,7 @@ fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
             use super::#self_ty;
             use slicer::common::module_errors::ModuleError;
             use slicer::config::config_types::ConfigView;
+            use slicer::ir_handles::ir_handles::PaintValue;
             // `layer-plan-view` is shared: it lives once in the unversioned
             // `slicer:prepass-types` package, alongside the mesh/paint views.
             use slicer::prepass_types::prepass_types::{
@@ -2374,18 +2471,75 @@ fn layer_per_stage_aliases(stage: &str) -> TokenStream2 {
                 Point3WithWidth as WitPoint3WithWidth, Polygon as WitPolygon,
             };
         },
-        // 5 lighter mods (slice_postprocess, perimeters, infill, support,
-        // support_postprocess) use only the WIT types their own WIT
-        // references. The full ir-handles set is NOT imported here because
-        // those types are not in this mod's per-stage WIT.
-        _ => quote! {
+        // `layer_infill` consumes both specialist query interfaces: its
+        // per-stage WIT imports support-queries AND lightning-queries, so
+        // the five support-plan view records resolve from the
+        // support-queries package namespace and the lightning query view
+        // from the lightning-queries package namespace. The core
+        // ir-handles paint view no longer carries plan/raft/lightning
+        // query methods — the query handles do.
+        "layer_infill" => quote! {
             use self::slicer::ir_handles::ir_handles::{
                 InfillOutputBuilder, LayerIdx, PaintRegionLayerView,
+                PaintSemantic as WitPaintSemantic, PaintValue as WitPaintValue,
+                PerimeterOutputBuilder, PerimeterRegionView,
+                QuartileBand as WitQuartileBand,
+                SegmentAnnotationsEntry as WitSegmentAnnotationsEntry,
+                SegmentAnnotationsPolygon as WitSegmentAnnotationsPolygon,
+                SlicePostprocessBuilder, SliceRegionView,
+                SurfaceGroup as WitSurfaceGroup, SupportOutputBuilder,
+            };
+            use self::slicer::support_queries::support_queries::{
                 SupportPlanEntryView as WitSupportPlanEntryView,
                 SupportPlanViewRole as WitSupportPlanViewRole,
                 SupportPlanViewRoleRegion as WitSupportPlanViewRoleRegion,
                 SupportPlanViewSkeleton as WitSupportPlanViewSkeleton,
                 SupportPlanViewDeclineReason as WitSupportPlanViewDeclineReason,
+                SupportQueryView,
+            };
+            use self::slicer::lightning_queries::lightning_queries::{
+                LightningQueryView,
+            };
+            use self::slicer::types::geometry::{
+                ExPolygon as WitExPolygon, Point2 as WitPoint2, Point3, Polygon as WitPolygon,
+            };
+        },
+        // `layer_support` consumes support-queries only; lightning-queries
+        // is NOT imported here — this world does not reference it, and a
+        // non-consuming specialist import would be a defect.
+        "layer_support" => quote! {
+            use self::slicer::ir_handles::ir_handles::{
+                InfillOutputBuilder, LayerIdx, PaintRegionLayerView,
+                PaintSemantic as WitPaintSemantic, PaintValue as WitPaintValue,
+                PerimeterOutputBuilder, PerimeterRegionView,
+                QuartileBand as WitQuartileBand,
+                SegmentAnnotationsEntry as WitSegmentAnnotationsEntry,
+                SegmentAnnotationsPolygon as WitSegmentAnnotationsPolygon,
+                SlicePostprocessBuilder, SliceRegionView,
+                SurfaceGroup as WitSurfaceGroup, SupportOutputBuilder,
+            };
+            use self::slicer::support_queries::support_queries::{
+                SupportPlanEntryView as WitSupportPlanEntryView,
+                SupportPlanViewRole as WitSupportPlanViewRole,
+                SupportPlanViewRoleRegion as WitSupportPlanViewRoleRegion,
+                SupportPlanViewSkeleton as WitSupportPlanViewSkeleton,
+                SupportPlanViewDeclineReason as WitSupportPlanViewDeclineReason,
+                SupportQueryView,
+            };
+            use self::slicer::types::geometry::{
+                ExPolygon as WitExPolygon, Point2 as WitPoint2, Point3, Polygon as WitPolygon,
+            };
+        },
+        // Non-consuming light mods (slice_postprocess, perimeters,
+        // support_postprocess, anchored_events) use only the WIT types
+        // their own WIT references. The full ir-handles set is NOT
+        // imported here because those types are not in this mod's
+        // per-stage WIT, and the five support-plan view records have
+        // moved to the `slicer:support-queries` package —
+        // non-consuming stages must not acquire specialist imports.
+        _ => quote! {
+            use self::slicer::ir_handles::ir_handles::{
+                InfillOutputBuilder, LayerIdx, PaintRegionLayerView,
                 PaintSemantic as WitPaintSemantic, PaintValue as WitPaintValue,
                 PerimeterOutputBuilder, PerimeterRegionView,
                 QuartileBand as WitQuartileBand,
@@ -2402,19 +2556,29 @@ fn layer_per_stage_aliases(stage: &str) -> TokenStream2 {
     quote! { #ir_handles }
 }
 
-/// Light helpers for the 5 lighter layer mods (slice_postprocess,
-/// perimeters, infill, support, support_postprocess). The 3 heavy
-/// mods (perimeters_postprocess, infill_postprocess,
-/// path_optimization) use `layer_glue_helpers()` instead, which
-/// includes the rich WIT↔IR conversion code for perimeter records and
-/// post-processing inputs. The light helpers keep their conversion surface
-/// limited to the shared slice and paint records exposed by those stages.
+/// Light helpers for the 6 lighter layer mods (slice_postprocess,
+/// perimeters, infill, support, support_postprocess,
+/// anchored_events). The 3 heavy mods (perimeters_postprocess,
+/// infill_postprocess, path_optimization) use `layer_glue_helpers()`
+/// instead, which includes the rich WIT↔IR conversion code for
+/// perimeter records and post-processing inputs. The light helpers
+/// keep their conversion surface limited to the shared slice and
+/// paint records exposed by those stages.
 ///
-/// The light helpers provide only the adapters used by the five lighter layer
-/// body sites. Stage-specific drain bodies and their WIT conversion helpers
-/// are emitted by `layer_stage_helpers`.
-fn layer_light_helpers() -> TokenStream2 {
-    quote! {
+/// The shared converters below are emitted for every light stage. The
+/// paint-layer adapter and the specialist query adapters are
+/// stage-scoped (layer-module-preparation packet, W7b): `layer_infill`
+/// gets the query-consuming adapter (support + lightning handles from
+/// its Guest::run params), `layer_support` the support-queries-only
+/// adapter, and every other light stage the core-only adapter — the
+/// ir-handles paint view now exposes get-regions/get-custom-regions/
+/// layer-index/is-raft only, so non-consuming stages never reference
+/// the specialist query types.
+///
+/// Stage-specific drain bodies and their WIT conversion helpers are
+/// emitted by `layer_stage_helpers`.
+fn layer_light_helpers(stage: &str) -> TokenStream2 {
+    let shared_converters = quote! {
         fn __slicer_wit_point2_to_ir(p: &WitPoint2) -> ::slicer_ir::Point2 {
             ::slicer_ir::Point2 { x: p.x, y: p.y }
         }
@@ -2623,75 +2787,29 @@ fn layer_light_helpers() -> TokenStream2 {
             out
         }
 
-        fn __slicer_adapt_paint_layer(
-            paint: &PaintRegionLayerView,
-            keys: &[(::std::string::String, ::slicer_ir::RegionId)],
-        ) -> ::slicer_sdk::traits::PaintRegionLayerView {
-            let layer_idx = paint.layer_index() as u32;
-            let sdk_paint = ::slicer_sdk::traits::PaintRegionLayerView::new(layer_idx)
-                .with_support_plan(__slicer_support_plan_from_view(paint, layer_idx, keys))
-                .with_is_raft(paint.is_raft());
-            match __slicer_lightning_tree_from_view(paint, layer_idx, keys) {
-                Some(ir) => sdk_paint.with_lightning_tree_ir(ir),
-                None => sdk_paint,
-            }
-        }
+    };
 
-        fn __slicer_lightning_tree_from_view(
-            wit_paint: &PaintRegionLayerView,
-            layer_idx: u32,
-            keys: &[(::std::string::String, ::slicer_ir::RegionId)],
-        ) -> ::std::option::Option<::std::sync::Arc<::slicer_ir::LightningTreeIR>> {
-            let mut entries = ::std::vec::Vec::new();
-            for (object_id, region_id) in keys.iter() {
-                let region_id_str = region_id.to_string();
-                let segments = wit_paint.lightning_tree_segments(object_id, &region_id_str);
-                let tree_edge_segments: ::std::vec::Vec<[::slicer_ir::Point2; 2]> = segments
-                    .into_iter()
-                    .filter_map(|segment| {
-                        let start = segment.first()?;
-                        let end = segment.get(1)?;
-                        Some([
-                            ::slicer_ir::Point2 {
-                                x: ::slicer_ir::mm_to_units(start.x),
-                                y: ::slicer_ir::mm_to_units(start.y),
-                            },
-                            ::slicer_ir::Point2 {
-                                x: ::slicer_ir::mm_to_units(end.x),
-                                y: ::slicer_ir::mm_to_units(end.y),
-                            },
-                        ])
-                    })
-                    .collect();
-                if tree_edge_segments.is_empty() {
-                    continue;
-                }
-                entries.push(::slicer_ir::LightningTreeEntry {
-                    object_id: object_id.clone(),
-                    global_layer_index: layer_idx as i32,
-                    region_id: *region_id,
-                    tree_edge_segments,
-                });
-            }
-            if entries.is_empty() {
-                None
-            } else {
-                Some(::std::sync::Arc::new(::slicer_ir::LightningTreeIR {
-                    entries,
-                    ..::core::default::Default::default()
-                }))
-            }
-        }
+    // Stage-scoped paint-layer and specialist query adapters
+    // (layer-module-preparation packet, W7b). The consumer variants
+    // take the specialist query handles straight from Guest::run and
+    // keep compositing the SDK facade behind them; the non-consumer
+    // variant composes core-only (layer index + is-raft), because the
+    // core ir-handles paint view no longer carries support-plan /
+    // raft / lightning query methods.
+    let support_query_adapters = quote! {
+        // NOTE: `__slicer_ir_variant_chain_to_wit` is defined once in
+        // `layer_stage_helpers`'s shared helper quote (all layer stages);
+        // the specialist adapters below call it.
 
         fn __slicer_support_plan_from_view(
-            wit_paint: &PaintRegionLayerView,
-            layer_idx: u32,
-            keys: &[(::std::string::String, ::slicer_ir::RegionId)],
+            support_queries: &SupportQueryView,
+            keys: &[(::std::string::String, ::slicer_ir::RegionId, ::std::vec::Vec<(::std::string::String, ::slicer_ir::PaintValue)>)],
         ) -> ::std::sync::Arc<::slicer_ir::SupportPlanIR> {
             let mut entries = ::std::vec::Vec::new();
-            for (object_id, region_id) in keys.iter() {
+            for (object_id, region_id, chain) in keys.iter() {
                 let region_id_str = region_id.to_string();
-                for entry in wit_paint.support_plan_entries(object_id, &region_id_str) {
+                let wit_chain = __slicer_ir_variant_chain_to_wit(chain);
+                for entry in support_queries.support_plan_entries(object_id, &region_id_str, &wit_chain) {
                     entries.push(::slicer_ir::SupportPlanEntry {
                         global_layer_index: entry.global_layer_index,
                         object_id: entry.object_id,
@@ -2723,12 +2841,19 @@ fn layer_light_helpers() -> TokenStream2 {
                             WitSupportPlanViewDeclineReason::Blocked => ::slicer_ir::SupportPlanDeclineReason::Blocked,
                             WitSupportPlanViewDeclineReason::UnsupportedMode => ::slicer_ir::SupportPlanDeclineReason::UnsupportedMode,
                         }),
+                        // Chain provenance = the query key:
+                        // `support-plan-entry-view` carries no chain of its
+                        // own, so the (object, region, chain) triple of the
+                        // query IS the entry's chain identity. Never erase it
+                        // and never re-derive it from a sibling or request id.
+                        variant_chain: chain.clone(),
                     });
                 }
             }
             // Raft is print-wide configuration, not per-(layer, region) work:
-            // reconstruct it once, outside the key loop, with no layer filter.
-            let raft_plan = wit_paint.raft_plan().map(|raft| ::slicer_ir::RaftPlan {
+            // reconstruct it once, outside the key loop, from the query
+            // view's print-wide raft-plan(), with no layer filter.
+            let raft_plan = support_queries.raft_plan().map(|raft| ::slicer_ir::RaftPlan {
                 raft_layers: raft.raft_layers,
                 raft_first_layer_density: raft.raft_first_layer_density,
                 base_raft_layers: raft.base_raft_layers,
@@ -2736,8 +2861,111 @@ fn layer_light_helpers() -> TokenStream2 {
             });
             ::std::sync::Arc::new(::slicer_ir::SupportPlanIR { entries, raft_plan, ..::core::default::Default::default() })
         }
+    };
 
-    }
+    let paint_adapters = match stage {
+        "layer_infill" => quote! {
+            #support_query_adapters
+
+            fn __slicer_adapt_paint_layer(
+                paint: &PaintRegionLayerView,
+                keys: &[(::std::string::String, ::slicer_ir::RegionId, ::std::vec::Vec<(::std::string::String, ::slicer_ir::PaintValue)>)],
+                support_queries: &SupportQueryView,
+                lightning_queries: &LightningQueryView,
+            ) -> ::slicer_sdk::traits::PaintRegionLayerView {
+                let layer_idx = paint.layer_index() as u32;
+                let sdk_paint = ::slicer_sdk::traits::PaintRegionLayerView::new(layer_idx)
+                    .with_support_plan(__slicer_support_plan_from_view(support_queries, keys))
+                    .with_is_raft(paint.is_raft());
+                match __slicer_lightning_tree_from_view(lightning_queries, layer_idx, keys) {
+                    Some(ir) => sdk_paint.with_lightning_tree_ir(ir),
+                    None => sdk_paint,
+                }
+            }
+
+            fn __slicer_lightning_tree_from_view(
+                lightning_queries: &LightningQueryView,
+                layer_idx: u32,
+                keys: &[(::std::string::String, ::slicer_ir::RegionId, ::std::vec::Vec<(::std::string::String, ::slicer_ir::PaintValue)>)],
+            ) -> ::std::option::Option<::std::sync::Arc<::slicer_ir::LightningTreeIR>> {
+                let mut entries = ::std::vec::Vec::new();
+                for (object_id, region_id, chain) in keys.iter() {
+                    let region_id_str = region_id.to_string();
+                    let wit_chain = __slicer_ir_variant_chain_to_wit(chain);
+                    let segments = lightning_queries.lightning_tree_segments(object_id, &region_id_str, &wit_chain);
+                    let tree_edge_segments: ::std::vec::Vec<[::slicer_ir::Point2; 2]> = segments
+                        .into_iter()
+                        .filter_map(|segment| {
+                            let start = segment.first()?;
+                            let end = segment.get(1)?;
+                            Some([
+                                ::slicer_ir::Point2 {
+                                    x: ::slicer_ir::mm_to_units(start.x),
+                                    y: ::slicer_ir::mm_to_units(start.y),
+                                },
+                                ::slicer_ir::Point2 {
+                                    x: ::slicer_ir::mm_to_units(end.x),
+                                    y: ::slicer_ir::mm_to_units(end.y),
+                                },
+                            ])
+                        })
+                        .collect();
+                    if tree_edge_segments.is_empty() {
+                        continue;
+                    }
+                    entries.push(::slicer_ir::LightningTreeEntry {
+                        object_id: object_id.clone(),
+                        global_layer_index: layer_idx as i32,
+                        region_id: *region_id,
+                        tree_edge_segments,
+                        // Chain provenance = the query key:
+                        // lightning-tree-segments returns geometry only, so
+                        // the (object, region, chain) triple of the query IS
+                        // the entry's chain identity — never erase it.
+                        variant_chain: chain.clone(),
+                    });
+                }
+                if entries.is_empty() {
+                    None
+                } else {
+                    Some(::std::sync::Arc::new(::slicer_ir::LightningTreeIR {
+                        entries,
+                        ..::core::default::Default::default()
+                    }))
+                }
+            }
+        },
+        "layer_support" => quote! {
+            #support_query_adapters
+
+            fn __slicer_adapt_paint_layer(
+                paint: &PaintRegionLayerView,
+                keys: &[(::std::string::String, ::slicer_ir::RegionId, ::std::vec::Vec<(::std::string::String, ::slicer_ir::PaintValue)>)],
+                support_queries: &SupportQueryView,
+            ) -> ::slicer_sdk::traits::PaintRegionLayerView {
+                let layer_idx = paint.layer_index() as u32;
+                ::slicer_sdk::traits::PaintRegionLayerView::new(layer_idx)
+                    .with_support_plan(__slicer_support_plan_from_view(support_queries, keys))
+                    .with_is_raft(paint.is_raft())
+            }
+        },
+        // Non-consuming light stages (slice_postprocess, perimeters,
+        // support_postprocess, anchored_events) never see the specialist
+        // query handles; the core ir-handles paint view now supplies
+        // layer-index and is-raft only, so the facade composes exactly
+        // that.
+        _ => quote! {
+            fn __slicer_adapt_paint_layer(
+                paint: &PaintRegionLayerView,
+            ) -> ::slicer_sdk::traits::PaintRegionLayerView {
+                let layer_idx = paint.layer_index() as u32;
+                ::slicer_sdk::traits::PaintRegionLayerView::new(layer_idx)
+                    .with_is_raft(paint.is_raft())
+            }
+        },
+    };
+
+    quote! { #shared_converters #paint_adapters }
 }
 
 fn layer_glue_helpers() -> TokenStream2 {
@@ -3496,7 +3724,12 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
                         global_layer_index: e.region_key.layer_index as u32,
                         object_id: e.region_key.object_id,
                         region_id: e.region_key.region_id.parse().unwrap_or(0),
-                        variant_chain: Vec::new(),
+                        // The in-scope WIT `region-key` variant chain is
+                        // threaded through (paint-value converted, order
+                        // preserved).
+                        variant_chain: e.region_key.variant_chain.iter().map(|(semantic, value)| {
+                            (semantic.clone(), __slicer_wit_paintvalue_to_ir(value))
+                        }).collect(),
                     },
                     role: __slicer_wit_role_to_ir(&e.role),
                     start_point: __slicer_wit_point3w_to_ir(&e.start_point),
@@ -3517,7 +3750,7 @@ fn build_layer_slice_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
     let preamble = emit_world_preamble("slice-postprocess-module", "slice_postprocess", wit_inline);
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_slice_postprocess");
-    let helpers = layer_light_helpers();
+    let helpers = layer_light_helpers("layer_slice_postprocess");
     let stage_helpers = layer_stage_helpers("layer_slice_postprocess");
     let arm = quote! {
         let layer_index = layer_index as u32;
@@ -3526,11 +3759,7 @@ fn build_layer_slice_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
             Ok(m) => m, Err(e) => return Err(__slicer_error_out(e)),
         };
         let sdk_regions = __slicer_adapt_slice_regions(&regions);
-        let keys: ::std::vec::Vec<(::std::string::String, ::slicer_ir::RegionId)> = sdk_regions
-            .iter()
-            .map(|r| (r.object_id().clone(), *r.region_id()))
-            .collect();
-        let sdk_paint = __slicer_adapt_paint_layer(&paint, &keys);
+        let sdk_paint = __slicer_adapt_paint_layer(&paint);
         let mut sdk_output = ::slicer_sdk::builders::SlicePostprocessBuilder::new();
         let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_slice_postprocess(
             &module, layer_index, &sdk_regions, &sdk_paint, &mut sdk_output, &ir_config,
@@ -3566,7 +3795,7 @@ fn build_layer_perimeters_glue(self_ty: &syn::Type) -> TokenStream2 {
     let preamble = emit_world_preamble("perimeters-module", "perimeters", wit_inline);
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_perimeters");
-    let helpers = layer_light_helpers();
+    let helpers = layer_light_helpers("layer_perimeters");
     let stage_helpers = layer_stage_helpers("layer_perimeters");
     let arm = quote! {
         let layer_index = layer_index as u32;
@@ -3575,11 +3804,7 @@ fn build_layer_perimeters_glue(self_ty: &syn::Type) -> TokenStream2 {
             Ok(m) => m, Err(e) => return Err(__slicer_error_out(e)),
         };
         let sdk_regions = __slicer_adapt_slice_regions(&regions);
-        let keys: ::std::vec::Vec<(::std::string::String, ::slicer_ir::RegionId)> = sdk_regions
-            .iter()
-            .map(|r| (r.object_id().clone(), *r.region_id()))
-            .collect();
-        let sdk_paint = __slicer_adapt_paint_layer(&paint, &keys);
+        let sdk_paint = __slicer_adapt_paint_layer(&paint);
         let mut sdk_output = ::slicer_sdk::builders::PerimeterOutputBuilder::new();
         let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_perimeters(
             &module, layer_index, &sdk_regions, &sdk_paint, &mut sdk_output, &ir_config,
@@ -3657,7 +3882,7 @@ fn build_layer_infill_glue(self_ty: &syn::Type) -> TokenStream2 {
     let preamble = emit_world_preamble("infill-module", "infill", wit_inline);
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_infill");
-    let helpers = layer_light_helpers();
+    let helpers = layer_light_helpers("layer_infill");
     let stage_helpers = layer_stage_helpers("layer_infill");
     let arm = quote! {
         let layer_index = layer_index as u32;
@@ -3666,11 +3891,13 @@ fn build_layer_infill_glue(self_ty: &syn::Type) -> TokenStream2 {
             Ok(m) => m, Err(e) => return Err(__slicer_error_out(e)),
         };
         let sdk_regions = __slicer_adapt_slice_regions(&regions);
-        let keys: ::std::vec::Vec<(::std::string::String, ::slicer_ir::RegionId)> = sdk_regions
+        // Chain-bearing keys: (object-id, region-id, ordered variant
+        // chain) — the exact identity each specialist query is keyed on.
+        let keys: ::std::vec::Vec<(::std::string::String, ::slicer_ir::RegionId, ::std::vec::Vec<(::std::string::String, ::slicer_ir::PaintValue)>)> = sdk_regions
             .iter()
-            .map(|r| (r.object_id().clone(), *r.region_id()))
+            .map(|r| (r.object_id().clone(), *r.region_id(), r.variant_chain().to_vec()))
             .collect();
-        let sdk_paint = __slicer_adapt_paint_layer(&paint, &keys);
+        let sdk_paint = __slicer_adapt_paint_layer(&paint, &keys, &support_queries, &lightning_queries);
         let mut sdk_output = ::slicer_sdk::builders::InfillOutputBuilder::new();
         let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_infill(
             &module, layer_index, &sdk_regions, &sdk_paint, &mut sdk_output, &ir_config,
@@ -3688,7 +3915,7 @@ fn build_layer_infill_glue(self_ty: &syn::Type) -> TokenStream2 {
             #preamble #aliases #helpers #stage_helpers
             struct __SlicerLayerInfillComponent;
             impl exports::slicer::layer_infill::infill::Guest for __SlicerLayerInfillComponent {
-                fn run(layer_index: i32, regions: Vec<SliceRegionView>, paint: PaintRegionLayerView, output: InfillOutputBuilder, config: ConfigView) -> Result<(), ModuleError> {
+                fn run(layer_index: i32, regions: Vec<SliceRegionView>, paint: PaintRegionLayerView, support_queries: SupportQueryView, lightning_queries: LightningQueryView, output: InfillOutputBuilder, config: ConfigView) -> Result<(), ModuleError> {
                     #profile_install
                     #arm
                 }
@@ -3760,7 +3987,7 @@ fn build_layer_support_glue(self_ty: &syn::Type) -> TokenStream2 {
     let preamble = emit_world_preamble("support-module", "support", wit_inline);
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_support");
-    let helpers = layer_light_helpers();
+    let helpers = layer_light_helpers("layer_support");
     let stage_helpers = layer_stage_helpers("layer_support");
     let arm = quote! {
         let layer_index = layer_index as u32;
@@ -3769,11 +3996,13 @@ fn build_layer_support_glue(self_ty: &syn::Type) -> TokenStream2 {
             Ok(m) => m, Err(e) => return Err(__slicer_error_out(e)),
         };
         let sdk_regions = __slicer_adapt_slice_regions(&regions);
-        let keys: ::std::vec::Vec<(::std::string::String, ::slicer_ir::RegionId)> = sdk_regions
+        // Chain-bearing keys: (object-id, region-id, ordered variant
+        // chain) — the exact identity the support query is keyed on.
+        let keys: ::std::vec::Vec<(::std::string::String, ::slicer_ir::RegionId, ::std::vec::Vec<(::std::string::String, ::slicer_ir::PaintValue)>)> = sdk_regions
             .iter()
-            .map(|r| (r.object_id().clone(), *r.region_id()))
+            .map(|r| (r.object_id().clone(), *r.region_id(), r.variant_chain().to_vec()))
             .collect();
-        let sdk_paint = __slicer_adapt_paint_layer(&paint, &keys);
+        let sdk_paint = __slicer_adapt_paint_layer(&paint, &keys, &support_queries);
         let sdk_paint = sdk_paint.with_slice_ir(::std::sync::Arc::new(::slicer_ir::SliceIR {
             schema_version: ::slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
             global_layer_index: layer_index,
@@ -3811,7 +4040,7 @@ fn build_layer_support_glue(self_ty: &syn::Type) -> TokenStream2 {
             use exports::slicer::layer_support::support::LayerCollectionBuilder;
             struct __SlicerLayerSupportComponent;
             impl exports::slicer::layer_support::support::Guest for __SlicerLayerSupportComponent {
-                fn run(layer_index: i32, regions: Vec<SliceRegionView>, paint: PaintRegionLayerView, output: SupportOutputBuilder, collection: LayerCollectionBuilder, config: ConfigView) -> Result<(), ModuleError> {
+                fn run(layer_index: i32, regions: Vec<SliceRegionView>, paint: PaintRegionLayerView, support_queries: SupportQueryView, output: SupportOutputBuilder, collection: LayerCollectionBuilder, config: ConfigView) -> Result<(), ModuleError> {
                     #profile_install
                     #arm
                 }
@@ -3832,7 +4061,7 @@ fn build_layer_anchored_events_glue(self_ty: &syn::Type) -> TokenStream2 {
     let preamble = anchored_events_wit_preamble();
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_anchored_events");
-    let helpers = layer_light_helpers();
+    let helpers = layer_light_helpers("layer_anchored_events");
     let stage_helpers = layer_stage_helpers("layer_anchored_events");
     let arm = quote! {
         let layer_index = layer_index as u32;
@@ -3887,7 +4116,7 @@ fn build_layer_support_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
     );
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_support_postprocess");
-    let helpers = layer_light_helpers();
+    let helpers = layer_light_helpers("layer_support_postprocess");
     let stage_helpers = layer_stage_helpers("layer_support_postprocess");
     let arm = quote! {
         let layer_index = layer_index as u32;

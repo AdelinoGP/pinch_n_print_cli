@@ -114,6 +114,11 @@ pub fn prepare_wedge_context_with_overrides(
 ///
 /// `family_id` must match the renderer under test — both modules raise a
 /// family-attribution `ModuleError` on a mismatch.
+///
+/// The entry copies a genuinely chain-empty source identity: both current
+/// callers stage an unpainted `SlicedRegion` (its `variant_chain` is
+/// `Default::default()`), and the plan's chain is the exact source chain. The
+/// explicit empty chain below is therefore the real identity, not a wildcard.
 pub fn single_region_support_plan(
     family_id: &str,
     object_id: &str,
@@ -128,6 +133,7 @@ pub fn single_region_support_plan(
             global_layer_index: layer_index as i32,
             object_id: object_id.to_string(),
             region_id,
+            variant_chain: Vec::new(),
             family_id: family_id.to_string(),
             demand_ids: vec![],
             body_ids: vec![format!("{family_id}-body-{object_id}-{layer_index}")],

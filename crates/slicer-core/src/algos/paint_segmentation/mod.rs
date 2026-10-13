@@ -274,6 +274,31 @@ fn is_seam_paint_semantic(semantic: &slicer_ir::PaintSemantic) -> bool {
     )
 }
 
+/// Support paint (`SupportEnforcer` / `SupportBlocker` brush strokes and facet
+/// values) is a support-planner hint, not a region-splitting axis.
+///
+/// `region_mapping` keeps support semantics out of `aggregated_region_split`
+/// (only region-split semantics declared by loaded modules are registered;
+/// material/fuzzy_skin), so no `RegionMapIR` entry can exist for a
+/// `("support_enforcer" | "support_blocker", _)` variant chain. Minting one
+/// therefore cannot resolve configuration and only produces a
+/// `MissingModelConfig` fatal under the strict late-bind
+/// (`selection.rs::config_for`). The live support signal flows through paint
+/// layers (read by the support planner on the WIT side) and through modifier
+/// volumes (D14 → `segment_annotations`), never through `variant_chain`.
+///
+/// This predicate governs *region splitting only* (like `is_seam_paint_semantic`)
+/// and must be applied BEFORE the MMU cell decomposition: the AC-12 rebuild is
+/// keyed by paint value alone, so a raw support `Flag(true)` cell is
+/// indistinguishable from a fuzzy-skin one there. Excluding support lines
+/// pre-decomposition keeps the painted support area in its base region.
+fn is_support_paint_semantic(semantic: &slicer_ir::PaintSemantic) -> bool {
+    matches!(
+        semantic,
+        slicer_ir::PaintSemantic::SupportEnforcer | slicer_ir::PaintSemantic::SupportBlocker
+    )
+}
+
 fn mesh_has_any_paint(mesh: &slicer_ir::MeshIR) -> bool {
     for obj in &mesh.objects {
         if let Some(pd) = &obj.paint_data {
@@ -283,17 +308,22 @@ fn mesh_has_any_paint(mesh: &slicer_ir::MeshIR) -> bool {
                 // `resources/cube_cilindrical_modifier.3mf` the lowest painted
                 // seam facet sits at z in (0.4, 0.5], so the kernel ran on every
                 // layer and the layers below it were emitted geometry-less.
-                if is_seam_paint_semantic(&layer.semantic) {
+                // Support paint is excluded from admission for the same reason:
+                // it never partitions regions, so admitting a support-only mesh
+                // would only risk carving the painted area out of its base
+                // region (the D14 modifier-volume branch below still admits a
+                // mesh whose support comes from modifier volumes).
+                if is_seam_paint_semantic(&layer.semantic)
+                    || is_support_paint_semantic(&layer.semantic)
+                {
                     continue;
                 }
                 if layer.facet_values.iter().any(|v| v.is_some()) {
                     return true;
                 }
-                if layer
-                    .strokes
-                    .iter()
-                    .any(|s| !is_seam_paint_semantic(&s.semantic))
-                {
+                if layer.strokes.iter().any(|s| {
+                    !is_seam_paint_semantic(&s.semantic) && !is_support_paint_semantic(&s.semantic)
+                }) {
                     return true;
                 }
             }
@@ -691,10 +721,15 @@ pub fn execute_paint_segmentation(
             'outer: for obj in &mesh.objects {
                 let Some(pd) = &obj.paint_data else { continue };
                 for layer in &pd.layers {
-                    // A seam-painted layer must not become the dominant
-                    // semantic — on a seam-only mesh that labelled the entire
-                    // cell decomposition `seam_enforcer`.
-                    if is_seam_paint_semantic(&layer.semantic) {
+                    // A seam- or support-painted layer must not become the
+                    // dominant semantic — on a seam-only mesh that labelled the
+                    // entire cell decomposition `seam_enforcer`, and a support
+                    // layer would label the painted cells `support_enforcer`,
+                    // minting variant chains that no RegionMapIR entry can
+                    // resolve (strict late-bind fatal).
+                    if is_seam_paint_semantic(&layer.semantic)
+                        || is_support_paint_semantic(&layer.semantic)
+                    {
                         continue;
                     }
                     if layer.facet_values.iter().any(|v| v.is_some()) || !layer.strokes.is_empty() {
@@ -740,8 +775,17 @@ pub fn execute_paint_segmentation(
             if contours.is_empty() {
                 std::collections::BTreeMap::new()
             } else {
-                let painted_lines =
+                let mut painted_lines =
                     painted_line_collection::collect_painted_lines(&working[i], &mesh, &contours);
+                // Support paint never partitions regions (see
+                // `is_support_paint_semantic`): drop its lines BEFORE the
+                // colorize/MMU cell decomposition. The AC-12 rebuild below is
+                // keyed by paint VALUE only, so it cannot tell a raw support
+                // `Flag(true)` cell from a fuzzy-skin one; keeping support
+                // lines would carve the painted support area out of the BASE
+                // residual and mint an unmappable variant chain for it. The
+                // painted area stays in its base region.
+                painted_lines.retain(|line| !is_support_paint_semantic(&line.semantic));
                 if painted_lines.is_empty() {
                     std::collections::BTreeMap::new()
                 } else {
@@ -1323,8 +1367,10 @@ pub fn execute_paint_segmentation(
                             continue;
                         }
                     }
-                    // Seam paint never partitions regions.
-                    if is_seam_paint_semantic(&layer.semantic) {
+                    // Seam and support paint never partition regions.
+                    if is_seam_paint_semantic(&layer.semantic)
+                        || is_support_paint_semantic(&layer.semantic)
+                    {
                         continue;
                     }
                     let key = (obj.id.clone(), sem_name(&layer.semantic), value.clone());
@@ -1343,8 +1389,10 @@ pub fn execute_paint_segmentation(
                 // their own semantic/value (overriding the layer semantic when they
                 // differ, matching `extract_stroke_data` in painted_line_collection prep).
                 for stroke in &layer.strokes {
-                    // Seam paint never partitions regions.
-                    if is_seam_paint_semantic(&stroke.semantic) {
+                    // Seam and support paint never partition regions.
+                    if is_seam_paint_semantic(&stroke.semantic)
+                        || is_support_paint_semantic(&stroke.semantic)
+                    {
                         continue;
                     }
                     let key = (

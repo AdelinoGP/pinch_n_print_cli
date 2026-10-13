@@ -252,7 +252,7 @@ fn layer_stage_module_reports_layer_world_and_stage_export() {
 #[test]
 fn layer_module_wit_exports_only_detected_stage() {
     let exports = LayerInfillFixture::__slicer_wit_exports();
-    assert_eq!(exports, &["slicer:layer-infill/infill@1.0.0#run"]);
+    assert_eq!(exports, &["slicer:layer-infill/infill@2.0.0#run"]);
     assert_eq!(exports.len(), 1);
 }
 
@@ -339,8 +339,8 @@ fn binding_schema_json_captures_full_export_surface() {
     assert!(json.contains(&format!(r#""tier":"{}""#, slicer_schema::TIER_LAYER)));
     assert!(json.contains(r#""stage_id":"Layer::Infill""#));
     assert!(json.contains(r#""stage_method":"run_infill""#));
-    assert!(json.contains(r#""stage_export":"slicer:layer-infill/infill@1.0.0#run""#));
-    assert!(json.contains(r#""slicer:layer-infill/infill@1.0.0#run""#));
+    assert!(json.contains(r#""stage_export":"slicer:layer-infill/infill@2.0.0#run""#));
+    assert!(json.contains(r#""slicer:layer-infill/infill@2.0.0#run""#));
 }
 
 #[test]
@@ -403,13 +403,13 @@ fn typed_schema_const_mirrors_string_accessors_for_layer_infill() {
     assert_eq!(s.tier_id, slicer_schema::TIER_LAYER);
     assert_eq!(s.stage_id, "Layer::Infill");
     assert_eq!(s.stage_method, "run_infill");
-    assert_eq!(s.stage_export, "slicer:layer-infill/infill@1.0.0#run");
+    assert_eq!(s.stage_export, "slicer:layer-infill/infill@2.0.0#run");
 
     assert_eq!(s.exports.len(), 1);
     assert_eq!(
         s.exports[0],
         ExportBinding {
-            name: "slicer:layer-infill/infill@1.0.0#run",
+            name: "slicer:layer-infill/infill@2.0.0#run",
             kind: ExportKind::Stage
         }
     );
@@ -479,5 +479,5 @@ fn typed_schema_exports_are_deterministic_across_invocations() {
     let names_a: Vec<&str> = a.exports.iter().map(|e| e.name).collect();
     let names_b: Vec<&str> = b.exports.iter().map(|e| e.name).collect();
     assert_eq!(names_a, names_b);
-    assert_eq!(names_a, vec!["slicer:layer-infill/infill@1.0.0#run"]);
+    assert_eq!(names_a, vec!["slicer:layer-infill/infill@2.0.0#run"]);
 }

@@ -160,6 +160,7 @@ fn mixed_unit_shared_viewport() {
                     capabilities: vec![],
                     provenance: vec![],
                     decline_reason: None,
+                    variant_chain: Vec::new(), // genuinely chain-empty source: this fixture seeds no paint chain
                 }],
                 raft_plan: None,
             },
@@ -315,6 +316,7 @@ fn degenerate_support_branch_renders_as_visible_disk() {
                     capabilities: vec![],
                     provenance: vec![],
                     decline_reason: None,
+                    variant_chain: Vec::new(), // genuinely chain-empty source: this fixture seeds no paint chain
                 }],
                 raft_plan: None,
             },
@@ -385,6 +387,7 @@ fn degenerate_segment_at_path_end_renders_as_visible_disk() {
                     capabilities: vec![],
                     provenance: vec![],
                     decline_reason: None,
+                    variant_chain: Vec::new(), // genuinely chain-empty source: this fixture seeds no paint chain
                 }],
                 raft_plan: None,
             },
@@ -450,6 +453,7 @@ fn nearly_equal_path_endpoints_render_as_visible_disk() {
                     capabilities: vec![],
                     provenance: vec![],
                     decline_reason: None,
+                    variant_chain: Vec::new(), // genuinely chain-empty source: this fixture seeds no paint chain
                 }],
                 raft_plan: None,
             },

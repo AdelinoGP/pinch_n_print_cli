@@ -135,11 +135,11 @@ fn modifier_support_territory_clips_families_to_their_own_side() {
     let sub_region_ids: BTreeSet<u64> = analysis
         .family_assignments
         .iter()
-        .filter_map(|((object, region_id), family)| {
-            (object == &object_id
+        .filter_map(|(key, family)| {
+            (key.object_id == object_id
                 && family == "traditional"
-                && slicer_ir::is_modifier_namespace_id(*region_id))
-            .then_some(*region_id)
+                && slicer_ir::is_modifier_namespace_id(key.region_id))
+            .then_some(key.region_id)
         })
         .collect();
     assert!(

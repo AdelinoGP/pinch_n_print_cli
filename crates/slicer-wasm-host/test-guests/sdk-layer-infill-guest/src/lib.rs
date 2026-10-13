@@ -135,6 +135,105 @@ impl LayerModule for SdkLayerInfillModule {
             }
         }
 
+        // Optional per-region/invocation config witness for
+        // `adapt_slice_regions_completeness_tdd::per_region_config_and_invocation_config_are_observed`.
+        // The producer layout is specified here and decoded independently in
+        // the test file against literal expectations. Gated by its own int
+        // config key so every other test driving this guest sees unchanged
+        // output.
+        //
+        // One path per incoming region:
+        //   point[0] header   : x=0, y=0, z=region z (Z-envelope safe),
+        //                       width=0, flow_factor=CONFIG_WITNESS_MARKER
+        //   point[1] payload  : x=region config `line_width` (-1 when absent),
+        //                       y=invocation config `line_width` (-1 when absent),
+        //                       z=region config `private_probe` present (0/1),
+        //                       width=invocation config `private_probe` present (0/1),
+        //                       flow_factor=region config present (0/1)
+        //   point[2] identity/authority:
+        //                       x=region_id as f32,
+        //                       y=region config `extruder` present (0/1),
+        //                       z=region `extruder` int (-1 when unavailable),
+        //                       width=region `private_probe` int (-1 when unavailable),
+        //                       flow_factor=held top-fill (1) + sparse-fill (2)
+        // Config accessors cannot distinguish undeclared from absent: the host
+        // fixture must independently supply both keys before filtering.
+        if config.get_int("emit_config_witness") == Some(1) {
+            const CONFIG_WITNESS_MARKER: f32 = 9.0;
+            let invocation_width = config.get_float("line_width").unwrap_or(-1.0) as f32;
+            let invocation_probe = if config.get("private_probe").is_some() {
+                1.0
+            } else {
+                0.0
+            };
+            for r in regions.iter() {
+                let region_cfg = r.config();
+                let region_width = region_cfg
+                    .and_then(|c| c.get_float("line_width"))
+                    .unwrap_or(-1.0) as f32;
+                let region_probe = if region_cfg
+                    .map(|c| c.get("private_probe").is_some())
+                    .unwrap_or(false)
+                {
+                    1.0
+                } else {
+                    0.0
+                };
+                let has_region_config = if region_cfg.is_some() { 1.0 } else { 0.0 };
+                let region_extruder = if region_cfg.and_then(|c| c.get("extruder")).is_some() {
+                    1.0
+                } else {
+                    0.0
+                };
+                let held_roles = f32::from(r.held_claims().iter().any(|c| c == "claim:top-fill"))
+                    + 2.0 * f32::from(r.held_claims().iter().any(|c| c == "claim:sparse-fill"));
+                let points = vec![
+                    slicer_ir::Point3WithWidth {
+                        x: 0.0,
+                        y: 0.0,
+                        z: r.z(),
+                        width: 0.0,
+                        flow_factor: CONFIG_WITNESS_MARKER,
+                        overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
+                        overhang_distance_mm: None,
+                    },
+                    slicer_ir::Point3WithWidth {
+                        x: region_width,
+                        y: invocation_width,
+                        z: region_probe,
+                        width: invocation_probe,
+                        flow_factor: has_region_config,
+                        overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
+                        overhang_distance_mm: None,
+                    },
+                    slicer_ir::Point3WithWidth {
+                        x: *r.region_id() as f32,
+                        y: region_extruder,
+                        z: region_cfg.and_then(|c| c.get_int("extruder")).unwrap_or(-1) as f32,
+                        width: region_cfg
+                            .and_then(|c| c.get_int("private_probe"))
+                            .unwrap_or(-1) as f32,
+                        flow_factor: held_roles,
+                        overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
+                        overhang_distance_mm: None,
+                    },
+                ];
+                let path = ExtrusionPath3D {
+                    points,
+                    role: ExtrusionRole::SparseInfill,
+                    speed_factor: 1.0,
+                    tool_index: None,
+                    order_lock: None,
+                };
+                output
+                    .push_sparse_path(path)
+                    .map_err(|e| ModuleError::fatal(3, e))?;
+            }
+        }
+
         Ok(())
     }
 }

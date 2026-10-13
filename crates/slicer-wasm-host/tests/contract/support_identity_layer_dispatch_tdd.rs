@@ -85,6 +85,7 @@ fn support_layer_dispatch_joins_plan_identity() {
                 capabilities: Vec::new(),
                 provenance: Vec::new(),
                 decline_reason: None,
+                variant_chain: Vec::new(),
             },
             // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
             SupportPlanEntry {
@@ -101,6 +102,7 @@ fn support_layer_dispatch_joins_plan_identity() {
                 capabilities: Vec::new(),
                 provenance: Vec::new(),
                 decline_reason: None,
+                variant_chain: Vec::new(),
             },
         ],
         raft_plan: None,

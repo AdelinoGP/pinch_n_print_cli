@@ -79,6 +79,11 @@ thread_local! {
     /// profiling is off, or the guest genuinely executed nothing. Mirrors
     /// `LAST_WASM_MEM_SAMPLE`, including the replace-on-read semantics.
     static LAST_CALL_FUEL: Cell<u64> = const { Cell::new(0) };
+
+    // Opt-in, call-scoped observation of the exact context handed to commit.
+    // Ordinary dispatch does not clone or retain authored-coloring authority.
+    static AUTHORED_COLORING_CAPTURE: std::cell::RefCell<Option<Vec<crate::marshal::AuthoredColoringContext>>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 fn add_wasi_to_linker(linker: &mut wasmtime::component::Linker<HostExecutionContext>) {
@@ -170,13 +175,30 @@ impl host::prepass_support_geometry::slicer::prepass_support_geometry::exact_z_s
         &mut self,
         object_id: String,
         region_id: u64,
+        variant_chain: Vec<(
+            String,
+            host::layer_perimeters::slicer::ir_handles::ir_handles::PaintValue,
+        )>,
         physical_z_mm: f32,
     ) -> wasmtime::Result<Result<host::prepass_support_geometry::slicer::prepass_support_geometry::exact_z_support_query::QueryResult, String>>{
         let service = self
             .exact_z_query
             .as_ref()
             .ok_or_else(|| wasmtime::Error::msg("exact-z-support-query unavailable"))?;
-        let result = service.query(&object_id, region_id, physical_z_mm);
+        // Convert the WIT chain to the IR chain the service keys on — the
+        // same per-value conversion the host-side query-view trait impls
+        // apply via `wit_chain_to_ir_key` (`host.rs`). An empty chain is the
+        // exact identity of a genuinely chain-less source, never a wildcard.
+        let ir_chain: Vec<(String, slicer_ir::PaintValue)> = variant_chain
+            .iter()
+            .map(|(name, value)| {
+                (
+                    name.clone(),
+                    crate::marshal::leaf::convert_paint_value(value),
+                )
+            })
+            .collect();
+        let result = service.query(&object_id, region_id, &ir_chain, physical_z_mm);
         let result = result.map_err(|e| wasmtime::Error::msg(e))?;
         Ok(Ok(host::prepass_support_geometry::slicer::prepass_support_geometry::exact_z_support_query::QueryResult {
             z_units: result.z_units,
@@ -384,7 +406,6 @@ impl WasmRuntimeDispatcher {
         stage_id: &StageId,
         module_id: &str,
         _module_id_str: &str,
-        module_claims: &[String],
         layer: &GlobalLayer,
         wasm_component: Option<&Arc<crate::instance::WasmComponent>>,
         instance_pool: &Arc<crate::pool::WasmInstancePool>,
@@ -404,17 +425,13 @@ impl WasmRuntimeDispatcher {
         seam_plan_ir: Option<&slicer_ir::SeamPlanIR>,
         support_plan_ir: Option<&slicer_ir::SupportPlanIR>,
         slice_ir: Option<&slicer_ir::SliceIR>,
-        perimeter_ir: Option<&slicer_ir::PerimeterIR>,
         layer_collection: Option<&slicer_ir::LayerCollectionIR>,
         surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
-        prepared_regions: Option<&[slicer_ir::PreparedRegionData]>,
-        prepared_perimeter_source_regions: Option<&[slicer_ir::PreparedRegionData]>,
-        region_map: Option<&slicer_ir::RegionMapIR>,
         infill_ir: Option<&slicer_ir::InfillIR>,
         // Packet 137: `PrePass::LightningTreeGen` IR for the live dispatch path.
         // `None` when no region's `sparse_fill_holder` is `lightning-infill`.
         #[allow(dead_code)] lightning_tree_ir: Option<&slicer_ir::LightningTreeIR>,
-        selection: &crate::selection::LayerSelection,
+        transport: &crate::marshal::transport::LayerTransport<'_>,
     ) -> Result<HostExecutionContext, DispatchError> {
         use slicer_schema::export_for_stage_id;
         let export_name = export_for_stage_id(stage_id).unwrap_or("unknown");
@@ -504,28 +521,25 @@ impl WasmRuntimeDispatcher {
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
                 let region_handles = push_slice_regions(
                     &mut store,
+                    transport,
                     slice_ir,
                     layer_z,
                     surface_classification,
                     layer,
-                    module_claims,
                     false,
-                    prepared_regions,
-                    prepared_perimeter_source_regions,
-                    selection,
-                    stage_id == "Layer::Infill",
+                    false,
                 )
                 .map_err(mk_ctx_err)?;
                 let config_handle = store
                     .data_mut()
                     .push_config_view(host::config_view_to_data(&effective_config_view))
                     .map_err(mk_ctx_err)?;
-                let paint_data = build_paint_layer_data_with_plan(
+                let (paint_data, support_data, lightning_data) = build_paint_layer_data_with_plan(
                     None,
                     layer_index,
                     support_plan_ir,
                     lightning_tree_ir,
-                    selection.targets.iter().any(|target| {
+                    transport.non_model_targets.iter().any(|target| {
                         matches!(
                             target.source,
                             crate::selection::LayerTargetSource::Raft { .. }
@@ -535,6 +549,14 @@ impl WasmRuntimeDispatcher {
                 let paint = store
                     .data_mut()
                     .push_paint_region_layer_view(paint_data)
+                    .map_err(mk_ctx_err)?;
+                let support_query = store
+                    .data_mut()
+                    .push_support_query_view(support_data)
+                    .map_err(mk_ctx_err)?;
+                let lightning_query = store
+                    .data_mut()
+                    .push_lightning_query_view(lightning_data)
                     .map_err(mk_ctx_err)?;
                 let output = store
                     .data_mut()
@@ -547,6 +569,8 @@ impl WasmRuntimeDispatcher {
                         layer_index as i32,
                         &region_handles,
                         own(paint),
+                        own(support_query),
+                        own(lightning_query),
                         own(output),
                         own(config_handle),
                     )
@@ -602,14 +626,14 @@ impl WasmRuntimeDispatcher {
                 )
                 .map_err(mk_inst_err)?;
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
-                let region_handles = push_infill_postprocess_regions(
-                    &mut store,
-                    slice_ir,
-                    perimeter_ir,
-                    region_map,
-                    layer_index,
-                    Some(selection),
-                )
+                // A perimeter-only invocation has indexed source authority but
+                // no model views to enrich. Deliver those exact perimeter
+                // identities instead of silently passing an empty collection.
+                let region_handles = if transport.models.is_empty() {
+                    push_perimeter_regions(&mut store, transport, None, layer_index)
+                } else {
+                    push_infill_postprocess_regions(&mut store, transport)
+                }
                 .map_err(mk_ctx_err)?;
                 let prior_infill = infill_ir
                     .map(crate::marshal::infill_ir_to_prior_regions)
@@ -682,15 +706,12 @@ impl WasmRuntimeDispatcher {
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
                 let region_handles = push_slice_regions(
                     &mut store,
+                    transport,
                     slice_ir,
                     layer_z,
                     surface_classification,
                     layer,
-                    module_claims,
                     false,
-                    prepared_regions,
-                    prepared_perimeter_source_regions,
-                    selection,
                     stage_id == "Layer::Infill",
                 )
                 .map_err(mk_ctx_err)?;
@@ -767,15 +788,12 @@ impl WasmRuntimeDispatcher {
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
                 let region_handles = push_slice_regions(
                     &mut store,
+                    transport,
                     slice_ir,
                     layer_z,
                     surface_classification,
                     layer,
-                    module_claims,
                     true,
-                    prepared_regions,
-                    prepared_perimeter_source_regions,
-                    selection,
                     stage_id == "Layer::Infill",
                 )
                 .map_err(mk_ctx_err)?;
@@ -850,14 +868,9 @@ impl WasmRuntimeDispatcher {
                 )
                 .map_err(mk_inst_err)?;
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
-                let region_handles = push_perimeter_regions(
-                    &mut store,
-                    perimeter_ir,
-                    seam_plan_ir,
-                    layer_index,
-                    Some(selection),
-                )
-                .map_err(mk_ctx_err)?;
+                let region_handles =
+                    push_perimeter_regions(&mut store, transport, seam_plan_ir, layer_index)
+                        .map_err(mk_ctx_err)?;
                 let output = store
                     .data_mut()
                     .push_perimeter_output_builder()
@@ -925,19 +938,16 @@ impl WasmRuntimeDispatcher {
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
                 let region_handles = push_slice_regions(
                     &mut store,
+                    transport,
                     slice_ir,
                     layer_z,
                     surface_classification,
                     layer,
-                    module_claims,
                     false,
-                    prepared_regions,
-                    prepared_perimeter_source_regions,
-                    selection,
                     stage_id == "Layer::Infill",
                 )
                 .map_err(mk_ctx_err)?;
-                let paint_data = build_paint_layer_data_with_plan(
+                let (paint_data, support_data, _lightning_data) = build_paint_layer_data_with_plan(
                     None,
                     layer_index,
                     support_plan_ir,
@@ -947,6 +957,10 @@ impl WasmRuntimeDispatcher {
                 let paint = store
                     .data_mut()
                     .push_paint_region_layer_view(paint_data)
+                    .map_err(mk_ctx_err)?;
+                let support_query = store
+                    .data_mut()
+                    .push_support_query_view(support_data)
                     .map_err(mk_ctx_err)?;
                 let output = store
                     .data_mut()
@@ -963,6 +977,7 @@ impl WasmRuntimeDispatcher {
                         layer_index as i32,
                         &region_handles,
                         own(paint),
+                        own(support_query),
                         own(output),
                         own(collection),
                         own(config_handle),
@@ -1021,15 +1036,12 @@ impl WasmRuntimeDispatcher {
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
                 let region_handles = push_slice_regions(
                     &mut store,
+                    transport,
                     slice_ir,
                     layer_z,
                     surface_classification,
                     layer,
-                    module_claims,
                     false,
-                    prepared_regions,
-                    prepared_perimeter_source_regions,
-                    selection,
                     stage_id == "Layer::Infill",
                 )
                 .map_err(mk_ctx_err)?;
@@ -1101,15 +1113,12 @@ impl WasmRuntimeDispatcher {
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
                 let region_handles = push_slice_regions(
                     &mut store,
+                    transport,
                     slice_ir,
                     layer_z,
                     surface_classification,
                     layer,
-                    module_claims,
                     false,
-                    prepared_regions,
-                    prepared_perimeter_source_regions,
-                    selection,
                     stage_id == "Layer::Infill",
                 )
                 .map_err(mk_ctx_err)?;
@@ -1178,14 +1187,9 @@ impl WasmRuntimeDispatcher {
                 )
                 .map_err(mk_inst_err)?;
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
-                let region_handles = push_perimeter_regions(
-                    &mut store,
-                    perimeter_ir,
-                    None,
-                    layer_index,
-                    Some(selection),
-                )
-                .map_err(mk_ctx_err)?;
+                let region_handles =
+                    push_perimeter_regions(&mut store, transport, None, layer_index)
+                        .map_err(mk_ctx_err)?;
                 let output = store
                     .data_mut()
                     .push_gcode_output_builder()
@@ -1539,7 +1543,12 @@ impl WasmRuntimeDispatcher {
                     .unwrap_or_else(|| host::prepass::LayerPlanView { layers: Vec::new() });
                 let region_segmentation_view = region_map
                     .as_deref()
-                    .map(|rm| host::project_region_segmentation_view(rm))
+                    .map(|rm| {
+                        host::project_region_segmentation_view(
+                            rm,
+                            slice_ir.as_deref().map_or(&[], Vec::as_slice),
+                        )
+                    })
                     .unwrap_or_else(|| host::prepass::RegionSegmentationView {
                         entries: Vec::new(),
                         region_support_configs: Vec::new(),
@@ -2106,18 +2115,29 @@ fn build_paint_layer_data(
     layer_index: u32,
     is_raft: bool,
 ) -> PaintRegionLayerData {
-    build_paint_layer_data_with_plan(_paint_ir, layer_index, None, None, is_raft)
+    build_paint_layer_data_with_plan(_paint_ir, layer_index, None, None, is_raft).0
 }
 
 /// Variant of [`build_paint_layer_data`] that also indexes a committed
-/// `SupportPlanIR` and `LightningTreeIR` for this layer.
+/// `SupportPlanIR` and `LightningTreeIR` for this layer. Returns the paint
+/// view plus the two specialist query views relocated out of
+/// `paint-region-layer-view` (packet layer-module-preparation_01, W7a):
+/// `(paint, support-query, lightning-query)`. The maps in the query views
+/// are keyed by the FULL origin `(object_id, region_id, variant_chain)` with
+/// the chain taken from the IR entries' own `variant_chain` fields — never
+/// guessed or derived. Infill specialist queries use the delivered source
+/// identity verbatim, so no config-address alias is needed.
 fn build_paint_layer_data_with_plan(
     _paint_ir: Option<&()>,
     layer_index: u32,
     support_plan_ir: Option<&slicer_ir::SupportPlanIR>,
     lightning_tree_ir: Option<&slicer_ir::LightningTreeIR>,
     is_raft: bool,
-) -> PaintRegionLayerData {
+) -> (
+    PaintRegionLayerData,
+    host::SupportQueryViewData,
+    host::LightningQueryViewData,
+) {
     let mut data = PaintRegionLayerData {
         layer_index,
         ..Default::default()
@@ -2126,191 +2146,93 @@ fn build_paint_layer_data_with_plan(
     // from the index. The raft plan is print-wide configuration, so unlike
     // `support_plan_entries` below it takes NO `anchor_layer_index` filter.
     data.is_raft = is_raft;
-    data.raft_plan = support_plan_ir
-        .and_then(|plan| plan.raft_plan.as_ref())
-        .map(
-            |raft| host::layer_perimeters::slicer::ir_handles::ir_handles::RaftPlanView {
-                raft_layers: raft.raft_layers,
-                raft_first_layer_density: raft.raft_first_layer_density,
-                base_raft_layers: raft.base_raft_layers,
-                interface_raft_layers: raft.interface_raft_layers,
-            },
-        );
+    let mut support_data = host::SupportQueryViewData {
+        raft_plan: support_plan_ir.and_then(|plan| plan.raft_plan.clone()),
+        ..Default::default()
+    };
     if let Some(plan) = support_plan_ir {
         for entry in &plan.entries {
             if entry.anchor_layer_index != layer_index {
                 continue;
             }
-            let key = (entry.object_id.clone(), entry.region_id.to_string());
-            data.support_plan_entries.entry(key).or_default().push(
-                host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanEntryView {
-                    global_layer_index: entry.global_layer_index,
-                    object_id: entry.object_id.clone(),
-                    region_id: entry.region_id.to_string(),
-                    family_id: entry.family_id.clone(),
-                    demand_ids: entry.demand_ids.clone(),
-                    body_ids: entry.body_ids.clone(),
-                    anchor_layer_index: entry.anchor_layer_index,
-                    anchor_z: entry.anchor_z,
-                    roles: entry.roles.iter().map(|role| host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewRoleRegion {
-                        role: match role.role {
-                            slicer_ir::SupportPlanRole::SupportBody => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewRole::SupportBody,
-                            slicer_ir::SupportPlanRole::TopInterface => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewRole::TopInterface,
-                            slicer_ir::SupportPlanRole::BaseInterface => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewRole::BaseInterface,
-                            slicer_ir::SupportPlanRole::BottomInterface => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewRole::BottomInterface,
-                            slicer_ir::SupportPlanRole::RaftRelated => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewRole::RaftRelated,
-                        },
-                        regions: host::ir_to_wit_expolygons(&role.regions),
-                    }).collect(),
-                    skeleton: entry.skeleton.as_ref().map(|s| {
-                        assert_eq!(s.wall_counts.len(), s.points.len());
-                        host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewSkeleton {
-                            points: s.points.iter().map(|p| host::layer_perimeters::slicer::types::geometry::Point3 { x: p.x, y: p.y, z: p.z }).collect(),
-                            wall_counts: s.wall_counts.clone(),
-                        }
-                    }),
-                    capabilities: entry.capabilities.clone(),
-                    provenance: entry.provenance.clone(),
-                    decline_reason: entry.decline_reason.map(|reason| match reason {
-                        slicer_ir::SupportPlanDeclineReason::DeclinedPolicy => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewDeclineReason::DeclinedPolicy,
-                        slicer_ir::SupportPlanDeclineReason::NoRoute => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewDeclineReason::NoRoute,
-                        slicer_ir::SupportPlanDeclineReason::Blocked => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewDeclineReason::Blocked,
-                        slicer_ir::SupportPlanDeclineReason::UnsupportedMode => host::layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanViewDeclineReason::UnsupportedMode,
-                    }),
-                });
+            let key = (
+                entry.object_id.clone(),
+                entry.region_id.to_string(),
+                entry.variant_chain.clone(),
+            );
+            support_data
+                .support_plan_entries
+                .entry(key)
+                .or_default()
+                .push(entry.clone());
         }
-        for entries in data.support_plan_entries.values_mut() {
+        for entries in support_data.support_plan_entries.values_mut() {
             entries.sort_by_key(|entry| (entry.anchor_z, entry.global_layer_index));
         }
     }
+    let mut lightning_data = host::LightningQueryViewData::default();
     if let Some(ir) = lightning_tree_ir {
         for entry in &ir.entries {
             if entry.global_layer_index != layer_index as i32 {
                 continue;
             }
-            let key = (entry.object_id.clone(), entry.region_id.to_string());
-            let bucket = data.lightning_tree_segments.entry(key).or_default();
-            for segment in &entry.tree_edge_segments {
-                let pts: Vec<_> = segment
-                    .iter()
-                    .map(|p| host::layer::slicer::types::geometry::Point3WithWidth {
-                        x: slicer_ir::units_to_mm(p.x),
-                        y: slicer_ir::units_to_mm(p.y),
-                        z: 0.0,
-                        width: 0.0,
-                        flow_factor: 1.0,
-                        overhang_quartile: None,
-                        dist_to_top_mm: 0.0,
-                        overhang_distance_mm: None,
-                    })
-                    .collect();
-                bucket.push(pts);
-            }
+            let segments: Vec<Vec<host::layer::slicer::types::geometry::Point3WithWidth>> = entry
+                .tree_edge_segments
+                .iter()
+                .map(|segment| {
+                    segment
+                        .iter()
+                        .map(|p| host::layer::slicer::types::geometry::Point3WithWidth {
+                            x: slicer_ir::units_to_mm(p.x),
+                            y: slicer_ir::units_to_mm(p.y),
+                            z: 0.0,
+                            width: 0.0,
+                            flow_factor: 1.0,
+                            overhang_quartile: None,
+                            dist_to_top_mm: 0.0,
+                            overhang_distance_mm: None,
+                        })
+                        .collect()
+                })
+                .collect();
+            let source_key = (
+                entry.object_id.clone(),
+                entry.region_id.to_string(),
+                entry.variant_chain.clone(),
+            );
+            lightning_data
+                .lightning_tree_segments
+                .entry(source_key)
+                .or_default()
+                .extend(segments);
         }
     }
-    data
+    (data, support_data, lightning_data)
 }
 
-/// Push `SliceRegionData` resources into the store from the provided `SliceIR`.
-///
-/// Returns resource handles for each `SlicedRegion`. Returns an empty vec
-/// if no `SliceIR` is provided.
+/// Push `SliceRegionData` resources into the store from the shared call-local
+/// assembly. Selected source membership, current geometry, prepared
+/// annotations, config and held claims all come from the one assembly built
+/// before the native/WASM split. Ordinary delivery preserves source identity.
 fn push_slice_regions(
     store: &mut wasmtime::Store<HostExecutionContext>,
-    slice_ir: Option<&slicer_ir::SliceIR>,
+    transport: &crate::marshal::transport::LayerTransport<'_>,
+    current_slice: Option<&slicer_ir::SliceIR>,
     layer_z: f32,
     surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
     layer: &GlobalLayer,
-    module_claims: &[String],
     perimeter_sources: bool,
-    prepared_regions: Option<&[slicer_ir::PreparedRegionData]>,
-    prepared_perimeter_source_regions: Option<&[slicer_ir::PreparedRegionData]>,
-    selection: &crate::selection::LayerSelection,
     map_space: bool,
 ) -> Result<Vec<Resource<host::SliceRegionData>>, wasmtime::Error> {
-    let _ = module_claims; // Eligibility was decided by the immutable selection.
-    let projected;
-    let slice_ir = slice_ir.filter(|slice| slice.global_layer_index == layer.index);
-    let current_regions = slice_ir.map_or(&[][..], |slice| slice.regions.as_slice());
-    let mut present: std::collections::HashSet<_> = current_regions
-        .iter()
-        .map(|region| {
-            indexed_region_origin(&region.object_id, region.region_id, &region.variant_chain)
-        })
-        .collect();
-    let mut missing_regions = Vec::new();
-    for target in &selection.targets {
-        if let crate::selection::LayerTargetSource::Model { key, members } = &target.source {
-            for member in std::iter::once(key).chain(members.iter()) {
-                let origin = crate::marshal::OriginId {
-                    object_id: member.object_id.clone(),
-                    region_id: member.region_id,
-                    variant_chain: member.variant_chain.clone(),
-                };
-                if member.global_layer_index != layer.index || !present.insert(origin.clone()) {
-                    continue;
-                }
-                let identity = selection.slice_regions.iter().find(|region| {
-                    indexed_region_origin(
-                        &region.object_id,
-                        region.region_id,
-                        &region.variant_chain,
-                    ) == origin
-                });
-                missing_regions.push(slicer_ir::SlicedRegion {
-                    object_id: member.object_id.clone(),
-                    region_id: identity.map_or(member.region_id, |region| region.region_id),
-                    variant_chain: member.variant_chain.clone(),
-                    ..slicer_ir::SlicedRegion::default()
-                });
-            }
-        }
-    }
-    let augmented_slice;
-    let source_slice = if missing_regions.is_empty() {
-        slice_ir
+    let current_slice = current_slice.filter(|slice| slice.global_layer_index == layer.index);
+    let views: &[crate::marshal::transport::CurrentModelView<'_>] = if perimeter_sources {
+        &transport.perimeter_sources
     } else {
-        // Identity-only synthesis mirrors the native builder. Keep the current
-        // geometry/prepared-data fast path untouched when nothing is absent.
-        augmented_slice = slicer_ir::SliceIR {
-            global_layer_index: layer.index,
-            regions: current_regions
-                .iter()
-                .cloned()
-                .chain(missing_regions)
-                .collect(),
-            ..slicer_ir::SliceIR::default()
-        };
-        Some(&augmented_slice)
+        &transport.models
     };
-    let regions = if perimeter_sources {
-        projected = source_slice
-            .map(crate::marshal::perimeter_source_regions)
-            .unwrap_or_default();
-        projected.as_slice()
-    } else {
-        source_slice.map_or(&[][..], |slice| slice.regions.as_slice())
-    };
-    let mut handles = Vec::with_capacity(regions.len());
-    for (index, region) in regions.iter().enumerate() {
-        let selected = selection.targets.iter().any(|target| match &target.source {
-            crate::selection::LayerTargetSource::Model { key, members } => {
-                std::iter::once(key).chain(members.iter()).any(|member| {
-                    member.global_layer_index == layer.index
-                        && member.object_id == region.object_id
-                        && member.region_id
-                            == crate::selection::map_space_region_id(
-                                region.region_id,
-                                &region.variant_chain,
-                            )
-                        && member.variant_chain == region.variant_chain
-                })
-            }
-            _ => false,
-        });
-        if !selected {
-            continue;
-        }
+    let mut handles = Vec::with_capacity(views.len());
+    for (index, view) in views.iter().enumerate() {
+        let region = &view.region;
         // Modifier footprints are host-internal bookkeeping, not printable
         // geometry — see `slicer_ir::MODIFIER_FOOTPRINT_REGION_ID`. Handing one
         // to a module makes it a region like any other: a perimeter generator
@@ -2333,50 +2255,51 @@ fn push_slice_regions(
                 .sum(),
             bridge_count: region.bridge_areas.len(),
         });
-        let origin = crate::marshal::OriginId {
-            object_id: region.object_id.clone(),
-            region_id: if map_space {
-                crate::selection::map_space_region_id(region.region_id, &region.variant_chain)
-            } else {
-                region.region_id
-            },
-            variant_chain: region.variant_chain.clone(),
+        let source_origin = crate::marshal::OriginId {
+            object_id: view.key.object_id.clone(),
+            region_id: view.key.region_id,
+            variant_chain: view.key.variant_chain.clone(),
         };
-        let held_claims = store.data().held_claims_for(&origin).to_vec();
         let mut data = host::sliced_region_to_data_with_prepared(
             region,
             layer_z,
-            held_claims,
+            view.target.held_claims.clone(),
             surface_classification,
             layer.index,
-            (if perimeter_sources {
-                prepared_perimeter_source_regions
-            } else {
-                prepared_regions
-            })
-            .and_then(|prepared| prepared.get(index)),
+            Some(&view.prepared),
         );
-        data.region_id = origin.region_id.to_string();
+        data.region_id = if map_space {
+            crate::selection::map_space_region_id(region.region_id, &region.variant_chain)
+                .to_string()
+        } else {
+            region.region_id.to_string()
+        };
         let handle = store.data_mut().push_slice_region(data)?;
         store
             .data_mut()
             .indexed_region_origins
-            .insert(handle.rep(), origin);
+            .insert(handle.rep(), source_origin);
         handles.push(handle);
     }
-    for target in &selection.targets {
+    for target in &transport.non_model_targets {
         if let crate::selection::LayerTargetSource::SupportCarrier {
             object_id,
             region_id,
+            variant_chain,
             ..
         } = &target.source
         {
             let carrier = slicer_ir::SlicedRegion {
                 object_id: object_id.clone(),
                 region_id: *region_id,
-                effective_layer_height: current_regions
-                    .iter()
-                    .find(|region| region.object_id == *object_id)
+                variant_chain: variant_chain.clone(),
+                effective_layer_height: current_slice
+                    .and_then(|slice| {
+                        slice
+                            .regions
+                            .iter()
+                            .find(|region| region.object_id == *object_id)
+                    })
                     .map_or(0.0, |region| region.effective_layer_height),
                 ..slicer_ir::SlicedRegion::default()
             };
@@ -2393,7 +2316,7 @@ fn push_slice_regions(
                 crate::marshal::OriginId {
                     object_id: object_id.clone(),
                     region_id: *region_id,
-                    variant_chain: Vec::new(),
+                    variant_chain: variant_chain.clone(),
                 },
             );
             handles.push(handle);
@@ -2476,60 +2399,49 @@ pub fn resolve_seam_for_perimeter_region(
         .map(|entry| entry.chosen_candidate.clone())
 }
 
-/// Push `PerimeterRegionData` resources into the store from the provided `PerimeterIR`.
-///
-/// Returns resource handles for each `PerimeterRegion`. Returns an empty vec
-/// if no `PerimeterIR` is provided.
+/// Push `PerimeterRegionData` resources into the store from the shared
+/// call-local assembly: one view per selected perimeter authority, using the
+/// current committed region when present and an explicit empty view (indexed
+/// config, empty geometry) otherwise. Never a build-time snapshot.
 fn push_perimeter_regions(
     store: &mut wasmtime::Store<HostExecutionContext>,
-    perimeter_ir: Option<&slicer_ir::PerimeterIR>,
+    transport: &crate::marshal::transport::LayerTransport<'_>,
     seam_plan_ir: Option<&slicer_ir::SeamPlanIR>,
     layer_index: u32,
-    selection: Option<&crate::selection::LayerSelection>,
 ) -> Result<Vec<Resource<host::PerimeterRegionData>>, wasmtime::Error> {
-    let perimeter_ir = match perimeter_ir {
-        Some(ir) => ir,
-        None => return Ok(Vec::new()),
-    };
-
-    let mut handles = Vec::with_capacity(perimeter_ir.regions.len());
-    for region in &perimeter_ir.regions {
-        if selection.is_some_and(|selection| {
-            perimeter_ir.global_layer_index != layer_index
-                || !selection
-                    .perimeter_configs
-                    .contains_key(&indexed_region_origin(
-                        &region.object_id,
-                        region.region_id,
-                        &region.variant_chain,
-                    ))
-        }) {
-            continue;
-        }
-        let mut data = host::perimeter_region_to_data(region);
-        if let Some(seam_ir) = seam_plan_ir {
-            if let Some(seam) = resolve_seam_for_perimeter_region(region, seam_ir, layer_index) {
-                data.resolved_seam = Some((
-                    host::Point3 {
-                        x: seam.point.x,
-                        y: seam.point.y,
-                        z: seam.point.z,
-                    },
-                    seam.wall_index,
-                ));
+    let mut handles = Vec::with_capacity(transport.perimeters.len());
+    for view in &transport.perimeters {
+        let data = match view.region {
+            Some(region) => {
+                let mut data = host::perimeter_region_to_data(region);
+                if let Some(seam_ir) = seam_plan_ir {
+                    if let Some(seam) =
+                        resolve_seam_for_perimeter_region(region, seam_ir, layer_index)
+                    {
+                        data.resolved_seam = Some((
+                            host::Point3 {
+                                x: seam.point.x,
+                                y: seam.point.y,
+                                z: seam.point.z,
+                            },
+                            seam.wall_index,
+                        ));
+                    }
+                }
+                data
             }
-        }
+            None => host::perimeter_region_to_data(&slicer_ir::PerimeterRegion {
+                object_id: view.origin.object_id.clone(),
+                region_id: view.origin.region_id,
+                variant_chain: view.origin.variant_chain.clone(),
+                ..slicer_ir::PerimeterRegion::default()
+            }),
+        };
         let handle = store.data_mut().push_perimeter_region(data)?;
-        if selection.is_some() {
-            store.data_mut().indexed_region_origins.insert(
-                handle.rep(),
-                crate::marshal::OriginId {
-                    object_id: region.object_id.clone(),
-                    region_id: region.region_id,
-                    variant_chain: region.variant_chain.clone(),
-                },
-            );
-        }
+        store
+            .data_mut()
+            .indexed_region_origins
+            .insert(handle.rep(), view.origin.clone());
         handles.push(handle);
     }
     Ok(handles)
@@ -2703,94 +2615,22 @@ pub(crate) fn resolve_region_tool_index_with_selection(
 }
 
 /// Push enriched `perimeter-region-view` resources for the
-/// `Layer::InfillPostProcess` stage (ADR-0028): one view per `SliceIR` region,
-/// carrying the four partitioned fill polygons copied verbatim from the slice
-/// region (same source `SliceRegionView` uses — NOT re-derived), the
-/// host-resolved tool index, and the wall-source region id. Walls/seams come
-/// from the region's own `PerimeterIR` entry when present; a virtual variant
-/// without its own entry borrows the base region's walls and reports
-/// `wall-source-region-id = some(base)`.
+/// `Layer::InfillPostProcess` stage (ADR-0028) from the shared call-local
+/// assembly: one view per selected source identity, carrying the four
+/// partitioned fill polygons copied verbatim from the current slice region
+/// (same source `SliceRegionView` uses — NOT re-derived), the host-resolved
+/// tool index, and the authorized wall-source id. Walls/seams come from the
+/// region's exact own `PerimeterIR` entry when present; a modifier or painted
+/// variant without its own entry borrows only its explicit parent/base donor.
 fn push_infill_postprocess_regions(
     store: &mut wasmtime::Store<HostExecutionContext>,
-    slice_ir: Option<&slicer_ir::SliceIR>,
-    perimeter_ir: Option<&slicer_ir::PerimeterIR>,
-    region_map: Option<&slicer_ir::RegionMapIR>,
-    layer_index: u32,
-    selection: Option<&crate::selection::LayerSelection>,
+    transport: &crate::marshal::transport::LayerTransport<'_>,
 ) -> Result<Vec<Resource<host::PerimeterRegionData>>, wasmtime::Error> {
-    let empty_perimeter = slicer_ir::PerimeterIR {
-        global_layer_index: layer_index,
-        ..slicer_ir::PerimeterIR::default()
-    };
-    let perimeter = match perimeter_ir {
-        Some(perimeter) => perimeter,
-        None if selection.is_some() => &empty_perimeter,
-        None => return Ok(Vec::new()),
-    };
-    if selection.is_some() && perimeter.global_layer_index != layer_index {
-        return Ok(Vec::new());
-    }
-    // Defensive fallback: without a SliceIR there is nothing to enrich from —
-    // keep the legacy PerimeterIR-driven views (fields default empty/0/None).
-    let Some(slice) = slice_ir else {
-        return push_perimeter_regions(store, perimeter_ir, None, layer_index, selection);
-    };
-
-    let perim_index = perimeter_region_index(perimeter);
-    let full_perim_index: HashMap<_, _> = if selection.is_some() {
-        perimeter
-            .regions
-            .iter()
-            .map(|region| {
-                (
-                    indexed_region_origin(
-                        &region.object_id,
-                        region.region_id,
-                        &region.variant_chain,
-                    ),
-                    region,
-                )
-            })
-            .collect()
-    } else {
-        HashMap::new()
-    };
-    let mut handles = Vec::with_capacity(slice.regions.len());
-    for region in &slice.regions {
-        let origin =
-            indexed_region_origin(&region.object_id, region.region_id, &region.variant_chain);
-        if selection.is_some_and(|selection| {
-            slice.global_layer_index != layer_index
-                || selected_model_target(selection, &origin).is_none()
-        }) {
-            continue;
-        }
-        let own_entry = if selection.is_some() {
-            full_perim_index.get(&origin).copied()
-        } else {
-            perim_index
-                .get(&(&region.object_id, region.region_id))
-                .copied()
-        };
-        let wall_source = wall_source_region_id(own_entry.is_some(), region);
-        // Wall donor: own entry, else the base region's entry (shared walls).
-        let donor = own_entry.or_else(|| {
-            wall_source.and_then(|base| {
-                if selection.is_some() {
-                    full_perim_index
-                        .get(&indexed_region_origin(
-                            &region.object_id,
-                            base,
-                            &region.variant_chain,
-                        ))
-                        .copied()
-                } else {
-                    perim_index.get(&(&region.object_id, base)).copied()
-                }
-            })
-        });
-        let mut data = match donor {
-            Some(p) => host::perimeter_region_to_data(p),
+    let mut handles = Vec::with_capacity(transport.models.len());
+    for view in &transport.models {
+        let region = &view.region;
+        let mut data = match view.perimeter {
+            Some(perimeter) => host::perimeter_region_to_data(perimeter),
             None => host::PerimeterRegionData {
                 object_id: String::new(),
                 region_id: String::new(),
@@ -2805,16 +2645,7 @@ fn push_infill_postprocess_regions(
                 raft_fill: Vec::new(),
                 tool_index: 0,
                 wall_source_region_id: None,
-                variant_chain: region
-                    .variant_chain
-                    .iter()
-                    .map(|(name, value)| {
-                        (
-                            name.clone(),
-                            crate::marshal::leaf::ir_to_wit_paint_value(value),
-                        )
-                    })
-                    .collect(),
+                variant_chain: Vec::new(),
             },
         };
         // The view's identity is the slice region's, not the wall donor's.
@@ -2835,26 +2666,28 @@ fn push_infill_postprocess_regions(
         data.bottom_solid_fill = crate::marshal::ir_to_wit_expolygons(&region.bottom_solid_fill);
         data.bridge_areas = crate::marshal::ir_to_wit_expolygons(&region.bridge_areas);
         data.raft_fill = crate::marshal::ir_to_wit_expolygons(&region.raft_fill);
-        data.tool_index = resolve_region_tool_index_with_selection(
-            &region.variant_chain,
-            region_map,
-            layer_index,
-            &region.object_id,
-            region.region_id,
-            selection,
-        );
-        data.wall_source_region_id = wall_source.map(|id| id.to_string());
+        data.tool_index = region
+            .variant_chain
+            .iter()
+            .find_map(|(semantic, value)| match (semantic.as_str(), value) {
+                ("material", slicer_ir::PaintValue::ToolIndex(tool)) => Some(*tool),
+                _ => None,
+            })
+            .or(view.target.resolved_role_tool)
+            .unwrap_or(0);
+        data.wall_source_region_id = view
+            .wall_source
+            .as_ref()
+            .map(|origin| origin.region_id.to_string());
         let handle = store.data_mut().push_perimeter_region(data)?;
-        if selection.is_some() {
-            store.data_mut().indexed_region_origins.insert(
-                handle.rep(),
-                crate::marshal::OriginId {
-                    object_id: region.object_id.clone(),
-                    region_id: region.region_id,
-                    variant_chain: region.variant_chain.clone(),
-                },
-            );
-        }
+        store.data_mut().indexed_region_origins.insert(
+            handle.rep(),
+            crate::marshal::OriginId {
+                object_id: view.key.object_id.clone(),
+                region_id: view.key.region_id,
+                variant_chain: view.key.variant_chain.clone(),
+            },
+        );
         handles.push(handle);
     }
     Ok(handles)
@@ -3207,6 +3040,82 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
     }
 }
 
+fn build_dispatch_authored_coloring_context(
+    selection: &crate::selection::LayerSelection,
+    config_fields_per_region: &HashMap<
+        crate::marshal::OriginId,
+        HashMap<String, host::ConfigValueStorage>,
+    >,
+) -> crate::marshal::AuthoredColoringContext {
+    let mut granted_regions = std::collections::HashSet::new();
+    let mut region_tools = HashMap::new();
+    for target in &selection.targets {
+        if let crate::selection::LayerTargetSource::Model { key, .. } = &target.source {
+            // Grants and host tool authority retain the delivered SOURCE identity.
+            let origin = crate::marshal::OriginId {
+                object_id: key.object_id.clone(),
+                region_id: key.region_id,
+                variant_chain: key.variant_chain.clone(),
+            };
+            if target.authored_coloring {
+                granted_regions.insert(origin.clone());
+            }
+            if let Some(tool) = target.resolved_role_tool {
+                // Preserve paint-over-extruder precedence: a material-painted
+                // source keeps its paint resolution downstream.
+                let painted = key.variant_chain.iter().any(|(semantic, value)| {
+                    semantic == "material" && matches!(value, slicer_ir::PaintValue::ToolIndex(_))
+                });
+                if !painted {
+                    region_tools.insert(origin, tool);
+                }
+            }
+        }
+    }
+    let context = crate::marshal::AuthoredColoringContext {
+        tool_count: host::derive_tool_count(
+            config_fields_per_region.values(),
+            &host::config_view_to_data(&selection.invocation_config).fields,
+        ),
+        granted_regions,
+        region_tools,
+    };
+    AUTHORED_COLORING_CAPTURE.with(|capture| {
+        if let Some(contexts) = capture.borrow_mut().as_mut() {
+            contexts.push(context.clone());
+        }
+    });
+    context
+}
+
+/// Run a contract witness while capturing the exact contexts constructed by
+/// production Layer dispatch, before either native or WASM commit consumes them.
+/// Capture is thread-local, opt-in, and restored on return or unwind.
+#[doc(hidden)]
+pub fn with_authored_coloring_capture_for_test<R>(
+    run: impl FnOnce() -> R,
+) -> (R, Vec<crate::marshal::AuthoredColoringContext>) {
+    struct Restore(Option<Vec<crate::marshal::AuthoredColoringContext>>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            AUTHORED_COLORING_CAPTURE.with(|capture| {
+                *capture.borrow_mut() = self.0.take();
+            });
+        }
+    }
+    let restore =
+        Restore(AUTHORED_COLORING_CAPTURE.with(|capture| capture.borrow_mut().replace(Vec::new())));
+    let result = run();
+    let contexts = AUTHORED_COLORING_CAPTURE.with(|capture| {
+        capture
+            .borrow_mut()
+            .take()
+            .expect("authored-coloring capture must remain active during dispatch")
+    });
+    drop(restore);
+    (result, contexts)
+}
+
 impl LayerStageRunner for WasmRuntimeDispatcher {
     fn run_stage(
         &self,
@@ -3236,32 +3145,12 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         let effective_config_view = (*selection.invocation_config).clone();
         let mut held_claims_map = HashMap::new();
         let mut config_fields_per_region = HashMap::new();
-        let mut authored_granted_regions = std::collections::HashSet::new();
         for target in &selection.targets {
             if let crate::selection::LayerTargetSource::Model { key, members } = &target.source {
-                if target.authored_coloring {
-                    authored_granted_regions.insert(crate::marshal::OriginId {
-                        object_id: key.object_id.clone(),
-                        region_id: key.region_id,
-                        variant_chain: key.variant_chain.clone(),
-                    });
-                }
                 for member in std::iter::once(key).chain(members.iter()) {
-                    let identity = selection.slice_regions.iter().find(|region| {
-                        region.object_id == member.object_id
-                            && crate::selection::map_space_region_id(
-                                region.region_id,
-                                &region.variant_chain,
-                            ) == member.region_id
-                            && region.variant_chain == member.variant_chain
-                    });
                     let origin = crate::marshal::OriginId {
                         object_id: member.object_id.clone(),
-                        region_id: if stage_export == "Layer::Infill" {
-                            member.region_id
-                        } else {
-                            identity.map_or(member.region_id, |region| region.region_id)
-                        },
+                        region_id: member.region_id,
                         variant_chain: member.variant_chain.clone(),
                     };
                     held_claims_map.insert(origin.clone(), target.held_claims.clone());
@@ -3273,21 +3162,17 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         if stage_export != "Layer::Infill" {
             if let Some(perimeter) = input.perimeter {
                 for region in &perimeter.regions {
+                    // Perimeter products are stored under their exact SOURCE
+                    // identity; the temporary map-space address is never the
+                    // delivered key.
                     let authority = crate::marshal::OriginId {
                         object_id: region.object_id.clone(),
-                        region_id: crate::selection::map_space_region_id(
-                            region.region_id,
-                            &region.variant_chain,
-                        ),
+                        region_id: region.region_id,
                         variant_chain: region.variant_chain.clone(),
                     };
                     if let Some(config) = selection.perimeter_configs.get(&authority) {
-                        let delivered = crate::marshal::OriginId {
-                            region_id: region.region_id,
-                            ..authority
-                        };
                         config_fields_per_region
-                            .insert(delivered, host::config_view_to_data(config).fields);
+                            .insert(authority, host::config_view_to_data(config).fields);
                     }
                 }
             }
@@ -3298,13 +3183,14 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             if let crate::selection::LayerTargetSource::SupportCarrier {
                 object_id,
                 region_id,
+                variant_chain,
                 ..
             } = &target.source
             {
                 let origin = crate::marshal::OriginId {
                     object_id: object_id.clone(),
                     region_id: *region_id,
-                    variant_chain: Vec::new(),
+                    variant_chain: variant_chain.clone(),
                 };
                 if model_origins.contains(&origin) {
                     return Err(slicer_ir::LayerStageError::FatalModule {
@@ -3315,7 +3201,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
                         ),
                     });
                 }
-                // Distinct carrier provenance may share a compatibility origin;
+                // Distinct carrier provenance may share a full source origin;
                 // every such handle explicitly carries invocation authority.
                 held_claims_map.insert(origin.clone(), target.held_claims.clone());
                 config_fields_per_region.insert(
@@ -3324,13 +3210,17 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
                 );
             }
         }
-        let authored_coloring_ctx = crate::marshal::AuthoredColoringContext {
-            tool_count: host::derive_tool_count(
-                config_fields_per_region.values(),
-                &host::config_view_to_data(&effective_config_view).fields,
-            ),
-            granted_regions: authored_granted_regions,
-        };
+        let authored_coloring_ctx =
+            build_dispatch_authored_coloring_context(selection, &config_fields_per_region);
+        let transport = crate::marshal::transport::assemble_layer_transport(
+            selection,
+            layer.index,
+            input.slice,
+            input.perimeter,
+            input.support_plan.as_deref(),
+            input.prepared_regions,
+            input.surface_classification,
+        );
         if let Some(entry) = &module.native_entry {
             let stage_export = slicer_schema::stage_by_id(stage_id)
                 .map(|s| s.stage_id)
@@ -3352,6 +3242,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
                 &input,
                 module,
                 selection,
+                &transport,
                 layer.is_raft,
             );
             let response =
@@ -3383,7 +3274,6 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             stage_id,
             module_id_str,
             module_id_str,
-            &module.claims,
             layer,
             module.wasm_component.as_ref(),
             &module.instance_pool,
@@ -3400,15 +3290,11 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             input.seam_plan.as_deref(),
             input.support_plan.as_deref(),
             input.slice,
-            input.perimeter,
             input.layer_collection,
             input.surface_classification,
-            input.prepared_regions,
-            input.prepared_perimeter_source_regions,
-            input.region_map.as_deref(),
             input.infill,
             input.lightning_tree_ir.as_deref(),
-            selection,
+            &transport,
         ) {
             Ok(ctx) => ctx,
             Err(e) if e.phase == DispatchPhase::MissingComponent => {
@@ -3988,7 +3874,7 @@ pub fn build_paint_layer_data_for_test(
     layer_index: u32,
     lightning_tree_ir: &slicer_ir::LightningTreeIR,
 ) -> PaintRegionLayerData {
-    build_paint_layer_data_with_plan(None, layer_index, None, Some(lightning_tree_ir), false)
+    build_paint_layer_data_with_plan(None, layer_index, None, Some(lightning_tree_ir), false).0
 }
 
 /// Build support-plan paint-layer data for dispatch contract tests.
@@ -3997,7 +3883,7 @@ pub fn build_support_plan_layer_data_for_test(
     layer_index: u32,
     support_plan_ir: &slicer_ir::SupportPlanIR,
 ) -> PaintRegionLayerData {
-    build_paint_layer_data_with_plan(None, layer_index, Some(support_plan_ir), None, false)
+    build_paint_layer_data_with_plan(None, layer_index, Some(support_plan_ir), None, false).0
 }
 
 /// Deconstruct a `HostExecutionContext` returned from `dispatch_layer_call` into
@@ -4159,7 +4045,16 @@ pub fn deconstruct_layer_ctx(
                         global_layer_index: layer_index,
                         object_id: wit_key.object_id.clone(),
                         region_id,
-                        variant_chain: Vec::new(),
+                        variant_chain: wit_key
+                            .variant_chain
+                            .iter()
+                            .map(|(name, value)| {
+                                (
+                                    name.clone(),
+                                    crate::marshal::leaf::convert_paint_value(value),
+                                )
+                            })
+                            .collect(),
                     };
                     let ir_polys: Vec<slicer_ir::ExPolygon> = polys
                         .iter()
@@ -4198,7 +4093,16 @@ pub fn deconstruct_layer_ctx(
                         global_layer_index: layer_index,
                         object_id: wit_key.object_id.clone(),
                         region_id,
-                        variant_chain: Vec::new(),
+                        variant_chain: wit_key
+                            .variant_chain
+                            .iter()
+                            .map(|(name, value)| {
+                                (
+                                    name.clone(),
+                                    crate::marshal::leaf::convert_paint_value(value),
+                                )
+                            })
+                            .collect(),
                     };
                     Some((ir_key, *path_idx, *vertex_idx, *z))
                 })

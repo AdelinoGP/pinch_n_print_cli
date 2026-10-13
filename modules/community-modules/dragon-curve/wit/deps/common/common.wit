@@ -43,7 +43,7 @@ interface profiling {
 
 interface host-services {
     use slicer:types/geometry.{point3, bounding-box3, ex-polygon, polygon, thick-polyline};
-    use slicer:ir-handles/ir-handles.{extrusion-line};
+    use slicer:ir-handles/ir-handles@1.0.0.{extrusion-line};
     type object-id = string;
     enum log-level { trace, debug, info, warn, error }
     log: func(level: log-level, message: string);

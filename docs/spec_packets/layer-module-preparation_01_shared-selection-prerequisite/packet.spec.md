@@ -1,5 +1,5 @@
 ---
-status: active
+status: implemented
 packet: layer-module-preparation_01_shared-selection-prerequisite
 task_ids:
   - TASK-572

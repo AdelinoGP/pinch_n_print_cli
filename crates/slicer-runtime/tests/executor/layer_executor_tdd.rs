@@ -17,6 +17,7 @@ use slicer_ir::LayerStageCommit;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigValue, ConfigView, GlobalLayer, MeshIR, ObjectMesh, Point3,
     RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SemVer, StageId, Transform3d,
+    CURRENT_INFILL_IR_SCHEMA_VERSION, CURRENT_SUPPORT_IR_SCHEMA_VERSION,
 };
 use slicer_runtime::{
     build_execution_plan, build_wasm_instance_pool, execute_per_layer, Blackboard, CompiledModule,
@@ -851,7 +852,8 @@ fn perim_ir_two_regions() -> slicer_ir::PerimeterIR {
 
 fn infill_ir_two_regions() -> slicer_ir::InfillIR {
     slicer_ir::InfillIR {
-        schema_version: semver(1, 0, 0),
+        // Current-behavior output fixture: sources the owning InfillIR constant (V1).
+        schema_version: CURRENT_INFILL_IR_SCHEMA_VERSION,
         global_layer_index: 0,
         regions: vec![
             slicer_ir::InfillRegion {
@@ -875,7 +877,8 @@ fn infill_ir_two_regions() -> slicer_ir::InfillIR {
 // exhaustive: SupportIR explicit test fixture preserves boundary data
 fn support_ir_simple() -> slicer_ir::SupportIR {
     slicer_ir::SupportIR {
-        schema_version: semver(1, 0, 0),
+        // Current-behavior output fixture: sources the owning SupportIR constant (V1).
+        schema_version: CURRENT_SUPPORT_IR_SCHEMA_VERSION,
         global_layer_index: 0,
         // exhaustive: support identity contract fixture pins the full family/body/demand/object/region/role tuple
         entries: vec![slicer_ir::SupportEntry {
@@ -889,6 +892,8 @@ fn support_ir_simple() -> slicer_ir::SupportIR {
                 mk_path_role(100.0, slicer_ir::ExtrusionRole::SupportMaterial),
                 mk_path_role(101.0, slicer_ir::ExtrusionRole::SupportInterface),
             ],
+            // Exact source chain is empty: synthetic boundary row with no painted source region.
+            variant_chain: Vec::new(),
         }],
     }
     // exhaustive: SupportIR explicit test fixture preserves boundary data

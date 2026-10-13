@@ -255,15 +255,20 @@ impl Blackboard {
     ///
     /// Family planners are independent writers of family-attributed entries,
     /// so their outputs must be combined at this seam before the immutable
-    /// blackboard slot is published.
+    /// blackboard slot is published. Entries sharing a full source origin —
+    /// the `(global_layer_index, object_id, region_id, variant_chain)`
+    /// identity, chain compared exactly — are rejected, and the error carries
+    /// that exact offending identity.
     pub fn commit_support_plan(&mut self, ir: Arc<SupportPlanIR>) -> Result<(), BlackboardError> {
         let Some(existing) = self.support_plan.as_ref() else {
-            if let Some((global_layer_index, object_id, region_id)) = ir.duplicate_region_identity()
+            if let Some((global_layer_index, object_id, region_id, variant_chain)) =
+                ir.duplicate_region_identity()
             {
                 return Err(BlackboardError::DuplicateSupportPlanEntry {
                     global_layer_index,
                     object_id,
                     region_id,
+                    variant_chain,
                 });
             }
             self.support_plan = Some(ir);
@@ -278,12 +283,14 @@ impl Blackboard {
 
         let mut merged = (**existing).clone();
         merged.entries.extend(ir.entries.iter().cloned());
-        if let Some((global_layer_index, object_id, region_id)) = merged.duplicate_region_identity()
+        if let Some((global_layer_index, object_id, region_id, variant_chain)) =
+            merged.duplicate_region_identity()
         {
             return Err(BlackboardError::DuplicateSupportPlanEntry {
                 global_layer_index,
                 object_id,
                 region_id,
+                variant_chain,
             });
         }
         merged.raft_plan = match (merged.raft_plan.take(), ir.raft_plan.clone()) {

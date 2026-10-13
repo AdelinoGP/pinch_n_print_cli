@@ -13,7 +13,8 @@ use crate::marshal::accumulators::{
     SlicePostprocessCollected, SupportOutputCollected,
 };
 use crate::marshal::leaf::{
-    convert_extrusion_path, convert_extrusion_role, convert_wall_loop, wit_to_ir_expolygons,
+    convert_extrusion_path, convert_extrusion_role, convert_paint_value, convert_wall_loop,
+    wit_to_ir_expolygons,
 };
 use crate::marshal::origin::{MarshalError, OriginBucket, OriginId};
 
@@ -348,6 +349,13 @@ pub fn authored_coloring_granted(
 /// `granted_regions` holds the full [`OriginId`] for every region where
 /// [`authored_coloring_granted`] returned `true` for the dispatching module.
 /// Absence from the set is a denial — the default is deny.
+///
+/// `region_tools` carries the build-time host-only region tool (the exact
+/// resolved `extensions["extruder"]` authority captured as
+/// `SelectedLayerTarget::resolved_role_tool`) for committed full origins. It is
+/// host metadata and is never surfaced through a module config view. Regions
+/// whose chain already selects a paint-derived material tool are not inserted,
+/// so the paint-over-extruder precedence cannot flip.
 #[derive(Debug, Clone, Default)]
 pub struct AuthoredColoringContext {
     /// Number of tools visible to the guest via the `tool-count` host function.
@@ -355,6 +363,8 @@ pub struct AuthoredColoringContext {
     pub tool_count: u32,
     /// Full origins, including ordered variant chains, the module is granted to color.
     pub granted_regions: std::collections::HashSet<OriginId>,
+    /// Host-only resolved region tool per full origin, keyed by source identity.
+    pub region_tools: std::collections::HashMap<OriginId, u32>,
 }
 
 impl AuthoredColoringContext {
@@ -364,12 +374,17 @@ impl AuthoredColoringContext {
     }
 }
 
-/// Apply the authored-coloring grant to committed infill regions.
+/// Apply the authored-coloring grant and the host-only region tool to
+/// committed infill regions.
 ///
-/// Every `tool_index` that is not covered by an active grant (no context, region
-/// not granted, or index out of range) is silently reset to `None`, which means
-/// "host resolves the region tool" — i.e. stripped back to the region tool.
-/// This is never an error: an ungranted module simply has no effect.
+/// Every `tool_index` that is not kept by an active grant (no context, region
+/// not granted, or index out of range) loses its authored value, which means
+/// "host resolves the region tool". A path left without a kept authored tool
+/// is then attributed the context's host-only region tool for its origin when
+/// one was supplied, so the build-time `resolved_role_tool` authority reaches
+/// committed output instead of being re-resolved from the live region map at
+/// invocation time. Absent origins keep `None`. This is never an error: an
+/// ungranted module simply has no authored effect.
 fn enforce_authored_coloring(
     regions: &mut [slicer_ir::InfillRegion],
     authored: Option<&AuthoredColoringContext>,
@@ -380,6 +395,7 @@ fn enforce_authored_coloring(
             region_id: region.region_id,
             variant_chain: region.variant_chain.clone(),
         };
+        let host_tool = authored.and_then(|ctx| ctx.region_tools.get(&origin).copied());
         for path in region
             .sparse_infill
             .iter_mut()
@@ -387,13 +403,12 @@ fn enforce_authored_coloring(
             .chain(region.ironing.iter_mut())
         {
             let keep = match (path.tool_index, authored) {
-                (None, _) => continue,
                 (Some(t), Some(ctx)) => ctx.allows(&origin, t),
                 (Some(_), None) => false,
+                // No authored tool: attribute the host-only region tool below.
+                (None, _) => false,
             };
-            if !keep {
-                path.tool_index = None;
-            }
+            path.tool_index = path.tool_index.filter(|_| keep).or(host_tool);
         }
     }
 }
@@ -414,6 +429,9 @@ fn enforce_authored_coloring(
 /// any authored tool without an active grant (or out of range) is silently
 /// stripped to `None` here, so downstream consumers see only validated values.
 /// `None` means "no module is granted" — every authored tool is stripped.
+/// A path with no kept authored tool is attributed the context's host-only
+/// region tool for its origin when one is present, so the build-time
+/// `resolved_role_tool` authority reaches committed output.
 pub fn convert_infill_output(
     collected: &InfillOutputCollected,
     layer_index: u32,
@@ -494,6 +512,9 @@ pub fn convert_infill_output(
         slicer_ir::slice_ir::InfillRaftRegion {
             object_id: o.object_id.clone(),
             region_id: o.region_id,
+            // The full SOURCE chain commits with the raft group; empty is only
+            // the exact identity of a genuinely chain-less source.
+            variant_chain: o.variant_chain.clone(),
             polygons: Vec::new(),
         }
     }
@@ -510,11 +531,7 @@ pub fn convert_infill_output(
     let raft_regions = raft_bucket.into_regions();
 
     Ok(slicer_ir::InfillIR {
-        schema_version: slicer_ir::SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
+        schema_version: slicer_ir::CURRENT_INFILL_IR_SCHEMA_VERSION,
         global_layer_index: layer_index,
         regions,
         raft_regions,
@@ -658,6 +675,7 @@ pub fn convert_support_output_with_plan(
     struct SupportRegion {
         object_id: String,
         region_id: u64,
+        variant_chain: Vec<(String, slicer_ir::PaintValue)>,
         family_id: String,
         body_id: String,
         demand_ids: Vec<String>,
@@ -671,6 +689,7 @@ pub fn convert_support_output_with_plan(
         SupportRegion {
             object_id: o.object_id.clone(),
             region_id: o.region_id,
+            variant_chain: o.variant_chain.clone(),
             family_id: String::new(),
             body_id: String::new(),
             demand_ids: Vec::new(),
@@ -724,6 +743,11 @@ pub fn convert_support_output_with_plan(
                     e.global_layer_index == layer_index as i32
                         && e.object_id == r.object_id
                         && e.region_id == r.region_id
+                        // The plan joins by FULL origin: a plan entry for a
+                        // sibling chain of the same (object, region) is a
+                        // different source identity and must not supply this
+                        // region's family/body/demand attribution.
+                        && e.variant_chain == r.variant_chain
                 })
                 .flat_map(|e| {
                     let body_ids = if e.body_ids.is_empty() {
@@ -753,12 +777,14 @@ pub fn convert_support_output_with_plan(
                         .filter(|(_, paths)| !paths.is_empty())
                         .map({
                             let object_id = r.object_id.clone();
+                            let variant_chain = r.variant_chain.clone();
                             move |(role, paths)| slicer_ir::SupportEntry {
                                 family_id: family_id.clone(),
                                 body_id: body_id.clone(),
                                 demand_ids: demand_ids.clone(),
                                 object_id: object_id.clone(),
                                 region_id: r.region_id,
+                                variant_chain: variant_chain.clone(),
                                 role: *role,
                                 paths: paths.clone(),
                             }
@@ -769,11 +795,7 @@ pub fn convert_support_output_with_plan(
         .collect();
 
     Ok(slicer_ir::SupportIR {
-        schema_version: slicer_ir::SemVer {
-            major: 2,
-            minor: 0,
-            patch: 0,
-        },
+        schema_version: slicer_ir::CURRENT_SUPPORT_IR_SCHEMA_VERSION,
         global_layer_index: layer_index,
         entries,
     })
@@ -1021,9 +1043,19 @@ pub fn merge_slice_postprocess_into(
 
     let find_region = |regions: &[slicer_ir::SlicedRegion], key: &RegionKey| -> Option<usize> {
         let rid = key.region_id.parse::<u64>().ok()?;
-        regions
+        // Full source identity `(object_id, region_id, ordered variant_chain)`:
+        // the WIT `region-key` carries the chain, and a pair-only match would
+        // fold a paint-minted variant onto a chain sibling's slice region.
+        // The chain is compared exactly — never sorted or normalized — and an
+        // empty chain is a real value that only matches an empty chain.
+        let chain = key
+            .variant_chain
             .iter()
-            .position(|r| r.object_id == key.object_id && r.region_id == rid)
+            .map(|(semantic, value)| (semantic.clone(), convert_paint_value(value)))
+            .collect::<Vec<(String, slicer_ir::PaintValue)>>();
+        regions.iter().position(|r| {
+            r.object_id == key.object_id && r.region_id == rid && r.variant_chain == chain
+        })
     };
 
     for (i, (key, polys)) in collected.polygon_updates.iter().enumerate() {

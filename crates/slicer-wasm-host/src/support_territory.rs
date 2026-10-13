@@ -23,7 +23,7 @@
 //! counterpart (see `docs/DEVIATION_LOG.md`).
 
 use slicer_core::polygon_ops::{difference, intersection, offset, OffsetJoinType};
-use slicer_ir::{ExPolygon, SupportAnalysisIR};
+use slicer_ir::{ExPolygon, PaintValue, SupportAnalysisIR};
 use slicer_sdk::prepass_types::SupportAnalysisView;
 
 use crate::marshal::native::support_analysis_view_from_ir;
@@ -66,18 +66,24 @@ impl TerritoryClipper {
             .any(|entry| entry.object_id == object_id && entry.global_support_layer_index == layer)
     }
 
-    /// Clip one body to what `family_id` may print for `region_id` at
-    /// `(object_id, layer)`. Returns `None` when the layer carries no
-    /// territory (nothing to clip against).
+    /// Clip one body to what `family_id` may print for the full source origin
+    /// `(object_id, layer, region_id, variant_chain)`. Returns `None` when the
+    /// layer carries no territory (nothing to clip against) and when the origin
+    /// is a base region (holds no own territory; the family partition below
+    /// still applies).
     pub fn clip(
         &self,
         object_id: &str,
         layer: u32,
         region_id: &str,
+        variant_chain: &[(String, PaintValue)],
         family_id: &str,
         polygons: &[ExPolygon],
     ) -> Option<Vec<ExPolygon>> {
-        if let Some(own) = self.view.region_territory(object_id, layer, region_id) {
+        if let Some(own) = self
+            .view
+            .region_territory(object_id, layer, region_id, variant_chain)
+        {
             return Some(intersection(polygons, own));
         }
         let partition = self.view.territory_partition(object_id, layer, family_id)?;

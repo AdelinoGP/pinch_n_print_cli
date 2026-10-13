@@ -48,17 +48,17 @@ fn pt(x: f32, y: f32, z: f32) -> Point3WithWidth {
 
 /// Wrap a single point into a `SupportPlanEntry` at the given global layer.
 fn entry(global_layer_index: i32, p: Point3WithWidth) -> SupportPlanEntry {
-    // exhaustive: support-plan identity fixture; SupportPlanEntry has no Default impl and FRU would let a new plan field default silently
+    // SDK `SupportPlanEntry` is Default-bearing. Pin the identity and
+    // skeleton fields that carry this test's meaning; let the
+    // renderer-facing tail default. These fixtures describe a genuinely
+    // chain-less source, so the defaulted `variant_chain` is the exact
+    // empty identity, never a wildcard.
     SupportPlanEntry {
         global_layer_index,
         object_id: "obj".to_string(),
         region_id: "0".to_string(),
         family_id: "tree".into(),
-        demand_ids: vec![],
-        body_ids: vec![],
         anchor_layer_index: global_layer_index.max(0) as u32,
-        anchor_z: 0,
-        roles: vec![],
         skeleton: Some(slicer_ir::SupportPlanSkeleton {
             points: vec![Point3 {
                 x: p.x,
@@ -67,9 +67,7 @@ fn entry(global_layer_index: i32, p: Point3WithWidth) -> SupportPlanEntry {
             }],
             wall_counts: vec![0],
         }),
-        capabilities: vec![],
-        provenance: vec![],
-        decline_reason: None,
+        ..Default::default()
     }
 }
 

@@ -3606,6 +3606,7 @@ dependencies = [
  "toml 0.8.23",
  "top-surface-ironing",
  "traditional-support",
+ "traditional-support-planner",
  "tree-support",
  "tree-support-planner",
  "wasmtime",

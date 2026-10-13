@@ -13,8 +13,9 @@ use slicer_sdk::host::{self, ClipOperation};
 use slicer_sdk::prepass_builders::SupportGeometryOutput;
 use slicer_sdk::prepass_types::{
     LayerPlanView, LayerPlanViewEntry, MeshObjectView, RegionSegmentationView,
-    RegionSegmentationViewEntry, SupportAnalysisCandidate, SupportAnalysisGeometryEntry,
-    SupportAnalysisView, SupportFamilyAssignment, SupportGeometryView, SupportGeometryViewEntry,
+    RegionSegmentationViewEntry, RegionSourceOrigin, SupportAnalysisCandidate,
+    SupportAnalysisGeometryEntry, SupportAnalysisView, SupportFamilyAssignment,
+    SupportGeometryView, SupportGeometryViewEntry,
 };
 use slicer_sdk::traits::PrepassModule;
 use slicer_wasm_host::exact_z_query::ExactZQueryService;
@@ -198,7 +199,10 @@ fn regions(object_id: &str) -> RegionSegmentationView {
             .map(|layer_index| RegionSegmentationViewEntry {
                 object_id: object_id.into(),
                 layer_index,
-                region_ids: vec!["0".into()],
+                region_origins: vec![RegionSourceOrigin {
+                    region_id: "0".into(),
+                    variant_chain: Vec::new(),
+                }],
             })
             .collect(),
         region_support_configs: vec![],
@@ -215,6 +219,9 @@ fn tree_assignments(object_id: &str, region_ids: &[&str]) -> Vec<SupportFamilyAs
         .map(|region_id| SupportFamilyAssignment {
             object_id: object_id.into(),
             region_id: (*region_id).into(),
+            // These fixtures describe genuinely chain-less sources: the empty
+            // chain is an exact identity, never a wildcard.
+            variant_chain: Vec::new(),
             family_id: "tree".into(),
         })
         .collect()
@@ -395,6 +402,7 @@ fn declined_entry(reason: SupportPlanDeclineReason) -> SupportPlanEntry {
         capabilities: vec![],
         provenance: vec!["tree-planner".into()],
         decline_reason: Some(reason),
+        variant_chain: Vec::new(),
     }
 }
 
@@ -703,6 +711,7 @@ fn radius_aware_collision() {
                     object_id: "radius".into(),
                     region_id: "0".into(),
                     outlines: vec![blocking.clone()],
+                    ..Default::default()
                 })
                 .collect(),
         },
@@ -1135,7 +1144,10 @@ fn run_multi_layer_demand_on_plan(
             .map(|layer| RegionSegmentationViewEntry {
                 object_id: "coarse".into(),
                 layer_index: layer.global_layer_index,
-                region_ids: vec!["0".into()],
+                region_origins: vec![RegionSourceOrigin {
+                    region_id: "0".into(),
+                    variant_chain: Vec::new(),
+                }],
             })
             .collect(),
         region_support_configs: vec![],
@@ -1697,12 +1709,27 @@ fn staggered_region_runs_do_not_pair_across_region_boundaries() {
             .map(|(index, layer)| RegionSegmentationViewEntry {
                 object_id: object.object_id.clone(),
                 layer_index: layer.global_layer_index,
-                region_ids: if index < 3 {
-                    vec!["0".into()]
+                region_origins: if index < 3 {
+                    vec![RegionSourceOrigin {
+                        region_id: "0".into(),
+                        variant_chain: Vec::new(),
+                    }]
                 } else if index <= 4 {
-                    vec!["0".into(), "1".into()]
+                    vec![
+                        RegionSourceOrigin {
+                            region_id: "0".into(),
+                            variant_chain: Vec::new(),
+                        },
+                        RegionSourceOrigin {
+                            region_id: "1".into(),
+                            variant_chain: Vec::new(),
+                        },
+                    ]
                 } else {
-                    vec!["1".into()]
+                    vec![RegionSourceOrigin {
+                        region_id: "1".into(),
+                        variant_chain: Vec::new(),
+                    }]
                 },
             })
             .collect(),
@@ -2040,7 +2067,16 @@ fn run_two_region_demand(pitch_mm: f64, distinct_grouping_brackets: bool) -> Sup
             .map(|layer_index| RegionSegmentationViewEntry {
                 object_id: object.object_id.clone(),
                 layer_index,
-                region_ids: vec!["0".into(), "1".into()],
+                region_origins: vec![
+                    RegionSourceOrigin {
+                        region_id: "0".into(),
+                        variant_chain: Vec::new(),
+                    },
+                    RegionSourceOrigin {
+                        region_id: "1".into(),
+                        variant_chain: Vec::new(),
+                    },
+                ],
             })
             .collect(),
         region_support_configs: vec![],
@@ -2085,11 +2121,13 @@ fn run_two_region_demand(pitch_mm: f64, distinct_grouping_brackets: bool) -> Sup
             SupportFamilyAssignment {
                 object_id: object.object_id.clone(),
                 region_id: "0".into(),
+                variant_chain: Vec::new(),
                 family_id: "tree".into(),
             },
             SupportFamilyAssignment {
                 object_id: object.object_id.clone(),
                 region_id: "1".into(),
+                variant_chain: Vec::new(),
                 family_id: "tree".into(),
             },
         ],
@@ -2314,6 +2352,7 @@ fn invalid_body_rejected() {
                     object_id: "invalid".into(),
                     region_id: "0".into(),
                     outlines: vec![blocking.clone()],
+                    ..Default::default()
                 })
                 .collect(),
         },
@@ -2441,6 +2480,7 @@ fn invalid_body_rejected() {
             capabilities: vec![],
             provenance: vec!["tree-planner".into()],
             decline_reason: None,
+            variant_chain: Vec::new(),
         }],
         ..Default::default()
     };
@@ -2451,9 +2491,14 @@ fn invalid_body_rejected() {
     // Without the territory + producer below the entry is rejected earlier
     // with `NoAssignment`, and this fixture would stop testing routing cells.
     let mut territory = slicer_ir::SupportAnalysisIR::default();
-    territory
-        .family_assignments
-        .insert(("object-a".to_string(), 9), "tree".to_string());
+    territory.family_assignments.insert(
+        slicer_ir::slice_ir::SupportSourceKey {
+            object_id: "object-a".to_string(),
+            region_id: 9,
+            variant_chain: Vec::new(),
+        },
+        "tree".to_string(),
+    );
     let producer = SupportPlanProducer {
         module_id: "com.core.tree-support-planner".into(),
         claims: vec!["support-planner".into(), "support-family:tree".into()],
@@ -2556,6 +2601,7 @@ fn non_tree_family_candidates_are_skipped() {
                 family_assignments: vec![SupportFamilyAssignment {
                     object_id: "non-tree".into(),
                     region_id: "0".into(),
+                    variant_chain: Vec::new(),
                     family_id: "traditional".into(),
                 }],
                 ..Default::default()
@@ -2637,11 +2683,13 @@ fn foreign_territory_bars_tree_roles_and_skeleton() {
         SupportFamilyAssignment {
             object_id: "territory".into(),
             region_id: "0".into(),
+            variant_chain: Vec::new(),
             family_id: "tree".into(),
         },
         SupportFamilyAssignment {
             object_id: "territory".into(),
             region_id: "1".into(),
+            variant_chain: Vec::new(),
             family_id: "traditional".into(),
         },
     ];
@@ -2657,6 +2705,7 @@ fn foreign_territory_bars_tree_roles_and_skeleton() {
                     object_id: "territory".into(),
                     region_id: "1".into(),
                     polygons: vec![foreign.clone()],
+                    ..Default::default()
                 })
                 .collect(),
             ..Default::default()

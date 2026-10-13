@@ -35,6 +35,8 @@ fn support_plan() -> SupportPlanIR {
             capabilities: vec!["structural".into()],
             provenance: vec!["test".into()],
             decline_reason: None,
+            // Genuinely chain-empty fixture source: the parity slice's region declares no paint variant.
+            variant_chain: Vec::new(),
         }],
         raft_plan: None,
     }

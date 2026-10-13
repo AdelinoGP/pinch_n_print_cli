@@ -712,10 +712,11 @@ fn stage_miss_is_fatal_at_instantiation() {
     // empirically, not just read": wasmtime names only what the host
     // wanted, so a "found @x.y.z" fragment would be fabricated.
     assert!(
-        layer_message
-            .contains("no exported instance named `slicer:layer-perimeters/perimeters@1.0.0`"),
-        "FatalModule.message must carry the engine's expected-only miss \
-         diagnostic naming the perimeters interface; got: {layer_message}",
+        layer_message.contains(
+            "component imports instance `slicer:support-queries/support-queries@1.0.0`, but a matching implementation was not found in the linker"
+        ),
+        "FatalModule.message must carry the typed-instantiation rejection for the missing \
+         support-queries implementation; got: {layer_message}",
     );
     assert!(
         !layer_message.contains("found @"),

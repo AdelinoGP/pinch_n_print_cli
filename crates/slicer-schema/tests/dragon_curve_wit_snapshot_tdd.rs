@@ -26,7 +26,9 @@
 //!
 //! ```text
 //! cp crates/slicer-schema/wit/deps/{types,config,common,ir-types}.wit \
-//!    modules/community-modules/dragon-curve/wit/deps/<pkg>/
+//!    modules/community-modules/dragon-curve/wit/deps/<pkg>/<pkg>.wit
+//! cp crates/slicer-schema/wit/deps/{support-queries,lightning-queries}/<pkg>.wit \
+//!    modules/community-modules/dragon-curve/wit/deps/<pkg>/<pkg>.wit
 //! cd modules/community-modules/dragon-curve && make
 //! ```
 //!
@@ -46,14 +48,24 @@ fn workspace_root() -> PathBuf {
         .expect("workspace root must resolve")
 }
 
-/// Canonical WIT deps live flat (`deps/types.wit`); the example vendors them in
-/// per-package directories (`deps/types/types.wit`). Pair them explicitly so a
-/// missing vendored file fails as a named absence rather than a silent skip.
+/// Canonical WIT deps live flat (`deps/types.wit`) or in per-package
+/// directories (`deps/support-queries/support-queries.wit`); the example vendors
+/// all of them in per-package directories (`deps/types/types.wit`). Pair them
+/// explicitly so a missing vendored file fails as a named absence rather than
+/// a silent skip.
 const PACKAGES: &[(&str, &str)] = &[
     ("types.wit", "types/types.wit"),
     ("config.wit", "config/config.wit"),
     ("common.wit", "common/common.wit"),
     ("ir-types.wit", "ir-types/ir-types.wit"),
+    (
+        "support-queries/support-queries.wit",
+        "support-queries/support-queries.wit",
+    ),
+    (
+        "lightning-queries/lightning-queries.wit",
+        "lightning-queries/lightning-queries.wit",
+    ),
 ];
 
 #[test]
@@ -92,16 +104,17 @@ fn dragon_curve_vendored_wit_matches_canonical() {
              fails typed instantiation at first dispatch (measurably, the \
              committed artifact silently stopped loading this way).\n\
              Refresh the whole snapshot to canonical and rebuild the artifact:\n\
-             copy each canonical crates/slicer-schema/wit/deps/<pkg>.wit into the \
-             matching modules/community-modules/dragon-curve/wit/deps/<pkg>/ \
-             directory, then run `make` in the example directory, and commit the \
+             copy each canonical package file (flat crates/slicer-schema/wit/deps/<pkg>.wit \
+             or its per-package deps/<pkg>/<pkg>.wit directory) into the matching \
+             modules/community-modules/dragon-curve/wit/deps/<pkg>/<pkg>.wit path, \
+             then run `make` in the example directory, and commit the \
              rebuilt dragon-curve.wasm.\n"
         );
     }
 }
 
 /// The example's own world file must track canonical too: it names the exported
-/// interface the host binds (`slicer:layer-infill/infill@1.0.0#run`), so a
+/// interface the host binds (`slicer:layer-infill/infill@2.0.0#run`), so a
 /// divergence there breaks dispatch for the same structural reason.
 #[test]
 fn dragon_curve_world_matches_canonical() {

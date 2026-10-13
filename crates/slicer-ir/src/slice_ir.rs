@@ -302,16 +302,28 @@ pub const CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
 /// Schema version for `SupportPlanIR`. Bumped to 2.2.0 by packet 238c for the
 /// additive `SupportPlanRole::BaseInterface` / `ExtrusionRole::SupportBaseInterface`
 /// variants.
+///
+/// Minor bump to 2.3.0 (packet layer-module-preparation_01, Step I1) adds the
+/// additive `#[serde(default)]` ordered `SupportPlanEntry.variant_chain`
+/// carrier. IR Versioning Contract: "New optional field added | Minor
+/// (1.0 → 1.1) | Yes — old modules ignore it". The field serializes explicitly
+/// (no `skip_serializing_if`), so an empty chain round-trips as `[]`.
 pub const CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 2,
-    minor: 2,
+    minor: 3,
     patch: 0,
 };
 
-/// Schema version for `SupportGeometryIR`. Initial 1.0.0 — no bumps recorded
-/// in `docs/02_ir_schemas.md` as of TASK-200b.
+/// Schema version for `SupportGeometryIR`. Initial 1.0.0 — major version
+/// bumped to 2.0.0 by packet layer-module-preparation_01 (Step I1): the
+/// `entries` map key `SupportGeometryKey` gains the ordered `variant_chain`
+/// identity component, so the serialized key/identity encoding changes
+/// ("Field type changed | Major (1.x → 2.0)" in the IR Versioning Contract
+/// table — the widening applies even though the map field spelling is
+/// unchanged). The widened key retains `global_support_layer_index`,
+/// `object_id`, `region_id`, and the `u32::MAX` intermediate sentinel.
 pub const CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION: SemVer = SemVer {
-    major: 1,
+    major: 2,
     minor: 0,
     patch: 0,
 };
@@ -327,17 +339,29 @@ pub const CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION: SemVer = SemVer {
 /// `support_territory` map — the per-layer XY territory owned by each minted
 /// modifier sub-region, so support families that disagree across a modifier
 /// boundary can be clipped to their own side instead of annihilated.
+///
+/// Major bump to 2.0.0 by packet layer-module-preparation_01 (Step I1): the
+/// geometry-map keys are the widened `SupportGeometryKey` (ordered
+/// `variant_chain` added; "Field type changed | Major (1.x → 2.0)" in the IR
+/// Versioning Contract table), and `family_assignments` moves from
+/// `(ObjectId, RegionId)` to the chain-bearing `SupportSourceKey`. Both changes
+/// alter source-selection identity at the same owner.
 pub const CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION: SemVer = SemVer {
-    major: 1,
-    minor: 3,
+    major: 2,
+    minor: 0,
     patch: 0,
 };
 
 /// Schema version for `LightningTreeIR`. Initial 1.0.0 — packet 137 lands
 /// the contract; algorithm ships in 138/139.
+///
+/// Minor bump to 1.1.0 (packet layer-module-preparation_01, Step I1) adds the
+/// additive `#[serde(default)]` ordered `LightningTreeEntry.variant_chain`
+/// carrier, so source grouping keeps full origin. IR Versioning Contract:
+/// "New optional field added | Minor (1.0 → 1.1) | Yes — old modules ignore it".
 pub const CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
-    minor: 0,
+    minor: 1,
     patch: 0,
 };
 
@@ -367,17 +391,28 @@ pub const CURRENT_PERIMETER_IR_SCHEMA_VERSION: SemVer = SemVer {
 /// Schema version for `InfillIR`. Initial 1.0.0 (TASK-200b); 1.1.0 adds the
 /// additive `InfillRegion.variant_chain` carrier (seam identity), which is
 /// `#[serde(default)]` so pre-1.1.0 fixtures still parse to an empty chain.
+///
+/// Minor bump to 1.2.0 (packet layer-module-preparation_01, Step I1) adds the
+/// additive, `#[serde(default)]` ordered `InfillRaftRegion.variant_chain`
+/// carrier so raft-fill groups commit by full source identity. IR Versioning
+/// Contract: "New optional field added | Minor (1.0 → 1.1) | Yes — old modules
+/// ignore it".
 pub const CURRENT_INFILL_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
-    minor: 1,
+    minor: 2,
     patch: 0,
 };
 
 /// Schema version for `SupportIR`. Bumped to 2.0.0 by packet 220: support
 /// output is now represented as attributed family/body/role entries.
+///
+/// Minor bump to 2.1.0 (packet layer-module-preparation_01, Step I1) adds the
+/// additive `#[serde(default)]` ordered `SupportEntry.variant_chain` carrier,
+/// so printed support rows keep full source origin. IR Versioning Contract:
+/// "New optional field added | Minor (1.0 → 1.1) | Yes — old modules ignore it".
 pub const CURRENT_SUPPORT_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 2,
-    minor: 0,
+    minor: 1,
     patch: 0,
 };
 
@@ -1683,6 +1718,12 @@ pub struct SupportPlanEntry {
     pub provenance: Vec<String>,
     /// Structured reason when this candidate was declined.
     pub decline_reason: Option<SupportPlanDeclineReason>,
+    /// Ordered `(paint_semantic_name, value)` chain of the source region this
+    /// entry was derived from. Empty is an exact identity for a genuinely
+    /// chain-less source, never a wildcard. Serialized explicitly (no
+    /// `skip_serializing_if`) so an empty chain round-trips as `[]`.
+    #[serde(default)]
+    pub variant_chain: Vec<(String, PaintValue)>,
 }
 
 /// Configuration-only raft plan emitted during support planning.
@@ -1734,9 +1775,15 @@ impl Default for SupportPlanIR {
 
 impl SupportPlanIR {
     /// Returns the first duplicate support region identity, preserving entry
-    /// order. `family_id` is producer provenance and is intentionally not part
-    /// of the identity used at the blackboard merge seam.
-    pub fn duplicate_region_identity(&self) -> Option<(i32, ObjectId, RegionId)> {
+    /// order. The identity is the entry's full source origin —
+    /// `(global_layer_index, object_id, region_id, variant_chain)` — with the
+    /// ordered `variant_chain` compared exactly (an empty chain is a real
+    /// identity for a genuinely chain-less source, never a wildcard).
+    /// `family_id` is producer provenance and is intentionally not part of the
+    /// identity used at the blackboard merge seam.
+    pub fn duplicate_region_identity(
+        &self,
+    ) -> Option<(i32, ObjectId, RegionId, Vec<(String, PaintValue)>)> {
         use std::collections::HashSet;
 
         let mut seen = HashSet::with_capacity(self.entries.len());
@@ -1745,6 +1792,7 @@ impl SupportPlanIR {
                 entry.global_layer_index,
                 entry.object_id.clone(),
                 entry.region_id,
+                entry.variant_chain.clone(),
             );
             if !seen.insert(identity.clone()) {
                 return Some(identity);
@@ -1770,6 +1818,31 @@ pub struct SupportGeometryKey {
     pub object_id: ObjectId,
     /// Region identifier within the object.
     pub region_id: RegionId,
+    /// Ordered `(paint_semantic_name, value)` chain of the source region.
+    /// Equality and `Hash` include the exact order and `PaintValue`'s
+    /// established bit-level scalar semantics. Empty is an exact identity for
+    /// a genuinely chain-less source, never a wildcard. Serialized explicitly
+    /// (no `skip_serializing_if`) so an empty chain round-trips as `[]`.
+    #[serde(default)]
+    pub variant_chain: Vec<(String, PaintValue)>,
+}
+
+/// Source-region identity for `SupportAnalysisIR::family_assignments`.
+///
+/// The per-region family assignment must distinguish regions that differ only
+/// by ordered `variant_chain`, so the chain is part of the key. Deliberately
+/// carries no layer coordinate: family assignment is layer-invariant.
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct SupportSourceKey {
+    /// Object the source region belongs to.
+    pub object_id: ObjectId,
+    /// Region identifier within the object.
+    pub region_id: RegionId,
+    /// Ordered `(paint_semantic_name, value)` chain of the source region.
+    /// Same exact-order, empty-is-exact semantics as
+    /// `SupportGeometryKey::variant_chain`.
+    #[serde(default)]
+    pub variant_chain: Vec<(String, PaintValue)>,
 }
 
 /// Support geometry IR — coarse outline prepass results.
@@ -1807,6 +1880,11 @@ pub struct SupportCandidateSource {
     pub global_layer_index: u32,
     /// Exact source height in canonical units.
     pub z_units: i64,
+    /// Ordered `(paint_semantic_name, value)` chain of the source region.
+    /// Empty is an exact identity for a genuinely chain-less source, never a
+    /// wildcard. Serialized explicitly (no `skip_serializing_if`).
+    #[serde(default)]
+    pub variant_chain: Vec<(String, PaintValue)>,
 }
 
 /// A strategy-neutral surface that a support family may accept or decline.
@@ -1843,10 +1921,13 @@ pub struct SupportAnalysisIR {
     pub shared_settings: BTreeMap<String, String>,
     /// Conservative feasible envelope shared by planners.
     pub baseline_feasible_envelope: Vec<ExPolygon>,
-    /// Per-object/per-region family assignments.
-    pub family_assignments: BTreeMap<(ObjectId, RegionId), String>,
+    /// Per-source-region family assignments keyed by exact source identity
+    /// `(object_id, region_id, ordered variant_chain)`. Two regions that
+    /// differ only by ordered chain receive independent assignments.
+    pub family_assignments: BTreeMap<SupportSourceKey, String>,
     /// Support territory owned by each minted modifier sub-region, keyed
-    /// `(global_layer_index, object_id, modifier_sub_region_id)`. The value is
+    /// `(global_layer_index, object_id, modifier_sub_region_id, variant_chain)`
+    /// — the widened `SupportGeometryKey`. The value is
     /// the modifier mesh's full cross-section at that layer's Z — NOT clipped
     /// by the model, because support lives in the free air under it. Base
     /// regions get no entry; consumers derive their own/foreign split from
@@ -1894,6 +1975,11 @@ pub struct LightningTreeEntry {
     /// segment. 139 is responsible for emitting the actual content; the
     /// 137 producer skeleton commits an empty `entries` Vec.
     pub tree_edge_segments: Vec<[Point2; 2]>,
+    /// Ordered `(paint_semantic_name, value)` chain of the source region.
+    /// Empty is an exact identity for a genuinely chain-less source, never a
+    /// wildcard; serialized explicitly (no `skip_serializing_if`).
+    #[serde(default)]
+    pub variant_chain: Vec<(String, PaintValue)>,
 }
 
 /// Lightning tree IR — per-object, per-region, per-layer tree-edge segments produced by
@@ -3052,6 +3138,12 @@ pub struct InfillRaftRegion {
     pub region_id: RegionId,
     /// Raft-fill polygons emitted for the region.
     pub polygons: Vec<ExPolygon>,
+    /// Ordered `(paint_semantic_name, value)` chain of the source region this
+    /// raft group was committed for. Empty is an exact identity for a
+    /// genuinely chain-less source, never a wildcard; serialized explicitly
+    /// (no `skip_serializing_if`).
+    #[serde(default)]
+    pub variant_chain: Vec<(String, PaintValue)>,
 }
 
 /// Infill IR
@@ -3116,6 +3208,12 @@ pub struct SupportEntry {
     pub role: SupportRole,
     /// Printable extrusion paths.
     pub paths: Vec<ExtrusionPath3D>,
+    /// Ordered `(paint_semantic_name, value)` chain of the source region this
+    /// printable support was derived from. Empty is an exact identity for a
+    /// genuinely chain-less source, never a wildcard; serialized explicitly
+    /// (no `skip_serializing_if`).
+    #[serde(default)]
+    pub variant_chain: Vec<(String, PaintValue)>,
 }
 
 /// Support IR

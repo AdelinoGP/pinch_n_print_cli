@@ -14,9 +14,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
-    BoundingBox3, ConfigValue, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
-    ObjectLayerRef, ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SemVer,
-    SupportPlanIR, SupportType, Transform3d,
+    ActiveRegion, BoundingBox3, ConfigValue, ConfigView, GlobalLayer, IndexedTriangleSet,
+    LayerPlanIR, MeshIR, ObjectLayerRef, ObjectMesh, PaintValue, Point3, RegionKey, RegionMapIR,
+    RegionPlan, ResolvedConfig, SemVer, SliceIR, SlicedRegion, SupportPlanIR, SupportType,
+    Transform3d,
 };
 use slicer_runtime::{
     build_wasm_instance_pool, execute_prepass_with_builtins,
@@ -101,27 +102,58 @@ fn overhang_mesh(object_id: &str) -> MeshIR {
 }
 
 /// Variable-height LayerPlanIR with 4 layers at z = 0.4, 0.8, 1.2, 2.0.
+///
+/// Every layer carries the committed `active_regions` entry that
+/// `simple_region_map("plate", 4)` pairs with. `PrePass::Slice` slices the
+/// plan's active regions, and the post-migration planner derives its per-layer
+/// source origins and SupportAnalysis family assignments from the committed
+/// SliceIR — a plan without active regions yields an empty SliceIR and leaves
+/// the planner nothing to emit on.
 fn variable_height_layer_plan() -> LayerPlanIR {
     LayerPlanIR {
         global_layers: vec![
             GlobalLayer {
                 index: 0,
                 z: 0.4,
+                active_regions: vec![ActiveRegion {
+                    object_id: "plate".to_string(),
+                    region_id: 0,
+                    effective_layer_height: 0.4,
+                    ..Default::default()
+                }],
                 ..Default::default()
             },
             GlobalLayer {
                 index: 1,
                 z: 0.8,
+                active_regions: vec![ActiveRegion {
+                    object_id: "plate".to_string(),
+                    region_id: 0,
+                    effective_layer_height: 0.4,
+                    ..Default::default()
+                }],
                 ..Default::default()
             },
             GlobalLayer {
                 index: 2,
                 z: 1.2,
+                active_regions: vec![ActiveRegion {
+                    object_id: "plate".to_string(),
+                    region_id: 0,
+                    effective_layer_height: 0.4,
+                    ..Default::default()
+                }],
                 ..Default::default()
             },
             GlobalLayer {
                 index: 3,
                 z: 2.0,
+                active_regions: vec![ActiveRegion {
+                    object_id: "plate".to_string(),
+                    region_id: 0,
+                    effective_layer_height: 0.8,
+                    ..Default::default()
+                }],
                 ..Default::default()
             },
         ],
@@ -158,6 +190,22 @@ fn variable_height_layer_plan() -> LayerPlanIR {
     }
 }
 
+/// `variable_height_layer_plan` with its committed `active_regions` removed.
+///
+/// `planner_skips_object_with_empty_region_map` deliberately seeds an empty
+/// `RegionMapIR`; a plan that still carried active regions would pair with it
+/// as a partial map, which `PrePass::Slice` treats as a scheduler-contract
+/// violation (missing-entry debug assert). An empty map is what RegionMapping
+/// produces from a plan with no regions, so the negative fixture seeds exactly
+/// that plan shape.
+fn variable_height_layer_plan_without_active_regions() -> LayerPlanIR {
+    let mut plan = variable_height_layer_plan();
+    for layer in &mut plan.global_layers {
+        layer.active_regions.clear();
+    }
+    plan
+}
+
 /// LayerPlanIR for the multi-region fixture: global layers 2..=5, with layer 5
 /// at z = 2.0 so the overhang (facet centroid z = 1.8) is CONTAINED by it.
 ///
@@ -182,6 +230,19 @@ fn multi_region_layer_plan() -> LayerPlanIR {
             .map(|index| GlobalLayer {
                 index,
                 z: index as f32 * 0.4,
+                // Both seeded RegionMapIR regions are active on every layer of
+                // the object's participation range, so the Slice builtin emits
+                // the SliceIR origins the planner's emit pass requires per
+                // (layer, object): one entry per region (AC-8).
+                active_regions: [7_u64, 42]
+                    .iter()
+                    .map(|region_id| ActiveRegion {
+                        object_id: "obj-multi".to_string(),
+                        region_id: *region_id,
+                        effective_layer_height: 0.4,
+                        ..Default::default()
+                    })
+                    .collect(),
                 ..Default::default()
             })
             .collect(),
@@ -655,7 +716,9 @@ fn prepass_support_generation_succeeds_with_builtin_region_mapping() {
 #[test]
 fn planner_skips_object_with_empty_region_map() {
     let mesh = overhang_mesh("plate");
-    let layer_plan = variable_height_layer_plan();
+    // Empty map ⇒ region-free plan (see the helper's doc comment): any active
+    // region here would be a missing-entry partial map, not a seeded empty one.
+    let layer_plan = variable_height_layer_plan_without_active_regions();
     let empty_region_map = RegionMapIR::default();
 
     let plan_ir = run_prepass(mesh, layer_plan, empty_region_map);
@@ -672,7 +735,9 @@ fn planner_skips_object_with_empty_region_map() {
 
 #[test]
 fn host_projector_orders_region_segmentation_deterministically() {
-    // Build a RegionMapIR with several entries in insertion order.
+    // RegionMapIR entries are deliberately inserted in scrambled key order:
+    // the projector must order its rows by the authoritative committed SliceIR
+    // source rows below, never by HashMap iteration order or map-derived ids.
     let mut entries = HashMap::new();
     entries.insert(
         RegionKey {
@@ -715,28 +780,89 @@ fn host_projector_orders_region_segmentation_deterministically() {
         ..Default::default()
     };
 
+    // Authoritative committed source rows, independently seeded in committed
+    // order. Two origins deliberately share visible (layer, object, region)
+    // identity and differ only by their ordered variant chain.
+    let slice_ir = vec![
+        SliceIR {
+            global_layer_index: 0,
+            z: 0.2,
+            regions: vec![
+                SlicedRegion {
+                    object_id: "a-obj".to_string(),
+                    region_id: 1,
+                    ..Default::default()
+                },
+                SlicedRegion {
+                    object_id: "a-obj".to_string(),
+                    region_id: 1,
+                    variant_chain: vec![("wall".to_string(), PaintValue::ToolIndex(1))],
+                    ..Default::default()
+                },
+                SlicedRegion {
+                    object_id: "a-obj".to_string(),
+                    region_id: 5,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        },
+        SliceIR {
+            global_layer_index: 1,
+            z: 0.4,
+            regions: vec![SlicedRegion {
+                object_id: "m-obj".to_string(),
+                region_id: 3,
+                ..Default::default()
+            }],
+            ..Default::default()
+        },
+        SliceIR {
+            global_layer_index: 2,
+            z: 0.6,
+            regions: vec![SlicedRegion {
+                object_id: "z-obj".to_string(),
+                region_id: 99,
+                ..Default::default()
+            }],
+            ..Default::default()
+        },
+    ];
+
     // Project twice and compare (WIT-generated types lack PartialEq,
     // so compare entry-by-entry).
-    let view_1 = slicer_runtime::wit_host::project_region_segmentation_view(&region_map);
-    let view_2 = slicer_runtime::wit_host::project_region_segmentation_view(&region_map);
+    let view_1 = slicer_runtime::wit_host::project_region_segmentation_view(&region_map, &slice_ir);
+    let view_2 = slicer_runtime::wit_host::project_region_segmentation_view(&region_map, &slice_ir);
 
     assert_eq!(
         view_1.entries.len(),
         view_2.entries.len(),
         "projector must be deterministic (length mismatch)"
     );
+    // WIT-generated types lack PartialEq, so compare origin lists via their
+    // derived Debug form (covers region-id AND full ordered chain per origin).
     for (a, b) in view_1.entries.iter().zip(view_2.entries.iter()) {
         assert_eq!(a.layer_index, b.layer_index);
         assert_eq!(a.object_id, b.object_id);
-        assert_eq!(a.region_ids, b.region_ids);
+        assert_eq!(
+            a.region_origins
+                .iter()
+                .map(|o| format!("{o:?}"))
+                .collect::<Vec<_>>(),
+            b.region_origins
+                .iter()
+                .map(|o| format!("{o:?}"))
+                .collect::<Vec<_>>(),
+            "projector must be deterministic (region-origins mismatch)"
+        );
     }
 
-    // Verify sort order: (layer_index ASC, object_id ASC).
+    // Verify committed source order: (layer_index ASC, object_id ASC) as seeded.
     for w in view_1.entries.windows(2) {
         let (a, b) = (&w[0], &w[1]);
         assert!(
             (a.layer_index, &a.object_id) <= (b.layer_index, &b.object_id),
-            "entries not sorted: ({}, {}) > ({}, {})",
+            "entries not in committed source order: ({}, {}) > ({}, {})",
             a.layer_index,
             a.object_id,
             b.layer_index,
@@ -744,18 +870,62 @@ fn host_projector_orders_region_segmentation_deterministically() {
         );
     }
 
-    // Verify region_ids within each entry are sorted ASC.
+    // Verify region-origins within each entry follow committed source order
+    // (first-appearance rows, duplicate region-ids retained, chains unsorted).
     for entry in &view_1.entries {
-        for w in entry.region_ids.windows(2) {
+        let origin_ids = entry
+            .region_origins
+            .iter()
+            .map(|o| o.region_id.clone())
+            .collect::<Vec<_>>();
+        for w in origin_ids.windows(2) {
             assert!(
                 w[0] <= w[1],
-                "region_ids not sorted in entry (layer={}, object={}): {:?}",
+                "region-origins not in committed source order in entry (layer={}, object={}): {:?} vs {:?}",
                 entry.layer_index,
                 entry.object_id,
-                entry.region_ids
+                w[0],
+                w[1]
             );
         }
     }
+
+    // Full ORIGIN rows: the two same-(layer, object, region) sources differing
+    // only by ordered chain must stay distinct; a pair-only projector would
+    // collapse them to ["1", "5"] and emit one config row instead of two.
+    assert_eq!(
+        view_1.entries.len(),
+        3,
+        "one (layer, object) row group per committed source group"
+    );
+    assert_eq!(
+        view_1.entries[0]
+            .region_origins
+            .iter()
+            .map(|o| o.region_id.clone())
+            .collect::<Vec<_>>(),
+        vec!["1".to_string(), "1".to_string(), "5".to_string()],
+        "same-id chain variants must not collapse"
+    );
+    assert_eq!(
+        view_1
+            .region_support_configs
+            .iter()
+            .map(|row| (
+                row.layer_index,
+                row.object_id.as_str(),
+                row.region_id.as_str()
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            (0, "a-obj", "1"),
+            (0, "a-obj", "1"),
+            (0, "a-obj", "5"),
+            (1, "m-obj", "3"),
+            (2, "z-obj", "99"),
+        ],
+        "one config row per full SOURCE origin in committed source order"
+    );
 }
 
 #[test]

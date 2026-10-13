@@ -12,8 +12,8 @@
 use slicer_core::flow::line_width_to_spacing;
 use slicer_core::polygon_ops::{union_ex, PreparedPolylineClip};
 use slicer_ir::{
-    ConfigValue, ExPolygon, ExtrusionPath3D, ExtrusionRole, InfillRegion, Point2, Point3WithWidth,
-    Polygon,
+    ConfigValue, ExPolygon, ExtrusionPath3D, ExtrusionRole, InfillRegion, PaintValue, Point2,
+    Point3WithWidth, Polygon,
 };
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::views::PerimeterRegionView;
@@ -124,6 +124,12 @@ struct RegionRecord {
     prior_index: usize,
     object_id: String,
     region_id: u64,
+    /// Ordered `(paint_semantic_name, value)` chain of the source region this
+    /// record was joined from — the third component of the full source
+    /// identity `(object_id, region_id, variant_chain)`. Compared exactly
+    /// (never sorted or normalized); an empty chain is a real value, never a
+    /// wildcard. Populated from the prior-infill region (AC-R7).
+    variant_chain: Vec<(String, PaintValue)>,
     tool_index: u32,
     wall_source_region_id: Option<u64>,
     boundaries: RoleBoundaries,
@@ -136,9 +142,15 @@ struct RegionRecord {
     solid_paths: Vec<ExtrusionPath3D>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum WallGroupKey {
-    Shared(u64),
+    /// Regions borrowing another region's walls, keyed by the wall source id
+    /// AND the borrower's ordered variant chain — two variants sharing one
+    /// wall source but carrying different chains are distinct sources and
+    /// must never be grouped into one union join (AC-R7). The chain is
+    /// compared exactly (never sorted or normalized); an empty chain is a
+    /// real value.
+    Shared(u64, Vec<(String, PaintValue)>),
     Owned(usize),
 }
 
@@ -174,8 +186,14 @@ pub fn orchestrate_infill(
     let mut buckets = vec![BucketPaths::default(); prior_infill.len()];
 
     for (prior_index, region) in prior_infill.iter().enumerate() {
+        // Full source identity `(object_id, region_id, ordered variant_chain)`:
+        // a pair-only match would join a paint-minted variant onto the
+        // perimeter view of a chain sibling. The chain is compared exactly,
+        // never sorted or normalized; an empty chain is a real value.
         let Some(view) = regions.iter().find(|view| {
-            view.object_id() == &region.object_id && view.region_id() == &region.region_id
+            view.object_id() == &region.object_id
+                && view.region_id() == &region.region_id
+                && view.variant_chain() == region.variant_chain.as_slice()
         }) else {
             buckets[prior_index].sparse = region.sparse_infill.clone();
             buckets[prior_index].solid = region.solid_infill.clone();
@@ -216,6 +234,7 @@ pub fn orchestrate_infill(
             prior_index,
             object_id: region.object_id.clone(),
             region_id: region.region_id,
+            variant_chain: region.variant_chain.clone(),
             tool_index: view.tool_index(),
             wall_source_region_id: view.wall_source_region_id().copied(),
             boundaries: RoleBoundaries::from_view(view),
@@ -450,10 +469,11 @@ fn wall_groups(
     let mut groups: Vec<(WallGroupKey, Vec<usize>)> = Vec::new();
     for &index in active {
         let key = wall_group_key(&records[index], shared_sources);
-        if let Some((_, members)) = groups.iter_mut().find(|(candidate, _)| *candidate == key) {
-            members.push(index);
-        } else {
-            groups.push((key, vec![index]));
+        // `group.0 == key` borrows both sides; `WallGroupKey` is no longer
+        // `Copy` since `Shared` carries the ordered chain.
+        match groups.iter().position(|group| group.0 == key) {
+            Some(position) => groups[position].1.push(index),
+            None => groups.push((key, vec![index])),
         }
     }
     groups.into_iter().map(|(_, members)| members).collect()
@@ -461,9 +481,9 @@ fn wall_groups(
 
 fn wall_group_key(record: &RegionRecord, shared_sources: &[u64]) -> WallGroupKey {
     match record.wall_source_region_id {
-        Some(source) => WallGroupKey::Shared(source),
+        Some(source) => WallGroupKey::Shared(source, record.variant_chain.clone()),
         None if shared_sources.contains(&record.region_id) => {
-            WallGroupKey::Shared(record.region_id)
+            WallGroupKey::Shared(record.region_id, record.variant_chain.clone())
         }
         None => WallGroupKey::Owned(record.prior_index),
     }
@@ -478,6 +498,10 @@ fn compatible_regions(
 ) -> bool {
     first.object_id == second.object_id
         && first.tool_index == second.tool_index
+        // Full-source identity: regions joined into one path must carry the
+        // same ordered variant chain. Exact comparison — never sorted or
+        // normalized; an empty chain only matches an empty chain (AC-R7).
+        && first.variant_chain == second.variant_chain
         && same_group
         && selected_paths(first, bucket, role).iter().all(|left| {
             selected_paths(second, bucket, role)

@@ -44,6 +44,7 @@ fn entry(family: &str, region_id: u64, layer: i32, body: Option<ExPolygon>) -> S
         capabilities: Vec::new(),
         provenance: Vec::new(),
         decline_reason: None,
+        variant_chain: Vec::new(),
     }
 }
 

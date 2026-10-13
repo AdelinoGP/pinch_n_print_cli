@@ -327,34 +327,51 @@ pub struct PaintRegionLayerData {
     /// Custom regions by module ID.
     pub custom_regions:
         HashMap<String, Vec<layer_perimeters::slicer::ir_handles::ir_handles::SemanticRegion>>,
-    /// Legacy segment carrier retained empty; structural plans use view entries.
+    /// Whether this layer belongs to the positive-offset raft band, copied
+    /// from `GlobalLayer.is_raft`.
+    pub is_raft: bool,
+}
+
+/// Backing data for a `support-query-view` resource handle
+/// (`slicer:support-queries/support-queries@1.0.0`). Holds the structural
+/// support reads relocated out of `paint-region-layer-view`, keyed by the
+/// FULL origin `(object_id, region_id, variant_chain)` — the chain is an
+/// ordered `(paint_semantic_name, value)` list and empty is an exact
+/// identity for a genuinely chain-less source, never a wildcard.
+#[derive(Default)]
+pub struct SupportQueryViewData {
+    /// Legacy segment carrier retained empty; structural plans use view
+    /// entries (packet layer-module-preparation_01, W7a).
     pub support_plan_segments: HashMap<
-        (String, String),
+        (String, String, Vec<(String, slicer_ir::PaintValue)>),
         Vec<Vec<layer_perimeters::slicer::types::geometry::Point3WithWidth>>,
     >,
-    /// Structural support plan entries indexed by `(object_id, region_id)`,
-    /// projected from `SupportPlanIR.entries` filtered to this layer index.
+    /// Structural support plan entries keyed by full origin, stored as raw
+    /// `slicer_ir::SupportPlanEntry` records and projected to the per-world
+    /// bindgen-generated `support-plan-entry-view` records on read.
     pub support_plan_entries: HashMap<
-        (String, String),
-        Vec<layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanEntryView>,
-    >,
-    /// Pre-planned lightning tree-edge segments indexed by
-    /// `(object_id, region_id)`, projected from `LightningTreeIR.entries`
-    /// filtered to this layer index. Empty when no `LightningTreeIR` is
-    /// committed on the blackboard (skip-when-no-lightning-holder per
-    /// ADR-0029). The 137 contract returns empty segments for the
-    /// empty-but-valid IR; 138/139 populate the real entries.
-    pub lightning_tree_segments: HashMap<
-        (String, String),
-        Vec<Vec<layer_perimeters::slicer::types::geometry::Point3WithWidth>>,
+        (String, String, Vec<(String, slicer_ir::PaintValue)>),
+        Vec<slicer_ir::SupportPlanEntry>,
     >,
     /// Configuration-only raft plan projected from `SupportPlanIR.raft_plan`.
     /// Layer-independent — unlike `support_plan_entries` this carries no
     /// per-layer filter, so every layer sees the same value.
-    pub raft_plan: Option<layer_perimeters::slicer::ir_handles::ir_handles::RaftPlanView>,
-    /// Whether this layer belongs to the positive-offset raft band, copied
-    /// from `GlobalLayer.is_raft`.
-    pub is_raft: bool,
+    pub raft_plan: Option<slicer_ir::RaftPlan>,
+}
+
+/// Backing data for a `lightning-query-view` resource handle
+/// (`slicer:lightning-queries/lightning-queries@1.0.0`).
+#[derive(Default)]
+pub struct LightningQueryViewData {
+    /// Pre-planned lightning tree-edge segments keyed by the FULL origin
+    /// `(object_id, region_id, variant_chain)`, projected from
+    /// `LightningTreeIR.entries`. Empty when no `LightningTreeIR` is
+    /// committed on the blackboard (skip-when-no-lightning-holder per
+    /// ADR-0029).
+    pub lightning_tree_segments: HashMap<
+        (String, String, Vec<(String, slicer_ir::PaintValue)>),
+        Vec<Vec<layer_perimeters::slicer::types::geometry::Point3WithWidth>>,
+    >,
 }
 
 // ── Bindgen: Per-stage worlds ──────────────────────────────────────────
@@ -373,7 +390,7 @@ pub mod layer_slice_postprocess {
             "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
             "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
             "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
-            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+            "slicer:ir-handles/ir-handles@1.0.0": super::layer_perimeters::slicer::ir_handles::ir_handles,
         },
     });
     pub use self::SlicePostprocessModule as LayerModule;
@@ -403,15 +420,15 @@ pub mod layer_perimeters {
         // and `slicer:config/config-types` interfaces.
         with: {
             "slicer:config/config-types.config-view": super::ConfigViewData,
-            "slicer:ir-handles/ir-handles.slice-region-view": super::SliceRegionData,
-            "slicer:ir-handles/ir-handles.perimeter-region-view": super::PerimeterRegionData,
-            "slicer:ir-handles/ir-handles.infill-output-builder": super::InfillOutputBuilderData,
-            "slicer:ir-handles/ir-handles.perimeter-output-builder": super::PerimeterOutputBuilderData,
-            "slicer:ir-handles/ir-handles.slice-postprocess-builder": super::SlicePostprocessBuilderData,
-            "slicer:ir-handles/ir-handles.gcode-output-builder": super::GcodeOutputBuilderData,
-            "slicer:ir-handles/ir-handles.layer-collection-builder": super::LayerCollectionBuilderData,
-            "slicer:ir-handles/ir-handles.support-output-builder": super::SupportOutputBuilderData,
-            "slicer:ir-handles/ir-handles.paint-region-layer-view": super::PaintRegionLayerData,
+            "slicer:ir-handles/ir-handles@1.0.0.slice-region-view": super::SliceRegionData,
+            "slicer:ir-handles/ir-handles@1.0.0.perimeter-region-view": super::PerimeterRegionData,
+            "slicer:ir-handles/ir-handles@1.0.0.infill-output-builder": super::InfillOutputBuilderData,
+            "slicer:ir-handles/ir-handles@1.0.0.perimeter-output-builder": super::PerimeterOutputBuilderData,
+            "slicer:ir-handles/ir-handles@1.0.0.slice-postprocess-builder": super::SlicePostprocessBuilderData,
+            "slicer:ir-handles/ir-handles@1.0.0.gcode-output-builder": super::GcodeOutputBuilderData,
+            "slicer:ir-handles/ir-handles@1.0.0.layer-collection-builder": super::LayerCollectionBuilderData,
+            "slicer:ir-handles/ir-handles@1.0.0.support-output-builder": super::SupportOutputBuilderData,
+            "slicer:ir-handles/ir-handles@1.0.0.paint-region-layer-view": super::PaintRegionLayerData,
         },
     });
     pub use self::PerimetersModule as LayerModule;
@@ -431,7 +448,7 @@ pub mod layer_perimeters_postprocess {
             "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
             "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
             "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
-            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+            "slicer:ir-handles/ir-handles@1.0.0": super::layer_perimeters::slicer::ir_handles::ir_handles,
         },
     });
     pub use self::PerimetersPostprocessModule as LayerModule;
@@ -451,7 +468,15 @@ pub mod layer_infill {
             "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
             "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
             "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
-            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+            "slicer:ir-handles/ir-handles@1.0.0": super::layer_perimeters::slicer::ir_handles::ir_handles,
+            // Specialist query-view resources imported by this world; the
+            // record types (`support-plan-entry-view` etc.) are generated
+            // locally per world, only the resource backing structs are
+            // shared (packet layer-module-preparation_01, W7a).
+            "slicer:support-queries/support-queries@1.0.0.support-query-view":
+                super::SupportQueryViewData,
+            "slicer:lightning-queries/lightning-queries@1.0.0.lightning-query-view":
+                super::LightningQueryViewData,
         },
     });
     pub use self::InfillModule as LayerModule;
@@ -471,7 +496,7 @@ pub mod layer_infill_postprocess {
             "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
             "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
             "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
-            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+            "slicer:ir-handles/ir-handles@1.0.0": super::layer_perimeters::slicer::ir_handles::ir_handles,
         },
     });
     pub use self::InfillPostprocessModule as LayerModule;
@@ -491,7 +516,11 @@ pub mod layer_support {
             "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
             "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
             "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
-            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+            "slicer:ir-handles/ir-handles@1.0.0": super::layer_perimeters::slicer::ir_handles::ir_handles,
+            // Specialist support-query resource imported by this world
+            // (packet layer-module-preparation_01, W7a).
+            "slicer:support-queries/support-queries@1.0.0.support-query-view":
+                super::SupportQueryViewData,
         },
     });
     pub use self::SupportModule as LayerModule;
@@ -511,7 +540,7 @@ pub mod layer_anchored_events {
             "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
             "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
             "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
-            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+            "slicer:ir-handles/ir-handles@1.0.0": super::layer_perimeters::slicer::ir_handles::ir_handles,
         },
     });
     pub use self::AnchoredEventsModule as LayerModule;
@@ -531,7 +560,7 @@ pub mod layer_support_postprocess {
             "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
             "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
             "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
-            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+            "slicer:ir-handles/ir-handles@1.0.0": super::layer_perimeters::slicer::ir_handles::ir_handles,
         },
     });
     pub use self::SupportPostprocessModule as LayerModule;
@@ -551,7 +580,7 @@ pub mod layer_path_optimization {
             "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
             "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
             "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
-            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+            "slicer:ir-handles/ir-handles@1.0.0": super::layer_perimeters::slicer::ir_handles::ir_handles,
         },
     });
     pub use self::PathOptimizationModule as LayerModule;
@@ -571,7 +600,7 @@ pub mod prepass_mesh_analysis {
             "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
             "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
             "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
-            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+            "slicer:ir-handles/ir-handles@1.0.0": super::layer_perimeters::slicer::ir_handles::ir_handles,
         },
     });
     pub use self::slicer::prepass_mesh_analysis::mesh_analysis_types::{
@@ -595,7 +624,7 @@ pub mod prepass_layer_planning {
             "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
             "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
             "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
-            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+            "slicer:ir-handles/ir-handles@1.0.0": super::layer_perimeters::slicer::ir_handles::ir_handles,
         },
     });
     pub use self::slicer::prepass_layer_planning::layer_planning_types::{
@@ -618,7 +647,7 @@ pub mod prepass_seam_planning {
             "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
             "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
             "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
-            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+            "slicer:ir-handles/ir-handles@1.0.0": super::layer_perimeters::slicer::ir_handles::ir_handles,
         },
     });
     pub use self::slicer::prepass_seam_planning::seam_planning_types::{
@@ -645,7 +674,7 @@ pub mod prepass_support_geometry {
             "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
             "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
             "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
-            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+            "slicer:ir-handles/ir-handles@1.0.0": super::layer_perimeters::slicer::ir_handles::ir_handles,
             "slicer:prepass-types/prepass-types": super::prepass_seam_planning::slicer::prepass_types::prepass_types,
         },
     });
@@ -988,7 +1017,7 @@ pub mod finalization_layer {
             // See the identical note in the `prepass` bindgen! block above:
             // `host-services#generate-arachne-walls` (packet 112, Step 9A)
             // transitively pulls in `slicer:ir-handles/ir-handles`.
-            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+            "slicer:ir-handles/ir-handles@1.0.0": super::layer_perimeters::slicer::ir_handles::ir_handles,
         },
     });
 }
@@ -1058,7 +1087,7 @@ pub mod postpass_gcode {
             // See the identical note in the `prepass` bindgen! block above:
             // `host-services#generate-arachne-walls` (packet 112, Step 9A)
             // transitively pulls in `slicer:ir-handles/ir-handles`.
-            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+            "slicer:ir-handles/ir-handles@1.0.0": super::layer_perimeters::slicer::ir_handles::ir_handles,
         },
     });
 }
@@ -1123,7 +1152,7 @@ pub mod postpass_text {
             // See the identical note in the `prepass` bindgen! block above:
             // `host-services#generate-arachne-walls` (packet 112, Step 9A)
             // transitively pulls in `slicer:ir-handles/ir-handles`.
-            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+            "slicer:ir-handles/ir-handles@1.0.0": super::layer_perimeters::slicer::ir_handles::ir_handles,
         },
     });
 }
@@ -1969,6 +1998,22 @@ impl HostExecutionContext {
         &mut self,
         data: PaintRegionLayerData,
     ) -> wasmtime::Result<Resource<PaintRegionLayerData>> {
+        Ok(self.table.push(data)?)
+    }
+
+    /// Push a support-query-view resource and return its handle.
+    pub fn push_support_query_view(
+        &mut self,
+        data: SupportQueryViewData,
+    ) -> wasmtime::Result<Resource<SupportQueryViewData>> {
+        Ok(self.table.push(data)?)
+    }
+
+    /// Push a lightning-query-view resource and return its handle.
+    pub fn push_lightning_query_view(
+        &mut self,
+        data: LightningQueryViewData,
+    ) -> wasmtime::Result<Resource<LightningQueryViewData>> {
         Ok(self.table.push(data)?)
     }
 
@@ -4386,59 +4431,6 @@ impl ir::HostPaintRegionLayerView for HostExecutionContext {
     fn layer_index(&mut self, self_: Resource<PaintRegionLayerData>) -> wasmtime::Result<i32> {
         Ok(self.table.get(&self_)?.layer_index as i32)
     }
-    fn support_plan_segments(
-        &mut self,
-        self_: Resource<PaintRegionLayerData>,
-        object_id: String,
-        region_id: String,
-    ) -> wasmtime::Result<Vec<Vec<layer_perimeters::slicer::types::geometry::Point3WithWidth>>>
-    {
-        self.runtime_reads.push(String::from("SupportPlanIR"));
-        let data = self.table.get(&self_)?;
-        Ok(data
-            .support_plan_segments
-            .get(&(object_id, region_id))
-            .cloned()
-            .unwrap_or_default())
-    }
-    fn support_plan_entries(
-        &mut self,
-        self_: Resource<PaintRegionLayerData>,
-        object_id: String,
-        region_id: String,
-    ) -> wasmtime::Result<Vec<layer_perimeters::slicer::ir_handles::ir_handles::SupportPlanEntryView>>
-    {
-        self.runtime_reads.push(String::from("SupportPlanIR"));
-        let data = self.table.get(&self_)?;
-        Ok(data
-            .support_plan_entries
-            .get(&(object_id, region_id))
-            .cloned()
-            .unwrap_or_default())
-    }
-    fn lightning_tree_segments(
-        &mut self,
-        self_: Resource<PaintRegionLayerData>,
-        object_id: String,
-        region_id: String,
-    ) -> wasmtime::Result<Vec<Vec<layer_perimeters::slicer::types::geometry::Point3WithWidth>>>
-    {
-        self.runtime_reads.push(String::from("LightningTreeIR"));
-        let data = self.table.get(&self_)?;
-        Ok(data
-            .lightning_tree_segments
-            .get(&(object_id, region_id))
-            .cloned()
-            .unwrap_or_default())
-    }
-    fn raft_plan(
-        &mut self,
-        self_: Resource<PaintRegionLayerData>,
-    ) -> wasmtime::Result<Option<layer_perimeters::slicer::ir_handles::ir_handles::RaftPlanView>>
-    {
-        self.runtime_reads.push(String::from("SupportPlanIR"));
-        Ok(self.table.get(&self_)?.raft_plan)
-    }
     fn is_raft(&mut self, self_: Resource<PaintRegionLayerData>) -> wasmtime::Result<bool> {
         self.runtime_reads.push(String::from("LayerPlanIR"));
         Ok(self.table.get(&self_)?.is_raft)
@@ -4450,6 +4442,299 @@ impl ir::HostPaintRegionLayerView for HostExecutionContext {
 }
 
 impl ir::Host for HostExecutionContext {}
+
+// ── Specialist query-view host impls (packet
+// layer-module-preparation_01, W7a) ───────────────────────────────────────
+//
+// The structural support / lightning reads relocated from
+// `paint-region-layer-view` into the per-world specialist interfaces
+// (`slicer:support-queries/support-queries@1.0.0` and
+// `slicer:lightning-queries/lightning-queries@1.0.0`). Each importing world
+// generates its own copy of the interface module, so the `Host` /
+// `HostSupportQueryView` / `HostLightningQueryView` traits exist once per
+// world; all worlds share the same backing structs
+// (`SupportQueryViewData` / `LightningQueryViewData`) via the bindgen
+// `with:` resource keys.
+
+impl layer_infill::slicer::support_queries::support_queries::Host for HostExecutionContext {}
+impl layer_infill::slicer::lightning_queries::lightning_queries::Host for HostExecutionContext {}
+impl layer_support::slicer::support_queries::support_queries::Host for HostExecutionContext {}
+
+/// Convert an incoming WIT full-origin query into the IR-keyed form used by
+/// the query-view backing maps: `(object_id, region_id, variant_chain)` with
+/// each paint value mapped via `convert_paint_value`.
+fn wit_chain_to_ir_key(
+    object_id: String,
+    region_id: String,
+    variant_chain: Vec<(String, ir::PaintValue)>,
+) -> (String, String, Vec<(String, slicer_ir::PaintValue)>) {
+    (
+        object_id,
+        region_id,
+        variant_chain
+            .into_iter()
+            .map(|(name, value)| (name, convert_paint_value(&value)))
+            .collect(),
+    )
+}
+
+/// Project a `slicer_ir::SupportPlanEntry` into a per-world
+/// bindgen-generated `support-plan-entry-view` record. The record type is
+/// generated once per stage world (infill and support worlds each emit
+/// their own `slicer:support-queries/support-queries` module), so the
+/// projection is macro-driven over the world's module path.
+macro_rules! wit_support_plan_entry {
+    ($($wit:ident)::+) => {
+        |entry: &slicer_ir::SupportPlanEntry| -> $($wit)::+::SupportPlanEntryView {
+            $($wit)::+::SupportPlanEntryView {
+                global_layer_index: entry.global_layer_index,
+                object_id: entry.object_id.clone(),
+                region_id: entry.region_id.to_string(),
+                family_id: entry.family_id.clone(),
+                demand_ids: entry.demand_ids.clone(),
+                body_ids: entry.body_ids.clone(),
+                anchor_layer_index: entry.anchor_layer_index,
+                anchor_z: entry.anchor_z,
+                roles: entry
+                    .roles
+                    .iter()
+                    .map(|role| $($wit)::+::SupportPlanViewRoleRegion {
+                        role: match role.role {
+                            slicer_ir::SupportPlanRole::SupportBody => {
+                                $($wit)::+::SupportPlanViewRole::SupportBody
+                            }
+                            slicer_ir::SupportPlanRole::TopInterface => {
+                                $($wit)::+::SupportPlanViewRole::TopInterface
+                            }
+                            slicer_ir::SupportPlanRole::BaseInterface => {
+                                $($wit)::+::SupportPlanViewRole::BaseInterface
+                            }
+                            slicer_ir::SupportPlanRole::BottomInterface => {
+                                $($wit)::+::SupportPlanViewRole::BottomInterface
+                            }
+                            slicer_ir::SupportPlanRole::RaftRelated => {
+                                $($wit)::+::SupportPlanViewRole::RaftRelated
+                            }
+                        },
+                        regions: ir_to_wit_expolygons(&role.regions),
+                    })
+                    .collect(),
+                skeleton: entry.skeleton.as_ref().map(|s| {
+                    assert_eq!(s.wall_counts.len(), s.points.len());
+                    $($wit)::+::SupportPlanViewSkeleton {
+                        points: s
+                            .points
+                            .iter()
+                            .map(|p| layer_perimeters::slicer::types::geometry::Point3 {
+                                x: p.x,
+                                y: p.y,
+                                z: p.z,
+                            })
+                            .collect(),
+                        wall_counts: s.wall_counts.clone(),
+                    }
+                }),
+                capabilities: entry.capabilities.clone(),
+                provenance: entry.provenance.clone(),
+                decline_reason: entry.decline_reason.map(|reason| match reason {
+                    slicer_ir::SupportPlanDeclineReason::DeclinedPolicy => {
+                        $($wit)::+::SupportPlanViewDeclineReason::DeclinedPolicy
+                    }
+                    slicer_ir::SupportPlanDeclineReason::NoRoute => {
+                        $($wit)::+::SupportPlanViewDeclineReason::NoRoute
+                    }
+                    slicer_ir::SupportPlanDeclineReason::Blocked => {
+                        $($wit)::+::SupportPlanViewDeclineReason::Blocked
+                    }
+                    slicer_ir::SupportPlanDeclineReason::UnsupportedMode => {
+                        $($wit)::+::SupportPlanViewDeclineReason::UnsupportedMode
+                    }
+                }),
+            }
+        }
+    };
+}
+
+/// Project a `slicer_ir::RaftPlan` into a per-world bindgen-generated
+/// `raft-plan-view` record. Print-wide configuration: identical on every
+/// layer.
+macro_rules! wit_raft_plan {
+    ($($wit:ident)::+) => {
+        |raft: &slicer_ir::RaftPlan| -> $($wit)::+::RaftPlanView {
+            $($wit)::+::RaftPlanView {
+                raft_layers: raft.raft_layers,
+                raft_first_layer_density: raft.raft_first_layer_density,
+                base_raft_layers: raft.base_raft_layers,
+                interface_raft_layers: raft.interface_raft_layers,
+            }
+        }
+    };
+}
+
+impl layer_infill::slicer::support_queries::support_queries::HostSupportQueryView
+    for HostExecutionContext
+{
+    fn support_plan_segments(
+        &mut self,
+        self_: Resource<SupportQueryViewData>,
+        object_id: String,
+        region_id: String,
+        variant_chain: Vec<(String, ir::PaintValue)>,
+    ) -> wasmtime::Result<Vec<Vec<layer_perimeters::slicer::types::geometry::Point3WithWidth>>>
+    {
+        self.runtime_reads.push(String::from("SupportPlanIR"));
+        let key = wit_chain_to_ir_key(object_id, region_id, variant_chain);
+        Ok(self
+            .table
+            .get(&self_)?
+            .support_plan_segments
+            .get(&key)
+            .cloned()
+            .unwrap_or_default())
+    }
+    fn support_plan_entries(
+        &mut self,
+        self_: Resource<SupportQueryViewData>,
+        object_id: String,
+        region_id: String,
+        variant_chain: Vec<(String, ir::PaintValue)>,
+    ) -> wasmtime::Result<
+        Vec<layer_infill::slicer::support_queries::support_queries::SupportPlanEntryView>,
+    > {
+        self.runtime_reads.push(String::from("SupportPlanIR"));
+        let key = wit_chain_to_ir_key(object_id, region_id, variant_chain);
+        Ok(self
+            .table
+            .get(&self_)?
+            .support_plan_entries
+            .get(&key)
+            .map(|entries| {
+                entries
+                    .iter()
+                    .map(wit_support_plan_entry!(
+                        layer_infill::slicer::support_queries::support_queries
+                    ))
+                    .collect()
+            })
+            .unwrap_or_default())
+    }
+    fn raft_plan(
+        &mut self,
+        self_: Resource<SupportQueryViewData>,
+    ) -> wasmtime::Result<
+        Option<layer_infill::slicer::support_queries::support_queries::RaftPlanView>,
+    > {
+        self.runtime_reads.push(String::from("SupportPlanIR"));
+        Ok(self
+            .table
+            .get(&self_)?
+            .raft_plan
+            .as_ref()
+            .map(wit_raft_plan!(
+                layer_infill::slicer::support_queries::support_queries
+            )))
+    }
+    fn drop(&mut self, rep: Resource<SupportQueryViewData>) -> wasmtime::Result<()> {
+        self.table.delete(rep)?;
+        Ok(())
+    }
+}
+
+impl layer_infill::slicer::lightning_queries::lightning_queries::HostLightningQueryView
+    for HostExecutionContext
+{
+    fn lightning_tree_segments(
+        &mut self,
+        self_: Resource<LightningQueryViewData>,
+        object_id: String,
+        region_id: String,
+        variant_chain: Vec<(String, ir::PaintValue)>,
+    ) -> wasmtime::Result<Vec<Vec<layer_perimeters::slicer::types::geometry::Point3WithWidth>>>
+    {
+        self.runtime_reads.push(String::from("LightningTreeIR"));
+        let key = wit_chain_to_ir_key(object_id, region_id, variant_chain);
+        Ok(self
+            .table
+            .get(&self_)?
+            .lightning_tree_segments
+            .get(&key)
+            .cloned()
+            .unwrap_or_default())
+    }
+    fn drop(&mut self, rep: Resource<LightningQueryViewData>) -> wasmtime::Result<()> {
+        self.table.delete(rep)?;
+        Ok(())
+    }
+}
+
+impl layer_support::slicer::support_queries::support_queries::HostSupportQueryView
+    for HostExecutionContext
+{
+    fn support_plan_segments(
+        &mut self,
+        self_: Resource<SupportQueryViewData>,
+        object_id: String,
+        region_id: String,
+        variant_chain: Vec<(String, ir::PaintValue)>,
+    ) -> wasmtime::Result<Vec<Vec<layer_perimeters::slicer::types::geometry::Point3WithWidth>>>
+    {
+        self.runtime_reads.push(String::from("SupportPlanIR"));
+        let key = wit_chain_to_ir_key(object_id, region_id, variant_chain);
+        Ok(self
+            .table
+            .get(&self_)?
+            .support_plan_segments
+            .get(&key)
+            .cloned()
+            .unwrap_or_default())
+    }
+    fn support_plan_entries(
+        &mut self,
+        self_: Resource<SupportQueryViewData>,
+        object_id: String,
+        region_id: String,
+        variant_chain: Vec<(String, ir::PaintValue)>,
+    ) -> wasmtime::Result<
+        Vec<layer_support::slicer::support_queries::support_queries::SupportPlanEntryView>,
+    > {
+        self.runtime_reads.push(String::from("SupportPlanIR"));
+        let key = wit_chain_to_ir_key(object_id, region_id, variant_chain);
+        Ok(self
+            .table
+            .get(&self_)?
+            .support_plan_entries
+            .get(&key)
+            .map(|entries| {
+                entries
+                    .iter()
+                    .map(wit_support_plan_entry!(
+                        layer_support::slicer::support_queries::support_queries
+                    ))
+                    .collect()
+            })
+            .unwrap_or_default())
+    }
+    fn raft_plan(
+        &mut self,
+        self_: Resource<SupportQueryViewData>,
+    ) -> wasmtime::Result<
+        Option<layer_support::slicer::support_queries::support_queries::RaftPlanView>,
+    > {
+        self.runtime_reads.push(String::from("SupportPlanIR"));
+        Ok(self
+            .table
+            .get(&self_)?
+            .raft_plan
+            .as_ref()
+            .map(wit_raft_plan!(
+                layer_support::slicer::support_queries::support_queries
+            )))
+    }
+    fn drop(&mut self, rep: Resource<SupportQueryViewData>) -> wasmtime::Result<()> {
+        self.table.delete(rep)?;
+        Ok(())
+    }
+}
 
 // The non-layer world host-services impls are generated inline in each
 // world's mod block, calling through to the shared conversion+Clipper2

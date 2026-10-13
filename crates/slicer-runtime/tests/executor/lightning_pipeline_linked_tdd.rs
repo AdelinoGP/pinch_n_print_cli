@@ -86,16 +86,21 @@ fn perimeter_ir() -> PerimeterIR {
 fn lightning_tree_ir() -> LightningTreeIR {
     let point = |x| Point2 { x, y: 5_000 };
     LightningTreeIR {
-        entries: vec![LightningTreeEntry {
-            object_id: "lightning-object".to_string(),
-            global_layer_index: 0,
-            region_id: 7,
-            tree_edge_segments: vec![
-                [point(1_000), point(30_000)],
-                [point(30_000), point(59_000)],
-                [point(59_000), point(88_000)],
-            ],
-        }],
+        entries: vec![
+            // exhaustive: the linked-pipeline fixture pins the full exact source identity of a genuinely chain-empty region.
+            LightningTreeEntry {
+                object_id: "lightning-object".to_string(),
+                global_layer_index: 0,
+                region_id: 7,
+                tree_edge_segments: vec![
+                    [point(1_000), point(30_000)],
+                    [point(30_000), point(59_000)],
+                    [point(59_000), point(88_000)],
+                ],
+                // Genuinely chain-empty source: slice_ir() region 7 declares no paint variant.
+                variant_chain: Vec::new(),
+            },
+        ],
         ..LightningTreeIR::default()
     }
 }

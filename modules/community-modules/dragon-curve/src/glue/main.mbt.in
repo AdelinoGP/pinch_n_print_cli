@@ -129,6 +129,8 @@ pub fn run(
   layer_index : Int,
   regions : Array[@ir-handles.SliceRegionView],
   paint : @ir-handles.PaintRegionLayerView,
+  support_queries : @support-queries.SupportQueryView,
+  lightning_queries : @lightning-queries.LightningQueryView,
   output : @ir-handles.InfillOutputBuilder,
   config : @config-types.ConfigView,
 ) -> Result[Unit, @module-errors.ModuleError] {
@@ -266,14 +268,20 @@ pub fn run(
     }
   }
   // `run`'s resource parameters are owned handles (see `wit/layer-infill.wit`:
-  // `regions: list<slice-region-view>`, `paint`, `output`, `config` are all
-  // owned, and the generated shim does not auto-drop). The host builds a fresh
+  // `regions: list<slice-region-view>`, `paint`, `support-queries`,
+  // `lightning-queries`, `output`, `config` are all owned, and the generated
+  // shim does not auto-drop). The host builds a fresh
   // ResourceTable per dispatch so a leak here would be bounded, but this module
   // is an exemplar for foreign-language guests and must show the right pattern.
+  // The specialist views are owning params this exemplar never queries - a
+  // tree-support-aware module would call `support_plan_segments` /
+  // `lightning_tree_segments` here - but ownership still requires the drop.
   for r = 0; r < regions.length(); r = r + 1 {
     regions[r].drop()
   }
   paint.drop()
+  support_queries.drop()
+  lightning_queries.drop()
   output.drop()
   config.drop()
   match failure {

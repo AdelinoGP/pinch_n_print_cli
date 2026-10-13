@@ -78,6 +78,10 @@ fn paint_with_plan_at(family_id: &str, layer_index: u32) -> PaintRegionLayerView
         capabilities: vec![],
         provenance: vec!["test".into()],
         decline_reason: None,
+        // Chainless source: `make_square_region` sets no variant chain and
+        // `support_plan_entries_for` matches the chain exactly, so empty is
+        // the exact identity rather than a wildcard.
+        variant_chain: Vec::new(),
     };
     PaintRegionLayerView::new(layer_index).with_support_plan(Arc::new(SupportPlanIR {
         entries: vec![entry],
@@ -110,6 +114,9 @@ fn paint_with_plan_at_anchor_z(
         capabilities: vec![],
         provenance: vec!["test".into()],
         decline_reason: None,
+        // Chainless source, as in `paint_with_plan_at`; the anchored variant
+        // adds only the declared print plane, never a paint chain.
+        variant_chain: Vec::new(),
     };
     PaintRegionLayerView::new(layer_index).with_support_plan(Arc::new(SupportPlanIR {
         entries: vec![entry],
@@ -139,6 +146,9 @@ fn paint_with_interface_plan() -> PaintRegionLayerView {
         capabilities: vec![],
         provenance: vec!["test".into()],
         decline_reason: None,
+        // Chainless source, as in `paint_with_plan_at`; the interface fixture
+        // differs only in the planned role.
+        variant_chain: Vec::new(),
     };
     PaintRegionLayerView::new(0).with_support_plan(Arc::new(SupportPlanIR {
         entries: vec![entry],

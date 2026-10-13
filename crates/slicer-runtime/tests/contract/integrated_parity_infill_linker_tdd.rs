@@ -6,7 +6,7 @@ use infill_linker::InfillLinker;
 use slicer_ir::{
     ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, GlobalLayer, InfillIR, InfillRegion,
     MeshIR, PerimeterIR, PerimeterRegion, Point2, Point3WithWidth, Polygon, SemVer, SliceIR,
-    SlicedRegion, StageId,
+    SlicedRegion, StageId, CURRENT_INFILL_IR_SCHEMA_VERSION,
 };
 use slicer_runtime::{Blackboard, LayerArena, LayerStageRunner};
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
@@ -77,11 +77,8 @@ fn segment(start: f32, end: f32) -> ExtrusionPath3D {
 
 fn infill() -> InfillIR {
     InfillIR {
-        schema_version: SemVer {
-            major: 3,
-            minor: 0,
-            patch: 0,
-        },
+        // Owned by InfillIR, not the adjacent global-style SliceIR/PerimeterIR pins.
+        schema_version: CURRENT_INFILL_IR_SCHEMA_VERSION,
         global_layer_index: 0,
         regions: vec![InfillRegion {
             object_id: "parity-object".to_string(),

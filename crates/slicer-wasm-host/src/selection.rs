@@ -122,9 +122,9 @@ pub struct SelectedLayerTarget {
 /// Model identity is never fabricated for non-region work.
 #[derive(Debug, PartialEq, Eq)]
 pub enum LayerTargetSource {
-    /// Base-key authority with full matching modifier membership.
+    /// Source identity with full matching modifier membership.
     Model {
-        /// Exact config authority key.
+        /// Exact source-space key; config authority uses a temporary map address.
         key: RegionKey,
         /// Base plus merged sources, retaining ordered paint identity.
         members: Vec<RegionKey>,
@@ -135,8 +135,11 @@ pub enum LayerTargetSource {
         entry_index: usize,
         /// Plan provenance, not a model config key.
         object_id: String,
-        /// Plan region provenance.
+        /// Plan region provenance (SOURCE ID).
         region_id: u64,
+        /// Complete ordered plan source chain, copied exactly; empty only for a
+        /// genuinely chain-empty plan source.
+        variant_chain: Vec<(String, slicer_ir::PaintValue)>,
         /// Producing support family.
         family: String,
         /// Represented demands.
@@ -264,8 +267,20 @@ fn key_for(layer: u32, region: &SlicedRegion) -> RegionKey {
     RegionKey {
         global_layer_index: layer,
         object_id: region.object_id.clone(),
-        region_id: map_space_region_id(region.region_id, &region.variant_chain),
+        region_id: region.region_id,
         variant_chain: region.variant_chain.clone(),
+    }
+}
+/// Derive the exact map-space config address without changing source identity.
+/// Painted non-modifier IDs are decoded once; modifier and chain-empty IDs
+/// remain unchanged, and the full ordered paint chain is preserved.
+pub fn region_map_key_for_sliced_region(
+    global_layer_index: u32,
+    region: &SlicedRegion,
+) -> RegionKey {
+    RegionKey {
+        region_id: map_space_region_id(region.region_id, &region.variant_chain),
+        ..key_for(global_layer_index, region)
     }
 }
 fn origin(key: &RegionKey) -> OriginId {
@@ -341,11 +356,12 @@ fn build_layer(
         .unwrap_or_default();
     for region in candidates {
         let key = key_for(layer.index, &region);
-        let config = config_for(input, module, &key, cache)?;
+        let address = region_map_key_for_sliced_region(layer.index, &region);
+        let config = config_for(input, module, &address, cache)?;
         let resolved = input
             .region_map
             .expect("validated exact map")
-            .config_for(&key);
+            .config_for(&address);
         let active = ActiveRegion {
             object_id: region.object_id.clone(),
             region_id: region.region_id,
@@ -416,12 +432,21 @@ fn build_layer(
             let key = RegionKey {
                 global_layer_index: layer.index,
                 object_id: r.object_id.clone(),
-                region_id: map_space_region_id(r.region_id, &r.variant_chain),
+                region_id: r.region_id,
                 variant_chain: r.variant_chain.clone(),
             };
+            let address = region_map_key_for_sliced_region(
+                layer.index,
+                &SlicedRegion {
+                    object_id: r.object_id.clone(),
+                    region_id: r.region_id,
+                    variant_chain: r.variant_chain.clone(),
+                    ..SlicedRegion::default()
+                },
+            );
             result
                 .perimeter_configs
-                .insert(origin(&key), config_for(input, module, &key, cache)?);
+                .insert(origin(&key), config_for(input, module, &address, cache)?);
         }
     }
     let non_fill_claims = || {
@@ -441,6 +466,7 @@ fn build_layer(
                     entry_index,
                     object_id: entry.object_id.clone(),
                     region_id: entry.region_id,
+                    variant_chain: entry.variant_chain.clone(),
                     family: entry.family_id.clone(),
                     demand_ids: entry.demand_ids.clone(),
                     body_ids: entry.body_ids.clone(),
@@ -504,9 +530,14 @@ fn eligible_carrier_entries<'a>(
                 && e.roles.iter().any(|r| !r.regions.is_empty())
                 && families.contains(&slicer_ir::canonical_support_family(Some(&e.family_id)))
                 && !slice.is_some_and(|s| {
-                    s.regions
-                        .iter()
-                        .any(|r| r.object_id == e.object_id && r.region_id == e.region_id)
+                    // Presence exclusion is full-origin: object, source region
+                    // AND exact ordered chain. A row that differs only by chain
+                    // never excludes this carrier.
+                    s.regions.iter().any(|r| {
+                        r.object_id == e.object_id
+                            && r.region_id == e.region_id
+                            && r.variant_chain == e.variant_chain
+                    })
                 })
         })
         .collect()
@@ -519,15 +550,20 @@ pub(crate) fn support_carrier_regions(
 ) -> Vec<SlicedRegion> {
     let mut carriers: Vec<SlicedRegion> = Vec::new();
     for (_, e) in eligible_carrier_entries(claims, layer, plan, slice) {
-        if carriers
-            .iter()
-            .any(|c| c.object_id == e.object_id && c.region_id == e.region_id)
-        {
+        // One wire handle per full source origin (object + source region +
+        // exact ordered chain). Same-full-origin entries keep distinct selected
+        // contexts but share this handle; different chains stay distinct.
+        if carriers.iter().any(|c| {
+            c.object_id == e.object_id
+                && c.region_id == e.region_id
+                && c.variant_chain == e.variant_chain
+        }) {
             continue;
         }
         carriers.push(SlicedRegion {
             object_id: e.object_id.clone(),
             region_id: e.region_id,
+            variant_chain: e.variant_chain.clone(),
             effective_layer_height: slice
                 .and_then(|s| {
                     s.regions
@@ -598,8 +634,11 @@ mod tests {
                 ..GlobalLayer::default()
             },
         ];
-        // Expectations are authored full identities, not recovered from the projection.
-        let keys = [
+        // Exact map-space config addresses are authored full identities, not
+        // recovered from the projection: decoded base region id plus the
+        // ordered chain. Configuration resolution derives these; it never
+        // stores them as output identity.
+        let map_keys = [
             RegionKey {
                 global_layer_index: 0,
                 object_id: "model".into(),
@@ -616,24 +655,44 @@ mod tests {
                 variant_chain: vec![("material".into(), PaintValue::ToolIndex(2))],
             },
         ];
+        // Stored source identities: the paint-variant ids minted for committed
+        // slice regions pass through unchanged, with their exact ordered chains.
+        let keys: Vec<RegionKey> = map_keys
+            .iter()
+            .map(|map_key| RegionKey {
+                region_id: slicer_core::algos::paint_segmentation::paint_variant_region_id(
+                    map_key.region_id,
+                    &map_key.variant_chain,
+                ),
+                ..map_key.clone()
+            })
+            .collect();
         let slices = [SliceIR {
             regions: keys
                 .iter()
                 .rev()
                 .map(|k| SlicedRegion {
                     object_id: "model".into(),
-                    region_id: slicer_core::algos::paint_segmentation::paint_variant_region_id(
-                        k.region_id,
-                        &k.variant_chain,
-                    ),
+                    region_id: k.region_id,
                     variant_chain: k.variant_chain.clone(),
                     ..SlicedRegion::default()
                 })
                 .collect(),
             ..SliceIR::default()
         }];
+        // The public mapper recovers those exact addresses from the committed
+        // source regions: each painted id decodes exactly once and the ordered
+        // chain is preserved.
+        assert_eq!(
+            region_map_key_for_sliced_region(0, &slices[0].regions[1]),
+            map_keys[0]
+        );
+        assert_eq!(
+            region_map_key_for_sliced_region(0, &slices[0].regions[0]),
+            map_keys[1]
+        );
         let mut map = RegionMapIR::default();
-        for (key, marker) in keys.iter().zip([21, 42]) {
+        for (key, marker) in map_keys.iter().zip([21, 42]) {
             let id = map.intern_config(ResolvedConfig {
                 top_fill_holder: "Layer::Infill".into(),
                 sparse_fill_holder: "Layer::Infill".into(),
@@ -754,15 +813,15 @@ mod tests {
         assert_eq!(
             error.error,
             SelectionError::MissingModelConfig {
-                key: keys[1].clone()
+                key: map_keys[1].clone()
             }
         );
         let mut incomplete = map.clone();
-        incomplete.entries.remove(&keys[1]);
+        incomplete.entries.remove(&map_keys[1]);
         assert_eq!(
             build(Some(&incomplete), None).unwrap_err().error,
             SelectionError::MissingModelConfig {
-                key: keys[1].clone()
+                key: map_keys[1].clone()
             }
         );
         for stage in STAGES
@@ -837,14 +896,16 @@ mod tests {
             paint_semantics: None,
             invocation_config: &invocation,
         }];
+        let carrier_chain = vec![("material".into(), PaintValue::ToolIndex(3))];
         // exhaustive: carrier provenance fixture specifies all unbound SupportPlanEntry fields.
         let entry = slicer_ir::SupportPlanEntry {
             global_layer_index: 7,
             object_id: "air".into(),
             region_id: slicer_core::algos::paint_segmentation::paint_variant_region_id(
                 55,
-                &[("material".into(), PaintValue::ToolIndex(3))],
+                &carrier_chain,
             ),
+            variant_chain: carrier_chain.clone(),
             family_id: "traditional".into(),
             demand_ids: vec!["demand".into()],
             body_ids: vec!["body".into()],
@@ -893,6 +954,7 @@ mod tests {
                     entry_index,
                     object_id: "air".into(),
                     region_id: 55_000_004,
+                    variant_chain: carrier_chain.clone(),
                     family: "traditional".into(),
                     demand_ids: vec!["demand".into()],
                     body_ids: vec![body.into()],
@@ -904,9 +966,15 @@ mod tests {
             assert_eq!(target.held_claims, support_claims);
             assert!(!target.authored_coloring);
         }
+        let wire = support_carrier_regions(&support_claims, 7, Some(&plan), None);
         assert_eq!(
-            support_carrier_regions(&support_claims, 7, Some(&plan), None).len(),
-            1
+            wire.len(),
+            1,
+            "same-full-origin entries share one wire handle"
+        );
+        assert_eq!(
+            wire[0].variant_chain, carrier_chain,
+            "wire origin copies the plan source's exact ordered chain"
         );
         assert!(selected.perimeter_configs.is_empty());
         let present_slice = SliceIR {
@@ -940,10 +1008,10 @@ mod tests {
         .unwrap();
         assert!(!no_support.selection_for(7, "support").unwrap().invoke);
 
-        let parent_raw_id = slicer_core::algos::paint_segmentation::paint_variant_region_id(
-            keys[0].region_id,
-            &keys[0].variant_chain,
-        );
+        // The stored parent source id is already the raw painted id minted
+        // once; a modifier child encodes that raw parent, never a re-encoding
+        // and never its map-space address.
+        let parent_raw_id = keys[0].region_id;
         let child_id = slicer_ir::modifier_sub_region_id(parent_raw_id, "model", &[]);
         let child_key = RegionKey {
             region_id: child_id,
@@ -1012,18 +1080,26 @@ mod tests {
         assert_eq!(selection.targets[0].config.get_int("marker"), Some(21));
         assert!(selection.slice_regions[0].polygons.is_empty());
 
+        // Committed perimeter source identity: the raw painted id (minted once
+        // from the base id) plus the exact ordered chain.
         let extra_key = RegionKey {
+            region_id: slicer_core::algos::paint_segmentation::paint_variant_region_id(
+                77,
+                &keys[0].variant_chain,
+            ),
+            ..keys[0].clone()
+        };
+        // Exact map-space authority address for that source identity: the
+        // decoded base id plus the same ordered chain.
+        let extra_address = RegionKey {
             region_id: 77,
             ..keys[0].clone()
         };
         let perimeters = [PerimeterIR {
             regions: vec![slicer_ir::PerimeterRegion {
                 object_id: "model".into(),
-                region_id: slicer_core::algos::paint_segmentation::paint_variant_region_id(
-                    extra_key.region_id,
-                    &extra_key.variant_chain,
-                ),
-                variant_chain: keys[0].variant_chain.clone(),
+                region_id: extra_key.region_id,
+                variant_chain: extra_key.variant_chain.clone(),
                 ..slicer_ir::PerimeterRegion::default()
             }],
             ..PerimeterIR::default()
@@ -1042,7 +1118,7 @@ mod tests {
         assert_eq!(
             perimeter_error.error,
             SelectionError::MissingModelConfig {
-                key: extra_key.clone()
+                key: extra_address.clone()
             }
         );
         let id = map.intern_config(ResolvedConfig {
@@ -1050,7 +1126,7 @@ mod tests {
             ..ResolvedConfig::default()
         });
         map.entries.insert(
-            extra_key.clone(),
+            extra_address.clone(),
             RegionPlan {
                 config: id,
                 ..RegionPlan::default()

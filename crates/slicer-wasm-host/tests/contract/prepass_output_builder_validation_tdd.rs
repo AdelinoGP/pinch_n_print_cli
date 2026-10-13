@@ -64,6 +64,8 @@ fn valid_support_entry() -> SupportPlanEntry {
         global_layer_index: 0,
         object_id: "obj-a".to_string(),
         region_id: "region-1".to_string(),
+        // empty is exact, never a wildcard
+        variant_chain: Vec::new(),
         family_id: "tree".to_string(),
         demand_ids: vec!["demand-1".to_string()],
         body_ids: vec!["body-1".to_string()],

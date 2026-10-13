@@ -127,3 +127,30 @@ grounding search as stubbed; it is now implemented. The pre-140
 violation of ADR-0025; packet 140 deleted the stub (`build_branches` and the
 inline grid-sampling machinery), so the module now samples the committed trees
 raw and the transitional gap is closed.
+
+## Clarification — 2026-10-11 (packet `layer-module-preparation_01_shared-selection-prerequisite`, step G2)
+
+**The historical implementation report above is not a normative prohibition on
+source chains.** The Amendment — 2026-08-05 (packets 137–140) reports what was
+built then: per-region `region_id` keying of the host generator, and the
+`lightning-tree-segments` WIT read-view located, at that time, on the shared
+`paint-region-layer-view`. It records implementation history, not a rule about
+source identity, and neither fact prohibits nor constrains ordered variant chains
+on infill sources. The standing identity contract is full-source variant-chain
+identity with versioned specialist query packages —
+[ADR-0073](./0073-full-source-variant-chain-identity-and-versioned-specialist-queries.md).
+
+**Query-location fact, as of that packet.** Specialist lightning access now
+serves from the versioned package `slicer:lightning-queries@1.0.0` (interface
+`lightning-queries`, resource `lightning-query-view`, canonical WIT at
+`crates/slicer-schema/wit/deps/lightning-queries/lightning-queries.wit`), where
+`lightning-tree-segments` is keyed by the full origin
+`(object-id, region-id, variant-chain)`; the shared view carries core accessors
+only (ADR-0073). This records where the standing contract lives; it changes no
+lightning algorithm or contract.
+
+**Producer placement unchanged.** This clarification moves nothing: tree
+generation remains the host-side `PrePass::LightningTreeGen` producer over the
+committed `SliceIR` and is not moved into a per-layer stage, `LightningTreeIR`
+remains the whole-print prepass commit, the module remains a per-layer sampler,
+and the Decision, Future-Reviewer Notes and Amendment above stand as written.

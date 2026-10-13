@@ -2,7 +2,9 @@
 
 use std::sync::Arc;
 
-use slicer_ir::{IndexedTriangleSet, MeshIR, ObjectMesh, Point3, Transform3d};
+use slicer_ir::{
+    IndexedTriangleSet, MeshIR, ObjectMesh, PaintValue, Point3, SliceIR, SlicedRegion, Transform3d,
+};
 use slicer_wasm_host::exact_z_query::ExactZQueryService;
 
 fn cube_mesh() -> MeshIR {
@@ -71,7 +73,30 @@ fn cube_mesh() -> MeshIR {
 #[test]
 pub fn exact_z_support_query() {
     let service = ExactZQueryService::new(Arc::new(cube_mesh()));
-    let first = service.query("object-a", 7, 4.321).expect("query");
+    // Authoritative committed SOURCE row: the query identity (object id, region
+    // id, ordered variant chain, physical Z) is derived from the committed
+    // `SliceIR` region instead of fabricated literals.
+    let source = SliceIR {
+        global_layer_index: 7,
+        z: 4.321,
+        regions: vec![SlicedRegion {
+            object_id: "object-a".to_string(),
+            region_id: 7,
+            variant_chain: vec![("wall".to_string(), PaintValue::ToolIndex(1))],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let region = &source.regions[0];
+
+    let first = service
+        .query(
+            &region.object_id,
+            region.region_id,
+            &region.variant_chain,
+            source.z,
+        )
+        .expect("query");
 
     assert_eq!(first.z_units, 43_210);
     assert!(!first.occupancy.is_empty(), "occupancy at intermediate Z");
@@ -79,7 +104,14 @@ pub fn exact_z_support_query() {
     assert!(!first.termination_surfaces.is_empty(), "plate termination");
     assert!(!first.baseline_envelope.is_empty(), "baseline envelope");
 
-    let second = service.query("object-a", 7, 4.321).expect("cached query");
+    let second = service
+        .query(
+            &region.object_id,
+            region.region_id,
+            &region.variant_chain,
+            source.z,
+        )
+        .expect("cached query");
     assert!(
         Arc::ptr_eq(&first, &second),
         "identical inputs use immutable cache"

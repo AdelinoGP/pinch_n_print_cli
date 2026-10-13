@@ -33,8 +33,8 @@ use slicer_sdk::prepass_builders::SupportGeometryOutput;
 use slicer_sdk::prepass_types::SupportAnalysisView;
 use slicer_sdk::prepass_types::{
     Diagnostic, DiagnosticSeverity, LayerPlanView, LayerPlanViewEntry, MeshObjectView,
-    RegionSegmentationView, RegionSegmentationViewEntry, SupportAnalysisCandidate,
-    SupportGeometryView, SupportGeometryViewEntry,
+    RegionSegmentationView, RegionSegmentationViewEntry, RegionSourceOrigin,
+    SupportAnalysisCandidate, SupportGeometryView, SupportGeometryViewEntry,
 };
 use slicer_sdk::traits::PrepassModule;
 
@@ -444,6 +444,7 @@ fn tree_analysis(object_id: &str) -> SupportAnalysisView {
                 |region_id| slicer_sdk::prepass_types::SupportFamilyAssignment {
                     object_id: object_id.to_string(),
                     region_id: region_id.to_string(),
+                    variant_chain: Vec::new(),
                     family_id: "tree".to_string(),
                 },
             )
@@ -492,7 +493,10 @@ fn make_region_segmentation(object_id: &str, n: u32) -> RegionSegmentationView {
             .map(|i| RegionSegmentationViewEntry {
                 object_id: object_id.to_string(),
                 layer_index: i,
-                region_ids: vec!["0".to_string()],
+                region_origins: vec![RegionSourceOrigin {
+                    region_id: "0".to_string(),
+                    variant_chain: Vec::new(),
+                }],
             })
             .collect(),
         region_support_configs: Vec::new(),
@@ -509,7 +513,10 @@ fn make_region_segmentation_multi(specs: &[(&str, u32)]) -> RegionSegmentationVi
             entries.push(RegionSegmentationViewEntry {
                 object_id: (*object_id).to_string(),
                 layer_index: i,
-                region_ids: vec!["0".to_string()],
+                region_origins: vec![RegionSourceOrigin {
+                    region_id: "0".to_string(),
+                    variant_chain: Vec::new(),
+                }],
             });
         }
     }
@@ -619,6 +626,7 @@ fn branch_landing_on_model_emits_bottom_interface() {
                 object_id: "floor".to_string(),
                 region_id: "0".to_string(),
                 outlines: vec![shelf.clone()],
+                ..Default::default()
             })
             .collect(),
     };

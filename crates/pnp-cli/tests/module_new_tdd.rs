@@ -167,7 +167,7 @@ fn stage_path_optimization_is_scaffoldable_per_architecture() {
 fn stage_layer_infill_scaffolds_its_per_stage_package() {
     let tmp = run_new("plain-infill", "Layer::Infill").unwrap();
     let manifest = fs::read_to_string(tmp.path().join("plain-infill/plain-infill.toml")).unwrap();
-    assert!(manifest.contains("slicer:layer-infill/infill@1.0.0#run"));
+    assert!(manifest.contains("slicer:layer-infill/infill@2.0.0#run"));
 }
 
 #[test]

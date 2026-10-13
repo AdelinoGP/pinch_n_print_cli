@@ -358,6 +358,15 @@ fn painted_key() -> RegionKey {
     }
 }
 
+/// Source-space twin of [`painted_key`]: production `build_layer` keys `Model`
+/// targets by the slice's minted source region id (`paint_variant_region_id`),
+/// while `painted_key()` names the map-space base entry the chain resolves to.
+fn painted_source_key() -> RegionKey {
+    let key = painted_key();
+    let region_id = paint_variant_region_id(key.region_id, &key.variant_chain);
+    RegionKey { region_id, ..key }
+}
+
 fn painted_slice() -> SliceIR {
     let key = painted_key();
     SliceIR {
@@ -625,7 +634,7 @@ fn schema_stages_and_production_eligibility() {
                     Some(41)
                 );
                 assert!(selection.targets.iter().any(|t| matches!(&t.source,
-                    LayerTargetSource::Model { key, .. } if key == &painted_key())));
+                    LayerTargetSource::Model { key, .. } if key == &painted_source_key())));
                 if id == &infill_id {
                     // Analytic rectangle: the old 10x10 sparse domain is replaced
                     // by the 6x4 wall inset, with no bridge/bottom/top exclusions.
@@ -889,6 +898,8 @@ fn support_plan(family: &str, decline_reason: Option<SupportPlanDeclineReason>) 
             capabilities: vec!["extrusion.paths".into()],
             provenance: vec!["runtime-carrier-control".into()],
             decline_reason,
+            // Genuinely chain-empty fixture source (design.md: empty chain is exact, never a wildcard).
+            variant_chain: Vec::new(),
         }],
         ..Default::default()
     }
@@ -929,6 +940,8 @@ fn support_carrier_case(
                 entry_index: 0,
                 object_id: "support-only".into(),
                 region_id: 13,
+                // Genuinely chain-empty fixture source (design.md: empty chain is exact, never a wildcard).
+                variant_chain: Vec::new(),
                 family: "tree".into(),
                 demand_ids: vec!["demand-13".into()],
                 body_ids: vec!["body-13".into()],
