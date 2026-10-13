@@ -24,3 +24,15 @@
 /docs/specs/perf-vs-orca/evidence/t4[0-3]-*/**/*.log -whitespace
 /docs/specs/perf-vs-orca/evidence/t3[89]-*/**/*.diff -whitespace
 /docs/specs/perf-vs-orca/evidence/t4[0-3]-*/**/*.diff -whitespace
+
+# The t29/t31/t45 sets and the t49-t57 diagnostic/experiment sets carry
+# hash-pinned manifests, inputs and captured logs; preserve their bytes on
+# add/checkout instead of normalizing line endings.
+/docs/specs/perf-vs-orca/evidence/t29-mesh-ops-fixtures/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t31-clipper2-120/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t45-quartile-bbox/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t49-signed-distance/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t51-winding-cache/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t53-union-simplify/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t55-body-union/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t57-topx-cache/** -text whitespace=cr-at-eol
