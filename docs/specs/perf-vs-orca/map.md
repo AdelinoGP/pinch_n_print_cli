@@ -38,23 +38,31 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-13, updated after the t63 take):**
-on resumption the human said "continue" without naming a ticket, so the
-session took the first frontier ticket in order —
-[63](issues/63-low-layer-dispatch-granularity.md) — **resolved as a
-diagnosis/design take (2026-10-13)**: the dispatch-granularity mechanism is
+**Current selection scope (2026-10-14, updated after the t64 take):** on
+resumption the human said "continue" without naming a ticket, so the session
+took the first frontier ticket in order —
+[64](issues/64-tree-support-renderer-attribution.md) — **resolved as an
+attribution take (2026-10-14)**: the probed renderer's fuel is owned by a
+**dead paint-policy scan** (`paint_policy_for` 79.7%: 0 covers / 0
+eligibility checks in 836 queries — walk without a covering region, exact
+reduction shapes identified) with skeleton containment second at 15.9%;
+`scan_fill_region` — the ticket's named suspect — is measured **0.43%
+inclusive, no-useful-reduction**; wall relevance is bounded (renderer
+accumulated worker 6.79–8.35 s over 12-thread phases of 8.2–8.7 s =
+6.5–8.5% occupancy, 0–2 ms on the last-finishing layer). The reduction
+graduated to
+[66](issues/66-paint-policy-dead-walk-reduction.md) (open, awaiting human
+route/KEEP-DROP later; ticket creation is not execution approval). The
+existing paired-mode acceptance and human KEEP/DROP rules are unchanged; new
+questions require the human's route decision.
+
+**Previous selection scope (2026-10-13, after the t63 take):** the dispatch-granularity mechanism is
 established at worker level, the ticket's measured opportunity is shown
 stale at post-t65 HEAD (deficit 42–50% → 2.4–7.0%; lone-open tail gone),
 the generic experiment is recommended NOT opened, and the fresh scheduling
 baseline the t65 route note required has now been taken (seven probe runs;
 see the ticket's Answer and
-[evidence](evidence/t63-lowlayer-dispatch/FINDINGS.md)). The frontier is
-now: [64](issues/64-tree-support-renderer-attribution.md),
-[59](issues/59-prep-slice-flat-bridge-closing-reduction.md),
-[60](issues/60-host-native-attribution.md),
-[20](issues/20-consume-only-when-read-annotations.md) (parked below-fold).
-The existing paired-mode acceptance and human KEEP/DROP rules are
-unchanged; new questions require the human's route decision.
+[evidence](evidence/t63-lowlayer-dispatch/FINDINGS.md)).
 
 Standing decisions for this effort (2026-09-22):
 
@@ -489,6 +497,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Tree-support renderer self-fuel and scan-fill attribution](issues/64-tree-support-renderer-attribution.md): **resolved (2026-10-14; attribution take, probe reverted, no production edit, no timing campaign)** — four fresh profiled captures (outputs byte-identical to the t58 references, all four cells); the renderer's 43.510 B dispatch fuel splits: **`paint_policy_for` 34.697 B (79.7%)** — per-query counters pin a **dead walk** (1 rebuilt region / ~428 vertices / ~1,285 rings / ~893K edge tests × ~46.5 instr each; **0 covers, 0 eligibility checks in 836 queries** → `DefaultEligible` every time), two exact reduction shapes graduated to [Support paint-policy dead-walk reduction](issues/66-paint-policy-dead-walk-reduction.md); **`skeleton_wall_count` 6.921 B (15.9%)** (bbox-scan walks 377.7 M of it; ranked second); **`scan_fill_region` 0.187 B (0.43%) inclusive — the ticket's named suspect measured no-useful-reduction** (4,443 rows / 2.8 M edge walks / 2.008 conversions per edge; role splits exact); wall relevance bounded: renderer accumulated worker 6.79–8.35 s over 12-thread phases = **6.5–8.5% machine occupancy**, 0–2 ms on the last-finishing layer, freeing the dead walk's share bounded ≈0.45–0.55 s of those phases' walls (attribution-only bounds, never a wall claim). Supports-off controls match the t61 baselines with the probe silent (0 counts). Ordinary mode only (disclosed); the graduated experiment carries the both-modes paired gate. Evidence: `evidence/t64-tree-support-renderer/` (`FINDINGS.md`, `probe.patch`, `verify.py`).
+
 - [Independent low-layer dispatch and Arachne finishing-tail reduction](issues/63-low-layer-dispatch-granularity.md): **resolved (2026-10-13; diagnosis/design, no production edit, no timing campaign)** — the granularity mechanism is confirmed with worker-level evidence (a reverted env-gated probe, `evidence/t63-lowlayer-dispatch/probe.patch`): at 12 threads layers 0/1/2 are rayon's initiator left spine on worker 0 in all five fresh runs (0,1,2,3 at six threads), module-pool waits are zero at ≤12 threads (every per-layer-tier manifest is `layer-parallel-safe`; waits measured only at 24 threads, max 42 ms), and the 24-thread counterfactual collapses the serialization entirely (layer 1 stolen at ≈0 ms, layer 2 ending mid-field — same job/binary, only steal width). **The premise's measured opportunity is stale at HEAD**: the per-layer-phase scheduling deficit collapsed from 1,079–3,022 ms (12.7–49.9%) across the six pre-t65 t61 captures to 161–969 ms (2.4–7.0%) post-t65 with the lone-open tail gone (0–61 ms), because committed t65 cut the low-layer linker chunk the spine held (layer-1 linker dispatch 3,191 → 1,228–1,662 ms; layers 0–2 accumulated 4.50–6.23 → 1.39–1.80 s, ≈3–4×). Recommendation: do **not** open the output-identical dispatch-granularity experiment now (measured ceiling ≈0.12–2.3% of Benchy slice wall, below the map's ~1%-effect bar); the generic candidate shape (`with_max_len(1)`-class single-item leaves; bounded-chunk designs measured the wrong direction) and the re-open condition (a fresh scheduling baseline re-developing a 40%+-class deficit) are recorded on the ticket. Fresh scheduling baseline for 63's family: taken (the probe runs); outputs byte-identical to the t58 references; loader/provenance checks pass. Evidence: `evidence/t63-lowlayer-dispatch/` (`FINDINGS.md`, probe patch, `verify.py`).
 
 - [Infill-linker batch-execute experiment](issues/65-infill-linker-batch-execute-experiment.md): **resolved (2026-10-13); human-approved KEEP — committed with this ticket** — one batched `Clipper64` + execute per `link_paths_without_offset` invocation with re-derived per-subject attribution (`PreparedPolylineClip::clip_batched`, `crates/slicer-core/src/polygon_ops.rs`; per-subject `clip` repair for ambiguous junction-kiss subjects, whole-call fallback reserved for unattributable segments). In-guest replay-oracle probe: 0 mismatches over 12,022–19,290 subjects per cell, both modes, outputs byte-identical to the preserved references; 10 differential tests. Qualification 16/16 byte-identical, then the standing paired gate on the 8 pre-declared arachne cells (6/6 pairs everywhere, zero starvation exclusions): **benchy arachne wall −20.01/−21.08 % (off) and −12.24/−10.84 % (on), CPU corroborating; base cells a wash** (−0.07/−0.52/−1.65 %; ordinary-base-arachne-on +0.43 % median loss, ranges overlapping) — GATE NOT MET on the letter, the failing cell explicitly accepted in the human's ruling. Production artifacts already in the candidate state; both freshness gates green. Evidence: `evidence/t65-linker-batch/FINDINGS.md`.
@@ -606,6 +616,16 @@ Standing decisions for this effort (2026-09-22):
   reconstruction: current + `; support_overhang_angle = 30` == the t47 refs).
   For ticket 45 (next chain link), the fresh-baseline gate may proceed against
   the current references; it is not map-wide authorization.
+- **Renderer skeleton-containment reduction (second-ranked by t64, 2026-10-14).**
+  [Tree-support renderer attribution](issues/64-tree-support-renderer-attribution.md)
+  ranked `skeleton_wall_count`'s containment second at 6.921 B (15.9% of
+  renderer fuel), of which the per-point 4× bbox min/max scans in
+  `point_in_expolygon` walk 377,682,312 ring lengths per supports-on Benchy
+  slice. A per-expoly precomputed bounding box (or per-entry skeleton memo) is
+  the cheap shape, but its ceiling (~2–4 B ≈ 5–9% of renderer fuel) and the
+  renderer's small wall occupancy do not yet justify a separate experiment; it
+  graduates only with its own measured reason, independently of ticket 66's
+  paint-walk take.
 - **Painted-wall performance work.** No representative painted workload exists,
   so the painted path of `build_wall_flags` (nearest-original reprojection
   reuse) is not even selectable as a candidate. Needs a fixture/scenario before

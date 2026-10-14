@@ -43,3 +43,8 @@
 /docs/specs/perf-vs-orca/evidence/perf-refresh-2026-10-13/** -text whitespace=cr-at-eol
 /docs/specs/perf-vs-orca/evidence/t62-linker-post-hoist/** -text whitespace=cr-at-eol
 /docs/specs/perf-vs-orca/evidence/t65-linker-batch/** -text whitespace=cr-at-eol
+
+# The t64 tree-support renderer attribution set carries hash-checked captures,
+# the temporary probe patch and its verifiers; preserve their bytes on
+# add/checkout instead of normalizing line endings.
+/docs/specs/perf-vs-orca/evidence/t64-tree-support-renderer/** -text whitespace=cr-at-eol
