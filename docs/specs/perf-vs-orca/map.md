@@ -38,6 +38,31 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
+**Current selection scope (2026-10-13, updated after the ticket-65 take):**
+the human requested a Benchy
+performance analysis and new tickets. The
+[Benchy current bottleneck refresh](issues/61-benchy-current-bottleneck-refresh.md)
+is complete; it expands the child-issue frontier without starting optimization
+experiments, changing the scoreboard, or lifting the annotation park. The
+human's first selected take —
+[62](issues/62-infill-linker-post-hoist-residual.md) — is **resolved**
+(attribution + graduation only; no timing campaign, no commit). The second
+selected take — [65](issues/65-infill-linker-batch-execute-experiment.md) —
+is **resolved as a human-approved KEEP (2026-10-13)**: the batch-execute
+candidate is committed, production artifacts already match it, and both
+guest-freshness gates are green. The gate formally recorded GATE NOT MET
+(one wash cell, accepted explicitly); see the ticket's Answer and
+[evidence](evidence/t65-linker-batch/FINDINGS.md). The frontier is now:
+[63](issues/63-low-layer-dispatch-granularity.md),
+[64](issues/64-tree-support-renderer-attribution.md),
+[59](issues/59-prep-slice-flat-bridge-closing-reduction.md),
+[60](issues/60-host-native-attribution.md),
+[20](issues/20-consume-only-when-read-annotations.md) (parked below-fold).
+The t65 commit is a linker-cost change: any later scheduling diagnosis
+(63's family) needs a fresh scheduling baseline. New
+questions require a later selected take; the existing paired-mode acceptance
+and human KEEP/DROP rules are unchanged.
+
 Standing decisions for this effort (2026-09-22):
 
 - **Execution is carried into this map**: tickets are worked as measurement /
@@ -471,6 +496,12 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Infill-linker batch-execute experiment](issues/65-infill-linker-batch-execute-experiment.md): **resolved (2026-10-13); human-approved KEEP — committed with this ticket** — one batched `Clipper64` + execute per `link_paths_without_offset` invocation with re-derived per-subject attribution (`PreparedPolylineClip::clip_batched`, `crates/slicer-core/src/polygon_ops.rs`; per-subject `clip` repair for ambiguous junction-kiss subjects, whole-call fallback reserved for unattributable segments). In-guest replay-oracle probe: 0 mismatches over 12,022–19,290 subjects per cell, both modes, outputs byte-identical to the preserved references; 10 differential tests. Qualification 16/16 byte-identical, then the standing paired gate on the 8 pre-declared arachne cells (6/6 pairs everywhere, zero starvation exclusions): **benchy arachne wall −20.01/−21.08 % (off) and −12.24/−10.84 % (on), CPU corroborating; base cells a wash** (−0.07/−0.52/−1.65 %; ordinary-base-arachne-on +0.43 % median loss, ranges overlapping) — GATE NOT MET on the letter, the failing cell explicitly accepted in the human's ruling. Production artifacts already in the candidate state; both freshness gates green. Evidence: `evidence/t65-linker-batch/FINDINGS.md`.
+
+- [Infill-linker post-hoist residual and exact clip-work reduction](issues/62-infill-linker-post-hoist-residual.md): **resolved (2026-10-13)** — the t44 hoist confirmed working (prepare now 2.60% of linker fuel, once per invocation); the post-hoist cost is the **per-path engine round trip: `execute` 85.96% + `engine_add` 4.42% of linker fuel** across 12,022 clip calls / 393 invocations, with the prepared universe re-fed **57.3× per preparation** (classic 49.5×) and per-call cost universe-dominated (fit −2.8M + 7,990·U, R² 0.869). Qualification: 8/8 cells byte-identical both modes before the probe; all six probe captures output-neutral; cross-mode scope agreement ≤5.4e-4 relative. Candidate (batch one engine + one execute per invocation with re-derived per-subject attribution, exactness conditions measured and documented) **graduated to** [Infill-linker batch-execute experiment](issues/65-infill-linker-batch-execute-experiment.md); same-cost ceiling ≈12.58% of current linker fuel, slice share 44.28% → ≈5.57% (estimates, not measurements). Attribution/representation only; production restored, freshness green. Evidence: `evidence/t62-linker-post-hoist/FINDINGS.md`.
+
+- [Benchy current bottleneck refresh after clone-once finalization](issues/61-benchy-current-bottleneck-refresh.md): fresh output-identical Benchy attribution graduates the post-hoist linker residual, low-layer dispatch granularity and support-renderer questions; existing leads retained, no optimization or speed verdict.
+
 - [LayerFinalization whole-print copying](issues/58-layerfinalization-whole-print-copying.md): **resolved (2026-10-12); human-approved KEEP — committed with this ticket (`e7159687`, docs `e4e93dea`)** — the clone-once finalization stage + owned pre-emit capture candidate (three runtime files) passed the fresh 16-cell output-identity qualification (ordinary cells reproduce the preserved production references; base-arachne-on fresh ref `a1bc8110…`), then the standing paired gate **in all four pre-declared cells, 6/6 pairs each, zero starvation exclusions**: base-classic-on wall medians **−10.48 % ordinary (610.0 → 539.5 s) / −8.76 % accelerated (601.0 → 547.9 s)**, CPU corroborating (−2.33 % / −2.45 %); benchy-classic-on −1.21 % / −1.44 % with byte-identical outputs everywhere. Attribution: LayerFinalization stage 113.2 → 70.4 s (−37.7 %), inter-bracket drop gaps → 0 ms, one 2.7 s upfront clone + 10.1 s commit tail; postpass phase 132.3 → 87.4 s. Campaign context disclosed (background load; three interruption recoveries incl. a harness-timeout raise to 1800 s, infrastructure-only); snapshots restored, freshness gates green. Evidence: `evidence/t58-finalization-copies/FINDINGS.md`.
 
 - [Serial host floor](issues/27-serial-host-prepass-floor.md): **resolved (2026-10-09)** — the post-park premise search found the new safe call reduction the ticket waited for: 99.8% of `commit_support_analysis_builtin`'s serial sweep (`crates/slicer-runtime/src/builtins/support_analysis_producer.rs`) was one predicate — `SliceRegionView::derive_needs_support`'s per-region exact `intersection_ex` against the object-global overhang footprint (`crates/slicer-sdk/src/views.rs`), 24.19 s of the 38.20 s base supports-on stage wall — now moved to an order-preserving indexed rayon pre-pass (dual-compute 495/495 base + 240/240 benchy regions, 0 mismatches; 8.7x on the predicate). Standing paired A/B: base median wall **−18.198 s ordinary / −19.380 s accelerated** (6/6 and 5/6 pairs) at ≈+0.5% median process CPU; benchy −1.105 s / −0.943 s. All 48 outputs byte-identical; the strict wall-and-CPU clause passes on ordinary/benchy only and the **human KEPT the base wall win 2026-10-09** (≈3.4–3.7% of arm-median wall; accepted as a serialization fix, not a scoreboard claim), committed with the ticket. The probe-3 bbox-index filter alternative was refuted (~45% pruning, ~12% saving) and the `from_ir` deep-clone hypothesis measured dead. Remaining leads (flat-bridge representation analysis, `apply_opening` parity, teardown early release) stay in the fog. Evidence: `evidence/t27-serial-floor/FINDINGS-PROBE3.md`.
@@ -599,14 +630,18 @@ Standing decisions for this effort (2026-09-22):
       its completed exact prepared winding-coordinate cache experiment
       (human-approved DROP, 2026-10-06) remain
      unspecified; distance-query alternatives need their own reason and scope,
-     not implicit permission from that split. [infill-linker
-  attribution](issues/21-infill-linker-attribution.md)'s split graduated the
-  now-resolved [clip-universe preparation hoist](issues/44-clip-universe-hoist.md)
-  (2026-10-01); its measured mode-invariance also re-ranks the *remaining*
-  linker work below the hoist — the per-polyline clipper execute (32.65% of
-  linker fuel) and the ~2.4% that is not the re-clip (connectivity 2.01% plus
-  a <0.4% residual) stay in this fog until a take has a reason to touch that
-  shape. [Tree-planner substage
+     not implicit permission from that split.    [infill-linker
+   attribution](issues/21-infill-linker-attribution.md)'s split graduated the
+   now-resolved [clip-universe preparation hoist](issues/44-clip-universe-hoist.md)
+    (2026-10-01). The post-hoist linker residual graduated to
+   [Infill-linker post-hoist residual and exact clip-work reduction](issues/62-infill-linker-post-hoist-residual.md)
+   and is **resolved (2026-10-13)**: the current split is measured —
+   per-path `execute` 85.96% + `engine_add` 4.42% of linker fuel, connect
+   4.73%, prepare 2.60%, metadata 1.25% — and its candidate graduated to
+   [Infill-linker batch-execute experiment](issues/65-infill-linker-batch-execute-experiment.md).
+   Post-batch linker alternatives (the connect/prepare/metadata residual and
+   any subject-side costs the experiment exposes) await that experiment's
+   outcome rather than inheriting any assumed split. [Tree-planner substage
   attribution](issues/22-tree-planner-substage-attribution.md) graduated the
    now-resolved [Emit-pass carve gate: representation safety + paired
    A/B](issues/32-emit-carve-gate-representation-and-ab.md). Its sibling

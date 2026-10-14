@@ -1,0 +1,700 @@
+diff --git a/crates/slicer-core/src/polygon_ops.rs b/crates/slicer-core/src/polygon_ops.rs
+index a56418b4..49a83edd 100644
+--- a/crates/slicer-core/src/polygon_ops.rs
++++ b/crates/slicer-core/src/polygon_ops.rs
+@@ -202,11 +202,19 @@ fn polyline_to_path(polyline: &[Point2]) -> Vec<Point64> {
+         .collect()
+ }
+ 
+-/// Converts a clipper2 open-solution path back to a polyline.
++/// converts a clipper2 open-solution path back to a polyline.
+ fn path_to_polyline(path: &[Point64]) -> Vec<Point2> {
+     path.iter().map(|p| Point2 { x: p.x, y: p.y }).collect()
+ }
+ 
++/// Zero-cost `Point64` -> `Point2` field copy (already integer units).
++fn path_to_point2(point: Point64) -> Point2 {
++    Point2 {
++        x: point.x,
++        y: point.y,
++    }
++}
++
+ /// Clips open polylines against an ExPolygon set via a single Clipper2
+ /// open-path intersection (ClipType::Intersection, FillRule::NonZero). All
+ /// contours and holes of every clip ExPolygon are fed as one closed clip
+@@ -320,6 +328,345 @@ impl PreparedPolylineClip {
+             .map(|path| path_to_polyline(path))
+             .collect()
+     }
++
++    /// Clips many polylines in ONE `Clipper64` engine and one `execute`, and
++    /// returns, for every input polyline, exactly what a single-subject
++    /// [`Self::clip`] call would return for that polyline alone (same spans,
++    /// same order, same omissions). The returned outer `Vec` is indexed by
++    /// the input position, so entries whose polyline had fewer than 2 points
++    /// (or which produced no output) are empty.
++    ///
++    /// This is the batch candidate of wayfinder ticket 65: `link_paths_without_offset`
++    /// (`modules/core-modules/infill-linker/src/orchestrate.rs`) replaces its
++    /// per-path engine round trip — 12,022 `Clipper64` constructions,
++    /// universe re-adds and executes per Benchy slice against one immutable
++    /// prepared boundary — with one shared engine per invocation. The
++    /// prepared universe is added once, the subjects once.
++    ///
++    /// Per-subject attribution is re-derived, not assumed: vendored
++    /// `clipper2-rust` 1.1.0 exposes no owner tags on open-path solutions
++    /// and its solution order is outrec creation order, so attribute every
++    /// emitted segment to the subject's own segment it rides on (tolerant
++    /// incidence; output coordinates are within ±2 units of the exact
++    /// boundary, plus intersection rounding) and cut each concatenated
++    /// output path at subject boundaries. Exactness conditions:
++    /// - every emitted segment must be a sub-segment of exactly one
++    ///   subject's segment set; collinear-overlapping or coincident
++    ///   duplicate subjects (segments shared by more than one subject) make
++    ///   attribution ambiguous;
++    /// - if any segment is unattributable or ambiguously attributable, the
++    ///   whole call falls back to per-subject [`Self::clip`] so the
++    ///   per-path-equivalence contract holds unconditionally;
++    /// - subject–subject adjacency (touching spans) can concatenate two
++    ///   subjects into one emitted path (the engine's join logic); splitting
++    ///   at attributed boundaries reconstitutes each subject's own pieces.
++    ///
++    /// Equivalence to the per-path chain on real matched-job invocations is
++    /// proved by the t65 replay oracle and the batch-equivalence tests
++    /// (`crates/slicer-core/tests/polygon_ops_clip_batched_tdd.rs`).
++    pub fn clip_batched(&self, polylines: &[Vec<Point2>]) -> Vec<Vec<Vec<Point2>>> {
++        let mut results: Vec<Vec<Vec<Point2>>> = vec![Vec::new(); polylines.len()];
++        if self.clip_paths.is_empty() {
++            return results;
++        }
++        let subject_segment_lists: Vec<Vec<(Point2, Point2)>> = polylines
++            .iter()
++            .filter(|polyline| polyline.len() >= 2)
++            .map(|polyline| {
++                polyline
++                    .windows(2)
++                    .map(|segment| (segment[0], segment[1]))
++                    .collect()
++            })
++            .collect();
++        // Input positions map to subject segment lists only when valid, so
++        // run the batch over the valid subjects and index back by position.
++        let valid_positions: Vec<usize> = polylines
++            .iter()
++            .enumerate()
++            .filter(|(_, polyline)| polyline.len() >= 2)
++            .map(|(position, _)| position)
++            .collect();
++        if valid_positions.is_empty() {
++            return results;
++        }
++
++        use clipper2_rust::core::FillRule;
++        use clipper2_rust::{ClipType, Clipper64};
++
++        // A single-subject invocation pays one engine + one execute either
++        // way; take the `clip` path directly and skip attribution work.
++        if valid_positions.len() == 1 {
++            // [T65-PROBE] wayfinder ticket 65; removed before any commit.
++            probe_t65::singles_bump();
++            let position = valid_positions[0];
++            results[position] = self.clip(&[polylines[position].clone()]);
++            return results;
++        }
++
++        let open_subjects: Vec<Vec<Point64>> = valid_positions
++            .iter()
++            .map(|&position| polyline_to_path(&polylines[position]))
++            .collect();
++        let mut clipper = Clipper64::default();
++        clipper.add_open_subject(&open_subjects);
++        clipper.add_clip(&self.clip_paths);
++
++        let mut closed_solution: Vec<Vec<Point64>> = Vec::new();
++        let mut open_solution: Vec<Vec<Point64>> = Vec::new();
++        let ok = clipper.execute(
++            ClipType::Intersection,
++            FillRule::NonZero,
++            &mut closed_solution,
++            Some(&mut open_solution),
++        );
++
++        let attributed = if ok {
++            attributed_runs(&open_solution, &subject_segment_lists)
++        } else {
++            Err(())
++        };
++        match attributed {
++            Ok((runs_by_subject, ambiguous)) => {
++                for (subject, &position) in valid_positions.iter().enumerate() {
++                    if ambiguous[subject] {
++                        // Ambiguous junction neighbourhood: the subject's
++                        // own per-path chain is exact by construction, and
++                        // only the flagged subjects pay it.
++                        // [T65-PROBE] wayfinder ticket 65; removed before
++                        // any commit.
++                        probe_t65::repair_bump();
++                        results[position] = self.clip(&[polylines[position].clone()]);
++                    } else {
++                        results[position] = runs_by_subject[subject]
++                            .iter()
++                            .filter(|run| run.len() >= 2)
++                            .cloned()
++                            .collect();
++                    }
++                }
++                return results;
++            }
++            Err(()) => {
++                // Fallback (unattributable emitted segment or engine
++                // failure): the per-path chain, so the contract still
++                // holds. Expected to never fire on the matched cells — the
++                // t65 oracle counts fallback fires on the real captures.
++                // [T65-PROBE] wayfinder ticket 65; removed before any commit.
++                probe_t65::fallback_bump();
++                for &position in &valid_positions {
++                    results[position] = self.clip(&[polylines[position].clone()]);
++                }
++                return results;
++            }
++        }
++    }
++}
++
++/// Maximum tolerance (integer units; 1 unit = 100 nm) when attributing an
++/// emitted open-path segment to a subject segment: ends and midpoint must
++/// lie within this distance of the subject segment's line and inside its
++/// span. The prepared-universe boundary coordinates sit within ±2 units of
++/// the exact clip boundary (see [`PreparedPolylineClip::new`]) and clipper's
++/// intersection rounding is comparable, while real scan-line separations are
++/// orders of magnitude larger, so the tolerance never bridges distinct
++/// subject geometry.
++const CLIP_BATCH_ATTRIBUTION_TOLERANCE_UNITS: f64 = 2.0;
++
++/// Attributes every emitted open-path segment of a batched execute to the
++/// subject segment it rides on, and cuts each emitted path into maximal
++/// runs of one subject. Returns per-subject runs in encounter order plus an
++/// ambiguity flag per subject — at least one emitted segment rode more than
++/// one subject's segment set (coincident / collinear-touching subjects near
++/// a junction; the caller re-runs exactly those subjects through their own
++/// single-subject `clip`, which is exact by construction) — or `Err(())`
++/// when any emitted segment rides NO subject's segment set at all (the
++/// batch's attribution cannot be trusted; the caller falls back to
++/// per-subject clipping for the whole call).
++fn attributed_runs(
++    open_solution: &[Vec<Point64>],
++    subject_segment_lists: &[Vec<(Point2, Point2)>],
++) -> Result<(Vec<Vec<Vec<Point2>>>, Vec<bool>), ()> {
++    let subject_boxes: Vec<(Point2, Point2)> = subject_segment_lists
++        .iter()
++        .map(|segments| {
++            let mut min_x = i64::MAX;
++            let mut min_y = i64::MAX;
++            let mut max_x = i64::MIN;
++            let mut max_y = i64::MIN;
++            for (a, b) in segments {
++                min_x = min_x.min(a.x).min(b.x);
++                min_y = min_y.min(a.y).min(b.y);
++                max_x = max_x.max(a.x).max(b.x);
++                max_y = max_y.max(a.y).max(b.y);
++            }
++            (
++                Point2 {
++                    x: min_x - 2,
++                    y: min_y - 2,
++                },
++                Point2 {
++                    x: max_x + 2,
++                    y: max_y + 2,
++                },
++            )
++        })
++        .collect();
++
++    let mut runs_by_subject: Vec<Vec<Vec<Point2>>> = vec![Vec::new(); subject_segment_lists.len()];
++    let mut ambiguous: Vec<bool> = vec![false; subject_segment_lists.len()];
++    for path in open_solution.iter().filter(|path| path.len() >= 2) {
++        let mut current_owner: Option<usize> = None;
++        let mut current_run: Vec<Point2> = Vec::new();
++        for window in path.windows(2) {
++            let start = path_to_point2(window[0]);
++            let end = path_to_point2(window[1]);
++            let candidates = candidate_subjects(start, end, subject_segment_lists, &subject_boxes);
++            if candidates.is_empty() {
++                // Rides nothing: the batch's attribution cannot be trusted.
++                return Err(());
++            }
++            if candidates.len() > 1 {
++                for &subject in candidates.iter() {
++                    ambiguous[subject] = true;
++                }
++            }
++            let owner = candidates[0];
++            if current_owner.is_none() {
++                current_owner = Some(owner);
++                current_run.push(start);
++            } else if current_owner != Some(owner) {
++                let previous_owner = current_owner.expect("checked above");
++                runs_by_subject[previous_owner].push(std::mem::take(&mut current_run));
++                // The junction point starts the next run.
++                current_run.push(start);
++                current_owner = Some(owner);
++            }
++            current_run.push(end);
++        }
++        if let Some(owner) = current_owner {
++            runs_by_subject[owner].push(current_run);
++        }
++    }
++    Ok((runs_by_subject, ambiguous))
++}
++
++/// Returns every subject whose segment set contains both endpoints and the
++/// midpoint of `(start, end)` as a contiguous sub-segment.
++///
++/// The midpoint must ride the same subject segment as both ends. At a
++/// collinear junction of two touching subjects the shared vertex is one
++/// subject's own end point and the other's start point, so endpoint
++/// tolerance alone admits both subjects; the midpoint separates them
++/// whenever the shared vertex is emitted as a path vertex, and the
++/// resulting candidate pair is repaired per-subject otherwise.
++fn candidate_subjects(
++    start: Point2,
++    end: Point2,
++    subject_segment_lists: &[Vec<(Point2, Point2)>],
++    subject_boxes: &[(Point2, Point2)],
++) -> Vec<usize> {
++    let midpoint = Point2 {
++        x: ((start.x as i128 + end.x as i128) / 2) as i64,
++        y: ((start.y as i128 + end.y as i128) / 2) as i64,
++    };
++    let mut candidates: Vec<usize> = Vec::new();
++    for (subject, segments) in subject_segment_lists.iter().enumerate() {
++        let (min, max) = &subject_boxes[subject];
++        if start.x < min.x
++            || start.y < min.y
++            || end.x < min.x
++            || end.y < min.y
++            || midpoint.x < min.x
++            || midpoint.y < min.y
++            || start.x > max.x
++            || start.y > max.y
++            || end.x > max.x
++            || end.y > max.y
++            || midpoint.x > max.x
++            || midpoint.y > max.y
++        {
++            continue;
++        }
++        if segments
++            .iter()
++            .any(|(a, b)| segment_rides(start, midpoint, end, *a, *b))
++        {
++            candidates.push(subject);
++        }
++    }
++    candidates
++}
++
++/// True when `a`, `m`, and `b` all lie on the segment `p -> q`: within the
++/// attribution tolerance of its line and inside its span (the tolerance
++/// admits the ±2-unit rounding of emitted boundary/intersection
++/// coordinates). Degenerate subject segments (a repeated subject point)
++/// match only a degenerate candidate at their location.
++fn segment_rides(a: Point2, m: Point2, b: Point2, p: Point2, q: Point2) -> bool {
++    const TOLERANCE: f64 = CLIP_BATCH_ATTRIBUTION_TOLERANCE_UNITS;
++    let vx = (q.x - p.x) as i128;
++    let vy = (q.y - p.y) as i128;
++    let length_squared = vx * vx + vy * vy;
++    let length = (length_squared as f64).sqrt();
++    if length <= TOLERANCE {
++        // Degenerate subject segment: only a coincident degenerate candidate
++        // can ride it.
++        return (a.x as i128 - b.x as i128).abs() <= 1 && (a.y as i128 - b.y as i128).abs() <= 1;
++    }
++    let rides = |point: Point2| {
++        let apx = (point.x - p.x) as i128;
++        let apy = (point.y - p.y) as i128;
++        let cross = apx * vy - apy * vx;
++        let dot = apx * vx + apy * vy;
++        // Perpendicular distance <= tolerance, and the projection lies
++        // inside the segment span extended by the tolerance (the rounding of
++        // emitted boundary coordinates).
++        (cross.abs() as f64) <= TOLERANCE * length
++            && (dot as f64) >= -TOLERANCE * length
++            && (dot as f64) <= length_squared as f64 + TOLERANCE * length
++    };
++    rides(a) && rides(m) && rides(b)
++}
++
++// [T65-PROBE] wayfinder ticket 65; removed before any commit. Counters for
++// the in-guest batch-execute oracle; the linker's probe module flushes them
++// once per layer through the module-log channel.
++///
++/// Probe-only; the t65 probe patch drops the whole module together with its
++/// callers.
++pub mod probe_t65 {
++    use std::sync::atomic::{AtomicU64, Ordering};
++
++    static SINGLES: AtomicU64 = AtomicU64::new(0);
++    static FALLBACKS: AtomicU64 = AtomicU64::new(0);
++    static REPAIRS: AtomicU64 = AtomicU64::new(0);
++
++    /// Counts a single-subject early-out (batch bypassed, no ambiguity).
++    pub fn singles_bump() {
++        SINGLES.fetch_add(1, Ordering::Relaxed);
++    }
++
++    /// Counts an unattributable / engine-failure whole-call fallback fire.
++    pub fn fallback_bump() {
++        FALLBACKS.fetch_add(1, Ordering::Relaxed);
++    }
++
++    /// Counts one ambiguity-repaired subject.
++    pub fn repair_bump() {
++        REPAIRS.fetch_add(1, Ordering::Relaxed);
++    }
++
++    /// Takes all three counts (resetting them); called once per invocation
++    /// by the linker's probe replay. Single-threaded per module instance,
++    /// so the take-then-bump race window does not exist on this workload.
++    pub fn take_counts() -> (u64, u64, u64) {
++        (
++            SINGLES.swap(0, Ordering::Relaxed),
++            FALLBACKS.swap(0, Ordering::Relaxed),
++            REPAIRS.swap(0, Ordering::Relaxed),
++        )
++    }
+ }
+ 
+ /// Executes a boolean clip operation on polygon sets.
+diff --git a/crates/slicer-core/src/profile.rs b/crates/slicer-core/src/profile.rs
+index 9095cec9..330a1e67 100644
+--- a/crates/slicer-core/src/profile.rs
++++ b/crates/slicer-core/src/profile.rs
+@@ -99,6 +99,15 @@ impl ScopeId {
+     /// bypass as [`ScopeId::OPENING`].
+     pub const CLOSING_EX: ScopeId = ScopeId(5);
+ 
++    // [T65-PROBE] wayfinder ticket 65; removed before any commit.
++    /// `polygon_ops::clip_batched` — the t65 per-invocation batched
++    /// engine + execute + attribution (probe-only scope).
++    pub const T65_BATCH: ScopeId = ScopeId(6);
++
++    // [T65-PROBE] wayfinder ticket 65; removed before any commit.
++    /// The t65 per-path chain replay on the same invocation (probe-only).
++    pub const T65_REPLAY: ScopeId = ScopeId(7);
++
+     /// Every scope id minted by `slicer-core`, in ascending order.
+     ///
+     /// A sink implementation can walk this to build an id-to-name table up
+@@ -109,6 +118,10 @@ impl ScopeId {
+         ScopeId::OFFSET2_EX,
+         ScopeId::OPENING,
+         ScopeId::CLOSING_EX,
++        // [T65-PROBE] Temporary batch-execute oracle scopes (wayfinder
++        // ticket 65); removed before any commit.
++        ScopeId::T65_BATCH,
++        ScopeId::T65_REPLAY,
+     ];
+ 
+     /// Constructs a scope id from its raw representation.
+@@ -139,6 +152,9 @@ impl ScopeId {
+             3 => Some("polygon_ops::offset2_ex"),
+             4 => Some("polygon_ops::opening"),
+             5 => Some("polygon_ops::closing_ex"),
++            // [T65-PROBE] wayfinder ticket 65; removed before any commit.
++            6 => Some("t65::batch"),
++            7 => Some("t65::replay"),
+             _ => None,
+         }
+     }
+diff --git a/docs/specs/perf-vs-orca/issues/20-consume-only-when-read-annotations.md b/docs/specs/perf-vs-orca/issues/20-consume-only-when-read-annotations.md
+index 3e106975..3f2c66bf 100644
+--- a/docs/specs/perf-vs-orca/issues/20-consume-only-when-read-annotations.md
++++ b/docs/specs/perf-vs-orca/issues/20-consume-only-when-read-annotations.md
+@@ -105,3 +105,14 @@ consumer of the two stamps returns before reading them, so the
+ floor](27-serial-host-prepass-floor.md); both sit under standing park decisions
+ and the route awaits the human's selection. No candidate, experiment or timing
+ was started.
++
++### Benchy refresh context — 2026-10-13 (not a take or park override)
++
++The [Benchy current bottleneck refresh](61-benchy-current-bottleneck-refresh.md)
++re-derived the matched ordinary Classic profile in both support states after
++the finalization KEEP. Classic perimeter module self is 639.971 billion fuel
++in both cells; total perimeter fuel is 89.62%/84.51% of whole-job fuel
++(off/on). This keeps the existing lead relevant, but the aggregate's unmarked
++self bucket does not dynamically prove the liveness audit or isolate the two
++stamps. No duplicate ticket, annotation candidate or park lift follows.
++Evidence: [fresh findings](../evidence/perf-refresh-2026-10-13/FINDINGS.md).
+diff --git a/docs/specs/perf-vs-orca/issues/59-prep-slice-flat-bridge-closing-reduction.md b/docs/specs/perf-vs-orca/issues/59-prep-slice-flat-bridge-closing-reduction.md
+index 2c017d1c..a5917830 100644
+--- a/docs/specs/perf-vs-orca/issues/59-prep-slice-flat-bridge-closing-reduction.md
++++ b/docs/specs/perf-vs-orca/issues/59-prep-slice-flat-bridge-closing-reduction.md
+@@ -56,4 +56,16 @@ evidence attached; no code change.
+ - Evidence: `evidence/perf-refresh-2026-10-09/FINDINGS.md` (host table),
+   `evidence/t27-serial-floor/FLAT-BRIDGE-EXPERIMENT.md`,
+   `evidence/t27-serial-floor/FINDINGS-SUBSTAGE-2.md` (probe-2 stage fuel),
+-  `evidence/t27-serial-floor/PREMISE-AUDIT.md` (consumer audit).
++   `evidence/t27-serial-floor/PREMISE-AUDIT.md` (consumer audit).
++
++## Comments
++
++### Benchy premise refresh — 2026-10-13 (no take started)
++
++The [Benchy current bottleneck refresh](61-benchy-current-bottleneck-refresh.md)
++confirms `host:slice` still leads accumulated native work across both generators
++and support states. `closing_ex` is 23.069–25.128 s accumulated thread-time
++(240 calls in each profile), not slice wall. Profiling-off Arachne stage
++brackets are 2.773/2.609 s off/on. The real-layer representation constraint and
++this ticket's question remain unchanged; no replacement or timing gate was
++started. Evidence: [fresh findings](../evidence/perf-refresh-2026-10-13/FINDINGS.md).
+diff --git a/docs/specs/perf-vs-orca/issues/60-host-native-attribution.md b/docs/specs/perf-vs-orca/issues/60-host-native-attribution.md
+index 762b0c29..2eea1b5f 100644
+--- a/docs/specs/perf-vs-orca/issues/60-host-native-attribution.md
++++ b/docs/specs/perf-vs-orca/issues/60-host-native-attribution.md
+@@ -53,4 +53,15 @@ default change in this take unless the human extends it.
+   machine mined by tickets 22/32/44/53/55/57; the supports-off part is the
+   unexplained side and the take's focus.
+ - Evidence: `evidence/perf-refresh-2026-10-09/FINDINGS.md` (host table and
+-  per-layer counts).
++   per-layer counts).
++
++## Comments
++
++### Benchy bucket refresh — 2026-10-13 (no owner probe or take started)
++
++The [Benchy current bottleneck refresh](61-benchy-current-bottleneck-refresh.md)
++measures supports-off `host:native` at 11.797 s Classic / 5.716 s Arachne
++accumulated thread-time, supports-on 21.755/15.595 s. These fresh profiles
++broaden the generator coverage, not the attribution: owners and wall shares
++remain unresolved, so this ticket is retained rather than duplicated.
++Evidence: [fresh findings](../evidence/perf-refresh-2026-10-13/FINDINGS.md).
+diff --git a/docs/specs/perf-vs-orca/map.md b/docs/specs/perf-vs-orca/map.md
+index 0b644bae..3aef54e9 100644
+--- a/docs/specs/perf-vs-orca/map.md
++++ b/docs/specs/perf-vs-orca/map.md
+@@ -38,6 +38,26 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
+ `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
+ `cargo xtask test`, guest freshness) governs any code change.
+ 
++**Current selection scope (2026-10-13, updated after the ticket-62 take):**
++the human requested a Benchy
++performance analysis and new tickets. The
++[Benchy current bottleneck refresh](issues/61-benchy-current-bottleneck-refresh.md)
++is complete; it expands the child-issue frontier without starting optimization
++experiments, changing the scoreboard, or lifting the annotation park. The
++human's first selected take —
++[62](issues/62-infill-linker-post-hoist-residual.md) — is **resolved**
++(attribution + graduation only; no timing campaign, no commit). The frontier
++is now: [65](issues/65-infill-linker-batch-execute-experiment.md) (graduated
++execution experiment), [63](issues/63-low-layer-dispatch-granularity.md),
++[64](issues/64-tree-support-renderer-attribution.md),
++[59](issues/59-prep-slice-flat-bridge-closing-reduction.md),
++[60](issues/60-host-native-attribution.md),
++[20](issues/20-consume-only-when-read-annotations.md) (parked below-fold).
++Ticket 65's timing campaigns must not overlap 63's, and a linker-cost change
++needs a fresh scheduling baseline for any later scheduling diagnosis. New
++questions require a later selected take; the existing paired-mode acceptance
++and human KEEP/DROP rules are unchanged.
++
+ Standing decisions for this effort (2026-09-22):
+ 
+ - **Execution is carried into this map**: tickets are worked as measurement /
+@@ -471,6 +491,10 @@ Standing decisions for this effort (2026-09-22):
+ 
+ <!-- one line per closed ticket; the ticket holds the detail -->
+ 
++- [Infill-linker post-hoist residual and exact clip-work reduction](issues/62-infill-linker-post-hoist-residual.md): **resolved (2026-10-13)** — the t44 hoist confirmed working (prepare now 2.60% of linker fuel, once per invocation); the post-hoist cost is the **per-path engine round trip: `execute` 85.96% + `engine_add` 4.42% of linker fuel** across 12,022 clip calls / 393 invocations, with the prepared universe re-fed **57.3× per preparation** (classic 49.5×) and per-call cost universe-dominated (fit −2.8M + 7,990·U, R² 0.869). Qualification: 8/8 cells byte-identical both modes before the probe; all six probe captures output-neutral; cross-mode scope agreement ≤5.4e-4 relative. Candidate (batch one engine + one execute per invocation with re-derived per-subject attribution, exactness conditions measured and documented) **graduated to** [Infill-linker batch-execute experiment](issues/65-infill-linker-batch-execute-experiment.md); same-cost ceiling ≈12.58% of current linker fuel, slice share 44.28% → ≈5.57% (estimates, not measurements). Attribution/representation only; production restored, freshness green. Evidence: `evidence/t62-linker-post-hoist/FINDINGS.md`.
++
++- [Benchy current bottleneck refresh after clone-once finalization](issues/61-benchy-current-bottleneck-refresh.md): fresh output-identical Benchy attribution graduates the post-hoist linker residual, low-layer dispatch granularity and support-renderer questions; existing leads retained, no optimization or speed verdict.
++
+ - [LayerFinalization whole-print copying](issues/58-layerfinalization-whole-print-copying.md): **resolved (2026-10-12); human-approved KEEP — committed with this ticket (`e7159687`, docs `e4e93dea`)** — the clone-once finalization stage + owned pre-emit capture candidate (three runtime files) passed the fresh 16-cell output-identity qualification (ordinary cells reproduce the preserved production references; base-arachne-on fresh ref `a1bc8110…`), then the standing paired gate **in all four pre-declared cells, 6/6 pairs each, zero starvation exclusions**: base-classic-on wall medians **−10.48 % ordinary (610.0 → 539.5 s) / −8.76 % accelerated (601.0 → 547.9 s)**, CPU corroborating (−2.33 % / −2.45 %); benchy-classic-on −1.21 % / −1.44 % with byte-identical outputs everywhere. Attribution: LayerFinalization stage 113.2 → 70.4 s (−37.7 %), inter-bracket drop gaps → 0 ms, one 2.7 s upfront clone + 10.1 s commit tail; postpass phase 132.3 → 87.4 s. Campaign context disclosed (background load; three interruption recoveries incl. a harness-timeout raise to 1800 s, infrastructure-only); snapshots restored, freshness gates green. Evidence: `evidence/t58-finalization-copies/FINDINGS.md`.
+ 
+ - [Serial host floor](issues/27-serial-host-prepass-floor.md): **resolved (2026-10-09)** — the post-park premise search found the new safe call reduction the ticket waited for: 99.8% of `commit_support_analysis_builtin`'s serial sweep (`crates/slicer-runtime/src/builtins/support_analysis_producer.rs`) was one predicate — `SliceRegionView::derive_needs_support`'s per-region exact `intersection_ex` against the object-global overhang footprint (`crates/slicer-sdk/src/views.rs`), 24.19 s of the 38.20 s base supports-on stage wall — now moved to an order-preserving indexed rayon pre-pass (dual-compute 495/495 base + 240/240 benchy regions, 0 mismatches; 8.7x on the predicate). Standing paired A/B: base median wall **−18.198 s ordinary / −19.380 s accelerated** (6/6 and 5/6 pairs) at ≈+0.5% median process CPU; benchy −1.105 s / −0.943 s. All 48 outputs byte-identical; the strict wall-and-CPU clause passes on ordinary/benchy only and the **human KEPT the base wall win 2026-10-09** (≈3.4–3.7% of arm-median wall; accepted as a serialization fix, not a scoreboard claim), committed with the ticket. The probe-3 bbox-index filter alternative was refuted (~45% pruning, ~12% saving) and the `from_ir` deep-clone hypothesis measured dead. Remaining leads (flat-bridge representation analysis, `apply_opening` parity, teardown early release) stay in the fog. Evidence: `evidence/t27-serial-floor/FINDINGS-PROBE3.md`.
+@@ -599,14 +623,18 @@ Standing decisions for this effort (2026-09-22):
+       its completed exact prepared winding-coordinate cache experiment
+       (human-approved DROP, 2026-10-06) remain
+      unspecified; distance-query alternatives need their own reason and scope,
+-     not implicit permission from that split. [infill-linker
+-  attribution](issues/21-infill-linker-attribution.md)'s split graduated the
+-  now-resolved [clip-universe preparation hoist](issues/44-clip-universe-hoist.md)
+-  (2026-10-01); its measured mode-invariance also re-ranks the *remaining*
+-  linker work below the hoist — the per-polyline clipper execute (32.65% of
+-  linker fuel) and the ~2.4% that is not the re-clip (connectivity 2.01% plus
+-  a <0.4% residual) stay in this fog until a take has a reason to touch that
+-  shape. [Tree-planner substage
++     not implicit permission from that split.    [infill-linker
++   attribution](issues/21-infill-linker-attribution.md)'s split graduated the
++   now-resolved [clip-universe preparation hoist](issues/44-clip-universe-hoist.md)
++    (2026-10-01). The post-hoist linker residual graduated to
++   [Infill-linker post-hoist residual and exact clip-work reduction](issues/62-infill-linker-post-hoist-residual.md)
++   and is **resolved (2026-10-13)**: the current split is measured —
++   per-path `execute` 85.96% + `engine_add` 4.42% of linker fuel, connect
++   4.73%, prepare 2.60%, metadata 1.25% — and its candidate graduated to
++   [Infill-linker batch-execute experiment](issues/65-infill-linker-batch-execute-experiment.md).
++   Post-batch linker alternatives (the connect/prepare/metadata residual and
++   any subject-side costs the experiment exposes) await that experiment's
++   outcome rather than inheriting any assumed split. [Tree-planner substage
+   attribution](issues/22-tree-planner-substage-attribution.md) graduated the
+    now-resolved [Emit-pass carve gate: representation safety + paired
+    A/B](issues/32-emit-carve-gate-representation-and-ab.md). Its sibling
+diff --git a/modules/core-modules/infill-linker/src/lib.rs b/modules/core-modules/infill-linker/src/lib.rs
+index d3ce0411..5e828109 100644
+--- a/modules/core-modules/infill-linker/src/lib.rs
++++ b/modules/core-modules/infill-linker/src/lib.rs
+@@ -4,6 +4,9 @@ pub mod connect;
+ pub mod graph;
+ pub mod offset;
+ pub mod orchestrate;
++// [T65-PROBE] Temporary batch-execute oracle (wayfinder ticket 65); removed
++// before any commit.
++pub mod t65;
+ 
+ use slicer_ir::{ConfigValue, ConfigView, InfillRegion};
+ use slicer_sdk::builders::InfillOutputBuilder;
+@@ -79,6 +82,8 @@ impl LayerModule for InfillLinker {
+         for region in prior_infill {
+             Self::copy_ironing(region, output)?;
+         }
++        // [T65-PROBE] wayfinder ticket 65; removed before any commit.
++        crate::t65::flush(_layer_index);
+         Ok(())
+     }
+ }
+diff --git a/modules/core-modules/infill-linker/src/orchestrate.rs b/modules/core-modules/infill-linker/src/orchestrate.rs
+index eaf52871..704b5a32 100644
+--- a/modules/core-modules/infill-linker/src/orchestrate.rs
++++ b/modules/core-modules/infill-linker/src/orchestrate.rs
+@@ -813,39 +813,98 @@ fn link_paths_without_offset(
+ ) -> (Vec<ExtrusionPath3D>, Vec<SourceSegment>) {
+     let mut clipped = Vec::new();
+     let mut source_segments = Vec::new();
+-    // Keep independent per-path intersections (and their owner/metadata), but
+-    // flatten and inflate this invocation's immutable boundary only once.
+-    let mut prepared_clip = None;
+-    for (owner, path) in tagged {
+-        let polyline = path
+-            .points
++    // Batched clip (wayfinder ticket 65): one engine + one execute per
++    // invocation replaces the per-path engine round trip (12,022 executes per
++    // Benchy slice against one immutable prepared boundary). The batched
++    // result equals the per-path chain subject-for-subject — same spans, same
++    // subject-major order — so every downstream step below (short filtering,
++    // metadata, source segments, connectivity) runs unchanged.
++    let prepared_subjects: Vec<(usize, Vec<Point2>, &ExtrusionPath3D)> = tagged
++        .iter()
++        .map(|(owner, path)| {
++            let polyline = path
++                .points
++                .iter()
++                .map(|point| Point2::from_mm(point.x, point.y))
++                .collect::<Vec<_>>();
++            (*owner, polyline, path)
++        })
++        .filter(|(_, polyline, _)| polyline.len() >= 2)
++        .collect();
++    if let Some(batched) = (!prepared_subjects.is_empty()).then(|| {
++        // Same laziness as the per-path chain: the immutable boundary is
++        // flatten-inflated once, and only when a valid subject exists.
++        // [T65-PROBE] wayfinder ticket 65; removed before any commit. The
++        // production batch call is timed under its own fuel scope.
++        let _t65_batch = slicer_core::profile::scope(slicer_core::profile::ScopeId::T65_BATCH);
++        let polylines: Vec<Vec<Point2>> = prepared_subjects
+             .iter()
+-            .map(|point| Point2::from_mm(point.x, point.y))
+-            .collect::<Vec<_>>();
+-        // Match the one-shot early-out: invalid paths do not prepare a universe.
+-        if polyline.len() < 2 {
+-            continue;
++            .map(|(_, polyline, _)| polyline.clone())
++            .collect();
++        PreparedPolylineClip::new(boundary).clip_batched(&polylines)
++    }) {
++        // [T65-PROBE] Replay the pre-change per-path chain on the exact
++        // same invocation inputs; production keeps only the batched result,
++        // so the probe never changes output.
++        let replay: Vec<Vec<Vec<Point2>>> = {
++            let _t65_replay =
++                slicer_core::profile::scope(slicer_core::profile::ScopeId::T65_REPLAY);
++            let mut replay = Vec::with_capacity(prepared_subjects.len());
++            let mut prepared = None;
++            for (_, polyline, _) in &prepared_subjects {
++                replay.push(
++                    prepared
++                        .get_or_insert_with(|| PreparedPolylineClip::new(boundary))
++                        .clip(std::slice::from_ref(polyline)),
++                );
++            }
++            replay
++        };
++        let (mut matches, mut mismatches, mut first_bad, mut batch_spans, mut replay_spans) =
++            (0usize, 0usize, usize::MAX, 0usize, 0usize);
++        for (subject, (batch_result, per_path)) in batched.iter().zip(replay.iter()).enumerate() {
++            batch_spans += batch_result.len();
++            replay_spans += per_path.len();
++            if batch_result == per_path {
++                matches += 1;
++            } else {
++                mismatches += 1;
++                if first_bad == usize::MAX {
++                    first_bad = subject;
++                }
++            }
+         }
+-        let clipped_polylines = prepared_clip
+-            .get_or_insert_with(|| PreparedPolylineClip::new(boundary))
+-            .clip(&[polyline]);
+-        for points in remove_short_polylines(&clipped_polylines, spacing_mm) {
+-            source_segments.extend(points.windows(2).filter_map(|segment| {
+-                let length = ((segment[1].x - segment[0].x) as f64)
+-                    .hypot((segment[1].y - segment[0].y) as f64);
+-                (length > 0.0).then_some(SourceSegment {
+-                    owner,
+-                    start: segment[0],
+-                    end: segment[1],
+-                    length,
+-                })
+-            }));
+-            let mut clipped_path = path.clone();
+-            clipped_path.points = points
+-                .into_iter()
+-                .map(|point| point_with_metadata(&path, point))
+-                .collect();
+-            clipped.push(clipped_path);
++        let (singles, fallbacks, repairs) = slicer_core::polygon_ops::probe_t65::take_counts();
++        crate::t65::record_invocation(
++            batched.len(),
++            matches,
++            mismatches,
++            batch_spans,
++            replay_spans,
++            singles,
++            fallbacks,
++            repairs,
++            first_bad,
++        );
++        for (subject, (owner, _polyline, path)) in prepared_subjects.iter().enumerate() {
++            for points in remove_short_polylines(&batched[subject], spacing_mm) {
++                source_segments.extend(points.windows(2).filter_map(|segment| {
++                    let length = ((segment[1].x - segment[0].x) as f64)
++                        .hypot((segment[1].y - segment[0].y) as f64);
++                    (length > 0.0).then_some(SourceSegment {
++                        owner: *owner,
++                        start: segment[0],
++                        end: segment[1],
++                        length,
++                    })
++                }));
++                let mut clipped_path = (*path).clone();
++                clipped_path.points = points
++                    .into_iter()
++                    .map(|point| point_with_metadata(path, point))
++                    .collect();
++                clipped.push(clipped_path);
++            }
+         }
+     }
+     (
