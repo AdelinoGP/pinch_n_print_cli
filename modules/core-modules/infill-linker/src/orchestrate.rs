@@ -813,39 +813,52 @@ fn link_paths_without_offset(
 ) -> (Vec<ExtrusionPath3D>, Vec<SourceSegment>) {
     let mut clipped = Vec::new();
     let mut source_segments = Vec::new();
-    // Keep independent per-path intersections (and their owner/metadata), but
-    // flatten and inflate this invocation's immutable boundary only once.
-    let mut prepared_clip = None;
-    for (owner, path) in tagged {
-        let polyline = path
-            .points
+    // Batched clip (wayfinder ticket 65): one engine + one execute per
+    // invocation replaces the per-path engine round trip (12,022 executes per
+    // Benchy slice against one immutable prepared boundary). The batched
+    // result equals the per-path chain subject-for-subject — same spans, same
+    // subject-major order — so every downstream step below (short filtering,
+    // metadata, source segments, connectivity) runs unchanged.
+    let prepared_subjects: Vec<(usize, Vec<Point2>, &ExtrusionPath3D)> = tagged
+        .iter()
+        .map(|(owner, path)| {
+            let polyline = path
+                .points
+                .iter()
+                .map(|point| Point2::from_mm(point.x, point.y))
+                .collect::<Vec<_>>();
+            (*owner, polyline, path)
+        })
+        .filter(|(_, polyline, _)| polyline.len() >= 2)
+        .collect();
+    if let Some(batched) = (!prepared_subjects.is_empty()).then(|| {
+        // Same laziness as the per-path chain: the immutable boundary is
+        // flatten-inflated once, and only when a valid subject exists.
+        let polylines: Vec<Vec<Point2>> = prepared_subjects
             .iter()
-            .map(|point| Point2::from_mm(point.x, point.y))
-            .collect::<Vec<_>>();
-        // Match the one-shot early-out: invalid paths do not prepare a universe.
-        if polyline.len() < 2 {
-            continue;
-        }
-        let clipped_polylines = prepared_clip
-            .get_or_insert_with(|| PreparedPolylineClip::new(boundary))
-            .clip(&[polyline]);
-        for points in remove_short_polylines(&clipped_polylines, spacing_mm) {
-            source_segments.extend(points.windows(2).filter_map(|segment| {
-                let length = ((segment[1].x - segment[0].x) as f64)
-                    .hypot((segment[1].y - segment[0].y) as f64);
-                (length > 0.0).then_some(SourceSegment {
-                    owner,
-                    start: segment[0],
-                    end: segment[1],
-                    length,
-                })
-            }));
-            let mut clipped_path = path.clone();
-            clipped_path.points = points
-                .into_iter()
-                .map(|point| point_with_metadata(&path, point))
-                .collect();
-            clipped.push(clipped_path);
+            .map(|(_, polyline, _)| polyline.clone())
+            .collect();
+        PreparedPolylineClip::new(boundary).clip_batched(&polylines)
+    }) {
+        for (subject, (owner, _polyline, path)) in prepared_subjects.iter().enumerate() {
+            for points in remove_short_polylines(&batched[subject], spacing_mm) {
+                source_segments.extend(points.windows(2).filter_map(|segment| {
+                    let length = ((segment[1].x - segment[0].x) as f64)
+                        .hypot((segment[1].y - segment[0].y) as f64);
+                    (length > 0.0).then_some(SourceSegment {
+                        owner: *owner,
+                        start: segment[0],
+                        end: segment[1],
+                        length,
+                    })
+                }));
+                let mut clipped_path = (*path).clone();
+                clipped_path.points = points
+                    .into_iter()
+                    .map(|point| point_with_metadata(path, point))
+                    .collect();
+                clipped.push(clipped_path);
+            }
         }
     }
     (
