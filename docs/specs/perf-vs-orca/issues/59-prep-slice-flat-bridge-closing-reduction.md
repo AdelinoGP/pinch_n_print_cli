@@ -2,10 +2,10 @@
 
 Type: task
 Label: wayfinder:task
-Status: open
-Assignee: unassigned — graduated from the map's fog by the 2026-10-09 perf
-refresh ([evidence](../evidence/perf-refresh-2026-10-09/FINDINGS.md)); human
-selection pending
+Status: claimed (2026-10-14; first frontier ticket in order on map resumption — representation analysis take)
+Assignee: 2026-10-14 OpenCode wayfinder session (map resumption; first frontier ticket in order)
+Graduated from the map's fog by the 2026-10-09 perf refresh
+([evidence](../evidence/perf-refresh-2026-10-09/FINDINGS.md)).
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 
@@ -69,3 +69,17 @@ and support states. `closing_ex` is 23.069–25.128 s accumulated thread-time
 brackets are 2.773/2.609 s off/on. The real-layer representation constraint and
 this ticket's question remain unchanged; no replacement or timing gate was
 started. Evidence: [fresh findings](../evidence/perf-refresh-2026-10-13/FINDINGS.md).
+
+### Claim — 2026-10-14 (map resumption; claim recorded before any work)
+
+The frontier was re-derived on resume: the open front is this ticket, [60],
+and [20] (parked below-fold); per the t63/t64 convention this session took the
+first frontier ticket in order. Take plan, per this ticket's own acceptance:
+(1) enumerate the real-layer consumers of the flat-bridge mask / closing
+result and the representation each consumer needs; (2) attempt a reduction
+shape against a real-layer IR differential oracle (the prior attempt's lesson:
+the synthetic fixture is not an oracle) — either a candidate proven
+representation-identical (then the standing paired ordinary + accelerated A/B,
+keep/drop to the human, no auto-commit) or (3) a documented no-safe-reduction
+verdict with the differential evidence. No production edit and no timing
+campaign are authorized by the claim itself.

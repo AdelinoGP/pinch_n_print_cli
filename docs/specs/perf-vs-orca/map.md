@@ -38,7 +38,22 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-14, after the t66 take):** the human
+**Current selection scope (2026-10-14, on the t59 claim):** the frontier was
+re-derived on resume — open:
+[59](issues/59-prep-slice-flat-bridge-closing-reduction.md),
+[60](issues/60-host-native-attribution.md), and
+[20](issues/20-consume-only-when-read-annotations.md) (parked below-fold) —
+and the session took the first frontier ticket in order: **this session claims
+[59](issues/59-prep-slice-flat-bridge-closing-reduction.md) (2026-10-14)** for
+the representation-identical analysis take — consumer/representation
+enumeration on real layers first, then either a candidate proven
+representation-identical against a real-layer IR differential oracle (the
+standing paired A/B only after that; keep/drop to the human, no auto-commit)
+or a documented no-safe-reduction verdict. The standing paired acceptance and
+human KEEP/DROP rules are unchanged; new questions require the human's route
+decision.
+
+**Previous selection scope (2026-10-14, after the t66 take):** the human
 selected [66](issues/66-paint-policy-dead-walk-reduction.md) from the open
 frontier; the take resolved as a **measured GATE NOT MET — human-approved
 DROP** (annotations-empty fast path; 16/16 identity qualification; benchy
