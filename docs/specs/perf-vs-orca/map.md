@@ -38,20 +38,23 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-14, on the t59 claim):** the frontier was
+**Current selection scope (2026-10-14, on the t59 take):** the frontier was
 re-derived on resume — open:
 [59](issues/59-prep-slice-flat-bridge-closing-reduction.md),
 [60](issues/60-host-native-attribution.md), and
 [20](issues/20-consume-only-when-read-annotations.md) (parked below-fold) —
-and the session took the first frontier ticket in order: **this session claims
-[59](issues/59-prep-slice-flat-bridge-closing-reduction.md) (2026-10-14)** for
-the representation-identical analysis take — consumer/representation
-enumeration on real layers first, then either a candidate proven
-representation-identical against a real-layer IR differential oracle (the
-standing paired A/B only after that; keep/drop to the human, no auto-commit)
-or a documented no-safe-reduction verdict. The standing paired acceptance and
-human KEEP/DROP rules are unchanged; new questions require the human's route
-decision.
+and the session took the first frontier ticket in order:
+[59](issues/59-prep-slice-flat-bridge-closing-reduction.md) — **resolved
+(2026-10-14) as verdict (b): no representation-safe reduction** (the enclosure
+closing's per-component 10 % gate is decided by miter-offset artifacts from
+~72–74 degenerate sliver paths in `support`; a set-preserving local-closing
+candidate flips verdicts on 38.5 % of benchy and 68.2 % of base call layers;
+far-guards have zero hits; the refuted shape's ceiling is ≈12 % of the
+closing's accumulated thread-time). No production edit, no timing campaign,
+nothing graduated. Frontier now: [60](issues/60-host-native-attribution.md)
+first, [20](issues/20-consume-only-when-read-annotations.md) parked
+below-fold. The standing paired acceptance and human KEEP/DROP rules are
+unchanged; new questions require the human's route decision.
 
 **Previous selection scope (2026-10-14, after the t66 take):** the human
 selected [66](issues/66-paint-policy-dead-walk-reduction.md) from the open
@@ -521,6 +524,8 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+
+- [PrePass::Slice flat-bridge closing reduction](issues/59-prep-slice-flat-bridge-closing-reduction.md): **resolved (2026-10-14; verdict (b) — no representation-safe reduction; no production edit, no timing campaign)** — the closing is consumed only as the per-component ≥10 % gate; on real layers that gate is decided by miter-offset artifacts from ~72–74 degenerate sliver paths in `difference`'s output (drilled: benchy 161 raw 325.3 mm² vs 215.4 normalized on the same point set; base 8 raw 31.5 mm² vs 72.1 normalized — on base the raw closing is smaller than its own input), so a set-preserving local-closing candidate flips verdicts on 92/239 benchy (38.5 %) and 320/469 base (68.2 %) call layers — refuted; far-guards have zero hits (0 of 14,951 components); baseline gate margins reach 4e-5; the refuted shape's measured ceiling is ≈12 % of the closing's accumulated thread-time. Evidence: `evidence/t59-flat-bridge-closing/` (`FINDINGS.md`, `probe.patch`, `reduced/`, `verify.py` exits 0).
 
 - [Support paint-policy dead-walk reduction](issues/66-paint-policy-dead-walk-reduction.md): **resolved (2026-10-14; measured GATE NOT MET on the wall clause — human-approved DROP, candidate retired, no production edit)** — the annotations-empty fast path (`slicer_core::paint_policy::has_support_paint` plus the early return in `PaintRegionLayerView::paint_policy_for`) passed the full 16-cell output-identity qualification (baseline == candidate == preserved t58 references; `build-qualification.py` 16/16 and `verify-references.py` 16/16, all clean), then the standing paired gate on the four pre-declared classic supports-on cells (6/6 pairs everywhere, zero starvation exclusions, 56/56 runs byte-identical): **CPU improved in all four cells (−0.56…−1.22 %)** and **base wall improved (−0.4977 % ordinary / −2.1098 % accelerated)**, but **benchy wall sat inside paired noise (+0.0017 % / +0.1272 %)**, below the pre-declared wall < 0 % clause — the dead walk is a real ~1 %-class CPU cost whose wall transfer is base-only. Candidate retired to `HEAD` with the re-appliable artifacts committed (`evidence/t66-paint-walk/candidate.patch` sha `8ccfbeb1…` + the new-test-file copy, both byte-identical to the as-measured state); no adoption retry; re-entry needs a new pre-declaration. Interruption recoveries disclosed (one harness eviction kill mid-proof, two further evictions survived by the detached relaunch; background load; zero exclusions). Evidence: `evidence/t66-paint-walk/FINDINGS.md`.
 

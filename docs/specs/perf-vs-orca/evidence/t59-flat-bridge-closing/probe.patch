@@ -1,0 +1,912 @@
+diff --git a/crates/slicer-core/Cargo.toml b/crates/slicer-core/Cargo.toml
+index 664ce487..99a412ac 100644
+--- a/crates/slicer-core/Cargo.toml
++++ b/crates/slicer-core/Cargo.toml
+@@ -49,6 +49,10 @@ required-features = ["host-algos"]
+ name = "algo_prepass_slice_tdd"
+ required-features = ["host-algos"]
+ 
++[[test]]
++name = "t59_flat_bridge_probe_tdd"
++required-features = ["host-algos"]
++
+ [[test]]
+ name = "bridge_orientation_tdd"
+ required-features = ["host-algos"]
+diff --git a/crates/slicer-core/tests/t59_flat_bridge_probe_tdd.rs b/crates/slicer-core/tests/t59_flat_bridge_probe_tdd.rs
+new file mode 100644
+index 00000000..69e23db8
+--- /dev/null
++++ b/crates/slicer-core/tests/t59_flat_bridge_probe_tdd.rs
+@@ -0,0 +1,891 @@
++#![allow(missing_docs)]
++
++//! t59 probe: flat-bridge enclosure closing — real-layer structure scan.
++//!
++//! TEMPORARY probe for wayfinder ticket 59 (not a CI test). Run manually:
++//!
++//! ```text
++//! T59_FIXTURE=benchy cargo test --release -p slicer-core --features host-algos \
++//!     --test t59_flat_bridge_probe_tdd -- --ignored --nocapture
++//! T59_FIXTURE=base   cargo test --release -p slicer-core --features host-algos \
++//!     --test t59_flat_bridge_probe_tdd -- --ignored --nocapture
++//! ```
++//!
++//! For every layer of the matched fixture (placed on the default bed exactly as
++//! `pnp_cli` places STLs, sliced on the production layer-top schedule), this
++//! reconstructs `assemble_flat_bridge_areas`'s production inputs and measures:
++//!
++//! 1. the baseline enclosure closing cost and the per-component 10 % gate;
++//! 2. a candidate local-closing shape (support clipped to the union bbox of
++//!    `flat_bridge` padded by 2R + 1 mm) — its cost and its per-component verdicts;
++//! 3. a sound per-component / whole-call "far" guard hit rate (component bbox
++//!    expanded by R disjoint from the support bbox);
++//! 4. reconstruction fidelity against the real pipeline entry point
++//!    (`execute_prepass_slice_single_layer_with_cache`) on sampled layers.
++//!
++//! Outputs `target/t59/<fixture>.csv` plus a printed SUMMARY block.
++
++use std::collections::HashMap;
++use std::fmt::Write as _;
++use std::time::Instant;
++
++use slicer_core::algos::mesh_analysis::execute_mesh_analysis;
++use slicer_core::algos::prepass_slice::{
++    assemble_bridge_areas, assemble_flat_bridge_areas, batch_bottom_surface_footprints,
++    batch_slice_objects_by_layer, classify_region_surfaces,
++    execute_prepass_slice_single_layer_with_cache, PrepassSliceCache,
++};
++use slicer_core::polygon_ops::{closing_ex, difference, intersection, OffsetJoinType};
++use slicer_core::triangle_mesh_slicer::apply_slice_closing_radius;
++use slicer_ir::{
++    ActiveRegion, ExPolygon, GlobalLayer, MeshIR, Point2, Polygon, RegionKey, RegionMapIR,
++    RegionPlan, ResolvedConfig, SlicedRegion, SurfaceClassificationIR,
++};
++
++const LAYER_HEIGHT_MM: f64 = 0.2;
++const FLAT_BRIDGE_RADIUS_MM: f64 = 12.0;
++const MIN_FRACTION: f64 = 0.1;
++
++/// 1 mm in workspace units (1 unit = 100 nm).
++const UNITS_PER_MM_I64: i64 = 10_000;
++
++fn repo_root() -> std::path::PathBuf {
++    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
++}
++
++fn fixture_path(fixture: &str) -> std::path::PathBuf {
++    let root = repo_root();
++    match fixture {
++        "benchy" => root.join("tmp/3dbenchy.stl"),
++        "base" => root.join("tmp/base.stl"),
++        other => panic!("unknown T59_FIXTURE {other:?} (expected benchy|base)"),
++    }
++}
++
++fn load_placed(fixture: &str) -> MeshIR {
++    let path = fixture_path(fixture);
++    assert!(
++        path.exists(),
++        "fixture {} missing at {}",
++        fixture,
++        path.display()
++    );
++    let mut mesh = slicer_model_io::load_model(&path).expect("load_model");
++    let bed_shape = ResolvedConfig::default().bed_shape;
++    let center = slicer_model_io::bed_center_mm(&bed_shape).expect("bed center");
++    slicer_model_io::place_bare_mesh_on_bed(&mut mesh, center);
++    mesh
++}
++
++/// Production layer-top schedule for the uniform matched config
++/// (`layer_top_zs` walk: z += layer_height while z <= object_height).
++fn plan_layers(mesh: &MeshIR) -> Vec<GlobalLayer> {
++    let object = &mesh.objects[0];
++    let (_, max_z) =
++        slicer_model_io::loader::object_world_z_extent(object).expect("object z extent");
++    let object_height = max_z as f64;
++    let mut tops: Vec<f32> = Vec::new();
++    let mut z = 0.0_f64;
++    loop {
++        z += LAYER_HEIGHT_MM;
++        if z <= object_height + 1.0e-9 {
++            tops.push(z as f32);
++        } else {
++            break;
++        }
++    }
++    tops.iter()
++        .enumerate()
++        .map(|(i, &z)| GlobalLayer {
++            index: i as u32,
++            z,
++            active_regions: vec![ActiveRegion {
++                object_id: object.id.clone(),
++                region_id: 0,
++                resolved_config: ResolvedConfig::default(),
++                effective_layer_height: LAYER_HEIGHT_MM as f32,
++                ..Default::default()
++            }],
++            ..Default::default()
++        })
++        .collect()
++}
++
++fn build_region_map(mesh: &MeshIR, layers: &[GlobalLayer]) -> RegionMapIR {
++    let object_id = mesh.objects[0].id.clone();
++    let mut rm = RegionMapIR::default();
++    for layer in layers {
++        rm.entries.insert(
++            RegionKey {
++                global_layer_index: layer.index,
++                object_id: object_id.clone(),
++                region_id: 0,
++                variant_chain: Vec::new(),
++            },
++            RegionPlan::default(),
++        );
++    }
++    rm
++}
++
++/// Mirror of `execute_prepass_slice_single_layer_impl`'s region construction
++/// for a single object/region, up to and including the flat-bridge call.
++fn reconstruct_region(
++    mesh: &MeshIR,
++    surface_class: &SurfaceClassificationIR,
++    layer: &GlobalLayer,
++    raw_cur: &[ExPolygon],
++    raw_prev: &[ExPolygon],
++    bottom_fp: &[ExPolygon],
++    slice_closing_radius: f32,
++    join: OffsetJoinType,
++) -> SlicedRegion {
++    let object = &mesh.objects[0];
++    let polygons = if slice_closing_radius > 0.0 {
++        apply_slice_closing_radius(raw_cur.to_vec(), slice_closing_radius)
++    } else {
++        raw_cur.to_vec()
++    };
++    let mut region = SlicedRegion {
++        object_id: object.id.clone(),
++        region_id: 0,
++        polygons: polygons.clone(),
++        infill_areas: polygons.clone(),
++        effective_layer_height: layer.active_regions[0].effective_layer_height,
++        is_bridge: false,
++        ..Default::default()
++    };
++    if let Some(obj_data) = surface_class.per_object.get(&object.id) {
++        let contours: Vec<Polygon> = polygons.iter().map(|ep| ep.contour.clone()).collect();
++        region.is_bridge = classify_region_surfaces(object, obj_data, &contours, layer.z);
++    }
++    assemble_bridge_areas(&mut region, Some(surface_class));
++    let unsupported = difference(raw_cur, raw_prev);
++    if !unsupported.is_empty() {
++        assemble_flat_bridge_areas(&mut region, bottom_fp, &unsupported, join);
++    }
++    region
++}
++
++// ---------------------------------------------------------------------------
++// geometry helpers (test-local copies of the production helpers)
++// ---------------------------------------------------------------------------
++
++fn expoly_set_area(polys: &[ExPolygon]) -> f64 {
++    fn ring_area(ring: &Polygon) -> f64 {
++        let pts = &ring.points;
++        if pts.len() < 3 {
++            return 0.0;
++        }
++        let mut a = 0.0_f64;
++        for i in 0..pts.len() {
++            let j = (i + 1) % pts.len();
++            a += (pts[i].x as f64) * (pts[j].y as f64) - (pts[j].x as f64) * (pts[i].y as f64);
++        }
++        (a * 0.5).abs()
++    }
++    polys
++        .iter()
++        .map(|ep| ring_area(&ep.contour) - ep.holes.iter().map(ring_area).sum::<f64>())
++        .sum()
++}
++
++#[derive(Clone, Copy, Debug)]
++struct Bbox {
++    min_x: i64,
++    min_y: i64,
++    max_x: i64,
++    max_y: i64,
++}
++
++fn bbox_of(polys: &[ExPolygon]) -> Option<Bbox> {
++    let mut b: Option<Bbox> = None;
++    for ep in polys {
++        for ring in std::iter::once(&ep.contour).chain(ep.holes.iter()) {
++            for p in &ring.points {
++                b = Some(match b {
++                    None => Bbox {
++                        min_x: p.x,
++                        min_y: p.y,
++                        max_x: p.x,
++                        max_y: p.y,
++                    },
++                    Some(b) => Bbox {
++                        min_x: b.min_x.min(p.x),
++                        min_y: b.min_y.min(p.y),
++                        max_x: b.max_x.max(p.x),
++                        max_y: b.max_y.max(p.y),
++                    },
++                });
++            }
++        }
++    }
++    b
++}
++
++fn bbox_area_units2(b: Bbox) -> i128 {
++    (b.max_x - b.min_x) as i128 * (b.max_y - b.min_y) as i128
++}
++
++fn expand(b: Bbox, pad_units: i64) -> Bbox {
++    Bbox {
++        min_x: b.min_x - pad_units,
++        min_y: b.min_y - pad_units,
++        max_x: b.max_x + pad_units,
++        max_y: b.max_y + pad_units,
++    }
++}
++
++fn rect_expoly(b: Bbox) -> ExPolygon {
++    ExPolygon {
++        contour: Polygon {
++            points: vec![
++                Point2 {
++                    x: b.min_x,
++                    y: b.min_y,
++                },
++                Point2 {
++                    x: b.max_x,
++                    y: b.min_y,
++                },
++                Point2 {
++                    x: b.max_x,
++                    y: b.max_y,
++                },
++                Point2 {
++                    x: b.min_x,
++                    y: b.max_y,
++                },
++            ],
++        },
++        holes: vec![],
++    }
++}
++
++fn bbox_disjoint(a: Bbox, b: Bbox) -> bool {
++    a.max_x < b.min_x || b.max_x < a.min_x || a.max_y < b.min_y || b.max_y < a.min_y
++}
++
++fn count_vertices(polys: &[ExPolygon]) -> usize {
++    polys
++        .iter()
++        .map(|ep| ep.contour.points.len() + ep.holes.iter().map(|h| h.points.len()).sum::<usize>())
++        .sum()
++}
++
++/// The candidate shape: one local closing on `support` clipped to the union
++/// bbox of `flat_bridge` padded by `2R + 1 mm`. Returns (emitted components,
++/// per-component fractions, local support polys/vertices, clip ms, closing ms).
++fn local_closing_candidate(
++    flat_bridge: &[ExPolygon],
++    support: &[ExPolygon],
++    join: OffsetJoinType,
++) -> (Vec<ExPolygon>, Vec<f64>, usize, usize, f64, f64) {
++    let Some(fb_box) = bbox_of(flat_bridge) else {
++        return (Vec::new(), Vec::new(), 0, 0, 0.0, 0.0);
++    };
++    let pad = (2.0 * FLAT_BRIDGE_RADIUS_MM * UNITS_PER_MM_I64 as f64) as i64 + UNITS_PER_MM_I64; // 2R + 1 mm
++    let box_expoly = rect_expoly(expand(fb_box, pad));
++
++    let t0 = Instant::now();
++    let local_support = intersection(support, &[box_expoly]);
++    let clip_ms = t0.elapsed().as_secs_f64() * 1000.0;
++
++    let t1 = Instant::now();
++    let local_closed = closing_ex(&local_support, FLAT_BRIDGE_RADIUS_MM, join);
++    let closing_ms = t1.elapsed().as_secs_f64() * 1000.0;
++    let local_refilled = difference(&local_closed, &local_support);
++
++    let mut emitted = Vec::new();
++    let mut fractions = Vec::with_capacity(flat_bridge.len());
++    for component in flat_bridge {
++        let comp_area = expoly_set_area(std::slice::from_ref(component));
++        if comp_area <= 0.0 {
++            fractions.push(0.0);
++            continue;
++        }
++        let overlap = intersection(std::slice::from_ref(component), &local_refilled);
++        let frac = expoly_set_area(&overlap) / comp_area;
++        fractions.push(frac);
++        if frac >= MIN_FRACTION {
++            emitted.push(component.clone());
++        }
++    }
++    (
++        emitted,
++        fractions,
++        local_support.len(),
++        count_vertices(&local_support),
++        clip_ms,
++        closing_ms,
++    )
++}
++
++#[test]
++#[ignore = "t59 probe: run manually with --ignored and T59_FIXTURE=benchy|base"]
++fn t59_flat_bridge_real_layer_scan() {
++    let fixture = std::env::var("T59_FIXTURE").unwrap_or_else(|_| "benchy".to_string());
++    let limit: Option<usize> = std::env::var("T59_LIMIT").ok().and_then(|v| v.parse().ok());
++
++    let mesh = load_placed(&fixture);
++    let layers = plan_layers(&mesh);
++    let sc = execute_mesh_analysis(&mesh).expect("mesh analysis");
++    let object_id = mesh.objects[0].id.clone();
++    let raw_by_layer = batch_slice_objects_by_layer(&mesh, &layers);
++    let bottom = batch_bottom_surface_footprints(&mesh, Some(&sc));
++    let rm = build_region_map(&mesh, &layers);
++
++    let cfg = ResolvedConfig::default();
++    let slice_closing_radius = cfg.slice_closing_radius;
++    let join = OffsetJoinType::Miter;
++    assert!(
++        (slice_closing_radius - 0.049).abs() < 1e-9,
++        "expected production default slice_closing_radius 0.049, got {slice_closing_radius}"
++    );
++    let bottom_fp = bottom.get(&object_id).cloned().unwrap_or_default();
++
++    let out_dir = repo_root().join("target/t59");
++    std::fs::create_dir_all(&out_dir).expect("create target/t59");
++    let mut csv = String::from(
++        "layer,z,n_comp,comp_area,comp_bbox_area,support_polys,support_verts,support_area,\
++         refilled_area,global_close_ms,local_support_polys,local_support_verts,clip_ms,\
++         local_close_ms,base_emitted,cand_emitted,verdict_ok,min_margin,n_near,n_far,\
++         all_far,box_area_ratio,base_fracs,cand_fracs,emitted_equal\n",
++    );
++
++    let mut scanned = 0usize;
++    let mut skipped_no_flat = 0usize;
++    let mut skipped_no_support = 0usize;
++    let mut calls = 0usize;
++    let mut global_ms_total = 0.0_f64;
++    let mut clip_ms_total = 0.0_f64;
++    let mut local_ms_total = 0.0_f64;
++    let mut mismatch_layers: Vec<u32> = Vec::new();
++    let mut emitted_base_total = 0usize;
++    let mut emitted_cand_total = 0usize;
++    let mut near_components: Vec<(u32, usize, f64, f64)> = Vec::new();
++    let mut min_margin_overall = f64::INFINITY;
++    let mut far_layer_count = 0usize;
++    let mut far_component_count = 0usize;
++    let mut component_count_total = 0usize;
++    let mut box_ratios: Vec<f64> = Vec::new();
++    let mut fidelity_checked = 0usize;
++
++    let total_layers = layers.len();
++    for i in 0..total_layers {
++        if let Some(limit) = limit {
++            if scanned >= limit {
++                break;
++            }
++        }
++        let layer = &layers[i];
++        let Some(prev_layer) = i.checked_sub(1).map(|p| &layers[p]) else {
++            continue;
++        };
++        let empty_map: HashMap<slicer_ir::ObjectId, Vec<ExPolygon>> = HashMap::new();
++        let raw_cur_map = raw_by_layer.get(&layer.index).unwrap_or(&empty_map);
++        let raw_prev_map = raw_by_layer.get(&prev_layer.index).unwrap_or(&empty_map);
++        let raw_cur = raw_cur_map.get(&object_id).cloned().unwrap_or_default();
++        let raw_prev = raw_prev_map.get(&object_id).cloned().unwrap_or_default();
++        if raw_cur.is_empty() || raw_prev.is_empty() {
++            continue;
++        }
++        scanned += 1;
++
++        // --- fidelity: full pipeline entry point on sampled layers ---------
++        let fidelity_sample = i < 2 || i == total_layers / 2 || i + 1 == total_layers;
++        if fidelity_sample {
++            let cache = PrepassSliceCache {
++                raw_polygons: raw_cur_map,
++                prev_raw_polygons: Some(raw_prev_map),
++                bottom_surface_footprint: &bottom,
++            };
++            let ir = execute_prepass_slice_single_layer_with_cache(
++                &mesh,
++                layer,
++                Some(&sc),
++                Some(&rm),
++                &cache,
++            )
++            .expect("full pipeline slice");
++            let mine = reconstruct_region(
++                &mesh,
++                &sc,
++                layer,
++                &raw_cur,
++                &raw_prev,
++                &bottom_fp,
++                slice_closing_radius,
++                join,
++            );
++            assert_eq!(
++                mine.bridge_areas, ir.regions[0].bridge_areas,
++                "reconstruction fidelity failed on layer {}",
++                layer.index
++            );
++            assert_eq!(mine.is_bridge, ir.regions[0].is_bridge);
++            assert_eq!(
++                mine.bridge_orientation_deg,
++                ir.regions[0].bridge_orientation_deg
++            );
++            fidelity_checked += 1;
++        }
++
++        // --- reconstruction of the flat-bridge inputs ----------------------
++        let polygons = apply_slice_closing_radius(raw_cur.clone(), slice_closing_radius);
++        let unsupported = difference(&raw_cur, &raw_prev);
++        let flat_unsupported = intersection(&bottom_fp, &unsupported);
++        let flat_bridge = intersection(&flat_unsupported, &polygons);
++        if flat_bridge.is_empty() {
++            skipped_no_flat += 1;
++            continue;
++        }
++        let support = difference(&polygons, &unsupported);
++        if support.is_empty() {
++            skipped_no_support += 1;
++            continue;
++        }
++        calls += 1;
++
++        // --- baseline closing ----------------------------------------------
++        let t0 = Instant::now();
++        let closed = closing_ex(&support, FLAT_BRIDGE_RADIUS_MM, join);
++        let global_ms = t0.elapsed().as_secs_f64() * 1000.0;
++        global_ms_total += global_ms;
++        let refilled = difference(&closed, &support);
++
++        let mut base_emitted = 0usize;
++        let mut base_flags: Vec<bool> = Vec::with_capacity(flat_bridge.len());
++        let mut base_fracs: Vec<f64> = Vec::with_capacity(flat_bridge.len());
++        let mut n_far = 0usize;
++        let mut min_margin = f64::INFINITY;
++        let mut near_indices: Vec<(usize, f64)> = Vec::new();
++        let support_box = bbox_of(&support).expect("support bbox");
++        for (ci, component) in flat_bridge.iter().enumerate() {
++            let comp_area = expoly_set_area(std::slice::from_ref(component));
++            let frac = if comp_area > 0.0 {
++                let overlap = intersection(std::slice::from_ref(component), &refilled);
++                expoly_set_area(&overlap) / comp_area
++            } else {
++                0.0
++            };
++            base_fracs.push(frac);
++            let flag = frac >= MIN_FRACTION;
++            base_flags.push(flag);
++            if flag {
++                base_emitted += 1;
++            }
++            let margin = (frac - MIN_FRACTION).abs();
++            if margin < min_margin {
++                min_margin = margin;
++            }
++            if margin < 0.02 {
++                near_indices.push((ci, frac));
++            }
++            // far guard: component bbox expanded by R disjoint from support bbox
++            if let Some(cb) = bbox_of(std::slice::from_ref(component)) {
++                if bbox_disjoint(
++                    expand(cb, (FLAT_BRIDGE_RADIUS_MM * UNITS_PER_MM_I64 as f64) as i64),
++                    support_box,
++                ) {
++                    n_far += 1;
++                }
++            }
++        }
++        if min_margin < min_margin_overall {
++            min_margin_overall = min_margin;
++        }
++        let all_far = n_far == flat_bridge.len();
++        if all_far {
++            far_layer_count += 1;
++        }
++        far_component_count += n_far;
++        component_count_total += flat_bridge.len();
++        emitted_base_total += base_emitted;
++
++        // --- candidate local closing ---------------------------------------
++        let (cand_emitted_polys, cand_fracs, local_polys, local_verts, clip_ms, local_ms) =
++            local_closing_candidate(&flat_bridge, &support, join);
++        clip_ms_total += clip_ms;
++        local_ms_total += local_ms;
++        emitted_cand_total += cand_emitted_polys.len();
++
++        let cand_flags: Vec<bool> = cand_fracs.iter().map(|f| *f >= MIN_FRACTION).collect();
++        let verdict_ok = cand_flags == base_flags;
++        let emitted_equal = cand_emitted_polys.len() == base_emitted;
++        for (ci, frac) in &near_indices {
++            near_components.push((
++                layer.index,
++                *ci,
++                *frac,
++                *cand_fracs.get(*ci).unwrap_or(&f64::NAN),
++            ));
++        }
++        if !verdict_ok || !emitted_equal {
++            mismatch_layers.push(layer.index);
++            println!(
++                "MISMATCH layer={} base_flags={:?} cand_flags={:?} base_fracs={:?} cand_fracs={:?}",
++                layer.index, base_flags, cand_flags, base_fracs, cand_fracs
++            );
++        }
++
++        let fb_box = bbox_of(&flat_bridge).expect("flat_bridge bbox");
++        let box_ratio = bbox_area_units2(fb_box) as f64 / bbox_area_units2(support_box) as f64;
++        box_ratios.push(box_ratio);
++
++        let fmt_fracs = |v: &[f64]| -> String {
++            if v.len() > 12 {
++                format!("n={}", v.len())
++            } else {
++                v.iter()
++                    .map(|f| format!("{f:.4}"))
++                    .collect::<Vec<_>>()
++                    .join("|")
++            }
++        };
++        writeln!(
++            csv,
++            "{},{},{:.0},{:.0},{:.0},{},{},{:.0},{:.0},{:.2},{},{},{:.2},{:.2},{},{},{},{:.5},{},{},{},{:.4},{},{},{}",
++            layer.index,
++            layer.z,
++            flat_bridge.len(),
++            expoly_set_area(&flat_bridge),
++            bbox_area_units2(fb_box) as f64 / (UNITS_PER_MM_I64 as f64).powi(2),
++            support.len(),
++            count_vertices(&support),
++            expoly_set_area(&support),
++            expoly_set_area(&refilled),
++            global_ms,
++            local_polys,
++            local_verts,
++            clip_ms,
++            local_ms,
++            base_emitted,
++            cand_emitted_polys.len(),
++            verdict_ok,
++            min_margin,
++            near_indices.len(),
++            n_far,
++            all_far,
++            box_ratio,
++            fmt_fracs(&base_fracs),
++            fmt_fracs(&cand_fracs),
++            emitted_equal,
++        )
++        .expect("csv write");
++    }
++
++    let csv_path = out_dir.join(format!("{fixture}.csv"));
++    std::fs::write(&csv_path, &csv).expect("write csv");
++
++    let n_box = box_ratios.len().max(1) as f64;
++    let box_ratio_mean = box_ratios.iter().sum::<f64>() / n_box;
++    println!("SUMMARY fixture={fixture}");
++    println!("layers_total={total_layers} scanned={scanned} fidelity_checked={fidelity_checked}");
++    println!("skipped_no_flat={skipped_no_flat} skipped_no_support={skipped_no_support} closing_calls={calls}");
++    println!(
++        "global_closing_total_ms={global_ms_total:.1} local_clip_total_ms={clip_ms_total:.1} local_closing_total_ms={local_ms_total:.1}"
++    );
++    println!("components_total={component_count_total} far_components={far_component_count} all_far_layers={far_layer_count}");
++    println!(
++        "emitted_base_total={emitted_base_total} emitted_cand_total={emitted_cand_total} mismatch_layers={:?}",
++        mismatch_layers
++    );
++    println!(
++        "min_margin_overall={min_margin_overall:.5} near_components(<0.02)={}",
++        near_components.len()
++    );
++    for (layer, ci, bf, cf) in near_components.iter().take(40) {
++        println!("  near layer={layer} comp={ci} base_frac={bf:.5} cand_frac={cf:.5}");
++    }
++    println!("box_area_ratio mean={box_ratio_mean:.5} (flat_bridge bbox / support bbox)");
++    println!("csv={}", csv_path.display());
++}
++
++/// Focused debug: dump the closing inputs/outputs for one layer.
++///
++/// `T59_FIXTURE=benchy T59_LAYER=161 cargo test --release -p slicer-core \
++///  --features host-algos --test t59_flat_bridge_probe_tdd -- --ignored --nocapture \
++///  t59_debug_layer`
++#[test]
++#[ignore = "t59 probe: run manually with --ignored and T59_FIXTURE/T59_LAYER set"]
++fn t59_debug_layer() {
++    let fixture = std::env::var("T59_FIXTURE").unwrap_or_else(|_| "benchy".to_string());
++    let layer_index: u32 = std::env::var("T59_LAYER")
++        .expect("T59_LAYER")
++        .parse()
++        .expect("T59_LAYER parse");
++
++    let mesh = load_placed(&fixture);
++    let layers = plan_layers(&mesh);
++    let sc = execute_mesh_analysis(&mesh).expect("mesh analysis");
++    let object_id = mesh.objects[0].id.clone();
++    let raw_by_layer = batch_slice_objects_by_layer(&mesh, &layers);
++    let bottom = batch_bottom_surface_footprints(&mesh, Some(&sc));
++    let cfg = ResolvedConfig::default();
++    let join = OffsetJoinType::Miter;
++    let bottom_fp = bottom.get(&object_id).cloned().unwrap_or_default();
++
++    let i = layers
++        .iter()
++        .position(|l| l.index == layer_index)
++        .expect("layer index present");
++    let layer = &layers[i];
++    let prev_layer = &layers[i - 1];
++    let raw_cur = raw_by_layer
++        .get(&layer.index)
++        .and_then(|m| m.get(&object_id))
++        .cloned()
++        .unwrap_or_default();
++    let raw_prev = raw_by_layer
++        .get(&prev_layer.index)
++        .and_then(|m| m.get(&object_id))
++        .cloned()
++        .unwrap_or_default();
++
++    // Fidelity: the reconstruction below must equal the real pipeline entry
++    // point's output for this layer, or the mechanism claims are not about
++    // production inputs.
++    {
++        let rm = build_region_map(&mesh, &layers);
++        let cache = PrepassSliceCache {
++            raw_polygons: raw_by_layer.get(&layer.index).expect("cur map"),
++            prev_raw_polygons: Some(raw_by_layer.get(&prev_layer.index).expect("prev map")),
++            bottom_surface_footprint: &bottom,
++        };
++        let ir = execute_prepass_slice_single_layer_with_cache(
++            &mesh,
++            layer,
++            Some(&sc),
++            Some(&rm),
++            &cache,
++        )
++        .expect("full pipeline slice");
++        let mine = reconstruct_region(
++            &mesh,
++            &sc,
++            layer,
++            &raw_cur,
++            &raw_prev,
++            &bottom_fp,
++            cfg.slice_closing_radius,
++            join,
++        );
++        assert_eq!(
++            mine.bridge_areas, ir.regions[0].bridge_areas,
++            "reconstruction fidelity failed on debug layer {}",
++            layer.index
++        );
++        assert_eq!(mine.is_bridge, ir.regions[0].is_bridge);
++        println!("FIDELITY OK on layer {}", layer.index);
++    }
++
++    let polygons = apply_slice_closing_radius(raw_cur.clone(), cfg.slice_closing_radius);
++    let unsupported = difference(&raw_cur, &raw_prev);
++    let flat_unsupported = intersection(&bottom_fp, &unsupported);
++    let flat_bridge = intersection(&flat_unsupported, &polygons);
++    let support = difference(&polygons, &unsupported);
++    let closed = closing_ex(&support, FLAT_BRIDGE_RADIUS_MM, join);
++    let refilled = difference(&closed, &support);
++
++    let fb_box = bbox_of(&flat_bridge).expect("flat_bridge bbox");
++    let support_box = bbox_of(&support).expect("support bbox");
++    let pad = (2.0 * FLAT_BRIDGE_RADIUS_MM * UNITS_PER_MM_I64 as f64) as i64 + UNITS_PER_MM_I64;
++    let clip_box = expand(fb_box, pad);
++    let box_expoly = rect_expoly(clip_box);
++    let local_support = intersection(&support, &[box_expoly]);
++    let local_closed = closing_ex(&local_support, FLAT_BRIDGE_RADIUS_MM, join);
++    let local_refilled = difference(&local_closed, &local_support);
++    let mm = |u: i64| u as f64 / UNITS_PER_MM_I64 as f64;
++
++    println!("LAYER {} z={}", layer.index, layer.z);
++    println!(
++        "flat_bridge: n={} area_mm2={:.2} bbox_mm=[{:.2},{:.2}]..[{:.2},{:.2}]",
++        flat_bridge.len(),
++        expoly_set_area(&flat_bridge) / (UNITS_PER_MM_I64 as f64).powi(2),
++        mm(fb_box.min_x),
++        mm(fb_box.min_y),
++        mm(fb_box.max_x),
++        mm(fb_box.max_y),
++    );
++    println!(
++        "box_mm=[{:.2},{:.2}]..[{:.2},{:.2}] pad_mm={:.1}",
++        mm(clip_box.min_x),
++        mm(clip_box.min_y),
++        mm(clip_box.max_x),
++        mm(clip_box.max_y),
++        mm(pad),
++    );
++    println!(
++        "support: n={} verts={} area_mm2={:.1} bbox_mm=[{:.2},{:.2}]..[{:.2},{:.2}]",
++        support.len(),
++        count_vertices(&support),
++        expoly_set_area(&support) / (UNITS_PER_MM_I64 as f64).powi(2),
++        mm(support_box.min_x),
++        mm(support_box.min_y),
++        mm(support_box.max_x),
++        mm(support_box.max_y),
++    );
++    println!(
++        "closed: n={} area_mm2={:.1}; refilled: n={} area_mm2={:.2}",
++        closed.len(),
++        expoly_set_area(&closed) / (UNITS_PER_MM_I64 as f64).powi(2),
++        refilled.len(),
++        expoly_set_area(&refilled) / (UNITS_PER_MM_I64 as f64).powi(2),
++    );
++    println!(
++        "local_support: n={} verts={} area_mm2={:.1}",
++        local_support.len(),
++        count_vertices(&local_support),
++        expoly_set_area(&local_support) / (UNITS_PER_MM_I64 as f64).powi(2),
++    );
++    println!(
++        "local_closed: n={} area_mm2={:.1}; local_refilled: n={} area_mm2={:.2}",
++        local_closed.len(),
++        expoly_set_area(&local_closed) / (UNITS_PER_MM_I64 as f64).powi(2),
++        local_refilled.len(),
++        expoly_set_area(&local_refilled) / (UNITS_PER_MM_I64 as f64).powi(2),
++    );
++    let sup_diff = difference(&support, &local_support);
++    println!(
++        "support_minus_local: n={} area_mm2={:.2} (outside clip_box, expected)",
++        sup_diff.len(),
++        expoly_set_area(&sup_diff) / (UNITS_PER_MM_I64 as f64).powi(2),
++    );
++
++    // Isolation diagnostics: determinism, union normalization, and piece stats.
++    let closed_again = closing_ex(&support, FLAT_BRIDGE_RADIUS_MM, join);
++    println!(
++        "closed_again area_mm2={:.3} (determinism)",
++        expoly_set_area(&closed_again) / (UNITS_PER_MM_I64 as f64).powi(2),
++    );
++    let support_union = slicer_core::polygon_ops::union_ex(&support);
++    println!(
++        "support_union: n={} verts={} area_mm2={:.3}",
++        support_union.len(),
++        count_vertices(&support_union),
++        expoly_set_area(&support_union) / (UNITS_PER_MM_I64 as f64).powi(2),
++    );
++    let closed_union = closing_ex(&support_union, FLAT_BRIDGE_RADIUS_MM, join);
++    println!(
++        "closed_union area_mm2={:.3}",
++        expoly_set_area(&closed_union) / (UNITS_PER_MM_I64 as f64).powi(2),
++    );
++    let mut piece_areas: Vec<f64> = support
++        .iter()
++        .map(|ep| expoly_set_area(std::slice::from_ref(ep)) / (UNITS_PER_MM_I64 as f64).powi(2))
++        .collect();
++    piece_areas.sort_by(|a, b| b.partial_cmp(a).unwrap());
++    let tiny = piece_areas.iter().filter(|a| **a < 0.001).count();
++    let zeroish = piece_areas.iter().filter(|a| **a == 0.0).count();
++    println!(
++        "support pieces: n={} tiny(<0.001mm2)={} zero={} top5={:?}",
++        piece_areas.len(),
++        tiny,
++        zeroish,
++        piece_areas
++            .iter()
++            .take(5)
++            .map(|a| format!("{a:.3}"))
++            .collect::<Vec<_>>(),
++    );
++    let local_piece_areas: Vec<f64> = local_support
++        .iter()
++        .map(|ep| expoly_set_area(std::slice::from_ref(ep)) / (UNITS_PER_MM_I64 as f64).powi(2))
++        .collect();
++    let lt = local_piece_areas.iter().filter(|a| **a < 0.001).count();
++    let lz = local_piece_areas.iter().filter(|a| **a == 0.0).count();
++    println!(
++        "local support pieces: n={} tiny(<0.001mm2)={} zero={}",
++        local_piece_areas.len(),
++        lt,
++        lz,
++    );
++
++    // Sliver anatomy: list the first few sub-0.001 mm² pieces with vertex count,
++    // bbox, and point count, then isolate their contribution to the closing.
++    let mut sliver_info: Vec<(f64, usize, usize, Bbox)> = support
++        .iter()
++        .map(|ep| {
++            let a = expoly_set_area(std::slice::from_ref(ep)) / (UNITS_PER_MM_I64 as f64).powi(2);
++            (
++                a,
++                count_vertices(std::slice::from_ref(ep)),
++                ep.contour.points.len(),
++                bbox_of(std::slice::from_ref(ep)).expect("sliver bbox"),
++            )
++        })
++        .collect();
++    sliver_info.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
++    for (a, verts, n_pts, b) in sliver_info.iter().take(6) {
++        println!(
++            "  piece area_mm2={a:.6} verts={verts} contour_pts={n_pts} bbox_mm=[{:.3},{:.3}]..[{:.3},{:.3}] size_mm={:.3}x{:.3}",
++            mm(b.min_x),
++            mm(b.min_y),
++            mm(b.max_x),
++            mm(b.max_y),
++            mm(b.max_x - b.min_x),
++            mm(b.max_y - b.min_y),
++        );
++    }
++    if let Some((_, _, _, b)) = sliver_info.iter().find(|(a, ..)| *a < 0.001) {
++        // extent stats of the sliver population
++        let (mut max_w, mut max_h) = (0i64, 0i64);
++        let mut count = 0usize;
++        for (a, _, _, bb) in &sliver_info {
++            if *a < 0.001 {
++                count += 1;
++                max_w = max_w.max(bb.max_x - bb.min_x);
++                max_h = max_h.max(bb.max_y - bb.min_y);
++            }
++        }
++        println!(
++            "  sliver population: count={count} max_extent_mm={:.3}x{:.3} (first sliver bbox printed above)",
++            mm(max_w),
++            mm(max_h),
++        );
++        let _ = b;
++    }
++    // Contribution isolation: closing of the big piece only, vs big + slivers.
++    let big_only: Vec<ExPolygon> = support
++        .iter()
++        .filter(|ep| {
++            expoly_set_area(std::slice::from_ref(ep)) / (UNITS_PER_MM_I64 as f64).powi(2) >= 0.001
++        })
++        .cloned()
++        .collect();
++    let closed_big_only = closing_ex(&big_only, FLAT_BRIDGE_RADIUS_MM, join);
++    println!(
++        "closed_big_only area_mm2={:.3} (big piece without slivers; n_in={})",
++        expoly_set_area(&closed_big_only) / (UNITS_PER_MM_I64 as f64).powi(2),
++        big_only.len(),
++    );
++
++    for (ci, component) in flat_bridge.iter().enumerate() {
++        let comp_area = expoly_set_area(std::slice::from_ref(component));
++        let ob = intersection(std::slice::from_ref(component), &refilled);
++        let oc = intersection(std::slice::from_ref(component), &local_refilled);
++        let fb = if comp_area > 0.0 {
++            expoly_set_area(&ob) / comp_area
++        } else {
++            0.0
++        };
++        let fc = if comp_area > 0.0 {
++            expoly_set_area(&oc) / comp_area
++        } else {
++            0.0
++        };
++        let cb = bbox_of(std::slice::from_ref(component)).expect("comp bbox");
++        if (fb - fc).abs() > 1e-9 {
++            println!(
++                "  comp {ci}: area_mm2={:.3} bbox_mm=[{:.2},{:.2}]..[{:.2},{:.2}] frac_base={fb:.5} frac_cand={fc:.5}",
++                comp_area / (UNITS_PER_MM_I64 as f64).powi(2),
++                mm(cb.min_x),
++                mm(cb.min_y),
++                mm(cb.max_x),
++                mm(cb.max_y),
++            );
++        }
++    }
++    println!("(only components with differing fractions are listed)");
++}

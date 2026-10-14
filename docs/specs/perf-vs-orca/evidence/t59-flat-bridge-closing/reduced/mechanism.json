@@ -1,0 +1,97 @@
+{
+ "note": "Per-layer mechanism drills. 'closed_raw' is closing_ex over the production support path list; 'closed_union'/'closed_local' are the same point set re-emitted by union_ex / intersection (normalized path lists). The artifact field of the raw path list is what the 10% gate consumes.",
+ "benchy_layer_161": {
+  "fidelity_ok": true,
+  "layer": 161,
+  "flat_bridge_n": 3,
+  "flat_bridge_area_mm2": 0.08,
+  "pad_mm": 25.0,
+  "support_n": 73,
+  "support_verts": 1514,
+  "support_area_mm2": 116.6,
+  "closed_raw_mm2": 325.3,
+  "refilled_n": 4,
+  "refilled_raw_mm2": 240.36,
+  "local_support_n": 65,
+  "closed_local_mm2": 215.4,
+  "refilled_local_mm2": 162.1,
+  "closed_raw_determinism_mm2": 325.304,
+  "support_union_n": 65,
+  "support_union_verts": 1467,
+  "support_union_area_mm2": 116.642,
+  "closed_union_mm2": 215.381,
+  "pieces_n": 73,
+  "pieces_tiny": 72,
+  "pieces_zero": 0,
+  "slivers": 72,
+  "closed_big_only_mm2": 127.902,
+  "component_flips": [
+   {
+    "component": 0,
+    "area_mm2": 0.023,
+    "base_frac": 0.98783,
+    "cand_frac": 0.04917
+   },
+   {
+    "component": 1,
+    "area_mm2": 0.032,
+    "base_frac": 0.33605,
+    "cand_frac": -0.0
+   }
+  ],
+  "flip_count": 2
+ },
+ "base_layer_8": {
+  "fidelity_ok": true,
+  "layer": 8,
+  "flat_bridge_n": 20,
+  "flat_bridge_area_mm2": 1.15,
+  "pad_mm": 25.0,
+  "support_n": 75,
+  "support_verts": 848,
+  "support_area_mm2": 72.1,
+  "closed_raw_mm2": 31.5,
+  "refilled_n": 6,
+  "refilled_raw_mm2": 13.51,
+  "local_support_n": 57,
+  "closed_local_mm2": 72.1,
+  "refilled_local_mm2": 37.85,
+  "closed_raw_determinism_mm2": 31.536,
+  "support_union_n": 57,
+  "support_union_verts": 767,
+  "support_union_area_mm2": 72.084,
+  "closed_union_mm2": 72.053,
+  "pieces_n": 75,
+  "pieces_tiny": 74,
+  "pieces_zero": 0,
+  "slivers": 74,
+  "closed_big_only_mm2": 73.17,
+  "component_flips": [
+   {
+    "component": 10,
+    "area_mm2": 0.004,
+    "base_frac": -0.0,
+    "cand_frac": 0.00072
+   },
+   {
+    "component": 11,
+    "area_mm2": 0.219,
+    "base_frac": 0.19391,
+    "cand_frac": 0.26317
+   },
+   {
+    "component": 13,
+    "area_mm2": 0.096,
+    "base_frac": -0.0,
+    "cand_frac": 1.0
+   },
+   {
+    "component": 18,
+    "area_mm2": 0.231,
+    "base_frac": 0.11428,
+    "cand_frac": -0.0
+   }
+  ],
+  "flip_count": 4
+ }
+}

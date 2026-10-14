@@ -48,3 +48,8 @@
 # the temporary probe patch and its verifiers; preserve their bytes on
 # add/checkout instead of normalizing line endings.
 /docs/specs/perf-vs-orca/evidence/t64-tree-support-renderer/** -text whitespace=cr-at-eol
+
+# The t59 flat-bridge closing set carries the temporary probe patch, reduced
+# captures and its verifiers; preserve their bytes on add/checkout instead of
+# normalizing line endings.
+/docs/specs/perf-vs-orca/evidence/t59-flat-bridge-closing/** -text whitespace=cr-at-eol
