@@ -2,7 +2,7 @@
 
 Type: task
 Label: wayfinder:task
-Status: claimed (2026-10-14; human-selected take — annotations-empty fast path implementation, qualification + standing paired gate)
+Status: resolved (2026-10-14; standing paired gate measured GATE NOT MET on the wall clause — human-approved DROP, candidate retired, no production edit; see ## Answer)
 Assignee: 2026-10-14 OpenCode wayfinder session (map resumption; human route decision)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
@@ -144,3 +144,64 @@ snapshots under the ignored
 `.local-artifacts/perimeter-reference-preparation/t66-paint-walk/`. The
 candidate stays uncommitted until the human's KEEP/DROP; both guest freshness
 gates are green at the candidate tree.
+
+## Answer
+
+**Measured GATE NOT MET — human-approved DROP (2026-10-14); candidate retired,
+no production edit.**
+
+The annotations-empty fast path (shape 1:
+`slicer_core::paint_policy::has_support_paint` plus the early `DefaultEligible`
+return in `PaintRegionLayerView::paint_policy_for`,
+`crates/slicer-sdk/src/traits.rs`) was implemented exactly as pre-declared and
+passed the full 16-cell output-identity qualification: baseline == candidate
+== preserved t58 references in every cell, all runs clean (`build-
+qualification.py`: 16/16, `pass=True`; `verify-references.py`: 16/16,
+`pass=True`; `qualification.json`).
+
+The standing paired gate then ran the four pre-declared classic supports-on
+cells (2 warm-ups + 6 alternating pairs per cell; 6/6 pairs retained
+everywhere; zero starvation exclusions; all 56 runs `ok`, not degraded, and
+byte-identical): **benchy wall +0.0017 % (ordinary) / +0.1272 %
+(accelerated)** — the pre-declared wall < 0 % clause measured and missed —
+while **base wall −0.4977 % (ordinary) / −2.1098 % (accelerated)** and
+**CPU −0.56 %…−1.22 % in all four cells** passed. Read plainly: the dead
+walk's CPU cost is real and removed everywhere; its wall transfer
+materializes on the base fixtures only and sits inside paired noise on the
+~23–27 s benchy slices (consistent with t64's 0.45–0.55 s
+per-layer-phase freed-wall bound and 0–16 % fuel-to-wall transfer range).
+The human ruled **DROP** on 2026-10-14.
+
+Disposition per the standing DROP discipline (t51/t57 pattern): the three
+source edits and the new test file are retired to `HEAD` (none remain in the
+tree; a retirement stash holds the working-tree copies). The re-appliable
+artifacts are committed with this ticket —
+[`candidate.patch`](../evidence/t66-paint-walk/candidate.patch) (sha256
+`8ccfbeb1e81888956c29455c04aa80193b75772d5c95b0efb1bee01b66d8fe52`,
+byte-identical to the as-measured `git diff`) plus
+[`candidate-new-file-paint_policy_for_tdd.rs`](../evidence/t66-paint-walk/candidate-new-file-paint_policy_for_tdd.rs)
+(sha256 `d949a9324bb862dbdf7c205620f402fb0a67d8888280dee5ee58ab038ae72ec3`).
+No adoption retry, one-sided exception or further retry. Re-entry of the
+shape requires a new pre-declaration; the measured effect class is recorded
+(CPU −0.6…−1.2 %, base wall −0.5…−2.1 %, benchy wall ≈0).
+
+Recovery disclosures (campaign-side only, none a slicer failure): the proof
+driver was killed 2026-10-14 12:37:34 (−03:00) by an opencode
+location-services eviction mid-cell-14 (candidate stderr frozen just past
+`phase_start` for `prepass` at 25,842 bytes, no panic — the same signature
+t58 recorded); the partial cell was archived under
+`.local-artifacts/perimeter-reference-preparation/t66-paint-walk/interrupted-2026-10-14T1237-accelerated-base-classic-on/`
+and re-ran from scratch per the one-shot-guard discipline; the campaign was
+relaunched detached from the agent process tree
+(`evidence/t66-paint-walk/launch-detached.ps1`, the t58 remedy) and ran
+through two further harness evictions (15:36, 16:37) with no cell boundary
+disrupted. Background load disclosed (Opera/Discord resident); zero
+starvation exclusions materialized. The standing dist dirs were restored
+from the baseline snapshots (`4fd7f3d6…` / `f80f16ac…`) and both guest
+freshness gates are green at the restored tree (guests rebuilt per mode
+after the revert).
+
+Evidence:
+[FINDINGS.md](../evidence/t66-paint-walk/FINDINGS.md) (`qualification.json`,
+`ab-reduction.json`, campaign tooling incl. the detached launcher, candidate
+patch).

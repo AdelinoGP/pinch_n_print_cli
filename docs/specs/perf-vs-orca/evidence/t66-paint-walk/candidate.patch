@@ -1,0 +1,183 @@
+diff --git a/crates/slicer-core/src/paint_policy.rs b/crates/slicer-core/src/paint_policy.rs
+index 9dff67f8..9e492f6b 100644
+--- a/crates/slicer-core/src/paint_policy.rs
++++ b/crates/slicer-core/src/paint_policy.rs
+@@ -108,6 +108,29 @@ pub fn support_eligibility(
+     SupportPaintPolicy::DefaultEligible
+ }
+ 
++/// True if `segment_annotations` carries at least one `Some(_)` paint value
++/// under a support-relevant semantic (`SupportBlocker` or
++/// `SupportEnforcer`).
++///
++/// `support_eligibility` classifies exclusively from these two map entries
++/// (plus the region-area floor), so when this predicate is false for every
++/// region of an attached slice, `support_eligibility` returns
++/// `DefaultEligible` for any region polygon set. A caller that aggregates
++/// per-region eligibility over a whole slice (e.g.
++/// `PaintRegionLayerView::paint_policy_for` in `crates/slicer-sdk/src/traits.rs`)
++/// may therefore answer `DefaultEligible` without any geometry work when no
++/// region carries support paint — the annotations-empty fast path of
++/// wayfinder ticket 66. The predicate is deliberately conservative: it
++/// returns true whenever a `Some(_)` value exists even if the region-area
++/// floor would suppress the classification, which costs an unskipped walk
++/// but can never change an answer.
++pub fn has_support_paint(
++    segment_annotations: &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
++) -> bool {
++    entries_has_some_paint(segment_annotations.get(&PaintSemantic::SupportBlocker))
++        || entries_has_some_paint(segment_annotations.get(&PaintSemantic::SupportEnforcer))
++}
++
+ /// True if `region`'s `segment_annotations[semantic]` map entry contains at
+ /// least one `Some(_)` paint value AND the region polygon has non-trivial
+ /// area.
+diff --git a/crates/slicer-core/tests/paint_policy.rs b/crates/slicer-core/tests/paint_policy.rs
+index 0400f319..9d5eddf1 100644
+--- a/crates/slicer-core/tests/paint_policy.rs
++++ b/crates/slicer-core/tests/paint_policy.rs
+@@ -22,7 +22,7 @@
+ 
+ use std::collections::HashMap;
+ 
+-use slicer_core::paint_policy::{support_eligibility, SupportPaintPolicy};
++use slicer_core::paint_policy::{has_support_paint, support_eligibility, SupportPaintPolicy};
+ use slicer_ir::{ExPolygon, PaintSemantic, PaintValue, Point2, Polygon};
+ 
+ /// Build a 10×10 mm square ExPolygon at the origin (lower-left at (0, 0)).
+@@ -189,6 +189,109 @@ fn empty_segment_annotations_returns_default_eligible() {
+     );
+ }
+ 
++#[test]
++fn has_support_paint_detects_support_semantics_only() {
++    // A `Some(_)` value under either support semantic is support paint.
++    assert!(has_support_paint(&annotations_with(
++        PaintSemantic::SupportBlocker,
++        1
++    )));
++    assert!(has_support_paint(&annotations_with(
++        PaintSemantic::SupportEnforcer,
++        1
++    )));
++
++    // No map, or only non-support semantics, is not support paint — the
++    // fast path must not be reachable from paint this classifier cannot read.
++    let empty: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>> = HashMap::new();
++    assert!(!has_support_paint(&empty));
++    assert!(!has_support_paint(&annotations_with(
++        PaintSemantic::Material,
++        1
++    )));
++    assert!(!has_support_paint(&annotations_with(
++        PaintSemantic::FuzzySkin,
++        1
++    )));
++    assert!(!has_support_paint(&annotations_with(
++        PaintSemantic::Custom("nozzle".to_string()),
++        1
++    )));
++}
++
++#[test]
++fn has_support_paint_requires_a_some_value() {
++    // Key present but every value `None`: no paint, never triggers the
++    // fast-path skip — the same emptiness `support_eligibility` sees.
++    let mut none_only = HashMap::new();
++    none_only.insert(
++        PaintSemantic::SupportBlocker,
++        vec![vec![None, None], vec![None]],
++    );
++    assert!(!has_support_paint(&none_only));
++
++    // A present-but-empty polygon list is also no paint.
++    let mut empty_polys = HashMap::new();
++    empty_polys.insert(PaintSemantic::SupportEnforcer, Vec::new());
++    assert!(!has_support_paint(&empty_polys));
++}
++
++#[test]
++fn no_support_paint_implies_default_eligible_for_any_polygons() {
++    // Exactness invariant behind the annotations-empty fast path (ticket 66):
++    // when `has_support_paint` is false, `support_eligibility` returns
++    // `DefaultEligible` for every polygon set (here a region well above the
++    // area floor). If the classifier ever starts reading another semantic
++    // or another paint entry, this fails and the fast path must be revisited.
++    let cases: [HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>; 4] = [
++        HashMap::new(),
++        annotations_with(PaintSemantic::Material, 1),
++        annotations_with(PaintSemantic::FuzzySkin, 1),
++        annotations_with(PaintSemantic::Custom("nozzle".to_string()), 1),
++    ];
++    for annotations in cases {
++        assert!(
++            !has_support_paint(&annotations),
++            "fixture case must be support-paint free"
++        );
++        assert_eq!(
++            support_eligibility(&[ten_mm_square()], &annotations),
++            SupportPaintPolicy::DefaultEligible,
++            "a support-paint-free slice must classify as DefaultEligible"
++        );
++    }
++}
++
++#[test]
++fn has_support_paint_is_conservative_under_the_area_floor() {
++    // The predicate may stay true while the classifier's area floor
++    // suppresses the result (10×10 units = 100 units² < 200 units²): the
++    // fast path then keeps the walk, which costs work but cannot change an
++    // answer. The same annotations classify a non-degenerate square, so the
++    // predicate is not vacuously true.
++    let below_floor = ExPolygon {
++        contour: Polygon {
++            points: vec![
++                Point2 { x: 0, y: 0 },
++                Point2 { x: 10, y: 0 },
++                Point2 { x: 10, y: 10 },
++                Point2 { x: 0, y: 10 },
++            ],
++        },
++        holes: Vec::new(),
++    };
++    let annotations = annotations_with(PaintSemantic::SupportBlocker, 1);
++    assert!(has_support_paint(&annotations));
++    assert_eq!(
++        support_eligibility(&[below_floor], &annotations),
++        SupportPaintPolicy::DefaultEligible
++    );
++    assert_eq!(
++        support_eligibility(&[ten_mm_square()], &annotations),
++        SupportPaintPolicy::Blocked
++    );
++}
++
+ // ---------------------------------------------------------------------------
+ // Test-local geometry helpers (inlined so the test has no dependency on the
+ // production code under test).
+diff --git a/crates/slicer-sdk/src/traits.rs b/crates/slicer-sdk/src/traits.rs
+index 5e0df258..9c5de813 100644
+--- a/crates/slicer-sdk/src/traits.rs
++++ b/crates/slicer-sdk/src/traits.rs
+@@ -272,6 +272,21 @@ impl PaintRegionLayerView {
+         let Some(slice) = self.slice_ir.as_ref() else {
+             return SupportPaintPolicy::DefaultEligible;
+         };
++        // Annotations-empty fast path (wayfinder ticket 66). When no region
++        // in the attached slice carries a `SupportBlocker`/`SupportEnforcer`
++        // paint value, `support_eligibility` returns `DefaultEligible` for
++        // every covering region (it reads only those two entries plus a
++        // region-area floor — see `slicer_core::paint_policy`), so the
++        // region-ownership walk below cannot change the aggregate answer.
++        // The result is value-identical for every input; views carrying
++        // support paint still take the walk unchanged.
++        if !slice
++            .regions
++            .iter()
++            .any(|region| slicer_core::paint_policy::has_support_paint(&region.segment_annotations))
++        {
++            return SupportPaintPolicy::DefaultEligible;
++        }
+         let mut blocked = false;
+         let mut enforced = false;
+         for region in &slice.regions {

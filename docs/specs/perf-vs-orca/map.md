@@ -38,7 +38,17 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-14, updated after the t64 take):** on
+**Current selection scope (2026-10-14, after the t66 take):** the human
+selected [66](issues/66-paint-policy-dead-walk-reduction.md) from the open
+frontier; the take resolved as a **measured GATE NOT MET — human-approved
+DROP** (annotations-empty fast path; 16/16 identity qualification; benchy
+wall flat inside paired noise while base wall and all-cell CPU improved;
+candidate retired to the committed re-appliable patch, no production edit).
+Next: re-derive the open frontier on resume. The standing paired acceptance
+and human KEEP/DROP rules are unchanged; new questions require the human's
+route decision.
+
+**Previous selection scope (2026-10-14, after the t64 take):** on
 resumption the human said "continue" without naming a ticket, so the session
 took the first frontier ticket in order —
 [64](issues/64-tree-support-renderer-attribution.md) — **resolved as an
@@ -496,6 +506,8 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+
+- [Support paint-policy dead-walk reduction](issues/66-paint-policy-dead-walk-reduction.md): **resolved (2026-10-14; measured GATE NOT MET on the wall clause — human-approved DROP, candidate retired, no production edit)** — the annotations-empty fast path (`slicer_core::paint_policy::has_support_paint` plus the early return in `PaintRegionLayerView::paint_policy_for`) passed the full 16-cell output-identity qualification (baseline == candidate == preserved t58 references; `build-qualification.py` 16/16 and `verify-references.py` 16/16, all clean), then the standing paired gate on the four pre-declared classic supports-on cells (6/6 pairs everywhere, zero starvation exclusions, 56/56 runs byte-identical): **CPU improved in all four cells (−0.56…−1.22 %)** and **base wall improved (−0.4977 % ordinary / −2.1098 % accelerated)**, but **benchy wall sat inside paired noise (+0.0017 % / +0.1272 %)**, below the pre-declared wall < 0 % clause — the dead walk is a real ~1 %-class CPU cost whose wall transfer is base-only. Candidate retired to `HEAD` with the re-appliable artifacts committed (`evidence/t66-paint-walk/candidate.patch` sha `8ccfbeb1…` + the new-test-file copy, both byte-identical to the as-measured state); no adoption retry; re-entry needs a new pre-declaration. Interruption recoveries disclosed (one harness eviction kill mid-proof, two further evictions survived by the detached relaunch; background load; zero exclusions). Evidence: `evidence/t66-paint-walk/FINDINGS.md`.
 
 - [Tree-support renderer self-fuel and scan-fill attribution](issues/64-tree-support-renderer-attribution.md): **resolved (2026-10-14; attribution take, probe reverted, no production edit, no timing campaign)** — four fresh profiled captures (outputs byte-identical to the t58 references, all four cells); the renderer's 43.510 B dispatch fuel splits: **`paint_policy_for` 34.697 B (79.7%)** — per-query counters pin a **dead walk** (1 rebuilt region / ~428 vertices / ~1,285 rings / ~893K edge tests × ~46.5 instr each; **0 covers, 0 eligibility checks in 836 queries** → `DefaultEligible` every time), two exact reduction shapes graduated to [Support paint-policy dead-walk reduction](issues/66-paint-policy-dead-walk-reduction.md); **`skeleton_wall_count` 6.921 B (15.9%)** (bbox-scan walks 377.7 M of it; ranked second); **`scan_fill_region` 0.187 B (0.43%) inclusive — the ticket's named suspect measured no-useful-reduction** (4,443 rows / 2.8 M edge walks / 2.008 conversions per edge; role splits exact); wall relevance bounded: renderer accumulated worker 6.79–8.35 s over 12-thread phases = **6.5–8.5% machine occupancy**, 0–2 ms on the last-finishing layer, freeing the dead walk's share bounded ≈0.45–0.55 s of those phases' walls (attribution-only bounds, never a wall claim). Supports-off controls match the t61 baselines with the probe silent (0 counts). Ordinary mode only (disclosed); the graduated experiment carries the both-modes paired gate. Evidence: `evidence/t64-tree-support-renderer/` (`FINDINGS.md`, `probe.patch`, `verify.py`).
 
