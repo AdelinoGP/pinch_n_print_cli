@@ -714,11 +714,13 @@ Standing decisions for this effort (2026-09-22):
   2026-09-28 (phase-B = two costly offsets, sibling memo dropped for the matched job by human decision on 2026-09-29;
   estimate_print tail = pipeline teardown, below-fold; OverhangAnnotation
   wall = parallel) and one since graduated: the flat-bridge reduction inside
-   `PrePass::Slice` is now
+   `PrePass::Slice` graduated to
    [ticket 59](issues/59-prep-slice-flat-bridge-closing-reduction.md)
    (representation analysis first — the tested `refilled`-mask elimination
    failed real-layer IR equivalence and was dropped; fresh 2026-10-09
-   anchors: `closing_ex` 384–389 s accumulated on base cells). The smaller
+   anchors: `closing_ex` 384–389 s accumulated on base cells) and **is now
+   resolved as a no-safe-reduction verdict (2026-10-14; see Decisions — the
+   gate is artifact-bound and irreducible)**. The smaller
    `apply_opening` lead is a separate geometry-parity question, not a
    representation-preserving replacement. Below-fold polish (`offset2_ex` call
   reduction, consume-only-when-read, `split_top_surfaces` secondary work, the
