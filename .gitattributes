@@ -36,3 +36,10 @@
 /docs/specs/perf-vs-orca/evidence/t53-union-simplify/** -text whitespace=cr-at-eol
 /docs/specs/perf-vs-orca/evidence/t55-body-union/** -text whitespace=cr-at-eol
 /docs/specs/perf-vs-orca/evidence/t57-topx-cache/** -text whitespace=cr-at-eol
+
+# The t61 perf refresh and the t62/t65 linker evidence sets carry hash-checked
+# reductions, captured json and probe patches; preserve their bytes on
+# add/checkout instead of normalizing line endings.
+/docs/specs/perf-vs-orca/evidence/perf-refresh-2026-10-13/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t62-linker-post-hoist/** -text whitespace=cr-at-eol
+/docs/specs/perf-vs-orca/evidence/t65-linker-batch/** -text whitespace=cr-at-eol

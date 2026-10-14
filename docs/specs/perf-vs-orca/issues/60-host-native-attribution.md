@@ -53,4 +53,15 @@ default change in this take unless the human extends it.
   machine mined by tickets 22/32/44/53/55/57; the supports-off part is the
   unexplained side and the take's focus.
 - Evidence: `evidence/perf-refresh-2026-10-09/FINDINGS.md` (host table and
-  per-layer counts).
+   per-layer counts).
+
+## Comments
+
+### Benchy bucket refresh — 2026-10-13 (no owner probe or take started)
+
+The [Benchy current bottleneck refresh](61-benchy-current-bottleneck-refresh.md)
+measures supports-off `host:native` at 11.797 s Classic / 5.716 s Arachne
+accumulated thread-time, supports-on 21.755/15.595 s. These fresh profiles
+broaden the generator coverage, not the attribution: owners and wall shares
+remain unresolved, so this ticket is retained rather than duplicated.
+Evidence: [fresh findings](../evidence/perf-refresh-2026-10-13/FINDINGS.md).

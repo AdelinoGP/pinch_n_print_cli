@@ -56,4 +56,16 @@ evidence attached; no code change.
 - Evidence: `evidence/perf-refresh-2026-10-09/FINDINGS.md` (host table),
   `evidence/t27-serial-floor/FLAT-BRIDGE-EXPERIMENT.md`,
   `evidence/t27-serial-floor/FINDINGS-SUBSTAGE-2.md` (probe-2 stage fuel),
-  `evidence/t27-serial-floor/PREMISE-AUDIT.md` (consumer audit).
+   `evidence/t27-serial-floor/PREMISE-AUDIT.md` (consumer audit).
+
+## Comments
+
+### Benchy premise refresh — 2026-10-13 (no take started)
+
+The [Benchy current bottleneck refresh](61-benchy-current-bottleneck-refresh.md)
+confirms `host:slice` still leads accumulated native work across both generators
+and support states. `closing_ex` is 23.069–25.128 s accumulated thread-time
+(240 calls in each profile), not slice wall. Profiling-off Arachne stage
+brackets are 2.773/2.609 s off/on. The real-layer representation constraint and
+this ticket's question remain unchanged; no replacement or timing gate was
+started. Evidence: [fresh findings](../evidence/perf-refresh-2026-10-13/FINDINGS.md).

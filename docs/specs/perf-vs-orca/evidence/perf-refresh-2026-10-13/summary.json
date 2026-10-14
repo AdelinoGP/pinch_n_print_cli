@@ -1,0 +1,1296 @@
+{
+ "ordinary-benchy-arachne-off-instrumented": {
+  "kind": "instrumented",
+  "process_wall_s": 26.9807728,
+  "process_cpu_s": 69.75,
+  "cpu_wall_ratio": 2.5851742838144354,
+  "slice_elapsed_ms": 15504,
+  "process_minus_slice_s": 11.4767728,
+  "head_ms": 994,
+  "phases_ms": {
+   "validation": 149,
+   "prepass": 8117,
+   "per_layer": 5841,
+   "postpass": 350
+  },
+  "serial_modules_ms": {
+   "host:mesh_analysis": 289,
+   "com.core.layer-planner-default": 1,
+   "host:region_mapping": 14,
+   "host:slice": 2773,
+   "host:overhang_annotation": 871,
+   "host:shell_classification": 3110,
+   "host:paint_segmentation": 14,
+   "host:support_analysis": 0,
+   "host:support_geometry": 2,
+   "com.core.seam-planner-default": 971,
+   "com.core.traditional-support-planner": 30,
+   "com.core.tree-support-planner": 25,
+   "com.core.overhang-classifier-default": 23,
+   "com.core.part-cooling": 23,
+   "com.core.skirt-brim": 21,
+   "com.core.wipe-tower": 22,
+   "host:gcode_emit": 25,
+   "com.core.machine-gcode-emit": 80,
+   "host:gcode_serialize": 88
+  },
+  "low_layer_intervals_ms": [
+   [
+    0,
+    1,
+    431,
+    430
+   ],
+   [
+    1,
+    434,
+    4212,
+    3777
+   ],
+   [
+    2,
+    4216,
+    5841,
+    1625
+   ]
+  ],
+  "last_non_low_layer_end_ms": 4803,
+  "low_layers_only_finishing_interval_ms": 1038,
+  "last_layer": 2,
+  "module_accumulated_ms": {
+   "host:paint_annotator": 629,
+   "com.core.arachne-perimeters": 9420,
+   "com.core.fuzzy-skin": 688,
+   "com.core.seam-placer": 959,
+   "com.core.raft-default": 1894,
+   "com.core.gyroid-infill": 1030,
+   "com.core.lightning-infill": 1008,
+   "com.core.rectilinear-infill": 1024,
+   "com.core.top-surface-ironing": 1084,
+   "com.core.wave-overhangs": 971,
+   "com.core.infill-linker": 6775,
+   "com.core.tree-support": 963,
+   "com.core.support-surface-ironing": 748,
+   "com.core.path-optimization-default": 772
+  },
+  "linker_low_layer_calls": [
+   {
+    "layer": 0,
+    "elapsed_ms": 117,
+    "end_ms": 363,
+    "fuel": null
+   },
+   {
+    "layer": 1,
+    "elapsed_ms": 3182,
+    "end_ms": 4159,
+    "fuel": null
+   },
+   {
+    "layer": 2,
+    "elapsed_ms": 1389,
+    "end_ms": 5832,
+    "fuel": null
+   }
+  ],
+  "output": {
+   "sha256": "b76d846acdb13f3255c515878a43082da160c01a4155ae6904d2d473c30e1ba1",
+   "bytes": 4126744,
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 692,
+    "Inner wall": 681,
+    "Bottom surface": 26,
+    "Bridge": 22,
+    "Sparse infill": 225,
+    "Internal solid infill": 13,
+    "Top surface": 74,
+    "Internal Bridge": 12
+   },
+   "status": "ok",
+   "degraded": false,
+   "fatal": 0,
+   "non_fatal": 0
+  },
+  "warnings": {
+   "open_loop": 12,
+   "malformed_layer_marker": 152
+  }
+ },
+ "ordinary-benchy-arachne-off-profile": {
+  "kind": "profile",
+  "process_wall_s": 16.4278873,
+  "process_cpu_s": 74.28125,
+  "cpu_wall_ratio": 4.521655684842688,
+  "slice_elapsed_ms": 16240,
+  "process_minus_slice_s": 0.18788729999999987,
+  "head_ms": 1227,
+  "phases_ms": {
+   "validation": 99,
+   "prepass": 8519,
+   "per_layer": 6054,
+   "postpass": 302
+  },
+  "serial_modules_ms": {
+   "host:mesh_analysis": 234,
+   "com.core.layer-planner-default": 1,
+   "host:region_mapping": 9,
+   "host:slice": 2803,
+   "host:overhang_annotation": 994,
+   "host:shell_classification": 3417,
+   "host:paint_segmentation": 15,
+   "host:support_analysis": 0,
+   "host:support_geometry": 2,
+   "com.core.seam-planner-default": 976,
+   "com.core.traditional-support-planner": 25,
+   "com.core.tree-support-planner": 28,
+   "com.core.overhang-classifier-default": 20,
+   "com.core.part-cooling": 20,
+   "com.core.skirt-brim": 20,
+   "com.core.wipe-tower": 17,
+   "host:gcode_emit": 20,
+   "com.core.machine-gcode-emit": 78,
+   "host:gcode_serialize": 71
+  },
+  "low_layer_intervals_ms": [
+   [
+    0,
+    0,
+    388,
+    387
+   ],
+   [
+    1,
+    388,
+    4490,
+    4101
+   ],
+   [
+    2,
+    4490,
+    6054,
+    1563
+   ]
+  ],
+  "last_non_low_layer_end_ms": 2860,
+  "low_layers_only_finishing_interval_ms": 3194,
+  "last_layer": 2,
+  "module_accumulated_ms": {
+   "host:paint_annotator": 185,
+   "com.core.arachne-perimeters": 10416,
+   "com.core.fuzzy-skin": 306,
+   "com.core.seam-placer": 415,
+   "com.core.raft-default": 1611,
+   "com.core.gyroid-infill": 516,
+   "com.core.lightning-infill": 459,
+   "com.core.rectilinear-infill": 448,
+   "com.core.top-surface-ironing": 403,
+   "com.core.wave-overhangs": 386,
+   "com.core.infill-linker": 7214,
+   "com.core.tree-support": 476,
+   "com.core.support-surface-ironing": 315,
+   "com.core.path-optimization-default": 309
+  },
+  "linker_low_layer_calls": [
+   {
+    "layer": 0,
+    "elapsed_ms": 134,
+    "end_ms": 352,
+    "fuel": 1513084090
+   },
+   {
+    "layer": 1,
+    "elapsed_ms": 3635,
+    "end_ms": 4479,
+    "fuel": 36881142966
+   },
+   {
+    "layer": 2,
+    "elapsed_ms": 1456,
+    "end_ms": 6048,
+    "fuel": 17250578880
+   }
+  ],
+  "output": {
+   "sha256": "b76d846acdb13f3255c515878a43082da160c01a4155ae6904d2d473c30e1ba1",
+   "bytes": 4126744,
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 692,
+    "Inner wall": 681,
+    "Bottom surface": 26,
+    "Bridge": 22,
+    "Sparse infill": 225,
+    "Internal solid infill": 13,
+    "Top surface": 74,
+    "Internal Bridge": 12
+   },
+   "status": "ok",
+   "degraded": false,
+   "fatal": 0,
+   "non_fatal": 0
+  },
+  "warnings": {
+   "open_loop": 12,
+   "malformed_layer_marker": 152
+  },
+  "fuel_total": 163388389289,
+  "guest": {
+   "com.core.arachne-perimeters": {
+    "fuel": 88196760244,
+    "self_fuel": 82915314540,
+    "share_pct": 53.97982110466755,
+    "self_of_module_pct": 94.01174636189735
+   },
+   "com.core.infill-linker": {
+    "fuel": 72716184141,
+    "self_fuel": 72517401040,
+    "share_pct": 44.50511107761778,
+    "self_of_module_pct": 99.72663155616836
+   },
+   "com.core.seam-planner-default": {
+    "fuel": 671813511,
+    "self_fuel": 671813511,
+    "share_pct": 0.4111757964708875,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.gyroid-infill": {
+    "fuel": 364472796,
+    "self_fuel": 364472796,
+    "share_pct": 0.22307141748935636,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.seam-placer": {
+    "fuel": 174702000,
+    "self_fuel": 174702000,
+    "share_pct": 0.10692436638872091,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.rectilinear-infill": {
+    "fuel": 172543558,
+    "self_fuel": 172543558,
+    "share_pct": 0.10560331658255497,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.fuzzy-skin": {
+    "fuel": 111163770,
+    "self_fuel": 111163770,
+    "share_pct": 0.06803651745619113,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.machine-gcode-emit": {
+    "fuel": 108095165,
+    "self_fuel": 108095165,
+    "share_pct": 0.06615841276750833,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.tree-support": {
+    "fuel": 107122573,
+    "self_fuel": 107122573,
+    "share_pct": 0.0655631489276282,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.wave-overhangs": {
+    "fuel": 106074230,
+    "self_fuel": 106074230,
+    "share_pct": 0.06492152255224011,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.top-surface-ironing": {
+    "fuel": 91158413,
+    "self_fuel": 91158413,
+    "share_pct": 0.055792466892344336,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.lightning-infill": {
+    "fuel": 90651583,
+    "self_fuel": 90651583,
+    "share_pct": 0.055482267371922155,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.support-surface-ironing": {
+    "fuel": 90520180,
+    "self_fuel": 90520180,
+    "share_pct": 0.0554018436646001,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.raft-default": {
+    "fuel": 86780149,
+    "self_fuel": 86780149,
+    "share_pct": 0.05311280035113389,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.path-optimization-default": {
+    "fuel": 72537604,
+    "self_fuel": 72537604,
+    "share_pct": 0.044395813139265425,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.part-cooling": {
+    "fuel": 41701164,
+    "self_fuel": 41701164,
+    "share_pct": 0.025522721768337732,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.skirt-brim": {
+    "fuel": 40188021,
+    "self_fuel": 40188021,
+    "share_pct": 0.024596619854618782,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.wipe-tower": {
+    "fuel": 40045068,
+    "self_fuel": 40045068,
+    "share_pct": 0.024509127101540015,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.overhang-classifier-default": {
+    "fuel": 39882676,
+    "self_fuel": 39882676,
+    "share_pct": 0.024409736930239186,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.tree-support-planner": {
+    "fuel": 32290147,
+    "self_fuel": 32290147,
+    "share_pct": 0.01976281615879416,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.traditional-support-planner": {
+    "fuel": 32280060,
+    "self_fuel": 32280060,
+    "share_pct": 0.019756642525499964,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.layer-planner-default": {
+    "fuel": 1422236,
+    "self_fuel": 1422236,
+    "share_pct": 0.0008704633212855542,
+    "self_of_module_pct": 100.0
+   }
+  },
+  "linker_low_layer_fuel_share_pct": 76.52327551745864,
+  "host_accumulated_ns": {
+   "host:slice": 28918894600,
+   "host:shell_classification": 12429395100,
+   "host:overhang_annotation": 9571803300,
+   "host:native": 5716233300,
+   "host:mesh_analysis": 128354200
+  }
+ },
+ "ordinary-benchy-arachne-on-instrumented": {
+  "kind": "instrumented",
+  "process_wall_s": 25.6658681,
+  "process_cpu_s": 91.453125,
+  "cpu_wall_ratio": 3.5632196286397964,
+  "slice_elapsed_ms": 25427,
+  "process_minus_slice_s": 0.23886810000000125,
+  "head_ms": 1081,
+  "phases_ms": {
+   "validation": 157,
+   "prepass": 17328,
+   "per_layer": 5393,
+   "postpass": 1420
+  },
+  "serial_modules_ms": {
+   "host:mesh_analysis": 281,
+   "com.core.layer-planner-default": 1,
+   "host:region_mapping": 11,
+   "host:slice": 2609,
+   "host:overhang_annotation": 974,
+   "host:shell_classification": 3234,
+   "host:paint_segmentation": 14,
+   "host:support_analysis": 1457,
+   "host:support_geometry": 1,
+   "com.core.seam-planner-default": 982,
+   "com.core.traditional-support-planner": 44,
+   "com.core.tree-support-planner": 6957,
+   "com.core.overhang-classifier-default": 232,
+   "com.core.part-cooling": 212,
+   "com.core.skirt-brim": 192,
+   "com.core.wipe-tower": 192,
+   "host:gcode_emit": 113,
+   "com.core.machine-gcode-emit": 110,
+   "host:gcode_serialize": 165
+  },
+  "low_layer_intervals_ms": [
+   [
+    0,
+    0,
+    438,
+    437
+   ],
+   [
+    1,
+    438,
+    4108,
+    3669
+   ],
+   [
+    2,
+    4108,
+    5393,
+    1284
+   ]
+  ],
+  "last_non_low_layer_end_ms": 3053,
+  "low_layers_only_finishing_interval_ms": 2340,
+  "last_layer": 2,
+  "module_accumulated_ms": {
+   "host:paint_annotator": 108,
+   "com.core.arachne-perimeters": 9696,
+   "com.core.fuzzy-skin": 150,
+   "com.core.seam-placer": 446,
+   "com.core.raft-default": 1536,
+   "com.core.gyroid-infill": 463,
+   "com.core.lightning-infill": 429,
+   "com.core.rectilinear-infill": 326,
+   "com.core.top-surface-ironing": 352,
+   "com.core.wave-overhangs": 362,
+   "com.core.infill-linker": 6192,
+   "com.core.tree-support": 5753,
+   "com.core.support-surface-ironing": 243,
+   "com.core.path-optimization-default": 159
+  },
+  "linker_low_layer_calls": [
+   {
+    "layer": 0,
+    "elapsed_ms": 131,
+    "end_ms": 408,
+    "fuel": null
+   },
+   {
+    "layer": 1,
+    "elapsed_ms": 3191,
+    "end_ms": 4085,
+    "fuel": null
+   },
+   {
+    "layer": 2,
+    "elapsed_ms": 1179,
+    "end_ms": 5375,
+    "fuel": null
+   }
+  ],
+  "output": {
+   "sha256": "ae9d90612bf87ae9f76cb6faf341482e1abbaf5897bb2b981c3247d1646c3b9f",
+   "bytes": 8452736,
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 692,
+    "Inner wall": 681,
+    "Bottom surface": 26,
+    "Support": 179,
+    "Bridge": 22,
+    "Sparse infill": 225,
+    "Internal solid infill": 13,
+    "Top surface": 74,
+    "Internal Bridge": 12,
+    "Support interface": 4
+   },
+   "status": "ok",
+   "degraded": false,
+   "fatal": 0,
+   "non_fatal": 0
+  },
+  "warnings": {
+   "open_loop": 12,
+   "malformed_layer_marker": 177
+  }
+ },
+ "ordinary-benchy-arachne-on-profile": {
+  "kind": "profile",
+  "process_wall_s": 31.075591,
+  "process_cpu_s": 93.9375,
+  "cpu_wall_ratio": 3.022870908553276,
+  "slice_elapsed_ms": 30122,
+  "process_minus_slice_s": 0.9535909999999994,
+  "head_ms": 1139,
+  "phases_ms": {
+   "validation": 86,
+   "prepass": 16928,
+   "per_layer": 6059,
+   "postpass": 5859
+  },
+  "serial_modules_ms": {
+   "host:mesh_analysis": 227,
+   "com.core.layer-planner-default": 1,
+   "host:region_mapping": 9,
+   "host:slice": 2611,
+   "host:overhang_annotation": 852,
+   "host:shell_classification": 3169,
+   "host:paint_segmentation": 11,
+   "host:support_analysis": 1360,
+   "host:support_geometry": 2,
+   "com.core.seam-planner-default": 979,
+   "com.core.traditional-support-planner": 40,
+   "com.core.tree-support-planner": 6930,
+   "com.core.overhang-classifier-default": 249,
+   "com.core.part-cooling": 225,
+   "com.core.skirt-brim": 926,
+   "com.core.wipe-tower": 446,
+   "host:gcode_emit": 1175,
+   "com.core.machine-gcode-emit": 847,
+   "host:gcode_serialize": 140
+  },
+  "low_layer_intervals_ms": [
+   [
+    0,
+    0,
+    460,
+    459
+   ],
+   [
+    1,
+    462,
+    4454,
+    3992
+   ],
+   [
+    2,
+    4459,
+    6058,
+    1599
+   ]
+  ],
+  "last_non_low_layer_end_ms": 3080,
+  "low_layers_only_finishing_interval_ms": 2978,
+  "last_layer": 2,
+  "module_accumulated_ms": {
+   "host:paint_annotator": 86,
+   "com.core.arachne-perimeters": 10598,
+   "com.core.fuzzy-skin": 158,
+   "com.core.seam-placer": 323,
+   "com.core.raft-default": 1571,
+   "com.core.gyroid-infill": 507,
+   "com.core.lightning-infill": 322,
+   "com.core.rectilinear-infill": 343,
+   "com.core.top-surface-ironing": 321,
+   "com.core.wave-overhangs": 328,
+   "com.core.infill-linker": 6918,
+   "com.core.tree-support": 6402,
+   "com.core.support-surface-ironing": 227,
+   "com.core.path-optimization-default": 150
+  },
+  "linker_low_layer_calls": [
+   {
+    "layer": 0,
+    "elapsed_ms": 146,
+    "end_ms": 337,
+    "fuel": 1512072708
+   },
+   {
+    "layer": 1,
+    "elapsed_ms": 3459,
+    "end_ms": 4376,
+    "fuel": 36881143050
+   },
+   {
+    "layer": 2,
+    "elapsed_ms": 1328,
+    "end_ms": 6031,
+    "fuel": 17250578680
+   }
+  ],
+  "output": {
+   "sha256": "ae9d90612bf87ae9f76cb6faf341482e1abbaf5897bb2b981c3247d1646c3b9f",
+   "bytes": 8452736,
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 692,
+    "Inner wall": 681,
+    "Bottom surface": 26,
+    "Support": 179,
+    "Bridge": 22,
+    "Sparse infill": 225,
+    "Internal solid infill": 13,
+    "Top surface": 74,
+    "Internal Bridge": 12,
+    "Support interface": 4
+   },
+   "status": "ok",
+   "degraded": false,
+   "fatal": 0,
+   "non_fatal": 0
+  },
+  "warnings": {
+   "open_loop": 12,
+   "malformed_layer_marker": 177
+  },
+  "fuel_total": 212714126998,
+  "guest": {
+   "com.core.arachne-perimeters": {
+    "fuel": 88196458290,
+    "self_fuel": 82915170662,
+    "share_pct": 41.46243577457798,
+    "self_of_module_pct": 94.01190509188643
+   },
+   "com.core.infill-linker": {
+    "fuel": 72715307451,
+    "self_fuel": 72516525746,
+    "share_pct": 34.18452195781227,
+    "self_of_module_pct": 99.72663018012548
+   },
+   "com.core.tree-support": {
+    "fuel": 43431469765,
+    "self_fuel": 42062868609,
+    "share_pct": 20.417764620498552,
+    "self_of_module_pct": 96.84882606228788
+   },
+   "com.core.tree-support-planner": {
+    "fuel": 5274562149,
+    "self_fuel": 5274562149,
+    "share_pct": 2.479648260056368,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.seam-planner-default": {
+    "fuel": 671813511,
+    "self_fuel": 671813511,
+    "share_pct": 0.3158292871663933,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.gyroid-infill": {
+    "fuel": 392302236,
+    "self_fuel": 392302236,
+    "share_pct": 0.18442697790527496,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.machine-gcode-emit": {
+    "fuel": 214462712,
+    "self_fuel": 214462712,
+    "share_pct": 0.10082203520127106,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.rectilinear-infill": {
+    "fuel": 201053389,
+    "self_fuel": 201053389,
+    "share_pct": 0.09451811773737546,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.seam-placer": {
+    "fuel": 174702000,
+    "self_fuel": 174702000,
+    "share_pct": 0.08212994711049097,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.part-cooling": {
+    "fuel": 156176171,
+    "self_fuel": 156176171,
+    "share_pct": 0.073420685877374,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.skirt-brim": {
+    "fuel": 149403890,
+    "self_fuel": 149403890,
+    "share_pct": 0.07023693823654915,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.wipe-tower": {
+    "fuel": 149031571,
+    "self_fuel": 149031571,
+    "share_pct": 0.07006190566807123,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.overhang-classifier-default": {
+    "fuel": 148941018,
+    "self_fuel": 148941018,
+    "share_pct": 0.0700193353878186,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.wave-overhangs": {
+    "fuel": 134556032,
+    "self_fuel": 134556032,
+    "share_pct": 0.06325674457967013,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.top-surface-ironing": {
+    "fuel": 119826430,
+    "self_fuel": 119826430,
+    "share_pct": 0.05633214478562895,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.lightning-infill": {
+    "fuel": 119188162,
+    "self_fuel": 119188162,
+    "share_pct": 0.05603208573031007,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.raft-default": {
+    "fuel": 115452518,
+    "self_fuel": 115452518,
+    "share_pct": 0.05427590523928179,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.fuzzy-skin": {
+    "fuel": 111161474,
+    "self_fuel": 111161474,
+    "share_pct": 0.05225862314309062,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.path-optimization-default": {
+    "fuel": 92677621,
+    "self_fuel": 92677621,
+    "share_pct": 0.04356909543712223,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.support-surface-ironing": {
+    "fuel": 90519756,
+    "self_fuel": 90519756,
+    "share_pct": 0.042554651765489504,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.traditional-support-planner": {
+    "fuel": 53638616,
+    "self_fuel": 53638616,
+    "share_pct": 0.025216292287208703,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.layer-planner-default": {
+    "fuel": 1422236,
+    "self_fuel": 1422236,
+    "share_pct": 0.0006686137963997907,
+    "self_of_module_pct": 100.0
+   }
+  },
+  "linker_low_layer_fuel_share_pct": 76.52280707950823,
+  "host_accumulated_ns": {
+   "host:slice": 26747566600,
+   "host:native": 15594591800,
+   "host:shell_classification": 11100798800,
+   "host:overhang_annotation": 8689855600,
+   "host:support_analysis": 7304056500,
+   "host:mesh_analysis": 128569400
+  }
+ },
+ "ordinary-benchy-classic-off-profile": {
+  "kind": "profile",
+  "process_wall_s": 19.8253804,
+  "process_cpu_s": 126.859375,
+  "cpu_wall_ratio": 6.398836866706477,
+  "slice_elapsed_ms": 19647,
+  "process_minus_slice_s": 0.17838040000000177,
+  "head_ms": 1196,
+  "phases_ms": {
+   "validation": 97,
+   "prepass": 8518,
+   "per_layer": 9287,
+   "postpass": 512
+  },
+  "serial_modules_ms": {
+   "host:mesh_analysis": 223,
+   "com.core.layer-planner-default": 1,
+   "host:region_mapping": 9,
+   "host:slice": 2792,
+   "host:overhang_annotation": 1082,
+   "host:shell_classification": 3370,
+   "host:paint_segmentation": 12,
+   "host:support_analysis": 0,
+   "host:support_geometry": 1,
+   "com.core.seam-planner-default": 971,
+   "com.core.traditional-support-planner": 22,
+   "com.core.tree-support-planner": 21,
+   "com.core.overhang-classifier-default": 84,
+   "com.core.part-cooling": 76,
+   "com.core.skirt-brim": 71,
+   "com.core.wipe-tower": 60,
+   "host:gcode_emit": 26,
+   "com.core.machine-gcode-emit": 69,
+   "host:gcode_serialize": 72
+  },
+  "low_layer_intervals_ms": [
+   [
+    0,
+    0,
+    1334,
+    1334
+   ],
+   [
+    1,
+    1335,
+    7239,
+    5904
+   ],
+   [
+    2,
+    7240,
+    9286,
+    2046
+   ]
+  ],
+  "last_non_low_layer_end_ms": 7967,
+  "low_layers_only_finishing_interval_ms": 1319,
+  "last_layer": 2,
+  "module_accumulated_ms": {
+   "host:paint_annotator": 47,
+   "com.core.classic-perimeters": 73089,
+   "com.core.fuzzy-skin": 421,
+   "com.core.seam-placer": 516,
+   "com.core.raft-default": 1724,
+   "com.core.gyroid-infill": 247,
+   "com.core.lightning-infill": 153,
+   "com.core.rectilinear-infill": 187,
+   "com.core.top-surface-ironing": 191,
+   "com.core.wave-overhangs": 210,
+   "com.core.infill-linker": 9866,
+   "com.core.tree-support": 201,
+   "com.core.support-surface-ironing": 170,
+   "com.core.path-optimization-default": 311
+  },
+  "linker_low_layer_calls": [
+   {
+    "layer": 0,
+    "elapsed_ms": 292,
+    "end_ms": 1321,
+    "fuel": 2635220277
+   },
+   {
+    "layer": 1,
+    "elapsed_ms": 4325,
+    "end_ms": 7217,
+    "fuel": 32782875760
+   },
+   {
+    "layer": 2,
+    "elapsed_ms": 1617,
+    "end_ms": 9279,
+    "fuel": 17298565032
+   }
+  ],
+  "output": {
+   "sha256": "34886ccb56b214d57c28aa58bdcc8d371a41f440200f5b49276b96b53e18cc40",
+   "bytes": 4332737,
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 240,
+    "Inner wall": 240,
+    "Gap infill": 110,
+    "Bottom surface": 24,
+    "Bridge": 22,
+    "Sparse infill": 204,
+    "Internal solid infill": 13,
+    "Top surface": 70,
+    "Internal Bridge": 12
+   },
+   "status": "ok",
+   "degraded": false,
+   "fatal": 0,
+   "non_fatal": 0
+  },
+  "warnings": {
+   "malformed_layer_marker": 155
+  },
+  "fuel_total": 817228543014,
+  "guest": {
+   "com.core.classic-perimeters": {
+    "fuel": 732363796392,
+    "self_fuel": 639971006042,
+    "share_pct": 89.6155430023268,
+    "self_of_module_pct": 87.38430397499518
+   },
+   "com.core.infill-linker": {
+    "fuel": 79912312246,
+    "self_fuel": 79710022322,
+    "share_pct": 9.778453399495497,
+    "self_of_module_pct": 99.74686012916598
+   },
+   "com.core.seam-placer": {
+    "fuel": 1198741580,
+    "self_fuel": 1198741580,
+    "share_pct": 0.14668376309752365,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.fuzzy-skin": {
+    "fuel": 725129068,
+    "self_fuel": 725129068,
+    "share_pct": 0.0887302669735041,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.seam-planner-default": {
+    "fuel": 671813511,
+    "self_fuel": 671813511,
+    "share_pct": 0.0822063199753525,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.gyroid-infill": {
+    "fuel": 401275102,
+    "self_fuel": 401275102,
+    "share_pct": 0.04910194405595128,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.path-optimization-default": {
+    "fuel": 377862858,
+    "self_fuel": 377862858,
+    "share_pct": 0.046237109708186834,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.rectilinear-infill": {
+    "fuel": 181139621,
+    "self_fuel": 181139621,
+    "share_pct": 0.0221651118953755,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.part-cooling": {
+    "fuel": 159726907,
+    "self_fuel": 159726907,
+    "share_pct": 0.019544949618489245,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.skirt-brim": {
+    "fuel": 159108082,
+    "self_fuel": 159108082,
+    "share_pct": 0.019469227226596553,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.wipe-tower": {
+    "fuel": 158164815,
+    "self_fuel": 158164815,
+    "share_pct": 0.0193538045571287,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.overhang-classifier-default": {
+    "fuel": 158032063,
+    "self_fuel": 158032063,
+    "share_pct": 0.01933756038637196,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.machine-gcode-emit": {
+    "fuel": 110830989,
+    "self_fuel": 110830989,
+    "share_pct": 0.013561810823597403,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.tree-support": {
+    "fuel": 109173074,
+    "self_fuel": 109173074,
+    "share_pct": 0.013358940400853052,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.wave-overhangs": {
+    "fuel": 108142616,
+    "self_fuel": 108142616,
+    "share_pct": 0.01323284862287873,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.top-surface-ironing": {
+    "fuel": 93204011,
+    "self_fuel": 93204011,
+    "share_pct": 0.011404889341757036,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.lightning-infill": {
+    "fuel": 92729955,
+    "self_fuel": 92729955,
+    "share_pct": 0.011346881578316512,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.support-surface-ironing": {
+    "fuel": 92545661,
+    "self_fuel": 92545661,
+    "share_pct": 0.011324330481493547,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.raft-default": {
+    "fuel": 88822689,
+    "self_fuel": 88822689,
+    "share_pct": 0.010868769790200338,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.tree-support-planner": {
+    "fuel": 32290012,
+    "self_fuel": 32290012,
+    "share_pct": 0.003951160575095924,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.traditional-support-planner": {
+    "fuel": 32279526,
+    "self_fuel": 32279526,
+    "share_pct": 0.003949877457895767,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.layer-planner-default": {
+    "fuel": 1422236,
+    "self_fuel": 1422236,
+    "share_pct": 0.00017403161112737047,
+    "self_of_module_pct": 100.0
+   }
+  },
+  "linker_low_layer_fuel_share_pct": 65.9681338048615,
+  "host_accumulated_ns": {
+   "host:slice": 28608871900,
+   "host:native": 11796635800,
+   "host:shell_classification": 11731242000,
+   "host:overhang_annotation": 10057875600,
+   "host:mesh_analysis": 126264200
+  }
+ },
+ "ordinary-benchy-classic-on-profile": {
+  "kind": "profile",
+  "process_wall_s": 30.5327351,
+  "process_cpu_s": 148.359375,
+  "cpu_wall_ratio": 4.859026697546005,
+  "slice_elapsed_ms": 30321,
+  "process_minus_slice_s": 0.2117350999999985,
+  "head_ms": 1226,
+  "phases_ms": {
+   "validation": 91,
+   "prepass": 17189,
+   "per_layer": 9516,
+   "postpass": 2241
+  },
+  "serial_modules_ms": {
+   "host:mesh_analysis": 232,
+   "com.core.layer-planner-default": 1,
+   "host:region_mapping": 9,
+   "host:slice": 2657,
+   "host:overhang_annotation": 1051,
+   "host:shell_classification": 3391,
+   "host:paint_segmentation": 13,
+   "host:support_analysis": 1431,
+   "host:support_geometry": 1,
+   "com.core.seam-planner-default": 1061,
+   "com.core.traditional-support-planner": 41,
+   "com.core.tree-support-planner": 6551,
+   "com.core.overhang-classifier-default": 385,
+   "com.core.part-cooling": 332,
+   "com.core.skirt-brim": 324,
+   "com.core.wipe-tower": 342,
+   "host:gcode_emit": 208,
+   "com.core.machine-gcode-emit": 149,
+   "host:gcode_serialize": 205
+  },
+  "low_layer_intervals_ms": [
+   [
+    0,
+    0,
+    1486,
+    1485
+   ],
+   [
+    1,
+    1486,
+    7210,
+    5723
+   ],
+   [
+    2,
+    7210,
+    9516,
+    2305
+   ]
+  ],
+  "last_non_low_layer_end_ms": 8370,
+  "low_layers_only_finishing_interval_ms": 1146,
+  "last_layer": 2,
+  "module_accumulated_ms": {
+   "host:paint_annotator": 48,
+   "com.core.classic-perimeters": 72874,
+   "com.core.fuzzy-skin": 410,
+   "com.core.seam-placer": 468,
+   "com.core.raft-default": 1714,
+   "com.core.gyroid-infill": 252,
+   "com.core.lightning-infill": 175,
+   "com.core.rectilinear-infill": 206,
+   "com.core.top-surface-ironing": 180,
+   "com.core.wave-overhangs": 198,
+   "com.core.infill-linker": 9754,
+   "com.core.tree-support": 7389,
+   "com.core.support-surface-ironing": 155,
+   "com.core.path-optimization-default": 300
+  },
+  "linker_low_layer_calls": [
+   {
+    "layer": 0,
+    "elapsed_ms": 311,
+    "end_ms": 1449,
+    "fuel": 2637124656
+   },
+   {
+    "layer": 1,
+    "elapsed_ms": 4124,
+    "end_ms": 7157,
+    "fuel": 32782875854
+   },
+   {
+    "layer": 2,
+    "elapsed_ms": 1768,
+    "end_ms": 9489,
+    "fuel": 17298565235
+   }
+  ],
+  "output": {
+   "sha256": "76eb4e1df3a47abf9a973be4ac99cd6bac41efa9fb65240786251ec0f7cdf6a8",
+   "bytes": 8658663,
+   "type_counts": {
+    "Skirt": 1,
+    "Brim": 1,
+    "Outer wall": 240,
+    "Inner wall": 240,
+    "Gap infill": 110,
+    "Bottom surface": 24,
+    "Support": 179,
+    "Bridge": 22,
+    "Sparse infill": 204,
+    "Internal solid infill": 13,
+    "Top surface": 70,
+    "Internal Bridge": 12,
+    "Support interface": 4
+   },
+   "status": "ok",
+   "degraded": false,
+   "fatal": 0,
+   "non_fatal": 0
+  },
+  "warnings": {
+   "malformed_layer_marker": 179
+  },
+  "fuel_total": 866552585517,
+  "guest": {
+   "com.core.classic-perimeters": {
+    "fuel": 732363848590,
+    "self_fuel": 639971048248,
+    "share_pct": 84.51464583110779,
+    "self_of_module_pct": 87.3843035098085
+   },
+   "com.core.infill-linker": {
+    "fuel": 79911877236,
+    "self_fuel": 79709586887,
+    "share_pct": 9.221815106387712,
+    "self_of_module_pct": 99.74685821933255
+   },
+   "com.core.tree-support": {
+    "fuel": 43432292979,
+    "self_fuel": 42064866093,
+    "share_pct": 5.012078171007655,
+    "self_of_module_pct": 96.85158946901292
+   },
+   "com.core.tree-support-planner": {
+    "fuel": 5274562391,
+    "self_fuel": 5274562391,
+    "share_pct": 0.6086834750891784,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.seam-placer": {
+    "fuel": 1198741580,
+    "self_fuel": 1198741580,
+    "share_pct": 0.13833454541997706,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.fuzzy-skin": {
+    "fuel": 725127988,
+    "self_fuel": 725127988,
+    "share_pct": 0.08367962892492858,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.seam-planner-default": {
+    "fuel": 671813511,
+    "self_fuel": 671813511,
+    "share_pct": 0.0775271486379773,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.gyroid-infill": {
+    "fuel": 429476977,
+    "self_fuel": 429476977,
+    "share_pct": 0.049561559699665164,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.path-optimization-default": {
+    "fuel": 398148006,
+    "self_fuel": 398148006,
+    "share_pct": 0.04594620253339365,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.part-cooling": {
+    "fuel": 273969296,
+    "self_fuel": 273969296,
+    "share_pct": 0.031616003526957946,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.skirt-brim": {
+    "fuel": 268013744,
+    "self_fuel": 268013744,
+    "share_pct": 0.03092873398330448,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.wipe-tower": {
+    "fuel": 266940038,
+    "self_fuel": 266940038,
+    "share_pct": 0.030804828519522452,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.overhang-classifier-default": {
+    "fuel": 266803755,
+    "self_fuel": 266803755,
+    "share_pct": 0.030789101487801843,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.machine-gcode-emit": {
+    "fuel": 217163166,
+    "self_fuel": 217163166,
+    "share_pct": 0.025060587162224757,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.rectilinear-infill": {
+    "fuel": 209522609,
+    "self_fuel": 209522609,
+    "share_pct": 0.024178868368962887,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.wave-overhangs": {
+    "fuel": 136558415,
+    "self_fuel": 136558415,
+    "share_pct": 0.015758814558094813,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.top-surface-ironing": {
+    "fuel": 121658584,
+    "self_fuel": 121658584,
+    "share_pct": 0.014039376955688895,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.lightning-infill": {
+    "fuel": 121150273,
+    "self_fuel": 121150273,
+    "share_pct": 0.013980717965052252,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.raft-default": {
+    "fuel": 117311006,
+    "self_fuel": 117311006,
+    "share_pct": 0.013537667299210729,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.support-surface-ironing": {
+    "fuel": 92544269,
+    "self_fuel": 92544269,
+    "share_pct": 0.010679590661516117,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.traditional-support-planner": {
+    "fuel": 53638868,
+    "self_fuel": 53638868,
+    "share_pct": 0.00618991494532304,
+    "self_of_module_pct": 100.0
+   },
+   "com.core.layer-planner-default": {
+    "fuel": 1422236,
+    "self_fuel": 1422236,
+    "share_pct": 0.0001641257580636575,
+    "self_of_module_pct": 100.0
+   }
+  },
+  "linker_low_layer_fuel_share_pct": 65.97087638087731,
+  "host_accumulated_ns": {
+   "host:slice": 27710730800,
+   "host:native": 21755388100,
+   "host:shell_classification": 12528887700,
+   "host:overhang_annotation": 9608389900,
+   "host:support_analysis": 7844032500,
+   "host:mesh_analysis": 126746900
+  }
+ }
+}

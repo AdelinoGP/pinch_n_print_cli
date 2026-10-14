@@ -105,3 +105,14 @@ consumer of the two stamps returns before reading them, so the
 floor](27-serial-host-prepass-floor.md); both sit under standing park decisions
 and the route awaits the human's selection. No candidate, experiment or timing
 was started.
+
+### Benchy refresh context — 2026-10-13 (not a take or park override)
+
+The [Benchy current bottleneck refresh](61-benchy-current-bottleneck-refresh.md)
+re-derived the matched ordinary Classic profile in both support states after
+the finalization KEEP. Classic perimeter module self is 639.971 billion fuel
+in both cells; total perimeter fuel is 89.62%/84.51% of whole-job fuel
+(off/on). This keeps the existing lead relevant, but the aggregate's unmarked
+self bucket does not dynamically prove the liveness audit or isolate the two
+stamps. No duplicate ticket, annotation candidate or park lift follows.
+Evidence: [fresh findings](../evidence/perf-refresh-2026-10-13/FINDINGS.md).
