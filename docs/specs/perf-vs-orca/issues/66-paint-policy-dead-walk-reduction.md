@@ -2,8 +2,8 @@
 
 Type: task
 Label: wayfinder:task
-Status: open
-Assignee: unassigned
+Status: claimed (2026-10-14; human-selected take — annotations-empty fast path implementation, qualification + standing paired gate)
+Assignee: 2026-10-14 OpenCode wayfinder session (map resumption; human route decision)
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 
@@ -86,3 +86,61 @@ restore discipline.
 
 Evidence: [t64 findings](../evidence/t64-tree-support-renderer/FINDINGS.md),
 its captures, reducer, verifier and `probe.patch`.
+
+## Comments
+
+### Take pre-declaration — 2026-10-14 (recorded before any measurement)
+
+**Candidate.** The annotations-empty fast path (t64's shape 1): a new
+`slicer_core::paint_policy::has_support_paint` predicate plus an early
+`DefaultEligible` return in `PaintRegionLayerView::paint_policy_for`
+(`crates/slicer-sdk/src/traits.rs`) when no region of the attached slice
+carries a `Some(_)` value under `SupportBlocker`/`SupportEnforcer`.
+Exactness argument: `support_eligibility` classifies from exactly those two
+map entries plus the region-area floor, so when the predicate is false for
+every region, every covering region is `DefaultEligible` and the aggregate
+is `DefaultEligible` regardless of the region-ownership walk; painted views
+(predicate true) still take the walk unchanged. Shape 2 (per-ring bbox
+prefilter) is **not** implemented in this take: it shapes only the painted
+path, which has no representative workload or fixture (the map's
+painted-wall fog), while the fast path already covers every matched cell.
+The shape stays documented here as available work.
+
+**Qualification (before timing).** The 16-cell output-identity matrix —
+{benchy, base} × {classic, arachne} × {supports off, on} × {ordinary,
+accelerated} — baseline and candidate once per cell; outputs must be
+byte-identical to each other and to the preserved t58 references; clean
+completion (`ok`, not degraded, zero fatal/non-fatal), non-vacuous
+wall/infill/support role counts.
+
+**Timed cells (the standing four-cell set).** `ordinary-benchy-classic-on`,
+`accelerated-benchy-classic-on`, `ordinary-base-classic-on`,
+`accelerated-base-classic-on`. Rationale: the dead walk lives in the
+supports-on renderer (t64: 836 queries per benchy supports-on slice; the
+supports-off cells never reach the query), and the renderer split is
+measured generator-invariant (classic vs arachne agree to ≤0.003 B per
+scope, same dispatch/instruction shape), so arachne-on cells carry the same
+effect class; their outputs remain covered by the 16-cell qualification. Any
+extension to the arachne cells is a new pre-declaration.
+
+**Protocol.** Per timed cell: 1 proof pair (baseline + candidate once, output
+hashes must match), then 1 warm-up per arm, then 6 baseline/candidate pairs
+with odd pairs baseline-first and even pairs candidate-first; 12 rayon
+threads; process wall and CPU via `GetProcessTimes`; a whole pair is excluded
+when either arm's cpu/wall ratio falls below half that arm's median (never
+resampled; fewer than 6 retained pairs = inconclusive, not a pass); paired
+medians of retained per-pair ratios; gate = wall delta < 0 % AND CPU delta
+≤ 0 % in every timed cell.
+
+**Builds.** Baseline = HEAD snapshot, candidate = HEAD + this take's diff,
+each built as complete ordinary (`cargo xtask dist --edition developer`) and
+accelerated (`--accelerated --edition developer`) snapshots; runs use
+`--module-dir <snapshot>/modules --no-default-module-paths
+--no-integrated-modules` with `SLICER_MODULE_PATH` cleared; `build-guests
+--check` must exit 0 in the arm's tree before its build.
+
+**Artifacts.** Scripts and reducers: `evidence/t66-paint-walk/`; raw runs and
+snapshots under the ignored
+`.local-artifacts/perimeter-reference-preparation/t66-paint-walk/`. The
+candidate stays uncommitted until the human's KEEP/DROP; both guest freshness
+gates are green at the candidate tree.
