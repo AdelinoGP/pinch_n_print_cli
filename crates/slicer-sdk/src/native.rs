@@ -10,6 +10,7 @@ use slicer_ir::ConfigView;
 
 use crate::error::ModuleError;
 use crate::postpass_types::{GcodeCommand, GcodeOutputCommand};
+use crate::preparation::{PreparedPlanOutput, PrintPreparationInput};
 use crate::traits::{FinalizationOutputBuilder, LayerCollectionView, PaintRegionLayerView};
 use crate::views::{OrderedEntityView, PerimeterRegionView, SliceRegionView};
 use crate::{builders, prepass_builders};
@@ -168,4 +169,13 @@ pub enum NativeStageEntry {
     Postpass(fn(&NativePostpassRequest) -> Result<NativePostpassResponse, ModuleError>),
     /// Finalization-stage family entry.
     Finalization(fn(&NativeFinalizationRequest) -> Result<NativeFinalizationResponse, ModuleError>),
+}
+
+/// A preparation-capable sidecar around an unchanged ordinary native entry.
+#[derive(Debug, Clone, Copy)]
+pub struct NativePreparedStageEntry {
+    /// Ordinary stage dispatch, with its existing request and response shapes.
+    pub stage: NativeStageEntry,
+    /// Associated preparation function; no module instance or config is retained.
+    pub prepare: fn(&PrintPreparationInput, &mut PreparedPlanOutput) -> Result<(), ModuleError>,
 }

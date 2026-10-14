@@ -2688,6 +2688,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "preparation-pilot-infill"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
+name = "preparation-pilot-path"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
 name = "prettyplease"
 version = "0.2.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3656,6 +3676,8 @@ name = "slicer-wasm-host"
 version = "0.1.0"
 dependencies = [
  "log",
+ "preparation-pilot-infill",
+ "preparation-pilot-path",
  "rayon",
  "sdk-finalization-guest",
  "sdk-infill-postprocess-view-guest",

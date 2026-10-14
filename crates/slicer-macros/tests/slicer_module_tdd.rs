@@ -821,3 +821,79 @@ fn test_20_all_documented_stages_covered_by_macro() {
         "Layer::PathOptimization"
     );
 }
+
+// ============================================================================
+// Test 21: Preparation composition is available only through explicit opt-in
+// ============================================================================
+
+pub struct PreparedInfillModule;
+
+#[slicer_module(preparation)]
+impl ::slicer_sdk::traits::LayerModule for PreparedInfillModule {
+    fn from_config(
+        _config: &::slicer_ir::ConfigView,
+    ) -> Result<Self, ::slicer_sdk::error::ModuleError> {
+        Ok(PreparedInfillModule)
+    }
+
+    fn run_infill(
+        &self,
+        _layer_index: u32,
+        _regions: &[::slicer_sdk::views::SliceRegionView],
+        _paint: &::slicer_sdk::PaintRegionLayerView,
+        _output: &mut ::slicer_sdk::builders::InfillOutputBuilder,
+        _config: &::slicer_ir::ConfigView,
+    ) -> Result<(), ::slicer_sdk::error::ModuleError> {
+        Ok(())
+    }
+}
+
+impl ::slicer_sdk::preparation::LayerPreparation for PreparedInfillModule {
+    fn prepare_print(
+        _input: &::slicer_sdk::preparation::PrintPreparationInput,
+        output: &mut ::slicer_sdk::preparation::PreparedPlanOutput,
+    ) -> Result<(), ::slicer_sdk::error::ModuleError> {
+        output.put("fixture", &[7])?;
+        Ok(())
+    }
+}
+
+#[test]
+fn test_21_preparation_attribute_emits_prepared_schema_and_entry() {
+    let schema = PreparedInfillModule::__SLICER_PREPARATION_SCHEMA;
+    assert_eq!(schema.ordinary_world, "infill-module");
+    assert_eq!(schema.wit_world, "prepared-infill-module");
+
+    let entry = PreparedInfillModule::__slicer_prepared_native_entry();
+    assert!(matches!(
+        entry.stage,
+        ::slicer_sdk::native::NativeStageEntry::Layer(_)
+    ));
+    let pieces = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let staged = pieces.clone();
+    let mut output =
+        ::slicer_sdk::preparation::PreparedPlanOutput::from_callback(move |name, bytes| {
+            staged.borrow_mut().push((name.to_owned(), bytes.to_vec()));
+            Ok(())
+        });
+    let input =
+        ::slicer_sdk::preparation::PrintPreparationInput::from_callback(|_, _| Ok(Vec::new()));
+    (entry.prepare)(&input, &mut output).expect("generated entry calls required preparation");
+    assert_eq!(*pieces.borrow(), vec![("fixture".to_owned(), vec![7])]);
+}
+
+// ============================================================================
+// Test 22: Bare attribute retains plain Layer composition
+// ============================================================================
+
+#[test]
+fn test_22_bare_attribute_keeps_plain_layer_composition() {
+    // InfillModule deliberately has no LayerPreparation implementation. If
+    // the bare attribute emitted the opt-in sidecar, this target would fail
+    // to compile while type-checking its prepared native entry.
+    let schema = InfillModule::__slicer_module_schema();
+    assert_eq!(schema.tier_id, slicer_schema::TIER_LAYER);
+    assert_eq!(schema.stage_id, "Layer::Infill");
+    assert_eq!(schema.stage_export, "slicer:layer-infill/infill@2.0.0#run");
+    assert_eq!(InfillModule::__slicer_stage_name(), "Layer::Infill");
+}

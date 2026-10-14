@@ -5,9 +5,15 @@
 
 use slicer_ir::{ObjectSurfaceData, OverhangRegion, SurfaceClassificationIR};
 use slicer_sdk::prelude::*;
+use slicer_sdk::preparation::{
+    with_prepared_plan, LayerPreparation, PreparationError, PreparedPieceCallbacks,
+    PreparedPlanCallbacks, PreparedPlanOutput, PreparedPlanView, PrintPreparationInput,
+};
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_sdk::test_support::fixtures::wall_loop_base;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::rc::Rc;
 
 // =============================================================================
 // Test 1: LayerModule trait exists with from_config
@@ -1152,4 +1158,438 @@ fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
     assert_eq!(first.len(), 3);
     assert_eq!(first, second);
     assert_eq!(first, snapshot);
+}
+
+// =============================================================================
+// Preparation capability: serialized resources are owned by one scoped call.
+// The target has no compile-fail harness; LayerPreparation's rustdoc checks
+// that omitting prepare_print is rejected with E0046 without new dependencies.
+// =============================================================================
+
+fn preparation_fixture_plan(bytes: &'static [u8]) -> PreparedPlanCallbacks {
+    PreparedPlanCallbacks::new(move |name| {
+        if name != "fixture" {
+            return Ok(None);
+        }
+        Ok(Some(PreparedPieceCallbacks::new(
+            move || bytes.len() as u64,
+            move |offset, max_bytes| {
+                let offset = usize::try_from(offset).map_err(|_| PreparationError::RangeError)?;
+                let max_bytes =
+                    usize::try_from(max_bytes).map_err(|_| PreparationError::RangeError)?;
+                let end = offset
+                    .checked_add(max_bytes)
+                    .ok_or(PreparationError::ArithmeticOverflow)?;
+                bytes
+                    .get(offset..end)
+                    .map(<[u8]>::to_vec)
+                    .ok_or(PreparationError::RangeError)
+            },
+        )))
+    })
+}
+
+#[test]
+fn preparation_scoped_serialized_reads_remove_binding_after_return() {
+    with_prepared_plan(
+        || Ok(preparation_fixture_plan(b"serialized")),
+        || {
+            let plan = PreparedPlanView::current().expect("current scoped plan");
+            assert!(plan.open("absent").unwrap().is_none());
+            let piece = plan.open("fixture").unwrap().expect("serialized piece");
+            assert_eq!(piece.len(), Ok(10));
+            assert_eq!(piece.is_empty(), Ok(false));
+            assert_eq!(piece.read(2, 3).unwrap(), b"ria");
+            assert_eq!(piece.read(8, 8).unwrap(), b"ed");
+            assert_eq!(piece.read(10, 1).unwrap(), b"");
+        },
+    );
+    assert_eq!(
+        PreparedPlanView::current().err(),
+        Some(PreparationError::NotReady)
+    );
+}
+
+#[test]
+fn preparation_missing_current_plan_is_an_error() {
+    assert_eq!(
+        PreparedPlanView::current().err(),
+        Some(PreparationError::NotReady)
+    );
+}
+
+#[test]
+fn preparation_unwind_restores_previous_binding_and_invalidates_inner_resources() {
+    with_prepared_plan(
+        || Ok(preparation_fixture_plan(b"outer")),
+        || {
+            let outer = PreparedPlanView::current().unwrap();
+            let outer_piece = outer.open("fixture").unwrap().unwrap();
+            let mut escaped = None;
+            let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                with_prepared_plan(
+                    || Ok(preparation_fixture_plan(b"inner")),
+                    || {
+                        assert_eq!(outer_piece.read(0, 1), Err(PreparationError::AccessDenied));
+                        let inner = PreparedPlanView::current().unwrap();
+                        let piece = inner.open("fixture").unwrap().unwrap();
+                        assert_eq!(piece.read(0, 5).unwrap(), b"inner");
+                        escaped = Some(piece);
+                        panic!("preparation scope unwind probe");
+                    },
+                );
+            }));
+            assert!(panic.is_err());
+            assert_eq!(escaped.unwrap().read(0, 1), Err(PreparationError::NotReady));
+            assert_eq!(outer_piece.read(0, 5).unwrap(), b"outer");
+            assert_eq!(
+                PreparedPlanView::current()
+                    .unwrap()
+                    .open("fixture")
+                    .unwrap()
+                    .unwrap()
+                    .read(0, 5)
+                    .unwrap(),
+                b"outer"
+            );
+        },
+    );
+    assert_eq!(
+        PreparedPlanView::current().err(),
+        Some(PreparationError::NotReady)
+    );
+}
+
+struct PreparationResourceDrop(Rc<Cell<usize>>);
+
+impl Drop for PreparationResourceDrop {
+    fn drop(&mut self) {
+        self.0.set(self.0.get() + 1);
+    }
+}
+
+#[test]
+fn preparation_retained_wrappers_neither_retain_resources_nor_read_another_scope() {
+    let dropped = Rc::new(Cell::new(0));
+    let observed = Rc::clone(&dropped);
+    let (plan, piece) = with_prepared_plan(
+        move || {
+            let view_resource = PreparationResourceDrop(Rc::clone(&observed));
+            Ok(PreparedPlanCallbacks::new(move |_| {
+                let piece_resource = PreparationResourceDrop(Rc::clone(&view_resource.0));
+                Ok(Some(PreparedPieceCallbacks::new(
+                    || 1,
+                    move |_, max_bytes| {
+                        let _resource = &piece_resource;
+                        Ok(b"x"[..max_bytes as usize].to_vec())
+                    },
+                )))
+            }))
+        },
+        || {
+            let plan = PreparedPlanView::current().unwrap();
+            let piece = plan.open("fixture").unwrap().unwrap();
+            assert_eq!(piece.read(0, 1).unwrap(), b"x");
+            (plan, piece)
+        },
+    );
+    assert_eq!(dropped.get(), 2, "scope must drop both imported resources");
+    assert_eq!(plan.open("fixture").err(), Some(PreparationError::NotReady));
+    assert_eq!(piece.len(), Err(PreparationError::NotReady));
+    assert_eq!(piece.read(0, 1), Err(PreparationError::NotReady));
+    with_prepared_plan(
+        || Ok(preparation_fixture_plan(b"new")),
+        || {
+            assert_eq!(plan.open("fixture").err(), Some(PreparationError::NotReady));
+            assert_eq!(piece.read(0, 1), Err(PreparationError::NotReady));
+        },
+    );
+}
+
+#[test]
+fn preparation_current_is_fresh_and_does_not_copy_the_plan_eagerly() {
+    let acquisitions = Rc::new(Cell::new(0));
+    let reads = Rc::new(Cell::new(0));
+    let current_calls = Rc::clone(&acquisitions);
+    let read_calls = Rc::clone(&reads);
+    with_prepared_plan(
+        move || {
+            current_calls.set(current_calls.get() + 1);
+            let read_calls = Rc::clone(&read_calls);
+            Ok(PreparedPlanCallbacks::new(move |_| {
+                let read_calls = Rc::clone(&read_calls);
+                Ok(Some(PreparedPieceCallbacks::new(
+                    || 1,
+                    move |_, max_bytes| {
+                        read_calls.set(read_calls.get() + 1);
+                        Ok(b"x"[..max_bytes as usize].to_vec())
+                    },
+                )))
+            }))
+        },
+        || {
+            assert_eq!(acquisitions.get(), 0, "scope entry must be lazy");
+            let first = PreparedPlanView::current().unwrap();
+            let _second = PreparedPlanView::current().unwrap();
+            assert_eq!(acquisitions.get(), 2, "each facade must invoke current");
+            let piece = first.open("fixture").unwrap().unwrap();
+            assert_eq!(piece.len(), Ok(1));
+            assert_eq!(reads.get(), 0, "acquisition and open must not copy bytes");
+            assert_eq!(piece.read(0, 1).unwrap(), b"x");
+            assert_eq!(reads.get(), 1);
+        },
+    );
+}
+
+#[test]
+fn preparation_binding_does_not_leak_to_another_thread() {
+    with_prepared_plan(
+        || Ok(preparation_fixture_plan(b"owner")),
+        || {
+            assert_eq!(
+                std::thread::spawn(|| PreparedPlanView::current().err())
+                    .join()
+                    .unwrap(),
+                Some(PreparationError::NotReady)
+            );
+            let piece = PreparedPlanView::current()
+                .unwrap()
+                .open("fixture")
+                .unwrap()
+                .unwrap();
+            assert_eq!(piece.read(0, 5).unwrap(), b"owner");
+        },
+    );
+}
+
+#[test]
+fn preparation_bounded_reads_reject_invalid_ranges_and_oversized_host_results() {
+    with_prepared_plan(
+        || Ok(preparation_fixture_plan(b"abc")),
+        || {
+            let plan = PreparedPlanView::current().unwrap();
+            assert_eq!(plan.open("").err(), Some(PreparationError::InvalidName));
+            let piece = plan.open("fixture").unwrap().unwrap();
+            assert_eq!(piece.read(4, 0), Err(PreparationError::RangeError));
+            // EOF bounds are checked first; then clip by remaining length,
+            // never by adding the requested maximum to the offset.
+            assert_eq!(piece.read(1, u64::MAX), Ok(b"bc".to_vec()));
+            assert_eq!(piece.read(u64::MAX, 1), Err(PreparationError::RangeError));
+        },
+    );
+    with_prepared_plan(
+        || {
+            Ok(PreparedPlanCallbacks::new(|_| {
+                Ok(Some(PreparedPieceCallbacks::new(
+                    || 3,
+                    |_, _| Ok(b"abc".to_vec()),
+                )))
+            }))
+        },
+        || {
+            let piece = PreparedPlanView::current()
+                .unwrap()
+                .open("fixture")
+                .unwrap()
+                .unwrap();
+            assert_eq!(piece.read(0, 1), Err(PreparationError::RangeError));
+        },
+    );
+    let input = PrintPreparationInput::from_callback(|_, _| Ok(b"abc".to_vec()));
+    assert_eq!(input.read_fixture(0, 1), Err(PreparationError::RangeError));
+    // The earlier callback deliberately violates the returned-count bound.
+    // This bounded transport checks EOF first and clips by remaining length.
+    let input = PrintPreparationInput::from_callback(|offset, max_bytes| {
+        let bytes = b"abc";
+        let len = u64::try_from(bytes.len()).unwrap();
+        if offset > len {
+            return Err(PreparationError::RangeError);
+        }
+        let remaining = len - offset;
+        let take = usize::try_from(max_bytes.min(remaining)).unwrap();
+        let start = usize::try_from(offset).unwrap();
+        Ok(bytes[start..start + take].to_vec())
+    });
+    assert_eq!(input.read_fixture(1, u64::MAX), Ok(b"bc".to_vec()));
+    assert_eq!(
+        input.read_fixture(u64::MAX, 1),
+        Err(PreparationError::RangeError)
+    );
+}
+
+#[test]
+fn preparation_output_is_unique_complete_and_poisoned_after_any_error() {
+    let written = Rc::new(RefCell::new(Vec::new()));
+    let staged = Rc::clone(&written);
+    let mut output = PreparedPlanOutput::from_callback(move |name, bytes| {
+        staged.borrow_mut().push((name.to_owned(), bytes.to_vec()));
+        Ok(())
+    });
+    output.put("piece", b"complete").unwrap();
+    assert_eq!(
+        output.put("piece", b"replacement"),
+        Err(PreparationError::DuplicateName)
+    );
+    assert_eq!(
+        output.put("another", b"later"),
+        Err(PreparationError::PoisonedOutput)
+    );
+    assert_eq!(
+        *written.borrow(),
+        [("piece".to_owned(), b"complete".to_vec())]
+    );
+
+    let mut invalid = PreparedPlanOutput::from_callback(|_, _| panic!("invalid name reached host"));
+    assert_eq!(
+        invalid.put("bad\0name", b"bytes"),
+        Err(PreparationError::InvalidName)
+    );
+    assert_eq!(
+        invalid.put("valid", b"bytes"),
+        Err(PreparationError::PoisonedOutput)
+    );
+    let mut failed = PreparedPlanOutput::from_callback(|_, _| Err(PreparationError::AccessDenied));
+    assert_eq!(
+        failed.put("piece", b"bytes"),
+        Err(PreparationError::AccessDenied)
+    );
+    assert_eq!(
+        failed.put("next", b"bytes"),
+        Err(PreparationError::PoisonedOutput)
+    );
+}
+
+struct PreparationTestModule;
+
+#[test]
+fn preparation_poison_preserves_returned_non_fatal_error() {
+    let mut output = PreparedPlanOutput::from_callback(|_, _| Err(PreparationError::AccessDenied));
+    assert_eq!(
+        output.put("piece", b"bytes"),
+        Err(PreparationError::AccessDenied)
+    );
+    let error = output
+        .complete(Err(ModuleError::non_fatal(
+            731,
+            "distinct mixed preparation failure",
+        )))
+        .unwrap_err();
+    assert_eq!(error.code, 731);
+    assert!(!error.fatal);
+    assert_eq!(error.message, "distinct mixed preparation failure");
+    let poisoned_success = output.complete(Ok(())).unwrap_err();
+    assert_eq!(
+        poisoned_success.code,
+        slicer_sdk::preparation::POISONED_PREPARATION_CODE
+    );
+    assert!(poisoned_success.fatal);
+}
+
+#[test]
+fn preparation_panic_reporting_invokes_previous_hook() {
+    const CHILD: &str = "PNP_PREPARATION_HOOK_CONTROL";
+    if std::env::var_os(CHILD).is_none() {
+        let result = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "preparation_panic_reporting_invokes_previous_hook",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "hook control failed: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    } else {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        let invoked = Arc::new(AtomicBool::new(false));
+        let sentinel = invoked.clone();
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |_| sentinel.store(true, Ordering::SeqCst)));
+        let _input = PrintPreparationInput::from_callback(|_, _| Ok(Vec::new()));
+        let panic = std::panic::catch_unwind(|| panic!("previous preparation hook sentinel"));
+        std::panic::set_hook(previous);
+        assert!(panic.is_err());
+        assert!(
+            invoked.load(Ordering::SeqCst),
+            "previous hook was not chained"
+        );
+    }
+}
+
+impl LayerPreparation for PreparationTestModule {
+    fn prepare_print(
+        input: &PrintPreparationInput,
+        output: &mut PreparedPlanOutput,
+    ) -> Result<(), ModuleError> {
+        output.put("fixture", &input.read_fixture(0, 3)?)?;
+        Ok(())
+    }
+}
+
+#[test]
+fn preparation_errors_map_to_existing_module_error() {
+    let input = PrintPreparationInput::from_callback(|_, _| Err(PreparationError::NotReady));
+    let mut output =
+        PreparedPlanOutput::from_callback(|_, _| panic!("failed input reached output"));
+    let error = PreparationTestModule::prepare_print(&input, &mut output).unwrap_err();
+    assert!(error.fatal);
+    assert_eq!(error.message, "layer preparation: not-ready");
+}
+
+#[test]
+fn native_prepared_sidecar_calls_preparation_without_changing_ordinary_entry() {
+    use slicer_sdk::native::{
+        NativePostpassInput, NativePostpassRequest, NativePostpassResponse,
+        NativePreparedStageEntry, NativeStageEntry,
+    };
+
+    fn ordinary(request: &NativePostpassRequest) -> Result<NativePostpassResponse, ModuleError> {
+        match &request.input {
+            NativePostpassInput::Text(text) => Ok(NativePostpassResponse::Text(format!(
+                "{}:{text}",
+                request.stage_export
+            ))),
+            NativePostpassInput::Gcode(_) => Err(ModuleError::fatal(1, "expected text")),
+        }
+    }
+
+    let stage = NativeStageEntry::Postpass(ordinary);
+    let paired = NativePreparedStageEntry {
+        stage,
+        prepare: PreparationTestModule::prepare_print,
+    };
+    let input = PrintPreparationInput::from_callback(|offset, max_bytes| {
+        assert_eq!((offset, max_bytes), (0, 3));
+        Ok(b"abc".to_vec())
+    });
+    let pieces = Rc::new(RefCell::new(Vec::new()));
+    let staged = Rc::clone(&pieces);
+    let mut output = PreparedPlanOutput::from_callback(move |name, bytes| {
+        staged.borrow_mut().push((name.to_owned(), bytes.to_vec()));
+        Ok(())
+    });
+    (paired.prepare)(&input, &mut output).unwrap();
+    assert_eq!(*pieces.borrow(), [("fixture".to_owned(), b"abc".to_vec())]);
+    let (NativeStageEntry::Postpass(original), NativeStageEntry::Postpass(paired_stage)) =
+        (stage, paired.stage)
+    else {
+        panic!("sidecar changed the ordinary stage family");
+    };
+    assert!(std::ptr::fn_addr_eq(original, paired_stage));
+    let request = NativePostpassRequest {
+        input: NativePostpassInput::Text("still usable".to_owned()),
+        config: ConfigView::from_map(HashMap::new()),
+        stage_export: "postpass",
+    };
+    for call in [original, paired_stage] {
+        let NativePostpassResponse::Text(text) = call(&request).unwrap() else {
+            panic!("ordinary entry changed its response family");
+        };
+        assert_eq!(text, "postpass:still usable");
+    }
 }

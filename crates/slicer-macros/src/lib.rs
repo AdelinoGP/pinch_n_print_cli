@@ -33,8 +33,28 @@ use slicer_schema::{StageSpec, STAGES};
 ///    describing the full WIT export surface for this module, plus a
 ///    thin dispatcher `__slicer_wit_run(...)` that delegates through
 ///    the implemented trait.
+///
+/// `#[slicer_module(preparation)]` additionally composes a Layer stage with
+/// the private preparation capability. The type must separately implement
+/// `slicer_sdk::preparation::LayerPreparation`; ordinary construction and
+/// stage metadata are unchanged. No other attribute argument is accepted.
 #[proc_macro_attribute]
-pub fn slicer_module(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn slicer_module(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let preparation = if attr.is_empty() {
+        false
+    } else {
+        match syn::parse::<syn::Ident>(attr.clone()) {
+            Ok(ident) if ident == "preparation" => true,
+            _ => {
+                return syn::Error::new_spanned(
+                    TokenStream2::from(attr),
+                    "slicer_module: the only accepted argument is `preparation`",
+                )
+                .to_compile_error()
+                .into();
+            }
+        }
+    };
     let input = parse_macro_input!(item as ItemImpl);
     let self_ty = input.self_ty.clone();
 
@@ -78,8 +98,27 @@ pub fn slicer_module(_attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     }
 
-    let expanded =
-        generate_slicer_module_impl(&input, &self_ty, &detected_stages, trait_ident.as_deref());
+    if preparation
+        && (trait_ident.as_deref() != Some("LayerModule")
+            || !detected_stages
+                .first()
+                .is_some_and(|stage| stage.trait_name == "LayerModule"))
+    {
+        return syn::Error::new_spanned(
+            &input.self_ty,
+            "slicer_module(preparation): requires a LayerModule impl with exactly one Layer stage method",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let expanded = generate_slicer_module_impl(
+        &input,
+        &self_ty,
+        &detected_stages,
+        trait_ident.as_deref(),
+        preparation,
+    );
     TokenStream::from(expanded)
 }
 
@@ -122,6 +161,7 @@ fn generate_slicer_module_impl(
     self_ty: &syn::Type,
     detected: &[&StageSpec],
     trait_ident: Option<&str>,
+    preparation: bool,
 ) -> TokenStream2 {
     let type_name_str = quote!(#self_ty).to_string();
     let original_impl = quote! { #input };
@@ -162,6 +202,36 @@ fn generate_slicer_module_impl(
         vec![stage_export_literal.clone()]
     };
     let wit_exports_tokens = wit_exports.iter().map(|e| quote! { #e });
+
+    let preparation_sidecar = if preparation {
+        let stage = detected[0];
+        let ordinary_world = stage.wit_world;
+        let prepared_world = format!("prepared-{ordinary_world}");
+        quote! {
+            #[doc(hidden)]
+            pub const __SLICER_PREPARATION_SCHEMA: ::slicer_schema::PreparationExportSchema =
+                ::slicer_schema::PreparationExportSchema {
+                    wit_package: "slicer:layer-preparation@1.0.0",
+                    ordinary_world: #ordinary_world,
+                    wit_world: #prepared_world,
+                    qualified_export: ::slicer_schema::PREPARATION_QUALIFIED_EXPORT,
+                };
+
+            #[doc(hidden)]
+            #[cfg(not(target_arch = "wasm32"))]
+            pub fn __slicer_prepared_native_entry() -> ::slicer_sdk::native::NativePreparedStageEntry {
+                ::slicer_sdk::native::NativePreparedStageEntry {
+                    stage: Self::__slicer_native_entry(),
+                    prepare: |input, output| {
+                        let result = <#self_ty as ::slicer_sdk::preparation::LayerPreparation>::prepare_print(input, output);
+                        output.complete(result)
+                    },
+                }
+            }
+        }
+    } else {
+        quote! {}
+    };
 
     let native_entry_tokens = if stage_id_literal.starts_with("Layer::") {
         let body = match stage_method_literal {
@@ -264,7 +334,7 @@ fn generate_slicer_module_impl(
             },
             "run_anchored_events" => quote! {
                 let module = <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&req.config)?;
-                let regions = req.perimeter_regions.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native layer request is missing perimeter regions".to_string()))?;
+                let regions = &req.regions;
                 let mut collection = ::slicer_sdk::layer_collection_builder::LayerCollectionBuilder::new();
                 // Ticket 47: same snapshot the WASM leg's builder carries.
                 collection.set_ordered_entities(req.ordered_entities.clone());
@@ -278,14 +348,21 @@ fn generate_slicer_module_impl(
             },
             _ => quote! { unreachable!() },
         };
+        // Prepared native sidecars also call the ordinary entry in lib-test
+        // builds. Preserve the historical test exclusion for plain modules.
+        let native_layer_cfg = if preparation {
+            quote! { #[cfg(not(target_arch = "wasm32"))] }
+        } else {
+            quote! { #[cfg(all(not(target_arch = "wasm32"), not(test)))] }
+        };
         quote! {
-            #[cfg(all(not(target_arch = "wasm32"), not(test)))]
+            #native_layer_cfg
             #[doc(hidden)]
             pub fn __slicer_native_entry() -> ::slicer_sdk::native::NativeStageEntry {
                 ::slicer_sdk::native::NativeStageEntry::Layer(Self::__slicer_native_layer_entry)
             }
 
-            #[cfg(all(not(target_arch = "wasm32"), not(test)))]
+            #native_layer_cfg
             fn __slicer_native_layer_entry(
                 req: &::slicer_sdk::native::NativeLayerRequest,
             ) -> ::std::result::Result<::slicer_sdk::native::NativeLayerResponse, ::slicer_sdk::error::ModuleError> {
@@ -519,6 +596,7 @@ fn generate_slicer_module_impl(
             }
 
             #native_entry_tokens
+            #preparation_sidecar
 
         }
     };
@@ -602,19 +680,27 @@ fn generate_slicer_module_impl(
             }
         }
         Some(StageGlueKind::Finalization) => build_finalization_world_glue(self_ty),
-        Some(StageGlueKind::LayerSlicePostprocess) => build_layer_slice_postprocess_glue(self_ty),
-        Some(StageGlueKind::LayerPerimeters) => build_layer_perimeters_glue(self_ty),
+        Some(StageGlueKind::LayerSlicePostprocess) => {
+            build_layer_slice_postprocess_glue(self_ty, preparation)
+        }
+        Some(StageGlueKind::LayerPerimeters) => build_layer_perimeters_glue(self_ty, preparation),
         Some(StageGlueKind::LayerPerimetersPostprocess) => {
-            build_layer_perimeters_postprocess_glue(self_ty)
+            build_layer_perimeters_postprocess_glue(self_ty, preparation)
         }
-        Some(StageGlueKind::LayerInfill) => build_layer_infill_glue(self_ty),
-        Some(StageGlueKind::LayerInfillPostprocess) => build_layer_infill_postprocess_glue(self_ty),
-        Some(StageGlueKind::LayerSupport) => build_layer_support_glue(self_ty),
+        Some(StageGlueKind::LayerInfill) => build_layer_infill_glue(self_ty, preparation),
+        Some(StageGlueKind::LayerInfillPostprocess) => {
+            build_layer_infill_postprocess_glue(self_ty, preparation)
+        }
+        Some(StageGlueKind::LayerSupport) => build_layer_support_glue(self_ty, preparation),
         Some(StageGlueKind::LayerSupportPostprocess) => {
-            build_layer_support_postprocess_glue(self_ty)
+            build_layer_support_postprocess_glue(self_ty, preparation)
         }
-        Some(StageGlueKind::LayerPathOptimization) => build_layer_path_optimization_glue(self_ty),
-        Some(StageGlueKind::LayerAnchoredEvents) => build_layer_anchored_events_glue(self_ty),
+        Some(StageGlueKind::LayerPathOptimization) => {
+            build_layer_path_optimization_glue(self_ty, preparation)
+        }
+        Some(StageGlueKind::LayerAnchoredEvents) => {
+            build_layer_anchored_events_glue(self_ty, preparation)
+        }
         Some(StageGlueKind::PrepassMeshAnalysis) => build_prepass_mesh_analysis_glue(self_ty),
         Some(StageGlueKind::PrepassLayerPlanning) => build_prepass_layer_planning_glue(self_ty),
         Some(StageGlueKind::PrepassSeamPlanning) => build_prepass_seam_planning_glue(self_ty),
@@ -741,6 +827,30 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
         include_str!("../../slicer-schema/wit/deps/support-queries/support-queries.wit");
     const LIGHTNING_QUERIES_WIT: &str =
         include_str!("../../slicer-schema/wit/deps/lightning-queries/lightning-queries.wit");
+    const PREPARATION_WIT: &str =
+        include_str!("../../slicer-schema/wit/deps/layer-preparation/layer-preparation.wit");
+    const LAYER_WITS: &[&str] = &[
+        include_str!("../../slicer-schema/wit/deps/layer-slice-postprocess/layer-slice-postprocess.wit"),
+        include_str!("../../slicer-schema/wit/deps/layer-perimeters/layer-perimeters.wit"),
+        include_str!("../../slicer-schema/wit/deps/layer-perimeters-postprocess/layer-perimeters-postprocess.wit"),
+        include_str!("../../slicer-schema/wit/deps/layer-infill/layer-infill.wit"),
+        include_str!("../../slicer-schema/wit/deps/layer-infill-postprocess/layer-infill-postprocess.wit"),
+        include_str!("../../slicer-schema/wit/deps/layer-support/layer-support.wit"),
+        include_str!("../../slicer-schema/wit/deps/layer-support-postprocess/layer-support-postprocess.wit"),
+        include_str!("../../slicer-schema/wit/deps/layer-anchored-events/layer-anchored-events.wit"),
+        include_str!("../../slicer-schema/wit/deps/layer-path-optimization/layer-path-optimization.wit"),
+    ];
+    let prepared = world_name.starts_with("prepared-");
+    // Select the capability's actual nested world, not an ordinary-world
+    // alias. An empty root package lets every canonical Layer package and
+    // the capability itself be nested exactly once below.
+    let selected_world;
+    let world_name = if prepared {
+        selected_world = format!("slicer:layer-preparation/{world_name}@1.0.0");
+        selected_world.as_str()
+    } else {
+        world_name
+    };
 
     // Strip the statement-form `package <X>;` header from a dep WIT file,
     // returning the body for brace-wrapping into a nested package block.
@@ -812,7 +922,11 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
 
     let mut expanded_inline_wit = format!(
         "{}\n\n{}\n\n{}{}\n\n{}\n\n{}",
-        inline_wit,
+        if prepared {
+            "package slicer:prepared-bindings;"
+        } else {
+            inline_wit
+        },
         nest_dep(TYPES_WIT),
         nest_dep(CONFIG_WIT),
         ir_block,
@@ -824,14 +938,20 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
     // `layer-infill@2.0.0` imports both support-queries and
     // lightning-queries into its world; `layer-support@2.0.0` imports
     // support-queries only. Every other world keeps its exact current
-    // closure: these packages are nested into exactly the two worlds
-    // whose inline WIT imports them, so no non-consuming stage ever
-    // sees the specialist types.
-    if world_name == "infill-module" || world_name == "support-module" {
+    // closure. Prepared bindings must resolve every world included by the
+    // capability package, so their parsing closure includes both query
+    // packages even when the selected stage does not consume those imports.
+    if prepared || world_name == "infill-module" || world_name == "support-module" {
         expanded_inline_wit.push_str(&format!("\n\n{}", nest_dep(SUPPORT_QUERIES_WIT)));
     }
-    if world_name == "infill-module" {
+    if prepared || world_name == "infill-module" {
         expanded_inline_wit.push_str(&format!("\n\n{}", nest_dep(LIGHTNING_QUERIES_WIT)));
+    }
+    if prepared {
+        expanded_inline_wit.push_str(&format!("\n\n{}", nest_dep(PREPARATION_WIT)));
+        for wit in LAYER_WITS {
+            expanded_inline_wit.push_str(&format!("\n\n{}", nest_dep(wit)));
+        }
     }
 
     // With Option A, ConfigValue lives in the slicer:config package, not the world package.
@@ -895,6 +1015,107 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
         fn __slicer_error_out(e: ::slicer_sdk::error::ModuleError) -> ModuleError {
             ModuleError { code: e.code, message: e.message, fatal: e.fatal }
         }
+    }
+}
+
+/// Keep the plain world selection byte-for-byte unchanged; derive composed
+/// Layer worlds from the canonical stage table only for the opt-in path.
+fn emit_layer_world_preamble(
+    world_name: &str,
+    namespace: &str,
+    inline_wit: &str,
+    preparation: bool,
+) -> TokenStream2 {
+    if preparation {
+        let stage = STAGES
+            .iter()
+            .find(|stage| stage.trait_name == "LayerModule" && stage.wit_world == world_name)
+            .expect("Layer glue has a canonical stage");
+        emit_world_preamble(
+            &format!("prepared-{}", stage.wit_world),
+            namespace,
+            inline_wit,
+        )
+    } else {
+        emit_world_preamble(world_name, namespace, inline_wit)
+    }
+}
+
+/// Add preparation and lazy call-local plan access to the same component that
+/// implements the unchanged ordinary stage interface.
+fn build_preparation_glue(self_ty: &syn::Type, component: &str, preparation: bool) -> TokenStream2 {
+    if !preparation {
+        return quote! {};
+    }
+    let component = syn::Ident::new(component, proc_macro2::Span::call_site());
+    let profile_install = profile_install_stmt();
+    quote! {
+        fn __slicer_preparation_error(
+            error: slicer::layer_preparation::preparation_types::PreparationError,
+        ) -> ::slicer_sdk::preparation::PreparationError {
+            use slicer::layer_preparation::preparation_types::PreparationError as Wit;
+            use ::slicer_sdk::preparation::PreparationError as Sdk;
+            match error {
+                Wit::NotReady => Sdk::NotReady,
+                Wit::InvalidName => Sdk::InvalidName,
+                Wit::DuplicateName => Sdk::DuplicateName,
+                Wit::PoisonedOutput => Sdk::PoisonedOutput,
+                Wit::RangeError => Sdk::RangeError,
+                Wit::ArithmeticOverflow => Sdk::ArithmeticOverflow,
+                Wit::AccessDenied => Sdk::AccessDenied,
+            }
+        }
+
+        fn __slicer_with_prepared_plan<R>(body: impl FnOnce() -> R) -> R {
+            ::slicer_sdk::preparation::with_prepared_plan(
+                || {
+                    let view = slicer::layer_preparation::plan_access::current()
+                        .map_err(__slicer_preparation_error)?;
+                    Ok(::slicer_sdk::preparation::PreparedPlanCallbacks::new(move |name| {
+                        view.open(name).map_err(__slicer_preparation_error).map(|piece| {
+                            piece.map(|piece| {
+                                let piece = ::std::rc::Rc::new(piece);
+                                let len_piece = piece.clone();
+                                ::slicer_sdk::preparation::PreparedPieceCallbacks::new(
+                                    move || len_piece.len(),
+                                    move |offset, max_bytes| piece.read(offset, max_bytes)
+                                        .map_err(__slicer_preparation_error),
+                                )
+                            })
+                        })
+                    }))
+                },
+                body,
+            )
+        }
+
+        impl exports::slicer::layer_preparation::prepare::Guest for #component {
+            fn prepare_print(
+                input: slicer::layer_preparation::preparation_types::PrintPreparationInput,
+                output: slicer::layer_preparation::preparation_types::PreparedPlanOutput,
+            ) -> Result<(), ModuleError> {
+                #profile_install
+                let input = ::slicer_sdk::preparation::PrintPreparationInput::from_callback(
+                    move |offset, max_bytes| input.read_fixture(offset, max_bytes)
+                        .map_err(__slicer_preparation_error),
+                );
+                let mut output = ::slicer_sdk::preparation::PreparedPlanOutput::from_callback(
+                    move |name, bytes| output.put(name, bytes).map_err(__slicer_preparation_error),
+                );
+                let result = <#self_ty as ::slicer_sdk::preparation::LayerPreparation>::prepare_print(
+                    &input, &mut output,
+                );
+                output.complete(result).map_err(__slicer_error_out)
+            }
+        }
+    }
+}
+
+fn prepared_stage_arm(arm: TokenStream2, preparation: bool) -> TokenStream2 {
+    if preparation {
+        quote! { __slicer_with_prepared_plan(|| { #arm }) }
+    } else {
+        arm
     }
 }
 
@@ -3743,11 +3964,21 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
     }
 }
 
-fn build_layer_slice_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
+fn build_layer_slice_postprocess_glue(self_ty: &syn::Type, preparation: bool) -> TokenStream2 {
     let wit_inline = include_str!(
         "../../slicer-schema/wit/deps/layer-slice-postprocess/layer-slice-postprocess.wit"
     );
-    let preamble = emit_world_preamble("slice-postprocess-module", "slice_postprocess", wit_inline);
+    let preamble = emit_layer_world_preamble(
+        "slice-postprocess-module",
+        "slice_postprocess",
+        wit_inline,
+        preparation,
+    );
+    let preparation_glue = build_preparation_glue(
+        self_ty,
+        "__SlicerLayerSlicePostprocessComponent",
+        preparation,
+    );
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_slice_postprocess");
     let helpers = layer_light_helpers("layer_slice_postprocess");
@@ -3767,6 +3998,7 @@ fn build_layer_slice_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
         __slicer_drain_slice_postprocess(&sdk_output, &output);
         match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
     };
+    let arm = prepared_stage_arm(arm, preparation);
     quote! {
         #[cfg(target_arch = "wasm32")]
         #[doc(hidden)]
@@ -3784,15 +4016,19 @@ fn build_layer_slice_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
                     #arm
                 }
             }
+            #preparation_glue
             export!(__SlicerLayerSlicePostprocessComponent);
         }
     }
 }
 
-fn build_layer_perimeters_glue(self_ty: &syn::Type) -> TokenStream2 {
+fn build_layer_perimeters_glue(self_ty: &syn::Type, preparation: bool) -> TokenStream2 {
     let wit_inline =
         include_str!("../../slicer-schema/wit/deps/layer-perimeters/layer-perimeters.wit");
-    let preamble = emit_world_preamble("perimeters-module", "perimeters", wit_inline);
+    let preamble =
+        emit_layer_world_preamble("perimeters-module", "perimeters", wit_inline, preparation);
+    let preparation_glue =
+        build_preparation_glue(self_ty, "__SlicerLayerPerimetersComponent", preparation);
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_perimeters");
     let helpers = layer_light_helpers("layer_perimeters");
@@ -3812,6 +4048,7 @@ fn build_layer_perimeters_glue(self_ty: &syn::Type) -> TokenStream2 {
         __slicer_drain_perimeter(&sdk_output, &output);
         match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
     };
+    let arm = prepared_stage_arm(arm, preparation);
     quote! {
         #[cfg(target_arch = "wasm32")]
         #[doc(hidden)]
@@ -3827,17 +4064,24 @@ fn build_layer_perimeters_glue(self_ty: &syn::Type) -> TokenStream2 {
                     #arm
                 }
             }
+            #preparation_glue
             export!(__SlicerLayerPerimetersComponent);
         }
     }
 }
 
-fn build_layer_perimeters_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
+fn build_layer_perimeters_postprocess_glue(self_ty: &syn::Type, preparation: bool) -> TokenStream2 {
     let wit_inline = include_str!("../../slicer-schema/wit/deps/layer-perimeters-postprocess/layer-perimeters-postprocess.wit");
-    let preamble = emit_world_preamble(
+    let preamble = emit_layer_world_preamble(
         "perimeters-postprocess-module",
         "perimeters_postprocess",
         wit_inline,
+        preparation,
+    );
+    let preparation_glue = build_preparation_glue(
+        self_ty,
+        "__SlicerLayerPerimetersPostprocessComponent",
+        preparation,
     );
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_perimeters_postprocess");
@@ -3857,6 +4101,7 @@ fn build_layer_perimeters_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 
         __slicer_drain_perimeter(&sdk_output, &output);
         match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
     };
+    let arm = prepared_stage_arm(arm, preparation);
     quote! {
         #[cfg(target_arch = "wasm32")]
         #[doc(hidden)]
@@ -3872,14 +4117,17 @@ fn build_layer_perimeters_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 
                     #arm
                 }
             }
+            #preparation_glue
             export!(__SlicerLayerPerimetersPostprocessComponent);
         }
     }
 }
 
-fn build_layer_infill_glue(self_ty: &syn::Type) -> TokenStream2 {
+fn build_layer_infill_glue(self_ty: &syn::Type, preparation: bool) -> TokenStream2 {
     let wit_inline = include_str!("../../slicer-schema/wit/deps/layer-infill/layer-infill.wit");
-    let preamble = emit_world_preamble("infill-module", "infill", wit_inline);
+    let preamble = emit_layer_world_preamble("infill-module", "infill", wit_inline, preparation);
+    let preparation_glue =
+        build_preparation_glue(self_ty, "__SlicerLayerInfillComponent", preparation);
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_infill");
     let helpers = layer_light_helpers("layer_infill");
@@ -3905,6 +4153,7 @@ fn build_layer_infill_glue(self_ty: &syn::Type) -> TokenStream2 {
         __slicer_drain_infill(&sdk_output, &output);
         match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
     };
+    let arm = prepared_stage_arm(arm, preparation);
     quote! {
         #[cfg(target_arch = "wasm32")]
         #[doc(hidden)]
@@ -3920,19 +4169,26 @@ fn build_layer_infill_glue(self_ty: &syn::Type) -> TokenStream2 {
                     #arm
                 }
             }
+            #preparation_glue
             export!(__SlicerLayerInfillComponent);
         }
     }
 }
 
-fn build_layer_infill_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
+fn build_layer_infill_postprocess_glue(self_ty: &syn::Type, preparation: bool) -> TokenStream2 {
     let wit_inline = include_str!(
         "../../slicer-schema/wit/deps/layer-infill-postprocess/layer-infill-postprocess.wit"
     );
-    let preamble = emit_world_preamble(
+    let preamble = emit_layer_world_preamble(
         "infill-postprocess-module",
         "infill_postprocess",
         wit_inline,
+        preparation,
+    );
+    let preparation_glue = build_preparation_glue(
+        self_ty,
+        "__SlicerLayerInfillPostprocessComponent",
+        preparation,
     );
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_infill_postprocess");
@@ -3962,6 +4218,7 @@ fn build_layer_infill_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
         __slicer_drain_infill(&sdk_output, &output);
         match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
     };
+    let arm = prepared_stage_arm(arm, preparation);
     quote! {
         #[cfg(target_arch = "wasm32")]
         #[doc(hidden)]
@@ -3977,14 +4234,17 @@ fn build_layer_infill_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
                     #arm
                 }
             }
+            #preparation_glue
             export!(__SlicerLayerInfillPostprocessComponent);
         }
     }
 }
 
-fn build_layer_support_glue(self_ty: &syn::Type) -> TokenStream2 {
+fn build_layer_support_glue(self_ty: &syn::Type, preparation: bool) -> TokenStream2 {
     let wit_inline = include_str!("../../slicer-schema/wit/deps/layer-support/layer-support.wit");
-    let preamble = emit_world_preamble("support-module", "support", wit_inline);
+    let preamble = emit_layer_world_preamble("support-module", "support", wit_inline, preparation);
+    let preparation_glue =
+        build_preparation_glue(self_ty, "__SlicerLayerSupportComponent", preparation);
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_support");
     let helpers = layer_light_helpers("layer_support");
@@ -4029,6 +4289,7 @@ fn build_layer_support_glue(self_ty: &syn::Type) -> TokenStream2 {
             Err(e) => Err(__slicer_error_out(e)),
         }
     };
+    let arm = prepared_stage_arm(arm, preparation);
     quote! {
         #[cfg(target_arch = "wasm32")]
         #[doc(hidden)]
@@ -4045,20 +4306,28 @@ fn build_layer_support_glue(self_ty: &syn::Type) -> TokenStream2 {
                     #arm
                 }
             }
+            #preparation_glue
             export!(__SlicerLayerSupportComponent);
         }
     }
 }
 
-fn anchored_events_wit_preamble() -> TokenStream2 {
+fn anchored_events_wit_preamble(preparation: bool) -> TokenStream2 {
     let wit_inline = include_str!(
         "../../slicer-schema/wit/deps/layer-anchored-events/layer-anchored-events.wit"
     );
-    emit_world_preamble("anchored-events-module", "anchored_events", wit_inline)
+    emit_layer_world_preamble(
+        "anchored-events-module",
+        "anchored_events",
+        wit_inline,
+        preparation,
+    )
 }
 
-fn build_layer_anchored_events_glue(self_ty: &syn::Type) -> TokenStream2 {
-    let preamble = anchored_events_wit_preamble();
+fn build_layer_anchored_events_glue(self_ty: &syn::Type, preparation: bool) -> TokenStream2 {
+    let preamble = anchored_events_wit_preamble(preparation);
+    let preparation_glue =
+        build_preparation_glue(self_ty, "__SlicerLayerAnchoredEventsComponent", preparation);
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_anchored_events");
     let helpers = layer_light_helpers("layer_anchored_events");
@@ -4084,6 +4353,7 @@ fn build_layer_anchored_events_glue(self_ty: &syn::Type) -> TokenStream2 {
             Err(e) => Err(__slicer_error_out(e)),
         }
     };
+    let arm = prepared_stage_arm(arm, preparation);
     quote! {
         #[cfg(target_arch = "wasm32")]
         #[doc(hidden)]
@@ -4100,19 +4370,26 @@ fn build_layer_anchored_events_glue(self_ty: &syn::Type) -> TokenStream2 {
                     #arm
                 }
             }
+            #preparation_glue
             export!(__SlicerLayerAnchoredEventsComponent);
         }
     }
 }
 
-fn build_layer_support_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
+fn build_layer_support_postprocess_glue(self_ty: &syn::Type, preparation: bool) -> TokenStream2 {
     let wit_inline = include_str!(
         "../../slicer-schema/wit/deps/layer-support-postprocess/layer-support-postprocess.wit"
     );
-    let preamble = emit_world_preamble(
+    let preamble = emit_layer_world_preamble(
         "support-postprocess-module",
         "support_postprocess",
         wit_inline,
+        preparation,
+    );
+    let preparation_glue = build_preparation_glue(
+        self_ty,
+        "__SlicerLayerSupportPostprocessComponent",
+        preparation,
     );
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_support_postprocess");
@@ -4132,6 +4409,7 @@ fn build_layer_support_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
         __slicer_drain_support(&sdk_output, &output);
         match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
     };
+    let arm = prepared_stage_arm(arm, preparation);
     quote! {
         #[cfg(target_arch = "wasm32")]
         #[doc(hidden)]
@@ -4147,16 +4425,27 @@ fn build_layer_support_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
                     #arm
                 }
             }
+            #preparation_glue
             export!(__SlicerLayerSupportPostprocessComponent);
         }
     }
 }
 
-fn build_layer_path_optimization_glue(self_ty: &syn::Type) -> TokenStream2 {
+fn build_layer_path_optimization_glue(self_ty: &syn::Type, preparation: bool) -> TokenStream2 {
     let wit_inline = include_str!(
         "../../slicer-schema/wit/deps/layer-path-optimization/layer-path-optimization.wit"
     );
-    let preamble = emit_world_preamble("path-optimization-module", "path_optimization", wit_inline);
+    let preamble = emit_layer_world_preamble(
+        "path-optimization-module",
+        "path_optimization",
+        wit_inline,
+        preparation,
+    );
+    let preparation_glue = build_preparation_glue(
+        self_ty,
+        "__SlicerLayerPathOptimizationComponent",
+        preparation,
+    );
     let profile_install = profile_install_stmt();
     let aliases = layer_per_stage_aliases("layer_path_optimization");
     let helpers = layer_glue_helpers();
@@ -4178,6 +4467,7 @@ fn build_layer_path_optimization_glue(self_ty: &syn::Type) -> TokenStream2 {
         __slicer_drain_layer_collection(&sdk_collection, &collection);
         match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
     };
+    let arm = prepared_stage_arm(arm, preparation);
     quote! {
         #[cfg(target_arch = "wasm32")]
         #[doc(hidden)]
@@ -4193,6 +4483,7 @@ fn build_layer_path_optimization_glue(self_ty: &syn::Type) -> TokenStream2 {
                     #arm
                 }
             }
+            #preparation_glue
             export!(__SlicerLayerPathOptimizationComponent);
         }
     }

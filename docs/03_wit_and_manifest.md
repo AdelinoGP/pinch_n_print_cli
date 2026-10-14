@@ -290,6 +290,73 @@ restructure is `docs/adr/0045-per-stage-versioned-interfaces-over-monolithic-tie
 
 ---
 
+## Preparation capability pilot composition
+
+**PILOT evidence only — not production availability.** Packet
+`layer-module-preparation_02_preparation-capability-pilot` proves composition
+with controlled fixtures; it does not activate production preparation.
+
+The canonical `slicer:layer-preparation@1.0.0` package lives in
+`crates/slicer-schema/wit/deps/layer-preparation/layer-preparation.wit`.
+Its imported `preparation-types` interface owns the host resources:
+
+| Resource | Pilot surface |
+|---|---|
+| `print-preparation-input` | `read-fixture` (pilot-only transport) |
+| `prepared-plan-output` | `put` (one complete, unique named piece) |
+| `prepared-plan-view` | `open` |
+| `prepared-piece` | `len`, bounded `read` |
+
+The defining interface is imported, never exported: resource identity remains
+host-owned. `plan-access.current()` reuses that same `prepared-plan-view`,
+without redeclaring it. The `preparation-error` variants are `not-ready`,
+`invalid-name`, `duplicate-name`, `poisoned-output`, `range-error`,
+`arithmetic-overflow`, and `access-denied`.
+
+The exported `prepare.prepare-print(input: print-preparation-input, output:
+prepared-plan-output) -> result<_, slicer:common/module-errors.module-error>`
+reuses the existing `module-error` identity. Its qualified export is
+`slicer:layer-preparation/prepare@1.0.0#prepare-print`, recorded by
+`PREPARATION_QUALIFIED_EXPORT` (`crates/slicer-schema/src/lib.rs`).
+
+Nine `prepared-<ordinary-world>` worlds compose the ordinary world through
+`include slicer:<pkg>/<world>@<version>;`, then `import preparation-types;`,
+`import plan-access;`, and `export prepare;`. The observed set exactly matches
+`STAGES` rows with `tier_id == TIER_LAYER` and nonempty `wit_package`
+(`crates/slicer-schema/src/lib.rs`). Plain worlds, ordinary stage signatures,
+and shared imported interfaces remain unchanged. Preparation is a capability,
+not a scheduled stage: metadata belongs to the `PreparationExportSchema`
+sidecar, not a `StageSpec` row (`crates/slicer-schema/src/lib.rs`).
+`resolve_stage_from_world` (`xtask/src/wit_verify.rs`) excludes only the
+recognized capability and retains exactly one scheduled-stage candidate;
+`compare_worlds` (`xtask/src/wit_verify.rs`) pins the exported preparation
+surface in both directions.
+
+Executed pilot evidence: `wasm-tools component wit crates/slicer-schema/wit`
+exited 0 and resolved all nine composed worlds. The contract command
+`cargo test -p slicer-wasm-host --test contract preparation_pilot_` passed
+9 tests, including stage-surface and export-mismatch checks. Its compile matrix
+covered 18 plain/prepared scratch crates across native and componentized WASM
+(36 configurations), derived from the 9 Layer rows; missing `prepare_print`
+on opt-in failed compilation as required. `cargo xtask build-guests --check`
+and `cargo build --workspace --tests` both exited 0.
+
+The pre-edit `classic-perimeters.wasm` archive at
+`target/preparation-pilot/plain-before.component.wasm` (SHA-256
+`6499a7d809a1812bc581adab2bc394ca660f209b0f38b9ce459e9c47c43e5c5c`)
+loads through the typed ordinary path with preparation imports registered
+alongside the ordinary linker, without a preparation export or parameter.
+This archive is a pre-edit snapshot, never a freshly rebuilt replacement.
+
+**Scope boundary:** controlled-fixture evidence only. Row 03 still owns
+production declaration parsing/validation and normalized host storage;
+test-local staging and `read-fixture` are not that production API. Row 04 owns
+typed whole-print input projections; row 05 owns scheduling, selection,
+override, and cancellation lifecycle activation; row 06 owns diagnostic/visual
+projections. None is marked complete here. No lightning algorithm, migration,
+or parity claim is made. Allocator/process overhead and process peak memory
+are **UNMEASURED**; no latency acceptance threshold is claimed.
+
 ## `deps/types.wit`
 
 **Source of truth:** `crates/slicer-schema/wit/deps/types.wit` (package

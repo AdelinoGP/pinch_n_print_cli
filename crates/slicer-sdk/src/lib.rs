@@ -32,6 +32,7 @@ pub mod order_lock;
 pub mod postpass_builders;
 pub mod postpass_types;
 pub mod prelude;
+pub mod preparation;
 pub mod prepass_builders;
 pub mod prepass_types;
 pub mod profile;

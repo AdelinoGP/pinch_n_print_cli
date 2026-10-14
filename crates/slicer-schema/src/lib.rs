@@ -320,6 +320,25 @@ pub struct SlicerModuleSchema {
     pub exports: &'static [ExportBinding],
 }
 
+/// Qualified export for the opt-in private Layer preparation capability.
+pub const PREPARATION_QUALIFIED_EXPORT: &str =
+    "slicer:layer-preparation/prepare@1.0.0#prepare-print";
+
+/// Compile-time sidecar for a module's opt-in preparation export surface.
+/// Preparation composes with an ordinary Layer world; it is not a stage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PreparationExportSchema {
+    /// Separately versioned capability package, e.g.
+    /// `"slicer:layer-preparation@1.0.0"`.
+    pub wit_package: &'static str,
+    /// Ordinary stage world being composed, e.g. `"perimeters-module"`.
+    pub ordinary_world: &'static str,
+    /// Composed capability world, e.g. `"prepared-perimeters-module"`.
+    pub wit_world: &'static str,
+    /// Qualified preparation function export ([`PREPARATION_QUALIFIED_EXPORT`]).
+    pub qualified_export: &'static str,
+}
+
 // region: region-split priorities
 
 /// Core region-split semantic priorities. Each entry is `(semantic_name,

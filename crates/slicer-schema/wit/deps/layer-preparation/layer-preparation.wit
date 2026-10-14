@@ -1,0 +1,108 @@
+package slicer:layer-preparation@1.0.0;
+
+interface preparation-types {
+    enum preparation-error {
+        not-ready,
+        invalid-name,
+        duplicate-name,
+        poisoned-output,
+        range-error,
+        arithmetic-overflow,
+        access-denied,
+    }
+
+    resource print-preparation-input {
+        /// Pilot-only fixture transport.
+        read-fixture: func(offset: u64, max-bytes: u64) -> result<list<u8>, preparation-error>;
+    }
+
+    resource prepared-plan-output {
+        /// Publish one complete, unique named piece into staging.
+        put: func(name: string, bytes: list<u8>) -> result<_, preparation-error>;
+    }
+
+    resource prepared-plan-view {
+        open: func(name: string) -> result<option<prepared-piece>, preparation-error>;
+    }
+
+    resource prepared-piece {
+        len: func() -> u64;
+        read: func(offset: u64, max-bytes: u64) -> result<list<u8>, preparation-error>;
+    }
+}
+
+interface plan-access {
+    use preparation-types.{prepared-plan-view, preparation-error};
+
+    current: func() -> result<prepared-plan-view, preparation-error>;
+}
+
+interface prepare {
+    use preparation-types.{print-preparation-input, prepared-plan-output};
+    use slicer:common/module-errors.{module-error};
+
+    prepare-print: func(input: print-preparation-input, output: prepared-plan-output) -> result<_, module-error>;
+}
+
+world prepared-slice-postprocess-module {
+    include slicer:layer-slice-postprocess/slice-postprocess-module@1.0.0;
+    import preparation-types;
+    import plan-access;
+    export prepare;
+}
+
+world prepared-perimeters-module {
+    include slicer:layer-perimeters/perimeters-module@1.0.0;
+    import preparation-types;
+    import plan-access;
+    export prepare;
+}
+
+world prepared-perimeters-postprocess-module {
+    include slicer:layer-perimeters-postprocess/perimeters-postprocess-module@1.0.0;
+    import preparation-types;
+    import plan-access;
+    export prepare;
+}
+
+world prepared-infill-module {
+    include slicer:layer-infill/infill-module@2.0.0;
+    import preparation-types;
+    import plan-access;
+    export prepare;
+}
+
+world prepared-infill-postprocess-module {
+    include slicer:layer-infill-postprocess/infill-postprocess-module@1.0.0;
+    import preparation-types;
+    import plan-access;
+    export prepare;
+}
+
+world prepared-support-module {
+    include slicer:layer-support/support-module@2.0.0;
+    import preparation-types;
+    import plan-access;
+    export prepare;
+}
+
+world prepared-support-postprocess-module {
+    include slicer:layer-support-postprocess/support-postprocess-module@1.0.0;
+    import preparation-types;
+    import plan-access;
+    export prepare;
+}
+
+world prepared-anchored-events-module {
+    include slicer:layer-anchored-events/anchored-events-module@1.0.0;
+    import preparation-types;
+    import plan-access;
+    export prepare;
+}
+
+world prepared-path-optimization-module {
+    include slicer:layer-path-optimization/path-optimization-module@1.0.0;
+    import preparation-types;
+    import plan-access;
+    export prepare;
+}

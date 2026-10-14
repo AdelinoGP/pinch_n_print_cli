@@ -23,6 +23,8 @@ slicer-schema = { path = "../slicer-schema" }
 slicer-sdk = { path = "../slicer-sdk" }
 
 [dev-dependencies]
+preparation-pilot-infill = { path = "test-guests/preparation-pilot-infill" }
+preparation-pilot-path = { path = "test-guests/preparation-pilot-path" }
 sdk-finalization-guest = { path = "test-guests/sdk-finalization-guest" }
 sdk-layer-pathopt-guest = { path = "test-guests/sdk-layer-pathopt-guest" }
 sdk-infill-postprocess-view-guest = { path = "test-guests/sdk-infill-postprocess-view-guest" }

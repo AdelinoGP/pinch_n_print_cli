@@ -961,6 +961,65 @@ the active region (packet 179); they must not assume a fixed 0.4 mm width.
 No state is retained across calls. Per-print state lives in the prepass tier +
 Blackboard (ADR-0029).
 
+### Preparation capability pilot authoring
+
+**PILOT evidence only — not production availability.** This controlled-fixture
+opt-in preserves the single-stage-per-impl constraint and ordinary per-Layer
+`from_config` reconstruction; it does not retain a live module between calls
+or activate production preparation.
+
+Implement the required
+`LayerPreparation::prepare_print(input: &PrintPreparationInput, output: &mut PreparedPlanOutput) -> Result<(), ModuleError>`
+(`crates/slicer-sdk/src/preparation.rs`), which has no default body and no
+print-wide constructor configuration. Apply `#[slicer_module(preparation)]`
+to the single ordinary `impl LayerModule for T`; plain `#[slicer_module]`
+is unchanged. Omitting `prepare_print` while opting in fails compilation,
+as proved by the pilot compile matrix's negative case.
+
+The `PrintPreparationInput`, `PreparedPlanOutput`, `PreparedPlanView`, and
+`PreparedPiece` wrappers (`crates/slicer-sdk/src/preparation.rs`) expose the
+pilot transport. `PreparedPlanView::current()` yields a fresh call-local read
+facade; `with_prepared_plan` (`crates/slicer-sdk/src/preparation.rs`) provides
+an unwind-safe, thread-local scoped binding restored on return and unwind.
+The macro generates `T::__slicer_prepared_native_entry() -> NativePreparedStageEntry`
+on non-WASM targets and `T::__SLICER_PREPARATION_SCHEMA: PreparationExportSchema`
+(`crates/slicer-macros/src/lib.rs`), while preserving ordinary reconstruction
+per Layer call.
+
+Two real authoring fixtures are registered for guest discovery:
+
+- `crates/slicer-wasm-host/test-guests/preparation-pilot-infill`: module-owned
+  numeric codec, publishing `numbers` and an empty `π`, then emitting
+  two-point sparse-infill paths.
+- `crates/slicer-wasm-host/test-guests/preparation-pilot-path`: module-owned
+  text codec, interpreting `alpha|beta` as comments `alpha` and `beta`.
+
+These guest crates are native dev-dependencies of `slicer-wasm-host` and root
+workspace members: they **must not** declare a `[workspace]` sentinel. A
+sentinel combined with a member path dependency causes the "multiple workspace
+roots" manifest error. Non-dev-dependency guests keep their sentinel.
+
+Executed evidence: `cargo test -p slicer-wasm-host --test contract preparation_pilot_`
+passed 9 tests in `preparation_capability_pilot_tdd`
+(`crates/slicer-wasm-host/tests/contract/preparation_capability_pilot_tdd.rs`).
+Within that module's `preparation_pilot_stage_surface`, the observed stage
+set exactly equalled the 9 runtime-derived Layer rows; 18 plain/prepared
+scratch crates compiled across native and componentized WASM, covering
+36 configurations, with the missing-method opt-in rejected. Fresh-instance
+WASM and native consumers, isolation, publication failures, bounded ranges,
+and ordinary-guest compatibility were also covered. The scoped store's
+release after consumer unwinding was proved with weak references.
+
+**Scope boundary:** this is controlled-fixture evidence only. Row 03 still
+owns production declaration parsing/validation and normalized host storage
+(test-local staging and `read-fixture` are not its production API). Row 04
+owns typed whole-print input projections; row 05 owns scheduling, selection,
+override, and cancellation lifecycle activation; row 06 owns diagnostic/visual
+projections. None is marked complete here. No lightning algorithm, migration,
+or parity claim is made. Allocator/process overhead and process peak memory
+are **UNMEASURED**; observed durations are evidence, not a bound, and no
+latency acceptance threshold is claimed.
+
 ### Stable Entity IDs (packet 39)
 
 Each `PrintEntity` and `TravelMove` carries a `u64 entity_id` populated at construction by a per-layer `LayerEntityIdGen`. Module producers (perimeter, infill, support modules) receive the generator via the per-layer context and call `id_gen.next()` once per entity. Finalization receives fresh IDs from the host at insert time. Travel anchors reference entities by `entity_id`, not positional index, so finalization mutations cannot invalidate them. See `docs/02_ir_schemas.md` IR 10 "Stable entity IDs" for the full contract.

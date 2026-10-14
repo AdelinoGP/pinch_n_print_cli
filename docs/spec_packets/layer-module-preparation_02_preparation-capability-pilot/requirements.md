@@ -45,7 +45,7 @@ Direct reads grounded the normative map in `docs/00_project_overview.md`; source
 
 ## Verification Commands — authoritative full matrix
 
-Run after implementation only. Every test command below captures combined output, fails on pipeline failure, rejects zero tests, and emits compact `PASS executed=...`; on failure read the existing log rather than rerun for output. Test names and fixture files are NET-NEW. Existing `slicer-wasm-host` has no package features or target required-features and contract sources have no feature gates (verified metadata/manifests/source); use no invented `wasm` feature. SDK test support uses explicit `--features test`. `slicer-core` is not a direct test target here.
+Run after implementation only. Every test command below captures combined output, fails on pipeline failure, rejects zero tests, and emits compact `PASS executed=...`; on failure read the existing log rather than rerun for output. Test names and fixture files are NET-NEW. Existing `slicer-wasm-host` (`crates/slicer-wasm-host/Cargo.toml`) declares no `default` feature and no `required-features` on any test target; its single package feature `perimeter-spatial-test-support` is non-default, does not gate the `contract` target, and the pilot contract modules carry no feature gates (verified metadata/manifests/source); unrelated contract sources may contain feature-conditioned branches (e.g. `perimeter-spatial-test-support`-conditioned branches in `with_wasm_perimeter_delivery`, `crates/slicer-wasm-host/tests/contract/source_identity_repair_tdd.rs`) that do not affect this packet; use no invented `wasm` feature. SDK test support uses explicit `--features test`. `slicer-core` is not a direct test target here.
 
 | Command | Purpose / return |
 | --- | --- |

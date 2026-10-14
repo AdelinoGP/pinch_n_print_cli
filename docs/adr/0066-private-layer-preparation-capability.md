@@ -52,6 +52,86 @@ and WASM adapters follow ADR-0056's single module model.
   `lightning-tree-segments` accessor directly, with affected contract/binding
   changes. There is no deprecation shim or approximate-geometry fallback.
 
+## Executable pilot evidence
+
+**PILOT evidence only — not production availability.** Packet
+`layer-module-preparation_02_preparation-capability-pilot` supplies the
+controlled-fixture composition witness required above. The accepted decision
+is unchanged; production preparation is not active through this pilot.
+
+The imported `preparation-types` resources in
+`crates/slicer-schema/wit/deps/layer-preparation/layer-preparation.wit` remain
+host-owned. `plan-access.current()` reuses their defining resource identity;
+`prepare.prepare-print` reuses `slicer:common/module-errors.module-error`.
+`PREPARATION_QUALIFIED_EXPORT` and the `PreparationExportSchema` sidecar
+(`crates/slicer-schema/src/lib.rs`) identify the independent capability,
+not a scheduled stage. All nine composed worlds preserve their ordinary stage.
+`resolve_stage_from_world` and `compare_worlds` (`xtask/src/wit_verify.rs`)
+verify the single scheduled-stage candidate and the capability surface.
+
+Executed commands and results supplied by the implementation session:
+
+| Command | Observed result |
+|---|---|
+| `wasm-tools component wit crates/slicer-schema/wit` | Exit 0; package group with all nine composed worlds resolved |
+| `cargo test -p slicer-wasm-host --test contract preparation_pilot_` | 9 passed |
+| `cargo xtask build-guests --check` | Exit 0; all guests fresh |
+| `cargo build --workspace --tests` | Exit 0 |
+| `cargo test -p slicer-wasm-host --test contract anchored_events` | 4 passed |
+
+The preparation tests in `preparation_capability_pilot_tdd`
+(`crates/slicer-wasm-host/tests/contract/preparation_capability_pilot_tdd.rs`)
+were `preparation_pilot_fresh_wasm`,
+`preparation_pilot_native`, `preparation_pilot_stage_surface`,
+`preparation_pilot_plain_guest`, `preparation_pilot_accounting`,
+`preparation_pilot_isolation`, `preparation_pilot_publication_failures`,
+`preparation_pilot_ranges`, and `preparation_pilot_export_mismatch`.
+The stage-surface matrix derived 9 Layer rows from `STAGES`
+(`crates/slicer-schema/src/lib.rs`), compiled 18 plain/prepared scratch crates
+for native and componentized WASM (36 configurations), and observed exactly
+the derived set. Opt-in without `LayerPreparation::prepare_print`
+(`crates/slicer-sdk/src/preparation.rs`) failed compilation as required.
+
+The archived pre-edit `classic-perimeters.wasm` at
+`target/preparation-pilot/plain-before.component.wasm`, SHA-256
+`6499a7d809a1812bc581adab2bc394ca660f209b0f38b9ce459e9c47c43e5c5c`,
+loaded through the typed ordinary path with preparation imports registered
+alongside the ordinary linker, without a preparation export or parameter.
+The archive is a pre-edit snapshot, never replaced by a newly compiled fixture.
+
+Measured AC-5 accounting witness (observations, not acceptance bounds):
+
+Durations are single-run observations on the implementation environment;
+values vary per run, are informational only, and have no latency threshold.
+
+| Measurement | WASM | Native |
+|---|---|---|
+| Preparation duration | 150 800 ns | 16 500 ns |
+| Ready-empty preparation duration | 137 000 ns | 6 300 ns |
+| Host-read durations | 2 100 ns; 1 500 ns | 1 000 ns; 800 ns |
+
+Retained payload was 4 bytes; retained UTF-8 names were 9 bytes (`numbers`:
+7, `π`: 2). Ready-empty retained 0 payload/name bytes. Per run, input was
+1 transfer / 4 bytes, puts were 2 / 4 bytes, and reads were 2 / 4 bytes.
+Ready-empty input was 1 / 0 bytes, with no puts or reads. Durations are absent
+when instrumentation is off. Allocator/process overhead and process peak
+memory are **UNMEASURED**. No latency acceptance threshold is claimed.
+
+Metadata is whitelisted to owner, phase, ready state, piece names/lengths,
+payload/name accounting, transfer sizes/counts, and measured durations; it
+excludes raw opaque payloads. Payload-exclusion checks were challenged with
+injected payload arrays, disguised accounting arrays, and escaped
+payload-bearing strings. Weak references proved store release after consumer
+unwinding.
+
+**Scope boundary:** controlled-fixture evidence only. Row 03 still owns
+production declaration parsing/validation and normalized host storage;
+test-local staging and `read-fixture` are not its production API. Row 04 owns
+typed whole-print input projections; row 05 owns scheduling, selection,
+override, and cancellation lifecycle activation; row 06 owns diagnostic/visual
+projections. None is marked complete here. No lightning algorithm, migration,
+or parity claim is made.
+
 ## Relationship to existing decisions
 
 - **ADR-0045:** extend one scheduled-stage export with a declared, independently

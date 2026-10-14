@@ -200,6 +200,9 @@ pub fn resolve_stage_from_world(
         if SHARED_PACKAGES.iter().any(|s| strip_version(s) == stripped) {
             continue;
         }
+        if stripped == PREPARATION_PACKAGE {
+            continue;
+        }
         candidates.push(pkg_name.clone());
     }
     candidates.sort();
@@ -244,6 +247,7 @@ pub const SHARED_PACKAGES: [&str; 7] = [
     "slicer:lightning-queries",
 ];
 pub const ROOT_COMPONENT_PACKAGE: &str = "root:component";
+const PREPARATION_PACKAGE: &str = "slicer:layer-preparation";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DriftKind {
@@ -293,9 +297,61 @@ pub fn compare_worlds(
 ) -> Vec<Drift> {
     let mut drifts = Vec::new();
 
+    // Embedded components expose their composed world in root:component.
+    // Do not let an unrelated helper world's exports satisfy this contract.
+    let root = embedded
+        .packages
+        .iter()
+        .find(|(name, _)| strip_version(name) == ROOT_COMPONENT_PACKAGE);
+    let worlds: Vec<_> = if let Some((_, package)) = root {
+        package.worlds.values().collect()
+    } else {
+        embedded
+            .packages
+            .values()
+            .flat_map(|p| p.worlds.values())
+            .collect()
+    };
+    let mut required = Vec::new();
+    if let Some(exp) = expect {
+        if !worlds.is_empty() {
+            required.push(exp.qualified_export.as_str());
+        }
+    }
+    if embedded
+        .packages
+        .keys()
+        .any(|name| strip_version(name) == PREPARATION_PACKAGE)
+    {
+        required.push(slicer_schema::PREPARATION_QUALIFIED_EXPORT);
+    }
+    for identity in required {
+        let interface = identity.split('#').next().unwrap();
+        if !worlds.iter().any(|world| {
+            world.decls.get(&format!("export {interface}"))
+                == Some(&format!("interface:{interface}"))
+                && expect.is_none_or(|exp| {
+                    world.decls.contains_key(&format!(
+                        "export {}",
+                        exp.qualified_export.split('#').next().unwrap()
+                    ))
+                })
+        }) {
+            drifts.push(Drift {
+                kind: DriftKind::ExportName,
+                package: interface.split('/').next().unwrap().into(),
+                interface: None,
+                name: identity.into(),
+                canonical: Some(identity.into()),
+                embedded: None,
+            });
+        }
+    }
+
     // Build allowed stripped set
     let mut allowed: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     allowed.insert(strip_version(ROOT_COMPONENT_PACKAGE).to_string());
+    allowed.insert(PREPARATION_PACKAGE.to_string());
     for s in SHARED_PACKAGES {
         allowed.insert(strip_version(s).to_string());
     }
@@ -341,6 +397,29 @@ pub fn compare_worlds(
 
     for (emb_pkg_name, emb_pkg) in &embedded.packages {
         let emb_stripped = strip_version(emb_pkg_name);
+        let is_preparation = emb_stripped == PREPARATION_PACKAGE;
+        // Unlike shared imports, this opt-in export has a pinned identity.
+        let preparation_identity = slicer_schema::PREPARATION_QUALIFIED_EXPORT
+            .split_once('/')
+            .map(|(package, export)| {
+                let version = export.split('@').nth(1).unwrap().split('#').next().unwrap();
+                format!("{package}@{version}")
+            })
+            .expect("schema preparation export must be qualified");
+        if is_preparation
+            && (emb_pkg_name != &preparation_identity
+                || !canonical.packages.contains_key(&preparation_identity))
+        {
+            drifts.push(Drift {
+                kind: DriftKind::UnexpectedPackage,
+                package: emb_pkg_name.clone(),
+                interface: None,
+                name: emb_pkg_name.clone(),
+                canonical: Some(preparation_identity),
+                embedded: Some(emb_pkg_name.clone()),
+            });
+            continue;
+        }
         if !allowed.contains(emb_stripped) {
             drifts.push(Drift {
                 kind: DriftKind::UnexpectedPackage,
@@ -373,7 +452,7 @@ pub fn compare_worlds(
             let canon_iface = canon_pkg.and_then(|p| p.interfaces.get(iface_name));
 
             let _is_subset_iface = is_shared || (is_stage && !is_exported_stage);
-            if is_exported_stage {
+            if is_exported_stage || is_preparation {
                 // Full equality both directions
                 if let Some(canon) = canon_iface {
                     for (name, emb_body) in &emb_iface.decls {
@@ -556,6 +635,37 @@ pub fn compare_worlds(
                             canonical: None,
                             embedded: Some(u.clone()),
                         });
+                    }
+                }
+            }
+        }
+
+        // A capability is optional as a package, but once present its entire
+        // canonical interface surface (including resources) is mandatory.
+        if is_preparation {
+            if let Some(canon_pkg) = canon_pkg {
+                for (iface_name, canon_iface) in &canon_pkg.interfaces {
+                    if !emb_pkg.interfaces.contains_key(iface_name) {
+                        for (name, body) in &canon_iface.decls {
+                            drifts.push(Drift {
+                                kind: DriftKind::MissingDeclaration,
+                                package: emb_pkg_name.clone(),
+                                interface: Some(iface_name.clone()),
+                                name: name.clone(),
+                                canonical: Some(body.clone()),
+                                embedded: None,
+                            });
+                        }
+                        for name in &canon_iface.uses {
+                            drifts.push(Drift {
+                                kind: DriftKind::MissingUse,
+                                package: emb_pkg_name.clone(),
+                                interface: Some(iface_name.clone()),
+                                name: name.clone(),
+                                canonical: Some(name.clone()),
+                                embedded: None,
+                            });
+                        }
                     }
                 }
             }
@@ -943,8 +1053,13 @@ fn resolve_to_world_model(resolve: &wit_parser::Resolve) -> WorldModel {
         let mut decls: BTreeMap<String, String> = BTreeMap::new();
         let mut uses: BTreeSet<String> = BTreeSet::new();
         // World imports/exports are stored as decls? Use WorldKey string as name, WorldItem kind as body
-        for (key, item) in world.imports.iter().chain(world.exports.iter()) {
-            let name = resolve.name_world_key(key);
+        for (direction, key, item) in world
+            .imports
+            .iter()
+            .map(|(k, v)| ("import", k, v))
+            .chain(world.exports.iter().map(|(k, v)| ("export", k, v)))
+        {
+            let name = format!("{direction} {}", resolve.name_world_key(key));
             let body = match item {
                 wit_parser::WorldItem::Interface { id, .. } => {
                     let iface = &resolve.interfaces[*id];
@@ -954,7 +1069,20 @@ fn resolve_to_world_model(resolve: &wit_parser::Resolve) -> WorldModel {
                         let pkg_str = resolve.packages[pid].name.to_string();
                         uses.insert(format!("{}/{}", pkg_str, iname));
                     }
-                    format!("interface:{}", iname)
+                    if let Some(pid) = iface.package {
+                        let package = resolve.packages[pid].name.to_string();
+                        let (package, version) = package.split_once('@').unwrap_or((&package, ""));
+                        format!(
+                            "interface:{package}/{iname}{}",
+                            if version.is_empty() {
+                                String::new()
+                            } else {
+                                format!("@{version}")
+                            }
+                        )
+                    } else {
+                        format!("interface:{iname}")
+                    }
                 }
                 wit_parser::WorldItem::Function(f) => render_function(f, resolve),
                 wit_parser::WorldItem::Type { id, .. } => {
@@ -1108,6 +1236,29 @@ pub fn embedded_wit_text(artifact: &Path) -> Result<String, VerifyError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn preparation_pilot_expected_wit_set() -> BTreeSet<PathBuf> {
+        let mut paths: BTreeSet<_> = [
+            "deps/types.wit",
+            "deps/config.wit",
+            "deps/ir-types.wit",
+            "deps/common.wit",
+            "deps/prepass-types.wit",
+            "deps/support-queries/support-queries.wit",
+            "deps/lightning-queries/lightning-queries.wit",
+            "deps/layer-preparation/layer-preparation.wit",
+        ]
+        .into_iter()
+        .map(PathBuf::from)
+        .collect();
+        paths.extend(
+            slicer_schema::STAGES
+                .iter()
+                .filter(|stage| !stage.wit_dir.is_empty())
+                .map(|stage| PathBuf::from(format!("deps/{0}/{0}.wit", stage.wit_dir))),
+        );
+        paths
+    }
 
     fn ws_root() -> std::path::PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1300,7 +1451,7 @@ mod tests {
     }
 
     /// AC-1 canonical coverage audit: the verifier's file list must equal the
-    /// macro's actual `include_str!` set (23 files, no root.wit).
+    /// macro's actual `include_str!` set (no root.wit).
     ///
     /// Both the function and this test derive the set at runtime by reading
     /// `crates/slicer-macros/src/lib.rs` — neither hardcodes a constant.
@@ -1342,11 +1493,9 @@ mod tests {
         }
 
         assert_eq!(
-            expected.len(),
-            23,
-            "expected 23 distinct .wit include_str! paths, got {}: {:?}",
-            expected.len(),
-            expected
+            expected,
+            preparation_pilot_expected_wit_set(),
+            "macro includes must equal the schema-derived stage and capability closure"
         );
         assert!(
             !expected.contains(&PathBuf::from("root.wit")),
@@ -1382,7 +1531,7 @@ mod tests {
     }
 
     /// AC-2 audit: `crates/slicer-macros/build.rs` rerun-if-changed list must
-    /// exactly equal the macro's 23-file `include_str!` set (no dead
+    /// exactly equal the macro's `include_str!` set (no dead
     /// `world-*.wit`, no `root.wit`, includes `prepass-types.wit`, the two
     /// specialist query files, and all per-stage files). Both sides derived
     /// at runtime.
@@ -1423,11 +1572,9 @@ mod tests {
             search_from = abs + "include_str!".len();
         }
         assert_eq!(
-            expected.len(),
-            23,
-            "expected 23 distinct .wit include_str! paths, got {}: {:?}",
-            expected.len(),
-            expected
+            expected,
+            preparation_pilot_expected_wit_set(),
+            "macro includes must equal the schema-derived stage and capability closure"
         );
 
         // Actual watched set: parse build.rs rerun-if-changed string literals ending in .wit.
@@ -1460,11 +1607,9 @@ mod tests {
         }
 
         assert_eq!(
-            actual.len(),
-            23,
-            "build.rs must watch exactly 23 .wit files, got {}: {:?}",
-            actual.len(),
-            actual
+            actual,
+            preparation_pilot_expected_wit_set(),
+            "build.rs watches must equal the schema-derived stage and capability closure"
         );
         // No dead world-*.wit paths.
         for p in &actual {
@@ -1495,17 +1640,32 @@ mod tests {
             actual
         );
         // All per-stage deps/<dir>/<dir>.wit files must be present.
-        let per_stage_expected: BTreeSet<PathBuf> = expected
+        let per_stage_expected: BTreeSet<PathBuf> = slicer_schema::STAGES
             .iter()
-            .filter(|p| p.to_string_lossy().matches('/').count() == 2)
-            .cloned()
+            .filter(|stage| !stage.wit_dir.is_empty())
+            .map(|stage| PathBuf::from(format!("deps/{0}/{0}.wit", stage.wit_dir)))
             .collect();
         assert_eq!(
-            per_stage_expected.len(),
-            18,
-            "expected 18 per-stage wit files in canonical set, got {}: {:?}",
-            per_stage_expected.len(),
-            per_stage_expected
+            expected
+                .difference(
+                    &[
+                        "deps/types.wit",
+                        "deps/config.wit",
+                        "deps/ir-types.wit",
+                        "deps/common.wit",
+                        "deps/prepass-types.wit",
+                        "deps/support-queries/support-queries.wit",
+                        "deps/lightning-queries/lightning-queries.wit",
+                        "deps/layer-preparation/layer-preparation.wit",
+                    ]
+                    .into_iter()
+                    .map(PathBuf::from)
+                    .collect()
+                )
+                .cloned()
+                .collect::<BTreeSet<_>>(),
+            per_stage_expected,
+            "per-stage WIT closure must equal STAGES exactly"
         );
         for p in &per_stage_expected {
             assert!(
@@ -1516,7 +1676,7 @@ mod tests {
 
         assert_eq!(
             actual, expected,
-            "build.rs rerun-if-changed set must equal the macro's 23-file include_str! set"
+            "build.rs rerun-if-changed set must equal the macro's include_str! set"
         );
     }
 
@@ -2400,6 +2560,220 @@ package root:component { world root {} }
         ]);
         let expect2 = resolve_stage_from_world(&world2).expect("version-stripped resolve");
         assert_eq!(expect2.stage_id, "Layer::Infill");
+    }
+
+    fn preparation_pilot_worlds() -> (WorldModel, WorldModel, StageExpectation, String) {
+        let expect = stage_expectation("Layer::Infill").unwrap();
+        let canonical = canonical_world_model(&ws_root(), Some(&expect)).unwrap();
+        let capability =
+            canonical_package_decl(&ws_root(), "deps/layer-preparation/layer-preparation.wit");
+        assert!(canonical.packages.contains_key(&capability));
+        let mut embedded = canonical.clone();
+        embedded.packages.retain(|name, _| {
+            let name = strip_version(name);
+            name == PREPARATION_PACKAGE
+                || name == strip_version(&expect.wit_package)
+                || SHARED_PACKAGES.contains(&name)
+        });
+        (embedded, canonical, expect, capability)
+    }
+
+    #[test]
+    fn preparation_pilot_composed_world_resolves_one_stage() {
+        let (world, _, expect, capability) = preparation_pilot_worlds();
+        assert!(world.packages.contains_key(&capability));
+        assert_eq!(resolve_stage_from_world(&world), Ok(expect.clone()));
+        let mut capability_only = world.clone();
+        capability_only
+            .packages
+            .remove(&expect.wit_package)
+            .unwrap();
+        assert_eq!(
+            resolve_stage_from_world(&capability_only),
+            Err(StageResolutionError::NoStagePackage)
+        );
+        let mut multiple = world;
+        multiple.packages.insert(
+            "slicer:layer-support@2.0.0".into(),
+            capability_only.packages[&capability].clone(),
+        );
+        assert!(
+            matches!(resolve_stage_from_world(&multiple), Err(StageResolutionError::Ambiguous(packages)) if packages.len() == 2)
+        );
+    }
+
+    #[test]
+    fn preparation_pilot_import_is_not_an_export() {
+        let expect = stage_expectation("Layer::Infill").unwrap();
+        let stage_interface = expect.qualified_export.split('#').next().unwrap();
+        let prepare_interface = slicer_schema::PREPARATION_QUALIFIED_EXPORT
+            .split('#')
+            .next()
+            .unwrap();
+        let text = format!(
+            "package {} {{ interface {} {{ run: func(); }} }}\n\
+             package slicer:layer-preparation@1.0.0 {{ interface prepare {{ prepare-print: func(); }} }}\n\
+             package root:component {{ world component {{ export {stage_interface}; export {prepare_interface}; }} }}",
+            expect.wit_package, expect.wit_interface,
+        );
+        let canonical = world_model_from_text(&text, "export control").unwrap();
+        assert!(compare_worlds(&canonical, &canonical, Some(&expect)).is_empty());
+        for interface in [prepare_interface, stage_interface] {
+            let imported = world_model_from_text(
+                &text.replace(
+                    &format!("export {interface};"),
+                    &format!("import {interface};"),
+                ),
+                "import-only negative control",
+            )
+            .unwrap();
+            assert!(
+                compare_worlds(&imported, &canonical, Some(&expect))
+                    .iter()
+                    .any(|drift| {
+                        drift.kind == DriftKind::ExportName && drift.name.starts_with(interface)
+                    }),
+                "an import cannot satisfy the required export {interface}"
+            );
+        }
+    }
+
+    #[test]
+    fn preparation_pilot_export_accepts_canonical_rejects_missing_and_mutated() {
+        let (world, canonical, expect, capability) = preparation_pilot_worlds();
+        assert!(compare_worlds(&world, &canonical, Some(&expect)).is_empty());
+        let mut missing = world.clone();
+        missing
+            .packages
+            .get_mut(&capability)
+            .unwrap()
+            .interfaces
+            .remove("prepare")
+            .unwrap();
+        assert!(compare_worlds(&missing, &canonical, Some(&expect))
+            .iter()
+            .any(|d| d.kind == DriftKind::MissingDeclaration && d.name == "prepare-print"));
+        let mut missing_function = world.clone();
+        missing_function
+            .packages
+            .get_mut(&capability)
+            .unwrap()
+            .interfaces
+            .get_mut("prepare")
+            .unwrap()
+            .decls
+            .remove("prepare-print")
+            .unwrap();
+        assert!(compare_worlds(&missing_function, &canonical, Some(&expect))
+            .iter()
+            .any(|d| d.kind == DriftKind::MissingDeclaration && d.name == "prepare-print"));
+        let mut mutated = world.clone();
+        *mutated
+            .packages
+            .get_mut(&capability)
+            .unwrap()
+            .interfaces
+            .get_mut("prepare")
+            .unwrap()
+            .decls
+            .get_mut("prepare-print")
+            .unwrap() = "func()".into();
+        assert!(compare_worlds(&mutated, &canonical, Some(&expect))
+            .iter()
+            .any(|d| d.kind == DriftKind::DeclarationBody && d.name == "prepare-print"));
+        let mut extra = world;
+        extra
+            .packages
+            .get_mut(&capability)
+            .unwrap()
+            .interfaces
+            .get_mut("prepare")
+            .unwrap()
+            .decls
+            .insert("foreign-function".into(), "func()".into());
+        assert!(compare_worlds(&extra, &canonical, Some(&expect))
+            .iter()
+            .any(|d| d.kind == DriftKind::ExtraDeclaration && d.name == "foreign-function"));
+    }
+
+    #[test]
+    fn preparation_pilot_resources_and_identity_are_strict() {
+        let (world, canonical, expect, capability) = preparation_pilot_worlds();
+        let mut resource = world.clone();
+        *resource
+            .packages
+            .get_mut(&capability)
+            .unwrap()
+            .interfaces
+            .get_mut("preparation-types")
+            .unwrap()
+            .decls
+            .get_mut("prepared-piece")
+            .unwrap() = "resource".into();
+        assert!(compare_worlds(&resource, &canonical, Some(&expect))
+            .iter()
+            .any(|d| d.kind == DriftKind::DeclarationBody && d.name == "prepared-piece"));
+        let mut identity = world.clone();
+        let package = identity.packages.remove(&capability).unwrap();
+        identity
+            .packages
+            .insert(format!("{PREPARATION_PACKAGE}@9.9.9"), package);
+        assert!(compare_worlds(&identity, &canonical, Some(&expect))
+            .iter()
+            .any(|d| d.kind == DriftKind::UnexpectedPackage));
+        let mut absent_canonical = canonical;
+        absent_canonical.packages.remove(&capability).unwrap();
+        assert!(compare_worlds(&world, &absent_canonical, Some(&expect))
+            .iter()
+            .any(|d| d.kind == DriftKind::UnexpectedPackage));
+    }
+
+    #[test]
+    fn preparation_pilot_plain_world_remains_accepted() {
+        let (mut world, canonical, expect, capability) = preparation_pilot_worlds();
+        world.packages.remove(&capability).unwrap();
+        assert_eq!(resolve_stage_from_world(&world), Ok(expect.clone()));
+        assert!(compare_worlds(&world, &canonical, Some(&expect)).is_empty());
+    }
+
+    #[test]
+    fn preparation_pilot_unknown_package_remains_rejected() {
+        let (mut world, canonical, expect, capability) = preparation_pilot_worlds();
+        let foreign = "slicer:unknown-capability@1.0.0";
+        world
+            .packages
+            .insert(foreign.into(), world.packages[&capability].clone());
+        assert!(
+            matches!(resolve_stage_from_world(&world), Err(StageResolutionError::Ambiguous(packages)) if packages.contains(&foreign.to_string()) && packages.len() == 2)
+        );
+        world.packages.remove(&expect.wit_package).unwrap();
+        assert_eq!(
+            resolve_stage_from_world(&world),
+            Err(StageResolutionError::UnknownPackage(foreign.into()))
+        );
+        assert!(compare_worlds(&world, &canonical, Some(&expect))
+            .iter()
+            .any(|d| d.kind == DriftKind::UnexpectedPackage && d.package == foreign));
+        assert_eq!(
+            SHARED_PACKAGES.into_iter().collect::<BTreeSet<_>>(),
+            [
+                "slicer:types",
+                "slicer:config",
+                "slicer:ir-handles",
+                "slicer:common",
+                "slicer:prepass-types",
+                "slicer:support-queries",
+                "slicer:lightning-queries",
+            ]
+            .into_iter()
+            .collect()
+        );
+    }
+
+    #[test]
+    fn preparation_pilot_exact_include_and_watch_sets() {
+        canonical_file_list_equals_macro_include_str_set();
+        macros_build_rs_watches_the_macro_include_str_set();
     }
 
     /// Packet-required positive case: nominal-core recognition — the
