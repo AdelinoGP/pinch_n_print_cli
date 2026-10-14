@@ -1,0 +1,86 @@
+diff --git a/crates/slicer-runtime/src/progress_instrumentation.rs b/crates/slicer-runtime/src/progress_instrumentation.rs
+index 2736884e..974eaa9c 100644
+--- a/crates/slicer-runtime/src/progress_instrumentation.rs
++++ b/crates/slicer-runtime/src/progress_instrumentation.rs
+@@ -105,6 +105,29 @@ pub(crate) fn now_unix_ms() -> u64 {
+         .unwrap_or(0)
+ }
+ 
++// ==== TEMPORARY t63 diagnosis probe (uncommitted; reverted after captures) ====
++// Observation-only: when PNP_T63_WORKER_PROBE is set, each layer_start /
++// layer_end bracket additionally prints the current rayon worker index and
++// OS thread id so the low-layer dispatch timeline can be attributed to
++// workers. No scheduling, output, or timing behavior changes.
++fn t63_probe_enabled() -> bool {
++    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
++    *ENABLED.get_or_init(|| std::env::var("PNP_T63_WORKER_PROBE").is_ok())
++}
++
++fn t63_worker_probe(event: &str, layer: u32) {
++    if !t63_probe_enabled() {
++        return;
++    }
++    let worker = rayon::current_thread_index();
++    let tid = std::thread::current().id();
++    eprintln!(
++        "T63EVENT {event} layer={layer} worker={worker:?} tid={tid:?} unix_ms={}",
++        now_unix_ms()
++    );
++}
++// ==== end temporary t63 probe ====
++
+ impl ProgressPipelineInstrumentation {
+     /// Build an adapter that forwards events to `sink` with the given
+     /// `slice_id` stamped on every event, at the `Instrumented` tier.
+@@ -345,6 +368,7 @@ impl PipelineInstrumentation for ProgressPipelineInstrumentation {
+     }
+ 
+     fn on_layer_start(&self, layer: u32, _z_mm: f32) {
++        t63_worker_probe("layer_start", layer);
+         self.layer_starts
+             .lock()
+             .expect("layer_starts poisoned")
+@@ -358,6 +382,7 @@ impl PipelineInstrumentation for ProgressPipelineInstrumentation {
+     }
+ 
+     fn on_layer_end(&self, layer: u32) {
++        t63_worker_probe("layer_end", layer);
+         let elapsed_ms = self
+             .layer_starts
+             .lock()
+diff --git a/crates/slicer-wasm-host/src/pool.rs b/crates/slicer-wasm-host/src/pool.rs
+index 0d92bd84..481ebcfb 100644
+--- a/crates/slicer-wasm-host/src/pool.rs
++++ b/crates/slicer-wasm-host/src/pool.rs
+@@ -140,6 +140,31 @@ impl SlotAvailability {
+     }
+ 
+     fn acquire(&self) -> usize {
++        // TEMPORARY t63 diagnosis probe (uncommitted; reverted after captures):
++        // when PNP_T63_WORKER_PROBE is set, any acquire that waits more than
++        // 100 µs prints the wait. Observation only; no scheduling change.
++        let probe = std::env::var("PNP_T63_WORKER_PROBE").is_ok();
++        let wait_start = if probe {
++            Some(std::time::Instant::now())
++        } else {
++            None
++        };
++        let slot_index = self.acquire_slot();
++        if let Some(started) = wait_start {
++            let waited = started.elapsed();
++            if waited.as_micros() > 100 {
++                let worker = rayon::current_thread_index();
++                eprintln!(
++                    "T63POOL wait_us={} wait_ms={:.3} worker={worker:?}",
++                    waited.as_micros(),
++                    waited.as_secs_f64() * 1000.0
++                );
++            }
++        }
++        slot_index
++    }
++
++    fn acquire_slot(&self) -> usize {
+         let mut state = match self.state.lock() {
+             Ok(guard) => guard,
+             Err(poisoned) => poisoned.into_inner(),

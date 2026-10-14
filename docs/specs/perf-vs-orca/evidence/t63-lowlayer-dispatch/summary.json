@@ -1,0 +1,2198 @@
+{
+ "source_captures": "docs/specs/perf-vs-orca/evidence/perf-refresh-2026-10-13/captures/",
+ "method": "phase-relative per-layer start/end from reduced t61 captures (no re-slice)",
+ "results": [
+  {
+   "cell": "ordinary-benchy-arachne-off-instrumented",
+   "threads": 12,
+   "phase_span_ms": 5840,
+   "first_batch": [
+    0,
+    3,
+    7,
+    9,
+    11,
+    15,
+    30,
+    60,
+    120,
+    135,
+    150,
+    180
+   ],
+   "first_batch_is_cascade_boundaries": {
+    "spine_split_points": [
+     120,
+     60,
+     30,
+     15,
+     7,
+     3,
+     1
+    ],
+    "spine_in_first_batch": [
+     120,
+     60,
+     30,
+     15,
+     7,
+     3
+    ],
+    "spine_not_in_batch": [
+     1
+    ],
+    "spine_hits": 6,
+    "spine_total": 7
+   },
+   "open_hist_ms": {
+    "1": 1038,
+    "2": 8,
+    "3": 13,
+    "4": 19,
+    "5": 6,
+    "6": 6,
+    "7": 9,
+    "8": 3,
+    "9": 10,
+    "10": 102,
+    "11": 690,
+    "12": 3936
+   },
+   "idle_worker_seconds": 12.826,
+   "last_layer": 2,
+   "last_end_ms": 5841,
+   "second_last_layer": 104,
+   "second_last_end_ms": 4803,
+   "tail_interval_ms": 1038,
+   "tail_layers": [
+    2
+   ],
+   "tail_open_hist_ms": {
+    "1": 1038
+   },
+   "worst_uncovered": [
+    {
+     "layer": 1,
+     "elapsed_ms": 3777,
+     "module_bracket_sum_ms": 3394,
+     "uncovered_ms": 383,
+     "calls": 14
+    },
+    {
+     "layer": 188,
+     "elapsed_ms": 256,
+     "module_bracket_sum_ms": 71,
+     "uncovered_ms": 185,
+     "calls": 14
+    },
+    {
+     "layer": 144,
+     "elapsed_ms": 252,
+     "module_bracket_sum_ms": 69,
+     "uncovered_ms": 183,
+     "calls": 14
+    },
+    {
+     "layer": 115,
+     "elapsed_ms": 342,
+     "module_bracket_sum_ms": 160,
+     "uncovered_ms": 182,
+     "calls": 14
+    },
+    {
+     "layer": 27,
+     "elapsed_ms": 274,
+     "module_bracket_sum_ms": 97,
+     "uncovered_ms": 177,
+     "calls": 14
+    }
+   ],
+   "tail_modules": {
+    "2": [
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 1389,
+      "end_ms": 5832
+     },
+     {
+      "module": "com.core.arachne-perimeters",
+      "elapsed_ms": 20,
+      "end_ms": 4253
+     },
+     {
+      "module": "com.core.rectilinear-infill",
+      "elapsed_ms": 13,
+      "end_ms": 4412
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 11,
+      "end_ms": 4360
+     }
+    ]
+   },
+   "low_layers": {
+    "0": {
+     "start_ms": 1,
+     "end_ms": 431,
+     "elapsed_ms": 430
+    },
+    "1": {
+     "start_ms": 434,
+     "end_ms": 4212,
+     "elapsed_ms": 3777
+    },
+    "2": {
+     "start_ms": 4216,
+     "end_ms": 5841,
+     "elapsed_ms": 1625
+    }
+   },
+   "low_layer_module_calls": {
+    "0": [
+     {
+      "module": "host:paint_annotator",
+      "elapsed_ms": 2,
+      "end_ms": 8
+     },
+     {
+      "module": "com.core.arachne-perimeters",
+      "elapsed_ms": 100,
+      "end_ms": 114
+     },
+     {
+      "module": "com.core.fuzzy-skin",
+      "elapsed_ms": 3,
+      "end_ms": 140
+     },
+     {
+      "module": "com.core.seam-placer",
+      "elapsed_ms": 4,
+      "end_ms": 155
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 10,
+      "end_ms": 184
+     },
+     {
+      "module": "com.core.gyroid-infill",
+      "elapsed_ms": 4,
+      "end_ms": 191
+     },
+     {
+      "module": "com.core.lightning-infill",
+      "elapsed_ms": 5,
+      "end_ms": 204
+     },
+     {
+      "module": "com.core.rectilinear-infill",
+      "elapsed_ms": 5,
+      "end_ms": 213
+     },
+     {
+      "module": "com.core.top-surface-ironing",
+      "elapsed_ms": 5,
+      "end_ms": 222
+     },
+     {
+      "module": "com.core.wave-overhangs",
+      "elapsed_ms": 9,
+      "end_ms": 235
+     },
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 117,
+      "end_ms": 363
+     },
+     {
+      "module": "com.core.tree-support",
+      "elapsed_ms": 9,
+      "end_ms": 386
+     },
+     {
+      "module": "com.core.support-surface-ironing",
+      "elapsed_ms": 7,
+      "end_ms": 399
+     },
+     {
+      "module": "com.core.path-optimization-default",
+      "elapsed_ms": 8,
+      "end_ms": 422
+     }
+    ],
+    "1": [
+     {
+      "module": "host:paint_annotator",
+      "elapsed_ms": 5,
+      "end_ms": 446
+     },
+     {
+      "module": "com.core.arachne-perimeters",
+      "elapsed_ms": 98,
+      "end_ms": 553
+     },
+     {
+      "module": "com.core.fuzzy-skin",
+      "elapsed_ms": 6,
+      "end_ms": 660
+     },
+     {
+      "module": "com.core.seam-placer",
+      "elapsed_ms": 6,
+      "end_ms": 751
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 35,
+      "end_ms": 882
+     },
+     {
+      "module": "com.core.gyroid-infill",
+      "elapsed_ms": 10,
+      "end_ms": 900
+     },
+     {
+      "module": "com.core.lightning-infill",
+      "elapsed_ms": 12,
+      "end_ms": 920
+     },
+     {
+      "module": "com.core.rectilinear-infill",
+      "elapsed_ms": 8,
+      "end_ms": 936
+     },
+     {
+      "module": "com.core.top-surface-ironing",
+      "elapsed_ms": 15,
+      "end_ms": 960
+     },
+     {
+      "module": "com.core.wave-overhangs",
+      "elapsed_ms": 5,
+      "end_ms": 973
+     },
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 3182,
+      "end_ms": 4159
+     },
+     {
+      "module": "com.core.tree-support",
+      "elapsed_ms": 6,
+      "end_ms": 4182
+     },
+     {
+      "module": "com.core.support-surface-ironing",
+      "elapsed_ms": 4,
+      "end_ms": 4195
+     },
+     {
+      "module": "com.core.path-optimization-default",
+      "elapsed_ms": 2,
+      "end_ms": 4209
+     }
+    ],
+    "2": [
+     {
+      "module": "host:paint_annotator",
+      "elapsed_ms": 6,
+      "end_ms": 4233
+     },
+     {
+      "module": "com.core.arachne-perimeters",
+      "elapsed_ms": 20,
+      "end_ms": 4253
+     },
+     {
+      "module": "com.core.fuzzy-skin",
+      "elapsed_ms": 0,
+      "end_ms": 4288
+     },
+     {
+      "module": "com.core.seam-placer",
+      "elapsed_ms": 4,
+      "end_ms": 4321
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 11,
+      "end_ms": 4360
+     },
+     {
+      "module": "com.core.gyroid-infill",
+      "elapsed_ms": 4,
+      "end_ms": 4379
+     },
+     {
+      "module": "com.core.lightning-infill",
+      "elapsed_ms": 8,
+      "end_ms": 4391
+     },
+     {
+      "module": "com.core.rectilinear-infill",
+      "elapsed_ms": 13,
+      "end_ms": 4412
+     },
+     {
+      "module": "com.core.top-surface-ironing",
+      "elapsed_ms": 4,
+      "end_ms": 4419
+     },
+     {
+      "module": "com.core.wave-overhangs",
+      "elapsed_ms": 5,
+      "end_ms": 4430
+     },
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 1389,
+      "end_ms": 5832
+     },
+     {
+      "module": "com.core.tree-support",
+      "elapsed_ms": 1,
+      "end_ms": 5835
+     },
+     {
+      "module": "com.core.support-surface-ironing",
+      "elapsed_ms": 1,
+      "end_ms": 5838
+     },
+     {
+      "module": "com.core.path-optimization-default",
+      "elapsed_ms": 0,
+      "end_ms": 5840
+     }
+    ]
+   }
+  },
+  {
+   "cell": "ordinary-benchy-arachne-off-profile",
+   "threads": 12,
+   "phase_span_ms": 6054,
+   "first_batch": [
+    0,
+    7,
+    15,
+    30,
+    60,
+    120,
+    127,
+    129,
+    131,
+    135,
+    150,
+    180
+   ],
+   "first_batch_is_cascade_boundaries": {
+    "spine_split_points": [
+     120,
+     60,
+     30,
+     15,
+     7,
+     3,
+     1
+    ],
+    "spine_in_first_batch": [
+     120,
+     60,
+     30,
+     15,
+     7
+    ],
+    "spine_not_in_batch": [
+     3,
+     1
+    ],
+    "spine_hits": 5,
+    "spine_total": 7
+   },
+   "open_hist_ms": {
+    "1": 3194,
+    "2": 6,
+    "3": 4,
+    "4": 3,
+    "5": 21,
+    "6": 1,
+    "7": 46,
+    "8": 1,
+    "9": 40,
+    "10": 32,
+    "11": 326,
+    "12": 2380
+   },
+   "idle_worker_seconds": 36.151,
+   "last_layer": 2,
+   "last_end_ms": 6054,
+   "second_last_layer": 1,
+   "second_last_end_ms": 4490,
+   "tail_interval_ms": 1564,
+   "tail_layers": [
+    2
+   ],
+   "tail_open_hist_ms": {
+    "1": 1564
+   },
+   "worst_uncovered": [
+    {
+     "layer": 1,
+     "elapsed_ms": 4101,
+     "module_bracket_sum_ms": 3805,
+     "uncovered_ms": 296,
+     "calls": 14
+    },
+    {
+     "layer": 13,
+     "elapsed_ms": 202,
+     "module_bracket_sum_ms": 63,
+     "uncovered_ms": 139,
+     "calls": 14
+    },
+    {
+     "layer": 189,
+     "elapsed_ms": 193,
+     "module_bracket_sum_ms": 68,
+     "uncovered_ms": 125,
+     "calls": 14
+    },
+    {
+     "layer": 214,
+     "elapsed_ms": 187,
+     "module_bracket_sum_ms": 64,
+     "uncovered_ms": 123,
+     "calls": 14
+    },
+    {
+     "layer": 198,
+     "elapsed_ms": 188,
+     "module_bracket_sum_ms": 75,
+     "uncovered_ms": 113,
+     "calls": 14
+    }
+   ],
+   "tail_modules": {
+    "2": [
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 1456,
+      "end_ms": 6048
+     },
+     {
+      "module": "com.core.arachne-perimeters",
+      "elapsed_ms": 18,
+      "end_ms": 4510
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 5,
+      "end_ms": 4582
+     },
+     {
+      "module": "com.core.rectilinear-infill",
+      "elapsed_ms": 2,
+      "end_ms": 4587
+     }
+    ]
+   },
+   "low_layers": {
+    "0": {
+     "start_ms": 0,
+     "end_ms": 388,
+     "elapsed_ms": 387
+    },
+    "1": {
+     "start_ms": 388,
+     "end_ms": 4490,
+     "elapsed_ms": 4101
+    },
+    "2": {
+     "start_ms": 4490,
+     "end_ms": 6054,
+     "elapsed_ms": 1563
+    }
+   },
+   "low_layer_module_calls": {
+    "0": [
+     {
+      "module": "host:paint_annotator",
+      "elapsed_ms": 2,
+      "end_ms": 8
+     },
+     {
+      "module": "com.core.arachne-perimeters",
+      "elapsed_ms": 101,
+      "end_ms": 115
+     },
+     {
+      "module": "com.core.fuzzy-skin",
+      "elapsed_ms": 2,
+      "end_ms": 145
+     },
+     {
+      "module": "com.core.seam-placer",
+      "elapsed_ms": 2,
+      "end_ms": 157
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 10,
+      "end_ms": 183
+     },
+     {
+      "module": "com.core.gyroid-infill",
+      "elapsed_ms": 2,
+      "end_ms": 188
+     },
+     {
+      "module": "com.core.lightning-infill",
+      "elapsed_ms": 3,
+      "end_ms": 193
+     },
+     {
+      "module": "com.core.rectilinear-infill",
+      "elapsed_ms": 5,
+      "end_ms": 201
+     },
+     {
+      "module": "com.core.top-surface-ironing",
+      "elapsed_ms": 3,
+      "end_ms": 206
+     },
+     {
+      "module": "com.core.wave-overhangs",
+      "elapsed_ms": 5,
+      "end_ms": 214
+     },
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 134,
+      "end_ms": 352
+     },
+     {
+      "module": "com.core.tree-support",
+      "elapsed_ms": 5,
+      "end_ms": 373
+     },
+     {
+      "module": "com.core.support-surface-ironing",
+      "elapsed_ms": 1,
+      "end_ms": 379
+     },
+     {
+      "module": "com.core.path-optimization-default",
+      "elapsed_ms": 2,
+      "end_ms": 386
+     }
+    ],
+    "1": [
+     {
+      "module": "host:paint_annotator",
+      "elapsed_ms": 1,
+      "end_ms": 391
+     },
+     {
+      "module": "com.core.arachne-perimeters",
+      "elapsed_ms": 91,
+      "end_ms": 483
+     },
+     {
+      "module": "com.core.fuzzy-skin",
+      "elapsed_ms": 2,
+      "end_ms": 578
+     },
+     {
+      "module": "com.core.seam-placer",
+      "elapsed_ms": 1,
+      "end_ms": 662
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 40,
+      "end_ms": 792
+     },
+     {
+      "module": "com.core.gyroid-infill",
+      "elapsed_ms": 7,
+      "end_ms": 802
+     },
+     {
+      "module": "com.core.lightning-infill",
+      "elapsed_ms": 5,
+      "end_ms": 810
+     },
+     {
+      "module": "com.core.rectilinear-infill",
+      "elapsed_ms": 8,
+      "end_ms": 818
+     },
+     {
+      "module": "com.core.top-surface-ironing",
+      "elapsed_ms": 5,
+      "end_ms": 827
+     },
+     {
+      "module": "com.core.wave-overhangs",
+      "elapsed_ms": 4,
+      "end_ms": 835
+     },
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 3635,
+      "end_ms": 4479
+     },
+     {
+      "module": "com.core.tree-support",
+      "elapsed_ms": 3,
+      "end_ms": 4483
+     },
+     {
+      "module": "com.core.support-surface-ironing",
+      "elapsed_ms": 3,
+      "end_ms": 4488
+     },
+     {
+      "module": "com.core.path-optimization-default",
+      "elapsed_ms": 0,
+      "end_ms": 4489
+     }
+    ],
+    "2": [
+     {
+      "module": "host:paint_annotator",
+      "elapsed_ms": 0,
+      "end_ms": 4491
+     },
+     {
+      "module": "com.core.arachne-perimeters",
+      "elapsed_ms": 18,
+      "end_ms": 4510
+     },
+     {
+      "module": "com.core.fuzzy-skin",
+      "elapsed_ms": 1,
+      "end_ms": 4533
+     },
+     {
+      "module": "com.core.seam-placer",
+      "elapsed_ms": 1,
+      "end_ms": 4555
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 5,
+      "end_ms": 4582
+     },
+     {
+      "module": "com.core.gyroid-infill",
+      "elapsed_ms": 1,
+      "end_ms": 4584
+     },
+     {
+      "module": "com.core.lightning-infill",
+      "elapsed_ms": 1,
+      "end_ms": 4585
+     },
+     {
+      "module": "com.core.rectilinear-infill",
+      "elapsed_ms": 2,
+      "end_ms": 4587
+     },
+     {
+      "module": "com.core.top-surface-ironing",
+      "elapsed_ms": 1,
+      "end_ms": 4589
+     },
+     {
+      "module": "com.core.wave-overhangs",
+      "elapsed_ms": 1,
+      "end_ms": 4590
+     },
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 1456,
+      "end_ms": 6048
+     },
+     {
+      "module": "com.core.tree-support",
+      "elapsed_ms": 1,
+      "end_ms": 6050
+     },
+     {
+      "module": "com.core.support-surface-ironing",
+      "elapsed_ms": 1,
+      "end_ms": 6052
+     },
+     {
+      "module": "com.core.path-optimization-default",
+      "elapsed_ms": 0,
+      "end_ms": 6054
+     }
+    ]
+   }
+  },
+  {
+   "cell": "ordinary-benchy-arachne-on-instrumented",
+   "threads": 12,
+   "phase_span_ms": 5393,
+   "first_batch": [
+    0,
+    3,
+    7,
+    15,
+    30,
+    60,
+    75,
+    82,
+    90,
+    120,
+    150,
+    180
+   ],
+   "first_batch_is_cascade_boundaries": {
+    "spine_split_points": [
+     120,
+     60,
+     30,
+     15,
+     7,
+     3,
+     1
+    ],
+    "spine_in_first_batch": [
+     120,
+     60,
+     30,
+     15,
+     7,
+     3
+    ],
+    "spine_not_in_batch": [
+     1
+    ],
+    "spine_hits": 6,
+    "spine_total": 7
+   },
+   "open_hist_ms": {
+    "1": 2340,
+    "2": 68,
+    "3": 32,
+    "4": 4,
+    "5": 9,
+    "6": 6,
+    "7": 1,
+    "8": 31,
+    "9": 33,
+    "10": 26,
+    "11": 213,
+    "12": 2630
+   },
+   "idle_worker_seconds": 27.332,
+   "last_layer": 2,
+   "last_end_ms": 5393,
+   "second_last_layer": 1,
+   "second_last_end_ms": 4108,
+   "tail_interval_ms": 1285,
+   "tail_layers": [
+    2
+   ],
+   "tail_open_hist_ms": {
+    "1": 1285
+   },
+   "worst_uncovered": [
+    {
+     "layer": 1,
+     "elapsed_ms": 3669,
+     "module_bracket_sum_ms": 3369,
+     "uncovered_ms": 300,
+     "calls": 14
+    },
+    {
+     "layer": 60,
+     "elapsed_ms": 364,
+     "module_bracket_sum_ms": 204,
+     "uncovered_ms": 160,
+     "calls": 14
+    },
+    {
+     "layer": 151,
+     "elapsed_ms": 240,
+     "module_bracket_sum_ms": 80,
+     "uncovered_ms": 160,
+     "calls": 14
+    },
+    {
+     "layer": 90,
+     "elapsed_ms": 279,
+     "module_bracket_sum_ms": 140,
+     "uncovered_ms": 139,
+     "calls": 14
+    },
+    {
+     "layer": 120,
+     "elapsed_ms": 254,
+     "module_bracket_sum_ms": 115,
+     "uncovered_ms": 139,
+     "calls": 14
+    }
+   ],
+   "tail_modules": {
+    "2": [
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 1179,
+      "end_ms": 5375
+     },
+     {
+      "module": "com.core.arachne-perimeters",
+      "elapsed_ms": 15,
+      "end_ms": 4125
+     },
+     {
+      "module": "com.core.tree-support",
+      "elapsed_ms": 13,
+      "end_ms": 5389
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 4,
+      "end_ms": 4187
+     }
+    ]
+   },
+   "low_layers": {
+    "0": {
+     "start_ms": 0,
+     "end_ms": 438,
+     "elapsed_ms": 437
+    },
+    "1": {
+     "start_ms": 438,
+     "end_ms": 4108,
+     "elapsed_ms": 3669
+    },
+    "2": {
+     "start_ms": 4108,
+     "end_ms": 5393,
+     "elapsed_ms": 1284
+    }
+   },
+   "low_layer_module_calls": {
+    "0": [
+     {
+      "module": "host:paint_annotator",
+      "elapsed_ms": 4,
+      "end_ms": 7
+     },
+     {
+      "module": "com.core.arachne-perimeters",
+      "elapsed_ms": 108,
+      "end_ms": 118
+     },
+     {
+      "module": "com.core.fuzzy-skin",
+      "elapsed_ms": 1,
+      "end_ms": 142
+     },
+     {
+      "module": "com.core.seam-placer",
+      "elapsed_ms": 83,
+      "end_ms": 237
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 11,
+      "end_ms": 264
+     },
+     {
+      "module": "com.core.gyroid-infill",
+      "elapsed_ms": 1,
+      "end_ms": 267
+     },
+     {
+      "module": "com.core.lightning-infill",
+      "elapsed_ms": 1,
+      "end_ms": 269
+     },
+     {
+      "module": "com.core.rectilinear-infill",
+      "elapsed_ms": 2,
+      "end_ms": 271
+     },
+     {
+      "module": "com.core.top-surface-ironing",
+      "elapsed_ms": 1,
+      "end_ms": 274
+     },
+     {
+      "module": "com.core.wave-overhangs",
+      "elapsed_ms": 1,
+      "end_ms": 276
+     },
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 131,
+      "end_ms": 408
+     },
+     {
+      "module": "com.core.tree-support",
+      "elapsed_ms": 23,
+      "end_ms": 433
+     },
+     {
+      "module": "com.core.support-surface-ironing",
+      "elapsed_ms": 1,
+      "end_ms": 436
+     },
+     {
+      "module": "com.core.path-optimization-default",
+      "elapsed_ms": 1,
+      "end_ms": 438
+     }
+    ],
+    "1": [
+     {
+      "module": "host:paint_annotator",
+      "elapsed_ms": 0,
+      "end_ms": 439
+     },
+     {
+      "module": "com.core.arachne-perimeters",
+      "elapsed_ms": 93,
+      "end_ms": 534
+     },
+     {
+      "module": "com.core.fuzzy-skin",
+      "elapsed_ms": 0,
+      "end_ms": 631
+     },
+     {
+      "module": "com.core.seam-placer",
+      "elapsed_ms": 1,
+      "end_ms": 720
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 35,
+      "end_ms": 844
+     },
+     {
+      "module": "com.core.gyroid-infill",
+      "elapsed_ms": 8,
+      "end_ms": 861
+     },
+     {
+      "module": "com.core.lightning-infill",
+      "elapsed_ms": 5,
+      "end_ms": 868
+     },
+     {
+      "module": "com.core.rectilinear-infill",
+      "elapsed_ms": 8,
+      "end_ms": 876
+     },
+     {
+      "module": "com.core.top-surface-ironing",
+      "elapsed_ms": 6,
+      "end_ms": 884
+     },
+     {
+      "module": "com.core.wave-overhangs",
+      "elapsed_ms": 4,
+      "end_ms": 890
+     },
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 3191,
+      "end_ms": 4085
+     },
+     {
+      "module": "com.core.tree-support",
+      "elapsed_ms": 16,
+      "end_ms": 4102
+     },
+     {
+      "module": "com.core.support-surface-ironing",
+      "elapsed_ms": 2,
+      "end_ms": 4106
+     },
+     {
+      "module": "com.core.path-optimization-default",
+      "elapsed_ms": 0,
+      "end_ms": 4107
+     }
+    ],
+    "2": [
+     {
+      "module": "host:paint_annotator",
+      "elapsed_ms": 0,
+      "end_ms": 4108
+     },
+     {
+      "module": "com.core.arachne-perimeters",
+      "elapsed_ms": 15,
+      "end_ms": 4125
+     },
+     {
+      "module": "com.core.fuzzy-skin",
+      "elapsed_ms": 0,
+      "end_ms": 4144
+     },
+     {
+      "module": "com.core.seam-placer",
+      "elapsed_ms": 0,
+      "end_ms": 4164
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 4,
+      "end_ms": 4187
+     },
+     {
+      "module": "com.core.gyroid-infill",
+      "elapsed_ms": 1,
+      "end_ms": 4189
+     },
+     {
+      "module": "com.core.lightning-infill",
+      "elapsed_ms": 0,
+      "end_ms": 4190
+     },
+     {
+      "module": "com.core.rectilinear-infill",
+      "elapsed_ms": 1,
+      "end_ms": 4192
+     },
+     {
+      "module": "com.core.top-surface-ironing",
+      "elapsed_ms": 1,
+      "end_ms": 4193
+     },
+     {
+      "module": "com.core.wave-overhangs",
+      "elapsed_ms": 0,
+      "end_ms": 4195
+     },
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 1179,
+      "end_ms": 5375
+     },
+     {
+      "module": "com.core.tree-support",
+      "elapsed_ms": 13,
+      "end_ms": 5389
+     },
+     {
+      "module": "com.core.support-surface-ironing",
+      "elapsed_ms": 1,
+      "end_ms": 5391
+     },
+     {
+      "module": "com.core.path-optimization-default",
+      "elapsed_ms": 0,
+      "end_ms": 5392
+     }
+    ]
+   }
+  },
+  {
+   "cell": "ordinary-benchy-arachne-on-profile",
+   "threads": 12,
+   "phase_span_ms": 6058,
+   "first_batch": [
+    0,
+    30,
+    45,
+    60,
+    75,
+    90,
+    120,
+    135,
+    142,
+    150,
+    180,
+    210
+   ],
+   "first_batch_is_cascade_boundaries": {
+    "spine_split_points": [
+     120,
+     60,
+     30,
+     15,
+     7,
+     3,
+     1
+    ],
+    "spine_in_first_batch": [
+     120,
+     60,
+     30
+    ],
+    "spine_not_in_batch": [
+     15,
+     7,
+     3,
+     1
+    ],
+    "spine_hits": 3,
+    "spine_total": 7
+   },
+   "open_hist_ms": {
+    "0": 5,
+    "1": 2973,
+    "2": 8,
+    "3": 6,
+    "4": 9,
+    "5": 1,
+    "6": 6,
+    "7": 3,
+    "8": 6,
+    "9": 21,
+    "10": 28,
+    "11": 295,
+    "12": 2697
+   },
+   "idle_worker_seconds": 33.465,
+   "last_layer": 2,
+   "last_end_ms": 6058,
+   "second_last_layer": 1,
+   "second_last_end_ms": 4454,
+   "tail_interval_ms": 1604,
+   "tail_layers": [
+    2
+   ],
+   "tail_open_hist_ms": {
+    "0": 5,
+    "1": 1599
+   },
+   "worst_uncovered": [
+    {
+     "layer": 1,
+     "elapsed_ms": 3992,
+     "module_bracket_sum_ms": 3665,
+     "uncovered_ms": 327,
+     "calls": 14
+    },
+    {
+     "layer": 2,
+     "elapsed_ms": 1599,
+     "module_bracket_sum_ms": 1425,
+     "uncovered_ms": 174,
+     "calls": 14
+    },
+    {
+     "layer": 0,
+     "elapsed_ms": 459,
+     "module_bracket_sum_ms": 296,
+     "uncovered_ms": 163,
+     "calls": 14
+    },
+    {
+     "layer": 183,
+     "elapsed_ms": 180,
+     "module_bracket_sum_ms": 52,
+     "uncovered_ms": 128,
+     "calls": 14
+    },
+    {
+     "layer": 35,
+     "elapsed_ms": 265,
+     "module_bracket_sum_ms": 142,
+     "uncovered_ms": 123,
+     "calls": 14
+    }
+   ],
+   "tail_modules": {
+    "2": [
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 1328,
+      "end_ms": 6031
+     },
+     {
+      "module": "com.core.arachne-perimeters",
+      "elapsed_ms": 22,
+      "end_ms": 4515
+     },
+     {
+      "module": "com.core.tree-support",
+      "elapsed_ms": 17,
+      "end_ms": 6050
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 12,
+      "end_ms": 4637
+     }
+    ]
+   },
+   "low_layers": {
+    "0": {
+     "start_ms": 0,
+     "end_ms": 460,
+     "elapsed_ms": 459
+    },
+    "1": {
+     "start_ms": 462,
+     "end_ms": 4454,
+     "elapsed_ms": 3992
+    },
+    "2": {
+     "start_ms": 4459,
+     "end_ms": 6058,
+     "elapsed_ms": 1599
+    }
+   },
+   "low_layer_module_calls": {
+    "0": [
+     {
+      "module": "host:paint_annotator",
+      "elapsed_ms": 0,
+      "end_ms": 5
+     },
+     {
+      "module": "com.core.arachne-perimeters",
+      "elapsed_ms": 94,
+      "end_ms": 107
+     },
+     {
+      "module": "com.core.fuzzy-skin",
+      "elapsed_ms": 1,
+      "end_ms": 128
+     },
+     {
+      "module": "com.core.seam-placer",
+      "elapsed_ms": 2,
+      "end_ms": 142
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 11,
+      "end_ms": 169
+     },
+     {
+      "module": "com.core.gyroid-infill",
+      "elapsed_ms": 1,
+      "end_ms": 172
+     },
+     {
+      "module": "com.core.lightning-infill",
+      "elapsed_ms": 2,
+      "end_ms": 176
+     },
+     {
+      "module": "com.core.rectilinear-infill",
+      "elapsed_ms": 3,
+      "end_ms": 181
+     },
+     {
+      "module": "com.core.top-surface-ironing",
+      "elapsed_ms": 4,
+      "end_ms": 188
+     },
+     {
+      "module": "com.core.wave-overhangs",
+      "elapsed_ms": 1,
+      "end_ms": 190
+     },
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 146,
+      "end_ms": 337
+     },
+     {
+      "module": "com.core.tree-support",
+      "elapsed_ms": 24,
+      "end_ms": 379
+     },
+     {
+      "module": "com.core.support-surface-ironing",
+      "elapsed_ms": 4,
+      "end_ms": 443
+     },
+     {
+      "module": "com.core.path-optimization-default",
+      "elapsed_ms": 3,
+      "end_ms": 456
+     }
+    ],
+    "1": [
+     {
+      "module": "host:paint_annotator",
+      "elapsed_ms": 0,
+      "end_ms": 464
+     },
+     {
+      "module": "com.core.arachne-perimeters",
+      "elapsed_ms": 97,
+      "end_ms": 563
+     },
+     {
+      "module": "com.core.fuzzy-skin",
+      "elapsed_ms": 1,
+      "end_ms": 660
+     },
+     {
+      "module": "com.core.seam-placer",
+      "elapsed_ms": 10,
+      "end_ms": 756
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 39,
+      "end_ms": 880
+     },
+     {
+      "module": "com.core.gyroid-infill",
+      "elapsed_ms": 6,
+      "end_ms": 887
+     },
+     {
+      "module": "com.core.lightning-infill",
+      "elapsed_ms": 4,
+      "end_ms": 894
+     },
+     {
+      "module": "com.core.rectilinear-infill",
+      "elapsed_ms": 7,
+      "end_ms": 902
+     },
+     {
+      "module": "com.core.top-surface-ironing",
+      "elapsed_ms": 4,
+      "end_ms": 908
+     },
+     {
+      "module": "com.core.wave-overhangs",
+      "elapsed_ms": 4,
+      "end_ms": 915
+     },
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 3459,
+      "end_ms": 4376
+     },
+     {
+      "module": "com.core.tree-support",
+      "elapsed_ms": 22,
+      "end_ms": 4412
+     },
+     {
+      "module": "com.core.support-surface-ironing",
+      "elapsed_ms": 7,
+      "end_ms": 4430
+     },
+     {
+      "module": "com.core.path-optimization-default",
+      "elapsed_ms": 5,
+      "end_ms": 4445
+     }
+    ],
+    "2": [
+     {
+      "module": "host:paint_annotator",
+      "elapsed_ms": 4,
+      "end_ms": 4478
+     },
+     {
+      "module": "com.core.arachne-perimeters",
+      "elapsed_ms": 22,
+      "end_ms": 4515
+     },
+     {
+      "module": "com.core.fuzzy-skin",
+      "elapsed_ms": 6,
+      "end_ms": 4560
+     },
+     {
+      "module": "com.core.seam-placer",
+      "elapsed_ms": 5,
+      "end_ms": 4591
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 12,
+      "end_ms": 4637
+     },
+     {
+      "module": "com.core.gyroid-infill",
+      "elapsed_ms": 5,
+      "end_ms": 4647
+     },
+     {
+      "module": "com.core.lightning-infill",
+      "elapsed_ms": 9,
+      "end_ms": 4660
+     },
+     {
+      "module": "com.core.rectilinear-infill",
+      "elapsed_ms": 4,
+      "end_ms": 4671
+     },
+     {
+      "module": "com.core.top-surface-ironing",
+      "elapsed_ms": 5,
+      "end_ms": 4681
+     },
+     {
+      "module": "com.core.wave-overhangs",
+      "elapsed_ms": 6,
+      "end_ms": 4690
+     },
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 1328,
+      "end_ms": 6031
+     },
+     {
+      "module": "com.core.tree-support",
+      "elapsed_ms": 17,
+      "end_ms": 6050
+     },
+     {
+      "module": "com.core.support-surface-ironing",
+      "elapsed_ms": 1,
+      "end_ms": 6053
+     },
+     {
+      "module": "com.core.path-optimization-default",
+      "elapsed_ms": 1,
+      "end_ms": 6058
+     }
+    ]
+   }
+  },
+  {
+   "cell": "ordinary-benchy-classic-off-profile",
+   "threads": 12,
+   "phase_span_ms": 9286,
+   "first_batch": [
+    0,
+    15,
+    30,
+    31,
+    33,
+    37,
+    45,
+    48,
+    52,
+    60,
+    90,
+    120
+   ],
+   "first_batch_is_cascade_boundaries": {
+    "spine_split_points": [
+     120,
+     60,
+     30,
+     15,
+     7,
+     3,
+     1
+    ],
+    "spine_in_first_batch": [
+     120,
+     60,
+     30,
+     15
+    ],
+    "spine_not_in_batch": [
+     7,
+     3,
+     1
+    ],
+    "spine_hits": 4,
+    "spine_total": 7
+   },
+   "open_hist_ms": {
+    "1": 1319,
+    "2": 30,
+    "3": 23,
+    "4": 58,
+    "5": 157,
+    "6": 145,
+    "7": 16,
+    "8": 4,
+    "9": 11,
+    "10": 55,
+    "11": 132,
+    "12": 7336
+   },
+   "idle_worker_seconds": 17.82,
+   "last_layer": 2,
+   "last_end_ms": 9286,
+   "second_last_layer": 111,
+   "second_last_end_ms": 7967,
+   "tail_interval_ms": 1319,
+   "tail_layers": [
+    2
+   ],
+   "tail_open_hist_ms": {
+    "1": 1319
+   },
+   "worst_uncovered": [
+    {
+     "layer": 1,
+     "elapsed_ms": 5904,
+     "module_bracket_sum_ms": 5588,
+     "uncovered_ms": 316,
+     "calls": 14
+    },
+    {
+     "layer": 24,
+     "elapsed_ms": 292,
+     "module_bracket_sum_ms": 178,
+     "uncovered_ms": 114,
+     "calls": 14
+    },
+    {
+     "layer": 76,
+     "elapsed_ms": 508,
+     "module_bracket_sum_ms": 413,
+     "uncovered_ms": 95,
+     "calls": 14
+    },
+    {
+     "layer": 2,
+     "elapsed_ms": 2046,
+     "module_bracket_sum_ms": 1953,
+     "uncovered_ms": 93,
+     "calls": 14
+    },
+    {
+     "layer": 92,
+     "elapsed_ms": 703,
+     "module_bracket_sum_ms": 611,
+     "uncovered_ms": 92,
+     "calls": 14
+    }
+   ],
+   "tail_modules": {
+    "2": [
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 1617,
+      "end_ms": 9279
+     },
+     {
+      "module": "com.core.classic-perimeters",
+      "elapsed_ms": 316,
+      "end_ms": 7560
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 7,
+      "end_ms": 7651
+     },
+     {
+      "module": "com.core.fuzzy-skin",
+      "elapsed_ms": 2,
+      "end_ms": 7589
+     }
+    ]
+   },
+   "low_layers": {
+    "0": {
+     "start_ms": 0,
+     "end_ms": 1334,
+     "elapsed_ms": 1334
+    },
+    "1": {
+     "start_ms": 1335,
+     "end_ms": 7239,
+     "elapsed_ms": 5904
+    },
+    "2": {
+     "start_ms": 7240,
+     "end_ms": 9286,
+     "elapsed_ms": 2046
+    }
+   },
+   "low_layer_module_calls": {
+    "0": [
+     {
+      "module": "host:paint_annotator",
+      "elapsed_ms": 1,
+      "end_ms": 9
+     },
+     {
+      "module": "com.core.classic-perimeters",
+      "elapsed_ms": 921,
+      "end_ms": 937
+     },
+     {
+      "module": "com.core.fuzzy-skin",
+      "elapsed_ms": 7,
+      "end_ms": 970
+     },
+     {
+      "module": "com.core.seam-placer",
+      "elapsed_ms": 6,
+      "end_ms": 992
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 11,
+      "end_ms": 1020
+     },
+     {
+      "module": "com.core.gyroid-infill",
+      "elapsed_ms": 1,
+      "end_ms": 1021
+     },
+     {
+      "module": "com.core.lightning-infill",
+      "elapsed_ms": 1,
+      "end_ms": 1023
+     },
+     {
+      "module": "com.core.rectilinear-infill",
+      "elapsed_ms": 2,
+      "end_ms": 1025
+     },
+     {
+      "module": "com.core.top-surface-ironing",
+      "elapsed_ms": 1,
+      "end_ms": 1026
+     },
+     {
+      "module": "com.core.wave-overhangs",
+      "elapsed_ms": 1,
+      "end_ms": 1028
+     },
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 292,
+      "end_ms": 1321
+     },
+     {
+      "module": "com.core.tree-support",
+      "elapsed_ms": 1,
+      "end_ms": 1325
+     },
+     {
+      "module": "com.core.support-surface-ironing",
+      "elapsed_ms": 1,
+      "end_ms": 1327
+     },
+     {
+      "module": "com.core.path-optimization-default",
+      "elapsed_ms": 6,
+      "end_ms": 1334
+     }
+    ],
+    "1": [
+     {
+      "module": "host:paint_annotator",
+      "elapsed_ms": 0,
+      "end_ms": 1335
+     },
+     {
+      "module": "com.core.classic-perimeters",
+      "elapsed_ms": 1128,
+      "end_ms": 2464
+     },
+     {
+      "module": "com.core.fuzzy-skin",
+      "elapsed_ms": 2,
+      "end_ms": 2573
+     },
+     {
+      "module": "com.core.seam-placer",
+      "elapsed_ms": 2,
+      "end_ms": 2666
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 43,
+      "end_ms": 2805
+     },
+     {
+      "module": "com.core.gyroid-infill",
+      "elapsed_ms": 6,
+      "end_ms": 2811
+     },
+     {
+      "module": "com.core.lightning-infill",
+      "elapsed_ms": 5,
+      "end_ms": 2818
+     },
+     {
+      "module": "com.core.rectilinear-infill",
+      "elapsed_ms": 8,
+      "end_ms": 2827
+     },
+     {
+      "module": "com.core.top-surface-ironing",
+      "elapsed_ms": 40,
+      "end_ms": 2868
+     },
+     {
+      "module": "com.core.wave-overhangs",
+      "elapsed_ms": 13,
+      "end_ms": 2884
+     },
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 4325,
+      "end_ms": 7217
+     },
+     {
+      "module": "com.core.tree-support",
+      "elapsed_ms": 6,
+      "end_ms": 7225
+     },
+     {
+      "module": "com.core.support-surface-ironing",
+      "elapsed_ms": 8,
+      "end_ms": 7234
+     },
+     {
+      "module": "com.core.path-optimization-default",
+      "elapsed_ms": 2,
+      "end_ms": 7238
+     }
+    ],
+    "2": [
+     {
+      "module": "host:paint_annotator",
+      "elapsed_ms": 0,
+      "end_ms": 7242
+     },
+     {
+      "module": "com.core.classic-perimeters",
+      "elapsed_ms": 316,
+      "end_ms": 7560
+     },
+     {
+      "module": "com.core.fuzzy-skin",
+      "elapsed_ms": 2,
+      "end_ms": 7589
+     },
+     {
+      "module": "com.core.seam-placer",
+      "elapsed_ms": 2,
+      "end_ms": 7616
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 7,
+      "end_ms": 7651
+     },
+     {
+      "module": "com.core.gyroid-infill",
+      "elapsed_ms": 1,
+      "end_ms": 7653
+     },
+     {
+      "module": "com.core.lightning-infill",
+      "elapsed_ms": 1,
+      "end_ms": 7655
+     },
+     {
+      "module": "com.core.rectilinear-infill",
+      "elapsed_ms": 2,
+      "end_ms": 7657
+     },
+     {
+      "module": "com.core.top-surface-ironing",
+      "elapsed_ms": 1,
+      "end_ms": 7659
+     },
+     {
+      "module": "com.core.wave-overhangs",
+      "elapsed_ms": 1,
+      "end_ms": 7661
+     },
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 1617,
+      "end_ms": 9279
+     },
+     {
+      "module": "com.core.tree-support",
+      "elapsed_ms": 1,
+      "end_ms": 9282
+     },
+     {
+      "module": "com.core.support-surface-ironing",
+      "elapsed_ms": 1,
+      "end_ms": 9284
+     },
+     {
+      "module": "com.core.path-optimization-default",
+      "elapsed_ms": 1,
+      "end_ms": 9286
+     }
+    ]
+   }
+  },
+  {
+   "cell": "ordinary-benchy-classic-on-profile",
+   "threads": 12,
+   "phase_span_ms": 9516,
+   "first_batch": [
+    0,
+    3,
+    7,
+    15,
+    30,
+    45,
+    60,
+    120,
+    135,
+    150,
+    165,
+    180
+   ],
+   "first_batch_is_cascade_boundaries": {
+    "spine_split_points": [
+     120,
+     60,
+     30,
+     15,
+     7,
+     3,
+     1
+    ],
+    "spine_in_first_batch": [
+     120,
+     60,
+     30,
+     15,
+     7,
+     3
+    ],
+    "spine_not_in_batch": [
+     1
+    ],
+    "spine_hits": 6,
+    "spine_total": 7
+   },
+   "open_hist_ms": {
+    "1": 1146,
+    "2": 12,
+    "3": 11,
+    "4": 2,
+    "5": 37,
+    "6": 17,
+    "7": 115,
+    "8": 18,
+    "9": 95,
+    "10": 55,
+    "11": 87,
+    "12": 7921
+   },
+   "idle_worker_seconds": 14.331,
+   "last_layer": 2,
+   "last_end_ms": 9516,
+   "second_last_layer": 113,
+   "second_last_end_ms": 8370,
+   "tail_interval_ms": 1146,
+   "tail_layers": [
+    2
+   ],
+   "tail_open_hist_ms": {
+    "1": 1146
+   },
+   "worst_uncovered": [
+    {
+     "layer": 1,
+     "elapsed_ms": 5723,
+     "module_bracket_sum_ms": 5386,
+     "uncovered_ms": 337,
+     "calls": 14
+    },
+    {
+     "layer": 2,
+     "elapsed_ms": 2305,
+     "module_bracket_sum_ms": 2136,
+     "uncovered_ms": 169,
+     "calls": 14
+    },
+    {
+     "layer": 0,
+     "elapsed_ms": 1485,
+     "module_bracket_sum_ms": 1400,
+     "uncovered_ms": 85,
+     "calls": 14
+    },
+    {
+     "layer": 30,
+     "elapsed_ms": 453,
+     "module_bracket_sum_ms": 406,
+     "uncovered_ms": 47,
+     "calls": 14
+    },
+    {
+     "layer": 52,
+     "elapsed_ms": 1364,
+     "module_bracket_sum_ms": 1321,
+     "uncovered_ms": 43,
+     "calls": 14
+    }
+   ],
+   "tail_modules": {
+    "2": [
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 1768,
+      "end_ms": 9489
+     },
+     {
+      "module": "com.core.classic-perimeters",
+      "elapsed_ms": 312,
+      "end_ms": 7525
+     },
+     {
+      "module": "com.core.tree-support",
+      "elapsed_ms": 19,
+      "end_ms": 9509
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 17,
+      "end_ms": 7698
+     }
+    ]
+   },
+   "low_layers": {
+    "0": {
+     "start_ms": 0,
+     "end_ms": 1486,
+     "elapsed_ms": 1485
+    },
+    "1": {
+     "start_ms": 1486,
+     "end_ms": 7210,
+     "elapsed_ms": 5723
+    },
+    "2": {
+     "start_ms": 7210,
+     "end_ms": 9516,
+     "elapsed_ms": 2305
+    }
+   },
+   "low_layer_module_calls": {
+    "0": [
+     {
+      "module": "host:paint_annotator",
+      "elapsed_ms": 8,
+      "end_ms": 14
+     },
+     {
+      "module": "com.core.classic-perimeters",
+      "elapsed_ms": 1016,
+      "end_ms": 1033
+     },
+     {
+      "module": "com.core.fuzzy-skin",
+      "elapsed_ms": 5,
+      "end_ms": 1068
+     },
+     {
+      "module": "com.core.seam-placer",
+      "elapsed_ms": 6,
+      "end_ms": 1091
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 15,
+      "end_ms": 1124
+     },
+     {
+      "module": "com.core.gyroid-infill",
+      "elapsed_ms": 1,
+      "end_ms": 1126
+     },
+     {
+      "module": "com.core.lightning-infill",
+      "elapsed_ms": 1,
+      "end_ms": 1128
+     },
+     {
+      "module": "com.core.rectilinear-infill",
+      "elapsed_ms": 2,
+      "end_ms": 1130
+     },
+     {
+      "module": "com.core.top-surface-ironing",
+      "elapsed_ms": 1,
+      "end_ms": 1133
+     },
+     {
+      "module": "com.core.wave-overhangs",
+      "elapsed_ms": 2,
+      "end_ms": 1136
+     },
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 311,
+      "end_ms": 1449
+     },
+     {
+      "module": "com.core.tree-support",
+      "elapsed_ms": 27,
+      "end_ms": 1477
+     },
+     {
+      "module": "com.core.support-surface-ironing",
+      "elapsed_ms": 1,
+      "end_ms": 1479
+     },
+     {
+      "module": "com.core.path-optimization-default",
+      "elapsed_ms": 4,
+      "end_ms": 1485
+     }
+    ],
+    "1": [
+     {
+      "module": "host:paint_annotator",
+      "elapsed_ms": 0,
+      "end_ms": 1488
+     },
+     {
+      "module": "com.core.classic-perimeters",
+      "elapsed_ms": 1155,
+      "end_ms": 2644
+     },
+     {
+      "module": "com.core.fuzzy-skin",
+      "elapsed_ms": 1,
+      "end_ms": 2767
+     },
+     {
+      "module": "com.core.seam-placer",
+      "elapsed_ms": 2,
+      "end_ms": 2873
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 38,
+      "end_ms": 3004
+     },
+     {
+      "module": "com.core.gyroid-infill",
+      "elapsed_ms": 4,
+      "end_ms": 3009
+     },
+     {
+      "module": "com.core.lightning-infill",
+      "elapsed_ms": 3,
+      "end_ms": 3013
+     },
+     {
+      "module": "com.core.rectilinear-infill",
+      "elapsed_ms": 8,
+      "end_ms": 3022
+     },
+     {
+      "module": "com.core.top-surface-ironing",
+      "elapsed_ms": 4,
+      "end_ms": 3026
+     },
+     {
+      "module": "com.core.wave-overhangs",
+      "elapsed_ms": 5,
+      "end_ms": 3032
+     },
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 4124,
+      "end_ms": 7157
+     },
+     {
+      "module": "com.core.tree-support",
+      "elapsed_ms": 34,
+      "end_ms": 7192
+     },
+     {
+      "module": "com.core.support-surface-ironing",
+      "elapsed_ms": 6,
+      "end_ms": 7205
+     },
+     {
+      "module": "com.core.path-optimization-default",
+      "elapsed_ms": 2,
+      "end_ms": 7209
+     }
+    ],
+    "2": [
+     {
+      "module": "host:paint_annotator",
+      "elapsed_ms": 0,
+      "end_ms": 7212
+     },
+     {
+      "module": "com.core.classic-perimeters",
+      "elapsed_ms": 312,
+      "end_ms": 7525
+     },
+     {
+      "module": "com.core.fuzzy-skin",
+      "elapsed_ms": 2,
+      "end_ms": 7562
+     },
+     {
+      "module": "com.core.seam-placer",
+      "elapsed_ms": 3,
+      "end_ms": 7602
+     },
+     {
+      "module": "com.core.raft-default",
+      "elapsed_ms": 17,
+      "end_ms": 7698
+     },
+     {
+      "module": "com.core.gyroid-infill",
+      "elapsed_ms": 1,
+      "end_ms": 7700
+     },
+     {
+      "module": "com.core.lightning-infill",
+      "elapsed_ms": 4,
+      "end_ms": 7708
+     },
+     {
+      "module": "com.core.rectilinear-infill",
+      "elapsed_ms": 6,
+      "end_ms": 7715
+     },
+     {
+      "module": "com.core.top-surface-ironing",
+      "elapsed_ms": 1,
+      "end_ms": 7717
+     },
+     {
+      "module": "com.core.wave-overhangs",
+      "elapsed_ms": 1,
+      "end_ms": 7720
+     },
+     {
+      "module": "com.core.infill-linker",
+      "elapsed_ms": 1768,
+      "end_ms": 9489
+     },
+     {
+      "module": "com.core.tree-support",
+      "elapsed_ms": 19,
+      "end_ms": 9509
+     },
+     {
+      "module": "com.core.support-surface-ironing",
+      "elapsed_ms": 1,
+      "end_ms": 9512
+     },
+     {
+      "module": "com.core.path-optimization-default",
+      "elapsed_ms": 1,
+      "end_ms": 9515
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -38,30 +38,23 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-13, updated after the ticket-65 take):**
-the human requested a Benchy
-performance analysis and new tickets. The
-[Benchy current bottleneck refresh](issues/61-benchy-current-bottleneck-refresh.md)
-is complete; it expands the child-issue frontier without starting optimization
-experiments, changing the scoreboard, or lifting the annotation park. The
-human's first selected take —
-[62](issues/62-infill-linker-post-hoist-residual.md) — is **resolved**
-(attribution + graduation only; no timing campaign, no commit). The second
-selected take — [65](issues/65-infill-linker-batch-execute-experiment.md) —
-is **resolved as a human-approved KEEP (2026-10-13)**: the batch-execute
-candidate is committed, production artifacts already match it, and both
-guest-freshness gates are green. The gate formally recorded GATE NOT MET
-(one wash cell, accepted explicitly); see the ticket's Answer and
-[evidence](evidence/t65-linker-batch/FINDINGS.md). The frontier is now:
-[63](issues/63-low-layer-dispatch-granularity.md),
-[64](issues/64-tree-support-renderer-attribution.md),
+**Current selection scope (2026-10-13, updated after the t63 take):**
+on resumption the human said "continue" without naming a ticket, so the
+session took the first frontier ticket in order —
+[63](issues/63-low-layer-dispatch-granularity.md) — **resolved as a
+diagnosis/design take (2026-10-13)**: the dispatch-granularity mechanism is
+established at worker level, the ticket's measured opportunity is shown
+stale at post-t65 HEAD (deficit 42–50% → 2.4–7.0%; lone-open tail gone),
+the generic experiment is recommended NOT opened, and the fresh scheduling
+baseline the t65 route note required has now been taken (seven probe runs;
+see the ticket's Answer and
+[evidence](evidence/t63-lowlayer-dispatch/FINDINGS.md)). The frontier is
+now: [64](issues/64-tree-support-renderer-attribution.md),
 [59](issues/59-prep-slice-flat-bridge-closing-reduction.md),
 [60](issues/60-host-native-attribution.md),
 [20](issues/20-consume-only-when-read-annotations.md) (parked below-fold).
-The t65 commit is a linker-cost change: any later scheduling diagnosis
-(63's family) needs a fresh scheduling baseline. New
-questions require a later selected take; the existing paired-mode acceptance
-and human KEEP/DROP rules are unchanged.
+The existing paired-mode acceptance and human KEEP/DROP rules are
+unchanged; new questions require the human's route decision.
 
 Standing decisions for this effort (2026-09-22):
 
@@ -495,6 +488,8 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+
+- [Independent low-layer dispatch and Arachne finishing-tail reduction](issues/63-low-layer-dispatch-granularity.md): **resolved (2026-10-13; diagnosis/design, no production edit, no timing campaign)** — the granularity mechanism is confirmed with worker-level evidence (a reverted env-gated probe, `evidence/t63-lowlayer-dispatch/probe.patch`): at 12 threads layers 0/1/2 are rayon's initiator left spine on worker 0 in all five fresh runs (0,1,2,3 at six threads), module-pool waits are zero at ≤12 threads (every per-layer-tier manifest is `layer-parallel-safe`; waits measured only at 24 threads, max 42 ms), and the 24-thread counterfactual collapses the serialization entirely (layer 1 stolen at ≈0 ms, layer 2 ending mid-field — same job/binary, only steal width). **The premise's measured opportunity is stale at HEAD**: the per-layer-phase scheduling deficit collapsed from 1,079–3,022 ms (12.7–49.9%) across the six pre-t65 t61 captures to 161–969 ms (2.4–7.0%) post-t65 with the lone-open tail gone (0–61 ms), because committed t65 cut the low-layer linker chunk the spine held (layer-1 linker dispatch 3,191 → 1,228–1,662 ms; layers 0–2 accumulated 4.50–6.23 → 1.39–1.80 s, ≈3–4×). Recommendation: do **not** open the output-identical dispatch-granularity experiment now (measured ceiling ≈0.12–2.3% of Benchy slice wall, below the map's ~1%-effect bar); the generic candidate shape (`with_max_len(1)`-class single-item leaves; bounded-chunk designs measured the wrong direction) and the re-open condition (a fresh scheduling baseline re-developing a 40%+-class deficit) are recorded on the ticket. Fresh scheduling baseline for 63's family: taken (the probe runs); outputs byte-identical to the t58 references; loader/provenance checks pass. Evidence: `evidence/t63-lowlayer-dispatch/` (`FINDINGS.md`, probe patch, `verify.py`).
 
 - [Infill-linker batch-execute experiment](issues/65-infill-linker-batch-execute-experiment.md): **resolved (2026-10-13); human-approved KEEP — committed with this ticket** — one batched `Clipper64` + execute per `link_paths_without_offset` invocation with re-derived per-subject attribution (`PreparedPolylineClip::clip_batched`, `crates/slicer-core/src/polygon_ops.rs`; per-subject `clip` repair for ambiguous junction-kiss subjects, whole-call fallback reserved for unattributable segments). In-guest replay-oracle probe: 0 mismatches over 12,022–19,290 subjects per cell, both modes, outputs byte-identical to the preserved references; 10 differential tests. Qualification 16/16 byte-identical, then the standing paired gate on the 8 pre-declared arachne cells (6/6 pairs everywhere, zero starvation exclusions): **benchy arachne wall −20.01/−21.08 % (off) and −12.24/−10.84 % (on), CPU corroborating; base cells a wash** (−0.07/−0.52/−1.65 %; ordinary-base-arachne-on +0.43 % median loss, ranges overlapping) — GATE NOT MET on the letter, the failing cell explicitly accepted in the human's ruling. Production artifacts already in the candidate state; both freshness gates green. Evidence: `evidence/t65-linker-batch/FINDINGS.md`.
 
