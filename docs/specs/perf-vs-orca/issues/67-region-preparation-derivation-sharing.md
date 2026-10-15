@@ -157,3 +157,31 @@ snapshots under the ignored
 The candidate stays uncommitted until the human's KEEP/DROP; both guest
 freshness gates must be green at the candidate tree.
 
+### Take paused — 2026-10-15 (human parked the take before the campaign ran)
+
+**State at the pause.** Candidate tree = HEAD `d5ff9d26` + the uncommitted
+diff (`crates/slicer-runtime/src/blackboard.rs`,
+`crates/slicer-runtime/tests/contract/main.rs`,
+`crates/slicer-wasm-host/src/marshal/mod.rs`, plus the untracked
+`crates/slicer-runtime/tests/contract/region_preparation_sharing_tdd.rs`),
+also held in `stash@{0}` ("t67 candidate (region-preparation derivation
+sharing)"). Contract tests, the marshal unit test and the mutation check pass;
+clippy/literals/test-quality clean; `cargo xtask build-guests --check` exit 0
+in both modes at the candidate tree. All four snapshots are built and hashed
+under `.local-artifacts/perimeter-reference-preparation/t67-region-prep-sharing/snapshots/`
+(baseline = HEAD tree, candidate = HEAD + diff; ordinary and accelerated;
+`hashes-baseline.txt` / `hashes-candidate.txt`).
+
+**Nothing was measured**: no proof run, no qualification, no timing. Raw tree
+contains only `snapshots/`.
+
+**Resume.** From the repo root, with the candidate restored in the working
+tree: (1) `pwsh -File docs/specs/perf-vs-orca/evidence/t67-region-prep-sharing/launch-detached.ps1 -Phase proof`
+(16-cell proof driver, resumable via run-cell's one-shot guard); (2)
+`python docs/specs/perf-vs-orca/evidence/t67-region-prep-sharing/build-qualification.py`
+then `python .../verify-references.py` (both must pass before timing); (3)
+`launch-detached.ps1 -Phase measure`; (4)
+`python .../reduce_ab.py`. Nothing needs rebuilding unless sources change;
+re-run `build-snapshots.sh <arm>` for the arm whose tree changed.
+
+
