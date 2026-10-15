@@ -53,3 +53,8 @@
 # captures and its verifiers; preserve their bytes on add/checkout instead of
 # normalizing line endings.
 /docs/specs/perf-vs-orca/evidence/t59-flat-bridge-closing/** -text whitespace=cr-at-eol
+
+# The t60 host:native attribution set carries the temporary probe patch, reduced
+# captures (hash-checked owners) and its verifiers; preserve their bytes on
+# add/checkout instead of normalizing line endings.
+/docs/specs/perf-vs-orca/evidence/t60-host-native/** -text whitespace=cr-at-eol

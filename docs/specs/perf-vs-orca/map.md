@@ -38,7 +38,26 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-14, on the t59 take):** the frontier was
+**Current selection scope (2026-10-14, on the t60 take):** the frontier was
+re-derived on resume — open:
+[60](issues/60-host-native-attribution.md) first and
+[20](issues/20-consume-only-when-read-annotations.md) parked below-fold — and
+the session took the first frontier ticket in order:
+[60](issues/60-host-native-attribution.md) — **resolved (2026-10-14) with the
+`host:native` bucket fully attributed: residual zero and exact scope-call
+reconciliation in all four classic cells** (owner families: the two
+region-preparation derivations, the `region_partition` commit hook,
+classic-perimeters/linker guest host-service calls, the prepass seam-planner,
+and on supports-on the planner/renderer/batch/aggregation support machine;
+outputs byte-identical to the t58 references; probe reverted, no production
+edit). One candidate graduated:
+[67](issues/67-region-preparation-derivation-sharing.md). Frontier now:
+[67](issues/67-region-preparation-derivation-sharing.md) (open, awaiting the
+human's route decision) first, [20](issues/20-consume-only-when-read-annotations.md)
+parked below-fold. The standing paired acceptance and human KEEP/DROP rules are
+unchanged; new questions require the human's route decision.
+
+**Previous selection scope (2026-10-14, on the t59 take):** the frontier was
 re-derived on resume — open:
 [59](issues/59-prep-slice-flat-bridge-closing-reduction.md),
 [60](issues/60-host-native-attribution.md), and
@@ -525,6 +544,9 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [host:native attribution: name the per-layer native geometry bucket](issues/60-host-native-attribution.md): **resolved (2026-10-14; bucket fully attributed — residual `host:native` = 0 with exact per-scope call reconciliation in all four classic cells; probe reverted, no production edit)** — four fresh ordinary profiled captures (outputs byte-identical to the t58 references; clean) carry the temporary `T60-PROBE` host instrument (thread-local sink owner + worker-thread owner for rayon batch items; `probe.patch`, reverted). Owners: the two region-preparation derivations (`ensure_prepared_regions` / `ensure_prepared_perimeter_source_regions`; 1.48+1.47 s benchy-off, 40.53+40.18 s base-off accumulated, once per layer, 661/1,926 clips each), `region_partition`'s `sync_perimeter_infill_areas_into_slice` 3×/layer (1.26 s benchy-off / 10.04 s base-off; 6,120/13,320 clips), guest-requested host services from per-layer dispatches (classic-perimeters 5.91/89.26 s; infill-linker 0.53/3.10 s; supports-on tree-support 3.79/40.29 s), the prepass seam-planner (0.95/13.67 s) and — supports-on — the support machine now named rather than suspected: tree-support-planner 6.49/160.33 s, its rayon batch-offset items 0.25/2.74 s (24,255 items = ticket 22's independent count), and support-plan aggregation clips 0.22/2.09 s. The supports-off headline bucket (benchy 11.60 s / base 176.78 s accumulated; base-off baseline was 197.2 s) is now a named split, not an unknown. One candidate graduated:
+  [Region-preparation derivation sharing across region projections](issues/67-region-preparation-derivation-sharing.md) (the two derivations are identical work over identical region sets on the matched jobs; ≈80.7 s accumulated base-off); named but un-graduated leads (classic-perimeters host round trips; `region_partition` dedup) are in the map's fog. Evidence: `evidence/t60-host-native/` (`FINDINGS.md`, `summary.json`, `captures/`, `probe.patch`, `run-t60.ps1`, `verify.py` exits 0 from the committed set alone with six negative controls rejected).
+
 - [PrePass::Slice flat-bridge closing reduction](issues/59-prep-slice-flat-bridge-closing-reduction.md): **resolved (2026-10-14; verdict (b) — no representation-safe reduction; no production edit, no timing campaign)** — the closing is consumed only as the per-component ≥10 % gate; on real layers that gate is decided by miter-offset artifacts from ~72–74 degenerate sliver paths in `difference`'s output (drilled: benchy 161 raw 325.3 mm² vs 215.4 normalized on the same point set; base 8 raw 31.5 mm² vs 72.1 normalized — on base the raw closing is smaller than its own input), so a set-preserving local-closing candidate flips verdicts on 92/239 benchy (38.5 %) and 320/469 base (68.2 %) call layers — refuted; far-guards have zero hits (0 of 14,951 components); baseline gate margins reach 4e-5; the refuted shape's measured ceiling is ≈12 % of the closing's accumulated thread-time. Evidence: `evidence/t59-flat-bridge-closing/` (`FINDINGS.md`, `probe.patch`, `reduced/`, `verify.py` exits 0).
 
 - [Support paint-policy dead-walk reduction](issues/66-paint-policy-dead-walk-reduction.md): **resolved (2026-10-14; measured GATE NOT MET on the wall clause — human-approved DROP, candidate retired, no production edit)** — the annotations-empty fast path (`slicer_core::paint_policy::has_support_paint` plus the early return in `PaintRegionLayerView::paint_policy_for`) passed the full 16-cell output-identity qualification (baseline == candidate == preserved t58 references; `build-qualification.py` 16/16 and `verify-references.py` 16/16, all clean), then the standing paired gate on the four pre-declared classic supports-on cells (6/6 pairs everywhere, zero starvation exclusions, 56/56 runs byte-identical): **CPU improved in all four cells (−0.56…−1.22 %)** and **base wall improved (−0.4977 % ordinary / −2.1098 % accelerated)**, but **benchy wall sat inside paired noise (+0.0017 % / +0.1272 %)**, below the pre-declared wall < 0 % clause — the dead walk is a real ~1 %-class CPU cost whose wall transfer is base-only. Candidate retired to `HEAD` with the re-appliable artifacts committed (`evidence/t66-paint-walk/candidate.patch` sha `8ccfbeb1…` + the new-test-file copy, both byte-identical to the as-measured state); no adoption retry; re-entry needs a new pre-declaration. Interruption recoveries disclosed (one harness eviction kill mid-proof, two further evictions survived by the detached relaunch; background load; zero exclusions). Evidence: `evidence/t66-paint-walk/FINDINGS.md`.
@@ -732,6 +754,18 @@ Standing decisions for this effort (2026-09-22):
   measured fuel attribution keeps its candidates in the same below-fold class —
   until a cell lands
   within ~1.5x of Orca or the structural tickets come back short.
+- **Named leads from the t60 host:native attribution (un-graduated,
+  2026-10-14).** [host:native attribution](issues/60-host-native-attribution.md)
+  names two reducible shapes beyond the graduated
+  [Region-preparation derivation sharing across region projections](issues/67-region-preparation-derivation-sharing.md):
+  the **classic-perimeters per-layer host-service round trips** (8
+  `offset_polygons` + 3 `clip_polygons` calls per layer; 89.26 s accumulated
+  base-off and 85.83 s base-on vs 5.91–6.31 s benchy — the largest
+  supports-off owner, whose reducible call sites need their own analysis) and
+  the **`region_partition` 3×-per-layer re-run** (10.04 s accumulated base-off;
+  dedup needs semantic analysis of what the post-process commit can change).
+  Both graduate only on the human's route decision; the standing paired A/B
+  governs any candidate.
 - **Orca-side attribution.** What OrcaSlicer spends its time on per cell is
   unknown (GUI-subsystem binary, little introspection). Worth scoping only if
   the gap narrows to specific stages where "why is Orca faster here" becomes the

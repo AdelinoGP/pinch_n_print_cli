@@ -1,0 +1,341 @@
+diff --git a/crates/slicer-runtime/src/blackboard.rs b/crates/slicer-runtime/src/blackboard.rs
+index 445bd099..54b161ab 100644
+--- a/crates/slicer-runtime/src/blackboard.rs
++++ b/crates/slicer-runtime/src/blackboard.rs
+@@ -623,6 +623,8 @@ impl LayerArena {
+     ) -> Option<&[PreparedRegionData]> {
+         if self.prepared_regions.is_none() {
+             let slice = self.slice.as_ref()?;
++            // [T60-PROBE] attribute the ordinary-region derivation.
++            let _t60_probe = crate::profiling_report::ProbeOwnerGuard::new("probe:derive_ordinary");
+             self.prepared_regions = Some(slicer_wasm_host::marshal::prepare_slice_regions(
+                 slice,
+                 surface_classification,
+@@ -647,6 +649,9 @@ impl LayerArena {
+     ) -> Option<&[PreparedRegionData]> {
+         if self.prepared_perimeter_source_regions.is_none() {
+             let slice = self.slice.as_ref()?;
++            // [T60-PROBE] attribute the perimeter-source derivation.
++            let _t60_probe =
++                crate::profiling_report::ProbeOwnerGuard::new("probe:derive_perimeter_source");
+             self.prepared_perimeter_source_regions =
+                 Some(slicer_wasm_host::marshal::prepare_perimeter_source_regions(
+                     slice,
+diff --git a/crates/slicer-runtime/src/layer_executor.rs b/crates/slicer-runtime/src/layer_executor.rs
+index a8d4f75c..3bf1ccab 100644
+--- a/crates/slicer-runtime/src/layer_executor.rs
++++ b/crates/slicer-runtime/src/layer_executor.rs
+@@ -771,6 +771,9 @@ fn execute_single_layer(
+     LayerExecutionError,
+ > {
+     instrumentation.on_layer_start(layer.index, layer.z);
++    // [T60-PROBE] Catch-all for in-layer native marks not claimed by a narrower
++    // probe bracket (inner brackets override and restore).
++    let _t60_probe = crate::profiling_report::ProbeOwnerGuard::new("probe:layer_span");
+     let result = execute_single_layer_inner(
+         plan,
+         blackboard,
+@@ -836,6 +839,27 @@ fn prepare_dispatch_region_views(arena: &mut LayerArena, stage_id: &str, blackbo
+     }
+ }
+ 
++/// [T60-PROBE] Static owner name for a per-layer module dispatch. Probe-only.
++fn t60_dispatch_owner(module_id: &str) -> &'static str {
++    match module_id {
++        "com.core.classic-perimeters" => "probe:d:classic-perimeters",
++        "com.core.arachne-perimeters" => "probe:d:arachne-perimeters",
++        "com.core.infill-linker" => "probe:d:infill-linker",
++        "com.core.gyroid-infill" => "probe:d:gyroid-infill",
++        "com.core.lightning-infill" => "probe:d:lightning-infill",
++        "com.core.rectilinear-infill" => "probe:d:rectilinear-infill",
++        "com.core.tree-support" => "probe:d:tree-support",
++        "com.core.support-surface-ironing" => "probe:d:support-surface-ironing",
++        "com.core.top-surface-ironing" => "probe:d:top-surface-ironing",
++        "com.core.seam-placer" => "probe:d:seam-placer",
++        "com.core.path-optimization-default" => "probe:d:path-optimization-default",
++        "com.core.fuzzy-skin" => "probe:d:fuzzy-skin",
++        "com.core.wave-overhangs" => "probe:d:wave-overhangs",
++        "com.core.raft-default" => "probe:d:raft-default",
++        _ => "probe:d:other",
++    }
++}
++
+ fn execute_single_layer_inner(
+     plan: &ExecutionPlan,
+     blackboard: &Blackboard,
+@@ -945,7 +969,12 @@ fn execute_single_layer_inner(
+             if let Some(entry) = native_entry {
+                 live_module = live_module.with_native_entry(entry);
+             }
+-            prepare_dispatch_region_views(&mut arena, &stage.stage_id, blackboard);
++            // [T60-PROBE] Attribute prepared-region derivation native marks.
++            {
++                let _t60_probe =
++                    crate::profiling_report::ProbeOwnerGuard::new("probe:prepare_regions");
++                prepare_dispatch_region_views(&mut arena, &stage.stage_id, blackboard);
++            }
+             let prepared_regions = arena.prepared_regions();
+             let prepared_perimeter_source_regions = arena.prepared_perimeter_source_regions();
+             let input = LayerStageInput {
+@@ -973,7 +1002,14 @@ fn execute_single_layer_inner(
+             // Seam plan consulted by the perimeter arms of `apply` (ADR-0020).
+             let seam_plan_ir_for_commit = blackboard.seam_plan().map(|arc| arc.as_ref());
+ 
+-            let run_result = runner.run_stage(&stage.stage_id, layer, &live_module, input);
++            // [T60-PROBE] Attribute every native mark emitted inside this
++            // module dispatch (marshalling, host services, conversions).
++            let run_result = {
++                // [T60-PROBE] per-module owner name
++                let t60_name = t60_dispatch_owner(module.module_id().as_str());
++                let _t60_probe = crate::profiling_report::ProbeOwnerGuard::new(t60_name);
++                runner.run_stage(&stage.stage_id, layer, &live_module, input)
++            };
+             // Pull the wasm linear-memory sample for the just-completed call.
+             // Returns (0, 0) for non-wasm runners (test mocks, host built-ins).
+             let (wasm_before, wasm_after) = runner.last_wasm_mem_sample();
+@@ -3292,6 +3328,8 @@ fn support_entries_overlap(
+     left: &slicer_ir::SupportEntry,
+     right: &slicer_ir::SupportEntry,
+ ) -> bool {
++    // [T60-PROBE] supports-on per-commit overlap check.
++    let _t60_probe = crate::profiling_report::ProbeOwnerGuard::new("probe:support_overlap");
+     fn swept(entry: &slicer_ir::SupportEntry) -> Vec<ExPolygon> {
+         let mut out = Vec::new();
+         for path in &entry.paths {
+diff --git a/crates/slicer-runtime/src/layer_finalization.rs b/crates/slicer-runtime/src/layer_finalization.rs
+index 9fe482a0..ff478037 100644
+--- a/crates/slicer-runtime/src/layer_finalization.rs
++++ b/crates/slicer-runtime/src/layer_finalization.rs
+@@ -108,7 +108,12 @@ pub fn execute_layer_finalization_with_instrumentation(
+                     mesh: std::sync::Arc::clone(blackboard.mesh()),
+                     _phantom: std::marker::PhantomData,
+                 };
+-                let res = runner.run_stage(&stage.stage_id, &live_module, input, &mut candidate);
++                let res = {
++                    // [T60-PROBE]
++                    let _t60_probe =
++                        crate::profiling_report::ProbeOwnerGuard::new("probe:postpass_dispatch");
++                    runner.run_stage(&stage.stage_id, &live_module, input, &mut candidate)
++                };
+                 // Drain module log messages (already forwarded to the human `log`
+                 // facade inside the dispatcher; this clears the thread-local stash)
+                 // and forward each onto the structured stream as a `module_log`
+diff --git a/crates/slicer-runtime/src/prepass.rs b/crates/slicer-runtime/src/prepass.rs
+index fa9659cd..884ada8f 100644
+--- a/crates/slicer-runtime/src/prepass.rs
++++ b/crates/slicer-runtime/src/prepass.rs
+@@ -336,7 +336,18 @@ fn execute_prepass_with_instrumentation_collecting(
+                 support_geometry: blackboard.support_geometry().cloned(),
+                 _phantom: std::marker::PhantomData,
+             };
+-            let run_result = runner.run_stage(&stage.stage_id, &live_module, input);
++            let run_result = {
++                // [T60-PROBE]
++                let t60_name = match module.module_id().as_str() {
++                    "com.core.layer-planner-default" => "probe:p:layer-planner-default",
++                    "com.core.seam-planner-default" => "probe:p:seam-planner-default",
++                    "com.core.traditional-support-planner" => "probe:p:traditional-support-planner",
++                    "com.core.tree-support-planner" => "probe:p:tree-support-planner",
++                    _ => "probe:p:other",
++                };
++                let _t60_probe = crate::profiling_report::ProbeOwnerGuard::new(t60_name);
++                runner.run_stage(&stage.stage_id, &live_module, input)
++            };
+             // Fuel/scope marks (ADR-0055), drained before `on_module_end` so
+             // `--profile-verbose` still has this call's fold to attach to the
+             // `module_complete` that `on_module_end` emits.
+@@ -444,6 +455,10 @@ fn execute_prepass_with_instrumentation_collecting(
+             }
+         }
+         if !support_plans.is_empty() {
++            // [T60-PROBE] attribute the host-side support-plan aggregation
++            // (territory clipping) that runs outside the guest dispatch brackets.
++            let _t60_probe =
++                crate::profiling_report::ProbeOwnerGuard::new("probe:plan_aggregation");
+             if let Some(entries) = harvested_plan_entries.as_deref_mut() {
+                 entries.extend(
+                     support_plans
+diff --git a/crates/slicer-runtime/src/profiling_report.rs b/crates/slicer-runtime/src/profiling_report.rs
+index c143c6d6..101ecab9 100644
+--- a/crates/slicer-runtime/src/profiling_report.rs
++++ b/crates/slicer-runtime/src/profiling_report.rs
+@@ -540,10 +540,17 @@ fn elapsed_ns(epoch: Option<Instant>) -> u64 {
+ /// See the module docs.
+ fn flush_native(marks: &[ProfileMark], wall_ns: u64) {
+     let folded = fold_marks(marks);
+-    let owner = NATIVE_OWNER
+-        .lock()
+-        .expect("native profile owner poisoned")
+-        .unwrap_or(UNATTRIBUTED_NATIVE_MODULE);
++    // [T60-PROBE] A probe bracket on this thread — or, for rayon batch items,
++    // on the executing worker — wins over the global owner.
++    let owner = PROBE_NATIVE_OWNER
++        .with(|c| *c.borrow())
++        .or_else(slicer_wasm_host::batch::probe_owner)
++        .unwrap_or_else(|| {
++            NATIVE_OWNER
++                .lock()
++                .expect("native profile owner poisoned")
++                .unwrap_or(UNATTRIBUTED_NATIVE_MODULE)
++        });
+     let mut acc = NATIVE_ACC.lock().expect("native profile acc poisoned");
+     let entry = acc.entry(owner).or_default();
+     entry.activations += 1;
+@@ -599,6 +606,12 @@ pub fn end_native_profiling(agg: &ProfileAggregator) {
+         let folded: Vec<ScopeTotals> = acc.scopes.into_values().collect();
+         agg.record_native(module_id, &folded, acc.activations, acc.wall_ns);
+     }
++    // [T60-PROBE] Dump per-bracket live-span totals for the attribution take.
++    let probe_totals =
++        std::mem::take(&mut *PROBE_TOTALS.lock().expect("t60 probe totals poisoned"));
++    for (name, span_ns, entries) in probe_totals {
++        eprintln!("[T60-PROBE] owner={name} span_ns={span_ns} entries={entries}");
++    }
+ }
+ 
+ /// RAII attribution bracket for one host built-in.
+@@ -630,6 +643,57 @@ impl Drop for NativeOwnerGuard {
+     }
+ }
+ 
++// ---------------------------------------------------------------------------
++// [T60-PROBE] Thread-local owner override for the host:native attribution take
++// ---------------------------------------------------------------------------
++// Temporary probe (wayfinder perf-vs-orca ticket 60). Reverted before any
++// commit; see docs/specs/perf-vs-orca/evidence/t60-host-native/probe.patch.
++
++thread_local! {
++    /// [T60-PROBE] Per-thread owner override, consulted before the global
++    /// `NATIVE_OWNER` at flush time so a probe bracket attributes this
++    /// thread's native marks to the bracketed site. Thread-local because the
++    /// per-layer tier runs on concurrent rayon workers; the global owner is
++    /// only sound for the serial prepass built-ins.
++    static PROBE_NATIVE_OWNER: std::cell::RefCell<Option<&'static str>> =
++        const { std::cell::RefCell::new(None) };
++}
++
++/// [T60-PROBE] Accumulated live-span totals per probe owner: (name, ns, entries).
++static PROBE_TOTALS: Mutex<Vec<(&'static str, u64, u64)>> = Mutex::new(Vec::new());
++
++/// [T60-PROBE] RAII bracket attributing this thread's native marks to `name`
++/// and accumulating the guard's live span. Probe-only; never committed.
++pub struct ProbeOwnerGuard {
++    name: &'static str,
++    start: Instant,
++    prev: Option<&'static str>,
++}
++
++impl ProbeOwnerGuard {
++    /// [T60-PROBE] Enter a probe attribution bracket for `name`.
++    #[must_use]
++    pub fn new(name: &'static str) -> Self {
++        let start = Instant::now();
++        let prev = PROBE_NATIVE_OWNER.with(|c| c.borrow_mut().replace(name));
++        Self { name, start, prev }
++    }
++}
++
++impl Drop for ProbeOwnerGuard {
++    fn drop(&mut self) {
++        PROBE_NATIVE_OWNER.with(|c| *c.borrow_mut() = self.prev);
++        let ns = self.start.elapsed().as_nanos() as u64;
++        let mut totals = PROBE_TOTALS.lock().expect("t60 probe totals poisoned");
++        if let Some(entry) = totals.iter_mut().find(|(n, _, _)| *n == self.name) {
++            entry.1 += ns;
++            entry.2 += 1;
++        } else {
++            totals.push((self.name, ns, 1));
++        }
++    }
++}
++
+ // ---------------------------------------------------------------------------
+ // Ranked human-readable rendering
+ // ---------------------------------------------------------------------------
+diff --git a/crates/slicer-runtime/src/region_partition.rs b/crates/slicer-runtime/src/region_partition.rs
+index 7858c3dc..173886d4 100644
+--- a/crates/slicer-runtime/src/region_partition.rs
++++ b/crates/slicer-runtime/src/region_partition.rs
+@@ -285,6 +285,8 @@ pub fn sync_perimeter_infill_areas_into_slice(
+     arena: &mut LayerArena,
+     layer_index: u32,
+ ) -> Result<(), LayerStageError> {
++    // [T60-PROBE] Attribute this commit hook's native polygon marks.
++    let _t60_probe = crate::profiling_report::ProbeOwnerGuard::new("probe:region_partition");
+     let stage_id: StageId = "Layer::Perimeters".into();
+     let module_id = "host:region_partition".to_string();
+ 
+diff --git a/crates/slicer-wasm-host/src/batch.rs b/crates/slicer-wasm-host/src/batch.rs
+index 4f237fe0..79510e13 100644
+--- a/crates/slicer-wasm-host/src/batch.rs
++++ b/crates/slicer-wasm-host/src/batch.rs
+@@ -94,6 +94,46 @@ where
+     (map_batch_with_mode(requests, mode, f), mode)
+ }
+ 
++// ---------------------------------------------------------------------------
++// [T60-PROBE] Worker-thread owner override for batch fan-out attribution
++// ---------------------------------------------------------------------------
++// Temporary probe (wayfinder perf-vs-orca ticket 60). Batch items fan out over
++// rayon, so a thread-local set on the calling thread cannot attribute the
++// per-item native marks; the item closures set this owner on whichever worker
++// executes them. The runtime's native sink consults `probe_owner()` below.
++// Reverted before any commit; see evidence/t60-host-native/probe.patch.
++
++thread_local! {
++    static PROBE_OWNER: std::cell::RefCell<Option<&'static str>> =
++        const { std::cell::RefCell::new(None) };
++}
++
++/// [T60-PROBE] RAII bracket attributing this worker thread's native marks.
++pub struct ProbeOwnerGuard {
++    prev: Option<&'static str>,
++}
++
++impl ProbeOwnerGuard {
++    /// [T60-PROBE] Enter a probe attribution bracket for `name`.
++    #[must_use]
++    pub fn new(name: &'static str) -> Self {
++        let prev = PROBE_OWNER.with(|cell| cell.borrow_mut().replace(name));
++        Self { prev }
++    }
++}
++
++impl Drop for ProbeOwnerGuard {
++    fn drop(&mut self) {
++        PROBE_OWNER.with(|cell| *cell.borrow_mut() = self.prev);
++    }
++}
++
++/// [T60-PROBE] The current worker-thread probe owner, if any.
++#[must_use]
++pub fn probe_owner() -> Option<&'static str> {
++    PROBE_OWNER.with(|cell| *cell.borrow())
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+diff --git a/crates/slicer-wasm-host/src/host.rs b/crates/slicer-wasm-host/src/host.rs
+index 7f55a576..71774238 100644
+--- a/crates/slicer-wasm-host/src/host.rs
++++ b/crates/slicer-wasm-host/src/host.rs
+@@ -2674,6 +2674,9 @@ impl hs::Host for HostExecutionContext {
+             &requests,
+             |r| expolygon_vertex_count(&r.polygons),
+             |r| {
++                // [T60-PROBE] batch items fan out over rayon; attribute the
++                // per-item native offset marks on the executing worker.
++                let _t60_probe = crate::batch::ProbeOwnerGuard::new("probe:svc_offset_batch");
+                 let ir_polys = wit_to_ir_expolygons(&r.polygons);
+                 let result = match r.miter_limit {
+                     Some(miter_limit) => slicer_core::polygon_ops::offset_with_miter_limit(
+@@ -2704,6 +2707,8 @@ impl hs::Host for HostExecutionContext {
+             &requests,
+             |r| expolygon_vertex_count(&r.subject) + expolygon_vertex_count(&r.clip),
+             |r| {
++                // [T60-PROBE]
++                let _t60_probe = crate::batch::ProbeOwnerGuard::new("probe:svc_clip_batch");
+                 let ir_subject = wit_to_ir_expolygons(&r.subject);
+                 let ir_clip = wit_to_ir_expolygons(&r.clip);
+                 let result = slicer_core::polygon_ops::clip_polygons(
