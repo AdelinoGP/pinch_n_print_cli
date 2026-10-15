@@ -10,6 +10,9 @@
 
 #![warn(missing_docs)]
 
+/// Declaration and transport contracts for the opt-in preparation capability.
+pub mod preparation;
+
 // ── WIT world package names ────────────────────────────────────────────
 //
 // These are the sole source of the world identifiers used across the
@@ -337,6 +340,14 @@ pub struct PreparationExportSchema {
     pub wit_world: &'static str,
     /// Qualified preparation function export ([`PREPARATION_QUALIFIED_EXPORT`]).
     pub qualified_export: &'static str,
+}
+
+impl PreparationExportSchema {
+    /// Return the stored qualified capability export, not a world name.
+    #[must_use]
+    pub fn qualified_export(&self) -> &'static str {
+        self.qualified_export
+    }
 }
 
 // region: region-split priorities

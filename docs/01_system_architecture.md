@@ -813,6 +813,55 @@ These rules are enforced by the host at runtime. Violations trap the WASM module
 
 ---
 
+## Private prepared-plan storage and atomic publication
+
+`PreparedOwnerStore` (`crates/slicer-wasm-host/src/preparation_store.rs`)
+owns one print's opaque prepared-plan bytes under private owner authority tied
+to the frozen artifact. Staging is invocation-local and owner-private: `put`
+accepts a complete piece once per unique name, with no append or replacement.
+Names are nonempty, exact case-sensitive UTF-8 strings; whitespace and control
+characters are not trimmed or normalized. Retained bytes are immutable copies
+owned by the store, not by a module value or read handle.
+
+Any failed `put` irreversibly poisons that invocation's output, even if the
+module catches the error and returns success. `PreparationTransaction::finish`
+publishes the complete collection and ready marker atomically only after a
+successful preparation and validation. Returned errors, traps, unwinding,
+dropped unfinished output/transactions, and rejected validators publish
+nothing; unfinished staging is cleared and remains unready. Successful empty
+output is a ready-empty plan, distinct from not-ready. An original module or
+trap failure takes precedence over poison without discarding the recorded
+writer fault.
+
+The pre-ready `prepare_with_publication` hook on `FrozenPreparationBinding`
+(`crates/slicer-wasm-host/src/preparation_native.rs`) exposes a read-only
+`StagedPreparation` description: owner, declared views, and piece names/lengths.
+It neither exposes a ready plan nor defines diagnostic geometry. This
+geometry-free validation hook is row 06's extension seam before the same
+atomic publication transition.
+
+Disposal returns `Busy` while preparation or active call/read guards remain.
+Once disposal succeeds, stored name and payload bytes are cleared and old
+plan/piece handles' fallible access fails with `AccessDenied`; captured piece
+length metadata remains readable. Handles retain no payload copies. Reads
+are owner-wide and cursorless, not region/layer restricted: each request uses
+its own offset and maximum count, with no shared cursor. Returned byte vectors
+belong to callers and are outside retained-store accounting.
+
+`PreparedPlanMetadata` (`crates/slicer-wasm-host/src/preparation_store.rs`)
+exposes redacted metadata: module identity, phase/readiness, names/lengths,
+separate staged/retained payload-byte and UTF-8-name-byte totals, accepted
+`put_calls`, successful `read_calls`, `requested_read_bytes`,
+`returned_read_bytes`, and adapter-boundary `prepare_invocations`.
+Conversions and additions are checked; transfer accounting updates commit
+together or not at all. Requested bytes count the original maximum, while
+returned bytes count the EOF-clipped transfer. No raw payload dump is exposed.
+These counters do not measure allocator overhead or peak memory. This storage
+contract does not implement row-04 typed projections, row-05 scheduling,
+cancellation or release orchestration, or row-06 diagnostic geometry.
+
+---
+
 ## Memory Model
 
 ```text

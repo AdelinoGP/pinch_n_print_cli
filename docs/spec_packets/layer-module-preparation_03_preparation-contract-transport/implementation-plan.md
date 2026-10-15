@@ -2,7 +2,7 @@
 
 ## Execution Rules
 
-Draft only: no step executes before independent preflight, explicit activation and row 02's executable pilot gate. Every step maps to partial `TASK-574`. Work test-first against actual production boundaries, then implement and run the narrow falsifying command. Each edit list is complete and capped at three files; new files and registrations count. No hidden bulk edits or field additions. If production composition requires another file, add an explicit preparatory step/re-preflight rather than exceeding the cap.
+Active: independent preflight passed, the user authorized implementation, and row 02's executable pilot gate was re-derived green on this tree (see `packet.spec.md` "Prerequisites and Blockers"). Every step maps to partial `TASK-574`. Work test-first against actual production boundaries, then implement and run the narrow falsifying command. Each edit list is complete and capped at three files; new files and registrations count. No hidden bulk edits or field additions. If production composition requires another file, add an explicit preparatory step/re-preflight rather than exceeding the cap.
 
 All dispatch results must be outside thinking, properly escaped and redundant about executed/not executed, with FACT pass/fail or bounded SNIPPETS. Every test command below means combined `tee target/test-output.log`, pipefail and executed count as fully spelled out in requirements/ACs. Heavy command/doc verification is delegated. Narrow test targets intentionally remain narrow; build/check/clippy acceptance uses `--all-targets`.
 
@@ -44,6 +44,18 @@ All dispatch results must be outside thinking, properly escaped and redundant ab
 - Verification: scheduler library `preparation::tests::` prefix with nonzero-count guard; author exact `preparation::tests::naming_exception_is_scoped` for AC-9. It checks new input_reads/input_reads() and UnknownKey for input-reads, then calls existing pub(crate) ingest_manifest_text within this crate to verify legacy [ir-access].reads/LoadedModule::ir_reads() and rejection of renamed [ir_access], without altering the legacy parser.
 - Exit: any invalid table succeeds, unknown preparation metadata is tolerated, ordinary ir_reads grants preparation access, or new spelling silently changes/aliases legacy ingestion.
 
+### Step 2a: Crate-visible ingestion payload for the AC-9 witness
+- Task: TASK-574. Objective: let the AC-9 witness observe the real legacy ingestion result without widening any public API.
+- Precondition: Step 2's parser and its `naming_exception_is_scoped` test are authored. Postcondition: a sibling `crate::preparation::tests` module can reach the `LoadedModule` produced by the real `ingest_manifest_text`.
+- Allowed reads: the `IngestedManifest` declaration and `ingest_manifest_text` signature in `crates/slicer-scheduler/src/manifest.rs`; Step 2's new test.
+- Allowed edits (1): `crates/slicer-scheduler/src/manifest.rs` — the visibility of the `module` field on `IngestedManifest` and nothing else.
+- Out of bounds: every other line of `manifest.rs`, `LoadedModule`'s definition and fields, the parser, the ingestion algorithm, and all other files. No public item may change.
+- Blast radius: one visibility modifier on an already crate-private struct's field; no behaviour change, no public surface change, no literal change.
+- Dispatch: question "Is only that one field's visibility widened, with the ingestion algorithm and every public item byte-identical?" Scope that one file; FACT <=5 lines. Cost S.
+- Authority: this plan's own rule "If production composition requires another file, add an explicit preparatory step/re-preflight rather than exceeding the cap"; and `design.md`'s one-narrow-exception note on `manifest.rs`. Orca refs: none.
+- Verification: `cargo test -p slicer-scheduler --lib preparation::tests::naming_exception_is_scoped -- --exact` counted exactly 1; `cargo test -p slicer-scheduler --lib manifest::` counted nonempty as the regression guard; `cargo check -p slicer-scheduler --all-targets`.
+- Exit: any public item or ingestion behaviour changed, or a second line of `manifest.rs` touched, fails the step.
+
 ### Step 3: SDK serialized facades and macro adaptation
 - Task: TASK-574. Objective: normalize host callbacks/TLS/require while preserving exact opted-in authoring seam.
 - Precondition: producer SDK/macro compiled examples passed. Postcondition: host facades use shared errors, require emits 57401, TLS restores on return/unwind, paired generated entry remains exact.
@@ -80,6 +92,19 @@ All dispatch results must be outside thinking, properly escaped and redundant ab
 - Verification: host all-target check, SDK facade tests; future native behavioral driver authored in Step 9.
 - Exit: independent preparation provider lookup, swallowed module error, retained module value or native nonserialized plan bypass fails.
 
+### Step 5b: Document the new host surface (closure warning gate)
+- Task: TASK-574. Objective: clear the `missing_docs` warnings this packet introduced, because the closure gate runs `clippy -- -D warnings` and therefore promotes them to errors.
+- Precondition: Steps 4, 5 and 5a shipped. Measured attribution, not assumed: 35 warnings in `crates/slicer-wasm-host/src/preparation_store.rs` and 15 in `crates/slicer-wasm-host/src/preparation.rs`, all introduced by this packet — the crate carries `#![warn(missing_docs)]` and no other file in the crate reports this lint.
+- Postcondition: neither file reports a `missing_docs` warning, with no behaviour change and no public-surface change.
+- Allowed reads: those two files only.
+- Allowed edits (2): `crates/slicer-wasm-host/src/preparation_store.rs`, `crates/slicer-wasm-host/src/preparation.rs`.
+- Out of bounds: every other file; adding or removing any item; changing any signature; multi-paragraph rustdoc prose.
+- Blast radius: doc comments only — zero code lines changed, and every test body stays byte-identical.
+- Dispatch: question "Did any code line change, and is the missing_docs count zero for these two files?" Scope these two files; FACT <=5 lines. Cost S.
+- Authority: this plan's own "add an explicit preparatory step/re-preflight rather than exceeding the cap" rule, plus the packet's closure gate in `requirements.md`.
+- Verification: `cargo check -p slicer-wasm-host --all-targets` filtered to these two files reports 0 warnings; `cargo test -p slicer-wasm-host --lib preparation_store::tests::` and `preparation_native::tests::` both counted and green.
+- Exit: any code line changed, any item added or removed, or any remaining `missing_docs` warning in these two files fails the step.
+
 ### Step 6: Canonical composed WASM bindings and resource type preparation
 - Task: TASK-574. Objective: provide typed prepared Layer bindings and concrete backing/wrapper type definitions using existing ordinary import authority.
 - Precondition: producer canonical WIT/composed worlds/verifier executable gate passed; native facade exists. Postcondition: every schema-backed Layer composed binding and its concrete backing types compile and keep ordinary exports unchanged; executable WASM freezing/resource methods are completed in Step 7, not claimed here.
@@ -104,6 +129,19 @@ All dispatch results must be outside thinking, properly escaped and redundant ab
 - Verification: fixture/default host all-target checks; guest freshness exit-code gate after SDK/macro changes.
 - Exit: table-index retention, standalone exported guest resources, ordinary ir_access grant, double-registered imports or read-fixture production bypass fails.
 
+### Step 7a: Complete the frozen WASM binding and controlled-fixture transport
+- Task: TASK-574. Objective: finish Step 7, whose split against Step 5 was wrong — `FrozenPreparationBinding` is a **shared** type whose storage `freeze_native` initializes exhaustively in `preparation_native.rs`, and the controlled-fixture reader is private there, so neither the frozen WASM storage nor the fixture-read seam could be completed from Step 7's edit list alone.
+- Precondition: Step 7's verified subset is on disk (PreparedHostState, real resource `Host` traits, the projected linker context, 4 passing host tests, 0 warnings).
+- Postcondition: the binding can hold a frozen WASM artifact (`Engine`/`Component`/typed indices, never a `Store` or module instance); `freeze_wasm` and `with_wasm_plan` exist with owner and guard checks; a granted controlled fixture is readable and an ungranted one is denied at the imported boundary; the two Step-7 tests that were not written now exist.
+- Allowed reads: `crates/slicer-wasm-host/src/preparation*.rs`; the pilot's linker/instantiate template in `tests/contract/preparation_pilot_host.rs`.
+- Allowed edits (**4, explicitly justified**): `crates/slicer-wasm-host/src/preparation.rs`, `crates/slicer-wasm-host/src/preparation_native.rs`, `crates/slicer-wasm-host/src/preparation_wasm.rs`, `crates/slicer-wasm-host/src/preparation_host.rs`. The 4-file list is the minimum that can express a cross-cutting shared-type change plus the fixture seam; it is named rather than discovered.
+- Out of bounds: every other file, all WIT, `host.rs`, `lib.rs`, `preparation_store.rs`, `preparation_bindings.rs`, the SDK, the schema, and everything under `tests/`. No new field on `HostExecutionContext`/`LoadedModule`/`LiveModuleBinding`.
+- Blast radius: the binding's private representation gains a variant and `freeze_native`'s initializer is updated to match; one private field or method widens to `pub(crate)` to expose the fixture read seam. No public signature changes.
+- Dispatch: question "Does the binding hold a WASM artifact without retaining a Store or module instance, and is a granted controlled fixture readable while an ungranted one is denied at the boundary?" Scope the four files; FACT <=5 lines. Cost M.
+- Authority: this plan's own "add an explicit preparatory step/re-preflight rather than exceeding the cap" rule; `design.md`'s frozen-adapter and imported-resource sections.
+- Verification: `cargo check -p slicer-wasm-host --all-targets` in both modes with 0 warnings; counted `preparation_host::tests::` (>= 6), `preparation_native::tests::` (>= 9), `preparation_store::tests::` (>= 10), `preparation_bindings::tests::` (>= 1); `cargo xtask check-literals --report`; `cargo xtask build-guests --check` exit 0.
+- Exit: a retained `Store`/module instance in the binding, a fixture readable without its exact `fixture` grant or with a mismatched owner, a fixture denial in production mode that becomes a success in feature mode, or any new warning fails the step.
+
 ### Step 8: Small dual-target transport fixture
 - Task: TASK-574. Objective: author same-source module-owned numeric-text codec and explicit negative modes.
 - Precondition: real SDK/macro/backing seams available; no final input projection is needed for controlled fixture. Postcondition: actual PathOptimization module emits independent comment literals and named pieces through real APIs.
@@ -114,7 +152,7 @@ All dispatch results must be outside thinking, properly escaped and redundant ab
 - Dispatch: question “Is this discovered dual-target same-source macro fixture using the exact PathOptimization trait and fixture-only modes specified in design?” Scope these three files/discovery authority; FACT <=5 lines. Cost S.
 - Authority: docs/05 guest invariants/entry point and producer forward contracts. Orca refs: none.
 - Verification: guest build/freshness with exit code inspected and fixture Cargo check using existing guest build path; no broad test run.
-- Exit: private plan bytes interpreted in host, omitted empty workspace sentinel, absent ordinary export or trait-default preparation fails.
+- Exit: private plan bytes interpreted in host, a `[workspace]` sentinel or committed `Cargo.lock` present in the fixture crate (both break `cargo check -p slicer-wasm-host --all-targets` for a path dev-dependency, see `design.md`), absent ordinary export or trait-default preparation fails.
 
 ### Step 8a: Prepare fixture dependency and the empty test module
 - Task: TASK-574. Objective: make fixture integration and later registration compile without hiding a fourth edit in Step 9.
@@ -205,7 +243,7 @@ All dispatch results must be outside thinking, properly escaped and redundant ab
 - Precondition: every earlier narrow exit passed; dependency provenance/freshness is valid. Postcondition: every AC and full matrix gate passes and downstream ledger matches actual public shapes.
 - Allowed reads: this packet's five documents; bounded named test logs/metadata and public symbols; no full build output.
 - Allowed edits: none required for code; evidence/status changes within this packet require explicit closure authorization and do not activate later work.
-- Out of bounds: source plan/backlog/other packet edits, workspace test suite, speculative ADR/IR reservations, activation or commit without authorization.
+- Out of bounds: source plan/backlog/other packet edits, workspace test suite, speculative ADR/IR reservations, and any commit outside this run's `wip(<slug>):` checkpoint cadence.
 - Blast radius: no field/version/literal change at acceptance; any required repair returns to its owning bounded step.
 - Dispatch: question “Do all counted ACs, --all-targets build/check/clippy, literal/test-quality report and freshness gates pass, with no unimplemented forward contract claimed shipped?” Scope matrix/logs/public ledger; FACT pass/fail <=5 lines. Cost S.
 - Authority: packet.spec/requirements, docs/21/22 and guest freshness contract. Orca refs: none.
@@ -214,10 +252,30 @@ All dispatch results must be outside thinking, properly escaped and redundant ab
 
 ## Per-Step Budget Roll-Up
 
+### Extended-band escalation (declared 2026-10-14, before Step 6)
+
+```
+ESCALATION
+- Trigger: criterion 2 — at the 120k decision point, 12 of 16 steps are DONE and
+  verified (0, 1, 2, 2a, 3, 4, 5, 5a, 8, 8a plus the fixture repair and lock
+  hygiene), and closing (Steps 6-14, including the full acceptance ceremony and the
+  final full spec-review) verifiably exceeds remaining standard headroom.
+- Spend plan: permitted categories only — extra review/fix iterations and retained
+  per-step evidence for Steps 6-13a; the AC x evidence matrix kept uncompressed
+  rather than compressed mid-run; the final full spec-review and the acceptance
+  ceremony dispatched in-session instead of deferred. No larger direct reads, no
+  absorbed worker transcripts, no full logs.
+- WIP commits: on — protected run; the planner checkpoints after every verified sweep.
+- Stop line: 300k hard. At 300k the only moves are finalize or a PARTIAL handoff.
+```
+
+This escalation is a budget declaration, not a scope change: every step, edit list and exit condition above is unchanged, and the one added step (5b) exists only because the closure gate promotes the warnings it clears to errors.
+
 | Steps | Cost | Bound |
 | --- | --- | --- |
 | 0 | S | Feature exists before feature-aware compilation |
 | 1–2 | S each | Additive schema/parser only |
+| 2a | S | One crate-visible field on an existing crate-private struct; public surface and behaviour frozen |
 | 3–4 | M each | Facade and store separate |
 | 5 | S | Native pair only |
 | 6–7 | M each | Bindings split from imported resources |
@@ -233,4 +291,4 @@ Aggregate M, no L step. Largest reading hazard is canonical generated type ident
 
 ## Packet Completion Gate and Acceptance Ceremony
 
-Re-dispatch every AC and matrix gate after earlier narrow verification passes. Record only real execution evidence and measurement gaps. Reconcile row-04/05/06 public contracts against the implementation, not private helper names. TASK-574 remains partial until its other approved rows complete; no backlog/source-plan changes are owned here. Generating this draft does not authorize implementation, activation or commit.
+Re-dispatch every AC and matrix gate after earlier narrow verification passes. Record only real execution evidence and measurement gaps. Reconcile row-04/05/06 public contracts against the implementation, not private helper names. TASK-574 remains partial until its other approved rows complete; no backlog/source-plan changes are owned here. This packet is active and implementation is authorized; it does not authorize closing TASK-574 or editing the source plan/backlog.

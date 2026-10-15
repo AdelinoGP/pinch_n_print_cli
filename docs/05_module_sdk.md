@@ -961,6 +961,67 @@ the active region (packet 179); they must not assume a fixed 0.4 mm width.
 No state is retained across calls. Per-print state lives in the prepass tier +
 Blackboard (ADR-0029).
 
+The SDK retains neither module values nor prepared plans between calls; prepared-plan storage is host-owned.
+
+## Prepared-plan transport and native facade
+
+Row 03 adds opaque prepared-plan transport without retaining module instances
+or changing ordinary per-call reconstruction. In `crates/slicer-sdk/src/preparation.rs`,
+the additive non-WASM constructors adapt native host capabilities:
+
+- `PrintPreparationInput::from_host_reader` accepts an `Arc` reader callback
+  taking `(offset, max_bytes)` and returning bytes or `PreparationTransportError`.
+- `PreparedPlanOutput::from_host_writer` accepts an `Arc` writer callback
+  taking a name and complete byte slice, returning success or a transport error.
+- `PreparedPlanView::from_host_view` wraps an
+  `Arc<dyn PreparedPlanRead + Send + Sync>`; resource validity remains the
+  host's responsibility.
+
+The read traits in the same SDK file are `PreparedPlanRead`, with
+`check_ready` and `open`, and `PreparedPieceRead`, with `len`, `is_empty`, and
+bounded `read(offset, max_bytes)`. `open` returns an optional
+`Arc<dyn PreparedPieceRead + Send + Sync>` without interpreting the bytes.
+`PreparedPlanView::require(name)` converts optional absence to fatal
+`ModuleError` code `57401`, with message
+`required preparation piece missing: <name>`. It does not decode payloads;
+module-owned decoders retain their own errors (for example, the transport
+fixture's malformed-payload code `57403`).
+
+`with_prepared_plan_view(view, call)` binds a native host read facade for one
+synchronous call. It delegates to the existing scope guard, restoring any
+previous thread-local binding on both return and unwind, including nested
+calls; call-scoped wrappers cannot keep the expired scope alive. The
+pre-existing `with_prepared_plan` signature is unchanged:
+`with_prepared_plan<R>(current: impl Fn() -> Result<PreparedPlanCallbacks, PreparationError> + 'static, body: impl FnOnce() -> R) -> R`.
+
+Host adapters freeze the selected artifact and its declaration rather than a
+live module: `freeze_native` (`crates/slicer-wasm-host/src/preparation_native.rs`)
+keeps the prepared/ordinary native entry pairing, while `freeze_wasm`
+(`crates/slicer-wasm-host/src/preparation.rs`) validates the selected
+component's capability and ordinary stage. `FrozenPreparationBinding::with_native_plan`
+(`crates/slicer-wasm-host/src/preparation_native.rs`) supplies the paired ordinary
+entry under a fresh owner-bound read scope; `FrozenPreparationBinding::with_wasm_plan`
+(`crates/slicer-wasm-host/src/preparation.rs`) supplies the frozen component
+and a fresh call-local store. Both check owner authority and hold active-call
+guards. These are explicit mechanisms only, not scheduling or module selection.
+
+Transport errors map one-to-one between schema `PreparationTransportError`,
+SDK `PreparationError` (`crates/slicer-sdk/src/preparation.rs`), and the WIT
+variants via `boundary` (`crates/slicer-wasm-host/src/preparation_host.rs`):
+
+| Rust variant | WIT variant |
+|---|---|
+| `NotReady` | `not-ready` |
+| `InvalidName` | `invalid-name` |
+| `DuplicateName` | `duplicate-name` |
+| `PoisonedOutput` | `poisoned-output` |
+| `RangeError` | `range-error` |
+| `ArithmeticOverflow` | `arithmetic-overflow` |
+| `AccessDenied` | `access-denied` |
+
+Row 03 does not supply row-04 typed input projections, row-05 scheduling,
+cancellation or release orchestration, or row-06 diagnostic geometry.
+
 ### Preparation capability pilot authoring
 
 **PILOT evidence only — not production availability.** This controlled-fixture

@@ -113,6 +113,19 @@ Manifest keys are kebab-case and table-scoped. `LoadedModule` stores normalized 
 | `[compatibility].incompatible-with`    | `incompatible_with`      |
 | `[compatibility].requires`             | `requires_modules`       |
 
+#### Preparation metadata naming exception (Normative)
+
+The new `[preparation]` table maps `[preparation].interface`,
+`[preparation].input_reads`, and `[preparation].views` to the companion's
+Rust `interface()`, `input_reads()`, and `views()` methods, respectively. A
+kebab-case `input-reads` alias is rejected as an unknown key.
+
+Only new [preparation] metadata keys use snake_case; legacy manifest/config naming remains unchanged.
+
+This exception applies only to the new `[preparation]` table; no existing
+manifest key is renamed, existing mapping rows remain unchanged, and the
+config naming policy is unchanged.
+
 Per-key scope eligibility is not a manifest-table list: each key's
 `denied_scopes` entries live on its own `[config.schema.<key>]` declaration and
 are parsed into the key's schema entry (`config_schema`), where the registry

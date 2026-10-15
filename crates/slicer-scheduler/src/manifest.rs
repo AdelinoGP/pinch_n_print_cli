@@ -685,7 +685,7 @@ pub fn load_modules_from_roots_with_integrated(
 
 #[derive(Debug)]
 pub(crate) struct IngestedManifest {
-    module: LoadedModule,
+    pub(crate) module: LoadedModule,
     diagnostics: Vec<LoadDiagnostic>,
 }
 

@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: layer-module-preparation_03_preparation-contract-transport
 task_ids:
   - TASK-574
@@ -19,10 +19,10 @@ Queue row 03 of the approved eight-row `docs/specs/layer-module-preparation-plan
 
 ## Prerequisites and Blockers
 
-- **FORWARD-DEP:** `layer-module-preparation_02_preparation-capability-pilot` is GENERATED/DRAFT, **not implemented**. Its planned public exports below are not current tree facts.
-- **[BLOCK] Activation:** the executable pilot must pass its same-artifact/imported-resource, native parity, fresh-instance, ordinary-old-artifact compatibility and measured-accounting gates before this packet activates or any dependent implementation starts. An authoring preflight pass is not that executable gate.
+- **ACTIVATION GATE — RE-DERIVED GREEN 2026-10-14, then activated.** The former FORWARD-DEP and `[BLOCK]` wording in this file, `requirements.md`, `design.md`, `implementation-plan.md` and `task-map.md` was stale: it predated row 02's implementation. Re-derive before trusting any of it — `rg -n 'TASK-573|TASK-574' docs/07_implementation_status.md`, `rg -n '^status:' docs/spec_packets/layer-module-preparation_02_preparation-capability-pilot/packet.spec.md`, then re-run the gate commands below.
+- Gate evidence actually measured on this tree (not quoted from a document): `cargo xtask build-guests --check` exited `0` (fresh, ordinary mode); `cargo test -p slicer-wasm-host --test contract preparation_pilot_` exited `0` with one `running 11 tests` line and `test result: ok. 11 passed; 0 failed`, covering `preparation_capability_pilot_tdd::preparation_pilot_{accounting,export_mismatch,fresh_wasm,interleaved_fresh_consumers,isolation,native,plain_guest,poison_preserves_original_non_fatal_error,publication_failures,ranges,stage_surface}`; and `target/preparation-pilot/plain-before.component.wasm` hashes to the value recorded in ADR-0066. Measured pilot count is **11**, not the 9 recorded when ADR-0066 was written.
+- **Two producer-shape corrections to the forward summary below, verified against disk.** `PreparationExportSchema` (`crates/slicer-schema/src/lib.rs`) already carries a `pub qualified_export` field, so Step 1 adds a same-named method **without** adding or removing any field. `__slicer_prepared_native_entry` is emitted by the macro at `crates/slicer-macros/src/lib.rs`, not declared in `crates/slicer-sdk/src/`; `NativePreparedStageEntry` is in `crates/slicer-sdk/src/native.rs`.
 - Row 04 consumes the permission and input-backing seams; row 05 consumes frozen bindings, ready state and disposal APIs; row 06 extends the atomic publication hook. TASK-574 is shared with rows 04/05 and must not be marked complete by row 03 alone.
-- Draft contract only; implementation, activation and commit require separate authorization.
 
 ## Forward Export Summary — concrete contracts, NET-NEW or FORWARD-DEP
 

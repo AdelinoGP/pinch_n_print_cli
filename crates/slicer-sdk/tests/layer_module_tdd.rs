@@ -4,16 +4,293 @@
 //! Tests lock down trait signatures, ModuleError type, view types, and output builders.
 
 use slicer_ir::{ObjectSurfaceData, OverhangRegion, SurfaceClassificationIR};
+use slicer_schema::preparation::PreparationTransportError;
 use slicer_sdk::prelude::*;
 use slicer_sdk::preparation::{
     with_prepared_plan, LayerPreparation, PreparationError, PreparedPieceCallbacks,
     PreparedPlanCallbacks, PreparedPlanOutput, PreparedPlanView, PrintPreparationInput,
 };
+use slicer_sdk::preparation::{with_prepared_plan_view, PreparedPieceRead, PreparedPlanRead};
 use slicer_sdk::test_support::fixtures::extrusion_path3d_base;
 use slicer_sdk::test_support::fixtures::wall_loop_base;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
+
+struct TransportPiece(&'static [u8]);
+
+impl PreparedPieceRead for TransportPiece {
+    fn len(&self) -> u64 {
+        self.0.len() as u64
+    }
+
+    fn read(&self, offset: u64, max_bytes: u64) -> Result<Vec<u8>, PreparationTransportError> {
+        let start = usize::try_from(offset).map_err(|_| PreparationTransportError::RangeError)?;
+        if start > self.0.len() {
+            return Err(PreparationTransportError::RangeError);
+        }
+        let take = max_bytes.min((self.0.len() - start) as u64) as usize;
+        Ok(self.0[start..start + take].to_vec())
+    }
+}
+
+struct TransportPlan(&'static [u8]);
+
+struct RecordingTransportPiece {
+    reads: Arc<Mutex<Vec<(u64, u64)>>>,
+}
+
+impl PreparedPieceRead for RecordingTransportPiece {
+    fn len(&self) -> u64 {
+        4
+    }
+
+    fn read(&self, offset: u64, max_bytes: u64) -> Result<Vec<u8>, PreparationTransportError> {
+        self.reads.lock().unwrap().push((offset, max_bytes));
+        TransportPiece(&[3, 5, 11, 17]).read(offset, max_bytes)
+    }
+}
+
+struct RecordingTransportPlan {
+    reads: Arc<Mutex<Vec<(u64, u64)>>>,
+}
+
+impl PreparedPlanRead for RecordingTransportPlan {
+    fn open(
+        &self,
+        name: &str,
+    ) -> Result<Option<Arc<dyn PreparedPieceRead + Send + Sync>>, PreparationTransportError> {
+        Ok((name == "fixture").then(|| {
+            Arc::new(RecordingTransportPiece {
+                reads: Arc::clone(&self.reads),
+            }) as Arc<dyn PreparedPieceRead + Send + Sync>
+        }))
+    }
+}
+
+#[test]
+fn preparation_transport_host_preserves_original_read_maximum() {
+    let reads = Arc::new(Mutex::new(Vec::new()));
+    let plan = PreparedPlanView::from_host_view(Arc::new(RecordingTransportPlan {
+        reads: Arc::clone(&reads),
+    }));
+    let piece = plan.require("fixture").unwrap();
+    assert_eq!(piece.read(0, u64::MAX).unwrap(), [3, 5, 11, 17]);
+    assert_eq!(piece.read(1, u64::MAX).unwrap(), [5, 11, 17]);
+    assert_eq!(*reads.lock().unwrap(), [(0, u64::MAX), (1, u64::MAX)]);
+}
+
+#[test]
+fn preparation_transport_callbacks_preserve_original_read_maximum() {
+    let reads = Arc::new(Mutex::new(Vec::new()));
+    with_prepared_plan_view(
+        Arc::new(RecordingTransportPlan {
+            reads: Arc::clone(&reads),
+        }),
+        || {
+            let plan = PreparedPlanView::current().unwrap();
+            let piece = plan.require("fixture").unwrap();
+            assert_eq!(piece.read(0, u64::MAX).unwrap(), [3, 5, 11, 17]);
+            assert_eq!(piece.read(1, u64::MAX).unwrap(), [5, 11, 17]);
+        },
+    );
+    assert_eq!(*reads.lock().unwrap(), [(0, u64::MAX), (1, u64::MAX)]);
+}
+
+impl PreparedPlanRead for TransportPlan {
+    fn open(
+        &self,
+        name: &str,
+    ) -> Result<Option<Arc<dyn PreparedPieceRead + Send + Sync>>, PreparationTransportError> {
+        match name {
+            "fixture" => Ok(Some(Arc::new(TransportPiece(self.0)))),
+            "denied" => Err(PreparationTransportError::AccessDenied),
+            _ => Ok(None),
+        }
+    }
+}
+
+#[test]
+fn preparation_transport_control_character_names_are_exact_nonempty_utf8() {
+    let written = Rc::new(RefCell::new(Vec::new()));
+    let recorded = Rc::clone(&written);
+    let mut output = PreparedPlanOutput::from_callback(move |name, bytes| {
+        recorded
+            .borrow_mut()
+            .push((name.to_owned(), bytes.to_vec()));
+        Ok(())
+    });
+    assert_eq!(output.put("\u{0}", &[1]), Ok(()));
+    assert_eq!(output.put("a\tb\n", &[2]), Ok(()));
+    assert_eq!(output.put("", &[3]), Err(PreparationError::InvalidName));
+    assert_eq!(
+        *written.borrow(),
+        [
+            ("\u{0}".to_owned(), vec![1]),
+            ("a\tb\n".to_owned(), vec![2])
+        ]
+    );
+
+    let view = PreparedPlanView::from_host_view(Arc::new(TransportPlan(b"abc")));
+    assert!(view.open("\u{0}").expect("valid absent NUL name").is_none());
+    assert!(view
+        .open("a\tb\n")
+        .expect("valid absent control name")
+        .is_none());
+    assert_eq!(view.open("").err(), Some(PreparationError::InvalidName));
+}
+
+#[test]
+fn preparation_transport_require_missing_is_fatal_57401() {
+    let view = PreparedPlanView::from_host_view(Arc::new(TransportPlan(b"abc")));
+    let error = view.require("absent").err().expect("missing must fail");
+    assert_eq!(error.code, 57401);
+    assert!(error.fatal);
+    assert_eq!(error.message, "required preparation piece missing: absent");
+    assert_eq!(view.require("fixture").unwrap().len().unwrap(), 3);
+}
+
+#[test]
+fn preparation_transport_require_does_not_decode() {
+    let view = PreparedPlanView::from_host_view(Arc::new(TransportPlan(b"\xff\x00{broken")));
+    let piece = view
+        .require("fixture")
+        .expect("opaque bytes must not be decoded");
+    assert_eq!(piece.read(0, u64::MAX).unwrap(), b"\xff\x00{broken");
+}
+
+#[test]
+fn preparation_transport_host_reader_writer_round_trip() {
+    let reads = Arc::new(Mutex::new(Vec::new()));
+    let recorded_reads = Arc::clone(&reads);
+    let input = PrintPreparationInput::from_host_reader(Arc::new(move |offset, max_bytes| {
+        recorded_reads.lock().unwrap().push((offset, max_bytes));
+        match (offset, max_bytes) {
+            (2, 3) => Ok(b"xyz".to_vec()),
+            (5, 0) => Ok(Vec::new()),
+            _ => Err(PreparationTransportError::RangeError),
+        }
+    }));
+    let writes = Arc::new(Mutex::new(Vec::new()));
+    let recorded_writes = Arc::clone(&writes);
+    let mut output = PreparedPlanOutput::from_host_writer(Arc::new(move |name, bytes| {
+        recorded_writes
+            .lock()
+            .unwrap()
+            .push((name.to_owned(), bytes.to_vec()));
+        Ok(())
+    }));
+    let bytes = input.read_fixture(2, 3).unwrap();
+    assert_eq!(bytes, b"xyz");
+    output.put("payload", &bytes).unwrap();
+    let empty = input.read_fixture(5, 0).unwrap();
+    assert_eq!(empty, Vec::<u8>::new());
+    output.put("empty", &empty).unwrap();
+    assert_eq!(output.complete(Ok(())), Ok(()));
+    assert_eq!(*reads.lock().unwrap(), [(2, 3), (5, 0)]);
+    assert_eq!(
+        *writes.lock().unwrap(),
+        [
+            ("payload".to_owned(), b"xyz".to_vec()),
+            ("empty".to_owned(), Vec::new()),
+        ]
+    );
+}
+
+#[test]
+fn preparation_transport_scoped_binding_restores_on_unwind() {
+    let mut escaped = None;
+    with_prepared_plan(
+        || Ok(preparation_fixture_plan(b"previous")),
+        || {
+            let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                with_prepared_plan_view(Arc::new(TransportPlan(b"outer")), || {
+                    with_prepared_plan_view(Arc::new(TransportPlan(b"inner")), || {
+                        assert_eq!(
+                            PreparedPlanView::current()
+                                .unwrap()
+                                .require("fixture")
+                                .unwrap()
+                                .read(0, u64::MAX)
+                                .unwrap(),
+                            b"inner"
+                        );
+                    });
+                    let outer = PreparedPlanView::current()
+                        .unwrap()
+                        .require("fixture")
+                        .unwrap();
+                    assert_eq!(outer.read(0, u64::MAX).unwrap(), b"outer");
+                    escaped = Some(outer);
+                    panic!("transport unwind sentinel");
+                });
+            }));
+            assert_eq!(
+                panic.unwrap_err().downcast_ref::<&str>(),
+                Some(&"transport unwind sentinel")
+            );
+            assert_eq!(
+                PreparedPlanView::current()
+                    .unwrap()
+                    .require("fixture")
+                    .unwrap()
+                    .read(0, u64::MAX)
+                    .unwrap(),
+                b"previous"
+            );
+            assert_eq!(
+                escaped.as_ref().unwrap().read(0, 1),
+                Err(PreparationError::NotReady)
+            );
+        },
+    );
+    assert_eq!(
+        PreparedPlanView::current().err(),
+        Some(PreparationError::NotReady)
+    );
+}
+
+#[test]
+fn preparation_transport_error_variant_survives_facades() {
+    let input = PrintPreparationInput::from_host_reader(Arc::new(|_, _| {
+        Err(PreparationTransportError::RangeError)
+    }));
+    let result = input
+        .read_fixture(0, 1)
+        .map_err(PreparationTransportError::from);
+    assert_eq!(result, Err(PreparationTransportError::RangeError));
+    let view = PreparedPlanView::from_host_view(Arc::new(TransportPlan(b"")));
+    assert_eq!(
+        view.open("denied")
+            .err()
+            .map(PreparationTransportError::from),
+        Some(PreparationTransportError::AccessDenied)
+    );
+}
+
+#[test]
+fn preparation_pilot_callback_binding_signature_and_bytes_unchanged() {
+    with_prepared_plan(
+        || Ok(preparation_fixture_plan(b"pilot")),
+        || {
+            assert_eq!(
+                PreparedPlanView::current()
+                    .unwrap()
+                    .open("fixture")
+                    .unwrap()
+                    .unwrap()
+                    .read(0, u64::MAX)
+                    .unwrap(),
+                b"pilot"
+            );
+        },
+    );
+    assert_eq!(
+        PreparedPlanView::current().err(),
+        Some(PreparationError::NotReady)
+    );
+}
 
 // =============================================================================
 // Test 1: LayerModule trait exists with from_config
@@ -1174,16 +1451,15 @@ fn preparation_fixture_plan(bytes: &'static [u8]) -> PreparedPlanCallbacks {
         Ok(Some(PreparedPieceCallbacks::new(
             move || bytes.len() as u64,
             move |offset, max_bytes| {
+                if offset > bytes.len() as u64 {
+                    return Err(PreparationError::RangeError);
+                }
+                let remaining = bytes.len() as u64 - offset;
+                let take = max_bytes.min(remaining);
+                let take =
+                    usize::try_from(take).map_err(|_| PreparationError::ArithmeticOverflow)?;
                 let offset = usize::try_from(offset).map_err(|_| PreparationError::RangeError)?;
-                let max_bytes =
-                    usize::try_from(max_bytes).map_err(|_| PreparationError::RangeError)?;
-                let end = offset
-                    .checked_add(max_bytes)
-                    .ok_or(PreparationError::ArithmeticOverflow)?;
-                bytes
-                    .get(offset..end)
-                    .map(<[u8]>::to_vec)
-                    .ok_or(PreparationError::RangeError)
+                Ok(bytes[offset..offset + take].to_vec())
             },
         )))
     })
@@ -1441,7 +1717,7 @@ fn preparation_output_is_unique_complete_and_poisoned_after_any_error() {
 
     let mut invalid = PreparedPlanOutput::from_callback(|_, _| panic!("invalid name reached host"));
     assert_eq!(
-        invalid.put("bad\0name", b"bytes"),
+        invalid.put("", b"bytes"),
         Err(PreparationError::InvalidName)
     );
     assert_eq!(

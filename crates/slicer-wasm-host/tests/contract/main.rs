@@ -25,6 +25,8 @@ mod order_lock_marshal_round_trip_tdd;
 mod perimeter_infill_per_origin_route_tdd;
 mod preparation_capability_pilot_tdd;
 mod preparation_pilot_host;
+mod preparation_transport_driver;
+mod preparation_transport_tdd;
 mod prepass_layer_planning_v2_tdd;
 mod prepass_output_builder_validation_tdd;
 mod production_guest_smoke_tdd;

@@ -8,6 +8,8 @@ description = "WIT/wasmtime marshalling and dispatch for Pinch 'n Print's WASM m
 [features]
 # Mirrors crates/slicer-runtime for delivery-capture observations in contract tests.
 perimeter-spatial-test-support = ["slicer-core/perimeter-spatial-test-support"]
+# Controlled-only fixture support; must never be enabled for production runs.
+preparation-test-fixtures = []
 
 [dependencies]
 wasmtime = { workspace = true }
@@ -25,6 +27,7 @@ slicer-sdk = { path = "../slicer-sdk" }
 [dev-dependencies]
 preparation-pilot-infill = { path = "test-guests/preparation-pilot-infill" }
 preparation-pilot-path = { path = "test-guests/preparation-pilot-path" }
+preparation-transport-path = { path = "test-guests/preparation-transport-path" }
 sdk-finalization-guest = { path = "test-guests/sdk-finalization-guest" }
 sdk-layer-pathopt-guest = { path = "test-guests/sdk-layer-pathopt-guest" }
 sdk-infill-postprocess-view-guest = { path = "test-guests/sdk-infill-postprocess-view-guest" }

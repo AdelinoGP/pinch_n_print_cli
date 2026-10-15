@@ -6,6 +6,9 @@
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::rc::{Rc, Weak};
+use std::sync::Arc;
+
+use slicer_schema::preparation::PreparationTransportError;
 
 use crate::error::ModuleError;
 
@@ -31,7 +34,7 @@ pub trait LayerPreparation {
 pub enum PreparationError {
     /// No prepared plan is bound to this call.
     NotReady,
-    /// A piece name is empty or contains a control character.
+    /// A piece name is empty.
     InvalidName,
     /// A complete piece with this name was already staged.
     DuplicateName,
@@ -61,6 +64,60 @@ impl std::fmt::Display for PreparationError {
 
 impl std::error::Error for PreparationError {}
 
+impl From<PreparationTransportError> for PreparationError {
+    fn from(error: PreparationTransportError) -> Self {
+        match error {
+            PreparationTransportError::NotReady => Self::NotReady,
+            PreparationTransportError::InvalidName => Self::InvalidName,
+            PreparationTransportError::DuplicateName => Self::DuplicateName,
+            PreparationTransportError::PoisonedOutput => Self::PoisonedOutput,
+            PreparationTransportError::RangeError => Self::RangeError,
+            PreparationTransportError::ArithmeticOverflow => Self::ArithmeticOverflow,
+            PreparationTransportError::AccessDenied => Self::AccessDenied,
+        }
+    }
+}
+
+impl From<PreparationError> for PreparationTransportError {
+    fn from(error: PreparationError) -> Self {
+        match error {
+            PreparationError::NotReady => Self::NotReady,
+            PreparationError::InvalidName => Self::InvalidName,
+            PreparationError::DuplicateName => Self::DuplicateName,
+            PreparationError::PoisonedOutput => Self::PoisonedOutput,
+            PreparationError::RangeError => Self::RangeError,
+            PreparationError::ArithmeticOverflow => Self::ArithmeticOverflow,
+            PreparationError::AccessDenied => Self::AccessDenied,
+        }
+    }
+}
+
+/// Native host access to an immutable named-piece plan.
+pub trait PreparedPlanRead {
+    /// Validate readiness when acquiring a call-local current view.
+    fn check_ready(&self) -> Result<(), PreparationTransportError> {
+        Ok(())
+    }
+
+    /// Open a piece without decoding or copying its contents.
+    fn open(
+        &self,
+        name: &str,
+    ) -> Result<Option<Arc<dyn PreparedPieceRead + Send + Sync>>, PreparationTransportError>;
+}
+
+/// Native host access to opaque immutable piece bytes.
+pub trait PreparedPieceRead {
+    /// Return the serialized byte count.
+    fn len(&self) -> u64;
+    /// Return whether the immutable piece contains no bytes.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    /// Read a bounded range, truncating at EOF.
+    fn read(&self, offset: u64, max_bytes: u64) -> Result<Vec<u8>, PreparationTransportError>;
+}
+
 impl From<PreparationError> for ModuleError {
     fn from(error: PreparationError) -> Self {
         Self::fatal(1, format!("layer preparation: {error}"))
@@ -76,8 +133,31 @@ type CurrentCallback = dyn Fn() -> Result<PreparedPlanCallbacks, PreparationErro
 /// Carried in the existing WIT module-error code, independently of diagnostics.
 pub const POISONED_PREPARATION_CODE: u32 = 0x5052_5001;
 
+fn poisoned_preparation_message(error: PreparationError) -> String {
+    format!("layer preparation: poisoned-output; original put error: {error}")
+}
+
+/// Recognize the SDK-owned completion marker across the WIT boundary.
+/// The code alone is not reserved against genuine module errors.
+#[doc(hidden)]
+pub fn is_poisoned_preparation_error(error: &ModuleError) -> bool {
+    error.code == POISONED_PREPARATION_CODE
+        && error.fatal
+        && [
+            PreparationError::NotReady,
+            PreparationError::InvalidName,
+            PreparationError::DuplicateName,
+            PreparationError::PoisonedOutput,
+            PreparationError::RangeError,
+            PreparationError::ArithmeticOverflow,
+            PreparationError::AccessDenied,
+        ]
+        .into_iter()
+        .any(|fault| error.message == poisoned_preparation_message(fault))
+}
+
 fn validate_name(name: &str) -> Result<(), PreparationError> {
-    if name.is_empty() || name.chars().any(char::is_control) {
+    if name.is_empty() {
         Err(PreparationError::InvalidName)
     } else {
         Ok(())
@@ -98,6 +178,14 @@ pub struct PrintPreparationInput {
 }
 
 impl PrintPreparationInput {
+    /// Adapt a native host reader while preserving every transport error variant.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn from_host_reader(
+        reader: Arc<dyn Fn(u64, u64) -> Result<Vec<u8>, PreparationTransportError> + Send + Sync>,
+    ) -> Self {
+        Self::from_callback(move |offset, max_bytes| reader(offset, max_bytes).map_err(Into::into))
+    }
+
     /// Adapt the host's generated `read-fixture` import.
     pub fn from_callback(
         read_fixture: impl Fn(u64, u64) -> Result<Vec<u8>, PreparationError> + 'static,
@@ -137,9 +225,18 @@ pub struct PreparedPlanOutput {
     names: BTreeSet<String>,
     poisoned: bool,
     first_error: Option<PreparationError>,
+    synthesized_completion: RefCell<Option<(u32, String, bool)>>,
 }
 
 impl PreparedPlanOutput {
+    /// Adapt a native host writer, retaining the pilot's atomic staging checks.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn from_host_writer(
+        writer: Arc<dyn Fn(&str, &[u8]) -> Result<(), PreparationTransportError> + Send + Sync>,
+    ) -> Self {
+        Self::from_callback(move |name, bytes| writer(name, bytes).map_err(Into::into))
+    }
+
     /// Adapt the host's generated `put` import, without a module-owned codec.
     pub fn from_callback(
         put: impl FnMut(&str, &[u8]) -> Result<(), PreparationError> + 'static,
@@ -149,6 +246,7 @@ impl PreparedPlanOutput {
             names: BTreeSet::new(),
             poisoned: false,
             first_error: None,
+            synthesized_completion: RefCell::new(None),
         }
     }
 
@@ -181,11 +279,27 @@ impl PreparedPlanOutput {
     pub fn complete(&self, result: Result<(), ModuleError>) -> Result<(), ModuleError> {
         result?;
         if let Some(error) = self.first_error {
-            let detail = format!("layer preparation: poisoned-output; original put error: {error}");
-            Err(ModuleError::fatal(POISONED_PREPARATION_CODE, detail))
+            let detail = poisoned_preparation_message(error);
+            let error = ModuleError::fatal(POISONED_PREPARATION_CODE, detail);
+            *self.synthesized_completion.borrow_mut() =
+                Some((error.code, error.message.clone(), error.fatal));
+            Err(error)
         } else {
             Ok(())
         }
+    }
+
+    /// Expose the first local writer rejection to the native host finalizer.
+    #[doc(hidden)]
+    pub fn writer_fault(&self) -> Option<PreparationTransportError> {
+        self.first_error.map(Into::into)
+    }
+
+    /// Exact fields of the latest synthesized completion error, if any.
+    /// Native finalizers compare these with the result actually returned.
+    #[doc(hidden)]
+    pub fn synthesized_completion(&self) -> Option<(u32, String, bool)> {
+        self.synthesized_completion.borrow().clone()
     }
 }
 
@@ -289,13 +403,63 @@ fn active_scope(scope: &Weak<PlanScope>) -> Result<Rc<PlanScope>, PreparationErr
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+fn host_plan_callbacks(view: Arc<dyn PreparedPlanRead + Send + Sync>) -> PreparedPlanCallbacks {
+    PreparedPlanCallbacks::new(move |name| {
+        view.open(name)
+            .map(|piece| {
+                piece.map(|piece| {
+                    let reader = Arc::clone(&piece);
+                    PreparedPieceCallbacks::new(
+                        move || piece.len(),
+                        move |offset, max_bytes| reader.read(offset, max_bytes).map_err(Into::into),
+                    )
+                })
+            })
+            .map_err(Into::into)
+    })
+}
+
+/// Bind a native host view for one call, restoring prior bindings even on unwind.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn with_prepared_plan_view<R>(
+    view: Arc<dyn PreparedPlanRead + Send + Sync>,
+    call: impl FnOnce() -> R,
+) -> R {
+    with_prepared_plan(
+        move || {
+            view.check_ready().map_err(PreparationError::from)?;
+            Ok(host_plan_callbacks(Arc::clone(&view)))
+        },
+        call,
+    )
+}
+
 /// A fresh call-local, lazy view of the current owner's serialized plan.
 pub struct PreparedPlanView {
     scope: Weak<PlanScope>,
     callbacks: Weak<PreparedPlanCallbacks>,
+    host: Option<Arc<dyn PreparedPlanRead + Send + Sync>>,
 }
 
 impl PreparedPlanView {
+    /// Wrap a native host view; resource validity remains enforced by the host.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn from_host_view(view: Arc<dyn PreparedPlanRead + Send + Sync>) -> Self {
+        Self {
+            scope: Weak::new(),
+            callbacks: Weak::new(),
+            host: Some(view),
+        }
+    }
+
+    /// Require a named piece without interpreting its bytes.
+    pub fn require(&self, name: &str) -> Result<PreparedPiece, ModuleError> {
+        self.open(name)?.ok_or_else(|| {
+            ModuleError::fatal(57401, format!("required preparation piece missing: {name}"))
+        })
+    }
+
     /// Acquire a fresh facade; missing preparation is an error, not an empty plan.
     pub fn current() -> Result<Self, PreparationError> {
         let scope = CURRENT_PLAN
@@ -305,6 +469,7 @@ impl PreparedPlanView {
         let view = Self {
             scope: Rc::downgrade(&scope),
             callbacks: Rc::downgrade(&callbacks),
+            host: None,
         };
         scope.views.borrow_mut().push(callbacks);
         Ok(view)
@@ -312,6 +477,19 @@ impl PreparedPlanView {
 
     /// Open a named piece without copying its serialized contents.
     pub fn open(&self, name: &str) -> Result<Option<PreparedPiece>, PreparationError> {
+        if let Some(host) = &self.host {
+            validate_name(name)?;
+            return host
+                .open(name)
+                .map_err(PreparationError::from)
+                .map(|piece| {
+                    piece.map(|host| PreparedPiece {
+                        scope: Weak::new(),
+                        callbacks: Weak::new(),
+                        host: Some(host),
+                    })
+                });
+        }
         let scope = active_scope(&self.scope)?;
         validate_name(name)?;
         let callbacks = self.callbacks.upgrade().ok_or(PreparationError::NotReady)?;
@@ -322,6 +500,7 @@ impl PreparedPlanView {
         let view = PreparedPiece {
             scope: Rc::downgrade(&scope),
             callbacks: Rc::downgrade(&piece),
+            host: None,
         };
         scope.pieces.borrow_mut().push(piece);
         Ok(Some(view))
@@ -332,6 +511,7 @@ impl PreparedPlanView {
 pub struct PreparedPiece {
     scope: Weak<PlanScope>,
     callbacks: Weak<PreparedPieceCallbacks>,
+    host: Option<Arc<dyn PreparedPieceRead + Send + Sync>>,
 }
 
 impl PreparedPiece {
@@ -343,6 +523,9 @@ impl PreparedPiece {
     /// Return the serialized length. Unlike WIT's infallible import, this
     /// wrapper also rejects attempts to use a resource after its scope ended.
     pub fn len(&self) -> Result<u64, PreparationError> {
+        if let Some(host) = &self.host {
+            return Ok(host.len());
+        }
         Ok((self.callbacks()?.len)())
     }
 
@@ -353,6 +536,18 @@ impl PreparedPiece {
 
     /// Read up to `max_bytes`, truncating at EOF but rejecting offsets beyond it.
     pub fn read(&self, offset: u64, max_bytes: u64) -> Result<Vec<u8>, PreparationError> {
+        if let Some(host) = &self.host {
+            let len = host.len();
+            if offset > len {
+                return Err(PreparationError::RangeError);
+            }
+            let take = max_bytes.min(len - offset);
+            return bounded_bytes(
+                host.read(offset, max_bytes)
+                    .map_err(PreparationError::from)?,
+                take,
+            );
+        }
         let callbacks = self.callbacks()?;
         let len = (callbacks.len)();
         if offset > len {
@@ -360,6 +555,6 @@ impl PreparedPiece {
         }
         let remaining = len - offset;
         let take = max_bytes.min(remaining);
-        bounded_bytes((callbacks.read)(offset, take)?, take)
+        bounded_bytes((callbacks.read)(offset, max_bytes)?, take)
     }
 }

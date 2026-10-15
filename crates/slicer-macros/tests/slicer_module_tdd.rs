@@ -897,3 +897,22 @@ fn test_22_bare_attribute_keeps_plain_layer_composition() {
     assert_eq!(schema.stage_export, "slicer:layer-infill/infill@2.0.0#run");
     assert_eq!(InfillModule::__slicer_stage_name(), "Layer::Infill");
 }
+
+#[test]
+fn preparation_transport_paired_entry_preserves_plain_construction() {
+    let entry = PreparedInfillModule::__slicer_prepared_native_entry();
+    match entry.stage {
+        ::slicer_sdk::native::NativeStageEntry::Layer(_) => {}
+        _ => panic!("paired entry must retain ordinary Layer entry"),
+    }
+    let config = ::slicer_ir::ConfigView::default();
+    <PreparedInfillModule as ::slicer_sdk::traits::LayerModule>::from_config(&config)
+        .expect("opt-in leaves ordinary construction callable");
+    let schema = PreparedInfillModule::__slicer_module_schema();
+    assert_eq!(schema.stage_id, "Layer::Infill");
+    assert_eq!(schema.stage_export, "slicer:layer-infill/infill@2.0.0#run");
+    assert_eq!(
+        PreparedInfillModule::__SLICER_PREPARATION_SCHEMA.ordinary_world,
+        "infill-module"
+    );
+}

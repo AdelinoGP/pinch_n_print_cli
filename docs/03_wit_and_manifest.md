@@ -357,6 +357,36 @@ projections. None is marked complete here. No lightning algorithm, migration,
 or parity claim is made. Allocator/process overhead and process peak memory
 are **UNMEASURED**; no latency acceptance threshold is claimed.
 
+## Preparation declaration and frozen capability validation
+
+`parse_preparation_declaration` (`crates/slicer-scheduler/src/preparation.rs`)
+reads optional `[preparation]` metadata. `interface` must equal
+`slicer:layer-preparation/prepare@1.0.0` exactly: a package, world, unqualified
+name, or another version is not accepted. `input_reads` is required, even if
+empty; `views` is optional and defaults to empty. Both arrays preserve exact,
+nonempty string names and reject duplicates. No other keys are accepted.
+`PreparationDeclaration` (`crates/slicer-schema/src/preparation.rs`) has private
+fields exposed through `interface()`, `input_reads()`, and `views()`.
+
+Parser failures are `InvalidTable`, `MissingInterface`, `UnsupportedInterface`,
+`MissingInputReads`, `InvalidInputRead`, `DuplicateInputRead`, `InvalidViewName`,
+`DuplicateViewName`, and `UnknownKey`. Artifact validation is bidirectional:
+a declaration without its capability is `MissingExport`; a capability without
+a declaration is `UndeclaredExport`. Incompatible compiled metadata, signatures,
+or resource identity produce `IncompatibleExport`; non-Layer capability bindings
+produce `UnsupportedStage`. These are `PreparationDeclarationError` variants,
+wrapped by the host's `PreparationFailure::Declaration`.
+
+Native freezing accepts one paired `NativePreparationArtifact`: `Plain` or
+`Prepared`, not a separately selected preparation provider. The ordinary entry
+and preparation metadata therefore belong to the same selected artifact.
+`freeze_wasm` (`crates/slicer-wasm-host/src/preparation.rs`) also validates the
+ordinary Layer stage and the typed composed component indices before a binding
+can invoke preparation. Export-name presence alone is insufficient: the composed
+typed world must match its ordinary signatures and host-owned resource identities.
+Ordinary artifacts without a preparation declaration retain ordinary binding;
+their worlds do not acquire mandatory preparation parameters or exports.
+
 ## `deps/types.wit`
 
 **Source of truth:** `crates/slicer-schema/wit/deps/types.wit` (package
