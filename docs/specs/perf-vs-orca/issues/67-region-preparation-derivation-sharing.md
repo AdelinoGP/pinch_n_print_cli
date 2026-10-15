@@ -2,10 +2,12 @@
 
 Type: task
 Label: wayfinder:task
-Status: open
-Assignee: unassigned — graduated by the 2026-10-14
+Status: claimed
+Assignee: claimed 2026-10-15 — session resumed on the human's "continue"
+(no ticket named), so it took the first frontier ticket in order per the map's
+standing selection rule. Graduated by the 2026-10-14
 [host:native attribution](60-host-native-attribution.md) take
-([findings](../evidence/t60-host-native/FINDINGS.md)); human route decision pending
+([findings](../evidence/t60-host-native/FINDINGS.md)).
 Parent: [Slice performance vs OrcaSlicer](../map.md)
 Blocked by: none
 
