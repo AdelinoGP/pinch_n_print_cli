@@ -184,4 +184,23 @@ then `python .../verify-references.py` (both must pass before timing); (3)
 `python .../reduce_ab.py`. Nothing needs rebuilding unless sources change;
 re-run `build-snapshots.sh <arm>` for the arm whose tree changed.
 
+### Campaign log — 2026-10-15 (take resumed)
+
+- **Proof complete** — all 16 cells ran both arms; every cell's
+  baseline/candidate SHA match (`proof/<cell>/rows.csv`, 2 rows each); driver
+  log ends `[t67] qualification proofs complete` with no ABORT.
+- **Qualification pass** — `build-qualification.py`:
+  `qualified cells: 16/16; pass=True` (exit 0); `verify-references.py`:
+  `reference-checked cells: 16/16; pass=True` (exit 0) — every cell hash
+  equals its preserved t58 reference, re-asserting the identity claim
+  independently. `qualification.json` written next to this ticket (committed
+  with the close evidence, t66 pattern).
+- **Measure launched** 20:28:11 detached (pid 13212,
+  `measure-driver-detached.log`): the four pre-declared cells (classic
+  supports-on, both fixtures and modes), 2 warmups + 6 retained pairs each,
+  resumable by re-running. Raw tree:
+  `.local-artifacts/…/t67-region-prep-sharing/measure/`.
+- Proof-phase wall numbers are single warmup runs, not the timed phase; no
+  inference is drawn from them.
+
 
