@@ -38,7 +38,23 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-16, on the t67 take):** the frontier was
+**Current selection scope (2026-10-16, on the t68 take):** the frontier was
+re-derived on resume — open:
+[20](issues/20-consume-only-when-read-annotations.md) only, parked
+below-fold, with the route decision back to the human — and the human
+selected the **classic-perimeters per-layer host-service round trips** lead
+from the t60 un-graduated set as the route for this take.
+[68](issues/68-classic-perimeters-host-round-trips.md) was graduated and
+claimed; `region_partition` dedup and consume-only-when-read stay
+un-graduated/parked. Ticket 67's stale `Status: claimed` line was flipped to
+`resolved` (its KEEP was already committed as `f4c542a3` / `84ec520a`). Take
+scope: per-site attribution of the 8+3 per-layer host calls (conversion vs
+clipper split) → exactness-qualified candidate → 16-cell output
+qualification + the standing paired ordinary/accelerated A/B, keep/drop to
+the human. The standing paired acceptance and human KEEP/DROP rules are
+unchanged.
+
+**Previous selection scope (2026-10-16, on the t67 take):** the frontier was
 re-derived on resume — open:
 [67](issues/67-region-preparation-derivation-sharing.md) first and
 [20](issues/20-consume-only-when-read-annotations.md) parked below-fold — and
@@ -58,7 +74,7 @@ tests. Frontier now:
 standing paired acceptance and human KEEP/DROP rules are unchanged; new
 questions require the human's route decision.
 
-**Current selection scope (2026-10-14, on the t60 take):** the frontier was
+**Previous selection scope (2026-10-14, on the t60 take):** the frontier was
 re-derived on resume — open:
 [60](issues/60-host-native-attribution.md) first and
 [20](issues/20-consume-only-when-read-annotations.md) parked below-fold — and
@@ -776,18 +792,20 @@ Standing decisions for this effort (2026-09-22):
   measured fuel attribution keeps its candidates in the same below-fold class —
   until a cell lands
   within ~1.5x of Orca or the structural tickets come back short.
-- **Named leads from the t60 host:native attribution (un-graduated,
-  2026-10-14).** [host:native attribution](issues/60-host-native-attribution.md)
+- **Named leads from the t60 host:native attribution (2026-10-14).**
+  [host:native attribution](issues/60-host-native-attribution.md)
   names two reducible shapes beyond the now-resolved (KEEP 2026-10-16)
   [Region-preparation derivation sharing across region projections](issues/67-region-preparation-derivation-sharing.md):
   the **classic-perimeters per-layer host-service round trips** (8
   `offset_polygons` + 3 `clip_polygons` calls per layer; 89.26 s accumulated
   base-off and 85.83 s base-on vs 5.91–6.31 s benchy — the largest
-  supports-off owner, whose reducible call sites need their own analysis) and
-  the **`region_partition` 3×-per-layer re-run** (10.04 s accumulated base-off;
-  dedup needs semantic analysis of what the post-process commit can change).
-  Both graduate only on the human's route decision; the standing paired A/B
-  governs any candidate.
+  supports-off owner) **graduated to
+  [ticket 68](issues/68-classic-perimeters-host-round-trips.md) under the
+  human's 2026-10-16 route decision and is taken**; the
+  **`region_partition` 3×-per-layer re-run** (10.04 s accumulated base-off;
+  dedup needs semantic analysis of what the post-process commit can change)
+  remains un-graduated, awaiting the human's route decision. The standing
+  paired A/B governs any candidate.
 - **Orca-side attribution.** What OrcaSlicer spends its time on per cell is
   unknown (GUI-subsystem binary, little introspection). Worth scoping only if
   the gap narrows to specific stages where "why is Orca faster here" becomes the

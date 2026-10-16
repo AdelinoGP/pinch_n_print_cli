@@ -2,7 +2,7 @@
 
 Type: task
 Label: wayfinder:task
-Status: claimed
+Status: resolved (2026-10-16; human-approved KEEP — measured GATE NOT MET on one CPU-corroboration clause, accepted by the human; candidate + tests committed `f4c542a3`; see ## Resolution)
 Assignee: claimed 2026-10-15 — session resumed on the human's "continue"
 (no ticket named), so it took the first frontier ticket in order per the map's
 standing selection rule. Graduated by the 2026-10-14
