@@ -2,7 +2,7 @@
 
 ## Execution Rules
 
-**Draft only; generation does not authorize execution.** TASK-574 is shared by queue 03–05; this row cannot close it independently of the producer gates. No activation, acceptance commands, queue/backlog edits or commits occur during generation.
+**Draft only; generation does not authorize execution.** TASK-574 spans queue rows 03–05; rows 03–04 are implemented, so their gates are re-derived from implemented proof records — this row still cannot close independently of that re-derivation. No activation, acceptance commands, queue/backlog edits or commits occur during generation.
 
 One step at a time, TDD then the specified bounded production change. Read bounds below mean locate the named symbol/heading with `rg`, then at most ±40 lines per question; long files are never loaded wholesale. Every step is TASK-574. Step authority and edit caps are independent; no step may silently expand its surface.
 
@@ -13,7 +13,7 @@ Narrow command convention: `set -euo pipefail; mkdir -p target; cargo test -p sl
 ### Step 0: Author the actual prepared AnchoredEvents reader fixture
 
 - Task IDs: TASK-574. Objective: a module-owned prepared read in the existing ordinary `Layer::AnchoredEvents` dispatch, not synthetic host-commit evidence.
-- Precondition: #01–#04 implemented/export gates and executable #02 pilot; new anchored fixture directory absent. Postcondition: real dual native/component prepared module owns its codec and produces a nonempty anchored proposal from required `probe`.
+- Precondition: #01–#04 implemented with export gates re-derived from their proof records (executable #02 native/WASM capability pilot rerun); new anchored fixture directory absent. Postcondition: real dual native/component prepared module owns its codec and produces a nonempty anchored proposal from required `probe`.
 - Allowed reads: SDK `src/traits.rs::LayerModule::run_anchored_events`, `src/layer_collection_builder.rs::set_anchored_event_collection` windows; IR `AnchoredEntity`/`OrderedEventCollection` definitions; #02 preparation macro and #04 typed permissions; existing guest Cargo/build discovery windows.
 - Allowed edits (3): `crates/slicer-wasm-host/test-guests/preparation-lifecycle-anchored-guest/Cargo.toml`, `src/lib.rs`, `module.toml` only.
 - Out of bounds: runtime/dependency edits, producer fixtures, WIT/SDK/core/IR types, converting synthetic host commits into module dispatch. Blast radius: new fixture only, no existing fields/versions; production literals exhaustive, test literals FRU/waiver; fixture keys snake_case and producer permission vocabulary unchanged.
@@ -24,10 +24,10 @@ Narrow command convention: `set -euo pipefail; mkdir -p target; cargo test -p sl
 ### Step 1: Author the dual-target prepared fixture
 
 - Task IDs: TASK-574. Objective: a real native/component PathOptimization fixture consuming final typed inputs, with independent literal `probe` codec and fault modes.
-- Precondition: implemented #01–#04/export agreement, executable #02 pilot and Step 0 anchored fixture; new PathOptimization fixture absent. Postcondition: dual native/WASM fixture discovered; ordinary method still reconstructs from_config; runtime production types have a direct legal schema dependency, independent of dev dependencies.
+- Precondition: implemented #01–#04 with export agreement re-derived, rerun-executable #02 pilot gate and Step 0 anchored fixture; new PathOptimization fixture absent. Postcondition: dual native/WASM fixture discovered; ordinary method still reconstructs from_config; runtime production types have a direct legal schema dependency, independent of dev dependencies; the e2e aggregate cargo target is declared.
 - Allowed reads: #02/#03/#04 public exports; produced fixture Cargo manifests/entrypoint windows for actual names/families; Step 0 anchored manifest; SDK PathOptimization guest windows; `xtask/src/build_guests.rs::discover_guests`; runtime `[dependencies]`/`[dev-dependencies]`, schema Cargo dependency sections and scheduler/wasm-host/SDK schema edges only.
 - Allowed edits (3): new guest `Cargo.toml`, new guest `src/lib.rs`, `crates/slicer-runtime/Cargo.toml`. Paths are fully rooted in design's code surface.
-- Out of bounds: WIT, SDK/macro/core implementation, producer fixture edits, root Cargo feature changes/other packets; no handwritten generated bindings/lockfiles. Runtime Cargo explicitly moves `slicer-schema = { path = "../slicer-schema" }` from dev-only to `[dependencies]`, removing the dev duplicate; adds both owned lifecycle fixtures and required #04 libraries only as dev-dependencies. Same three-file edit cap.
+- Out of bounds: WIT, SDK/macro/core implementation, producer fixture edits, root Cargo feature changes/other packets; no handwritten generated bindings/lockfiles. Runtime Cargo explicitly moves `slicer-schema = { path = "../slicer-schema" }` from dev-only to `[dependencies]`, removing the dev duplicate; declares the currently missing aggregate target `[[test]] name = "e2e" path = "tests/e2e/main.rs"` (no `required-features`); adds both owned lifecycle fixtures and required #04 libraries only as dev-dependencies. Same three-file edit cap.
 - Blast radius: production dependency move covers production `SliceRuntimeExtensions`/all native/schema type imports, and test dependency graph; existing schema dev consumers retain access through the production entry. No feature/version/WIT/type widening; new fixture literals exhaustive and test watched literals FRU/waiver. Graph authority is runtime → schema plus existing scheduler/wasm-host/SDK → schema; schema has no dependencies/back edge.
 - Dispatch: Does Cargo declare schema as production rather than dev-only, with no cycle, and do paired fixture entries compile? Scope enumerated manifests/new guest/producer exports; FACT <=5 lines. Context M.
 - Authority: docs/03 Concurrency & Instance Isolation; docs/05 Module State Lifecycle; docs/21 §1, docs/22 §2. Orca refs: none.
@@ -37,12 +37,12 @@ Narrow command convention: `set -euo pipefail; mkdir -p target; cargo test -p sl
 
 - Task IDs: TASK-574. Objective: registered e2e driver for all ACs including AC-10 and metadata-only AC-8, staged external artifacts and independent observations; no Ready injection. Author literal selection/name/length/accounting expectations, actual anchored reader changed-token controls, and a separate synthetic-host-closure lifetime control here.
 - Precondition: Step 1 real fixture artifacts available. Postcondition: registered tests drive the existing wedge slice plus native/external fixture registrations; activation test is intentionally red until lifecycle wiring.
-- Allowed reads: `tests/e2e/run_slice_api_tdd.rs::run_slice_against_wedge_returns_nonempty_gcode`; e2e aggregator; `tests/integration/live_module_loading_tdd.rs` native-registration/override constructors; #02 schema-corpus input/provenance sections; fixture src method window.
+- Allowed reads: `tests/e2e/run_slice_api_tdd.rs::run_slice_against_wedge_returns_nonempty_gcode`; e2e aggregator; `tests/integration/live_module_loading_tdd.rs` native-registration/override constructors; #02 pilot compile-coverage roster/provenance sections; fixture src method window.
 - Allowed edits (3): new guest `module.toml`, new `tests/e2e/preparation_runtime_lifecycle_tdd.rs`, `tests/e2e/main.rs` under crates listed in design.
 - Out of bounds: production lifecycle implementation, producer test backings, archived artifacts, all other tests/packets. Blast radius: new test registration/fixture manifest only; declared fixture keys snake_case and #04 input_reads exact; no shared config/schema changes.
 - Dispatch: Does `mod preparation_runtime_lifecycle_tdd;` register e2e and existing features compile the fixture? Scope runtime Cargo/aggregator/new test; FACT <=5 lines. Context M.
 - Authority: docs/22 §2 false-green rules; docs/01 Priority tiers; docs/04 Anchored invocation closure. Orca refs: none.
-- Narrow verification: `activation_order_and_final_inputs` using command convention; expected TDD red must be missing lifecycle API/activation assertion, not missing guest, zero tests or unrelated load error. Exit: named test is listed/attempted in the real e2e target and independent expected markers are pinned; no claim of acceptance pass yet.
+- Narrow verification: `activation_order_and_final_inputs` using command convention; expected TDD red must be missing lifecycle API/activation assertion, not missing guest, missing e2e `[[test]]` target, zero tests or unrelated load error. Exit: named test is listed/attempted in the real e2e target and independent expected markers are pinned; no claim of acceptance pass yet.
 
 ### Step 3: Add sidecar types and production-used forwarding seam
 
@@ -57,12 +57,12 @@ Narrow command convention: `set -euo pipefail; mkdir -p target; cargo test -p sl
 
 ### Step 4: Freeze selected identities and shared eligibility
 
-- Task IDs: TASK-574. Objective: selected binding companion, deterministic print owner set and final typed input projection.
+- Task IDs: TASK-574. Objective: selected binding companion, deterministic print owner set and final typed input capture.
 - Precondition: Step 3 single startup seam and producer contracts executable. Postcondition: loaded provenance/version/artifact drives freeze; owner union uses shared targets across promoted layers/selected ordinary stages including Layer::AnchoredEvents, never synthetic entity commits.
-- Allowed reads: run.rs selected live bindings; pipeline.rs `promote_global_layers`/Blackboard product windows; #01 projection and #04 from_committed exports; actual host `WasmRuntimeDispatcher::run_stage` selection projection window.
+- Allowed reads: run.rs selected live bindings; `promote_global_layers` (defined in `layer_executor.rs`, invoked from `pipeline.rs`)/Blackboard product windows; the implemented #01 selection index (`build_layer_selection_index`, `LayerSelectionIndex::selection_for`) and #04 from_committed exports; actual host `WasmRuntimeDispatcher::run_stage` selection window.
 - Allowed edits (3): runtime `src/run.rs`, `src/preparation_lifecycle.rs`, `src/pipeline.rs`.
 - Out of bounds: #01/#04 resolvers, loader structs, fill-holder catalogs, unfinished LayerArena and guessed future stage outputs. Blast radius: private companion only, no struct-field/constant/config/WIT additions.
-- Dispatch: Does every target kind/paint/member/role/nonregion authority survive capture without duplicated selection? Scope companion and public projection callsites; SUMMARY <=200 words. Context M.
+- Dispatch: Does every target kind/paint/member/role/nonregion authority survive capture without duplicated selection? Scope companion and implemented selection-index callsites; SUMMARY <=200 words. Context M.
 - Authority: docs/04 Stage Prerequisites/Anchored invocation closure; #01 AC-BN1 distinction; docs/01 Data Ownership. Orca refs: none.
 - Narrow verification: `unused_nondefault_and_plain_empty` and `shared_selection_all_target_kinds`; exit: owner union independent of HashMap order, unused and prepared empty-target owners excluded, plain empty-target call preserved. Red consumer absence may remain until Step 5, but no wrong selection/identity is accepted.
 
@@ -113,8 +113,8 @@ Narrow command convention: `set -euo pipefail; mkdir -p target; cargo test -p sl
 ### Step 9: Complete stage/target/decoder coverage from shared pilot inputs
 
 - Task IDs: TASK-574. Objective: independent full-driver target-kind corpus and ready-empty/decoder cases, including non-infill adapters.
-- Precondition: production lifecycle and capture green; #02 corpus input artifacts verified. Postcondition: model-paint/modifier/perimeter members/multiroles/support/raft/actual anchored deliveries cover schema-derived prepared/plain stages without a copied roster/oracle.
-- Allowed reads: e2e test named fixture windows; #02 schema compile-driver corpus inputs and artifact provenance; `slicer_schema::STAGES`/stage_by_id; #01 target shapes/#04 typed DTO methods; fixture module-owned codec.
+- Precondition: production lifecycle and capture green; #02 pilot gate re-derived and its schema-backed prepared/plain roster confirmed. Postcondition: model-paint/modifier/perimeter members/multiroles/support/raft/actual anchored deliveries cover schema-derived prepared/plain stages without a copied roster/oracle.
+- Allowed reads: e2e test named fixture windows; #02 pilot compile-coverage roster and artifact provenance (read-only); `slicer_schema::STAGES`/stage_by_id; #01 target shapes/#04 typed DTO methods; fixture module-owned codec.
 - Allowed edits (3): e2e `preparation_runtime_lifecycle_tdd.rs`, guest `src/lib.rs`, guest `module.toml`.
 - Out of bounds: producer corpus implementation, target-key DTO shapes, core algorithms, generated bindgen/source and production config schema. Blast radius: fixture-only schema keys/input declarations stay contained; no existing literals or constants altered.
 - Dispatch: Does every claimed driver assertion have a nonempty independent control and mutate the actual observed consumer outcome? Scope fixture/test only; SUMMARY <=200 words. Context M.
