@@ -219,4 +219,32 @@ re-run `build-snapshots.sh <arm>` for the arm whose tree changed.
   (`stash@{0}` intact); correctness sealed 16/16 against the preserved t58
   references.
 
+### Resolution — human-approved KEEP (2026-10-16)
+
+**Decision.** The human ruled **KEEP** over the measured `GATE NOT MET`
+verdict. Candidate and tests committed as `f4c542a3`
+(`perf(runtime): share one region-preparation derivation across coincident
+projections (ticket 67)`): `crates/slicer-runtime/src/blackboard.rs`,
+`crates/slicer-runtime/tests/contract/region_preparation_sharing_tdd.rs`
+(+ its registration in `crates/slicer-runtime/tests/contract/main.rs`), and
+`crates/slicer-wasm-host/src/marshal/mod.rs`. Pre-commit gates green:
+`cargo clippy --workspace --all-targets -- -D warnings`,
+`cargo xtask check-literals`, `cargo xtask check-test-quality --report`,
+contract tests 5/5.
+
+**Ruling rationale (recorded so the override is auditable).** The strict
+pre-declared clauses miss in exactly one place — accelerated-benchy CPU
++0.19 % (≈ +0.31 s on a 118 s run) — while the wall (destination) clause
+passes in all four pre-declared cells and the `ordinary-base-classic-on` win
+is CPU-corroborated (−0.60 % ≈ −14 s), consistent with t60's attributed
+duplicate derivation. The strict alternative (t66 precedent: any clause miss
+= DROP) was presented; the human chose KEEP. The effect asymmetry (large
+ordinary-base, ≈ zero on accelerated-base and both benchy cells) stays
+disclosed here and in `FINDINGS.md`.
+
+**Aftermath.** `stash@{0}` (the pre-campaign safety copy of the candidate)
+is retained, never dropped. Frontier: ticket 20 is the only open child
+(audited, parked below-fold); route decision back to the human. Map updated
+(Selection scope + Decisions so far).
+
 

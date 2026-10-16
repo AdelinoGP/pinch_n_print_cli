@@ -5,7 +5,9 @@ clause passes in all four pre-declared cells (paired medians −0.11 %,
 −4.26 %, −0.50 %, −0.28 %) with the `ordinary-base-classic-on` win
 corroborated by CPU (−0.60 %), but the CPU corroboration clause fails in
 `accelerated-benchy-classic-on` by +0.19 % (+0.31 s CPU on a 118 s run).
-**Awaiting the human's KEEP/DROP ruling (2026-10-16).**
+**Human-approved KEEP (2026-10-16):** candidate and tests committed
+(`f4c542a3`) — the destination clause passed everywhere and the single miss
+is sub-noise on the lightest cell.
 
 Route: [Region-preparation derivation sharing](../../issues/67-region-preparation-derivation-sharing.md).
 
@@ -78,6 +80,18 @@ accelerated-candidate `109e5765…`.
 
 ## Ruling
 
-Pending (2026-10-16): the measured recommendation — including the question of
-whether the +0.19 % CPU miss is a strict drop under the t66 precedent or a
-noise-scale override — is with the human.
+**KEEP — human-approved 2026-10-16.** Committed with this ticket as
+`f4c542a3` (`perf(runtime): share one region-preparation derivation across
+coincident projections (ticket 67)`) together with
+`crates/slicer-runtime/tests/contract/region_preparation_sharing_tdd.rs` and
+its registration; pre-commit gates green (`cargo clippy --workspace
+--all-targets -- -D warnings`, `cargo xtask check-literals`, `cargo xtask
+check-test-quality --report`, contract tests 5/5). Ruling rationale: the
+strict clauses miss only on one cell's CPU corroboration (+0.19 %, i.e.
++0.31 s on a 118 s run) while the wall clause — the destination metric —
+passes in every pre-declared cell and the `ordinary-base-classic-on` effect
+is CPU-corroborated and consistent with t60's attributed duplicate
+derivation; the benchy miss sits below the campaign's own resolution. The
+strict alternative (t66 precedent: any clause miss = DROP) was presented and
+the human chose KEEP. The effect asymmetry (large ordinary-base, ~zero on
+accelerated-base and both benchy cells) stays disclosed above.

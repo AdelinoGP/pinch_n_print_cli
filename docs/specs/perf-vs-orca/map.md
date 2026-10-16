@@ -38,6 +38,26 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
+**Current selection scope (2026-10-16, on the t67 take):** the frontier was
+re-derived on resume — open:
+[67](issues/67-region-preparation-derivation-sharing.md) first and
+[20](issues/20-consume-only-when-read-annotations.md) parked below-fold — and
+the session took the first frontier ticket in order:
+[67](issues/67-region-preparation-derivation-sharing.md) — **resolved
+(2026-10-16) as measured GATE NOT MET with a human-approved KEEP**: the wall
+(destination) clause passed in all four pre-declared classic supports-on
+cells (paired medians −0.11 %, −4.26 %, −0.50 %, −0.28 %; 6/6 retained pairs,
+zero starvation exclusions; 16/16 qualification byte-identical to the
+preserved t58 references) with the ordinary base-classic-on win
+CPU-corroborated (−0.60 %), while the CPU corroboration clause missed in
+accelerated-benchy by +0.19 % (+0.31 s on a 118 s run) — the human kept the
+candidate over that sub-noise miss and it is committed (`f4c542a3`) with its
+tests. Frontier now:
+[20](issues/20-consume-only-when-read-annotations.md) is the only open child
+(audited, parked below-fold), awaiting the human's route decision. The
+standing paired acceptance and human KEEP/DROP rules are unchanged; new
+questions require the human's route decision.
+
 **Current selection scope (2026-10-14, on the t60 take):** the frontier was
 re-derived on resume — open:
 [60](issues/60-host-native-attribution.md) first and
@@ -544,6 +564,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Region-preparation derivation sharing across region projections](issues/67-region-preparation-derivation-sharing.md): **resolved (2026-10-16; measured GATE NOT MET on one CPU-corroboration clause — human-approved KEEP, committed `f4c542a3` with tests)** — `LayerArena` serves the perimeter and infill region projections from one prepared-region derivation when the perimeter source projection onto the regions is the identity (modifier sub-regions that restore base geometry keep the two derivations separate; no second cache, no clone). Qualification: 16 proof cells byte-identical (`build-qualification.py` pass 16/16, `verify-references.py` 16/16 against the preserved t58 references). Standing paired gate on the four pre-declared classic supports-on cells (56 timed runs, 6/6 pairs everywhere, zero starvation exclusions): paired-median wall Δ −0.11 % ordinary-benchy / **−4.26 % ordinary-base** / −0.50 % accelerated-benchy / −0.28 % accelerated-base; CPU Δ −0.44 % / −0.60 % / **+0.19 %** / −0.11 %. Read plainly: the only delta outside run noise is ordinary base-classic-on (−4.26 % paired and −4.12 % unpaired, 4 of 6 pairs by 2–9 %, CPU-corroborated ≈ −14 s, consistent with t60's attributed duplicate derivation); ordinary-benchy and accelerated-base flip sign between paired and unpaired medians (±0.3 %, inside noise) and the benchy cells were pre-declared at/below the 0.1–0.5 % floor; the single clause miss is +0.31 s of CPU on the 118 s accelerated-benchy slice. Evidence: `evidence/t67-region-prep-sharing/FINDINGS.md` (+ `qualification.json`, `ab-reduction.json`).
+
 - [host:native attribution: name the per-layer native geometry bucket](issues/60-host-native-attribution.md): **resolved (2026-10-14; bucket fully attributed — residual `host:native` = 0 with exact per-scope call reconciliation in all four classic cells; probe reverted, no production edit)** — four fresh ordinary profiled captures (outputs byte-identical to the t58 references; clean) carry the temporary `T60-PROBE` host instrument (thread-local sink owner + worker-thread owner for rayon batch items; `probe.patch`, reverted). Owners: the two region-preparation derivations (`ensure_prepared_regions` / `ensure_prepared_perimeter_source_regions`; 1.48+1.47 s benchy-off, 40.53+40.18 s base-off accumulated, once per layer, 661/1,926 clips each), `region_partition`'s `sync_perimeter_infill_areas_into_slice` 3×/layer (1.26 s benchy-off / 10.04 s base-off; 6,120/13,320 clips), guest-requested host services from per-layer dispatches (classic-perimeters 5.91/89.26 s; infill-linker 0.53/3.10 s; supports-on tree-support 3.79/40.29 s), the prepass seam-planner (0.95/13.67 s) and — supports-on — the support machine now named rather than suspected: tree-support-planner 6.49/160.33 s, its rayon batch-offset items 0.25/2.74 s (24,255 items = ticket 22's independent count), and support-plan aggregation clips 0.22/2.09 s. The supports-off headline bucket (benchy 11.60 s / base 176.78 s accumulated; base-off baseline was 197.2 s) is now a named split, not an unknown. One candidate graduated:
   [Region-preparation derivation sharing across region projections](issues/67-region-preparation-derivation-sharing.md) (the two derivations are identical work over identical region sets on the matched jobs; ≈80.7 s accumulated base-off); named but un-graduated leads (classic-perimeters host round trips; `region_partition` dedup) are in the map's fog. Evidence: `evidence/t60-host-native/` (`FINDINGS.md`, `summary.json`, `captures/`, `probe.patch`, `run-t60.ps1`, `verify.py` exits 0 from the committed set alone with six negative controls rejected).
 
@@ -756,7 +778,7 @@ Standing decisions for this effort (2026-09-22):
   within ~1.5x of Orca or the structural tickets come back short.
 - **Named leads from the t60 host:native attribution (un-graduated,
   2026-10-14).** [host:native attribution](issues/60-host-native-attribution.md)
-  names two reducible shapes beyond the graduated
+  names two reducible shapes beyond the now-resolved (KEEP 2026-10-16)
   [Region-preparation derivation sharing across region projections](issues/67-region-preparation-derivation-sharing.md):
   the **classic-perimeters per-layer host-service round trips** (8
   `offset_polygons` + 3 `clip_polygons` calls per layer; 89.26 s accumulated
