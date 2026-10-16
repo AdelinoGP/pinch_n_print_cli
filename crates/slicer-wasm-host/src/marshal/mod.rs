@@ -125,6 +125,23 @@ pub(crate) fn perimeter_source_regions(slice: &slicer_ir::SliceIR) -> Vec<slicer
     regions
 }
 
+/// True when [`perimeter_source_regions`] returns `slice.regions` unchanged:
+/// same regions, same order, byte-identical inputs.
+///
+/// The projection drops the modifier-footprint carrier and re-absorbs every
+/// modifier child's fill masks into its base region. When neither is present it
+/// is the identity on the region list, so the ordinary and perimeter-source
+/// region projections derive from byte-identical inputs and a single derivation
+/// can serve both — the sharing condition
+/// `LayerArena::ensure_prepared_perimeter_source_regions` tests.
+#[must_use]
+pub fn perimeter_source_projection_is_identity(slice: &slicer_ir::SliceIR) -> bool {
+    !slice.regions.iter().any(|region| {
+        region.region_id == slicer_ir::MODIFIER_FOOTPRINT_REGION_ID
+            || slicer_ir::is_modifier_namespace_id(region.region_id)
+    })
+}
+
 /// Convert a native SDK support builder through the same host-side join used
 /// for renderer output, preserving origin-based plan identity.
 #[cfg(not(target_arch = "wasm32"))]
@@ -169,7 +186,8 @@ pub fn convert_native_support_output_with_plan(
 
 #[cfg(test)]
 mod tests {
-    use super::perimeter_source_regions;
+    use super::{perimeter_source_projection_is_identity, perimeter_source_regions};
+    use crate::marshal::prepared::{prepare_perimeter_source_regions, prepare_slice_regions};
     use slicer_ir::{ExPolygon, Point2, Polygon, SliceIR, SlicedRegion};
 
     fn rect(x0: f32, y0: f32, x1: f32, y1: f32) -> ExPolygon {
@@ -259,5 +277,80 @@ mod tests {
             );
         }
         assert!(base.bridge_areas.is_empty(), "empty masks stay empty");
+    }
+
+    fn plain_region(region_id: u64, x: f32) -> SlicedRegion {
+        SlicedRegion {
+            object_id: "obj".into(),
+            region_id,
+            polygons: vec![rect(x, 0.0, x + 5.0, 10.0)],
+            infill_areas: vec![rect(x, 0.0, x + 5.0, 10.0)],
+            ..SlicedRegion::default()
+        }
+    }
+
+    /// Ticket 67's sharing condition is sound only because of this: with no
+    /// footprint carrier and no modifier child the perimeter-source projection
+    /// IS the ordinary region list, so both derivations consume byte-identical
+    /// inputs and a single derivation serves both. A non-identity projection
+    /// must fail the condition, or the arena would hand the ordinary derivation
+    /// to a consumer that requires the wall-owning geometry.
+    #[test]
+    fn perimeter_source_projection_is_the_identity_iff_no_modifier_regions() {
+        let plain = SliceIR {
+            regions: vec![plain_region(3, 0.0), plain_region(4, 5.0)],
+            ..SliceIR::default()
+        };
+        assert!(perimeter_source_projection_is_identity(&plain));
+        assert_eq!(
+            perimeter_source_regions(&plain),
+            plain.regions,
+            "probed identity: the projection must return the region list unchanged"
+        );
+        assert_eq!(
+            prepare_slice_regions(&plain, None),
+            prepare_perimeter_source_regions(&plain, None),
+            "identical inputs imply identical derived data"
+        );
+
+        let restored = rect(5.0, 0.0, 10.0, 10.0);
+        let with_child = SliceIR {
+            regions: vec![
+                plain_region(3, 0.0),
+                SlicedRegion {
+                    object_id: "obj".into(),
+                    region_id: slicer_ir::modifier_sub_region_id(3, "obj", &[restored.clone()]),
+                    polygons: vec![restored.clone()],
+                    ..SlicedRegion::default()
+                },
+            ],
+            ..SliceIR::default()
+        };
+        assert!(
+            !perimeter_source_projection_is_identity(&with_child),
+            "a modifier child makes the projections differ (the base is restored)"
+        );
+        assert_ne!(
+            perimeter_source_regions(&with_child),
+            with_child.regions,
+            "probed divergence: a modifier child is not an ordinary donor"
+        );
+
+        let with_carrier = SliceIR {
+            regions: vec![
+                plain_region(3, 0.0),
+                SlicedRegion {
+                    object_id: "obj".into(),
+                    region_id: slicer_ir::MODIFIER_FOOTPRINT_REGION_ID,
+                    polygons: vec![restored],
+                    ..SlicedRegion::default()
+                },
+            ],
+            ..SliceIR::default()
+        };
+        assert!(
+            !perimeter_source_projection_is_identity(&with_carrier),
+            "a footprint carrier is dropped by the projection, so the lists differ"
+        );
     }
 }

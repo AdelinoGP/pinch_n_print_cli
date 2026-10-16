@@ -557,6 +557,15 @@ pub struct LayerArena {
     slice: Option<SliceIR>,
     prepared_regions: Option<Vec<PreparedRegionData>>,
     prepared_perimeter_source_regions: Option<Vec<PreparedRegionData>>,
+    /// Set when the perimeter-source projection coincides with the ordinary one
+    /// for the staged slice, so `prepared_regions` serves both consumers.
+    ///
+    /// The two projections consume byte-identical inputs exactly when
+    /// `slicer_wasm_host::marshal::perimeter_source_projection_is_identity` holds
+    /// (no footprint carrier, no modifier child), and `prepare_regions` is pure,
+    /// so the shared values are the values a second derivation would produce.
+    /// Cleared with the slots it describes.
+    prepared_regions_serve_perimeter_source: bool,
     perimeter: Option<PerimeterIR>,
     infill: Option<InfillIR>,
     support: Option<SupportIR>,
@@ -595,9 +604,18 @@ impl LayerArena {
     /// Stage `SliceIR` in the arena.
     pub fn set_slice(&mut self, ir: SliceIR) -> Result<(), LayerArenaError> {
         set_arena_slot(&mut self.slice, ir, LayerArenaSlot::Slice)?;
+        self.clear_prepared_regions();
+        Ok(())
+    }
+
+    /// Drop every prepared-region slot and the sharing decision that describes
+    /// them. The three sites that mutate or drop the staged slice call this so a
+    /// stale derivation (or a stale sharing decision) can never outlive its
+    /// input.
+    fn clear_prepared_regions(&mut self) {
         self.prepared_regions = None;
         self.prepared_perimeter_source_regions = None;
-        Ok(())
+        self.prepared_regions_serve_perimeter_source = false;
     }
 
     /// Borrow the staged `SliceIR`, if present.
@@ -608,8 +626,7 @@ impl LayerArena {
 
     /// Take ownership of the staged `SliceIR`, if present.
     pub fn take_slice(&mut self) -> Option<SliceIR> {
-        self.prepared_regions = None;
-        self.prepared_perimeter_source_regions = None;
+        self.clear_prepared_regions();
         self.slice.take()
     }
 
@@ -639,14 +656,35 @@ impl LayerArena {
 
     /// Prepare and borrow derived data for reconstructed wall-owning regions.
     ///
+    /// When the perimeter-source projection coincides with the ordinary one
+    /// ([`slicer_wasm_host::marshal::perimeter_source_projection_is_identity`] —
+    /// no modifier child, no footprint carrier, which is every matched job) the
+    /// two projections consume the same regions in the same order, so the
+    /// ordinary derivation serves both consumers and this slot stays empty
+    /// (ticket 67). Otherwise the wall-owning projection is derived on its own
+    /// inputs, as before.
+    ///
     /// Repeated calls reuse the arena-owned allocation until the slice lifecycle
     /// invalidates it. Returns `None` when no slice is staged.
     pub fn ensure_prepared_perimeter_source_regions(
         &mut self,
         surface_classification: Option<&SurfaceClassificationIR>,
     ) -> Option<&[PreparedRegionData]> {
+        if self.prepared_regions_serve_perimeter_source {
+            return self.prepared_regions.as_deref();
+        }
         if self.prepared_perimeter_source_regions.is_none() {
             let slice = self.slice.as_ref()?;
+            if slicer_wasm_host::marshal::perimeter_source_projection_is_identity(slice) {
+                if self.prepared_regions.is_none() {
+                    self.prepared_regions = Some(slicer_wasm_host::marshal::prepare_slice_regions(
+                        slice,
+                        surface_classification,
+                    ));
+                }
+                self.prepared_regions_serve_perimeter_source = true;
+                return self.prepared_regions.as_deref();
+            }
             self.prepared_perimeter_source_regions =
                 Some(slicer_wasm_host::marshal::prepare_perimeter_source_regions(
                     slice,
@@ -659,6 +697,9 @@ impl LayerArena {
     /// Borrow prepared perimeter-source data without computing it.
     #[must_use]
     pub fn prepared_perimeter_source_regions(&self) -> Option<&[PreparedRegionData]> {
+        if self.prepared_regions_serve_perimeter_source {
+            return self.prepared_regions.as_deref();
+        }
         self.prepared_perimeter_source_regions.as_deref()
     }
 
@@ -808,8 +849,7 @@ impl LayerArena {
     /// `LayerCollectionIR` by `layer_executor` before this is called.
     pub fn reset(&mut self) {
         self.slice = None;
-        self.prepared_regions = None;
-        self.prepared_perimeter_source_regions = None;
+        self.clear_prepared_regions();
         self.perimeter = None;
         self.infill = None;
         self.support = None;
