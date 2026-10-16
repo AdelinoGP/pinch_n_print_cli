@@ -136,6 +136,80 @@ impl fmt::Display for PreparationTransportError {
 
 impl std::error::Error for PreparationTransportError {}
 
+/// Typed input-read failures, separate from declaration and plan transport errors.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PreparationInputError {
+    /// The input read is not granted or the resource owner is invalid.
+    AccessDenied,
+    /// A requested item range is invalid.
+    RangeError,
+    /// Range arithmetic or an index conversion overflowed.
+    ArithmeticOverflow,
+    /// A required committed input is absent.
+    MissingRequired {
+        /// Exact required input read name.
+        read: String,
+    },
+    /// The declared input read is not supported.
+    UnsupportedRead {
+        /// Exact unsupported input read name.
+        read: String,
+    },
+    /// Committed input failed validation.
+    InvalidInput {
+        /// Original input validation diagnostic.
+        detail: String,
+    },
+    /// A mesh request names an unknown object.
+    UnknownObject {
+        /// Exact object identifier from the request.
+        object_id: String,
+    },
+    /// Selection failed; detail preserves the original stage or full missing key.
+    SelectionRejected {
+        /// Original stage or full missing-key diagnostic, without truncation.
+        detail: String,
+    },
+}
+
+impl PreparationInputError {
+    /// Return the one-to-one canonical preparation-input-error WIT variant name.
+    #[must_use]
+    pub fn wit_variant(&self) -> &'static str {
+        match self {
+            Self::AccessDenied => "access-denied",
+            Self::RangeError => "range-error",
+            Self::ArithmeticOverflow => "arithmetic-overflow",
+            Self::MissingRequired { .. } => "missing-required",
+            Self::UnsupportedRead { .. } => "unsupported-read",
+            Self::InvalidInput { .. } => "invalid-input",
+            Self::UnknownObject { .. } => "unknown-object",
+            Self::SelectionRejected { .. } => "selection-rejected",
+        }
+    }
+}
+
+impl fmt::Display for PreparationInputError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::AccessDenied | Self::RangeError | Self::ArithmeticOverflow => {
+                f.write_str(self.wit_variant())
+            }
+            Self::MissingRequired { read } | Self::UnsupportedRead { read } => {
+                write!(f, "{}: {read}", self.wit_variant())
+            }
+            Self::InvalidInput { detail } | Self::SelectionRejected { detail } => {
+                write!(f, "{}: {detail}", self.wit_variant())
+            }
+            Self::UnknownObject { object_id } => {
+                write!(f, "{}: {object_id}", self.wit_variant())
+            }
+        }
+    }
+}
+
+impl std::error::Error for PreparationInputError {}
+
 #[cfg(test)]
 mod tests {
     use super::{PreparationDeclaration, PreparationTransportError};

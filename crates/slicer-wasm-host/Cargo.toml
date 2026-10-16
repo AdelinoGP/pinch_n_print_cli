@@ -28,6 +28,11 @@ slicer-sdk = { path = "../slicer-sdk" }
 preparation-pilot-infill = { path = "test-guests/preparation-pilot-infill" }
 preparation-pilot-path = { path = "test-guests/preparation-pilot-path" }
 preparation-transport-path = { path = "test-guests/preparation-transport-path" }
+whole-print-input-path = { path = "test-guests/whole-print-input-path" }
+whole-print-input-perimeters = { path = "test-guests/whole-print-input-perimeters" }
+whole-print-input-infill = { path = "test-guests/whole-print-input-infill" }
+whole-print-input-support = { path = "test-guests/whole-print-input-support" }
+whole-print-input-anchored = { path = "test-guests/whole-print-input-anchored" }
 sdk-finalization-guest = { path = "test-guests/sdk-finalization-guest" }
 sdk-layer-pathopt-guest = { path = "test-guests/sdk-layer-pathopt-guest" }
 sdk-infill-postprocess-view-guest = { path = "test-guests/sdk-infill-postprocess-view-guest" }

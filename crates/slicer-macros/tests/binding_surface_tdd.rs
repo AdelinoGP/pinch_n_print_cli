@@ -481,3 +481,367 @@ fn typed_schema_exports_are_deterministic_across_invocations() {
     assert_eq!(names_a, names_b);
     assert_eq!(names_a, vec!["slicer:layer-infill/infill@2.0.0#run"]);
 }
+
+// These same authored fixtures are compiled here natively and by the tests below
+// as actual wasm32 components. No expanded macro source is snapshotted.
+#[allow(dead_code)]
+mod prepared_binding_fixture {
+    use slicer_sdk::preparation::*;
+
+    pub struct PreparedFixture;
+
+    #[slicer_macros::slicer_module(preparation)]
+    impl slicer_sdk::traits::LayerModule for PreparedFixture {
+        fn from_config(_: &slicer_ir::ConfigView) -> Result<Self, slicer_sdk::error::ModuleError> {
+            Ok(Self)
+        }
+
+        fn run_perimeters(
+            &self,
+            _: u32,
+            _: &[slicer_sdk::views::SliceRegionView],
+            _: &slicer_sdk::PaintRegionLayerView,
+            _: &mut slicer_sdk::builders::PerimeterOutputBuilder,
+            _: &slicer_ir::ConfigView,
+        ) -> Result<(), slicer_sdk::error::ModuleError> {
+            Ok(())
+        }
+    }
+
+    impl LayerPreparation for PreparedFixture {
+        fn prepare_print(
+            input: &PrintPreparationInput,
+            output: &mut PreparedPlanOutput,
+        ) -> Result<(), slicer_sdk::error::ModuleError> {
+            typed_read_surface(input);
+            // Retain the producer's fixture delegate on the very same facade.
+            output.put("fixture", &input.read_fixture(2, 3)?)?;
+            Ok(())
+        }
+    }
+
+    // test-quality: compile witness — all fifteen SDK reads must retain their
+    // exact optional/result shape, alongside the generated WIT reader impl.
+    fn typed_read_surface(input: &PrintPreparationInput) {
+        let _: Result<u64, PreparationInputError> = input.layer_count();
+        let _: Result<Vec<PreparationLayer>, PreparationInputError> = input.layers(1, 2);
+        let _: Result<Vec<PreparationRegion>, PreparationInputError> = input.regions(3, 1, 2);
+        let _: Result<Vec<PreparationRegionConfig>, PreparationInputError> =
+            input.region_configs(3, 1, 2);
+        let _: Result<Option<Vec<PreparationSurfaceObject>>, PreparationInputError> =
+            input.surface_objects(1, 2);
+        let _: Result<Option<Vec<PreparationSurfaceLayer>>, PreparationInputError> =
+            input.surface_layers(3, 1, 2);
+        let _: Result<Vec<PreparationMeshObject>, PreparationInputError> = input.mesh_objects(1, 2);
+        let _: Result<Vec<slicer_ir::Point3>, PreparationInputError> =
+            input.mesh_vertices("mesh", 1, 2);
+        let _: Result<Vec<(u32, u32, u32)>, PreparationInputError> =
+            input.mesh_triangles("mesh", 1, 2);
+        let _: Result<Vec<PreparationMeshQueryResult>, PreparationInputError> =
+            input.mesh_queries(&[
+                PreparationMeshQuery::ObjectBounds {
+                    object_id: "mesh".into(),
+                },
+                PreparationMeshQuery::RaycastZDown {
+                    object_id: "mesh".into(),
+                    x: 1.0,
+                    y: 2.0,
+                    start_z: 3.0,
+                },
+                PreparationMeshQuery::SurfaceNormalAt {
+                    object_id: "mesh".into(),
+                    x: 4.0,
+                    y: 5.0,
+                    z: 6.0,
+                },
+            ]);
+        let _: Result<Option<Vec<PreparationSeam>>, PreparationInputError> = input.seams(3, 1, 2);
+        let _: Result<Option<PreparationSupportAnalysisBatch>, PreparationInputError> =
+            input.support_analysis(1, 2);
+        let _: Result<Option<PreparationSupportGeometryBatch>, PreparationInputError> =
+            input.support_geometry(1, 2);
+        let _: Result<Option<PreparationSupportPlanBatch>, PreparationInputError> =
+            input.support_plan(1, 2);
+        let _: Result<Vec<PreparationSelectedTarget>, PreparationInputError> =
+            input.selected_targets(3, 1, 2);
+    }
+
+    // Exhaustive witnesses complement the generated adapter's exhaustive WIT
+    // matches: deleting a branch on either side must fail the component build.
+    fn source_shape(source: PreparationTargetSource) -> PreparationVariantChain {
+        match source {
+            PreparationTargetSource::Model { key, members } => {
+                let _: Vec<PreparationRegionKey> = members;
+                key.variant_chain
+            }
+            PreparationTargetSource::SupportCarrier {
+                entry_index,
+                object_id,
+                region_id,
+                variant_chain,
+                family,
+                demand_ids,
+                body_ids,
+                provenance,
+                anchor_layer_index,
+            } => {
+                let _: (
+                    u64,
+                    String,
+                    u64,
+                    String,
+                    Vec<String>,
+                    Vec<String>,
+                    Vec<String>,
+                    u32,
+                ) = (
+                    entry_index,
+                    object_id,
+                    region_id,
+                    family,
+                    demand_ids,
+                    body_ids,
+                    provenance,
+                    anchor_layer_index,
+                );
+                variant_chain
+            }
+            PreparationTargetSource::Raft { global_layer_index } => {
+                let _: u32 = global_layer_index;
+                full_chain()
+            }
+            PreparationTargetSource::AnchoredStage { anchor_layer_index } => {
+                let _: u32 = anchor_layer_index;
+                full_chain()
+            }
+        }
+    }
+
+    fn full_chain() -> PreparationVariantChain {
+        vec![
+            ("flag".into(), PreparationPaintValue::Flag(true)),
+            ("scalar".into(), PreparationPaintValue::Scalar(-0.0)),
+            ("tool".into(), PreparationPaintValue::ToolIndex(7)),
+            ("custom".into(), PreparationPaintValue::Custom("A/π".into())),
+        ]
+    }
+
+    // Exhaustive matching is the compile-time guard for generated paint variants.
+    #[allow(clippy::needless_match)]
+    fn paint_shape(value: PreparationPaintValue) -> PreparationPaintValue {
+        match value {
+            PreparationPaintValue::Flag(value) => PreparationPaintValue::Flag(value),
+            PreparationPaintValue::Scalar(value) => PreparationPaintValue::Scalar(value),
+            PreparationPaintValue::ToolIndex(value) => PreparationPaintValue::ToolIndex(value),
+            PreparationPaintValue::Custom(value) => PreparationPaintValue::Custom(value),
+        }
+    }
+
+    fn error_shape(error: PreparationInputError) -> PreparationInputError {
+        match error {
+            PreparationInputError::MissingRequired { read } => {
+                PreparationInputError::MissingRequired { read }
+            }
+            PreparationInputError::UnsupportedRead { read } => {
+                PreparationInputError::UnsupportedRead { read }
+            }
+            PreparationInputError::InvalidInput { detail } => {
+                PreparationInputError::InvalidInput { detail }
+            }
+            PreparationInputError::UnknownObject { object_id } => {
+                PreparationInputError::UnknownObject { object_id }
+            }
+            PreparationInputError::SelectionRejected { detail } => {
+                PreparationInputError::SelectionRejected { detail }
+            }
+            PreparationInputError::AccessDenied => PreparationInputError::AccessDenied,
+            PreparationInputError::RangeError => PreparationInputError::RangeError,
+            PreparationInputError::ArithmeticOverflow => PreparationInputError::ArithmeticOverflow,
+        }
+    }
+}
+
+mod plain_preparation_binding_fixture {
+    pub struct PlainFixture;
+
+    // Deliberately no LayerPreparation impl, declaration, or prepared entry.
+    #[slicer_macros::slicer_module]
+    impl slicer_sdk::traits::LayerModule for PlainFixture {
+        fn from_config(_: &slicer_ir::ConfigView) -> Result<Self, slicer_sdk::error::ModuleError> {
+            Ok(Self)
+        }
+
+        fn run_perimeters(
+            &self,
+            _: u32,
+            _: &[slicer_sdk::views::SliceRegionView],
+            _: &slicer_sdk::PaintRegionLayerView,
+            _: &mut slicer_sdk::builders::PerimeterOutputBuilder,
+            _: &slicer_ir::ConfigView,
+        ) -> Result<(), slicer_sdk::error::ModuleError> {
+            Ok(())
+        }
+    }
+}
+
+#[test]
+fn prepared_binding_preserves_the_ordinary_stage_and_capability_identity() {
+    use prepared_binding_fixture::PreparedFixture;
+    assert_eq!(
+        PreparedFixture::__SLICER_PREPARATION_SCHEMA.qualified_export,
+        slicer_schema::PREPARATION_QUALIFIED_EXPORT
+    );
+    assert_eq!(
+        PreparedFixture::__SLICER_PREPARATION_SCHEMA.wit_world,
+        "prepared-perimeters-module"
+    );
+    assert_eq!(
+        PreparedFixture::__slicer_module_schema().stage_export,
+        plain_preparation_binding_fixture::PlainFixture::__slicer_module_schema().stage_export
+    );
+}
+
+#[test]
+fn prepared_binding_combines_typed_reads_with_the_original_fixture_delegate() {
+    use slicer_sdk::preparation::*;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    struct Reader(Arc<AtomicUsize>);
+    macro_rules! read {
+        ($name:ident($($arg:ident: $ty:ty),*) -> $result:ty) => {
+            fn $name(&self, $($arg: $ty),*) -> Result<$result, PreparationInputError> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Err(PreparationInputError::MissingRequired { read: stringify!($name).into() })
+            }
+        };
+    }
+    impl PrintPreparationRead for Reader {
+        read!(layer_count() -> u64);
+        read!(layers(_offset: u64, _max: u64) -> Vec<PreparationLayer>);
+        read!(regions(_layer: u32, _offset: u64, _max: u64) -> Vec<PreparationRegion>);
+        read!(region_configs(_layer: u32, _offset: u64, _max: u64) -> Vec<PreparationRegionConfig>);
+        read!(surface_objects(_offset: u64, _max: u64) -> Option<Vec<PreparationSurfaceObject>>);
+        read!(surface_layers(_layer: u32, _offset: u64, _max: u64) -> Option<Vec<PreparationSurfaceLayer>>);
+        read!(mesh_objects(_offset: u64, _max: u64) -> Vec<PreparationMeshObject>);
+        read!(mesh_vertices(_object: &str, _offset: u64, _max: u64) -> Vec<slicer_ir::Point3>);
+        read!(mesh_triangles(_object: &str, _offset: u64, _max: u64) -> Vec<(u32, u32, u32)>);
+        read!(mesh_queries(_requests: &[PreparationMeshQuery]) -> Vec<PreparationMeshQueryResult>);
+        read!(seams(_layer: u32, _offset: u64, _max: u64) -> Option<Vec<PreparationSeam>>);
+        read!(support_analysis(_offset: u64, _max: u64) -> Option<PreparationSupportAnalysisBatch>);
+        read!(support_geometry(_offset: u64, _max: u64) -> Option<PreparationSupportGeometryBatch>);
+        read!(support_plan(_offset: u64, _max: u64) -> Option<PreparationSupportPlanBatch>);
+        read!(selected_targets(_layer: u32, _offset: u64, _max: u64) -> Vec<PreparationSelectedTarget>);
+    }
+
+    let typed_calls = Arc::new(AtomicUsize::new(0));
+    let fixture_calls = Rc::new(RefCell::new(Vec::new()));
+    let fixture_observations = fixture_calls.clone();
+    let input = PrintPreparationInput::from_host_input_with_fixture(
+        Arc::new(Reader(typed_calls.clone())),
+        move |offset, max_bytes| {
+            fixture_observations.borrow_mut().push((offset, max_bytes));
+            Ok(vec![9, 8, 7])
+        },
+    );
+    // A missing typed input must not be flattened to the fixture-only facade's
+    // AccessDenied, nor disable the independently granted fixture delegate.
+    assert_eq!(
+        input.layer_count(),
+        Err(PreparationInputError::MissingRequired {
+            read: "layer_count".into()
+        })
+    );
+    typed_calls.store(0, Ordering::SeqCst);
+    let pieces = Rc::new(RefCell::new(Vec::new()));
+    let staged = pieces.clone();
+    let mut output = PreparedPlanOutput::from_callback(move |name, bytes| {
+        staged.borrow_mut().push((name.to_owned(), bytes.to_vec()));
+        Ok(())
+    });
+    (prepared_binding_fixture::PreparedFixture::__slicer_prepared_native_entry().prepare)(
+        &input,
+        &mut output,
+    )
+    .expect("generated native entry forwards the combined facade");
+    // test-quality: count pin — the preparation SDK/WIT contract has fifteen
+    // typed reads; this fixture invokes each once through the same facade.
+    assert_eq!(typed_calls.load(Ordering::SeqCst), 15);
+    assert_eq!(*fixture_calls.borrow(), vec![(2, 3)]);
+    assert_eq!(
+        *pieces.borrow(),
+        vec![("fixture".to_owned(), vec![9, 8, 7])]
+    );
+}
+
+fn preparation_binding_components() -> &'static [String; 2] {
+    use quote::ToTokens;
+    use std::path::Path;
+    use std::process::Command;
+    use std::sync::OnceLock;
+
+    static COMPONENTS: OnceLock<[String; 2]> = OnceLock::new();
+    COMPONENTS.get_or_init(|| {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap();
+        let scratch = root.join("target/preparation-binding-witness");
+        // Compile the authored fixture AST, not source-grep assertions or a
+        // snapshot of macro expansion. Both legs use the actual attribute.
+        let fixtures = syn::parse_file(include_str!("binding_surface_tdd.rs")).unwrap();
+        let run = |command: &mut Command, log: &Path| {
+            let output = command.output().expect("launch binding witness tool");
+            let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
+            text.push_str(&String::from_utf8_lossy(&output.stderr));
+            std::fs::write(log, &text).expect("retain full binding witness output");
+            assert!(output.status.success(), "binding witness failed; see {}\n{}", log.display(),
+                text.lines().rev().take(20).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n"));
+            text
+        };
+        ["prepared_binding_fixture", "plain_preparation_binding_fixture"].map(|module| {
+            let directory = scratch.join(module);
+            std::fs::create_dir_all(directory.join("src")).unwrap();
+            let source = fixtures.items.iter().find_map(|item| match item {
+                syn::Item::Mod(item) if item.ident == module => Some(&item.content.as_ref().unwrap().1),
+                _ => None,
+            }).expect("authored binding fixture module");
+            let sdk = root.join("crates/slicer-sdk").to_string_lossy().replace('\\', "/");
+            let ir = root.join("crates/slicer-ir").to_string_lossy().replace('\\', "/");
+            let schema = root.join("crates/slicer-schema").to_string_lossy().replace('\\', "/");
+            let macros = root.join("crates/slicer-macros").to_string_lossy().replace('\\', "/");
+            std::fs::write(directory.join("Cargo.toml"), format!(
+                "[workspace]\n[package]\nname = {module:?}\nversion = \"0.0.0\"\nedition = \"2021\"\n[lib]\ncrate-type = [\"cdylib\"]\n[dependencies]\nslicer-sdk = {{ path = {sdk:?} }}\nslicer-ir = {{ path = {ir:?} }}\nslicer-schema = {{ path = {schema:?} }}\nslicer-macros = {{ path = {macros:?} }}\nwit-bindgen = \"0.60.0\"\n"
+            )).unwrap();
+            let source: proc_macro2::TokenStream = source.iter().map(ToTokens::to_token_stream).collect();
+            std::fs::write(directory.join("src/lib.rs"), source.to_string()).unwrap();
+            run(Command::new("cargo").args(["build", "--offline", "--lib", "--release", "--target", "wasm32-unknown-unknown", "--manifest-path"])
+                .arg(directory.join("Cargo.toml")).arg("--target-dir").arg(root.join("target")), &directory.join("build.log"));
+            let component = directory.join("witness.component.wasm");
+            run(Command::new("wasm-tools").args(["component", "new"])
+                .arg(root.join("target/wasm32-unknown-unknown/release").join(format!("{module}.wasm")))
+                .arg("-o").arg(&component), &directory.join("component.log"));
+            run(Command::new("wasm-tools").args(["component", "wit"]).arg(&component), &directory.join("component.wit"))
+        })
+    })
+}
+
+// test-quality: compile witness — actual prepared component type-checks all
+// fifteen import delegations and exhaustive source/paint/input-error conversions.
+#[test]
+fn prepared_binding_guest_typed_reads_sources_chains_and_errors_compile() {
+    let wit = &preparation_binding_components()[0];
+    assert!(wit.contains("import slicer:layer-preparation/preparation-types@1.0.0;"));
+    assert!(wit.contains("export slicer:layer-preparation/prepare@1.0.0;"));
+    assert!(wit.contains("read-fixture: func("));
+    assert!(wit.contains("selected-targets: func("));
+}
+
+#[test]
+fn plain_binding_has_no_mandatory_preparation_imports() {
+    let wit = &preparation_binding_components()[1];
+    assert!(wit.contains("export slicer:layer-perimeters/perimeters@1.0.0;"));
+    assert!(
+        !wit.contains("slicer:layer-preparation/"),
+        "plain artifact acquired preparation imports or exports"
+    );
+}

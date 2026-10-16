@@ -112,6 +112,7 @@ pub struct PreparationOwner {
     stage_id: String,
     artifact_kind: String,
     declared_views: Vec<String>,
+    input_reads: Vec<String>,
     metadata: Arc<Mutex<PreparedPlanMetadata>>,
 }
 impl PreparationOwner {
@@ -173,6 +174,10 @@ impl PreparationOwner {
     /// Return the declared preparation views.
     pub fn declared_views(&self) -> &[String] {
         &self.declared_views
+    }
+    /// Return the input vocabulary captured from the frozen declaration.
+    pub(crate) fn input_reads(&self) -> &[String] {
+        &self.input_reads
     }
     /// Return the first recorded writer failure.
     pub fn writer_fault(&self) -> Option<Transport> {
@@ -331,6 +336,9 @@ impl PreparedOwnerStore {
             declared_views: binding
                 .declaration()
                 .map_or_else(Vec::new, |d| d.views().to_vec()),
+            input_reads: binding
+                .declaration()
+                .map_or_else(Vec::new, |d| d.input_reads().to_vec()),
             metadata: Arc::clone(&metadata),
         };
         state.owners.insert(

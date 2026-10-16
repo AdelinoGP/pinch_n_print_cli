@@ -1,0 +1,57 @@
+[module]
+id = "com.test.whole-print-input-path"
+version = "0.1.0"
+display-name = "Whole-print input PathOptimization fixture"
+description = "Typed committed-input observations; ordinary stage performs no work"
+author = "Pinch 'n Print Team"
+license = "MIT"
+
+[stage]
+id = "Layer::PathOptimization"
+
+# This parser-required legacy section is spelled ir-access, not ir_access:
+# ingest_manifest_text in crates/slicer-scheduler/src/manifest.rs requires it.
+# No ordinary input/output is used as preparation evidence.
+[ir-access]
+reads = []
+writes = []
+
+[claims]
+holds = ["path-optimizer"]
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires = []
+min-host-version = "0.1.0"
+min-ir-schema = "1.0.0"
+max-ir-schema = "5.0.0"
+
+[preparation]
+interface = "slicer:layer-preparation/prepare@1.0.0"
+# Every product is read by the shared observer. Required surface/seam/support
+# tokens intentionally prevalidate absence before invocation; optional-absence
+# driver scenarios must explicitly override these declarations for that leg.
+input_reads = [
+    "layer_plan", "slices", "region_map", "mesh", "selected_targets",
+    "surface_classification", "seam_plan", "support_analysis",
+    "support_geometry", "support_plan",
+]
+views = ["observations"]
+
+[config.schema.line_width]
+type = "float"
+default = 0.8
+
+[config.schema.whole_print_fixture_mode]
+type = "enum"
+values = ["standard", "publish_read_errors", "fail_after_staging"]
+default = "standard"
+
+[config.schema.whole_print_batch_ops]
+type = "string"
+default = ""
+
+# private_probe is deliberately undeclared: every visible config records absence.
+[hints]
+layer-parallel-safe = true

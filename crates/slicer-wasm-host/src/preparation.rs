@@ -2,6 +2,7 @@
 
 use crate::host::HostExecutionContext;
 use slicer_ir::{ModuleId, StageId};
+pub use slicer_schema::preparation::PreparationInputError;
 use slicer_schema::preparation::{
     PreparationDeclaration, PreparationDeclarationError, PreparationTransportError,
 };
@@ -17,6 +18,8 @@ use wasmtime::{Engine, Store};
 mod preparation_bindings;
 #[path = "preparation_host.rs"]
 mod preparation_host;
+#[path = "preparation_input.rs"]
+mod preparation_input;
 #[path = "preparation_native.rs"]
 mod preparation_native;
 #[path = "preparation_wasm.rs"]
@@ -32,6 +35,7 @@ pub use preparation_bindings::perimeters::slicer::layer_preparation::preparation
 };
 pub use preparation_host::PreparedHostState;
 pub use preparation_host::{PreparationOutputData, PreparedPieceData, PreparedPlanViewData};
+pub use preparation_input::{CommittedPreparationInputs, PreparationSelectionContext};
 pub use preparation_native::{freeze_native, NativePreparationArtifact, PreparationInputData};
 
 pub use crate::preparation_store::{
@@ -46,6 +50,8 @@ pub enum PreparationFailure {
     Declaration(PreparationDeclarationError),
     /// Opaque transport access failed.
     Transport(PreparationTransportError),
+    /// Committed input validation or a typed input read failed.
+    Input(PreparationInputError),
     /// The module reported an execution failure.
     Module(ModuleError),
     /// Preparation execution trapped.
@@ -73,6 +79,7 @@ impl fmt::Display for PreparationFailure {
         match self {
             Self::Declaration(error) => error.fmt(f),
             Self::Transport(error) => error.fmt(f),
+            Self::Input(error) => error.fmt(f),
             Self::Module(error) => error.fmt(f),
             Self::Trap { detail } => write!(f, "preparation trap: {detail}"),
             Self::Disposed => f.write_str("preparation disposed"),

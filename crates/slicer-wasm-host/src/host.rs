@@ -2143,7 +2143,7 @@ fn lookup_object_mesh<'a>(
         .ok_or_else(|| object_not_found_error(service, object_id))
 }
 
-fn transform_mesh_point(
+pub(crate) fn transform_mesh_point(
     transform: &slicer_ir::Transform3d,
     point: &slicer_ir::Point3,
 ) -> slicer_ir::Point3 {
@@ -2385,7 +2385,7 @@ fn simplify_polygon_collinear(polygon: Polygon) -> Polygon {
     Polygon { points }
 }
 
-fn raycast_z_down_against(
+pub(crate) fn raycast_z_down_against(
     object: &slicer_ir::ObjectMesh,
     x: f32,
     y: f32,
@@ -2409,7 +2409,7 @@ fn raycast_z_down_against(
     best_hit
 }
 
-fn surface_normal_at_against(
+pub(crate) fn surface_normal_at_against(
     object: &slicer_ir::ObjectMesh,
     x: f32,
     y: f32,
@@ -2479,16 +2479,22 @@ fn object_bounds_mesh_query(
         .find(|candidate| candidate.id == object_id)
         .ok_or_else(|| object_not_found_error("object-bounds", object_id))?;
 
+    object_bounds_against(object).ok_or_else(|| {
+        wasmtime::Error::msg(format!(
+            "host-service object-bounds could not compute bounds for empty mesh '{object_id}'"
+        ))
+    })
+}
+
+pub(crate) fn object_bounds_against(
+    object: &slicer_ir::ObjectMesh,
+) -> Option<slicer_ir::BoundingBox3> {
     let mut vertices = object
         .mesh
         .vertices
         .iter()
         .map(|vertex| transform_mesh_point(&object.transform, vertex));
-    let Some(first_vertex) = vertices.next() else {
-        return Err(wasmtime::Error::msg(format!(
-            "host-service object-bounds could not compute bounds for empty mesh '{object_id}'"
-        )));
-    };
+    let first_vertex = vertices.next()?;
 
     let mut min = first_vertex;
     let mut max = first_vertex;
@@ -2501,7 +2507,7 @@ fn object_bounds_mesh_query(
         max.z = max.z.max(vertex.z);
     }
 
-    Ok(slicer_ir::BoundingBox3 { min, max })
+    Some(slicer_ir::BoundingBox3 { min, max })
 }
 
 // ── Host trait implementations ──────────────────────────────────────────

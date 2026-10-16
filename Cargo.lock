@@ -3704,6 +3704,11 @@ dependencies = [
  "wasmtime",
  "wasmtime-wasi",
  "wat",
+ "whole-print-input-anchored",
+ "whole-print-input-infill",
+ "whole-print-input-path",
+ "whole-print-input-perimeters",
+ "whole-print-input-support",
  "wit-parser 0.247.0",
  "witness",
 ]
@@ -4907,6 +4912,56 @@ name = "wave-overhangs"
 version = "0.1.0"
 dependencies = [
  "slicer-core",
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
+name = "whole-print-input-anchored"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
+name = "whole-print-input-infill"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
+name = "whole-print-input-path"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
+name = "whole-print-input-perimeters"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
+name = "whole-print-input-support"
+version = "0.1.0"
+dependencies = [
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",

@@ -1274,3 +1274,45 @@ all wall loops. Degenerate empty wall loops (no points) emit
 is preserved. The slice continues with degraded status. Wall preservation is
 unconditional: every region's walls reach the output regardless of seam
 state, missing plan, or degenerate geometry.
+
+---
+
+## Shared committed preparation input backing
+
+`slicer_wasm_host::preparation::CommittedPreparationInputs::new`
+(`crates/slicer-wasm-host/src/preparation_input.rs`) accepts the committed products:
+
+```rust
+new(
+    mesh: Arc<MeshIR>, layers: Arc<LayerPlanIR>, slices: Arc<Vec<SliceIR>>,
+    region_map: Arc<RegionMapIR>, surface: Option<Arc<SurfaceClassificationIR>>,
+    seam: Option<Arc<SeamPlanIR>>, support_analysis: Option<Arc<SupportAnalysisIR>>,
+    support_geometry: Option<Arc<SupportGeometryIR>>,
+    support_plan: Option<Arc<SupportPlanIR>>,
+)
+```
+
+The backing retains these original immutable Arc products without cloning their
+contents; `canonical_bounded_batches`
+(`crates/slicer-wasm-host/tests/contract/whole_print_input_tdd.rs`) instruments real
+Arc identity. It contains no live Layer arenas or future output slot. Calls do
+not copy per-layer whole prints: each batch materializes only requested records;
+settings, envelope, and raft-plan metadata remain in the shared backing.
+
+Presentation follows schedule order (increasing index, exact supplied Z), then
+the full key `(global_layer_index, object_id, region_id, variant_chain)` under
+native `PaintValue` total order: Flag < Scalar < ToolIndex < Custom, scalar
+`total_cmp`, and exact Custom string order. Object maps sort by id, support
+keyed maps by full key, and seam entries by full `RegionKey`. Plan entries sort
+by signed global index/object/region/family, with original input index as the
+deterministic tie-breaker. Carrier `entry_index` always refers to retained input
+order, never a renumbered presentation ordinal.
+
+Batch offset is an ordinal in this stable presentation: `offset == len` yields
+an empty batch; `offset > len` returns `RangeError`. Count is clipped before
+checked end arithmetic. There is no cursor. Support-analysis applies offset and
+count independently to each sorted collection, without zip loss.
+Owner vocabulary, requirements, and selection prevalidation belong to
+`PreparationInputData::from_committed`
+(`crates/slicer-wasm-host/src/preparation_input.rs`); runtime scheduling is not
+part of this backing contract.

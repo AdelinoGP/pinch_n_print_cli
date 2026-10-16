@@ -1,11 +1,16 @@
 //! Declaration-validated native pairs and explicit owner-bound invocation scopes.
 
+use super::preparation_input::{OwnerPreparationInput, PreparationMeshHelpers};
 use super::*;
 use slicer_schema::{PreparationExportSchema, STAGES, TIER_LAYER};
 use slicer_sdk::native::{NativePreparedStageEntry, NativeStageEntry};
 use slicer_sdk::preparation::{
-    with_prepared_plan_view, PreparedPieceRead, PreparedPlanOutput, PreparedPlanRead,
-    PrintPreparationInput,
+    with_prepared_plan_view, PreparationLayer, PreparationMeshObject, PreparationMeshQuery,
+    PreparationMeshQueryResult, PreparationRegion, PreparationRegionConfig, PreparationSeam,
+    PreparationSelectedTarget, PreparationSupportAnalysisBatch, PreparationSupportGeometryBatch,
+    PreparationSupportPlanBatch, PreparationSurfaceLayer, PreparationSurfaceObject,
+    PreparedPieceRead, PreparedPlanOutput, PreparedPlanRead, PrintPreparationInput,
+    PrintPreparationRead,
 };
 use std::sync::Mutex;
 
@@ -26,6 +31,7 @@ pub enum NativePreparationArtifact {
 #[derive(Default)]
 pub struct PreparationInputData {
     fixture: Option<(PreparationOwner, Arc<[u8]>)>,
+    pub(super) committed: Option<Arc<super::preparation_input::OwnerPreparationInput>>,
 }
 
 impl PreparationInputData {
@@ -39,7 +45,22 @@ impl PreparationInputData {
     pub fn controlled_fixture(owner: &PreparationOwner, bytes: Arc<[u8]>) -> Self {
         Self {
             fixture: Some((owner.clone(), bytes)),
+            committed: None,
         }
+    }
+
+    /// Observe typed DTOs through the production reader with its owner and grants intact.
+    #[cfg(feature = "preparation-test-fixtures")]
+    #[doc(hidden)]
+    pub fn controlled_native_input(
+        &self,
+        owner: &PreparationOwner,
+        binding: &FrozenPreparationBinding,
+    ) -> Result<PrintPreparationInput, PreparationFailure> {
+        owner.originating_store()?.validate_owner(owner, binding)?;
+        Ok(PrintPreparationInput::from_host_input(Arc::new(
+            PreparationInputReader::new(owner, self, binding),
+        )))
     }
 
     pub(crate) fn read(
@@ -74,6 +95,231 @@ impl PreparationInputData {
             .get(start..end)
             .ok_or(PreparationTransportError::RangeError)?
             .to_vec())
+    }
+}
+
+/// The production native reader and preparation mesh-service guard share one
+/// owner/declaration check and the committed backing's canonical projections.
+pub(super) struct PreparationInputReader {
+    owner: PreparationOwner,
+    backing: Option<Arc<OwnerPreparationInput>>,
+    input_reads: Vec<String>,
+    read_failure: Mutex<Option<PreparationInputError>>,
+}
+
+impl PreparationInputReader {
+    pub(super) fn new(
+        owner: &PreparationOwner,
+        input: &PreparationInputData,
+        binding: &FrozenPreparationBinding,
+    ) -> Self {
+        Self {
+            owner: owner.clone(),
+            backing: input.committed.clone(),
+            input_reads: binding
+                .declaration()
+                .map(|declaration| declaration.input_reads().to_vec())
+                .unwrap_or_default(),
+            read_failure: Mutex::new(None),
+        }
+    }
+
+    fn read<T>(
+        &self,
+        permission: &str,
+        project: impl FnOnce(&OwnerPreparationInput) -> Result<T, PreparationInputError>,
+    ) -> Result<T, PreparationInputError> {
+        let result = (|| {
+            let backing = self
+                .backing
+                .as_deref()
+                .ok_or(PreparationInputError::AccessDenied)?;
+            // The backing normalizes optional grants and excludes fixture reads.
+            // Bind those grants to the invocation's frozen declaration too; do
+            // not interpret a second permission vocabulary in this adapter.
+            if !backing.permits(permission) || self.input_reads != backing.owner.input_reads() {
+                return Err(PreparationInputError::AccessDenied);
+            }
+            if !self.owner.same_owner(&backing.owner) {
+                return Err(PreparationInputError::AccessDenied);
+            }
+            let _guard = self
+                .owner
+                .active_guard()
+                .map_err(|_| PreparationInputError::AccessDenied)?;
+            project(backing)
+        })();
+        if let Err(error) = &result {
+            *self
+                .read_failure
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(error.clone());
+        }
+        result
+    }
+
+    fn failure(&self) -> Option<PreparationInputError> {
+        self.read_failure
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+}
+
+pub(super) const PREPARATION_MESH_HELPERS: PreparationMeshHelpers = PreparationMeshHelpers {
+    transform: crate::host::transform_mesh_point,
+    bounds: crate::host::object_bounds_against,
+    raycast: crate::host::raycast_z_down_against,
+    normal: crate::host::surface_normal_at_against,
+};
+
+impl PrintPreparationRead for PreparationInputReader {
+    fn layer_count(&self) -> Result<u64, PreparationInputError> {
+        self.read("layer_plan", OwnerPreparationInput::layer_count)
+    }
+
+    fn layers(
+        &self,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Vec<PreparationLayer>, PreparationInputError> {
+        self.read("layer_plan", |input| input.layers(offset, max_items))
+    }
+
+    fn regions(
+        &self,
+        layer_index: u32,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Vec<PreparationRegion>, PreparationInputError> {
+        self.read("slices", |input| {
+            input.regions(layer_index, offset, max_items)
+        })
+    }
+
+    fn region_configs(
+        &self,
+        layer_index: u32,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Vec<PreparationRegionConfig>, PreparationInputError> {
+        self.read("region_map", |input| {
+            input.region_configs(layer_index, offset, max_items)
+        })
+    }
+
+    fn surface_objects(
+        &self,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Option<Vec<PreparationSurfaceObject>>, PreparationInputError> {
+        self.read("surface_classification", |input| {
+            input.surface_objects(offset, max_items)
+        })
+    }
+
+    fn surface_layers(
+        &self,
+        layer_index: u32,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Option<Vec<PreparationSurfaceLayer>>, PreparationInputError> {
+        self.read("surface_classification", |input| {
+            input.surface_layers(layer_index, offset, max_items)
+        })
+    }
+
+    fn mesh_objects(
+        &self,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Vec<PreparationMeshObject>, PreparationInputError> {
+        self.read("mesh", |input| {
+            input.mesh_objects(offset, max_items, &PREPARATION_MESH_HELPERS)
+        })
+    }
+
+    fn mesh_vertices(
+        &self,
+        object_id: &str,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Vec<slicer_ir::Point3>, PreparationInputError> {
+        self.read("mesh", |input| {
+            input.mesh_vertices(object_id, offset, max_items, &PREPARATION_MESH_HELPERS)
+        })
+    }
+
+    fn mesh_triangles(
+        &self,
+        object_id: &str,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Vec<(u32, u32, u32)>, PreparationInputError> {
+        self.read("mesh", |input| {
+            input.mesh_triangles(object_id, offset, max_items)
+        })
+    }
+
+    fn mesh_queries(
+        &self,
+        requests: &[PreparationMeshQuery],
+    ) -> Result<Vec<PreparationMeshQueryResult>, PreparationInputError> {
+        self.read("mesh", |input| {
+            input.mesh_queries(requests, &PREPARATION_MESH_HELPERS)
+        })
+    }
+
+    fn seams(
+        &self,
+        layer_index: u32,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Option<Vec<PreparationSeam>>, PreparationInputError> {
+        self.read("seam_plan", |input| {
+            input.seams(layer_index, offset, max_items)
+        })
+    }
+
+    fn support_analysis(
+        &self,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Option<PreparationSupportAnalysisBatch>, PreparationInputError> {
+        self.read("support_analysis", |input| {
+            input.support_analysis(offset, max_items)
+        })
+    }
+
+    fn support_geometry(
+        &self,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Option<PreparationSupportGeometryBatch>, PreparationInputError> {
+        self.read("support_geometry", |input| {
+            input.support_geometry(offset, max_items)
+        })
+    }
+
+    fn support_plan(
+        &self,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Option<PreparationSupportPlanBatch>, PreparationInputError> {
+        self.read("support_plan", |input| {
+            input.support_plan(offset, max_items)
+        })
+    }
+
+    fn selected_targets(
+        &self,
+        layer_index: u32,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Vec<PreparationSelectedTarget>, PreparationInputError> {
+        self.read("selected_targets", |input| {
+            input.selected_targets(layer_index, offset, max_items)
+        })
     }
 }
 
@@ -189,20 +435,22 @@ impl FrozenPreparationBinding {
         })?;
         let transaction = Arc::new(Mutex::new(store.begin(owner)?));
         let result = {
-            let reader_owner = owner.clone();
-            let fixture_permission = self.declaration().is_some_and(|declaration| {
-                declaration
-                    .input_reads()
-                    .iter()
-                    .any(|permission| permission == "fixture")
-            });
-            let input =
+            let reader = Arc::new(PreparationInputReader::new(owner, &input, self));
+            let input = if input.fixture.is_some() {
+                // Only the feature-gated controlled constructor (or in-module
+                // unit fixtures) can install these bytes. A declaration token
+                // alone never switches committed production input to this path.
+                let reader_owner = owner.clone();
+                let fixture_permission = reader.input_reads.iter().any(|read| read == "fixture");
                 PrintPreparationInput::from_host_reader(Arc::new(move |offset, max_bytes| {
                     if !fixture_permission {
                         return Err(PreparationTransportError::AccessDenied);
                     }
                     input.read(&reader_owner, offset, max_bytes)
-                }));
+                }))
+            } else {
+                PrintPreparationInput::from_host_input(reader.clone())
+            };
             let writer = Arc::clone(&transaction);
             let mut output = PreparedPlanOutput::from_host_writer(Arc::new(move |name, bytes| {
                 writer
@@ -226,7 +474,10 @@ impl FrozenPreparationBinding {
                             PreparationTransportError::PoisonedOutput,
                         ))
                     }
-                    Err(error) => Err(PreparationFailure::Module(error)),
+                    Err(error) => Err(match reader.failure() {
+                        Some(error) => PreparationFailure::Input(error),
+                        None => PreparationFailure::Module(error),
+                    }),
                     Ok(()) => Ok(()),
                 }
             }))
@@ -477,6 +728,7 @@ mod tests {
                 &owner,
                 PreparationInputData {
                     fixture: Some((owner.clone(), Arc::from([mode]))),
+                    committed: None,
                 },
             );
             match (mode, result) {
@@ -635,6 +887,7 @@ mod tests {
         );
         let input = PreparationInputData {
             fixture: Some((owner.clone(), Arc::from([3, 5]))),
+            committed: None,
         };
         assert_eq!(
             input.read(&other, 0, 1),
@@ -676,6 +929,7 @@ mod tests {
         let owner = store.create_owner(&binding).expect("owner");
         let fixture = || PreparationInputData {
             fixture: Some((owner.clone(), Arc::from([7, 11]))),
+            committed: None,
         };
         assert!(
             matches!(binding.prepare_with_publication(&owner, fixture(), |staged| {

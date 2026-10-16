@@ -841,14 +841,23 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
         include_str!("../../slicer-schema/wit/deps/layer-path-optimization/layer-path-optimization.wit"),
     ];
     let prepared = world_name.starts_with("prepared-");
-    // Select the capability's actual nested world, not an ordinary-world
-    // alias. An empty root package lets every canonical Layer package and
-    // the capability itself be nested exactly once below.
+    // Compose the canonical capability world with a private initialization
+    // export using the ordinary imported config resource identity. Canonical
+    // interfaces stay unchanged, and old pilot linkers acquire no new imports.
     let selected_world;
     let world_name = if prepared {
-        selected_world = format!("slicer:layer-preparation/{world_name}@1.0.0");
-        selected_world.as_str()
+        selected_world = format!(
+            "world preparation-ingestion {{\n\
+             include slicer:layer-preparation/{world_name}@1.0.0;\n\
+             use slicer:config/config-types.{{config-view as invocation-config-view}};\n\
+             use slicer:common/module-errors.{{module-error as initialization-error}};\n\
+             export configure-preparation: func(config: invocation-config-view) -> result<_, initialization-error>;\n\
+             }}"
+        );
+        // The declaration is placed in the generated root package below.
+        "preparation-ingestion"
     } else {
+        selected_world = String::new();
         world_name
     };
 
@@ -948,6 +957,7 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
         expanded_inline_wit.push_str(&format!("\n\n{}", nest_dep(LIGHTNING_QUERIES_WIT)));
     }
     if prepared {
+        expanded_inline_wit.push_str(&format!("\n\n{selected_world}"));
         expanded_inline_wit.push_str(&format!("\n\n{}", nest_dep(PREPARATION_WIT)));
         for wit in LAYER_WITS {
             expanded_inline_wit.push_str(&format!("\n\n{}", nest_dep(wit)));
@@ -1041,6 +1051,428 @@ fn emit_layer_world_preamble(
     }
 }
 
+/// Owned typed projections of the imported, host-owned preparation resource.
+fn preparation_input_glue() -> TokenStream2 {
+    quote! {
+        mod __slicer_preparation_input {
+            use super::slicer::layer_preparation::preparation_types as wit;
+            use super::slicer::ir_handles::ir_handles as ir_wit;
+            use super::slicer::types::geometry as geo;
+            use ::slicer_sdk::preparation as sdk;
+            use sdk::PreparationInputError as Error;
+
+            pub(super) struct Reader(pub wit::PrintPreparationInput);
+
+            fn input_error(error: wit::PreparationInputError) -> Error {
+                match error {
+                    wit::PreparationInputError::AccessDenied => Error::AccessDenied,
+                    wit::PreparationInputError::RangeError => Error::RangeError,
+                    wit::PreparationInputError::ArithmeticOverflow => Error::ArithmeticOverflow,
+                    wit::PreparationInputError::MissingRequired(read) => Error::MissingRequired { read },
+                    wit::PreparationInputError::UnsupportedRead(read) => Error::UnsupportedRead { read },
+                    wit::PreparationInputError::InvalidInput(detail) => Error::InvalidInput { detail },
+                    wit::PreparationInputError::UnknownObject(object_id) => Error::UnknownObject { object_id },
+                    wit::PreparationInputError::SelectionRejected(detail) => Error::SelectionRejected { detail },
+                }
+            }
+
+            fn region_id(value: String) -> Result<u64, Error> {
+                match value.parse::<u64>() {
+                    Ok(id) if id.to_string() == value => Ok(id),
+                    _ => Err(Error::InvalidInput {
+                        detail: format!("noncanonical preparation region ID: {value}"),
+                    }),
+                }
+            }
+
+            fn paint(value: wit::PreparationPaintValue) -> sdk::PreparationPaintValue {
+                match value {
+                    wit::PreparationPaintValue::Flag(value) => sdk::PreparationPaintValue::Flag(value),
+                    wit::PreparationPaintValue::Scalar(value) => sdk::PreparationPaintValue::Scalar(value),
+                    wit::PreparationPaintValue::ToolIndex(value) => sdk::PreparationPaintValue::ToolIndex(value),
+                    wit::PreparationPaintValue::Custom(value) => sdk::PreparationPaintValue::Custom(value),
+                }
+            }
+
+            fn chain(value: wit::PreparationVariantChain) -> sdk::PreparationVariantChain {
+                value.into_iter().map(|(name, value)| (name, paint(value))).collect()
+            }
+
+            fn key(value: wit::PreparationRegionKey) -> Result<sdk::PreparationRegionKey, Error> {
+                Ok(sdk::PreparationRegionKey {
+                    global_layer_index: value.global_layer_index,
+                    object_id: value.object_id,
+                    region_id: region_id(value.region_id)?,
+                    variant_chain: chain(value.variant_chain),
+                })
+            }
+
+            fn point(value: geo::Point3) -> ::slicer_ir::Point3 {
+                ::slicer_ir::Point3 { x: value.x, y: value.y, z: value.z }
+            }
+
+            fn point_with_width(value: geo::Point3WithWidth) -> ::slicer_ir::Point3WithWidth {
+                ::slicer_ir::Point3WithWidth {
+                    x: value.x, y: value.y, z: value.z,
+                    width: value.width, flow_factor: value.flow_factor,
+                    overhang_quartile: value.overhang_quartile,
+                    dist_to_top_mm: value.dist_to_top_mm,
+                    overhang_distance_mm: value.overhang_distance_mm,
+                }
+            }
+
+            fn bounds(value: geo::BoundingBox3) -> ::slicer_ir::BoundingBox3 {
+                ::slicer_ir::BoundingBox3 { min: point(value.min), max: point(value.max) }
+            }
+
+            fn polygon(value: geo::Polygon) -> ::slicer_ir::Polygon {
+                ::slicer_ir::Polygon {
+                    points: value.points.into_iter().map(|p| ::slicer_ir::Point2 { x: p.x, y: p.y }).collect(),
+                }
+            }
+
+            fn polygons(values: Vec<geo::ExPolygon>) -> Vec<::slicer_ir::ExPolygon> {
+                values.into_iter().map(|value| ::slicer_ir::ExPolygon {
+                    contour: polygon(value.contour),
+                    holes: value.holes.into_iter().map(polygon).collect(),
+                }).collect()
+            }
+
+            fn semantic(value: ir_wit::PaintSemantic) -> ::slicer_ir::PaintSemantic {
+                match value {
+                    ir_wit::PaintSemantic::Material => ::slicer_ir::PaintSemantic::Material,
+                    ir_wit::PaintSemantic::FuzzySkin => ::slicer_ir::PaintSemantic::FuzzySkin,
+                    ir_wit::PaintSemantic::SupportEnforcer => ::slicer_ir::PaintSemantic::SupportEnforcer,
+                    ir_wit::PaintSemantic::SupportBlocker => ::slicer_ir::PaintSemantic::SupportBlocker,
+                    ir_wit::PaintSemantic::Custom(value) => ::slicer_ir::PaintSemantic::Custom(value),
+                }
+            }
+
+            fn layer(value: wit::PreparationLayer) -> Result<sdk::PreparationLayer, Error> {
+                Ok(sdk::PreparationLayer {
+                    index: value.index, z: value.z, has_nonplanar: value.has_nonplanar,
+                    is_sync_layer: value.is_sync_layer, is_raft: value.is_raft,
+                    active_regions: value.active_regions.into_iter().map(|region| {
+                        Ok(sdk::PreparationActiveRegion {
+                            object_id: region.object_id,
+                            region_id: region_id(region.region_id)?,
+                            config: super::__slicer_adapt_config(&region.config),
+                            effective_layer_height: region.effective_layer_height,
+                            nonplanar_shell: region.nonplanar_shell.map(|shell| sdk::PreparationNonplanarShell {
+                                surface_group_id: shell.surface_group_id, shell_index: shell.shell_index,
+                            }),
+                            is_catchup_layer: region.is_catchup_layer,
+                            catchup_z_bottom: region.catchup_z_bottom,
+                            tool_index: region.tool_index,
+                        })
+                    }).collect::<Result<_, Error>>()?,
+                })
+            }
+
+            fn region(value: wit::PreparationRegion) -> Result<sdk::PreparationRegion, Error> {
+                Ok(sdk::PreparationRegion {
+                    global_layer_index: value.global_layer_index, z: value.z,
+                    object_id: value.object_id, region_id: region_id(value.region_id)?,
+                    variant_chain: chain(value.variant_chain),
+                    polygons: polygons(value.polygons), infill_areas: polygons(value.infill_areas),
+                    nonplanar_surface: value.nonplanar_surface,
+                    effective_layer_height: value.effective_layer_height,
+                    segment_annotations: value.segment_annotations.into_iter().map(|entry| {
+                        (semantic(entry.semantic), entry.polygons.into_iter().map(|polygon| {
+                            polygon.values.into_iter().map(|value| value.map(paint)).collect()
+                        }).collect())
+                    }).collect(),
+                    top_shell_index: value.top_shell_index, bottom_shell_index: value.bottom_shell_index,
+                    top_solid_fill: polygons(value.top_solid_fill), bottom_solid_fill: polygons(value.bottom_solid_fill),
+                    is_bridge: value.is_bridge, bridge_areas: polygons(value.bridge_areas),
+                    bridge_orientation_deg: value.bridge_orientation_deg,
+                    sparse_infill_area: polygons(value.sparse_infill_area),
+                    internal_solid_fill: polygons(value.internal_solid_fill),
+                    internal_bridge_areas: polygons(value.internal_bridge_areas),
+                    internal_bridge_angles_deg: value.internal_bridge_angles_deg,
+                    raft_fill: polygons(value.raft_fill),
+                    phase: match value.phase {
+                        wit::PreparationInputPhase::CommittedPrepass => sdk::PreparationInputPhase::CommittedPrepass,
+                    },
+                })
+            }
+
+            fn surface_object(value: wit::PreparationSurfaceObject) -> sdk::PreparationSurfaceObject {
+                sdk::PreparationSurfaceObject {
+                    object_id: value.object_id,
+                    facet_classes: value.facet_classes.into_iter().map(|class| match class {
+                        wit::PreparationFacetClass::Normal => sdk::PreparationFacetClass::Normal,
+                        wit::PreparationFacetClass::NearHorizontal(value) => sdk::PreparationFacetClass::NearHorizontal {
+                            slope_angle_deg: value.slope_angle_deg,
+                        },
+                        wit::PreparationFacetClass::Overhang(value) => sdk::PreparationFacetClass::Overhang {
+                            angle_deg: value.angle_deg,
+                        },
+                        wit::PreparationFacetClass::Bridge => sdk::PreparationFacetClass::Bridge,
+                        wit::PreparationFacetClass::TopSurface => sdk::PreparationFacetClass::TopSurface,
+                        wit::PreparationFacetClass::BottomSurface => sdk::PreparationFacetClass::BottomSurface,
+                    }).collect(),
+                    surface_groups: value.surface_groups.into_iter().map(|group| ::slicer_ir::SurfaceGroup {
+                        id: group.id, facet_indices: group.facet_indices, z_min: group.z_min, z_max: group.z_max,
+                        area_mm2: group.area_mm2, printable: group.printable, shell_count: group.shell_count,
+                    }).collect(),
+                    bridge_regions: value.bridge_regions.into_iter().map(|bridge| sdk::PreparationBridgeRegion {
+                        id: bridge.id, facet_indices: bridge.facet_indices, bridge_direction_deg: bridge.bridge_direction_deg,
+                        anchor_width_mm: bridge.anchor_width_mm, bridge_length_mm: bridge.bridge_length_mm,
+                        expansion_margin_mm: bridge.expansion_margin_mm, is_valid: bridge.is_valid,
+                        xy_footprint: polygons(bridge.xy_footprint),
+                    }).collect(),
+                    overhang_regions: value.overhang_regions.into_iter().map(|overhang| sdk::PreparationOverhangRegion {
+                        id: overhang.id, facet_indices: overhang.facet_indices, max_angle_deg: overhang.max_angle_deg,
+                        needs_support: overhang.needs_support, xy_footprint: polygons(overhang.xy_footprint),
+                    }).collect(),
+                }
+            }
+
+            fn surface_layer(value: wit::PreparationSurfaceLayer) -> sdk::PreparationSurfaceLayer {
+                sdk::PreparationSurfaceLayer {
+                    object_id: value.object_id, global_layer_index: value.global_layer_index,
+                    overhang_quartile_polygons: value.overhang_quartile_polygons.into_iter().map(|band| {
+                        ::slicer_ir::slice_ir::QuartileBand { quartile: band.quartile, polygons: polygons(band.polygons) }
+                    }).collect(),
+                    prev_layer_boundaries: polygons(value.prev_layer_boundaries),
+                }
+            }
+
+            fn mesh_object(value: wit::PreparationMeshObject) -> sdk::PreparationMeshObject {
+                sdk::PreparationMeshObject {
+                    object_id: value.object_id, bounds: value.bounds.map(bounds),
+                    vertex_count: value.vertex_count, triangle_count: value.triangle_count,
+                    paint_layers: value.paint_layers.into_iter().map(|layer| sdk::PreparationPaintLayer {
+                        semantic: layer.semantic,
+                        facet_values: layer.facet_values.into_iter().map(|value| value.map(paint)).collect(),
+                        strokes: layer.strokes.into_iter().map(|stroke| sdk::PreparationPaintStroke {
+                            triangles: stroke.triangles.into_iter().map(point).collect(),
+                            semantic: stroke.semantic, value: paint(stroke.value),
+                        }).collect(),
+                    }).collect(),
+                }
+            }
+
+            fn mesh_query(value: &sdk::PreparationMeshQuery) -> wit::PreparationMeshQuery {
+                match value {
+                    sdk::PreparationMeshQuery::RaycastZDown { object_id, x, y, start_z } => {
+                        wit::PreparationMeshQuery::RaycastZDown(wit::PreparationRaycastZDownQuery {
+                            object_id: object_id.clone(), x: *x, y: *y, start_z: *start_z,
+                        })
+                    }
+                    sdk::PreparationMeshQuery::SurfaceNormalAt { object_id, x, y, z } => {
+                        wit::PreparationMeshQuery::SurfaceNormalAt(wit::PreparationSurfaceNormalAtQuery {
+                            object_id: object_id.clone(), x: *x, y: *y, z: *z,
+                        })
+                    }
+                    sdk::PreparationMeshQuery::ObjectBounds { object_id } => {
+                        wit::PreparationMeshQuery::ObjectBounds(wit::PreparationObjectBoundsQuery { object_id: object_id.clone() })
+                    }
+                }
+            }
+
+            fn mesh_query_result(value: wit::PreparationMeshQueryResult) -> sdk::PreparationMeshQueryResult {
+                match value {
+                    wit::PreparationMeshQueryResult::RaycastZDown(value) => sdk::PreparationMeshQueryResult::RaycastZDown(value),
+                    wit::PreparationMeshQueryResult::SurfaceNormalAt(value) => sdk::PreparationMeshQueryResult::SurfaceNormalAt(value.map(point)),
+                    wit::PreparationMeshQueryResult::ObjectBounds(value) => sdk::PreparationMeshQueryResult::ObjectBounds(bounds(value)),
+                }
+            }
+
+            fn seam(value: wit::PreparationSeam) -> Result<sdk::PreparationSeam, Error> {
+                Ok(sdk::PreparationSeam {
+                    region_key: key(value.region_key)?,
+                    chosen_candidate: ::slicer_ir::SeamPosition {
+                        point: point_with_width(value.chosen_candidate.point),
+                        wall_index: value.chosen_candidate.wall_index,
+                    },
+                    scored_candidates: value.scored_candidates.into_iter().map(|candidate| sdk::PreparationScoredSeamCandidate {
+                        position: point_with_width(candidate.position), score: candidate.score,
+                        reason: match candidate.reason {
+                            wit::PreparationSeamReason::Concave => sdk::PreparationSeamReason::Concave,
+                            wit::PreparationSeamReason::Aligned => sdk::PreparationSeamReason::Aligned,
+                            wit::PreparationSeamReason::UserForced => sdk::PreparationSeamReason::UserForced,
+                            wit::PreparationSeamReason::Sharp => sdk::PreparationSeamReason::Sharp,
+                        },
+                    }).collect(),
+                })
+            }
+
+            fn support_entry(value: wit::PreparationSupportGeometryEntry) -> Result<sdk::PreparationSupportGeometryEntry, Error> {
+                Ok(sdk::PreparationSupportGeometryEntry {
+                    key: sdk::PreparationSupportGeometryKey {
+                        global_support_layer_index: value.key.global_support_layer_index,
+                        object_id: value.key.object_id, region_id: region_id(value.key.region_id)?,
+                        variant_chain: chain(value.key.variant_chain),
+                    },
+                    polygons: polygons(value.polygons),
+                })
+            }
+
+            fn support_analysis(value: wit::PreparationSupportAnalysisBatch) -> Result<sdk::PreparationSupportAnalysisBatch, Error> {
+                Ok(sdk::PreparationSupportAnalysisBatch {
+                    candidates: value.candidates.into_iter().map(|candidate| {
+                        Ok(sdk::PreparationSupportCandidate {
+                            id: candidate.id, geometry: polygons(candidate.geometry),
+                            source: sdk::PreparationSupportCandidateSource {
+                                object_id: candidate.source.object_id, region_id: region_id(candidate.source.region_id)?,
+                                global_layer_index: candidate.source.global_layer_index, z_units: candidate.source.z_units,
+                                variant_chain: chain(candidate.source.variant_chain),
+                            },
+                            enforced: candidate.enforced, blocked: candidate.blocked,
+                        })
+                    }).collect::<Result<_, Error>>()?,
+                    model_occupancy: value.model_occupancy.into_iter().map(support_entry).collect::<Result<_, _>>()?,
+                    cantilever_surfaces: value.cantilever_surfaces.into_iter().map(support_entry).collect::<Result<_, _>>()?,
+                    termination_surfaces: value.termination_surfaces.into_iter().map(support_entry).collect::<Result<_, _>>()?,
+                    support_territory: value.support_territory.into_iter().map(support_entry).collect::<Result<_, _>>()?,
+                    shared_settings: value.shared_settings,
+                    baseline_feasible_envelope: polygons(value.baseline_feasible_envelope),
+                    family_assignments: value.family_assignments.into_iter().map(|assignment| {
+                        Ok(sdk::PreparationSupportFamilyAssignment {
+                            key: sdk::PreparationSupportSourceKey {
+                                object_id: assignment.key.object_id, region_id: region_id(assignment.key.region_id)?,
+                                variant_chain: chain(assignment.key.variant_chain),
+                            },
+                            family_id: assignment.family_id,
+                        })
+                    }).collect::<Result<_, Error>>()?,
+                })
+            }
+
+            fn support_geometry(value: wit::PreparationSupportGeometryBatch) -> Result<sdk::PreparationSupportGeometryBatch, Error> {
+                Ok(sdk::PreparationSupportGeometryBatch {
+                    support_layer_height_mm: value.support_layer_height_mm,
+                    support_top_z_distance_mm: value.support_top_z_distance_mm,
+                    entries: value.entries.into_iter().map(support_entry).collect::<Result<_, _>>()?,
+                })
+            }
+
+            fn support_plan(value: wit::PreparationSupportPlanBatch) -> Result<sdk::PreparationSupportPlanBatch, Error> {
+                Ok(sdk::PreparationSupportPlanBatch {
+                    entries: value.entries.into_iter().map(|entry| {
+                        Ok(sdk::PreparationSupportPlanEntry {
+                            global_layer_index: entry.global_layer_index, object_id: entry.object_id,
+                            region_id: region_id(entry.region_id)?, family_id: entry.family_id,
+                            demand_ids: entry.demand_ids, body_ids: entry.body_ids,
+                            anchor_layer_index: entry.anchor_layer_index, anchor_z: entry.anchor_z,
+                            roles: entry.roles.into_iter().map(|role| sdk::PreparationSupportPlanRoleRegion {
+                                role: match role.role {
+                                    wit::PreparationSupportPlanRole::SupportBody => sdk::PreparationSupportPlanRole::SupportBody,
+                                    wit::PreparationSupportPlanRole::TopInterface => sdk::PreparationSupportPlanRole::TopInterface,
+                                    wit::PreparationSupportPlanRole::BaseInterface => sdk::PreparationSupportPlanRole::BaseInterface,
+                                    wit::PreparationSupportPlanRole::BottomInterface => sdk::PreparationSupportPlanRole::BottomInterface,
+                                    wit::PreparationSupportPlanRole::RaftRelated => sdk::PreparationSupportPlanRole::RaftRelated,
+                                },
+                                regions: polygons(role.regions),
+                            }).collect(),
+                            skeleton: entry.skeleton.map(|skeleton| sdk::PreparationSupportPlanSkeleton {
+                                points: skeleton.points.into_iter().map(point).collect(), wall_counts: skeleton.wall_counts,
+                            }),
+                            capabilities: entry.capabilities, provenance: entry.provenance,
+                            decline_reason: entry.decline_reason.map(|reason| match reason {
+                                wit::PreparationSupportPlanDeclineReason::DeclinedPolicy => sdk::PreparationSupportPlanDeclineReason::DeclinedPolicy,
+                                wit::PreparationSupportPlanDeclineReason::NoRoute => sdk::PreparationSupportPlanDeclineReason::NoRoute,
+                                wit::PreparationSupportPlanDeclineReason::Blocked => sdk::PreparationSupportPlanDeclineReason::Blocked,
+                                wit::PreparationSupportPlanDeclineReason::UnsupportedMode => sdk::PreparationSupportPlanDeclineReason::UnsupportedMode,
+                            }),
+                            variant_chain: chain(entry.variant_chain),
+                        })
+                    }).collect::<Result<_, Error>>()?,
+                    raft_plan: value.raft_plan.map(|raft| sdk::PreparationRaftPlan {
+                        raft_layers: raft.raft_layers, raft_first_layer_density: raft.raft_first_layer_density,
+                        base_raft_layers: raft.base_raft_layers, interface_raft_layers: raft.interface_raft_layers,
+                    }),
+                })
+            }
+
+            fn target_source(value: wit::PreparationTargetSource) -> Result<sdk::PreparationTargetSource, Error> {
+                Ok(match value {
+                    wit::PreparationTargetSource::Model(value) => sdk::PreparationTargetSource::Model {
+                        key: key(value.key)?, members: value.members.into_iter().map(key).collect::<Result<_, _>>()?,
+                    },
+                    wit::PreparationTargetSource::SupportCarrier(value) => sdk::PreparationTargetSource::SupportCarrier {
+                        entry_index: value.entry_index, object_id: value.object_id, region_id: region_id(value.region_id)?,
+                        variant_chain: chain(value.variant_chain), family: value.family,
+                        demand_ids: value.demand_ids, body_ids: value.body_ids, provenance: value.provenance,
+                        anchor_layer_index: value.anchor_layer_index,
+                    },
+                    wit::PreparationTargetSource::Raft(value) => sdk::PreparationTargetSource::Raft {
+                        global_layer_index: value.global_layer_index,
+                    },
+                    wit::PreparationTargetSource::AnchoredStage(value) => sdk::PreparationTargetSource::AnchoredStage {
+                        anchor_layer_index: value.anchor_layer_index,
+                    },
+                })
+            }
+
+            fn selected_target(value: wit::PreparationSelectedTarget) -> Result<sdk::PreparationSelectedTarget, Error> {
+                Ok(sdk::PreparationSelectedTarget {
+                    global_layer_index: value.global_layer_index, stage_id: value.stage_id, invoke: value.invoke,
+                    source: target_source(value.source)?, config: super::__slicer_adapt_config(&value.config),
+                    held_claims: value.held_claims, authored_coloring: value.authored_coloring,
+                    resolved_role_tool: value.resolved_role_tool,
+                })
+            }
+
+            impl sdk::PrintPreparationRead for Reader {
+                fn layer_count(&self) -> Result<u64, Error> {
+                    self.0.layer_count().map_err(input_error)
+                }
+                fn layers(&self, offset: u64, max_items: u64) -> Result<Vec<sdk::PreparationLayer>, Error> {
+                    self.0.layers(offset, max_items).map_err(input_error)?.into_iter().map(layer).collect()
+                }
+                fn regions(&self, layer_index: u32, offset: u64, max_items: u64) -> Result<Vec<sdk::PreparationRegion>, Error> {
+                    self.0.regions(layer_index, offset, max_items).map_err(input_error)?.into_iter().map(region).collect()
+                }
+                fn region_configs(&self, layer_index: u32, offset: u64, max_items: u64) -> Result<Vec<sdk::PreparationRegionConfig>, Error> {
+                    self.0.region_configs(layer_index, offset, max_items).map_err(input_error)?.into_iter().map(|value| {
+                        Ok(sdk::PreparationRegionConfig { key: key(value.key)?, config: super::__slicer_adapt_config(&value.config) })
+                    }).collect()
+                }
+                fn surface_objects(&self, offset: u64, max_items: u64) -> Result<Option<Vec<sdk::PreparationSurfaceObject>>, Error> {
+                    Ok(self.0.surface_objects(offset, max_items).map_err(input_error)?
+                        .map(|values| values.into_iter().map(surface_object).collect()))
+                }
+                fn surface_layers(&self, layer_index: u32, offset: u64, max_items: u64) -> Result<Option<Vec<sdk::PreparationSurfaceLayer>>, Error> {
+                    Ok(self.0.surface_layers(layer_index, offset, max_items).map_err(input_error)?
+                        .map(|values| values.into_iter().map(surface_layer).collect()))
+                }
+                fn mesh_objects(&self, offset: u64, max_items: u64) -> Result<Vec<sdk::PreparationMeshObject>, Error> {
+                    Ok(self.0.mesh_objects(offset, max_items).map_err(input_error)?.into_iter().map(mesh_object).collect())
+                }
+                fn mesh_vertices(&self, object_id: &str, offset: u64, max_items: u64) -> Result<Vec<::slicer_ir::Point3>, Error> {
+                    Ok(self.0.mesh_vertices(object_id, offset, max_items).map_err(input_error)?.into_iter().map(point).collect())
+                }
+                fn mesh_triangles(&self, object_id: &str, offset: u64, max_items: u64) -> Result<Vec<(u32, u32, u32)>, Error> {
+                    self.0.mesh_triangles(object_id, offset, max_items).map_err(input_error)
+                }
+                fn mesh_queries(&self, requests: &[sdk::PreparationMeshQuery]) -> Result<Vec<sdk::PreparationMeshQueryResult>, Error> {
+                    let requests: Vec<_> = requests.iter().map(mesh_query).collect();
+                    Ok(self.0.mesh_queries(&requests).map_err(input_error)?.into_iter().map(mesh_query_result).collect())
+                }
+                fn seams(&self, layer_index: u32, offset: u64, max_items: u64) -> Result<Option<Vec<sdk::PreparationSeam>>, Error> {
+                    self.0.seams(layer_index, offset, max_items).map_err(input_error)?
+                        .map(|values| values.into_iter().map(seam).collect()).transpose()
+                }
+                fn support_analysis(&self, offset: u64, max_items: u64) -> Result<Option<sdk::PreparationSupportAnalysisBatch>, Error> {
+                    self.0.support_analysis(offset, max_items).map_err(input_error)?.map(support_analysis).transpose()
+                }
+                fn support_geometry(&self, offset: u64, max_items: u64) -> Result<Option<sdk::PreparationSupportGeometryBatch>, Error> {
+                    self.0.support_geometry(offset, max_items).map_err(input_error)?.map(support_geometry).transpose()
+                }
+                fn support_plan(&self, offset: u64, max_items: u64) -> Result<Option<sdk::PreparationSupportPlanBatch>, Error> {
+                    self.0.support_plan(offset, max_items).map_err(input_error)?.map(support_plan).transpose()
+                }
+                fn selected_targets(&self, layer_index: u32, offset: u64, max_items: u64) -> Result<Vec<sdk::PreparationSelectedTarget>, Error> {
+                    self.0.selected_targets(layer_index, offset, max_items).map_err(input_error)?.into_iter().map(selected_target).collect()
+                }
+            }
+        }
+    }
+}
+
 /// Add preparation and lazy call-local plan access to the same component that
 /// implements the unchanged ordinary stage interface.
 fn build_preparation_glue(self_ty: &syn::Type, component: &str, preparation: bool) -> TokenStream2 {
@@ -1049,7 +1481,25 @@ fn build_preparation_glue(self_ty: &syn::Type, component: &str, preparation: boo
     }
     let component = syn::Ident::new(component, proc_macro2::Span::call_site());
     let profile_install = profile_install_stmt();
+    let input_glue = preparation_input_glue();
     quote! {
+        #input_glue
+
+        static __SLICER_PREPARATION_CONFIGURED: ::std::sync::OnceLock<
+            Result<(), ::slicer_sdk::error::ModuleError>,
+        > = ::std::sync::OnceLock::new();
+
+        impl Guest for #component {
+            fn configure_preparation(config: ConfigView) -> Result<(), ModuleError> {
+                #profile_install
+                __SLICER_PREPARATION_CONFIGURED.get_or_init(|| {
+                    let config = __slicer_adapt_config(&config);
+                    <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&config)
+                        .map(|_| ())
+                }).clone().map_err(__slicer_error_out)
+            }
+        }
+
         fn __slicer_preparation_error(
             error: slicer::layer_preparation::preparation_types::PreparationError,
         ) -> ::slicer_sdk::preparation::PreparationError {
@@ -1095,8 +1545,19 @@ fn build_preparation_glue(self_ty: &syn::Type, component: &str, preparation: boo
                 output: slicer::layer_preparation::preparation_types::PreparedPlanOutput,
             ) -> Result<(), ModuleError> {
                 #profile_install
-                let input = ::slicer_sdk::preparation::PrintPreparationInput::from_callback(
-                    move |offset, max_bytes| input.read_fixture(offset, max_bytes)
+                // Older pilot drivers do not call the private initialization
+                // export. They retain their empty-config behavior; production
+                // ingestion has already initialized this instance's hook.
+                __SLICER_PREPARATION_CONFIGURED.get_or_init(|| {
+                    <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(
+                        &::slicer_ir::ConfigView::default(),
+                    ).map(|_| ())
+                }).clone().map_err(__slicer_error_out)?;
+                let reader = ::std::sync::Arc::new(__slicer_preparation_input::Reader(input));
+                let fixture_reader = reader.clone();
+                let input = ::slicer_sdk::preparation::PrintPreparationInput::from_host_input_with_fixture(
+                    reader,
+                    move |offset, max_bytes| fixture_reader.0.read_fixture(offset, max_bytes)
                         .map_err(__slicer_preparation_error),
                 );
                 let mut output = ::slicer_sdk::preparation::PreparedPlanOutput::from_callback(

@@ -47,6 +47,10 @@ mod typed_config_boundary_tdd;
 mod variant_identity_accessors_tdd;
 mod variant_identity_delivery_tdd;
 mod view_seam_identity_tdd;
+#[cfg(feature = "preparation-test-fixtures")]
+mod whole_print_input_driver;
+#[cfg(feature = "preparation-test-fixtures")]
+mod whole_print_input_tdd;
 mod wit_boundary_tdd;
 mod z_envelope_contract_tdd;
 

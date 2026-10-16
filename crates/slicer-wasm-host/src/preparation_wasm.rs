@@ -83,6 +83,32 @@ indices! {
     PathOptimization, path_optimization, PreparedPathOptimizationModuleIndices, PathOptimizationModuleIndices, layer_path_optimization, "path-optimization-module";
 }
 
+impl FrozenIndices {
+    /// Initialize generated preparation glue with the ordinary config resource.
+    /// Legacy components without the additive export retain their prior behavior.
+    pub(super) fn configure(
+        &self,
+        store: &mut wasmtime::Store<PreparedHostState>,
+        instance: &wasmtime::component::Instance,
+        config: wasmtime::component::Resource<crate::host::ConfigViewData>,
+    ) -> wasmtime::Result<
+        Result<(), crate::host::layer_perimeters::slicer::common::module_errors::ModuleError>,
+    > {
+        let Some(function) = instance.get_func(&mut *store, "configure-preparation") else {
+            return Ok(Ok(()));
+        };
+        let function = function
+            .typed::<(wasmtime::component::Resource<crate::host::ConfigViewData>,), (
+                Result<
+                    (),
+                    crate::host::layer_perimeters::slicer::common::module_errors::ModuleError,
+                >,
+            )>(&mut *store)?;
+        let (result,) = function.call(&mut *store, (config,))?;
+        Ok(result)
+    }
+}
+
 pub(super) fn linker(
     engine: &wasmtime::Engine,
     stage_id: &str,

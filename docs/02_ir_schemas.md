@@ -2355,3 +2355,52 @@ compatibility enforcement: the global gate never compares them.
 Reservations apply only to the perimeter parity roadmap (P102..P112 + P106/P107). Other concurrent packets must coordinate with the active roadmap maintainer before bumping. Multiple bumps within a single packet are not permitted.
 
 > **Contract note (P109) — compatible-removal exception.** The contract table above classifies "Field removed" as *major* by default. The `SlicedRegion.external_contour` removal is a deliberate, documented EXCEPTION shipped as a **minor** (4.6.0) because ALL THREE conditions hold: (1) the field had **no live consumer** (superseded by ADR-0013 Model-A per-color fragmentation; consumption was already removed in P105, D-105-AC22-PARITY-RESHAPE); (2) `SlicedRegion` does not use `deny_unknown_fields`, so **serde ignores the now-absent field** and serialized 4.x fixtures still parse; and (3) **every loaded module declares `max_ir_schema = 5.0.0`**, so a 5.0.0 host would fail the scheduler's `validate_ir_versions` gate (`min_ir_schema ≤ host < max_ir_schema`, `crates/slicer-scheduler/src/validation.rs`) for EVERY module — a major bump would break the entire module ecosystem for a removal that changes no behaviour. The original filing's "additive removal" phrasing was imprecise; the accurate term is a *compatible removal*. A removal that does NOT meet all three conditions (there is a live consumer, the shape is not serde-tolerant, or the target host version crosses any module's `max_ir_schema`) MUST take the major bump and the coordinated `max_ir_schema` widening across all modules.
+
+---
+
+## Committed preparation input projections
+
+The new `slicer_sdk::preparation` DTOs (defined in
+`crates/slicer-sdk/src/preparation_input.rs`) project committed inputs:
+
+| Committed source / purpose | DTO inventory |
+|----------------------------|---------------|
+| Paint and full-key identity | `PreparationPaintValue`, `PreparationVariantChain`, `PreparationRegionKey`, `PreparationPaintStroke`, `PreparationPaintLayer` |
+| `LayerPlanIR` | `PreparationLayer`, `PreparationActiveRegion`, `PreparationNonplanarShell` |
+| `SliceIR` / `SlicedRegion`, `RegionMapIR` | `PreparationRegion`, `PreparationInputPhase`, `PreparationRegionConfig` |
+| `SurfaceClassificationIR` | `PreparationFacetClass`, `PreparationBridgeRegion`, `PreparationOverhangRegion`, `PreparationSurfaceObject`, `PreparationSurfaceLayer` |
+| `MeshIR` | `PreparationMeshObject`, `PreparationMeshQuery`, `PreparationMeshQueryResult` |
+| `SeamPlanIR` | `PreparationSeam`, `PreparationSeamReason`, `PreparationScoredSeamCandidate` |
+| `SupportAnalysisIR` / `SupportGeometryIR` | `PreparationSupportCandidateSource`, `PreparationSupportCandidate`, `PreparationSupportGeometryKey`, `PreparationSupportGeometryEntry`, `PreparationSupportSourceKey`, `PreparationSupportFamilyAssignment`, `PreparationSupportAnalysisBatch`, `PreparationSupportGeometryBatch` |
+| `SupportPlanIR` | `PreparationSupportPlanRole`, `PreparationSupportPlanRoleRegion`, `PreparationSupportPlanSkeleton`, `PreparationSupportPlanDeclineReason`, `PreparationSupportPlanEntry`, `PreparationRaftPlan`, `PreparationSupportPlanBatch` |
+| Selected source identity | `PreparationTargetSource`, `PreparationSelectedTarget` |
+
+`PreparationRegion.phase = PreparationInputPhase::CommittedPrepass`: these are
+**committed inputs**, with no future output coverage and no claim to final Layer
+output. Region geometry, classifications, paint, and declared-key-filtered
+configs retain their committed meaning rather than predicting later stages.
+
+`PreparationPaintValue { Flag(bool), Scalar(f32), ToolIndex(u32), Custom(String) }`
+maps losslessly to and from native `slicer_ir::PaintValue` through exhaustive
+bidirectional `From` implementations. Exact UTF-8 (including π and Custom
+strings) and finite f32 bit identity (including signed zero) are preserved.
+`PreparationVariantChain = Vec<(String, PreparationPaintValue)>` preserves element
+order. `PreparationRegionKey { global_layer_index: u32, object_id: String,
+region_id: u64, variant_chain }` retains native identity; only the WIT boundary
+uses a decimal-string region-id, without leading zeros.
+Paint-bearing conversion sites include region variant chains, segment
+annotations, config keys, seam keys, selected Model key/members, and mesh facet
+values/strokes, and support-plan entry variant chains. Capability WIT uses `preparation-paint-value`,
+`preparation-variant-chain`, and `preparation-segment-annotations-*`
+(`crates/slicer-schema/wit/deps/layer-preparation/layer-preparation.wit`);
+ordinary `paint-value` and prepass `paint-value-view` remain unwidened.
+
+**Paint producer evidence boundary (normative).** `SlicedRegion::sparse_infill_area`
+is the committed value, empty until `Layer::Perimeters` commitment per its field
+documentation (`crates/slicer-ir/src/slice_ir.rs`). `infill_areas` are committed
+inputs, never a claimed final inset. The `segment_paint` paths rebuild regions
+with default-rest fields: this transport's tests prove exact preservation of
+already-committed typed values across production adapters, not production
+paint-output completeness. The lightning-geometry portability gate (row 07)
+must resolve its own required geometry evidence. No producer repair is implied
+or performed by this projection contract.

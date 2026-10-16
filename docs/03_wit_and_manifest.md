@@ -387,6 +387,53 @@ typed world must match its ordinary signatures and host-owned resource identitie
 Ordinary artifacts without a preparation declaration retain ordinary binding;
 their worlds do not acquire mandatory preparation parameters or exports.
 
+## Typed whole-print preparation input permissions
+
+Production `[preparation].input_reads` accepts exactly these snake_case tokens:
+`layer_plan`, `slices`, `region_map`, `mesh`, `selected_targets`,
+`surface_classification`, `surface_classification_optional`, `seam_plan`,
+`seam_plan_optional`, `support_analysis`, `support_analysis_optional`,
+`support_geometry`, `support_geometry_optional`, `support_plan`, `support_plan_optional`.
+Required/optional alternatives for one product are mutually exclusive:
+`InvalidInput { detail }` names both conflicting tokens; unknown strings yield
+`UnsupportedRead { read }`. Row 03's recognized pilot token `fixture` remains
+syntactically accepted, with no production prerequisite or grant effect; fixture
+reads enable only in row 03's feature-gated controlled input mode.
+
+| Operations | Required declaration / committed input |
+|---|---|
+| `layer_count`, `layers` | `layer_plan` |
+| `regions` | `slices` |
+| `region_configs` | `region_map`; exact authoritative map/config |
+| `mesh_objects`, `mesh_vertices`, `mesh_triangles`, `mesh_queries` | `mesh` |
+| `selected_targets` | `selected_targets`; shared selection projection and matching frozen owner |
+| `surface_objects`, `surface_layers` | `surface_classification` or `surface_classification_optional` |
+| `seams` | `seam_plan` or `seam_plan_optional` |
+| `support_analysis` | `support_analysis` or `support_analysis_optional` |
+| `support_geometry` | `support_geometry` or `support_geometry_optional` |
+| `support_plan` | `support_plan` or `support_plan_optional` |
+
+Required products must exist: absence yields `MissingRequired { read }` at
+`from_committed` (`crates/slicer-wasm-host/src/preparation_input.rs`), before
+any invocation or transaction. Constructor/`from_committed` rejection has zero
+invocation markers and no transaction. Handler rejection (undeclared, foreign,
+or disposed resource; bad range; unknown query object; checked overflow) occurs
+inside an already-entered invocation: markers are nonzero and the exact error is recorded.
+
+`slicer_schema::preparation::PreparationInputError` maps one-to-one to the new
+WIT `preparation-input-error`: `AccessDenied` → `access-denied`, `RangeError` →
+`range-error`, `ArithmeticOverflow` → `arithmetic-overflow`, `MissingRequired { read }` →
+`missing-required(string)`, `UnsupportedRead { read }` → `unsupported-read(string)`,
+`InvalidInput { detail }` → `invalid-input(string)`, `UnknownObject { object_id }` →
+`unknown-object(string)`, `SelectionRejected { detail }` → `selection-rejected(string)`.
+Payload text is preserved, including the original stage or full missing key.
+A read error never poisons output: `PoisonedOutput` remains exclusively row 03's
+output-writer fault contract. Preparation-call ordinary host-services mesh adapters
+gate `mesh` identically; ordinary-call behavior is unchanged. Grants are checked
+before existence/range lookup. Granted optional absence is `None`; present-empty
+is `Some(empty)`, never flattened. No method exposes `PerimeterIR`, `InfillIR`,
+`SupportIR`, `LayerCollectionIR`, or provider plan ids.
+
 ## `deps/types.wit`
 
 **Source of truth:** `crates/slicer-schema/wit/deps/types.wit` (package

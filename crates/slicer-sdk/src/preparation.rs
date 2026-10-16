@@ -1,16 +1,37 @@
-//! Call-local, serialized access to host-owned layer preparation resources.
+//! Call-local access to host-owned layer preparation resources.
 //!
 //! The callback constructors adapt generated WIT imports without interpreting
 //! the bytes. Native hosts use the same seam; no plan codec belongs in the SDK.
+//! Typed input reads return owned projections through a shared reader facade.
 
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
+pub use slicer_schema::preparation::PreparationInputError;
 use slicer_schema::preparation::PreparationTransportError;
 
 use crate::error::ModuleError;
+
+#[path = "preparation_input.rs"]
+mod preparation_input;
+
+pub use preparation_input::{
+    PreparationActiveRegion, PreparationBridgeRegion, PreparationFacetClass, PreparationInputPhase,
+    PreparationLayer, PreparationMeshObject, PreparationMeshQuery, PreparationMeshQueryResult,
+    PreparationNonplanarShell, PreparationOverhangRegion, PreparationPaintLayer,
+    PreparationPaintStroke, PreparationPaintValue, PreparationRaftPlan, PreparationRegion,
+    PreparationRegionConfig, PreparationRegionKey, PreparationScoredSeamCandidate, PreparationSeam,
+    PreparationSeamReason, PreparationSelectedTarget, PreparationSupportAnalysisBatch,
+    PreparationSupportCandidate, PreparationSupportCandidateSource,
+    PreparationSupportFamilyAssignment, PreparationSupportGeometryBatch,
+    PreparationSupportGeometryEntry, PreparationSupportGeometryKey, PreparationSupportPlanBatch,
+    PreparationSupportPlanDeclineReason, PreparationSupportPlanEntry, PreparationSupportPlanRole,
+    PreparationSupportPlanRoleRegion, PreparationSupportPlanSkeleton, PreparationSupportSourceKey,
+    PreparationSurfaceLayer, PreparationSurfaceObject, PreparationTargetSource,
+    PreparationVariantChain, PrintPreparationRead,
+};
 
 /// Opt-in preparation capability, independent of ordinary layer construction.
 ///
@@ -172,12 +193,30 @@ fn bounded_bytes(bytes: Vec<u8>, max_bytes: u64) -> Result<Vec<u8>, PreparationE
     }
 }
 
-/// Read-only pilot fixture transport. Bytes remain opaque to the SDK.
+/// Read-only typed preparation input with a retained opaque pilot fixture seam.
 pub struct PrintPreparationInput {
     read_fixture: Box<ReadCallback>,
+    input_reader: Option<Arc<dyn PrintPreparationRead + Send + Sync>>,
 }
 
 impl PrintPreparationInput {
+    /// Adapt an owned typed reader; the backing retains all read-policy checks.
+    pub fn from_host_input(reader: Arc<dyn PrintPreparationRead + Send + Sync>) -> Self {
+        let mut input = Self::from_callback(|_, _| Err(PreparationError::AccessDenied));
+        input.input_reader = Some(reader);
+        input
+    }
+
+    /// Adapt typed reads and the controlled fixture import from the same resource.
+    pub fn from_host_input_with_fixture(
+        reader: Arc<dyn PrintPreparationRead + Send + Sync>,
+        read_fixture: impl Fn(u64, u64) -> Result<Vec<u8>, PreparationError> + 'static,
+    ) -> Self {
+        let mut input = Self::from_callback(read_fixture);
+        input.input_reader = Some(reader);
+        input
+    }
+
     /// Adapt a native host reader while preserving every transport error variant.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn from_host_reader(
@@ -206,7 +245,159 @@ impl PrintPreparationInput {
         }
         Self {
             read_fixture: Box::new(read_fixture),
+            input_reader: None,
         }
+    }
+
+    fn input_reader(
+        &self,
+    ) -> Result<&(dyn PrintPreparationRead + Send + Sync), PreparationInputError> {
+        self.input_reader
+            .as_deref()
+            .ok_or(PreparationInputError::AccessDenied)
+    }
+
+    /// Return the committed schedule length.
+    pub fn layer_count(&self) -> Result<u64, PreparationInputError> {
+        self.input_reader()?.layer_count()
+    }
+
+    /// Read a bounded batch of committed schedule layers.
+    pub fn layers(
+        &self,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Vec<PreparationLayer>, PreparationInputError> {
+        self.input_reader()?.layers(offset, max_items)
+    }
+
+    /// Read committed regions for one schedule layer.
+    pub fn regions(
+        &self,
+        layer_index: u32,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Vec<PreparationRegion>, PreparationInputError> {
+        self.input_reader()?.regions(layer_index, offset, max_items)
+    }
+
+    /// Read exact-key effective region configs for one schedule layer.
+    pub fn region_configs(
+        &self,
+        layer_index: u32,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Vec<PreparationRegionConfig>, PreparationInputError> {
+        self.input_reader()?
+            .region_configs(layer_index, offset, max_items)
+    }
+
+    /// Read optional object-specific surface classifications.
+    pub fn surface_objects(
+        &self,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Option<Vec<PreparationSurfaceObject>>, PreparationInputError> {
+        self.input_reader()?.surface_objects(offset, max_items)
+    }
+
+    /// Read optional object-specific surface geometry for one schedule layer.
+    pub fn surface_layers(
+        &self,
+        layer_index: u32,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Option<Vec<PreparationSurfaceLayer>>, PreparationInputError> {
+        self.input_reader()?
+            .surface_layers(layer_index, offset, max_items)
+    }
+
+    /// Read world-space mesh metadata and lossless paint projections.
+    pub fn mesh_objects(
+        &self,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Vec<PreparationMeshObject>, PreparationInputError> {
+        self.input_reader()?.mesh_objects(offset, max_items)
+    }
+
+    /// Read world-space mesh vertices in millimeters.
+    pub fn mesh_vertices(
+        &self,
+        object_id: &str,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Vec<slicer_ir::Point3>, PreparationInputError> {
+        self.input_reader()?
+            .mesh_vertices(object_id, offset, max_items)
+    }
+
+    /// Read mesh index triples in their original order.
+    pub fn mesh_triangles(
+        &self,
+        object_id: &str,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Vec<(u32, u32, u32)>, PreparationInputError> {
+        self.input_reader()?
+            .mesh_triangles(object_id, offset, max_items)
+    }
+
+    /// Execute world-space mesh queries, preserving caller request order.
+    pub fn mesh_queries(
+        &self,
+        requests: &[PreparationMeshQuery],
+    ) -> Result<Vec<PreparationMeshQueryResult>, PreparationInputError> {
+        self.input_reader()?.mesh_queries(requests)
+    }
+
+    /// Read optional exact-key seam plans for one schedule layer.
+    pub fn seams(
+        &self,
+        layer_index: u32,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Option<Vec<PreparationSeam>>, PreparationInputError> {
+        self.input_reader()?.seams(layer_index, offset, max_items)
+    }
+
+    /// Independently range candidates, each geometry map and family assignments.
+    /// Settings and the feasible envelope remain invariant; never zip collections.
+    pub fn support_analysis(
+        &self,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Option<PreparationSupportAnalysisBatch>, PreparationInputError> {
+        self.input_reader()?.support_analysis(offset, max_items)
+    }
+
+    /// Range support geometry entries, retaining height/distance metadata.
+    pub fn support_geometry(
+        &self,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Option<PreparationSupportGeometryBatch>, PreparationInputError> {
+        self.input_reader()?.support_geometry(offset, max_items)
+    }
+
+    /// Range support-plan entries, retaining optional raft metadata.
+    pub fn support_plan(
+        &self,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Option<PreparationSupportPlanBatch>, PreparationInputError> {
+        self.input_reader()?.support_plan(offset, max_items)
+    }
+
+    /// Read the frozen owner's selected invocation targets for one layer.
+    pub fn selected_targets(
+        &self,
+        layer_index: u32,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Vec<PreparationSelectedTarget>, PreparationInputError> {
+        self.input_reader()?
+            .selected_targets(layer_index, offset, max_items)
     }
 
     /// Read at most `max_bytes` bytes from a fixture offset.

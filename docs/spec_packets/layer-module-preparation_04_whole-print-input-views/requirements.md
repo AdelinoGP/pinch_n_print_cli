@@ -37,7 +37,7 @@ Bounded authorities: docs/01 PrePass order and immutable ownership; docs/02 IR 2
 
 - AC-1: field completeness and unselected read context; AC-2/3: full model/non-region source contracts; AC-4: mesh/seam/support; AC-5: stable bounded batches/shared backing; AC-6: all-variant paint identity, Custom chains and literal permutation/reverse-conversion witness.
 - AC-N1: already-invoked resource grants/owner errors versus before-call unsupported declaration; AC-N2: required prerequisites and selection before call; AC-N3: before-call malformed snapshots versus inside-call ranges/unknown objects/overflow. Only prevalidation asserts zero invocations; resource negatives assert nonzero invocation markers.
-- #01 and #03 are matched FORWARD-DEPs, not implemented dependencies; #05/#06 consume the public forward ledger. No TASK-574 completion by this packet alone.
+- #01 and #03 are implemented dependencies consumed as shipped tree APIs per packet.spec's Forward Export Summary; #05/#06 consume this packet's public forward ledger. No TASK-574 completion by this packet alone.
 
 ## Verification Commands — authoritative matrix
 
@@ -54,7 +54,7 @@ Each cargo test invocation captures combined output to `target/test-output.log`,
 | `cargo xtask build-guests --check` | Artifact-verified WIT/code freshness, exit 0 only clean | FACT exit code; 1 rebuild, 3 infrastructure blocker |
 | `cargo xtask build-guests` then `cargo xtask build-guests --check` if stale | Rebuild all stale affected fixture/core guests and restage | FACT |
 
-No speculative `cargo test --workspace` requirement. If later explicitly authorized, use `cargo xtask test --summary --workspace` only after all narrow commands pass; not an AC command. SDK existing test-feature targets need `--features test`; this packet's assertions live in the host contract binary, whose existing metadata has no required features. #03 creates `preparation-test-fixtures` (not a currently existing host feature).
+No speculative `cargo test --workspace` requirement. If later explicitly authorized, use `cargo xtask test --summary --workspace` only after all narrow commands pass; not an AC command. SDK existing test-feature targets need `--features test`; this packet's assertions live in the host contract binary, whose existing metadata has no required features. `preparation-test-fixtures` is an existing host feature shipped by #03 (`preparation-test-fixtures = []` in `crates/slicer-wasm-host/Cargo.toml`).
 
 ## Step Completion Expectations
 

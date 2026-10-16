@@ -410,6 +410,164 @@ pub fn accounted_read(
 
 impl cap::Host for PilotHostContext {}
 impl cap::HostPrintPreparationInput for PilotHostContext {
+    fn layer_count(
+        &mut self,
+        resource: Resource<PreparationInputData>,
+    ) -> wasmtime::Result<Result<u64, cap::PreparationInputError>> {
+        let _ = resource;
+        Ok(Err(cap::PreparationInputError::AccessDenied))
+    }
+    fn layers(
+        &mut self,
+        resource: Resource<PreparationInputData>,
+        offset: u64,
+        max_items: u64,
+    ) -> wasmtime::Result<Result<Vec<cap::PreparationLayer>, cap::PreparationInputError>> {
+        let _ = (resource, offset, max_items);
+        Ok(Err(cap::PreparationInputError::AccessDenied))
+    }
+    fn regions(
+        &mut self,
+        resource: Resource<PreparationInputData>,
+        layer_index: u32,
+        offset: u64,
+        max_items: u64,
+    ) -> wasmtime::Result<Result<Vec<cap::PreparationRegion>, cap::PreparationInputError>> {
+        let _ = (resource, layer_index, offset, max_items);
+        Ok(Err(cap::PreparationInputError::AccessDenied))
+    }
+    fn region_configs(
+        &mut self,
+        resource: Resource<PreparationInputData>,
+        layer_index: u32,
+        offset: u64,
+        max_items: u64,
+    ) -> wasmtime::Result<Result<Vec<cap::PreparationRegionConfig>, cap::PreparationInputError>>
+    {
+        let _ = (resource, layer_index, offset, max_items);
+        Ok(Err(cap::PreparationInputError::AccessDenied))
+    }
+    fn surface_objects(
+        &mut self,
+        resource: Resource<PreparationInputData>,
+        offset: u64,
+        max_items: u64,
+    ) -> wasmtime::Result<
+        Result<Option<Vec<cap::PreparationSurfaceObject>>, cap::PreparationInputError>,
+    > {
+        let _ = (resource, offset, max_items);
+        Ok(Err(cap::PreparationInputError::AccessDenied))
+    }
+    fn surface_layers(
+        &mut self,
+        resource: Resource<PreparationInputData>,
+        layer_index: u32,
+        offset: u64,
+        max_items: u64,
+    ) -> wasmtime::Result<
+        Result<Option<Vec<cap::PreparationSurfaceLayer>>, cap::PreparationInputError>,
+    > {
+        let _ = (resource, layer_index, offset, max_items);
+        Ok(Err(cap::PreparationInputError::AccessDenied))
+    }
+    fn mesh_objects(
+        &mut self,
+        resource: Resource<PreparationInputData>,
+        offset: u64,
+        max_items: u64,
+    ) -> wasmtime::Result<Result<Vec<cap::PreparationMeshObject>, cap::PreparationInputError>> {
+        let _ = (resource, offset, max_items);
+        Ok(Err(cap::PreparationInputError::AccessDenied))
+    }
+    fn mesh_vertices(
+        &mut self,
+        resource: Resource<PreparationInputData>,
+        object_id: String,
+        offset: u64,
+        max_items: u64,
+    ) -> wasmtime::Result<
+        Result<
+            Vec<host::layer_perimeters::slicer::types::geometry::Point3>,
+            cap::PreparationInputError,
+        >,
+    > {
+        let _ = (resource, object_id, offset, max_items);
+        Ok(Err(cap::PreparationInputError::AccessDenied))
+    }
+    fn mesh_triangles(
+        &mut self,
+        resource: Resource<PreparationInputData>,
+        object_id: String,
+        offset: u64,
+        max_items: u64,
+    ) -> wasmtime::Result<Result<Vec<(u32, u32, u32)>, cap::PreparationInputError>> {
+        let _ = (resource, object_id, offset, max_items);
+        Ok(Err(cap::PreparationInputError::AccessDenied))
+    }
+    fn mesh_queries(
+        &mut self,
+        resource: Resource<PreparationInputData>,
+        requests: Vec<cap::PreparationMeshQuery>,
+    ) -> wasmtime::Result<Result<Vec<cap::PreparationMeshQueryResult>, cap::PreparationInputError>>
+    {
+        let _ = (resource, requests);
+        Ok(Err(cap::PreparationInputError::AccessDenied))
+    }
+    fn seams(
+        &mut self,
+        resource: Resource<PreparationInputData>,
+        layer_index: u32,
+        offset: u64,
+        max_items: u64,
+    ) -> wasmtime::Result<Result<Option<Vec<cap::PreparationSeam>>, cap::PreparationInputError>>
+    {
+        let _ = (resource, layer_index, offset, max_items);
+        Ok(Err(cap::PreparationInputError::AccessDenied))
+    }
+    fn support_analysis(
+        &mut self,
+        resource: Resource<PreparationInputData>,
+        offset: u64,
+        max_items: u64,
+    ) -> wasmtime::Result<
+        Result<Option<cap::PreparationSupportAnalysisBatch>, cap::PreparationInputError>,
+    > {
+        let _ = (resource, offset, max_items);
+        Ok(Err(cap::PreparationInputError::AccessDenied))
+    }
+    fn support_geometry(
+        &mut self,
+        resource: Resource<PreparationInputData>,
+        offset: u64,
+        max_items: u64,
+    ) -> wasmtime::Result<
+        Result<Option<cap::PreparationSupportGeometryBatch>, cap::PreparationInputError>,
+    > {
+        let _ = (resource, offset, max_items);
+        Ok(Err(cap::PreparationInputError::AccessDenied))
+    }
+    fn support_plan(
+        &mut self,
+        resource: Resource<PreparationInputData>,
+        offset: u64,
+        max_items: u64,
+    ) -> wasmtime::Result<
+        Result<Option<cap::PreparationSupportPlanBatch>, cap::PreparationInputError>,
+    > {
+        let _ = (resource, offset, max_items);
+        Ok(Err(cap::PreparationInputError::AccessDenied))
+    }
+    fn selected_targets(
+        &mut self,
+        resource: Resource<PreparationInputData>,
+        layer_index: u32,
+        offset: u64,
+        max_items: u64,
+    ) -> wasmtime::Result<Result<Vec<cap::PreparationSelectedTarget>, cap::PreparationInputError>>
+    {
+        let _ = (resource, layer_index, offset, max_items);
+        Ok(Err(cap::PreparationInputError::AccessDenied))
+    }
     fn read_fixture(
         &mut self,
         r: Resource<PreparationInputData>,

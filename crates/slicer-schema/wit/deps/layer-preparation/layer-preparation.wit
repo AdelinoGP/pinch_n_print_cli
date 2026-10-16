@@ -1,6 +1,10 @@
 package slicer:layer-preparation@1.0.0;
 
 interface preparation-types {
+    use slicer:types/geometry.{point3, point3-with-width, bounding-box3};
+    use slicer:config/config-types.{config-view};
+    use slicer:ir-handles/ir-handles@1.0.0.{ex-polygon, paint-semantic, surface-group-id, surface-group, quartile-band, seam-position};
+
     enum preparation-error {
         not-ready,
         invalid-name,
@@ -11,9 +15,418 @@ interface preparation-types {
         access-denied,
     }
 
+    /// Typed input failures never use the plan transport error domain.
+    variant preparation-input-error {
+        access-denied,
+        range-error,
+        arithmetic-overflow,
+        missing-required(string),
+        unsupported-read(string),
+        invalid-input(string),
+        unknown-object(string),
+        /// Preserve the original stage or full missing selection key in the detail.
+        selection-rejected(string),
+    }
+
+    /// Capability-owned paint values preserve every native PaintValue variant.
+    variant preparation-paint-value {
+        flag(bool),
+        scalar(f32),
+        tool-index(u32),
+        custom(string),
+    }
+
+    /// Semantic names and values retain their original order.
+    type preparation-variant-chain = list<tuple<string, preparation-paint-value>>;
+
+    /// Every region-id field in this interface is a canonical decimal u64 string,
+    /// with no leading zeros except for the value "0" itself.
+    record preparation-region-key {
+        global-layer-index: u32,
+        object-id: string,
+        region-id: string,
+        variant-chain: preparation-variant-chain,
+    }
+
+    record preparation-paint-stroke {
+        /// Flatten native triangle triples in their original vertex/triangle order.
+        triangles: list<point3>,
+        semantic: string,
+        value: preparation-paint-value,
+    }
+
+    record preparation-paint-layer {
+        semantic: string,
+        facet-values: list<option<preparation-paint-value>>,
+        strokes: list<preparation-paint-stroke>,
+    }
+
+    record preparation-segment-annotations-polygon {
+        values: list<option<preparation-paint-value>>,
+    }
+
+    record preparation-segment-annotations-entry {
+        semantic: paint-semantic,
+        polygons: list<preparation-segment-annotations-polygon>,
+    }
+
+    record preparation-nonplanar-shell {
+        surface-group-id: surface-group-id,
+        shell-index: u32,
+    }
+
+    record preparation-active-region {
+        object-id: string,
+        region-id: string,
+        /// Declared-key-filtered effective config, never raw ResolvedConfig.
+        config: config-view,
+        effective-layer-height: f32,
+        nonplanar-shell: option<preparation-nonplanar-shell>,
+        is-catchup-layer: bool,
+        catchup-z-bottom: f32,
+        tool-index: u32,
+    }
+
+    record preparation-layer {
+        index: u32,
+        z: f32,
+        has-nonplanar: bool,
+        is-sync-layer: bool,
+        is-raft: bool,
+        active-regions: list<preparation-active-region>,
+    }
+
+    variant preparation-input-phase {
+        committed-prepass,
+    }
+
+    record preparation-region {
+        global-layer-index: u32,
+        z: f32,
+        object-id: string,
+        region-id: string,
+        variant-chain: preparation-variant-chain,
+        polygons: list<ex-polygon>,
+        infill-areas: list<ex-polygon>,
+        nonplanar-surface: option<surface-group-id>,
+        effective-layer-height: f32,
+        segment-annotations: list<preparation-segment-annotations-entry>,
+        top-shell-index: option<u8>,
+        bottom-shell-index: option<u8>,
+        top-solid-fill: list<ex-polygon>,
+        bottom-solid-fill: list<ex-polygon>,
+        is-bridge: bool,
+        bridge-areas: list<ex-polygon>,
+        bridge-orientation-deg: f32,
+        sparse-infill-area: list<ex-polygon>,
+        internal-solid-fill: list<ex-polygon>,
+        internal-bridge-areas: list<ex-polygon>,
+        internal-bridge-angles-deg: list<f32>,
+        raft-fill: list<ex-polygon>,
+        phase: preparation-input-phase,
+    }
+
+    record preparation-region-config {
+        key: preparation-region-key,
+        config: config-view,
+    }
+
+    record preparation-near-horizontal-facet {
+        slope-angle-deg: f32,
+    }
+
+    record preparation-overhang-facet {
+        angle-deg: f32,
+    }
+
+    variant preparation-facet-class {
+        normal,
+        near-horizontal(preparation-near-horizontal-facet),
+        overhang(preparation-overhang-facet),
+        bridge,
+        top-surface,
+        bottom-surface,
+    }
+
+    record preparation-bridge-region {
+        id: u64,
+        facet-indices: list<u32>,
+        bridge-direction-deg: f32,
+        anchor-width-mm: f32,
+        bridge-length-mm: f32,
+        expansion-margin-mm: f32,
+        is-valid: bool,
+        xy-footprint: list<ex-polygon>,
+    }
+
+    record preparation-overhang-region {
+        id: u64,
+        facet-indices: list<u32>,
+        max-angle-deg: f32,
+        needs-support: bool,
+        xy-footprint: list<ex-polygon>,
+    }
+
+    record preparation-surface-object {
+        object-id: string,
+        facet-classes: list<preparation-facet-class>,
+        surface-groups: list<surface-group>,
+        bridge-regions: list<preparation-bridge-region>,
+        overhang-regions: list<preparation-overhang-region>,
+    }
+
+    /// Each entry retains its object before the inner layer's ordered polygons;
+    /// batching never substitutes one object's maps for another object's maps.
+    record preparation-surface-layer {
+        object-id: string,
+        global-layer-index: u32,
+        overhang-quartile-polygons: list<quartile-band>,
+        prev-layer-boundaries: list<ex-polygon>,
+    }
+
+    record preparation-mesh-object {
+        object-id: string,
+        bounds: option<bounding-box3>,
+        vertex-count: u64,
+        triangle-count: u64,
+        paint-layers: list<preparation-paint-layer>,
+    }
+
+    record preparation-raycast-z-down-query {
+        object-id: string,
+        x: f32,
+        y: f32,
+        start-z: f32,
+    }
+
+    record preparation-surface-normal-at-query {
+        object-id: string,
+        x: f32,
+        y: f32,
+        z: f32,
+    }
+
+    record preparation-object-bounds-query {
+        object-id: string,
+    }
+
+    /// Geometry and queries are world-space; apply the object transform once.
+    variant preparation-mesh-query {
+        raycast-z-down(preparation-raycast-z-down-query),
+        surface-normal-at(preparation-surface-normal-at-query),
+        object-bounds(preparation-object-bounds-query),
+    }
+
+    variant preparation-mesh-query-result {
+        raycast-z-down(option<f32>),
+        surface-normal-at(option<point3>),
+        object-bounds(bounding-box3),
+    }
+
+    variant preparation-seam-reason {
+        concave,
+        aligned,
+        user-forced,
+        sharp,
+    }
+
+    record preparation-scored-seam-candidate {
+        position: point3-with-width,
+        score: f32,
+        reason: preparation-seam-reason,
+    }
+
+    record preparation-seam {
+        region-key: preparation-region-key,
+        chosen-candidate: seam-position,
+        scored-candidates: list<preparation-scored-seam-candidate>,
+    }
+
+    record preparation-support-candidate-source {
+        object-id: string,
+        region-id: string,
+        global-layer-index: u32,
+        z-units: s64,
+        variant-chain: preparation-variant-chain,
+    }
+
+    record preparation-support-candidate {
+        id: u64,
+        geometry: list<ex-polygon>,
+        source: preparation-support-candidate-source,
+        enforced: bool,
+        blocked: bool,
+    }
+
+    record preparation-support-geometry-key {
+        global-support-layer-index: u32,
+        object-id: string,
+        region-id: string,
+        variant-chain: preparation-variant-chain,
+    }
+
+    record preparation-support-geometry-entry {
+        key: preparation-support-geometry-key,
+        polygons: list<ex-polygon>,
+    }
+
+    record preparation-support-source-key {
+        object-id: string,
+        region-id: string,
+        variant-chain: preparation-variant-chain,
+    }
+
+    record preparation-support-family-assignment {
+        key: preparation-support-source-key,
+        family-id: string,
+    }
+
+    record preparation-support-analysis-batch {
+        candidates: list<preparation-support-candidate>,
+        model-occupancy: list<preparation-support-geometry-entry>,
+        cantilever-surfaces: list<preparation-support-geometry-entry>,
+        termination-surfaces: list<preparation-support-geometry-entry>,
+        support-territory: list<preparation-support-geometry-entry>,
+        shared-settings: list<tuple<string, string>>,
+        baseline-feasible-envelope: list<ex-polygon>,
+        family-assignments: list<preparation-support-family-assignment>,
+    }
+
+    record preparation-support-geometry-batch {
+        support-layer-height-mm: f32,
+        support-top-z-distance-mm: f32,
+        entries: list<preparation-support-geometry-entry>,
+    }
+
+    variant preparation-support-plan-role {
+        support-body,
+        top-interface,
+        base-interface,
+        bottom-interface,
+        raft-related,
+    }
+
+    record preparation-support-plan-role-region {
+        role: preparation-support-plan-role,
+        regions: list<ex-polygon>,
+    }
+
+    record preparation-support-plan-skeleton {
+        points: list<point3>,
+        wall-counts: list<u32>,
+    }
+
+    variant preparation-support-plan-decline-reason {
+        declined-policy,
+        no-route,
+        blocked,
+        unsupported-mode,
+    }
+
+    record preparation-support-plan-entry {
+        /// Negative off-grid support rows are not raft/model layer keys.
+        global-layer-index: s32,
+        object-id: string,
+        region-id: string,
+        family-id: string,
+        demand-ids: list<string>,
+        body-ids: list<string>,
+        anchor-layer-index: u32,
+        anchor-z: s64,
+        roles: list<preparation-support-plan-role-region>,
+        skeleton: option<preparation-support-plan-skeleton>,
+        capabilities: list<string>,
+        provenance: list<string>,
+        decline-reason: option<preparation-support-plan-decline-reason>,
+        /// Paint variant chain of the support region; lossless identity.
+        variant-chain: preparation-variant-chain,
+    }
+
+    record preparation-raft-plan {
+        raft-layers: u32,
+        raft-first-layer-density: f32,
+        base-raft-layers: u32,
+        interface-raft-layers: u32,
+    }
+
+    record preparation-support-plan-batch {
+        entries: list<preparation-support-plan-entry>,
+        raft-plan: option<preparation-raft-plan>,
+    }
+
+    record preparation-model-target-source {
+        key: preparation-region-key,
+        members: list<preparation-region-key>,
+    }
+
+    record preparation-support-carrier-target-source {
+        entry-index: u64,
+        object-id: string,
+        region-id: string,
+        variant-chain: preparation-variant-chain,
+        family: string,
+        demand-ids: list<string>,
+        body-ids: list<string>,
+        provenance: list<string>,
+        anchor-layer-index: u32,
+    }
+
+    record preparation-raft-target-source {
+        global-layer-index: u32,
+    }
+
+    record preparation-anchored-stage-target-source {
+        anchor-layer-index: u32,
+    }
+
+    variant preparation-target-source {
+        model(preparation-model-target-source),
+        support-carrier(preparation-support-carrier-target-source),
+        raft(preparation-raft-target-source),
+        anchored-stage(preparation-anchored-stage-target-source),
+    }
+
+    record preparation-selected-target {
+        global-layer-index: u32,
+        stage-id: string,
+        invoke: bool,
+        source: preparation-target-source,
+        config: config-view,
+        held-claims: list<string>,
+        authored-coloring: bool,
+        resolved-role-tool: option<u32>,
+    }
+
     resource print-preparation-input {
         /// Pilot-only fixture transport.
         read-fixture: func(offset: u64, max-bytes: u64) -> result<list<u8>, preparation-error>;
+
+        /// Typed reads check the preparation grant/owner before existence/range.
+        layer-count: func() -> result<u64, preparation-input-error>;
+        layers: func(offset: u64, max-items: u64) -> result<list<preparation-layer>, preparation-input-error>;
+        regions: func(layer-index: u32, offset: u64, max-items: u64) -> result<list<preparation-region>, preparation-input-error>;
+        region-configs: func(layer-index: u32, offset: u64, max-items: u64) -> result<list<preparation-region-config>, preparation-input-error>;
+
+        /// Optional absence is none; a present empty product is some(empty).
+        surface-objects: func(offset: u64, max-items: u64) -> result<option<list<preparation-surface-object>>, preparation-input-error>;
+        surface-layers: func(layer-index: u32, offset: u64, max-items: u64) -> result<option<list<preparation-surface-layer>>, preparation-input-error>;
+        mesh-objects: func(offset: u64, max-items: u64) -> result<list<preparation-mesh-object>, preparation-input-error>;
+        mesh-vertices: func(object-id: string, offset: u64, max-items: u64) -> result<list<point3>, preparation-input-error>;
+        mesh-triangles: func(object-id: string, offset: u64, max-items: u64) -> result<list<tuple<u32, u32, u32>>, preparation-input-error>;
+
+        /// Results preserve caller request order.
+        mesh-queries: func(requests: list<preparation-mesh-query>) -> result<list<preparation-mesh-query-result>, preparation-input-error>;
+        seams: func(layer-index: u32, offset: u64, max-items: u64) -> result<option<list<preparation-seam>>, preparation-input-error>;
+
+        /// Apply the range independently to each canonically sorted collection:
+        /// candidates, each of the four geometry maps, and family assignments.
+        /// Never zip collections; settings and envelope are invariant metadata.
+        support-analysis: func(offset: u64, max-items: u64) -> result<option<preparation-support-analysis-batch>, preparation-input-error>;
+        /// The range bounds entries; height/distance settings are metadata.
+        support-geometry: func(offset: u64, max-items: u64) -> result<option<preparation-support-geometry-batch>, preparation-input-error>;
+        /// The range bounds entries; raft-plan is invariant metadata.
+        support-plan: func(offset: u64, max-items: u64) -> result<option<preparation-support-plan-batch>, preparation-input-error>;
+        selected-targets: func(layer-index: u32, offset: u64, max-items: u64) -> result<list<preparation-selected-target>, preparation-input-error>;
     }
 
     resource prepared-plan-output {

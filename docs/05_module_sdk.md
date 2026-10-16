@@ -1087,6 +1087,58 @@ Each `PrintEntity` and `TravelMove` carries a `u64 entity_id` populated at const
 
 ---
 
+## Preparation read context and selected sources
+
+`slicer_sdk::preparation::PreparationTargetSource` preserves these source tags:
+- `Model { key, members }`, using `PreparationRegionKey` identities.
+- `SupportCarrier { entry_index, object_id, region_id, variant_chain, family, demand_ids, body_ids, provenance, anchor_layer_index }`.
+- `Raft { global_layer_index }`.
+- `AnchoredStage { anchor_layer_index }`.
+
+`PreparationSelectedTarget` carries `global_layer_index`, `stage_id`, `invoke`,
+the source, filtered `config`, `held_claims`, `authored_coloring`, and
+`resolved_role_tool: Option<u32>`. Sources describe eligible input contexts, never
+predicted Layer, perimeter, or support output. Whole-print read context remains
+separate from selected-target context; carrier `entry_index` is never renumbered.
+`PreparationPaintValue`, `PreparationVariantChain`, and `PreparationRegionKey`
+(`crates/slicer-sdk/src/preparation_input.rs`) preserve lossless identities.
+The four bidirectional `From<&…>` implementations convert `PreparationPaintValue`
+and `PreparationRegionKey` to/from their `slicer_ir` counterparts, including
+variant chains: `Custom` strings remain byte-exact and scalar signed-zero bits
+retain their identity. Ordinary shared WIT is unchanged.
+Support-plan entry `variant_chain` is projected losslessly from native
+`SupportPlanEntry::variant_chain`.
+
+The 15 `PrintPreparationInput` reads (`crates/slicer-sdk/src/preparation.rs`)
+all take `&self`; signatures below abbreviate only `PreparationInputError` as `E`:
+
+| Method and arguments | Return type |
+|---|---|
+| `layer_count()` | `Result<u64, E>` |
+| `layers(offset: u64, max_items: u64)` | `Result<Vec<PreparationLayer>, E>` |
+| `regions(layer_index: u32, offset: u64, max_items: u64)` | `Result<Vec<PreparationRegion>, E>` |
+| `region_configs(layer_index: u32, offset: u64, max_items: u64)` | `Result<Vec<PreparationRegionConfig>, E>` |
+| `surface_objects(offset: u64, max_items: u64)` | `Result<Option<Vec<PreparationSurfaceObject>>, E>` |
+| `surface_layers(layer_index: u32, offset: u64, max_items: u64)` | `Result<Option<Vec<PreparationSurfaceLayer>>, E>` |
+| `mesh_objects(offset: u64, max_items: u64)` | `Result<Vec<PreparationMeshObject>, E>` |
+| `mesh_vertices(object_id: &str, offset: u64, max_items: u64)` | `Result<Vec<slicer_ir::Point3>, E>` |
+| `mesh_triangles(object_id: &str, offset: u64, max_items: u64)` | `Result<Vec<(u32, u32, u32)>, E>` |
+| `mesh_queries(requests: &[PreparationMeshQuery])` | `Result<Vec<PreparationMeshQueryResult>, E>` |
+| `seams(layer_index: u32, offset: u64, max_items: u64)` | `Result<Option<Vec<PreparationSeam>>, E>` |
+| `support_analysis(offset: u64, max_items: u64)` | `Result<Option<PreparationSupportAnalysisBatch>, E>` |
+| `support_geometry(offset: u64, max_items: u64)` | `Result<Option<PreparationSupportGeometryBatch>, E>` |
+| `support_plan(offset: u64, max_items: u64)` | `Result<Option<PreparationSupportPlanBatch>, E>` |
+| `selected_targets(layer_index: u32, offset: u64, max_items: u64)` | `Result<Vec<PreparationSelectedTarget>, E>` |
+
+Offsets are ordinals, not cursors; batches clip to remaining length, while an
+offset beyond length yields `RangeError`. Optional absence stays `None`, distinct
+from present-empty `Some(empty)`. `PrintPreparationRead: Send + Sync` supplies
+the backing through `from_host_input`; WASM glue uses combined
+`from_host_input_with_fixture`, retaining the unchanged row-03 fixture delegate.
+Host `from_committed` (`crates/slicer-wasm-host/src/preparation_input.rs`)
+prevalidates the frozen owner and guard before any invocation. These reads expose
+no Layer-output access and perform no owner payload decoding anywhere.
+
 ## Test Support (slicer-sdk feature)
 
 Every module can be tested in complete isolation — no running host, no WASM runtime, no real mesh. Test-support APIs are part of `slicer-sdk` itself, gated behind a Cargo feature named `test`. The convention is to depend on the SDK twice — once for production code, and once as a dev-dependency with the `test` feature enabled:
