@@ -202,5 +202,21 @@ re-run `build-snapshots.sh <arm>` for the arm whose tree changed.
   `.local-artifacts/…/t67-region-prep-sharing/measure/`.
 - Proof-phase wall numbers are single warmup runs, not the timed phase; no
   inference is drawn from them.
+- **Measure complete** 2026-10-16 00:41:00 — all four cells 14/14 runs, zero
+  starvation exclusions, every measured pair byte-identical; driver log ends
+  `[t67] measurement campaign complete`.
+- **Reduction** (`ab-reduction.json`) — paired-median Δ (candidate vs
+  baseline): ordinary-benchy wall −0.11 % / CPU −0.44 %; ordinary-base
+  wall −4.26 % / CPU −0.60 %; accelerated-benchy wall −0.50 % / CPU +0.19 %;
+  accelerated-base wall −0.28 % / CPU −0.11 %. The wall clause passes in all
+  four cells; the CPU corroboration clause fails in accelerated-benchy by
+  +0.19 % (= +0.31 s CPU on a 118 s run) ⇒ reducer verdict
+  `GATE NOT MET — measured recommendation returns to the human`.
+- Statistic cross-check (unpaired medians): ordinary-base −4.12 % (agrees);
+  ordinary-benchy +1.2 % and accelerated-base +0.25 % flip sign — those two
+  cells are inside run noise; accelerated-benchy −1.13 %.
+- **Status: awaiting the human's KEEP/DROP ruling.** Candidate uncommitted
+  (`stash@{0}` intact); correctness sealed 16/16 against the preserved t58
+  references.
 
 
