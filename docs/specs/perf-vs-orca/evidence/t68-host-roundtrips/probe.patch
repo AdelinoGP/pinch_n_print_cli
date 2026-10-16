@@ -1,0 +1,501 @@
+diff --git a/crates/slicer-runtime/src/layer_executor.rs b/crates/slicer-runtime/src/layer_executor.rs
+index a8d4f75c..e38b9db0 100644
+--- a/crates/slicer-runtime/src/layer_executor.rs
++++ b/crates/slicer-runtime/src/layer_executor.rs
+@@ -973,7 +973,15 @@ fn execute_single_layer_inner(
+             // Seam plan consulted by the perimeter arms of `apply` (ADR-0020).
+             let seam_plan_ir_for_commit = blackboard.seam_plan().map(|arc| arc.as_ref());
+ 
+-            let run_result = runner.run_stage(&stage.stage_id, layer, &live_module, input);
++            let run_result = {
++                // [T68-PROBE] temporary owner bracket for the classic-perimeters
++                // dispatch (reverted before commit; ticket 68 attribution).
++                let _t68_probe = (module.module_id().as_str() == "com.core.classic-perimeters")
++                    .then(|| {
++                        slicer_wasm_host::probe::DispatchGuard::new("probe:d:classic-perimeters")
++                    });
++                runner.run_stage(&stage.stage_id, layer, &live_module, input)
++            };
+             // Pull the wasm linear-memory sample for the just-completed call.
+             // Returns (0, 0) for non-wasm runners (test mocks, host built-ins).
+             let (wasm_before, wasm_after) = runner.last_wasm_mem_sample();
+diff --git a/crates/slicer-runtime/src/profiling_report.rs b/crates/slicer-runtime/src/profiling_report.rs
+index c143c6d6..9fb7d3d0 100644
+--- a/crates/slicer-runtime/src/profiling_report.rs
++++ b/crates/slicer-runtime/src/profiling_report.rs
+@@ -599,6 +599,8 @@ pub fn end_native_profiling(agg: &ProfileAggregator) {
+         let folded: Vec<ScopeTotals> = acc.scopes.into_values().collect();
+         agg.record_native(module_id, &folded, acc.activations, acc.wall_ns);
+     }
++    // [T68-PROBE] Dump per-site host-service timing buckets (temporary; ticket 68).
++    slicer_wasm_host::probe::dump();
+ }
+ 
+ /// RAII attribution bracket for one host built-in.
+diff --git a/crates/slicer-wasm-host/src/host.rs b/crates/slicer-wasm-host/src/host.rs
+index 7f55a576..3e712e73 100644
+--- a/crates/slicer-wasm-host/src/host.rs
++++ b/crates/slicer-wasm-host/src/host.rs
+@@ -2597,10 +2597,35 @@ impl hs::Host for HostExecutionContext {
+         clip: Vec<ExPolygon>,
+         op: hs::ClipOperation,
+     ) -> wasmtime::Result<Vec<ExPolygon>> {
++        // [T68-PROBE] temporary per-call timing split (reverted before commit).
++        let t68_in_polys = (subject.len() + clip.len()) as u64;
++        let t68_in_verts = expolygon_vertex_count(&subject) + expolygon_vertex_count(&clip);
++        let t68_t0 = std::time::Instant::now();
+         let ir_subject = wit_to_ir_expolygons(&subject);
+         let ir_clip = wit_to_ir_expolygons(&clip);
++        let t68_t1 = std::time::Instant::now();
+         let result = slicer_core::polygon_ops::clip_polygons(&ir_subject, &ir_clip, ir_clip_op(op));
+-        Ok(ir_to_wit_expolygons(&result))
++        let t68_t2 = std::time::Instant::now();
++        let out = ir_to_wit_expolygons(&result);
++        let t68_t3 = std::time::Instant::now();
++        // [T68-PROBE] record the split for this call.
++        crate::probe::note_call(
++            "clip",
++            match op {
++                hs::ClipOperation::Difference => 1.0,
++                hs::ClipOperation::Intersection => 2.0,
++                hs::ClipOperation::Union => 3.0,
++                hs::ClipOperation::Xor => 4.0,
++            },
++            t68_in_polys,
++            t68_in_verts,
++            out.len() as u64,
++            expolygon_vertex_count(&out),
++            (t68_t1 - t68_t0).as_nanos() as u64,
++            (t68_t2 - t68_t1).as_nanos() as u64,
++            (t68_t3 - t68_t2).as_nanos() as u64,
++        );
++        Ok(out)
+     }
+ 
+     fn offset_polygons(
+@@ -2611,7 +2636,12 @@ impl hs::Host for HostExecutionContext {
+         arc_tolerance_mm: f32,
+         miter_limit: Option<f32>,
+     ) -> wasmtime::Result<Vec<ExPolygon>> {
++        // [T68-PROBE] temporary per-call timing split (reverted before commit).
++        let t68_in_polys = polygons.len() as u64;
++        let t68_in_verts = expolygon_vertex_count(&polygons);
++        let t68_t0 = std::time::Instant::now();
+         let ir_polys = wit_to_ir_expolygons(&polygons);
++        let t68_t1 = std::time::Instant::now();
+         let result = match miter_limit {
+             Some(miter_limit) => slicer_core::polygon_ops::offset_with_miter_limit(
+                 &ir_polys,
+@@ -2627,7 +2657,22 @@ impl hs::Host for HostExecutionContext {
+                 arc_tolerance_mm,
+             ),
+         };
+-        Ok(ir_to_wit_expolygons(&result))
++        let t68_t2 = std::time::Instant::now();
++        let out = ir_to_wit_expolygons(&result);
++        let t68_t3 = std::time::Instant::now();
++        // [T68-PROBE] record the split for this call.
++        crate::probe::note_call(
++            "offset",
++            delta_mm as f64,
++            t68_in_polys,
++            t68_in_verts,
++            out.len() as u64,
++            expolygon_vertex_count(&out),
++            (t68_t1 - t68_t0).as_nanos() as u64,
++            (t68_t2 - t68_t1).as_nanos() as u64,
++            (t68_t3 - t68_t2).as_nanos() as u64,
++        );
++        Ok(out)
+     }
+ 
+     fn hatch_areas(
+diff --git a/crates/slicer-wasm-host/src/lib.rs b/crates/slicer-wasm-host/src/lib.rs
+index 7f261c17..a4f477f7 100644
+--- a/crates/slicer-wasm-host/src/lib.rs
++++ b/crates/slicer-wasm-host/src/lib.rs
+@@ -16,6 +16,7 @@ pub mod instance;
+ /// IR-to-WIT and WIT-to-IR marshalling helpers for the WASM stage boundary.
+ pub mod marshal;
+ pub mod pool;
++pub mod probe;
+ /// Host-side fuel/scope profiling: mark records, the scope-stack fold, and the
+ /// process-global scope-name registry (ADR-0055).
+ pub mod profiling;
+diff --git a/crates/slicer-wasm-host/src/probe.rs b/crates/slicer-wasm-host/src/probe.rs
+new file mode 100644
+index 00000000..22022e5d
+--- /dev/null
++++ b/crates/slicer-wasm-host/src/probe.rs
+@@ -0,0 +1,128 @@
++//! [T68-PROBE] Temporary per-call recorder for the classic-perimeters
++//! per-layer host-service round-trip attribution (wayfinder perf-vs-orca
++//! ticket 68). Probe-only; reverted before any commit. See
++//! `docs/specs/perf-vs-orca/evidence/t68-host-roundtrips/`.
++//!
++//! A thread-local [`DispatchGuard`] names the module dispatch being watched
++//! (set by the runtime around the classic-perimeters `run_stage` call); every
++//! host-service call recorded while a guard is active is bucketed by
++//! `(owner, seq-within-dispatch)`, where `seq` follows the guest's fixed
++//! per-layer call order, so the buckets map 1:1 onto the guest's call sites.
++//! The recorder is global and mutex-protected; the `(owner, seq)` key is
++//! per-thread only in what it counts, while the sums aggregate across the
++//! concurrent per-layer workers, which is the intended meaning.
++
++use std::cell::{Cell, RefCell};
++use std::collections::HashMap;
++use std::sync::Mutex;
++
++thread_local! {
++    static CURRENT_OWNER: RefCell<Option<&'static str>> = const { RefCell::new(None) };
++    static CALL_SEQ: Cell<u32> = const { Cell::new(0) };
++}
++
++/// [T68-PROBE] RAII bracket naming the module dispatch whose host-service
++/// calls this recorder should attribute. Probe-only.
++pub struct DispatchGuard {
++    prev: Option<&'static str>,
++}
++
++impl DispatchGuard {
++    /// [T68-PROBE] Enter the bracket; resets the per-dispatch call sequence.
++    #[must_use]
++    pub fn new(name: &'static str) -> Self {
++        let prev = CURRENT_OWNER.with(|c| c.borrow_mut().replace(name));
++        CALL_SEQ.with(|s| s.set(0));
++        Self { prev }
++    }
++}
++
++impl Drop for DispatchGuard {
++    fn drop(&mut self) {
++        CURRENT_OWNER.with(|c| *c.borrow_mut() = self.prev);
++    }
++}
++
++#[derive(Clone, Default)]
++struct Bucket {
++    service: &'static str,
++    calls: u64,
++    in_polys: u64,
++    in_verts: u64,
++    out_polys: u64,
++    out_verts: u64,
++    conv_in_ns: u64,
++    ops_ns: u64,
++    conv_out_ns: u64,
++    sample_arg: f64,
++}
++
++static BUCKETS: Mutex<Option<HashMap<(&'static str, u32), Bucket>>> = Mutex::new(None);
++
++/// [T68-PROBE] Record one attributed host-service call (wall split into
++/// conversion-in, ops, conversion-out). No-op without an active dispatch
++/// bracket.
++#[allow(clippy::too_many_arguments)]
++pub fn note_call(
++    service: &'static str,
++    sample_arg: f64,
++    in_polys: u64,
++    in_verts: u64,
++    out_polys: u64,
++    out_verts: u64,
++    conv_in_ns: u64,
++    ops_ns: u64,
++    conv_out_ns: u64,
++) {
++    let owner = CURRENT_OWNER.with(|c| *c.borrow());
++    let Some(owner) = owner else { return };
++    let seq = CALL_SEQ.with(|s| {
++        let v = s.get();
++        s.set(v.wrapping_add(1));
++        v
++    });
++    let mut guard = BUCKETS.lock().expect("t68 probe buckets poisoned");
++    let map = guard.get_or_insert_with(HashMap::new);
++    let bucket = map.entry((owner, seq)).or_insert_with(|| Bucket {
++        service,
++        sample_arg,
++        ..Bucket::default()
++    });
++    bucket.calls += 1;
++    bucket.in_polys += in_polys;
++    bucket.in_verts += in_verts;
++    bucket.out_polys += out_polys;
++    bucket.out_verts += out_verts;
++    bucket.conv_in_ns += conv_in_ns;
++    bucket.ops_ns += ops_ns;
++    bucket.conv_out_ns += conv_out_ns;
++}
++
++/// [T68-PROBE] Dump per-(owner, seq) buckets to stderr; called once at slice
++/// end by the runtime's native-profiling teardown (requires `--profile`).
++pub fn dump() {
++    let map = BUCKETS
++        .lock()
++        .expect("t68 probe buckets poisoned")
++        .take()
++        .unwrap_or_default();
++    let mut rows: Vec<_> = map.into_iter().collect();
++    rows.sort_by_key(|((owner, seq), _)| (*owner, *seq));
++    for ((owner, seq), b) in rows {
++        eprintln!(
++            "[T68-PROBE] host owner={owner} seq={seq} service={} arg={:.4} calls={} \
++             in_polys={} in_verts={} out_polys={} out_verts={} conv_in_ns={} ops_ns={} \
++             conv_out_ns={}",
++            b.service,
++            b.sample_arg,
++            b.calls,
++            b.in_polys,
++            b.in_verts,
++            b.out_polys,
++            b.out_verts,
++            b.conv_in_ns,
++            b.ops_ns,
++            b.conv_out_ns
++        );
++    }
++}
+diff --git a/modules/core-modules/classic-perimeters/src/lib.rs b/modules/core-modules/classic-perimeters/src/lib.rs
+index e4eac95f..4846c657 100644
+--- a/modules/core-modules/classic-perimeters/src/lib.rs
++++ b/modules/core-modules/classic-perimeters/src/lib.rs
+@@ -83,6 +83,49 @@ const DEGENERATE_MIN_AREA_SQ_UNITS: f64 = 1.0;
+ /// named constant in `arachne-perimeters`.
+ const ERR_NEGATIVE_SPACING: u32 = 1;
+ 
++// ---------------------------------------------------------------------------
++// [T68-PROBE] temporary per-site round-trip timers (wayfinder perf-vs-orca
++// ticket 68). Reverted before any commit; probe-only, never in a shipped
++// artifact. See docs/specs/perf-vs-orca/evidence/t68-host-roundtrips/.
++// ---------------------------------------------------------------------------
++
++/// [T68-PROBE] accumulated guest-observed ns per call site (12 slots).
++static T68_NS: [std::sync::atomic::AtomicU64; 12] =
++    [const { std::sync::atomic::AtomicU64::new(0) }; 12];
++/// [T68-PROBE] executed-call counts per call site.
++static T68_CALLS: [std::sync::atomic::AtomicU64; 12] =
++    [const { std::sync::atomic::AtomicU64::new(0) }; 12];
++
++/// [T68-PROBE] Time one host-service call site via the `now_us` host service.
++#[inline]
++fn t68_time<T>(site: usize, f: impl FnOnce() -> T) -> T {
++    use std::sync::atomic::Ordering;
++    let t0 = slicer_sdk::host::now_us();
++    let result = f();
++    let t1 = slicer_sdk::host::now_us();
++    T68_NS[site].fetch_add(t1.wrapping_sub(t0), Ordering::Relaxed);
++    T68_CALLS[site].fetch_add(1, Ordering::Relaxed);
++    result
++}
++
++/// [T68-PROBE] Emit this invocation's per-site sums as one `module_log` line.
++fn t68_dump(layer_index: u32) {
++    use std::sync::atomic::Ordering;
++    let mut ns = String::new();
++    let mut calls = String::new();
++    for i in 0..12 {
++        if i > 0 {
++            ns.push(',');
++            calls.push(',');
++        }
++        ns.push_str(&T68_NS[i].swap(0, Ordering::Relaxed).to_string());
++        calls.push_str(&T68_CALLS[i].swap(0, Ordering::Relaxed).to_string());
++    }
++    slicer_sdk::host::log_info(&format!(
++        "[T68-PROBE] layer={layer_index} ns=[{ns}] calls=[{calls}]"
++    ));
++}
++
+ /// AUTO selects the host's geometry-dependent base, not a zero multiplier.
+ /// Keep positive configured-speed scaling and the emitter's clamp unchanged
+ /// (docs/adr/0072-context-aware-feedrate-resolution-preserves-factor-contract.md).
+@@ -619,6 +662,9 @@ impl LayerModule for ClassicPerimeters {
+             }
+         }
+ 
++        // [T68-PROBE] per-layer per-site round-trip dump (temporary; ticket 68).
++        t68_dump(layer_index);
++
+         Ok(())
+     }
+ }
+@@ -749,12 +795,16 @@ impl ClassicPerimeters {
+             } else {
+                 -perimeter_spacing
+             };
+-            let inset_result = slicer_sdk::host::offset_polygons(
+-                &current_polygons,
+-                inset_delta,
+-                HostJoin::Miter,
+-                self.perimeter_arc_tolerance,
+-            );
++            // [T68-PROBE] site 0/1: wall-loop inset (i=0 outer, i=1 inner).
++            let t68_site = if i == 0 { 0 } else { 1 };
++            let inset_result = t68_time(t68_site, || {
++                slicer_sdk::host::offset_polygons(
++                    &current_polygons,
++                    inset_delta,
++                    HostJoin::Miter,
++                    self.perimeter_arc_tolerance,
++                )
++            });
+             if inset_result.is_empty() {
+                 break;
+             }
+@@ -763,23 +813,29 @@ impl ClassicPerimeters {
+             // where the actual spacing exceeds `d` (a true gap). Skipped at i==0.
+             if i >= 1 {
+                 let distance = inset_delta.abs();
+-                let shrunk_prev = slicer_sdk::host::offset_polygons(
+-                    &current_polygons,
+-                    -(0.5 * distance),
+-                    HostJoin::Miter,
+-                    self.perimeter_arc_tolerance,
+-                );
+-                let grown_cur = slicer_sdk::host::offset_polygons(
+-                    &inset_result,
+-                    0.5 * distance,
+-                    HostJoin::Miter,
+-                    self.perimeter_arc_tolerance,
+-                );
+-                gaps.extend(slicer_sdk::host::clip_polygons(
+-                    &shrunk_prev,
+-                    &grown_cur,
+-                    ClipOperation::Difference,
+-                ));
++                let shrunk_prev = t68_time(2, || {
++                    slicer_sdk::host::offset_polygons(
++                        &current_polygons,
++                        -(0.5 * distance),
++                        HostJoin::Miter,
++                        self.perimeter_arc_tolerance,
++                    )
++                });
++                let grown_cur = t68_time(3, || {
++                    slicer_sdk::host::offset_polygons(
++                        &inset_result,
++                        0.5 * distance,
++                        HostJoin::Miter,
++                        self.perimeter_arc_tolerance,
++                    )
++                });
++                gaps.extend(t68_time(4, || {
++                    slicer_sdk::host::clip_polygons(
++                        &shrunk_prev,
++                        &grown_cur,
++                        ClipOperation::Difference,
++                    )
++                }));
+             }
+             all_wall_polygons.push((i, inset_result.clone()));
+             current_polygons = inset_result;
+@@ -793,29 +849,37 @@ impl ClassicPerimeters {
+         // per-color MMU bisector ring slivers — wide cells produce ~zero here.
+         if !current_polygons.is_empty() {
+             let distance = inner_wall_line_width;
+-            let infill_area = slicer_sdk::host::offset_polygons(
+-                &current_polygons,
+-                -distance,
+-                HostJoin::Miter,
+-                self.perimeter_arc_tolerance,
+-            );
+-            let shrunk_inner = slicer_sdk::host::offset_polygons(
+-                &current_polygons,
+-                -(0.5 * distance),
+-                HostJoin::Miter,
+-                self.perimeter_arc_tolerance,
+-            );
+-            let grown_infill = slicer_sdk::host::offset_polygons(
+-                &infill_area,
+-                0.5 * distance,
+-                HostJoin::Miter,
+-                self.perimeter_arc_tolerance,
+-            );
+-            gaps.extend(slicer_sdk::host::clip_polygons(
+-                &shrunk_inner,
+-                &grown_infill,
+-                ClipOperation::Difference,
+-            ));
++            let infill_area = t68_time(5, || {
++                slicer_sdk::host::offset_polygons(
++                    &current_polygons,
++                    -distance,
++                    HostJoin::Miter,
++                    self.perimeter_arc_tolerance,
++                )
++            });
++            let shrunk_inner = t68_time(6, || {
++                slicer_sdk::host::offset_polygons(
++                    &current_polygons,
++                    -(0.5 * distance),
++                    HostJoin::Miter,
++                    self.perimeter_arc_tolerance,
++                )
++            });
++            let grown_infill = t68_time(7, || {
++                slicer_sdk::host::offset_polygons(
++                    &infill_area,
++                    0.5 * distance,
++                    HostJoin::Miter,
++                    self.perimeter_arc_tolerance,
++                )
++            });
++            gaps.extend(t68_time(8, || {
++                slicer_sdk::host::clip_polygons(
++                    &shrunk_inner,
++                    &grown_infill,
++                    ClipOperation::Difference,
++                )
++            }));
+         }
+ 
+         let mut walls: Vec<slicer_ir::WallLoop> = Vec::new();
+@@ -1000,8 +1064,9 @@ impl ClassicPerimeters {
+                 CoreJoin::Miter,
+                 self.perimeter_arc_tolerance as f64,
+             );
+-            let thin_protrusions =
+-                slicer_sdk::host::clip_polygons(polygons, &thick_core, ClipOperation::Difference);
++            let thin_protrusions = t68_time(11, || {
++                slicer_sdk::host::clip_polygons(polygons, &thick_core, ClipOperation::Difference)
++            });
+             for protrusion in &thin_protrusions {
+                 let axes = slicer_sdk::host::medial_axis(
+                     protrusion,
+@@ -1083,11 +1148,9 @@ impl ClassicPerimeters {
+                 CoreJoin::Miter,
+                 self.perimeter_arc_tolerance as f64,
+             );
+-            let filtered_gaps = slicer_sdk::host::clip_polygons(
+-                &opened_min,
+-                &opened_max,
+-                ClipOperation::Difference,
+-            );
++            let filtered_gaps = t68_time(9, || {
++                slicer_sdk::host::clip_polygons(&opened_min, &opened_max, ClipOperation::Difference)
++            });
+             for gap in &filtered_gaps {
+                 let axes =
+                     slicer_sdk::host::medial_axis(gap, min_gap_fill_width, max_gap_fill_width);
+@@ -1175,12 +1238,14 @@ impl ClassicPerimeters {
+                 .unwrap_or(inner_wall_line_width)
+                 - infill_wall_overlap)
+                 .max(0.0);
+-            let infill = slicer_sdk::host::offset_polygons(
+-                &current_polygons,
+-                -infill_inset,
+-                HostJoin::Miter,
+-                self.perimeter_arc_tolerance,
+-            );
++            let infill = t68_time(10, || {
++                slicer_sdk::host::offset_polygons(
++                    &current_polygons,
++                    -infill_inset,
++                    HostJoin::Miter,
++                    self.perimeter_arc_tolerance,
++                )
++            });
+             if !infill.is_empty() {
+                 output.set_infill_areas(infill)?;
+             }

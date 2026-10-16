@@ -1,7 +1,7 @@
 # Classic-perimeters per-layer host-service round trips
 
 Type: task
-Status: claimed
+Status: resolved (2026-10-16; attribution take — the round-trip bucket is 97–99 % native clipper ops, every named reduction direction's measured ceiling is below the bar; no candidate, no production edit, no timing campaign; probe reverted; see ## Resolution)
 Assignee: claimed 2026-10-16 — session resumed on the human's "continue"
 (no ticket named); the human then selected this lead from the t60
 un-graduated set as the route for the take (`region_partition` dedup and
@@ -86,3 +86,68 @@ analysis ("which `offset_polygons` sites, batching, in-guest migration").
   `--module-dir modules/core-modules` mandatory; `cargo xtask build-guests
   --check` must exit 0 before any capture; outputs disclosed per the fairness
   contract.
+
+## Resolution
+
+**Verdict (attribution take, 2026-10-16): no candidate — the per-layer
+host-service round-trip bucket is 97.55 % (benchy-off) / 99.02 % (base-off)
+native clipper operations, and every reduction direction t60 named for this
+lead has a measured ceiling below any gate this map has applied.** No
+production edit, no timing campaign, no auto-commit; the probe is reverted
+and both freshness checks are green.
+
+- **Method.** The T68-PROBE (two-sided; preserved as `probe.patch`, applied,
+  measured, reverted) records, per host-service call attributed to the
+  classic-perimeters dispatch: service, arg, input/output polygon and vertex
+  counts, and the conversion/ops/conversion wall split; guest-side `now_us`
+  brackets around all 11 call sites measure the full guest-observed round
+  trip per site and layer. Two ordinary captures: benchy-off (17.575 s
+  instrumented) and base-off (263.530 s instrumented, the largest owner
+  cell). **Both outputs byte-identical to the preserved t58 references**
+  (`34886ccb…` / `20e7204c…`), clean status, zero non-fatals.
+- **The split.** Base-off (87,900.3 ms guest-observed, 5,442 calls): ops
+  87,142.1 ms (99.02 %), host conversions 100.5 ms (0.11 %), guest
+  marshalling + ABI remainder 758.2 ms (0.86 %). Benchy-off (5,726.4 ms,
+  2,640 calls): ops 5,598.9 ms (97.55 %), conversions 13.4 ms, remainder
+  127.5 ms. Site shares (base): A0 21.4 %, A1 22.3 %, K 9.6 % — the walls
+  and infill boundary themselves — and the gap machinery B/C/D/E/F/G/H/J
+  46.8 % (49.5 % benchy), which feeds the width-band morph that discards
+  ~98.6 % of the raw candidate vertex volume per layer before the ~105-vert
+  filter input and the 162/495-layer output.
+- **Ceilings (the no-candidate reasoning).** In-guest migration can remove at
+  most the remainder + conversions (0.98 % base / 2.45 % benchy) while
+  replacing native clipper with the wasm twin on 97–99 % of the cost — net
+  negative. Batching can remove only per-crossing fixed costs (per-item
+  marshalling unchanged; the 12-thread-saturated phase makes fan-out
+  zero-sum; benchy sits at/below the 4,096-primitive threshold). Site-level
+  reduction: every site feeds exactly one consumer or the output (D = f(B,C),
+  H = f(F,G), G = f(E); A0/A1 walls, K infill) — no dead or duplicated site;
+  no representation-identical algebraic shortcut exists for the miter-offset
+  composition, and byte-exactness forbids representation changes. The
+  entire removable overhead is ≤ 0.33 % (serial) / 0.03 % (saturated) of base
+  run wall and ≤ 0.80 % / 0.07 % on benchy — below the smallest wall effect
+  this map has ever kept.
+- **Dynamics confirmed.** Thin-wall protrusion clip: 0 calls across all 240
+  benchy + 495 base layers (the static census inference holds; its gate
+  resolves false on the matched job — recorded as a config-resolution
+  observation, the classic manifest default `true` vs arachne's `false`
+  reconciled per key, not chased here). Base layer 270 skips the
+  gap-collection trio (empty inner inset).
+  Wall relevance (t64-style): bucket = 6.3 % base / 6.6 % benchy of per-layer
+  phase thread-time; last layer carries 2.3 ms / 4.2 ms.
+- **Stability + cross-checks.** Two independent base runs: 87.90 s vs
+  78.46 s guest-observed (±11 % accumulated drift, the §3.6 class) with
+  decomposition shares stable within ~1 point; vs t60's committed owner wall:
+  −1.5 % base / −3.1 % benchy, same exact call counts. `verify.py` exits 0
+  against the in-repo set alone, enforcing output identity, the exact call
+  census, guest ≥ host per site, the ops-share/overhead/wall-bound margins,
+  the bucket containment, the ±25 % t60 band, and rejecting seven negative
+  controls.
+- **Evidence:** `evidence/t68-host-roundtrips/` (`FINDINGS.md`, `probe.patch`,
+  `run-t68.ps1`, `captures/`, `summary.json`, `reduce.py`, `verify.py`).
+  The `t68 probe (mirror of evidence/t68-host-roundtrips/probe.patch)` stash
+  entry is retained, never dropped.
+- **Frontier.** [20](20-consume-only-when-read-annotations.md) remains the
+  only open child (parked below-fold); the `region_partition` dedup lead
+  remains un-graduated — route decision back to the human.
+

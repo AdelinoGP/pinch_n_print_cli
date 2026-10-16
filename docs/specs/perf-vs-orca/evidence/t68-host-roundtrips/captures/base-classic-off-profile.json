@@ -1,0 +1,320 @@
+{
+ "guest_layer_dumps": 495,
+ "guest_sites": [
+  {
+   "calls": 495,
+   "guest_us": 18815700,
+   "name": "A0 outer-loop inset",
+   "site": 0
+  },
+  {
+   "calls": 495,
+   "guest_us": 19567299,
+   "name": "A1 inner-loop inset",
+   "site": 1
+  },
+  {
+   "calls": 494,
+   "guest_us": 10605782,
+   "name": "B gap shrunk_prev",
+   "site": 2
+  },
+  {
+   "calls": 494,
+   "guest_us": 4789633,
+   "name": "C gap grown_cur",
+   "site": 3
+  },
+  {
+   "calls": 494,
+   "guest_us": 2159956,
+   "name": "D gap difference",
+   "site": 4
+  },
+  {
+   "calls": 495,
+   "guest_us": 12112669,
+   "name": "E infill_area",
+   "site": 5
+  },
+  {
+   "calls": 495,
+   "guest_us": 6702647,
+   "name": "F shrunk_inner",
+   "site": 6
+  },
+  {
+   "calls": 495,
+   "guest_us": 3131832,
+   "name": "G grown_infill",
+   "site": 7
+  },
+  {
+   "calls": 495,
+   "guest_us": 1563007,
+   "name": "H final-transition difference",
+   "site": 8
+  },
+  {
+   "calls": 495,
+   "guest_us": 40098,
+   "name": "J gap width-band filter",
+   "site": 9
+  },
+  {
+   "calls": 495,
+   "guest_us": 8411683,
+   "name": "K infill-boundary inset",
+   "site": 10
+  },
+  {
+   "calls": 0,
+   "guest_us": 0,
+   "name": "thin-wall protrusion clip",
+   "site": 11
+  }
+ ],
+ "host_sites": [
+  {
+   "calls": 495,
+   "conv_in_ns": 4462400,
+   "conv_out_ns": 1869200,
+   "in_polys": 845,
+   "in_verts": 2553550,
+   "ops_ns": 18743587600,
+   "out_polys": 839,
+   "out_verts": 1995811,
+   "owner": "probe:d:classic-perimeters",
+   "sample_arg": -0.2,
+   "seq": 0,
+   "service": "offset",
+   "site": "A0 outer-loop inset"
+  },
+  {
+   "calls": 495,
+   "conv_in_ns": 1675800,
+   "conv_out_ns": 1943400,
+   "in_polys": 839,
+   "in_verts": 1995811,
+   "ops_ns": 19517744000,
+   "out_polys": 842,
+   "out_verts": 1420296,
+   "owner": "probe:d:classic-perimeters",
+   "sample_arg": -0.3571,
+   "seq": 1,
+   "service": "offset",
+   "site": "A1 inner-loop inset"
+  },
+  {
+   "calls": 495,
+   "conv_in_ns": 3449800,
+   "conv_out_ns": 2607900,
+   "in_polys": 839,
+   "in_verts": 1995811,
+   "ops_ns": 10547531200,
+   "out_polys": 840,
+   "out_verts": 1682054,
+   "owner": "probe:d:classic-perimeters",
+   "sample_arg": -0.1785,
+   "seq": 2,
+   "service": "offset",
+   "site": "B gap shrunk_prev"
+  },
+  {
+   "calls": 495,
+   "conv_in_ns": 3858300,
+   "conv_out_ns": 2249700,
+   "in_polys": 843,
+   "in_verts": 1420434,
+   "ops_ns": 4743704400,
+   "out_polys": 830,
+   "out_verts": 1403723,
+   "owner": "probe:d:classic-perimeters",
+   "sample_arg": 0.1785,
+   "seq": 3,
+   "service": "offset",
+   "site": "C gap grown_cur"
+  },
+  {
+   "calls": 495,
+   "conv_in_ns": 4732200,
+   "conv_out_ns": 33472000,
+   "in_polys": 1669,
+   "in_verts": 3085750,
+   "ops_ns": 1891430300,
+   "out_polys": 307399,
+   "out_verts": 2289168,
+   "owner": "probe:d:classic-perimeters",
+   "sample_arg": 1.0,
+   "seq": 4,
+   "service": "clip",
+   "site": "D gap difference"
+  },
+  {
+   "calls": 495,
+   "conv_in_ns": 2175000,
+   "conv_out_ns": 1225000,
+   "in_polys": 843,
+   "in_verts": 1420323,
+   "ops_ns": 12069337400,
+   "out_polys": 881,
+   "out_verts": 1045520,
+   "owner": "probe:d:classic-perimeters",
+   "sample_arg": -0.4,
+   "seq": 5,
+   "service": "offset",
+   "site": "E infill_area"
+  },
+  {
+   "calls": 495,
+   "conv_in_ns": 1903300,
+   "conv_out_ns": 1307700,
+   "in_polys": 842,
+   "in_verts": 1420296,
+   "ops_ns": 6658959400,
+   "out_polys": 822,
+   "out_verts": 1236500,
+   "owner": "probe:d:classic-perimeters",
+   "sample_arg": -0.2,
+   "seq": 6,
+   "service": "offset",
+   "site": "F shrunk_inner"
+  },
+  {
+   "calls": 495,
+   "conv_in_ns": 1914900,
+   "conv_out_ns": 2488500,
+   "in_polys": 881,
+   "in_verts": 1045631,
+   "ops_ns": 3096040400,
+   "out_polys": 840,
+   "out_verts": 1036886,
+   "owner": "probe:d:classic-perimeters",
+   "sample_arg": 0.2,
+   "seq": 7,
+   "service": "offset",
+   "site": "G grown_infill"
+  },
+  {
+   "calls": 494,
+   "conv_in_ns": 3494400,
+   "conv_out_ns": 21311800,
+   "in_polys": 1662,
+   "in_verts": 2273386,
+   "ops_ns": 1380548700,
+   "out_polys": 223420,
+   "out_verts": 1371278,
+   "owner": "probe:d:classic-perimeters",
+   "sample_arg": 1.0,
+   "seq": 8,
+   "service": "clip",
+   "site": "H final-transition difference"
+  },
+  {
+   "calls": 494,
+   "conv_in_ns": 727800,
+   "conv_out_ns": 302200,
+   "in_polys": 2352,
+   "in_verts": 51912,
+   "ops_ns": 27790300,
+   "out_polys": 2352,
+   "out_verts": 51912,
+   "owner": "probe:d:classic-perimeters",
+   "sample_arg": 1.0,
+   "seq": 9,
+   "service": "clip",
+   "site": "J gap width-band filter"
+  },
+  {
+   "calls": 494,
+   "conv_in_ns": 2538700,
+   "conv_out_ns": 1857000,
+   "in_polys": 842,
+   "in_verts": 1420296,
+   "ops_ns": 8363862100,
+   "out_polys": 837,
+   "out_verts": 1164511,
+   "owner": "probe:d:classic-perimeters",
+   "sample_arg": -0.2571,
+   "seq": 10,
+   "service": "offset",
+   "site": "K infill-boundary inset"
+  }
+ ],
+ "last_layer_dump": {
+  "calls": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   0
+  ],
+  "layer_index": 91,
+  "ns_us": [
+   28643,
+   39166,
+   21773,
+   7590,
+   5098,
+   23494,
+   15731,
+   5397,
+   4012,
+   96,
+   16874,
+   0
+  ]
+ },
+ "metadata": {
+  "bytes": 22428863,
+  "captured_commit": "5362614dd9e90fd47c3fc54663e120d01f3486b5",
+  "command": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\release\\pnp_cli.exe slice --model \"D:\\slicerProject\\pinch_n_print_cli_2\\tmp\\base.stl\" --config \"D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\matched-pair\\configs\\pnp-classic-supports-off.json\" --output \"D:\\slicerProject\\pinch_n_print_cli_2\\target\\t68-host-roundtrips\\base-classic-off-profile.gcode\" --module-dir \"D:\\slicerProject\\pinch_n_print_cli_2\\modules\\core-modules\" --no-default-module-paths --no-integrated-modules --instrument-stderr --profile --profile-verbose",
+  "config_sha256": "e428f149f3d8ae63957d84a570590447abef42946bce98ee359f9d36a90ec82d",
+  "cpu_seconds": 1921.65625,
+  "degraded": false,
+  "exe_sha256": "d4512c52f7725fc239bc2afe4570f213eec7d97f720702d7a4834b37300092e6",
+  "fatal": 0,
+  "generator": "classic",
+  "layers": 495,
+  "model": "base",
+  "non_fatal": 0,
+  "probe_guest_sha256": "c34266c7fc1e4f9853b0f915e7b8201c1e346e54225af2af8eb05fee1b881936",
+  "reference_sha256": "20e7204cfdbb813f642e7e1669d5ba1e30ed1d0ff7f90635af95d967196975ac",
+  "run_id": "base-classic-off-profile",
+  "sha256": "20e7204cfdbb813f642e7e1669d5ba1e30ed1d0ff7f90635af95d967196975ac",
+  "status": "ok",
+  "stderr_sha256": "c45f98e9bd1b390c703f6e2912fe3cf623de5b2bc4e87c46e4385d9cddd07396",
+  "supports": "off",
+  "threads": 12,
+  "wall_seconds": 263.5296499
+ },
+ "phases_ms": {
+  "per_layer": 115408,
+  "postpass": 3278,
+  "prepass": 141415,
+  "validation": 107
+ },
+ "profile_host_native": {
+  "calls": 23874,
+  "scopes": [
+   {
+    "calls": 5196,
+    "scope": "polygon_ops::offset",
+    "total_wall_ns": 101175000000
+   },
+   {
+    "calls": 18678,
+    "scope": "polygon_ops::clip_polygons",
+    "total_wall_ns": 92194000000
+   }
+  ],
+  "total_wall_ns": 193370000000
+ }
+}

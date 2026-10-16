@@ -44,15 +44,23 @@ re-derived on resume — open:
 below-fold, with the route decision back to the human — and the human
 selected the **classic-perimeters per-layer host-service round trips** lead
 from the t60 un-graduated set as the route for this take.
-[68](issues/68-classic-perimeters-host-round-trips.md) was graduated and
-claimed; `region_partition` dedup and consume-only-when-read stay
-un-graduated/parked. Ticket 67's stale `Status: claimed` line was flipped to
-`resolved` (its KEEP was already committed as `f4c542a3` / `84ec520a`). Take
-scope: per-site attribution of the 8+3 per-layer host calls (conversion vs
-clipper split) → exactness-qualified candidate → 16-cell output
-qualification + the standing paired ordinary/accelerated A/B, keep/drop to
-the human. The standing paired acceptance and human KEEP/DROP rules are
-unchanged.
+[68](issues/68-classic-perimeters-host-round-trips.md) was graduated,
+claimed and **resolved as an attribution take — no candidate**: the 8+3
+per-layer round trips decompose per site (guest-observed + host conversion/
+ops split) to **97.55 % (benchy-off) / 99.02 % (base-off) native clipper
+ops**; the entire round-trip overhead is 2.45 % / 0.98 % and every
+reduction direction t60 named (site-level, batching, in-guest migration)
+has a measured ceiling ≤ 0.80 % of run wall even if perfectly serialized
+(≤ 0.07 % saturated) — below any gate this map has applied. Both captures
+byte-identical to the t58 references; probe reverted, freshness green; no
+production edit, no timing campaign, no auto-commit. Evidence:
+[`evidence/t68-host-roundtrips/`](evidence/t68-host-roundtrips/FINDINGS.md).
+Ticket 67's stale `Status: claimed` line was flipped to `resolved` (its
+KEEP was already committed as `f4c542a3` / `84ec520a`). Frontier now:
+[20](issues/20-consume-only-when-read-annotations.md) remains the only open
+child (parked below-fold); the `region_partition` dedup lead remains
+un-graduated — route decision back to the human. The standing paired
+acceptance and human KEEP/DROP rules are unchanged.
 
 **Previous selection scope (2026-10-16, on the t67 take):** the frontier was
 re-derived on resume — open:
@@ -580,6 +588,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Classic-perimeters per-layer host-service round trips](issues/68-classic-perimeters-host-round-trips.md): **resolved (2026-10-16; attribution take — no candidate; the bucket is 97.55 %/99.02 % native clipper ops)** — the T68-PROBE (two-sided: a dispatch-recorder plus per-call conversion/ops/conversion split in the host services, `now_us` site brackets in the guest; `probe.patch`, reverted) decomposes all 8 offsets + 3 clips per layer on benchy-off (5,726.4 ms guest-observed, 2,640 calls) and base-off (87,900.3 ms, 5,442 calls; both outputs byte-identical to the t58 references `34886ccb…`/`20e7204c…`): **ops 97.55 %/99.02 %, host conversions 0.23 %/0.11 %, guest marshalling + ABI 2.23 %/0.86 %**. Site shares (base): A0 21.4 %, A1 22.3 %, K 9.6 % — the walls/infill output themselves — and the gap machinery B–J 46.8 % feeding the width-band morph (98.6 % of raw candidate vertices discarded; gap fill emitted on 162/495 layers). Every t60-named direction's ceiling measured below any gate: migration ≤ remainder+conversions minus the wasm-ops penalty; batching ≤ per-crossing fixed costs on a saturated phase; site-level has no dead/duplicate site and no exact algebraic shortcut under byte-exactness. Wall relevance: 6.3 %/6.6 % of per-layer phase occupancy; the removable overhead ≤ 0.33 %/0.80 % serial and ≤ 0.03 %/0.07 % saturated of run wall. Thin-wall clip never fires (0 calls, dynamically confirmed); base layer 270 skips B/C/D. Two-run ±11 % accumulated drift with ~1-point-stable shares; t60 cross-check −1.5 %/−3.1 %. No production edit, no timing campaign, no auto-commit; probe reverted, freshness green. Evidence: `evidence/t68-host-roundtrips/` (`FINDINGS.md`, `probe.patch`, `run-t68.ps1`, `captures/`, `verify.py` exits 0 with seven negative controls rejected).
+
 - [Region-preparation derivation sharing across region projections](issues/67-region-preparation-derivation-sharing.md): **resolved (2026-10-16; measured GATE NOT MET on one CPU-corroboration clause — human-approved KEEP, committed `f4c542a3` with tests)** — `LayerArena` serves the perimeter and infill region projections from one prepared-region derivation when the perimeter source projection onto the regions is the identity (modifier sub-regions that restore base geometry keep the two derivations separate; no second cache, no clone). Qualification: 16 proof cells byte-identical (`build-qualification.py` pass 16/16, `verify-references.py` 16/16 against the preserved t58 references). Standing paired gate on the four pre-declared classic supports-on cells (56 timed runs, 6/6 pairs everywhere, zero starvation exclusions): paired-median wall Δ −0.11 % ordinary-benchy / **−4.26 % ordinary-base** / −0.50 % accelerated-benchy / −0.28 % accelerated-base; CPU Δ −0.44 % / −0.60 % / **+0.19 %** / −0.11 %. Read plainly: the only delta outside run noise is ordinary base-classic-on (−4.26 % paired and −4.12 % unpaired, 4 of 6 pairs by 2–9 %, CPU-corroborated ≈ −14 s, consistent with t60's attributed duplicate derivation); ordinary-benchy and accelerated-base flip sign between paired and unpaired medians (±0.3 %, inside noise) and the benchy cells were pre-declared at/below the 0.1–0.5 % floor; the single clause miss is +0.31 s of CPU on the 118 s accelerated-benchy slice. Evidence: `evidence/t67-region-prep-sharing/FINDINGS.md` (+ `qualification.json`, `ab-reduction.json`).
 
 - [host:native attribution: name the per-layer native geometry bucket](issues/60-host-native-attribution.md): **resolved (2026-10-14; bucket fully attributed — residual `host:native` = 0 with exact per-scope call reconciliation in all four classic cells; probe reverted, no production edit)** — four fresh ordinary profiled captures (outputs byte-identical to the t58 references; clean) carry the temporary `T60-PROBE` host instrument (thread-local sink owner + worker-thread owner for rayon batch items; `probe.patch`, reverted). Owners: the two region-preparation derivations (`ensure_prepared_regions` / `ensure_prepared_perimeter_source_regions`; 1.48+1.47 s benchy-off, 40.53+40.18 s base-off accumulated, once per layer, 661/1,926 clips each), `region_partition`'s `sync_perimeter_infill_areas_into_slice` 3×/layer (1.26 s benchy-off / 10.04 s base-off; 6,120/13,320 clips), guest-requested host services from per-layer dispatches (classic-perimeters 5.91/89.26 s; infill-linker 0.53/3.10 s; supports-on tree-support 3.79/40.29 s), the prepass seam-planner (0.95/13.67 s) and — supports-on — the support machine now named rather than suspected: tree-support-planner 6.49/160.33 s, its rayon batch-offset items 0.25/2.74 s (24,255 items = ticket 22's independent count), and support-plan aggregation clips 0.22/2.09 s. The supports-off headline bucket (benchy 11.60 s / base 176.78 s accumulated; base-off baseline was 197.2 s) is now a named split, not an unknown. One candidate graduated:
@@ -799,13 +809,22 @@ Standing decisions for this effort (2026-09-22):
   the **classic-perimeters per-layer host-service round trips** (8
   `offset_polygons` + 3 `clip_polygons` calls per layer; 89.26 s accumulated
   base-off and 85.83 s base-on vs 5.91–6.31 s benchy — the largest
-  supports-off owner) **graduated to
-  [ticket 68](issues/68-classic-perimeters-host-round-trips.md) under the
-  human's 2026-10-16 route decision and is taken**; the
-  **`region_partition` 3×-per-layer re-run** (10.04 s accumulated base-off;
+  supports-off owner) **resolved 2026-10-16 as an attribution take with no
+  candidate** ([ticket 68](issues/68-classic-perimeters-host-round-trips.md);
+  the bucket is 97–99 % native clipper ops and every named reduction
+  direction's ceiling is sub-noise — see the ticket and
+  [`evidence/t68-host-roundtrips/`](evidence/t68-host-roundtrips/FINDINGS.md));
+  the **`region_partition` 3×-per-layer re-run** (10.04 s accumulated base-off;
   dedup needs semantic analysis of what the post-process commit can change)
   remains un-graduated, awaiting the human's route decision. The standing
   paired A/B governs any candidate.
+- **Gap-candidate pipeline cost (t68 observation, 2026-10-16).** 46.8 %
+  (base-off) / 49.5 % (benchy-off) of the classic-perimeters round-trip
+  bucket produces raw gap candidates of which the width-band morph discards
+  ~98.6 % of the raw vertex volume on every layer (D 4,632 + H 2,776
+  verts/call → 105 verts/call into the filter; gap fill emitted on 162/495
+  base layers). Re-enter only if the parity program ever re-derives the
+  gap-fill algebra in a representation-identical form.
 - **Orca-side attribution.** What OrcaSlicer spends its time on per cell is
   unknown (GUI-subsystem binary, little introspection). Worth scoping only if
   the gap narrows to specific stages where "why is Orca faster here" becomes the
