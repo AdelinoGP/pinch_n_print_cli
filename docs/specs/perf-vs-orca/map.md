@@ -62,6 +62,17 @@ child (parked below-fold); the `region_partition` dedup lead remains
 un-graduated — route decision back to the human. The standing paired
 acceptance and human KEEP/DROP rules are unchanged.
 
+**Same-session addendum (2026-10-16, on the human's direction):** after t68
+measured 97–99 % of the round-trip bucket as native clipper ops, the human
+directed a new exploration ticket on the engine itself —
+[69](issues/69-clipper-vendoring-optimization.md): vendor `clipper2-rust`
+in-tree and optimize its hot paths, with the headroom measured against the
+bundled canonical Clipper2 C++ first, byte-exactness and the standing gate
+unchanged. It is open and unclaimed. Frontier now:
+[20](issues/20-consume-only-when-read-annotations.md) (parked below-fold) and
+[69](issues/69-clipper-vendoring-optimization.md) (unclaimed) — the take
+order is the human's.
+
 **Previous selection scope (2026-10-16, on the t67 take):** the frontier was
 re-derived on resume — open:
 [67](issues/67-region-preparation-derivation-sharing.md) first and
