@@ -38,7 +38,35 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-17, on the t70 take):** the frontier was
+**Current selection scope (2026-10-17, on the t71 take):** the human selected
+[71](issues/71-xtask-compile-time-workspace-root.md) from the route options
+presented after t70's closeout and approved the commit. It is **resolved
+(2026-10-17) as a verified infra repair, committed `f067efa2`**: ticket 70's
+xtask compile-time-root mechanism was reproduced contained in a detached
+worktree and refined (a foreign invocation overwrites the shared
+`target/debug/xtask.exe` with a foreign-baked binary; while the foreign root
+is alive the main tree's gates silently scan the foreign tree
+indistinguishably, and only once it dies do they print the recorded false
+green — "cannot read <dead>\crates" + `watchlist: 0 types` + exit 0). The
+fix: `workspace_root()` resolves at runtime (walk up from CWD to the nearest
+`Cargo.toml` + `crates/` ancestor; loud panic otherwise; the compile-time
+macro is gone from the production path; one fix point covers every
+subcommand and derived artifact path), both gates refuse a zero-file scan
+(exit 1, every mode incl. `--report`), and the two `#[cfg(test)]` helpers
+resolve runtime-first with the compile-time fallback. Behaviorally proven
+with a foreign-checkout-built binary: CWD in the main tree → real 159-type
+watchlist, exit 0; CWD in a repo-less void → loud exit 101.
+`cargo test -p xtask` 185/0 (9 new), workspace clippy exit 0,
+check-literals green (159), check-test-quality --report 0 findings,
+build-guests --check exit 0; no guest touched. Evidence:
+[`evidence/t71-xtask-worktree-root/`](evidence/t71-xtask-worktree-root/FINDINGS.md).
+Commit decision is the human's — given 2026-10-17 (approved), the fix is
+committed `f067efa2`. Frontier now:
+[20](issues/20-consume-only-when-read-annotations.md) parked below-fold; the
+take order is the human's. Standing paired acceptance and KEEP/DROP rules
+unchanged.
+
+**Previous selection scope (2026-10-17, on the t70 take):** the frontier was
 re-derived on resume — open:
 [20](issues/20-consume-only-when-read-annotations.md) parked below-fold —
 and the human selected [70](issues/70-clipper-in-tree-vendoring-first-candidate.md)
@@ -56,9 +84,12 @@ refreshed at the kept HEAD. The closeout surfaced one upstream follow-up —
 xtask's `workspace_root()` bakes the compile-time
 `CARGO_MANIFEST_DIR`, so a worktree invocation poisons the shared target's
 cached xtask until its build units are purged (gates then silently scan zero
-files — details on ticket 70's answer) — for the human to route. Frontier
-now: [20](issues/20-consume-only-when-read-annotations.md) parked
-below-fold; the take order is the human's. The standing paired acceptance
+files — details on ticket 70's answer) — for the human to route. It is now
+ticketed as [71](issues/71-xtask-compile-time-workspace-root.md) (open,
+unclaimed; charted on continuation 2026-10-17). Frontier now:
+[71](issues/71-xtask-compile-time-workspace-root.md) and
+[20](issues/20-consume-only-when-read-annotations.md) parked below-fold; the
+take order is the human's. The standing paired acceptance
 and human KEEP/DROP rules are unchanged.
 
 **Previous selection scope (2026-10-16, on the t69 take):** the frontier
@@ -644,6 +675,8 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+
+- [xtask compile-time workspace root poisons gates from alternate checkouts](issues/71-xtask-compile-time-workspace-root.md): **resolved (2026-10-17; verified infra repair, committed `f067efa2`; docs reconciliation this commit)** — ticket 70's poisoning mechanism reproduced in a detached worktree and refined (foreign invocation overwrites the shared `xtask.exe` with a foreign-baked binary; alive foreign root = silent wrong-tree scan, dead = the recorded false green `watchlist: 0 types` + exit 0). Fix: runtime root resolution by `Cargo.toml`+`crates/` walk from CWD (loud panic otherwise; compile-time macro removed from the production path; one fix point covers all subcommands and derived artifact paths) + zero-scan refusal (exit 1) in both gates, every mode incl. `--report` + runtime-first `#[cfg(test)]` helpers. Foreign-built binary proof: CWD=main → real 159-type watchlist, exit 0; CWD=void → exit 101 loud. `cargo test -p xtask` 185/0 (9 new), workspace clippy 0, check-literals 159-green, check-test-quality --report 0 findings, build-guests --check exit 0. Evidence: [`evidence/t71-xtask-worktree-root/`](evidence/t71-xtask-worktree-root/FINDINGS.md).
 
 - [Clipper engine vendoring and hot-path optimization](issues/69-clipper-vendoring-optimization.md): **resolved (2026-10-16; headroom take — measured headroom, not parity; one candidate graduated, none implemented)** — a dual-engine harness (pristine sealed `clipper2-rust` 1.1.0 vs canonical C++ 1.5.2, MinGW g++ -O2) over a fresh host-side input-dump corpus of the 11 t68 sites (both matched jobs, capture runs byte-identical to the t58 references) plus the t55 body-union corpus measured, on 295 cases × two passes (forward + reversed), **Rust/C++ median ratios offset 2.03–2.09x / union 2.61–2.63x / intersection 1.94–2.00x / difference 1.60–1.76x** (every site above 1 in both passes; 46/295 ordered-hash divergences = the known t31 `clean_collinear` delta, disclosed not investigated). Idealized base-off accumulated ceilings if Rust matched C++: offset 256.5–258.3 s / closing_ex 198.9–200.3 s / clip_polygons 79.5–81.6 s (t60 scope totals re-derived at take time); directly-sampled CP-only ceilings ≈ 46.7–46.8 s base / 2.5–2.7 s benchy, an occupancy-style diagnostic scale of ≈ 1.48 % / ≈ 1.21–1.28 % against t68's instrumented walls — above the ≤ 0.80 % below-floor context, hence candidate-justified. Coverage caveats stated on the ticket (RP leg captured intersections only; region-prep closing/offset ceilings conditional on within-opclass transfer; no engine-internal cost center measured). Probe reverted, both freshness gates green, `verify.py` exits 0 checkout-only with four negative controls rejected. Evidence: `evidence/t69-clipper-engine/` (FINDINGS, HARNESS, CAPTURE, corpus, results, drivers, verifier). Graduated: [70](issues/70-clipper-in-tree-vendoring-first-candidate.md).
 

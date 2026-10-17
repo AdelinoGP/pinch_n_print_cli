@@ -1,7 +1,7 @@
 # xtask compile-time workspace root poisons gates from alternate checkouts
 
 Type: task
-Status: resolved (2026-10-17; fix verified, commit pending the human's approval)
+Status: resolved (2026-10-17; fix verified and committed as `f067efa2`)
 Assignee: claimed and resolved by the 2026-10-17 OpenCode wayfinder session
 continuing the map (human's route pick from the post-t70 frontier)
 Blocked by: none
