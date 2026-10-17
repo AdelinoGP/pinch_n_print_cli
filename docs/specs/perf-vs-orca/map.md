@@ -38,7 +38,53 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-16, on the t68 take):** the frontier was
+**Current selection scope (2026-10-17, on the t70 take):** the frontier was
+re-derived on resume — open:
+[20](issues/20-consume-only-when-read-annotations.md) parked below-fold —
+and the human selected [70](issues/70-clipper-in-tree-vendoring-first-candidate.md)
+as the route for this take ("Pick 70 (candidate take)"). It is **resolved
+(2026-10-17) as a kept production change**: `clipper2-rust` 1.1.0 vendored
+in-tree with sealed provenance, the engine's hot-loop software `nearbyint`
+round-half-to-even emulation taken to the hardware `round_ties_even`
+(44-line candidate, MSRV 1.77 in the vendored crate), value-exact 295/295
+corpus cases, 16/16 output-identity cells also matching the t58 preserved
+standing references, and the standing paired gate PASS in all four
+pre-declared classic-supports-on cells, both modes (wall −15.59 to −18.30 %,
+CPU corroborated, 6/6 pairs, zero starvation exclusions). Human-approved
+KEEP; candidate committed `7127b4d6`; standing dirs purged pre-commit and
+refreshed at the kept HEAD. The closeout surfaced one upstream follow-up —
+xtask's `workspace_root()` bakes the compile-time
+`CARGO_MANIFEST_DIR`, so a worktree invocation poisons the shared target's
+cached xtask until its build units are purged (gates then silently scan zero
+files — details on ticket 70's answer) — for the human to route. Frontier
+now: [20](issues/20-consume-only-when-read-annotations.md) parked
+below-fold; the take order is the human's. The standing paired acceptance
+and human KEEP/DROP rules are unchanged.
+
+**Previous selection scope (2026-10-16, on the t69 take):** the frontier
+was re-derived on resume — open:
+[20](issues/20-consume-only-when-read-annotations.md) parked below-fold and
+[69](issues/69-clipper-vendoring-optimization.md) unclaimed — and the human
+selected [69](issues/69-clipper-vendoring-optimization.md) as the route for
+this take ("rely on subagents"). It is **resolved (2026-10-16) as a measured
+headroom verdict — not parity**: the sealed pristine engine runs **1.42–2.86x
+slower than the canonical Clipper2 C++ 1.5.2** per opclass on identical
+matched-workload inputs (offset 2.03–2.09x / union 2.61–2.63x / intersection
+1.94–2.00x / difference 1.60–1.76x; 295 cases × two passes), with idealized
+base-off accumulated ceilings of ≈ 256–258 s (offset) / 199–200 s (closing_ex)
+/ 80–82 s (clip_polygons) and a directly-sampled CP-only diagnostic scale of
+≈ 1.2–1.5 % — above the t68 below-floor context, so one candidate ticket is
+graduated:
+[70](issues/70-clipper-in-tree-vendoring-first-candidate.md) (open,
+unclaimed). No candidate was implemented, adopted, or timed against the
+slicer; the capture probe is reverted (both capture runs byte-identical to
+the t58 references), both freshness gates green, no auto-commit. Frontier
+now: [70](issues/70-clipper-in-tree-vendoring-first-candidate.md) and
+[20](issues/20-consume-only-when-read-annotations.md) (parked below-fold);
+the take order is the human's. The standing paired acceptance and human
+KEEP/DROP rules are unchanged.
+
+**Previous selection scope (2026-10-16, on the t68 take):** the frontier was
 re-derived on resume — open:
 [20](issues/20-consume-only-when-read-annotations.md) only, parked
 below-fold, with the route decision back to the human — and the human
@@ -598,6 +644,10 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+
+- [Clipper engine vendoring and hot-path optimization](issues/69-clipper-vendoring-optimization.md): **resolved (2026-10-16; headroom take — measured headroom, not parity; one candidate graduated, none implemented)** — a dual-engine harness (pristine sealed `clipper2-rust` 1.1.0 vs canonical C++ 1.5.2, MinGW g++ -O2) over a fresh host-side input-dump corpus of the 11 t68 sites (both matched jobs, capture runs byte-identical to the t58 references) plus the t55 body-union corpus measured, on 295 cases × two passes (forward + reversed), **Rust/C++ median ratios offset 2.03–2.09x / union 2.61–2.63x / intersection 1.94–2.00x / difference 1.60–1.76x** (every site above 1 in both passes; 46/295 ordered-hash divergences = the known t31 `clean_collinear` delta, disclosed not investigated). Idealized base-off accumulated ceilings if Rust matched C++: offset 256.5–258.3 s / closing_ex 198.9–200.3 s / clip_polygons 79.5–81.6 s (t60 scope totals re-derived at take time); directly-sampled CP-only ceilings ≈ 46.7–46.8 s base / 2.5–2.7 s benchy, an occupancy-style diagnostic scale of ≈ 1.48 % / ≈ 1.21–1.28 % against t68's instrumented walls — above the ≤ 0.80 % below-floor context, hence candidate-justified. Coverage caveats stated on the ticket (RP leg captured intersections only; region-prep closing/offset ceilings conditional on within-opclass transfer; no engine-internal cost center measured). Probe reverted, both freshness gates green, `verify.py` exits 0 checkout-only with four negative controls rejected. Evidence: `evidence/t69-clipper-engine/` (FINDINGS, HARNESS, CAPTURE, corpus, results, drivers, verifier). Graduated: [70](issues/70-clipper-in-tree-vendoring-first-candidate.md).
+
+- [Clipper in-tree vendoring and first value-exact engine candidate](issues/70-clipper-in-tree-vendoring-first-candidate.md): **resolved (2026-10-17; human-approved KEEP — candidate committed `7127b4d6`)** — vendored `clipper2-rust` 1.1.0 in-tree as a plain workspace member with sealed provenance (`vendor-provenance.json`; byte-identical registry extraction, explicit `path` dep so guest freshness fingerprints cover engine sources), profiled the engine internally on the t69 corpus (all phases at parity except `do_top_of_scanbeam` 2.19–4.26x and `build_intersect_list` 1.25–2.26x vs C++; root cause = software `nearbyint` round-half-to-even emulation on the per-scanline `top_x` path), and shipped a 44-line candidate (`nearbyint_f64` finite fast path via `round_ties_even`, MSRV 1.77): value-exact 295/295 corpus cases, 16/16 proof cells byte-identical to the baseline arm AND to the t58 preserved standing references, and the standing paired gate **PASS in all four pre-declared classic-supports-on cells, both modes (6/6 pairs, zero starvation exclusions): wall −15.59 %/−13.70 %/−16.30 %/−18.30 %, CPU −12.25 %/−13.45 %/−13.71 %/−16.82 %** (ordinary/accelerated × benchy/base; order as on the ticket). Candidate-built standing binaries purged per the t36 precedent (rebuilt from the pre-take HEAD in a detached worktree, copied byte-exact back; candidate sha set absent; both freshness gates exit 0) and refreshed at the kept HEAD after the commit (force path; the refreshed standing module byte-matches the take-era measured candidate module `a04a77f7…`); FINDINGS has the full measured record. A v1 scanbeam-walk candidate was measured value-exact, a wash, and dropped. Closeout disclosure: xtask's compile-time-baked root lets a worktree invocation silently zero out the main tree's pre-commit gate scans (contained + upstream follow-up named on the ticket). Evidence: `evidence/t70-clipper-candidate/` (FINDINGS, vendor-provenance.json, candidate.patch, profiling/, results/, campaign/ with qualification.json + ab-reduction.json, verifiers in-repo).
 
 - [Classic-perimeters per-layer host-service round trips](issues/68-classic-perimeters-host-round-trips.md): **resolved (2026-10-16; attribution take — no candidate; the bucket is 97.55 %/99.02 % native clipper ops)** — the T68-PROBE (two-sided: a dispatch-recorder plus per-call conversion/ops/conversion split in the host services, `now_us` site brackets in the guest; `probe.patch`, reverted) decomposes all 8 offsets + 3 clips per layer on benchy-off (5,726.4 ms guest-observed, 2,640 calls) and base-off (87,900.3 ms, 5,442 calls; both outputs byte-identical to the t58 references `34886ccb…`/`20e7204c…`): **ops 97.55 %/99.02 %, host conversions 0.23 %/0.11 %, guest marshalling + ABI 2.23 %/0.86 %**. Site shares (base): A0 21.4 %, A1 22.3 %, K 9.6 % — the walls/infill output themselves — and the gap machinery B–J 46.8 % feeding the width-band morph (98.6 % of raw candidate vertices discarded; gap fill emitted on 162/495 layers). Every t60-named direction's ceiling measured below any gate: migration ≤ remainder+conversions minus the wasm-ops penalty; batching ≤ per-crossing fixed costs on a saturated phase; site-level has no dead/duplicate site and no exact algebraic shortcut under byte-exactness. Wall relevance: 6.3 %/6.6 % of per-layer phase occupancy; the removable overhead ≤ 0.33 %/0.80 % serial and ≤ 0.03 %/0.07 % saturated of run wall. Thin-wall clip never fires (0 calls, dynamically confirmed); base layer 270 skips B/C/D. Two-run ±11 % accumulated drift with ~1-point-stable shares; t60 cross-check −1.5 %/−3.1 %. No production edit, no timing campaign, no auto-commit; probe reverted, freshness green. Evidence: `evidence/t68-host-roundtrips/` (`FINDINGS.md`, `probe.patch`, `run-t68.ps1`, `captures/`, `verify.py` exits 0 with seven negative controls rejected).
 

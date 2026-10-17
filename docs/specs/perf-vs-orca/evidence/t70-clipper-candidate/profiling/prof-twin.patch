@@ -1,0 +1,266 @@
+diff --git a/src/engine.rs b/src/engine.rs
+index 806d99c7..d6184898 100644
+--- a/src/engine.rs
++++ b/src/engine.rs
+@@ -509,6 +509,7 @@ impl ClipperBase {
+     /// Add a path for clipping (converts to vertex representation)
+     /// Direct port from clipper.engine.cpp AddPath / AddPaths_
+     pub fn add_path(&mut self, path: &Path64, polytype: PathType, is_open: bool) {
++        let _s1 = crate::prof::span(crate::prof::PHASE_ADD_PATH);
+         let mut path = path.clone();
+ 
+         // Validate path
+@@ -1024,6 +1025,7 @@ impl ClipperBase {
+     /// Reset for a new execution
+     /// Direct port from clipper.engine.cpp Reset (line 786)
+     pub fn reset(&mut self) {
++        let _s9 = crate::prof::span(crate::prof::PHASE_CLEAN_UP);
+         self.sort_minima_list();
+         // Insert all local minima y-values as scanlines
+         for i in (0..self.minima_list.len()).rev() {
+@@ -1038,6 +1040,7 @@ impl ClipperBase {
+ 
+     /// Clean up after execution
+     pub fn clean_up(&mut self) {
++        let _s9 = crate::prof::span(crate::prof::PHASE_CLEAN_UP);
+         // In arena-based approach, just clear the runtime state
+         self.active_arena.clear();
+         self.scanline_list.clear();
+@@ -2519,9 +2522,16 @@ impl ClipperBase {
+     /// Do intersections
+     /// Direct port from clipper.engine.cpp DoIntersections (line 2347)
+     fn do_intersections(&mut self, top_y: i64) {
+-        if self.build_intersect_list(top_y) {
++        let _s4 = crate::prof::span(crate::prof::PHASE_BUILD_INTERSECT_LIST);
++        let built = self.build_intersect_list(top_y);
++        drop(_s4);
++        if built {
++            let _s5 = crate::prof::span(crate::prof::PHASE_PROCESS_INTERSECT_LIST);
+             self.process_intersect_list();
++            drop(_s5);
++            let _s17 = crate::prof::span(crate::prof::PHASE_LIST_CLEARS);
+             self.intersect_nodes.clear();
++            drop(_s17);
+         }
+     }
+ 
+@@ -2962,6 +2972,7 @@ impl ClipperBase {
+     /// Clean collinear points from an OutRec
+     /// Direct port from clipper.engine.cpp CleanCollinear (line 1525)
+     pub fn clean_collinear(&mut self, outrec_idx: usize) {
++        let _s10 = crate::prof::span(crate::prof::PHASE_CLEAN_COLLINEAR);
+         let real_or = get_real_outrec(&self.outrec_list, outrec_idx);
+         let or_idx = match real_or {
+             Some(idx) => idx,
+@@ -3314,34 +3325,51 @@ impl ClipperBase {
+ 
+         let mut y = y;
+         while self.succeeded {
++            let _s2 = crate::prof::span(crate::prof::PHASE_INSERT_LOCAL_MINIMA);
+             self.insert_local_minima_into_ael(y);
++            drop(_s2);
+ 
++            let _s3 = crate::prof::span(crate::prof::PHASE_DO_HORIZONTAL);
+             while let Some(e) = self.pop_horz() {
+                 self.do_horizontal(e);
+             }
++            drop(_s3);
+ 
+             if !self.horz_seg_list.is_empty() {
++                let _s7 = crate::prof::span(crate::prof::PHASE_CONVERT_HORZ_SEGS);
+                 self.convert_horz_segs_to_joins();
++                drop(_s7);
++                let _s17 = crate::prof::span(crate::prof::PHASE_LIST_CLEARS);
+                 self.horz_seg_list.clear();
++                drop(_s17);
+             }
+ 
+             self.bot_y = y;
+ 
++            let _s16 = crate::prof::span(crate::prof::PHASE_SCANLINE_ADMIN);
+             match self.pop_scanline() {
+                 Some(new_y) => y = new_y,
+                 None => break,
+             }
++            drop(_s16);
+ 
+             self.do_intersections(y);
++
++            let _s6 = crate::prof::span(crate::prof::PHASE_DO_TOP_OF_SCANBEAM);
+             self.do_top_of_scanbeam(y);
++            drop(_s6);
+ 
++            let _s3b = crate::prof::span(crate::prof::PHASE_DO_HORIZONTAL);
+             while let Some(e) = self.pop_horz() {
+                 self.do_horizontal(e);
+             }
++            drop(_s3b);
+         }
+ 
+         if self.succeeded {
++            let _s8 = crate::prof::span(crate::prof::PHASE_PROCESS_HORZ_JOINS);
+             self.process_horz_joins();
++            drop(_s8);
+         }
+ 
+         self.succeeded
+diff --git a/src/engine_public.rs b/src/engine_public.rs
+index d5d3e6d8..8a0b442f 100644
+--- a/src/engine_public.rs
++++ b/src/engine_public.rs
+@@ -377,6 +377,7 @@ impl Clipper64 {
+         solution_closed: &mut Paths64,
+         solution_open: Option<&mut Paths64>,
+     ) {
++        let _s11 = crate::prof::span(crate::prof::PHASE_BUILD_RESULT);
+         solution_closed.clear();
+         solution_closed.reserve(self.base.outrec_list.len());
+ 
+@@ -424,6 +425,7 @@ impl Clipper64 {
+     /// Build polytree output
+     /// Direct port from clipper.engine.cpp Clipper64::BuildTree64 (line 3027)
+     fn build_tree64(&mut self, polytree: &mut PolyTree64, open_paths: &mut Paths64) {
++        let _s11 = crate::prof::span(crate::prof::PHASE_BUILD_RESULT);
+         polytree.clear();
+         open_paths.clear();
+         if self.base.has_open_paths {
+diff --git a/src/lib.rs b/src/lib.rs
+index 1856660f..2b999fdb 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -41,6 +41,7 @@ pub mod version;
+ pub mod clipper;
+ pub mod minkowski;
+ pub mod offset;
++pub mod prof;
+ pub mod utils;
+ 
+ pub use clipper::*;
+diff --git a/src/offset.rs b/src/offset.rs
+index 267ed7b8..1e43f9d4 100644
+--- a/src/offset.rs
++++ b/src/offset.rs
+@@ -501,6 +501,7 @@ impl ClipperOffset {
+ 
+         let paths_reversed = self.check_reverse_orientation();
+         // Clean up self-intersections using Clipper64 union
++        let _s13 = crate::prof::span(crate::prof::PHASE_OFFSET_SOLUTION_ADMIN);
+         let mut c = Clipper64::new();
+         c.set_preserve_collinear(self.preserve_collinear);
+         // The solution should retain the orientation of the input
+@@ -515,9 +516,18 @@ impl ClipperOffset {
+ 
+         if let Some(tree) = polytree {
+             let mut open_paths = Paths64::new();
++            let _s15 = crate::prof::span(crate::prof::PHASE_UNION_TOTAL);
+             c.execute_tree(ClipType::Union, fill_rule, tree, &mut open_paths);
++            drop(_s15);
+         } else {
++            let _s15 = crate::prof::span(crate::prof::PHASE_UNION_TOTAL);
+             c.execute(ClipType::Union, fill_rule, &mut self.solution, None);
++            drop(_s15);
++        }
++        drop(_s13);
++        {
++            let _s14 = crate::prof::span(crate::prof::PHASE_TEARDOWN);
++            drop(c);
+         }
+     }
+ 
+@@ -843,6 +853,7 @@ impl ClipperOffset {
+     /// Process a single group of paths.
+     /// Direct port from ClipperOffset::DoGroupOffset (clipper.offset.cpp line 455-539).
+     fn do_group_offset(&mut self, group_idx: usize) {
++        let _s12 = crate::prof::span(crate::prof::PHASE_GROUP_OFFSET);
+         let group_end_type = self.groups[group_idx].end_type;
+         let group_join_type = self.groups[group_idx].join_type;
+         let group_is_reversed = self.groups[group_idx].is_reversed;
+diff --git a/src/prof.rs b/src/prof.rs
+new file mode 100644
+index 00000000..604eaa90
+--- /dev/null
++++ b/src/prof.rs
+@@ -0,0 +1,83 @@
++//! t70 profiling instrumentation (SCRATCH TWIN ONLY — never shipped).
++//!
++//! Phase tag + accumulated span/alloc buckets. The driver's GlobalAlloc reads
++//! `current_phase` so allocation count/bytes are attributed per engine phase.
++//! Instrumented runs are never mixed into wall claims (§3.2 trap).
++
++use std::cell::{Cell, RefCell};
++use std::time::Instant;
++
++pub const PHASE_OTHER: u32 = 0;
++pub const PHASE_ADD_PATH: u32 = 1;
++pub const PHASE_INSERT_LOCAL_MINIMA: u32 = 2;
++pub const PHASE_DO_HORIZONTAL: u32 = 3;
++pub const PHASE_BUILD_INTERSECT_LIST: u32 = 4;
++pub const PHASE_PROCESS_INTERSECT_LIST: u32 = 5;
++pub const PHASE_DO_TOP_OF_SCANBEAM: u32 = 6;
++pub const PHASE_CONVERT_HORZ_SEGS: u32 = 7;
++pub const PHASE_PROCESS_HORZ_JOINS: u32 = 8;
++pub const PHASE_CLEAN_UP: u32 = 9;
++pub const PHASE_CLEAN_COLLINEAR: u32 = 10;
++pub const PHASE_BUILD_RESULT: u32 = 11;
++pub const PHASE_GROUP_OFFSET: u32 = 12;
++pub const PHASE_OFFSET_SOLUTION_ADMIN: u32 = 13;
++pub const PHASE_TEARDOWN: u32 = 14;
++pub const PHASE_UNION_TOTAL: u32 = 15;
++pub const PHASE_SCANLINE_ADMIN: u32 = 16;
++pub const PHASE_LIST_CLEARS: u32 = 17;
++pub const PHASE_DO_MAXIMA: u32 = 18;
++pub const PHASE_DO_TOP_ELSE_TOPX: u32 = 19;
++pub const PHASE_COUNT: u32 = 24;
++
++thread_local! {
++    static PHASE: Cell<u32> = const { Cell::new(PHASE_OTHER) };
++    static SPANS_NS: RefCell<[u128; PHASE_COUNT as usize]> =
++        const { RefCell::new([0; PHASE_COUNT as usize]) };
++}
++
++/// Current phase — read by the driver's counting GlobalAlloc.
++pub fn current_phase() -> u32 {
++    PHASE.get()
++}
++
++/// Accumulated span time per phase (ns).
++pub fn spans() -> [u128; PHASE_COUNT as usize] {
++    SPANS_NS.with(|s| *s.borrow())
++}
++
++/// Zero all buckets (driver calls between cases).
++pub fn reset_buckets() {
++    SPANS_NS.with(|s| {
++        let mut b = s.borrow_mut();
++        *b = [0; PHASE_COUNT as usize];
++    });
++    PHASE.with(|p| p.set(PHASE_OTHER));
++}
++
++pub struct Span {
++    prev: u32,
++    phase: u32,
++    start: Instant,
++}
++
++/// Enter `phase`, restoring the previous phase on drop; accumulate elapsed.
++#[must_use]
++pub fn span(phase: u32) -> Span {
++    let prev = PHASE.replace(phase);
++    Span {
++        prev,
++        phase,
++        start: Instant::now(),
++    }
++}
++
++impl Drop for Span {
++    fn drop(&mut self) {
++        let elapsed = self.start.elapsed().as_nanos();
++        SPANS_NS.with(|s| {
++            let mut b = s.borrow_mut();
++            b[self.phase as usize] += elapsed;
++        });
++        PHASE.set(self.prev);
++    }
++}
