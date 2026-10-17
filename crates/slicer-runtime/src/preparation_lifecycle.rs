@@ -724,11 +724,13 @@ struct ConsumptionObservation<'a> {
     observer: Option<&'a dyn PreparationLifecycleObserver>,
     record: PreparationLifecycleRecord,
     failed: bool,
+    started: Option<std::time::Instant>,
 }
 
 impl Drop for ConsumptionObservation<'_> {
     fn drop(&mut self) {
         if self.failed {
+            self.record.elapsed = self.started.map(|started| started.elapsed());
             if self.record.status != PreparationLifecycleStatus::Cancelled {
                 self.record.status = PreparationLifecycleStatus::Failure;
             }
@@ -811,10 +813,7 @@ impl LayerStageRunner for PreparedLayerStageRunner {
             return self.plain.run_stage(stage_id, layer, module, input);
         };
         // Plain invoke=true/empty delivery is intentionally not changed above.
-        if input
-            .selection
-            .is_some_and(|selection| !selection.invoke || selection.targets.is_empty())
-        {
+        if !crate::layer_executor::prepared_call_has_available_work(layer.index, &input) {
             return Ok(None);
         }
         self.lifecycle
@@ -851,6 +850,7 @@ impl LayerStageRunner for PreparedLayerStageRunner {
                 failure: None,
             },
             failed: true,
+            started: self.lifecycle.instrumented.then(std::time::Instant::now),
         };
         let fail = |message: String| LayerStageError::FatalModule {
             stage_id: stage_id.clone(),

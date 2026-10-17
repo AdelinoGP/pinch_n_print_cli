@@ -906,6 +906,45 @@ fn prepare_dispatch_region_views(arena: &mut LayerArena, stage_id: &str, blackbo
     }
 }
 
+/// Resolve indexed source identities against this call's actual ordinary views.
+/// Unlike plain dispatch's explicit empty identity handles, an absent or
+/// geometry-empty model view is not work for a prepared consumer. Non-model
+/// contexts are themselves ordinary work and must not become model identities.
+pub(crate) fn prepared_call_has_available_work(
+    layer_index: u32,
+    input: &LayerStageInput<'_>,
+) -> bool {
+    use slicer_wasm_host::selection::LayerTargetSource;
+
+    let Some(selection) = input.selection else {
+        return false;
+    };
+    selection.invoke
+        && selection.targets.iter().any(|target| match &target.source {
+            LayerTargetSource::Model { key, members } => {
+                std::iter::once(key).chain(members).any(|member| {
+                    member.global_layer_index == layer_index
+                        && input.slice.is_some_and(|slice| {
+                            slice.global_layer_index == layer_index
+                                && slice.regions.iter().any(|region| {
+                                    region.object_id == member.object_id
+                                        && region.region_id == member.region_id
+                                        && region.variant_chain == member.variant_chain
+                                        && (!region.polygons.is_empty()
+                                            || !region.infill_areas.is_empty()
+                                            || region.nonplanar_surface.is_some())
+                                })
+                        })
+                })
+            }
+            LayerTargetSource::SupportCarrier { .. } => true,
+            LayerTargetSource::Raft { global_layer_index } => *global_layer_index == layer_index,
+            LayerTargetSource::AnchoredStage { anchor_layer_index } => {
+                *anchor_layer_index == layer_index
+            }
+        })
+}
+
 fn execute_single_layer_inner(
     plan: &ExecutionPlan,
     blackboard: &Blackboard,

@@ -431,7 +431,7 @@ fn external_override_dual_leg() {
 #[test]
 fn unused_nondefault_and_plain_empty() {
     // Baseline plain execution is an independent control, not a fabricated Ready
-    // observation. Region-selected/empty-target variants still need extension.
+    // observation. The separated-solid control below tests ordinary no-work calls.
     let fixture = Fixture::new(false, false);
     let mut plain_options = fixture.options();
     plain_options.module_dirs = vec![workspace_root().join("modules/core-modules")];
@@ -500,14 +500,9 @@ fn unused_nondefault_and_plain_empty() {
         .insert("line_width".into(), ConfigValue::Float(0.9));
     let capture = run_slice_preparation_capture(options.clone(), extensions())
         .expect("nondefault region capture");
+    assert_eq!(PREPARES[0].load(Ordering::SeqCst), 1);
     assert_eq!(
-        PREPARES[0].load(Ordering::SeqCst),
-        0,
-        "plain has no preparation export"
-    );
-    assert_eq!(PREPARES[1].load(Ordering::SeqCst), 1);
-    assert_eq!(
-        PREPARES[2].load(Ordering::SeqCst),
+        PREPARES[1].load(Ordering::SeqCst),
         0,
         "owned but unselected"
     );
@@ -539,15 +534,16 @@ fn unused_nondefault_and_plain_empty() {
         assert_eq!(target.config.get_float("line_width"), Some(0.9));
         assert_eq!(target.held_claims, Vec::<String>::new());
     }
-    PREPARES[1].store(0, Ordering::SeqCst);
+    PREPARES[0].store(0, Ordering::SeqCst);
     run_slice_with_runtime_extensions(options, extensions()).expect("nondefault ordinary dispatch");
-    assert_eq!(PREPARES[1].load(Ordering::SeqCst), 1);
-    assert!(CALLS[1].load(Ordering::SeqCst) > 0);
-    assert_eq!(PREPARES[2].load(Ordering::SeqCst), 0);
-    assert_eq!(CALLS[2].load(Ordering::SeqCst), 0);
+    assert_eq!(PREPARES[0].load(Ordering::SeqCst), 1);
+    assert!(CALLS[0].load(Ordering::SeqCst) > 0);
+    assert_eq!(PREPARES[1].load(Ordering::SeqCst), 0);
+    assert_eq!(CALLS[1].load(Ordering::SeqCst), 0);
 
-    // A vertical zero-volume sheet has a real schedule but no closed model regions.
-    // Both artifacts are paint-transparent and receive identical empty input.
+    // Both paint-transparent artifacts have invoke=true on every scheduled layer.
+    // The lower source is a zero-volume sheet; the upper solid supplies real
+    // work to the same print-wide owner. Empty ordinary calls alone must skip.
     for prepared in [false, true] {
         let fixture = Fixture::new(false, false);
         let id = "com.test.selection-empty";
@@ -560,17 +556,35 @@ fn unused_nondefault_and_plain_empty() {
         options.profile = true;
         options.mesh = Arc::new(elevated_support_mesh());
         options
+            .config_overrides
+            .insert("layer_height".into(), ConfigValue::Float(0.25));
+        options
+            .config_overrides
+            .insert("first_layer_height".into(), ConfigValue::Float(0.25));
+        options
+            .config_overrides
+            .insert("enable_support".into(), ConfigValue::Bool(false));
+        options
             .module_dirs
             .retain(|path| path.file_name().is_none_or(|name| name != "seam-placer"));
         let object = &mut Arc::make_mut(&mut options.mesh).objects[0];
         object.modifier_volumes.clear();
-        object
-            .mesh
-            .vertices
-            .iter_mut()
-            .for_each(|point| point.x = 0.0);
-        PREPARES[1].store(0, Ordering::SeqCst);
-        CALLS[1].store(0, Ordering::SeqCst);
+        // Binary-exact heights give eleven scheduled entries, with real upper
+        // solid geometry only on layers 8..=10.
+        for point in &mut object.mesh.vertices {
+            if point.z == 0.8 {
+                point.z = 0.75;
+            } else if point.z == 2.8 {
+                point.z = 2.75;
+            }
+        }
+        for point in &mut object.mesh.vertices[..8] {
+            point.x = 0.0;
+        }
+        object.world_z_extent = Some((0.0, 2.75));
+        PREPARES[0].store(0, Ordering::SeqCst);
+        CALLS[0].store(0, Ordering::SeqCst);
+        selection_controls::CALL_LAYERS.lock().unwrap().clear();
         let extensions = SliceRuntimeExtensions::new(
             if prepared {
                 vec![IntegratedModuleRegistration {
@@ -597,17 +611,50 @@ fn unused_nondefault_and_plain_empty() {
         );
         let output = run_slice_with_runtime_extensions(options, extensions)
             .expect("empty-target production slice");
-        assert_eq!(PREPARES[1].load(Ordering::SeqCst), 0);
-        assert_eq!(CALLS[1].load(Ordering::SeqCst), 0);
         if prepared {
-            assert!(!output.gcode_text.contains(NATIVE_MARKER));
-            assert!(records(&fixture.trace.events.lock().unwrap())
-                .iter()
-                .all(|record| record.module_id.as_str() != id));
-        } else {
+            assert_eq!(
+                PREPARES[0].load(Ordering::SeqCst),
+                1,
+                "print-wide eligible owner prepares once"
+            );
+            let mut call_layers = selection_controls::CALL_LAYERS.lock().unwrap().clone();
+            call_layers.sort_unstable();
+            assert_eq!(
+                call_layers,
+                vec![8, 9, 10],
+                "only real-work upper layers invoke the prepared export; empty entries skip"
+            );
+            assert_eq!(CALLS[0].load(Ordering::SeqCst), 3);
+            let events = fixture.trace.events.lock().unwrap();
+            let gap_consumers = records(&events)
+                .into_iter()
+                .filter(|record| {
+                    record.module_id.as_str() == id
+                        && record.lifecycle_phase == PreparationLifecyclePhase::Consumption
+                        && record.global_layer_index.is_some_and(|layer| layer < 8)
+                })
+                .count();
+            assert_eq!(gap_consumers, 0, "no prepared read on any empty entry");
             assert!(
-                output.profile.as_ref().expect("ordinary dispatch profile").modules.iter().any(|row| row.module_id == id && row.calls > 0),
-                "plain empty-target ordinary export must execute (empty-layer G-code annotations are not emitted)"
+                output.gcode_text.contains(NATIVE_MARKER),
+                "real-work layers still consume the plan"
+            );
+        } else {
+            assert_eq!(PREPARES[0].load(Ordering::SeqCst), 0);
+            assert_eq!(
+                CALLS[0].load(Ordering::SeqCst),
+                0,
+                "plain component does not use the native prepared adapter"
+            );
+            let profile = output.profile.as_ref().expect("ordinary dispatch profile");
+            let row = profile
+                .modules
+                .iter()
+                .find(|row| row.module_id == id)
+                .expect("plain module profile row");
+            assert_eq!(
+                row.calls, 11,
+                "plain invoke=true export executes on all layers, including the eight empty entries"
             );
         }
     }
@@ -620,13 +667,17 @@ mod selection_controls {
     use slicer_sdk::preparation::{PreparedPlanOutput, PrintPreparationInput};
     use std::sync::atomic::AtomicUsize;
 
-    pub static CALLS: [AtomicUsize; 3] = [const { AtomicUsize::new(0) }; 3];
-    pub static PREPARES: [AtomicUsize; 3] = [const { AtomicUsize::new(0) }; 3];
+    pub static CALLS: [AtomicUsize; 2] = [const { AtomicUsize::new(0) }; 2];
+    pub static PREPARES: [AtomicUsize; 2] = [const { AtomicUsize::new(0) }; 2];
+    pub static CALL_LAYERS: Mutex<Vec<u32>> = Mutex::new(Vec::new());
 
     macro_rules! control {
         ($call:ident, $prepare:ident, $index:expr) => {
             pub fn $call(request: &NativeLayerRequest) -> Result<NativeLayerResponse, ModuleError> {
                 CALLS[$index].fetch_add(1, Ordering::SeqCst);
+                if $index == 0 {
+                    CALL_LAYERS.lock().unwrap().push(request.layer_index);
+                }
                 let NativeStageEntry::Layer(entry) =
                     PreparationLifecycleGuest::__slicer_prepared_native_entry().stage
                 else {
@@ -643,8 +694,8 @@ mod selection_controls {
             }
         };
     }
-    control!(region, prepare_region, 1);
-    control!(unused, prepare_unused, 2);
+    control!(region, prepare_region, 0);
+    control!(unused, prepare_unused, 1);
 
     pub fn manifest(id: &str, prepared: bool, family: &str) -> &'static str {
         let mut manifest: toml::Value = PATH_MANIFEST.parse().expect("control manifest");
