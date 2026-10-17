@@ -1579,6 +1579,82 @@ error (`SlicePostProcessPaintAnnotationError::DeterministicConflict`). This is a
 correctness improvement over the pre-Packet-64 path where the same
    conflict failed per-layer at query time.
 
+### Automatic preparation lifecycle (Normative — TASK-574 row 5)
+
+The private pipeline core closes preparation after **all final committed
+PrePass products** (slices, region map, support plan and perimeter products)
+and global-layer promotion, before ending the PrePass bracket or admitting
+any `LayerArena`, Layer stage or anchored consumer. The row-01 whole-print
+selection index is built once per print from those final products. Eligible
+owners prepare exactly once in stable bytewise identity order: module,
+version, stage, artifact. An all-Ready guard precedes every dependent ordinary
+or `Layer::AnchoredEvents` consumer. Only row-03's atomic transaction finish
+and `current` establish Ready; successful empty output is Ready-empty.
+
+Participation requires `invoke && !targets.is_empty()` on `selection_for`
+entries. A declared owner with no selected targets emits `NoWork` without
+creating a plan owner or calling preparation. At the ordinary boundary,
+prepared calls resolve their selection against the **actual available slice
+views**: identity-only empty regions are not prepared work. Such no-work calls
+skip before readiness checks, reads or Consumption observations. Plain
+`invoke=true` empty-target calls remain unchanged; legacy plain modules never
+acquire prepared behavior.
+
+Required preparation failure aborts through `PipelineError::Preparation`,
+preserving the original typed `ModuleError` fields, including `fatal: false`.
+This is a required-dependency abort, not a rewrite of the general ordinary
+non-fatal policy or its documented host limitation. An original module error
+or trap takes precedence over writer poison. Poisoned staging publishes
+nothing, never Ready, and no selected consumer executes after that failure.
+
+Cancellation checkpoints occur before preparation, between owners and before
+consumers. An active call is allowed to return; unfinished staging is
+discarded. The recorded host cancellation decision maps to the existing
+Cancelled outcome, never by matching diagnostic text. The caller joins active
+calls before disposing staging and owners, after guards quiesce; row-03
+`Busy` is a producer return value, not something to wait on, spin on or force
+past. Disposal leaves zero retained logical bytes. Normal Layer arenas still
+run to completion or their explicit error, without a between-stage barrier.
+
+Actual selected `Layer::AnchoredEvents` runs as an ordinary Layer-module call
+through `PreparedLayerStageRunner`
+(`crates/slicer-runtime/src/preparation_lifecycle.rs`); its module-owned plan
+reads count as consumption. Synthetic `Anchored::Event` /
+`host:anchored-events` commits are builtin host work with no module dispatch
+and no plan reads. Their host-closure Finish observation denotes return or
+unwind separately from real module calls. The print scope remains alive
+through both: owners are disposed only after all real calls and the applicable
+synthetic host closure finish.
+
+### Preparation-only runtime capture (Normative — TASK-574 row 5)
+
+`run_slice_preparation_capture` (`crates/slicer-runtime/src/run.rs`) shares
+production's full validated startup, committed PrePass and preparation prefix.
+It stops before any `LayerArena`, ordinary Layer-module call or synthetic
+anchored-host closure; preparation calls themselves remain part of the prefix.
+It snapshots metadata only: piece names and lengths, typed selected targets,
+lifecycle records and `accounting_before_disposal` from row-03's actual
+production gauges, including `returned_read_bytes` observed before disposal.
+
+Capture `retained_bytes` is the checked post-cleanup retained total (zero).
+`transferred_bytes` is the checked sum of production `returned_read_bytes`,
+not stored lengths, metadata sizes or requested bytes; it is zero when no
+consumer reads. Retention and transfer are logical byte counts, not allocator
+or process peak-memory claims (see `docs/16_slicer_report.md`).
+
+Capture never opens, reads, copies or decodes opaque pieces. Neither capture,
+observer, CLI nor DAG exports raw payloads, and the host supplies no plan
+decoder. Row 06 alone adds opt-in atomic typed diagnostic snapshots through
+row-03's publication hook.
+
+Lifecycle records carry module/version/artifact identity, lifecycle phase
+separately from `consumer_stage`, piece names/lengths, retained/transferred
+counts and typed `PreparationFailure` on failure. Whole-print preparation and
+disposal have no global layer index; actual layer-scoped calls carry their
+real index. `elapsed` is `None` unless existing instrumentation is enabled.
+These typed observations add no `ProgressEvent` JSONL fields or schema/version
+change. Static capability or DAG metadata never fabricates Start or Ready.
+
 ### Per-Layer Execution (rayon parallel)
 
 ```rust

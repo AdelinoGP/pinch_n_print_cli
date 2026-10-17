@@ -862,6 +862,28 @@ cancellation or release orchestration, or row-06 diagnostic geometry.
 
 ---
 
+### Frozen preparation ownership (Normative — TASK-574 row 5)
+
+Artifact selection precedes preparation ownership. An external same-ID
+override suppresses the paired integrated native registration **before claim
+arbitration**. The frozen binding keeps module ID, version and a deterministic
+opaque artifact identity derived from the actual selected artifact. That same
+native prepare/ordinary pair or selected component serves both preparation
+and ordinary calls; a selected external component has no native surrogate.
+
+Each print has its own private store and one prepared owner per eligible
+frozen binding, prepared exactly once. Even concurrent prints selecting the
+same identities never share plan storage. Published bytes are immutable,
+owner-private memory; neither module instances nor call-local read adapters
+own the retained plan. Stores remain alive through all real module calls and
+the applicable synthetic anchored-host closure, then dispose after active
+guards quiesce.
+
+Retained payload/name bytes and returned-read transfer bytes are logical
+production gauges, not allocator overhead, process memory or peak-memory
+measurements. Post-disposal retained bytes are zero; this does not assert a
+process-memory peak (see `docs/16_slicer_report.md`).
+
 ## Memory Model
 
 ```text

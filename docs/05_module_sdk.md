@@ -1022,6 +1022,27 @@ variants via `boundary` (`crates/slicer-wasm-host/src/preparation_host.rs`):
 Row 03 does not supply row-04 typed input projections, row-05 scheduling,
 cancellation or release orchestration, or row-06 diagnostic geometry.
 
+### Prepared plan lifetime (Normative — TASK-574 row 5)
+
+Ordinary `from_config` reconstruction remains per call: preparation does not
+retain a module value between Layer invocations. Each ordinary native or
+component call receives fresh owner-bound view/resource adapters over the
+same immutable print-private plan. Call scopes expire on return or unwind;
+the host retains storage until all active calls and the applicable anchored
+host closure finish, then disposes it.
+
+Reads are cursorless: each request supplies its own offset and bound.
+Concurrent immutable reads do not share cursor state and remain subject to
+the module's existing parallel-safety limits; preparation grants no new
+permission for parallel execution.
+
+Ready-empty is ready, not an unready plan. `PreparedPlanView::open` may return
+`None` for an optional missing piece; `PreparedPlanView::require` converts a
+missing required piece to the module's fatal `ModuleError` code `57401`.
+A present malformed piece is not absence: its module-owned decoder returns
+its own error. Modules own all plan-payload decoding; the host transports
+opaque bytes and never decodes their format.
+
 ### Preparation capability pilot authoring
 
 **PILOT evidence only — not production availability.** This controlled-fixture

@@ -58,6 +58,41 @@ pnp_cli slice \
     --output /tmp/out.gcode --instrument-stderr --report /tmp/report.html
 ```
 
+### Preparation lifecycle observations (TASK-574 row 5)
+
+**Static DAG introspection is not executed preparation evidence.** Manifest
+declarations, `record_edges`, and packet #02 capability metadata describe
+capabilities and dependencies; declarations alone never fabricate `Start` or
+`Ready`. Use live runtime lifecycle observations for execution evidence, with
+the existing instrumented opt-in enabled when elapsed timing is needed.
+
+- **Typed lifecycle records** report `Start`, `Ready`, `NoWork`, `Failure`,
+  `Cancelled`, and `Disposed`. Actual states identify the full owner (module id,
+  version, and artifact identity). The lifecycle phase — `Preparation`,
+  `Consumption`, or `Disposal` — is separate from the ordinary `consumer_stage`.
+  `NoWork` has no prepare call.
+- **Metadata, not payloads or allocator peaks.** Pieces appear as names and
+  lengths only; raw piece bytes never appear in these records. Retained and
+  transferred byte gauges measure logical bytes, not allocator peaks.
+- **Timing and failures retain their meaning.** `elapsed` is `None` unless the
+  existing instrumented opt-in is enabled; measured values come from actual
+  call brackets, never synthetic zero durations. Failure records retain the
+  original typed `PreparationFailure`, including original `Module` fields such
+  as `fatal: false`, or original trap detail.
+- **Arena lifetime comes from executor boundaries.** `on_layer_arena` reports
+  `Created`, `Committed`, and `Dropped` from real execution, with a drop guard
+  ensuring failure or cancellation without commit still reports `Dropped`
+  after active calls finish.
+- **Synthetic anchored host work is separate.** Its closure reports `Start`
+  and `Finished` independently of prepared module calls. `Finished` means
+  return or unwind, not success; retaining a plan across that closure is
+  lifetime evidence, not evidence of module consumption.
+
+These are runtime trace/observer records (including typed capture records),
+**not new `ProgressEvent` JSONL fields or a schema-version bump**. The existing
+instrumented stage/module brackets remain separate; do not read lifecycle
+records as additional events in the stderr JSONL stream described above.
+
 ## Fuel profiling — `--profile`
 
 `--instrument-stderr` ranks *modules*. `--profile` says what inside a module
