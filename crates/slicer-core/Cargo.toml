@@ -14,7 +14,15 @@ perimeter-spatial-test-support = []
 voronoi-panic-regression = ["boostvoronoi/console_debug"]
 
 [dependencies]
-clipper2-rust = { workspace = true }
+# [t70 vendoring] Explicit path dep into the in-tree pristine copy of
+# clipper2-rust 1.1.0 (vendor/clipper2-rust; registry archive sha256
+# 0fd663fe..., provenance in
+# docs/specs/perf-vs-orca/evidence/t70-clipper-candidate/vendor-provenance.json).
+# Deliberately NOT `{ workspace = true }`: the guest freshness fingerprint
+# walks `path` deps through Cargo.toml files and their `src/**`, so any
+# engine source change marks every guest carrying slicer-core stale — a
+# registry/version requirement would be invisible to that walk.
+clipper2-rust = { path = "../../vendor/clipper2-rust" }
 log = "0.4"
 rstar = "0.12"
 rayon = { version = "1.10", optional = true }
