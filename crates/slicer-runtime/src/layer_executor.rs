@@ -330,6 +330,7 @@ pub fn execute_per_layer_with_committed_anchored_events_and_support_tools(
         support_tools,
         None,
         anchored_entities,
+        None,
     )
 }
 
@@ -354,6 +355,7 @@ pub(crate) fn execute_per_layer_with_committed_anchored_events_instrumented(
     support_tools: SupportToolSelection,
     cancel_flag: Option<&std::sync::atomic::AtomicBool>,
     anchored_entities: &[slicer_ir::AnchoredEntity],
+    observer: Option<&dyn crate::preparation_lifecycle::PreparationLifecycleObserver>,
 ) -> Result<(Vec<CommittedLayerEvent>, Vec<ModuleAccessAudit>), LayerExecutionError> {
     let (layers, audits, mut producer_collections) =
         execute_per_layer_with_instrumentation_and_support_tools(
@@ -365,10 +367,18 @@ pub(crate) fn execute_per_layer_with_committed_anchored_events_instrumented(
             wasm_handles,
             support_tools,
             cancel_flag,
+            observer,
         )?;
     let mut layers = layers;
     append_same_z_entities(&mut layers, plan, anchored_entities)?;
-    let mut collections = execute_anchored_event_collections(plan, anchored_entities)?;
+    let (mut collections, _) = execute_anchored_event_collections_with_mode_and_feedrate(
+        plan,
+        anchored_entities,
+        true,
+        true,
+        0.0,
+        observer,
+    )?;
     producer_collections
         .retain(|collection| !global_layer_is_raft(plan, collection.anchor_global_layer_index));
     collections.append(&mut producer_collections);
@@ -699,6 +709,7 @@ pub fn execute_per_layer_with_events_and_support_tools(
             wasm_handles,
             support_tools,
             None,
+            None,
         )?;
     Ok((layers, audits))
 }
@@ -736,6 +747,7 @@ pub fn execute_per_layer_with_instrumentation(
             wasm_handles,
             SupportToolSelection::default(),
             cancel_flag,
+            None,
         )?;
     Ok((layers, audits))
 }
@@ -756,6 +768,7 @@ pub(crate) fn execute_per_layer_with_instrumentation_and_support_tools(
     >,
     support_tools: SupportToolSelection,
     cancel_flag: Option<&std::sync::atomic::AtomicBool>,
+    observer: Option<&dyn crate::preparation_lifecycle::PreparationLifecycleObserver>,
 ) -> Result<
     (
         Vec<LayerCollectionIR>,
@@ -790,6 +803,7 @@ pub(crate) fn execute_per_layer_with_instrumentation_and_support_tools(
                 layer,
                 wasm_handles,
                 support_tools,
+                observer,
             )
         })
         .collect();
@@ -832,6 +846,7 @@ fn execute_single_layer(
         ),
     >,
     support_tools: SupportToolSelection,
+    observer: Option<&dyn crate::preparation_lifecycle::PreparationLifecycleObserver>,
 ) -> Result<
     (
         LayerCollectionIR,
@@ -851,6 +866,7 @@ fn execute_single_layer(
         layer,
         wasm_handles,
         support_tools,
+        observer,
     );
     instrumentation.on_layer_end(layer.index);
     result
@@ -962,6 +978,7 @@ fn execute_single_layer_inner(
         ),
     >,
     support_tools: SupportToolSelection,
+    observer: Option<&dyn crate::preparation_lifecycle::PreparationLifecycleObserver>,
 ) -> Result<
     (
         LayerCollectionIR,
@@ -973,7 +990,12 @@ fn execute_single_layer_inner(
     let mut audits = Vec::new();
 
     // Create an isolated LayerArena for this layer
+    // Declared before the arena so its drop notification follows arena release,
+    // including every error and unwind path after active module calls return.
+    #[allow(clippy::needless_late_init)] // Declaration order defines the required drop order.
+    let _arena_lifecycle;
     let mut arena = LayerArena::new();
+    _arena_lifecycle = LayerArenaObservation::new(observer, layer.index);
 
     // Hydrate the per-layer arena's SliceIR slot from the prepass-committed
     // `Vec<SliceIR>` on the blackboard. Production paths run PrePass::Slice
@@ -1299,7 +1321,61 @@ fn execute_single_layer_inner(
         layer_output.travel_moves.extend(mapped);
     }
     let anchored_collections = arena.take_anchored_event_collections().unwrap_or_default();
+    if let Some(observer) = observer {
+        observer.on_layer_arena(
+            layer.index,
+            crate::preparation_lifecycle::LayerArenaLifecycleStatus::Committed,
+        );
+    }
     Ok((layer_output, audits, anchored_collections))
+}
+
+struct LayerArenaObservation<'a> {
+    observer: Option<&'a dyn crate::preparation_lifecycle::PreparationLifecycleObserver>,
+    layer_index: u32,
+}
+
+impl<'a> LayerArenaObservation<'a> {
+    fn new(
+        observer: Option<&'a dyn crate::preparation_lifecycle::PreparationLifecycleObserver>,
+        layer_index: u32,
+    ) -> Self {
+        if let Some(observer) = observer {
+            observer.on_layer_arena(
+                layer_index,
+                crate::preparation_lifecycle::LayerArenaLifecycleStatus::Created,
+            );
+        }
+        Self {
+            observer,
+            layer_index,
+        }
+    }
+}
+
+impl Drop for LayerArenaObservation<'_> {
+    fn drop(&mut self) {
+        if let Some(observer) = self.observer {
+            observer.on_layer_arena(
+                self.layer_index,
+                crate::preparation_lifecycle::LayerArenaLifecycleStatus::Dropped,
+            );
+        }
+    }
+}
+
+struct AnchoredHostObservation<'a>(
+    Option<&'a dyn crate::preparation_lifecycle::PreparationLifecycleObserver>,
+);
+
+impl Drop for AnchoredHostObservation<'_> {
+    fn drop(&mut self) {
+        if let Some(observer) = self.0 {
+            observer.on_anchored_host_closure(
+                crate::preparation_lifecycle::AnchoredHostClosureStatus::Finished,
+            );
+        }
+    }
 }
 
 /// Hydrate the per-layer arena's `SliceIR` slot from the prepass-committed
@@ -3002,6 +3078,7 @@ pub fn execute_anchored_event_collections_with_accounting(
         true,
         true,
         feedrate_mm_s,
+        None,
     )
 }
 
@@ -3026,6 +3103,7 @@ pub fn execute_anchored_event_collections_with_mode(
         force_parallel,
         module.layer_parallel_safe(),
         0.0,
+        None,
     )
 }
 
@@ -3035,6 +3113,7 @@ fn execute_anchored_event_collections_with_mode_and_feedrate(
     force_parallel: bool,
     layer_parallel_safe: bool,
     feedrate_mm_s: f64,
+    observer: Option<&dyn crate::preparation_lifecycle::PreparationLifecycleObserver>,
 ) -> Result<
     (
         Vec<slicer_ir::OrderedEventCollection>,
@@ -3042,6 +3121,12 @@ fn execute_anchored_event_collections_with_mode_and_feedrate(
     ),
     LayerExecutionError,
 > {
+    let _host_lifecycle = AnchoredHostObservation(observer);
+    if let Some(observer) = observer {
+        observer.on_anchored_host_closure(
+            crate::preparation_lifecycle::AnchoredHostClosureStatus::Start,
+        );
+    }
     let invoke = |entity: &slicer_ir::AnchoredEntity| {
         let invocation = plan.anchored_invocation(entity, layer_parallel_safe);
         let optimize_paths = invocation

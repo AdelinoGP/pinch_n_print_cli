@@ -489,6 +489,7 @@ pub(crate) fn run_pipeline_until_preparation(
         support_tools,
         cancel_flag.as_deref(),
         &anchored_entities,
+        lifecycle.and_then(|scope| scope.observer()),
     );
     instrumentation.on_phase_end(Phase::PerLayer);
     let (committed_events, layer_audits) = per_layer_result?;

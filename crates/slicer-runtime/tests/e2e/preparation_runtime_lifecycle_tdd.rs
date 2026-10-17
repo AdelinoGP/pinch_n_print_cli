@@ -112,6 +112,7 @@ enum Event {
     Lifecycle(PreparationLifecycleRecord),
     Arena(u32, LayerArenaLifecycleStatus),
     Host(AnchoredHostClosureStatus),
+    CallReturned(u32, &'static str),
 }
 
 #[derive(Default)]
@@ -1812,13 +1813,68 @@ fn blocking_anchored_consume(
 
 #[test]
 fn arena_run_to_completion_on_failure() {
-    let fixture = Fixture::new(false, false);
+    let fixture = Fixture::new(false, true);
     let mut opts = fixture.options();
+    // A closed solid gives real selected work on multiple layers, unlike the
+    // default thin wedge. Keep this input switch local to the failure witness.
+    let mut mesh = elevated_support_mesh();
+    let object = &mut mesh.objects[0];
+    object.mesh.vertices.truncate(8);
+    object.mesh.indices.truncate(36);
+    object.modifier_volumes.clear();
+    object.world_z_extent = Some((0.0, 0.8));
+    opts.mesh = Arc::new(mesh);
     opts.config_overrides
-        .insert("preparation_probe_length".into(), ConfigValue::Int(2));
-    let error = run_slice_with_runtime_extensions(opts, fixture.extensions(vec![]))
-        .expect_err("ordinary decoder fails after preparation");
+        .insert("layer_height".into(), ConfigValue::Float(0.2));
+    opts.config_overrides
+        .insert("first_layer_height".into(), ConfigValue::Float(0.2));
+    let control = Arc::new(FailureRunControl {
+        trace: fixture.trace.clone(),
+        ..Default::default()
+    });
+    *FAILURE_RUN.lock().unwrap() = Some(control.clone());
+    let mut path = PreparationLifecycleGuest::__slicer_prepared_native_entry();
+    path.stage = slicer_sdk::native::NativeStageEntry::Layer(failing_late_consume);
+    let mut anchored = PreparationLifecycleAnchored::__slicer_prepared_native_entry();
+    anchored.stage = slicer_sdk::native::NativeStageEntry::Layer(inflight_failure_anchored_consume);
+    let extensions = SliceRuntimeExtensions::new(
+        vec![
+            IntegratedModuleRegistration {
+                manifest_toml: PATH_MANIFEST,
+                origin_label: "late-failure-path",
+            },
+            IntegratedModuleRegistration {
+                manifest_toml: ANCHORED_MANIFEST,
+                origin_label: "inflight-failure-anchored",
+            },
+        ],
+        vec![
+            (
+                PATH_ID.into(),
+                path,
+                PreparationLifecycleGuest::__SLICER_PREPARATION_SCHEMA,
+            ),
+            (
+                ANCHORED_ID.into(),
+                anchored,
+                PreparationLifecycleAnchored::__SLICER_PREPARATION_SCHEMA,
+            ),
+        ],
+        vec![],
+        Some(Arc::new(FailureRunObserver {
+            trace: fixture.trace.clone(),
+            control: control.clone(),
+        })),
+    );
+    let error = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap()
+        .install(|| run_slice_with_runtime_extensions(opts, extensions))
+        .expect_err("later selected prepared stage returns module_error after other layers start");
+    *FAILURE_RUN.lock().unwrap() = None;
     assert!(format!("{error:?}").contains("57403"));
+    assert!(control.anchored_returned.load(Ordering::Acquire));
     let events = fixture.trace.events.lock().unwrap();
     let mut arena_states: BTreeMap<u32, (usize, usize, usize)> = BTreeMap::new();
     for event in events.iter() {
@@ -1848,9 +1904,180 @@ fn arena_run_to_completion_on_failure() {
     assert!(arena_states
         .values()
         .all(|(created, committed, dropped)| *created == 1 && *committed <= 1 && *dropped == 1));
+    let consumption = records(&events);
+    let failure = consumption
+        .iter()
+        .find(|r| {
+            r.module_id.as_str() == PATH_ID && r.status == PreparationLifecycleStatus::Failure
+        })
+        .expect("explicit late-stage failure");
+    let failed_layer = failure.global_layer_index.unwrap();
+    assert_eq!(arena_states[&failed_layer].1, 0);
+    assert!(
+        arena_states
+            .values()
+            .any(|(_, committed, _)| *committed == 1),
+        "an already started layer must complete after the other layer fails"
+    );
+    for index in arena_states.keys() {
+        let stages: Vec<_> = events
+            .iter()
+            .filter_map(|event| match event {
+                Event::Lifecycle(r)
+                    if r.global_layer_index == Some(*index)
+                        && r.lifecycle_phase == PreparationLifecyclePhase::Consumption =>
+                {
+                    Some((
+                        r.module_id.as_str(),
+                        r.status == PreparationLifecycleStatus::Start,
+                    ))
+                }
+                Event::CallReturned(layer, module) if layer == index => Some((*module, false)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            stages,
+            vec![
+                (ANCHORED_ID, true),
+                (ANCHORED_ID, false),
+                (PATH_ID, true),
+                (PATH_ID, false),
+            ],
+            "each started layer must complete its own sequence or explicit error"
+        );
+    }
+    let failed_at = events
+        .iter()
+        .position(|e| {
+            matches!(e, Event::Lifecycle(r)
+        if r.module_id.as_str() == PATH_ID && r.status == PreparationLifecycleStatus::Failure)
+        })
+        .unwrap();
+    assert!(events[failed_at + 1..].iter().any(|e| matches!(e, Event::CallReturned(_, ANCHORED_ID))),
+        "later stage must fail while another layer's earlier anchored call is still in flight; no between-stage barrier");
     let disposal = events.iter().position(|e| matches!(e, Event::Lifecycle(r) if matches!(r.status, PreparationLifecycleStatus::Disposed))).expect("cleanup observed");
     assert!(!events[disposal + 1..]
         .iter()
         .any(|e| matches!(e, Event::Arena(_, _))));
     assert_disposed(&events, PATH_ID);
+    assert_disposed(&events, ANCHORED_ID);
+}
+
+#[derive(Default)]
+struct FailureRunControl {
+    trace: Arc<Trace>,
+    claimed_anchor: AtomicBool,
+    claimed_failure: AtomicBool,
+    // First flag: anchored call entered. Second: actual later-stage failure observed.
+    state: Mutex<(bool, bool)>,
+    changed: std::sync::Condvar,
+    anchored_returned: AtomicBool,
+}
+
+static FAILURE_RUN: Mutex<Option<Arc<FailureRunControl>>> = Mutex::new(None);
+
+fn failure_run_control() -> Arc<FailureRunControl> {
+    FAILURE_RUN
+        .lock()
+        .unwrap()
+        .as_ref()
+        .expect("failure run installed")
+        .clone()
+}
+
+fn inflight_failure_anchored_consume(
+    input: &slicer_sdk::native::NativeLayerRequest,
+) -> Result<slicer_sdk::native::NativeLayerResponse, slicer_sdk::error::ModuleError> {
+    let slicer_sdk::native::NativeStageEntry::Layer(call) =
+        PreparationLifecycleAnchored::__slicer_prepared_native_entry().stage
+    else {
+        unreachable!()
+    };
+    let result = call(input);
+    let control = failure_run_control();
+    if !control.claimed_anchor.swap(true, Ordering::AcqRel) {
+        let mut state = control.state.lock().unwrap();
+        state.0 = true;
+        control.changed.notify_all();
+        let (state, timeout) = control
+            .changed
+            .wait_timeout_while(state, std::time::Duration::from_secs(60), |state| !state.1)
+            .unwrap();
+        assert!(
+            !timeout.timed_out() && state.1,
+            "another layer must reach its later-stage failure before this anchored call returns"
+        );
+        control.anchored_returned.store(true, Ordering::Release);
+    }
+    control
+        .trace
+        .events
+        .lock()
+        .unwrap()
+        .push(Event::CallReturned(input.layer_index, ANCHORED_ID));
+    result
+}
+
+fn failing_late_consume(
+    input: &slicer_sdk::native::NativeLayerRequest,
+) -> Result<slicer_sdk::native::NativeLayerResponse, slicer_sdk::error::ModuleError> {
+    let slicer_sdk::native::NativeStageEntry::Layer(call) =
+        PreparationLifecycleGuest::__slicer_prepared_native_entry().stage
+    else {
+        unreachable!()
+    };
+    let result = call(input)?;
+    let control = failure_run_control();
+    if !control.claimed_failure.swap(true, Ordering::AcqRel) {
+        let (state, timeout) = control
+            .changed
+            .wait_timeout_while(
+                control.state.lock().unwrap(),
+                std::time::Duration::from_secs(60),
+                |state| !state.0,
+            )
+            .unwrap();
+        assert!(
+            !timeout.timed_out() && state.0,
+            "earlier anchored call must be in flight"
+        );
+        return Err(slicer_sdk::error::ModuleError::fatal(
+            57403,
+            "late consumer module_error",
+        ));
+    }
+    control
+        .trace
+        .events
+        .lock()
+        .unwrap()
+        .push(Event::CallReturned(input.layer_index, PATH_ID));
+    Ok(result)
+}
+
+struct FailureRunObserver {
+    trace: Arc<Trace>,
+    control: Arc<FailureRunControl>,
+}
+
+impl PreparationLifecycleObserver for FailureRunObserver {
+    fn on_preparation_lifecycle(&self, record: &PreparationLifecycleRecord) {
+        self.trace.on_preparation_lifecycle(record);
+        if record.module_id.as_str() == PATH_ID
+            && record.lifecycle_phase == PreparationLifecyclePhase::Consumption
+            && record.status == PreparationLifecycleStatus::Failure
+        {
+            self.control.state.lock().unwrap().1 = true;
+            self.control.changed.notify_all();
+        }
+    }
+
+    fn on_layer_arena(&self, index: u32, status: LayerArenaLifecycleStatus) {
+        self.trace.on_layer_arena(index, status);
+    }
+
+    fn on_anchored_host_closure(&self, status: AnchoredHostClosureStatus) {
+        self.trace.on_anchored_host_closure(status);
+    }
 }

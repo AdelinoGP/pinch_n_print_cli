@@ -255,6 +255,10 @@ struct CommittedPreparationSelection {
 }
 
 impl PrintPreparationScope {
+    pub(crate) fn observer(&self) -> Option<&dyn PreparationLifecycleObserver> {
+        self._observer.as_deref()
+    }
+
     pub(crate) fn set_selected(&self, mut selected: Vec<SelectedPreparationBinding>) {
         selected.sort_by(|a, b| {
             (
