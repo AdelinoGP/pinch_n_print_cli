@@ -1,0 +1,50 @@
+[module]
+id = "com.test.preparation-lifecycle-anchored-guest"
+version = "0.1.0"
+display-name = "Prepared AnchoredEvents lifecycle fixture"
+description = "Module-owned endpoint codec consumed by ordinary AnchoredEvents dispatch"
+author = "Pinch 'n Print Team"
+license = "MIT"
+
+[stage]
+id = "Layer::AnchoredEvents"
+
+[ir-access]
+reads = []
+writes = []
+
+[claims]
+holds = ["anchored", "support-family:traditional"]
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires = []
+min-host-version = "0.1.0"
+min-ir-schema = "1.0.0"
+max-ir-schema = "5.0.0"
+
+[preparation]
+interface = "slicer:layer-preparation/prepare@1.0.0"
+input_reads = ["layer_plan", "selected_targets"]
+views = []
+
+# Whole-millimeter endpoints encoded as two little-endian u16 values.
+# Defaults produce X 3 -> 4 mm. Set both to 5 and 6 for the WASM leg;
+# changing either endpoint changes the prepared piece and emitted geometry.
+[config.schema.probe_start_mm]
+type = "int"
+default = 3
+
+[config.schema.probe_end_mm]
+type = "int"
+default = 4
+
+# Default standard publishes four bytes; other modes exercise failure paths.
+[config.schema.probe_mode]
+type = "enum"
+values = ["standard", "module_error", "trap", "malformed_probe"]
+default = "standard"
+
+[hints]
+layer-parallel-safe = true

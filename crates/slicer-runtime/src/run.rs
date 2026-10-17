@@ -956,6 +956,123 @@ fn build_progress_channel(
 /// This is the 4-way instrumentation fork originally in `main.rs`, now a
 /// private helper inside `run.rs`. Uses the slice-wide `ProgressChannel`
 /// built by [`run_slice`] before validation.
+fn freeze_selected_preparation_bindings(
+    lifecycle: &crate::preparation_lifecycle::PrintPreparationScope,
+    loaded: &slicer_wasm_host::execution_plan_live::LiveModuleLoadOutput,
+    registrations: &[slicer_scheduler::IntegratedModuleRegistration],
+) -> Result<(), SliceRunError> {
+    use slicer_wasm_host::preparation::{freeze_native, freeze_wasm, NativePreparationArtifact};
+    // Stable opaque fingerprint, not a security digest. Native identity covers
+    // the actual linked executable, not ASLR-dependent function addresses.
+    fn fingerprint(bytes: &[u8]) -> String {
+        let hash = bytes.iter().fold(0xcbf29ce484222325_u64, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
+        });
+        format!("{hash:016x}")
+    }
+    let mut native_identity = None;
+    let mut selected = Vec::new();
+    for live in &loaded.bindings {
+        let module = &live.module;
+        if !slicer_schema::STAGES.iter().any(|stage| {
+            stage.stage_id == module.stage() && stage.tier_id == slicer_schema::TIER_LAYER
+        }) {
+            continue;
+        }
+        let native = module.provenance() == slicer_scheduler::ModuleProvenance::Integrated;
+        let manifest = if native {
+            registrations
+                .iter()
+                .find_map(|registration| {
+                    let value: toml::Value = registration.manifest_toml.parse().ok()?;
+                    (value.get("module")?.get("id")?.as_str()? == module.id())
+                        .then(|| registration.manifest_toml.to_owned())
+                })
+                .ok_or_else(|| {
+                    SliceRunError(format!("selected native manifest missing: {}", module.id()))
+                })?
+        } else {
+            std::fs::read_to_string(module.wasm_path().with_extension("toml")).map_err(|error| {
+                SliceRunError(format!("selected manifest {}: {error}", module.id()))
+            })?
+        };
+        let declaration = slicer_scheduler::preparation::parse_preparation_declaration(&manifest)
+            .map_err(|error| {
+            SliceRunError(format!(
+                "selected preparation declaration {}: {error}",
+                module.id()
+            ))
+        })?;
+        let (binding, artifact_identity) = if native {
+            let entry = live.native_entry.ok_or_else(|| {
+                SliceRunError(format!("selected native entry missing: {}", module.id()))
+            })?;
+            let artifact = match lifecycle
+                .prepared_native
+                .iter()
+                .find(|(id, _, _)| id == module.id())
+            {
+                Some((_, paired, schema)) => NativePreparationArtifact::Prepared {
+                    entry: *paired,
+                    schema: *schema,
+                },
+                None => NativePreparationArtifact::Plain(entry),
+            };
+            if native_identity.is_none() {
+                let executable =
+                    std::env::current_exe()
+                        .and_then(std::fs::read)
+                        .map_err(|error| {
+                            SliceRunError(format!("selected native artifact identity: {error}"))
+                        })?;
+                native_identity = Some(fingerprint(&executable));
+            }
+            (
+                freeze_native(module.id().into(), declaration, artifact),
+                format!(
+                    "native:{}:{}",
+                    native_identity.as_ref().expect("native identity"),
+                    fingerprint(manifest.as_bytes())
+                ),
+            )
+        } else {
+            let component = live.wasm_component.as_ref().ok_or_else(|| {
+                SliceRunError(format!("selected component missing: {}", module.id()))
+            })?;
+            let compiled = component
+                .wasmtime_component()
+                .serialize()
+                .map_err(|error| {
+                    SliceRunError(format!(
+                        "selected component identity {}: {error}",
+                        module.id()
+                    ))
+                })?;
+            (
+                freeze_wasm(
+                    module.id().into(),
+                    declaration,
+                    loaded.engine.wasmtime_engine().clone(),
+                    component.wasmtime_component().clone(),
+                    module.stage().into(),
+                ),
+                format!("wasm:{}", fingerprint(&compiled)),
+            )
+        };
+        selected.push(crate::preparation_lifecycle::SelectedPreparationBinding {
+            module_id: module.id().into(),
+            module_version: module.version().to_string(),
+            artifact_identity,
+            consumer_stage: module.stage().into(),
+            binding: binding.map_err(|error| {
+                SliceRunError(format!("freeze selected module {}: {error}", module.id()))
+            })?,
+        });
+    }
+    lifecycle.set_selected(selected);
+    Ok(())
+}
+
 fn run_pipeline_fork(
     opts: &SliceRunOptions,
     channel: &ProgressChannel,
@@ -965,6 +1082,7 @@ fn run_pipeline_fork(
     scoped_config: &slicer_config::ScopedConfig,
     expansion_context: &ExpansionContext,
     profile: Option<&Arc<ProfileAggregator>>,
+    lifecycle: &crate::preparation_lifecycle::PrintPreparationScope,
     #[cfg(feature = "report")] dag_snapshot: Option<crate::report::ReportDagSnapshot>,
 ) -> Result<crate::pipeline::PipelineOutput, SliceRunError> {
     let sink_arc = Arc::clone(&channel.sink);
@@ -1045,6 +1163,7 @@ fn run_pipeline_fork(
                     &composite,
                     expansion_authority,
                     Some(&config_block),
+                    Some(lifecycle),
                 )
             } else {
                 run_pipeline_with_instrumentation_authority(
@@ -1054,6 +1173,7 @@ fn run_pipeline_fork(
                     report_collector.as_ref(),
                     expansion_authority,
                     Some(&config_block),
+                    Some(lifecycle),
                 )
             };
             report_alloc::disable();
@@ -1076,6 +1196,7 @@ fn run_pipeline_fork(
             progress_pi,
             expansion_authority,
             Some(&config_block),
+            Some(lifecycle),
         ),
         (None, None) => run_pipeline_with_raw_config_authority(
             config,
@@ -1083,6 +1204,7 @@ fn run_pipeline_fork(
             sink_arc.as_ref(),
             expansion_authority,
             Some(&config_block),
+            Some(lifecycle),
         ),
     };
 
@@ -1179,7 +1301,44 @@ pub fn emit_end_of_slice_events(
 /// Composes the 4-way instrumentation fork (report, progress, both, none)
 /// internally based on `opts.report` and `opts.instrument_stderr`.
 pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
-    run_slice_with_collector(opts, None)
+    run_slice_with_runtime_extensions(
+        opts,
+        crate::preparation_lifecycle::SliceRuntimeExtensions::default(),
+    )
+}
+
+/// Run the ordinary slice with print-private artifact registrations and hooks.
+pub fn run_slice_with_runtime_extensions(
+    opts: SliceRunOptions,
+    extensions: crate::preparation_lifecycle::SliceRuntimeExtensions,
+) -> Result<SliceOutcome, SliceRunError> {
+    match run_slice_shared(opts, None, extensions, SliceCompletion::FullSlice)? {
+        SliceRunResult::FullSlice(outcome) => Ok(*outcome),
+        SliceRunResult::PreparationOnly(_) => unreachable!("full slice requested"),
+    }
+}
+
+/// Run the full validated startup and committed preparation prefix, snapshot
+/// metadata, then dispose without entering any Layer or synthetic consumer.
+pub fn run_slice_preparation_capture(
+    opts: SliceRunOptions,
+    extensions: crate::preparation_lifecycle::SliceRuntimeExtensions,
+) -> Result<crate::preparation_lifecycle::PreparationCapture, SliceRunError> {
+    match run_slice_shared(opts, None, extensions, SliceCompletion::PreparationOnly)? {
+        SliceRunResult::PreparationOnly(capture) => Ok(capture),
+        SliceRunResult::FullSlice(_) => unreachable!("preparation capture requested"),
+    }
+}
+
+#[derive(Clone, Copy)]
+enum SliceCompletion {
+    FullSlice,
+    PreparationOnly,
+}
+
+enum SliceRunResult {
+    FullSlice(Box<SliceOutcome>),
+    PreparationOnly(crate::preparation_lifecycle::PreparationCapture),
 }
 
 /// Test-support entry point that lets callers inspect the same collector used
@@ -1189,8 +1348,29 @@ pub fn run_slice_with_collector(
     opts: SliceRunOptions,
     collector: Option<Arc<Mutex<SliceEventCollector>>>,
 ) -> Result<SliceOutcome, SliceRunError> {
+    match run_slice_shared(
+        opts,
+        collector,
+        crate::preparation_lifecycle::SliceRuntimeExtensions::default(),
+        SliceCompletion::FullSlice,
+    )? {
+        SliceRunResult::FullSlice(outcome) => Ok(*outcome),
+        SliceRunResult::PreparationOnly(_) => unreachable!("full slice requested"),
+    }
+}
+
+fn run_slice_shared(
+    opts: SliceRunOptions,
+    collector: Option<Arc<Mutex<SliceEventCollector>>>,
+    extensions: crate::preparation_lifecycle::SliceRuntimeExtensions,
+    completion: SliceCompletion,
+) -> Result<SliceRunResult, SliceRunError> {
     let t0 = Instant::now();
     let channel = build_progress_channel(opts.progress_events, collector);
+    let (extension_registrations, anchored_entities, lifecycle) = extensions.into_run_parts(
+        opts.instrument_stderr || opts.report.is_some() || opts.profile,
+        matches!(completion, SliceCompletion::PreparationOnly),
+    );
 
     // Fuel-based profiling (ADR-0055). The aggregator's existence is the single
     // switch: nothing downstream records anything without it. The native sink
@@ -1288,7 +1468,7 @@ pub fn run_slice_with_collector(
     // doc comment for the production defect this closes).
     // `opts.profile` reaches every guest through this one engine: it turns on
     // `consume_fuel` *and* is what `profile-enabled` answers with.
-    let (integrated_regs, native_entries) = if opts.no_integrated_modules {
+    let (mut integrated_regs, mut native_entries) = if opts.no_integrated_modules {
         (Vec::new(), Vec::new())
     } else {
         (
@@ -1296,6 +1476,61 @@ pub fn run_slice_with_collector(
             slicer_integrated_modules::native_entries(),
         )
     };
+    // Extension artifacts replace built-in claim defaults before the loader's
+    // claim arbitration, not merely after it has already discarded a candidate.
+    // Same-ID external/native precedence remains the manifest-first loader's.
+    let extension_modules =
+        slicer_scheduler::load_modules_from_roots_with_integrated(&[], &extension_registrations)
+            .map_err(|error| SliceRunError(format!("invalid extension registration: {error:?}")))?;
+    let builtins = slicer_scheduler::load_modules_from_roots_with_integrated(&[], &integrated_regs)
+        .map_err(|error| SliceRunError(format!("invalid integrated registration: {error:?}")))?;
+    let extension_winners = slicer_scheduler::load_modules_from_roots_with_integrated(
+        &search_roots,
+        &extension_registrations,
+    )
+    .map_err(|error| SliceRunError(format!("extension provenance discovery: {error:?}")))?;
+    let suppressed: std::collections::HashSet<_> = builtins
+        .modules
+        .iter()
+        .filter(|builtin| {
+            extension_winners
+                .modules
+                .iter()
+                .filter(|winner| {
+                    extension_modules
+                        .modules
+                        .iter()
+                        .any(|candidate| candidate.id() == winner.id())
+                })
+                .any(|extension| {
+                    builtin.id() == extension.id()
+                        || builtin
+                            .claims()
+                            .iter()
+                            .any(|claim| extension.claims().contains(claim))
+                })
+        })
+        .map(|module| module.id().to_owned())
+        .collect();
+    integrated_regs.retain(|registration| {
+        let manifest: toml::Value = registration
+            .manifest_toml
+            .parse()
+            .expect("validated manifest");
+        !suppressed.contains(
+            manifest["module"]["id"]
+                .as_str()
+                .expect("validated module id"),
+        )
+    });
+    native_entries.retain(|(id, _)| !suppressed.contains(id));
+    integrated_regs.extend(extension_registrations);
+    native_entries.extend(
+        lifecycle
+            .prepared_native
+            .iter()
+            .map(|(id, entry, _)| (id.clone(), entry.stage)),
+    );
     let manifest_first = load_live_modules_for_plan_manifest_first(
         &search_roots,
         num_cpus_guess(),
@@ -1515,6 +1750,8 @@ pub fn run_slice_with_collector(
         overlay_expanded_global(&module_config_source, &default_resolved_config);
     let layer_planning_objects = layer_planning_objects(&object_layer_configs);
 
+    freeze_selected_preparation_bindings(&lifecycle, &loaded, &integrated_regs)?;
+
     // Build wasm_handles side-table before consuming bindings.
     let wasm_handles: std::collections::HashMap<
         slicer_ir::ModuleId,
@@ -1577,7 +1814,11 @@ pub fn run_slice_with_collector(
                 WasmRuntimeDispatcher::new(Arc::clone(&engine))
                     .with_layer_planning_objects(layer_planning_objects),
             ),
-            layer: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
+            layer: Box::new(crate::preparation_lifecycle::PreparedLayerStageRunner::new(
+                Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
+                WasmRuntimeDispatcher::new(Arc::clone(&engine)),
+                Arc::clone(&lifecycle),
+            )),
             finalization: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
             postpass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
             emitter: Box::new(
@@ -1604,22 +1845,43 @@ pub fn run_slice_with_collector(
         default_resolved_config: Arc::new(default_resolved_config),
         bounds: Arc::new(config_bounds),
         wasm_handles,
-        anchored_entities: Vec::new(),
+        anchored_entities,
     };
 
     // Run the pipeline through the 4-way instrumentation fork.
-    let pipeline_result = run_pipeline_fork(
-        &opts,
-        &channel,
-        pipeline_config,
-        &expanded_global_source,
-        &registry,
-        &scoped_config,
-        &expansion_context,
-        profile.as_ref(),
-        #[cfg(feature = "report")]
-        dag_snapshot,
-    );
+    let pipeline_result = if matches!(completion, SliceCompletion::PreparationOnly) {
+        crate::pipeline::run_pipeline_until_preparation(
+            pipeline_config,
+            &expanded_global_source,
+            channel.sink.as_ref(),
+            &crate::instrumentation::NoopInstrumentation,
+            Some(ConfigExpansionAuthority {
+                registry: &registry,
+                scoped: &scoped_config,
+                expansion: &expansion_context,
+            }),
+            None,
+            Some(lifecycle.as_ref()),
+            true,
+            true,
+        )
+        .map_err(|error| SliceRunError(error.to_string()))
+    } else {
+        run_pipeline_fork(
+            &opts,
+            &channel,
+            pipeline_config,
+            &expanded_global_source,
+            &registry,
+            &scoped_config,
+            &expansion_context,
+            profile.as_ref(),
+            lifecycle.as_ref(),
+            #[cfg(feature = "report")]
+            dag_snapshot,
+        )
+        .map(Some)
+    };
 
     // Fold the host built-ins' native marks in and stop recording, on both the
     // success and the failure path: leaving the sink recording would let a
@@ -1637,7 +1899,12 @@ pub fn run_slice_with_collector(
     // it carries every occurrence.
     slicer_wasm_host::dispatch::emit_module_log_repeat_summary();
 
-    let pipeline_output = pipeline_result?;
+    let Some(pipeline_output) = pipeline_result? else {
+        let capture = lifecycle
+            .snapshot_and_dispose()
+            .map_err(|error| SliceRunError(error.to_string()))?;
+        return Ok(SliceRunResult::PreparationOnly(capture));
+    };
 
     // Host support aggregation diagnostics are collected with the prepass
     // audit, but must also enter the slice event channel so a successful run
@@ -1712,14 +1979,14 @@ pub fn run_slice_with_collector(
     }
     emit_end_of_slice_events(&channel.sink, &channel.slice_id, wallclock_ms, stats);
 
-    Ok(SliceOutcome {
+    Ok(SliceRunResult::FullSlice(Box::new(SliceOutcome {
         gcode_text: pipeline_output.gcode_text,
         layer_count,
         wallclock_ms,
         profile: profile_summary,
         ingestion_warnings,
         region_map: pipeline_output.region_map,
-    })
+    })))
 }
 
 /// Assembled scheduler/runtime context after prepass execution, ready for a

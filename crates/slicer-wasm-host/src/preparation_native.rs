@@ -57,10 +57,23 @@ impl PreparationInputData {
         owner: &PreparationOwner,
         binding: &FrozenPreparationBinding,
     ) -> Result<PrintPreparationInput, PreparationFailure> {
+        Ok(PrintPreparationInput::from_host_input(
+            self.typed_reader(owner, binding)?,
+        ))
+    }
+
+    /// Borrow the validated production typed-input projection without exposing
+    /// committed backing or any prepared-plan payload.
+    pub fn typed_reader(
+        &self,
+        owner: &PreparationOwner,
+        binding: &FrozenPreparationBinding,
+    ) -> Result<
+        Arc<dyn slicer_sdk::preparation::PrintPreparationRead + Send + Sync>,
+        PreparationFailure,
+    > {
         owner.originating_store()?.validate_owner(owner, binding)?;
-        Ok(PrintPreparationInput::from_host_input(Arc::new(
-            PreparationInputReader::new(owner, self, binding),
-        )))
+        Ok(Arc::new(PreparationInputReader::new(owner, self, binding)))
     }
 
     pub(crate) fn read(

@@ -16,6 +16,7 @@ pub mod negative_part_subtract;
 pub mod order_lock;
 pub mod pipeline;
 pub mod postpass;
+pub mod preparation_lifecycle;
 pub mod prepass;
 /// Run-wide aggregation, native-sink installation, and ranked rendering for
 /// fuel-based module profiling (ADR-0055).
@@ -185,13 +186,20 @@ pub use prepass::{
 };
 // Re-exported so consumers of the profiling surface (pnp-cli, tests) can name
 // a mark without taking a direct slicer-wasm-host dependency.
+pub use preparation_lifecycle::{
+    AnchoredHostClosureStatus, LayerArenaLifecycleStatus, PreparationAccountingSnapshot,
+    PreparationCapture, PreparationLifecycleObserver, PreparationLifecyclePhase,
+    PreparationLifecycleRecord, PreparationLifecycleStatus, PreparationOwnerCapture,
+    PreparationPieceMetadata, SliceRuntimeExtensions,
+};
 pub use profiling_report::{
     format_profile_summary, ProfileAggregator, ProfileCallDetail, ProfileModuleRow,
     ProfileScopeRow, ProfileSummary, ProfileUnit,
 };
 pub use progress_instrumentation::ProgressPipelineInstrumentation;
 pub use run::{
-    prepare_prepass_context, run_slice, PrepassContext, SliceOutcome, SliceRunError,
+    prepare_prepass_context, run_slice, run_slice_preparation_capture,
+    run_slice_with_runtime_extensions, PrepassContext, SliceOutcome, SliceRunError,
     SliceRunOptions,
 };
 pub use slice_postprocess::{

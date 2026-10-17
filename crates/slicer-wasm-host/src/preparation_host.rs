@@ -315,8 +315,12 @@ impl PreparedHostState {
         self.ordinary.gcode_output()
     }
 
-    pub(super) fn ordinary_mut(&mut self) -> &mut HostExecutionContext {
+    pub(crate) fn ordinary_mut(&mut self) -> &mut HostExecutionContext {
         &mut self.ordinary
+    }
+
+    pub(crate) fn ordinary(&self) -> &HostExecutionContext {
+        &self.ordinary
     }
 }
 

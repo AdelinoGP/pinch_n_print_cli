@@ -90,6 +90,101 @@ fn add_wasi_to_linker(linker: &mut wasmtime::component::Linker<HostExecutionCont
     wasmtime_wasi::p2::add_to_linker_sync(linker).expect("WASI linker registration must succeed");
 }
 
+// Store projection is transport-only: all resource insertion and output handling
+// below remains shared, including source identity and selected-target authority.
+trait LayerCallState: Sized + 'static {
+    fn ordinary(&self) -> &HostExecutionContext;
+    fn ordinary_mut(&mut self) -> &mut HostExecutionContext;
+    fn linker(
+        engine: &wasmtime::Engine,
+        stage: &str,
+    ) -> wasmtime::Result<wasmtime::component::Linker<Self>>;
+}
+
+impl LayerCallState for HostExecutionContext {
+    fn ordinary(&self) -> &HostExecutionContext {
+        self
+    }
+    fn ordinary_mut(&mut self) -> &mut HostExecutionContext {
+        self
+    }
+    fn linker(
+        engine: &wasmtime::Engine,
+        stage: &str,
+    ) -> wasmtime::Result<wasmtime::component::Linker<Self>> {
+        let mut linker = wasmtime::component::Linker::new(engine);
+        add_wasi_to_linker(&mut linker);
+        macro_rules! register {
+            ($world:ident) => {
+                host::$world::LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
+                    &mut linker,
+                    |ctx| ctx,
+                )?
+            };
+        }
+        match stage {
+            "Layer::Infill" => register!(layer_infill),
+            "Layer::InfillPostProcess" => register!(layer_infill_postprocess),
+            "Layer::SlicePostProcess" => register!(layer_slice_postprocess),
+            "Layer::Perimeters" => register!(layer_perimeters),
+            "Layer::PerimetersPostProcess" => register!(layer_perimeters_postprocess),
+            "Layer::Support" => register!(layer_support),
+            "Layer::SupportPostProcess" => register!(layer_support_postprocess),
+            "Layer::AnchoredEvents" => register!(layer_anchored_events),
+            "Layer::PathOptimization" => register!(layer_path_optimization),
+            _ => wasmtime::bail!("unknown layer stage: {stage}"),
+        }
+        Ok(linker)
+    }
+}
+
+impl LayerCallState for crate::preparation::PreparedHostState {
+    fn ordinary(&self) -> &HostExecutionContext {
+        self.ordinary()
+    }
+    fn ordinary_mut(&mut self) -> &mut HostExecutionContext {
+        self.ordinary_mut()
+    }
+    fn linker(
+        engine: &wasmtime::Engine,
+        stage: &str,
+    ) -> wasmtime::Result<wasmtime::component::Linker<Self>> {
+        Self::linker(engine, stage)
+    }
+}
+
+// Borrows one fresh call store. Restores its empty context when extracting the
+// completed ordinary context; no guest resources or arena escape the call.
+struct LayerCallStore<'a, T: LayerCallState> {
+    store: &'a mut wasmtime::Store<T>,
+    empty: HostExecutionContext,
+}
+
+impl<T: LayerCallState> LayerCallStore<'_, T> {
+    fn data(&self) -> &HostExecutionContext {
+        self.store.data().ordinary()
+    }
+    fn data_mut(&mut self) -> &mut HostExecutionContext {
+        self.store.data_mut().ordinary_mut()
+    }
+    fn into_data(self) -> HostExecutionContext {
+        std::mem::replace(self.store.data_mut().ordinary_mut(), self.empty)
+    }
+}
+
+impl<T: LayerCallState> wasmtime::AsContext for LayerCallStore<'_, T> {
+    type Data = T;
+    fn as_context(&self) -> wasmtime::StoreContext<'_, T> {
+        self.store.as_context()
+    }
+}
+
+impl<T: LayerCallState> wasmtime::AsContextMut for LayerCallStore<'_, T> {
+    fn as_context_mut(&mut self) -> wasmtime::StoreContextMut<'_, T> {
+        self.store.as_context_mut()
+    }
+}
+
 /// Structured runtime dispatch error with full diagnostic context.
 #[derive(Debug, Clone)]
 pub struct DispatchError {
@@ -401,13 +496,14 @@ impl WasmRuntimeDispatcher {
     /// Called by `LayerStageRunner::run_stage` with fields pre-projected from
     /// `LayerStageInput<'_>` and `CompiledModuleLive<'_>` (P83 Step 4b).
     #[allow(clippy::too_many_arguments)]
-    fn dispatch_layer_call(
+    fn dispatch_layer_call<T: LayerCallState>(
         &self,
+        call_store: &mut wasmtime::Store<T>,
         stage_id: &StageId,
         module_id: &str,
         _module_id_str: &str,
         layer: &GlobalLayer,
-        wasm_component: Option<&Arc<crate::instance::WasmComponent>>,
+        wasm_component: Option<&wasmtime::component::Component>,
         instance_pool: &Arc<crate::pool::WasmInstancePool>,
         _config_view: &slicer_ir::ConfigView,
         envelope_floor: f32,
@@ -474,10 +570,16 @@ impl WasmRuntimeDispatcher {
         };
 
         let new_layer_store = |mut ctx: HostExecutionContext| {
+            let call_store = call_store;
             // This dispatch path requires selection; other context builders
             // retain legacy non-indexed accessor behavior.
             ctx.indexed_delivery = true;
-            self.new_call_store(ctx)
+            ctx.set_profiling_enabled(self.engine.profiling_enabled());
+            let empty = std::mem::replace(call_store.data_mut().ordinary_mut(), ctx);
+            LayerCallStore {
+                store: call_store,
+                empty,
+            }
         };
         let (call_result, mut store, mem_initial_bytes) = match stage_id.as_str() {
             "Layer::Infill" => {
@@ -488,13 +590,7 @@ impl WasmRuntimeDispatcher {
                     phase: DispatchPhase::MissingComponent,
                     reason: "no compiled WASM component available".to_string(),
                 })?;
-                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-                add_wasi_to_linker(&mut linker);
-                host::layer_infill::LayerModule::add_to_linker::<
-                    _,
-                    wasmtime::component::HasSelf<_>,
-                >(&mut linker, |ctx| ctx)
-                .map_err(mk_linker_err)?;
+                let linker = T::linker(engine, stage_id).map_err(mk_linker_err)?;
                 let ctx = HostExecutionContextBuilder::new(
                     module_id.to_string(),
                     envelope_floor,
@@ -512,12 +608,9 @@ impl WasmRuntimeDispatcher {
                 store
                     .data_mut()
                     .set_default_config_fields(default_config_fields);
-                let bindings = host::layer_infill::LayerModule::instantiate(
-                    &mut store,
-                    component.wasmtime_component(),
-                    &linker,
-                )
-                .map_err(mk_inst_err)?;
+                let bindings =
+                    host::layer_infill::LayerModule::instantiate(&mut store, component, &linker)
+                        .map_err(mk_inst_err)?;
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
                 let region_handles = push_slice_regions(
                     &mut store,
@@ -585,13 +678,7 @@ impl WasmRuntimeDispatcher {
                     phase: DispatchPhase::MissingComponent,
                     reason: "no compiled WASM component available".to_string(),
                 })?;
-                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-                add_wasi_to_linker(&mut linker);
-                host::layer_infill_postprocess::LayerModule::add_to_linker::<
-                    _,
-                    wasmtime::component::HasSelf<_>,
-                >(&mut linker, |ctx| ctx)
-                .map_err(mk_linker_err)?;
+                let linker = T::linker(engine, stage_id).map_err(mk_linker_err)?;
                 let ctx = HostExecutionContextBuilder::new(
                     module_id.to_string(),
                     envelope_floor,
@@ -620,9 +707,7 @@ impl WasmRuntimeDispatcher {
                         reason: format!("failed to push config resource: {e}"),
                     })?;
                 let bindings = host::layer_infill_postprocess::LayerModule::instantiate(
-                    &mut store,
-                    component.wasmtime_component(),
-                    &linker,
+                    &mut store, component, &linker,
                 )
                 .map_err(mk_inst_err)?;
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
@@ -663,13 +748,7 @@ impl WasmRuntimeDispatcher {
                     phase: DispatchPhase::MissingComponent,
                     reason: "no compiled WASM component available".to_string(),
                 })?;
-                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-                add_wasi_to_linker(&mut linker);
-                host::layer_slice_postprocess::LayerModule::add_to_linker::<
-                    _,
-                    wasmtime::component::HasSelf<_>,
-                >(&mut linker, |ctx| ctx)
-                .map_err(mk_linker_err)?;
+                let linker = T::linker(engine, stage_id).map_err(mk_linker_err)?;
                 let ctx = HostExecutionContextBuilder::new(
                     module_id.to_string(),
                     envelope_floor,
@@ -698,9 +777,7 @@ impl WasmRuntimeDispatcher {
                         reason: format!("failed to push config resource: {e}"),
                     })?;
                 let bindings = host::layer_slice_postprocess::LayerModule::instantiate(
-                    &mut store,
-                    component.wasmtime_component(),
-                    &linker,
+                    &mut store, component, &linker,
                 )
                 .map_err(mk_inst_err)?;
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
@@ -745,13 +822,7 @@ impl WasmRuntimeDispatcher {
                     phase: DispatchPhase::MissingComponent,
                     reason: "no compiled WASM component available".to_string(),
                 })?;
-                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-                add_wasi_to_linker(&mut linker);
-                host::layer_perimeters::LayerModule::add_to_linker::<
-                    _,
-                    wasmtime::component::HasSelf<_>,
-                >(&mut linker, |ctx| ctx)
-                .map_err(mk_linker_err)?;
+                let linker = T::linker(engine, stage_id).map_err(mk_linker_err)?;
                 let ctx = HostExecutionContextBuilder::new(
                     module_id.to_string(),
                     envelope_floor,
@@ -780,9 +851,7 @@ impl WasmRuntimeDispatcher {
                         reason: format!("failed to push config resource: {e}"),
                     })?;
                 let bindings = host::layer_perimeters::LayerModule::instantiate(
-                    &mut store,
-                    component.wasmtime_component(),
-                    &linker,
+                    &mut store, component, &linker,
                 )
                 .map_err(mk_inst_err)?;
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
@@ -827,13 +896,7 @@ impl WasmRuntimeDispatcher {
                     phase: DispatchPhase::MissingComponent,
                     reason: "no compiled WASM component available".to_string(),
                 })?;
-                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-                add_wasi_to_linker(&mut linker);
-                host::layer_perimeters_postprocess::LayerModule::add_to_linker::<
-                    _,
-                    wasmtime::component::HasSelf<_>,
-                >(&mut linker, |ctx| ctx)
-                .map_err(mk_linker_err)?;
+                let linker = T::linker(engine, stage_id).map_err(mk_linker_err)?;
                 let ctx = HostExecutionContextBuilder::new(
                     module_id.to_string(),
                     envelope_floor,
@@ -862,9 +925,7 @@ impl WasmRuntimeDispatcher {
                         reason: format!("failed to push config resource: {e}"),
                     })?;
                 let bindings = host::layer_perimeters_postprocess::LayerModule::instantiate(
-                    &mut store,
-                    component.wasmtime_component(),
-                    &linker,
+                    &mut store, component, &linker,
                 )
                 .map_err(mk_inst_err)?;
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
@@ -895,13 +956,7 @@ impl WasmRuntimeDispatcher {
                     phase: DispatchPhase::MissingComponent,
                     reason: "no compiled WASM component available".to_string(),
                 })?;
-                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-                add_wasi_to_linker(&mut linker);
-                host::layer_support::LayerModule::add_to_linker::<
-                    _,
-                    wasmtime::component::HasSelf<_>,
-                >(&mut linker, |ctx| ctx)
-                .map_err(mk_linker_err)?;
+                let linker = T::linker(engine, stage_id).map_err(mk_linker_err)?;
                 let ctx = HostExecutionContextBuilder::new(
                     module_id.to_string(),
                     envelope_floor,
@@ -929,12 +984,9 @@ impl WasmRuntimeDispatcher {
                         phase: DispatchPhase::ContextCreation,
                         reason: format!("failed to push config resource: {e}"),
                     })?;
-                let bindings = host::layer_support::LayerModule::instantiate(
-                    &mut store,
-                    component.wasmtime_component(),
-                    &linker,
-                )
-                .map_err(mk_inst_err)?;
+                let bindings =
+                    host::layer_support::LayerModule::instantiate(&mut store, component, &linker)
+                        .map_err(mk_inst_err)?;
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
                 let region_handles = push_slice_regions(
                     &mut store,
@@ -993,13 +1045,7 @@ impl WasmRuntimeDispatcher {
                     phase: DispatchPhase::MissingComponent,
                     reason: "no compiled WASM component available".to_string(),
                 })?;
-                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-                add_wasi_to_linker(&mut linker);
-                host::layer_anchored_events::LayerModule::add_to_linker::<
-                    _,
-                    wasmtime::component::HasSelf<_>,
-                >(&mut linker, |ctx| ctx)
-                .map_err(mk_linker_err)?;
+                let linker = T::linker(engine, stage_id).map_err(mk_linker_err)?;
                 let ctx = HostExecutionContextBuilder::new(
                     module_id.to_string(),
                     envelope_floor,
@@ -1028,9 +1074,7 @@ impl WasmRuntimeDispatcher {
                         reason: format!("failed to push config resource: {e}"),
                     })?;
                 let bindings = host::layer_anchored_events::LayerModule::instantiate(
-                    &mut store,
-                    component.wasmtime_component(),
-                    &linker,
+                    &mut store, component, &linker,
                 )
                 .map_err(mk_inst_err)?;
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
@@ -1070,13 +1114,7 @@ impl WasmRuntimeDispatcher {
                     phase: DispatchPhase::MissingComponent,
                     reason: "no compiled WASM component available".to_string(),
                 })?;
-                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-                add_wasi_to_linker(&mut linker);
-                host::layer_support_postprocess::LayerModule::add_to_linker::<
-                    _,
-                    wasmtime::component::HasSelf<_>,
-                >(&mut linker, |ctx| ctx)
-                .map_err(mk_linker_err)?;
+                let linker = T::linker(engine, stage_id).map_err(mk_linker_err)?;
                 let ctx = HostExecutionContextBuilder::new(
                     module_id.to_string(),
                     envelope_floor,
@@ -1105,9 +1143,7 @@ impl WasmRuntimeDispatcher {
                         reason: format!("failed to push config resource: {e}"),
                     })?;
                 let bindings = host::layer_support_postprocess::LayerModule::instantiate(
-                    &mut store,
-                    component.wasmtime_component(),
-                    &linker,
+                    &mut store, component, &linker,
                 )
                 .map_err(mk_inst_err)?;
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
@@ -1146,13 +1182,7 @@ impl WasmRuntimeDispatcher {
                     phase: DispatchPhase::MissingComponent,
                     reason: "no compiled WASM component available".to_string(),
                 })?;
-                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-                add_wasi_to_linker(&mut linker);
-                host::layer_path_optimization::LayerModule::add_to_linker::<
-                    _,
-                    wasmtime::component::HasSelf<_>,
-                >(&mut linker, |ctx| ctx)
-                .map_err(mk_linker_err)?;
+                let linker = T::linker(engine, stage_id).map_err(mk_linker_err)?;
                 let ctx = HostExecutionContextBuilder::new(
                     module_id.to_string(),
                     envelope_floor,
@@ -1181,9 +1211,7 @@ impl WasmRuntimeDispatcher {
                         reason: format!("failed to push config resource: {e}"),
                     })?;
                 let bindings = host::layer_path_optimization::LayerModule::instantiate(
-                    &mut store,
-                    component.wasmtime_component(),
-                    &linker,
+                    &mut store, component, &linker,
                 )
                 .map_err(mk_inst_err)?;
                 let mem_initial_bytes = store.data().mem_tracker.current_bytes;
@@ -1240,7 +1268,7 @@ impl WasmRuntimeDispatcher {
         LAST_WASM_MEM_SAMPLE.with(|c| c.set((mem_initial_bytes, mem_peak_bytes)));
 
         stash_batch_calls(store.data_mut());
-        stash_profile(&mut store);
+        stash_profile(store.store);
 
         Ok(store.into_data())
     }
@@ -2214,8 +2242,8 @@ fn build_paint_layer_data_with_plan(
 /// assembly. Selected source membership, current geometry, prepared
 /// annotations, config and held claims all come from the one assembly built
 /// before the native/WASM split. Ordinary delivery preserves source identity.
-fn push_slice_regions(
-    store: &mut wasmtime::Store<HostExecutionContext>,
+fn push_slice_regions<T: LayerCallState>(
+    store: &mut LayerCallStore<'_, T>,
     transport: &crate::marshal::transport::LayerTransport<'_>,
     current_slice: Option<&slicer_ir::SliceIR>,
     layer_z: f32,
@@ -2403,8 +2431,8 @@ pub fn resolve_seam_for_perimeter_region(
 /// call-local assembly: one view per selected perimeter authority, using the
 /// current committed region when present and an explicit empty view (indexed
 /// config, empty geometry) otherwise. Never a build-time snapshot.
-fn push_perimeter_regions(
-    store: &mut wasmtime::Store<HostExecutionContext>,
+fn push_perimeter_regions<T: LayerCallState>(
+    store: &mut LayerCallStore<'_, T>,
     transport: &crate::marshal::transport::LayerTransport<'_>,
     seam_plan_ir: Option<&slicer_ir::SeamPlanIR>,
     layer_index: u32,
@@ -2622,8 +2650,8 @@ pub(crate) fn resolve_region_tool_index_with_selection(
 /// tool index, and the authorized wall-source id. Walls/seams come from the
 /// region's exact own `PerimeterIR` entry when present; a modifier or painted
 /// variant without its own entry borrows only its explicit parent/base donor.
-fn push_infill_postprocess_regions(
-    store: &mut wasmtime::Store<HostExecutionContext>,
+fn push_infill_postprocess_regions<T: LayerCallState>(
+    store: &mut LayerCallStore<'_, T>,
     transport: &crate::marshal::transport::LayerTransport<'_>,
 ) -> Result<Vec<Resource<host::PerimeterRegionData>>, wasmtime::Error> {
     let mut handles = Vec::with_capacity(transport.models.len());
@@ -3116,13 +3144,33 @@ pub fn with_authored_coloring_capture_for_test<R>(
     (result, contexts)
 }
 
-impl LayerStageRunner for WasmRuntimeDispatcher {
-    fn run_stage(
+impl WasmRuntimeDispatcher {
+    /// Invoke a selected prepared Layer module through its frozen fresh adapter.
+    /// Input selection, marshalling and commit reconstruction are shared with
+    /// ordinary dispatch; synthetic host anchored work never enters this method.
+    #[allow(clippy::too_many_arguments)]
+    pub fn run_prepared_stage(
         &self,
         stage_id: &StageId,
         layer: &GlobalLayer,
         module: &CompiledModuleLive<'_>,
         input: LayerStageInput<'_>,
+        binding: &crate::preparation::FrozenPreparationBinding,
+        owner: &crate::preparation::PreparationOwner,
+    ) -> Result<Option<slicer_ir::LayerStageCommit>, slicer_ir::LayerStageError> {
+        self.run_layer_stage(stage_id, layer, module, input, Some((binding, owner)))
+    }
+
+    fn run_layer_stage(
+        &self,
+        stage_id: &StageId,
+        layer: &GlobalLayer,
+        module: &CompiledModuleLive<'_>,
+        input: LayerStageInput<'_>,
+        prepared: Option<(
+            &crate::preparation::FrozenPreparationBinding,
+            &crate::preparation::PreparationOwner,
+        )>,
     ) -> Result<Option<slicer_ir::LayerStageCommit>, slicer_ir::LayerStageError> {
         let module_id_str = module.module_id.as_str();
         let selection = input
@@ -3245,7 +3293,23 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
                 &transport,
                 layer.is_raft,
             );
-            let response =
+            let response = if let Some((binding, owner)) = prepared {
+                binding
+                    .with_native_plan(owner, |frozen_entry| {
+                        let NativeStageEntry::Layer(frozen_entry) = frozen_entry else {
+                            return Err(slicer_sdk::error::ModuleError::fatal(
+                                57400,
+                                "native entry family does not match layer runner",
+                            ));
+                        };
+                        frozen_entry(&request)
+                    })
+                    .map_err(|error| slicer_ir::LayerStageError::FatalModule {
+                        stage_id: stage_id.clone(),
+                        module_id: module.module_id.clone(),
+                        message: error.to_string(),
+                    })?
+            } else {
                 entry(&request).map_err(|e| slicer_ir::LayerStageError::FatalModule {
                     stage_id: stage_id.clone(),
                     module_id: module.module_id.clone(),
@@ -3253,7 +3317,8 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
                         "module error (code={}, fatal={}): {}",
                         e.code, e.fatal, e.message
                     ),
-                })?;
+                })?
+            };
             return crate::marshal::native::commit_native_layer_response_with_authored(
                 &response,
                 stage_export,
@@ -3270,32 +3335,78 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         let (envelope_floor, envelope_height) =
             derive_layer_output_envelope_from_input(layer, input.slice);
 
-        let ctx = match self.dispatch_layer_call(
-            stage_id,
-            module_id_str,
-            module_id_str,
-            layer,
-            module.wasm_component.as_ref(),
-            &module.instance_pool,
-            &module.config_view,
-            envelope_floor,
-            envelope_height,
-            input.mesh.clone(),
-            held_claims_map,
-            effective_config_view,
-            config_fields_per_region,
-            layer.index,
-            layer.z,
-            None,
-            input.seam_plan.as_deref(),
-            input.support_plan.as_deref(),
-            input.slice,
-            input.layer_collection,
-            input.surface_classification,
-            input.infill,
-            input.lightning_tree_ir.as_deref(),
-            &transport,
-        ) {
+        macro_rules! dispatch {
+            ($store:expr, $component:expr) => {
+                self.dispatch_layer_call(
+                    $store,
+                    stage_id,
+                    module_id_str,
+                    module_id_str,
+                    layer,
+                    $component,
+                    &module.instance_pool,
+                    &module.config_view,
+                    envelope_floor,
+                    envelope_height,
+                    input.mesh.clone(),
+                    held_claims_map,
+                    effective_config_view,
+                    config_fields_per_region,
+                    layer.index,
+                    layer.z,
+                    None,
+                    input.seam_plan.as_deref(),
+                    input.support_plan.as_deref(),
+                    input.slice,
+                    input.layer_collection,
+                    input.surface_classification,
+                    input.infill,
+                    input.lightning_tree_ir.as_deref(),
+                    &transport,
+                )
+            };
+        }
+        let empty_context = || {
+            HostExecutionContextBuilder::new(module_id_str, envelope_floor, envelope_height).build()
+        };
+        let dispatched = if let Some((binding, owner)) = prepared {
+            binding
+                .with_wasm_plan(owner, empty_context(), |component, store| {
+                    // The fresh adapter owns the Store; configure the same ordinary
+                    // call budget, limiter and optional profiling boundary hook.
+                    store.limiter(|state| &mut state.ordinary_mut().mem_tracker);
+                    if self.engine.profiling_enabled() {
+                        store.set_fuel(crate::instance::FUEL_BUDGET)?;
+                        store.call_hook(|mut cx, hook| {
+                            if matches!(hook, wasmtime::CallHook::CallingHost) {
+                                let remaining =
+                                    cx.get_fuel().unwrap_or(crate::instance::FUEL_BUDGET);
+                                use crate::instance::FuelSampleSink;
+                                cx.data_mut().ordinary_mut().record_host_entry_fuel(
+                                    crate::instance::FUEL_BUDGET.saturating_sub(remaining),
+                                );
+                            }
+                            Ok(())
+                        });
+                    }
+                    Ok(dispatch!(store, Some(component)))
+                })
+                .map_err(|error| slicer_ir::LayerStageError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: error.to_string(),
+                })?
+        } else {
+            let mut store = self.new_call_store(empty_context());
+            dispatch!(
+                &mut store,
+                module
+                    .wasm_component
+                    .as_ref()
+                    .map(|component| component.wasmtime_component())
+            )
+        };
+        let ctx = match dispatched {
             Ok(ctx) => ctx,
             Err(e) if e.phase == DispatchPhase::MissingComponent => {
                 return Err(slicer_ir::LayerStageError::FatalModule {
@@ -3322,6 +3433,18 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             ctx,
             Some(&authored_coloring_ctx),
         )
+    }
+}
+
+impl LayerStageRunner for WasmRuntimeDispatcher {
+    fn run_stage(
+        &self,
+        stage_id: &StageId,
+        layer: &GlobalLayer,
+        module: &CompiledModuleLive<'_>,
+        input: LayerStageInput<'_>,
+    ) -> Result<Option<slicer_ir::LayerStageCommit>, slicer_ir::LayerStageError> {
+        self.run_layer_stage(stage_id, layer, module, input, None)
     }
 
     fn last_wasm_mem_sample(&self) -> (u64, u64) {
@@ -3840,7 +3963,7 @@ pub fn last_batch_calls_for_test() -> Vec<(String, u32)> {
 /// Returns `0` when the store's engine does not meter fuel — `get_fuel` errors
 /// in that case, and "no sample" is the honest answer, matching how
 /// `LAST_WASM_MEM_SAMPLE` reports `(0, 0)` for a component with no memory.
-fn call_fuel_consumed(store: &wasmtime::Store<HostExecutionContext>) -> u64 {
+fn call_fuel_consumed<T>(store: &wasmtime::Store<T>) -> u64 {
     let remaining = store.get_fuel().unwrap_or(crate::instance::FUEL_BUDGET);
     crate::instance::FUEL_BUDGET.saturating_sub(remaining)
 }
@@ -3849,13 +3972,13 @@ fn call_fuel_consumed(store: &wasmtime::Store<HostExecutionContext>) -> u64 {
 /// store into the thread-local stashes `last_profile_marks` / `last_call_fuel`
 /// drain. Draining rather than cloning, for the same reason as
 /// [`stash_batch_calls`]: the context is about to be consumed by `into_data`.
-fn stash_profile(store: &mut wasmtime::Store<HostExecutionContext>) {
+fn stash_profile<T: LayerCallState>(store: &mut wasmtime::Store<T>) {
     LAST_CALL_FUEL.with(|c| c.set(call_fuel_consumed(store)));
-    if store.data().profile_marks().is_empty() {
+    if store.data().ordinary().profile_marks().is_empty() {
         return;
     }
     let marks: Vec<crate::profiling::ProfileMark> =
-        std::mem::take(&mut store.data_mut().profile_marks);
+        std::mem::take(&mut store.data_mut().ordinary_mut().profile_marks);
     LAST_PROFILE_MARKS.with(|c| c.borrow_mut().extend(marks));
 }
 

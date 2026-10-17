@@ -26,18 +26,16 @@ use slicer_gcode::{
 
 use crate::layer_executor::{
     build_and_commit_layer_selection_index,
-    execute_per_layer_with_committed_anchored_events_and_support_tools,
     execute_per_layer_with_committed_anchored_events_instrumented, promote_global_layers,
     SupportToolSelection,
 };
 use crate::{
-    compute_serial_edges_from_compiled, execute_layer_finalization,
-    execute_layer_finalization_with_instrumentation, execute_postpass,
-    prepass::{execute_prepass_with_builtins_configured, ConfigExpansionAuthority},
-    Blackboard, ConfigBoundsIndex, ExecutionPlan, FinalizationError, FinalizationStageRunner,
-    GCodeEmitter, GCodeSerializer, LayerExecutionError, LayerProgressSink, LayerStageRunner,
-    ModuleAccessAudit, NoopInstrumentation, NoopLayerProgressSink, Phase, PipelineInstrumentation,
-    PostpassError, PostpassStageRunner, PrepassExecutionError, PrepassStageRunner, TierKind,
+    compute_serial_edges_from_compiled, execute_layer_finalization_with_instrumentation,
+    execute_postpass, prepass::ConfigExpansionAuthority, Blackboard, ConfigBoundsIndex,
+    ExecutionPlan, FinalizationError, FinalizationStageRunner, GCodeEmitter, GCodeSerializer,
+    LayerExecutionError, LayerProgressSink, LayerStageRunner, ModuleAccessAudit,
+    NoopInstrumentation, NoopLayerProgressSink, Phase, PipelineInstrumentation, PostpassError,
+    PostpassStageRunner, PrepassExecutionError, PrepassStageRunner, TierKind,
 };
 
 /// Injectable stage runners for the pipeline.
@@ -132,6 +130,13 @@ pub enum PipelineError {
     ModelLoad(String),
     /// PrePass stage execution failed.
     Prepass(PrepassExecutionError),
+    /// A required whole-print preparation dependency failed.
+    Preparation {
+        /// Selected module whose dependency failed.
+        module_id: slicer_ir::ModuleId,
+        /// Original typed failure, including module fatality and code.
+        failure: Arc<slicer_wasm_host::preparation::PreparationFailure>,
+    },
     /// Per-layer execution failed.
     LayerExecution(LayerExecutionError),
     /// Layer finalization failed.
@@ -145,6 +150,9 @@ impl fmt::Display for PipelineError {
         match self {
             Self::ModelLoad(msg) => write!(f, "model load failed: {msg}"),
             Self::Prepass(e) => write!(f, "prepass failed: {e}"),
+            Self::Preparation { module_id, failure } => {
+                write!(f, "preparation failed for {module_id}: {failure}")
+            }
             Self::LayerExecution(e) => write!(f, "layer execution failed: {e}"),
             Self::Finalization(e) => write!(f, "finalization failed: {e}"),
             Self::Postpass(e) => write!(f, "postpass failed: {e}"),
@@ -200,111 +208,17 @@ pub fn run_pipeline_with_events(
     config: PipelineConfig,
     sink: &(dyn LayerProgressSink + Sync),
 ) -> Result<PipelineOutput, PipelineError> {
-    let PipelineConfig {
-        mesh_ir,
-        mut plan,
-        mut runners,
-        resolved_configs,
-        default_resolved_config,
-        bounds,
-        wasm_handles,
-        support_tools,
-        cancel_flag: _,
-        anchored_entities,
-    } = config;
-
-    // Step 1: Create blackboard with the loaded mesh. Layer count is not known
-    // yet — the execution plan is built before prepass runs, so global_layers
-    // is always empty at this point. We pass 0 here; the blackboard's
-    // layer_outputs slot-vec is not in the per-layer critical path (the layer
-    // loop returns a Vec<LayerCollectionIR> directly), so this is safe.
-    let mut blackboard = Blackboard::new(mesh_ir, 0);
-
-    // Step 2: Execute prepass stages sequentially, collecting runtime audits.
-    // Pass the resolved configs so the RegionMapping built-in can use them.
-    // raw_config_source is empty here for backward compat (no paint overrides);
-    // use run_pipeline_with_raw_config for production paint-override support.
-    //
-    // NOTE: this entry point deliberately does NOT wrap the serializer with the
-    // thumbnail/CONFIG_BLOCK path — it emits a bare gcode body (see
-    // `run_pipeline_with_raw_config` / `run_pipeline_core` for the production
-    // CONFIG_BLOCK path). That difference is why this function keeps its own
-    // body rather than forwarding to `run_pipeline_core`.
-    let empty_raw: HashMap<ConfigKey, ConfigValue> = HashMap::new();
-    let prepass_audits = execute_prepass_with_builtins_configured(
-        &plan,
-        &mut blackboard,
-        runners.prepass.as_ref(),
-        &resolved_configs,
-        &default_resolved_config,
-        &empty_raw,
-        &bounds,
-        &wasm_handles,
-    )?;
-
-    // Step 2b: Promote the LayerPlanIR committed by prepass into the execution
-    // plan so that the per-layer loop iterates real layers. The plan is built
-    // before prepass runs (global_layers = []) because the layer schedule is
-    // determined by modules such as layer-planner-default during prepass itself.
-    promote_global_layers(&mut plan, &blackboard);
-    build_and_commit_layer_selection_index(&plan, &mut blackboard).map_err(|error| {
-        let slicer_ir::LayerStageError::FatalModule {
-            stage_id,
-            module_id,
-            message,
-        } = error
-        else {
-            unreachable!("selection construction returns only FatalModule errors")
-        };
-        LayerExecutionError::FatalLayer {
-            // Construction fails before the first layer is invoked.
-            layer_index: plan.global_layers.first().map_or(0, |layer| layer.index),
-            stage_id,
-            module_id,
-            message,
-        }
-    })?;
-
-    // Step 3: Execute per-layer stages in parallel via rayon
-    let (committed_events, layer_audits) =
-        execute_per_layer_with_committed_anchored_events_and_support_tools(
-            &plan,
-            &blackboard,
-            runners.layer.as_ref(),
-            sink,
-            &wasm_handles,
-            support_tools,
-            &anchored_entities,
-        )?;
-    let mut layer_irs = crate::anchored_rows::synthesize_anchored_rows(committed_events)?;
-
-    // Step 4: Execute layer finalization (if present)
-    execute_layer_finalization(
-        &plan,
-        &blackboard,
-        runners.finalization.as_ref(),
-        &mut layer_irs,
-        &wasm_handles,
-    )?;
-
-    // Step 5: Execute postpass (emit + serialize gcode)
-    let (gcode_text, postpass_audits) = execute_postpass(
-        &plan,
-        &layer_irs,
-        &blackboard,
-        runners.emitter.as_ref(),
-        runners.serializer.as_ref(),
-        runners.postpass.as_mut(),
-        &wasm_handles,
-    )?;
-
-    Ok(PipelineOutput {
-        gcode_text,
-        prepass_audits,
-        layer_audits,
-        postpass_audits,
-        region_map: blackboard.region_map().cloned(),
-    })
+    // Compatibility callers still receive a bare body, not a CONFIG_BLOCK.
+    run_pipeline_core(
+        config,
+        &HashMap::new(),
+        sink,
+        &NoopInstrumentation,
+        None,
+        None,
+        None,
+        false,
+    )
 }
 
 /// Execute the full slicing pipeline with paint-semantic config overrides.
@@ -325,6 +239,8 @@ pub fn run_pipeline_with_raw_config(
         &NoopInstrumentation,
         None,
         None,
+        None,
+        true,
     )
 }
 
@@ -334,6 +250,7 @@ pub(crate) fn run_pipeline_with_raw_config_authority(
     sink: &(dyn LayerProgressSink + Sync),
     expansion_authority: ConfigExpansionAuthority<'_>,
     config_block: Option<&BTreeMap<String, ConfigValue>>,
+    lifecycle: Option<&crate::preparation_lifecycle::PrintPreparationScope>,
 ) -> Result<PipelineOutput, PipelineError> {
     run_pipeline_core(
         config,
@@ -342,6 +259,8 @@ pub(crate) fn run_pipeline_with_raw_config_authority(
         &NoopInstrumentation,
         Some(expansion_authority),
         config_block,
+        lifecycle,
+        true,
     )
 }
 
@@ -365,7 +284,16 @@ pub fn run_pipeline_with_instrumentation(
     sink: &(dyn LayerProgressSink + Sync),
     instrumentation: &(dyn PipelineInstrumentation + Sync),
 ) -> Result<PipelineOutput, PipelineError> {
-    run_pipeline_core(config, raw_config_source, sink, instrumentation, None, None)
+    run_pipeline_core(
+        config,
+        raw_config_source,
+        sink,
+        instrumentation,
+        None,
+        None,
+        None,
+        true,
+    )
 }
 
 pub(crate) fn run_pipeline_with_instrumentation_authority(
@@ -375,6 +303,7 @@ pub(crate) fn run_pipeline_with_instrumentation_authority(
     instrumentation: &(dyn PipelineInstrumentation + Sync),
     expansion_authority: ConfigExpansionAuthority<'_>,
     config_block: Option<&BTreeMap<String, ConfigValue>>,
+    lifecycle: Option<&crate::preparation_lifecycle::PrintPreparationScope>,
 ) -> Result<PipelineOutput, PipelineError> {
     run_pipeline_core(
         config,
@@ -383,6 +312,8 @@ pub(crate) fn run_pipeline_with_instrumentation_authority(
         instrumentation,
         Some(expansion_authority),
         config_block,
+        lifecycle,
+        true,
     )
 }
 
@@ -402,7 +333,36 @@ fn run_pipeline_core(
     instrumentation: &(dyn PipelineInstrumentation + Sync),
     expansion_authority: Option<ConfigExpansionAuthority<'_>>,
     config_block: Option<&BTreeMap<String, ConfigValue>>,
+    lifecycle: Option<&crate::preparation_lifecycle::PrintPreparationScope>,
+    wrap_serializer: bool,
 ) -> Result<PipelineOutput, PipelineError> {
+    run_pipeline_until_preparation(
+        config,
+        raw_config_source,
+        sink,
+        instrumentation,
+        expansion_authority,
+        config_block,
+        lifecycle,
+        wrap_serializer,
+        false,
+    )
+    .map(|output| output.expect("full pipeline completes consumers"))
+}
+
+/// Both full slicing and metadata capture enter this body; capture exits only
+/// after the final committed preparation closure, before any consumer work.
+pub(crate) fn run_pipeline_until_preparation(
+    config: PipelineConfig,
+    raw_config_source: &HashMap<ConfigKey, ConfigValue>,
+    sink: &(dyn LayerProgressSink + Sync),
+    instrumentation: &(dyn PipelineInstrumentation + Sync),
+    expansion_authority: Option<ConfigExpansionAuthority<'_>>,
+    config_block: Option<&BTreeMap<String, ConfigValue>>,
+    lifecycle: Option<&crate::preparation_lifecycle::PrintPreparationScope>,
+    wrap_serializer: bool,
+    preparation_only: bool,
+) -> Result<Option<PipelineOutput>, PipelineError> {
     let PipelineConfig {
         mesh_ir,
         mut plan,
@@ -459,29 +419,55 @@ fn run_pipeline_core(
         &wasm_handles,
         expansion_authority,
     );
-    instrumentation.on_phase_end(Phase::PrePass);
-    let prepass_audits = prepass_audits?;
+    let prepass_audits = match prepass_audits {
+        Ok(audits) => audits,
+        Err(error) => {
+            instrumentation.on_phase_end(Phase::PrePass);
+            return Err(error.into());
+        }
+    };
 
     dump_prepass_ir_if_requested(&blackboard);
 
-    promote_global_layers(&mut plan, &blackboard);
-    build_and_commit_layer_selection_index(&plan, &mut blackboard).map_err(|error| {
-        let slicer_ir::LayerStageError::FatalModule {
-            stage_id,
-            module_id,
-            message,
-        } = error
-        else {
-            unreachable!("selection construction returns only FatalModule errors")
-        };
-        LayerExecutionError::FatalLayer {
-            // Construction fails before the first layer is invoked.
-            layer_index: plan.global_layers.first().map_or(0, |layer| layer.index),
-            stage_id,
-            module_id,
-            message,
+    let preparation_result = (|| -> Result<(), PipelineError> {
+        promote_global_layers(&mut plan, &blackboard);
+        build_and_commit_layer_selection_index(&plan, &mut blackboard).map_err(|error| {
+            let slicer_ir::LayerStageError::FatalModule {
+                stage_id,
+                module_id,
+                message,
+            } = error
+            else {
+                unreachable!("selection construction returns only FatalModule errors")
+            };
+            LayerExecutionError::FatalLayer {
+                // Construction fails before the first layer is invoked.
+                layer_index: plan.global_layers.first().map_or(0, |layer| layer.index),
+                stage_id,
+                module_id,
+                message,
+            }
+        })?;
+
+        if let Some(lifecycle) = lifecycle {
+            lifecycle
+                .capture_committed_selection(&plan, &blackboard)
+                .map_err(|message| LayerExecutionError::FatalLayer {
+                    layer_index: plan.global_layers.first().map_or(0, |layer| layer.index),
+                    stage_id: "Layer::Selection".into(),
+                    module_id: "host".into(),
+                    message,
+                })?;
+            lifecycle.prepare_committed(cancel_flag.clone())?;
         }
-    })?;
+        Ok(())
+    })();
+    instrumentation.on_phase_end(Phase::PrePass);
+    preparation_result?;
+
+    if preparation_only {
+        return Ok(None);
+    }
 
     if cancel_flag
         .as_ref()
@@ -538,6 +524,18 @@ fn run_pipeline_core(
         }
         fin_result?;
 
+        if !wrap_serializer {
+            return execute_postpass(
+                &plan,
+                &layer_irs,
+                &blackboard,
+                runners.emitter.as_ref(),
+                runners.serializer.as_ref(),
+                runners.postpass.as_mut(),
+                &wasm_handles,
+            )
+            .map_err(PipelineError::from);
+        }
         run_postpass_with_thumbnail(
             &plan,
             &blackboard,
@@ -553,13 +551,13 @@ fn run_pipeline_core(
     instrumentation.on_phase_end(Phase::PostPass);
     let (gcode_text, postpass_audits) = post_result?;
 
-    Ok(PipelineOutput {
+    Ok(Some(PipelineOutput {
         gcode_text,
         prepass_audits,
         layer_audits,
         postpass_audits,
         region_map: blackboard.region_map().cloned(),
-    })
+    }))
 }
 
 /// Dump the committed prepass IR artifacts when `PNP_DUMP_PREPASS_IR` names a

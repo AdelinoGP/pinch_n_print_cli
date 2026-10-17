@@ -2688,6 +2688,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "preparation-lifecycle-anchored-guest"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
+name = "preparation-lifecycle-guest"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
 name = "preparation-pilot-infill"
 version = "0.1.0"
 dependencies = [
@@ -3606,6 +3626,8 @@ dependencies = [
  "pnp-cli-locator",
  "postcard",
  "predicates",
+ "preparation-lifecycle-anchored-guest",
+ "preparation-lifecycle-guest",
  "raft-default",
  "rayon",
  "rectilinear-infill",
@@ -3642,6 +3664,11 @@ dependencies = [
  "wasmtime",
  "wat",
  "wave-overhangs",
+ "whole-print-input-anchored",
+ "whole-print-input-infill",
+ "whole-print-input-path",
+ "whole-print-input-perimeters",
+ "whole-print-input-support",
  "wipe-tower",
  "wit-parser 0.247.0",
  "witness",
