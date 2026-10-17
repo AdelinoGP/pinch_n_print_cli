@@ -37,14 +37,46 @@ pub struct GuestSpec {
     pub stage_id: Option<String>,
 }
 
-/// Locate the workspace root by popping one level from the xtask crate dir.
+/// Locate the workspace root at runtime by walking up from the current
+/// directory to the nearest ancestor holding both `Cargo.toml` and `crates/`.
+///
+/// Deliberately NOT `env!("CARGO_MANIFEST_DIR")`: the shared target's cached
+/// xtask binary is routinely built in one checkout and run in another
+/// (perf-vs-orca tickets 71 and 70 — a binary whose manifest dir was baked in
+/// at build time makes the second checkout's `check-literals` /
+/// `check-test-quality` gates silently scan zero files and still print
+/// green). Root discovery follows where the process runs, never where the
+/// binary was built.
 pub fn workspace_root() -> PathBuf {
-    let xtask_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let ws = xtask_dir
-        .parent()
-        .expect("xtask/ must have a parent directory (workspace root)")
-        .to_path_buf();
-    ws.canonicalize().unwrap_or(ws)
+    let cwd = std::env::current_dir().expect("read current directory");
+    match locate_root_from(&cwd) {
+        Some(ws) => ws.canonicalize().unwrap_or(ws),
+        None => panic!(
+            "xtask: cannot locate the workspace root by walking up from {} \
+             (no ancestor directory contains both Cargo.toml and crates/). \
+             Run cargo xtask from inside the repository. If the binary was \
+             built somewhere else, purge its cached build units \
+             (target/debug/xtask.exe, deps/xtask-*, .fingerprint/xtask-*) and \
+             rebuild.",
+            cwd.display()
+        ),
+    }
+}
+
+/// Walk up from `start`, returning the first ancestor directory (start
+/// included) that holds both `Cargo.toml` and `crates/`, or `None` when the
+/// filesystem root is reached without a match. The returned path is NOT
+/// canonicalized; callers do that per their own contract.
+pub(crate) fn locate_root_from(start: &Path) -> Option<PathBuf> {
+    let mut dir = start.to_path_buf();
+    loop {
+        if dir.join("Cargo.toml").is_file() && dir.join("crates").is_dir() {
+            return Some(dir);
+        }
+        if !dir.pop() {
+            return None;
+        }
+    }
 }
 
 /// Check if the parsed TOML table has [lib] crate-type containing "cdylib".
@@ -2376,6 +2408,42 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn locate_root_from_finds_marker_ancestor() {
+        let temp = TempDir::new();
+        let root = temp.0.join("repo");
+        fs::create_dir_all(root.join("crates")).expect("create crates dir");
+        fs::write(root.join("Cargo.toml"), "[workspace]\n").expect("write root manifest");
+        let nested = root.join("target").join("debug").join("sub");
+        fs::create_dir_all(&nested).expect("create nested dir");
+        assert_eq!(locate_root_from(&nested), Some(root));
+    }
+
+    #[test]
+    fn locate_root_from_stops_at_the_nearest_marker() {
+        let temp = TempDir::new();
+        let inner = temp.0.join("outer").join("crates").join("inner");
+        fs::create_dir_all(inner.join("crates")).expect("create inner crates dir");
+        fs::write(inner.join("Cargo.toml"), "[workspace]\n").expect("write inner manifest");
+        let outer = temp.0.join("outer");
+        fs::create_dir_all(outer.join("crates")).expect("create outer crates dir");
+        fs::write(outer.join("Cargo.toml"), "[workspace]\n").expect("write outer manifest");
+        let child = inner.join("target");
+        fs::create_dir_all(&child).expect("create child dir");
+        assert_eq!(locate_root_from(&child), Some(inner));
+    }
+
+    #[test]
+    fn locate_root_from_unmatched_start_is_none() {
+        // A relative path that names nothing: both marker probes fail and
+        // `pop` reaches the empty path, without consulting this machine's
+        // real ancestors above the start point.
+        assert_eq!(
+            locate_root_from(Path::new("pnp71-nonexistent-start-here")),
+            None
+        );
     }
 
     #[test]

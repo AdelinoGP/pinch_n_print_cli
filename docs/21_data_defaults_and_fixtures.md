@@ -27,6 +27,15 @@ the final summary is
 Exit code 0 means no violations (and is also used by `--report`), 1 means
 violations in enforce mode, and 2 means invalid usage such as an unknown flag.
 
+A scan that collects zero enforced files refuses to pass (exit 1, distinct
+error naming the workspace root), in every mode and with or without path
+filters: a zero-file scan proves nothing, and it was the exact signature of a
+stale cached xtask binary resolving a foreign checkout's dead root
+(perf-vs-orca tickets 71/70 — "0 violations / watchlist: 0 types" while the
+real watchlist was 159). The workspace root is resolved at runtime by walking
+up from the current directory for a directory holding both `Cargo.toml` and
+`crates/`, never from the binary's compile-time path.
+
 ```rust
 // OK — functional record update from Default
 let p = Point3WithWidth { x: 1.0, y: 2.0, z: 3.0, ..Default::default() };
