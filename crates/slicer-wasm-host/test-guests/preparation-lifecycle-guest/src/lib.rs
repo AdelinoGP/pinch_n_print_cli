@@ -14,6 +14,8 @@ use slicer_sdk::views::PerimeterRegionView;
 
 pub struct PreparationLifecycleGuest {
     ready_empty: bool,
+    final_inputs: bool,
+    consumer_trap: bool,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -51,10 +53,20 @@ impl LayerPreparation for PreparationLifecycleGuest {
         input.support_geometry(0, u64::MAX).map_err(input_error)?;
         input.support_plan(0, u64::MAX).map_err(input_error)?;
         let mut selected_config = None;
+        let mut painted = false;
+        let mut shell = false;
         for layer in layers {
-            input
+            let regions = input
                 .regions(layer.index, 0, u64::MAX)
                 .map_err(input_error)?;
+            for region in regions {
+                painted |= region.variant_chain.iter().any(|(semantic, value)| {
+                    semantic == "fuzzy_skin"
+                        && *value == slicer_sdk::preparation::PreparationPaintValue::Flag(true)
+                });
+                shell |=
+                    region.bottom_shell_index == Some(0) && !region.bottom_solid_fill.is_empty();
+            }
             input
                 .region_configs(layer.index, 0, u64::MAX)
                 .map_err(input_error)?;
@@ -87,7 +99,7 @@ impl LayerPreparation for PreparationLifecycleGuest {
                 });
             }
             "panic" | "trap" => panic!("lifecycle fixture preparation trap"),
-            "ready" | "required_decoder" | "duplicate_put" => {}
+            "ready" | "required_decoder" | "duplicate_put" | "final_inputs" | "consumer_trap" => {}
             _ => return Err(ModuleError::fatal(57402, "unknown preparation_probe_mode")),
         }
         let token = config
@@ -104,6 +116,9 @@ impl LayerPreparation for PreparationLifecycleGuest {
             }
         };
         output.put(token, bytes)?;
+        if mode == "final_inputs" {
+            output.put("final_inputs", &[u8::from(painted), u8::from(shell)])?;
+        }
         if mode == "duplicate_put" {
             // Deliberately catch the write error: successful module completion
             // must still fail publication because the transaction is poisoned.
@@ -125,6 +140,8 @@ impl LayerModule for PreparationLifecycleGuest {
         // or thread-local config is retained between calls or between prints.
         Ok(Self {
             ready_empty: config.get_string("preparation_probe_mode") == Some("ready_empty"),
+            final_inputs: config.get_string("preparation_probe_mode") == Some("final_inputs"),
+            consumer_trap: config.get_string("preparation_probe_mode") == Some("consumer_trap"),
         })
     }
 
@@ -136,7 +153,22 @@ impl LayerModule for PreparationLifecycleGuest {
         _collection: &mut LayerCollectionBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
+        if self.consumer_trap {
+            panic!("lifecycle fixture consumer trap");
+        }
         let view = PreparedPlanView::current()?;
+        if self.final_inputs {
+            let content = view.require("final_inputs")?.read(0, 3)?;
+            if content.len() != 2 {
+                return Err(ModuleError::fatal(57403, "malformed final input witness"));
+            }
+            output
+                .push_comment(format!(
+                    "PREPARATION-FINAL-INPUTS:paint={};shell={}",
+                    content[0], content[1]
+                ))
+                .map_err(|message| ModuleError::fatal(57404, message))?;
+        }
         if view.open("optional")?.is_some() {
             return Err(ModuleError::fatal(
                 57403,

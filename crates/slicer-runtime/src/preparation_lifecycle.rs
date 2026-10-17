@@ -243,10 +243,7 @@ pub(crate) struct SelectedPreparationBinding {
 struct CommittedPreparationSelection {
     inputs: Arc<slicer_wasm_host::preparation::CommittedPreparationInputs>,
     layer_indices: Vec<u32>,
-    readers: Vec<(
-        usize,
-        Arc<dyn slicer_sdk::preparation::PrintPreparationRead + Send + Sync>,
-    )>,
+    readers: Vec<(usize, slicer_wasm_host::preparation::PreparationInputData)>,
     // Indices into the identity-sorted frozen bindings: one entry per print owner.
     eligible: Vec<(
         usize,
@@ -525,9 +522,7 @@ impl PrintPreparationScope {
             let result = PreparationInputData::from_committed(&owner, inputs, selection)
                 .and_then(|input| {
                     if self.capture_requested {
-                        committed
-                            .readers
-                            .push((position, input.typed_reader(&owner, &frozen.binding)?));
+                        committed.readers.push((position, input.clone()));
                     }
                     frozen.binding.prepare_with_publication(&owner, input, |_| {
                         if self.is_cancelled() {
@@ -632,7 +627,7 @@ impl PrintPreparationScope {
                     let mut offset = 0u64;
                     loop {
                         let page = reader
-                            .selected_targets(*layer, offset, 128)
+                            .host_selected_targets(owner, *layer, offset, 128)
                             .map_err(PreparationFailure::Input)?;
                         if page.is_empty() {
                             break;
@@ -901,13 +896,14 @@ impl LayerStageRunner for PreparedLayerStageRunner {
             observation.record.failure = Some(Arc::new(error));
             fail(message)
         })?;
-        let result = self.prepared_dispatcher.run_prepared_stage(
+        let result = self.prepared_dispatcher.run_prepared_stage_with_failure(
             stage_id,
             layer,
             module,
             input,
             &frozen.binding,
             &owner,
+            &mut observation.record.failure,
         );
         observation.failed = result.is_err();
         if result.is_ok() && self.lifecycle.is_cancelled() {

@@ -1476,9 +1476,8 @@ fn run_slice_shared(
             slicer_integrated_modules::native_entries(),
         )
     };
-    // Extension artifacts replace built-in claim defaults before the loader's
-    // claim arbitration, not merely after it has already discarded a candidate.
-    // Same-ID external/native precedence remains the manifest-first loader's.
+    // Suppress only the selected extension's same-ID built-in pair. Claim
+    // overlap belongs to the scheduler's config-aware arbitration below.
     let extension_modules =
         slicer_scheduler::load_modules_from_roots_with_integrated(&[], &extension_registrations)
             .map_err(|error| SliceRunError(format!("invalid extension registration: {error:?}")))?;
@@ -1502,13 +1501,7 @@ fn run_slice_shared(
                         .iter()
                         .any(|candidate| candidate.id() == winner.id())
                 })
-                .any(|extension| {
-                    builtin.id() == extension.id()
-                        || builtin
-                            .claims()
-                            .iter()
-                            .any(|claim| extension.claims().contains(claim))
-                })
+                .any(|extension| builtin.id() == extension.id())
         })
         .map(|module| module.id().to_owned())
         .collect();

@@ -528,6 +528,7 @@ impl WasmRuntimeDispatcher {
         // `None` when no region's `sparse_fill_holder` is `lightning-infill`.
         #[allow(dead_code)] lightning_tree_ir: Option<&slicer_ir::LightningTreeIR>,
         transport: &crate::marshal::transport::LayerTransport<'_>,
+        preparation_failure: &mut Option<Arc<crate::preparation::PreparationFailure>>,
     ) -> Result<HostExecutionContext, DispatchError> {
         use slicer_schema::export_for_stage_id;
         let export_name = export_for_stage_id(stage_id).unwrap_or("unknown");
@@ -1253,15 +1254,24 @@ impl WasmRuntimeDispatcher {
         }?;
 
         // Handle module-returned error (inner Result).
-        call_result.map_err(|module_err| DispatchError {
-            module_id: module_id.to_string(),
-            stage_id: stage_id.clone(),
-            export_name: export_name.to_string(),
-            phase: DispatchPhase::TypedExportCall,
-            reason: format!(
-                "module error (code={}, fatal={}): {}",
-                module_err.code, module_err.fatal, module_err.message
-            ),
+        call_result.map_err(|module_err| {
+            *preparation_failure = Some(Arc::new(crate::preparation::PreparationFailure::Module(
+                slicer_sdk::error::ModuleError {
+                    code: module_err.code,
+                    message: module_err.message.clone(),
+                    fatal: module_err.fatal,
+                },
+            )));
+            DispatchError {
+                module_id: module_id.to_string(),
+                stage_id: stage_id.clone(),
+                export_name: export_name.to_string(),
+                phase: DispatchPhase::TypedExportCall,
+                reason: format!(
+                    "module error (code={}, fatal={}): {}",
+                    module_err.code, module_err.fatal, module_err.message
+                ),
+            }
         })?;
 
         let mem_peak_bytes = store.data().mem_tracker.peak_bytes;
@@ -3158,7 +3168,32 @@ impl WasmRuntimeDispatcher {
         binding: &crate::preparation::FrozenPreparationBinding,
         owner: &crate::preparation::PreparationOwner,
     ) -> Result<Option<slicer_ir::LayerStageCommit>, slicer_ir::LayerStageError> {
-        self.run_layer_stage(stage_id, layer, module, input, Some((binding, owner)))
+        self.run_prepared_stage_with_failure(
+            stage_id, layer, module, input, binding, owner, &mut None,
+        )
+    }
+
+    /// Internal runtime observation adapter; not part of the prepared module API.
+    #[doc(hidden)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn run_prepared_stage_with_failure(
+        &self,
+        stage_id: &StageId,
+        layer: &GlobalLayer,
+        module: &CompiledModuleLive<'_>,
+        input: LayerStageInput<'_>,
+        binding: &crate::preparation::FrozenPreparationBinding,
+        owner: &crate::preparation::PreparationOwner,
+        failure: &mut Option<Arc<crate::preparation::PreparationFailure>>,
+    ) -> Result<Option<slicer_ir::LayerStageCommit>, slicer_ir::LayerStageError> {
+        self.run_layer_stage(
+            stage_id,
+            layer,
+            module,
+            input,
+            Some((binding, owner)),
+            failure,
+        )
     }
 
     fn run_layer_stage(
@@ -3171,6 +3206,7 @@ impl WasmRuntimeDispatcher {
             &crate::preparation::FrozenPreparationBinding,
             &crate::preparation::PreparationOwner,
         )>,
+        preparation_failure: &mut Option<Arc<crate::preparation::PreparationFailure>>,
     ) -> Result<Option<slicer_ir::LayerStageCommit>, slicer_ir::LayerStageError> {
         let module_id_str = module.module_id.as_str();
         let selection = input
@@ -3304,10 +3340,14 @@ impl WasmRuntimeDispatcher {
                         };
                         frozen_entry(&request)
                     })
-                    .map_err(|error| slicer_ir::LayerStageError::FatalModule {
-                        stage_id: stage_id.clone(),
-                        module_id: module.module_id.clone(),
-                        message: error.to_string(),
+                    .map_err(|error| {
+                        let message = error.to_string();
+                        *preparation_failure = Some(Arc::new(error));
+                        slicer_ir::LayerStageError::FatalModule {
+                            stage_id: stage_id.clone(),
+                            module_id: module.module_id.clone(),
+                            message,
+                        }
                     })?
             } else {
                 entry(&request).map_err(|e| slicer_ir::LayerStageError::FatalModule {
@@ -3363,6 +3403,7 @@ impl WasmRuntimeDispatcher {
                     input.infill,
                     input.lightning_tree_ir.as_deref(),
                     &transport,
+                    preparation_failure,
                 )
             };
         }
@@ -3391,10 +3432,14 @@ impl WasmRuntimeDispatcher {
                     }
                     Ok(dispatch!(store, Some(component)))
                 })
-                .map_err(|error| slicer_ir::LayerStageError::FatalModule {
-                    stage_id: stage_id.clone(),
-                    module_id: module.module_id.clone(),
-                    message: error.to_string(),
+                .map_err(|error| {
+                    let message = error.to_string();
+                    *preparation_failure = Some(Arc::new(error));
+                    slicer_ir::LayerStageError::FatalModule {
+                        stage_id: stage_id.clone(),
+                        module_id: module.module_id.clone(),
+                        message,
+                    }
                 })?
         } else {
             let mut store = self.new_call_store(empty_context());
@@ -3416,6 +3461,14 @@ impl WasmRuntimeDispatcher {
                 });
             }
             Err(e) => {
+                if prepared.is_some() && preparation_failure.is_none() {
+                    // Preserve the original Wasmtime detail before wrapping it
+                    // in the ordinary dispatcher/stage diagnostic strings.
+                    *preparation_failure =
+                        Some(Arc::new(crate::preparation::PreparationFailure::Trap {
+                            detail: e.reason.clone(),
+                        }));
+                }
                 return Err(slicer_ir::LayerStageError::FatalModule {
                     stage_id: stage_id.clone(),
                     module_id: module.module_id.clone(),
@@ -3444,7 +3497,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         module: &CompiledModuleLive<'_>,
         input: LayerStageInput<'_>,
     ) -> Result<Option<slicer_ir::LayerStageCommit>, slicer_ir::LayerStageError> {
-        self.run_layer_stage(stage_id, layer, module, input, None)
+        self.run_layer_stage(stage_id, layer, module, input, None, &mut None)
     }
 
     fn last_wasm_mem_sample(&self) -> (u64, u64) {

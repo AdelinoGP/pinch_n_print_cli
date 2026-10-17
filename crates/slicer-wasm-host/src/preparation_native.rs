@@ -28,13 +28,36 @@ pub enum NativePreparationArtifact {
 }
 
 /// Opaque input; production defaults deny every read.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct PreparationInputData {
     fixture: Option<(PreparationOwner, Arc<[u8]>)>,
     pub(super) committed: Option<Arc<super::preparation_input::OwnerPreparationInput>>,
 }
 
 impl PreparationInputData {
+    /// Host-only selection metadata projection, independent of module read grants.
+    /// Uses the same committed projection as the authorized typed reader.
+    pub fn host_selected_targets(
+        &self,
+        owner: &PreparationOwner,
+        layer: u32,
+        offset: u64,
+        max_items: u64,
+    ) -> Result<Vec<slicer_sdk::preparation::PreparationSelectedTarget>, PreparationInputError>
+    {
+        let backing = self
+            .committed
+            .as_deref()
+            .ok_or(PreparationInputError::AccessDenied)?;
+        if !owner.same_owner(&backing.owner) {
+            return Err(PreparationInputError::AccessDenied);
+        }
+        let _guard = owner
+            .active_guard()
+            .map_err(|_| PreparationInputError::AccessDenied)?;
+        backing.selected_targets(layer, offset, max_items)
+    }
+
     /// Construct production input without granting access to pilot fixture bytes.
     pub fn for_owner(_owner: &PreparationOwner) -> Self {
         Self::default()
