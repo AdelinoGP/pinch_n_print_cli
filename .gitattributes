@@ -63,3 +63,9 @@
 # reduced captures (hash-checked site buckets) and its verifiers; preserve
 # their bytes on add/checkout instead of normalizing line endings.
 /docs/specs/perf-vs-orca/evidence/t68-host-roundtrips/** -text whitespace=cr-at-eol
+
+# The scoreboard-refresh set carries curated per-batch run CSVs (median inputs
+# re-derived by verify.py) and the verbatim evicted-partial `.interrupted.csv`
+# disclosures; preserve their bytes on add/checkout instead of normalizing line
+# endings.
+/docs/specs/perf-vs-orca/evidence/scoreboard-refresh-20261017/** -text whitespace=cr-at-eol

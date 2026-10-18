@@ -38,7 +38,34 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-17, on the t71 take):** the human selected
+**Current selection scope (2026-10-18, on the t72 take):** the frontier was
+re-derived on resume — the only open child was
+[20](issues/20-consume-only-when-read-annotations.md), parked below-fold — and
+the human selected a **Scoreboard refresh** from the route options (the map's
+first full matched-pair re-run since 2026-09-22).
+[72](issues/72-scoreboard-refresh.md) was graduated, claimed and **resolved
+(2026-10-18) as a measurement-only take: Orca still wins all 8 cells
+(3.30x–18.03x median wall; process CPU corroborating in every cell), no cell
+within ~1.5x, so the [Gap budget per cell](issues/12-gap-budget-per-cell.md)
+below-fold park condition is re-derived and still binding.** PNP ordinary wall
+improved in 7 of 8 cells vs the 2026-09-22 table (−13.9 % to −34.6 %; benchy
+classic-off +5.4 %), with the Orca-side drift (+1.5 %…+47 %, disclosed) meaning
+part of the raw gap improvement is machine state, not PNP work. The DEV-174
+supports-on taint is retired at the output level (all 16 PNP groups
+`degraded=false`, `non_fatal=0`; ordinary ≡ accelerated bytes in all 8 cells).
+Two infrastructure evictions of long background batches were disclosed and
+recovered per the t57 discipline (interrupted cells re-run whole; evicted
+partial CSVs preserved; base classic-on/arachne-on assembled from per-tool
+chunks under a disclosed interleave deviation). Zero starvation exclusions,
+n=3 per tool, both freshness gates green in every preflight. Evidence:
+[`evidence/scoreboard-refresh-20261017/`](evidence/scoreboard-refresh-20261017/SCOREBOARD.md)
+(`verify.py` exits 0 checkout-only + self-test). No production edit, no
+candidate, no production-source commit. Frontier now:
+[20](issues/20-consume-only-when-read-annotations.md) parked below-fold; the
+take order is the human's. Standing paired acceptance and KEEP/DROP rules
+unchanged.
+
+**Previous selection scope (2026-10-17, on the t71 take):** the human selected
 [71](issues/71-xtask-compile-time-workspace-root.md) from the route options
 presented after t70's closeout and approved the commit. It is **resolved
 (2026-10-17) as a verified infra repair, committed `f067efa2`**: ticket 70's
@@ -676,6 +703,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Matched-pair scoreboard refresh](issues/72-scoreboard-refresh.md): **resolved (2026-10-18; measurement-only take — Orca still wins all 8 cells at 3.30x–18.03x, no cell within ~1.5x; DEV-174 taint retired at the output level; two infrastructure evictions disclosed and recovered)** — full refreshed table in the evidence set: median-wall gaps ord/acc — benchy classic-off 5.14/4.34, arachne-off 3.30/3.31, classic-on 5.87/5.09, arachne-on 4.76/4.63; base classic-off 11.48/9.20, arachne-off 7.39/7.24, classic-on 18.03/16.75, arachne-on 15.65/15.50 (n=3 per tool, zero starvation exclusions, CPU corroborating in every cell, PNP 4.5x–41.5x Orca's CPU). PNP ordinary wall improved vs 2026-09-22 in 7 of 8 cells (−13.9 %…−34.6 %; benchy classic-off +5.4 %), while Orca-side walls drifted +1.5 %…+47 % (machine state, disclosed) — ratios are today-vs-today, not a PNP-work claim. Supports-on cells untainted for the first time (all 16 PNP groups `degraded=false`, `non_fatal=0`; ordinary ≡ accelerated bytes). Evidence: `evidence/scoreboard-refresh-20261017/` (`SCOREBOARD.md`, `SUMMARY.txt`, nine curated row CSVs + two `.interrupted.csv` disclosures, `REPRODUCE.md`, `verify.py` exit 0 + self-test).
+
 - [xtask compile-time workspace root poisons gates from alternate checkouts](issues/71-xtask-compile-time-workspace-root.md): **resolved (2026-10-17; verified infra repair, committed `f067efa2`; docs reconciliation this commit)** — ticket 70's poisoning mechanism reproduced in a detached worktree and refined (foreign invocation overwrites the shared `xtask.exe` with a foreign-baked binary; alive foreign root = silent wrong-tree scan, dead = the recorded false green `watchlist: 0 types` + exit 0). Fix: runtime root resolution by `Cargo.toml`+`crates/` walk from CWD (loud panic otherwise; compile-time macro removed from the production path; one fix point covers all subcommands and derived artifact paths) + zero-scan refusal (exit 1) in both gates, every mode incl. `--report` + runtime-first `#[cfg(test)]` helpers. Foreign-built binary proof: CWD=main → real 159-type watchlist, exit 0; CWD=void → exit 101 loud. `cargo test -p xtask` 185/0 (9 new), workspace clippy 0, check-literals 159-green, check-test-quality --report 0 findings, build-guests --check exit 0. Evidence: [`evidence/t71-xtask-worktree-root/`](evidence/t71-xtask-worktree-root/FINDINGS.md).
 
 - [Clipper engine vendoring and hot-path optimization](issues/69-clipper-vendoring-optimization.md): **resolved (2026-10-16; headroom take — measured headroom, not parity; one candidate graduated, none implemented)** — a dual-engine harness (pristine sealed `clipper2-rust` 1.1.0 vs canonical C++ 1.5.2, MinGW g++ -O2) over a fresh host-side input-dump corpus of the 11 t68 sites (both matched jobs, capture runs byte-identical to the t58 references) plus the t55 body-union corpus measured, on 295 cases × two passes (forward + reversed), **Rust/C++ median ratios offset 2.03–2.09x / union 2.61–2.63x / intersection 1.94–2.00x / difference 1.60–1.76x** (every site above 1 in both passes; 46/295 ordered-hash divergences = the known t31 `clean_collinear` delta, disclosed not investigated). Idealized base-off accumulated ceilings if Rust matched C++: offset 256.5–258.3 s / closing_ex 198.9–200.3 s / clip_polygons 79.5–81.6 s (t60 scope totals re-derived at take time); directly-sampled CP-only ceilings ≈ 46.7–46.8 s base / 2.5–2.7 s benchy, an occupancy-style diagnostic scale of ≈ 1.48 % / ≈ 1.21–1.28 % against t68's instrumented walls — above the ≤ 0.80 % below-floor context, hence candidate-justified. Coverage caveats stated on the ticket (RP leg captured intersections only; region-prep closing/offset ceilings conditional on within-opclass transfer; no engine-internal cost center measured). Probe reverted, both freshness gates green, `verify.py` exits 0 checkout-only with four negative controls rejected. Evidence: `evidence/t69-clipper-engine/` (FINDINGS, HARNESS, CAPTURE, corpus, results, drivers, verifier). Graduated: [70](issues/70-clipper-in-tree-vendoring-first-candidate.md).
@@ -896,6 +925,9 @@ Standing decisions for this effort (2026-09-22):
   measured fuel attribution keeps its candidates in the same below-fold class —
   until a cell lands
   within ~1.5x of Orca or the structural tickets come back short.
+  **Re-derived 2026-10-18 on the
+  [scoreboard refresh](issues/72-scoreboard-refresh.md): the best cell is
+  3.30x (benchy arachne-off) — the park is still binding.**
 - **Named leads from the t60 host:native attribution (2026-10-14).**
   [host:native attribution](issues/60-host-native-attribution.md)
   names two reducible shapes beyond the now-resolved (KEEP 2026-10-16)
