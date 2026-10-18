@@ -38,7 +38,39 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-18, on the t72 take):** the frontier was
+**Current selection scope (2026-10-18, on the t73 take):** the frontier was
+re-derived on resume — the only open child was
+[consume-only-when-read annotations](issues/20-consume-only-when-read-annotations.md),
+parked below-fold — and the human selected a **Base-cell bottleneck refresh**
+from the route options. [73](issues/73-base-current-bottleneck-refresh.md) was
+graduated, claimed and **resolved (2026-10-18) as a measurement-only take**:
+eight fresh ordinary base captures (four fuel profiles + four
+instrumentation-only corroborations) at HEAD `86c15182` (slicer sources = the
+t70 keep `7127b4d6`), every output byte-identical to its t58 qualification
+reference, guest freshness exit 0, 24/24 external modules. The base cells are
+**prepass-dominated** — the common floor is 104–115 s on every cell and the
+supports-on cells add 134–149 s of support stages — while the per-layer phase
+is 94–117 s on classic and 16–23 s on Arachne. Three precise tickets were
+graduated in recommendation order: [LayerFinalization supports-on whole-print
+view cost](issues/74-layerfinalization-supports-on-view-cost.md) (four module
+brackets of 45.0–48.5 s against a 0.30–1.39 s supports-off control, with
+0.042 % of the slice's guest fuel), [ShellClassification phase-B serial commit
+reduction](issues/75-shellclassification-phase-b-commit.md) (26.0–31.4 s on
+every base cell; t27's serial commit is still 25–30 s), and [MeshAnalysis exact
+footprint union reduction](issues/76-meshanalysis-footprint-union.md)
+(19.4–22.2 s serial over 326,546 facets; bbox replacement unsafe, exact
+reduction only). Ticket 20 received the fresh base context (per-layer
+94.3/98.2 s; classic-perimeters 98.8/95.0 % of fuel; t18's 57.9 % base scan
+share) with the below-fold park **unchanged** — the t72 best cell is still
+3.30x. No candidate, timing campaign, production edit or production-source commit. Evidence:
+[`evidence/perf-refresh-base-2026-10-18/`](evidence/perf-refresh-base-2026-10-18/FINDINGS.md)
+(`verify.py` exits 0 checkout-only with four negative controls rejected;
+`analyze.py` reproduces the tables). Frontier now:
+[20](issues/20-consume-only-when-read-annotations.md) parked below-fold and the
+three new tickets unclaimed; the take order is the human's. Standing paired
+acceptance and KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-10-18, on the t72 take):** the frontier was
 re-derived on resume — the only open child was
 [20](issues/20-consume-only-when-read-annotations.md), parked below-fold — and
 the human selected a **Scoreboard refresh** from the route options (the map's
@@ -703,6 +735,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Base current bottleneck refresh](issues/73-base-current-bottleneck-refresh.md): **resolved (2026-10-18; measurement-only take — eight fresh ordinary base captures at post-t70 HEAD, every output byte-identical to its t58 reference; three tickets graduated, t20 park unchanged)** — base is **prepass-dominated**: instrumented wall 214.5/408.7/130.2/360.2 s (classic-off/classic-on/arachne-off/arachne-on), prepass 115.0/237.6/109.2/259.9 s, per-layer 94.3/98.2/16.1/19.8 s, postpass 2.4/69.1/1.4/76.6 s; the common prepass floor is 104–115 s on every cell, supports-on adds 134–149 s of support stages, and ticket 59's Slice verdict (40.0–44.9 s) stands. New leads in recommendation order: **supports-on LayerFinalization view cost** (four whole-print module brackets 10.1–12.5 s each, 45.0–48.5 s total vs 0.30–1.39 s supports-off, while guest fuel is 5.45 B of 12,964 B = 0.042 %), **ShellClassification phase-B serial commit** (26.0–31.4 s; t27's serial commit still 25–30 s), **MeshAnalysis exact union** (19.4–22.2 s serial over 326,546 facets; bbox replacement unsafe). t20 updated with the base context (classic per-layer 94.3/98.2 s; module 98.8/95.0 % of fuel; t18's 57.9 % base scan share) and the below-fold park re-derived as still binding (best cell 3.30x). No candidate, timing run, production edit or production-source commit. Evidence: [`evidence/perf-refresh-base-2026-10-18/`](evidence/perf-refresh-base-2026-10-18/FINDINGS.md) (`verify.py` exit 0 checkout-only + four negative controls rejected; `analyze.py` reproduces the tables).
+
 - [Matched-pair scoreboard refresh](issues/72-scoreboard-refresh.md): **resolved (2026-10-18; measurement-only take — Orca still wins all 8 cells at 3.30x–18.03x, no cell within ~1.5x; DEV-174 taint retired at the output level; two infrastructure evictions disclosed and recovered)** — full refreshed table in the evidence set: median-wall gaps ord/acc — benchy classic-off 5.14/4.34, arachne-off 3.30/3.31, classic-on 5.87/5.09, arachne-on 4.76/4.63; base classic-off 11.48/9.20, arachne-off 7.39/7.24, classic-on 18.03/16.75, arachne-on 15.65/15.50 (n=3 per tool, zero starvation exclusions, CPU corroborating in every cell, PNP 4.5x–41.5x Orca's CPU). PNP ordinary wall improved vs 2026-09-22 in 7 of 8 cells (−13.9 %…−34.6 %; benchy classic-off +5.4 %), while Orca-side walls drifted +1.5 %…+47 % (machine state, disclosed) — ratios are today-vs-today, not a PNP-work claim. Supports-on cells untainted for the first time (all 16 PNP groups `degraded=false`, `non_fatal=0`; ordinary ≡ accelerated bytes). Evidence: `evidence/scoreboard-refresh-20261017/` (`SCOREBOARD.md`, `SUMMARY.txt`, nine curated row CSVs + two `.interrupted.csv` disclosures, `REPRODUCE.md`, `verify.py` exit 0 + self-test).
 
 - [xtask compile-time workspace root poisons gates from alternate checkouts](issues/71-xtask-compile-time-workspace-root.md): **resolved (2026-10-17; verified infra repair, committed `f067efa2`; docs reconciliation this commit)** — ticket 70's poisoning mechanism reproduced in a detached worktree and refined (foreign invocation overwrites the shared `xtask.exe` with a foreign-baked binary; alive foreign root = silent wrong-tree scan, dead = the recorded false green `watchlist: 0 types` + exit 0). Fix: runtime root resolution by `Cargo.toml`+`crates/` walk from CWD (loud panic otherwise; compile-time macro removed from the production path; one fix point covers all subcommands and derived artifact paths) + zero-scan refusal (exit 1) in both gates, every mode incl. `--report` + runtime-first `#[cfg(test)]` helpers. Foreign-built binary proof: CWD=main → real 159-type watchlist, exit 0; CWD=void → exit 101 loud. `cargo test -p xtask` 185/0 (9 new), workspace clippy 0, check-literals 159-green, check-test-quality --report 0 findings, build-guests --check exit 0. Evidence: [`evidence/t71-xtask-worktree-root/`](evidence/t71-xtask-worktree-root/FINDINGS.md).
@@ -928,6 +962,18 @@ Standing decisions for this effort (2026-09-22):
   **Re-derived 2026-10-18 on the
   [scoreboard refresh](issues/72-scoreboard-refresh.md): the best cell is
   3.30x (benchy arachne-off) — the park is still binding.**
+  **Base refresh (2026-10-18):** the fresh base split graduated three
+  unclaimed tickets — [supports-on finalization view
+  cost](issues/74-layerfinalization-supports-on-view-cost.md),
+  [ShellClassification phase-B commit](issues/75-shellclassification-phase-b-commit.md)
+  and [MeshAnalysis exact union](issues/76-meshanalysis-footprint-union.md) —
+  and the remaining un-graduated base leads stay in the fog: the tree-support
+  planner's 97–120 s serial native union/carve has no new exact shape at HEAD
+  (t70 already took the clipper hot loop; re-enter only with a batch/parallel
+  host contract), while the smaller `PrePass::OverhangAnnotation` (9.3–10.9 s
+  wall, heavily parallel) and `SeamPlanning` (8.6–10.9 s serial) stages lack a
+  measured reduction. The rest of the base common floor is ticket 59's closed
+  Slice verdict plus the two now-ticketed stages.
 - **Named leads from the t60 host:native attribution (2026-10-14).**
   [host:native attribution](issues/60-host-native-attribution.md)
   names two reducible shapes beyond the now-resolved (KEEP 2026-10-16)

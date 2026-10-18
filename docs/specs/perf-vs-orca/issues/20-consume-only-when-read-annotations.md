@@ -116,3 +116,22 @@ in both cells; total perimeter fuel is 89.62%/84.51% of whole-job fuel
 self bucket does not dynamically prove the liveness audit or isolate the two
 stamps. No duplicate ticket, annotation candidate or park lift follows.
 Evidence: [fresh findings](../evidence/perf-refresh-2026-10-13/FINDINGS.md).
+
+### Base refresh context — 2026-10-18 (not a take or park override)
+
+The [Base current bottleneck refresh](73-base-current-bottleneck-refresh.md)
+re-derived the four matched ordinary base cells at post-t70 HEAD with fresh
+fuel profiles and instrumentation-only corroborations. On base Classic the
+per-layer phase is **94.3 s (supports-off) / 98.2 s (supports-on)**
+instrumented — 44 % / 24 % of process wall — and
+`com.core.classic-perimeters` is 98.8 % / 95.0 % of whole-job guest fuel with
+**10,573 B self fuel** and 1,186.7 / 1,195.1 s accumulated wall. Ticket 18's
+accelerated stage-2 capture put the two exact scan families at **57.9 % of the
+base classic module fuel**; this refresh does not re-split those scans.
+
+The below-fold park is **not lifted**: the t72 best cell is still 3.30x and
+ticket 12's condition is unchanged. This comment records the base size of the
+parked term for the human's route decision — the 57.9 % is an attribution
+share, not a wall prediction. No duplicate ticket, annotation candidate or
+park lift follows. Evidence:
+[findings](../evidence/perf-refresh-base-2026-10-18/FINDINGS.md).

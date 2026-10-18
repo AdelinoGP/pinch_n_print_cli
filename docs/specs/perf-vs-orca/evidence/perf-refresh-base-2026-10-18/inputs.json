@@ -1,0 +1,492 @@
+{
+ "captured_commit": "86c1518254218f54aa06235aada9ae4501344909",
+ "exe_sha256": "db3048dda587abe4f0ef55b724f99a38488d118504a6c65319cf73d6a00e35b6",
+ "model_sha256": "b26c8c79158bd009119e13c89aa0cb9b6f8100bef1de63f58c0d58e2c1c178af",
+ "model": "base.stl",
+ "threads": 12,
+ "guest_freshness_exit": 0,
+ "provenance": [
+  {
+   "id": "com.core.arachne-perimeters",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.classic-perimeters",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.fuzzy-skin",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.gyroid-infill",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.infill-linker",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.layer-planner-default",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.lightning-infill",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.machine-gcode-emit",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.overhang-classifier-default",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.part-cooling",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.path-optimization-default",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.raft-default",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.rectilinear-infill",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.seam-placer",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.seam-planner-default",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.skirt-brim",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.support-surface-ironing",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.top-surface-ironing",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.traditional-support",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.traditional-support-planner",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.tree-support",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.tree-support-planner",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.wave-overhangs",
+   "provenance": "external"
+  },
+  {
+   "id": "com.core.wipe-tower",
+   "provenance": "external"
+  }
+ ],
+ "modules": [
+  {
+   "path": "modules/core-modules/arachne-perimeters/arachne-perimeters.toml",
+   "sha256": "e870c6c9c4ed4e74b053e9a4d52e0255b8affc98ea38aa0d5904023881a7980d"
+  },
+  {
+   "path": "modules/core-modules/arachne-perimeters/arachne-perimeters.wasm",
+   "sha256": "572063684c13b05bc64adfdca90a867129f0042c99b8eb2f6faf5f6902f9b9a4"
+  },
+  {
+   "path": "modules/core-modules/arachne-perimeters/Cargo.toml",
+   "sha256": "eb21c2bf094ed0b10e0f436521182d6ca3634fa99d58689ef7c86653d38f734a"
+  },
+  {
+   "path": "modules/core-modules/arachne-perimeters/wit-guest/Cargo.toml",
+   "sha256": "328e655a760cbd1bb66c6baa6025f0f4d842443c8dbedc89c15d450f199b1c7e"
+  },
+  {
+   "path": "modules/core-modules/classic-perimeters/Cargo.toml",
+   "sha256": "4d04954ab43f11371f35396d47317b26685de783d0969a54b92db14a5ad70fb9"
+  },
+  {
+   "path": "modules/core-modules/classic-perimeters/classic-perimeters.toml",
+   "sha256": "1f277fc12bdee0ee0a9a59b700af681bc337f3bfd10c3aa4293d860dc032200c"
+  },
+  {
+   "path": "modules/core-modules/classic-perimeters/classic-perimeters.wasm",
+   "sha256": "a04a77f785643265fc1087471e5c39a894665fe719036194a942d653f1193887"
+  },
+  {
+   "path": "modules/core-modules/classic-perimeters/wit-guest/Cargo.toml",
+   "sha256": "f7b712f0e64016d644bb9e7d8ae8a710a1c964d76dae3f9a8215cf1905a029cc"
+  },
+  {
+   "path": "modules/core-modules/fuzzy-skin/Cargo.toml",
+   "sha256": "a890d1ef317b7383cbb51bdb78aa495f492e48e9a7daec2ec64523bbed1bce5d"
+  },
+  {
+   "path": "modules/core-modules/fuzzy-skin/fuzzy-skin.toml",
+   "sha256": "dd074eb769df5e5703a4bae9c8820807c52c7577272c7ebf97b7bc90bf49a1a9"
+  },
+  {
+   "path": "modules/core-modules/fuzzy-skin/fuzzy-skin.wasm",
+   "sha256": "98db9019a1a533a5f7dc28b84c687b8577c0eebc9a55b894ab0f658187a1a1a0"
+  },
+  {
+   "path": "modules/core-modules/fuzzy-skin/wit-guest/Cargo.toml",
+   "sha256": "6c8ef7feea61805c57974d292e34c80ca1df75c606a95fdfef04a436b8485a3d"
+  },
+  {
+   "path": "modules/core-modules/gyroid-infill/Cargo.toml",
+   "sha256": "ff34c3785da3592abecabe1345607f0bf5faf0547847d6da78b72348edfdccdf"
+  },
+  {
+   "path": "modules/core-modules/gyroid-infill/gyroid-infill.toml",
+   "sha256": "599b5ea45abba86fe6c645dd109fd63f011192982e99a3275a32d949b3018258"
+  },
+  {
+   "path": "modules/core-modules/gyroid-infill/gyroid-infill.wasm",
+   "sha256": "54e9478396deb1490431ffe548bb372687a59c34253431f611d4533ab08571e1"
+  },
+  {
+   "path": "modules/core-modules/gyroid-infill/wit-guest/Cargo.toml",
+   "sha256": "6ed0a441148a45e0629712025d592c8c2e22286192390b991dfa32b87019ae00"
+  },
+  {
+   "path": "modules/core-modules/infill-linker/Cargo.toml",
+   "sha256": "7ee888f88209b8ce5833d213e04227ffb29316f7b2c88fe6e924e61a537eb5e4"
+  },
+  {
+   "path": "modules/core-modules/infill-linker/infill-linker.toml",
+   "sha256": "146985a9e0f57964dd07b19ab6c2c4b9b0fea4fbb863a68697bdaebb866276a9"
+  },
+  {
+   "path": "modules/core-modules/infill-linker/infill-linker.wasm",
+   "sha256": "66646305b3090433b9fc5910604d8d3fd2d4e01d58de964ab5505a7dca2476e8"
+  },
+  {
+   "path": "modules/core-modules/infill-linker/wit-guest/Cargo.toml",
+   "sha256": "63b044d048c361ce8597a04fc903dcf6217e48104a9cb1d18ea672a8daec85a3"
+  },
+  {
+   "path": "modules/core-modules/layer-planner-default/Cargo.toml",
+   "sha256": "47b269b5ee8eb2631ea112b7f1a7e68c37d3c25c624d31493ede9e25a41a8309"
+  },
+  {
+   "path": "modules/core-modules/layer-planner-default/layer-planner-default.toml",
+   "sha256": "c882cf8c3e88c9d390ffeb8ae922132208566628697bf6eeb295f993d3b4581c"
+  },
+  {
+   "path": "modules/core-modules/layer-planner-default/layer-planner-default.wasm",
+   "sha256": "6e4e810f926bc78797f69a07e65765d49d730cba7e10d42b6e256c42cb8f5751"
+  },
+  {
+   "path": "modules/core-modules/layer-planner-default/wit-guest/Cargo.toml",
+   "sha256": "2a76dfe5318fb5f16510b3be569ca3518cd6cf3e8cc274114957c83e9eb05460"
+  },
+  {
+   "path": "modules/core-modules/lightning-infill/Cargo.toml",
+   "sha256": "8aaf4ac27b73f03a9fa1ea0df0ff74c1915b81104092116be206a7ae198d0704"
+  },
+  {
+   "path": "modules/core-modules/lightning-infill/lightning-infill.toml",
+   "sha256": "133800ce7128e6ef1d12c0e63207ef2d27395a0cc3d58e2be5dc5674e8ab9b7a"
+  },
+  {
+   "path": "modules/core-modules/lightning-infill/lightning-infill.wasm",
+   "sha256": "2d406f3019b356fe559bba4cb583c15d2e638a91b6ef52eb3b6e5a2b9c15fd48"
+  },
+  {
+   "path": "modules/core-modules/lightning-infill/wit-guest/Cargo.toml",
+   "sha256": "bf49f7bf71ac3602bb081b9c375059b3e2c0d794806012375c5f5dc639930c51"
+  },
+  {
+   "path": "modules/core-modules/machine-gcode-emit/Cargo.toml",
+   "sha256": "d5dcdd82afbc5600d07881e244afbbbdb0516632d6dce0bfa556b6a6b3a6df4a"
+  },
+  {
+   "path": "modules/core-modules/machine-gcode-emit/machine-gcode-emit.toml",
+   "sha256": "b8440d935452967a2d7fa75d33fe9cbb93d07d0d9888d511e5235cd1b3415cd1"
+  },
+  {
+   "path": "modules/core-modules/machine-gcode-emit/machine-gcode-emit.wasm",
+   "sha256": "5c2c4e409085a2f6150e1637d8495425a48a3721fb3e69da34eb6cb4e65caeb5"
+  },
+  {
+   "path": "modules/core-modules/machine-gcode-emit/wit-guest/Cargo.toml",
+   "sha256": "62196a4340823dd105a00724e3dc4081a3c4861621da8a0b4c784579bcc5df9b"
+  },
+  {
+   "path": "modules/core-modules/overhang-classifier-default/Cargo.toml",
+   "sha256": "70bea02aa5e08742d38e8296994a8968505d2e158a37935f8768fdb5be77d17d"
+  },
+  {
+   "path": "modules/core-modules/overhang-classifier-default/overhang-classifier-default.toml",
+   "sha256": "7b32987f5e961bd1ce0da9522fddc1e7f1439eb0bc080447fd5f664c338d3b83"
+  },
+  {
+   "path": "modules/core-modules/overhang-classifier-default/overhang-classifier-default.wasm",
+   "sha256": "af9e09c0bf3a4ed4fed436b6e7f7f18113cba4966c9b3e6dd509e5aed868de26"
+  },
+  {
+   "path": "modules/core-modules/overhang-classifier-default/wit-guest/Cargo.toml",
+   "sha256": "6d4466d3ea295ad40b52e313f09c7f6cd999b1d7fb82273fb6c20ffabb0fc44b"
+  },
+  {
+   "path": "modules/core-modules/part-cooling/Cargo.toml",
+   "sha256": "43f9c377b1e5957453685991533cefc5af1fb7d9d17b7b25cb165ab630a83037"
+  },
+  {
+   "path": "modules/core-modules/part-cooling/part-cooling.toml",
+   "sha256": "6bc7b930977bba2466fee8d59d2803c58b0cbe427478e997a9bf5fde07bf2b31"
+  },
+  {
+   "path": "modules/core-modules/part-cooling/part-cooling.wasm",
+   "sha256": "b87be4a77d7b791bd6e1794180242a04d20cc8ead7414c8b1bfbce00f58662c7"
+  },
+  {
+   "path": "modules/core-modules/part-cooling/wit-guest/Cargo.toml",
+   "sha256": "a839b787fe18236134a371c16e6007a1c86ca91b91bbc20b6e6f86f57d84523f"
+  },
+  {
+   "path": "modules/core-modules/path-optimization-default/Cargo.toml",
+   "sha256": "42fa6090fd324599bd12debda72825065a9a39f9f59c8573237ceb374809e08c"
+  },
+  {
+   "path": "modules/core-modules/path-optimization-default/path-optimization-default.toml",
+   "sha256": "a880c192af0e701c758cc5ec74e1e3e342952f3df5d30df87141a7bd1ef4255e"
+  },
+  {
+   "path": "modules/core-modules/path-optimization-default/path-optimization-default.wasm",
+   "sha256": "55ef7b054a72498254bf64683809e037110d3568164b3e8e63bff29417c7cb27"
+  },
+  {
+   "path": "modules/core-modules/path-optimization-default/wit-guest/Cargo.toml",
+   "sha256": "feb78e8ce0aa5fcade6395ce0357e069c35c985e5f68d655bae33ce89cb823db"
+  },
+  {
+   "path": "modules/core-modules/raft-default/Cargo.toml",
+   "sha256": "cf1f47ce0df7d5bfa3832ef6d2b4e9f3d257632538be0b29ca2ff1b4ef7c20ca"
+  },
+  {
+   "path": "modules/core-modules/raft-default/raft-default.toml",
+   "sha256": "a0d6d8286836a13a9422b24bf16aace8219a254feab0abc26a35850a15d84d06"
+  },
+  {
+   "path": "modules/core-modules/raft-default/raft-default.wasm",
+   "sha256": "97891dc30d5e0638ae50d1304276b691167a1c5d87f4ea1f343c312d88a1ed5f"
+  },
+  {
+   "path": "modules/core-modules/raft-default/wit-guest/Cargo.toml",
+   "sha256": "18abc00deab8231a38347b7575a4e86f1342fd0153e34520646dc6411af97a79"
+  },
+  {
+   "path": "modules/core-modules/rectilinear-infill/Cargo.toml",
+   "sha256": "f029827c6db278ddac64b38fa1941b46c3c969631b65ee3c9f5fe203f82e1873"
+  },
+  {
+   "path": "modules/core-modules/rectilinear-infill/rectilinear-infill.toml",
+   "sha256": "5f77aca49758f73c53251e90d77c0b905dbf420db4f4997311f74b8868ff37ec"
+  },
+  {
+   "path": "modules/core-modules/rectilinear-infill/rectilinear-infill.wasm",
+   "sha256": "c7a837c34b070609e21fa79915a94c37d952e881909c89eeef15d2e4163a80f3"
+  },
+  {
+   "path": "modules/core-modules/rectilinear-infill/wit-guest/Cargo.toml",
+   "sha256": "5aa5812af836ca8c77708eca3c0b85a38e0333b26efd17aae8fbfe2ee76d8970"
+  },
+  {
+   "path": "modules/core-modules/seam-placer/Cargo.toml",
+   "sha256": "a9fdcbb8fdcadede8a81a85b10aa6b03837c309fe707e299555811f62685b130"
+  },
+  {
+   "path": "modules/core-modules/seam-placer/seam-placer.toml",
+   "sha256": "7989376a7dbc63793822cc3c258b1575cd8ada4fbae0e05c3e579c6cd117186a"
+  },
+  {
+   "path": "modules/core-modules/seam-placer/seam-placer.wasm",
+   "sha256": "317b2cb4e948d130ee5e85d6711244aadd4a79c40f33c0c6d4c4ab98bee24691"
+  },
+  {
+   "path": "modules/core-modules/seam-placer/wit-guest/Cargo.toml",
+   "sha256": "afe24226d70e64941a5bc331f076e179d63a44b1d69b86146b6f0bb18eb244f8"
+  },
+  {
+   "path": "modules/core-modules/seam-planner-default/Cargo.toml",
+   "sha256": "d53e10d687e0213e386494f26a0ac5349b34fd7e71f4a06441ac14b1c0d9965e"
+  },
+  {
+   "path": "modules/core-modules/seam-planner-default/seam-planner-default.toml",
+   "sha256": "65cb0452e86f8379fc88e89d30f8529b371c6c03cc40c42b09f43ea2676e43c2"
+  },
+  {
+   "path": "modules/core-modules/seam-planner-default/seam-planner-default.wasm",
+   "sha256": "e89bd327ae70c3fc0a7e31ce4c7ccc51943bd952aad6080e77b4869638ba326d"
+  },
+  {
+   "path": "modules/core-modules/seam-planner-default/wit-guest/Cargo.toml",
+   "sha256": "4c6e580236fca78a5eefed4d2331b4a421effa720fbf88a72bc967f2b8c286bf"
+  },
+  {
+   "path": "modules/core-modules/skirt-brim/Cargo.toml",
+   "sha256": "c38a6998daddccf3701d4c65c5510bef6b42a181ae99f782c9f051535d6a4f70"
+  },
+  {
+   "path": "modules/core-modules/skirt-brim/skirt-brim.toml",
+   "sha256": "ef0cd25341d7f4b6cffbaec755104ce84f006429922fe1b7401ecd079b670ef9"
+  },
+  {
+   "path": "modules/core-modules/skirt-brim/skirt-brim.wasm",
+   "sha256": "cac0e768937d3a53be0c38c1e6d05638ef3bdced51088407dcaa7e43747cd0e2"
+  },
+  {
+   "path": "modules/core-modules/skirt-brim/wit-guest/Cargo.toml",
+   "sha256": "0dac6b0db0dc400ab3a07998dd7bbfbd7034caff7f91e8f99a5327332235efcd"
+  },
+  {
+   "path": "modules/core-modules/support-surface-ironing/Cargo.toml",
+   "sha256": "a8c3a43bc3ecda0a04dd20daf1db11ddf7c108d3444c2f5c3ef529e56f5a188c"
+  },
+  {
+   "path": "modules/core-modules/support-surface-ironing/support-surface-ironing.toml",
+   "sha256": "721784f3a26835795b8e6593d4f7763d89051f4966f49b5b513d2f6148587a91"
+  },
+  {
+   "path": "modules/core-modules/support-surface-ironing/support-surface-ironing.wasm",
+   "sha256": "8738a01e889dd18e2e9e1b7700ccd8d57bd7304d8295b5b6bd2287862aba6824"
+  },
+  {
+   "path": "modules/core-modules/support-surface-ironing/wit-guest/Cargo.toml",
+   "sha256": "82e9b613a8334d07b0071a84ef9efeb67310633452e102caa0e05f53ebd75369"
+  },
+  {
+   "path": "modules/core-modules/top-surface-ironing/Cargo.toml",
+   "sha256": "d7408bf46a705d4ff6d6568cd2f69548e3db3daefd16fa89acb2b84e448944ce"
+  },
+  {
+   "path": "modules/core-modules/top-surface-ironing/top-surface-ironing.toml",
+   "sha256": "96fddc80a5d46f9fac5fccd9fa2da6774c0b1273fc8df24da93c02f36cd9ab48"
+  },
+  {
+   "path": "modules/core-modules/top-surface-ironing/top-surface-ironing.wasm",
+   "sha256": "69f207e3356f796eed4497160b1f577ded7a35adb620d13f56dc86fd6f73b1e7"
+  },
+  {
+   "path": "modules/core-modules/top-surface-ironing/wit-guest/Cargo.toml",
+   "sha256": "a870ed85fad6f575be33be88b0435226387d1844cd1fc429edb37c37f74f4a3b"
+  },
+  {
+   "path": "modules/core-modules/traditional-support-planner/Cargo.toml",
+   "sha256": "05ccba2336bb06ebdae03d220377ddfc3ca9145d09d2f6dbffe00d75268d81c1"
+  },
+  {
+   "path": "modules/core-modules/traditional-support-planner/traditional-support-planner.toml",
+   "sha256": "9d80d1603c4fbdb39cd14900f30dca0152f9fe8b40b331c91608a035cd9ba37c"
+  },
+  {
+   "path": "modules/core-modules/traditional-support-planner/traditional-support-planner.wasm",
+   "sha256": "93bba3fcfce18782ae9676675adf4b104548bdd6eb002be45729dcacce665778"
+  },
+  {
+   "path": "modules/core-modules/traditional-support-planner/wit-guest/Cargo.toml",
+   "sha256": "1f17b8a4c5934bfd051f750e31827c6744bb8c7df54bd94f0ee124d6d7f59d4e"
+  },
+  {
+   "path": "modules/core-modules/traditional-support/Cargo.toml",
+   "sha256": "440648f2a55e4b4378764ce2fcf5231a3928d3d7151e40879b7015e8f97d3c9c"
+  },
+  {
+   "path": "modules/core-modules/traditional-support/traditional-support.toml",
+   "sha256": "b10abb13284193d9030bf5549199c4616df45cfe0f24fef6df09485e8955b296"
+  },
+  {
+   "path": "modules/core-modules/traditional-support/traditional-support.wasm",
+   "sha256": "5628763a6d1675b71a1e67609835c5f81efc2b060400c8a2f359192c38537825"
+  },
+  {
+   "path": "modules/core-modules/traditional-support/wit-guest/Cargo.toml",
+   "sha256": "43ba145710cde208477b8b48c92628bdc47ebc4ca02dd74fbfd4a0e836326388"
+  },
+  {
+   "path": "modules/core-modules/tree-support-planner/Cargo.toml",
+   "sha256": "f378dc4f47665761288ef65ad3de30b743b839a86ace81f3b5f2ef1f73f7f734"
+  },
+  {
+   "path": "modules/core-modules/tree-support-planner/tree-support-planner.toml",
+   "sha256": "57c4b910c82a79663648ca0e145956a0877f848269398a26e75c5b5e3fb43f02"
+  },
+  {
+   "path": "modules/core-modules/tree-support-planner/tree-support-planner.wasm",
+   "sha256": "f85309850e60f7436721e3fe547fcdd0e0b411aa8600971ecb971b1217530abe"
+  },
+  {
+   "path": "modules/core-modules/tree-support-planner/wit-guest/Cargo.toml",
+   "sha256": "d3906817a49f893289cefeca62dc0f6a2b27dc2cecbbb52cf74d076f0561f496"
+  },
+  {
+   "path": "modules/core-modules/tree-support/Cargo.toml",
+   "sha256": "4882286dcd704b4bcb8d5b27bf36a78c806bd85157227289923519fd25443a94"
+  },
+  {
+   "path": "modules/core-modules/tree-support/tree-support.toml",
+   "sha256": "3788a8f7bc32193e9c03f8bf55e12d925689467b62029a5dc02c0f242261b3f3"
+  },
+  {
+   "path": "modules/core-modules/tree-support/tree-support.wasm",
+   "sha256": "f9a0e2e234d1c7933fee2ea9d9d6b82f2f9f68c839ef1aaf364e13a985f2edaa"
+  },
+  {
+   "path": "modules/core-modules/tree-support/wit-guest/Cargo.toml",
+   "sha256": "2fd4ad9185b5b6db698a15d2592a1e96ae51c190d2f99c0cafaf7966025341da"
+  },
+  {
+   "path": "modules/core-modules/wave-overhangs/Cargo.toml",
+   "sha256": "54f8e2382e674e5cb1d73399ead92bfd5857057e4160b48a7f3613a7f463147f"
+  },
+  {
+   "path": "modules/core-modules/wave-overhangs/wave-overhangs.toml",
+   "sha256": "6aae0e812587245936cc861eb775b17d91a49e57aa92290b2f8c5b24af0e0319"
+  },
+  {
+   "path": "modules/core-modules/wave-overhangs/wave-overhangs.wasm",
+   "sha256": "eebbdc72cf1b4f7b08728c1fd40c1aea840129050bcda392ca20aaa8910561c0"
+  },
+  {
+   "path": "modules/core-modules/wave-overhangs/wit-guest/Cargo.toml",
+   "sha256": "902f73510127d9f896199cd477aced9c5d94dba5192a9616dfff70d57168c833"
+  },
+  {
+   "path": "modules/core-modules/wipe-tower/Cargo.toml",
+   "sha256": "fd5237c6e61dce590c2fd147e4b1263f44b82c8fdd656e6eadc878d9bae8fb6d"
+  },
+  {
+   "path": "modules/core-modules/wipe-tower/wipe-tower.toml",
+   "sha256": "3fcf88d8a588ef2331936799dc9dbd9d0078ef8429ad89c955281fb29fa29def"
+  },
+  {
+   "path": "modules/core-modules/wipe-tower/wipe-tower.wasm",
+   "sha256": "92b9e2c154e2f340658d1256b040a6b15438fc18145b2f7d784f6fdd10dbb4e0"
+  },
+  {
+   "path": "modules/core-modules/wipe-tower/wit-guest/Cargo.toml",
+   "sha256": "0b01b9d1dae07b01b0ea209b77a68c9df1e7deb51b5dbb90e55048fdfeb03fad"
+  }
+ ]
+}
