@@ -580,6 +580,15 @@ pub fn with_prepared_plan<R>(
     body()
 }
 
+/// Dispose a prepared plan through a callback bound to its runtime print scope.
+///
+/// Invokes the callback exactly once and preserves its typed result unchanged,
+/// including a busy error while a prepared call remains active. Disposal does
+/// not wait, retry, or force revocation; callers may try again after joining.
+pub fn dispose_prepared_plan<E>(dispose: impl FnOnce() -> Result<(), E>) -> Result<(), E> {
+    dispose()
+}
+
 fn active_scope(scope: &Weak<PlanScope>) -> Result<Rc<PlanScope>, PreparationError> {
     let scope = scope.upgrade().ok_or(PreparationError::NotReady)?;
     let active = CURRENT_PLAN.with(|slot| {

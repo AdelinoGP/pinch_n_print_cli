@@ -39,6 +39,9 @@ Selected approach: a runtime-owned per-print companion carries the frozen bindin
 | NET-NEW `crates/slicer-runtime/tests/e2e/preparation_runtime_lifecycle_tdd.rs` | Real `run_slice`/extension/capture fixture, native and external WASM markers, final committed-input witnesses, target-kind corpus, error/decoder/concurrency/cancel/inflight/arena regressions. |
 | `crates/slicer-runtime/tests/e2e/main.rs` | Explicit `mod preparation_runtime_lifecycle_tdd;` registration. |
 | `docs/01_system_architecture.md`, `docs/04_host_scheduler.md`, `docs/05_module_sdk.md`, `docs/17_agent_debugging.md` | Exactly the new normative headings/semantic updates listed in packet.spec; separate doc steps preserve edit cap. |
+| `crates/slicer-core/src/algos/paint_segmentation/mod.rs`; only if needed, `crates/slicer-core/src/algos/paint_segmentation/compose_variants.rs` | Step 14's sole core exception: wire per-semantic Voronoi outputs into production declared-chain composition, retire mixed-input dominant-semantic relabelling, preserve singleton geometry and D14 annotation routing; embedded AC-11 test in `driver_v2_tests`. |
+| `crates/slicer-sdk/src/preparation.rs`; `crates/slicer-runtime/src/preparation_lifecycle.rs` | Step 15's public SDK disposal entry and public `PrintPreparationScope::dispose` method delegate to the checked plan-owner store, preserving typed Busy. SDK must not depend on runtime/wasm-host; use a typed caller-supplied disposal callback so the runtime error passes through unchanged. No disposal WIT export, metadata flag or lifecycle Busy variant. |
+| `crates/slicer-runtime/tests/integration/region_mapping_paint_semantic_tdd.rs` | Step 16's NET-NEW AC-13 two-leg scalar test invokes the production prepass built-in, not only the core kernel. Existing lifecycle e2e file gains ordered multi-element, non-opted-in scalar and public SDK Busy corpus legs; existing lifecycle guest `module.toml` may gain declarations only if needed. |
 
 Extras beyond three primary files are justified by the true runtime closure crossing run/pipeline/executor/dispatcher, one dual-target fixture and normative docs. Each step below caps actual edits at three; do not collapse the closure into a single L-context step.
 
@@ -86,7 +89,7 @@ Observers receive typed lifecycle records on success and error. They contain mod
 
 ## Out-of-Bounds Files
 
-Other packet directories, queue plan/backlog during generation, canonical WIT, shared schemas/config keys/version constants, SDK/macro/core geometry algorithms, lightning modules/legacy IR, allocator/report model and ProgressEvent wire contract. Never load lockfiles, generated code, vendored dependencies, large fixtures, full target logs or Orca source. Generated guest artifacts may be consumed by tests, never treated as source-reading authority.
+Other packet directories, queue plan/backlog during generation, canonical WIT, shared schemas/config keys/version constants, SDK/macro/core geometry algorithms (EXCEPT Step 14's production paint-segmentation variant-chain composition wiring in the two inventoried files, and Step 15's SDK disposal facade in `crates/slicer-sdk/src/preparation.rs`), lightning modules/legacy IR, allocator/report model and ProgressEvent wire contract. The core exception implements docs/01 Variant-Chain Region Splitting and P95 Phase 7: per-semantic Voronoi passes plus `compose_variants` geometric composition, longer chains first with claimed geometry subtracted, BASE residual and chain entries sorted by semantic name; retire mixed-input dominant-semantic relabelling only for declared region-split inputs and preserve singleton behavior. Eligibility follows the declared region-split registry, not a hard-coded skip list; support/seam remain annotation-routed, never variant axes (D14). Everything else in core algorithms remains out of bounds. Never load lockfiles, generated code, vendored dependencies, large fixtures, full target logs or Orca source. Generated guest artifacts may be consumed by tests, never treated as source-reading authority.
 
 ## Expected Sub-Agent Dispatches
 
@@ -110,7 +113,9 @@ Factoring existing pipeline variants must preserve raw config/instrumentation di
 
 ## Context Cost Estimate
 
-Aggregate M; largest step M. Highest-risk dispatch: actual consumer/anchored routing and no duplicated eligibility, LOCATIONS <=20 plus independent SUMMARY <=200 words.
+Aggregate M; largest appended step M–L under the continuation's escalation condition below. Highest-risk dispatch: production composition plus independent regression, and actual consumer/anchored routing without duplicated eligibility; LOCATIONS <=20 plus independent SUMMARY <=200 words.
+
+Continuation amendment: Aggregate M including appended Steps 14–16 (M–L/M/M). Step 14 may rate L and must then run serialized on a dedicated worker under swarm escalation rules, with an approved extended-band hand-off rather than silently expanding a standard worker. Its indivisible question is the production driver/composition seam and its independent regression in the same edit surface; splitting before that seam is verified would separate routing from its correctness witness. No other L step is authorized. Scalar manifests/registry/IR stay unchanged; public disposal preserves the original typed Busy failure rather than adding a lifecycle state or changing producer behavior.
 
 ## Open Questions
 

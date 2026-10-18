@@ -1030,6 +1030,7 @@ component call receives fresh owner-bound view/resource adapters over the
 same immutable print-private plan. Call scopes expire on return or unwind;
 the host retains storage until all active calls and the applicable anchored
 host closure finish, then disposes it.
+The public SDK `dispose_prepared_plan` entry delegates through a callback bound to the runtime's `PrintPreparationScope::dispose`, returning typed `PreparationFailure::Busy` during an active call without waiting, retrying, or forcing revocation, then succeeding after the runtime caller joins.
 
 Reads are cursorless: each request supplies its own offset and bound.
 Concurrent immutable reads do not share cursor state and remain subject to

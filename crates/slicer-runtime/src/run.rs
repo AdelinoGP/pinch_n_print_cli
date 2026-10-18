@@ -1892,6 +1892,17 @@ fn run_slice_shared(
     // it carries every occurrence.
     slicer_wasm_host::dispatch::emit_module_log_repeat_summary();
 
+    if matches!(completion, SliceCompletion::FullSlice) {
+        // The pipeline joins module calls and synthetic host work before return.
+        // Cleanup belongs to the run, not the lifetime of an outlet-held Arc.
+        let cleanup = lifecycle.dispose_after_run();
+        if pipeline_result.is_ok() {
+            cleanup.map_err(|error| SliceRunError(error.to_string()))?;
+        }
+        // Preserve an original failed/cancelled pipeline outcome even if cleanup
+        // reports an invariant violation.
+    }
+
     let Some(pipeline_output) = pipeline_result? else {
         let capture = lifecycle
             .snapshot_and_dispose()

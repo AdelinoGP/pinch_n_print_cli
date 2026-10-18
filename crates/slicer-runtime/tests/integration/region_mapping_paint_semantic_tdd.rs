@@ -448,3 +448,203 @@ fn plan_stage_invocations(
         })
         .collect()
 }
+
+/// AC-13: scalar paint is ignored unless its semantic opts into discrete splitting.
+#[test]
+fn scalar_paint_production_prepass_characterization() {
+    use slicer_runtime::{
+        execute_prepass_with_builtins, Blackboard, CompiledModuleLive, ExecutionModuleBinding,
+        PrepassExecutionError, PrepassRunnerError, PrepassStageInput, PrepassStageOutput,
+        PrepassStageRunner, RegionMappingBuiltinError, RegionMappingError,
+    };
+    use slicer_scheduler::{load_modules_from_roots_with_integrated, IntegratedModuleRegistration};
+
+    // Only per-layer modules are scheduled; all prepass work must be host built-ins.
+    struct NoUserPrepass;
+    impl PrepassStageRunner for NoUserPrepass {
+        fn run_stage(
+            &self,
+            stage_id: &slicer_ir::StageId,
+            _module: &CompiledModuleLive<'_>,
+            _input: PrepassStageInput<'_>,
+        ) -> Result<PrepassStageOutput, PrepassRunnerError> {
+            panic!("unexpected user prepass stage: {stage_id}")
+        }
+    }
+
+    const BASE_MANIFEST: &str = r#"
+[module]
+id = "com.test.scalar-characterization"
+version = "1.0.0"
+[stage]
+id = "Layer::Perimeters"
+[ir-access]
+reads = ["SliceIR"]
+writes = ["PerimeterIR"]
+[claims]
+holds = []
+requires = []
+[compatibility]
+incompatible-with = []
+requires = []
+min-host-version = "0.1.0"
+min-ir-schema = "1.0.0"
+max-ir-schema = "5.0.0"
+[hints]
+layer-parallel-safe = true
+"#;
+    // Registration borrows static manifest text, just like embedded production modules.
+    const SPLIT_MANIFEST: &str = r#"
+[[region_split]]
+semantic = "material"
+priority = 100
+value_type = "tool_index"
+[module]
+id = "com.test.scalar-characterization"
+version = "1.0.0"
+[stage]
+id = "Layer::Perimeters"
+[ir-access]
+reads = ["SliceIR"]
+writes = ["PerimeterIR"]
+[claims]
+holds = []
+requires = []
+[compatibility]
+incompatible-with = []
+requires = []
+min-host-version = "0.1.0"
+min-ir-schema = "1.0.0"
+max-ir-schema = "5.0.0"
+[hints]
+layer-parallel-safe = true
+"#;
+
+    for (declared, manifest_toml) in [(false, BASE_MANIFEST), (true, SPLIT_MANIFEST)] {
+        let report = load_modules_from_roots_with_integrated(
+            &[],
+            &[IntegratedModuleRegistration {
+                manifest_toml,
+                origin_label: "scalar-characterization",
+            }],
+        )
+        .expect("in-test manifest must load");
+        assert_eq!(report.modules.len(), 1, "fixture module must be admitted");
+        let module = report.modules.into_iter().next().unwrap();
+        let request = ExecutionPlanRequest {
+            sorted_stages: vec![SortedStageModules {
+                stage_id: module.stage().to_owned(),
+                module_ids: vec![module.id().to_owned()],
+            }],
+            module_bindings: vec![ExecutionModuleBinding {
+                module,
+                config_view: Arc::new(slicer_ir::ConfigView::from_map(HashMap::new())),
+            }],
+            global_layers: Arc::new(vec![]),
+            region_plans: Arc::new(HashMap::new()),
+        };
+        let plan = build_execution_plan(&request, &mut Vec::new()).expect("build scalar plan");
+
+        for (case, values) in [("uniform", [0.25_f32, 0.25]), ("varying", [0.25, 0.75])] {
+            let mut mesh = minimal_mesh("scalar-object");
+            // Two adjacent facets, each with an explicit scalar paint value.
+            mesh.objects[0].mesh.vertices.push(Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 0.0,
+            });
+            mesh.objects[0].mesh.indices = vec![0, 1, 2, 1, 3, 2];
+            mesh.objects[0].paint_data = Some(FacetPaintData {
+                layers: vec![PaintLayer {
+                    semantic: PaintSemantic::Material,
+                    facet_values: values
+                        .into_iter()
+                        .map(|v| Some(PaintValue::Scalar(v)))
+                        .collect(),
+                    strokes: vec![],
+                }],
+            });
+            let mut blackboard = Blackboard::new(Arc::new(mesh), 0);
+            blackboard
+                .commit_layer_plan(Arc::new(LayerPlanIR {
+                    schema_version: sv(1, 0, 0),
+                    global_layers: vec![GlobalLayer {
+                        z: 0.2,
+                        active_regions: vec![active_region("scalar-object", 0)],
+                        ..Default::default()
+                    }],
+                    object_participation: HashMap::new(),
+                }))
+                .expect("seed layer plan");
+
+            let result = execute_prepass_with_builtins(
+                &plan,
+                &mut blackboard,
+                &NoUserPrepass,
+                &HashMap::new(),
+            );
+            if declared {
+                let error = result.expect_err("declared scalar paint must reject, even if uniform");
+                match error {
+                    PrepassExecutionError::RegionMapping {
+                        source:
+                            RegionMappingBuiltinError::Mapping(
+                                RegionMappingError::ScalarInRegionSplitFacetValue {
+                                    object_id,
+                                    semantic,
+                                    scalar_bits,
+                                },
+                            ),
+                    } => {
+                        assert_eq!(object_id, "scalar-object");
+                        assert_eq!(semantic, "material");
+                        assert_eq!(scalar_bits, 0.25_f32.to_bits());
+                    }
+                    other => panic!("{case}: expected typed scalar rejection, got {other:?}"),
+                }
+                assert!(
+                    blackboard.region_map().is_none(),
+                    "rejection must not publish a map"
+                );
+            } else {
+                result.unwrap_or_else(|error| {
+                    panic!("{case}: non-split scalar must succeed: {error:?}")
+                });
+                let map = blackboard
+                    .region_map()
+                    .expect("prepass must commit the region map");
+                let base_key = RegionKey {
+                    global_layer_index: 0,
+                    object_id: "scalar-object".to_owned(),
+                    region_id: 0,
+                    variant_chain: vec![],
+                };
+                assert_eq!(
+                    map.entries.len(),
+                    1,
+                    "{case}: no scalar variant key may be fabricated"
+                );
+                let region = map
+                    .entries
+                    .get(&base_key)
+                    .expect("only the base key must remain");
+                assert!(
+                    region.paint_overrides.is_empty(),
+                    "scalar must not select a paint override"
+                );
+                let layers = blackboard
+                    .layer_plan()
+                    .expect("layer plan must remain available");
+                assert_eq!(layers.global_layers.len(), 1);
+                let active = &layers.global_layers[0].active_regions;
+                assert_eq!(active.len(), 1, "scalar must not mint a selected region");
+                assert_eq!(active[0].object_id, "scalar-object");
+                assert_eq!(active[0].region_id, 0);
+                assert!(
+                    blackboard.slice_ir().is_some(),
+                    "production prepass must reach slicing"
+                );
+            }
+        }
+    }
+}

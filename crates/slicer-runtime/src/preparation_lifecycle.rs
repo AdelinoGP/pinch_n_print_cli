@@ -23,6 +23,7 @@ pub struct SliceRuntimeExtensions {
     )>,
     anchored_entities: Vec<slicer_ir::AnchoredEntity>,
     observer: Option<Arc<dyn PreparationLifecycleObserver>>,
+    scope_outlet: Option<Arc<dyn Fn(&Arc<PrintPreparationScope>) + Send + Sync>>,
 }
 
 impl SliceRuntimeExtensions {
@@ -42,7 +43,17 @@ impl SliceRuntimeExtensions {
             prepared_native,
             anchored_entities,
             observer,
+            scope_outlet: None,
         }
+    }
+
+    /// Add an optional callback invoked once when this run's print scope is constructed.
+    pub fn with_scope_outlet(
+        mut self,
+        outlet: Option<Arc<dyn Fn(&Arc<PrintPreparationScope>) + Send + Sync>>,
+    ) -> Self {
+        self.scope_outlet = outlet;
+        self
     }
 
     pub(crate) fn into_run_parts(
@@ -54,22 +65,29 @@ impl SliceRuntimeExtensions {
         Vec<slicer_ir::AnchoredEntity>,
         Arc<PrintPreparationScope>,
     ) {
-        (
-            self.integrated,
-            self.anchored_entities,
-            Arc::new(PrintPreparationScope {
-                prepared_native: self.prepared_native,
-                _observer: self.observer,
-                instrumented,
-                capture_requested,
-                selected: Mutex::new(Vec::new()),
-                committed: Mutex::new(None),
-                owners: Mutex::new(Vec::new()),
-                records: Mutex::new(Vec::new()),
-                cancel_flag: Mutex::new(None),
-                store: slicer_wasm_host::preparation::PreparedOwnerStore::new(),
-            }),
-        )
+        let Self {
+            integrated,
+            prepared_native,
+            anchored_entities,
+            observer,
+            scope_outlet,
+        } = self;
+        let scope = Arc::new(PrintPreparationScope {
+            prepared_native,
+            _observer: observer,
+            instrumented,
+            capture_requested,
+            selected: Mutex::new(Vec::new()),
+            committed: Mutex::new(None),
+            owners: Mutex::new(Vec::new()),
+            records: Mutex::new(Vec::new()),
+            cancel_flag: Mutex::new(None),
+            store: slicer_wasm_host::preparation::PreparedOwnerStore::new(),
+        });
+        if let Some(outlet) = scope_outlet {
+            outlet(&scope);
+        }
+        (integrated, anchored_entities, scope)
     }
 }
 
@@ -212,8 +230,8 @@ pub struct PreparationLifecycleRecord {
     pub failure: Option<Arc<slicer_wasm_host::preparation::PreparationFailure>>,
 }
 
-// Print-private selected artifacts and final committed selection authority.
-pub(crate) struct PrintPreparationScope {
+/// Opaque print scope retaining selected artifacts and committed plan authority.
+pub struct PrintPreparationScope {
     pub(crate) prepared_native: Vec<(
         ModuleId,
         NativePreparedStageEntry,
@@ -679,13 +697,29 @@ impl PrintPreparationScope {
         Ok(capture)
     }
 
-    fn dispose(&self) -> Result<(), slicer_wasm_host::preparation::PreparationFailure> {
+    /// Release print-owned state after the pipeline has joined all work, even
+    /// when the SDK outlet keeps this scope alive beyond the run.
+    pub(crate) fn dispose_after_run(
+        &self,
+    ) -> Result<(), slicer_wasm_host::preparation::PreparationFailure> {
+        self.dispose()
+    }
+
+    /// Dispose retained plans, preserving the checked store's typed busy error.
+    ///
+    /// Bind this method to `slicer_sdk::preparation::dispose_prepared_plan` for
+    /// SDK disposal. Active calls are not waited on, retried, or revoked; the
+    /// caller must join them before disposal can succeed.
+    pub fn dispose(&self) -> Result<(), slicer_wasm_host::preparation::PreparationFailure> {
         self.store.dispose()?;
+        self.committed.lock().expect("print inputs poisoned").take();
         let selected = self
             .selected
             .lock()
             .expect("print selection poisoned")
             .clone();
+        // Taking under the mutex is the record-once guard: later SDK/runtime/Drop
+        // disposal calls see no owners and cannot emit duplicate Disposed records.
         let owners = std::mem::take(&mut *self.owners.lock().expect("print owners poisoned"));
         for (position, owner) in owners {
             self.observe_owner(
