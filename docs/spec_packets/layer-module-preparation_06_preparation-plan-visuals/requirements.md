@@ -2,7 +2,7 @@
 
 ## Packet Metadata
 
-Status draft; aggregate context M. This file owns scope and the verification matrix; task-map owns the TASK-575 backlog crosswalk. Creation is authorized by approved queue row06; no implementation is authorized by generation.
+Status draft; aggregate context M. This file owns scope and the verification matrix; task-map owns the TASK-575 backlog crosswalk. `#03`/`#04`/`#05` were `status: implemented` when re-verified on 2026-10-17, so this packet consumes shipped interfaces rather than forward-declaring them. Creation is authorized by approved queue row06; no implementation is authorized by generation.
 
 ## Problem Statement
 
@@ -11,7 +11,7 @@ Metadata-only preparation captures cannot show module-private planning geometry.
 ## In Scope
 
 - Gate A: named declared views, requested sink presence, generic Point2 points/open polylines/filled or outline polygons-with-holes, diagnostic classes/labels/ids and explicit whole-print scene completion, including empty completion.
-- Typed native/SDK/WIT transport with canonical imported geometry identities, checked accounting, owner/print/call-local enforcement and permanent write-fault poison. Validate all attachments before the existing atomic Ready transition. Original module/trap/cancellation precedence remains the producer's authority.
+- Typed native/SDK/WIT transport with canonical imported geometry identities, checked accounting, owner/print/call-local enforcement and permanent write-fault poison. The WIT edit is additive to the imported `preparation-types` interface only: the exported `prepare-print` signature and the `slicer:layer-preparation@1.0.0` package version stay unchanged. Validate all attachments before the existing atomic Ready transition. Original module/trap/cancellation precedence remains the producer's authority.
 - No request means no framework allocation/retention of diagnostic geometry. Both legs expose the same sink and errors; a non-geometric module may declare no views.
 - Gate B: structured full module-id/view tap selector under new request schema 1.4.0; preserve all prior schemas. Model/XY only. Validate syntax/source/dimension/declaration before invoking modules; schedule layer and eligible-owner resolution after final committed products and before preparation.
 - Share #05's validated startup and final PrePass/preparation prefix. Preparation-only captures create no LayerArena; mixed taps run the required selected-layer closure with the actual prepared runner and retain plans until it completes. Postpass comparisons retain their existing whole-print closure, not a fabricated minimal path.
@@ -26,7 +26,7 @@ Lightning-specific projection, any codec/plan parser, ordinary IR plan accessors
 
 ## Authoritative Docs
 
-Approved plan projection contract and visual witnesses; ADR-0066 consequences; docs/19 request compatibility, Projector/framing and tap closure; docs/17 instrumentation versus static declaration; docs/08 conversion; docs/21 literals; docs/22 independent oracle/negative control. Author reads were bounded symbol/section windows; producer designs and exact #05 public exports were reconciled. No Orca delegation snippet applies.
+Approved plan projection contract (Q17/Q18/Q20/Q21; Q19 clarified by Q21) and queue row 06; ADR-0066 consequences; ADR-0040 stage-tap taxonomy and ADR-0041 fail-closed selection; docs/19 request compatibility, Projector/framing and tap closure; docs/17 instrumentation versus static declaration; docs/08 conversion; docs/21 literals; docs/22 independent oracle/negative control. Producer designs were bounded symbol/section windows; the exact #03/#04/#05 implemented public exports were reconciled against the tree on 2026-10-17. No Orca delegation snippet applies.
 
 ## Acceptance Summary
 
@@ -41,7 +41,7 @@ Each command runs from workspace root. Every test tees combined output and check
 | `cargo xtask build-guests --check` | Check exit status: 0 fresh, 1 stale (rebuild then recheck), 3 infrastructure blocked. Rebuild via `cargo xtask build-guests`; staged in-tree mtime mismatch requires `--force`, not source touches. |
 | `cargo build --tests` | Required after canonical preparation WIT/typed binding changes; no ordinary world widening. |
 | `set -euo pipefail; mkdir -p target; cargo test -p slicer-sdk --features test --test layer_module_tdd preparation_projection -- --nocapture 2>&1 \| tee target/test-output.log >/dev/null; rg -q '^test result: ok\. [1-9][0-9]* passed; 0 failed;' target/test-output.log; rg '^test result:' target/test-output.log` | Facade/sink None, DTO conversion, native callback parity; extend existing actual SDK target. |
-| `set -euo pipefail; mkdir -p target; cargo test -p slicer-wasm-host --features preparation-test-fixtures --test contract preparation_projection_tdd 2>&1 \| tee target/test-output.log >/dev/null; rg -q '^test result: ok\. [1-9][0-9]* passed; 0 failed;' target/test-output.log; rg '^test result:' target/test-output.log` | Gate A production store/frozen adapters, real native/component calls. Required feature is FORWARD #03. |
+| `set -euo pipefail; mkdir -p target; cargo test -p slicer-wasm-host --features preparation-test-fixtures --test contract preparation_projection_tdd 2>&1 \| tee target/test-output.log >/dev/null; rg -q '^test result: ok\. [1-9][0-9]* passed; 0 failed;' target/test-output.log; rg '^test result:' target/test-output.log` | Gate A production store/frozen adapters, real native/component calls. The `preparation-test-fixtures` feature is shipped by #03. |
 | `set -euo pipefail; mkdir -p target; cargo test -p slicer-runtime --test e2e preparation_visual_capture_tdd 2>&1 \| tee target/test-output.log >/dev/null; rg -q '^test result: ok\. [1-9][0-9]* passed; 0 failed;' target/test-output.log; rg '^test result:' target/test-output.log` | Shared-prefix production execution, cancellation/error cleanup and semantic neutrality. Runtime enables host-algos; e2e is ungated. |
 | `set -euo pipefail; mkdir -p target; cargo test -p slicer-runtime --test visual_debug_render_tap_tdd 2>&1 \| tee target/test-output.log >/dev/null; rg -q '^test result: ok\. [1-9][0-9]* passed; 0 failed;' target/test-output.log; rg '^test result:' target/test-output.log` | Exhaustive CapturedIr arm, renderer and Step10 public-scene-only serialization regression; traces AC-5/6 through the existing tagged envelope, shared Arc and explicit empty scene, with exact-key/literal checks against payload leakage. |
 | `set -euo pipefail; mkdir -p target; cargo test -p slicer-runtime --test visual_debug_render_tap_tdd preparation_projection_serializes_only_scene -- --exact 2>&1 \| tee target/test-output.log >/dev/null; rg -q '^test result: ok\. 1 passed; 0 failed;' target/test-output.log; rg '^test result:' target/test-output.log` | Bounded decisive serialization regression in the existing auto-discovered binary; actual production-committed native fixture snapshots, not private-type construction. |
