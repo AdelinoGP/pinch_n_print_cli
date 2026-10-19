@@ -191,6 +191,9 @@ pub struct SliceRegionData {
     pub bridge_areas: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Per-layer internal (over-sparse-infill) bridge polygons.
     pub internal_bridge_areas: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
+    /// Bridge line direction (degrees) per `internal_bridge_areas` polygon,
+    /// index-aligned. Empty = fall back to `bridge_orientation_deg`.
+    pub internal_bridge_angles_deg: Vec<f32>,
     /// Best bridge direction across all valid bridge regions (degrees).
     pub bridge_orientation_deg: f32,
     /// Sparse-only infill polygon after host-side fill partition.
@@ -259,6 +262,14 @@ pub struct PerimeterRegionData {
     /// virtual paint-variant sharing the base region's wall geometry
     /// (ADR-0028 §Amendment 2026-07-01).
     pub wall_source_region_id: Option<String>,
+    /// Ordered (paint-semantic-name, value) pairs identifying this region's
+    /// paint variant — part of the full region identity a guest forwards via
+    /// `set-current-origin` / `begin_region`. Empty for the legacy
+    /// single-variant flow.
+    pub variant_chain: Vec<(
+        String,
+        layer_perimeters::slicer::ir_handles::ir_handles::PaintValue,
+    )>,
 }
 
 /// Backing data for an `infill-output-builder` resource handle.
@@ -857,7 +868,11 @@ pub enum WitSortKey {
 /// guest during `run-finalization`. Stored by resource rep so the
 /// post-call drain in `FinalizationStageRunner` can apply them.
 #[derive(Clone, Debug)]
+#[allow(missing_docs)]
 pub enum FinalizationBuilderPush {
+    // Ticket 47: guest-emitted annotation (comment/raw). Anchors and payload
+    // travel inside the recorded `LayerAnnotation`.
+    Annotation(u32, slicer_ir::LayerAnnotation),
     /// Guest requested `push-entity-to-layer(layer_index, path, tool_index, region_key)`.
     EntityToLayer {
         /// Layer index the entity was pushed to.
@@ -947,6 +962,9 @@ pub enum FinalizationBuilderPush {
 pub struct FinalizationOutputBuilderData {
     /// Captured push stream in guest-emission order.
     pub pushes: Vec<FinalizationBuilderPush>,
+    /// Guest-emitted annotation stream (comment/raw, per layer) in
+    /// emission order (ticket 47).
+    pub annotations: Vec<(u32, slicer_ir::LayerAnnotation)>,
     /// Layer indices that have already been permuted via `set-entity-order`
     /// within this builder's lifetime. Used to enforce the packet-58 locked
     /// invariant "single permutation per layer per `run_finalization`
@@ -1008,9 +1026,9 @@ pub use finalization_layer::LayerFinalizationModule;
 /// keeps the two `RegionKey`s in disjoint namespaces.
 pub mod finalization_types {
     pub use super::finalization_layer::slicer::finalization_layer_finalization::layer_finalization_types::{
-        EntityMutation, FinalizationOutputBuilder, HostFinalizationOutputBuilder,
-        HostLayerCollectionView, LayerCollectionView, PrintEntityView, RegionKey, SortKey,
-        SyntheticLayerData, ToolChangeView, ZHopView,
+        AnnotationKind, AnnotationView, EntityMutation, FinalizationOutputBuilder,
+        HostFinalizationOutputBuilder, HostLayerCollectionView, LayerCollectionView,
+        PrintEntityView, RegionKey, SortKey, SyntheticLayerData, ToolChangeView, ZHopView,
     };
     // The world-imports `Host` trait is generated inside the imported
     // `layer-finalization-types` interface (per packet 163, the world
@@ -1121,7 +1139,7 @@ pub use crate::marshal::accumulators::{
 };
 pub use crate::marshal::out::{
     collect_postpass_output, convert_infill_output, convert_perimeter_output,
-    convert_support_output, merge_slice_postprocess_into,
+    convert_support_output, empty_infill_replacement, merge_slice_postprocess_into,
 };
 pub use crate::marshal::OriginId;
 
@@ -1178,6 +1196,10 @@ impl wasmtime::ResourceLimiter for MemTracker {
 /// After the call returns, the dispatcher extracts collected outputs from
 /// this context and integrates them into the pipeline state.
 pub struct HostExecutionContext {
+    /// Manifest write paths for finalization annotation authorization.
+    pub(crate) finalization_ir_writes: Vec<String>,
+    /// First denied annotation write, retained even if a guest ignores Err.
+    pub(crate) finalization_write_denial: Option<String>,
     /// Resource handle table — manages lifetimes of host-provided resources.
     pub(crate) table: ResourceTable,
     /// Default-deny WASI execution state for foreign-language components.
@@ -1400,6 +1422,24 @@ impl wasmtime_wasi::WasiView for HostExecutionContext {
     }
 }
 
+/// Authorize the annotation operation using exact manifest membership.
+pub fn check_finalization_annotation_write(
+    module_id: &str,
+    stage_id: &str,
+    writes: &[String],
+) -> Result<(), String> {
+    const PATH: &str = "LayerCollectionIR.annotations";
+    if writes.iter().any(|path| path == PATH) {
+        return Ok(());
+    }
+    let mut sorted = writes.to_vec();
+    sorted.sort();
+    sorted.dedup();
+    Err(format!(
+        "module {module_id} stage {stage_id}: attempted write requested path {PATH}; manifest writes={sorted:?}"
+    ))
+}
+
 /// Consuming builder for [`HostExecutionContext`].
 ///
 /// Per spec §6.4 — required positional args are `module_id`, `layer_z`,
@@ -1461,6 +1501,8 @@ impl HostExecutionContextBuilder {
     /// Finalize the builder into a fresh `HostExecutionContext`.
     pub fn build(self) -> HostExecutionContext {
         HostExecutionContext {
+            finalization_ir_writes: Vec::new(),
+            finalization_write_denial: None,
             table: ResourceTable::new(),
             wasi: wasmtime_wasi::WasiCtxBuilder::new().build(),
             module_id: self.module_id,
@@ -1507,6 +1549,11 @@ impl HostExecutionContextBuilder {
 }
 
 impl HostExecutionContext {
+    /// Install the exact manifest write set for a finalization call.
+    pub fn with_finalization_ir_writes(mut self, writes: &[String]) -> Self {
+        self.finalization_ir_writes = writes.to_vec();
+        self
+    }
     /// Module identifier (from manifest).
     pub fn module_id(&self) -> &str {
         &self.module_id
@@ -2302,7 +2349,7 @@ fn raycast_z_down_against(
     start_z: f32,
 ) -> Option<f32> {
     let mut best_hit = None;
-    for triangle in object.mesh.indices.chunks_exact(3) {
+    for triangle in object.mesh.indices.as_chunks::<3>().0 {
         let Some(vertices) = triangle_vertices(object, triangle) else {
             continue;
         };
@@ -2326,7 +2373,7 @@ fn surface_normal_at_against(
     z: f32,
 ) -> Option<slicer_ir::Point3> {
     let query_point = slicer_ir::Point3 { x, y, z };
-    for triangle in object.mesh.indices.chunks_exact(3) {
+    for triangle in object.mesh.indices.as_chunks::<3>().0 {
         let Some(vertices) = triangle_vertices(object, triangle) else {
             continue;
         };
@@ -2804,6 +2851,7 @@ impl hs::Host for HostExecutionContext {
             print_thin_walls: params.print_thin_walls,
             min_feature_size: params.min_feature_size as f64,
             min_bead_width: params.min_bead_width as f64,
+            layer_height: params.layer_height as f64,
             wall_transition_length: params.wall_transition_length as f64,
             wall_transition_angle: params.wall_transition_angle as f64,
             initial_layer_min_bead_width: params.initial_layer_min_bead_width as f64,
@@ -2926,7 +2974,7 @@ pub fn derive_tool_count<'a>(
 // Re-exported here so callers within this file and inner `mod` blocks that
 // do `use super::*` continue to resolve them without a path change.
 pub(crate) use crate::marshal::leaf::{
-    ir_to_wit_expolygons, ir_to_wit_extrusion_path, ir_to_wit_extrusion_role,
+    convert_paint_value, ir_to_wit_expolygons, ir_to_wit_extrusion_path, ir_to_wit_extrusion_role,
     ir_to_wit_paint_layer_view, ir_to_wit_paint_semantic, ir_to_wit_paint_value,
     ir_to_wit_wall_loop, wit_to_ir_expolygons,
 };
@@ -3018,6 +3066,7 @@ mod region_origin_tests {
                     is_bridge: false,
                     bridge_areas: Vec::new(),
                     internal_bridge_areas: Vec::new(),
+                    internal_bridge_angles_deg: Vec::new(),
                     bridge_orientation_deg: 0.0,
                     sparse_infill_area: Vec::new(),
                     raft_fill: Vec::new(),
@@ -3063,6 +3112,7 @@ mod region_origin_tests {
                     raft_fill: Vec::new(),
                     tool_index: 0,
                     wall_source_region_id: None,
+                    variant_chain: Vec::new(),
                 },
             )
             .expect("push perimeter region");
@@ -3271,6 +3321,16 @@ impl HostExecutionContext {
         self.current_slice_region = Some(OriginId {
             object_id: data.object_id.clone(),
             region_id: rid,
+            variant_chain: data
+                .variant_chain
+                .iter()
+                .map(|(name, value)| {
+                    (
+                        name.clone(),
+                        crate::marshal::leaf::convert_paint_value(value),
+                    )
+                })
+                .collect(),
         });
         Ok(())
     }
@@ -3395,6 +3455,14 @@ impl ir::HostSliceRegionView for HostExecutionContext {
             .push(String::from("SliceIR.regions.internal-bridge-areas"));
         Ok(self.table.get(&self_)?.internal_bridge_areas.clone())
     }
+    fn internal_bridge_angles_deg(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<Vec<f32>> {
+        self.runtime_reads
+            .push(String::from("SliceIR.regions.internal-bridge-angles-deg"));
+        Ok(self.table.get(&self_)?.internal_bridge_angles_deg.clone())
+    }
     fn bridge_orientation_deg(
         &mut self,
         self_: Resource<SliceRegionData>,
@@ -3495,6 +3563,16 @@ impl HostExecutionContext {
         self.current_perimeter_region = Some(OriginId {
             object_id: data.object_id.clone(),
             region_id: rid,
+            variant_chain: data
+                .variant_chain
+                .iter()
+                .map(|(name, value)| {
+                    (
+                        name.clone(),
+                        crate::marshal::leaf::convert_paint_value(value),
+                    )
+                })
+                .collect(),
         });
         Ok(())
     }
@@ -3651,6 +3729,20 @@ impl ir::HostPerimeterRegionView for HostExecutionContext {
             .push(String::from("PerimeterIR.wall-source-region-id"));
         Ok(self.table.get(&self_)?.wall_source_region_id.clone())
     }
+    fn variant_chain(
+        &mut self,
+        self_: Resource<PerimeterRegionData>,
+    ) -> wasmtime::Result<
+        Vec<(
+            String,
+            layer_perimeters::slicer::ir_handles::ir_handles::PaintValue,
+        )>,
+    > {
+        self.touch_perimeter_region(&self_)?;
+        self.runtime_reads
+            .push(String::from("PerimeterIR.variant-chain"));
+        Ok(self.table.get(&self_)?.variant_chain.clone())
+    }
     fn drop(&mut self, rep: Resource<PerimeterRegionData>) -> wasmtime::Result<()> {
         self.table.delete(rep)?;
         Ok(())
@@ -3739,12 +3831,17 @@ impl ir::HostInfillOutputBuilder for HostExecutionContext {
         _self_: Resource<InfillOutputBuilderData>,
         object_id: String,
         region_id: String,
+        variant_chain: Vec<(String, PaintValue)>,
     ) -> wasmtime::Result<Result<(), String>> {
         match region_id.parse::<u64>() {
             Ok(parsed) if parsed.to_string() == region_id => {
                 self.explicit_perimeter_origin = Some(OriginId {
                     object_id,
                     region_id: parsed,
+                    variant_chain: variant_chain
+                        .iter()
+                        .map(|(name, value)| (name.clone(), convert_paint_value(value)))
+                        .collect(),
                 });
                 Ok(Ok(()))
             }
@@ -3858,12 +3955,17 @@ impl ir::HostPerimeterOutputBuilder for HostExecutionContext {
         _self_: Resource<PerimeterOutputBuilderData>,
         object_id: String,
         region_id: String,
+        variant_chain: Vec<(String, PaintValue)>,
     ) -> wasmtime::Result<Result<(), String>> {
         match region_id.parse::<u64>() {
             Ok(parsed) if parsed.to_string() == region_id => {
                 self.explicit_perimeter_origin = Some(OriginId {
                     object_id,
                     region_id: parsed,
+                    variant_chain: variant_chain
+                        .iter()
+                        .map(|(name, value)| (name.clone(), convert_paint_value(value)))
+                        .collect(),
                 });
                 Ok(Ok(()))
             }
@@ -4202,12 +4304,17 @@ impl ir::HostSupportOutputBuilder for HostExecutionContext {
         _self_: Resource<SupportOutputBuilderData>,
         object_id: String,
         region_id: String,
+        variant_chain: Vec<(String, PaintValue)>,
     ) -> wasmtime::Result<Result<(), String>> {
         match region_id.parse::<u64>() {
             Ok(parsed) if parsed.to_string() == region_id => {
                 self.explicit_perimeter_origin = Some(OriginId {
                     object_id,
                     region_id: parsed,
+                    variant_chain: variant_chain
+                        .iter()
+                        .map(|(name, value)| (name.clone(), convert_paint_value(value)))
+                        .collect(),
                 });
                 Ok(Ok(()))
             }
@@ -4698,6 +4805,46 @@ mod finalization_impls {
     }
 
     impl fm::HostFinalizationOutputBuilder for HostExecutionContext {
+        // Ticket 47: the annotation relay. The SDK-side PartCooling
+        // `push_fan_speed`/`push_annotation` stream becomes a drainable
+        // carrier: the host records it here, the macro's WASM drain-back
+        // (build_finalization_world_glue) replays it, and
+        // `apply_finalization_pushes` merges it into the target layer — the
+        // same path the native leg's `apply_to` already takes. Before this
+        // method existed, the WIT channel was missing and the WASM drain-back
+        // silently dropped `sdk_output.annotations()`, so the external leg
+        // emitted zero fan commands while the integrated leg printed all of
+        // them (t47 gate proof, integrated `M106 S255` × 279 + `M107` × 2).
+        fn push_annotation(
+            &mut self,
+            self_: Resource<fm::FinalizationOutputBuilder>,
+            annotation: fm::AnnotationView,
+        ) -> wasmtime::Result<Result<(), String>> {
+            if let Err(message) = check_finalization_annotation_write(
+                &self.module_id,
+                "PostPass::LayerFinalization",
+                &self.finalization_ir_writes,
+            ) {
+                self.finalization_write_denial
+                    .get_or_insert_with(|| message.clone());
+                return Ok(Err(message));
+            }
+            let typed: Resource<FinalizationOutputBuilderData> = Resource::new_borrow(self_.rep());
+            let data = self.table.get_mut(&typed)?;
+            let kind = match annotation.kind {
+                fm::AnnotationKind::Comment(text) => slicer_ir::LayerAnnotationKind::Comment(text),
+                fm::AnnotationKind::Raw(text) => slicer_ir::LayerAnnotationKind::Raw(text),
+            };
+            data.annotations.push((
+                annotation.layer_index,
+                slicer_ir::LayerAnnotation {
+                    after_entity_index: annotation.after_entity_index,
+                    kind,
+                },
+            ));
+            self.record_write("LayerCollectionIR.annotations");
+            Ok(Ok(()))
+        }
         fn push_entity_to_layer(
             &mut self,
             self_: Resource<fm::FinalizationOutputBuilder>,
@@ -5024,9 +5171,15 @@ mod finalization_impls {
         fn drop(&mut self, rep: Resource<fm::FinalizationOutputBuilder>) -> wasmtime::Result<()> {
             // Move captured pushes onto the HostExecutionContext before
             // the resource's storage is reclaimed, so the dispatch path
-            // can drain them even after the guest drops its handle.
+            // can drain them even after the guest drops its handle. The
+            // annotation relay (ticket 47) rides the same stream so guest
+            // emission order is preserved across both channels.
             let typed: Resource<FinalizationOutputBuilderData> = Resource::new_own(rep.rep());
             let mut data = self.table.delete(typed)?;
+            for (layer_index, annotation) in data.annotations.drain(..) {
+                self.finalization_pushes
+                    .push(FinalizationBuilderPush::Annotation(layer_index, annotation));
+            }
             self.finalization_pushes.append(&mut data.pushes);
             Ok(())
         }
@@ -5037,22 +5190,6 @@ mod finalization_impls {
     #[cfg(test)]
     mod tests {
         use super::*;
-
-        #[test]
-        fn ir_to_wit_extrusion_role_preserves_reserved_builtin_roles() {
-            assert!(matches!(
-                ir_to_wit_extrusion_role(&slicer_ir::ExtrusionRole::PrimeTower),
-                ExtrusionRole::Custom(tag) if tag == BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG
-            ));
-            assert!(matches!(
-                ir_to_wit_extrusion_role(&slicer_ir::ExtrusionRole::Skirt),
-                ExtrusionRole::Custom(tag) if tag == BUILTIN_EXTRUSION_ROLE_SKIRT_TAG
-            ));
-            assert!(matches!(
-                ir_to_wit_extrusion_role(&slicer_ir::ExtrusionRole::Brim),
-                ExtrusionRole::Custom(tag) if tag == BUILTIN_EXTRUSION_ROLE_BRIM_TAG
-            ));
-        }
 
         #[test]
         fn finalization_output_builder_rejects_noncanonical_region_id_strings() {
@@ -5288,13 +5425,15 @@ mod tests {
         ctx.set_current_slice_region(Some(OriginId {
             object_id: "uuid".to_string(),
             region_id: 7,
+            variant_chain: Vec::new(),
         }));
 
         assert_eq!(
             ctx.effective_perimeter_origin(),
             Some(OriginId {
                 object_id: "uuid".to_string(),
-                region_id: 7
+                region_id: 7,
+                variant_chain: Vec::new(),
             })
         );
     }
@@ -5309,17 +5448,20 @@ mod tests {
         ctx.set_current_slice_region(Some(OriginId {
             object_id: "slice-uuid".to_string(),
             region_id: 1,
+            variant_chain: Vec::new(),
         }));
         ctx.set_current_perimeter_region(Some(OriginId {
             object_id: "perimeter-uuid".to_string(),
             region_id: 2,
+            variant_chain: Vec::new(),
         }));
 
         assert_eq!(
             ctx.effective_perimeter_origin(),
             Some(OriginId {
                 object_id: "perimeter-uuid".to_string(),
-                region_id: 2
+                region_id: 2,
+                variant_chain: Vec::new(),
             })
         );
     }

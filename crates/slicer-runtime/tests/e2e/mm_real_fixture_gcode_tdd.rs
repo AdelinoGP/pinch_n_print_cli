@@ -108,3 +108,26 @@ fn mm_support_filament_real_fixture() {
     let gcode = slice_fixture(model, overrides);
     assert_has_t0_t1(&gcode, "support fixture");
 }
+
+#[test]
+fn mm_support_filament_authored_strings_real_fixture() {
+    let model = workspace_root().join("resources/bridge_support_enforcers.3mf");
+    let overrides = HashMap::from([
+        ("enable_support".into(), ConfigValue::String("1".into())),
+        ("support_filament".into(), ConfigValue::String("2".into())),
+        (
+            "use_relative_e_distances".into(),
+            ConfigValue::String("0".into()),
+        ),
+    ]);
+    let gcode = slice_fixture(model, overrides);
+    assert_has_t0_t1(&gcode, "support fixture with authored strings");
+    assert!(
+        gcode.lines().any(|line| line.trim() == "M82"),
+        "authored relative-E string 0 must select absolute extrusion"
+    );
+    assert!(
+        !gcode.lines().any(|line| line.trim() == "M83"),
+        "absolute-E selection must not be overridden by emitter default mode"
+    );
+}

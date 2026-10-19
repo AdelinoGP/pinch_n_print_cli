@@ -58,10 +58,11 @@ fn extrusion_line_roundtrip() {
 
 /// Locks the live `SliceIR` schema version. The pin started at 4.8.0 for this
 /// packet's (T-224) additive `ExtrusionLine`/`ExtrusionJunction` types and now
-/// tracks 4.9.0, the additive raft-substrate bump (packet 240a:
-/// `GlobalLayer.is_raft` + `SlicedRegion.raft_fill`).
+/// tracked 4.9.0, the additive raft-substrate bump (packet 240a:
+/// `GlobalLayer.is_raft` + `SlicedRegion.raft_fill`), and now tracks 4.10.0,
+/// the additive `SlicedRegion.internal_bridge_angles_deg` carrier.
 #[test]
-fn slice_ir_schema_version_is_4_9() {
+fn slice_ir_schema_version_is_4_10() {
     assert_eq!(
         slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION.major,
         4,
@@ -69,8 +70,8 @@ fn slice_ir_schema_version_is_4_9() {
     );
     assert_eq!(
         slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION.minor,
-        9,
-        "minor version must be bumped to 9 by the raft-substrate addition"
+        10,
+        "minor version must be bumped to 10 by the internal-bridge angle carrier"
     );
 }
 

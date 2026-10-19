@@ -1,0 +1,12 @@
+[
+  {
+    "name": "path-regression-before",
+    "exit_code": 1,
+    "expected_exit_code": 1
+  },
+  {
+    "name": "path-regression-after",
+    "exit_code": 0,
+    "expected_exit_code": 0
+  }
+]

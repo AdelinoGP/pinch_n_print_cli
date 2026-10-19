@@ -126,7 +126,8 @@ fn region_split_tied_priority_warn() {
 // -- AC-N2: empty input -------------------------------------------------------
 
 /// AC-N2: `aggregate_region_splits` on an empty module slice returns an empty
-/// BTreeMap and emits no diagnostics.
+/// BTreeMap and emits no diagnostics. No core semantics are seeded implicitly
+/// (ADR-0071), so an empty module set means an empty aggregate.
 #[test]
 fn region_split_aggregation_empty_default() {
     let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
@@ -134,7 +135,58 @@ fn region_split_aggregation_empty_default() {
 
     assert!(agg.is_empty(), "empty input must yield an empty BTreeMap");
     assert!(
+        !agg.contains_key("material") && !agg.contains_key("fuzzy_skin"),
+        "core semantics must not be seeded without a declaring module"
+    );
+    assert!(
         diagnostics.is_empty(),
         "empty input must yield no diagnostics, got: {diagnostics:?}"
+    );
+}
+
+// -- paint_only interaction with aggregation and dispatch ---------------------
+
+/// A `paint_only = true` module is still a normal declaration source for the
+/// aggregate, and its per-module dispatch set is exactly its declared
+/// semantics. A declaration from a module WITHOUT `paint_only` likewise
+/// reaches the aggregate while that module stays dispatch-transparent.
+#[test]
+fn region_split_paint_only_module_aggregates_declaration_and_filters() {
+    let (_tp, paint_only_module) = load_fixture("paint_only.toml");
+    let (_tn, unpainted_module) = load_fixture("c.toml");
+
+    // paint_only = true → dispatch set equals the declared semantics.
+    assert!(paint_only_module.paint_only());
+    assert_eq!(
+        paint_only_module.region_split_semantics().len(),
+        1,
+        "paint_only module must carry its declared semantic in the dispatch set"
+    );
+    assert!(paint_only_module
+        .region_split_semantics()
+        .contains("com.example.paint-only"));
+
+    // Declaration without paint_only → aggregate still registers the
+    // semantic, but the module itself stays dispatch-transparent.
+    assert!(!unpainted_module.paint_only());
+    assert!(
+        unpainted_module.region_split_semantics().is_empty(),
+        "declaration alone must not gate dispatch"
+    );
+
+    let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+    let agg = aggregate_region_splits(&[paint_only_module, unpainted_module], &mut diagnostics);
+
+    assert!(
+        agg.contains_key("com.example.paint-only"),
+        "paint_only module's semantic must be aggregated"
+    );
+    assert!(
+        agg.contains_key("com.example.expansion"),
+        "non-paint-only module's semantic must still be aggregated"
+    );
+    assert!(
+        diagnostics.is_empty(),
+        "distinct priorities 1700/1500 must not warn; got: {diagnostics:?}"
     );
 }

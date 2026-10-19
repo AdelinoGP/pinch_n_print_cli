@@ -225,12 +225,7 @@ fn classify_object(
             id: 0,
             facet_indices: overhang_facets,
             max_angle_deg: overhang_max_angle,
-            needs_support: region_needs_support(
-                mesh,
-                transform,
-                &region_facets,
-                &xy_footprint,
-            ),
+            needs_support: region_needs_support(mesh, transform, &region_facets, &xy_footprint),
             xy_footprint,
         }]
     };
@@ -700,9 +695,8 @@ fn region_needs_support(
 /// Return whether two polygon sets overlap, rejecting disjoint bounding boxes
 /// before invoking the allocating polygon intersection operation.
 fn footprints_overlap(region_polygons: &[ExPolygon], overhang_footprint: &[ExPolygon]) -> bool {
-    let overlaps_bbox = |a: &ExPolygon, b: &ExPolygon| {
-        bboxes_overlap(expolygon_bbox(a), expolygon_bbox(b))
-    };
+    let overlaps_bbox =
+        |a: &ExPolygon, b: &ExPolygon| bboxes_overlap(expolygon_bbox(a), expolygon_bbox(b));
 
     // NOTE: this is exactly the predicate the function returns. The polygon
     // intersection that used to follow was dead — the `||` arm beneath it
@@ -956,6 +950,7 @@ mod tests {
     /// threshold below leaves ~50x headroom above the batched runtime while
     /// sitting ~7x under the incremental runtime, so it fails fast and
     /// reliably if this ever regresses back to the incremental pattern.
+    // KEEP-review (core-brittle): 118s Benchy regression guard; batched union measured 61ms vs 20.6s incremental (338x); 3s threshold keeps ~50x headroom.
     #[test]
     fn compute_xy_footprint_is_fast_for_thousands_of_disjoint_facets() {
         const FACET_COUNT: usize = 1200;

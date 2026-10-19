@@ -91,7 +91,7 @@ fn decode_rgb(path: &Path) -> (u32, u32, Vec<u8>) {
 
 fn assert_pixels(path: &Path, required: &[[u8; 3]], allowed: &[[u8; 3]]) {
     let (width, _height, rgb) = decode_rgb(path);
-    let pixels = rgb.chunks_exact(3).map(|p| [p[0], p[1], p[2]]);
+    let pixels = rgb.as_chunks::<3>().0.iter().map(|p| [p[0], p[1], p[2]]);
     let pixels: Vec<[u8; 3]> = pixels.collect();
     for color in required {
         assert!(
@@ -166,7 +166,11 @@ fn composited_seams_draw_on_colored_base_no_extra_file() {
             .join("bundle")
             .join(e["png_path"].as_str().unwrap()),
     );
-    assert!(rgb.chunks_exact(3).any(|p| [p[0], p[1], p[2]] == SEAM));
+    assert!(rgb
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .any(|p| [p[0], p[1], p[2]] == SEAM));
     assert!(m["images"].as_array().unwrap().iter().all(|image| {
         !image["png_path"]
             .as_str()
@@ -247,7 +251,11 @@ fn composited_seams_on_tool_colored_base() {
             .join("bundle")
             .join(e["png_path"].as_str().unwrap()),
     );
-    assert!(rgb.chunks_exact(3).any(|p| [p[0], p[1], p[2]] == SEAM));
+    assert!(rgb
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .any(|p| [p[0], p[1], p[2]] == SEAM));
 }
 
 #[test]
@@ -263,7 +271,11 @@ fn side_view_seam_glyphs_project_via_y() {
             .join("bundle")
             .join(e["png_path"].as_str().unwrap()),
     );
-    assert!(rgb.chunks_exact(3).any(|p| [p[0], p[1], p[2]] == SEAM));
+    assert!(rgb
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .any(|p| [p[0], p[1], p[2]] == SEAM));
 }
 
 #[test]

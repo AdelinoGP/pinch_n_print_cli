@@ -1,0 +1,27 @@
+fixture_format_version=region-map-v3_0_0-frozen-oracle-v1
+fixture_kind=backward-compatibility independent oracle
+serialization=postcard
+serialization_schema=RegionMapIR
+serialized_type=slicer_ir::RegionMapIR
+revision_source=git archive HEAD
+archive_revision=6ba38c344837722fac5e3a85141df038c54f52c9
+archive_revision_committed_at=2026-09-29T00:02:11-03:00
+archive_extract_path=C:\Users\agpen\AppData\Local\Temp\opencode\w2a-legacy-6ba38c34
+generator_source=crates/slicer-ir/examples/region_map_v3_0_0_fixture_gen.rs (created only inside the archive extract; never committed)
+generator_command=cargo run --offline -p slicer-ir --example region_map_v3_0_0_fixture_gen -- <extract>/fixtures_out/region_map_v3_0_0.postcard
+archive_decode_verify_command=cargo run --offline -p slicer-ir --example region_map_v3_0_0_fixture_gen -- --verify crates/slicer-ir/tests/fixtures/region_map_v3_0_0/region_map_v3_0_0.postcard
+archive_decode_verify_result=verify_ok=true
+fixture_sha256=5af57d3e3d2fe2205a12dda7d7927e71b49925cfc7850a6893c06ddc4e4b33e3
+fixture_bytes=1030
+region_map_schema_version=3.0.0
+resolved_config_declared_dsl_rows=69 (derived count from the archive's declare_resolved_config! invocation)
+resolved_config_cli_bound_keys=66 (50 cli rows + 16 cli_opt rows)
+resolved_config_plain_rows=3
+resolved_config_struct_fields=70 (69 declared rows + the trailing `extensions` bucket)
+resolved_config_typed_field_keys=70 (measured at runtime inside the archive: 66 CLI-bound keys + 3 plain keys + the `wall_loops` alias)
+new_field_name=filament_max_volumetric_speed
+new_field_present_in_archive=false
+new_field_expected_default=0.0
+layout_note=old layout: ResolvedConfig has no filament_max_volumetric_speed field at this revision; the fixture encodes the pre-change serialized field order exactly as the archive's postcard writer emits it
+coverage_note=fixture carries non-empty configs interner pool (2 entries) and two RegionPlan entries, one with a non-empty paint_overrides payload (Material)
+expected_values_note=expected values are hand-written from the generator's literal inputs; they are NOT computed by any post-change production decoder

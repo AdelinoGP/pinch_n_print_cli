@@ -80,6 +80,7 @@ fn infill_areas_routes_per_call_to_distinct_origins() {
         ctx.set_current_slice_region(Some(OriginId {
             object_id: TEST_UUID.to_string(),
             region_id: *region_id,
+            variant_chain: Vec::new(),
         }));
 
         let handle = ctx

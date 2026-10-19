@@ -18,16 +18,17 @@ fn schema_version_is_current() {
     // Contract note for why removal ships minor here), and 4.7.0 (packet 112 —
     // additive `ExtrusionLine`/`ExtrusionJunction` IR), and 4.8.0 (packet 233 —
     // additive `InternalBridgeInfill`), and 4.9.0 (packet 240a — additive
-    // `GlobalLayer.is_raft` + `SlicedRegion.raft_fill`). This pin tracks the
-    // live constant.
+    // `GlobalLayer.is_raft` + `SlicedRegion.raft_fill`), and 4.10.0 (additive
+    // `SlicedRegion.internal_bridge_angles_deg`). This pin tracks the live
+    // constant.
     assert_eq!(
         CURRENT_SLICE_IR_SCHEMA_VERSION,
         SemVer {
             major: 4,
-            minor: 9,
+            minor: 10,
             patch: 0
         },
-        "CURRENT_SLICE_IR_SCHEMA_VERSION must track the live constant (4.9.0)"
+        "CURRENT_SLICE_IR_SCHEMA_VERSION must track the live constant (4.10.0)"
     );
 }
 

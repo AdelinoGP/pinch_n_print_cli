@@ -74,12 +74,13 @@ min = 1.0
 max = 300.0
 display = "Ironing Speed"
 group = "Support"
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 [config.schema.support_ironing_flow]
-type = "float"
-default = 0.10
-min = 0.01
-max = 1.0
+type = "percent"
+default = "10%"
+min = 0.0
+max = 100.0
 display = "Ironing Flow Rate"
 group = "Support"
 
@@ -94,7 +95,7 @@ group = "Support"
 [config.schema.line_width]
 type = "float"
 default = 0.4
-min = 0.1
+min = 0
 max = 2.0
 display = "Line Width"
 group = "Support"

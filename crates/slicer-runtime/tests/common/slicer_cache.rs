@@ -169,6 +169,25 @@ fn output_staging_dir() -> PathBuf {
     p
 }
 
+/// Staging directory for a test's own artifacts, created on demand.
+///
+/// The sibling helpers above all create their directories; tests that wrote
+/// straight into `crates/slicer-runtime/target/` did not, which is a race —
+/// the directory is absent on a clean checkout until some other writer creates
+/// it, so the loser of that race panics on `fs::write`. Always go through this
+/// helper rather than joining `CARGO_MANIFEST_DIR/target` by hand.
+pub fn test_artifact_dir() -> PathBuf {
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target");
+    std::fs::create_dir_all(&p).expect("create crate target dir");
+    p
+}
+
+/// A named artifact path inside [`test_artifact_dir`], with the directory
+/// guaranteed to exist.
+pub fn test_artifact_path(name: &str) -> PathBuf {
+    test_artifact_dir().join(name)
+}
+
 /// Enumerate the per-module subdirs of `modules/core-modules`, omitting
 /// any whose directory name matches `excluded`. The CLI's `--module-dir`
 /// flag is repeatable and each module manifest sits one subdirectory

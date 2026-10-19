@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "D:\slicerProject\pinch_n_print_cli_2\docs\specs\perf-vs-orca\evidence\t41-reference-repreparation\verify-freeze.py", line 297, in <module>
+    main()
+    ~~~~^^
+  File "D:\slicerProject\pinch_n_print_cli_2\docs\specs\perf-vs-orca\evidence\t41-reference-repreparation\verify-freeze.py", line 112, in main
+    raise RuntimeError("freeze verification requires Python assertions enabled")
+RuntimeError: freeze verification requires Python assertions enabled

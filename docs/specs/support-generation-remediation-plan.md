@@ -54,6 +54,8 @@ source-adjudicated + structural invariants + human-authored gcode visual-debug
 
 ## Packet Queue
 
+Packet directories generated for this plan use `docs/spec_packets/support-generation-remediation_<NN>_<slug>/` (prefix = plan file name minus `-plan`, `NN` = zero-padded queue row, per the 2026-09-11 packet-dir convention). Legacy rows below keep their historical dirs.
+
 | # | packet slug | goal (one sentence) | task ids | depends on | status | packet dir |
 |---|-------------|---------------------|----------|------------|--------|------------|
 | 1 | support-planner-defect-fix | Fix RC-1 (lone-node vertical columns) and RC-4 (tip-radius floor) in the support-planner. | TASK-322 | - | superseded | docs/spec_packets/_OLD/213-support-planner-defect-fix.md |

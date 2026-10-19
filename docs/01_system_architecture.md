@@ -443,6 +443,12 @@ Layer::Infill
             No per-region role-pick; no polygon math in modules, except
             raft-default's deterministic footprint synthesis via the host hatch
             service (ADR-0009's role/claim reference).
+            Internal bridges have one producer: the ShellClassification
+            prepass writes `internal_bridge_areas` (also in `bridge_areas`)
+            plus one angle per polygon (`internal_bridge_angles_deg`). The
+            bridge holder emits `bridge_areas − internal_bridge_areas` at
+            `bridge_orientation_deg` and each internal polygon as
+            `InternalBridgeInfill` at its own angle.
             The wave-overhangs bridge holder subtracts `internal_bridge_areas`,
             emits anchor-first locked `BridgeInfill` waves over external areas,
             and uses unlocked rectilinear fallback for internal or
@@ -906,7 +912,7 @@ The full known-claim catalog — including the four fill-role claims
 (`claim:top-fill` … `claim:sparse-fill`), `claim:raft-fill`, `claim:ironing`,
 and `claim:infill-link` — lives in `docs/03_wit_and_manifest.md` § "Known claim
 IDs". The legacy blanket claim `infill-generator` is **deprecated since
-2026-06-09 (DEV-065)**; in-tree infill modules declare the per-role claims
+2026-06-09**; in-tree infill modules declare the per-role claims
 instead. The `perimeter-generator` claim is resolved by the `wall_generator`
 config key (`classic` or `arachne`) rather than by alphabetical first-winner
 dedup — see `docs/04_host_scheduler.md` § "Claim Resolution with Runtime

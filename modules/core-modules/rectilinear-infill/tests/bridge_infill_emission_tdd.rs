@@ -19,6 +19,46 @@ fn empty_paint_view() -> slicer_sdk::traits::PaintRegionLayerView {
     slicer_sdk::traits::PaintRegionLayerView::new(0)
 }
 
+/// Baseline builder for `from_config` fixtures (packet 06 5c', item 11):
+/// holds every key the module's classified reads touch on the tested path —
+/// the ten `require_*` reads plus the remaining `from_config` reads — at the
+/// guest's manifest-default values (rectilinear-infill.toml
+/// [config.schema]). Percent-typed keys hold their resolved absolute values
+/// (`bridge_density` "100%" → 1.0 against the identity base;
+/// `internal_bridge_speed` "150%" → 37.5 against bridge_speed 25.0).
+/// `line_width` holds its post-expansion default (1.125 × nozzle_diameter):
+/// the raw manifest default 0 is the auto sentinel the host expands at Phase
+/// B (slicer-config `expand_automatic_values`), and `resolve_role_width` no
+/// longer expands — a raw 0 cancels every emission via the spacing gate.
+/// Tests that exercise a specific key add it after this baseline so their
+/// explicit value wins.
+fn baseline_config() -> ConfigViewBuilder {
+    ConfigViewBuilder::new()
+        .float("sparse_infill_density", 20.0)
+        .float("infill_direction", 45.0)
+        .float("line_width", 0.45)
+        .float("bridge_line_width", 0.0)
+        .float("initial_layer_line_width", 0.0)
+        .float("top_surface_line_width", 0.0)
+        .float("internal_solid_infill_line_width", 0.0)
+        .float("sparse_infill_line_width", 0.0)
+        .float("bridge_density", 1.0)
+        .float("bridge_speed", 25.0)
+        .float("bridge_flow", 1.0)
+        .bool("thick_bridges", false)
+        .float("internal_bridge_density", 1.0)
+        .float("internal_bridge_speed", 37.5)
+        .float("internal_bridge_flow", 1.0)
+        .bool("thick_internal_bridges", true)
+        .float("top_surface_speed", 60.0)
+        .float("internal_solid_infill_speed", 60.0)
+        .float("sparse_infill_speed", 60.0)
+        .bool("dont_filter_internal_bridges", false)
+        .bool("enable_extra_bridge_layer", false)
+        .float("internal_bridge_angle", 0.0)
+        .float("infill_shift_step", 0.0)
+}
+
 /// Create a region with bridge areas and orientation set.
 fn make_bridge_region(bridge_orientation_deg: f32) -> SliceRegionView {
     let s = square_polygon(5.0, 5.0, 10.0);
@@ -121,18 +161,13 @@ fn rect_expoly_mm(x0: i32, y0: i32, x1: i32, y1: i32) -> slicer_ir::ExPolygon {
 #[test]
 fn bridge_areas_emit_bridge_infill_at_oriented_angle() {
     let bridge_angle = 45.0_f32;
-    let module = RectilinearInfill::from_config(&ConfigView::new()).unwrap();
+    let config = baseline_config().build();
+    let module = RectilinearInfill::from_config(&config).unwrap();
     let region = make_bridge_region(bridge_angle);
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(
-            0,
-            &[region],
-            &empty_paint_view(),
-            &mut output,
-            &ConfigView::new(),
-        )
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     let all_paths: Vec<_> = output
@@ -172,8 +207,7 @@ fn bridge_areas_emit_bridge_infill_at_oriented_angle() {
 /// surface; it must not reuse sparse infill's density or line width.
 #[test]
 fn bridge_fill_uses_bridge_width_and_full_density() {
-    let config = ConfigViewBuilder::new()
-        .float("sparse_infill_density", 20.0)
+    let config = baseline_config()
         .float("line_width", 0.4)
         .float("bridge_line_width", 0.8)
         .float("bridge_flow", 0.7)
@@ -235,11 +269,11 @@ fn bridge_fill_uses_bridge_width_and_full_density() {
 /// density, flow, and speed settings while retaining the bridge claim.
 #[test]
 fn internal_bridge_uses_internal_role_settings() {
-    let config = ConfigViewBuilder::new()
+    let config = baseline_config()
         .float("line_width", 0.4)
         .float("bridge_line_width", 0.4)
         .float("bridge_speed", 25.0)
-        .float("internal_bridge_speed", 37.5)
+        .float_or_percent("internal_bridge_speed", 37.5, false)
         .float("internal_bridge_density", 0.5)
         .float("internal_bridge_flow", 0.8)
         .bool("thick_internal_bridges", false)
@@ -288,7 +322,8 @@ fn internal_bridge_uses_internal_role_settings() {
 /// must lie inside [0,0]–[20,20] \ [5,5]–[15,15]; no overlap between roles.
 #[test]
 fn straddling_expoly_partitioned_via_set_difference() {
-    let module = RectilinearInfill::from_config(&ConfigView::new()).unwrap();
+    let config = baseline_config().build();
+    let module = RectilinearInfill::from_config(&config).unwrap();
 
     let outer = rect_expoly_mm(0, 0, 20, 20);
     let bridge = rect_expoly_mm(5, 5, 15, 15);
@@ -309,13 +344,7 @@ fn straddling_expoly_partitioned_via_set_difference() {
 
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill(
-            0,
-            &[region],
-            &empty_paint_view(),
-            &mut output,
-            &ConfigView::new(),
-        )
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     let all_paths: Vec<_> = output
@@ -375,7 +404,8 @@ fn straddling_expoly_partitioned_via_set_difference() {
 #[test]
 fn bridge_paths_use_bridge_orientation_not_sparse_alternation() {
     let bridge_angle = 37.0_f32;
-    let module = RectilinearInfill::from_config(&ConfigView::new()).unwrap();
+    let config = baseline_config().build();
+    let module = RectilinearInfill::from_config(&config).unwrap();
 
     let outer = rect_expoly_mm(0, 0, 20, 20);
     let bridge_rect = rect_expoly_mm(2, 2, 18, 18);
@@ -397,13 +427,7 @@ fn bridge_paths_use_bridge_orientation_not_sparse_alternation() {
     let mut output = InfillOutputBuilder::new();
     // layer_index=1 → sparse alternation would be 90°
     module
-        .run_infill(
-            1,
-            &[region],
-            &empty_paint_view(),
-            &mut output,
-            &ConfigView::new(),
-        )
+        .run_infill(1, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     let all_paths: Vec<_> = output
@@ -445,7 +469,8 @@ fn bridge_paths_use_bridge_orientation_not_sparse_alternation() {
 /// is_bridge=true but bridge_areas is empty. Module must emit zero BridgeInfill paths.
 #[test]
 fn empty_bridge_areas_emits_no_bridge_infill_even_when_is_bridge_true() {
-    let module = RectilinearInfill::from_config(&ConfigView::new()).unwrap();
+    let config = baseline_config().build();
+    let module = RectilinearInfill::from_config(&config).unwrap();
 
     let region = with_rectilinear_claims(
         SliceRegionViewBuilder::new()
@@ -462,13 +487,7 @@ fn empty_bridge_areas_emits_no_bridge_infill_even_when_is_bridge_true() {
 
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill(
-            0,
-            &[region],
-            &empty_paint_view(),
-            &mut output,
-            &ConfigView::new(),
-        )
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     let all_paths: Vec<_> = output
@@ -536,14 +555,14 @@ fn bridge_paths_for(config: &ConfigView, internal: bool) -> Vec<slicer_ir::Extru
 /// therefore roughly halve the number of external bridge lines.
 #[test]
 fn bridge_density_spaces_external_bridge_lines() {
-    let full = ConfigViewBuilder::new()
+    let full = baseline_config()
         .float("line_width", 0.4)
         .float("bridge_line_width", 0.4)
         .float("bridge_flow", 1.0)
         .bool("thick_bridges", false)
         .float("bridge_density", 1.0)
         .build();
-    let half = ConfigViewBuilder::new()
+    let half = baseline_config()
         .float("line_width", 0.4)
         .float("bridge_line_width", 0.4)
         .float("bridge_flow", 1.0)
@@ -575,7 +594,7 @@ fn bridge_density_spaces_external_bridge_lines() {
 #[test]
 fn thick_internal_bridges_widens_internal_bridge_spacing() {
     let make = |thick: bool| {
-        ConfigViewBuilder::new()
+        baseline_config()
             .float("line_width", 0.4)
             .float("bridge_line_width", 0.4)
             .float("internal_bridge_flow", 1.0)
@@ -595,5 +614,101 @@ fn thick_internal_bridges_widens_internal_bridge_spacing() {
         thick_paths < thin_paths,
         "thick_internal_bridges must widen bridge spacing (fewer lines): \
          thick {thick_paths} vs thin {thin_paths}"
+    );
+}
+
+/// Line direction of a path folded into `[0, 180)`, from its first segment.
+fn line_direction_mod180(path: &slicer_ir::ExtrusionPath3D) -> f32 {
+    path_direction_deg(path).rem_euclid(180.0)
+}
+
+/// Smallest difference between two undirected line directions (degrees).
+fn line_diff_mod180(actual: f32, expected: f32) -> f32 {
+    let diff = (actual - expected).rem_euclid(180.0);
+    diff.min(180.0 - diff)
+}
+
+/// Every internal-bridge polygon is filled at its own host-authored angle
+/// (`internal_bridge_angles_deg[i]`, canonical per-surface `bridge_angle`);
+/// external bridges keep the region's `bridge_orientation_deg`. With no
+/// per-polygon angles the internal polygons fall back to
+/// `bridge_orientation_deg`.
+#[test]
+fn internal_bridge_areas_emit_at_their_own_angle() {
+    let external = rect_expoly_mm(0, 0, 10, 10);
+    let first = rect_expoly_mm(20, 0, 30, 10);
+    let second = rect_expoly_mm(40, 0, 50, 10);
+    let region_with = |angles: Vec<f32>| {
+        with_rectilinear_claims(
+            SliceRegionViewBuilder::new()
+                .object_id("test_object")
+                .region_id(0)
+                .add_infill_area(rect_expoly_mm(0, 0, 50, 10))
+                .effective_layer_height(0.2)
+                .z(1.0)
+                .is_bridge(true)
+                .bridge_areas(vec![external.clone(), first.clone(), second.clone()])
+                .internal_bridge_areas(vec![first.clone(), second.clone()])
+                .internal_bridge_angles_deg(angles)
+                .bridge_orientation_deg(0.0)
+                .build(),
+        )
+    };
+    let emit = |region: SliceRegionView| {
+        let config = baseline_config().build();
+        let module = RectilinearInfill::from_config(&config).unwrap();
+        let mut output = InfillOutputBuilder::new();
+        module
+            .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
+            .unwrap();
+        output.solid_paths().to_vec()
+    };
+    // Directions of the bridge paths whose first point lies in [x0, x1] mm.
+    let directions = |paths: &[slicer_ir::ExtrusionPath3D], role: ExtrusionRole, x0, x1| {
+        paths
+            .iter()
+            .filter(|path| path.role == role && path.points.len() >= 2)
+            .filter(|path| (x0..=x1).contains(&path.points[0].x))
+            .map(line_direction_mod180)
+            .collect::<Vec<f32>>()
+    };
+
+    let paths = emit(region_with(vec![60.0, 120.0]));
+    for (label, role, x0, x1, expected) in [
+        ("external", ExtrusionRole::BridgeInfill, -0.1, 10.1, 0.0),
+        (
+            "first internal",
+            ExtrusionRole::InternalBridgeInfill,
+            19.9,
+            30.1,
+            60.0,
+        ),
+        (
+            "second internal",
+            ExtrusionRole::InternalBridgeInfill,
+            39.9,
+            50.1,
+            120.0,
+        ),
+    ] {
+        let found = directions(&paths, role, x0, x1);
+        assert!(!found.is_empty(), "{label} bridge polygon emitted no paths");
+        assert!(
+            found
+                .iter()
+                .all(|dir| line_diff_mod180(*dir, expected) <= 1.0),
+            "{label} bridge must run at {expected} deg, got {found:?}"
+        );
+    }
+
+    let fallback = emit(region_with(Vec::new()));
+    let found = directions(&fallback, ExtrusionRole::InternalBridgeInfill, 19.9, 50.1);
+    assert!(
+        !found.is_empty(),
+        "fallback internal bridges emitted no paths"
+    );
+    assert!(
+        found.iter().all(|dir| line_diff_mod180(*dir, 0.0) <= 1.0),
+        "without per-polygon angles internal bridges use bridge_orientation_deg, got {found:?}"
     );
 }

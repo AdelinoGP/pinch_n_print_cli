@@ -53,9 +53,12 @@ fn slice() -> SliceIR {
 #[test]
 fn integrated_parity_seam_planner() {
     let config = Arc::new(ConfigView::from_map(
-        [("seam_position".into(), ConfigValue::String("nearest".into()))]
-            .into_iter()
-            .collect(),
+        [(
+            "seam_position".into(),
+            ConfigValue::String("nearest".into()),
+        )]
+        .into_iter()
+        .collect(),
     ));
     let mut blackboard = Blackboard::new(
         mesh_fixture(vec![flat_plate_object("obj-1", 0.0, identity_transform())]),

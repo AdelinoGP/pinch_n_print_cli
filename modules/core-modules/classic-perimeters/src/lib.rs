@@ -24,16 +24,17 @@ use std::collections::HashMap;
 use slicer_core::flow::{
     bridging_flow, line_width_to_spacing, resolve_role_width, RoleWidthContext,
 };
+use slicer_core::perimeter_spatial::{
+    expolygon_to_path3d_indexed, PathAnnotationMode, PerimeterSpatialContext,
+};
 use slicer_core::perimeter_utils::{
-    apply_seam_paint_bias, build_wall_flags, expolygon_to_path3d,
-    generate_sharp_corner_seam_candidates, point_in_any_polygon, seam_paint_boxes,
-    wall_sequence_reorder, WallSequence, BASE_SPEED,
+    apply_seam_paint_bias, build_wall_flags, generate_sharp_corner_seam_candidates,
+    seam_paint_boxes, wall_sequence_reorder, WallSequence, BASE_SPEED,
 };
 use slicer_core::polygon_ops::{
     offset2_ex, opening_ex, remove_small_and_small_holes, OffsetJoinType as CoreJoin,
 };
 use slicer_core::top_surface_split::split_top_surfaces;
-use slicer_ir::slice_ir::QuartileBand;
 use slicer_ir::{
     units_to_mm, variable_width, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D,
     ExtrusionRole, LoopType, PaintSemantic, PaintValue, Polygon, WallLoop, WidthProfile,
@@ -58,9 +59,9 @@ use slicer_sdk::views::SliceRegionView;
 pub struct ClassicPerimeters {
     /// Number of wall loops to generate (Orca key `wall_loops`).
     wall_loops: u32,
-    /// Speed factor for outer walls (outer_wall_speed / BASE_SPEED).
+    /// Outer-wall multiplier: neutral for AUTO, otherwise speed / BASE_SPEED.
     outer_speed_factor: f32,
-    /// Speed factor for inner walls (inner_wall_speed / BASE_SPEED).
+    /// Inner-wall multiplier: neutral for AUTO, otherwise speed / BASE_SPEED.
     inner_speed_factor: f32,
     /// Arc tolerance for polygon offset operations (mm).
     perimeter_arc_tolerance: f32,
@@ -81,35 +82,33 @@ const DEGENERATE_MIN_AREA_SQ_UNITS: f64 = 1.0;
 /// named constant in `arachne-perimeters`.
 const ERR_NEGATIVE_SPACING: u32 = 1;
 
+/// AUTO selects the host's geometry-dependent base, not a zero multiplier.
+/// Keep positive configured-speed scaling and the emitter's clamp unchanged
+/// (docs/adr/0072-context-aware-feedrate-resolution-preserves-factor-contract.md).
+fn configured_speed_factor(speed: f32) -> f32 {
+    if speed == 0.0 {
+        1.0
+    } else {
+        speed / BASE_SPEED
+    }
+}
+
 #[slicer_module]
 impl LayerModule for ClassicPerimeters {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let wall_loops = match config.get("wall_loops") {
-            Some(ConfigValue::Int(n)) => *n as u32,
-            _ => 2, // default
-        };
+        // Required read (packet 06 fail-closed semantics): the registry seeds
+        // the manifest default into a bound view, so an absent key is a
+        // contract violation, not a configurable fallback.
+        let wall_loops = config.require_int("wall_loops")? as u32;
 
-        let outer_wall_speed = match config.get("outer_wall_speed") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => 30.0, // default
-        };
-
-        let inner_wall_speed = match config.get("inner_wall_speed") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => 45.0, // default
-        };
-
-        let perimeter_arc_tolerance = match config.get("perimeter_arc_tolerance") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 0.0125,
-        };
+        let outer_wall_speed = config.require_float("outer_wall_speed")? as f32;
+        let inner_wall_speed = config.require_float("inner_wall_speed")? as f32;
+        let perimeter_arc_tolerance = config.require_float("perimeter_arc_tolerance")? as f32;
 
         Ok(Self {
             wall_loops,
-            outer_speed_factor: outer_wall_speed / BASE_SPEED,
-            inner_speed_factor: inner_wall_speed / BASE_SPEED,
+            outer_speed_factor: configured_speed_factor(outer_wall_speed),
+            inner_speed_factor: configured_speed_factor(inner_wall_speed),
             perimeter_arc_tolerance,
         })
     }
@@ -158,18 +157,22 @@ impl LayerModule for ClassicPerimeters {
         let width_context = RoleWidthContext {
             line_width: legacy_line_width,
             nozzle_diameter,
+            // The four wall-width keys are typed `float_or_percent` with
+            // `base_key = "nozzle_diameter"` in the manifest: read with
+            // `require_abs_value` against the nozzle base, NOT `require_float`
+            // (packet 06 locked assumption, mirrors arachne-perimeters).
             bridge_line_width: _config
-                .get_abs_value("bridge_line_width", nozzle_diameter as f64)
-                .unwrap_or(0.0) as f32,
+                .require_abs_value("bridge_line_width", nozzle_diameter as f64)?
+                as f32,
             initial_layer_line_width: _config
-                .get_abs_value("initial_layer_line_width", nozzle_diameter as f64)
-                .unwrap_or(0.0) as f32,
+                .require_abs_value("initial_layer_line_width", nozzle_diameter as f64)?
+                as f32,
             outer_wall_line_width: _config
-                .get_abs_value("outer_wall_line_width", nozzle_diameter as f64)
-                .unwrap_or(0.0) as f32,
+                .require_abs_value("outer_wall_line_width", nozzle_diameter as f64)?
+                as f32,
             inner_wall_line_width: _config
-                .get_abs_value("inner_wall_line_width", nozzle_diameter as f64)
-                .unwrap_or(0.0) as f32,
+                .require_abs_value("inner_wall_line_width", nozzle_diameter as f64)?
+                as f32,
             ..RoleWidthContext::default()
         };
         let outer_wall_line_width = resolve_role_width(
@@ -193,21 +196,13 @@ impl LayerModule for ClassicPerimeters {
             },
             _ => WallSequence::InnerOuter,
         };
-        let detect_thin_wall = _config.get_bool("detect_thin_wall").unwrap_or(false);
+        let detect_thin_wall = _config.require_bool("detect_thin_wall")?;
         // Packet 108: absolute turn-angle threshold (degrees) gating seam-candidate
         // emission to sharp corners only, instead of every outer-wall vertex.
-        let seam_candidate_angle_threshold_deg = _config
-            .get_float("seam_candidate_angle_threshold_deg")
-            .map(|v| v as f32)
-            .unwrap_or(30.0);
-        let gap_infill_speed = _config
-            .get_float("gap_infill_speed")
-            .map(|s| s as f32)
-            .unwrap_or(30.0);
-        let filter_out_gap_fill = _config
-            .get_float("filter_out_gap_fill")
-            .map(|s| s as f32)
-            .unwrap_or(0.5);
+        let seam_candidate_angle_threshold_deg =
+            _config.require_float("seam_candidate_angle_threshold_deg")? as f32;
+        let gap_infill_speed = _config.require_float("gap_infill_speed")? as f32;
+        let filter_out_gap_fill = _config.require_float("filter_out_gap_fill")? as f32;
         // Medial-axis backend gate (diagnose 2026-06-24). On painted slices the
         // gap-fill / thin-wall medial axis can OOM-abort boostvoronoi on degenerate
         // per-color cell gaps (cube_fuzzyPainted). Until the medial axis is isolated
@@ -218,10 +213,9 @@ impl LayerModule for ClassicPerimeters {
         // actually injected by any host code, making this gate permanently
         // inert until `slicer_runtime::run_slice`/`run.rs` was fixed to set it
         // whenever any `ObjectMesh` carries `paint_data`.)
-        let gap_fill_medial_axis_on_painted = _config
-            .get_bool("gap_fill_medial_axis_on_painted")
-            .unwrap_or(false);
-        let slice_has_paint = _config.get_bool("slice_has_paint").unwrap_or(false);
+        let gap_fill_medial_axis_on_painted =
+            _config.require_bool("gap_fill_medial_axis_on_painted")?;
+        let slice_has_paint = _config.require_bool("slice_has_paint")?;
         let medial_axis_enabled = gap_fill_medial_axis_on_painted || !slice_has_paint;
         if !medial_axis_enabled && layer_index == 0 {
             slicer_sdk::host::log_warn(
@@ -231,7 +225,7 @@ impl LayerModule for ClassicPerimeters {
         }
         // R1: precise_outer_wall — gated on wall_sequence==InnerOuter (AC-7, P105).
         // OrcaSlicer PerimeterGenerator.cpp:1501-1506,1644
-        let precise_outer_wall_raw = _config.get_bool("precise_outer_wall").unwrap_or(false);
+        let precise_outer_wall_raw = _config.require_bool("precise_outer_wall")?;
         let precise_outer_wall =
             precise_outer_wall_raw && matches!(wall_sequence, WallSequence::InnerOuter);
 
@@ -239,10 +233,7 @@ impl LayerModule for ClassicPerimeters {
         // by bridging_flow's thick_bridges round-cross-section formula
         // (D-104g); threaded through emit_walls the same way nozzle_diameter
         // already is.
-        let layer_height = _config
-            .get_float("layer_height")
-            .map(|v| v as f32)
-            .unwrap_or(0.2);
+        let layer_height = _config.require_float("layer_height")? as f32;
 
         let base_wall_count = _config
             .get_int("wall_loops")
@@ -253,7 +244,7 @@ impl LayerModule for ClassicPerimeters {
         // `int loop_number = this->config->wall_loops + surface.extra_perimeters - 1;`
         // (0-indexed loops). Translated to an actual wall count, this is simply
         // `wall_loops + extra_perimeters`.
-        let extra_perimeters = _config.get_int("extra_perimeters").unwrap_or(0).max(0) as u32;
+        let extra_perimeters = _config.require_int("extra_perimeters")?.max(0) as u32;
         let base_wall_count = base_wall_count + extra_perimeters;
         // alternate_extra_wall: canonical `process_classic` and
         // `process_arachne` (`PerimeterGenerator.cpp`) carry a byte-identical
@@ -266,9 +257,9 @@ impl LayerModule for ClassicPerimeters {
         // the first layer, matching canonical's ordering. The arachne module
         // expresses the same +1 wall as `max_bead_count += 2`, per canonical's
         // `max_bead_count = 2 * inset_count` in `WallToolPaths::generate`.
-        let alternate_extra_wall = _config.get_bool("alternate_extra_wall").unwrap_or(false);
-        let spiral_vase = _config.get_bool("spiral_vase").unwrap_or(false);
-        let sparse_infill_density = _config.get_float("sparse_infill_density").unwrap_or(20.0);
+        let alternate_extra_wall = _config.require_bool("alternate_extra_wall")?;
+        let spiral_vase = _config.require_bool("spiral_vase")?;
+        let sparse_infill_density = _config.require_float("sparse_infill_density")?;
         let base_wall_count = if alternate_extra_wall
             && layer_index % 2 == 1
             && !spiral_vase
@@ -284,25 +275,19 @@ impl LayerModule for ClassicPerimeters {
         // with the plain extra_perimeters bonus above (independent branch in
         // the planar path); never applies to the non-planar shell branch,
         // which returns before this code runs.
-        let extra_perimeters_on_overhangs = _config
-            .get_bool("extra_perimeters_on_overhangs")
-            .unwrap_or(false);
+        let extra_perimeters_on_overhangs =
+            _config.require_bool("extra_perimeters_on_overhangs")?;
         // Narrow-island smaller-width override (T-072/T-073, P108). See
         // `classify_narrow_island` for the classification rule; these three
         // keys are per-invocation (not per-object/per-layer overridable yet).
-        let smaller_perimeter_line_width = _config
-            .get_float("smaller_perimeter_line_width")
-            .map(|v| v as f32)
-            .unwrap_or(0.25);
-        let small_perimeter_threshold = _config
-            .get_float("small_perimeter_threshold")
-            .map(|v| v as f32)
-            .unwrap_or(0.0);
-        let narrow_loop_length_threshold_mm = _config
-            .get_float("narrow_loop_length_threshold_mm")
-            .map(|v| v as f32)
-            .unwrap_or(10.0);
-        let only_one_wall_top = _config.get_bool("only_one_wall_top").unwrap_or(false);
+        // Required reads: every key below is declared in the manifest, so a
+        // bound view always holds its registry default.
+        let smaller_perimeter_line_width =
+            _config.require_float("smaller_perimeter_line_width")? as f32;
+        let small_perimeter_threshold = _config.require_float("small_perimeter_threshold")? as f32;
+        let narrow_loop_length_threshold_mm =
+            _config.require_float("narrow_loop_length_threshold_mm")? as f32;
+        let only_one_wall_top = _config.require_bool("only_one_wall_top")?;
         // min_width_top_surface (D-152, packet 184): the erosion threshold that
         // gates the `only_one_wall_top` single-wall collapse. Canonical
         // `PerimeterGenerator::split_top_surfaces` resolves it with
@@ -316,12 +301,9 @@ impl LayerModule for ClassicPerimeters {
         // leaves the gate OFF. Canonical additionally floors the threshold at
         // `ext_perimeter_spacing/2 + 10`; packet 184 deliberately does not port
         // that floor ([FWD-2]), matching the already-landed arachne half.
-        let min_width_top = _config
-            .get_abs_value("min_width_top_surface", inner_wall_line_width as f64)
-            .unwrap_or(0.0);
-        let only_one_wall_first_layer = _config
-            .get_bool("only_one_wall_first_layer")
-            .unwrap_or(false);
+        let min_width_top =
+            _config.require_abs_value("min_width_top_surface", inner_wall_line_width as f64)?;
+        let only_one_wall_first_layer = _config.require_bool("only_one_wall_first_layer")?;
         // Canonical `process_classic` (`PerimeterGenerator.cpp`) gates
         // the single-wall clamp on `this->layer_id == object_config->raft_layers`
         // — the first *printed* layer, which is 0 only when no raft is
@@ -335,7 +317,7 @@ impl LayerModule for ClassicPerimeters {
         // PnP's `bottom_shell_layers` is a host `ResolvedConfig` field
         // constrained to [1, 10], so the predicate is unconditionally true here
         // and porting it would be dead code. Revisit if that range ever admits 0.
-        let raft_layers = _config.get_int("support_raft_layers").unwrap_or(0).max(0) as u32;
+        let raft_layers = _config.require_int("support_raft_layers")?.max(0) as u32;
         let layer_wall_count = if only_one_wall_first_layer && layer_index == raft_layers {
             1
         } else {
@@ -351,22 +333,28 @@ impl LayerModule for ClassicPerimeters {
             .map(|s| s as f32)
             .or_else(|| _config.get_int("inner_wall_speed").map(|s| s as f32))
             .unwrap_or(self.inner_speed_factor * BASE_SPEED);
-        let outer_speed_factor = outer_wall_speed / BASE_SPEED;
-        let inner_speed_factor = inner_wall_speed / BASE_SPEED;
+        let outer_speed_factor = configured_speed_factor(outer_wall_speed);
+        let inner_speed_factor = configured_speed_factor(inner_wall_speed);
         // bridge_flow / thick_bridges (packet 149, D4/D-104g): read once per
         // invocation, applied per-vertex in emit_walls wherever is_bridge is true.
-        let bridge_flow_ratio = _config
-            .get_float("bridge_flow")
-            .map(|v| v as f32)
-            .unwrap_or(1.0);
-        let thick_bridges = _config.get_bool("thick_bridges").unwrap_or(false);
+        let bridge_flow_ratio = _config.require_float("bridge_flow")? as f32;
+        let thick_bridges = _config.require_bool("thick_bridges")?;
 
         for region in regions {
-            output.begin_region(region.object_id(), *region.region_id());
+            output.begin_region(
+                region.object_id(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
             if region.polygons().is_empty() {
                 continue;
             }
             let prev_layer_boundary = region.prev_layer_boundary();
+            let spatial_context = PerimeterSpatialContext::new(
+                prev_layer_boundary,
+                region.overhang_quartile_polygons(),
+                region.bridge_areas(),
+            );
             // ── Non-planar shell branch (T-074b/c/d, P108) ──────────────
             // Highest precedence: a region backed by a resolved SurfaceGroup
             // (region.nonplanar_surface.is_some() at the IR level) emits
@@ -383,7 +371,7 @@ impl LayerModule for ClassicPerimeters {
                     inner_wall_line_width,
                     layer_height,
                     output,
-                    prev_layer_boundary,
+                    &spatial_context,
                 )?;
                 continue;
             }
@@ -400,9 +388,8 @@ impl LayerModule for ClassicPerimeters {
             } else {
                 "infill_wall_overlap"
             };
-            let infill_wall_overlap = _config
-                .get_abs_value(overlap_key, inner_wall_line_width as f64)
-                .unwrap_or(0.0) as f32;
+            let infill_wall_overlap =
+                _config.require_abs_value(overlap_key, inner_wall_line_width as f64)? as f32;
             // A topmost top sub-area unconditionally collapses to one wall. The
             // min_width_top_surface gate applies only to non-topmost sub-areas.
             let wall_loops = if only_one_wall_top && top_shell == Some(0) {
@@ -438,7 +425,6 @@ impl LayerModule for ClassicPerimeters {
                 .iter()
                 .any(|(sem, val)| sem == "fuzzy_skin" && matches!(val, PaintValue::Flag(true)));
             let overhang_areas = region.overhang_areas();
-            let overhang_bands = region.overhang_quartile_polygons();
             if extra_perimeters_on_overhangs && !overhang_areas.is_empty() {
                 // T-077 (P108): one extra wall loop inside the overhang
                 // footprint, base wall count elsewhere. Reuses the
@@ -458,7 +444,6 @@ impl LayerModule for ClassicPerimeters {
                         wall_loops + 1,
                         outer_speed_factor,
                         inner_speed_factor,
-                        region.bridge_areas(),
                         bridge_flow_ratio,
                         thick_bridges,
                         region_outer_wall_line_width,
@@ -474,8 +459,7 @@ impl LayerModule for ClassicPerimeters {
                         rid,
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
-                        overhang_bands,
-                        prev_layer_boundary,
+                        &spatial_context,
                     )?;
                 }
                 if !split.non_top_portion.is_empty() {
@@ -490,7 +474,6 @@ impl LayerModule for ClassicPerimeters {
                         wall_loops,
                         outer_speed_factor,
                         inner_speed_factor,
-                        region.bridge_areas(),
                         bridge_flow_ratio,
                         thick_bridges,
                         region_outer_wall_line_width,
@@ -506,8 +489,7 @@ impl LayerModule for ClassicPerimeters {
                         rid,
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
-                        overhang_bands,
-                        prev_layer_boundary,
+                        &spatial_context,
                     )?;
                 }
             } else if only_one_wall_top && matches!(top_shell, Some(n) if n > 0) {
@@ -556,7 +538,6 @@ impl LayerModule for ClassicPerimeters {
                         1,
                         outer_speed_factor,
                         inner_speed_factor,
-                        region.bridge_areas(),
                         bridge_flow_ratio,
                         thick_bridges,
                         region_outer_wall_line_width,
@@ -572,8 +553,7 @@ impl LayerModule for ClassicPerimeters {
                         rid,
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
-                        overhang_bands,
-                        prev_layer_boundary,
+                        &spatial_context,
                     )?;
                 }
                 if !split.non_top_portion.is_empty() {
@@ -588,7 +568,6 @@ impl LayerModule for ClassicPerimeters {
                         layer_wall_count,
                         outer_speed_factor,
                         inner_speed_factor,
-                        region.bridge_areas(),
                         bridge_flow_ratio,
                         thick_bridges,
                         region_outer_wall_line_width,
@@ -604,8 +583,7 @@ impl LayerModule for ClassicPerimeters {
                         rid,
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
-                        overhang_bands,
-                        prev_layer_boundary,
+                        &spatial_context,
                     )?;
                 }
             } else {
@@ -620,7 +598,6 @@ impl LayerModule for ClassicPerimeters {
                     wall_loops,
                     outer_speed_factor,
                     inner_speed_factor,
-                    region.bridge_areas(),
                     bridge_flow_ratio,
                     thick_bridges,
                     region_outer_wall_line_width,
@@ -636,8 +613,7 @@ impl LayerModule for ClassicPerimeters {
                     rid,
                     medial_axis_enabled,
                     seam_candidate_angle_threshold_deg,
-                    overhang_bands,
-                    prev_layer_boundary,
+                    &spatial_context,
                 )?;
             }
         }
@@ -691,7 +667,6 @@ impl ClassicPerimeters {
         wall_loops: u32,
         outer_speed_factor: f32,
         inner_speed_factor: f32,
-        bridge_areas: &[ExPolygon],
         bridge_flow_ratio: f32,
         thick_bridges: bool,
         outer_wall_line_width: f32,
@@ -707,8 +682,7 @@ impl ClassicPerimeters {
         region_id: u64,
         medial_axis_enabled: bool,
         seam_candidate_angle_threshold_deg: f32,
-        overhang_bands: &[QuartileBand],
-        prev_layer_boundary: &[ExPolygon],
+        context: &PerimeterSpatialContext,
     ) -> Result<(), ModuleError> {
         // P109 degeneracy guard: a contour needs >=3 non-collinear vertices
         // (strictly positive enclosed area) to be offsettable. Clipper's polygon
@@ -890,12 +864,12 @@ impl ClassicPerimeters {
             // currently correct for a hole ring. D14 painted-variant fuzzy
             // skin still applies (it's whole-region, not per-vertex).
             let build_ring_wall = |ring: &Polygon, poly_idx: usize, is_contour: bool| {
-                let mut points = expolygon_to_path3d(
+                let mut points = expolygon_to_path3d_indexed(
                     ring,
                     z,
                     bead_flow_width_mm,
-                    overhang_bands,
-                    prev_layer_boundary,
+                    context,
+                    PathAnnotationMode::Planar,
                 );
                 if points.is_empty() {
                     return None;
@@ -929,11 +903,11 @@ impl ClassicPerimeters {
                 };
                 // Per-vertex is_bridge: set for each vertex strictly inside any bridge area.
                 // ring.points has N entries (integer units); feature_flags has N+1
-                // (closing repeat appended by expolygon_to_path3d). The closing repeat is
+                // (closing repeat appended by expolygon_to_path3d_indexed). The closing repeat is
                 // handled by mirror_first_to_last below.
                 for (i, pt) in ring.points.iter().enumerate() {
                     if i < feature_flags.len() {
-                        let is_bridge = point_in_any_polygon(pt, bridge_areas);
+                        let is_bridge = context.is_bridge(pt);
                         feature_flags[i].is_bridge = is_bridge;
                         if is_bridge {
                             points[i].flow_factor = bridging_flow(
@@ -1146,7 +1120,7 @@ impl ClassicPerimeters {
                         for pt in &mut path.points {
                             pt.z = z;
                         }
-                        path.speed_factor = gap_infill_speed / BASE_SPEED;
+                        path.speed_factor = configured_speed_factor(gap_infill_speed);
                         let flags =
                             vec![slicer_core::perimeter_utils::default_feature_flags(); num_pts];
                         output.push_wall_loop(WallLoop {
@@ -1234,7 +1208,7 @@ impl ClassicPerimeters {
         inner_wall_line_width: f32,
         layer_height: f32,
         output: &mut PerimeterOutputBuilder,
-        prev_layer_boundary: &[ExPolygon],
+        context: &PerimeterSpatialContext,
     ) -> Result<(), ModuleError> {
         // D-105 residual (packet 185): inset consecutive shells by Flow
         // *spacing* (rounded cross-section via `line_width_to_spacing`), not by
@@ -1276,7 +1250,13 @@ impl ClassicPerimeters {
             for poly in &inset_result {
                 // Non-planar shells are an explicitly separate concern (D-3); never
                 // stamp overhang_quartile here.
-                let points = expolygon_to_path3d(&poly.contour, z, width, &[], prev_layer_boundary);
+                let points = expolygon_to_path3d_indexed(
+                    &poly.contour,
+                    z,
+                    width,
+                    context,
+                    PathAnnotationMode::NonPlanarNoQuartile,
+                );
                 if points.is_empty() {
                     continue;
                 }
@@ -1384,9 +1364,19 @@ mod tests {
 
     #[test]
     fn from_config_defaults() {
-        let config = ConfigView::from_map(HashMap::new());
+        // Declared keys (classic-perimeters.toml) seeded at their manifest
+        // defaults, mirroring the production `seed_registry_defaults` step.
+        let config = ConfigView::from_map(HashMap::from([
+            ("wall_loops".to_string(), ConfigValue::Int(3)),
+            ("outer_wall_speed".to_string(), ConfigValue::Float(30.0)),
+            ("inner_wall_speed".to_string(), ConfigValue::Float(45.0)),
+            (
+                "perimeter_arc_tolerance".to_string(),
+                ConfigValue::Float(0.0125),
+            ),
+        ]));
         let module = ClassicPerimeters::from_config(&config).unwrap();
-        assert_eq!(module.wall_loops, 2);
+        assert_eq!(module.wall_loops, 3);
         // R2: inner_wall_line_width is now read per-invocation, not cached.
         // Verify the module still initialises without error (struct fields reduced).
         let _ = module.wall_loops_count();

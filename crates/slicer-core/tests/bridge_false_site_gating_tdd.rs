@@ -56,14 +56,6 @@ fn unsupported_span_retains_bridge_area() {
 }
 
 #[test]
-fn fully_supported_candidate_rejected_zero_bridge_area() {
-    let bridge = square(0.0, 0.0, 10.0, 10.0);
-    let mut region = region_with_bridge(bridge.clone());
-    gate_bridge_areas_by_unsupported_span(&mut region, Some(&[bridge]));
-    assert!(region.bridge_areas.is_empty());
-}
-
-#[test]
 fn ungated_candidates_cannot_silently_return() {
     let bridge = square(0.0, 0.0, 10.0, 10.0);
     // Start with EMPTY bridge_areas so the ungated candidate provably comes

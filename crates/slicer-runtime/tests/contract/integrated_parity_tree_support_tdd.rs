@@ -53,6 +53,37 @@ fn integrated_parity_tree_support() {
         ("enable_support".to_string(), ConfigValue::Bool(true)),
         ("support_density".to_string(), ConfigValue::Float(20.0)),
         ("line_width".to_string(), ConfigValue::Float(0.4)),
+        // Bound-view shape (packet 06 5c-prime): the contract-required reads
+        // (`from_config` / `run_support`) at manifest defaults
+        // (tree-support.toml `[config.schema]`).
+        ("nozzle_diameter".to_string(), ConfigValue::Float(0.4)),
+        (
+            "support_base_pattern_spacing".to_string(),
+            ConfigValue::Float(2.5),
+        ),
+        ("layer_height".to_string(), ConfigValue::Float(0.2)),
+        // Fail-closed migration keys (tree-support.toml manifest defaults).
+        ("support_speed".to_string(), ConfigValue::Float(50.0)),
+        (
+            "support_interface_spacing".to_string(),
+            ConfigValue::Float(0.4),
+        ),
+        (
+            "support_bottom_interface_spacing".to_string(),
+            ConfigValue::Float(0.4),
+        ),
+        (
+            "support_interface_flow".to_string(),
+            ConfigValue::Percent(100.0),
+        ),
+        ("tree_support_wall_count".to_string(), ConfigValue::Int(1)),
+        (
+            "support_line_width".to_string(),
+            ConfigValue::FloatOrPercent {
+                value: 0.0,
+                is_percent: false,
+            },
+        ),
     ])));
     let mut wasm_arena = LayerArena::new();
     let mut native_arena = LayerArena::new();

@@ -280,6 +280,7 @@ fn infill_postprocess_prior_ir_multi_region_buckets() {
             InfillRegion {
                 object_id: "obj-a".into(),
                 region_id: 7,
+                variant_chain: Vec::new(),
                 sparse_infill: mk(2, ExtrusionRole::SparseInfill),
                 solid_infill: mk(1, ExtrusionRole::TopSolidInfill),
                 ironing: mk(3, ExtrusionRole::Ironing),
@@ -507,10 +508,18 @@ fn infill_postprocess_wall_source() {
     );
 }
 
-// ── AC-4: anchored internal bridge construction ────────────────────────────
+// ── Single internal-bridge producer ────────────────────────────────────────
 
+/// Internal bridges have exactly one producer: the ShellClassification prepass
+/// authors `internal_bridge_areas` (+ per-polygon angles) and the fill module
+/// holding the bridge claim emits them during `Layer::Infill`. The
+/// `Layer::InfillPostProcess` commit must therefore never construct its own
+/// `InternalBridgeInfill` strips, even on a layer whose qualified area is
+/// flanked by walls and a sparse anchor line (the fixture on which the retired
+/// packet-234a arm did construct them). A second producer drew the same area
+/// again at an unrelated angle.
 #[test]
-fn infill_postprocess_constructs_anchored_paths() {
+fn infill_postprocess_never_constructs_internal_bridge_paths() {
     let area = expoly(
         &[(0, 0), (100_000, 0), (100_000, 100_000), (0, 100_000)],
         &[],
@@ -518,6 +527,7 @@ fn infill_postprocess_constructs_anchored_paths() {
     let mut slice = ir_builders::slice_ir::with_ids(&[("obj-0", 0)]).build();
     slice.regions[0].bridge_areas = vec![area.clone()];
     slice.regions[0].internal_bridge_areas = vec![area.clone()];
+    slice.regions[0].internal_bridge_angles_deg = vec![90.0];
     slice.regions[0].sparse_infill_area = vec![area.clone()];
 
     let sparse = path(
@@ -534,9 +544,8 @@ fn infill_postprocess_constructs_anchored_paths() {
         ..Default::default()
     };
 
-    // The bridge area is 10 mm square.  The generic wall-loop fixture uses
-    // unit-spaced points, so expand two wall paths to the area's bottom and
-    // top edges to provide real-scale flanking anchors.
+    // Walls along the area's bottom and top edges: real-scale anchors that
+    // an anchor-driven constructor would bridge between.
     let mut lower_wall = ir_builders::wall_loop().points(2).build();
     lower_wall.path.points[0].x = 0.0;
     lower_wall.path.points[0].y = 0.0;
@@ -564,70 +573,24 @@ fn infill_postprocess_constructs_anchored_paths() {
 
     let committed = fx.arena.infill().expect("postprocess output committed");
     let region = &committed.regions[0];
-    assert!(
-        !region.internal_bridge_infill.is_empty(),
-        "qualified internal bridge area must emit anchored strips"
+    assert_eq!(
+        region.sparse_infill.len(),
+        1,
+        "the echoed module output must be what the stage committed"
     );
     assert!(
-        region
-            .internal_bridge_infill
-            .iter()
-            .all(|p| p.role == ExtrusionRole::InternalBridgeInfill),
-        "all constructed strips must carry the internal bridge role"
+        region.internal_bridge_infill.is_empty(),
+        "InfillPostProcess must not construct internal-bridge strips; got {} paths",
+        region.internal_bridge_infill.len()
     );
-    assert!(
-        region.internal_bridge_infill.iter().all(|p| {
-            p.points.iter().all(|point| {
-                (-0.001..=10.001).contains(&point.x) && (-0.001..=10.001).contains(&point.y)
-            })
-        }),
-        "constructed strips must remain within the qualified area"
-    );
-    assert!(
-        region.internal_bridge_infill.iter().any(|p| {
-            p.points
-                .iter()
-                .any(|point| point.y.abs() <= 0.001 || (point.y - 5.0).abs() <= 0.001)
-        }),
-        "constructed strips must touch a harvested wall or sparse anchor line"
-    );
-
-    let mut empty_slice = ir_builders::slice_ir::with_ids(&[("obj-0", 0)]).build();
-    empty_slice.regions[0].internal_bridge_areas = Vec::new();
-    let mut empty_fx = dispatch_fixture::for_stage("Layer::InfillPostProcess")
-        .with_slice(empty_slice)
-        .with_perimeter(
-            ir_builders::perimeter_ir::with_ids(&[("obj-0", 0)])
-                .walls_with(vec![ir_builders::wall_loop().points(11).build()])
-                .infill(1)
-                .build(),
-        )
-        .build();
-    empty_fx
-        .arena
-        .set_infill(InfillIR {
-            regions: vec![InfillRegion {
-                object_id: "obj-0".into(),
-                region_id: 0,
-                sparse_infill: vec![path(
-                    ExtrusionRole::SparseInfill,
-                    &[(0.0, 5.0, 0.2), (10.0, 5.0, 0.2)],
-                )],
-                ..Default::default()
-            }],
-            ..Default::default()
-        })
-        .expect("stage empty-area prior InfillIR");
-    run_echo_postprocess(&mut empty_fx, &layer, ConfigView::from_map(HashMap::new()));
-    assert!(
-        empty_fx
-            .arena
-            .infill()
-            .expect("empty-area output committed")
-            .regions[0]
-            .internal_bridge_infill
-            .is_empty(),
-        "without qualified internal bridge areas no bridge strips are emitted"
+    let slice_region = &fx.arena.slice().expect("slice stays staged").regions[0];
+    assert_eq!(
+        (
+            slice_region.internal_bridge_areas.clone(),
+            slice_region.internal_bridge_angles_deg.clone()
+        ),
+        (vec![area], vec![90.0]),
+        "the prepass-authored internal-bridge carrier passes through unchanged"
     );
 }
 
@@ -688,4 +651,222 @@ fn infill_postprocess_absent_module_is_fatal_without_mutating_infill() {
         "committed InfillIR must be byte-identical when no InfillPostProcess module runs"
     );
     assert_eq!(after, &prior, "structural equality must also hold");
+}
+
+// ── Wayfinder ticket 37: clipped-to-nothing commits the empty replacement ─
+
+/// Build the real `com.core.infill-linker` bundle (the production module, not
+/// the dispatch fixture guest) so the test drives an actual clip verdict.
+fn linker_bundle() -> TestModuleBundle {
+    let wasm_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../modules/core-modules/infill-linker/infill-linker.wasm");
+    assert!(
+        wasm_path.exists(),
+        "infill-linker.wasm not found at {}. Build it with: `cargo xtask build-guests`",
+        wasm_path.display()
+    );
+    let loaded = LoadedModuleBuilder::new(
+        "com.core.infill-linker",
+        SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
+        "Layer::InfillPostProcess",
+        slicer_schema::TIER_LAYER,
+        wasm_path.clone(),
+    )
+    .ir_reads(vec!["SliceIR".to_string(), "InfillIR".to_string()])
+    .ir_writes(vec!["InfillIR".to_string()])
+    .claims(vec!["claim:infill-link".to_string()])
+    .min_host_version(SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    })
+    .min_ir_schema(SemVer {
+        major: 3,
+        minor: 0,
+        patch: 0,
+    })
+    .max_ir_schema(SemVer {
+        major: 5,
+        minor: 0,
+        patch: 0,
+    })
+    .layer_parallel_safe(true)
+    .build();
+    let pool = Arc::new(
+        build_wasm_instance_pool(
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
+            1,
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .expect("instance pool must build"),
+    );
+    let config = ConfigView::from_map(HashMap::from([
+        // Bound-view required reads from infill-linker.toml. Before the SDK
+        // adapter exposed region config, None silently bypassed their validation.
+        ("layer_height".to_string(), ConfigValue::Float(0.2)),
+        (
+            "infill_anchor_max".to_string(),
+            ConfigValue::FloatOrPercent {
+                value: 20.0,
+                is_percent: false,
+            },
+        ),
+        ("infill_overlap".to_string(), ConfigValue::Float(0.45)),
+        ("line_width".to_string(), ConfigValue::Float(0.4)),
+        (
+            "sparse_infill_density".to_string(),
+            ConfigValue::Float(20.0),
+        ),
+    ]));
+    let module = CompiledModuleBuilder::new(loaded.id().to_string())
+        .config_view(Arc::new(config))
+        .build();
+    TestModuleBundle {
+        module,
+        pool,
+        component: Some(wasm_cache::compiled_component_at(&wasm_path)),
+    }
+}
+
+/// Root cause named by the regression: on several matched Benchy layers the
+/// infill linker *ran* and correctly clipped every raw gyroid wave to nothing.
+/// The empty-output protocol collapsed that verdict into `Ok(None)`, which
+/// `apply` reads as "committed nothing", so the prior `InfillIR` — the raw,
+/// bbox-expanded emitter envelope the linker had just rejected — was preserved
+/// and printed (68.0% of classic Benchy's printed sparse mm; 88.7% of one
+/// revived layer path outside the part cross-section).
+///
+/// The stage's contract is replace-with-complete-re-emit (ADR-0028 §Amendment
+/// Change 3), so a ran invocation's empty output **is** the empty replacement
+/// set and must supersede the prior IR. The companion AC-N1 test above pins the
+/// other half: a genuinely absent module leaves the slot untouched.
+#[test]
+fn infill_postprocess_empty_replacement_supersedes_prior_ir() {
+    // Prior IR: raw emitter output lying entirely outside the region's own
+    // sparse partition (the "raw envelope" shape from the ticket-35 evidence,
+    // exaggerated so both the offset boundary and the raw fallback clip it
+    // away).
+    let prior = InfillIR {
+        regions: vec![InfillRegion {
+            object_id: "obj-0".into(),
+            region_id: 0,
+            // exhaustive: containment regression pins the raw envelope bucket
+            sparse_infill: vec![path(
+                ExtrusionRole::SparseInfill,
+                &[(-500.0, -500.0, 0.0), (-400.0, -400.0, 0.0)],
+            )],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    // The region's sparse partition is a 10x10 mm square at the origin.
+    let mut slice = ir_builders::slice_ir::with_ids(&[("obj-0", 0)]).build();
+    slice.regions[0].sparse_infill_area = vec![expoly(
+        &[(0, 0), (100_000, 0), (100_000, 100_000), (0, 100_000)],
+        &[],
+    )];
+
+    let mut fx = dispatch_fixture::for_stage("Layer::InfillPostProcess")
+        .with_slice(slice)
+        .with_perimeter(ir_builders::perimeter_ir::with_ids(&[("obj-0", 0)]).build())
+        .build();
+    fx.arena.set_infill(prior).expect("stage prior InfillIR");
+
+    let layer = layer_at(0, 0.2);
+    let bundle = linker_bundle();
+    run_layer_and_commit_with_bundle(
+        &fx.dispatcher,
+        "Layer::InfillPostProcess",
+        &layer,
+        &bundle,
+        &fx.blackboard,
+        &mut fx.arena,
+    )
+    .expect("real linker dispatch+commit must succeed");
+
+    let committed = fx
+        .arena
+        .infill()
+        .expect("a ran linker always commits its replacement set");
+    let total_paths: usize = committed
+        .regions
+        .iter()
+        .map(|r| {
+            r.sparse_infill.len()
+                + r.solid_infill.len()
+                + r.ironing.len()
+                + r.internal_bridge_infill.len()
+        })
+        .sum();
+    assert_eq!(
+        total_paths, 0,
+        "the clipped-to-nothing verdict must supersede the raw prior envelope; \
+         got {total_paths} resurrected paths"
+    );
+}
+
+/// Positive control for the regression above: the SAME harness and the SAME
+/// real linker bundle must keep a raw path that lies INSIDE the region's sparse
+/// partition. Without this, the regression test could pass vacuously (e.g. if
+/// the linker never ran, or the fixture fed it nothing to clip).
+#[test]
+fn infill_postprocess_inside_path_survives_so_the_clip_is_real() {
+    let prior = InfillIR {
+        regions: vec![InfillRegion {
+            object_id: "obj-0".into(),
+            region_id: 0,
+            // exhaustive: positive-control pins the surviving sparse bucket
+            sparse_infill: vec![path(
+                ExtrusionRole::SparseInfill,
+                &[(2.0, 2.0, 0.2), (8.0, 2.0, 0.2)],
+            )],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    let mut slice = ir_builders::slice_ir::with_ids(&[("obj-0", 0)]).build();
+    slice.regions[0].sparse_infill_area = vec![expoly(
+        &[(0, 0), (100_000, 0), (100_000, 100_000), (0, 100_000)],
+        &[],
+    )];
+
+    let mut fx = dispatch_fixture::for_stage("Layer::InfillPostProcess")
+        .with_slice(slice)
+        .with_perimeter(ir_builders::perimeter_ir::with_ids(&[("obj-0", 0)]).build())
+        .build();
+    fx.arena.set_infill(prior).expect("stage prior InfillIR");
+
+    let layer = layer_at(0, 0.2);
+    let bundle = linker_bundle();
+    run_layer_and_commit_with_bundle(
+        &fx.dispatcher,
+        "Layer::InfillPostProcess",
+        &layer,
+        &bundle,
+        &fx.blackboard,
+        &mut fx.arena,
+    )
+    .expect("real linker dispatch+commit must succeed");
+
+    let committed = fx.arena.infill().expect("linker committed");
+    let total_paths: usize = committed
+        .regions
+        .iter()
+        .map(|r| r.sparse_infill.len() + r.solid_infill.len() + r.ironing.len())
+        .sum();
+    assert!(
+        total_paths >= 1,
+        "a path inside the sparse partition must survive the linker's clip; \
+         the zero-path regression above would otherwise be vacuous"
+    );
 }

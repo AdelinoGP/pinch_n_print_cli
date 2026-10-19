@@ -92,6 +92,35 @@ fn remove_small_before_simplify_short_odd_line_removed() {
     );
 }
 
+/// Canonical removal keeps the out-and-back line before simplification, while
+/// the old order simplifies it to a zero-chord line and then removes it. This
+/// mirrors `WallToolPaths.cpp` :: `generate`.
+#[test]
+fn canonical_remove_small_first_keeps_line_simplify_first_drops_it() {
+    // exhaustive: ExtrusionLine has no Default implementation; all fields are set.
+    let line = ExtrusionLine {
+        junctions: vec![
+            junction(0.0, 0.0, 0.4),
+            junction(0.11, 0.0, 0.4),
+            junction(0.0, 0.0, 0.4),
+        ],
+        inset_idx: 1,
+        is_odd: true,
+        is_closed: false,
+    };
+
+    // Canonical order: remove_small first. The out-and-back polyline length
+    // is 0.22mm, at or above the 0.2mm threshold, so the line survives.
+    let after_remove = remove_small_lines(vec![line.clone()], 0.5, 0.4, false, false);
+    assert_eq!(after_remove.len(), 1);
+
+    // Old order: simplify first collapses the path to its 0.0mm chord, then
+    // remove_small drops the now-short odd open line.
+    let after_simplify = simplify_toolpaths(vec![line], 0.0025, 0.000025, 2e-6);
+    let after_remove_old = remove_small_lines(after_simplify, 0.5, 0.4, false, false);
+    assert!(after_remove_old.is_empty());
+}
+
 /// A line above the removal threshold survives the canonical pipeline.
 #[test]
 fn line_above_threshold_survives_canonical_order() {

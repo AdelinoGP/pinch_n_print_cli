@@ -1,0 +1,629 @@
+{
+  "status": "inconclusive",
+  "automatic_commit": false,
+  "threads": 12,
+  "samples_per_cell": 4,
+  "warmup_per_cell": 1,
+  "config_provenance": [
+    {
+      "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\classic.json",
+      "config_sha256": "0c3ff8f6c428b91a3e309336db2949f2b5f5736465f881d52f0862cc21d2bb25"
+    },
+    {
+      "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\arachne.json",
+      "config_sha256": "2b8314edca85538e3725de9b008f6086dff322121cfc6ea47ba3157caeb6111d"
+    },
+    {
+      "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\tree-support-benchy\\classic.json",
+      "config_sha256": "a1350ac1b0824f12308287b4a944a4a80e207720a491a2227e1e9971fd25e1c6"
+    },
+    {
+      "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\tree-support-benchy\\arachne.json",
+      "config_sha256": "40269f2f2076f04f1f8bcc039248ffb69742084865a1a7e8d751299c2ea696f5"
+    },
+    {
+      "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\tree-support-base\\classic.json",
+      "config_sha256": "a1350ac1b0824f12308287b4a944a4a80e207720a491a2227e1e9971fd25e1c6"
+    },
+    {
+      "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\tree-support-base\\arachne.json",
+      "config_sha256": "40269f2f2076f04f1f8bcc039248ffb69742084865a1a7e8d751299c2ea696f5"
+    }
+  ],
+  "cells": [
+    {
+      "workload": "supports-off-benchy",
+      "generator": "classic",
+      "expected_generator": "classic",
+      "exactness_passed": true,
+      "exactness_deltas": {
+        "baseline": {
+          "lines_pct": 0.0159,
+          "types_pct": 0.3607,
+          "e_pct": 0.0034
+        },
+        "candidate": {
+          "lines_pct": 0.015,
+          "types_pct": 0.3607,
+          "e_pct": 0.0024
+        }
+      },
+      "cpu_separated": true,
+      "wall_separated": true,
+      "baseline": {
+        "cpu_samples": [
+          144.9062,
+          146.0938,
+          144.7188,
+          145.2188
+        ],
+        "wall_samples": [
+          20.6938,
+          20.9145,
+          21.3761,
+          20.7427
+        ],
+        "rows": [
+          {
+            "label": "measured-baseline-1",
+            "workload": "supports-off-benchy",
+            "generator": "classic",
+            "variant": "baseline",
+            "cpu_seconds": 144.9062,
+            "wall_seconds": 20.6938,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\classic.json",
+              "config_sha256": "0c3ff8f6c428b91a3e309336db2949f2b5f5736465f881d52f0862cc21d2bb25"
+            },
+            "output_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-acceptance\\runs\\supports-off-benchy-classic\\measured-baseline-1.gcode"
+          },
+          {
+            "label": "measured-baseline-2",
+            "workload": "supports-off-benchy",
+            "generator": "classic",
+            "variant": "baseline",
+            "cpu_seconds": 146.0938,
+            "wall_seconds": 20.9145,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\classic.json",
+              "config_sha256": "0c3ff8f6c428b91a3e309336db2949f2b5f5736465f881d52f0862cc21d2bb25"
+            },
+            "output_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-acceptance\\runs\\supports-off-benchy-classic\\measured-baseline-2.gcode"
+          },
+          {
+            "label": "measured-baseline-3",
+            "workload": "supports-off-benchy",
+            "generator": "classic",
+            "variant": "baseline",
+            "cpu_seconds": 144.7188,
+            "wall_seconds": 21.3761,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\classic.json",
+              "config_sha256": "0c3ff8f6c428b91a3e309336db2949f2b5f5736465f881d52f0862cc21d2bb25"
+            },
+            "output_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-acceptance\\runs\\supports-off-benchy-classic\\measured-baseline-3.gcode"
+          },
+          {
+            "label": "measured-baseline-4",
+            "workload": "supports-off-benchy",
+            "generator": "classic",
+            "variant": "baseline",
+            "cpu_seconds": 145.2188,
+            "wall_seconds": 20.7427,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\classic.json",
+              "config_sha256": "0c3ff8f6c428b91a3e309336db2949f2b5f5736465f881d52f0862cc21d2bb25"
+            },
+            "output_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-acceptance\\runs\\supports-off-benchy-classic\\measured-baseline-4.gcode"
+          }
+        ]
+      },
+      "candidate": {
+        "cpu_samples": [
+          119.8125,
+          119.4531,
+          118.3125,
+          119.75
+        ],
+        "wall_samples": [
+          19.8105,
+          20.07,
+          19.7013,
+          20.0058
+        ],
+        "rows": [
+          {
+            "label": "measured-candidate-1",
+            "workload": "supports-off-benchy",
+            "generator": "classic",
+            "variant": "candidate",
+            "cpu_seconds": 119.8125,
+            "wall_seconds": 19.8105,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\classic.json",
+              "config_sha256": "0c3ff8f6c428b91a3e309336db2949f2b5f5736465f881d52f0862cc21d2bb25"
+            },
+            "output_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-acceptance\\runs\\supports-off-benchy-classic\\measured-candidate-1.gcode"
+          },
+          {
+            "label": "measured-candidate-2",
+            "workload": "supports-off-benchy",
+            "generator": "classic",
+            "variant": "candidate",
+            "cpu_seconds": 119.4531,
+            "wall_seconds": 20.07,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\classic.json",
+              "config_sha256": "0c3ff8f6c428b91a3e309336db2949f2b5f5736465f881d52f0862cc21d2bb25"
+            },
+            "output_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-acceptance\\runs\\supports-off-benchy-classic\\measured-candidate-2.gcode"
+          },
+          {
+            "label": "measured-candidate-3",
+            "workload": "supports-off-benchy",
+            "generator": "classic",
+            "variant": "candidate",
+            "cpu_seconds": 118.3125,
+            "wall_seconds": 19.7013,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\classic.json",
+              "config_sha256": "0c3ff8f6c428b91a3e309336db2949f2b5f5736465f881d52f0862cc21d2bb25"
+            },
+            "output_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-acceptance\\runs\\supports-off-benchy-classic\\measured-candidate-3.gcode"
+          },
+          {
+            "label": "measured-candidate-4",
+            "workload": "supports-off-benchy",
+            "generator": "classic",
+            "variant": "candidate",
+            "cpu_seconds": 119.75,
+            "wall_seconds": 20.0058,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\classic.json",
+              "config_sha256": "0c3ff8f6c428b91a3e309336db2949f2b5f5736465f881d52f0862cc21d2bb25"
+            },
+            "output_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-acceptance\\runs\\supports-off-benchy-classic\\measured-candidate-4.gcode"
+          }
+        ]
+      },
+      "status": "ok",
+      "status_baseline": "ok",
+      "status_candidate": "ok",
+      "config_provenance": {
+        "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\classic.json",
+        "config_sha256": "0c3ff8f6c428b91a3e309336db2949f2b5f5736465f881d52f0862cc21d2bb25"
+      },
+      "cpu_ratio": 0.8244828953037484,
+      "wall_ratio": 0.9558083596593144,
+      "generator_marker": {
+        "baseline": "classic",
+        "candidate": "classic"
+      },
+      "generator_marker_match": true,
+      "degraded_baseline": 0,
+      "degraded_candidate": 0,
+      "nonfatal_errors_baseline": 0,
+      "nonfatal_errors_candidate": 0,
+      "fatal_errors_baseline": 0,
+      "fatal_errors_candidate": 0,
+      "decision": "KEEP"
+    },
+    {
+      "workload": "supports-off-benchy",
+      "generator": "arachne",
+      "expected_generator": "arachne",
+      "exactness_passed": true,
+      "exactness_deltas": {
+        "baseline": {
+          "lines_pct": 0.0,
+          "types_pct": 0.0,
+          "e_pct": 0.0
+        },
+        "candidate": {
+          "lines_pct": 0.0,
+          "types_pct": 0.0,
+          "e_pct": 0.0
+        }
+      },
+      "cpu_separated": true,
+      "wall_separated": false,
+      "baseline": {
+        "cpu_samples": [
+          73.2188,
+          73.6719,
+          71.7344,
+          72.5156
+        ],
+        "wall_samples": [
+          17.4879,
+          16.8584,
+          16.5563,
+          17.491
+        ],
+        "rows": [
+          {
+            "label": "measured-baseline-1",
+            "workload": "supports-off-benchy",
+            "generator": "arachne",
+            "variant": "baseline",
+            "cpu_seconds": 73.2188,
+            "wall_seconds": 17.4879,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\arachne.json",
+              "config_sha256": "2b8314edca85538e3725de9b008f6086dff322121cfc6ea47ba3157caeb6111d"
+            },
+            "output_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-acceptance\\runs\\supports-off-benchy-arachne\\measured-baseline-1.gcode"
+          },
+          {
+            "label": "measured-baseline-2",
+            "workload": "supports-off-benchy",
+            "generator": "arachne",
+            "variant": "baseline",
+            "cpu_seconds": 73.6719,
+            "wall_seconds": 16.8584,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\arachne.json",
+              "config_sha256": "2b8314edca85538e3725de9b008f6086dff322121cfc6ea47ba3157caeb6111d"
+            },
+            "output_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-acceptance\\runs\\supports-off-benchy-arachne\\measured-baseline-2.gcode"
+          },
+          {
+            "label": "measured-baseline-3",
+            "workload": "supports-off-benchy",
+            "generator": "arachne",
+            "variant": "baseline",
+            "cpu_seconds": 71.7344,
+            "wall_seconds": 16.5563,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\arachne.json",
+              "config_sha256": "2b8314edca85538e3725de9b008f6086dff322121cfc6ea47ba3157caeb6111d"
+            },
+            "output_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-acceptance\\runs\\supports-off-benchy-arachne\\measured-baseline-3.gcode"
+          },
+          {
+            "label": "measured-baseline-4",
+            "workload": "supports-off-benchy",
+            "generator": "arachne",
+            "variant": "baseline",
+            "cpu_seconds": 72.5156,
+            "wall_seconds": 17.491,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\arachne.json",
+              "config_sha256": "2b8314edca85538e3725de9b008f6086dff322121cfc6ea47ba3157caeb6111d"
+            },
+            "output_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-acceptance\\runs\\supports-off-benchy-arachne\\measured-baseline-4.gcode"
+          }
+        ]
+      },
+      "candidate": {
+        "cpu_samples": [
+          69.9062,
+          69.4375,
+          67.9375,
+          69.75
+        ],
+        "wall_samples": [
+          17.0737,
+          17.159,
+          16.9912,
+          17.1664
+        ],
+        "rows": [
+          {
+            "label": "measured-candidate-1",
+            "workload": "supports-off-benchy",
+            "generator": "arachne",
+            "variant": "candidate",
+            "cpu_seconds": 69.9062,
+            "wall_seconds": 17.0737,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\arachne.json",
+              "config_sha256": "2b8314edca85538e3725de9b008f6086dff322121cfc6ea47ba3157caeb6111d"
+            },
+            "output_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-acceptance\\runs\\supports-off-benchy-arachne\\measured-candidate-1.gcode"
+          },
+          {
+            "label": "measured-candidate-2",
+            "workload": "supports-off-benchy",
+            "generator": "arachne",
+            "variant": "candidate",
+            "cpu_seconds": 69.4375,
+            "wall_seconds": 17.159,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\arachne.json",
+              "config_sha256": "2b8314edca85538e3725de9b008f6086dff322121cfc6ea47ba3157caeb6111d"
+            },
+            "output_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-acceptance\\runs\\supports-off-benchy-arachne\\measured-candidate-2.gcode"
+          },
+          {
+            "label": "measured-candidate-3",
+            "workload": "supports-off-benchy",
+            "generator": "arachne",
+            "variant": "candidate",
+            "cpu_seconds": 67.9375,
+            "wall_seconds": 16.9912,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\arachne.json",
+              "config_sha256": "2b8314edca85538e3725de9b008f6086dff322121cfc6ea47ba3157caeb6111d"
+            },
+            "output_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-acceptance\\runs\\supports-off-benchy-arachne\\measured-candidate-3.gcode"
+          },
+          {
+            "label": "measured-candidate-4",
+            "workload": "supports-off-benchy",
+            "generator": "arachne",
+            "variant": "candidate",
+            "cpu_seconds": 69.75,
+            "wall_seconds": 17.1664,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\arachne.json",
+              "config_sha256": "2b8314edca85538e3725de9b008f6086dff322121cfc6ea47ba3157caeb6111d"
+            },
+            "output_path": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-acceptance\\runs\\supports-off-benchy-arachne\\measured-candidate-4.gcode"
+          }
+        ]
+      },
+      "status": "ok",
+      "status_baseline": "ok",
+      "status_candidate": "ok",
+      "config_provenance": {
+        "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\arachne.json",
+        "config_sha256": "2b8314edca85538e3725de9b008f6086dff322121cfc6ea47ba3157caeb6111d"
+      },
+      "cpu_ratio": 0.9550764953229985,
+      "wall_ratio": 0.9966925112748679,
+      "generator_marker": {
+        "baseline": "arachne",
+        "candidate": "arachne"
+      },
+      "generator_marker_match": true,
+      "degraded_baseline": 0,
+      "degraded_candidate": 0,
+      "nonfatal_errors_baseline": 0,
+      "nonfatal_errors_candidate": 0,
+      "fatal_errors_baseline": 0,
+      "fatal_errors_candidate": 0,
+      "decision": "inconclusive"
+    },
+    {
+      "workload": "tree-support-benchy",
+      "generator": "classic",
+      "expected_generator": "classic",
+      "exactness_passed": false,
+      "cpu_separated": false,
+      "wall_separated": false,
+      "exactness_deltas": null,
+      "baseline": {
+        "cpu_samples": [],
+        "wall_samples": [],
+        "rows": []
+      },
+      "candidate": {
+        "cpu_samples": [],
+        "wall_samples": [],
+        "rows": []
+      },
+      "status": "",
+      "status_baseline": "",
+      "status_candidate": "",
+      "config_provenance": {
+        "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\tree-support-benchy\\classic.json",
+        "config_sha256": "a1350ac1b0824f12308287b4a944a4a80e207720a491a2227e1e9971fd25e1c6"
+      },
+      "cpu_ratio": null,
+      "wall_ratio": null,
+      "generator_marker": {
+        "baseline": "",
+        "candidate": ""
+      },
+      "generator_marker_match": false,
+      "degraded_baseline": 0,
+      "degraded_candidate": 0,
+      "nonfatal_errors_baseline": 0,
+      "nonfatal_errors_candidate": 0,
+      "fatal_errors_baseline": 0,
+      "fatal_errors_candidate": 0,
+      "decision": "not-run"
+    },
+    {
+      "workload": "tree-support-benchy",
+      "generator": "arachne",
+      "expected_generator": "arachne",
+      "exactness_passed": false,
+      "cpu_separated": false,
+      "wall_separated": false,
+      "exactness_deltas": null,
+      "baseline": {
+        "cpu_samples": [],
+        "wall_samples": [],
+        "rows": []
+      },
+      "candidate": {
+        "cpu_samples": [],
+        "wall_samples": [],
+        "rows": []
+      },
+      "status": "",
+      "status_baseline": "",
+      "status_candidate": "",
+      "config_provenance": {
+        "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\tree-support-benchy\\arachne.json",
+        "config_sha256": "40269f2f2076f04f1f8bcc039248ffb69742084865a1a7e8d751299c2ea696f5"
+      },
+      "cpu_ratio": null,
+      "wall_ratio": null,
+      "generator_marker": {
+        "baseline": "",
+        "candidate": ""
+      },
+      "generator_marker_match": false,
+      "degraded_baseline": 0,
+      "degraded_candidate": 0,
+      "nonfatal_errors_baseline": 0,
+      "nonfatal_errors_candidate": 0,
+      "fatal_errors_baseline": 0,
+      "fatal_errors_candidate": 0,
+      "decision": "not-run"
+    },
+    {
+      "workload": "tree-support-base",
+      "generator": "classic",
+      "expected_generator": "classic",
+      "exactness_passed": false,
+      "cpu_separated": false,
+      "wall_separated": false,
+      "exactness_deltas": null,
+      "baseline": {
+        "cpu_samples": [],
+        "wall_samples": [],
+        "rows": []
+      },
+      "candidate": {
+        "cpu_samples": [],
+        "wall_samples": [],
+        "rows": []
+      },
+      "status": "",
+      "status_baseline": "",
+      "status_candidate": "",
+      "config_provenance": {
+        "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\tree-support-base\\classic.json",
+        "config_sha256": "a1350ac1b0824f12308287b4a944a4a80e207720a491a2227e1e9971fd25e1c6"
+      },
+      "cpu_ratio": null,
+      "wall_ratio": null,
+      "generator_marker": {
+        "baseline": "",
+        "candidate": ""
+      },
+      "generator_marker_match": false,
+      "degraded_baseline": 0,
+      "degraded_candidate": 0,
+      "nonfatal_errors_baseline": 0,
+      "nonfatal_errors_candidate": 0,
+      "fatal_errors_baseline": 0,
+      "fatal_errors_candidate": 0,
+      "decision": "not-run"
+    },
+    {
+      "workload": "tree-support-base",
+      "generator": "arachne",
+      "expected_generator": "arachne",
+      "exactness_passed": false,
+      "cpu_separated": false,
+      "wall_separated": false,
+      "exactness_deltas": null,
+      "baseline": {
+        "cpu_samples": [],
+        "wall_samples": [],
+        "rows": []
+      },
+      "candidate": {
+        "cpu_samples": [],
+        "wall_samples": [],
+        "rows": []
+      },
+      "status": "",
+      "status_baseline": "",
+      "status_candidate": "",
+      "config_provenance": {
+        "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\tree-support-base\\arachne.json",
+        "config_sha256": "40269f2f2076f04f1f8bcc039248ffb69742084865a1a7e8d751299c2ea696f5"
+      },
+      "cpu_ratio": null,
+      "wall_ratio": null,
+      "generator_marker": {
+        "baseline": "",
+        "candidate": ""
+      },
+      "generator_marker_match": false,
+      "degraded_baseline": 0,
+      "degraded_candidate": 0,
+      "nonfatal_errors_baseline": 0,
+      "nonfatal_errors_candidate": 0,
+      "fatal_errors_baseline": 0,
+      "fatal_errors_candidate": 0,
+      "decision": "not-run"
+    }
+  ]
+}

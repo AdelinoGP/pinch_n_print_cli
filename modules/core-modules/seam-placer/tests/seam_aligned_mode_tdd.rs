@@ -114,7 +114,9 @@ fn aligned_region(
 fn assert_aligned_snaps(mode: &str) {
     let config = config_with_mode(mode);
     let module = SeamPlacer::from_config(&config).expect("module init must succeed");
-    let wall = ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0)]);
+    // A wall loop carries its explicit closing repeat; open walls (Arachne
+    // odd centre beads) are never seam-rotated.
+    let wall = ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0), (0.0, 0.0)]);
     // Injected point 0.3 mm off the (2.0, 0.0) vertex. Candidate at (0,0)
     // has a *better* score, proving the snap ignores scoring.
     let regions = vec![aligned_region(
@@ -222,7 +224,8 @@ fn aligned_empty_candidates_projects_onto_segment_interior() {
 fn aligned_without_resolved_seam_degrades_to_local_candidate() {
     let config = config_with_mode("aligned");
     let module = SeamPlacer::from_config(&config).expect("module init must succeed");
-    let wall_points = [(0.0, 0.0), (1.0, 0.0), (2.0, 0.0)];
+    // Closed loop (explicit closing repeat): only loops are seam-rotated.
+    let wall_points = [(0.0, 0.0), (1.0, 0.0), (2.0, 0.0), (0.0, 0.0)];
     let wall = ir_wall(0.2, &wall_points);
     let regions = vec![aligned_region(
         vec![wall],

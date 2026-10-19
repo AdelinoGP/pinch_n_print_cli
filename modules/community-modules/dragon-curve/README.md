@@ -68,6 +68,13 @@ dragon-curve.wasm     the committed component artifact
 the generated `@geometry` types, because those carry `extern "wasm"` FFI and
 would make the tiling logic untestable off-wasm.
 
+The vendored dependency WIT files are byte-identical snapshots of
+`crates/slicer-schema/wit/deps/{types,config,common,ir-types}.wit` for this
+example's `slicer:layer-infill/infill-module` world. The stage world in
+`wit/layer-infill.wit` likewise matches the canonical layer-infill world.
+After a host WIT change, refresh these snapshots from the canonical files and
+rebuild `dragon-curve.wasm`; stale dependency types can prevent host dispatch.
+
 ## Build
 
 Nothing rebuilds this automatically. It is **not** a Cargo workspace member and
@@ -103,11 +110,17 @@ Two build gotchas, both of which previously looked like toolchain failures:
 
 ## Manual slice test
 
-Not wired into CI — run it by hand. Note the flag is `--model`, not `--input`:
+Not wired into CI — run it by hand. Note the flag is `--model`, not `--input`,
+and note the `--module-dir` argument below: `--module-dir` **replaces** the
+default module search path, so naming only the dragon directory leaves the core
+perimeter and infill-partition modules unloaded — nothing emits walls, so there
+is no sparse-infill area to fill and the module correctly produces no output.
+Include the core module directories alongside this one:
 
 ```bash
 pnp_cli slice \
     --model resources/regression_wedge.stl \
+    $(for d in modules/core-modules/*/; do printf -- '--module-dir %s ' "$d"; done) \
     --module-dir modules/community-modules/dragon-curve \
     --config dragon-config.json \
     --output /tmp/dragon.gcode
@@ -143,6 +156,11 @@ On `resources/20mm_cube.obj` with the config above this yields **283 tool
 changes across four tools** (94 x T0, 94 x T1, 48 x T2, 47 x T3) at both
 `tiling_depth` 8 and 12 — depth changes dragon size, not colour count. A
 core-modules-only control emits no `T` lines at all.
+
+On `resources/regression_wedge.stl` at the config above, a run with the core
+modules loaded yields **551 tool changes across four tools** (182 x T0,
+182 x T1, 96 x T2, 91 x T3) over 200 layers, with 551 `;TYPE:Sparse infill`
+sections — the sparse-infill area is entirely this module's output.
 
 To confirm the module is discovered at all:
 

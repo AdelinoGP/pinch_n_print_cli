@@ -16,9 +16,58 @@ fn make_square(side_mm: f32) -> ExPolygon {
     square_polygon(0.0, 0.0, side_mm)
 }
 
+/// Baseline builder for `run_perimeters` fixtures (packet 06 5c-prime,
+/// design.md item 11): holds every key the module's classified reads touch on
+/// the tested path — the 27 require_* keys — at the guest's manifest-default
+/// values (classic-perimeters.toml [config.schema]). The wall-width keys hold
+/// the auto sentinel 0 and resolve through the fixture's `line_width` (the
+/// already-expanded base width), matching the pre-migration fallback behavior
+/// exactly. Tests that exercise a specific key add it after this baseline so
+/// their explicit value wins.
+fn baseline_config() -> ConfigViewBuilder {
+    ConfigViewBuilder::new()
+        .float("nozzle_diameter", 0.4)
+        .float("layer_height", 0.2)
+        .float("bridge_line_width", 0.0)
+        .float("initial_layer_line_width", 0.0)
+        .float("outer_wall_line_width", 0.0)
+        .float("inner_wall_line_width", 0.0)
+        .float("seam_candidate_angle_threshold_deg", 30.0)
+        .float("gap_infill_speed", 30.0)
+        .float("filter_out_gap_fill", 0.5)
+        .float("sparse_infill_density", 20.0)
+        .float("bridge_flow", 1.0)
+        .float("smaller_perimeter_line_width", 0.25)
+        .float("small_perimeter_threshold", 0.8)
+        .float("narrow_loop_length_threshold_mm", 10.0)
+        .float("min_width_top_surface", 0.0)
+        .float_or_percent("infill_wall_overlap", 15.0, true)
+        .float_or_percent("top_bottom_infill_wall_overlap", 25.0, true)
+        .bool("detect_thin_wall", true)
+        .bool("gap_fill_medial_axis_on_painted", false)
+        .bool("slice_has_paint", false)
+        .bool("precise_outer_wall", false)
+        .bool("alternate_extra_wall", false)
+        .bool("spiral_vase", false)
+        .bool("extra_perimeters_on_overhangs", false)
+        .bool("only_one_wall_top", false)
+        .bool("only_one_wall_first_layer", false)
+        .bool("thick_bridges", false)
+        .int("extra_perimeters", 0)
+        .int("support_raft_layers", 0)
+        // Fail-closed migration keys (classic-perimeters.toml manifest
+        // defaults): `outer_wall_speed` (30.0), `inner_wall_speed` (45.0) and
+        // `perimeter_arc_tolerance` (0.0125) are `require_*` reads since the
+        // guest's config-literal fallbacks migrated. The manifest defaults
+        // equal the retired literals, so behavior is unchanged.
+        .float("outer_wall_speed", 30.0)
+        .float("inner_wall_speed", 45.0)
+        .float("perimeter_arc_tolerance", 0.0125)
+}
+
 /// Create a config with specified wall_loops and line_width.
 fn make_config(wall_loops: u32, line_width: f64) -> ConfigView {
-    ConfigViewBuilder::new()
+    baseline_config()
         .int("wall_loops", wall_loops as i64)
         .float("line_width", line_width)
         .build()
@@ -31,7 +80,7 @@ fn make_speed_config(
     outer_speed: f64,
     inner_speed: f64,
 ) -> ConfigView {
-    ConfigViewBuilder::new()
+    baseline_config()
         .int("wall_loops", wall_loops as i64)
         .float("line_width", line_width)
         .float("outer_wall_speed", outer_speed)
@@ -47,6 +96,146 @@ fn make_region(side_mm: f32, z: f32) -> SliceRegionView {
         .z(z)
         .add_polygon(make_square(side_mm))
         .build()
+}
+
+/// Exercise live module factors, not a hand-authored neutral entity. Absolute F
+/// pins catch a shared slowdown that a tool/global feedrate ratio cannot detect.
+#[test]
+fn auto_wall_factors_emit_absolute_volumetric_feedrates() {
+    use slicer_gcode::{DefaultGCodeEmitter, GCodeEmitter};
+    use slicer_ir::{
+        ConfigValue, FeedrateConfig, GCodeCommand, LayerCollectionIR, PrintEntity, ResolvedConfig,
+    };
+    use slicer_sdk::test_support::fixtures::print_entity_base;
+
+    for (outer_speed, inner_speed, max, outer_f, inner_f) in [
+        // 8 / (0.4 * 0.2 * 1) * 60 = F6000; 12 gives F9000.
+        (0.0, 0.0, 8.0, 6000.0, 6000.0),
+        (0.0, 0.0, 12.0, 9000.0, 9000.0),
+        // Preserve explicit factor scaling: 30/50 and 45/50, respectively.
+        (30.0, 45.0, 0.0, 1080.0, 2430.0),
+    ] {
+        // Construct with positive speeds, then override at invocation time:
+        // this also catches incorrectly retaining cached non-AUTO factors.
+        let module = ClassicPerimeters::from_config(&make_config(2, 0.4)).unwrap();
+        let config = make_speed_config(2, 0.4, outer_speed, inner_speed);
+        let mut output = PerimeterOutputBuilder::new();
+        module
+            .run_perimeters(
+                0,
+                &[make_region(10.0, 0.2)],
+                &PaintRegionLayerView::new(0),
+                &mut output,
+                &config,
+            )
+            .unwrap();
+        let layer = LayerCollectionIR {
+            z: 0.2,
+            ordered_entities: output
+                .wall_loops()
+                .iter()
+                .enumerate()
+                .map(|(index, wall)| PrintEntity {
+                    entity_id: index as u64,
+                    path: wall.path.clone(),
+                    ..print_entity_base(wall.path.role.clone())
+                })
+                .collect(),
+            ..Default::default()
+        };
+        let mut resolved = ResolvedConfig {
+            initial_layer_print_height: 0.2,
+            ..Default::default()
+        };
+        resolved.extensions.insert(
+            "filament_max_volumetric_speed".into(),
+            ConfigValue::Float(max),
+        );
+        let emitter = DefaultGCodeEmitter::new_with_config(
+            "1.0".into(),
+            FeedrateConfig {
+                outer_wall_speed: outer_speed as f32,
+                inner_wall_speed: inner_speed as f32,
+                ..Default::default()
+            },
+        )
+        .with_resolved_config(resolved);
+        let gcode = emitter.emit_gcode(&[layer]).unwrap();
+        for (role, expected_f) in [
+            (ExtrusionRole::OuterWall, outer_f),
+            (ExtrusionRole::InnerWall, inner_f),
+        ] {
+            let feeds: Vec<_> = gcode
+                .commands
+                .iter()
+                .filter_map(|command| match command {
+                    GCodeCommand::Move {
+                        role: move_role,
+                        e: Some(e),
+                        f: Some(f),
+                        ..
+                    } if *move_role == role && *e > 0.0 => Some(*f),
+                    _ => None,
+                })
+                .collect();
+            assert!(
+                !feeds.is_empty(),
+                "live module must emit extruding {role:?} moves"
+            );
+            assert!(feeds.iter().all(|f| *f == expected_f), "{role:?}, speeds={outer_speed}/{inner_speed}, max={max}: expected F{expected_f}, got {feeds:?}");
+        }
+    }
+}
+
+#[test]
+fn auto_gap_fill_produces_neutral_factor_and_preserves_explicit_factor() {
+    for (speed, expected_factor) in [(0.0, 1.0), (30.0, 0.6)] {
+        let config = baseline_config()
+            .int("wall_loops", 2)
+            .float("line_width", 0.4)
+            .float("gap_infill_speed", speed)
+            .bool("detect_thin_wall", false)
+            .build();
+        let module = ClassicPerimeters::from_config(&config).unwrap();
+        let region = SliceRegionViewBuilder::new()
+            .object_id("rib")
+            .region_id(1)
+            .z(0.2)
+            .add_polygon(ExPolygon {
+                contour: Polygon {
+                    points: vec![
+                        slicer_ir::Point2::from_mm(0.0, 0.0),
+                        slicer_ir::Point2::from_mm(1.7, 0.0),
+                        slicer_ir::Point2::from_mm(1.7, 10.0),
+                        slicer_ir::Point2::from_mm(0.0, 10.0),
+                    ],
+                },
+                holes: vec![],
+            })
+            .build();
+        let mut output = PerimeterOutputBuilder::new();
+        module
+            .run_perimeters(
+                0,
+                &[region],
+                &PaintRegionLayerView::new(0),
+                &mut output,
+                &config,
+            )
+            .unwrap();
+        let gaps: Vec<_> = output
+            .wall_loops()
+            .iter()
+            .filter(|wall| wall.loop_type == LoopType::GapFill)
+            .collect();
+        assert!(
+            !gaps.is_empty(),
+            "the narrow rib must produce live medial-axis gap fill"
+        );
+        for gap in gaps {
+            assert_eq!(gap.path.speed_factor, expected_factor, "gap speed={speed}");
+        }
+    }
 }
 
 /// Audit-gap closure: a per-region `line_width` config reaches the emitted wall
@@ -117,12 +306,18 @@ fn single_square_two_walls() {
 fn infill_boundary_inset_uses_flow_spacing_not_raw_width() {
     let line_width = 0.8_f32;
     let layer_height = 0.2_f32;
-    let config = ConfigViewBuilder::new()
+    let config = baseline_config()
         .int("wall_loops", 1)
         .float("line_width", line_width as f64)
         .float("outer_wall_line_width", line_width as f64)
         .float("inner_wall_line_width", line_width as f64)
         .float("layer_height", layer_height as f64)
+        // This test asserts the infill boundary inset is exactly
+        // spacing-derived; hold the overlap keys at 0.0 (the value the
+        // pre-migration missing-key fallback produced) rather than the
+        // manifest 15%/25% percent defaults.
+        .float("infill_wall_overlap", 0.0)
+        .float("top_bottom_infill_wall_overlap", 0.0)
         .build();
     let module = ClassicPerimeters::from_config(&config).unwrap();
     let regions = vec![make_region(10.0, 0.2)];
@@ -299,7 +494,7 @@ fn wall_loops_zero() {
 /// manifest but read nowhere, so every layer emitted the base count.
 #[test]
 fn alternate_extra_wall_adds_one_wall_on_odd_layers() {
-    let config = ConfigViewBuilder::new()
+    let config = baseline_config()
         .int("wall_loops", 2)
         .float("line_width", 0.4)
         .bool("alternate_extra_wall", true)
@@ -335,7 +530,7 @@ fn alternate_extra_wall_adds_one_wall_on_odd_layers() {
 #[test]
 fn alternate_extra_wall_suppressed_by_spiral_vase_and_zero_density() {
     let base = |spiral: bool, density: f64| {
-        ConfigViewBuilder::new()
+        baseline_config()
             .int("wall_loops", 2)
             .float("line_width", 0.4)
             .bool("alternate_extra_wall", true)
@@ -431,7 +626,7 @@ fn speed_factor_from_config() {
 }
 
 fn make_overlap_config(infill_overlap: f64, top_bottom_overlap: f64) -> ConfigView {
-    ConfigViewBuilder::new()
+    baseline_config()
         .int("wall_loops", 1)
         .float("line_width", 0.4)
         .float("outer_wall_line_width", 0.4)
@@ -515,7 +710,7 @@ fn overlap_uses_top_bottom_key_for_topmost_top_shell() {
 
 #[test]
 fn only_one_wall_top_topmost_is_unconditional() {
-    let config = ConfigViewBuilder::new()
+    let config = baseline_config()
         .int("wall_loops", 2)
         .float("line_width", 0.4)
         .float("outer_wall_line_width", 0.4)
@@ -543,7 +738,7 @@ fn only_one_wall_top_topmost_is_unconditional() {
 #[test]
 fn only_one_wall_top_non_topmost_uses_min_width_top_surface() {
     let make_config_with_threshold = |threshold| {
-        ConfigViewBuilder::new()
+        baseline_config()
             .int("wall_loops", 2)
             .float("line_width", 0.4)
             .float("outer_wall_line_width", 0.4)

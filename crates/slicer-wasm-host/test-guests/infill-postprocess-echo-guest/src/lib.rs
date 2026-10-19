@@ -31,7 +31,7 @@ impl Guest for Component {
     ) -> Result<(), ModuleError> {
         for region in &prior_infill {
             output
-                .set_current_origin(&region.object_id, &region.region_id)
+                .set_current_origin(&region.object_id, &region.region_id, &region.variant_chain)
                 .map_err(|message| builder_error(1, message))?;
             for path in &region.sparse_infill {
                 output
@@ -55,7 +55,7 @@ impl Guest for Component {
                 let object_id = region.object_id();
                 let region_id = region.region_id();
                 output
-                    .set_current_origin(&object_id, &region_id)
+                    .set_current_origin(&object_id, &region_id, &region.variant_chain())
                     .map_err(|message| builder_error(5, message))?;
 
                 let wall_source = region

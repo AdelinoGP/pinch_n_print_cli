@@ -338,6 +338,10 @@ fn live_finalization_dispatch_merges_wipe_tower_entity_pushes() {
     config_map.insert("enable_prime_tower".to_string(), ConfigValue::Bool(true));
     config_map.insert("prime_volume".to_string(), ConfigValue::Float(70.0));
     config_map.insert("prime_tower_width".to_string(), ConfigValue::Float(60.0));
+    // Fail-closed migration keys (wipe-tower.toml manifest defaults).
+    config_map.insert("wipe_tower_x".to_string(), ConfigValue::Float(10.0));
+    config_map.insert("wipe_tower_y".to_string(), ConfigValue::Float(10.0));
+    config_map.insert("retract_length".to_string(), ConfigValue::Float(2.0));
     config_map.insert("line_width".to_string(), ConfigValue::Float(0.4));
     let config = ConfigView::from_map(config_map);
 

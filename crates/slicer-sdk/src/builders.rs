@@ -14,13 +14,20 @@ use slicer_ir::{
 /// Boundary paint map for a region: semantic -> per-polygon -> per-point paint values.
 pub type SegmentAnnotationsMap = HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>;
 
-/// Identifies the object and region that produced an output item.
+/// Identifies the object, region, and paint variant that produced an output item.
+///
+/// The `variant_chain` is part of the identity: two regions sharing
+/// `(object_id, region_id)` but differing in paint variant are distinct, so a
+/// painted variant's output never merges into its sibling's bucket.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegionOrigin {
     /// Mesh object identifier.
     pub object_id: String,
     /// Region identifier.
     pub region_id: u64,
+    /// Ordered `(paint-semantic-name, value)` pairs identifying this region's
+    /// paint variant. Empty for the legacy single-variant flow.
+    pub variant_chain: Vec<(String, PaintValue)>,
 }
 
 /// Builder for infill output.
@@ -33,8 +40,9 @@ pub struct InfillOutputBuilder {
     ironing_paths: Vec<ExtrusionPath3D>,
     raft_fill: Vec<Vec<ExPolygon>>,
     /// Explicit origin set by `begin_region` — the highest-precedence
-    /// origin for per-region infill output pushes. Stored as the SDK
-    /// representation `(String, u64)`; the macro drain forwards it to the
+    /// origin for per-region infill output pushes. Carries the full region
+    /// identity (`object_id`, `region_id`, `variant_chain`); the macro drain
+    /// forwards it to the
     /// WIT `set-current-origin` method. `None` means no explicit origin
     /// has been set for the current region; the host `touch_*` fallback
     /// chain remains as defence-in-depth.
@@ -74,10 +82,16 @@ impl InfillOutputBuilder {
     /// Pure setter — does not return `Result`. Call once per region before
     /// pushing that region's infill output. The host `touch_*` fallback
     /// chain remains as defence-in-depth when no explicit origin is set.
-    pub fn begin_region(&mut self, object_id: &str, region_id: u64) {
+    pub fn begin_region(
+        &mut self,
+        object_id: &str,
+        region_id: u64,
+        variant_chain: &[(String, PaintValue)],
+    ) {
         self.current_origin = Some(RegionOrigin {
             object_id: object_id.to_string(),
             region_id,
+            variant_chain: variant_chain.to_vec(),
         });
     }
 
@@ -225,8 +239,9 @@ pub struct PerimeterOutputBuilder {
     max_seam_candidates: Option<usize>,
     max_rotated_wall_loops: Option<usize>,
     /// Explicit origin set by `begin_region` — the highest-precedence
-    /// origin for per-region perimeter output pushes. Stored as the SDK
-    /// representation `(String, u64)`; the macro drain (Step 3) forwards it
+    /// origin for per-region perimeter output pushes. Carries the full region
+    /// identity (`object_id`, `region_id`, `variant_chain`); the macro drain
+    /// forwards it
     /// to the WIT `set-current-origin` method. `None` means no explicit
     /// origin has been set for the current region; the host `touch_*`
     /// fallback chain remains as defence-in-depth.
@@ -303,10 +318,16 @@ impl PerimeterOutputBuilder {
     /// Pure setter — does not return `Result`. Call once per region before
     /// pushing that region's perimeter output. The host `touch_*` fallback
     /// chain remains as defence-in-depth when no explicit origin is set.
-    pub fn begin_region(&mut self, object_id: &str, region_id: u64) {
+    pub fn begin_region(
+        &mut self,
+        object_id: &str,
+        region_id: u64,
+        variant_chain: &[(String, PaintValue)],
+    ) {
         self.current_origin = Some(RegionOrigin {
             object_id: object_id.to_string(),
             region_id,
+            variant_chain: variant_chain.to_vec(),
         });
     }
 
@@ -525,10 +546,16 @@ impl SupportOutputBuilder {
     /// Pure setter — does not return `Result`. Call once per region before
     /// pushing that region's support output. The host `touch_*` fallback
     /// chain remains as defence-in-depth when no explicit origin is set.
-    pub fn begin_region(&mut self, object_id: &str, region_id: u64) {
+    pub fn begin_region(
+        &mut self,
+        object_id: &str,
+        region_id: u64,
+        variant_chain: &[(String, PaintValue)],
+    ) {
         self.current_origin = Some(RegionOrigin {
             object_id: object_id.to_string(),
             region_id,
+            variant_chain: variant_chain.to_vec(),
         });
     }
 

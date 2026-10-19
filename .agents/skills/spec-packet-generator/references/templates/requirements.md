@@ -1,4 +1,4 @@
-# Requirements: [spec-slug]
+# Requirements: [packet-name]
 
 ## Packet Metadata
 

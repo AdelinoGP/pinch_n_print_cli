@@ -107,6 +107,10 @@ In test code, a struct literal of a watched type (a `pub` struct with ≥5 named
 
 `cargo xtask check-literals` enforces this (exit 1 on violations); `--report` mode lists violations and exits 0. This gate is **enforced since packet 199**, is required before committing, and runs as the `cargo xtask test` `check-literals preflight`.
 
+### Test-quality gate and authoring standard (MUST follow)
+
+Test code is also governed by `docs/22_test_quality.md`: a test may only claim what it can falsify. The recurring false-green patterns (self-referential oracle, success-only assertion, vacuous loop, hand-maintained roster, source-grep assertion, silent fixture skip, scaffolding self-assertion, decorative assert) are listed in `docs/22_test_quality.md`; the mechanically detectable subset is enforced by `cargo xtask check-test-quality` (R1/R3/R6/R8 implemented; R2/R4/R5/R7 review-guided until later waves; waiver `// test-quality: <reason>` naming the protected surface/contract/gate). Retire-if-unjustified is the standard for existing tests (ADR-0064). The gate ships in **report mode** until the test-quality remediation program's final wave flips enforce mode (ADR-0065); until then, before committing, run `cargo xtask check-test-quality --report` and fix or waive findings in the code you touched.
+
 ## Coordinate System Hazard
 
 **1 unit = 100 nm (10⁻⁴ mm)**, NOT 1 nm like OrcaSlicer. Divide OrcaSlicer constants by 100. Use `Point2::from_mm(x, y)` / `mm_to_units()`. Full porting checklist in `docs/08_coordinate_system.md`.
@@ -141,11 +145,15 @@ cargo xtask build-guests --check
 
 The answer is an **exit code** — `0` (`EXIT_FRESH`) means every artifact is fresh, `1` (`EXIT_STALE`) means at least one guest is stale (one `STALE: <name>` line per stale guest), and `3` (`EXIT_INFRA_ERROR`) means the checker **could not form an opinion** — either `wasm-tools` is missing or the canonical WIT set is unreadable/empty (infrastructure error, not staleness; do not treat as clean). Do not grep for `STALE:` to decide freshness — an exit-`3` run prints no `STALE:` lines and would otherwise read as clean. If the check reports stale (exit `1`), rebuild (drop `--check`) and re-run the failing test before drawing any conclusion.
 
+**In-tree vs fingerprint staleness.** The `build-guests --check` fingerprint covers code inputs only (never mtimes) and judges the shared-target artifacts under `target/guests/`. The integrated-parity harness (`crates/slicer-runtime/tests/common/integrated_parity_harness.rs::assert_guest_freshness`) judges the **in-tree** artifacts (`modules/core-modules/*/*.wasm`, gitignored) by mtime against the guest's own sources. The two checks can therefore disagree: `--check` exit `0` with a red `guest artifact is stale` panic means the staged in-tree copy is older than its sources — run `cargo xtask build-guests --force` (refreshes both the shared target and the staged in-tree copies) and re-run the test. Never "fix" this by touching sources to align mtimes.
+
 `cargo xtask build-guests` consults that same check and **rebuilds only the stale guests**; a clean tree is a no-op. `--force` restores the old unconditional full rebuild of every discovered guest. An infrastructure error (exit `3`) aborts the build and never falls back to a full rebuild.
 
 `--check` has a **second failure mode: lock convergence.** It reports guest lockfiles that resolve different versions of the same crate within the same semver-compatibility line, one deterministic line per diverging crate. Divergence is **staleness (exit `1`)**, never an infrastructure error. Intra-lock semver-major coexistence (one lock holding syn 1.x and 2.x) is not divergence. The remedy is `cargo xtask build-guests --sync-locks`, which regenerates every guest lockfile in one pass; it skips guests that are members of the root workspace (those without their own `[workspace]` sentinel), because `cargo generate-lockfile` there would clobber the ROOT `Cargo.lock` — those guests resolve against the root workspace lock and their own committed lockfiles are vestigial and excluded from divergence analysis. Note that the default `build-guests` rebuilds stale artifacts only; it does **not** fix lock divergence, so a diverging tree stays red under `--check` until `--sync-locks` runs.
 
 **Prohibited claims unless `--check` was just run and returned clean (exit `0`):** "the wasm rebuild is a separate workstream", "this is unrelated to my changes", "the build scripts are out of scope for this packet", or any equivalent deflection. Treat a stale guest as your bug until `--check` proves otherwise (exit `0`).
+
+**Accelerated mode uses a mode-distinct namespace.** Accelerated guest artifacts live under `target/guests-accelerated/`, not the ordinary `target/guests/`, with their own freshness fingerprints and policy/toolchain identity metadata. They are checked with `cargo xtask build-guests --accelerated --check`, and `cargo xtask build-guests --accelerated` rebuilds only the stale accelerated guests (consulting that same mode-aware check; `--force` remains the unconditional rebuild). Ordinary `cargo xtask build-guests --check` never validates opposite-mode artifacts: a clean ordinary artifact is not evidence that the accelerated artifact is fresh, and vice versa. See `docs/23_controlled_perimeter_builds.md` for the accelerated gate sequence.
 
 ## WIT/Type Changes Checklist
 
@@ -157,7 +165,7 @@ When modifying WIT types or interface definitions:
 
 ## Spec Packet Workflow
 
-Implementation work is organized into spec packets under `docs/spec_packets/<NN>_<slug>/`, each containing `packet.spec.md`, `requirements.md`, `design.md`, and `implementation-plan.md`. The active packet is the one whose `packet.spec.md` has `status: active` (grep for it). Packets are authored with `/spec-packet-generator`, gated with `/spec-review <packet> --preflight`, and executed with `/swarm <packet>`. Backpressure gates require `cargo build`, the packet's narrow verification commands, and `cargo clippy` to pass before closing; the full `cargo test --workspace` runs only at the packet-close acceptance ceremony (see Test Discipline above).
+Implementation work is organized into spec packets under `docs/spec_packets/<prefix>_<NN>_<packet-name>/` (e.g. `test-quality-remediation_01_core-flow-consolidation/`; legacy dirs keep their historical names), each containing `packet.spec.md`, `requirements.md`, `design.md`, and `implementation-plan.md`. The active packet is the one whose `packet.spec.md` has `status: active` (grep for it). Packets are authored with `/spec-packet-generator`, gated with `/spec-review <packet> --preflight`, and executed with `/swarm <packet>`. Backpressure gates require `cargo build`, the packet's narrow verification commands, and `cargo clippy` to pass before closing; the full `cargo test --workspace` runs only at the packet-close acceptance ceremony (see Test Discipline above).
 
 ## In-Tree Citation Style (MUST follow)
 

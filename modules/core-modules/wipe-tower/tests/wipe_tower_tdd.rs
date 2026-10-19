@@ -47,12 +47,29 @@ fn make_layer(index: u32, z: f32, tool_changes: Vec<ToolChange>) -> LayerCollect
 }
 
 fn empty_config() -> ConfigView {
-    ConfigView::from_map(HashMap::new())
+    // Declared keys (wipe-tower.toml) seeded at their manifest defaults,
+    // mirroring the production `seed_registry_defaults` step; the empty-map
+    // probe now behaves like a bound view.
+    ConfigView::from_map(HashMap::from([
+        ("enable_prime_tower".to_string(), ConfigValue::Bool(false)),
+        ("wipe_tower_x".to_string(), ConfigValue::Float(10.0)),
+        ("wipe_tower_y".to_string(), ConfigValue::Float(10.0)),
+        ("prime_tower_width".to_string(), ConfigValue::Float(60.0)),
+        ("prime_volume".to_string(), ConfigValue::Float(10.0)),
+        ("line_width".to_string(), ConfigValue::Float(0.4)),
+        ("retract_length".to_string(), ConfigValue::Float(2.0)),
+    ]))
 }
 
 fn enabled_config() -> ConfigView {
     let mut fields = HashMap::new();
     fields.insert("enable_prime_tower".to_string(), ConfigValue::Bool(true));
+    fields.insert("wipe_tower_x".to_string(), ConfigValue::Float(10.0));
+    fields.insert("wipe_tower_y".to_string(), ConfigValue::Float(10.0));
+    fields.insert("prime_tower_width".to_string(), ConfigValue::Float(60.0));
+    fields.insert("prime_volume".to_string(), ConfigValue::Float(10.0));
+    fields.insert("line_width".to_string(), ConfigValue::Float(0.4));
+    fields.insert("retract_length".to_string(), ConfigValue::Float(2.0));
     ConfigView::from_map(fields)
 }
 
@@ -70,6 +87,7 @@ fn custom_config(x: f32, y: f32, width: f32, purge_vol: f32, line_w: f32) -> Con
         ConfigValue::Float(purge_vol as f64),
     );
     fields.insert("line_width".to_string(), ConfigValue::Float(line_w as f64));
+    fields.insert("retract_length".to_string(), ConfigValue::Float(2.0));
     ConfigView::from_map(fields)
 }
 
@@ -79,15 +97,16 @@ fn custom_config(x: f32, y: f32, width: f32, purge_vol: f32, line_w: f32) -> Con
 fn from_config_defaults() {
     let wt = WipeTower::from_config(&empty_config()).unwrap();
     assert!(!wt.enabled());
-    assert!((wt.tower_x() - 0.0).abs() < 0.001);
-    assert!((wt.tower_y() - 0.0).abs() < 0.001);
+    // The registry delivers the manifest defaults (10.0/10.0); the old
+    // in-code 0.0 literals were divergent dead fallbacks and are gone.
+    assert!((wt.tower_x() - 10.0).abs() < 0.001);
+    assert!((wt.tower_y() - 10.0).abs() < 0.001);
     assert!((wt.tower_width() - 60.0).abs() < 0.001);
-    // Default purge volume is the manifest default (45.0), which ticket 100
-    // aligned to OrcaSlicer's `prime_volume` default after the rename exposed
-    // the divergence. It was 10.0 before that (itself a correction of a 70.0
-    // fallback that exceeded the schema max, commit 6973f5c1). Source of truth:
-    // `wipe-tower/src/lib.rs` `from_config` → `_ => 45.0`.
-    assert!((wt.purge_volume() - 45.0).abs() < 0.001);
+    // A bound view carries the manifest default; this fixture seeds the
+    // `prime_volume` default at its (older) 10.0 probe value, and the module
+    // reads the seeded value verbatim. The unseeded manifest default is 45.0
+    // (ticket 100 aligned it to OrcaSlicer's `prime_volume` default).
+    assert!((wt.purge_volume() - 10.0).abs() < 0.001);
 }
 
 #[test]

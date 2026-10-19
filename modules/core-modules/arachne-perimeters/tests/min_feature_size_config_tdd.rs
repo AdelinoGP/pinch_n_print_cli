@@ -20,6 +20,53 @@ fn config_with_min_feature_size(percent: f64) -> ConfigView {
         "min_feature_size".to_string(),
         ConfigValue::Percent(percent),
     );
+    // Required-read baseline (packet 06 5c'): the classified reads in
+    // `run_perimeters` / `arachne_params_from_config` are `require_*`.
+    fields.insert("layer_height".to_string(), ConfigValue::Float(0.2));
+    fields.insert("line_width".to_string(), ConfigValue::Float(0.45));
+    fields.insert("bridge_line_width".to_string(), ConfigValue::Float(0.0));
+    fields.insert(
+        "initial_layer_line_width".to_string(),
+        ConfigValue::Float(0.0),
+    );
+    fields.insert("extra_perimeters".to_string(), ConfigValue::Int(0));
+    fields.insert("precise_outer_wall".to_string(), ConfigValue::Bool(false));
+    fields.insert(
+        "wall_sequence".to_string(),
+        ConfigValue::String("InnerOuter".to_string()),
+    );
+    fields.insert("support_raft_layers".to_string(), ConfigValue::Int(0));
+    fields.insert("only_one_wall_top".to_string(), ConfigValue::Bool(false));
+    fields.insert(
+        "only_one_wall_first_layer".to_string(),
+        ConfigValue::Bool(false),
+    );
+    fields.insert(
+        "wall_direction".to_string(),
+        ConfigValue::String("counter_clockwise".to_string()),
+    );
+    fields.insert("alternate_extra_wall".to_string(), ConfigValue::Bool(false));
+    fields.insert("spiral_vase".to_string(), ConfigValue::Bool(false));
+    fields.insert(
+        "sparse_infill_density".to_string(),
+        ConfigValue::Float(20.0),
+    );
+    fields.insert("detect_overhang_wall".to_string(), ConfigValue::Bool(true));
+    fields.insert("overhang_reverse".to_string(), ConfigValue::Bool(false));
+    fields.insert(
+        "overhang_reverse_internal_only".to_string(),
+        ConfigValue::Bool(false),
+    );
+    fields.insert(
+        "overhang_reverse_threshold".to_string(),
+        ConfigValue::Float(0.0),
+    );
+    fields.insert("bridge_flow".to_string(), ConfigValue::Float(1.0));
+    fields.insert("thick_bridges".to_string(), ConfigValue::Bool(false));
+    fields.insert(
+        "seam_candidate_angle_threshold_deg".to_string(),
+        ConfigValue::Float(30.0),
+    );
     ConfigView::from_map(fields)
 }
 

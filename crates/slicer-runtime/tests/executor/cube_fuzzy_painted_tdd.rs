@@ -24,8 +24,8 @@ use std::sync::Arc;
 use slicer_core::algos::paint_segmentation::execute_paint_segmentation;
 use slicer_core::slice_mesh_ex;
 use slicer_ir::{
-    ActiveRegion, BoundingBox3, ConfigDelta, ConfigValue, ExPolygon, FacetPaintData, GlobalLayer,
-    IndexedTriangleSet, LayerPlanIR, MeshIR, ModifierScope, ModifierVolume, ObjectConfig,
+    ActiveRegion, BoundingBox3, ConfigDelta, ExPolygon, FacetPaintData, GlobalLayer,
+    IndexedTriangleSet, LayerPlanIR, MeshIR, ModifierKind, ModifierVolume, ObjectConfig,
     ObjectLayerRef, ObjectMesh, PaintLayer, PaintSemantic, PaintValue, Point2, Point3, Polygon,
     RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SemVer, SliceIR, SlicedRegion, Transform3d,
     CURRENT_MESH_IR_SCHEMA_VERSION, CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
@@ -566,21 +566,13 @@ fn cube_fuzzy_painted_modifier_overlay_on_unpainted_face() {
             1, 2, 6, 1, 6, 5,
         ],
     };
-    let mut mv_fields = HashMap::new();
-    mv_fields.insert(
-        "subtype".to_string(),
-        ConfigValue::String("support_enforcer".to_string()),
+    let mv = ModifierVolume::new(
+        "mv_enforcer".to_string(),
+        mv_mesh,
+        ConfigDelta::default(),
+        0,
+        ModifierKind::SupportEnforcer,
     );
-    // exhaustive: ModifierVolume explicit test fixture preserves boundary data
-    let mv = ModifierVolume {
-        id: "mv_enforcer".to_string(),
-        mesh: mv_mesh,
-        config_delta: ConfigDelta { fields: mv_fields },
-        priority: 0,
-        applies_to: ModifierScope::AllFeatures,
-        // exhaustive: ModifierVolume boundary/test fixture requires explicit field construction
-        // exhaustive: ModifierVolume explicit test fixture preserves boundary data
-    };
 
     // FuzzySkin PaintLayer: one facet painted Flag(true) so mesh_has_any_paint passes.
     let paint_layer = PaintLayer {

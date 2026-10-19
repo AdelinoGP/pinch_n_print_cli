@@ -1,0 +1,50 @@
+{
+  "status": "passed",
+  "kind": "diagnostic-evidence-verification-not-acceptance",
+  "recomputed_event_reductions_match": true,
+  "stage_module_event_pairs_complete": true,
+  "layer_coverage_complete": true,
+  "original_campaign_files_verified": {
+    "durable_raw_archive_files_excluding_its_inventory": 101,
+    "tracked_evidence_files_excluding_this_inventory": 91
+  },
+  "infill_linker_artifact_sha256": {
+    "ordinary": "b65b5f0053464d172ed0d4689d7c46fbb55787479c92112c0e3ca24ad7cab53e",
+    "accelerated": "7a8a5c017847294af88832f213fb821ae6ed71b7159a6e2f5d6ec21dd0b2b26a"
+  },
+  "infill_linker_artifacts_byte_identical": false,
+  "tail_owner_rows": [
+    {
+      "mode": "ordinary",
+      "layer_index": 1,
+      "layer_elapsed_ms": 4584,
+      "top_module": "com.core.infill-linker",
+      "top_module_elapsed_ms": 4126,
+      "share_of_layer_interval_percent": 90.0087260034904
+    },
+    {
+      "mode": "ordinary",
+      "layer_index": 2,
+      "layer_elapsed_ms": 2808,
+      "top_module": "com.core.infill-linker",
+      "top_module_elapsed_ms": 2715,
+      "share_of_layer_interval_percent": 96.6880341880342
+    },
+    {
+      "mode": "accelerated",
+      "layer_index": 1,
+      "layer_elapsed_ms": 4451,
+      "top_module": "com.core.infill-linker",
+      "top_module_elapsed_ms": 4047,
+      "share_of_layer_interval_percent": 90.92338800269603
+    },
+    {
+      "mode": "accelerated",
+      "layer_index": 2,
+      "layer_elapsed_ms": 2735,
+      "top_module": "com.core.infill-linker",
+      "top_module_elapsed_ms": 2633,
+      "share_of_layer_interval_percent": 96.27056672760511
+    }
+  ]
+}

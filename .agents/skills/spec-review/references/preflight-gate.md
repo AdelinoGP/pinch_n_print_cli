@@ -18,7 +18,7 @@ It originates from the 2026-06 review wave that found ≥1 fictional-symbol defe
 
 ## Context discipline for the gate
 
-The gate is context-hostile (4–5 packet files × dozens of tree greps). Obey the skill's hard limits. The controller reads **only** the 5 packet files directly (they are the allowed direct reads); **every** tree/grep/existence check is a sub-agent dispatch. Dispatch one **symbol-inventory** extraction per packet first (below), then fan out per-check verification. Never read source files, `docs/` bodies, or `target/` in the controller.
+The gate is context-hostile (4–5 packet files × dozens of tree greps). Obey the skill's hard limits. The controller reads **only** the 5 packet files directly (they are the allowed direct reads); **every** tree/grep/existence check is a sub-agent dispatch. Dispatch one **symbol-inventory** extraction per packet first (below), then run S1–S8 as **batched** dispatches — one per check, carrying that check's full item list (all PREREQ-PACKETs, all DEVIATION-IDs, all PREEXISTING-SYMBOLS, …), each returning one FACT line per item. The checks are the batching unit, not the individual symbol; a per-symbol fan-out pays a sub-agent's startup cost per symbol for answers that share a reader. Never read source files, `docs/` bodies, or `target/` in the controller.
 
 ### Symbol-inventory dispatch (run once per packet, first)
 
@@ -37,7 +37,7 @@ Return format: SUMMARY with these labeled lists (omit empty ones):
   - NEW-TEST-FILES: each new test file + its target test binary (e.g. --test contract) + the aggregator it must register in
 ```
 
-The checks below consume these lists. Each check's verification is itself dispatched (FACT pass/fail). The controller only adjudicates returned FACTs.
+The checks below consume these lists. Each check's verification is itself dispatched (FACT pass/fail) — **one dispatch per check, one FACT line per item inside it**. The controller only adjudicates returned FACTs.
 
 ## S0 — Packet structure (runs first, before symbol checks)
 
@@ -62,7 +62,7 @@ This protocol is what turns the gate from "a checklist a confident agent can rat
 
 **Asserts:** no packet is described as a satisfied (`implemented`/`shipped`) dependency unless its own `packet.spec.md` frontmatter is `status: implemented`.
 
-**Dispatch:** for each PREREQ-PACKET the packet calls implemented → `FACT: grep '^status:' in docs/spec_packets/<dep>/packet.spec.md — is it 'implemented'?`
+**Dispatch (one batch, all PREREQ-PACKETs):** `FACT: for each dependency below, grep '^status:' in docs/spec_packets/<dep>/packet.spec.md — is it 'implemented'? one FACT line per dep.`
 
 **FAIL (HIGH)** if any dep claimed implemented is `draft`. **Fix:** replace the "implemented" claim with an explicit `FORWARD-DEP on draft <dep>` blocker, and move any AC that consumes that dep's output behind the blocker.
 
@@ -70,10 +70,10 @@ This protocol is what turns the gate from "a checklist a confident agent can rat
 
 **Asserts:** every deviation ID the packet references conforms to the `DEVIATION_LOG.md` ID convention and exists/doesn't-exist as the verb requires.
 
-**Dispatch:**
+**Dispatch (one batch for the whole check):**
 - `FACT: what ID format does docs/DEVIATION_LOG.md use? (sample 2 recent rows)`
-- For each DEVIATION-ID with verb `supersede`/`close`/`grep`: `FACT: does '<id>' appear in docs/DEVIATION_LOG.md? Y/N`
-- For each with verb `create`: `FACT: is '<id>' absent from the log AND format-conformant? Y/N`
+- For every DEVIATION-ID with verb `supersede`/`close`/`grep`: `FACT: does '<id>' appear in docs/DEVIATION_LOG.md? Y/N` — one line per ID.
+- For every DEVIATION-ID with verb `create`: `FACT: is '<id>' absent from the log AND format-conformant? Y/N` — one line per ID.
 
 Derive the real convention from the log at runtime (the first dispatch) — do **not** assume a format. As of 2026-06 the log uses `D-<pkt>-<SLUG>` (e.g. `D-96-AC8-CUBE-REBASELINE`, `D-103-T041-VORONOI-PORTED`) and bare `D-<n>`; packet-prefixed IDs with slugs are therefore format-conformant.
 
@@ -83,8 +83,8 @@ Derive the real convention from the log at runtime (the first dispatch) — do *
 
 **Asserts:** no AC hardcodes a future `*_SCHEMA_VERSION` SemVer; version targets the correct constant for the IR being changed; targets are internally consistent.
 
-**Dispatch:**
-- For each SCHEMA-VERSION: `FACT: which constant governs <IR>? what is its live value in crates/slicer-ir/src/slice_ir.rs?`
+**Dispatch (one batch for the whole check):**
+- For every SCHEMA-VERSION: `FACT: which constant governs <IR>? what is its live value in crates/slicer-ir/src/slice_ir.rs?` — one line per version.
 - Cross-check the packet's own docs for a single agreed target.
 
 **FAIL (HIGH)** if: the packet pins a hardcoded future version (e.g. AC greps `major: 4, minor: 6`) against a reservation table while the live constant is lower and the intervening bumps are unshipped; the bump targets the wrong constant (e.g. `CURRENT_SLICE_IR_SCHEMA_VERSION` for a `SurfaceClassificationIR` field, which has its own `CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION`); or the packet's docs disagree on the target (4.4 vs 4.6). **Fix:** the AC should assert the *field/variant addition*, not a literal version; compute the version bump at activation from the live constant; one IR → one constant.
@@ -93,9 +93,9 @@ Derive the real convention from the log at runtime (the first dispatch) — do *
 
 **Asserts:** any new ADR uses a number not already present in `docs/adr/`, and no doc references the ADR before it exists.
 
-**Dispatch:**
+**Dispatch (one batch for the whole check):**
 - `LOCATIONS: ls docs/adr/ — list NNNN prefixes in use; report the highest.`
-- For each NEW-ADR filename: `FACT: is prefix <NNNN> already taken? what is the next free number?`
+- For every NEW-ADR filename: `FACT: is prefix <NNNN> already taken? what is the next free number?` — one line per ADR.
 - `FACT: do any docs/ files already reference <new-ADR path>? LOCATIONS` (dangling-ref check)
 
 **FAIL (CRIT)** on number collision (e.g. authoring `0012-...` when `0012-spatial-indexing-...` exists). **FAIL (HIGH)** on a dangling forward reference to the not-yet-created ADR. **Fix:** allocate the next free number; remove premature cross-references until the ADR lands.
@@ -104,7 +104,7 @@ Derive the real convention from the log at runtime (the first dispatch) — do *
 
 **Asserts:** every PREEXISTING-SYMBOL exists in the tree, in the named crate, with the named shape; every "placeholder/stub" claim about a module is true.
 
-**Dispatch** (batch by area to bound dispatch count): for each PREEXISTING-SYMBOL `FACT/LOCATIONS: does <symbol> exist in <claimed crate/path>? exact signature/fields? if a module is called a 'stub/placeholder', is its lib.rs actually a stub (warn!/Ok(()) only) or a working impl?`
+**Dispatch** (one batch for the whole check; batch by area within it): for every PREEXISTING-SYMBOL, one FACT/LOCATIONS line — `does <symbol> exist in <claimed crate/path>? exact signature/fields? if a module is called a 'stub/placeholder', is its lib.rs actually a stub (warn!/Ok(()) only) or a working impl?` Split the list only when it spans unrelated areas whose greps share no reader.
 
 **FAIL (BLOCKER)** on any: fictional fn/struct/field/method; wrong crate of origin (`variable_width` is `slicer-ir`, not `slicer-core`; `Point2` is `slicer-ir`, not `slicer_core::geometry`); wrong shape (`Vec<bool>` vs `Vec<Vec<bool>>`); duplicate symbol the packet "creates" that already exists elsewhere with live call sites (`WallSequence`); a "new directory/module" that already exists; a "stub/placeholder" module that is actually a working impl; a "source fn to promote" that the file doesn't contain. **Fix:** correct the name / crate / shape; if creating a symbol that already exists, reconcile (rename, extend in place, or de-duplicate) and account for existing call sites.
 
@@ -114,7 +114,7 @@ Derive the real convention from the log at runtime (the first dispatch) — do *
 
 **Asserts:** every WIT type/record/func and IR enum-variant named as pre-existing exists with that exact identifier (kebab on the WIT side, the right variant on the Rust side).
 
-**Dispatch:** for each WIT-IR-IDENTIFIER `FACT: does <wit-or-variant> exist in crates/slicer-schema/wit/** or the named IR enum? exact identifier?`
+**Dispatch (one batch for the whole check):** for every WIT-IR-IDENTIFIER, one FACT line — `does <wit-or-variant> exist in crates/slicer-schema/wit/** or the named IR enum? exact identifier?`
 
 **FAIL (BLOCKER)** on: absent WIT record (`surface-group`); kebab/snake or naming drift (`wall-loop-type` vs `loop-type`); a fictional enum variant where the data is actually `Custom("…")` (`PaintSemantic::SeamEnforcer/SeamBlocker` → `Custom("seam_enforcer")`); a field-type assumption that's wrong (`WallLoop.path` is `ExtrusionPath3D`, not `Vec<Point3WithWidth>`). **Fix:** use the real identifier; for `Custom(...)` paint, match on the string, not a named variant; route through the real wrapper type.
 
@@ -122,9 +122,9 @@ Derive the real convention from the log at runtime (the first dispatch) — do *
 
 **Asserts:** every NEW-TEST-FILE under an aggregated test binary is registered in the aggregator, and its AC's `cargo test --test <bin> <filter>` references the binary the file actually lands in.
 
-**Dispatch:**
+**Dispatch (one batch for the whole check):**
 - `FACT: how is the <bin> test binary aggregated? (tests/<bin>.rs vs tests/<bin>/main.rs mod-list); list current mod declarations.`
-- For each NEW-TEST-FILE: `FACT: does the AC's --test target match where the file lands, and is a 'mod <name>;' registration accounted for in the aggregator? Is the aggregator in the step's edit list within the per-step edit cap?`
+- For every NEW-TEST-FILE: `FACT: does the AC's --test target match where the file lands, and is a 'mod <name>;' registration accounted for in the aggregator? Is the aggregator in the step's edit list within the per-step edit cap?` — one line per file.
 
 **FAIL (HIGH)** if: a new `tests/contract/*.rs` (or `unit`/`integration`) file has no `mod` registration planned (it silently won't compile → `cargo test --test <bin> <name>` reports "0 tests run", a false pass); the AC's `--test` binary or path doesn't match where the file goes (`tests/contract/dag_validation.rs` when DAG tests live at `tests/unit/dag_validation_tdd.rs`); or adding the aggregator breaks the step's ≤3-edit cap. **Fix:** add the aggregator to the step's edit list (split the sub-step if it busts the cap); point the AC at the real binary/path.
 
@@ -132,7 +132,7 @@ Derive the real convention from the log at runtime (the first dispatch) — do *
 
 **Asserts:** a packet whose `design.md` touches behavior governed by an existing ADR's *normative content* (the field shape, mechanism, ordering, or constraint the ADR locked) either **conforms** to that ADR or **explicitly amends** it via a deviation — it never silently contradicts it. Silently rewriting an architecture-level decision is precisely what produced the defect cascade this gate was built to stop.
 
-**Dispatch:** for each ADR the packet's design surface plausibly touches (cross-reference PREEXISTING-SYMBOLS / SCHEMA / WIT lists against `docs/adr/`): `FACT: does the packet's design contradict <ADR>'s normative clause on <topic>? quote the ADR clause and the packet clause.`
+**Dispatch (one batch; for every ADR the packet's design surface plausibly touches, cross-reference PREEXISTING-SYMBOLS / SCHEMA / WIT lists against `docs/adr/`):** `FACT: does the packet's design contradict <ADR>'s normative clause on <topic>? quote the ADR clause and the packet clause.` — one line per ADR.
 
 **FAIL (HIGH)** if the packet's design conflicts with an existing ADR's normative content **and** the packet neither conforms nor carries a `D-<pkt>-ADR-<NNNN>-AMENDED` deviation that (a) references the ADR by slot number and (b) quotes the contested clause. Example: ADR-0013-mmu locks `bisector_edge_skip_mask: Vec<bool>` (flat, per-edge, WIT-boundary perf rationale); a packet specifying `Vec<Vec<bool>>` must either conform to `Vec<bool>` or carry `D-105-ADR-0013-AMENDED` quoting the clause. **Fix:** conform the packet (default — cheapest, keeps the ADR authoritative); or, only if the change is genuinely warranted, author the amendment deviation **and** a superseding ADR — an ADR edit requires its own decision record, never a quiet packet-driven rewrite.
 

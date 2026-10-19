@@ -59,6 +59,8 @@ fn region_map_cap_exceeded_named_contributor() {
         None,
         &BTreeMap::new(),
         /* cap = */ 5,
+        // No layer-range authority: this fixture exercises the cap guard.
+        None,
     )
     .expect_err("cross-product expansion must exceed cap of 5");
 

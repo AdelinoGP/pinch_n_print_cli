@@ -1,0 +1,332 @@
+{
+  "captured_utc": "2026-09-30T05:05:57.344467+00:00",
+  "purpose": "Input inventory only; not fresh exactness or performance acceptance",
+  "cells": [
+    {
+      "workload": "supports-off-benchy",
+      "generator": "classic",
+      "model_sha256": "6a07f34cc7769b1c852635212c91a1b354532f4222a9a8105c1035a1a7b284f7",
+      "model_matches_map_fixture": true,
+      "config_sha256": "0c3ff8f6c428b91a3e309336db2949f2b5f5736465f881d52f0862cc21d2bb25",
+      "config": {
+        "layer_height": 0.2,
+        "first_layer_height": 0.2,
+        "line_width": 0.4,
+        "nozzle_diameter": 0.5,
+        "filament_diameter": 1.75,
+        "sparse_infill_density": 25.0,
+        "wall_count": 3,
+        "wall_generator": "classic",
+        "enable_support": false
+      },
+      "reference_sha256": "ab698efe6555048fa4d66d18b2d7e7be48af79fe15b9657e0f8b26da0c86232e",
+      "reference_markers": [
+        "; enable_support = false",
+        "; nozzle_diameter = 0.5",
+        "; sparse_infill_density = 25",
+        "; wall_generator = classic",
+        "; wall_loops = 2"
+      ],
+      "reference_completion": [
+        {
+          "schema_version": "1.5.0",
+          "event": "slice_complete",
+          "timestamp_ms": 1789149531274,
+          "slice_id": "slice-1789149509937",
+          "status": "ok",
+          "elapsed_ms": 21328,
+          "degraded": false,
+          "fatal_error_count": 0,
+          "non_fatal_error_count": 0
+        }
+      ]
+    },
+    {
+      "workload": "supports-off-benchy",
+      "generator": "arachne",
+      "model_sha256": "6a07f34cc7769b1c852635212c91a1b354532f4222a9a8105c1035a1a7b284f7",
+      "model_matches_map_fixture": true,
+      "config_sha256": "2b8314edca85538e3725de9b008f6086dff322121cfc6ea47ba3157caeb6111d",
+      "config": {
+        "layer_height": 0.2,
+        "first_layer_height": 0.2,
+        "line_width": 0.4,
+        "nozzle_diameter": 0.5,
+        "filament_diameter": 1.75,
+        "sparse_infill_density": 25.0,
+        "wall_count": 3,
+        "wall_generator": "arachne",
+        "enable_support": false
+      },
+      "reference_sha256": "6e5db7054580c37d3abf6fb45f0335b90cc0997e9c4b771c3dfc6b8500723c08",
+      "reference_markers": [
+        "; enable_support = false",
+        "; nozzle_diameter = 0.5",
+        "; sparse_infill_density = 25",
+        "; wall_generator = arachne",
+        "; wall_loops = 2"
+      ],
+      "reference_completion": [
+        {
+          "schema_version": "1.5.0",
+          "event": "slice_complete",
+          "timestamp_ms": 1789149549784,
+          "slice_id": "slice-1789149533852",
+          "status": "ok",
+          "elapsed_ms": 15924,
+          "degraded": false,
+          "fatal_error_count": 0,
+          "non_fatal_error_count": 0
+        }
+      ]
+    },
+    {
+      "workload": "tree-support-benchy",
+      "generator": "classic",
+      "model_sha256": "6a07f34cc7769b1c852635212c91a1b354532f4222a9a8105c1035a1a7b284f7",
+      "model_matches_map_fixture": true,
+      "config_sha256": "a1350ac1b0824f12308287b4a944a4a80e207720a491a2227e1e9971fd25e1c6",
+      "config": {
+        "layer_height": 0.2,
+        "first_layer_height": 0.2,
+        "line_width": 0.4,
+        "nozzle_diameter": 0.5,
+        "filament_diameter": 1.75,
+        "sparse_infill_density": 25.0,
+        "wall_count": 3,
+        "wall_generator": "classic",
+        "enable_support": true,
+        "support_type": "tree(auto)",
+        "support_density": 20.0,
+        "support_angle": 0.0,
+        "support_speed": 150.0,
+        "support_interface_speed": 80.0,
+        "support_threshold_angle": 30.0,
+        "support_object_xy_distance": 0.35,
+        "support_top_z_distance_mm": 0.2,
+        "support_layer_height_mm": 0.0,
+        "support_base_pattern": "rectilinear",
+        "support_interface_spacing": 0.4,
+        "support_interface_top_layers": 2,
+        "support_interface_bottom_layers": 2,
+        "support_on_build_plate_only": true,
+        "support_filament": 0,
+        "support_interface_filament": 0,
+        "support_raft_layers": 0,
+        "base_raft_layers": 0,
+        "interface_raft_layers": 0,
+        "tree_support_branch_angle": 45.0,
+        "tree_support_branch_diameter": 5.0,
+        "tree_support_branch_diameter_angle": 5.0,
+        "tree_support_branch_distance": 5.0,
+        "tree_support_wall_count": 1
+      },
+      "reference_sha256": "527a1717a2b7d24bcbac1a4a634c7f24fd509148771c5a9f58f389b41a1ec39e",
+      "reference_markers": [
+        "; enable_support = true",
+        "; nozzle_diameter = 0.5",
+        "; sparse_infill_density = 25",
+        "; wall_generator = classic"
+      ],
+      "reference_completion": [
+        {
+          "schema_version": "1.5.0",
+          "event": "slice_complete",
+          "timestamp_ms": 1789149575965,
+          "slice_id": "slice-1789149551392",
+          "status": "ok",
+          "elapsed_ms": 24558,
+          "degraded": false,
+          "fatal_error_count": 0,
+          "non_fatal_error_count": 0
+        }
+      ]
+    },
+    {
+      "workload": "tree-support-benchy",
+      "generator": "arachne",
+      "model_sha256": "6a07f34cc7769b1c852635212c91a1b354532f4222a9a8105c1035a1a7b284f7",
+      "model_matches_map_fixture": true,
+      "config_sha256": "40269f2f2076f04f1f8bcc039248ffb69742084865a1a7e8d751299c2ea696f5",
+      "config": {
+        "layer_height": 0.2,
+        "first_layer_height": 0.2,
+        "line_width": 0.4,
+        "nozzle_diameter": 0.5,
+        "filament_diameter": 1.75,
+        "sparse_infill_density": 25.0,
+        "wall_count": 3,
+        "wall_generator": "arachne",
+        "enable_support": true,
+        "support_type": "tree(auto)",
+        "support_density": 20.0,
+        "support_angle": 0.0,
+        "support_speed": 150.0,
+        "support_interface_speed": 80.0,
+        "support_threshold_angle": 30.0,
+        "support_object_xy_distance": 0.35,
+        "support_top_z_distance_mm": 0.2,
+        "support_layer_height_mm": 0.0,
+        "support_base_pattern": "rectilinear",
+        "support_interface_spacing": 0.4,
+        "support_interface_top_layers": 2,
+        "support_interface_bottom_layers": 2,
+        "support_on_build_plate_only": true,
+        "support_filament": 0,
+        "support_interface_filament": 0,
+        "support_raft_layers": 0,
+        "base_raft_layers": 0,
+        "interface_raft_layers": 0,
+        "tree_support_branch_angle": 45.0,
+        "tree_support_branch_diameter": 5.0,
+        "tree_support_branch_diameter_angle": 5.0,
+        "tree_support_branch_distance": 5.0,
+        "tree_support_wall_count": 1
+      },
+      "reference_sha256": "5b3a004c9424e0a2a85f4f2c0e53771e417518116779dc91433246122ba9a6d5",
+      "reference_markers": [
+        "; enable_support = true",
+        "; nozzle_diameter = 0.5",
+        "; sparse_infill_density = 25",
+        "; wall_generator = arachne"
+      ],
+      "reference_completion": [
+        {
+          "schema_version": "1.5.0",
+          "event": "slice_complete",
+          "timestamp_ms": 1789149599491,
+          "slice_id": "slice-1789149577653",
+          "status": "ok",
+          "elapsed_ms": 21823,
+          "degraded": false,
+          "fatal_error_count": 0,
+          "non_fatal_error_count": 0
+        }
+      ]
+    },
+    {
+      "workload": "tree-support-base",
+      "generator": "classic",
+      "model_sha256": "b26c8c79158bd009119e13c89aa0cb9b6f8100bef1de63f58c0d58e2c1c178af",
+      "model_matches_map_fixture": true,
+      "config_sha256": "a1350ac1b0824f12308287b4a944a4a80e207720a491a2227e1e9971fd25e1c6",
+      "config": {
+        "layer_height": 0.2,
+        "first_layer_height": 0.2,
+        "line_width": 0.4,
+        "nozzle_diameter": 0.5,
+        "filament_diameter": 1.75,
+        "sparse_infill_density": 25.0,
+        "wall_count": 3,
+        "wall_generator": "classic",
+        "enable_support": true,
+        "support_type": "tree(auto)",
+        "support_density": 20.0,
+        "support_angle": 0.0,
+        "support_speed": 150.0,
+        "support_interface_speed": 80.0,
+        "support_threshold_angle": 30.0,
+        "support_object_xy_distance": 0.35,
+        "support_top_z_distance_mm": 0.2,
+        "support_layer_height_mm": 0.0,
+        "support_base_pattern": "rectilinear",
+        "support_interface_spacing": 0.4,
+        "support_interface_top_layers": 2,
+        "support_interface_bottom_layers": 2,
+        "support_on_build_plate_only": true,
+        "support_filament": 0,
+        "support_interface_filament": 0,
+        "support_raft_layers": 0,
+        "base_raft_layers": 0,
+        "interface_raft_layers": 0,
+        "tree_support_branch_angle": 45.0,
+        "tree_support_branch_diameter": 5.0,
+        "tree_support_branch_diameter_angle": 5.0,
+        "tree_support_branch_distance": 5.0,
+        "tree_support_wall_count": 1
+      },
+      "reference_sha256": "65a0955a10cd712e7b87fcfe4fd7e7751aa487447fb861b9bc029323a99de5c1",
+      "reference_markers": [
+        "; enable_support = true",
+        "; nozzle_diameter = 0.5",
+        "; sparse_infill_density = 25",
+        "; wall_generator = classic"
+      ],
+      "reference_completion": [
+        {
+          "schema_version": "1.5.0",
+          "event": "slice_complete",
+          "timestamp_ms": 1789149995354,
+          "slice_id": "slice-1789149608734",
+          "status": "ok",
+          "elapsed_ms": 386564,
+          "degraded": true,
+          "fatal_error_count": 0,
+          "non_fatal_error_count": 29108
+        }
+      ]
+    },
+    {
+      "workload": "tree-support-base",
+      "generator": "arachne",
+      "model_sha256": "b26c8c79158bd009119e13c89aa0cb9b6f8100bef1de63f58c0d58e2c1c178af",
+      "model_matches_map_fixture": true,
+      "config_sha256": "40269f2f2076f04f1f8bcc039248ffb69742084865a1a7e8d751299c2ea696f5",
+      "config": {
+        "layer_height": 0.2,
+        "first_layer_height": 0.2,
+        "line_width": 0.4,
+        "nozzle_diameter": 0.5,
+        "filament_diameter": 1.75,
+        "sparse_infill_density": 25.0,
+        "wall_count": 3,
+        "wall_generator": "arachne",
+        "enable_support": true,
+        "support_type": "tree(auto)",
+        "support_density": 20.0,
+        "support_angle": 0.0,
+        "support_speed": 150.0,
+        "support_interface_speed": 80.0,
+        "support_threshold_angle": 30.0,
+        "support_object_xy_distance": 0.35,
+        "support_top_z_distance_mm": 0.2,
+        "support_layer_height_mm": 0.0,
+        "support_base_pattern": "rectilinear",
+        "support_interface_spacing": 0.4,
+        "support_interface_top_layers": 2,
+        "support_interface_bottom_layers": 2,
+        "support_on_build_plate_only": true,
+        "support_filament": 0,
+        "support_interface_filament": 0,
+        "support_raft_layers": 0,
+        "base_raft_layers": 0,
+        "interface_raft_layers": 0,
+        "tree_support_branch_angle": 45.0,
+        "tree_support_branch_diameter": 5.0,
+        "tree_support_branch_diameter_angle": 5.0,
+        "tree_support_branch_distance": 5.0,
+        "tree_support_wall_count": 1
+      },
+      "reference_sha256": "ced7c9fe383159f3a8b3116633775144fc33b3dd77ec72d400de19015a3afd04",
+      "reference_markers": [
+        "; enable_support = true",
+        "; nozzle_diameter = 0.5",
+        "; sparse_infill_density = 25",
+        "; wall_generator = arachne"
+      ],
+      "reference_completion": [
+        {
+          "schema_version": "1.5.0",
+          "event": "slice_complete",
+          "timestamp_ms": 1789150325580,
+          "slice_id": "slice-1789150040336",
+          "status": "ok",
+          "elapsed_ms": 285189,
+          "degraded": true,
+          "fatal_error_count": 0,
+          "non_fatal_error_count": 29108
+        }
+      ]
+    }
+  ]
+}

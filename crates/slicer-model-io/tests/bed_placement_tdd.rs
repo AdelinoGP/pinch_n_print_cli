@@ -6,7 +6,9 @@
 //! slicer emitted those raw coordinates, so the print was both off the plate in
 //! XY and truncated at z = 0 — 116 layers instead of 495.
 
-use slicer_ir::{BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer};
+use slicer_ir::{
+    BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer,
+};
 use slicer_model_io::{bed_center_mm, bed_overflow_mm, place_bare_mesh_on_bed};
 use std::collections::HashMap;
 
@@ -102,11 +104,7 @@ fn multi_object_relative_positions_are_preserved() {
         ),
         object(
             "b",
-            vec![
-                p3(40.0, 0.0, 0.0),
-                p3(50.0, 0.0, 0.0),
-                p3(40.0, 10.0, 10.0),
-            ],
+            vec![p3(40.0, 0.0, 0.0), p3(50.0, 0.0, 0.0), p3(40.0, 10.0, 10.0)],
         ),
     ]);
 
@@ -187,11 +185,7 @@ fn oversized_model_reports_bed_overflow() {
     let square = vec![0.0, 0.0, 250.0, 0.0, 250.0, 250.0, 0.0, 250.0];
     let mut mesh = mesh_of(vec![object(
         "huge",
-        vec![
-            p3(0.0, 0.0, 0.0),
-            p3(400.0, 0.0, 0.0),
-            p3(0.0, 300.0, 10.0),
-        ],
+        vec![p3(0.0, 0.0, 0.0), p3(400.0, 0.0, 0.0), p3(0.0, 300.0, 10.0)],
     )]);
     place_bare_mesh_on_bed(&mut mesh, (125.0, 125.0)).expect("placeable");
 
@@ -207,11 +201,7 @@ fn fitting_model_reports_no_overflow() {
     let square = vec![0.0, 0.0, 250.0, 0.0, 250.0, 250.0, 0.0, 250.0];
     let mut mesh = mesh_of(vec![object(
         "small",
-        vec![
-            p3(0.0, 0.0, 0.0),
-            p3(20.0, 0.0, 0.0),
-            p3(0.0, 20.0, 5.0),
-        ],
+        vec![p3(0.0, 0.0, 0.0), p3(20.0, 0.0, 0.0), p3(0.0, 20.0, 5.0)],
     )]);
     place_bare_mesh_on_bed(&mut mesh, (125.0, 125.0)).expect("placeable");
 

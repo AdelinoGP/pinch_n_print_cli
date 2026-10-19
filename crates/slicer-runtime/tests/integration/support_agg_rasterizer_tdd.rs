@@ -228,8 +228,15 @@ fn prepare_model_support(
         return Err(format!("model is missing at {}", model.display()));
     }
     let mesh = cached_load_model(model);
-    slicer_runtime::run::prepare_prepass_context(mesh, config, &core_module_dirs(), true, false)
-        .map_err(|error| format!("{} prepass failed: {error:?}", model.display()))
+    slicer_runtime::run::prepare_prepass_context(
+        mesh,
+        config,
+        Vec::new(),
+        &core_module_dirs(),
+        true,
+        false,
+    )
+    .map_err(|error| format!("{} prepass failed: {error:?}", model.display()))
 }
 
 /// `support_object_xy_distance` (mm) as actually configured, read from the

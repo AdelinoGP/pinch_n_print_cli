@@ -11,7 +11,7 @@ id = "PostPass::LayerFinalization"
 
 [ir-access]
 reads  = ["LayerCollectionIR"]
-writes = ["LayerCollectionIR.cooling"]
+writes = ["LayerCollectionIR.annotations"]
 
 [claims]
 holds    = []
@@ -81,12 +81,6 @@ default = 5.0
 min     = 0.0
 display = "Slow Down Layer Time"
 group   = "Cooling"
-
-[config.overridable-per-region]
-keys = []
-
-[config.overridable-per-layer]
-keys = []
 
 [hints]
 estimated-ms-per-layer = 5

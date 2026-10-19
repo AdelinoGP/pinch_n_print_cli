@@ -1,0 +1,18 @@
+{
+  "diagnostic_only": true,
+  "timing_evidence": false,
+  "input_nonfatal_per_row": {
+    "baseline": 1,
+    "candidate": 2
+  },
+  "parsed_nonfatal_per_row": {
+    "baseline": 1,
+    "candidate": 2
+  },
+  "reported_nonfatal_totals": {
+    "baseline": 4,
+    "candidate": 8
+  },
+  "expected_decision": "DROP",
+  "actual_decision": "DROP"
+}

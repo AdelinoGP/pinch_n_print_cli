@@ -1,0 +1,252 @@
+{
+  "status": "passed",
+  "gates": [
+    {
+      "name": "toolchain",
+      "command": [
+        "rustc",
+        "-vV"
+      ],
+      "exit_code": 0,
+      "required_tests": [],
+      "missing_successful_tests": [],
+      "passed_counts": {
+        "summary_lines": 0,
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered_out": 0
+      },
+      "combined_output_sha256": "2efe229f7908c2c19f459ca734101a5b35cb482476b8bee1357f94a18c766078"
+    },
+    {
+      "name": "ordinary-freshness",
+      "command": [
+        "cargo",
+        "xtask",
+        "build-guests",
+        "--check"
+      ],
+      "exit_code": 1,
+      "required_tests": [],
+      "missing_successful_tests": [],
+      "passed_counts": {
+        "summary_lines": 0,
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered_out": 0
+      },
+      "combined_output_sha256": "524eaa5c70b18404f6fb52483e81d353f8203caf0e67f3aaba82eaed4a215b6b"
+    },
+    {
+      "name": "ordinary-guest-rebuild",
+      "command": [
+        "cargo",
+        "xtask",
+        "build-guests"
+      ],
+      "exit_code": 0,
+      "required_tests": [],
+      "missing_successful_tests": [],
+      "passed_counts": {
+        "summary_lines": 0,
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered_out": 0
+      },
+      "combined_output_sha256": "877fe724142b048c1932ac4bc592fab062459ad37b975d4ab3971414ed1da860"
+    },
+    {
+      "name": "ordinary-freshness-recheck",
+      "command": [
+        "cargo",
+        "xtask",
+        "build-guests",
+        "--check"
+      ],
+      "exit_code": 0,
+      "required_tests": [],
+      "missing_successful_tests": [],
+      "passed_counts": {
+        "summary_lines": 0,
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered_out": 0
+      },
+      "combined_output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "support-repair",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "slicer-wasm-host",
+        "--test",
+        "contract",
+        "--",
+        "support_plan_validation",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "required_tests": [
+        "identity_aggregate_spread_across_the_plate_is_measured_per_body",
+        "support_body_wider_than_the_deleted_routing_cell_is_retained"
+      ],
+      "missing_successful_tests": [],
+      "passed_counts": {
+        "summary_lines": 1,
+        "passed": 8,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered_out": 123
+      },
+      "combined_output_sha256": "9736a0f5bfb192efa4628a51476e95a383e3c2e23bcf021f7f75d4dc800fa89a",
+      "expected_passed_exact": 8
+    },
+    {
+      "name": "empty-infill-producers",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "slicer-wasm-host",
+        "--test",
+        "contract",
+        "--",
+        "infill_postprocess_empty_commit_tdd",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "required_tests": [
+        "wasm_infill_postprocess_empty_output_commits_the_empty_replacement",
+        "native_infill_postprocess_empty_output_commits_the_empty_replacement",
+        "wasm_infill_empty_output_still_commits_nothing",
+        "native_infill_empty_output_still_commits_nothing",
+        "both_legs_agree_on_the_empty_replacement_shape"
+      ],
+      "missing_successful_tests": [],
+      "passed_counts": {
+        "summary_lines": 1,
+        "passed": 6,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered_out": 125
+      },
+      "combined_output_sha256": "ea85f0ece4d3638079de5f9cc72a79ba6cf7c46320fb6d8e36fc885ae16ec697",
+      "expected_passed_exact": 6
+    },
+    {
+      "name": "empty-infill-runtime",
+      "command": [
+        "cargo",
+        "xtask",
+        "test",
+        "--summary",
+        "-p",
+        "slicer-runtime",
+        "--test",
+        "contract",
+        "--",
+        "infill_postprocess_contract_tdd",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "required_tests": [
+        "infill_postprocess_empty_replacement_supersedes_prior_ir",
+        "infill_postprocess_inside_path_survives_so_the_clip_is_real"
+      ],
+      "missing_successful_tests": [],
+      "passed_counts": {
+        "summary_lines": 1,
+        "passed": 9,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered_out": 292
+      },
+      "combined_output_sha256": "c6dd80464d151714874aeeadf8abe91842851b1cd4e056b2bd7ccb1318ab3b70",
+      "expected_passed_exact": 9
+    }
+  ],
+  "checks": {
+    "source_inputs": {
+      "count": 1158,
+      "stable_across_preflight": true,
+      "sha256": "832ed3416454dd4f861ae1dd150487a1a14695df0398ccd67f2fe550b9951dd2"
+    },
+    "target_inspection": {
+      "ok": true,
+      "crates": {
+        "slicer-wasm-host": {
+          "test_targets": [
+            "contract",
+            "integration",
+            "unit"
+          ],
+          "targets_with_required_features": {},
+          "contract_declared_explicitly": true,
+          "contract_path_exists": true,
+          "features_default": null
+        },
+        "slicer-runtime": {
+          "test_targets": [
+            "integration",
+            "support_family_routing"
+          ],
+          "targets_with_required_features": {},
+          "contract_declared_explicitly": false,
+          "contract_path_exists": true,
+          "features_default": [
+            "report"
+          ]
+        }
+      },
+      "required_tests": {
+        "crates/slicer-wasm-host/tests/contract/support_plan_validation.rs": {
+          "file_level_cfg": [],
+          "identity_aggregate_spread_across_the_plate_is_measured_per_body": "ungated",
+          "support_body_wider_than_the_deleted_routing_cell_is_retained": "ungated"
+        },
+        "crates/slicer-wasm-host/tests/contract/infill_postprocess_empty_commit_tdd.rs": {
+          "file_level_cfg": [],
+          "wasm_infill_postprocess_empty_output_commits_the_empty_replacement": "ungated",
+          "native_infill_postprocess_empty_output_commits_the_empty_replacement": "ungated",
+          "wasm_infill_empty_output_still_commits_nothing": "ungated",
+          "native_infill_empty_output_still_commits_nothing": "ungated",
+          "both_legs_agree_on_the_empty_replacement_shape": "ungated"
+        },
+        "crates/slicer-runtime/tests/contract/infill_postprocess_contract_tdd.rs": {
+          "file_level_cfg": [],
+          "infill_postprocess_empty_replacement_supersedes_prior_ir": "ungated",
+          "infill_postprocess_inside_path_survives_so_the_clip_is_real": "ungated"
+        }
+      }
+    },
+    "freshness": {
+      "initial_exit": 1,
+      "rebuild_exit": 0,
+      "recheck_exit": 0,
+      "final_exit": 0,
+      "note": "stale artifacts rebuilt with plain `build-guests`; no --sync-locks, no --force"
+    }
+  },
+  "started_utc": "2026-09-30T22:53:13.963650+00:00",
+  "freshness": {
+    "initial_exit": 1,
+    "rebuild_exit": 0,
+    "recheck_exit": 0,
+    "final_exit": 0,
+    "note": "stale artifacts rebuilt with plain `build-guests`; no --sync-locks, no --force"
+  },
+  "finished_utc": "2026-09-30T23:20:06.417497+00:00"
+}

@@ -1,0 +1,85 @@
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 370 filtered out; finished in 44.44s
+
+---- failure detail ----
+thread '<unnamed>' (26152) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (12336) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (26152) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (12336) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (19600) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (19600) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (23676) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (26152) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (19600) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (12336) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (23676) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (23676) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (25988) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (25988) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (25988) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (9540) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (9540) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (9540) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (9880) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (9880) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (9880) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (9296) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (9296) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (9296) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:398:9:
+thread '<unnamed>' (9296) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (9296) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (9296) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (26536) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (26536) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (26536) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (2968) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (8968) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (2968) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (8968) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (2968) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (8968) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (19600) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (19600) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (19600) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (25988) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (25988) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (25988) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (12336) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (12336) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (26152) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (12336) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (26152) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (26152) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (23676) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (23676) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (23676) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (9880) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (9540) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (9296) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (9296) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (9296) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (9880) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (9880) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (9540) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (9540) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (8968) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (8968) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (8968) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (26536) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (24164) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (26536) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (24164) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (2968) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (26536) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (24164) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (2968) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (2968) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (25988) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (25988) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (25988) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (19600) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (19600) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+thread '<unnamed>' (19600) panicked at C:\Users\agpen\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\boostvoronoi-0.12.1\src\extended_scalar\robust_fpt.rs:245:9:
+
+VERDICT: FAIL
+
+Source log: docs/specs/perf-vs-orca/evidence/t38-adoption-resumed/gates/continuation-runtime-capture-full.log

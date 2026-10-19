@@ -1,0 +1,801 @@
+note: placed model on bed centre (125.0, 125.0) mm (shift dx=124.18 dy=125.00 dz=-0.00 mm)
+Info: integrated://arachne-perimeters: module 'com.core.arachne-perimeters' in stage 'Layer::Perimeters' dropped: claim 'perimeter-generator' already held by 'com.core.classic-perimeters' (first-winner dedup; docs/04 §2)
+Warning: <config-registry>: BoundsIntersection { key: "bridge_density", effective_min: Some(10.0), effective_max: Some(120.0), declarers: ["com.core.rectilinear-infill", "com.core.wave-overhangs"] }
+Warning: <config-registry>: BoundsIntersection { key: "bridge_flow", effective_min: Some(0.0), effective_max: None, declarers: ["com.core.arachne-perimeters", "com.core.classic-perimeters", "com.core.rectilinear-infill", "com.core.wave-overhangs"] }
+Warning: <config-registry>: BoundsIntersection { key: "bridge_line_width", effective_min: Some(0.0), effective_max: Some(2.0), declarers: ["com.core.arachne-perimeters", "com.core.classic-perimeters", "com.core.gyroid-infill", "com.core.lightning-infill", "com.core.rectilinear-infill", "com.core.wave-overhangs"] }
+Warning: <config-registry>: BoundsIntersection { key: "bridge_speed", effective_min: Some(1.0), effective_max: Some(300.0), declarers: ["com.core.overhang-classifier-default", "com.core.rectilinear-infill", "com.core.wave-overhangs", "speed"] }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "bridge_speed", module_id: "com.core.overhang-classifier-default" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "bridge_speed", module_id: "com.core.rectilinear-infill" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "bridge_speed", module_id: "com.core.wave-overhangs" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "enable_support", module_id: "com.core.traditional-support" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "enable_support", module_id: "com.core.traditional-support-planner" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "enable_support", module_id: "com.core.tree-support" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "enable_support", module_id: "com.core.tree-support-planner" }
+Warning: <config-registry>: BoundsIntersection { key: "extra_perimeters", effective_min: Some(0.0), effective_max: Some(10.0), declarers: ["com.core.arachne-perimeters", "com.core.classic-perimeters"] }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "first_layer_height", module_id: "com.core.layer-planner-default" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "gap_infill_speed", module_id: "com.core.classic-perimeters" }
+Warning: <config-registry>: BoundsIntersection { key: "infill_angle", effective_min: Some(0.0), effective_max: Some(360.0), declarers: ["com.core.gyroid-infill", "com.core.rectilinear-infill", "host"] }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "infill_angle", module_id: "com.core.gyroid-infill" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "infill_angle", module_id: "com.core.rectilinear-infill" }
+Warning: <config-registry>: BoundsIntersection { key: "infill_density", effective_min: Some(0.0), effective_max: Some(1.0), declarers: ["com.core.gyroid-infill", "com.core.infill-linker", "com.core.lightning-infill", "com.core.rectilinear-infill", "host"] }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "infill_density", module_id: "com.core.gyroid-infill" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "infill_density", module_id: "com.core.infill-linker" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "infill_density", module_id: "com.core.lightning-infill" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "infill_density", module_id: "com.core.rectilinear-infill" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "infill_overlap", module_id: "com.core.infill-linker" }
+Warning: <config-registry>: BoundsIntersection { key: "infill_speed", effective_min: Some(1.0), effective_max: Some(300.0), declarers: ["com.core.gyroid-infill", "com.core.lightning-infill", "com.core.rectilinear-infill", "host"] }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "infill_speed", module_id: "com.core.gyroid-infill" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "infill_speed", module_id: "com.core.lightning-infill" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "infill_speed", module_id: "com.core.rectilinear-infill" }
+Warning: <config-registry>: BoundsIntersection { key: "initial_layer_line_width", effective_min: Some(0.0), effective_max: Some(2.0), declarers: ["com.core.arachne-perimeters", "com.core.classic-perimeters", "com.core.gyroid-infill", "com.core.lightning-infill", "com.core.rectilinear-infill", "host"] }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "initial_layer_line_width", module_id: "com.core.arachne-perimeters" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "initial_layer_line_width", module_id: "com.core.classic-perimeters" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "initial_layer_line_width", module_id: "com.core.gyroid-infill" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "initial_layer_line_width", module_id: "com.core.lightning-infill" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "initial_layer_line_width", module_id: "com.core.rectilinear-infill" }
+Warning: <config-registry>: BoundsIntersection { key: "inner_wall_line_width", effective_min: Some(0.0), effective_max: Some(2.0), declarers: ["com.core.arachne-perimeters", "com.core.classic-perimeters"] }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "inner_wall_speed", module_id: "com.core.classic-perimeters" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "inner_wall_speed", module_id: "com.core.overhang-classifier-default" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "internal_bridge_speed", module_id: "com.core.rectilinear-infill" }
+Warning: <config-registry>: BoundsIntersection { key: "internal_solid_infill_line_width", effective_min: Some(0.0), effective_max: Some(2.0), declarers: ["com.core.gyroid-infill", "com.core.rectilinear-infill"] }
+Warning: <config-registry>: BoundsIntersection { key: "ironing_speed", effective_min: Some(1.0), effective_max: Some(300.0), declarers: ["com.core.support-surface-ironing", "com.core.top-surface-ironing", "speed"] }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "ironing_speed", module_id: "com.core.support-surface-ironing" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "ironing_speed", module_id: "com.core.top-surface-ironing" }
+Warning: <config-registry>: BoundsIntersection { key: "layer_height", effective_min: Some(0.01), effective_max: Some(1.0), declarers: ["com.core.arachne-perimeters", "com.core.classic-perimeters", "com.core.infill-linker", "com.core.layer-planner-default", "com.core.traditional-support", "com.core.tree-support", "com.core.wave-overhangs", "host"] }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "layer_height", module_id: "com.core.arachne-perimeters" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "layer_height", module_id: "com.core.classic-perimeters" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "layer_height", module_id: "com.core.infill-linker" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "layer_height", module_id: "com.core.layer-planner-default" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "layer_height", module_id: "com.core.traditional-support" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "layer_height", module_id: "com.core.tree-support" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "layer_height", module_id: "com.core.wave-overhangs" }
+Warning: <config-registry>: BoundsIntersection { key: "line_width", effective_min: Some(0.0), effective_max: Some(2.0), declarers: ["com.core.arachne-perimeters", "com.core.classic-perimeters", "com.core.gyroid-infill", "com.core.infill-linker", "com.core.lightning-infill", "com.core.overhang-classifier-default", "com.core.rectilinear-infill", "com.core.skirt-brim", "com.core.support-surface-ironing", "com.core.traditional-support", "com.core.traditional-support-planner", "com.core.tree-support", "com.core.tree-support-planner", "com.core.wipe-tower", "host"] }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "line_width", module_id: "com.core.arachne-perimeters" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "line_width", module_id: "com.core.classic-perimeters" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "line_width", module_id: "com.core.gyroid-infill" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "line_width", module_id: "com.core.infill-linker" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "line_width", module_id: "com.core.lightning-infill" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "line_width", module_id: "com.core.overhang-classifier-default" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "line_width", module_id: "com.core.rectilinear-infill" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "line_width", module_id: "com.core.skirt-brim" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "line_width", module_id: "com.core.support-surface-ironing" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "line_width", module_id: "com.core.traditional-support" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "line_width", module_id: "com.core.traditional-support-planner" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "line_width", module_id: "com.core.tree-support" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "line_width", module_id: "com.core.tree-support-planner" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "line_width", module_id: "com.core.wipe-tower" }
+Warning: <config-registry>: BoundsIntersection { key: "min_width_top_surface", effective_min: Some(0.0), effective_max: None, declarers: ["com.core.arachne-perimeters", "com.core.classic-perimeters"] }
+Warning: <config-registry>: BoundsIntersection { key: "nozzle_diameter", effective_min: Some(0.1), effective_max: Some(2.0), declarers: ["com.core.arachne-perimeters", "com.core.classic-perimeters", "com.core.machine-gcode-emit", "com.core.traditional-support", "com.core.tree-support", "com.core.tree-support-planner", "com.core.wave-overhangs"] }
+Warning: <config-registry>: BoundsIntersection { key: "outer_wall_line_width", effective_min: Some(0.0), effective_max: Some(2.0), declarers: ["com.core.arachne-perimeters", "com.core.classic-perimeters", "com.core.overhang-classifier-default"] }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "outer_wall_speed", module_id: "com.core.classic-perimeters" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "outer_wall_speed", module_id: "com.core.overhang-classifier-default" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "overhang_1_4_speed", module_id: "com.core.overhang-classifier-default" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "overhang_2_4_speed", module_id: "com.core.overhang-classifier-default" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "overhang_3_4_speed", module_id: "com.core.overhang-classifier-default" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "overhang_4_4_speed", module_id: "com.core.overhang-classifier-default" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "perimeter_arc_tolerance", module_id: "com.core.classic-perimeters" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "retract_length", module_id: "com.core.path-optimization-default" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "retract_length", module_id: "com.core.wipe-tower" }
+Warning: <config-registry>: BoundsIntersection { key: "seam_candidate_angle_threshold_deg", effective_min: Some(0.0), effective_max: Some(180.0), declarers: ["com.core.arachne-perimeters", "com.core.classic-perimeters"] }
+Warning: <config-registry>: BoundsIntersection { key: "sparse_infill_density", effective_min: Some(0.0), effective_max: Some(100.0), declarers: ["com.core.arachne-perimeters", "com.core.classic-perimeters"] }
+Warning: <config-registry>: BoundsIntersection { key: "sparse_infill_line_width", effective_min: Some(0.0), effective_max: Some(2.0), declarers: ["com.core.gyroid-infill", "com.core.lightning-infill", "com.core.rectilinear-infill"] }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "sparse_infill_speed", module_id: "com.core.rectilinear-infill" }
+Warning: <config-registry>: BoundsIntersection { key: "support_base_pattern_spacing", effective_min: Some(0.1), effective_max: Some(10.0), declarers: ["com.core.traditional-support", "com.core.traditional-support-planner", "com.core.tree-support"] }
+Warning: <config-registry>: BoundsIntersection { key: "support_bottom_interface_spacing", effective_min: Some(-1.0), effective_max: Some(2.0), declarers: ["com.core.traditional-support", "com.core.tree-support"] }
+Warning: <config-registry>: BoundsIntersection { key: "support_interface_bottom_layers", effective_min: Some(-1.0), effective_max: Some(10.0), declarers: ["com.core.traditional-support-planner", "com.core.tree-support-planner"] }
+Warning: <config-registry>: BoundsIntersection { key: "support_interface_flow", effective_min: Some(0.0), effective_max: None, declarers: ["com.core.traditional-support", "com.core.tree-support"] }
+Warning: <config-registry>: BoundsIntersection { key: "support_interface_spacing", effective_min: Some(0.0), effective_max: Some(2.0), declarers: ["com.core.traditional-support", "com.core.tree-support"] }
+Warning: <config-registry>: BoundsIntersection { key: "support_interface_top_layers", effective_min: Some(0.0), effective_max: Some(10.0), declarers: ["com.core.traditional-support-planner", "com.core.tree-support-planner"] }
+Warning: <config-registry>: BoundsIntersection { key: "support_layer_height_mm", effective_min: Some(0.0), effective_max: Some(1.0), declarers: ["com.core.traditional-support-planner", "com.core.tree-support-planner", "host"] }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "support_layer_height_mm", module_id: "com.core.traditional-support-planner" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "support_layer_height_mm", module_id: "com.core.tree-support-planner" }
+Warning: <config-registry>: BoundsIntersection { key: "support_line_width", effective_min: Some(0.0), effective_max: Some(1000.0), declarers: ["com.core.traditional-support", "com.core.tree-support", "com.core.tree-support-planner", "host"] }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "support_line_width", module_id: "com.core.traditional-support" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "support_line_width", module_id: "com.core.tree-support" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "support_line_width", module_id: "com.core.tree-support-planner" }
+Warning: <config-registry>: BoundsIntersection { key: "support_object_xy_distance", effective_min: Some(0.0), effective_max: Some(10.0), declarers: ["com.core.traditional-support-planner", "com.core.tree-support-planner"] }
+Warning: <config-registry>: BoundsIntersection { key: "support_raft_layers", effective_min: Some(0.0), effective_max: Some(20.0), declarers: ["com.core.arachne-perimeters", "com.core.classic-perimeters", "com.core.layer-planner-default", "com.core.tree-support-planner"] }
+Warning: <config-registry>: BoundsIntersection { key: "support_speed", effective_min: Some(1.0), effective_max: Some(300.0), declarers: ["com.core.traditional-support", "com.core.tree-support", "speed"] }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "support_speed", module_id: "com.core.traditional-support" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "support_speed", module_id: "com.core.tree-support" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "support_threshold_angle", module_id: "com.core.traditional-support-planner" }
+Warning: <config-registry>: BoundsIntersection { key: "support_top_z_distance_mm", effective_min: Some(0.0), effective_max: Some(5.0), declarers: ["com.core.traditional-support-planner", "com.core.tree-support-planner"] }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "thin_wall_speed", module_id: "com.core.overhang-classifier-default" }
+Warning: <config-registry>: BoundsIntersection { key: "top_surface_line_width", effective_min: Some(0.0), effective_max: Some(2.0), declarers: ["com.core.gyroid-infill", "com.core.rectilinear-infill"] }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "top_surface_speed", module_id: "com.core.rectilinear-infill" }
+Warning: <config-registry>: BoundsIntersection { key: "tree_support_wall_count", effective_min: Some(0.0), effective_max: Some(10.0), declarers: ["com.core.tree-support", "com.core.tree-support-planner"] }
+Warning: <config-registry>: BoundsIntersection { key: "wall_count", effective_min: Some(1.0), effective_max: Some(10.0), declarers: ["com.core.arachne-perimeters", "com.core.classic-perimeters", "com.core.wave-overhangs", "host"] }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "wall_count", module_id: "com.core.arachne-perimeters" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "wall_count", module_id: "com.core.classic-perimeters" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "wall_count", module_id: "com.core.wave-overhangs" }
+Warning: <config-registry>: ModuleDefaultForHostKey { key: "wipe_tower_enabled", module_id: "com.core.wipe-tower" }
+Warning: <config-ingestion>: UnrecognizedKey { wire_key: "sparse_infill_pattern", key: "sparse_infill_pattern", suggestion: None }
+{"schema_version":"1.5.0","event":"phase_start","timestamp_ms":1791007575540,"slice_id":"slice-1791007575471","phase":"validation","status":"ok"}
+warning: startup DAG advisory (WriteConflicts): WriteConflict { field: "InfillIR", module_a: "com.core.gyroid-infill", module_b: "com.core.lightning-infill", stage: "Layer::Infill", orderable: false }
+warning: startup DAG advisory (WriteConflicts): WriteConflict { field: "InfillIR", module_a: "com.core.gyroid-infill", module_b: "com.core.raft-default", stage: "Layer::Infill", orderable: false }
+warning: startup DAG advisory (WriteConflicts): WriteConflict { field: "InfillIR", module_a: "com.core.gyroid-infill", module_b: "com.core.rectilinear-infill", stage: "Layer::Infill", orderable: false }
+warning: startup DAG advisory (WriteConflicts): WriteConflict { field: "InfillIR", module_a: "com.core.gyroid-infill", module_b: "com.core.top-surface-ironing", stage: "Layer::Infill", orderable: false }
+warning: startup DAG advisory (WriteConflicts): WriteConflict { field: "InfillIR", module_a: "com.core.gyroid-infill", module_b: "com.core.wave-overhangs", stage: "Layer::Infill", orderable: false }
+warning: startup DAG advisory (WriteConflicts): WriteConflict { field: "InfillIR", module_a: "com.core.lightning-infill", module_b: "com.core.raft-default", stage: "Layer::Infill", orderable: false }
+warning: startup DAG advisory (WriteConflicts): WriteConflict { field: "InfillIR", module_a: "com.core.lightning-infill", module_b: "com.core.rectilinear-infill", stage: "Layer::Infill", orderable: false }
+warning: startup DAG advisory (WriteConflicts): WriteConflict { field: "InfillIR", module_a: "com.core.lightning-infill", module_b: "com.core.top-surface-ironing", stage: "Layer::Infill", orderable: false }
+warning: startup DAG advisory (WriteConflicts): WriteConflict { field: "InfillIR", module_a: "com.core.lightning-infill", module_b: "com.core.wave-overhangs", stage: "Layer::Infill", orderable: false }
+warning: startup DAG advisory (WriteConflicts): WriteConflict { field: "InfillIR", module_a: "com.core.raft-default", module_b: "com.core.rectilinear-infill", stage: "Layer::Infill", orderable: false }
+warning: startup DAG advisory (WriteConflicts): WriteConflict { field: "InfillIR", module_a: "com.core.raft-default", module_b: "com.core.top-surface-ironing", stage: "Layer::Infill", orderable: false }
+warning: startup DAG advisory (WriteConflicts): WriteConflict { field: "InfillIR", module_a: "com.core.raft-default", module_b: "com.core.wave-overhangs", stage: "Layer::Infill", orderable: false }
+warning: startup DAG advisory (WriteConflicts): WriteConflict { field: "InfillIR", module_a: "com.core.rectilinear-infill", module_b: "com.core.top-surface-ironing", stage: "Layer::Infill", orderable: false }
+warning: startup DAG advisory (WriteConflicts): WriteConflict { field: "InfillIR", module_a: "com.core.rectilinear-infill", module_b: "com.core.wave-overhangs", stage: "Layer::Infill", orderable: false }
+warning: startup DAG advisory (WriteConflicts): WriteConflict { field: "InfillIR", module_a: "com.core.top-surface-ironing", module_b: "com.core.wave-overhangs", stage: "Layer::Infill", orderable: false }
+warning: startup DAG advisory (UnfulfilledReads): UnfulfilledRead { module: "com.core.layer-planner-default", field: "MeshIR", suggestion: None }
+warning: startup DAG advisory (UnfulfilledReads): UnfulfilledRead { module: "com.core.layer-planner-default", field: "SurfaceClassificationIR", suggestion: None }
+warning: startup DAG advisory (UnfulfilledReads): UnfulfilledRead { module: "com.core.seam-planner-default", field: "MeshIR", suggestion: None }
+warning: startup DAG advisory (UnfulfilledReads): UnfulfilledRead { module: "com.core.seam-planner-default", field: "SurfaceClassificationIR", suggestion: None }
+warning: startup DAG advisory (UnfulfilledReads): UnfulfilledRead { module: "com.core.traditional-support-planner", field: "MeshIR", suggestion: None }
+warning: startup DAG advisory (UnfulfilledReads): UnfulfilledRead { module: "com.core.traditional-support-planner", field: "SurfaceClassificationIR", suggestion: None }
+warning: startup DAG advisory (UnfulfilledReads): UnfulfilledRead { module: "com.core.traditional-support-planner", field: "RegionMapIR", suggestion: None }
+warning: startup DAG advisory (UnfulfilledReads): UnfulfilledRead { module: "com.core.traditional-support-planner", field: "SupportAnalysisIR", suggestion: None }
+warning: startup DAG advisory (UnfulfilledReads): UnfulfilledRead { module: "com.core.tree-support-planner", field: "MeshIR", suggestion: None }
+warning: startup DAG advisory (UnfulfilledReads): UnfulfilledRead { module: "com.core.tree-support-planner", field: "SurfaceClassificationIR", suggestion: None }
+warning: startup DAG advisory (UnfulfilledReads): UnfulfilledRead { module: "com.core.tree-support-planner", field: "RegionMapIR", suggestion: None }
+warning: startup DAG advisory (UnfulfilledReads): UnfulfilledRead { module: "com.core.classic-perimeters", field: "SliceIR", suggestion: None }
+warning: startup DAG advisory (UnfulfilledReads): UnfulfilledRead { module: "com.core.classic-perimeters", field: "PaintRegionIR", suggestion: None }
+warning: startup DAG advisory (UnfulfilledReads): UnfulfilledRead { module: "com.core.raft-default", field: "SliceIR", suggestion: None }
+warning: startup DAG advisory (UnfulfilledReads): UnfulfilledRead { module: "com.core.infill-linker", field: "RegionMapIR", suggestion: None }
+warning: startup DAG advisory (UnfulfilledReads): UnfulfilledRead { module: "com.core.traditional-support", field: "SurfaceClassificationIR", suggestion: None }
+warning: startup DAG advisory (UnfulfilledReads): UnfulfilledRead { module: "com.core.traditional-support", field: "PaintRegionIR", suggestion: None }
+warning: startup DAG advisory (UnfulfilledReads): UnfulfilledRead { module: "com.core.tree-support", field: "SurfaceClassificationIR", suggestion: None }
+warning: startup DAG advisory (UnfulfilledReads): UnfulfilledRead { module: "com.core.tree-support", field: "PaintRegionIR", suggestion: None }
+warning: startup DAG advisory (UnfulfilledReads): UnfulfilledRead { module: "com.core.overhang-classifier-default", field: "LayerCollectionIR.overhang_quartile", suggestion: None }
+warning: startup DAG advisory (UnfulfilledReads): UnfulfilledRead { module: "com.core.overhang-classifier-default", field: "LayerCollectionIR.overhang_distance_mm", suggestion: None }
+warning: startup DAG advisory (UnfulfilledReads): UnfulfilledRead { module: "com.core.machine-gcode-emit", field: "GCodeIR", suggestion: None }
+warning: startup DAG (DeadWrites): DeadWrite { module: "com.core.seam-planner-default", field: "SeamPlanIR" }
+warning: startup DAG (DeadWrites): DeadWrite { module: "com.core.seam-placer", field: "PerimeterIR.resolved-seam" }
+warning: startup DAG (DeadWrites): DeadWrite { module: "com.core.seam-placer", field: "PerimeterIR.regions.walls" }
+warning: startup DAG (DeadWrites): DeadWrite { module: "com.core.part-cooling", field: "LayerCollectionIR.cooling" }
+warning: startup DAG (DeadWrites): DeadWrite { module: "com.core.skirt-brim", field: "LayerCollectionIR.skirt-brim" }
+warning: startup DAG (DeadWrites): DeadWrite { module: "com.core.wipe-tower", field: "LayerCollectionIR.wipe-tower" }
+warning: startup DAG (DeadWrites): DeadWrite { module: "com.core.machine-gcode-emit", field: "GCodeIR" }
+{"schema_version":"1.5.0","event":"phase_complete","timestamp_ms":1791007575625,"slice_id":"slice-1791007575471","phase":"validation","status":"ok","elapsed_ms":85}
+{"schema_version":"1.5.0","event":"phase_start","timestamp_ms":1791007575629,"slice_id":"slice-1791007575471","phase":"prepass","status":"ok"}
+{"schema_version":"1.5.0","event":"phase_complete","timestamp_ms":1791007583311,"slice_id":"slice-1791007575471","phase":"prepass","status":"ok","elapsed_ms":7681}
+{"schema_version":"1.5.0","event":"phase_start","timestamp_ms":1791007583314,"slice_id":"slice-1791007575471","phase":"per_layer","status":"ok","layer_count":240}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583314,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":150,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583314,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":67,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583314,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":105,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583314,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":120,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583314,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":0,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583314,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":7,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583314,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":60,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583314,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":180,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583314,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":90,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583314,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":30,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583314,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":75,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583314,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":15,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583402,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":150,"status":"ok","elapsed_ms":87,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583402,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":151,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583440,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":15,"status":"ok","elapsed_ms":125,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583440,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":16,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583453,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":7,"status":"ok","elapsed_ms":139,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583454,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":8,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583480,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":180,"status":"ok","elapsed_ms":166,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583481,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":181,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583491,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":151,"status":"ok","elapsed_ms":89,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583492,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":152,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583568,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":16,"status":"ok","elapsed_ms":127,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583568,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":17,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583596,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":8,"status":"ok","elapsed_ms":142,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583597,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":9,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583599,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":152,"status":"ok","elapsed_ms":106,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583599,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":153,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583609,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":181,"status":"ok","elapsed_ms":128,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583609,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":182,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583619,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":120,"status":"ok","elapsed_ms":304,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583619,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":121,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583619,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":30,"status":"ok","elapsed_ms":304,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583620,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":31,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583649,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":75,"status":"ok","elapsed_ms":335,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583650,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":76,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583668,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":67,"status":"ok","elapsed_ms":354,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583669,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":68,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583675,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":17,"status":"ok","elapsed_ms":106,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583675,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":18,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583706,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":182,"status":"ok","elapsed_ms":96,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583706,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":183,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583711,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":153,"status":"ok","elapsed_ms":112,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583712,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":154,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583719,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":9,"status":"ok","elapsed_ms":122,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583719,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":10,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583734,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":90,"status":"ok","elapsed_ms":419,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583734,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":91,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583741,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":105,"status":"ok","elapsed_ms":426,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583741,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":106,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583786,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":18,"status":"ok","elapsed_ms":110,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583786,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":19,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583787,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":183,"status":"ok","elapsed_ms":81,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583787,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":184,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583822,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":154,"status":"ok","elapsed_ms":110,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583823,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":155,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583852,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":184,"status":"ok","elapsed_ms":64,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583853,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":185,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583857,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":10,"status":"ok","elapsed_ms":137,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583857,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":11,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583867,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":31,"status":"ok","elapsed_ms":247,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583867,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":32,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583870,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":60,"status":"ok","elapsed_ms":555,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583870,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":61,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583890,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":121,"status":"ok","elapsed_ms":270,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583890,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":122,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583894,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":19,"status":"ok","elapsed_ms":107,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583894,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":20,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583918,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":185,"status":"ok","elapsed_ms":65,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583919,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":186,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583943,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":155,"status":"ok","elapsed_ms":120,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583943,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":156,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583958,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":76,"status":"ok","elapsed_ms":308,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583959,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":77,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583995,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":11,"status":"ok","elapsed_ms":138,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583996,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":12,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007583997,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":20,"status":"ok","elapsed_ms":102,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007583997,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":21,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584014,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":186,"status":"ok","elapsed_ms":95,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584014,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":187,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584034,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":68,"status":"ok","elapsed_ms":364,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584034,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":69,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584082,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":156,"status":"ok","elapsed_ms":138,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584083,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":157,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584092,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":187,"status":"ok","elapsed_ms":77,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584092,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":188,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584110,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":12,"status":"ok","elapsed_ms":114,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584110,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":13,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584111,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":21,"status":"ok","elapsed_ms":114,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584112,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":22,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584141,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":91,"status":"ok","elapsed_ms":406,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584141,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":92,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584146,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":32,"status":"ok","elapsed_ms":278,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584146,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":33,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584162,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":122,"status":"ok","elapsed_ms":271,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584162,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":123,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584166,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":106,"status":"ok","elapsed_ms":424,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584166,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":107,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584167,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":188,"status":"ok","elapsed_ms":75,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584167,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":189,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584218,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":13,"status":"ok","elapsed_ms":107,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584218,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":14,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584221,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":22,"status":"ok","elapsed_ms":109,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584221,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":23,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584234,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":157,"status":"ok","elapsed_ms":151,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584235,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":158,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584240,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":77,"status":"ok","elapsed_ms":281,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584240,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":78,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584241,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":189,"status":"ok","elapsed_ms":73,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584241,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":190,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584323,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":190,"status":"ok","elapsed_ms":81,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584323,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":191,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584348,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":61,"status":"ok","elapsed_ms":478,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584348,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":62,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584353,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":69,"status":"ok","elapsed_ms":319,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584353,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":70,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584362,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":14,"status":"ok","elapsed_ms":143,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584362,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":26,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584368,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":23,"status":"ok","elapsed_ms":146,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584368,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":24,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584387,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":123,"status":"ok","elapsed_ms":225,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584388,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":124,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584393,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":33,"status":"ok","elapsed_ms":246,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584393,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":34,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584402,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":158,"status":"ok","elapsed_ms":167,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584402,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":159,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584412,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":191,"status":"ok","elapsed_ms":89,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584413,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":192,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584443,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":0,"status":"ok","elapsed_ms":1128,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584443,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":1,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584513,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":24,"status":"ok","elapsed_ms":144,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584514,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":25,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584518,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":192,"status":"ok","elapsed_ms":105,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584518,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":193,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584528,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":78,"status":"ok","elapsed_ms":287,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584528,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":79,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584563,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":26,"status":"ok","elapsed_ms":201,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584564,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":27,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584594,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":124,"status":"ok","elapsed_ms":206,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584594,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":125,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584599,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":107,"status":"ok","elapsed_ms":432,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584599,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":108,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584610,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":159,"status":"ok","elapsed_ms":207,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584610,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":160,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584612,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":92,"status":"ok","elapsed_ms":470,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584613,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":93,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584652,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":193,"status":"ok","elapsed_ms":133,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584652,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":194,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584663,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":25,"status":"ok","elapsed_ms":149,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584663,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":97,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584667,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":70,"status":"ok","elapsed_ms":313,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584667,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":71,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584698,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":34,"status":"ok","elapsed_ms":304,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584698,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":35,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584738,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":27,"status":"ok","elapsed_ms":174,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584738,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":28,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584775,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":125,"status":"ok","elapsed_ms":180,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584775,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":126,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584811,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":62,"status":"ok","elapsed_ms":462,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584812,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":63,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584817,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":79,"status":"ok","elapsed_ms":288,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584817,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":80,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584822,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":194,"status":"ok","elapsed_ms":170,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584823,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":195,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584828,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":160,"status":"ok","elapsed_ms":217,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584828,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":161,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584906,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":28,"status":"ok","elapsed_ms":167,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584906,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":29,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584976,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":126,"status":"ok","elapsed_ms":200,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584976,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":127,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584978,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":195,"status":"ok","elapsed_ms":154,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584978,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":196,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007584984,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":71,"status":"ok","elapsed_ms":316,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007584984,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":72,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585026,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":35,"status":"ok","elapsed_ms":327,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585026,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":36,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585041,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":161,"status":"ok","elapsed_ms":212,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585041,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":162,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585047,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":108,"status":"ok","elapsed_ms":447,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585047,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":109,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585098,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":97,"status":"ok","elapsed_ms":434,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585099,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":98,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585144,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":29,"status":"ok","elapsed_ms":237,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585144,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":112,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585145,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":80,"status":"ok","elapsed_ms":327,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585145,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":81,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585148,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":127,"status":"ok","elapsed_ms":171,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585148,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":128,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585149,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":93,"status":"ok","elapsed_ms":536,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585149,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":94,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585155,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":196,"status":"ok","elapsed_ms":176,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585155,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":197,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585237,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":162,"status":"ok","elapsed_ms":195,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585237,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":163,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585263,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":72,"status":"ok","elapsed_ms":278,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585263,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":73,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585273,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":63,"status":"ok","elapsed_ms":461,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585274,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":64,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585290,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":36,"status":"ok","elapsed_ms":263,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585290,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":37,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585316,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":128,"status":"ok","elapsed_ms":167,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585316,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":129,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585348,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":197,"status":"ok","elapsed_ms":193,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585348,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":198,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585414,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":163,"status":"ok","elapsed_ms":176,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585415,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":164,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585438,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":129,"status":"ok","elapsed_ms":121,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585438,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":130,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585459,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":109,"status":"ok","elapsed_ms":411,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585459,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":110,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585489,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":81,"status":"ok","elapsed_ms":343,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585489,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":82,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585504,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":98,"status":"ok","elapsed_ms":405,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585504,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":99,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585507,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":198,"status":"ok","elapsed_ms":159,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585508,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":199,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585533,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":37,"status":"ok","elapsed_ms":242,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585533,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":38,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585576,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":130,"status":"ok","elapsed_ms":137,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585577,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":131,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585587,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":164,"status":"ok","elapsed_ms":172,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585587,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":165,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585598,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":73,"status":"ok","elapsed_ms":334,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585598,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":74,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585654,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":199,"status":"ok","elapsed_ms":145,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585654,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":200,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585668,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":94,"status":"ok","elapsed_ms":518,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585669,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":95,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585685,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":131,"status":"ok","elapsed_ms":108,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585686,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":132,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585701,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":64,"status":"ok","elapsed_ms":427,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585701,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":65,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585724,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":38,"status":"ok","elapsed_ms":190,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585724,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":39,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585729,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":112,"status":"ok","elapsed_ms":584,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585729,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":113,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585753,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":165,"status":"ok","elapsed_ms":165,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585753,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":166,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585761,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":200,"status":"ok","elapsed_ms":107,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585762,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":201,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585778,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":132,"status":"ok","elapsed_ms":91,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585778,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":133,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585794,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":82,"status":"ok","elapsed_ms":304,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585794,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":83,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585864,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":201,"status":"ok","elapsed_ms":102,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585865,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":202,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585880,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":133,"status":"ok","elapsed_ms":102,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585880,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":134,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585891,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":110,"status":"ok","elapsed_ms":431,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585891,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":111,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585918,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":39,"status":"ok","elapsed_ms":193,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585918,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":40,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585920,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":166,"status":"ok","elapsed_ms":166,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585920,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":167,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585922,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":99,"status":"ok","elapsed_ms":417,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585922,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":100,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585943,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":74,"status":"ok","elapsed_ms":344,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585943,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":45,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585945,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":202,"status":"ok","elapsed_ms":80,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585946,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":203,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007585947,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":134,"status":"ok","elapsed_ms":67,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007585948,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":135,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586010,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":135,"status":"ok","elapsed_ms":62,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586010,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":136,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586034,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":203,"status":"ok","elapsed_ms":88,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586034,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":204,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586052,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":167,"status":"ok","elapsed_ms":131,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586052,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":168,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586056,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":136,"status":"ok","elapsed_ms":46,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586057,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":137,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586084,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":40,"status":"ok","elapsed_ms":166,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586085,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":41,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586100,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":83,"status":"ok","elapsed_ms":305,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586100,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":84,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586101,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":95,"status":"ok","elapsed_ms":432,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586101,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":96,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586102,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":137,"status":"ok","elapsed_ms":45,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586102,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":138,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586106,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":65,"status":"ok","elapsed_ms":404,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586106,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":66,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586118,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":204,"status":"ok","elapsed_ms":83,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586118,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":205,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586150,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":138,"status":"ok","elapsed_ms":47,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586150,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":139,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586177,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":168,"status":"ok","elapsed_ms":125,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586178,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":169,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586200,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":139,"status":"ok","elapsed_ms":50,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586201,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":140,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586205,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":205,"status":"ok","elapsed_ms":86,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586205,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":206,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586252,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":140,"status":"ok","elapsed_ms":50,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586252,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":141,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586258,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":41,"status":"ok","elapsed_ms":172,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586258,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":42,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586276,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":206,"status":"ok","elapsed_ms":70,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586276,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":207,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586304,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":141,"status":"ok","elapsed_ms":51,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586304,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":142,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586312,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":113,"status":"ok","elapsed_ms":583,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586313,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":114,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586330,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":169,"status":"ok","elapsed_ms":152,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586330,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":170,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586352,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":207,"status":"ok","elapsed_ms":76,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586353,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":208,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586359,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":142,"status":"ok","elapsed_ms":54,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586359,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":143,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586387,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":111,"status":"ok","elapsed_ms":496,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586388,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":43,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586388,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":100,"status":"ok","elapsed_ms":466,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586389,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":101,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586414,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":84,"status":"ok","elapsed_ms":314,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586415,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":85,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586420,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":143,"status":"ok","elapsed_ms":60,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586420,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":144,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586435,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":208,"status":"ok","elapsed_ms":82,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586435,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":209,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586450,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":66,"status":"ok","elapsed_ms":344,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586451,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":146,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586454,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":170,"status":"ok","elapsed_ms":123,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586454,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":171,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586468,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":96,"status":"ok","elapsed_ms":367,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586469,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":148,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586479,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":144,"status":"ok","elapsed_ms":59,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586480,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":145,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586508,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":42,"status":"ok","elapsed_ms":249,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586508,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":172,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586516,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":146,"status":"ok","elapsed_ms":65,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586516,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":147,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586523,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":209,"status":"ok","elapsed_ms":87,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586523,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":210,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586540,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":148,"status":"ok","elapsed_ms":71,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586541,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":149,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586542,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":145,"status":"ok","elapsed_ms":62,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586542,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":103,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586558,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":171,"status":"ok","elapsed_ms":104,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586559,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":225,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586581,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":147,"status":"ok","elapsed_ms":64,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586581,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":116,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586602,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":210,"status":"ok","elapsed_ms":79,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586603,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":211,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586611,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":149,"status":"ok","elapsed_ms":70,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586611,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":104,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586611,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":172,"status":"ok","elapsed_ms":103,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586612,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":173,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586643,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":225,"status":"ok","elapsed_ms":84,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586643,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":226,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586685,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":211,"status":"ok","elapsed_ms":81,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586685,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":212,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586703,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":114,"status":"ok","elapsed_ms":390,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586703,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":115,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586707,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":173,"status":"ok","elapsed_ms":95,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586708,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":174,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586711,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":45,"status":"ok","elapsed_ms":768,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586711,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":46,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586715,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":43,"status":"ok","elapsed_ms":327,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586715,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":44,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586739,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":226,"status":"ok","elapsed_ms":96,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586740,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":227,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586743,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":85,"status":"ok","elapsed_ms":327,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586743,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":86,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586764,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":212,"status":"ok","elapsed_ms":79,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586765,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":213,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586806,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":174,"status":"ok","elapsed_ms":98,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586806,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":175,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586814,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":101,"status":"ok","elapsed_ms":425,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586814,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":102,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586848,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":213,"status":"ok","elapsed_ms":83,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586849,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":214,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586857,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":227,"status":"ok","elapsed_ms":116,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586857,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":228,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586926,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":214,"status":"ok","elapsed_ms":77,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586927,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":215,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586932,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":116,"status":"ok","elapsed_ms":350,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586932,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":117,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586944,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":175,"status":"ok","elapsed_ms":137,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586944,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":176,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586953,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":103,"status":"ok","elapsed_ms":410,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586953,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":88,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007586966,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":228,"status":"ok","elapsed_ms":109,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007586966,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":229,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587008,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":215,"status":"ok","elapsed_ms":81,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587008,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":216,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587037,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":104,"status":"ok","elapsed_ms":425,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587037,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":89,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587078,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":229,"status":"ok","elapsed_ms":111,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587078,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":230,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587087,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":86,"status":"ok","elapsed_ms":343,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587087,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":87,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587090,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":115,"status":"ok","elapsed_ms":386,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587090,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":232,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587093,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":216,"status":"ok","elapsed_ms":84,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587094,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":217,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587147,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":176,"status":"ok","elapsed_ms":202,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587147,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":177,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587167,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":217,"status":"ok","elapsed_ms":72,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587167,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":218,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587197,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":230,"status":"ok","elapsed_ms":118,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587197,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":231,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587204,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":232,"status":"ok","elapsed_ms":113,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587204,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":233,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587243,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":44,"status":"ok","elapsed_ms":527,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587243,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":221,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587244,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":218,"status":"ok","elapsed_ms":77,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587244,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":219,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587246,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":102,"status":"ok","elapsed_ms":431,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587246,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":223,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587253,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":117,"status":"ok","elapsed_ms":320,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587253,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":118,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587293,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":88,"status":"ok","elapsed_ms":340,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587294,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":222,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587312,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":221,"status":"ok","elapsed_ms":68,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587312,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":52,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587314,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":231,"status":"ok","elapsed_ms":116,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587314,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":56,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587320,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":219,"status":"ok","elapsed_ms":75,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587320,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":220,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587322,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":233,"status":"ok","elapsed_ms":117,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587322,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":234,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587326,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":223,"status":"ok","elapsed_ms":79,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587326,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":224,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587344,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":177,"status":"ok","elapsed_ms":197,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587345,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":178,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587369,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":222,"status":"ok","elapsed_ms":75,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587369,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":119,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587397,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":220,"status":"ok","elapsed_ms":76,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587397,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":179,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587422,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":89,"status":"ok","elapsed_ms":385,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587422,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":236,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587429,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":87,"status":"ok","elapsed_ms":341,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587429,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":235,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587443,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":46,"status":"ok","elapsed_ms":731,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587443,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":47,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587447,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":234,"status":"ok","elapsed_ms":124,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587447,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":48,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587455,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":224,"status":"ok","elapsed_ms":129,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587455,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":238,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587510,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":118,"status":"ok","elapsed_ms":257,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587511,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":237,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587519,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":238,"status":"ok","elapsed_ms":63,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587519,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":239,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587536,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":235,"status":"ok","elapsed_ms":106,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587537,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":54,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587539,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":236,"status":"ok","elapsed_ms":116,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587539,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":50,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587561,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":179,"status":"ok","elapsed_ms":163,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587562,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":49,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587567,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":239,"status":"ok","elapsed_ms":48,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587568,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":58,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587569,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":178,"status":"ok","elapsed_ms":224,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587569,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":57,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587623,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":237,"status":"ok","elapsed_ms":111,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587623,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":55,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587642,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":119,"status":"ok","elapsed_ms":272,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587642,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":59,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007587994,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":56,"status":"ok","elapsed_ms":679,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007587994,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":51,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007588060,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":1,"status":"ok","elapsed_ms":3616,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007588060,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":2,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007588255,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":52,"status":"ok","elapsed_ms":942,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007588255,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":53,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007588297,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":47,"status":"ok","elapsed_ms":854,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007588298,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":3,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007588318,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":57,"status":"ok","elapsed_ms":748,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007588318,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":5,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007588325,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":48,"status":"ok","elapsed_ms":877,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007588325,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":4,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007588327,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":58,"status":"ok","elapsed_ms":759,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_start","timestamp_ms":1791007588328,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":6,"status":"ok"}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007588337,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":59,"status":"ok","elapsed_ms":694,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007588341,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":54,"status":"ok","elapsed_ms":804,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007588394,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":55,"status":"ok","elapsed_ms":771,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007588430,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":50,"status":"ok","elapsed_ms":890,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007588443,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":49,"status":"ok","elapsed_ms":881,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007588451,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":5,"status":"ok","elapsed_ms":133,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007588456,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":3,"status":"ok","elapsed_ms":157,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007588467,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":6,"status":"ok","elapsed_ms":139,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007588470,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":4,"status":"ok","elapsed_ms":144,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007588763,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":51,"status":"ok","elapsed_ms":768,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007588831,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":53,"status":"ok","elapsed_ms":575,"degraded":false}
+{"schema_version":"1.5.0","event":"layer_complete","timestamp_ms":1791007589404,"slice_id":"slice-1791007575471","phase":"per_layer","layer_index":2,"status":"ok","elapsed_ms":1343,"degraded":false}
+{"schema_version":"1.5.0","event":"phase_complete","timestamp_ms":1791007589404,"slice_id":"slice-1791007575471","phase":"per_layer","status":"ok","elapsed_ms":6090}
+{"schema_version":"1.5.0","event":"phase_start","timestamp_ms":1791007589405,"slice_id":"slice-1791007575471","phase":"postpass","status":"ok"}
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 1688 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 2675 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 3546 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 4534 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 5347 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 5841 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 6414 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 7013 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 7623 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 8169 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 8631 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 9193 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 9847 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 10431 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 11097 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 11676 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 12170 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 12765 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 13486 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 14219 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 15036 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 15851 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 16560 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 17192 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 17957 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 18867 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 19771 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 20782 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 21730 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 22573 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 23527 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 24628 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 25735 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 26851 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 27870 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 28775 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 29517 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 30625 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 31811 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 32856 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 33664 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 34434 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 35222 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 36018 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 36891 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 37752 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 38608 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 39422 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 40208 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 41101 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 42062 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 42926 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 43783 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 44626 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 45428 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 46161 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 46956 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 47788 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 48571 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 49339 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 50055 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 50693 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 51346 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 52043 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 52739 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 53478 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 54202 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 54864 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 55475 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 56108 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 56793 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 57496 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 58344 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 59171 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 59934 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 61044 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 61614 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 62205 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 62770 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 63287 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 63793 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 64316 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 64853 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 65815 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 66283 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 66751 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 67246 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 68285 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 68871 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 69413 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 69921 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 70427 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 70938 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 71454 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 71963 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 72969 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 73810 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 74202 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 74600 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 75021 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 75844 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 76640 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 77047 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 77488 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 77968 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 78803 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 79555 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 79912 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 80635 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 81002 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 81694 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 82003 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 82610 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 82889 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 83414 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 83668 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 84151 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 84392 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 84802 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 84992 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 85561 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 86126 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 86312 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 86865 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 87055 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 87619 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 88192 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 88385 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 88960 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 89544 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 90228 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 90642 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 90746 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 91091 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 91223 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 91585 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 92192 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 92346 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 92838 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 93451 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 94172 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 95052 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 95563 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 96492 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 97623 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 98778 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 99674 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 100728 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 101592 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 102469 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 103368 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 104473 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 105509 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 106538 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+[warn] machine-gcode-emit: ERR_MALFORMED_LAYER_MARKER (code 12): ;LAYER_CHANGE at command index 107586 is not followed by a ;Z: marker within two commands at injection point layer_change_gcode (LayerChange); reusing prior layer Z context
+{"schema_version":"1.5.0","event":"phase_complete","timestamp_ms":1791007589617,"slice_id":"slice-1791007575471","phase":"postpass","status":"ok","elapsed_ms":212}
+{"schema_version":"1.5.0","event":"slice_stats","timestamp_ms":1791007589651,"slice_id":"slice-1791007575471","status":"ok","gcode_prediction_seconds":6045,"gcode_filament_length_mm":3372.866943359375,"layer_count":240,"first_layer_height_mm":0.2,"extruded_volume_mm3":{"0":8112.6957270139055},"toolchange_count":0}
+{"schema_version":"1.5.0","event":"slice_complete","timestamp_ms":1791007589651,"slice_id":"slice-1791007575471","status":"ok","elapsed_ms":14172,"degraded":false,"fatal_error_count":0,"non_fatal_error_count":0}

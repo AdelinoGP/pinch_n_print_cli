@@ -133,7 +133,7 @@ fn annulus_true_hole_produces_inner_perimeters() {
     write_binary_stl(&mesh_path, &annulus_frame_mesh());
     write_config_json(
         &config_path,
-        &serde_json::json!({ "layer_height": 0.2, "initial_layer_print_height": 0.2 }),
+        &serde_json::json!({ "layer_height": 0.2, "initial_layer_print_height": 0.2, "wall_loops": 3 }),
     );
     let perimeters = run_pipeline_capturing_perimeters(
         &mesh_path,
@@ -152,8 +152,8 @@ fn annulus_true_hole_produces_inner_perimeters() {
     // previously the Pinch default 3), so the frame now yields 4 walls
     // (2 outer + 2 hole).
     assert_eq!(
-        max_walls, 4,
-        "true-hole frame must yield 4 wall loops (2 outer + 2 hole); got {max_walls}"
+        max_walls, 6,
+        "true-hole frame must yield 6 wall loops (3 outer + 3 hole); got {max_walls}"
     );
     let has_hole_wall = perimeters.iter().any(|perimeter| {
         perimeter.regions.iter().any(|region| {

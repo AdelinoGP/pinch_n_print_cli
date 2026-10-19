@@ -523,6 +523,7 @@ name = "classic-perimeters"
 version = "0.1.0"
 dependencies = [
  "slicer-core",
+ "slicer-gcode",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
@@ -2592,6 +2593,7 @@ dependencies = [
  "predicates",
  "serde",
  "serde_json",
+ "slicer-config",
  "slicer-helpers",
  "slicer-integrated-modules",
  "slicer-ir",
@@ -3220,6 +3222,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "sdk-infill-postprocess-view-guest"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
 name = "sdk-layer-infill-guest"
 version = "0.1.0"
 dependencies = [
@@ -3228,6 +3240,16 @@ dependencies = [
  "slicer-sdk",
  "wit-bindgen 0.60.0",
  "witness",
+]
+
+[[package]]
+name = "sdk-layer-pathopt-guest"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
 ]
 
 [[package]]
@@ -3407,6 +3429,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
+name = "slicer-config"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "toml 0.8.23",
+]
+
+[[package]]
 name = "slicer-core"
 version = "0.1.0"
 dependencies = [
@@ -3418,6 +3448,7 @@ dependencies = [
  "rstar",
  "serde",
  "serde_json",
+ "slicer-config",
  "slicer-ir",
  "slicer-model-io",
  "slicer-scheduler",
@@ -3466,6 +3497,7 @@ dependencies = [
  "overhang-classifier-default",
  "part-cooling",
  "path-optimization-default",
+ "raft-default",
  "rectilinear-infill",
  "seam-placer",
  "seam-planner-default",
@@ -3558,6 +3590,7 @@ dependencies = [
  "serde",
  "serde_json",
  "skirt-brim",
+ "slicer-config",
  "slicer-core",
  "slicer-gcode",
  "slicer-helpers",
@@ -3594,6 +3627,7 @@ dependencies = [
  "pnp-cli-locator",
  "serde",
  "serde_json",
+ "slicer-config",
  "slicer-ir",
  "slicer-schema",
  "tempfile",
@@ -3623,6 +3657,10 @@ version = "0.1.0"
 dependencies = [
  "log",
  "rayon",
+ "sdk-finalization-guest",
+ "sdk-infill-postprocess-view-guest",
+ "sdk-layer-pathopt-guest",
+ "slicer-config",
  "slicer-core",
  "slicer-ir",
  "slicer-scheduler",

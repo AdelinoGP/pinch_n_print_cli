@@ -47,10 +47,10 @@
 
 use slicer_core::beading::factory::{BeadingFactoryParams, BeadingStrategyFactory};
 use slicer_core::skeletal_trapezoidation::{
-    assign_bead_counts, filter_central, populate_beading_propagation, CentralityParams,
-    SkeletalTrapezoidationGraph,
+    assign_bead_counts, filter_central, populate_beading_propagation, CentralityParams, EdgeType,
+    STHalfEdge, STVertex, SkeletalTrapezoidationGraph,
 };
-use slicer_core::voronoi::NO_INDEX;
+use slicer_core::voronoi::{Vertex, NO_INDEX};
 use slicer_ir::{ExPolygon, Point2, Polygon, UNITS_PER_MM};
 
 // ---------------------------------------------------------------------------
@@ -397,4 +397,97 @@ fn get_nearest_beding_distance_upper_bound() {
              This indicates the nearest-lookup returned a non-nearest entry."
         );
     }
+}
+
+/// AC-1: the nearest-beading radius includes a populated vertex exactly on
+/// the boundary, while a radius just below the boundary does not. The second
+/// populated vertex verifies that the graph is a cumulative-length chain,
+/// rather than a direct-distance fixture.
+///
+/// Canonical `SkeletalTrapezoidation.cpp` `getNearestBeading` likewise rejects
+/// only distances strictly greater than the requested maximum.
+#[test]
+fn get_nearest_beding_includes_vertex_at_exact_radius_boundary() {
+    let vertices = vec![
+        // exhaustive: STVertex has no Default implementation; these are all of its fields.
+        STVertex {
+            position: Vertex { x: 0.0, y: 0.0 },
+            distance_to_boundary: 0.0,
+            bead_count: None,
+            transition_ratio: 0.0,
+        },
+        // exhaustive: STVertex has no Default implementation; these are all of its fields.
+        STVertex {
+            position: Vertex { x: 1000.0, y: 0.0 },
+            distance_to_boundary: 0.0,
+            bead_count: Some(1),
+            transition_ratio: 0.0,
+        },
+        // exhaustive: STVertex has no Default implementation; these are all of its fields.
+        STVertex {
+            position: Vertex { x: 2000.0, y: 0.0 },
+            distance_to_boundary: 0.0,
+            bead_count: Some(1),
+            transition_ratio: 0.0,
+        },
+    ];
+    let edges = vec![
+        STHalfEdge {
+            start_vertex: 0,
+            twin: 1,
+            next: NO_INDEX,
+            prev: NO_INDEX,
+            central: false,
+            edge_type: EdgeType::NORMAL,
+            ..STHalfEdge::default()
+        },
+        STHalfEdge {
+            start_vertex: 1,
+            twin: 0,
+            next: NO_INDEX,
+            prev: NO_INDEX,
+            central: false,
+            edge_type: EdgeType::NORMAL,
+            ..STHalfEdge::default()
+        },
+        STHalfEdge {
+            start_vertex: 1,
+            twin: 3,
+            next: NO_INDEX,
+            prev: NO_INDEX,
+            central: false,
+            edge_type: EdgeType::NORMAL,
+            ..STHalfEdge::default()
+        },
+        STHalfEdge {
+            start_vertex: 2,
+            twin: 2,
+            next: NO_INDEX,
+            prev: NO_INDEX,
+            central: false,
+            edge_type: EdgeType::NORMAL,
+            ..STHalfEdge::default()
+        },
+    ];
+    let mut graph = SkeletalTrapezoidationGraph {
+        vertices,
+        edges,
+        centrality_filtered: true,
+        rib: Default::default(),
+        ..Default::default()
+    };
+
+    let strategy = BeadingStrategyFactory::create_stack(&factory_params());
+    let at_1000 = strategy.compute(1.0, 1);
+    let at_2000 = strategy.compute(2.0, 1);
+    graph.beading_propagation = vec![None, Some(at_1000.clone()), Some(at_2000)];
+
+    assert_eq!(
+        graph.get_nearest_beding(0, 1000.0),
+        Some(&at_1000),
+        "the 1000-unit populated neighbour is on the inclusive radius boundary"
+    );
+    assert_eq!(graph.get_nearest_beding(0, 999.5), None);
+    assert_eq!(graph.get_nearest_beding(0, 0.0), None);
+    assert_eq!(graph.get_nearest_beding(1, 0.0), Some(&at_1000));
 }

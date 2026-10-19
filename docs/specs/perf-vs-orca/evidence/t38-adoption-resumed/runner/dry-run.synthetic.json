@@ -1,0 +1,1271 @@
+{
+  "status": "DROP",
+  "automatic_commit": false,
+  "threads": 12,
+  "samples_per_cell": 4,
+  "warmup_per_cell": 1,
+  "config_provenance": [
+    {
+      "path": "synthetic://supports-off-benchy/classic/config.json",
+      "config_sha256": ""
+    },
+    {
+      "path": "synthetic://supports-off-benchy/arachne/config.json",
+      "config_sha256": ""
+    },
+    {
+      "path": "synthetic://tree-support-benchy/classic/config.json",
+      "config_sha256": ""
+    },
+    {
+      "path": "synthetic://tree-support-benchy/arachne/config.json",
+      "config_sha256": ""
+    },
+    {
+      "path": "synthetic://tree-support-base/classic/config.json",
+      "config_sha256": ""
+    },
+    {
+      "path": "synthetic://tree-support-base/arachne/config.json",
+      "config_sha256": ""
+    }
+  ],
+  "cells": [
+    {
+      "workload": "supports-off-benchy",
+      "generator": "classic",
+      "expected_generator": "classic",
+      "exactness_passed": true,
+      "exactness_deltas": null,
+      "cpu_separated": false,
+      "wall_separated": false,
+      "baseline": {
+        "cpu_samples": [
+          20.0,
+          21.0,
+          22.0,
+          23.0
+        ],
+        "wall_samples": [
+          10.0,
+          11.0,
+          12.0,
+          13.0
+        ],
+        "rows": [
+          {
+            "label": "synthetic-baseline-1",
+            "workload": "supports-off-benchy",
+            "generator": "classic",
+            "variant": "baseline",
+            "cpu_seconds": 20.0,
+            "wall_seconds": 10.0,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://supports-off-benchy/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://supports-off-benchy/classic/baseline/1"
+          },
+          {
+            "label": "synthetic-baseline-2",
+            "workload": "supports-off-benchy",
+            "generator": "classic",
+            "variant": "baseline",
+            "cpu_seconds": 21.0,
+            "wall_seconds": 11.0,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://supports-off-benchy/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://supports-off-benchy/classic/baseline/2"
+          },
+          {
+            "label": "synthetic-baseline-3",
+            "workload": "supports-off-benchy",
+            "generator": "classic",
+            "variant": "baseline",
+            "cpu_seconds": 22.0,
+            "wall_seconds": 12.0,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://supports-off-benchy/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://supports-off-benchy/classic/baseline/3"
+          },
+          {
+            "label": "synthetic-baseline-4",
+            "workload": "supports-off-benchy",
+            "generator": "classic",
+            "variant": "baseline",
+            "cpu_seconds": 23.0,
+            "wall_seconds": 13.0,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://supports-off-benchy/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://supports-off-benchy/classic/baseline/4"
+          }
+        ]
+      },
+      "candidate": {
+        "cpu_samples": [
+          22.5,
+          23.5,
+          24.5,
+          25.5
+        ],
+        "wall_samples": [
+          12.5,
+          13.5,
+          14.5,
+          15.5
+        ],
+        "rows": [
+          {
+            "label": "synthetic-candidate-1",
+            "workload": "supports-off-benchy",
+            "generator": "classic",
+            "variant": "candidate",
+            "cpu_seconds": 22.5,
+            "wall_seconds": 12.5,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://supports-off-benchy/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://supports-off-benchy/classic/candidate/1"
+          },
+          {
+            "label": "synthetic-candidate-2",
+            "workload": "supports-off-benchy",
+            "generator": "classic",
+            "variant": "candidate",
+            "cpu_seconds": 23.5,
+            "wall_seconds": 13.5,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://supports-off-benchy/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://supports-off-benchy/classic/candidate/2"
+          },
+          {
+            "label": "synthetic-candidate-3",
+            "workload": "supports-off-benchy",
+            "generator": "classic",
+            "variant": "candidate",
+            "cpu_seconds": 24.5,
+            "wall_seconds": 14.5,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://supports-off-benchy/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://supports-off-benchy/classic/candidate/3"
+          },
+          {
+            "label": "synthetic-candidate-4",
+            "workload": "supports-off-benchy",
+            "generator": "classic",
+            "variant": "candidate",
+            "cpu_seconds": 25.5,
+            "wall_seconds": 15.5,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://supports-off-benchy/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://supports-off-benchy/classic/candidate/4"
+          }
+        ]
+      },
+      "status": "ok",
+      "status_baseline": "ok",
+      "status_candidate": "ok",
+      "config_provenance": {
+        "path": "synthetic://supports-off-benchy/classic/config.json",
+        "config_sha256": ""
+      },
+      "cpu_ratio": 1.1162790697674418,
+      "wall_ratio": 1.2173913043478262,
+      "generator_marker": {
+        "baseline": "classic",
+        "candidate": "classic"
+      },
+      "generator_marker_match": true,
+      "degraded_baseline": 0,
+      "degraded_candidate": 0,
+      "nonfatal_errors_baseline": 0,
+      "nonfatal_errors_candidate": 0,
+      "fatal_errors_baseline": 0,
+      "fatal_errors_candidate": 0,
+      "decision": "inconclusive"
+    },
+    {
+      "workload": "supports-off-benchy",
+      "generator": "arachne",
+      "expected_generator": "arachne",
+      "exactness_passed": false,
+      "exactness_deltas": null,
+      "cpu_separated": true,
+      "wall_separated": true,
+      "baseline": {
+        "cpu_samples": [
+          21.0,
+          22.0,
+          23.0,
+          24.0
+        ],
+        "wall_samples": [
+          11.0,
+          12.0,
+          13.0,
+          14.0
+        ],
+        "rows": [
+          {
+            "label": "synthetic-baseline-1",
+            "workload": "supports-off-benchy",
+            "generator": "arachne",
+            "variant": "baseline",
+            "cpu_seconds": 21.0,
+            "wall_seconds": 11.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://supports-off-benchy/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://supports-off-benchy/arachne/baseline/1"
+          },
+          {
+            "label": "synthetic-baseline-2",
+            "workload": "supports-off-benchy",
+            "generator": "arachne",
+            "variant": "baseline",
+            "cpu_seconds": 22.0,
+            "wall_seconds": 12.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://supports-off-benchy/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://supports-off-benchy/arachne/baseline/2"
+          },
+          {
+            "label": "synthetic-baseline-3",
+            "workload": "supports-off-benchy",
+            "generator": "arachne",
+            "variant": "baseline",
+            "cpu_seconds": 23.0,
+            "wall_seconds": 13.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://supports-off-benchy/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://supports-off-benchy/arachne/baseline/3"
+          },
+          {
+            "label": "synthetic-baseline-4",
+            "workload": "supports-off-benchy",
+            "generator": "arachne",
+            "variant": "baseline",
+            "cpu_seconds": 24.0,
+            "wall_seconds": 14.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://supports-off-benchy/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://supports-off-benchy/arachne/baseline/4"
+          }
+        ]
+      },
+      "candidate": {
+        "cpu_samples": [
+          1.0,
+          2.0,
+          3.0,
+          4.0
+        ],
+        "wall_samples": [
+          1.0,
+          2.0,
+          3.0,
+          4.0
+        ],
+        "rows": [
+          {
+            "label": "synthetic-candidate-1",
+            "workload": "supports-off-benchy",
+            "generator": "arachne",
+            "variant": "candidate",
+            "cpu_seconds": 1.0,
+            "wall_seconds": 1.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://supports-off-benchy/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://supports-off-benchy/arachne/candidate/1"
+          },
+          {
+            "label": "synthetic-candidate-2",
+            "workload": "supports-off-benchy",
+            "generator": "arachne",
+            "variant": "candidate",
+            "cpu_seconds": 2.0,
+            "wall_seconds": 2.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://supports-off-benchy/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://supports-off-benchy/arachne/candidate/2"
+          },
+          {
+            "label": "synthetic-candidate-3",
+            "workload": "supports-off-benchy",
+            "generator": "arachne",
+            "variant": "candidate",
+            "cpu_seconds": 3.0,
+            "wall_seconds": 3.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://supports-off-benchy/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://supports-off-benchy/arachne/candidate/3"
+          },
+          {
+            "label": "synthetic-candidate-4",
+            "workload": "supports-off-benchy",
+            "generator": "arachne",
+            "variant": "candidate",
+            "cpu_seconds": 4.0,
+            "wall_seconds": 4.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://supports-off-benchy/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://supports-off-benchy/arachne/candidate/4"
+          }
+        ]
+      },
+      "status": "ok",
+      "status_baseline": "ok",
+      "status_candidate": "ok",
+      "config_provenance": {
+        "path": "synthetic://supports-off-benchy/arachne/config.json",
+        "config_sha256": ""
+      },
+      "cpu_ratio": 0.1111111111111111,
+      "wall_ratio": 0.2,
+      "generator_marker": {
+        "baseline": "arachne",
+        "candidate": "arachne"
+      },
+      "generator_marker_match": true,
+      "degraded_baseline": 0,
+      "degraded_candidate": 0,
+      "nonfatal_errors_baseline": 0,
+      "nonfatal_errors_candidate": 0,
+      "fatal_errors_baseline": 0,
+      "fatal_errors_candidate": 0,
+      "decision": "DROP"
+    },
+    {
+      "workload": "tree-support-benchy",
+      "generator": "classic",
+      "expected_generator": "classic",
+      "exactness_passed": true,
+      "exactness_deltas": null,
+      "cpu_separated": true,
+      "wall_separated": true,
+      "baseline": {
+        "cpu_samples": [
+          22.0,
+          23.0,
+          24.0,
+          25.0
+        ],
+        "wall_samples": [
+          12.0,
+          13.0,
+          14.0,
+          15.0
+        ],
+        "rows": [
+          {
+            "label": "synthetic-baseline-1",
+            "workload": "tree-support-benchy",
+            "generator": "classic",
+            "variant": "baseline",
+            "cpu_seconds": 22.0,
+            "wall_seconds": 12.0,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 1,
+            "nonfatal_errors": 2,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-benchy/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-benchy/classic/baseline/1"
+          },
+          {
+            "label": "synthetic-baseline-2",
+            "workload": "tree-support-benchy",
+            "generator": "classic",
+            "variant": "baseline",
+            "cpu_seconds": 23.0,
+            "wall_seconds": 13.0,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 1,
+            "nonfatal_errors": 2,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-benchy/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-benchy/classic/baseline/2"
+          },
+          {
+            "label": "synthetic-baseline-3",
+            "workload": "tree-support-benchy",
+            "generator": "classic",
+            "variant": "baseline",
+            "cpu_seconds": 24.0,
+            "wall_seconds": 14.0,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 1,
+            "nonfatal_errors": 2,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-benchy/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-benchy/classic/baseline/3"
+          },
+          {
+            "label": "synthetic-baseline-4",
+            "workload": "tree-support-benchy",
+            "generator": "classic",
+            "variant": "baseline",
+            "cpu_seconds": 25.0,
+            "wall_seconds": 15.0,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 1,
+            "nonfatal_errors": 2,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-benchy/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-benchy/classic/baseline/4"
+          }
+        ]
+      },
+      "candidate": {
+        "cpu_samples": [
+          12.0,
+          13.0,
+          14.0,
+          15.0
+        ],
+        "wall_samples": [
+          7.0,
+          8.0,
+          9.0,
+          10.0
+        ],
+        "rows": [
+          {
+            "label": "synthetic-candidate-1",
+            "workload": "tree-support-benchy",
+            "generator": "classic",
+            "variant": "candidate",
+            "cpu_seconds": 12.0,
+            "wall_seconds": 7.0,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 1,
+            "nonfatal_errors": 2,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-benchy/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-benchy/classic/candidate/1"
+          },
+          {
+            "label": "synthetic-candidate-2",
+            "workload": "tree-support-benchy",
+            "generator": "classic",
+            "variant": "candidate",
+            "cpu_seconds": 13.0,
+            "wall_seconds": 8.0,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 1,
+            "nonfatal_errors": 2,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-benchy/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-benchy/classic/candidate/2"
+          },
+          {
+            "label": "synthetic-candidate-3",
+            "workload": "tree-support-benchy",
+            "generator": "classic",
+            "variant": "candidate",
+            "cpu_seconds": 14.0,
+            "wall_seconds": 9.0,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 1,
+            "nonfatal_errors": 2,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-benchy/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-benchy/classic/candidate/3"
+          },
+          {
+            "label": "synthetic-candidate-4",
+            "workload": "tree-support-benchy",
+            "generator": "classic",
+            "variant": "candidate",
+            "cpu_seconds": 15.0,
+            "wall_seconds": 10.0,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 1,
+            "nonfatal_errors": 2,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-benchy/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-benchy/classic/candidate/4"
+          }
+        ]
+      },
+      "status": "ok",
+      "status_baseline": "ok",
+      "status_candidate": "ok",
+      "config_provenance": {
+        "path": "synthetic://tree-support-benchy/classic/config.json",
+        "config_sha256": ""
+      },
+      "cpu_ratio": 0.574468085106383,
+      "wall_ratio": 0.6296296296296297,
+      "generator_marker": {
+        "baseline": "classic",
+        "candidate": "classic"
+      },
+      "generator_marker_match": true,
+      "degraded_baseline": 1,
+      "degraded_candidate": 1,
+      "nonfatal_errors_baseline": 8,
+      "nonfatal_errors_candidate": 8,
+      "fatal_errors_baseline": 0,
+      "fatal_errors_candidate": 0,
+      "decision": "KEEP"
+    },
+    {
+      "workload": "tree-support-benchy",
+      "generator": "arachne",
+      "expected_generator": "arachne",
+      "exactness_passed": true,
+      "exactness_deltas": null,
+      "cpu_separated": true,
+      "wall_separated": true,
+      "baseline": {
+        "cpu_samples": [
+          23.0,
+          24.0,
+          25.0,
+          26.0
+        ],
+        "wall_samples": [
+          13.0,
+          14.0,
+          15.0,
+          16.0
+        ],
+        "rows": [
+          {
+            "label": "synthetic-baseline-1",
+            "workload": "tree-support-benchy",
+            "generator": "arachne",
+            "variant": "baseline",
+            "cpu_seconds": 23.0,
+            "wall_seconds": 13.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-benchy/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-benchy/arachne/baseline/1"
+          },
+          {
+            "label": "synthetic-baseline-2",
+            "workload": "tree-support-benchy",
+            "generator": "arachne",
+            "variant": "baseline",
+            "cpu_seconds": 24.0,
+            "wall_seconds": 14.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-benchy/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-benchy/arachne/baseline/2"
+          },
+          {
+            "label": "synthetic-baseline-3",
+            "workload": "tree-support-benchy",
+            "generator": "arachne",
+            "variant": "baseline",
+            "cpu_seconds": 25.0,
+            "wall_seconds": 15.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-benchy/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-benchy/arachne/baseline/3"
+          },
+          {
+            "label": "synthetic-baseline-4",
+            "workload": "tree-support-benchy",
+            "generator": "arachne",
+            "variant": "baseline",
+            "cpu_seconds": 26.0,
+            "wall_seconds": 16.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-benchy/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-benchy/arachne/baseline/4"
+          }
+        ]
+      },
+      "candidate": {
+        "cpu_samples": [
+          13.0,
+          14.0,
+          15.0,
+          16.0
+        ],
+        "wall_samples": [
+          8.0,
+          9.0,
+          10.0,
+          11.0
+        ],
+        "rows": [
+          {
+            "label": "synthetic-candidate-1",
+            "workload": "tree-support-benchy",
+            "generator": "arachne",
+            "variant": "candidate",
+            "cpu_seconds": 13.0,
+            "wall_seconds": 8.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-benchy/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-benchy/arachne/candidate/1"
+          },
+          {
+            "label": "synthetic-candidate-2",
+            "workload": "tree-support-benchy",
+            "generator": "arachne",
+            "variant": "candidate",
+            "cpu_seconds": 14.0,
+            "wall_seconds": 9.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-benchy/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-benchy/arachne/candidate/2"
+          },
+          {
+            "label": "synthetic-candidate-3",
+            "workload": "tree-support-benchy",
+            "generator": "arachne",
+            "variant": "candidate",
+            "cpu_seconds": 15.0,
+            "wall_seconds": 10.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-benchy/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-benchy/arachne/candidate/3"
+          },
+          {
+            "label": "synthetic-candidate-4",
+            "workload": "tree-support-benchy",
+            "generator": "arachne",
+            "variant": "candidate",
+            "cpu_seconds": 16.0,
+            "wall_seconds": 11.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-benchy/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-benchy/arachne/candidate/4"
+          }
+        ]
+      },
+      "status": "ok",
+      "status_baseline": "ok",
+      "status_candidate": "ok",
+      "config_provenance": {
+        "path": "synthetic://tree-support-benchy/arachne/config.json",
+        "config_sha256": ""
+      },
+      "cpu_ratio": 0.5918367346938775,
+      "wall_ratio": 0.6551724137931034,
+      "generator_marker": {
+        "baseline": "arachne",
+        "candidate": "arachne"
+      },
+      "generator_marker_match": true,
+      "degraded_baseline": 0,
+      "degraded_candidate": 0,
+      "nonfatal_errors_baseline": 0,
+      "nonfatal_errors_candidate": 0,
+      "fatal_errors_baseline": 0,
+      "fatal_errors_candidate": 0,
+      "decision": "KEEP"
+    },
+    {
+      "workload": "tree-support-base",
+      "generator": "classic",
+      "expected_generator": "classic",
+      "exactness_passed": true,
+      "exactness_deltas": null,
+      "cpu_separated": true,
+      "wall_separated": true,
+      "baseline": {
+        "cpu_samples": [
+          24.0,
+          25.0,
+          26.0,
+          27.0
+        ],
+        "wall_samples": [
+          14.0,
+          15.0,
+          16.0,
+          17.0
+        ],
+        "rows": [
+          {
+            "label": "synthetic-baseline-1",
+            "workload": "tree-support-base",
+            "generator": "classic",
+            "variant": "baseline",
+            "cpu_seconds": 24.0,
+            "wall_seconds": 14.0,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-base/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-base/classic/baseline/1"
+          },
+          {
+            "label": "synthetic-baseline-2",
+            "workload": "tree-support-base",
+            "generator": "classic",
+            "variant": "baseline",
+            "cpu_seconds": 25.0,
+            "wall_seconds": 15.0,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-base/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-base/classic/baseline/2"
+          },
+          {
+            "label": "synthetic-baseline-3",
+            "workload": "tree-support-base",
+            "generator": "classic",
+            "variant": "baseline",
+            "cpu_seconds": 26.0,
+            "wall_seconds": 16.0,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-base/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-base/classic/baseline/3"
+          },
+          {
+            "label": "synthetic-baseline-4",
+            "workload": "tree-support-base",
+            "generator": "classic",
+            "variant": "baseline",
+            "cpu_seconds": 27.0,
+            "wall_seconds": 17.0,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-base/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-base/classic/baseline/4"
+          }
+        ]
+      },
+      "candidate": {
+        "cpu_samples": [
+          14.0,
+          15.0,
+          16.0,
+          17.0
+        ],
+        "wall_samples": [
+          9.0,
+          10.0,
+          11.0,
+          12.0
+        ],
+        "rows": [
+          {
+            "label": "synthetic-candidate-1",
+            "workload": "tree-support-base",
+            "generator": "classic",
+            "variant": "candidate",
+            "cpu_seconds": 14.0,
+            "wall_seconds": 9.0,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-base/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-base/classic/candidate/1"
+          },
+          {
+            "label": "synthetic-candidate-2",
+            "workload": "tree-support-base",
+            "generator": "classic",
+            "variant": "candidate",
+            "cpu_seconds": 15.0,
+            "wall_seconds": 10.0,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-base/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-base/classic/candidate/2"
+          },
+          {
+            "label": "synthetic-candidate-3",
+            "workload": "tree-support-base",
+            "generator": "classic",
+            "variant": "candidate",
+            "cpu_seconds": 16.0,
+            "wall_seconds": 11.0,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-base/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-base/classic/candidate/3"
+          },
+          {
+            "label": "synthetic-candidate-4",
+            "workload": "tree-support-base",
+            "generator": "classic",
+            "variant": "candidate",
+            "cpu_seconds": 17.0,
+            "wall_seconds": 12.0,
+            "generator_marker": "classic",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-base/classic/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-base/classic/candidate/4"
+          }
+        ]
+      },
+      "status": "ok",
+      "status_baseline": "ok",
+      "status_candidate": "ok",
+      "config_provenance": {
+        "path": "synthetic://tree-support-base/classic/config.json",
+        "config_sha256": ""
+      },
+      "cpu_ratio": 0.6078431372549019,
+      "wall_ratio": 0.6774193548387096,
+      "generator_marker": {
+        "baseline": "classic",
+        "candidate": "classic"
+      },
+      "generator_marker_match": true,
+      "degraded_baseline": 0,
+      "degraded_candidate": 0,
+      "nonfatal_errors_baseline": 0,
+      "nonfatal_errors_candidate": 0,
+      "fatal_errors_baseline": 0,
+      "fatal_errors_candidate": 0,
+      "decision": "KEEP"
+    },
+    {
+      "workload": "tree-support-base",
+      "generator": "arachne",
+      "expected_generator": "arachne",
+      "exactness_passed": true,
+      "exactness_deltas": null,
+      "cpu_separated": true,
+      "wall_separated": true,
+      "baseline": {
+        "cpu_samples": [
+          25.0,
+          26.0,
+          27.0,
+          28.0
+        ],
+        "wall_samples": [
+          15.0,
+          16.0,
+          17.0,
+          18.0
+        ],
+        "rows": [
+          {
+            "label": "synthetic-baseline-1",
+            "workload": "tree-support-base",
+            "generator": "arachne",
+            "variant": "baseline",
+            "cpu_seconds": 25.0,
+            "wall_seconds": 15.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-base/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-base/arachne/baseline/1"
+          },
+          {
+            "label": "synthetic-baseline-2",
+            "workload": "tree-support-base",
+            "generator": "arachne",
+            "variant": "baseline",
+            "cpu_seconds": 26.0,
+            "wall_seconds": 16.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-base/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-base/arachne/baseline/2"
+          },
+          {
+            "label": "synthetic-baseline-3",
+            "workload": "tree-support-base",
+            "generator": "arachne",
+            "variant": "baseline",
+            "cpu_seconds": 27.0,
+            "wall_seconds": 17.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-base/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-base/arachne/baseline/3"
+          },
+          {
+            "label": "synthetic-baseline-4",
+            "workload": "tree-support-base",
+            "generator": "arachne",
+            "variant": "baseline",
+            "cpu_seconds": 28.0,
+            "wall_seconds": 18.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-base/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-base/arachne/baseline/4"
+          }
+        ]
+      },
+      "candidate": {
+        "cpu_samples": [
+          15.0,
+          16.0,
+          17.0,
+          18.0
+        ],
+        "wall_samples": [
+          10.0,
+          11.0,
+          12.0,
+          13.0
+        ],
+        "rows": [
+          {
+            "label": "synthetic-candidate-1",
+            "workload": "tree-support-base",
+            "generator": "arachne",
+            "variant": "candidate",
+            "cpu_seconds": 15.0,
+            "wall_seconds": 10.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-base/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-base/arachne/candidate/1"
+          },
+          {
+            "label": "synthetic-candidate-2",
+            "workload": "tree-support-base",
+            "generator": "arachne",
+            "variant": "candidate",
+            "cpu_seconds": 16.0,
+            "wall_seconds": 11.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-base/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-base/arachne/candidate/2"
+          },
+          {
+            "label": "synthetic-candidate-3",
+            "workload": "tree-support-base",
+            "generator": "arachne",
+            "variant": "candidate",
+            "cpu_seconds": 17.0,
+            "wall_seconds": 12.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-base/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-base/arachne/candidate/3"
+          },
+          {
+            "label": "synthetic-candidate-4",
+            "workload": "tree-support-base",
+            "generator": "arachne",
+            "variant": "candidate",
+            "cpu_seconds": 18.0,
+            "wall_seconds": 13.0,
+            "generator_marker": "arachne",
+            "status": "ok",
+            "degraded": 0,
+            "nonfatal_errors": 0,
+            "fatal_errors": 0,
+            "config_provenance": {
+              "path": "synthetic://tree-support-base/arachne/config.json",
+              "config_sha256": ""
+            },
+            "output_path": "synthetic://tree-support-base/arachne/candidate/4"
+          }
+        ]
+      },
+      "status": "ok",
+      "status_baseline": "ok",
+      "status_candidate": "ok",
+      "config_provenance": {
+        "path": "synthetic://tree-support-base/arachne/config.json",
+        "config_sha256": ""
+      },
+      "cpu_ratio": 0.6226415094339622,
+      "wall_ratio": 0.696969696969697,
+      "generator_marker": {
+        "baseline": "arachne",
+        "candidate": "arachne"
+      },
+      "generator_marker_match": true,
+      "degraded_baseline": 0,
+      "degraded_candidate": 0,
+      "nonfatal_errors_baseline": 0,
+      "nonfatal_errors_candidate": 0,
+      "fatal_errors_baseline": 0,
+      "fatal_errors_candidate": 0,
+      "decision": "KEEP"
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "status": "BLOCKED",
+  "authorization": "Main authorized one syntax correction for the previously unexecuted core command, then the remaining focused gates.",
+  "prior_attempt": {
+    "malformed_command_evidence_preserved": "test-slicer-core-perimeter-spatial-tdd-command-error.log",
+    "original_command_started_zero_tests": true,
+    "original_command_not_retried": true,
+    "verification_status_json_modified": false
+  },
+  "corrected_core_test": {
+    "command": "cargo test -p slicer-core --features host-algos,perimeter-spatial-test-support --test perimeter_spatial_tdd -- --nocapture",
+    "exit_code": 0,
+    "result": "PASS",
+    "passed": 3,
+    "failed": 0,
+    "ignored": 0,
+    "test_names": [
+      "exact_queries_match_legacy",
+      "accelerated_mode_exercised_not_vacuous",
+      "fallback_paths_are_nonvacuous"
+    ],
+    "full_log": "continuation-core-spatial.log"
+  },
+  "runtime_capture": {
+    "command": "cargo xtask test --summary -p slicer-runtime --features perimeter-spatial-test-support --test integration -- perimeter_spatial_capture_and_nonvacuity --nocapture",
+    "outer_shell_exit_code": 0,
+    "xtask_summary_verdict": "FAIL",
+    "inner_test_result": {
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "filtered_out": 370,
+      "named_test": "perimeter_spatial_capture_and_nonvacuity"
+    },
+    "failure_detail": "The wrapper emitted repeated panicked-at diagnostics in boostvoronoi-0.12.1/src/extended_scalar/robust_fpt.rs (reported locations 245 and 398) and concluded VERDICT: FAIL, despite the inner Cargo test summary reporting 1 passed and 0 failed.",
+    "cause_attributed": false,
+    "summary_log": "continuation-runtime-capture-summary.log",
+    "full_test_log": "continuation-runtime-capture-full.log",
+    "full_test_log_source": "target/test-output.log"
+  },
+  "stop": {
+    "reason": "The runtime capture gate reported VERDICT: FAIL.",
+    "self_baseline_run": false,
+    "overlap_run": false,
+    "no_test_or_measurement_retry": true
+  },
+  "remaining_gaps": [
+    "AC-5 perimeter_spatial_self_baseline focused runtime tests were not run.",
+    "AC-N3 overlap_is_inconclusive_and_never_keep was not run."
+  ],
+  "scope": {
+    "dist_build": false,
+    "acceptance_campaign": false,
+    "workspace_test": false,
+    "source_or_lockfile_edits": false,
+    "prior_command_error_evidence_and_verification_status_preserved": true,
+    "new_evidence_directory": "docs/specs/perf-vs-orca/evidence/t38-adoption-resumed/gates/"
+  }
+}

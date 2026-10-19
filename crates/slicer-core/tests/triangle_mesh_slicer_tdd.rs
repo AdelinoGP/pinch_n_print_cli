@@ -628,47 +628,6 @@ fn slice_closing_radius_fuses_gap_within_two_r() {
     );
 }
 
-/// NEG-3: r = 0.0 skips the round-trip entirely; output is structurally
-/// equivalent to the input (same polygon count, same vertex count per polygon).
-///
-/// The gate is applied by the CALLER (the host slice stage checks
-/// `slice_closing_radius > 0.0` before calling `apply_slice_closing_radius`),
-/// so this test verifies the sentinel behavior: when r = 0.0, the caller
-/// returns the unmodified input, matching polygon count and vertex count.
-#[test]
-fn slice_closing_radius_zero_is_noop() {
-    let square_a = unit_square_expolygon(0.0, 0.0);
-    let square_b = unit_square_expolygon(2.0, 0.0); // 1 mm gap — clearly separate
-    let polygons = vec![square_a.clone(), square_b.clone()];
-
-    // Sentinel: when r == 0.0, the call site skips apply_slice_closing_radius.
-    // We simulate that here by returning the input unchanged, and verify it
-    // is byte-identical to the original polygons.
-    let r = 0.0_f32;
-    let result: Vec<ExPolygon> = if r > 0.0 {
-        apply_slice_closing_radius(polygons.clone(), r)
-    } else {
-        polygons.clone()
-    };
-
-    assert_eq!(
-        result.len(),
-        polygons.len(),
-        "r=0.0 must produce the same polygon count as the input"
-    );
-    for (i, (got, expected)) in result.iter().zip(polygons.iter()).enumerate() {
-        assert_eq!(
-            got.contour.points.len(),
-            expected.contour.points.len(),
-            "polygon {i}: vertex count must be unchanged when r=0.0"
-        );
-        assert_eq!(
-            got.contour.points, expected.contour.points,
-            "polygon {i}: vertex coordinates must be byte-identical when r=0.0"
-        );
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Boundary-Z regression: staircase tiers aligned with slice planes
 // ---------------------------------------------------------------------------

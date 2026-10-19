@@ -76,17 +76,11 @@ fn run_slice_with_full_modules(model: &PathBuf, output: &PathBuf) -> std::proces
 }
 
 fn slice_gcode_path(test_name: &str) -> PathBuf {
-    let manifest = env!("CARGO_MANIFEST_DIR");
-    PathBuf::from(manifest)
-        .join("target")
-        .join(format!("modifier_infill_{test_name}.gcode"))
+    crate::common::slicer_cache::test_artifact_path(&format!("modifier_infill_{test_name}.gcode"))
 }
 
 fn control_gcode_path() -> PathBuf {
-    let manifest = env!("CARGO_MANIFEST_DIR");
-    PathBuf::from(manifest)
-        .join("target")
-        .join("modifier_infill_control_slice.gcode")
+    crate::common::slicer_cache::test_artifact_path("modifier_infill_control_slice.gcode")
 }
 
 /// Per-layer wall-loop counts as `(outer_loops, inner_loops)`.

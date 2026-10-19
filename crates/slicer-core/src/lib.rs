@@ -26,6 +26,7 @@ pub mod geometry;
 #[cfg(feature = "host-algos")]
 pub mod medial_axis;
 pub mod paint_policy;
+pub mod perimeter_spatial;
 pub mod perimeter_utils;
 pub mod polygon_ops;
 pub mod polygon_tree;
@@ -313,19 +314,12 @@ fn interpolate_point(start: Point3WithWidth, end: Point3WithWidth, t: f32) -> Po
 
 #[cfg(test)]
 mod tests {
-    use super::{flow_correction, segment_path};
-    use slicer_ir::Point2;
-
-    #[test]
-    fn segment_path_preserves_requested_endpoints() {
-        let points = segment_path(Point2::from_mm(0.0, 0.0), Point2::from_mm(2.0, 0.0), 0.75);
-
-        assert_eq!(points.first(), Some(&Point2::from_mm(0.0, 0.0)));
-        assert_eq!(points.last(), Some(&Point2::from_mm(2.0, 0.0)));
-    }
+    use super::flow_correction;
 
     #[test]
     fn flow_correction_stays_positive_for_vertical_input() {
-        assert!(flow_correction(0.0, 0.0, 1.0).is_sign_positive());
+        let value = flow_correction(0.0, 0.0, 1.0);
+        assert!(value.is_finite());
+        assert_eq!(value, 1.0);
     }
 }

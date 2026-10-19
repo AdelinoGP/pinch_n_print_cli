@@ -271,13 +271,11 @@ fn layer_slice_builtin_produces_real_polygons_for_wedge_mesh() {
         .canonicalize()
         .expect("repo root")
         .join("resources/regression_wedge.stl");
-    if !path.exists() {
-        // Fixture not present in this environment â€” skip silently so the
-        // rest of the suite keeps running. The live-path binary test
-        // `slice_e2e_real_pipeline_produces_gcode` covers the same
-        // fixture presence check.
-        return;
-    }
+    assert!(
+        path.is_file(),
+        "required wedge fixture missing: {}",
+        path.display()
+    );
 
     let mesh = slicer_model_io::load_model(&path).expect("load regression wedge STL");
     assert_eq!(mesh.objects.len(), 1, "wedge STL must load as one object");
@@ -333,9 +331,11 @@ fn layer_slice_builtin_is_deterministic_for_wedge_mesh() {
         .canonicalize()
         .expect("repo root")
         .join("resources/regression_wedge.stl");
-    if !path.exists() {
-        return;
-    }
+    assert!(
+        path.is_file(),
+        "required wedge fixture missing: {}",
+        path.display()
+    );
     let mesh = slicer_model_io::load_model(&path).expect("load wedge");
     let object_id = mesh.objects[0].id.clone();
     let layer = GlobalLayer {

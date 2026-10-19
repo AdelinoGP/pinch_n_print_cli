@@ -64,15 +64,18 @@
 use slicer_core::flow::{
     bridging_flow, flow_to_width, line_width_to_spacing, resolve_role_width, RoleWidthContext,
 };
+use slicer_core::perimeter_spatial::PerimeterSpatialContext;
 use slicer_core::perimeter_utils::{
     apply_seam_paint_bias, build_wall_flags, generate_sharp_corner_seam_candidates,
-    point_in_any_polygon, seam_paint_boxes, wall_sequence_reorder,
+    seam_paint_boxes, wall_sequence_reorder,
 };
-use slicer_core::polygon_ops::{difference_ex, offset2_ex, OffsetJoinType};
+use slicer_core::polygon_ops::{
+    difference_ex, offset2_ex, offset_with_miter_limit, OffsetJoinType, ORCA_DEFAULT_MITER_LIMIT,
+};
 use slicer_ir::{
-    extrusion_line_to_extrusion_path3d, mm_to_units, point_in_polygon_winding, units_to_mm,
-    ConfigView, ExPolygon, ExtrusionLine, ExtrusionRole, LoopType, Point2, Polygon,
-    WallBoundaryType, WallLoop, WidthProfile,
+    extrusion_line_to_extrusion_path3d, mm_to_units, units_to_mm, ConfigView, ExPolygon,
+    ExtrusionLine, ExtrusionRole, LoopType, Point2, Polygon, WallBoundaryType, WallLoop,
+    WidthProfile,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -90,11 +93,14 @@ use slicer_sdk::views::SliceRegionView;
 /// own R2 convention for per-object/per-layer overridable keys.
 pub struct ArachnePerimeters;
 
-/// Builds the SDK's [`ArachneParams`] mirror from `config`, falling back to
-/// [`ArachneParams::default`] for any key that is absent or whose type
-/// doesn't match the schema (mirrors `ConfigView::get_float`/`get_int`'s own
-/// strict-type-match, no-fallback convention used throughout
-/// `classic-perimeters`).
+/// Builds the SDK's [`ArachneParams`] mirror from `config`.
+///
+/// Classified config reads use `ConfigView::require_*` (packet 06): a key the
+/// path reads must be present in the resolved view at its registry type, or
+/// the read fails fatally via `ConfigReadError -> ModuleError`. The remaining
+/// reads (keys whose fallback is a computed default rather than a literal)
+/// keep `get_*` + `unwrap_or(ArachneParams::default().<field>)`, matching
+/// `ArachneParams`' pipeline-default semantics.
 ///
 /// 9 of the 13 `arachne-perimeters.toml` config keys now map onto
 /// `ArachneParams` fields (packet 112, Step 9C added `min_feature_size`,
@@ -147,10 +153,11 @@ fn arachne_params_from_config(
     // `layer_height`/`nozzle_diameter` are Z-axis-convention / physical-spec
     // keys (docs/08_coordinate_system.md): stored and read as plain mm floats,
     // never scaled units — no `units_to_mm` conversion, unlike the bead-width
-    // keys below. Defaults mirror layer-planner-default.toml's layer_height
-    // default (0.2mm) and the 0.4mm nozzle convention.
-    let layer_height_mm = config.get_float("layer_height").unwrap_or(0.2);
-    let nozzle_diameter_mm = config.get_float("nozzle_diameter").unwrap_or(0.4);
+    // keys below. Required reads (packet 06): the resolved view always holds
+    // the seeded registry defaults (0.2mm / 0.4mm), so absence is a contract
+    // violation, not a configurable fallback.
+    let layer_height_mm = config.require_float("layer_height")?;
+    let nozzle_diameter_mm = config.require_float("nozzle_diameter")?;
 
     // AC-3: feed Flow SPACING (not raw width) to the beading pipeline.
     // OrcaSlicer constructs `WallToolPaths(outline, bead_width_0, bead_width_x,
@@ -182,23 +189,26 @@ fn arachne_params_from_config(
     // `inner_wall_line_width`. Those keys are retired; the wall-width keys are
     // plain mm (no units_to_mm), same as classic-perimeters reads them.
     let width_context = RoleWidthContext {
-        // Packet 185 (AC-5): absent `line_width` is the canonical auto-0
-        // sentinel, NOT the 0.4 mm legacy default — `resolve_role_width`
-        // routes zero through `auto_extrusion_width` (1.125 × nozzle).
-        // Pre-185 this fell back to `defaults.optimal_width` (0.4 mm),
-        // diverging from classic-perimeters on the absent-key path.
-        line_width: config.get_float("line_width").unwrap_or(0.0) as f32,
+        // Packet 185 (AC-5): the seeded `line_width` default is the auto-0
+        // sentinel expanded by the host (1.125 × nozzle_diameter) before the
+        // view is bound, so the required read below always resolves positive;
+        // `resolve_role_width` routes zero through `auto_extrusion_width`
+        // semantics on the host-expanded value.
+        line_width: config.require_float("line_width")? as f32,
         nozzle_diameter: nozzle_diameter_mm as f32,
-        bridge_line_width: config.get_float("bridge_line_width").unwrap_or(0.0) as f32,
+        bridge_line_width: config
+            .require_abs_value("bridge_line_width", nozzle_diameter_mm)? as f32,
         initial_layer_line_width: config
-            .get_float("initial_layer_line_width")
-            .unwrap_or(0.0) as f32,
+            .require_abs_value("initial_layer_line_width", nozzle_diameter_mm)? as f32,
+        // `outer_wall_line_width` / `inner_wall_line_width` are typed
+        // `float_or_percent` with `base_key = "nozzle_diameter"` in the
+        // manifest (packet 06 locked assumption): read with `require_abs_value`
+        // against the nozzle base, NOT `require_float` — a percent-authored
+        // value must resolve against the registry base.
         outer_wall_line_width: config
-            .get_float("outer_wall_line_width")
-            .unwrap_or(0.0) as f32,
+            .require_abs_value("outer_wall_line_width", nozzle_diameter_mm)? as f32,
         inner_wall_line_width: config
-            .get_float("inner_wall_line_width")
-            .unwrap_or(0.0) as f32,
+            .require_abs_value("inner_wall_line_width", nozzle_diameter_mm)? as f32,
         ..RoleWidthContext::default()
     };
     let optimal_width = {
@@ -233,11 +243,11 @@ fn arachne_params_from_config(
         line_width_to_spacing(preferred_bead_width_outer_raw as f32, layer_height_mm as f32)
             .map_err(|e| ModuleError::fatal(ERR_NEGATIVE_SPACING, e.to_string()))? as f64;
     let max_bead_count_explicit = config.get_int("max_bead_count");
-    let wall_loops = config.get_int("wall_loops").map(|v| v.max(0) as u32).unwrap_or(2);
+    let wall_loops = config.require_int("wall_loops")?.max(0) as u32;
     // extra_perimeters (TASK-328): per-region bonus wall count, read with the
-    // byte-identical expression classic-perimeters uses so the two generators
+    // value-identical expression classic-perimeters uses so the two generators
     // cannot drift on clamping/defaulting.
-    let extra_perimeters = config.get_int("extra_perimeters").unwrap_or(0).max(0) as u32;
+    let extra_perimeters = config.require_int("extra_perimeters")?.max(0) as u32;
     // OrcaSlicer has no user-facing max_bead_count; canonical
     // `WallToolPaths::generate` (`WallToolPaths.cpp`) always computes it as
     // `max_bead_count = 2 * inset_count` and it is therefore ALWAYS EVEN.
@@ -276,9 +286,10 @@ fn arachne_params_from_config(
     let min_feature_size = config
         .get_abs_value("min_feature_size", nozzle_diameter_mm)
         .unwrap_or(defaults.min_feature_size);
+    // `min_bead_width` is canonical `coPercent` of the nozzle diameter
+    // (default 85%), resolved like `min_feature_size`.
     let min_bead_width = config
-        .get_float("min_bead_width")
-        .map(|v| units_to_mm(v as i64) as f64)
+        .get_abs_value("min_bead_width", nozzle_diameter_mm)
         .unwrap_or(defaults.min_bead_width);
     let print_thin_walls = config
         .get_bool("detect_thin_wall")
@@ -325,11 +336,12 @@ fn arachne_params_from_config(
         // value) when the precise-outer-wall gate does not apply, preserving
         // that key's own independent meaning.
         let manual_outer_wall_offset = config.get_float("outer_wall_offset").map(|v| units_to_mm(v as i64) as f64).unwrap_or(defaults.outer_wall_offset);
-        let precise_outer_wall = config.get_bool("precise_outer_wall").unwrap_or(false);
-        let wall_sequence_is_inner_outer = config
-            .get_string("wall_sequence")
-            .map(|s| s == "InnerOuter")
-            .unwrap_or(true); // default wall_sequence is "InnerOuter"
+        let precise_outer_wall = config.require_bool("precise_outer_wall")?;
+        // Required read (packet 06): the resolved view always carries the
+        // seeded `wall_sequence` default "InnerOuter", so the previous
+        // `.map(|s| s == "InnerOuter").unwrap_or(true)` fallback becomes a
+        // hard requirement on the key.
+        let wall_sequence_is_inner_outer = config.require_string("wall_sequence")? == "InnerOuter";
         let outer_wall_offset = if precise_outer_wall && wall_sequence_is_inner_outer {
             -((preferred_bead_width_outer_raw / 2.0) - (preferred_bead_width_outer / 2.0))
         } else {
@@ -365,6 +377,7 @@ fn arachne_params_from_config(
             min_length_factor,
             min_feature_size,
             min_bead_width,
+            layer_height: layer_height_mm,
             print_thin_walls,
             min_central_distance,
             min_width,
@@ -386,33 +399,26 @@ fn arachne_params_from_config(
 /// Classifies a single [`slicer_ir::ExtrusionLine`] into its `(role,
 /// loop_type)` pair.
 ///
-/// `is_odd` lines (odd-width transition regions, per `ExtrusionLine::is_odd`'s
-/// own doc comment) are treated as gap-fill regardless of `inset_idx`, with
-/// one exception (packet 148, AC-2): an `is_odd` line at `inset_idx == 0`
-/// with `print_thin_walls` enabled is the single widened center-line bead
-/// `WideningBeadingStrategy` produces for a region thinner than one full
-/// bead. OrcaSlicer's own Arachne path assigns this bead no special
-/// thin-wall/gap-fill role at all — the Arachne skeletal-graph algorithm has
-/// no such role; `is_odd` is purely structural, and every emitted
-/// `ExtrusionLine` becomes `erExternalPerimeter`/`erPerimeter` via
-/// `inset_idx == 0` (`PerimeterGenerator.cpp:383-384`); `print_thin_walls`
-/// only gates whether `WideningBeadingStrategy` runs at all. `LoopType::ThinWall`
-/// here is PnP's own IR-level semantic refinement of that same bead — a
-/// deliberate deviation from upstream, not a ported behavior — allowing
-/// downstream consumers (feature-flag/report tooling) to distinguish a
-/// widened thin region from an ordinary outer wall. Deeper odd lines
-/// (`inset_idx > 0`, transition regions between full beads) stay `GapFill`
-/// regardless of `print_thin_walls`; classic-perimeters' `medial_axis`-based
-/// thin-wall gate does not apply here since Arachne's beading strategy
-/// already produces the widened bead directly.
+/// Canonical `PerimeterGenerator.cpp::traverse_extrusions` sets the role from
+/// `inset_idx` alone: `erExternalPerimeter` for inset 0, `erPerimeter`
+/// otherwise. `is_odd` is structural (the centre bead of an odd bead count, an
+/// open line) and never makes a line gap fill, so odd lines keep their wall
+/// role here too. Mapping deeper odd lines to `GapFill` (the former behaviour)
+/// printed real walls with gap-fill role and flow.
+///
+/// One PnP refinement remains (packet 148, AC-2): an `is_odd` line at
+/// `inset_idx == 0` with `print_thin_walls` enabled is the single widened
+/// centre-line bead `WideningBeadingStrategy` produces for a region thinner
+/// than one bead. Canonical prints it as `erExternalPerimeter` like any inset-0
+/// line; `LoopType::ThinWall` / `ExtrusionRole::ThinWall` is PnP's IR-level
+/// label for that same bead, so downstream consumers (feature-flag/report
+/// tooling) can tell a widened thin region from an ordinary outer wall.
 fn classify_line(
     line: &slicer_ir::ExtrusionLine,
     print_thin_walls: bool,
 ) -> (ExtrusionRole, LoopType) {
     if line.is_odd && line.inset_idx == 0 && print_thin_walls {
         (ExtrusionRole::ThinWall, LoopType::ThinWall)
-    } else if line.is_odd {
-        (ExtrusionRole::GapFill, LoopType::GapFill)
     } else if line.inset_idx == 0 {
         (ExtrusionRole::OuterWall, LoopType::Outer)
     } else {
@@ -474,6 +480,14 @@ impl LayerModule for ArachnePerimeters {
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
         let mut params = arachne_params_from_config(config, layer_index == 0)?;
+        // nozzle_diameter/layer_height (packet 150 step 5): read here (mm,
+        // same config keys + seeded defaults as arachne_params_from_config's
+        // own local reads) so the overhang-reverse-threshold resolution and
+        // the thick_bridges round-cross-section formula below have the
+        // physical-spec inputs they need; ArachneParams does not carry them
+        // back out of that function.
+        let nozzle_diameter_mm = config.require_float("nozzle_diameter")? as f32;
+        let layer_height_mm = config.require_float("layer_height")? as f32;
         // is_bottom_layer keys the classic "first/last layer" threshold (layer 0
         // in object coordinates). PnP historically folded this into
         // is_initial_layer; both flags are kept distinct so downstream flag
@@ -485,11 +499,11 @@ impl LayerModule for ArachnePerimeters {
         // PnP's equivalent of canonical `raft_layers` is `support_raft_layers`
         // (same semantics, same default 0), declared in this manifest so the
         // read is live rather than dropped by `ConfigView::from_declared`.
-        let raft_layers = config.get_int("support_raft_layers").unwrap_or(0).max(0) as u32;
+        let raft_layers = config.require_int("support_raft_layers")?.max(0) as u32;
         let is_bottom_layer = layer_index == raft_layers;
         params.is_initial_layer = layer_index == 0;
         params.is_bottom_layer = is_bottom_layer;
-        let wall_sequence = config.get_string("wall_sequence").unwrap_or("InnerOuter");
+        let wall_sequence = config.require_string("wall_sequence")?;
         params.wall_sequence = match wall_sequence {
             "OuterInner" => WallSequence::OuterInner,
             "InnerOuterInner" => WallSequence::InnerOuterInner,
@@ -513,18 +527,17 @@ impl LayerModule for ArachnePerimeters {
         // loop_number = 0 on the topmost layer). The actual clamp to one emitted
         // wall happens per-region inside the region loop below, because
         // topmost-ness is region metadata, not a layer-wide property.
-        let only_one_wall_top = config.get_bool("only_one_wall_top").unwrap_or(false);
+        let only_one_wall_top = config.require_bool("only_one_wall_top")?;
 
         // wall_direction (packet 151, Step 2 / G1): OrcaSlicer coEnum
         // wall_direction (PrintConfig.cpp:2188-2198, default CounterClockwise)
         // forces contour (ExteriorSurface) winding CCW or CW via
         // make_counter_clockwise/make_clockwise (PerimeterGenerator.cpp:527-545),
-        // holes always opposite. Default "counter_clockwise" must reproduce the
-        // prior default winding (AC-N2); absence from raw config falls back to
-        // CCW so no regression is introduced.
-        let wall_direction = config
-            .get_string("wall_direction")
-            .unwrap_or("counter_clockwise");
+        // holes always opposite. Required read (packet 06): the seeded default
+        // "counter_clockwise" guarantees the prior default winding, so absence
+        // from the resolved view is a contract violation rather than a
+        // fallback case.
+        let wall_direction = config.require_string("wall_direction")?;
         let contour_should_be_ccw = wall_direction != "clockwise";
 
         // alternate_extra_wall (T-149 AC-3): OrcaSlicer adds
@@ -540,9 +553,9 @@ impl LayerModule for ArachnePerimeters {
         // beading-stack's own input cap, not a post-hoc wall-count mutation
         // downstream of it, mirroring how `params.is_initial_layer` is set
         // just above (this function has no access to `layer_index`).
-        let alternate_extra_wall = config.get_bool("alternate_extra_wall").unwrap_or(false);
-        let spiral_vase = config.get_bool("spiral_vase").unwrap_or(false);
-        let sparse_infill_density = config.get_float("sparse_infill_density").unwrap_or(20.0);
+        let alternate_extra_wall = config.require_bool("alternate_extra_wall")?;
+        let spiral_vase = config.require_bool("spiral_vase")?;
+        let sparse_infill_density = config.require_float("sparse_infill_density")?;
         if alternate_extra_wall
             && layer_index % 2 == 1
             && !spiral_vase
@@ -575,9 +588,7 @@ impl LayerModule for ArachnePerimeters {
         // with no raft the two flags are identical (both `layer_index == 0`), so
         // dropping it is a no-op there, but with a raft it would have re-fired
         // the clamp on the raft's own first layer instead of the object's.
-        let only_one_wall_first_layer = config
-            .get_bool("only_one_wall_first_layer")
-            .unwrap_or(false);
+        let only_one_wall_first_layer = config.require_bool("only_one_wall_first_layer")?;
         if only_one_wall_first_layer && is_bottom_layer {
             params.max_bead_count = 2;
         }
@@ -588,39 +599,27 @@ impl LayerModule for ArachnePerimeters {
         // PerimeterGenerator.cpp:68-77). This packet only wires the parity
         // flip (detect_overhang_wall disabled + overhang_reverse enabled);
         // the full steep-overhang threshold detection is out of scope.
-        // Read all three keys (the third is advisory for now).
-        let detect_overhang_wall = config.get_bool("detect_overhang_wall").unwrap_or(true);
-        let overhang_reverse = config.get_bool("overhang_reverse").unwrap_or(false);
-        let _overhang_reverse_internal_only = config
-            .get_bool("overhang_reverse_internal_only")
-            .unwrap_or(false);
-        let _overhang_reverse_threshold = config
-            .get_float("overhang_reverse_threshold")
-            .unwrap_or(0.0);
+        // All three reads are required (packet 06): the resolved view carries
+        // the seeded defaults (detect_overhang_wall=true, overhang_reverse=
+        // false, overhang_reverse_internal_only=false, overhang_reverse_
+        // threshold=0.0), so the previous literal fallbacks become hard
+        // requirements. `overhang_reverse_threshold` is typed
+        // `float_or_percent` in the manifest, so it resolves through
+        // `require_abs_value` (nozzle base) like the other percent-typed keys.
+        let detect_overhang_wall = config.require_bool("detect_overhang_wall")?;
+        let overhang_reverse = config.require_bool("overhang_reverse")?;
+        let _overhang_reverse_internal_only =
+            config.require_bool("overhang_reverse_internal_only")?;
+        let _overhang_reverse_threshold =
+            config.require_abs_value("overhang_reverse_threshold", nozzle_diameter_mm as f64)?;
         // Compose: when detect_overhang_wall==false && overhang_reverse==true,
         // reverse contour winding on odd layers.
         let g7_reverse = !detect_overhang_wall && overhang_reverse && (layer_index % 2 == 1);
 
         // bridge_flow / thick_bridges (packet 149, D4/D-104g): read once per
         // invocation, applied per-vertex below wherever is_bridge is true.
-        let bridge_flow_ratio = config
-            .get_float("bridge_flow")
-            .map(|v| v as f32)
-            .unwrap_or(1.0);
-        let thick_bridges = config.get_bool("thick_bridges").unwrap_or(false);
-        // nozzle_diameter/layer_height (packet 150 step 5): re-read here (mm,
-        // same config keys + defaults as arachne_params_from_config's own
-        // local reads above) so the thick_bridges round-cross-section
-        // formula below has the physical-spec inputs it needs; ArachneParams
-        // does not carry them back out of that function.
-        let nozzle_diameter_mm = config
-            .get_float("nozzle_diameter")
-            .map(|v| v as f32)
-            .unwrap_or(0.4);
-        let layer_height_mm = config
-            .get_float("layer_height")
-            .map(|v| v as f32)
-            .unwrap_or(0.2);
+        let bridge_flow_ratio = config.require_float("bridge_flow")? as f32;
+        let thick_bridges = config.require_bool("thick_bridges")?;
 
         // Per-color (MMU) wiring (P112 Step 10B): `regions` already contains
         // one entry per paint-color cell (see PrePass::PaintSegmentation) plus
@@ -651,12 +650,74 @@ impl LayerModule for ArachnePerimeters {
             } else {
                 params.max_bead_count = base_max_bead_count;
             }
-            output.begin_region(region.object_id(), *region.region_id());
+            output.begin_region(
+                region.object_id(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
             let polygons = region.polygons();
             if polygons.is_empty() {
                 continue;
             }
+            // Canonical `process_arachne` pre-shrinks the OUTLINE FED TO
+            // `WallToolPaths` (`last = offset_ex(surface.expolygon, ...)`),
+            // not the region's identity. The shrink therefore applies only to
+            // the wall-generation input below; seam candidates and paint
+            // reprojection keep comparing against the original outline.
+            //
+            //     last = offset_ex(surface.expolygon,
+            //              apply_precise_outer_wall
+            //                ? -float(ext_perimeter_width - ext_perimeter_spacing)
+            //                : -float(ext_perimeter_width / 2. - ext_perimeter_spacing / 2.));
+            //
+            // `apply_precise_outer_wall = precise_outer_wall &&
+            // wall_sequence == InnerOuter`. PnP's spacing conversion
+            // satisfies `raw_width - spacing == layer_height * (1 - PI/4)`
+            // exactly, so each side loses that bump under the precise gate
+            // and half of it otherwise. Both keys are required reads
+            // (packet 06): `arachne_params_from_config` above already fails
+            // fatally when either is absent, so re-reading them here cannot
+            // mask a missing key.
+            let precise_outer_wall_for_shrink = config.require_bool("precise_outer_wall")?;
+            let wall_sequence_is_inner_outer_for_shrink =
+                config.require_string("wall_sequence")? == "InnerOuter";
+            let apply_precise_outer_wall =
+                precise_outer_wall_for_shrink && wall_sequence_is_inner_outer_for_shrink;
+            let rounded_rectangle_bump =
+                layer_height_mm as f64 * (1.0 - std::f64::consts::FRAC_PI_4);
+            let shrink_mm = if apply_precise_outer_wall {
+                rounded_rectangle_bump
+            } else {
+                rounded_rectangle_bump / 2.0
+            };
+            let shrunk_storage: Vec<ExPolygon>;
+            let wall_outline: &[ExPolygon] = if shrink_mm > 0.0 {
+                // `offset_with_miter_limit` (not the bare `offset`) because
+                // canonical's `offset_ex(surface.expolygon, -d)` runs with
+                // OrcaSlicer's `DefaultMiterLimit = 3.` (`ClipperUtils.hpp`),
+                // while PnP's plain `offset` keeps Clipper2's 2.0. The two
+                // agree on convex corners and differ on the sharp concave
+                // notches in the benchy's engraved stern text.
+                shrunk_storage = offset_with_miter_limit(
+                    polygons,
+                    -shrink_mm as f32,
+                    OffsetJoinType::Miter,
+                    ORCA_DEFAULT_MITER_LIMIT as f32,
+                    0.0,
+                );
+                if shrunk_storage.is_empty() {
+                    continue;
+                }
+                &shrunk_storage
+            } else {
+                polygons
+            };
             let z = region.z();
+            let spatial_context = PerimeterSpatialContext::new(
+                region.prev_layer_boundary(),
+                region.overhang_quartile_polygons(),
+                region.bridge_areas(),
+            );
 
             // G3 part 2: non-topmost region with a top sub-area. When
             // `only_one_wall_top` is enabled, the region is NOT the exposed top
@@ -684,6 +745,13 @@ impl LayerModule for ArachnePerimeters {
             if only_one_wall_top && !is_topmost_layer && !exposed_top.is_empty() {
                 self.emit_only_one_wall_top_second_pass(
                     region,
+                    // Canonical threads the SHRUNK outline (`last` / `last_p`)
+                    // into every `WallToolPaths` construction, including both
+                    // passes of the one-wall-top path — the shrink is a
+                    // property of the outline, not of one pass.
+                    wall_outline,
+                    // Paint reprojection keeps the region's identity outline,
+                    // exactly as the single-pass path below does.
                     polygons,
                     &exposed_top,
                     z,
@@ -696,13 +764,14 @@ impl LayerModule for ArachnePerimeters {
                     nozzle_diameter_mm,
                     bridge_flow_ratio,
                     thick_bridges,
+                    &spatial_context,
                     output,
                 )?;
                 continue;
             }
 
             let (lines, inner_contour) =
-                match slicer_sdk::host::generate_arachne_walls(polygons, &params) {
+                match slicer_sdk::host::generate_arachne_walls(wall_outline, &params) {
                     Ok(result) => result,
                     Err(e) => {
                         // A single region's geometry failing the pipeline (e.g.
@@ -721,8 +790,10 @@ impl LayerModule for ArachnePerimeters {
                 };
 
             // Walls are built from the Arachne `ExtrusionLine`s via `build_walls`
-            // (the same path the G3 part-2 second pass uses); `bridge_areas` /
-            // `overhang_bands` are recomputed inside `build_walls` per call.
+            // (the same path the G3 part-2 second pass uses). The immutable
+            // spatial context above is shared by this pass and any second pass;
+            // the region slices retained in `build_walls` only preserve the
+            // existing empty-data gates.
             let mut walls = self.build_walls(
                 &lines,
                 region,
@@ -735,6 +806,7 @@ impl LayerModule for ArachnePerimeters {
                 nozzle_diameter_mm,
                 bridge_flow_ratio,
                 thick_bridges,
+                &spatial_context,
             )?;
             commit_wall_sequence(&mut walls, sequence);
             for wall in walls {
@@ -750,9 +822,8 @@ impl LayerModule for ArachnePerimeters {
             // corners must contribute candidates, not just the first
             // island's. Holes are not iterated — contours only, same as
             // classic.
-            let seam_candidate_angle_threshold_deg = config
-                .get_float("seam_candidate_angle_threshold_deg")
-                .unwrap_or(30.0) as f32;
+            let seam_candidate_angle_threshold_deg =
+                config.require_float("seam_candidate_angle_threshold_deg")? as f32;
             for (poly_idx, polygon) in polygons.iter().enumerate() {
                 let mut candidates = generate_sharp_corner_seam_candidates(
                     &polygon.contour,
@@ -777,41 +848,62 @@ impl LayerModule for ArachnePerimeters {
                 }
             }
 
-            // Convert inner-contour marker lines to infill area polygons.
-            // Matches canonical WallToolPaths::separateOutInnerContour
-            // (line 905): skip odd lines (centerline single beads), convert
-            // closed even lines to polygons, then union to normalize winding.
-            let infill_candidates: Vec<ExPolygon> = inner_contour
-                .iter()
-                .filter(|line| !line.is_odd && line.is_closed)
-                .map(|line| ExPolygon {
-                    contour: Polygon {
-                        points: line
-                            .junctions
-                            .iter()
-                            .map(|j| Point2 {
-                                x: mm_to_units(j.p.x),
-                                y: mm_to_units(j.p.y),
-                            })
-                            .collect(),
-                    },
-                    holes: Vec::new(),
-                })
-                .collect();
-            if !infill_candidates.is_empty() {
-                let infill_areas = slicer_sdk::host::clip_polygons(
-                    &infill_candidates,
-                    &[],
-                    slicer_sdk::host::ClipOperation::Union,
-                );
-                if !infill_areas.is_empty() {
-                    output.set_infill_areas(infill_areas)?;
-                }
-            }
+            publish_infill_areas(&inner_contour, &[], output)?;
         }
 
         Ok(())
     }
+}
+
+/// Converts inner-contour marker lines to the region's infill area and
+/// publishes it. Matches canonical `WallToolPaths::separateOutInnerContour`:
+/// skip odd lines (centerline single beads), convert closed even lines to
+/// polygons, then union to normalize winding. An empty result publishes
+/// nothing.
+///
+/// `extra_areas` are unioned into the result before publishing. Canonical
+/// `process_arachne`'s one-wall-top branch sets
+/// `infill_contour = union_ex(top_expolygons, inner_wall_tool_paths.getInnerContour())`
+/// — the top sub-area contributes its FULL polygon set, not the single-wall
+/// pass's inner contour (which is that same area shrunk by the wall's width).
+fn publish_infill_areas(
+    inner_contour: &[ExtrusionLine],
+    extra_areas: &[ExPolygon],
+    output: &mut PerimeterOutputBuilder,
+) -> Result<(), ModuleError> {
+    let mut infill_candidates: Vec<ExPolygon> = inner_contour
+        .iter()
+        .filter(|line| !line.is_odd && line.is_closed)
+        .map(|line| ExPolygon {
+            contour: Polygon {
+                points: line
+                    .junctions
+                    .iter()
+                    .map(|j| Point2 {
+                        x: mm_to_units(j.p.x),
+                        y: mm_to_units(j.p.y),
+                    })
+                    .collect(),
+            },
+            holes: Vec::new(),
+        })
+        .collect();
+    // Canonical `union_ex(top_expolygons, inner.getInnerContour())`: the extra
+    // areas join the candidate set BEFORE the winding-normalizing union, so
+    // the single union produces the correct hole structure across both
+    // sources. `extra_areas` are mm-space ExPolygons already in units.
+    infill_candidates.extend_from_slice(extra_areas);
+    if !infill_candidates.is_empty() {
+        let infill_areas = slicer_sdk::host::clip_polygons(
+            &infill_candidates,
+            &[],
+            slicer_sdk::host::ClipOperation::Union,
+        );
+        if !infill_areas.is_empty() {
+            output.set_infill_areas(infill_areas)?;
+        }
+    }
+    Ok(())
 }
 
 impl ArachnePerimeters {
@@ -831,6 +923,7 @@ impl ArachnePerimeters {
         nozzle_diameter_mm: f32,
         bridge_flow_ratio: f32,
         thick_bridges: bool,
+        context: &PerimeterSpatialContext,
     ) -> Result<Vec<WallLoop>, ModuleError> {
         let bridge_areas = region.bridge_areas();
         let overhang_bands = region.overhang_quartile_polygons();
@@ -911,7 +1004,7 @@ impl ArachnePerimeters {
             if !bridge_areas.is_empty() && matches!(loop_type, LoopType::Outer | LoopType::Inner) {
                 for i in 0..path.points.len() {
                     let units_pt = ring_pts_units[i];
-                    if point_in_any_polygon(&units_pt, bridge_areas) {
+                    if context.is_bridge(&units_pt) {
                         feature_flags[i].is_bridge = true;
                         // D4/packet 150 step 5: bridge vertices get the
                         // bridging flow factor, whose round-cross-section
@@ -940,13 +1033,7 @@ impl ArachnePerimeters {
                 pt.overhang_distance_mm = if prev_layer_boundary.is_empty() {
                     None
                 } else {
-                    Some(
-                        slicer_core::perimeter_utils::signed_distance_to_boundary(
-                            pt.x,
-                            pt.y,
-                            prev_layer_boundary,
-                        ) + 0.5 * pt.width,
-                    )
+                    Some(context.signed_distance_to_boundary(pt.x, pt.y) + 0.5 * pt.width)
                 };
             }
 
@@ -955,15 +1042,7 @@ impl ArachnePerimeters {
             // inside a `overhang_quartile_polygons` band's polygon(s).
             if !overhang_bands.is_empty() {
                 for pt in &mut path.points {
-                    pt.overhang_quartile = overhang_bands
-                        .iter()
-                        .filter(|band| {
-                            band.polygons.iter().any(|poly| {
-                                point_in_polygon_winding(poly, pt.x as f64, pt.y as f64, 0.0)
-                            })
-                        })
-                        .map(|band| band.quartile)
-                        .max();
+                    pt.overhang_quartile = context.overhang_quartile(pt.x, pt.y);
                 }
             }
 
@@ -1018,7 +1097,8 @@ impl ArachnePerimeters {
     fn emit_only_one_wall_top_second_pass(
         &self,
         region: &SliceRegionView,
-        polygons: &[ExPolygon],
+        wall_outline: &[ExPolygon],
+        paint_outline: &[ExPolygon],
         exposed_top: &[ExPolygon],
         z: f32,
         params: &ArachneParams,
@@ -1030,6 +1110,7 @@ impl ArachnePerimeters {
         nozzle_diameter_mm: f32,
         bridge_flow_ratio: f32,
         thick_bridges: bool,
+        context: &PerimeterSpatialContext,
         output: &mut PerimeterOutputBuilder,
     ) -> Result<(), ModuleError> {
         let sequence =
@@ -1044,12 +1125,13 @@ impl ArachnePerimeters {
         // `diff_ex(infill_contour, upper_slices_clipped)`.
         let mut top_area: Vec<ExPolygon> = exposed_top.to_vec();
 
-        // Step 3: `min_width_top_surface` filter via `get_abs_value` (packet
-        // 150 resolution mechanism). Absolute value, NOT raw float.
+        // Step 3: `min_width_top_surface` filter via `require_abs_value`
+        // (packet 06: `float_or_percent`-typed, resolved against the
+        // perimeter width; the previous `.unwrap_or(0.0)` fallback becomes a
+        // hard requirement on the resolved view's key).
         let perimeter_width_mm = params.preferred_bead_width_outer;
-        let min_width_top = config
-            .get_abs_value("min_width_top_surface", perimeter_width_mm)
-            .unwrap_or(0.0);
+        let min_width_top =
+            config.require_abs_value("min_width_top_surface", perimeter_width_mm)?;
         if min_width_top > 0.0 {
             top_area.retain(|ep| (ex_polygon_min_width_mm(ep) as f64) >= min_width_top);
         }
@@ -1077,7 +1159,7 @@ impl ArachnePerimeters {
         // First contribution: the top sub-area's single wall (inset_idx == 0).
         let mut top_params = *params;
         top_params.max_bead_count = 2;
-        let (top_lines, _) =
+        let (top_lines, top_inner) =
             match slicer_sdk::host::generate_arachne_walls(&top_expolygons, &top_params) {
                 Ok(r) => r,
                 Err(e) => {
@@ -1102,33 +1184,40 @@ impl ArachnePerimeters {
             nozzle_diameter_mm,
             bridge_flow_ratio,
             thick_bridges,
+            context,
         )?;
 
-        // Not-top remainder.
-        let not_top = difference_ex(polygons, &top_expolygons);
+        // Not-top remainder. Generation comes from the SHRUNK outline, because
+        // canonical derives this pass's region from the first pass's
+        // `infill_contour` (`offset_ex(diff(infill_contour, top_expolygons),
+        // wall_0_inset)`), and that contour belongs to the `last_p` family; the
+        // unshrunk region polygon would re-introduce the bump. Paint
+        // reprojection keeps the region's identity outline, exactly as the
+        // single-pass path does.
+        let not_top = difference_ex(wall_outline, &top_expolygons);
         if not_top.is_empty() {
             // Step 8: empty-top fallback — rerun over the full region with
             // `inner_loop_number + 2` walls.
             let mut fb_params = *params;
             fb_params.max_bead_count = base_max_bead_count + 2;
-            let (fb_lines, _) = match slicer_sdk::host::generate_arachne_walls(polygons, &fb_params)
-            {
-                Ok(r) => r,
-                Err(e) => {
-                    slicer_sdk::host::log_warn(&format!(
-                        "arachne-perimeters: G3p2 fallback generation failed for region \
+            let (fb_lines, fb_inner) =
+                match slicer_sdk::host::generate_arachne_walls(wall_outline, &fb_params) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        slicer_sdk::host::log_warn(&format!(
+                            "arachne-perimeters: G3p2 fallback generation failed for region \
                              object_id={} region_id={}: {e}",
-                        region.object_id(),
-                        region.region_id()
-                    ));
-                    return Ok(());
-                }
-            };
+                            region.object_id(),
+                            region.region_id()
+                        ));
+                        return Ok(());
+                    }
+                };
             let mut fb_walls = self.build_walls(
                 &fb_lines,
                 region,
                 z,
-                polygons,
+                paint_outline,
                 params,
                 contour_should_be_ccw,
                 g7_reverse,
@@ -1136,22 +1225,26 @@ impl ArachnePerimeters {
                 nozzle_diameter_mm,
                 bridge_flow_ratio,
                 thick_bridges,
+                context,
             )?;
             commit_wall_sequence(&mut fb_walls, sequence);
             for w in fb_walls {
                 output.push_wall_loop(w)?;
             }
+            // Canonical: the fallback pass's inner contour is the infill contour.
+            publish_infill_areas(&fb_inner, &[], output)?;
             return Ok(());
         }
 
         // Step 5: second pass over the non-top remainder with
         // `inner_loop_number + 1` walls (here, the region's base bead count),
         // inset 0.
+        let paint_not_top = difference_ex(paint_outline, &top_expolygons);
         let mut second_params = *params;
         second_params.max_bead_count = base_max_bead_count;
-        let mut second_lines =
+        let (mut second_lines, second_inner) =
             match slicer_sdk::host::generate_arachne_walls(&not_top, &second_params) {
-                Ok((lines, _)) => lines,
+                Ok(result) => result,
                 Err(e) => {
                     slicer_sdk::host::log_warn(&format!(
                         "arachne-perimeters: G3p2 second-pass generation failed for region \
@@ -1166,6 +1259,7 @@ impl ArachnePerimeters {
                     for w in top_walls {
                         output.push_wall_loop(w)?;
                     }
+                    publish_infill_areas(&top_inner, &top_expolygons, output)?;
                     return Ok(());
                 }
             };
@@ -1185,7 +1279,7 @@ impl ArachnePerimeters {
             &second_lines,
             region,
             z,
-            &not_top,
+            &paint_not_top,
             params,
             contour_should_be_ccw,
             g7_reverse,
@@ -1193,6 +1287,7 @@ impl ArachnePerimeters {
             nozzle_diameter_mm,
             bridge_flow_ratio,
             thick_bridges,
+            context,
         )?;
 
         // Step 7: merge — top single wall + renumbered second-pass inner walls.
@@ -1203,6 +1298,14 @@ impl ArachnePerimeters {
         for w in second_walls {
             output.push_wall_loop(w)?;
         }
+        // Canonical `process_arachne`:
+        // `infill_contour = union_ex(top_expolygons, inner_wall_tool_paths.getInnerContour())`.
+        // The top sub-area contributes its FULL `top_expolygons` set (the
+        // second pass's `infill_contour` operand), not the single-wall pass's
+        // inner contour — that contour is the same area shrunk by the wall's
+        // own width, so unioning it would leave a ring of the top surface
+        // unfilled.
+        publish_infill_areas(&second_inner, &top_expolygons, output)?;
         Ok(())
     }
 }
@@ -1236,6 +1339,16 @@ mod tests {
     /// must equal `wall_maximum_resolution²` (mm²) and `allowed_error_distance_squared`
     /// must equal `wall_maximum_deviation²` (mm²) — NOT the `meshfix_*`-sourced defaults.
     /// Values are plain mm and squared directly (no coordinate ÷100).
+    ///
+    /// Item-11 migration (packet 06): the classified reads in
+    /// `arachne_params_from_config` are now `require_*`, so this view holds
+    /// every key that path reads. The two G9 keys keep this test's authored
+    /// overrides (0.5 / 0.025) so the wiring assertions stay discriminating;
+    /// every other held key sits at its manifest default. `line_width` holds
+    /// its post-expansion default — the raw manifest default 0 is the auto
+    /// sentinel the host expands to `1.125 * nozzle_diameter` at Phase B
+    /// (slicer-config `expand_automatic_values`), and a raw 0 cannot survive
+    /// the D-162 negative-spacing gate.
     #[test]
     fn wall_maximum_resolution_wired() {
         let mut fields: HashMap<ConfigKey, ConfigValue> = HashMap::new();
@@ -1246,6 +1359,23 @@ mod tests {
         fields.insert(
             "wall_maximum_deviation".to_string(),
             ConfigValue::Float(0.025),
+        );
+        fields.insert("layer_height".to_string(), ConfigValue::Float(0.2));
+        fields.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.4));
+        fields.insert("line_width".to_string(), ConfigValue::Float(0.45));
+        fields.insert("bridge_line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert(
+            "initial_layer_line_width".to_string(),
+            ConfigValue::Float(0.0),
+        );
+        fields.insert("outer_wall_line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert("inner_wall_line_width".to_string(), ConfigValue::Float(0.0));
+        fields.insert("wall_loops".to_string(), ConfigValue::Int(3));
+        fields.insert("extra_perimeters".to_string(), ConfigValue::Int(0));
+        fields.insert("precise_outer_wall".to_string(), ConfigValue::Bool(false));
+        fields.insert(
+            "wall_sequence".to_string(),
+            ConfigValue::String("InnerOuter".to_string()),
         );
         let config = ConfigView::from_map(fields);
         let params = arachne_params_from_config(&config, false).expect("valid config");

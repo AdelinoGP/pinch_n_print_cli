@@ -1,0 +1,24 @@
+# The toolchain this repository builds, tests, and measures with.
+#
+# Pinned deliberately, not floating:
+#
+# * CI (`dtolnay/rust-toolchain@stable`) reads this file, so "stable" means
+#   exactly this release for every job. A newer stable no longer reddens the
+#   Format or Clippy job by surprise.
+# * `docs/23_controlled_perimeter_builds.md` fixes the controlled-perimeter
+#   policy to one exact compiler identity (`xtask/src/rustc_driver.rs`'s
+#   `ALLOWED_RELEASE` / `ALLOWED_COMMIT_HASH` / `ALLOWED_HOST` /
+#   `ALLOWED_LLVM_VERSION`), and that allowlist fails closed on any other
+#   toolchain. A floating stable would make every `--accelerated` invocation
+#   fail the moment rustup updates.
+#
+# Adopting a new compiler is a deliberate, four-step change: record the new
+# `rustc -vV` identity, update the four `ALLOWED_*` constants in
+# `xtask/src/rustc_driver.rs` and the policy grammar block in docs/23, re-run
+# packet 254's verification set, and update the `channel` below. Never widen
+# the allowlist to a range.
+[toolchain]
+channel = "1.96.0"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]
+profile = "minimal"

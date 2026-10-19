@@ -89,6 +89,9 @@ fn integrated_parity_wipe_tower() {
             ("prime_tower_width".into(), ConfigValue::Float(60.0)),
             ("prime_volume".into(), ConfigValue::Float(10.0)),
             ("line_width".into(), ConfigValue::Float(0.4)),
+            // Declared required read since the guest's config-literal
+            // fallback migrated to `require_float` (wipe-tower.toml default).
+            ("retract_length".into(), ConfigValue::Float(2.0)),
             (
                 "printable_area".into(),
                 ConfigValue::List(vec![

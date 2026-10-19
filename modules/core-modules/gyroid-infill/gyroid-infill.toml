@@ -14,7 +14,7 @@ reads  = ["SliceIR"]
 writes = ["InfillIR"]
 
 [claims]
-# Retired the legacy `infill-generator` blanket claim 2026-06-09 (see DEV-065)
+# Retired the legacy `infill-generator` blanket claim 2026-06-09
 # so gyroid can coexist with rectilinear/lightning. Per-region resolution
 # via `ResolvedConfig.sparse_fill_holder` picks the active sparse-fill module.
 holds    = ["claim:sparse-fill", "claim:top-fill", "claim:bottom-fill", "claim:bridge-fill"]
@@ -60,7 +60,8 @@ display = "Line Width"
 group   = "Infill"
 
 [config.schema.initial_layer_line_width]
-type    = "float"
+type    = "float_or_percent"
+base_key = "nozzle_diameter"
 default = 0.0
 min     = 0.0
 max     = 2.0
@@ -68,7 +69,8 @@ display = "Initial Layer Line Width"
 group   = "Infill"
 
 [config.schema.bridge_line_width]
-type    = "float"
+type    = "float_or_percent"
+base_key = "nozzle_diameter"
 default = 0.0
 min     = 0.0
 max     = 2.0
@@ -76,7 +78,8 @@ display = "Bridge Line Width"
 group   = "Infill"
 
 [config.schema.sparse_infill_line_width]
-type    = "float"
+type    = "float_or_percent"
+base_key = "nozzle_diameter"
 default = 0.0
 min     = 0.0
 max     = 2.0
@@ -84,7 +87,8 @@ display = "Sparse Infill Line Width"
 group   = "Infill"
 
 [config.schema.internal_solid_infill_line_width]
-type    = "float"
+type    = "float_or_percent"
+base_key = "nozzle_diameter"
 default = 0.0
 min     = 0.0
 max     = 2.0
@@ -92,18 +96,13 @@ display = "Internal Solid Infill Line Width"
 group   = "Infill"
 
 [config.schema.top_surface_line_width]
-type    = "float"
+type    = "float_or_percent"
+base_key = "nozzle_diameter"
 default = 0.0
 min     = 0.0
 max     = 2.0
 display = "Top Surface Line Width"
 group   = "Infill"
-
-[config.overridable-per-region]
-keys = []
-
-[config.overridable-per-layer]
-keys = []
 
 [hints]
 estimated-ms-per-layer = 10

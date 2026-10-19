@@ -69,7 +69,7 @@
 //! `tests/executor/` for the regression.
 
 use slicer_core::polygon_ops::{difference, intersection, union};
-use slicer_ir::{ConfigValue, LayerStageError, MeshIR, StageId};
+use slicer_ir::{LayerStageError, MeshIR, StageId};
 
 use crate::LayerArena;
 
@@ -174,7 +174,36 @@ fn split_regions_by_modifier_footprints(
             split_field!(top_solid_fill);
             split_field!(sparse_infill_area);
             split_field!(internal_solid_fill);
-            split_field!(internal_bridge_areas);
+            // Internal-bridge polygons are split one at a time so each piece
+            // keeps its parent polygon's bridge angle on both sides of the
+            // footprint (the carriers are index-aligned).
+            {
+                let base = &working.regions[base_index];
+                let keep_angles = !base.internal_bridge_angles_deg.is_empty();
+                let (mut sub_areas, mut sub_angles) = (Vec::new(), Vec::new());
+                let (mut base_areas, mut base_angles) = (Vec::new(), Vec::new());
+                for (index, polygon) in base.internal_bridge_areas.iter().enumerate() {
+                    let angle = base.internal_bridge_angle_deg(index);
+                    let polygon = std::slice::from_ref(polygon);
+                    for piece in intersection(polygon, &footprint) {
+                        sub_areas.push(piece);
+                        sub_angles.push(angle);
+                    }
+                    for piece in difference(polygon, &footprint) {
+                        base_areas.push(piece);
+                        base_angles.push(angle);
+                    }
+                }
+                if !keep_angles {
+                    sub_angles.clear();
+                    base_angles.clear();
+                }
+                sub.internal_bridge_areas = sub_areas;
+                sub.internal_bridge_angles_deg = sub_angles;
+                let base = &mut working.regions[base_index];
+                base.internal_bridge_areas = base_areas;
+                base.internal_bridge_angles_deg = base_angles;
+            }
             split_field!(raft_fill);
             working.regions[base_index].polygons =
                 difference(&working.regions[base_index].polygons, &footprint);
@@ -226,11 +255,14 @@ pub fn split_modifier_sub_regions_for_prepass(
         });
         for modifier_index in modifier_indices {
             let modifier = &object.modifier_volumes[modifier_index];
-            if matches!(
-                modifier.config_delta.fields.get("subtype"),
-                Some(ConfigValue::String(subtype))
-                    if subtype == "support_enforcer" || subtype == "support_blocker"
-            ) || modifier.mesh.vertices.is_empty()
+            let is_support_modifier = match modifier.kind() {
+                slicer_ir::ModifierKind::ParameterModifier => false,
+                slicer_ir::ModifierKind::NegativePart => false,
+                slicer_ir::ModifierKind::SupportEnforcer => true,
+                slicer_ir::ModifierKind::SupportBlocker => true,
+            };
+            if is_support_modifier
+                || modifier.mesh.vertices.is_empty()
                 || modifier.mesh.indices.is_empty()
             {
                 continue;
@@ -415,7 +447,17 @@ pub fn sync_perimeter_infill_areas_into_slice(
         // (commit 83180d9e) went too far: with a non-empty `wall_inset` the
         // unclipped bridge claim extended past the outer-wall centerline and
         // bridge extrusion ran over every wall bead.
-        let bridge = if wall_inset.is_empty() {
+        //
+        // The escape applies only to a region with NO walls. When walls exist
+        // but consumed the whole cross-section (thin wheel, window tops,
+        // roof ceilings), canonical `LayerRegion.cpp`
+        // `slices_to_fill_surfaces_clipped` builds every fill surface as
+        // typed slice ∩ the perimeters' fill area, so an empty fill area
+        // yields no bridge and no top surface: only walls are printed there.
+        let walls_consumed_region = wall_inset.is_empty() && !perim.walls.is_empty();
+        let bridge = if walls_consumed_region {
+            Vec::new()
+        } else if wall_inset.is_empty() {
             slice_region.bridge_areas.clone()
         } else if is_modifier_region
             && difference(&slice_region.bridge_areas, &wall_inset).is_empty()
@@ -436,7 +478,9 @@ pub fn sync_perimeter_infill_areas_into_slice(
             )
         };
         let bridge_or_bottom = union(&bridge, &bottom);
-        let top = if wall_inset.is_empty() {
+        let top = if walls_consumed_region {
+            Vec::new()
+        } else if wall_inset.is_empty() {
             difference(&slice_region.top_solid_fill, &bridge_or_bottom)
         } else {
             difference(

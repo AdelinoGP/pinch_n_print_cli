@@ -14,6 +14,7 @@ mod anchored_event_ordering;
 mod anchored_parallel_determinism;
 mod anchored_z_span_validation;
 mod anchored_z_validation;
+mod automatic_value_expansion_tdd;
 mod sidecar_integer_config_spelling_tdd;
 mod structured_support_identity;
 mod support_disabled_no_output;
@@ -125,6 +126,7 @@ mod host_bridge_roundtrip_tdd;
 mod hybrid_pilot_external_override_tdd;
 mod infill_partition_e2e_tdd;
 mod infill_partitioned_input_tdd;
+mod layer_range_scope_tdd;
 mod live_module_loading_tdd;
 mod machine_start_end_gcode_emission_tdd;
 mod manifest_default_reconcile_tdd;
@@ -140,9 +142,11 @@ mod overhang_classifier_refactor_regression_tdd;
 mod overhang_pipeline_e2e_tdd;
 mod painted_seam_enforcer_blocker_tdd;
 mod per_object_config_override_tdd;
+mod perimeter_acceptance;
 mod perimeter_edge_cases;
 mod perimeter_parity;
 mod perimeter_postprocess_preserve_tdd;
+mod perimeter_spatial_capture;
 mod pipeline_tdd;
 mod pnp_cli_freshness_tdd;
 mod precise_outer_wall_tdd;
@@ -157,6 +161,7 @@ mod region_partition_tdd;
 mod region_split_dispatch_filter;
 mod run_pipeline_with_instrumentation_tdd;
 mod runtime_wiring_tdd;
+mod scope_resolution_module_tdd;
 mod support_agg_rasterizer_tdd;
 mod support_geometry_config_normalization_tdd;
 mod support_invariants_wedge_tdd;
@@ -213,4 +218,9 @@ fn interface_is_topmost_and_carved_out() {
 #[test]
 fn no_overhang_mesh_produces_zero_support() {
     support_family_closure::no_overhang_mesh_produces_zero_support().unwrap();
+}
+
+#[test]
+fn overlap_is_inconclusive_and_never_keep() {
+    perimeter_acceptance::overlap_is_inconclusive_and_never_keep();
 }

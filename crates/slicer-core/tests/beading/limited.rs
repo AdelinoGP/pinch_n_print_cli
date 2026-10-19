@@ -100,6 +100,38 @@ fn build_strategy(fixture: &Fixture) -> LimitedBeadingStrategy {
     LimitedBeadingStrategy::new(Box::new(parent), fixture.max_bead_count)
 }
 
+/// AC-6: the even at-cap branch inserts one centre sentinel, unlike the
+/// sibling over-cap branch which inserts two sentinel blocks. This mirrors
+/// `LimitedBeadingStrategy.cpp` :: `compute`.
+#[test]
+fn limited_inserts_single_centre_sentinel_at_cap_boundary() {
+    let fixture = load_fixture();
+    let strategy = build_strategy(&fixture);
+
+    let beading = strategy.compute(24000.0, 6);
+    assert_eq!(
+        beading.bead_widths,
+        vec![4000.0, 4000.0, 4000.0, 0.0, 4000.0, 4000.0, 4000.0]
+    );
+    assert_eq!(
+        beading.toolpath_locations,
+        vec![2000.0, 6000.0, 10000.0, 12000.0, 14000.0, 18000.0, 22000.0]
+    );
+    assert_eq!(beading.bead_widths.len(), 7);
+    assert_eq!(beading.total_thickness, 24000.0);
+    assert_eq!(beading.left_over, 0.0);
+
+    let stripped = strategy.compute_and_strip(24000.0, 6);
+    assert_eq!(
+        stripped.bead_widths,
+        vec![4000.0, 4000.0, 4000.0, 4000.0, 4000.0, 4000.0]
+    );
+    assert_eq!(
+        stripped.toolpath_locations,
+        vec![2000.0, 6000.0, 10000.0, 14000.0, 18000.0, 22000.0]
+    );
+}
+
 /// AC-6: over-cap `compute` inserts `2 * sentinel_count` zero-width sentinels
 /// at the cap boundary, `bead_widths.len() == max_bead_count + 2 *
 /// sentinel_count`, and `optimal_bead_count` is capped end-to-end.

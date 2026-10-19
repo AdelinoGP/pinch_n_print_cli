@@ -238,6 +238,8 @@ fn factory_matches_orca_reference() {
 /// `optimal_width = 4000`, `preferred_bead_width_outer = 4000`), both clamp
 /// formulas evaluate to `1.0` and saturate at `0.99` — but this test pins the
 /// *seeded* `Default` value, independent of `create_stack`'s recomputation.
+/// KEEP rationale: this public-`Default` seed contract is distinct from the
+/// `create_stack` recomputation and the full-stack propagation contract below.
 #[test]
 fn beading_factory_passes_split_middle_thresholds() {
     let params = BeadingFactoryParams::default();
@@ -259,6 +261,17 @@ fn beading_factory_passes_split_middle_thresholds() {
 /// computed by `create_stack` must forward unchanged through the full
 /// `Limited` top of the stack (`Limited → OuterWallInset → Widening →
 /// Redistribute → Distributed`).
+///
+/// Canonical `WallToolPaths::generate` divides by the extrusion WIDTHS
+/// derived from the bead spacings:
+/// `width = spacing + layer_height * (1 - PI/4)`. With the factory defaults
+/// (`min_output_width = 4000`, `optimal_width = 4000`,
+/// `preferred_bead_width_outer = 4000`, `layer_height = 2000` units):
+/// bump = 2000 * (1 - PI/4) = 429.20367..., so split
+/// = 2*4000/(4000+bump) - 1 = 0.80619... and add = 4000/(4000+bump)
+/// = 0.90309...
+/// KEEP rationale: this forwarding contract is distinct from public-`Default`
+/// seeding and covers every decorator in the full stack.
 #[test]
 fn beading_factory_threshold_propagates_through_full_stack() {
     let params = BeadingFactoryParams {
@@ -269,22 +282,48 @@ fn beading_factory_threshold_propagates_through_full_stack() {
     let stack = BeadingStrategyFactory::create_stack(&params);
 
     assert!(
-        (stack.get_split_middle_threshold() - 0.99).abs() < TOLERANCE,
-        "split threshold must forward through the full stack as 0.99; actual={}",
+        (stack.get_split_middle_threshold() - 0.8061937518016555).abs() < TOLERANCE,
+        "split threshold must forward through the full stack as 0.80619375...; actual={}",
         stack.get_split_middle_threshold()
     );
     assert!(
-        (stack.get_add_middle_threshold() - 0.99).abs() < TOLERANCE,
-        "add threshold must forward through the full stack as 0.99; actual={}",
+        (stack.get_add_middle_threshold() - 0.9030968759008278).abs() < TOLERANCE,
+        "add threshold must forward through the full stack as 0.90309687...; actual={}",
         stack.get_add_middle_threshold()
+    );
+
+    let contrasting_params = BeadingFactoryParams {
+        min_output_width: 3000.0,
+        preferred_bead_width_outer: 5000.0,
+        optimal_width: 4000.0,
+        outer_wall_offset: 300.0,
+        print_thin_walls: true,
+        ..Default::default()
+    };
+    let contrasting_stack = BeadingStrategyFactory::create_stack(&contrasting_params);
+
+    assert!(
+        (contrasting_stack.get_split_middle_threshold() - 0.10513444717720999).abs() < TOLERANCE,
+        "contrasting split threshold must forward as 0.10513444...; actual={}",
+        contrasting_stack.get_split_middle_threshold()
+    );
+    assert!(
+        (contrasting_stack.get_add_middle_threshold() - 0.6773226569256208).abs() < TOLERANCE,
+        "contrasting add threshold must forward as 0.67732265...; actual={}",
+        contrasting_stack.get_add_middle_threshold()
     );
 }
 
 /// AC-N1: the canonical `[0.01, 0.99]` clamp bounds must hold exactly. With
-/// `min_output_width = 100.0`, the split formula `2*100/4000 - 1 = -0.95`
-/// clamps to the LOWER bound `0.01`, and the add formula `100/4000 = 0.025`
-/// stays unclamped inside the band. With `min_output_width = 100_000.0`, the
-/// split formula `2*100000/4000 - 1 = 49.0` clamps to the UPPER bound `0.99`.
+/// `min_output_width = 100.0`, the split formula
+/// `2*100/(4000+bump) - 1 = -0.9548...` clamps to the LOWER bound `0.01`, and
+/// the add formula `100/(4000+bump) = 0.022577...` stays unclamped inside the
+/// band (`bump = 2000*(1-PI/4) = 429.20367...`, canonical
+/// `WallToolPaths::generate` width conversion). With
+/// `min_output_width = 100_000.0`, the split formula clamps to the UPPER bound
+/// `0.99`.
+/// KEEP rationale: this is a separate lower/interior/upper boundary matrix,
+/// not another default-seed or full-stack-forwarding witness.
 #[test]
 fn beading_factory_threshold_clamp_bounds_are_canonical() {
     let params_lo = BeadingFactoryParams {
@@ -298,8 +337,8 @@ fn beading_factory_threshold_clamp_bounds_are_canonical() {
         stack_lo.get_split_middle_threshold()
     );
     assert!(
-        (stack_lo.get_add_middle_threshold() - 0.025).abs() < TOLERANCE,
-        "add threshold unclamped inside band = 0.025 for min_output_width=100; actual={}",
+        (stack_lo.get_add_middle_threshold() - 0.022577421897520693).abs() < TOLERANCE,
+        "add threshold unclamped inside band = 0.022577... for min_output_width=100; actual={}",
         stack_lo.get_add_middle_threshold()
     );
 
@@ -312,5 +351,69 @@ fn beading_factory_threshold_clamp_bounds_are_canonical() {
         (stack_hi.get_split_middle_threshold() - 0.99).abs() < TOLERANCE,
         "split threshold clamps to UPPER bound 0.99 for min_output_width=100000; actual={}",
         stack_hi.get_split_middle_threshold()
+    );
+}
+
+/// The middle-threshold denominators are extrusion WIDTHS derived from the
+/// bead spacings against the layer height, exactly as canonical
+/// `WallToolPaths::generate` does:
+///
+/// ```text
+/// bump        = layer_height * (1 - PI/4)
+/// split = clamp(2 * min_bead_width / (preferred_bead_width_outer + bump) - 1)
+/// add   = clamp(min_bead_width / (optimal_width + bump))
+/// ```
+///
+/// Two falsifying properties, both invisible to a spacing-denominator
+/// implementation:
+///
+/// 1. At a fixed layer height with spacing denominators the split threshold
+///    would be `2*3400/4000 - 1 = 0.70`; the canonical width form gives
+///    `2*3400/(4000+429.20367) - 1 = 0.535264...`. (In units: the factory's
+///    `min_output_width = 3400` is this crate's 0.34 mm min_bead_width.)
+/// 2. Halving the layer height to 0.1 mm shrinks the bump to
+///    `1000*(1-PI/4)`, so both thresholds must MOVE — a denominator that
+///    ignores `layer_height` cannot reproduce this.
+#[test]
+fn beading_factory_divides_by_extrusion_widths_not_spacings() {
+    let units_per_mm = 10_000.0;
+    let params = BeadingFactoryParams {
+        // 0.34 mm minimum bead width, the canonical 85% of a 0.4 mm nozzle.
+        min_output_width: 0.34 * units_per_mm,
+        ..Default::default()
+    };
+
+    let stack = BeadingStrategyFactory::create_stack(&params);
+    let bump = 0.2 * units_per_mm * (1.0 - std::f64::consts::FRAC_PI_4);
+    let expected_split = 2.0 * params.min_output_width / (4000.0 + bump) - 1.0;
+    let expected_add = params.min_output_width / (4000.0 + bump);
+    assert!(
+        (stack.get_split_middle_threshold() - expected_split).abs() < TOLERANCE,
+        "split threshold must use the width denominator ({expected_split}); \
+         actual={} (spacing denominator would give {})",
+        stack.get_split_middle_threshold(),
+        2.0 * params.min_output_width / 4000.0 - 1.0
+    );
+    assert!(
+        (stack.get_add_middle_threshold() - expected_add).abs() < TOLERANCE,
+        "add threshold must use the width denominator ({expected_add}); actual={}",
+        stack.get_add_middle_threshold()
+    );
+
+    // Half the layer height must move both thresholds: the bump shrinks.
+    let thin_params = BeadingFactoryParams {
+        layer_height: 0.1 * units_per_mm,
+        ..params.clone()
+    };
+    let thin_stack = BeadingStrategyFactory::create_stack(&thin_params);
+    assert!(
+        (thin_stack.get_split_middle_threshold() - stack.get_split_middle_threshold()).abs() > 1e-6,
+        "thresholds must depend on layer_height; both were {}",
+        stack.get_split_middle_threshold()
+    );
+    assert!(
+        (thin_stack.get_add_middle_threshold() - stack.get_add_middle_threshold()).abs() > 1e-6,
+        "add threshold must depend on layer_height; both were {}",
+        stack.get_add_middle_threshold()
     );
 }

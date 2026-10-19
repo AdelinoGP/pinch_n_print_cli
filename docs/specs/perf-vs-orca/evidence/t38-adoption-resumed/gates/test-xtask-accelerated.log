@@ -1,0 +1,38 @@
+   Compiling xtask v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\xtask)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.87s
+     Running unittests src\main.rs (target\debug\deps\xtask-a6687e42e444f4e5.exe)
+
+running 28 tests
+xtask build-guests --accelerated: refusing build result because a latched policy rejection was recorded at C:\Users\agpen\AppData\Local\Temp\pnp-xtask-fingerprint-5304-1790818918614889300\target\accelerated-driver\latch
+test build_guests::tests::accelerated_post_build_latch_gate_rejects_latched_session ... ok
+test build_guests::tests::accelerated_mode_freshness_rejects_absent_opposite_mode_artifact ... ok
+test dist::tests::accelerated_entry_points_flag_parses ... ok
+test build_guests::tests::accelerated_mode_freshness_accepts_matching_artifact_and_metadata ... ok
+test dist::tests::accelerated_entry_points_ordinary_mode_unchanged ... ok
+test rustc_driver_tests::accelerated_anyhow_build_script_probe_is_accepted_without_latch_or_cfg ... ok
+test rustc_driver_tests::accelerated_guest_release_accepts_own_workspace_debuginfo_strip ... ok
+test rustc_driver_tests::accelerated_guest_release_accepts_workspace_strip_profile ... ok
+test rustc_driver_tests::accelerated_guest_release_rejects_missing_strip ... ok
+test rustc_driver_tests::accelerated_guest_release_rejects_none_strip ... ok
+test rustc_driver_tests::accelerated_heapless_build_script_probe_is_accepted_without_latch_or_cfg ... ok
+test rustc_driver_tests::accelerated_host_release_accepts_optimized_canonical_core ... ok
+test rustc_driver_tests::accelerated_host_release_accepts_proc_macro_build_script_without_opt_level ... ok
+test rustc_driver_tests::accelerated_policy_rejection_latch_accepts_audited_identity_and_targets ... ok
+test rustc_driver_tests::accelerated_policy_rejection_latch_accepts_repeated_discovery_and_link_flags ... ok
+test rustc_driver_tests::accelerated_policy_rejection_latch_injects_cfg_only_for_canonical_core ... ok
+test rustc_driver_tests::accelerated_policy_rejection_latch_keeps_ordinary_mode_linear_without_cfg ... ok
+xtask build-guests --accelerated: refusing build result because a latched policy rejection was recorded at C:\Users\agpen\AppData\Local\Temp\pnp-rustc-driver-swallowed-child-5304-1790818918836997600\target\accelerated-driver\latch
+test rustc_driver_tests::accelerated_policy_rejection_latch_persists_after_a_swallowed_child_failure ... ok
+test rustc_driver_tests::accelerated_policy_rejection_latch_rejects_duplicate_keyed_controls ... ok
+test rustc_driver_tests::accelerated_policy_rejection_latch_rejects_response_llvm_and_sysroot_controls ... ok
+test rustc_driver_tests::accelerated_policy_rejection_latch_rejects_unoptimized_canonical_core ... ok
+test rustc_driver_tests::accelerated_structurally_invalid_probe_rejects_and_latches ... ok
+test test::tests::accelerated_entry_points_apply_controlled_debug_profile ... ok
+test test::tests::accelerated_entry_points_flag_parses ... ok
+test test::tests::accelerated_entry_points_ordinary_mode_unchanged ... ok
+test test::tests::accelerated_entry_points_reject_doctest_combinations ... ok
+test dist::tests::accelerated_entry_points_dist_never_enables_test_support ... ok
+test dist::tests::accelerated_entry_points_use_mode_distinct_staging_path ... ok
+
+test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 147 filtered out; finished in 0.33s
+

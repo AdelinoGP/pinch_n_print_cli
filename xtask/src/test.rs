@@ -36,24 +36,19 @@ fn _touch_closure_cache_len() {
 /// Narrow single-test invocations should still use plain `cargo test` directly.
 pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
     // Step 0: parse our flags; pass the rest to `cargo test`.
-    let mut summary = false;
-    let mut summary_from: Option<String> = None;
-    let mut test_args: Vec<String> = Vec::with_capacity(passthrough.len());
-
-    let mut iter = passthrough.iter();
-    while let Some(a) = iter.next() {
-        match a.as_str() {
-            "--summary" => summary = true,
-            "--summary-from" => {
-                summary_from = iter.next().cloned();
-                if summary_from.is_none() {
-                    eprintln!("xtask test: --summary-from requires a file path argument");
-                    return 2;
-                }
-            }
-            other => test_args.push(other.to_string()),
+    let options = match parse_test_options(passthrough) {
+        Ok(options) => options,
+        Err(error) => {
+            eprintln!("xtask test: {error}");
+            return 2;
         }
-    }
+    };
+    let TestOptions {
+        accelerated,
+        summary,
+        summary_from,
+        test_args,
+    } = options;
 
     // --- --summary-from: parse-only shortcut (no test run, no freshness gate) ---
     if let Some(from) = summary_from {
@@ -78,6 +73,22 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
         println!("Source log: {log_display}");
         return 0;
     }
+
+    let accelerated_wrapper = if accelerated {
+        if let Err(error) = crate::rustc_driver::clear_latch(ws_root) {
+            eprintln!("xtask test --accelerated: failed to clear driver latch: {error}");
+            return 1;
+        }
+        match crate::rustc_driver::create_shim_wrapper(ws_root) {
+            Ok(path) => Some(path),
+            Err(error) => {
+                eprintln!("xtask test --accelerated: failed to create shim wrapper: {error}");
+                return 1;
+            }
+        }
+    } else {
+        None
+    };
 
     // Step 0b: enforce the Arachne parity gate + quarantine roster.
     //
@@ -130,7 +141,10 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
         test_args.extend(libtest_args);
     }
 
-    // Step 1: check-literals preflight, then freshness check.
+    // Step 1: check-literals preflight, then the test-quality gate (report
+    // mode until the remediation program's final wave flips enforce —
+    // ADR-0065; `TEST_QUALITY_ENFORCED` is the single promotion point), then
+    // freshness check.
     let literals_code = check_literals_preflight(ws_root);
     if literals_code != 0 {
         eprintln!(
@@ -138,11 +152,28 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
         );
         return 1;
     }
+    let test_quality_code = crate::check_test_quality::run(
+        ws_root,
+        !crate::check_test_quality::TEST_QUALITY_ENFORCED,
+        &[],
+    );
+    if test_quality_code != 0 {
+        eprintln!(
+            "xtask test: check-test-quality preflight failed; fix findings or add reasoned waivers (docs/22_test_quality.md), then re-run."
+        );
+        return 1;
+    }
 
     // ONE invocation context for both halves of the gate: `xtask test` probes
     // the toolchain and parses the canonical WIT set once, not once per phase.
     let inv = build_guests::Invocation::new(ws_root);
-    if let Some(code) = handle_guest_freshness_with(
+    if accelerated {
+        let code = build_guests::accelerated_build_command(ws_root, false);
+        if code != 0 {
+            eprintln!("xtask test: accelerated guest build failed; aborting test run.");
+            return code;
+        }
+    } else if let Some(code) = handle_guest_freshness_with(
         ws_root,
         || build_guests::check_command_in(ws_root, &inv),
         |stale| build_guests::build_stale_command(ws_root, stale, &inv),
@@ -150,7 +181,10 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
         return code;
     }
 
-    let freshness = ensure_pnp_cli_fresh(ws_root);
+    let freshness = match accelerated_wrapper.as_deref() {
+        Some(wrapper) => ensure_pnp_cli_fresh_accelerated(ws_root, wrapper),
+        None => ensure_pnp_cli_fresh(ws_root),
+    };
     if freshness.code != 0 {
         if let Some(detail) = freshness.failure_detail {
             eprintln!("{detail}");
@@ -173,6 +207,10 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
         // stream anything to the terminal. Then parse & print the digest.
         let mut cmd = Command::new("cargo");
         cmd.arg("test");
+        if let Some(wrapper) = accelerated_wrapper.as_deref() {
+            cmd.current_dir(ws_root);
+            configure_accelerated_host_command(&mut cmd, wrapper, true);
+        }
         cmd.args(&test_args);
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
@@ -205,7 +243,12 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
         // Stream both child pipes directly so a shell pipeline cannot replace
         // cargo's failure status with `tee`'s successful exit status.
         eprintln!("xtask test: running `cargo test {}`", test_args.join(" "));
-        match run_streaming_test(ws_root, &test_args, &log_path) {
+        match run_streaming_test(
+            ws_root,
+            &test_args,
+            &log_path,
+            accelerated_wrapper.as_deref(),
+        ) {
             Ok(code) => (code, code == 0),
             Err(error) => {
                 eprintln!("xtask test: {error}");
@@ -223,6 +266,76 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
     }
 
     exit_code
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct TestOptions {
+    accelerated: bool,
+    summary: bool,
+    summary_from: Option<String>,
+    test_args: Vec<String>,
+}
+
+fn parse_test_options(passthrough: &[String]) -> Result<TestOptions, String> {
+    let mut accelerated = false;
+    let mut summary = false;
+    let mut summary_from: Option<String> = None;
+    let mut test_args: Vec<String> = Vec::with_capacity(passthrough.len());
+
+    let mut iter = passthrough.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--accelerated" if !accelerated => accelerated = true,
+            "--accelerated" => return Err("--accelerated may only be specified once".to_string()),
+            "--summary" => summary = true,
+            "--summary-from" => {
+                summary_from = iter.next().cloned();
+                if summary_from.is_none() {
+                    return Err("--summary-from requires a file path argument".to_string());
+                }
+            }
+            other => test_args.push(other.to_string()),
+        }
+    }
+
+    if accelerated && test_args.iter().any(|arg| is_doctest_argument(arg)) {
+        return Err(
+            "--accelerated does not support doctests; remove --doc before retrying".to_string(),
+        );
+    }
+
+    Ok(TestOptions {
+        accelerated,
+        summary,
+        summary_from,
+        test_args,
+    })
+}
+
+fn is_doctest_argument(arg: &str) -> bool {
+    arg == "--doc" || arg.starts_with("--doc=")
+}
+
+const ACCELERATED_TEST_CONFIG: &[&str] = &[
+    "--config",
+    "profile.dev.package.slicer-core.opt-level=3",
+    "--config",
+    "profile.dev.package.slicer-core.debug=2",
+    "--config",
+    "profile.dev.package.slicer-core.debug-assertions=true",
+];
+
+fn configure_accelerated_host_command(cmd: &mut Command, wrapper: &Path, test_profile: bool) {
+    cmd.env("RUSTC", wrapper)
+        .env(
+            crate::rustc_driver::PNP_XTASK_EXE_ENV,
+            std::env::current_exe().expect("resolve current xtask executable"),
+        )
+        .env(crate::rustc_driver::ACCELERATED_ENV, "1")
+        .env(crate::rustc_driver::ACCELERATED_MODE_ENV, "host-debug");
+    if test_profile {
+        cmd.args(ACCELERATED_TEST_CONFIG);
+    }
 }
 
 fn check_literals_preflight(ws_root: &Path) -> i32 {
@@ -267,6 +380,15 @@ fn ensure_pnp_cli_fresh(ws_root: &Path) -> PnpCliFreshness {
     })
 }
 
+fn ensure_pnp_cli_fresh_accelerated(ws_root: &Path, wrapper: &Path) -> PnpCliFreshness {
+    ensure_pnp_cli_fresh_with(ws_root, |ws_root| {
+        let mut cmd = Command::new("cargo");
+        cmd.args(["build", "--bin", "pnp_cli"]).current_dir(ws_root);
+        configure_accelerated_host_command(&mut cmd, wrapper, true);
+        cmd.status()
+    })
+}
+
 fn ensure_pnp_cli_fresh_with(
     ws_root: &Path,
     run_rebuild: impl FnOnce(&Path) -> io::Result<std::process::ExitStatus>,
@@ -301,13 +423,18 @@ fn run_streaming_test(
     ws_root: &Path,
     test_args: &[String],
     log_path: &Path,
+    accelerated_wrapper: Option<&Path>,
 ) -> Result<i32, String> {
     let log = fs::File::create(log_path)
         .map_err(|error| format!("failed to create {}: {error}", log_path.display()))?;
     let log = Arc::new(Mutex::new(log));
 
-    let mut child = Command::new("cargo")
-        .arg("test")
+    let mut cmd = Command::new("cargo");
+    cmd.arg("test");
+    if let Some(wrapper) = accelerated_wrapper {
+        configure_accelerated_host_command(&mut cmd, wrapper, true);
+    }
+    let mut child = cmd
         .args(test_args)
         .current_dir(ws_root)
         .stdout(Stdio::piped())
@@ -522,7 +649,58 @@ fn collect_process_failure_details(lines: &[&str]) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::collect_process_failure_details;
+    use super::{collect_process_failure_details, parse_test_options, ACCELERATED_TEST_CONFIG};
+
+    fn strings(args: &[&str]) -> Vec<String> {
+        args.iter().map(|arg| (*arg).to_string()).collect()
+    }
+
+    #[test]
+    fn accelerated_entry_points_flag_parses() {
+        let options = parse_test_options(&strings(&["--accelerated", "--summary", "--workspace"]))
+            .expect("accelerated test flag parses");
+        assert!(options.accelerated);
+        assert!(options.summary);
+        assert_eq!(options.test_args, strings(&["--workspace"]));
+    }
+
+    #[test]
+    fn accelerated_entry_points_reject_doctest_combinations() {
+        for args in [
+            strings(&["--accelerated", "--doc"]),
+            strings(&["--doc", "--accelerated"]),
+            strings(&["--accelerated", "--doc=rustdoc"]),
+            strings(&["--accelerated", "--", "--doc"]),
+        ] {
+            let error = parse_test_options(&args).expect_err("accelerated doctests must fail");
+            assert!(error.contains("doctests"), "unexpected error: {error}");
+        }
+    }
+
+    #[test]
+    fn accelerated_entry_points_apply_controlled_debug_profile() {
+        assert_eq!(
+            ACCELERATED_TEST_CONFIG,
+            &[
+                "--config",
+                "profile.dev.package.slicer-core.opt-level=3",
+                "--config",
+                "profile.dev.package.slicer-core.debug=2",
+                "--config",
+                "profile.dev.package.slicer-core.debug-assertions=true",
+            ]
+        );
+    }
+
+    #[test]
+    fn accelerated_entry_points_ordinary_mode_unchanged() {
+        let options =
+            parse_test_options(&strings(&["--workspace"])).expect("ordinary test arguments parse");
+        assert!(!options.accelerated);
+        assert!(!options.summary);
+        assert_eq!(options.summary_from, None);
+        assert_eq!(options.test_args, strings(&["--workspace"]));
+    }
 
     #[test]
     fn summary_ignores_instructional_grep_line_as_panic_evidence() {
@@ -668,7 +846,8 @@ mod tests {
     }
 
     fn guest_spec(name: &str) -> crate::build_guests::GuestSpec {
-        crate::build_guests::GuestSpec { // exhaustive: 7-field GuestSpec (AC-9/10/N4 fixtures)
+        crate::build_guests::GuestSpec {
+            // exhaustive: 7-field GuestSpec (AC-9/10/N4 fixtures)
             crate_name: name.to_string(),
             lib_name: name.replace('-', "_"),
             manifest_path: std::path::PathBuf::from(format!("{name}/Cargo.toml")),
@@ -727,7 +906,10 @@ mod tests {
             },
         );
 
-        assert_eq!(code, None, "successful stale rebuild must return None (continue)");
+        assert_eq!(
+            code, None,
+            "successful stale rebuild must return None (continue)"
+        );
         assert_eq!(*seen.borrow(), stale_names);
     }
 
@@ -746,7 +928,10 @@ mod tests {
         );
 
         assert_ne!(code, Some(0));
-        assert!(code.is_some(), "failed rebuild must abort with non-zero code");
+        assert!(
+            code.is_some(),
+            "failed rebuild must abort with non-zero code"
+        );
     }
     #[test]
     fn pnp_cli_rebuild_closure_always_runs_even_when_binary_is_newer() {
@@ -755,10 +940,8 @@ mod tests {
         use std::thread;
         use std::time::Duration;
 
-        let ws_root = std::env::temp_dir().join(format!(
-            "xtask-pnp-cli-always-runs-{}",
-            std::process::id()
-        ));
+        let ws_root =
+            std::env::temp_dir().join(format!("xtask-pnp-cli-always-runs-{}", std::process::id()));
         // Touch ClosureCache::len so cargo clippy -D warnings stays green
         // (build_guests.rs defines len but it is otherwise unused until future steps).
         let _ = crate::build_guests::ClosureCache::new().len();
@@ -783,9 +966,7 @@ mod tests {
         std::fs::write(&bin_path, b"fake binary").expect("write binary");
         thread::sleep(Duration::from_millis(50));
         assert!(bin_path.is_file(), "binary fixture must exist");
-        let bin_mtime = std::fs::metadata(&bin_path)
-            .and_then(|m| m.modified())
-            .ok();
+        let bin_mtime = std::fs::metadata(&bin_path).and_then(|m| m.modified()).ok();
         let src_mtime = std::fs::metadata(src_dir.join("main.rs"))
             .and_then(|m| m.modified())
             .ok();
@@ -813,5 +994,4 @@ mod tests {
         assert_eq!(outcome.code, 0);
         assert!(outcome.failure_detail.is_none());
     }
-
 }

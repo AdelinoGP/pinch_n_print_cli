@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use wasmtime::component::Resource;
 
+use slicer_core::perimeter_spatial::diagnostics::{observe_prepared_region, RegionCaptureRecord};
 use slicer_ir::{
     is_modifier_namespace_id as ir_is_modifier_namespace_id, GCodeCommand, GlobalLayer,
     LayerCollectionIR, RetractMode, StageId,
@@ -21,7 +22,7 @@ use slicer_ir::{
 use slicer_scheduler::execution_plan::module_claims_match_active_region;
 use slicer_scheduler::validation::{resolve_held_claims, FillHolders};
 use slicer_sdk::native::{NativePostpassInput, NativeStageEntry};
-use slicer_sdk::traits::{EntityMutation, SortKey};
+use slicer_sdk::traits::{EntityMutation, LayerPlanningObject, SortKey};
 
 use crate::binding::{
     CompiledModuleLive, FinalizationStageInput, LayerStageInput, PostpassStageInput,
@@ -290,6 +291,8 @@ fn convert_gcode_command_to_postpass_wit(
 /// 6. Releases the pool slot (via RAII lease drop)
 pub struct WasmRuntimeDispatcher {
     engine: Arc<WasmEngine>,
+    /// Host-resolved per-object inputs for `PrePass::LayerPlanning`.
+    layer_planning_objects: Arc<[LayerPlanningObject]>,
     /// Accumulated runtime reads from postpass dispatch calls.
     /// Populated by `run_gcode_postprocess` and `run_text_postprocess`,
     /// consumed by `take_runtime_reads`.
@@ -316,11 +319,18 @@ impl WasmRuntimeDispatcher {
     pub fn new(engine: Arc<WasmEngine>) -> Self {
         Self {
             engine,
+            layer_planning_objects: Arc::from([]),
             postpass_runtime_reads: std::cell::RefCell::new(Vec::new()),
             postpass_batch_calls: std::cell::RefCell::new(Vec::new()),
             postpass_profile_marks: std::cell::RefCell::new(Vec::new()),
             postpass_call_fuel: std::cell::RefCell::new(Vec::new()),
         }
+    }
+
+    /// Supply the host-resolved records consumed by `PrePass::LayerPlanning`.
+    pub fn with_layer_planning_objects(mut self, objects: Vec<LayerPlanningObject>) -> Self {
+        self.layer_planning_objects = objects.into();
+        self
     }
 
     /// Build the `wasmtime::Store` for one dispatch call.
@@ -348,7 +358,7 @@ impl WasmRuntimeDispatcher {
             .borrow_mut()
             .push(call_fuel_consumed(store));
         let marks: Vec<crate::profiling::ProfileMark> =
-            store.data_mut().profile_marks.drain(..).collect();
+            std::mem::take(&mut store.data_mut().profile_marks);
         self.postpass_profile_marks.borrow_mut().push(marks);
     }
 
@@ -359,7 +369,7 @@ impl WasmRuntimeDispatcher {
         if ctx.batch_calls.is_empty() {
             return;
         }
-        let calls: Vec<(String, u32)> = ctx.batch_calls.drain(..).collect();
+        let calls: Vec<(String, u32)> = std::mem::take(&mut ctx.batch_calls);
         self.postpass_batch_calls.borrow_mut().push(calls);
     }
 
@@ -1392,13 +1402,30 @@ impl WasmRuntimeDispatcher {
                 .map_err(mk_inst_err)?;
                 let object_ids: Vec<String> =
                     mesh_ir.objects.iter().map(|o| o.id.clone()).collect();
+                let object_configs =
+                    adapt_layer_planning_object_configs(&self.layer_planning_objects);
+                validate_layer_planning_object_configs(&object_ids, &object_configs).map_err(
+                    |reason| DispatchError {
+                        module_id: module_id.to_string(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::ContextCreation,
+                        reason,
+                    },
+                )?;
                 let output = store
                     .data_mut()
                     .push_layer_plan_output()
                     .map_err(mk_ctx_err)?;
                 let call_result = bindings
                     .slicer_prepass_layer_planning_layer_planning()
-                    .call_run(&mut store, &object_ids, own(output), own(config_handle))
+                    .call_run(
+                        &mut store,
+                        &object_ids,
+                        &object_configs,
+                        own(output),
+                        own(config_handle),
+                    )
                     .map_err(mk_call_err)?;
                 Ok((call_result, store))
             }
@@ -1596,8 +1623,7 @@ impl WasmRuntimeDispatcher {
 
         // Drain diagnostics from the context into the thread-local stash
         // before the store (and its HostExecutionContext) is consumed.
-        let diags: Vec<slicer_ir::Diagnostic> =
-            store.data_mut().diagnostics_mut().drain(..).collect();
+        let diags: Vec<slicer_ir::Diagnostic> = std::mem::take(store.data_mut().diagnostics_mut());
         LAST_PREPASS_DIAGNOSTICS.with(|c| c.borrow_mut().extend(diags));
 
         stash_batch_calls(store.data_mut());
@@ -1621,6 +1647,7 @@ impl WasmRuntimeDispatcher {
         config_view: &slicer_ir::ConfigView,
         mesh_ir: Arc<slicer_ir::MeshIR>,
         layers: &[slicer_ir::LayerCollectionIR],
+        ir_writes: &[String],
     ) -> Result<Vec<host::FinalizationBuilderPush>, DispatchError> {
         use slicer_schema::export_for_stage_id;
         let export_name = export_for_stage_id(stage_id).unwrap_or("unknown");
@@ -1651,7 +1678,8 @@ impl WasmRuntimeDispatcher {
 
         let ctx = HostExecutionContextBuilder::new(module_id.to_string(), 0.0, 0.0)
             .mesh_ir(Some(mesh_ir))
-            .build();
+            .build()
+            .with_finalization_ir_writes(ir_writes);
         let mut store = self.new_call_store(ctx);
 
         let config_handle = store
@@ -1723,6 +1751,15 @@ impl WasmRuntimeDispatcher {
                 reason: e.to_string(),
             })?;
 
+        if let Some(reason) = store.data().finalization_write_denial.clone() {
+            return Err(DispatchError {
+                module_id: module_id.to_string(),
+                stage_id: stage_id.clone(),
+                export_name: export_name.to_string(),
+                phase: DispatchPhase::TypedExportCall,
+                reason,
+            });
+        }
         if let Err(module_err) = &call_result {
             if module_err.fatal {
                 return Err(DispatchError {
@@ -2252,6 +2289,17 @@ fn push_slice_regions(
         if region.region_id == slicer_ir::MODIFIER_FOOTPRINT_REGION_ID {
             continue;
         }
+        observe_prepared_region(RegionCaptureRecord {
+            layer_index: layer.index as usize,
+            region_ordinal: index,
+            contour_count: region.polygons.len(),
+            hole_count: region
+                .polygons
+                .iter()
+                .map(|polygon| polygon.holes.len())
+                .sum(),
+            bridge_count: region.bridge_areas.len(),
+        });
         let held_claims = store
             .data()
             .held_claims_for(&region.object_id, &region.region_id.to_string())
@@ -2356,7 +2404,7 @@ pub fn support_carrier_regions(
     carriers
 }
 
-fn module_receives_slice_region(
+pub(crate) fn module_receives_slice_region(
     module_claims: &[String],
     layer: &GlobalLayer,
     region: &slicer_ir::SlicedRegion,
@@ -2383,6 +2431,13 @@ pub fn resolve_seam_for_perimeter_region(
     seam_plan: &slicer_ir::SeamPlanIR,
     layer_index: u32,
 ) -> Option<slicer_ir::SeamPosition> {
+    // Exact `(layer, object, region_id, variant_chain)` lookup only. Seam
+    // planning runs in the LATE prepass phase, AFTER the PaintSegmentation
+    // host builtin has committed the paint-split SliceIR; its entries are
+    // therefore keyed on the region identity actually present in `SliceIR`
+    // (including the paint variant chain), so a painted variant has its own
+    // entry or none. Falling back to the chain-less base entry here would
+    // hand a painted variant the seam chosen for its unpainted sibling.
     seam_plan
         .entries
         .iter()
@@ -2591,11 +2646,31 @@ fn push_infill_postprocess_regions(
                 raft_fill: Vec::new(),
                 tool_index: 0,
                 wall_source_region_id: None,
+                variant_chain: region
+                    .variant_chain
+                    .iter()
+                    .map(|(name, value)| {
+                        (
+                            name.clone(),
+                            crate::marshal::leaf::ir_to_wit_paint_value(value),
+                        )
+                    })
+                    .collect(),
             },
         };
         // The view's identity is the slice region's, not the wall donor's.
         data.object_id = region.object_id.clone();
         data.region_id = region.region_id.to_string();
+        data.variant_chain = region
+            .variant_chain
+            .iter()
+            .map(|(name, value)| {
+                (
+                    name.clone(),
+                    crate::marshal::leaf::ir_to_wit_paint_value(value),
+                )
+            })
+            .collect();
         data.sparse_infill_area = crate::marshal::ir_to_wit_expolygons(&region.sparse_infill_area);
         data.top_solid_fill = crate::marshal::ir_to_wit_expolygons(&region.top_solid_fill);
         data.bottom_solid_fill = crate::marshal::ir_to_wit_expolygons(&region.bottom_solid_fill);
@@ -2617,6 +2692,60 @@ fn push_infill_postprocess_regions(
 }
 
 // ── Layer-plan harvest ────────────────────────────────────────────────────
+
+/// Adapt SDK layer-planning records to the versioned WIT record field-for-field.
+pub fn adapt_layer_planning_object_configs(
+    objects: &[LayerPlanningObject],
+) -> Vec<host::prepass_layer_planning::exports::slicer::prepass_layer_planning::layer_planning::ObjectLayerConfig>
+{
+    objects
+        .iter()
+        .map(|object| {
+            let object_id = object.object_id.clone();
+            let object_height = object.object_height;
+            let layer_height = object.layer_height;
+            let first_layer_height = object.first_layer_height;
+            let support_raft_layers = object.support_raft_layers;
+            let layer_zs = object.layer_zs.clone();
+            host::prepass_layer_planning::exports::slicer::prepass_layer_planning::layer_planning::ObjectLayerConfig {
+                object_id,
+                object_height,
+                layer_height,
+                first_layer_height,
+                support_raft_layers,
+                layer_zs,
+            }
+        })
+        .collect()
+}
+
+/// Validate the positional object/config contract for layer-planning v2.
+///
+/// Dispatch calls this before allocating the guest's output resource, so an
+/// omitted config or an ID mismatch cannot be followed by accepted output.
+pub fn validate_layer_planning_object_configs(
+    object_ids: &[String],
+    object_configs: &[host::prepass_layer_planning::exports::slicer::prepass_layer_planning::layer_planning::ObjectLayerConfig],
+) -> Result<(), String> {
+    if object_ids.len() != object_configs.len() {
+        return Err(format!(
+            "layer-planning object/config count mismatch: {} object IDs, {} object configs",
+            object_ids.len(),
+            object_configs.len()
+        ));
+    }
+
+    for (index, (object_id, object_config)) in object_ids.iter().zip(object_configs).enumerate() {
+        if object_id != &object_config.object_id {
+            return Err(format!(
+                "layer-planning object/config ID mismatch at index {index}: expected `{object_id}`, got `{}`",
+                object_config.object_id
+            ));
+        }
+    }
+
+    Ok(())
+}
 
 /// Convert WIT `LayerProposal` records collected by a `PrePass::LayerPlanning`
 /// call into a host-side [`slicer_ir::LayerPlanIR`].
@@ -2768,11 +2897,10 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
                     message: "native entry family does not match prepass runner".to_string(),
                 });
             };
-            let response = entry(&crate::marshal::native::build_native_prepass_request(
-                stage_export,
-                &input,
-                module,
-            ))
+            let response = entry(
+                &crate::marshal::native::build_native_prepass_request(stage_export, &input, module),
+                Some(&self.layer_planning_objects),
+            )
             .map_err(|e| slicer_ir::PrepassRunnerError::FatalModule {
                 stage_id: stage_id.clone(),
                 module_id: module.module_id.clone(),
@@ -2994,13 +3122,12 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
                     message: "native entry family does not match layer runner".to_string(),
                 });
             };
-            let request = crate::marshal::native::build_native_layer_request_with_raft(
+            let request = crate::marshal::native::build_native_layer_request_for_layer(
                 stage_export,
-                layer.index,
+                layer,
                 &input,
                 module,
                 &held_claims_map,
-                layer.is_raft,
             );
             let response =
                 entry(&request).map_err(|e| slicer_ir::LayerStageError::FatalModule {
@@ -3073,11 +3200,11 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
                     let fields = by_config
                         .entry(plan.config)
                         .or_insert_with(|| {
-                            let region_config_map = resolved_config_to_map(map.config_for(&key));
-                            let view = slicer_ir::ConfigView::from_declared(
-                                &region_config_map,
-                                declared_keys.iter().map(String::as_str),
-                            );
+                            let view =
+                                slicer_scheduler::execution_plan::project_declared_config_view(
+                                    map.config_for(&key),
+                                    declared_keys.iter().map(String::as_str),
+                                );
                             host::config_view_to_data(&view).fields
                         })
                         .clone();
@@ -3224,12 +3351,14 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
                     e.code, e.fatal, e.message
                 ),
             })?;
-            return crate::marshal::native::commit_native_finalization_response(response, layers)
-                .map_err(|message| slicer_ir::FinalizationError::FatalModule {
-                    stage_id: stage_id.clone(),
-                    module_id: module.module_id.clone(),
-                    message,
-                });
+            return crate::marshal::native::commit_native_finalization_response(
+                response, module, stage_id, layers,
+            )
+            .map_err(|message| slicer_ir::FinalizationError::FatalModule {
+                stage_id: stage_id.clone(),
+                module_id: module.module_id.clone(),
+                message,
+            });
         }
         let module_id_str = module.module_id.as_str();
 
@@ -3241,6 +3370,7 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
             &module.config_view,
             input.mesh.clone(),
             layers,
+            module.ir_writes,
         ) {
             Ok(p) => p,
             Err(e) if e.phase == DispatchPhase::MissingComponent => {
@@ -3454,13 +3584,6 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
 // is Send+Sync, and all mutable state is created per-call (not shared).
 unsafe impl Sync for WasmRuntimeDispatcher {}
 
-/// Convert a [`ResolvedConfig`] struct into a flat `HashMap<ConfigKey, ConfigValue>`.
-fn resolved_config_to_map(
-    cfg: &slicer_ir::ResolvedConfig,
-) -> std::collections::HashMap<String, slicer_ir::ConfigValue> {
-    cfg.to_config_map()
-}
-
 // ── Layer-envelope helper (no LayerArena) ─────────────────────────────────────
 
 /// Derive the Z-envelope `(floor, height)` for a layer dispatch call using
@@ -3669,7 +3792,7 @@ fn stash_batch_calls(ctx: &mut HostExecutionContext) {
     if ctx.batch_calls.is_empty() {
         return;
     }
-    let calls: Vec<(String, u32)> = ctx.batch_calls.drain(..).collect();
+    let calls: Vec<(String, u32)> = std::mem::take(&mut ctx.batch_calls);
     LAST_BATCH_CALLS.with(|c| c.borrow_mut().extend(calls));
 }
 
@@ -3701,7 +3824,7 @@ fn stash_profile(store: &mut wasmtime::Store<HostExecutionContext>) {
         return;
     }
     let marks: Vec<crate::profiling::ProfileMark> =
-        store.data_mut().profile_marks.drain(..).collect();
+        std::mem::take(&mut store.data_mut().profile_marks);
     LAST_PROFILE_MARKS.with(|c| c.borrow_mut().extend(marks));
 }
 
@@ -3763,11 +3886,25 @@ pub fn deconstruct_layer_ctx(
     match stage_id {
         "Layer::Infill" | "Layer::InfillPostProcess" => {
             let infill = &ctx.infill_output;
-            if infill.sparse_paths.is_empty()
+            let empty = infill.sparse_paths.is_empty()
                 && infill.solid_paths.is_empty()
                 && infill.ironing_paths.is_empty()
-                && infill.raft_fill.is_empty()
-            {
+                && infill.raft_fill.is_empty();
+            if empty && stage_id == "Layer::InfillPostProcess" {
+                // The stage's contract is replace-with-complete-re-emit
+                // (ADR-0028 §Amendment Change 3), so an invocation that ran and
+                // re-emitted nothing has committed the EMPTY replacement set —
+                // a verdict, not an absence. Returning `Ok(None)` here instead
+                // preserved the prior `InfillIR` (the raw emitter envelope the
+                // infill-linker had just clipped to nothing), the containment
+                // hole localized by wayfinder ticket 35 and fixed by ticket 37.
+                // The `Layer::Infill` merge semantics below are unaffected: for
+                // that stage an empty output really is "no contribution".
+                return Ok(Some(LayerStageCommit::InfillPostProcess(
+                    crate::marshal::empty_infill_replacement(layer_index),
+                )));
+            }
+            if empty {
                 return Ok(None);
             }
             let ir = crate::marshal::convert_infill_output(infill, layer_index, authored)
@@ -4133,19 +4270,28 @@ fn apply_finalization_pushes(
                     .set_entity_order(layer_index, items)
                     .unwrap_or_else(|e| log::warn!("finalization: set_entity_order rejected: {e}"));
             }
+            host::FinalizationBuilderPush::Annotation(layer_index, annotation) => {
+                // Ticket 47: the WASM annotation relay lands in the same
+                // merge the native leg's `apply_to` performs, so the two
+                // transports commit identical annotation streams.
+                sdk_builder
+                    .push_annotation(layer_index, annotation)
+                    .unwrap_or_else(|e| log::warn!("finalization: push_annotation rejected: {e}"));
+            }
         }
     }
 
-    sdk_builder
-        .apply_to(layers)
-        .map_err(|msg| slicer_ir::FinalizationError::FatalModule {
+    let mut candidate = layers.clone();
+    sdk_builder.apply_to(&mut candidate).map_err(|msg| {
+        slicer_ir::FinalizationError::FatalModule {
             stage_id: stage_id.clone(),
             module_id: module_id.to_string(),
             message: format!("finalization merge failed: {msg}"),
-        })?;
+        }
+    })?;
 
     for (z, paths) in legacy_synthetic_layers {
-        let new_index = layers.len() as u32;
+        let new_index = candidate.len() as u32;
         let id_gen = LayerEntityIdGen::new();
         let entities: Vec<_> = paths
             .into_iter()
@@ -4167,7 +4313,7 @@ fn apply_finalization_pushes(
                 }
             })
             .collect();
-        layers.push(LayerCollectionIR {
+        candidate.push(LayerCollectionIR {
             global_layer_index: new_index,
             z,
             ordered_entities: entities,
@@ -4175,5 +4321,6 @@ fn apply_finalization_pushes(
         });
     }
 
+    *layers = candidate;
     Ok(slicer_ir::FinalizationOutput::Success)
 }

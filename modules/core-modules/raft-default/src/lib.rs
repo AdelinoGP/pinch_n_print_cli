@@ -82,7 +82,11 @@ impl LayerModule for RaftDefault {
             if source.is_empty() || !region.should_emit(slicer_ir::ExtrusionRole::RaftInfill) {
                 continue;
             }
-            output.begin_region(region.object_id(), *region.region_id());
+            output.begin_region(
+                region.object_id(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
             // The footprint is object-independent: it is a pure function of
             // harvested region geometry plus the raft config keys.
             let is_base_layer = layer_index > 0 && layer_index < interface_start;

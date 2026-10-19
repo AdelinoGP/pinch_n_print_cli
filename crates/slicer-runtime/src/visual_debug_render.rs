@@ -1862,7 +1862,7 @@ struct Canvas {
 impl Canvas {
     fn new(width: u32, height: u32, bounds: ViewportBoundsMm) -> Self {
         let mut buf = vec![0u8; (width as usize) * (height as usize) * 3];
-        for px in buf.chunks_exact_mut(3) {
+        for px in buf.as_chunks_mut::<3>().0 {
             px.copy_from_slice(&palette::BACKGROUND);
         }
         Self {

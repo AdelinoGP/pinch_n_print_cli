@@ -248,6 +248,11 @@ fn generate_slicer_module_impl(
                 let regions = req.perimeter_regions.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native layer request is missing perimeter regions".to_string()))?;
                 let mut output = ::slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
                 let mut collection = ::slicer_sdk::layer_collection_builder::LayerCollectionBuilder::new();
+                // Ticket 47: the native request carries the same staged
+                // ordered-entities snapshot the WASM leg's
+                // `get-ordered-entities` returns, so `get_ordered_entities`
+                // observes identical content on both transports.
+                collection.set_ordered_entities(req.ordered_entities.clone());
                 <#self_ty as ::slicer_sdk::traits::LayerModule>::run_path_optimization(
                     &module, req.layer_index, regions, &mut output, &mut collection, &req.config,
                 )?;
@@ -261,6 +266,8 @@ fn generate_slicer_module_impl(
                 let module = <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&req.config)?;
                 let regions = req.perimeter_regions.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native layer request is missing perimeter regions".to_string()))?;
                 let mut collection = ::slicer_sdk::layer_collection_builder::LayerCollectionBuilder::new();
+                // Ticket 47: same snapshot the WASM leg's builder carries.
+                collection.set_ordered_entities(req.ordered_entities.clone());
                 <#self_ty as ::slicer_sdk::traits::LayerModule>::run_anchored_events(
                     &module, req.layer_index, regions, &mut collection, &req.config,
                 )?;
@@ -295,7 +302,13 @@ fn generate_slicer_module_impl(
                 Ok(::slicer_sdk::native::NativePrepassResponse { mesh_analysis: Some(output), layer_plan: None, paint_segmentation: None, seam_planning: None, support_geometry: None })
             },
             "run_layer_planning" => quote! {
-                let objects = req.object_ids.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing object ids".to_string()))?;
+                let object_ids = req.object_ids.as_ref().ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing object ids".to_string()))?;
+                let objects = _layer_planning_objects.ok_or_else(|| ::slicer_sdk::error::ModuleError::fatal(1, "native prepass request is missing layer-planning object configs".to_string()))?;
+                if object_ids.len() != objects.len()
+                    || object_ids.iter().zip(objects).any(|(object_id, object)| object_id != &object.object_id)
+                {
+                    return Err(::slicer_sdk::error::ModuleError::fatal(1, "native prepass object ids do not match layer-planning object configs".to_string()));
+                }
                 let module = <#self_ty as ::slicer_sdk::traits::PrepassModule>::from_config(&req.config)?;
                 let mut output = ::slicer_sdk::prepass_builders::LayerPlanOutput::new();
                 <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_layer_planning(&module, objects, &mut output, &req.config)?;
@@ -330,7 +343,10 @@ fn generate_slicer_module_impl(
                 ::slicer_sdk::native::NativeStageEntry::Prepass(Self::__slicer_native_prepass_entry)
             }
             #[cfg(all(not(target_arch = "wasm32"), not(test)))]
-            fn __slicer_native_prepass_entry(req: &::slicer_sdk::native::NativePrepassRequest) -> ::std::result::Result<::slicer_sdk::native::NativePrepassResponse, ::slicer_sdk::error::ModuleError> {
+            fn __slicer_native_prepass_entry(
+                req: &::slicer_sdk::native::NativePrepassRequest,
+                _layer_planning_objects: ::std::option::Option<&[::slicer_sdk::traits::LayerPlanningObject]>,
+            ) -> ::std::result::Result<::slicer_sdk::native::NativePrepassResponse, ::slicer_sdk::error::ModuleError> {
                 #body
             }
         }
@@ -940,6 +956,15 @@ fn build_postpass_gcode_glue(self_ty: &syn::Type) -> TokenStream2 {
                      ExtrusionRole::BridgeInfill => ::slicer_sdk::ir::ExtrusionRole::BridgeInfill,
                      ExtrusionRole::InternalBridgeInfill => ::slicer_sdk::ir::ExtrusionRole::InternalBridgeInfill,
                     ExtrusionRole::WipeTower => ::slicer_sdk::ir::ExtrusionRole::WipeTower,
+                    ExtrusionRole::Custom(s) if s == "slicer.builtin/prime-tower@1" => {
+                        ::slicer_sdk::ir::ExtrusionRole::PrimeTower
+                    }
+                    ExtrusionRole::Custom(s) if s == "slicer.builtin/skirt@1" => {
+                        ::slicer_sdk::ir::ExtrusionRole::Skirt
+                    }
+                    ExtrusionRole::Custom(s) if s == "slicer.builtin/brim@1" => {
+                        ::slicer_sdk::ir::ExtrusionRole::Brim
+                    }
                     ExtrusionRole::Custom(s) if s == "slicer.builtin/internal-solid-infill@1" => {
                         ::slicer_sdk::ir::ExtrusionRole::InternalSolidInfill
                     }
@@ -1218,9 +1243,9 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
             // here so the body below (a verbatim port of the pre-163
             // monomorphic `world-finalization` glue) still resolves.
             use slicer::finalization_layer_finalization::layer_finalization_types::{
-                EntityMutation, FinalizationOutputBuilder, LayerCollectionView,
-                PrintEntityView, RegionKey, SortKey, SyntheticLayerData, ToolChangeView,
-                ZHopView,
+                AnnotationKind, AnnotationView, EntityMutation, FinalizationOutputBuilder,
+                LayerCollectionView, PrintEntityView, RegionKey, SortKey, SyntheticLayerData,
+                ToolChangeView, ZHopView,
             };
             // Per packet 163: the `Guest` trait moved from the world root
             // to `exports::slicer::finalization_layer_finalization::layer_finalization::Guest`
@@ -1265,6 +1290,15 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                      ExtrusionRole::BridgeInfill => ::slicer_ir::ExtrusionRole::BridgeInfill,
                      ExtrusionRole::InternalBridgeInfill => ::slicer_ir::ExtrusionRole::InternalBridgeInfill,
                     ExtrusionRole::WipeTower => ::slicer_ir::ExtrusionRole::WipeTower,
+                    ExtrusionRole::Custom(s) if s == "slicer.builtin/prime-tower@1" => {
+                        ::slicer_ir::ExtrusionRole::PrimeTower
+                    }
+                    ExtrusionRole::Custom(s) if s == "slicer.builtin/skirt@1" => {
+                        ::slicer_ir::ExtrusionRole::Skirt
+                    }
+                    ExtrusionRole::Custom(s) if s == "slicer.builtin/brim@1" => {
+                        ::slicer_ir::ExtrusionRole::Brim
+                    }
                     ExtrusionRole::Custom(s) if s == "slicer.builtin/internal-solid-infill@1" => {
                         ::slicer_ir::ExtrusionRole::InternalSolidInfill
                     }
@@ -1556,6 +1590,27 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                             paths.iter().map(__slicer_path_ir_to_wit).collect();
                         let _ = output.insert_synthetic_layer(*z, &wit_paths);
                     }
+                    // Ticket 47: replay the annotation stream (comment/raw)
+                    // across the WIT boundary — `push_fan_speed` /
+                    // `push_annotation` on the SDK builder previously had no
+                    // WIT channel, so every guest annotation (part-cooling's
+                    // M106/M107 fan commands) was silently dropped on this
+                    // transport while the native leg merged them.
+                    for (layer_index, annotation) in sdk_output.annotations() {
+                        let wit_kind = match &annotation.kind {
+                            ::slicer_ir::LayerAnnotationKind::Comment(text) => {
+                                AnnotationKind::Comment(text.clone())
+                            }
+                            ::slicer_ir::LayerAnnotationKind::Raw(text) => {
+                                AnnotationKind::Raw(text.clone())
+                            }
+                        };
+                        let _ = output.push_annotation(&AnnotationView {
+                            layer_index: *layer_index,
+                            after_entity_index: annotation.after_entity_index,
+                            kind: wit_kind,
+                        });
+                    }
 
                     match out {
                         Ok(()) => Ok(()),
@@ -1844,7 +1899,18 @@ fn build_prepass_layer_planning_glue(self_ty: &syn::Type) -> TokenStream2 {
             Ok(m) => m,
             Err(e) => return Err(__slicer_error_out(e)),
         };
-        let sdk_objects: ::std::vec::Vec<::slicer_ir::ObjectId> = _objects.clone();
+        let sdk_objects: ::std::vec::Vec<::slicer_sdk::traits::LayerPlanningObject> =
+            object_configs
+                .into_iter()
+                .map(|object_config| ::slicer_sdk::traits::LayerPlanningObject {
+                    object_id: object_config.object_id,
+                    object_height: object_config.object_height,
+                    layer_height: object_config.layer_height,
+                    first_layer_height: object_config.first_layer_height,
+                    support_raft_layers: object_config.support_raft_layers,
+                    layer_zs: object_config.layer_zs,
+                })
+                .collect();
         let mut sdk_output = ::slicer_sdk::prepass_builders::LayerPlanOutput::new();
         let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_layer_planning(
             &module, &sdk_objects, &mut sdk_output, &ir_config,
@@ -1884,11 +1950,13 @@ fn build_prepass_layer_planning_glue(self_ty: &syn::Type) -> TokenStream2 {
             use slicer::prepass_layer_planning::layer_planning_types::{
                 LayerPlanOutput, LayerProposal, RegionLayerProposal,
             };
+            use exports::slicer::prepass_layer_planning::layer_planning::ObjectLayerConfig;
             #preamble
             struct __SlicerPrepassLayerPlanningComponent;
             impl exports::slicer::prepass_layer_planning::layer_planning::Guest for __SlicerPrepassLayerPlanningComponent {
                 fn run(
                     _objects: Vec<String>,
+                    object_configs: Vec<ObjectLayerConfig>,
                     output: LayerPlanOutput,
                     config: ConfigView,
                 ) -> Result<(), ModuleError> {
@@ -2511,6 +2579,7 @@ fn layer_light_helpers() -> TokenStream2 {
                 sdk_view.set_is_bridge(r.is_bridge());
                 sdk_view.set_bridge_areas(bridge_areas);
                 sdk_view.set_internal_bridge_areas(internal_bridge_areas);
+                sdk_view.set_internal_bridge_angles_deg(r.internal_bridge_angles_deg());
                 sdk_view.set_internal_solid_fill(internal_solid_fill);
                 sdk_view.set_bridge_orientation_deg(r.bridge_orientation_deg());
                 sdk_view.set_sparse_infill_area(sparse_infill_area);
@@ -2701,6 +2770,15 @@ fn layer_glue_helpers() -> TokenStream2 {
                  WitExtrusionRole::BridgeInfill => ::slicer_ir::ExtrusionRole::BridgeInfill,
                  WitExtrusionRole::InternalBridgeInfill => ::slicer_ir::ExtrusionRole::InternalBridgeInfill,
                 WitExtrusionRole::WipeTower => ::slicer_ir::ExtrusionRole::WipeTower,
+                WitExtrusionRole::Custom(s) if s == "slicer.builtin/prime-tower@1" => {
+                    ::slicer_ir::ExtrusionRole::PrimeTower
+                }
+                WitExtrusionRole::Custom(s) if s == "slicer.builtin/skirt@1" => {
+                    ::slicer_ir::ExtrusionRole::Skirt
+                }
+                WitExtrusionRole::Custom(s) if s == "slicer.builtin/brim@1" => {
+                    ::slicer_ir::ExtrusionRole::Brim
+                }
                 WitExtrusionRole::Custom(s) if s == "slicer.builtin/internal-solid-infill@1" => {
                     ::slicer_ir::ExtrusionRole::InternalSolidInfill
                 }
@@ -2809,9 +2887,13 @@ fn layer_glue_helpers() -> TokenStream2 {
                 let region_id: ::slicer_ir::RegionId = r.region_id().parse().unwrap_or(0);
                 let resolved_seam = r.resolved_seam().map(__slicer_adapt_seam_position);
                 let seam_candidates = r.seam_candidates().iter().map(__slicer_adapt_seam_candidate).collect();
+                let variant_chain = r.variant_chain().iter().map(|(semantic, value)| {
+                    (semantic.clone(), __slicer_wit_paintvalue_to_ir(value))
+                }).collect();
                 let mut perimeter_view = ::slicer_sdk::views::PerimeterRegionView::default();
                 perimeter_view.set_object_id(r.object_id());
                 perimeter_view.set_region_id(region_id);
+                perimeter_view.set_variant_chain(variant_chain);
                 perimeter_view.set_wall_loops(walls);
                 perimeter_view.set_infill_areas(infill);
                 perimeter_view.set_seam_candidates(seam_candidates);
@@ -2824,6 +2906,7 @@ fn layer_glue_helpers() -> TokenStream2 {
                 perimeter_view.set_raft_fill(r.raft_fill().iter().map(__slicer_wit_expolygon_to_ir).collect());
                 perimeter_view.set_tool_index(r.tool_index());
                 perimeter_view.set_wall_source_region_id(r.wall_source_region_id().map(|s| s.parse().unwrap_or(0)));
+                perimeter_view.set_config(__slicer_adapt_config(&r.config()));
                 out.push(perimeter_view);
             }
             out
@@ -2875,6 +2958,28 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
                 tool_index: p.tool_index,
                 order_lock: p.order_lock,
             }
+        }
+
+        /// Convert a full region variant chain (semantic-name, PaintValue) into
+        /// the WIT `list<tuple<string, paint-value>>` shape passed to
+        /// `set-current-origin`. Mirrors the host's `ir_to_wit_paint_value`:
+        /// `PaintValue::Custom` has no WIT output counterpart and degrades to
+        /// `ToolIndex(0)`.
+        fn __slicer_ir_variant_chain_to_wit(
+            chain: &[(::std::string::String, ::slicer_ir::PaintValue)],
+        ) -> ::std::vec::Vec<(::std::string::String, WitPaintValue)> {
+            chain
+                .iter()
+                .map(|(semantic, value)| {
+                    let value = match value {
+                        ::slicer_ir::PaintValue::Flag(v) => WitPaintValue::Flag(*v),
+                        ::slicer_ir::PaintValue::Scalar(v) => WitPaintValue::Scalar(*v),
+                        ::slicer_ir::PaintValue::ToolIndex(v) => WitPaintValue::ToolIndex(*v),
+                        ::slicer_ir::PaintValue::Custom(_) => WitPaintValue::ToolIndex(0),
+                    };
+                    (semantic.clone(), value)
+                })
+                .collect()
         }
     };
 
@@ -3021,7 +3126,8 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
             let wall_loop_origins = sdk.wall_loop_origins();
             for (i, w) in wall_loops.iter().enumerate() {
                 if let Some(origin) = &wall_loop_origins[i] {
-                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string());
+                    let chain = __slicer_ir_variant_chain_to_wit(&origin.variant_chain);
+                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string(), &chain);
                 }
                 let _ = wit.push_wall_loop(&__slicer_ir_wallloop_to_wit(w));
             }
@@ -3033,7 +3139,8 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
                     call_areas.iter().map(__slicer_ir_expolygon_to_wit).collect();
                 if !areas.is_empty() {
                     if let Some(origin) = &infill_areas_origins[i] {
-                        let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string());
+                        let chain = __slicer_ir_variant_chain_to_wit(&origin.variant_chain);
+                        let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string(), &chain);
                     }
                     let _ = wit.set_infill_areas(&areas);
                 }
@@ -3042,7 +3149,8 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
             let seam_candidate_origins = sdk.seam_candidate_origins();
             for (i, (pos, score)) in seam_candidates.iter().enumerate() {
                 if let Some(origin) = &seam_candidate_origins[i] {
-                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string());
+                    let chain = __slicer_ir_variant_chain_to_wit(&origin.variant_chain);
+                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string(), &chain);
                 }
                 if wit
                     .push_seam_candidate(
@@ -3061,7 +3169,8 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
             let rotated_wall_loop_origins = sdk.rotated_wall_loop_origins();
             for (i, (pos, wall_index, loop_)) in rotated_wall_loops.iter().enumerate() {
                 if let Some(origin) = &rotated_wall_loop_origins[i] {
-                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string());
+                    let chain = __slicer_ir_variant_chain_to_wit(&origin.variant_chain);
+                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string(), &chain);
                 }
                 let _ = wit.push_reordered_wall_loop(
                     WitPoint3WithWidth {
@@ -3090,7 +3199,8 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
             let sparse_origins = sdk.sparse_path_origins();
             for (i, p) in sparse.iter().enumerate() {
                 if let Some(origin) = &sparse_origins[i] {
-                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string());
+                    let chain = __slicer_ir_variant_chain_to_wit(&origin.variant_chain);
+                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string(), &chain);
                 }
                 let _ = wit.push_sparse_path(&__slicer_ir_path_to_wit(p));
             }
@@ -3098,7 +3208,8 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
             let solid_origins = sdk.solid_path_origins();
             for (i, p) in solid.iter().enumerate() {
                 if let Some(origin) = &solid_origins[i] {
-                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string());
+                    let chain = __slicer_ir_variant_chain_to_wit(&origin.variant_chain);
+                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string(), &chain);
                 }
                 let _ = wit.push_solid_path(&__slicer_ir_path_to_wit(p));
             }
@@ -3106,14 +3217,16 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
             let ironing_origins = sdk.ironing_path_origins();
             for (i, p) in ironing.iter().enumerate() {
                 if let Some(origin) = &ironing_origins[i] {
-                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string());
+                    let chain = __slicer_ir_variant_chain_to_wit(&origin.variant_chain);
+                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string(), &chain);
                 }
                 let _ = wit.push_ironing_path(&__slicer_ir_path_to_wit(p));
             }
             let raft_origins = sdk.raft_fill_origins();
             for (i, polygons) in sdk.raft_fill().iter().enumerate() {
                 if let Some(origin) = &raft_origins[i] {
-                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string());
+                    let chain = __slicer_ir_variant_chain_to_wit(&origin.variant_chain);
+                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string(), &chain);
                 }
                 let areas: ::std::vec::Vec<WitExPolygon> =
                     polygons.iter().map(__slicer_ir_expolygon_to_wit).collect();
@@ -3130,21 +3243,24 @@ fn layer_stage_helpers(stage: &str) -> TokenStream2 {
             let support_origins = sdk.support_path_origins();
             for (i, p) in sdk.support_paths().iter().enumerate() {
                 if let Some(origin) = &support_origins[i] {
-                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string());
+                    let chain = __slicer_ir_variant_chain_to_wit(&origin.variant_chain);
+                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string(), &chain);
                 }
                 let _ = wit.push_support_path(&__slicer_ir_path_to_wit(p));
             }
             let interface_origins = sdk.interface_path_origins();
             for (i, (p, top)) in sdk.interface_paths().iter().enumerate() {
                 if let Some(origin) = &interface_origins[i] {
-                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string());
+                    let chain = __slicer_ir_variant_chain_to_wit(&origin.variant_chain);
+                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string(), &chain);
                 }
                 let _ = wit.push_interface_path(&__slicer_ir_path_to_wit(p), *top);
             }
             let raft_origins = sdk.raft_path_origins();
             for (i, p) in sdk.raft_paths().iter().enumerate() {
                 if let Some(origin) = &raft_origins[i] {
-                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string());
+                    let chain = __slicer_ir_variant_chain_to_wit(&origin.variant_chain);
+                    let _ = wit.set_current_origin(&origin.object_id, &origin.region_id.to_string(), &chain);
                 }
                 let _ = wit.push_raft_path(&__slicer_ir_path_to_wit(p));
             }
@@ -3604,6 +3720,9 @@ fn build_layer_infill_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
         let sdk_regions = __slicer_adapt_perimeter_regions(&regions);
         let sdk_prior_infill: ::std::vec::Vec<::slicer_ir::InfillRegion> = prior_infill.iter().map(|r| ::slicer_ir::InfillRegion {
             object_id: r.object_id.clone(), region_id: r.region_id.parse().unwrap_or(0),
+            variant_chain: r.variant_chain.iter().map(|(semantic, value)| {
+                (semantic.clone(), __slicer_wit_paintvalue_to_ir(value))
+            }).collect(),
             sparse_infill: r.sparse_infill.iter().map(__slicer_wit_path_to_ir).collect(),
             solid_infill: r.solid_infill.iter().map(__slicer_wit_path_to_ir).collect(),
             ironing: r.ironing.iter().map(__slicer_wit_path_to_ir).collect(),

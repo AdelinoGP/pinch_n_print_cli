@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0.0",
+  "source": {
+    "kind": "model",
+    "model": "resources/regression_wedge.stl",
+    "config": "crates/pnp-cli/tests/fixtures/automatic_value_expansion/config.json",
+    "module_dirs": [
+      "modules/core-modules"
+    ]
+  },
+  "layers": [
+    0
+  ],
+  "taps": [
+    "Layer::Perimeters"
+  ],
+  "visualizations": [
+    "filament_lines"
+  ]
+}

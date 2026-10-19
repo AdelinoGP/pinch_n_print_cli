@@ -56,12 +56,12 @@ crates/slicer-schema/wit/
     layer-path-optimization/layer-path-optimization.wit                      # package slicer:layer-path-optimization@1.0.0
     layer-anchored-events/layer-anchored-events.wit                            # package slicer:layer-anchored-events@1.0.0
     prepass-mesh-analysis/prepass-mesh-analysis.wit                          # package slicer:prepass-mesh-analysis@1.0.0
-    prepass-layer-planning/prepass-layer-planning.wit                        # package slicer:prepass-layer-planning@1.0.0
+    prepass-layer-planning/prepass-layer-planning.wit                        # package slicer:prepass-layer-planning@3.0.0
     prepass-seam-planning/prepass-seam-planning.wit                          # package slicer:prepass-seam-planning@1.0.0
     prepass-support-geometry/prepass-support-geometry.wit                    # package slicer:prepass-support-geometry@1.0.0
     postpass-gcode-postprocess/postpass-gcode-postprocess.wit          # package slicer:postpass-gcode-postprocess@1.0.0
     postpass-text-postprocess/postpass-text-postprocess.wit             # package slicer:postpass-text-postprocess@1.0.0
-    finalization-layer-finalization/finalization-layer-finalization.wit  # package slicer:finalization-layer-finalization@1.0.0
+    finalization-layer-finalization/finalization-layer-finalization.wit  # package slicer:finalization-layer-finalization@1.1.0
 ```
 
 **Host** consumption is defined in `crates/slicer-wasm-host/src/host.rs`. That file
@@ -277,20 +277,38 @@ Notable records/methods worth surfacing (not obvious from the resource names):
   returning the previous layer's slice boundary contours for the current
   region.
 - `internal-solid-fill` is exposed in the canonical region WIT type and SDK
-  view as `internal_solid_fill`. `internal_bridge_areas` remains host-only and
-  is not part of WIT.
+  view as `internal_solid_fill`.
+- `slice-region-view` exposes `internal-bridge-areas: func() -> list<ex-polygon>`
+  and `internal-bridge-angles-deg: func() -> list<f32>` (SDK
+  `internal_bridge_areas()` / `internal_bridge_angles_deg()`, plus the
+  `internal_bridge_angle_deg(index)` fallback helper). The angles are
+  index-aligned with the areas, in degrees of line direction (the
+  `bridge-orientation-deg` convention); an empty list means every internal
+  polygon uses `bridge-orientation-deg`. Both are authored by the host's
+  `PrePass::ShellClassification` internal-bridge gate (SliceIR 4.10.0).
 - `slice-region-view` and `perimeter-region-view` expose
   `config: func() -> config-view`, providing a per-region config accessor for
   resolved settings inside each region loop. Packet 131 bumps the then-monolithic `world-layer`
   from 2.0.0 to 2.1.0 for this additive contract change.
 - `perimeter-output-builder` and `infill-output-builder` both carry
-   `set-current-origin: func(object-id: string, region-id: string) -> result<_, string>`,
-   which tags the region currently being iterated so buffered per-region pushes are
-   attributed correctly (packet 127, ADR-0022; see the `begin_region` SDK method).
+   `set-current-origin: func(object-id: string, region-id: string, variant-chain: list<tuple<string, paint-value>>) -> result<_, string>`,
+   which tags the region currently being iterated — full identity, including
+   the paint variant chain — so buffered per-region pushes are
+   attributed correctly (packet 127, ADR-0022; see the `begin_region` SDK
+   method). Widened from the original two-field form by the seam-identity
+   change; the builders live in the **unversioned** shared `slicer:ir-handles`
+   package, so there is no world version to bump — compatibility is enforced
+   structurally by wasmtime typed instantiation at first dispatch, and every
+   guest must be rebuilt (`cargo xtask build-guests`).
 - `support-output-builder` also carries
-  `set-current-origin: func(object-id: string, region-id: string) -> result<_, string>`,
+  `set-current-origin: func(object-id: string, region-id: string, variant-chain: list<tuple<string, paint-value>>) -> result<_, string>`,
   which tags the support region currently being iterated so buffered per-region pushes
   are attributed correctly (packet 205c; see the `begin_region` SDK method).
+- `perimeter-region-view` exposes
+  `variant-chain: func() -> list<tuple<string, paint-value>>`, mirroring
+  `slice-region-view`; guests forward it through `begin_region`. The
+  `prior-infill-region` record carries `variant-chain` as a field so the
+  infill linker can re-attribute its re-emitted paths to the source variant.
 - `slice-region-view` and `perimeter-region-view` both expose
   `raft-fill: func() -> list<ex-polygon>` (packet 240a), mirroring
   `SlicedRegion.raft_fill`. The `raft-default` module writes raft polygons through
@@ -508,7 +526,7 @@ interface contains the single `run` function:
 | Stage | Source package | Package identity |
 |-------|----------------|------------------|
 | `PrePass::MeshAnalysis` | `deps/prepass-mesh-analysis/prepass-mesh-analysis.wit` | `slicer:prepass-mesh-analysis@1.0.0` |
-| `PrePass::LayerPlanning` | `deps/prepass-layer-planning/prepass-layer-planning.wit` | `slicer:prepass-layer-planning@1.0.0` |
+| `PrePass::LayerPlanning` | `deps/prepass-layer-planning/prepass-layer-planning.wit` | `slicer:prepass-layer-planning@3.0.0` |
 | `PrePass::SeamPlanning` | `deps/prepass-seam-planning/prepass-seam-planning.wit` | `slicer:prepass-seam-planning@1.0.0` |
 | `PrePass::SupportGeometry` | `deps/prepass-support-geometry/prepass-support-geometry.wit` | `slicer:prepass-support-geometry@1.0.0` |
 
@@ -516,6 +534,25 @@ The shared view records (`mesh-object-view`, `paint-value-view`, `paint-stroke-v
 `paint-layer-view`) are defined once in the unversioned flat package
 `deps/prepass-types.wit` (`slicer:prepass-types`). Read each stage package for its exact
 parameters, view records, and imported output resource.
+
+### `PrePass::LayerPlanning` v3 object configuration (Normative — TASK-566)
+
+`slicer:prepass-layer-planning@3.0.0` retains the layer-planning `objects`,
+`output`, and `config` inputs and adds `object-configs:
+list<object-layer-config>`. The `object-layer-config` record has exactly these
+six fields:
+
+| WIT field | Meaning |
+|-----------|---------|
+| `object-id` | Stable object identity for the resolved record. |
+| `object-height` | Resolved object height in millimetres. |
+| `layer-height` | Effective resolved layer height. |
+| `first-layer-height` | Effective resolved first-layer height. |
+| `support-raft-layers` | Resolved number of raft prefix layers. |
+| `layer-zs` | Host-derived object-local top Zs; empty preserves the uniform fallback. |
+
+The host resolves these values before dispatch; the guest receives the typed
+record rather than reconstructing namespaced keys.
 
 `PrePass::PaintSegmentation` is host-built-in (packet 97; see
 `01_system_architecture.md`) and has no module package or WIT export.
@@ -643,7 +680,12 @@ is the idiomatic component-model spelling (cf. `wasi:cli/run@0.2.0#run`).
 ### `finalization-layer-finalization/finalization-layer-finalization.wit`
 
 **Source of truth:** `crates/slicer-schema/wit/deps/finalization-layer-finalization/finalization-layer-finalization.wit`
-(package `slicer:finalization-layer-finalization@1.0.0`).
+(package `slicer:finalization-layer-finalization@1.1.0` — 1.0.0 → 1.1.0 added
+the `finalization-output-builder.push-annotation` relay, ticket 47: without it
+the WASM drain-back silently dropped `FinalizationOutputBuilder`'s
+`push_annotation`/`push_fan_speed` stream — part-cooling's `M106`/`M107` fan
+commands — while the native leg merged them via `apply_to`, so the external
+leg's emitted G-code carried zero fan commands).
 
 Read `crates/slicer-schema/wit/deps/finalization-layer-finalization/finalization-layer-finalization.wit`
 for the exact field order, parameter names, and return types. The imported
@@ -658,6 +700,15 @@ The exported `layer-finalization` interface has one `run` function receiving
 layer views, the output builder, and a config view; the
 `layer-finalization-module` world imports the shared host services, profiling,
 config, and local types.
+
+`finalization-output-builder.push-annotation` requires the exact manifest write
+path `LayerCollectionIR.annotations`, for both comment and raw annotations
+(including fan commands). Empty write sets, unrelated field declarations,
+and a bare `LayerCollectionIR` declaration do not authorize this operation.
+Both transports must report undeclared annotation writes as fatal contract
+errors and retain the pre-call layers. Successful WASM pushes record
+`LayerCollectionIR.annotations` in the runtime write audit. This maps the
+existing annotation operation to its IR carrier; it does not change WIT.
 
 Host validation: the host validates that `entity-id` in `modify-entity`
 resolves to a real entity within `layer`; unknown IDs are rejected with an `Err(string)` diagnostic and no mutation. The closure-based API from packet 40 is
@@ -690,11 +741,18 @@ now legacy" above).
 
 At ingestion, `ingest_manifest` in `crates/slicer-scheduler/src/manifest.rs`
 requires `[module].id`/`version`, `[stage].id`, `[ir-access].reads`/`writes`,
-`[claims].holds`/`requires`, all five `[compatibility]` fields,
-`config.overridable-per-region.keys`, `config.overridable-per-layer.keys`, and
-`hints.layer-parallel-safe`. `[config.schema]` and `[[region_split]]` are
-optional; their field entries and declarations are parsed when present. Other
-TOML keys are tolerated but are not stored by the manifest loader.
+`[claims].holds`/`requires`, all five `[compatibility]` fields, and
+`hints.layer-parallel-safe`. `[config.schema]`, `[[region_split]]`, and the
+top-level `paint_only` metadata are optional; their field entries and
+declarations are parsed when present. Other TOML keys are tolerated but are
+not stored by the manifest loader.
+
+Declaring `[[region_split]]` registers paint semantics in the cross-manifest
+aggregate; `paint_only = true` is a separate opt-in that makes the declaration
+also gate per-layer invocation. A module may declare semantics and still run
+on every layer (the core `classic-perimeters`, `arachne-perimeters`, and
+`fuzzy-skin` modules do exactly that — fuzzy-skin's `apply_to_all` mode
+requires invocation on unpainted layers). See ADR-0071.
 
 The sibling module manifest is a build-relevant declaration input: `[stage].id`
 drives stage expectation, and `[config.schema]` controls the keys forwarded
@@ -746,7 +804,7 @@ requires = []                     # claim slots that MUST be held by another mod
 | Claim ID                  | Purpose                                                                   |
 |---------------------------|---------------------------------------------------------------------------|
 | `perimeter-generator`     | Held by the module producing wall loops on a given region.                |
-| `infill-generator`        | **Deprecated 2026-06-09 (DEV-065).** Held by the module producing infill paths on a given region. Packet 37's four per-role claims (`claim:top-fill` … `claim:sparse-fill`) supersede this blanket gate. No current core infill manifest declares it. Third-party modules that still declare it continue to load, but cannot coexist with another module holding the same claim (first-winner dedup applies). |
+| `infill-generator`        | **Deprecated 2026-06-09.** Held by the module producing infill paths on a given region. Packet 37's four per-role claims (`claim:top-fill` … `claim:sparse-fill`) supersede this blanket gate. No current core infill manifest declares it. Third-party modules that still declare it continue to load, but cannot coexist with another module holding the same claim (first-winner dedup applies). |
 | `support-generator`       | Held by the module producing support extrusions on a given layer/region.  |
 | `support-planner`         | Held by the PrePass module emitting `SupportPlanIR`.                      |
 | `seam-placer`             | Held by the module placing seam candidates and resolving seam positions.  |
@@ -866,7 +924,6 @@ max-ir-schema     = "2.0.0"      # exclusive upper bound
   display  = "Infill Density"
   unit     = "ratio"          # UI renders as percentage
   group    = "Pattern"
-  validate = "value > 0.0 && value < 1.0"
 
    [config.schema.multiline_count]
   type    = "int"
@@ -895,22 +952,15 @@ max-ir-schema     = "2.0.0"      # exclusive upper bound
   group    = "Advanced"
   advanced = true
 
-# ── Cross-field validation ────────────────────────────────────────────────────
-# <!-- VERIFY: as of this writing, `manifest.rs` does not parse
-#      `[[config.cross-validate]]`; the rule is not enforced at module load.
-#      Treat this section as a forward-looking design item until the parser
-#      and validator catch up. -->
-[[config.cross-validate]]
-rule     = "marching_cell_size >= raster_precision * 10"
-message  = "Marching cell size should be at least 10x the raster precision"
-severity = "warning"    # "error" blocks slicing; "warning" notifies only
-
-# ── Per-region / per-layer override policy ────────────────────────────────────
-[config.overridable-per-region]
-keys = ["pattern", "density", "multiline-count"]
-
-[config.overridable-per-layer]
-keys = ["density"]      # density can vary per-layer; pattern cannot
+# ── Scope eligibility (per key; ADR-0069) ─────────────────────────────────────
+# A key's scope eligibility is declared per field, on the key's own
+# `[config.schema.<key>]` entry, via `denied_scopes` (see "Config Field Types
+# Reference" below). Absent `denied_scopes` means the key may be stated at
+# every scope: `global`, `object`, `layer_range`, `modifier`, `paint_semantic`,
+# `tool`. There is no per-module override allow list. Illustrative entry:
+#   [config.schema.some_machine_key]
+#   type          = "float"
+#   denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 # ── Region-split semantics declaration (Normative — Packet 92) ─────────────
 # Each [[region_split]] entry declares one paint semantic this module wants
@@ -929,6 +979,16 @@ value_type = "tool_index"      # flag | tool_index | custom_string
                                 # `scalar` is REJECTED at manifest load —
                                 # Scalar paints route through
                                 # SlicedRegion.segment_annotations instead.
+
+# ── Paint-only dispatch opt-in (Normative — ADR-0071) ────────────────────────
+# paint_only = true makes the host skip this module on any layer whose regions
+# carry none of the declared [[region_split]] semantics. Omitted or false
+# (the default) keeps the module dispatch-transparent: it runs on every layer
+# and its declarations still register semantics in the aggregate. Setting
+# paint_only = true REQUIRES at least one [[region_split]] entry; a paint-only
+# module with no semantics would be skipped on every layer and is rejected at
+# load time with PaintOnlyWithoutRegionSplit. Uncomment both lines together:
+# paint_only = true
 
 # ── Hints ─────────────────────────────────────────────────────────────────────
 [hints]
@@ -950,13 +1010,18 @@ wildcard form. A declared key of the form
 `<prefix>:*` matches all runtime keys whose name begins with `<prefix>:`,
 enabling modules to declare a single schema entry for dynamically-named
 keys such as `object_height:<uuid>` or `paint_config:<semantic>:<key>`.
-Static keys (without the `:*` suffix) continue to require exact-match.
+Static keys (without the `:*` suffix) require exact-match, except for registered
+legacy config-key spellings: resolution stores canonical identities, and
+`bind_module_config_view` (`crates/slicer-scheduler/src/execution_plan.rs`)
+binds the canonical value under a module's declared legacy spelling through
+`project_declared_config_view` in the same file. Native and WASM regional config
+transports use that same ownership-preserving projection. This does
+not expose aliases to undeclared readers or permit authoring both spellings in
+the same scope.
 The matcher is `source_key_matches_declared` in
-`crates/slicer-scheduler/src/execution_plan.rs`. The parser stores the
-`config.overridable-per-region` and `config.overridable-per-layer` key lists,
-but the current scheduler does not apply this wildcard matcher to those lists.
+`crates/slicer-scheduler/src/execution_plan.rs`.
 
-### `[[region_split]]` Validation Rules (Normative — Packet 92)
+### `[[region_split]]` Validation Rules (Normative — Packet 92, ADR-0071)
 
 Per-manifest:
 
@@ -970,6 +1035,14 @@ Per-manifest:
 4. **Core semantic (`material`, `fuzzy_skin`) with `priority` ≠ registry
    value** → rejected (`LoadErrorKind::CorePriorityMismatch`).
    `CORE_REGION_SPLIT_PRIORITIES = { "material" => 100, "fuzzy_skin" => 200 }`.
+5. **Top-level `paint_only = true` with no `[[region_split]]` entry** →
+   rejected (`LoadErrorKind::PaintOnlyWithoutRegionSplit`). A non-boolean
+   `paint_only` is a `Schema` error naming the field.
+
+The aggregate is declaration-only: `material` and `fuzzy_skin` are present in
+`aggregated_region_split` because the core perimeter and fuzzy-skin manifests
+declare them, not because the host seeds them. Removing every declaration
+empties the aggregate. See ADR-0071.
 
 Cross-manifest: distinct semantics from different manifests that share a
 priority emit a non-fatal `LoadDiagnostic { level: Warning, ... }` naming
@@ -1224,9 +1297,9 @@ group   = "Support"
 # fields are mirrored into the configuration-only `RaftPlan` record.
 [config.schema.raft_first_layer_density]
 type    = "float"
-default = 0.4
-min     = 0.0
-max     = 1.0
+default = 90.0
+min     = 10.0
+max     = 100.0
 display = "Raft First Layer Density"
 group   = "Support"
 
@@ -1619,8 +1692,20 @@ set is listed by `slicer_schema::VALID_CONFIG_TYPES`.
 | `description` | string       | UI tooltip / help text.                                          |
 | `group`   | string           | UI grouping hint (becomes a section header in the settings tab). |
 | `advanced` | bool            | Hidden by default; revealed only in advanced view.               |
-| `validate` | string          | Single-field validation expression. See § Validation Expression Language. |
+| `selector` | bool           | Marks a key used to select a module or execution path; selector keys must be unavailable at narrower per-region scopes. |
+| `base_key` | string          | Absolute config key used as the base for `percent` and `float_or_percent` values. |
+| `denied_scopes` | array of strings | The key's scope eligibility, as a per-key **deny list** (ADR-0069): scopes where the key **cannot** be stated. Statable scopes are `global`, `object`, `layer_range`, `modifier`, `paint_semantic`, and `tool`; an absent (or empty) `denied_scopes` means the key may be stated at every scope (`global`, `object`, `layer_range`, `modifier`, `paint_semantic`, `tool`). This is the sole per-key scope-eligibility mechanism for both host and module-declared keys. A statement at a denied scope is rejected loudly at resolution (`ResolutionError::ScopeDenied`, see `docs/04_host_scheduler.md`). |
 | `tags`    | array of strings | UI taxonomy tags for sub-tab filtering and search (free-form). Emitted as `[]` when absent. |
+| `config_block` | bool (optional) | Whether the key is emitted in the G-code `CONFIG_BLOCK`. Default `true`: any declaration (host or module manifest) that does not set the flag emits the key whenever the resolved config carries it. A `false` on any declaration wins — reconciliation marks the key `omit_from_config_block` when any host row or declaring module sets it. |
+
+Exactly four keys carry explicit `config_block = false`: `thumbnail_path`, `mmu_segmented_region_max_width`, `mmu_segmented_region_interlocking_depth`, and `mmu_segmented_region_interlocking_beam`. The three `mmu_segmented_region_*` keys are excluded because their emission would change `CONFIG_BLOCK` bytes for every print; `thumbnail_path` is the fork-only runtime key. Emission order is deterministic (`BTreeMap`).
+
+When a `CONFIG_BLOCK` value is a string, the serializer escapes it per
+canonical `escape_string_cstyle` (`ConfigOptionString::serialize`, OrcaSlicer
+`Config.cpp`): a string value in any declaration's key is serialized with
+`\n`, `\r`, `\\`, and `\"` escapes so multi-line values (for example
+`machine_start_gcode`) round-trip on one `; key = value` line through
+OrcaSlicer's `ConfigBase::load_from_gcode_file`.
 
 #### Tag conventions
 
@@ -1667,34 +1752,6 @@ and `resolve_global_config` / `resolve_per_object_configs` /
 | `"deg"`   | `X°`               |
 | `"mm/s"`  | `X mm/s`           |
 | `"ms"`    | `X ms`             |
-
----
-
-## Validation Expression Language
-
-Used in `validate` (single field) and `cross-validate.rule` (multi-field). Deliberately restricted — no loops, no I/O, no function calls.
-
-<!-- VERIFY: as of this writing the parser stores `validate`/`cross-validate`
-     strings but does not interpret them at module load. The grammar below is
-     the forward-looking design; do not assume runtime enforcement. The
-     numeric-bounds enforcement above (`min`/`max`) is independent of this
-     grammar and is enforced today by `ConfigBoundsIndex`. -->
-
-
-```text
-Literals:   0, 1.5, true, false, "string"
-References: value (single-field), field-name (cross-validate)
-Operators:  && || ! == != < <= > >= + - * /
-Functions:  min(a,b)  max(a,b)  abs(x)  floor(x)  ceil(x)
-```
-
-Examples:
-
-```toml
-validate = "value >= 0.01 && value <= 10.0"
-rule     = "outer_wall_speed <= inner_wall_speed * 1.5"
-rule     = "min(layer_height, 0.35) == layer_height"
-```
 
 ---
 
@@ -1790,6 +1847,14 @@ remain separate workspaces.
   deterministic line per diverging crate naming `--sync-locks` as the remedy, and
   it folds into exit `1`, never exit `3`. Semver-major coexistence inside a
   single lock (syn 1.x alongside 2.x) is not divergence.
+- `cargo xtask build-guests --accelerated --check` — verify accelerated guest
+  artifacts under the mode-distinct namespace `target/guests-accelerated/`,
+  with the same exit-code semantics (`0` fresh, `1` stale, `3` infrastructure
+  error) and the accelerated policy/toolchain identity. It never accepts an
+  opposite-mode artifact: a clean ordinary artifact is not evidence that the
+  accelerated artifact is fresh, and vice versa. `cargo xtask build-guests
+  --accelerated` rebuilds only the stale accelerated guests; `--accelerated
+  --force` is the unconditional accelerated rebuild.
 - `cargo xtask build-guests --sync-locks` — regenerates every guest lockfile in
   one pass. It skips guests that are members of the root workspace (those
   without their own `[workspace]` sentinel), because `cargo generate-lockfile`

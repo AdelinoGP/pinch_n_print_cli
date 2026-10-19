@@ -9,21 +9,41 @@
 #![allow(missing_docs)]
 
 use machine_gcode_emit::MachineGcodeEmit;
-use slicer_ir::{ConfigValue, ExtrusionRole, GCodeCommand, RetractMode};
+use slicer_ir::{ConfigValue, ConfigView, ExtrusionRole, GCodeCommand, RetractMode};
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::host::test_support::{install_log_capture, take_log_messages};
 use slicer_sdk::host::LogLevel;
 use slicer_sdk::postpass_builders::GcodeOutputBuilder;
 use slicer_sdk::postpass_types::GcodeOutputCommand;
-use slicer_sdk::test_prelude::config_with;
 use slicer_sdk::traits::PostpassModule;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// Required declared keys (machine-gcode-emit.toml) seeded at their manifest
+/// defaults when a test config omits them, mirroring the production
+/// `seed_registry_defaults` step so per-test pairs remain the only overrides.
+fn with_declared_defaults(
+    config_pairs: &[(&str, ConfigValue)],
+) -> std::collections::HashMap<String, ConfigValue> {
+    let mut fields = std::collections::HashMap::new();
+    fields.insert(
+        "bed_temperature_initial_layer_single".to_string(),
+        ConfigValue::Int(60),
+    );
+    fields.insert(
+        "nozzle_temperature_initial_layer".to_string(),
+        ConfigValue::Int(215),
+    );
+    for (key, value) in config_pairs {
+        fields.insert((*key).to_string(), value.clone());
+    }
+    fields
+}
+
 fn run(config_pairs: &[(&str, ConfigValue)], commands: &[GCodeCommand]) -> GcodeOutputBuilder {
-    let cfg = config_with(config_pairs);
+    let cfg = ConfigView::from_map(with_declared_defaults(config_pairs));
     let module = MachineGcodeEmit::from_config(&cfg).expect("from_config must succeed");
     let mut output = GcodeOutputBuilder::new();
     module
@@ -39,7 +59,7 @@ fn try_run(
     config_pairs: &[(&str, ConfigValue)],
     commands: &[GCodeCommand],
 ) -> (Result<(), ModuleError>, GcodeOutputBuilder) {
-    let cfg = config_with(config_pairs);
+    let cfg = ConfigView::from_map(with_declared_defaults(config_pairs));
     let module = MachineGcodeEmit::from_config(&cfg).expect("from_config must succeed");
     let mut output = GcodeOutputBuilder::new();
     let result = module.run_gcode_postprocess(commands, &mut output, &cfg);
@@ -115,6 +135,42 @@ fn empty_templates_emit_no_raw_wrappers() {
     assert!(
         logs.is_empty(),
         "absent templates must not log any unresolved-placeholder warning: {logs:?}"
+    );
+}
+
+#[test]
+fn explicit_empty_end_template_emits_no_raw_end_block_and_preserves_shutdown() {
+    let output = run(
+        &[("machine_end_gcode", ConfigValue::String(String::new()))],
+        &[GCodeCommand::FanSpeed { value: 0 }],
+    );
+    assert!(
+        raw_texts(&output).is_empty(),
+        "empty end template adds no Raw block"
+    );
+    assert_eq!(
+        output.commands(),
+        &[GcodeOutputCommand::Command(GCodeCommand::FanSpeed {
+            value: 0
+        })],
+        "cooling shutdown is input, not an end-template wrapper"
+    );
+
+    // Literal nonempty control proves this boundary can observe a custom end
+    // block rather than mistaking all terminal commands for template output.
+    let nonempty = run(
+        &[("machine_end_gcode", ConfigValue::String("M104 S0".into()))],
+        &[GCodeCommand::FanSpeed { value: 0 }],
+    );
+    assert_eq!(raw_texts(&nonempty), vec!["M104 S0"]);
+    assert_eq!(
+        nonempty.commands(),
+        &[
+            GcodeOutputCommand::Command(GCodeCommand::FanSpeed { value: 0 }),
+            GcodeOutputCommand::Command(GCodeCommand::Raw {
+                text: "M104 S0".into()
+            }),
+        ]
     );
 }
 
@@ -1545,10 +1601,7 @@ fn manual_filament_change_skips_first_change_filament_injection_only() {
 
     // Default (absent key): both toolchanges inject.
     let output = run(
-        &[(
-            "change_filament_gcode",
-            ConfigValue::String("FCHG".into()),
-        )],
+        &[("change_filament_gcode", ConfigValue::String("FCHG".into()))],
         commands,
     );
     let texts = raw_texts(&output);
@@ -1562,10 +1615,7 @@ fn manual_filament_change_skips_first_change_filament_injection_only() {
     // ToolChange commands are re-emitted (the skip affects the template only).
     let output = run(
         &[
-            (
-                "change_filament_gcode",
-                ConfigValue::String("FCHG".into()),
-            ),
+            ("change_filament_gcode", ConfigValue::String("FCHG".into())),
             ("manual_filament_change", ConfigValue::Bool(true)),
         ],
         commands,
@@ -1604,10 +1654,7 @@ fn manual_filament_change_does_not_skip_filament_end_gcode() {
     let output = run(
         &[
             ("filament_end_gcode", ConfigValue::String("FEND".into())),
-            (
-                "change_filament_gcode",
-                ConfigValue::String("FCHG".into()),
-            ),
+            ("change_filament_gcode", ConfigValue::String("FCHG".into())),
             ("manual_filament_change", ConfigValue::Bool(true)),
         ],
         commands,

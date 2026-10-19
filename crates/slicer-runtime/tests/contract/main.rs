@@ -69,6 +69,7 @@ mod postpass_gcode_emit_contract_tdd;
 mod postpass_gcode_empty_list_tdd;
 mod raft_bounds_tdd;
 mod raft_object_bottom_tdd;
+mod resolved_config_view_tdd;
 mod slice_region_view_overhang_areas_non_empty_tdd;
 mod wit_drift_detection_tdd;
 mod wit_single_source_tdd;

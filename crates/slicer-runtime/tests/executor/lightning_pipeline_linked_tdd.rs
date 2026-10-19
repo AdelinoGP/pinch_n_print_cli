@@ -62,6 +62,7 @@ fn slice_ir() -> SliceIR {
                 bridge_orientation_deg: 0.0,
                 sparse_infill_area: vec![square()],
                 internal_bridge_areas: Vec::new(),
+                internal_bridge_angles_deg: Vec::new(),
                 internal_solid_fill: Vec::new(),
                 raft_fill: Vec::new(),
             }
@@ -103,6 +104,15 @@ fn lightning_region_map() -> RegionMapIR {
     let mut region_map = RegionMapIR::default();
     let config = region_map.intern_config(ResolvedConfig {
         sparse_fill_holder: "lightning-infill".to_string(),
+        // This fixture builds the resolved pool directly, bypassing the live
+        // resolver's registry-default seeding for extension-backed linker keys.
+        extensions: std::collections::BTreeMap::from([(
+            "infill_anchor_max".to_string(),
+            ConfigValue::FloatOrPercent {
+                value: 20.0,
+                is_percent: false,
+            },
+        )]),
         ..ResolvedConfig::default()
     });
     region_map.entries.insert(
@@ -173,9 +183,29 @@ fn module_bundle(module_id: &str, stage: &str, wasm_name: &str) -> TestModuleBun
             "sparse_infill_density".to_string(),
             ConfigValue::Float(20.0),
         ),
+        // Required linker reads at infill-linker.toml manifest defaults. The
+        // region pool must carry these too; an explicit resolved entry is not
+        // a missing-region fallback.
+        ("layer_height".to_string(), ConfigValue::Float(0.2)),
+        (
+            "infill_anchor_max".to_string(),
+            ConfigValue::FloatOrPercent {
+                value: 20.0,
+                is_percent: false,
+            },
+        ),
+        ("infill_density".to_string(), ConfigValue::Float(0.2)),
         ("infill_overlap".to_string(), ConfigValue::Float(0.45)),
         ("sparse_infill_speed".to_string(), ConfigValue::Float(50.0)),
         ("line_width".to_string(), ConfigValue::Float(0.4)),
+        // Contract-required reads (packet 06): lightning-infill `require_abs_value`s
+        // the bound-view widths pair at manifest defaults (0.0), matching
+        // `integrated_parity_gyroid_infill_tdd`'s bound-view fixture.
+        ("bridge_line_width".to_string(), ConfigValue::Float(0.0)),
+        (
+            "initial_layer_line_width".to_string(),
+            ConfigValue::Float(0.0),
+        ),
     ]));
     let module = CompiledModuleBuilder::new(loaded.id().to_string())
         .config_view(Arc::new(config))

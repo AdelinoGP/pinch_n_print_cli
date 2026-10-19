@@ -189,47 +189,33 @@ fn point_in_polygon(px: f32, py: f32, polygon: &[(f32, f32)]) -> bool {
 }
 
 impl WipeTower {
-    /// Construct from a config view, reading wipe tower settings with defaults.
+    /// Construct from a config view, reading wipe tower settings.
+    ///
+    /// Required reads (packet 06 fail-closed semantics; mirrors
+    /// arachne-perimeters): the registry seeds every declared key's default
+    /// into a bound view, so an absent key is a contract violation, not a
+    /// configurable fallback. `wipe_tower_enabled` is additionally a typed
+    /// host `ResolvedConfig` field, whose own default travels through
+    /// `to_config_map` (`false`, matching the pre-migration literal).
     pub fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let enabled = match config.get("enable_prime_tower") {
-            Some(ConfigValue::Bool(b)) => *b,
-            _ => false,
-        };
+        // Required read (config-scope-resolution plan): declared in the
+        // manifest, so a bound view always holds it.
+        let enabled = config.require_bool("enable_prime_tower")?;
 
-        let tower_x = match config.get("wipe_tower_x") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 0.0,
-        };
+        let tower_x = config.require_float("wipe_tower_x")? as f32;
 
-        let tower_y = match config.get("wipe_tower_y") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 0.0,
-        };
+        let tower_y = config.require_float("wipe_tower_y")? as f32;
 
-        let tower_width = match config.get("prime_tower_width") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 60.0,
-        };
+        // Required reads: both keys are declared in the manifest, so a bound
+        // view always holds their registry defaults (width 60.0, purge 45.0 —
+        // ticket 100 aligned `prime_volume` to OrcaSlicer's default).
+        let tower_width = config.require_float("prime_tower_width")? as f32;
 
-        let purge_volume = match config.get("prime_volume") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            // Match the manifest default (wipe-tower.toml: default 45.0, max 50.0),
-            // which ticket 100 aligned to OrcaSlicer's `prime_volume` default.
-            // The previous 70.0 fallback exceeded the schema max and is reachable
-            // now that multi-tool prints auto-enable the wipe tower without
-            // necessarily supplying an explicit purge volume.
-            _ => 45.0,
-        };
+        let purge_volume = config.require_float("prime_volume")? as f32;
 
-        let line_width = match config.get("line_width") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 0.4,
-        };
+        let line_width = config.require_float("line_width")? as f32;
 
-        let retract_length = match config.get("retract_length") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 2.0,
-        };
+        let retract_length = config.require_float("retract_length")? as f32;
 
         // Parse printable_area from config (interleaved [x0,y0,x1,y1,...] or
         // Orca point strings — see `float_list_from_config`).

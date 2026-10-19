@@ -1,0 +1,13 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.40s
+     Running tests\contract\main.rs (target\debug\deps\contract-e017127a3b84dfc2.exe)
+
+running 6 tests
+test infill_postprocess_empty_commit_tdd::native_infill_postprocess_empty_output_commits_the_empty_replacement ... ok
+test infill_postprocess_empty_commit_tdd::native_infill_empty_output_still_commits_nothing ... ok
+test infill_postprocess_empty_commit_tdd::both_legs_agree_on_the_empty_replacement_shape ... ok
+test infill_postprocess_empty_commit_tdd::wasm_infill_empty_output_still_commits_nothing ... ok
+test infill_postprocess_empty_commit_tdd::wasm_infill_postprocess_empty_output_commits_the_empty_replacement ... ok
+test infill_postprocess_empty_commit_tdd::raft_only_output_is_not_the_empty_case_on_either_leg ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 125 filtered out; finished in 0.00s
+

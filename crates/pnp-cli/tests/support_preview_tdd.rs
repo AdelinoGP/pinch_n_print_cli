@@ -121,6 +121,7 @@ fn prepared_context(support_enabled: bool) -> slicer_runtime::PrepassContext {
     slicer_runtime::prepare_prepass_context(
         Arc::new(mesh),
         config_source(support_enabled),
+        Vec::new(),
         &[module_dir()],
         true,
         false,
@@ -194,14 +195,15 @@ fn preview_json_schema_and_nonempty_support() {
     let output = tmp.path().join("support-preview.json");
     let config = write_config(&tmp, true);
 
-    assert!(run_support_preview(
+    if let Err(error) = run_support_preview(
         &fixture_path(),
         &output,
         Some(&config),
         &[module_dir()],
-        true
-    )
-    .is_ok());
+        true,
+    ) {
+        panic!("support preview failed: {error}");
+    }
     let doc = read_doc(&output);
     assert_eq!(doc["schema_version"], "1.2.0");
     assert_eq!(doc["units"], "mm");
@@ -259,14 +261,15 @@ fn coordinates_are_mm_not_internal_units() {
     let tmp = TempDir::new().expect("tempdir");
     let output = tmp.path().join("support-preview.json");
     let config = write_config(&tmp, true);
-    assert!(run_support_preview(
+    if let Err(error) = run_support_preview(
         &fixture_path(),
         &output,
         Some(&config),
         &[module_dir()],
-        true
-    )
-    .is_ok());
+        true,
+    ) {
+        panic!("support preview failed: {error}");
+    }
     let doc = read_doc(&output);
 
     let ctx = prepared_context(true);
@@ -343,14 +346,15 @@ fn support_body_carries_actual_support_structures() {
     let output = tmp.path().join("support-preview.json");
     let config = write_config(&tmp, true);
 
-    assert!(run_support_preview(
+    if let Err(error) = run_support_preview(
         &fixture_path(),
         &output,
         Some(&config),
         &[module_dir()],
-        true
-    )
-    .is_ok());
+        true,
+    ) {
+        panic!("support preview failed: {error}");
+    }
     let doc = read_doc(&output);
     assert_eq!(doc["schema_version"], "1.2.0");
 
@@ -474,8 +478,8 @@ fn build_preview_doc_merges_plan_body_regions_per_layer() {
             patch: 0,
         },
         entries: vec![
-            // exhaustive: the fixture pins every plan-entry field so the
-            // emitted document shape is fully determined by this literal
+            // The fixture pins every plan-entry field, so the emitted document
+            // shape is fully determined by this literal.
             // exhaustive: fixture pins every field
             slicer_ir::SupportPlanEntry {
                 global_layer_index: 0,
@@ -496,7 +500,7 @@ fn build_preview_doc_merges_plan_body_regions_per_layer() {
                 decline_reason: None,
             },
             // Raft prefix entries carry no geometry and must be skipped.
-            // exhaustive: fixture pins every field
+            // exhaustive: fixture pins every field (skipped sentinel entry)
             slicer_ir::SupportPlanEntry {
                 global_layer_index: -1,
                 object_id: "obj-0".to_owned(),
@@ -589,8 +593,8 @@ fn interface_role_regions_land_in_support_interface() {
             patch: 0,
         },
         entries: vec![
-            // exhaustive: the fixture pins every plan-entry field so the
-            // emitted document shape is fully determined by this literal
+            // The fixture pins every plan-entry field, so the emitted document
+            // shape is fully determined by this literal.
             // exhaustive: fixture pins every field
             slicer_ir::SupportPlanEntry {
                 global_layer_index: 0,
@@ -625,7 +629,7 @@ fn interface_role_regions_land_in_support_interface() {
                 decline_reason: None,
             },
             // Raft prefix entries carry no geometry and must be skipped.
-            // exhaustive: fixture pins every field
+            // exhaustive: fixture pins every field (skipped sentinel entry)
             slicer_ir::SupportPlanEntry {
                 global_layer_index: -1,
                 object_id: "obj-0".to_owned(),
@@ -775,14 +779,15 @@ fn support_disabled_yields_empty_layers_exit_zero() {
     let output = tmp.path().join("support-preview.json");
     let config = write_config(&tmp, false);
 
-    assert!(run_support_preview(
+    if let Err(error) = run_support_preview(
         &fixture_path(),
         &output,
         Some(&config),
         &[module_dir()],
-        true
-    )
-    .is_ok());
+        true,
+    ) {
+        panic!("support preview failed: {error}");
+    }
     let doc = read_doc(&output);
     assert_eq!(doc["schema_version"], "1.2.0");
     assert_eq!(doc["layer_count"], 40);

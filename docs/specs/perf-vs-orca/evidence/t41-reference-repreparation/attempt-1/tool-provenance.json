@@ -1,0 +1,15 @@
+{
+  "tools": {
+    "prepare.py": "8baad242e7325cafda8c9136d4cc508b19b8aaf90a6f453d4639cfae9d7f5abd",
+    "preflight.py": "99d1ab6c638fd40a448b049c14f9bb01800577bcd38ad007ed47dc67c320dbe2",
+    "verify-freeze.py": "27a4b74cb0967fd553d1329ed036072ccd05623afc362283bf3ca8ca5ee6c0c3",
+    "validate-reference.ps1": "bd4c6a5ed930dede53d18a930cd8deef27d8e3b10da0cee3dbcfa83548d3b4c5",
+    "test-preparation.py": "152e3abe9742e6bbf657e64e66b2886275670c8763fa74bcd72165f2c5794e22",
+    "test-freeze.py": "26851714dd9d7c50bde3426ca9c7faf2959ef17169eac91df5e05ab564bf092a",
+    "test-retention.py": "2316946cf4555ea86416444c9fa2a3feedd2e18a3ed7269d9671e44640f479f8"
+  },
+  "shared_validator_sha256": "a8641f1fa6d5ab9aaa4c60a9bdd8ab984dabab25a5976af66af79ef04c37b96d",
+  "policy_source_sha256": "c1d1a8ab21212a2715cf8eb1024e089f64cf370c4525d20fe26803052ea94a28",
+  "policy_doc_sha256": "0a99277d882c28c19a88ea7dcd45a016fc2c5d9ce21467f90ec218fdcd786789",
+  "preflight_gates_sha256": "859478a16745c71cf80524190dfe7fc4e7be883a5ce3e39a5b88a8b15a730169"
+}

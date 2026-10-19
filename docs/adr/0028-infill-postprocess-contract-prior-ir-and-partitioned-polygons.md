@@ -166,6 +166,62 @@ binding for the implementing packets:
    the linker deliberately uses path-level observables (`speed_factor`, endpoint widths)
    instead of config for compatibility checks.
 
+## Amendment 2026-09-29 — "ran and re-emitted nothing" commits the empty replacement
+
+Amendment 2026-07-01 item 2's preservation clause was read too loosely at the
+producer boundary, and the loose reading shipped a containment hole.
+
+**What item 2 said.** "This is safe because a stage with zero registered modules
+never produces a commit — the prior `InfillIR` is preserved ... the replace
+fires only when a module actually ran."
+
+**What went wrong.** The *consumer* clause was right — `apply`'s
+`InfillPostProcess` arm replaces whenever it is reached, and is reached only
+when a module actually ran. But the **producer** (`deconstruct_layer_ctx`,
+`crates/slicer-wasm-host/src/dispatch.rs`, and its native twin
+`commit_native_layer_response`, `crates/slicer-wasm-host/src/marshal/native.rs`)
+mapped an all-empty invocation output to `Ok(None)` for both infill stages. So a
+linker that ran and clipped every path to nothing — a *verdict* — was encoded
+identically to a stage that never ran — an *absence* — and the prior `InfillIR`
+was preserved. On the affected layers that prior IR is the raw, bbox-expanded
+emitter envelope the linker had just rejected: wayfinder perf-vs-orca ticket 35
+measured 60 such classic Benchy layers carrying 68.0% of the printed sparse mm,
+with 88.7% of one revived layer path outside the part cross-section.
+
+**Contract, restated.** For `Layer::InfillPostProcess` only, a ran invocation
+that re-emits nothing commits the **empty replacement set** — an `InfillIR` with
+no regions and no raft regions. Absence still means no commit, and is still
+reached by all the paths that never enter the commit producer: a stage with zero
+registered modules, a per-layer region-split skip, or a fatal missing component
+(ADR-0020 §Amendment). The two are now distinguishable at the boundary because
+they are produced by different code paths, not by inspecting an empty payload.
+
+`Layer::Infill` keeps its merge semantics and therefore keeps `Ok(None)` for an
+empty output: for a merge stage "emitted nothing" genuinely means "no
+contribution", and a merge into nothing is a no-op, not a replacement. The same
+reasoning leaves `Layer::SupportPostProcess` unchanged: its shipped consumer
+(`support-surface-ironing`) is additive, so an all-empty invocation must leave
+the prior `SupportIR` untouched.
+
+**Coverage.** `infill_postprocess_empty_replacement_supersedes_prior_ir`
+(`crates/slicer-runtime/tests/contract/infill_postprocess_contract_tdd.rs`)
+drives the real `com.core.infill-linker` over a raw envelope disjoint from its
+sparse partition and asserts zero committed paths; its positive control
+`infill_postprocess_inside_path_survives_so_the_clip_is_real` pins that the same
+harness keeps an inside path, so the zero is a clip verdict and not a vacuous
+harness. The pre-existing `infill_postprocess_absent_module_is_fatal_without_mutating_infill`
+(AC-N1) still pins the preservation half.
+
+The producer boundary itself is pinned on both legs by
+`crates/slicer-wasm-host/tests/contract/infill_postprocess_empty_commit_tdd.rs`:
+empty→empty-replacement and empty→commit-nothing on each leg, both-legs
+agreement on the empty replacement, and
+`raft_only_output_is_not_the_empty_case_on_either_leg` — the regression for a
+predicate asymmetry fixed alongside this change (the native emptiness check
+lacked `raft_fill`, so a native raft-only `InfillPostProcess` output was
+dropped). Each of those assertions was watched red under a deliberately
+reverted source before being accepted green.
+
 ## Future-Reviewer Notes
 
 - **Do not add fields to `PerimeterRegionView` that are not needed by a concrete

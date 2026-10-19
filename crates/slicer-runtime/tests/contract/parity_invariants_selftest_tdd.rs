@@ -768,6 +768,7 @@ fn infill_region(jitter: f32) -> InfillRegion {
     InfillRegion {
         object_id: "parity-object".to_string(),
         region_id: 0,
+        variant_chain: Vec::new(),
         sparse_infill: vec![support_segment(3, ExtrusionRole::SparseInfill, jitter)],
         solid_infill: vec![support_segment(
             2,

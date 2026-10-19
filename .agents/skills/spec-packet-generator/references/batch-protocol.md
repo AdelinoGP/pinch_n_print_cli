@@ -20,6 +20,17 @@ Use `docs/specs/<slug>-plan.md`. Store the approved plan verbatim; if it already
 | 2 | <slug>      | <goal>              | TASK-... | #1         | pending | - |
 ```
 
+**Packet directory naming:** every generated packet lands at
+`docs/spec_packets/<plan-prefix>_<NN>_<slug>/` — `<plan-prefix>` is the plan
+file name minus `-plan` (e.g. `test-quality-remediation` from
+`docs/specs/test-quality-remediation-plan.md`), `<NN>` is the queue row number
+zero-padded to two digits, and `<slug>` is the row's packet slug. Fill the
+`packet dir` column as `docs/spec_packets/<plan-prefix>_<NN>_<slug>/` when the
+row reaches `generated` (the 2026-09-11 core-wave dirs of the
+test-quality-remediation plan were renamed to this scheme; legacy dirs keep
+their historical names). A superseded row that never gets a directory keeps `-`
+and leaves a number gap, so later rows do not renumber.
+
 Statuses:
 
 - `pending`: not generated.

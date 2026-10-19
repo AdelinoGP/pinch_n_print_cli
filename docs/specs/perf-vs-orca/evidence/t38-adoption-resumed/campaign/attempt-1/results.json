@@ -1,0 +1,861 @@
+{
+  "attempt": 1,
+  "automatic_commit": false,
+  "campaign_exit_code": 0,
+  "campaign_started": true,
+  "campaign_started_utc": "2026-10-01T03:28:08.572093+00:00",
+  "campaign_summary_captured": true,
+  "cells": [
+    {
+      "baseline": {
+        "cpu_seconds": {
+          "max": 146.0938,
+          "median": 145.0625,
+          "min": 144.7188,
+          "samples": [
+            144.9062,
+            146.0938,
+            144.7188,
+            145.2188
+          ]
+        },
+        "degraded_values": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "fatal_error_values": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "generator_markers": [
+          "classic",
+          "classic",
+          "classic",
+          "classic"
+        ],
+        "nonfatal_error_values": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "retained_rows": 4,
+        "status_values": [
+          "ok",
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "wall_seconds": {
+          "max": 21.3761,
+          "median": 20.8286,
+          "min": 20.6938,
+          "samples": [
+            20.6938,
+            20.9145,
+            21.3761,
+            20.7427
+          ]
+        }
+      },
+      "candidate": {
+        "cpu_seconds": {
+          "max": 119.8125,
+          "median": 119.60155,
+          "min": 118.3125,
+          "samples": [
+            119.8125,
+            119.4531,
+            118.3125,
+            119.75
+          ]
+        },
+        "degraded_values": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "fatal_error_values": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "generator_markers": [
+          "classic",
+          "classic",
+          "classic",
+          "classic"
+        ],
+        "nonfatal_error_values": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "retained_rows": 4,
+        "status_values": [
+          "ok",
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "wall_seconds": {
+          "max": 20.07,
+          "median": 19.90815,
+          "min": 19.7013,
+          "samples": [
+            19.8105,
+            20.07,
+            19.7013,
+            20.0058
+          ]
+        }
+      },
+      "config_provenance": {
+        "config_sha256": "0c3ff8f6c428b91a3e309336db2949f2b5f5736465f881d52f0862cc21d2bb25",
+        "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\classic.json"
+      },
+      "cpu_ratio_candidate_over_baseline": 0.8244828953037484,
+      "cpu_separated": true,
+      "decision": "KEEP",
+      "degraded_baseline": 0,
+      "degraded_candidate": 0,
+      "exactness": true,
+      "exactness_deltas": {
+        "baseline": {
+          "e_pct": 0.0034,
+          "lines_pct": 0.0159,
+          "types_pct": 0.3607
+        },
+        "candidate": {
+          "e_pct": 0.0024,
+          "lines_pct": 0.015,
+          "types_pct": 0.3607
+        }
+      },
+      "expected_generator": "classic",
+      "fatal_errors_baseline": 0,
+      "fatal_errors_candidate": 0,
+      "generator": "classic",
+      "generator_marker": {
+        "baseline": "classic",
+        "candidate": "classic"
+      },
+      "generator_marker_match": true,
+      "nonfatal_errors_baseline": 0,
+      "nonfatal_errors_candidate": 0,
+      "status_baseline": "ok",
+      "status_candidate": "ok",
+      "wall_ratio_candidate_over_baseline": 0.9558083596593144,
+      "wall_separated": true,
+      "workload": "supports-off-benchy"
+    },
+    {
+      "baseline": {
+        "cpu_seconds": {
+          "max": 73.6719,
+          "median": 72.8672,
+          "min": 71.7344,
+          "samples": [
+            73.2188,
+            73.6719,
+            71.7344,
+            72.5156
+          ]
+        },
+        "degraded_values": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "fatal_error_values": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "generator_markers": [
+          "arachne",
+          "arachne",
+          "arachne",
+          "arachne"
+        ],
+        "nonfatal_error_values": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "retained_rows": 4,
+        "status_values": [
+          "ok",
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "wall_seconds": {
+          "max": 17.491,
+          "median": 17.17315,
+          "min": 16.5563,
+          "samples": [
+            17.4879,
+            16.8584,
+            16.5563,
+            17.491
+          ]
+        }
+      },
+      "candidate": {
+        "cpu_seconds": {
+          "max": 69.9062,
+          "median": 69.59375,
+          "min": 67.9375,
+          "samples": [
+            69.9062,
+            69.4375,
+            67.9375,
+            69.75
+          ]
+        },
+        "degraded_values": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "fatal_error_values": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "generator_markers": [
+          "arachne",
+          "arachne",
+          "arachne",
+          "arachne"
+        ],
+        "nonfatal_error_values": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "retained_rows": 4,
+        "status_values": [
+          "ok",
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "wall_seconds": {
+          "max": 17.1664,
+          "median": 17.116349999999997,
+          "min": 16.9912,
+          "samples": [
+            17.0737,
+            17.159,
+            16.9912,
+            17.1664
+          ]
+        }
+      },
+      "config_provenance": {
+        "config_sha256": "2b8314edca85538e3725de9b008f6086dff322121cfc6ea47ba3157caeb6111d",
+        "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\supports-off-benchy\\arachne.json"
+      },
+      "cpu_ratio_candidate_over_baseline": 0.9550764953229985,
+      "cpu_separated": true,
+      "decision": "inconclusive",
+      "degraded_baseline": 0,
+      "degraded_candidate": 0,
+      "exactness": true,
+      "exactness_deltas": {
+        "baseline": {
+          "e_pct": 0.0,
+          "lines_pct": 0.0,
+          "types_pct": 0.0
+        },
+        "candidate": {
+          "e_pct": 0.0,
+          "lines_pct": 0.0,
+          "types_pct": 0.0
+        }
+      },
+      "expected_generator": "arachne",
+      "fatal_errors_baseline": 0,
+      "fatal_errors_candidate": 0,
+      "generator": "arachne",
+      "generator_marker": {
+        "baseline": "arachne",
+        "candidate": "arachne"
+      },
+      "generator_marker_match": true,
+      "nonfatal_errors_baseline": 0,
+      "nonfatal_errors_candidate": 0,
+      "status_baseline": "ok",
+      "status_candidate": "ok",
+      "wall_ratio_candidate_over_baseline": 0.9966925112748679,
+      "wall_separated": false,
+      "workload": "supports-off-benchy"
+    },
+    {
+      "baseline": {
+        "cpu_seconds": null,
+        "degraded_values": [],
+        "fatal_error_values": [],
+        "generator_markers": [],
+        "nonfatal_error_values": [],
+        "retained_rows": 0,
+        "status_values": [],
+        "wall_seconds": null
+      },
+      "candidate": {
+        "cpu_seconds": null,
+        "degraded_values": [],
+        "fatal_error_values": [],
+        "generator_markers": [],
+        "nonfatal_error_values": [],
+        "retained_rows": 0,
+        "status_values": [],
+        "wall_seconds": null
+      },
+      "config_provenance": {
+        "config_sha256": "a1350ac1b0824f12308287b4a944a4a80e207720a491a2227e1e9971fd25e1c6",
+        "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\tree-support-benchy\\classic.json"
+      },
+      "cpu_ratio_candidate_over_baseline": null,
+      "cpu_separated": false,
+      "decision": "not-run",
+      "degraded_baseline": 0,
+      "degraded_candidate": 0,
+      "exactness": "not-run",
+      "exactness_deltas": null,
+      "expected_generator": "classic",
+      "fatal_errors_baseline": 0,
+      "fatal_errors_candidate": 0,
+      "generator": "classic",
+      "generator_marker": {
+        "baseline": "",
+        "candidate": ""
+      },
+      "generator_marker_match": false,
+      "nonfatal_errors_baseline": 0,
+      "nonfatal_errors_candidate": 0,
+      "status_baseline": "",
+      "status_candidate": "",
+      "wall_ratio_candidate_over_baseline": null,
+      "wall_separated": false,
+      "workload": "tree-support-benchy"
+    },
+    {
+      "baseline": {
+        "cpu_seconds": null,
+        "degraded_values": [],
+        "fatal_error_values": [],
+        "generator_markers": [],
+        "nonfatal_error_values": [],
+        "retained_rows": 0,
+        "status_values": [],
+        "wall_seconds": null
+      },
+      "candidate": {
+        "cpu_seconds": null,
+        "degraded_values": [],
+        "fatal_error_values": [],
+        "generator_markers": [],
+        "nonfatal_error_values": [],
+        "retained_rows": 0,
+        "status_values": [],
+        "wall_seconds": null
+      },
+      "config_provenance": {
+        "config_sha256": "40269f2f2076f04f1f8bcc039248ffb69742084865a1a7e8d751299c2ea696f5",
+        "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\tree-support-benchy\\arachne.json"
+      },
+      "cpu_ratio_candidate_over_baseline": null,
+      "cpu_separated": false,
+      "decision": "not-run",
+      "degraded_baseline": 0,
+      "degraded_candidate": 0,
+      "exactness": "not-run",
+      "exactness_deltas": null,
+      "expected_generator": "arachne",
+      "fatal_errors_baseline": 0,
+      "fatal_errors_candidate": 0,
+      "generator": "arachne",
+      "generator_marker": {
+        "baseline": "",
+        "candidate": ""
+      },
+      "generator_marker_match": false,
+      "nonfatal_errors_baseline": 0,
+      "nonfatal_errors_candidate": 0,
+      "status_baseline": "",
+      "status_candidate": "",
+      "wall_ratio_candidate_over_baseline": null,
+      "wall_separated": false,
+      "workload": "tree-support-benchy"
+    },
+    {
+      "baseline": {
+        "cpu_seconds": null,
+        "degraded_values": [],
+        "fatal_error_values": [],
+        "generator_markers": [],
+        "nonfatal_error_values": [],
+        "retained_rows": 0,
+        "status_values": [],
+        "wall_seconds": null
+      },
+      "candidate": {
+        "cpu_seconds": null,
+        "degraded_values": [],
+        "fatal_error_values": [],
+        "generator_markers": [],
+        "nonfatal_error_values": [],
+        "retained_rows": 0,
+        "status_values": [],
+        "wall_seconds": null
+      },
+      "config_provenance": {
+        "config_sha256": "a1350ac1b0824f12308287b4a944a4a80e207720a491a2227e1e9971fd25e1c6",
+        "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\tree-support-base\\classic.json"
+      },
+      "cpu_ratio_candidate_over_baseline": null,
+      "cpu_separated": false,
+      "decision": "not-run",
+      "degraded_baseline": 0,
+      "degraded_candidate": 0,
+      "exactness": "not-run",
+      "exactness_deltas": null,
+      "expected_generator": "classic",
+      "fatal_errors_baseline": 0,
+      "fatal_errors_candidate": 0,
+      "generator": "classic",
+      "generator_marker": {
+        "baseline": "",
+        "candidate": ""
+      },
+      "generator_marker_match": false,
+      "nonfatal_errors_baseline": 0,
+      "nonfatal_errors_candidate": 0,
+      "status_baseline": "",
+      "status_candidate": "",
+      "wall_ratio_candidate_over_baseline": null,
+      "wall_separated": false,
+      "workload": "tree-support-base"
+    },
+    {
+      "baseline": {
+        "cpu_seconds": null,
+        "degraded_values": [],
+        "fatal_error_values": [],
+        "generator_markers": [],
+        "nonfatal_error_values": [],
+        "retained_rows": 0,
+        "status_values": [],
+        "wall_seconds": null
+      },
+      "candidate": {
+        "cpu_seconds": null,
+        "degraded_values": [],
+        "fatal_error_values": [],
+        "generator_markers": [],
+        "nonfatal_error_values": [],
+        "retained_rows": 0,
+        "status_values": [],
+        "wall_seconds": null
+      },
+      "config_provenance": {
+        "config_sha256": "40269f2f2076f04f1f8bcc039248ffb69742084865a1a7e8d751299c2ea696f5",
+        "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus\\tree-support-base\\arachne.json"
+      },
+      "cpu_ratio_candidate_over_baseline": null,
+      "cpu_separated": false,
+      "decision": "not-run",
+      "degraded_baseline": 0,
+      "degraded_candidate": 0,
+      "exactness": "not-run",
+      "exactness_deltas": null,
+      "expected_generator": "arachne",
+      "fatal_errors_baseline": 0,
+      "fatal_errors_candidate": 0,
+      "generator": "arachne",
+      "generator_marker": {
+        "baseline": "",
+        "candidate": ""
+      },
+      "generator_marker_match": false,
+      "nonfatal_errors_baseline": 0,
+      "nonfatal_errors_candidate": 0,
+      "status_baseline": "",
+      "status_candidate": "",
+      "wall_ratio_candidate_over_baseline": null,
+      "wall_separated": false,
+      "workload": "tree-support-base"
+    }
+  ],
+  "checks": [
+    {
+      "details": {
+        "campaign_inputs": {
+          "docs/23_controlled_perimeter_builds.md": {
+            "actual": "0a99277d882c28c19a88ea7dcd45a016fc2c5d9ce21467f90ec218fdcd786789",
+            "expected": "0a99277d882c28c19a88ea7dcd45a016fc2c5d9ce21467f90ec218fdcd786789",
+            "matches": true
+          },
+          "resources/perimeter-acceptance/run-acceptance.ps1": {
+            "actual": "525f2ae408728dc4caa288dfc522e7ba603f730f17625a494f77c90ca995c76f",
+            "expected": "525f2ae408728dc4caa288dfc522e7ba603f730f17625a494f77c90ca995c76f",
+            "matches": true
+          },
+          "resources/perimeter-acceptance/run_bench.ps1": {
+            "actual": "b4e67d12e3bd04a5c865cbe99f5a1286b2c14af51d5098441a5dfbaea0e52962",
+            "expected": "b4e67d12e3bd04a5c865cbe99f5a1286b2c14af51d5098441a5dfbaea0e52962",
+            "matches": true
+          },
+          "resources/perimeter-acceptance/test-status-roundtrip.ps1": {
+            "actual": "b587f123499a75b2ebb7187d02b2dcf31cf2cb9b2bf17b616cd15c84018fdf57",
+            "expected": "b587f123499a75b2ebb7187d02b2dcf31cf2cb9b2bf17b616cd15c84018fdf57",
+            "matches": true
+          },
+          "resources/perimeter-acceptance/validate_measurement.ps1": {
+            "actual": "a8641f1fa6d5ab9aaa4c60a9bdd8ab984dabab25a5976af66af79ef04c37b96d",
+            "expected": "a8641f1fa6d5ab9aaa4c60a9bdd8ab984dabab25a5976af66af79ef04c37b96d",
+            "matches": true
+          },
+          "xtask/src/rustc_driver.rs": {
+            "actual": "c1d1a8ab21212a2715cf8eb1024e089f64cf370c4525d20fe26803052ea94a28",
+            "expected": "c1d1a8ab21212a2715cf8eb1024e089f64cf370c4525d20fe26803052ea94a28",
+            "matches": true
+          }
+        },
+        "corpus_root_matches_t41": true,
+        "module_discovery_matches_frozen_24": true,
+        "snapshot_copy_identity": {
+          "accelerated_matches_staged_dist": true,
+          "ordinary_matches_staged_dist": true
+        },
+        "snapshot_manifest": {
+          "all_digests_match": true,
+          "bytes_identical": true,
+          "durable_sha256": "5c58b30145413df82ea9dc93a6b81bb778c69256550dc14d89ead7a61b654ec5",
+          "durable_sidecar": "5c58b30145413df82ea9dc93a6b81bb778c69256550dc14d89ead7a61b654ec5",
+          "expected_sha256": "5c58b30145413df82ea9dc93a6b81bb778c69256550dc14d89ead7a61b654ec5",
+          "tracked_sha256": "5c58b30145413df82ea9dc93a6b81bb778c69256550dc14d89ead7a61b654ec5",
+          "tracked_sidecar": "5c58b30145413df82ea9dc93a6b81bb778c69256550dc14d89ead7a61b654ec5"
+        },
+        "snapshots": {
+          "accelerated_snapshot": {
+            "file_count": 50,
+            "inventory_matches": true,
+            "mismatches": [],
+            "root": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\accelerated"
+          },
+          "ordinary_snapshot": {
+            "file_count": 49,
+            "inventory_matches": true,
+            "mismatches": [],
+            "root": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\ordinary"
+          }
+        },
+        "t41_manifest": {
+          "all_digests_match": true,
+          "corpus_root": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus",
+          "expected_sha256": "7b533240b7e602731eb6d11320c134c830fa00ec12b3d301b970dac935c334a3",
+          "sha256": "7b533240b7e602731eb6d11320c134c830fa00ec12b3d301b970dac935c334a3",
+          "sidecar": "7b533240b7e602731eb6d11320c134c830fa00ec12b3d301b970dac935c334a3",
+          "snapshot_root": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\ordinary"
+        }
+      },
+      "exit_code": 0,
+      "name": "frozen-identities-before",
+      "status": "passed"
+    },
+    {
+      "details": {
+        "pnp_or_slicer_override_names": [],
+        "profiling_fuel_debug_environment_names": [],
+        "values_recorded": false
+      },
+      "exit_code": 0,
+      "name": "environment-overrides",
+      "status": "passed"
+    },
+    {
+      "details": {
+        "preserved_acceptance": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\preserved-previous-acceptance",
+        "raw_archive": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\campaign-raw-attempt1"
+      },
+      "exit_code": 0,
+      "name": "durable-destinations-unused",
+      "status": "passed"
+    },
+    {
+      "details": {
+        "existing_entries": [],
+        "runs_directory": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-acceptance\\runs"
+      },
+      "exit_code": 0,
+      "name": "runner-target-has-no-prior-runs",
+      "status": "passed"
+    },
+    {
+      "details": {
+        "copied_inventory": {
+          "summary.json": "a17d204e31067a034d9717e6108bf59e5f8e3b6b0bfbfc14e7422acb1e334ea3"
+        },
+        "destination": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\preserved-previous-acceptance",
+        "original_retained": true,
+        "source": "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-acceptance",
+        "source_inventory": {
+          "summary.json": "a17d204e31067a034d9717e6108bf59e5f8e3b6b0bfbfc14e7422acb1e334ea3"
+        }
+      },
+      "exit_code": 0,
+      "name": "preserve-prior-acceptance",
+      "status": "passed"
+    },
+    {
+      "details": {
+        "authority_path": "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\alloc-bench\\run_bench.ps1",
+        "authority_sha256": "b4e67d12e3bd04a5c865cbe99f5a1286b2c14af51d5098441a5dfbaea0e52962",
+        "bytes_identical": true,
+        "tracked_path": "D:\\slicerProject\\pinch_n_print_cli_2\\resources\\perimeter-acceptance\\run_bench.ps1",
+        "tracked_sha256": "b4e67d12e3bd04a5c865cbe99f5a1286b2c14af51d5098441a5dfbaea0e52962"
+      },
+      "exit_code": 0,
+      "name": "benchmark-copy-byte-identity",
+      "status": "passed"
+    },
+    {
+      "details": {
+        "all_output_paths_synthetic": true,
+        "automatic_commit": false,
+        "cell_count": 6,
+        "exactness_drop_present": true,
+        "no_runner_run_artifacts": true,
+        "overlap_rejection_present": true,
+        "runner_run_entries": [],
+        "samples_per_cell": 4,
+        "status": "DROP",
+        "summary_path": "docs/specs/perf-vs-orca/evidence/t38-adoption-resumed/campaign/attempt-1/dry-run.synthetic.summary.json",
+        "threads": 12,
+        "timings_are_synthetic_only": true,
+        "warmup_per_cell": 1
+      },
+      "exit_code": 0,
+      "name": "dry-run-protocol",
+      "status": "passed"
+    },
+    {
+      "details": {
+        "campaign_inputs": {
+          "docs/23_controlled_perimeter_builds.md": {
+            "actual": "0a99277d882c28c19a88ea7dcd45a016fc2c5d9ce21467f90ec218fdcd786789",
+            "expected": "0a99277d882c28c19a88ea7dcd45a016fc2c5d9ce21467f90ec218fdcd786789",
+            "matches": true
+          },
+          "resources/perimeter-acceptance/run-acceptance.ps1": {
+            "actual": "525f2ae408728dc4caa288dfc522e7ba603f730f17625a494f77c90ca995c76f",
+            "expected": "525f2ae408728dc4caa288dfc522e7ba603f730f17625a494f77c90ca995c76f",
+            "matches": true
+          },
+          "resources/perimeter-acceptance/run_bench.ps1": {
+            "actual": "b4e67d12e3bd04a5c865cbe99f5a1286b2c14af51d5098441a5dfbaea0e52962",
+            "expected": "b4e67d12e3bd04a5c865cbe99f5a1286b2c14af51d5098441a5dfbaea0e52962",
+            "matches": true
+          },
+          "resources/perimeter-acceptance/test-status-roundtrip.ps1": {
+            "actual": "b587f123499a75b2ebb7187d02b2dcf31cf2cb9b2bf17b616cd15c84018fdf57",
+            "expected": "b587f123499a75b2ebb7187d02b2dcf31cf2cb9b2bf17b616cd15c84018fdf57",
+            "matches": true
+          },
+          "resources/perimeter-acceptance/validate_measurement.ps1": {
+            "actual": "a8641f1fa6d5ab9aaa4c60a9bdd8ab984dabab25a5976af66af79ef04c37b96d",
+            "expected": "a8641f1fa6d5ab9aaa4c60a9bdd8ab984dabab25a5976af66af79ef04c37b96d",
+            "matches": true
+          },
+          "xtask/src/rustc_driver.rs": {
+            "actual": "c1d1a8ab21212a2715cf8eb1024e089f64cf370c4525d20fe26803052ea94a28",
+            "expected": "c1d1a8ab21212a2715cf8eb1024e089f64cf370c4525d20fe26803052ea94a28",
+            "matches": true
+          }
+        },
+        "corpus_root_matches_t41": true,
+        "module_discovery_matches_frozen_24": true,
+        "snapshot_copy_identity": {
+          "accelerated_matches_staged_dist": true,
+          "ordinary_matches_staged_dist": true
+        },
+        "snapshot_manifest": {
+          "all_digests_match": true,
+          "bytes_identical": true,
+          "durable_sha256": "5c58b30145413df82ea9dc93a6b81bb778c69256550dc14d89ead7a61b654ec5",
+          "durable_sidecar": "5c58b30145413df82ea9dc93a6b81bb778c69256550dc14d89ead7a61b654ec5",
+          "expected_sha256": "5c58b30145413df82ea9dc93a6b81bb778c69256550dc14d89ead7a61b654ec5",
+          "tracked_sha256": "5c58b30145413df82ea9dc93a6b81bb778c69256550dc14d89ead7a61b654ec5",
+          "tracked_sidecar": "5c58b30145413df82ea9dc93a6b81bb778c69256550dc14d89ead7a61b654ec5"
+        },
+        "snapshots": {
+          "accelerated_snapshot": {
+            "file_count": 50,
+            "inventory_matches": true,
+            "mismatches": [],
+            "root": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\accelerated"
+          },
+          "ordinary_snapshot": {
+            "file_count": 49,
+            "inventory_matches": true,
+            "mismatches": [],
+            "root": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\ordinary"
+          }
+        },
+        "t41_manifest": {
+          "all_digests_match": true,
+          "corpus_root": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus",
+          "expected_sha256": "7b533240b7e602731eb6d11320c134c830fa00ec12b3d301b970dac935c334a3",
+          "sha256": "7b533240b7e602731eb6d11320c134c830fa00ec12b3d301b970dac935c334a3",
+          "sidecar": "7b533240b7e602731eb6d11320c134c830fa00ec12b3d301b970dac935c334a3",
+          "snapshot_root": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\ordinary"
+        }
+      },
+      "exit_code": 0,
+      "name": "frozen-identities-after",
+      "status": "passed"
+    }
+  ],
+  "commands": [
+    {
+      "argv": [
+        "C:\\Users\\agpen\\.vfox\\sdks\\python\\python.exe",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t41-reference-repreparation\\verify-freeze.py",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t41-reference-repreparation\\attempt-1"
+      ],
+      "cwd": "D:\\slicerProject\\pinch_n_print_cli_2",
+      "exit_code": 0,
+      "name": "t41-freeze-verification-before",
+      "status": "completed",
+      "stderr_log": "docs/specs/perf-vs-orca/evidence/t38-adoption-resumed/campaign/attempt-1/t41-freeze-before.stderr.log",
+      "stdout_log": "docs/specs/perf-vs-orca/evidence/t38-adoption-resumed/campaign/attempt-1/t41-freeze-before.stdout.log"
+    },
+    {
+      "argv": [
+        "pwsh",
+        "-NoProfile",
+        "-File",
+        "resources/perimeter-acceptance/test-status-roundtrip.ps1"
+      ],
+      "cwd": "D:\\slicerProject\\pinch_n_print_cli_2",
+      "exit_code": 0,
+      "name": "status-roundtrip-control",
+      "status": "completed",
+      "stderr_log": "docs/specs/perf-vs-orca/evidence/t38-adoption-resumed/campaign/attempt-1/status-roundtrip.stderr.log",
+      "stdout_log": "docs/specs/perf-vs-orca/evidence/t38-adoption-resumed/campaign/attempt-1/status-roundtrip.stdout.log"
+    },
+    {
+      "argv": [
+        "pwsh",
+        "-NoProfile",
+        "-File",
+        "resources/perimeter-acceptance/run-acceptance.ps1",
+        "-DryRun"
+      ],
+      "cwd": "D:\\slicerProject\\pinch_n_print_cli_2",
+      "exit_code": 0,
+      "name": "runner-dry-run-control",
+      "status": "completed",
+      "stderr_log": "docs/specs/perf-vs-orca/evidence/t38-adoption-resumed/campaign/attempt-1/dry-run.stderr.log",
+      "stdout_log": "docs/specs/perf-vs-orca/evidence/t38-adoption-resumed/campaign/attempt-1/dry-run.stdout.log"
+    },
+    {
+      "argv": [
+        "pwsh",
+        "-NoProfile",
+        "-File",
+        "resources/perimeter-acceptance/run-acceptance.ps1",
+        "-Campaign",
+        "-CorpusRoot",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus",
+        "-Threads",
+        "12",
+        "-BaselineExePath",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\ordinary\\pnp_cli.exe",
+        "-CandidateExePath",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\accelerated\\pnp_cli.exe",
+        "-BaselineModuleDir",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\ordinary\\modules",
+        "-CandidateModuleDir",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\accelerated\\modules"
+      ],
+      "cwd": "D:\\slicerProject\\pinch_n_print_cli_2",
+      "exit_code": 0,
+      "name": "ordinary-vs-accelerated-campaign",
+      "status": "completed",
+      "stderr_log": "docs/specs/perf-vs-orca/evidence/t38-adoption-resumed/campaign/attempt-1/campaign.stderr.log",
+      "stdout_log": "docs/specs/perf-vs-orca/evidence/t38-adoption-resumed/campaign/attempt-1/campaign.stdout.log"
+    },
+    {
+      "argv": [
+        "C:\\Users\\agpen\\.vfox\\sdks\\python\\python.exe",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t41-reference-repreparation\\verify-freeze.py",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t41-reference-repreparation\\attempt-1"
+      ],
+      "cwd": "D:\\slicerProject\\pinch_n_print_cli_2",
+      "exit_code": 0,
+      "name": "t41-freeze-verification-after",
+      "status": "completed",
+      "stderr_log": "docs/specs/perf-vs-orca/evidence/t38-adoption-resumed/campaign/attempt-1/t41-freeze-after.stderr.log",
+      "stdout_log": "docs/specs/perf-vs-orca/evidence/t38-adoption-resumed/campaign/attempt-1/t41-freeze-after.stdout.log"
+    }
+  ],
+  "completed_utc": "2026-10-01T03:36:35.561123+00:00",
+  "first_stopping_cell": {
+    "cause": "CPU or wall measured ranges overlap or touch",
+    "decision": "inconclusive",
+    "generator": "arachne",
+    "workload": "supports-off-benchy"
+  },
+  "helper": "docs/specs/perf-vs-orca/evidence/t38-adoption-resumed/campaign/run_campaign_once.py",
+  "helper_argv": [
+    "C:\\Users\\agpen\\.vfox\\sdks\\python\\python.exe",
+    "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t38-adoption-resumed\\campaign\\run_campaign_once.py"
+  ],
+  "outcome": "BLOCKED",
+  "outcome_reason": "Runner decision was recorded, but post-run integrity or evidence preservation failed.",
+  "packet": "issue38-accelerated-adoption-acceptance-campaign",
+  "post_campaign_integrity_passed": true,
+  "raw_archive_file_count": 101,
+  "raw_archive_inventory_sha256": "dfd9f684783d7b5b812b745ba45f8cfa219bdac5c527662d76ea54ecbc39395e",
+  "raw_archive_path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\campaign-raw-attempt1",
+  "raw_archive_status": "copied",
+  "retained_measured_rows": 16,
+  "retained_measured_sample_pairs": 8,
+  "runner_outcome_before_integrity_override": "INCONCLUSIVE",
+  "runner_protocol": {
+    "cell_count": 6,
+    "config_provenance_count": 6,
+    "passed": true,
+    "samples_per_cell": 4,
+    "summary_is_real_not_synthetic": true,
+    "summary_present": true,
+    "threads": 12,
+    "warmup_per_cell": 1
+  },
+  "runner_status": "inconclusive",
+  "runner_summary_source": "real-campaign",
+  "started_utc": "2026-10-01T03:28:00.778601+00:00",
+  "t41_after_exit_code": 0,
+  "timing_status": "retained measured rows summarized",
+  "tracked_campaign_payload": "docs/specs/perf-vs-orca/evidence/t38-adoption-resumed/campaign/attempt-1/runner-artifacts/target/perimeter-acceptance",
+  "tracked_campaign_payload_copy_status": "copied",
+  "updated_utc": "2026-10-01T03:36:35.570680+00:00"
+}

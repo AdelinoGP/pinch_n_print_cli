@@ -94,7 +94,15 @@ fn integrated_parity_path_optimization() {
         ..Default::default()
     };
     let stage: StageId = "Layer::PathOptimization".to_string();
-    let (native, wasm) = run_integrated_parity(IntegratedParitySpec { module_id: "com.core.path-optimization-default".into(), wasm_path: std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../modules/core-modules/path-optimization-default/path-optimization-default.wasm"), stage: stage.clone(), version: SemVer { major: 1, minor: 0, patch: 0 }, min_ir_schema: SemVer { major: 1, minor: 0, patch: 0 }, max_ir_schema: SemVer { major: 2, minor: 0, patch: 0 }, tier: String::new(), claims: Vec::new(), config: Arc::new(ConfigView::new()), native_entry: PathOptimizationDefault::__slicer_native_entry() }, |dispatcher, native_live, wasm_live| {
+    // Declared key (path-optimization-default.toml) seeded at its manifest
+    // default, mirroring the production `seed_registry_defaults` step: the
+    // guest's config-literal fallback migrated to a fail-closed
+    // `require_bool` read, so a bound view always carries it.
+    let config = Arc::new(ConfigView::from_map(std::collections::HashMap::from([(
+        "path_optimization_emit_layer_markers".to_string(),
+        slicer_ir::ConfigValue::Bool(true),
+    )])));
+    let (native, wasm) = run_integrated_parity(IntegratedParitySpec { module_id: "com.core.path-optimization-default".into(), wasm_path: std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../modules/core-modules/path-optimization-default/path-optimization-default.wasm"), stage: stage.clone(), version: SemVer { major: 1, minor: 0, patch: 0 }, min_ir_schema: SemVer { major: 1, minor: 0, patch: 0 }, max_ir_schema: SemVer { major: 2, minor: 0, patch: 0 }, tier: String::new(), claims: Vec::new(), config, native_entry: PathOptimizationDefault::__slicer_native_entry() }, |dispatcher, native_live, wasm_live| {
         let wasm = LayerStageRunner::run_stage(dispatcher, &stage, &layer, wasm_live, wasm_input).expect("wasm dispatch").expect("wasm commit");
         let native = LayerStageRunner::run_stage(dispatcher, &stage, &layer, native_live, native_input).expect("native dispatch").expect("native commit");
         (native, wasm)

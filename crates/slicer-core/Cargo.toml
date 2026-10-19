@@ -7,6 +7,7 @@ authors = ["Pinch 'n Print Team"]
 [features]
 default = []
 host-algos = ["dep:rayon", "dep:boostvoronoi"]
+perimeter-spatial-test-support = []
 # Opt-in only for the synthetic panic regression. Keeping this off the
 # workspace's normal test feature set prevents boostvoronoi diagnostics from
 # leaking into unrelated crates' test harnesses.
@@ -19,13 +20,18 @@ rstar = "0.12"
 rayon = { version = "1.10", optional = true }
 boostvoronoi = { version = "0.12", optional = true }
 slicer-ir = { path = "../slicer-ir" }
-slicer-scheduler = { path = "../slicer-scheduler" }
+# Region mapping re-resolves per-region configs through the typed scope
+# resolver when a layer range covers the layer's top Z (packet
+# `config-scope-resolution_09`). `slicer-config` depends on `slicer-ir` only,
+# so this adds no cycle and compiles for `wasm32`.
+slicer-config = { path = "../slicer-config" }
 serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 criterion = { workspace = true }
 serde_json = "1"
 slicer-model-io = { path = "../slicer-model-io" }
+slicer-scheduler = { path = "../slicer-scheduler" }
 
 [[bench]]
 name = "polygon_ops"
@@ -46,6 +52,10 @@ required-features = ["host-algos"]
 [[test]]
 name = "bridge_orientation_tdd"
 required-features = ["host-algos"]
+
+[[test]]
+name = "perimeter_spatial_tdd"
+required-features = ["host-algos", "perimeter-spatial-test-support"]
 
 [[test]]
 name = "algo_support_geometry_tdd"

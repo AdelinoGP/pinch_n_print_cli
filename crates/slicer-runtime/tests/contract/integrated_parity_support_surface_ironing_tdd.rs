@@ -53,7 +53,7 @@ fn integrated_parity_support_surface_ironing() {
         ),
         (
             "support_ironing_flow".to_string(),
-            slicer_ir::ConfigValue::Float(0.10),
+            slicer_ir::ConfigValue::Percent(10.0),
         ),
         (
             "support_ironing_spacing".to_string(),

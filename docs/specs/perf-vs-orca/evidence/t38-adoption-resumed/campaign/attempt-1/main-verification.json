@@ -1,0 +1,36 @@
+{
+  "status": "PASS",
+  "authoritative_campaign_outcome": "INCONCLUSIVE",
+  "raw_files_verified": 101,
+  "tracked_files_verified": 91,
+  "generated_outcome_discrepancy": "recorded copied status uses tracked_campaign_payload_copy_status; helper checks absent tracked_payload_copy_status",
+  "metrics": [
+    {
+      "generator": "classic",
+      "cpu_gain_percent": 17.55171046962516,
+      "wall_gain_percent": 4.419164034068556,
+      "baseline_wall_range": [
+        20.6938,
+        21.3761
+      ],
+      "candidate_wall_range": [
+        19.7013,
+        20.07
+      ]
+    },
+    {
+      "generator": "arachne",
+      "cpu_gain_percent": 4.492350467700145,
+      "wall_gain_percent": 0.33074887251320906,
+      "baseline_wall_range": [
+        16.5563,
+        17.491
+      ],
+      "candidate_wall_range": [
+        16.9912,
+        17.1664
+      ]
+    }
+  ],
+  "no_test_or_campaign_rerun": true
+}

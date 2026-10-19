@@ -489,7 +489,25 @@ mod tests {
         let module = ModuleId::from("com.example.perimeters");
 
         pi.on_module_start(&stage, Some(7), &module);
-        std::thread::sleep(std::time::Duration::from_millis(2));
+        // Join real worker work inside the public instrumentation bracket.
+        // The elapsed floor remains a check of the production timer, not a
+        // fabricated timestamp or a sleep-based scheduling assumption.
+        let worker = std::thread::spawn(|| {
+            let start = std::time::Instant::now();
+            let mut values: Vec<u64> = (0..100_000u64)
+                .map(|i| i.wrapping_mul(6364136223846793005))
+                .collect();
+            // Measure the work interval instead of assuming a fixed workload
+            // takes a millisecond on every machine (including release builds).
+            while start.elapsed() < std::time::Duration::from_millis(2) {
+                values.reverse();
+                values.sort_unstable();
+                std::hint::black_box(&values);
+            }
+            std::hint::black_box(values)
+        });
+        let values = worker.join().expect("timed worker must finish");
+        assert_eq!(values.len(), 100_000);
         pi.on_module_end(&stage, Some(7), &module, 0, 1025);
 
         let events = sink.events.lock().unwrap();

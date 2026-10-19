@@ -92,6 +92,7 @@ fn prepass(mesh: slicer_ir::MeshIR) -> slicer_runtime::run::PrepassContext {
     slicer_runtime::run::prepare_prepass_context(
         Arc::new(mesh),
         config(),
+        Vec::new(),
         &[root.join("modules/core-modules")],
         true,
         false,

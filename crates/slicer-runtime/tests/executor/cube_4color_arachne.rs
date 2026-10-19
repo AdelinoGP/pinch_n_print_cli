@@ -669,6 +669,28 @@ impl OuterSubLoop {
             _ => f32::INFINITY,
         }
     }
+
+    /// An open fragment that encloses no area is the single odd centre bead
+    /// of a sliver thinner than the canonical 1 -> 2 bead transition. Canonical
+    /// Arachne prints it as an open `ExtrusionPath`, not a loop (OrcaSlicer
+    /// oracle: 0.55 / 0.62 mm strips print one open outer line; 0.70 mm prints
+    /// a closed two-bead loop). Its mean perpendicular extent
+    /// (2·|shoelace area| / length) stays far below one bead width.
+    fn is_open_centre_bead(&self) -> bool {
+        let n = self.pts.len();
+        if n < 2 {
+            return false;
+        }
+        let length: f32 = self.pts.windows(2).map(|w| dist(w[0], w[1])).sum();
+        let twice_area: f32 = (0..n)
+            .map(|i| {
+                let (a, b) = (self.pts[i], self.pts[(i + 1) % n]);
+                a.0 * b.1 - b.0 * a.1
+            })
+            .sum::<f32>()
+            .abs();
+        length > 0.0 && twice_area / length < 0.1
+    }
 }
 
 /// Parse a `G0`/`G1` move line into `(x, y, has_e)`, mirroring
@@ -1078,7 +1100,7 @@ fn cube_4color_arachne_per_color_footprint_within_bbox() {
             }
 
             let gap = lp.closure_gap();
-            if gap > CLOSURE_EPS_MM {
+            if gap > CLOSURE_EPS_MM && !lp.is_open_centre_bead() {
                 non_closing.push(format!(
                     "layer {li} sub-loop {i} (tool {}): fragment does not close end-to-end — \
                      gap {gap:.3}mm > {CLOSURE_EPS_MM}mm (seam={:?} last={:?})",
@@ -1208,6 +1230,9 @@ fn cube_4color_arachne_outer_walls_close_end_to_end() {
                 continue;
             }
 
+            if lp.is_open_centre_bead() {
+                continue;
+            }
             let gap = lp.closure_gap();
             gap_sum += gap as f64;
             if gap > CLOSURE_EPS_MM {

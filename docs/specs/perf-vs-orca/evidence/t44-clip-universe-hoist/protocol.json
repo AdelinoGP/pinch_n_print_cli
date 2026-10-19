@@ -1,0 +1,20 @@
+{
+  "purpose": "isolated hoist keep/drop experiment, not accelerated-adoption acceptance or an Orca scoreboard",
+  "job": "supports-off Benchy Arachne, unchanged frozen-job settings in benchy-arachne.json",
+  "modes": ["ordinary", "accelerated"],
+  "threads": 12,
+  "measured_pairs_per_mode": 6,
+  "excluded_warmups_per_arm": 1,
+  "order": "AB then BA, alternating by pair; ordinary batch then accelerated batch",
+  "exactness": "prove both mode-specific pairs before timing; every later output must equal its proved fresh baseline byte-for-byte",
+  "only_arm_difference": "modules/infill-linker/infill-linker.wasm",
+  "starvation": {
+    "cutoff_fraction_of_best_cpu_wall_ratio": 0.75,
+    "reference_group": "mode and arm separately; serial-work removal changes the ratio between arms",
+    "discard": "the whole pair if either member is below its arm cutoff; retain all excluded rows; no automatic resampling",
+    "minimum_retained_pairs_per_mode": 5
+  },
+  "keep": "in both modes: lower candidate median wall with lower candidate median process CPU; paired median deltas must agree; otherwise return DROP/inconclusive to the human",
+  "disclosure": "SHA-256, bytes, TYPE counts, generator, status, degraded/fatal/non-fatal counts, existing open-loop warnings, and every sample cpu/wall ratio",
+  "automatic_commit": false
+}

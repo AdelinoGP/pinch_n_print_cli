@@ -10,7 +10,7 @@
 // -----------------------------------------------------------------------------
 
 use slicer_core::flow::line_width_to_spacing;
-use slicer_core::polygon_ops::union_ex;
+use slicer_core::polygon_ops::{union_ex, PreparedPolylineClip};
 use slicer_ir::{
     ConfigValue, ExPolygon, ExtrusionPath3D, ExtrusionRole, InfillRegion, Point2, Point3WithWidth,
     Polygon,
@@ -19,7 +19,7 @@ use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::views::PerimeterRegionView;
 
 use crate::connect::{chain_or_connect_infill, AnchorParams};
-use crate::offset::{clip_to_offset_boundary, remove_short_polylines, ExPolygonWithOffset};
+use crate::offset::{remove_short_polylines, ExPolygonWithOffset};
 
 const WIDTH_EPSILON_MM: f32 = 0.000001;
 
@@ -95,7 +95,13 @@ impl RoleBoundaries {
             ExtrusionRole::SparseInfill => Some(self.sparse.clone()),
             ExtrusionRole::TopSolidInfill => Some(self.top.clone()),
             ExtrusionRole::BottomSolidInfill => Some(self.bottom.clone()),
-            ExtrusionRole::BridgeInfill => Some(self.bridge.clone()),
+            // The host partition folds internal-bridge sites into
+            // `bridge_areas`; canonical `Fill.cpp::group_fills` gives
+            // `erInternalBridgeInfill` its own surface fill, so its connectors
+            // must stay inside that partition rather than the whole fill area.
+            ExtrusionRole::BridgeInfill | ExtrusionRole::InternalBridgeInfill => {
+                Some(self.bridge.clone())
+            }
             // `solid_role` in rectilinear-infill / gyroid-infill relabels a
             // top or bottom shell at depth ≥ 1 as InternalSolidInfill, so its
             // legal area is the union of the two solid-shell polygons plus
@@ -187,26 +193,35 @@ pub fn orchestrate_infill(
         let line_width = config_float(view.config(), "line_width")
             .filter(|value| value.is_finite() && *value > 0.0)
             .unwrap_or(default_line_width);
-        // Canonical percent key, read as a fraction: `sparse_infill_density`
-        // is coPercent (20 = 20%), so resolve the literal percent and divide
-        // by 100. The key is deliberately NOT declared in this module's
-        // manifest (DEV-114: declaring it would honour a user-set density
-        // where today it is pinned at the fallback, moving sparse_spacing_mm
-        // on every non-default-density slice — deferred to the tree-wide unit
-        // reconciliation); the read is re-pointed so the semantics are
-        // canonical the day a packet declares it.
-        let density = config_float(view.config(), "sparse_infill_density")
-            .map(|d| d / 100.0)
+        // Packet 06 (AC-3): `sparse_infill_density` and `layer_height` are
+        // declared in infill-linker.toml, so a bound view always holds them;
+        // a missing or mistyped value is a fatal config defect, not a
+        // fallback case. `sparse_infill_density` is the canonical percent
+        // key (20 = 20%), resolved against base 100 and divided back to the
+        // density fraction. The sanitizing filter stays for degenerate-but-
+        // legal values (a 0.0 density must not reach the `sparse_spacing_mm`
+        // division).
+        let density = view
+            .config()
+            .map(|config| config.require_abs_value("sparse_infill_density", 100.0))
+            .transpose()
+            .map_err(|error| error.to_string())?
+            .map(|percent| percent / 100.0)
             .filter(|value| value.is_finite() && *value > 0.0)
-            .unwrap_or(0.2);
-        let layer_height = config_float(view.config(), "layer_height")
+            .unwrap_or(0.2) as f32;
+        let layer_height = view
+            .config()
+            .map(|config| config.require_float("layer_height"))
+            .transpose()
+            .map_err(|error| error.to_string())?
             .filter(|value| value.is_finite() && *value > 0.0)
-            .unwrap_or(0.2);
+            .unwrap_or(0.2) as f32;
         // Packet-approved deviation: flow.rs treats negative spacing as the canonical
         // throw analog (`FlowErrorNegativeSpacing`); the linker resolves the percent
         // base from user config, must not fail a slice on a non-physical width, and the formula port is exact.
         let anchor_base_mm = line_width_to_spacing(line_width, layer_height).unwrap_or(line_width);
-        let sparse_anchor = AnchorParams::from_config(view.config(), anchor_base_mm);
+        let sparse_anchor = AnchorParams::from_config(view.config(), anchor_base_mm)
+            .map_err(|error| error.to_string())?;
 
         records.push(RegionRecord {
             prior_index,
@@ -234,7 +249,7 @@ pub fn orchestrate_infill(
     process_bucket(&records, PathBucket::Solid, infill_overlap, &mut buckets);
 
     for (index, region) in prior_infill.iter().enumerate() {
-        output.begin_region(&region.object_id, region.region_id);
+        output.begin_region(&region.object_id, region.region_id, &region.variant_chain);
         for path in buckets[index].sparse.drain(..) {
             output.push_sparse_path(path)?;
         }
@@ -569,14 +584,11 @@ fn link_region_group(
     for &index in group {
         let spacing_mm = spacing(records, index, bucket);
         let anchor = anchor(records, index, bucket);
+        let raw = boundary_for(boundaries, index);
         let boundary = if group.len() == 1 {
-            ExPolygonWithOffset::for_infill_overlap(
-                boundary_for(boundaries, index),
-                infill_overlap,
-                spacing_mm,
-            )
-            .polygons_outer()
-            .to_vec()
+            ExPolygonWithOffset::for_infill_overlap(raw, infill_overlap, spacing_mm)
+                .polygons_outer()
+                .to_vec()
         } else {
             mixed_boundary(boundaries, group, index, infill_overlap, spacing_mm)
         };
@@ -585,7 +597,11 @@ fn link_region_group(
             .cloned()
             .map(|path| (index, path))
             .collect::<Vec<_>>();
-        let (linked, _) = link_paths_without_offset(tagged, &boundary, spacing_mm, anchor);
+        let (linked, _) = if group.len() == 1 {
+            link_paths_against(tagged, &boundary, raw, spacing_mm, anchor)
+        } else {
+            link_paths_without_offset(tagged, &boundary, spacing_mm, anchor)
+        };
         append_paths(&mut buckets[records[index].prior_index], bucket, linked);
     }
 }
@@ -761,7 +777,43 @@ fn link_paths(
     anchor: AnchorParams,
 ) -> (Vec<ExtrusionPath3D>, Vec<SourceSegment>) {
     let offset = ExPolygonWithOffset::for_infill_overlap(boundary, infill_overlap, spacing_mm);
-    link_paths_without_offset(tagged, offset.polygons_outer(), spacing_mm, anchor)
+    link_paths_against(
+        tagged,
+        offset.polygons_outer(),
+        boundary,
+        spacing_mm,
+        anchor,
+    )
+}
+
+/// Clips and links `tagged` against the overlap-offset `boundary`, falling
+/// back to the raw (un-offset) boundary when the offset collapses under a
+/// degenerate ribbon the emitter produced.
+///
+/// L45 benchy production case: `bridge_areas[8]` is a 0.0175 mm-wide ribbon
+/// (two near-coincident rails ~175 units apart) while the overlap inset is
+/// -0.0225 mm — wider than the ribbon — so the offset boundary vanishes and
+/// the 9.45 mm scan it contains clips away to nothing. The ribbon is still
+/// the emitter's legal fill domain (the scan kept its full length against
+/// the raw ring), so clipping against the raw boundary recovers it.
+/// Canonical never faces this choice: its emit-time scan and link-time
+/// boundary are the same `ExPolygonWithOffset` object
+/// (`FillRectilinear::fill_surface_by_lines`), so a collapsed offset is a
+/// no-fill verdict shared by both stages; PnP's split emit/link stages must
+/// re-admit the scan the emitter already produced.
+fn link_paths_against(
+    tagged: Vec<(usize, ExtrusionPath3D)>,
+    boundary: &[ExPolygon],
+    raw_boundary: &[ExPolygon],
+    spacing_mm: f32,
+    anchor: AnchorParams,
+) -> (Vec<ExtrusionPath3D>, Vec<SourceSegment>) {
+    let (linked, source_segments) =
+        link_paths_without_offset(tagged.clone(), boundary, spacing_mm, anchor);
+    if !linked.is_empty() {
+        return (linked, source_segments);
+    }
+    link_paths_without_offset(tagged, raw_boundary, spacing_mm, anchor)
 }
 
 fn link_paths_without_offset(
@@ -772,13 +824,22 @@ fn link_paths_without_offset(
 ) -> (Vec<ExtrusionPath3D>, Vec<SourceSegment>) {
     let mut clipped = Vec::new();
     let mut source_segments = Vec::new();
+    // Keep independent per-path intersections (and their owner/metadata), but
+    // flatten and inflate this invocation's immutable boundary only once.
+    let mut prepared_clip = None;
     for (owner, path) in tagged {
         let polyline = path
             .points
             .iter()
             .map(|point| Point2::from_mm(point.x, point.y))
             .collect::<Vec<_>>();
-        let clipped_polylines = clip_to_offset_boundary(&[polyline], boundary);
+        // Match the one-shot early-out: invalid paths do not prepare a universe.
+        if polyline.len() < 2 {
+            continue;
+        }
+        let clipped_polylines = prepared_clip
+            .get_or_insert_with(|| PreparedPolylineClip::new(boundary))
+            .clip(&[polyline]);
         for points in remove_short_polylines(&clipped_polylines, spacing_mm) {
             source_segments.extend(points.windows(2).filter_map(|segment| {
                 let length = ((segment[1].x - segment[0].x) as f64)

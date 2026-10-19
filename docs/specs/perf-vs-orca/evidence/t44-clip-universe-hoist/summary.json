@@ -1,0 +1,123 @@
+{
+  "recommendation": "KEEP",
+  "automatic_commit": false,
+  "scope": "supports-off Benchy Arachne, unchanged frozen-job settings in benchy-arachne.json",
+  "modes": {
+    "ordinary": {
+      "retained_pairs": 6,
+      "excluded_pairs": [],
+      "starvation_cutoffs": {
+        "baseline": 3.025449329235102,
+        "candidate": 3.840452444667232
+      },
+      "medians": {
+        "baseline": {
+          "wall_seconds": 18.634561050000002,
+          "cpu_seconds": 74.578125,
+          "cpu_wall_range": [
+            3.7518324490058585,
+            4.033932438980136
+          ]
+        },
+        "candidate": {
+          "wall_seconds": 14.229741749999999,
+          "cpu_seconds": 68.6015625,
+          "cpu_wall_range": [
+            4.785443281207325,
+            5.120603259556309
+          ]
+        }
+      },
+      "wall_reduction_percent": 23.637902112000663,
+      "cpu_reduction_percent": 8.013827781269644,
+      "paired_median_deltas": {
+        "wall_seconds": -5.2064177,
+        "cpu_seconds": -5.9375
+      },
+      "pairs_favoring_candidate": {
+        "wall_seconds": 6,
+        "cpu_seconds": 6
+      },
+      "strict_range_separation": {
+        "wall_seconds": true,
+        "cpu_seconds": true
+      },
+      "output": {
+        "sha256": "1b71f83db378d33c2c52ee84028a7180b8b65d26edffde7eff0b06b40b2d403b",
+        "bytes": 3806297,
+        "type_counts": {
+          "Skirt": 1,
+          "Brim": 1,
+          "Outer wall": 698,
+          "Inner wall": 744,
+          "Bottom surface": 23,
+          "Bridge": 18,
+          "Sparse infill": 139,
+          "Internal solid infill": 6,
+          "Top surface": 32,
+          "Internal Bridge": 12
+        },
+        "open_loop_warnings": 1110
+      },
+      "gate_passed": true
+    },
+    "accelerated": {
+      "retained_pairs": 6,
+      "excluded_pairs": [],
+      "starvation_cutoffs": {
+        "baseline": 2.862500998776978,
+        "candidate": 3.6940564746556825
+      },
+      "medians": {
+        "baseline": {
+          "wall_seconds": 19.38293615,
+          "cpu_seconds": 72.1484375,
+          "cpu_wall_range": [
+            3.626584746173508,
+            3.816667998369304
+          ]
+        },
+        "candidate": {
+          "wall_seconds": 14.017175649999999,
+          "cpu_seconds": 66.265625,
+          "cpu_wall_range": [
+            4.538946955784414,
+            4.925408632874244
+          ]
+        }
+      },
+      "wall_reduction_percent": 27.682908608250255,
+      "cpu_reduction_percent": 8.153762858689772,
+      "paired_median_deltas": {
+        "wall_seconds": -5.448156350000001,
+        "cpu_seconds": -5.8515625
+      },
+      "pairs_favoring_candidate": {
+        "wall_seconds": 6,
+        "cpu_seconds": 6
+      },
+      "strict_range_separation": {
+        "wall_seconds": true,
+        "cpu_seconds": true
+      },
+      "output": {
+        "sha256": "1b71f83db378d33c2c52ee84028a7180b8b65d26edffde7eff0b06b40b2d403b",
+        "bytes": 3806297,
+        "type_counts": {
+          "Skirt": 1,
+          "Brim": 1,
+          "Outer wall": 698,
+          "Inner wall": 744,
+          "Bottom surface": 23,
+          "Bridge": 18,
+          "Sparse infill": 139,
+          "Internal solid infill": 6,
+          "Top surface": 32,
+          "Internal Bridge": 12
+        },
+        "open_loop_warnings": 1110
+      },
+      "gate_passed": true
+    }
+  }
+}

@@ -136,7 +136,9 @@ fn enabled_raft_config_is_emitted_as_raft_plan() {
         true,
         &[
             ("support_raft_layers", ConfigValue::Int(2)),
-            ("raft_first_layer_density", ConfigValue::Float(0.4)),
+            // coPercent magnitude (40 = 40%); the planner resolves the
+            // RaftPlan fraction at consumption.
+            ("raft_first_layer_density", ConfigValue::Float(40.0)),
             ("base_raft_layers", ConfigValue::Int(1)),
             ("interface_raft_layers", ConfigValue::Int(1)),
         ],

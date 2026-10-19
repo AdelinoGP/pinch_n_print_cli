@@ -115,6 +115,50 @@ fn missing_plan_emits_non_fatal_and_preserves_walls() {
 }
 
 #[test]
+fn missing_plan_names_the_actual_variant_chain() {
+    // A painted variant with no exact plan entry must degrade like any other
+    // missing plan, and its diagnostic must name the region's ACTUAL chain —
+    // not a hard-coded empty one — so the operator can tell which variant
+    // lacked an entry.
+    let config = config_with_mode("aligned");
+    let module = SeamPlacer::from_config(&config).expect("module init must succeed");
+    let input_wall = ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0)]);
+    let mut region = aligned_region("obj-painted", 9, vec![input_wall.clone()], vec![], None);
+    region.set_variant_chain(vec![(
+        "material".to_string(),
+        slicer_ir::PaintValue::ToolIndex(1),
+    )]);
+    let regions = vec![region];
+    let mut output = PerimeterOutputBuilder::new();
+
+    let result = module.run_wall_postprocess(3, &regions, &mut output, &config);
+    let error = result.expect_err("missing aligned plan entry must be observable");
+
+    assert!(!error.fatal, "missing plan entry must be non-fatal");
+    assert_eq!(error.code, 6, "code 6 documents a missing seam plan entry");
+    assert!(
+        error.message.contains("region_id=9"),
+        "diagnostic must name the region: {}",
+        error.message
+    );
+    assert!(
+        error.message.contains("material"),
+        "diagnostic must name the missing variant's chain, got: {}",
+        error.message
+    );
+    assert!(
+        !error.message.contains("variant_chain=[]"),
+        "a painted variant must not be reported as chain-less: {}",
+        error.message
+    );
+    assert_eq!(
+        output.rotated_wall_loops().len(),
+        1,
+        "wall must be preserved"
+    );
+}
+
+#[test]
 fn aligned_with_resolved_seam_does_not_emit_non_fatal() {
     let config = config_with_mode("aligned");
     let module = SeamPlacer::from_config(&config).expect("module init must succeed");

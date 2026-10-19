@@ -1,0 +1,195 @@
+diff --git a/.gitignore b/.gitignore
+index 0a808fca..46a7016c 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -30,6 +30,9 @@
+ # Local worktrees and scratch output
+ .worktrees/
+ tmp/
++# Durable local acceptance payloads (licensed inputs and frozen snapshots).
++# Not build/scratch storage: preserve across cargo clean and target cleanup.
++/.local-artifacts/perimeter-reference-preparation/
+ # Local environment files
+ .env
+ 
+diff --git a/CONTEXT.md b/CONTEXT.md
+index 20f7104c..4ecdbfe6 100644
+--- a/CONTEXT.md
++++ b/CONTEXT.md
+@@ -989,6 +989,18 @@ identical inputs and comparing the results — which claims stability, not
+ correctness, and never substitutes for an independent expectation.
+ _Avoid_: self-test, mirror.
+ 
++### Adoption reference
++A preserved ordinary-mode output for a fixed supported job, used to judge
++whether a proposed execution mode preserves that job's output. Establishes
++equivalence to ordinary behavior, not independent geometric correctness or
++acceptance of the proposed mode.
++_Avoid_: correctness oracle (for an ordinary-generated reference).
++
++### Reference freeze
++The boundary after which a reference set's identity is fixed before evaluating
++the proposed execution mode. A changed reference belongs to a new preparation
++attempt, not a repair of the evidence for a comparison already underway.
++
+ ### Loud skip
+ The discipline governing fixture-dependent coverage: a test that cannot obtain
+ its fixture must fail loudly, or be explicitly gated behind a feature or
+diff --git a/docs/23_controlled_perimeter_builds.md b/docs/23_controlled_perimeter_builds.md
+index a70cfe18..97c17402 100644
+--- a/docs/23_controlled_perimeter_builds.md
++++ b/docs/23_controlled_perimeter_builds.md
+@@ -164,6 +164,26 @@ preferred because the first missing path is deterministic.  Reference G-code
+ is precomputed under the same supported configuration and is checked before
+ measured rows are retained.
+ 
++### Durable frozen preparation inputs
++
++Frozen reference corpora and the ordinary snapshots that produced them are
++acceptance inputs, **not build artifacts**. Keep newly prepared sets under
++`.local-artifacts/perimeter-reference-preparation/<distinct-attempt>/`, outside
++`target/` and temporary/scratch directories. This dedicated namespace is
++gitignored because it contains licensed models, raw outputs and executables;
++it must be preserved across build cleanup. Being outside `target/` is not a
++backup guarantee: retain a separate copy if these inputs must survive loss of
++the workspace.
++
++Keep manifests, hashes, commands and validation/provenance evidence under the
++effort's tracked evidence directory. Verify the full frozen identity before
++comparison and again after a campaign. Pass the manifest's corpus root
++explicitly as `-CorpusRoot`; do not silently use the historical default corpus.
++If a frozen set is missing or changed, stop. Restoration must match the original
++manifest; regeneration requires explicit human authorization for a **new**
++preparation attempt, without overwriting the old evidence or manifest. Neither
++recovery path changes the exactness or timing thresholds.
++
+ ### Campaign protocol
+ 
+ There are six cells: supports-off Benchy, tree-support Benchy, and the
+@@ -200,10 +220,18 @@ controlled driver first.  Then verify the harness copy and dry-run protocol:
+ 
+ ```powershell
+ cmp resources/perimeter-acceptance/run_bench.ps1 docs/specs/perf-vs-orca/evidence/alloc-bench/run_bench.ps1
++pwsh -NoProfile -File resources/perimeter-acceptance/test-status-roundtrip.ps1
+ pwsh -NoProfile -File resources/perimeter-acceptance/run-acceptance.ps1 -DryRun
+ pwsh -NoProfile -File resources/perimeter-acceptance/run-acceptance.ps1 -Campaign
+ ```
+ 
++The status round-trip regression uses the benchmark's actual CSV schema and
++the runner's real reader, decision functions, and summary writer. It checks
++retained completion status, degraded/fatal/non-fatal counts and validated
++generator markers, including a non-fatal mismatch that must be `DROP` despite
++favorable synthetic timing ranges. It runs no slicer; its timings are not
++acceptance evidence. The stock dry run bypasses the CSV reader, so run both.
++
+ The last command is intentionally fail-closed when the user-prepared corpus
+ is absent.  Its first missing-artifact line is evidence that no fabricated
+ timing campaign was attempted.
+diff --git a/docs/specs/perf-vs-orca/issues/13-accelerated-adoption-decision.md b/docs/specs/perf-vs-orca/issues/13-accelerated-adoption-decision.md
+index 95eb19ba..2dbdc079 100644
+--- a/docs/specs/perf-vs-orca/issues/13-accelerated-adoption-decision.md
++++ b/docs/specs/perf-vs-orca/issues/13-accelerated-adoption-decision.md
+@@ -1,7 +1,8 @@
+ # Accelerated perimeter-spatial adoption decision
+ 
+ Type: grilling
+-Status: open
++Status: resolved
++Assignee: current wayfinder session, 2026-09-30
+ Blocked by: 11
+ 
+ ## Question
+@@ -24,3 +25,24 @@ acceptance); and the recipe traps around the accelerated snapshot.
+ 
+ Record the human's decision under `## Answer` — adoption or not, with the
+ acceptance campaign's remaining checklist state.
++
++## Resolution comment — 2026-09-30
++
++The human chose **pursue accelerated adoption**, then confirmed conditional
++adoption under the existing controlled-build acceptance policy. Accelerated
++is the intended production mode; ordinary remains the actual default until
++fresh acceptance passes. This is not permission to change build defaults now.
++
++The gate is `docs/23_controlled_perimeter_builds.md`'s campaign: verified
++mode-specific artifacts, reference exactness and dispatch/status validation,
++and strict favorable CPU and wall sample separation in every campaign cell.
++An inconclusive result returns to the human; do not weaken the gate or
++automatically retry. Paired ordinary + accelerated measurements continue.
++Until adoption, production-default claims refer to ordinary and accelerated
++claims remain explicitly mode-labelled. Adoption does not replace the map's
++separate matched eight-cell Orca win criterion.
++
++No acceptance campaign or freshness check ran in this decision session.
++The historical matched scoreboard predates recent correctness fixes and is
++not fresh adoption evidence. Remaining preparation and verification are
++carried by [Accelerated production adoption acceptance campaign](38-accelerated-adoption-acceptance-campaign.md).
+diff --git a/docs/specs/perf-vs-orca/map.md b/docs/specs/perf-vs-orca/map.md
+index 3b85463e..e3da306a 100644
+--- a/docs/specs/perf-vs-orca/map.md
++++ b/docs/specs/perf-vs-orca/map.md
+@@ -131,11 +131,46 @@ Standing decisions for this effort (2026-09-22):
+   attribution](issues/22-tree-planner-substage-attribution.md), 2026-09-24).
+ - Measured keep/drop recommendations return to the human; candidates are never
+   auto-committed.
++- **Production-mode route (2026-09-30):** pursue conditional accelerated
++  adoption; ordinary stays the actual default pending the existing acceptance
++  gate. See [Accelerated perimeter-spatial adoption decision](issues/13-accelerated-adoption-decision.md)
++   and its [acceptance campaign](issues/38-accelerated-adoption-acceptance-campaign.md).
++  **Adoption preflight (2026-09-30):** both mode-specific guest freshness checks
++  passed, but the real acceptance CSV reader loses non-fatal counts and the
++  existing references predate correctness repairs. Campaign timing has not
++  started; its prerequisite blocking edges carry the new frontier. Evidence:
++   [Accelerated adoption campaign preflight](evidence/t38-adoption-preflight/PREFLIGHT.md).
++   **Runner prerequisite repaired:** see
++   [Acceptance runner CSV status preservation](issues/39-acceptance-runner-status-roundtrip.md).
++   **References now prepared/frozen:** see
++   [Current-job adoption reference preparation policy](issues/40-acceptance-reference-refresh-policy.md).
++   The historical corpus remains intact; use the frozen manifest's new corpus
++   root explicitly after its identity gate. No campaign timing has started;
++    full adoption gates remain pending.
++    **Resumption blocker (2026-09-30):** the manifest-named frozen ordinary
++    snapshot and current-job corpus roots are now absent; the read-only identity
++    gate failed before comparison or timing. Historical corpus, manifest and
++    build-input hashes still match. The campaign is blocked on
++    [Missing frozen adoption inputs recovery decision](issues/41-missing-frozen-adoption-inputs-recovery.md);
++    do not silently recreate the missing payloads. Evidence:
++    [Frozen-input difference audit](evidence/t38-adoption-campaign/freeze-difference.json).
++    **Recovery authorized:** the human chose a new, separate ordinary-only
++    preparation with the unchanged six-cell job and checks. Durable payloads
++    will live under `.local-artifacts/perimeter-reference-preparation/`, outside
++    `target/`; previous evidence and the historical corpus remain preserved.
++    Preparation and freeze verification are pending; this does not authorize
++    accelerated comparison, campaign timing, commits or a default change.
+ 
+ ## Decisions so far
+ 
+ <!-- one line per closed ticket; the ticket holds the detail -->
+ 
++- [Current-job adoption reference preparation policy](issues/40-acceptance-reference-refresh-policy.md): human-authorized ordinary-only references prepared and frozen for the unchanged six-cell job, with clean-output and targeted repair checks; historical corpus preserved, full adoption acceptance still pending.
++
++- [Acceptance runner CSV status preservation](issues/39-acceptance-runner-status-roundtrip.md): real CSV non-fatal counts and validated generator markers now survive the runner gate; regression checks pass without relaxing adoption gates.
++
++- [Accelerated perimeter-spatial adoption decision](issues/13-accelerated-adoption-decision.md): human confirmed conditional accelerated adoption under the existing exactness and strict CPU/wall campaign gate; ordinary remains the default pending acceptance.
++
+ - [Baseline and measurement recipe](issues/01-baseline-and-measurement-recipe.md): the three-fixture PNP-vs-Orca baseline is captured but configuration-unmatched (no speed multiple is defensible from it), and the six measurement traps plus reproduction commands are the standing protocol.
+ - [shell_classification guard ordering](issues/02-shell-classification-guard-ordering.md): the stage's cost was two full-layer `offset` calls computed before the early-outs that discard them; guards hoisted, erosion made lazy, bridge gate parallelized — benchy stage 17.8 s → 2.96 s, landed.
+ - [Allocator A/B closes the contention hypothesis](issues/03-allocator-ab-contention-hypothesis.md): mimalloc/snmalloc show no wall win and +5–23% peak memory; the inflated-CPU reading was external machine load in summed worker elapsed. Do not repeat without new contention evidence.
+diff --git a/resources/perimeter-acceptance/run-acceptance.ps1 b/resources/perimeter-acceptance/run-acceptance.ps1
+index a9bb02b7..6abeb063 100644
+--- a/resources/perimeter-acceptance/run-acceptance.ps1
++++ b/resources/perimeter-acceptance/run-acceptance.ps1
+@@ -182,11 +182,11 @@ function Convert-BenchRows {
+         $cpu = Convert-ToDouble (Get-PropertyValue $raw @('cpu_s', 'cpu_seconds', 'process_cpu_s', 'process_cpu_seconds', 'cpu'))
+         $wall = Convert-ToDouble (Get-PropertyValue $raw @('wall_s', 'wall_seconds', 'process_wall_s', 'process_wall_seconds', 'wall'))
+         if ($null -eq $cpu -or $null -eq $wall) { throw "benchmark result lacks CPU/wall seconds: $ResultsPath" }
+-        $markerValue = Get-PropertyValue $raw @('generator_marker', 'generator', 'marker', 'generator_claim', 'generator_name')
++        $markerValue = Get-PropertyValue $raw @('validated_generator', 'generator_marker', 'generator', 'marker', 'generator_claim', 'generator_name')
+         $marker = if ($null -eq $markerValue -or [string]::IsNullOrWhiteSpace([string]$markerValue)) { $fallbackMarker } else { ([string]$markerValue).Trim().ToLowerInvariant() }
+         $statusValue = Get-PropertyValue $raw @('status', 'completion_status', 'result')
+         $degradedValue = Get-PropertyValue $raw @('degraded', 'degraded_count', 'preexisting_degraded')
+-        $nonfatalValue = Get-PropertyValue $raw @('nonfatal_errors', 'non_fatal_errors', 'nonfatal', 'non_fatal', 'nonfatal_count')
++        $nonfatalValue = Get-PropertyValue $raw @('non_fatal_error_count', 'nonfatal_errors', 'non_fatal_errors', 'nonfatal', 'non_fatal', 'nonfatal_count')
+         $fatalValue = Get-PropertyValue $raw @('fatal_errors', 'fatal_error_count', 'fatal')
+         $rows.Add([PSCustomObject]@{
+             label = $Label

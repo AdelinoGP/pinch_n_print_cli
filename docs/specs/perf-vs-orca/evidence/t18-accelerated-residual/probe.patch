@@ -1,0 +1,314 @@
+diff --git a/crates/slicer-core/src/perimeter_spatial.rs b/crates/slicer-core/src/perimeter_spatial.rs
+index 8bfbf8e4..5cd01723 100644
+--- a/crates/slicer-core/src/perimeter_spatial.rs
++++ b/crates/slicer-core/src/perimeter_spatial.rs
+@@ -12,6 +12,8 @@ use slicer_ir::slice_ir::QuartileBand;
+ use slicer_ir::{ExPolygon, Point2, Point3WithWidth, Polygon};
+ 
+ use crate::perimeter_utils::{point_in_any_polygon, signed_distance_to_boundary};
++// PERF-T18-PROBE: temporary fuel attribution; remove after capture.
++use crate::profile::{self, ScopeId};
+ 
+ const RSTAR_MAX_SIZE: usize = <rstar::DefaultParams as RTreeParams>::MAX_SIZE;
+ 
+@@ -542,6 +544,7 @@ impl PerimeterSpatialContext {
+         overhang_bands: &[QuartileBand],
+         bridge_areas: &[ExPolygon],
+     ) -> Self {
++        let _t18 = profile::scope(ScopeId::T18_CONTEXT);
+         count_context_constructed();
+         let boundary = boundary.to_vec();
+         let overhang_bands = overhang_bands.to_vec();
+@@ -572,6 +575,7 @@ impl PerimeterSpatialContext {
+ 
+     /// Return the exact signed distance to the nearest boundary edge.
+     pub fn signed_distance_to_boundary(&self, x: f32, y: f32) -> f32 {
++        let _t18 = profile::scope(ScopeId::T18_DISTANCE);
+         let dispatch = dispatch();
+         if !dispatch.indexed {
+             count_legacy();
+@@ -593,6 +597,15 @@ impl PerimeterSpatialContext {
+             || matches!(&self.distance_index, IndexState::Linear)
+             || matches!(&self.boundary_y_index, IndexState::Linear)
+         {
++            let _reason = profile::scope(
++                if matches!(&self.distance_index, IndexState::Linear)
++                    || matches!(&self.boundary_y_index, IndexState::Linear)
++                {
++                    ScopeId::T18_LINEAR
++                } else {
++                    ScopeId::T18_OTHER_FALLBACK
++                },
++            );
+             return self.fallback_signed_distance(x, y);
+         }
+ 
+@@ -628,6 +641,7 @@ impl PerimeterSpatialContext {
+ 
+     /// Return the most severe overhang quartile containing `(x, y)`.
+     pub fn overhang_quartile(&self, x: f32, y: f32) -> Option<u8> {
++        let _t18 = profile::scope(ScopeId::T18_QUARTILE);
+         let dispatch = dispatch();
+         if !dispatch.indexed {
+             count_legacy();
+@@ -640,6 +654,11 @@ impl PerimeterSpatialContext {
+             || index_failed(&self.quartile_y_index)
+             || matches!(&self.quartile_y_index, IndexState::Linear)
+         {
++            let _reason = profile::scope(if matches!(&self.quartile_y_index, IndexState::Linear) {
++                ScopeId::T18_LINEAR
++            } else {
++                ScopeId::T18_OTHER_FALLBACK
++            });
+             return self.fallback_overhang_quartile(x, y);
+         }
+ 
+@@ -659,6 +678,7 @@ impl PerimeterSpatialContext {
+ 
+     /// Return whether an integer point is strictly inside any bridge area.
+     pub fn is_bridge(&self, point: &Point2) -> bool {
++        let _t18 = profile::scope(ScopeId::T18_BRIDGE);
+         let dispatch = dispatch();
+         if !dispatch.indexed {
+             count_legacy();
+@@ -669,6 +689,11 @@ impl PerimeterSpatialContext {
+             || index_failed(&self.bridge_index)
+             || matches!(&self.bridge_index, IndexState::Linear)
+         {
++            let _reason = profile::scope(if matches!(&self.bridge_index, IndexState::Linear) {
++                ScopeId::T18_LINEAR
++            } else {
++                ScopeId::T18_OTHER_FALLBACK
++            });
+             return self.fallback_bridge(point);
+         }
+ 
+@@ -681,7 +706,12 @@ impl PerimeterSpatialContext {
+                 // This guard intentionally precedes the spatial bbox query.  The
+                 // original predicate uses wrapping i64 arithmetic in release and
+                 // panics on overflow in debug, so unsafe extents must use it whole.
+-                if !bridge_arithmetic_safe(bounds, point) {
++                let safe = {
++                    let _check = profile::scope(ScopeId::T18_BRIDGE_ARITHMETIC);
++                    bridge_arithmetic_safe(bounds, point)
++                };
++                if !safe {
++                    let _reason = profile::scope(ScopeId::T18_UNSAFE_BRIDGE);
+                     return self.fallback_bridge(point);
+                 }
+ 
+@@ -693,6 +723,7 @@ impl PerimeterSpatialContext {
+     }
+ 
+     fn fallback_signed_distance(&self, x: f32, y: f32) -> f32 {
++        let _t18 = profile::scope(ScopeId::T18_FALLBACK_DISTANCE);
+         count_fallback();
+         count_legacy();
+         let distance = if self.boundary.is_empty() {
+@@ -705,12 +736,14 @@ impl PerimeterSpatialContext {
+     }
+ 
+     fn fallback_overhang_quartile(&self, x: f32, y: f32) -> Option<u8> {
++        let _t18 = profile::scope(ScopeId::T18_FALLBACK_QUARTILE);
+         count_fallback();
+         count_legacy();
+         legacy_overhang_quartile(x, y, &self.overhang_bands)
+     }
+ 
+     fn fallback_bridge(&self, point: &Point2) -> bool {
++        let _t18 = profile::scope(ScopeId::T18_FALLBACK_BRIDGE);
+         count_fallback();
+         count_legacy();
+         point_in_any_polygon(point, &self.bridge_areas)
+@@ -989,10 +1022,14 @@ fn edge_distance_sq(record: &DistanceEdgeRecord, query_x: f64, query_y: f64) ->
+ }
+ 
+ fn indexed_distance(tree: &RTree<DistanceEdgeRecord>, x: f32, y: f32) -> Option<(f32, usize)> {
++    let _t18 = profile::scope(ScopeId::T18_INDEXED_DISTANCE);
+     let query_x = f64::from(x);
+     let query_y = f64::from(y);
+     let query = [query_x, query_y];
+-    let seed = tree.nearest_neighbor(&query)?;
++    let seed = {
++        let _t18 = profile::scope(ScopeId::T18_DISTANCE_SEED);
++        tree.nearest_neighbor(&query)?
++    };
+     let seed_distance_sq = edge_distance_sq(seed, query_x, query_y);
+     let radius = next_up(next_up(seed_distance_sq.next_up().sqrt()));
+     let envelope = AABB::from_corners(
+@@ -1000,6 +1037,7 @@ fn indexed_distance(tree: &RTree<DistanceEdgeRecord>, x: f32, y: f32) -> Option<
+         [next_up(query_x + radius), next_up(query_y + radius)],
+     );
+ 
++    let _range = profile::scope(ScopeId::T18_DISTANCE_RANGE);
+     let mut best: Option<(f64, usize)> = None;
+     for candidate in tree.locate_in_envelope_intersecting(&envelope) {
+         count_distance_exact_evaluation();
+@@ -1015,13 +1053,19 @@ fn indexed_inside(
+     y: f32,
+     boundary: &[ExPolygon],
+ ) -> Option<bool> {
++    let _t18 = profile::scope(ScopeId::T18_INDEXED_INSIDE);
+     let query = [0.0, f64::from(y)];
+     let envelope = AABB::from_corners(query, query);
+-    let mut candidates = BTreeSet::new();
+-    for record in tree.locate_in_envelope_intersecting(&envelope) {
+-        candidates.insert(record.polygon_index);
+-    }
++    let candidates = {
++        let _collect = profile::scope(ScopeId::T18_INSIDE_COLLECT);
++        let mut candidates = BTreeSet::new();
++        for record in tree.locate_in_envelope_intersecting(&envelope) {
++            candidates.insert(record.polygon_index);
++        }
++        candidates
++    };
+ 
++    let _scan = profile::scope(ScopeId::T18_INSIDE_SCAN);
+     let mut inside = false;
+     for polygon_index in candidates {
+         let polygon = boundary.get(polygon_index)?;
+@@ -1039,13 +1083,19 @@ fn indexed_overhang_quartile(
+     y: f32,
+     bands: &[QuartileBand],
+ ) -> Option<Option<u8>> {
++    let _t18 = profile::scope(ScopeId::T18_INDEXED_QUARTILE);
+     let query = [0.0, f64::from(y)];
+     let envelope = AABB::from_corners(query, query);
+-    let mut candidates = BTreeSet::new();
+-    for record in tree.locate_in_envelope_intersecting(&envelope) {
+-        candidates.insert((record.band_index, record.polygon_index));
+-    }
++    let candidates = {
++        let _collect = profile::scope(ScopeId::T18_QUARTILE_COLLECT);
++        let mut candidates = BTreeSet::new();
++        for record in tree.locate_in_envelope_intersecting(&envelope) {
++            candidates.insert((record.band_index, record.polygon_index));
++        }
++        candidates
++    };
+ 
++    let _scan = profile::scope(ScopeId::T18_QUARTILE_SCAN);
+     let mut quartile: Option<u8> = None;
+     for (band_index, polygon_index) in candidates {
+         let band = bands.get(band_index)?;
+@@ -1059,13 +1109,19 @@ fn indexed_overhang_quartile(
+ }
+ 
+ fn indexed_bridge(tree: &RTree<BridgeRecord>, point: &Point2, areas: &[ExPolygon]) -> bool {
++    let _t18 = profile::scope(ScopeId::T18_INDEXED_BRIDGE);
+     let query = [point.x, point.y];
+     let envelope = AABB::from_corners(query, query);
+-    let mut candidates = BTreeSet::new();
+-    for record in tree.locate_in_envelope_intersecting(&envelope) {
+-        candidates.insert(record.polygon_index);
+-    }
++    let candidates = {
++        let _collect = profile::scope(ScopeId::T18_BRIDGE_COLLECT);
++        let mut candidates = BTreeSet::new();
++        for record in tree.locate_in_envelope_intersecting(&envelope) {
++            candidates.insert(record.polygon_index);
++        }
++        candidates
++    };
+ 
++    let _scan = profile::scope(ScopeId::T18_BRIDGE_SCAN);
+     let mut inside = false;
+     for polygon_index in candidates {
+         let Some(polygon) = areas.get(polygon_index) else {
+diff --git a/crates/slicer-core/src/profile.rs b/crates/slicer-core/src/profile.rs
+index 9095cec9..e6990e07 100644
+--- a/crates/slicer-core/src/profile.rs
++++ b/crates/slicer-core/src/profile.rs
+@@ -99,6 +99,31 @@ impl ScopeId {
+     /// bypass as [`ScopeId::OPENING`].
+     pub const CLOSING_EX: ScopeId = ScopeId(5);
+ 
++    // PERF-T18-PROBE: temporary fuel attribution scopes; remove after capture.
++    pub const T18_CONTEXT: ScopeId = ScopeId(6);
++    pub const T18_DISTANCE: ScopeId = ScopeId(7);
++    pub const T18_QUARTILE: ScopeId = ScopeId(8);
++    pub const T18_BRIDGE: ScopeId = ScopeId(9);
++    pub const T18_INDEXED_DISTANCE: ScopeId = ScopeId(10);
++    pub const T18_INDEXED_INSIDE: ScopeId = ScopeId(11);
++    pub const T18_INDEXED_QUARTILE: ScopeId = ScopeId(12);
++    pub const T18_INDEXED_BRIDGE: ScopeId = ScopeId(13);
++    pub const T18_FALLBACK_DISTANCE: ScopeId = ScopeId(14);
++    pub const T18_FALLBACK_QUARTILE: ScopeId = ScopeId(15);
++    pub const T18_FALLBACK_BRIDGE: ScopeId = ScopeId(16);
++    pub const T18_LINEAR: ScopeId = ScopeId(17);
++    pub const T18_UNSAFE_BRIDGE: ScopeId = ScopeId(18);
++    pub const T18_OTHER_FALLBACK: ScopeId = ScopeId(19);
++    pub const T18_BRIDGE_ARITHMETIC: ScopeId = ScopeId(20);
++    pub const T18_INSIDE_COLLECT: ScopeId = ScopeId(21);
++    pub const T18_INSIDE_SCAN: ScopeId = ScopeId(22);
++    pub const T18_QUARTILE_COLLECT: ScopeId = ScopeId(23);
++    pub const T18_QUARTILE_SCAN: ScopeId = ScopeId(24);
++    pub const T18_BRIDGE_COLLECT: ScopeId = ScopeId(25);
++    pub const T18_BRIDGE_SCAN: ScopeId = ScopeId(26);
++    pub const T18_DISTANCE_SEED: ScopeId = ScopeId(27);
++    pub const T18_DISTANCE_RANGE: ScopeId = ScopeId(28);
++
+     /// Every scope id minted by `slicer-core`, in ascending order.
+     ///
+     /// A sink implementation can walk this to build an id-to-name table up
+@@ -109,6 +134,29 @@ impl ScopeId {
+         ScopeId::OFFSET2_EX,
+         ScopeId::OPENING,
+         ScopeId::CLOSING_EX,
++        ScopeId::T18_CONTEXT,
++        ScopeId::T18_DISTANCE,
++        ScopeId::T18_QUARTILE,
++        ScopeId::T18_BRIDGE,
++        ScopeId::T18_INDEXED_DISTANCE,
++        ScopeId::T18_INDEXED_INSIDE,
++        ScopeId::T18_INDEXED_QUARTILE,
++        ScopeId::T18_INDEXED_BRIDGE,
++        ScopeId::T18_FALLBACK_DISTANCE,
++        ScopeId::T18_FALLBACK_QUARTILE,
++        ScopeId::T18_FALLBACK_BRIDGE,
++        ScopeId::T18_LINEAR,
++        ScopeId::T18_UNSAFE_BRIDGE,
++        ScopeId::T18_OTHER_FALLBACK,
++        ScopeId::T18_BRIDGE_ARITHMETIC,
++        ScopeId::T18_INSIDE_COLLECT,
++        ScopeId::T18_INSIDE_SCAN,
++        ScopeId::T18_QUARTILE_COLLECT,
++        ScopeId::T18_QUARTILE_SCAN,
++        ScopeId::T18_BRIDGE_COLLECT,
++        ScopeId::T18_BRIDGE_SCAN,
++        ScopeId::T18_DISTANCE_SEED,
++        ScopeId::T18_DISTANCE_RANGE,
+     ];
+ 
+     /// Constructs a scope id from its raw representation.
+@@ -139,6 +187,29 @@ impl ScopeId {
+             3 => Some("polygon_ops::offset2_ex"),
+             4 => Some("polygon_ops::opening"),
+             5 => Some("polygon_ops::closing_ex"),
++            6 => Some("t18::context"),
++            7 => Some("t18::distance"),
++            8 => Some("t18::quartile"),
++            9 => Some("t18::bridge"),
++            10 => Some("t18::indexed_distance"),
++            11 => Some("t18::indexed_inside"),
++            12 => Some("t18::indexed_quartile"),
++            13 => Some("t18::indexed_bridge"),
++            14 => Some("t18::fallback_distance"),
++            15 => Some("t18::fallback_quartile"),
++            16 => Some("t18::fallback_bridge"),
++            17 => Some("t18::linear_fallback"),
++            18 => Some("t18::unsafe_bridge_fallback"),
++            19 => Some("t18::other_fallback"),
++            20 => Some("t18::bridge_arithmetic_check"),
++            21 => Some("t18::inside_collect"),
++            22 => Some("t18::inside_scan"),
++            23 => Some("t18::quartile_collect"),
++            24 => Some("t18::quartile_scan"),
++            25 => Some("t18::bridge_collect"),
++            26 => Some("t18::bridge_scan"),
++            27 => Some("t18::distance_seed"),
++            28 => Some("t18::distance_range"),
+             _ => None,
+         }
+     }

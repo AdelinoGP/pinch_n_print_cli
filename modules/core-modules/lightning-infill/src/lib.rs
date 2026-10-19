@@ -51,12 +51,16 @@ impl LayerModule for LightningInfill {
         // Canonical `sparse_infill_density` is coPercent (default 20 = 20%);
         // resolve the literal percent against base 100 and divide by 100 to
         // recover the density fraction. (Wayfinder ticket 107 standardised
-        // the key to Orca's name and percent representation.)
-        let density = config
-            .get_abs_value("sparse_infill_density", 100.0)
-            .map(|d| d as f32 / 100.0)
-            .unwrap_or(0.2);
+        // the key to Orca's name and percent representation.) The registry
+        // seeds every declared key's default into a bound view, so an absent
+        // key is a contract violation, not a configurable fallback (packet 06
+        // fail-closed semantics; mirrors arachne-perimeters).
+        let density = config.require_abs_value("sparse_infill_density", 100.0)? as f32 / 100.0;
 
+        // The `width` closure below keeps its literal `0.0` arms: they are the
+        // documented canonical auto-0 sentinel (packet 185 AC-5), not
+        // configurable defaults — `resolve_role_width` routes a zero role
+        // width through the already-expanded base width.
         let width = |key: &str, fallback: f32| match config.get(key) {
             Some(ConfigValue::Float(w)) => *w as f32,
             Some(ConfigValue::Int(w)) => *w as f32,
@@ -72,8 +76,14 @@ impl LayerModule for LightningInfill {
                 // auto-0 sentinel (1.125 × nozzle), not the legacy 0.4 mm.
                 line_width: width("line_width", 0.0),
                 nozzle_diameter: 0.4,
-                bridge_line_width: width("bridge_line_width", 0.0),
-                initial_layer_line_width: width("initial_layer_line_width", 0.0),
+                // Packet 06 (AC-3): both keys are declared
+                // `float_or_percent` with `base_key = "nozzle_diameter"`
+                // (0.4) in the manifest, so a bound view always holds them;
+                // a missing value is a contract violation, not a fallback.
+                bridge_line_width: config.require_abs_value("bridge_line_width", 0.4)? as f32,
+                initial_layer_line_width: config
+                    .require_abs_value("initial_layer_line_width", 0.4)?
+                    as f32,
                 sparse_infill_line_width: width("sparse_infill_line_width", 0.0),
                 ..Default::default()
             },
@@ -102,7 +112,11 @@ impl LayerModule for LightningInfill {
         let speed_factor = 1.0;
 
         for region in regions {
-            output.begin_region(region.object_id(), *region.region_id());
+            output.begin_region(
+                region.object_id(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
             if !region.should_emit(ExtrusionRole::SparseInfill) {
                 continue;
             }
@@ -145,12 +159,29 @@ mod tests {
 
     #[test]
     fn from_config_defaults() {
-        let config = ConfigView::from_map(std::collections::HashMap::new());
+        // Packet 06 (AC-3): `bridge_line_width` / `initial_layer_line_width`
+        // are contract-required reads (`require_abs_value` over the fixed
+        // 0.4 mm nozzle base); a bound view always holds them at their
+        // resolved default (0.4 at the module's nozzle base).
+        let mut values = std::collections::HashMap::new();
+        values.insert("bridge_line_width".into(), ConfigValue::Float(0.4));
+        values.insert("initial_layer_line_width".into(), ConfigValue::Float(0.4));
+        // Packet 04 (TASK-565): the host expands the line_width auto-0
+        // sentinel (1.125 × nozzle_diameter) before guests see the view, so
+        // a bound view already holds the expanded width (0.45 at the
+        // module's fixed 0.4 mm nozzle). Seed the bound value; the
+        // production auto-expansion lives host-side now.
+        values.insert("line_width".into(), ConfigValue::Float(0.45));
+        // Declared keys (lightning-infill.toml) seeded at their manifest
+        // defaults, mirroring the production `seed_registry_defaults` step.
+        // Canonical percent key: 20 = 20%.
+        values.insert("sparse_infill_density".into(), ConfigValue::Float(20.0));
+        let config = ConfigView::from_map(values);
         let module = LightningInfill::from_config(&config).unwrap();
         assert!((module.density - 0.2).abs() < 0.001);
-        // Packet 185 (AC-5): absent line_width resolves to the canonical
-        // auto width 1.125 × nozzle_diameter (0.45 at the module's fixed
-        // 0.4 mm nozzle), not the legacy 0.4 mm default.
+        // Packet 185 (AC-5): a bound view's line_width resolves to the
+        // canonical auto width 1.125 × nozzle_diameter (0.45 at the module's
+        // fixed 0.4 mm nozzle), not the legacy 0.4 mm default.
         assert!((module.line_width - 0.45).abs() < 0.001);
     }
 }

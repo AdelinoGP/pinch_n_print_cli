@@ -1,0 +1,57 @@
+{
+  "status": "PASS",
+  "checked_before_focused_tests": true,
+  "targets": {
+    "xtask": {
+      "target": "xtask/src/main.rs binary",
+      "test_modules": [
+        "build_guests",
+        "dist",
+        "rustc_driver_tests (#[cfg(test)])",
+        "test"
+      ],
+      "required_names_verified": [
+        "accelerated_mode_freshness_accepts_matching_artifact_and_metadata",
+        "accelerated_policy_rejection_latch_rejects_duplicate_keyed_controls",
+        "accelerated_entry_points_use_mode_distinct_staging_path"
+      ]
+    },
+    "slicer-core": {
+      "target": "perimeter_spatial_tdd",
+      "required_features": ["host-algos", "perimeter-spatial-test-support"],
+      "crate_features": {
+        "default": [],
+        "host-algos": ["dep:rayon", "dep:boostvoronoi"],
+        "perimeter-spatial-test-support": []
+      },
+      "required_test_names": [
+        "exact_queries_match_legacy",
+        "accelerated_mode_exercised_not_vacuous",
+        "fallback_paths_are_nonvacuous"
+      ],
+      "files": [
+        "crates/slicer-core/Cargo.toml",
+        "crates/slicer-core/tests/perimeter_spatial_tdd.rs"
+      ]
+    },
+    "slicer-runtime-integration": {
+      "target": "integration",
+      "required_features": [],
+      "support_feature": "perimeter-spatial-test-support forwards to slicer-core/perimeter-spatial-test-support",
+      "module_is_unconditionally_declared": "crates/slicer-runtime/tests/integration/main.rs::perimeter_spatial_capture",
+      "feature_guard_test": "perimeter_spatial_capture_requires_test_support",
+      "feature_gated_test_names": [
+        "perimeter_spatial_capture_and_nonvacuity",
+        "perimeter_spatial_self_baseline_native_indexed",
+        "perimeter_spatial_self_baseline_native_legacy",
+        "perimeter_spatial_self_baseline_wasm"
+      ],
+      "unconditional_overlap_test": "overlap_is_inconclusive_and_never_keep",
+      "files": [
+        "crates/slicer-runtime/Cargo.toml",
+        "crates/slicer-runtime/tests/integration/main.rs",
+        "crates/slicer-runtime/tests/integration/perimeter_spatial_capture.rs"
+      ]
+    }
+  }
+}

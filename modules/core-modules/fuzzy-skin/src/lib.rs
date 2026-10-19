@@ -24,8 +24,8 @@
 use std::collections::HashMap;
 
 use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, LoopType, Point3WithWidth, WallFeatureFlags,
-    WallLoop, WidthProfile,
+    ConfigView, ExtrusionPath3D, LoopType, Point3WithWidth, WallFeatureFlags, WallLoop,
+    WidthProfile,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -49,18 +49,13 @@ pub struct FuzzySkinModule {
 #[slicer_module]
 impl LayerModule for FuzzySkinModule {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let fuzzy_skin_thickness = match config.get("fuzzy_skin_thickness") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 0.2,
-        };
-        let fuzzy_skin_point_distance = match config.get("fuzzy_skin_point_distance") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 0.3,
-        };
-        let apply_to_all = match config.get("apply_to_all") {
-            Some(ConfigValue::Bool(v)) => *v,
-            _ => false,
-        };
+        // Required reads: the registry seeds every declared key's default into
+        // a bound view, so an absent key is a contract violation, not a
+        // configurable fallback (packet 06 fail-closed semantics; mirrors
+        // arachne-perimeters).
+        let fuzzy_skin_thickness = config.require_float("fuzzy_skin_thickness")? as f32;
+        let fuzzy_skin_point_distance = config.require_float("fuzzy_skin_point_distance")? as f32;
+        let apply_to_all = config.require_bool("apply_to_all")?;
 
         Ok(Self {
             fuzzy_skin_thickness,
@@ -77,7 +72,11 @@ impl LayerModule for FuzzySkinModule {
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         for region in regions {
-            output.begin_region(region.object_id(), *region.region_id());
+            output.begin_region(
+                region.object_id(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
             for (wall_index, wall) in region.wall_loops().iter().enumerate() {
                 // Only perturb outer walls
                 if wall.loop_type != LoopType::Outer {

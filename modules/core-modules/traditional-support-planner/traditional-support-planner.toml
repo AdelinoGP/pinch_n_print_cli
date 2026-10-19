@@ -106,6 +106,16 @@ default = true
 display = "Independent Support Layer Height"
 group   = "Support"
 
+# Canonical OrcaSlicer `s_keys_map_SupportMaterialPattern` values are
+# `default|rectilinear|rectilinear-grid|honeycomb|lightning|hollow`.
+# The reference profile uses `rectilinear` at spacing 2.
+[config.schema.support_base_pattern]
+type    = "string"
+default = "rectilinear"
+values  = ["default", "rectilinear", "rectilinear-grid", "honeycomb", "lightning", "hollow"]
+display = "Support Base Pattern"
+group   = "Support"
+
 [config.schema.support_base_pattern_spacing]
 type    = "float"
 default = 2.5
@@ -137,16 +147,10 @@ group   = "Support"
 [config.schema.line_width]
 type    = "float"
 default = 0.4
-min     = 0.1
+min     = 0
 max     = 2.0
 display = "Line Width"
 group   = "Support"
-
-[config.overridable-per-region]
-keys = []
-
-[config.overridable-per-layer]
-keys = []
 
 [hints]
 # Packet 241 (TASK-426) measurement, release `pnp_cli slice --instrument-stderr`

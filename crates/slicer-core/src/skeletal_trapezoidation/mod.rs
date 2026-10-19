@@ -36,6 +36,6 @@ pub use graph::{
 pub use propagation::{
     apply_transitions, filter_transition_mids, generate_all_transition_ends, generate_extra_ribs,
     generate_transition_mids, populate_beading_propagation, propagate_beadings_downward,
-    propagate_beadings_upward,
+    propagate_beadings_upward, TRANSITION_FILTER_DIST_UNITS,
 };
 pub use rib::{build_quad_rib_topology, EdgeType, RibData, RibError};

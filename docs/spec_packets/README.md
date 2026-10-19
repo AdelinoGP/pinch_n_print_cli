@@ -6,7 +6,7 @@ This directory holds per-run execution packets for the spec-packet workflow.
 
 ## Runtime Rules
 
-- Packet folders live at `./docs/spec_packets/<spec-slug>/`.
+- Packet folders live at `./docs/spec_packets/<prefix>_<NN>_<packet-name>/` for all packets generated from 2026-09-11 on — `<prefix>` is the workstream prefix (for plan-driven packets the `docs/specs/*-plan.md` file name minus `-plan`, e.g. `test-quality-remediation`; for standalone packets the user supplies one), `<NN>` is the zero-padded packet number (the plan queue row, or the next free number for that prefix), and `<packet-name>` is the packet's kebab-case name. Legacy directories (`254-exact-perimeter-spatial-queries/`, `core-beading-threshold-review/`, `_OLD/`) keep their historical names and are not renamed by later convention changes.
 - Exactly one packet may be active at a time.
 - The active packet is the folder whose `packet.spec.md` front matter sets `status: active`.
 - `packet.spec.md` is the preflight-visible contract and must carry real Given/When/Then acceptance criteria.
@@ -24,7 +24,7 @@ Each packet should contain:
 
 ## Authoring Workflow
 
-The supported authoring path is the `spec-packet-generator` skill. Invoke `/spec-packet-generator` with a prompt, file, or URL describing the slice; the skill takes care of templates, snippet inclusion, the file-purpose hierarchy, and the self-review checklist before emitting the packet files into `./docs/spec_packets/<spec-slug>/`.
+The supported authoring path is the `spec-packet-generator` skill. Invoke `/spec-packet-generator` with a prompt, file, or URL describing the slice; the skill takes care of templates, snippet inclusion, the file-purpose hierarchy, and the self-review checklist before emitting the packet files into `./docs/spec_packets/<prefix>_<NN>_<packet-name>/`.
 
 Manual copy-paste from a template directory is no longer supported — templates and boilerplate snippets live in the skill at `.agents/skills/spec-packet-generator/references/{templates,snippets}/` and the skill is the single source of truth for packet shape and anti-repetition rules.
 

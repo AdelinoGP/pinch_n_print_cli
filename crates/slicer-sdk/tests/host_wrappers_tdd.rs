@@ -86,6 +86,7 @@ impl MeshSource for StubMesh {
     }
 }
 
+// KEEP-review (core-cross): explicit HostUnavailable (not a zero box) when no MeshSource is installed.
 #[test]
 fn object_bounds_returns_host_unavailable_without_source() {
     test_support::clear_mesh_source();
@@ -97,6 +98,7 @@ fn object_bounds_returns_host_unavailable_without_source() {
     assert!(msg.contains("obj-1"));
 }
 
+// KEEP-review (core-cross): SDK raycast/bounds route through the MeshSource trait, distinct from core AabbTree; catches source-lookup or trait-plumbing regressions.
 #[test]
 fn raycast_and_normal_route_through_installed_mesh_source() {
     test_support::install_mesh_source(StubMesh {
@@ -138,6 +140,7 @@ fn raycast_and_normal_route_through_installed_mesh_source() {
     test_support::clear_mesh_source();
 }
 
+// KEEP-review (core-cross): documented None signal for missing source; negative control for the raycast contract.
 #[test]
 fn raycast_returns_none_without_source_documented_signal() {
     test_support::clear_mesh_source();
@@ -172,6 +175,7 @@ fn clip_polygons_union_produces_nonempty_result_for_real_input() {
     );
 }
 
+// KEEP-review (core-cross): thin-delegate cover — the wrapper must keep routing through slicer_core::polygon_ops::offset and return non-empty output for both delta signs (±1.0 mm Miter on the 10 mm square); smoke-level delegate-path check, not a geometric oracle (the miter-limit test carries the geometric oracle).
 #[test]
 fn offset_polygons_shrinks_and_grows() {
     let a = vec![square(0, 100_000)]; // 10mm × 10mm square
@@ -184,6 +188,33 @@ fn offset_polygons_shrinks_and_grows() {
     );
 }
 
+// KEEP-review (core-cross): sole cover of the Some(miter_limit) delegation arm → slicer_core::polygon_ops::offset_with_miter_limit; a dropped or ignored limit flattens clamped to the default-limit contour.
+#[test]
+fn offset_polygons_with_miter_limit_clamps_sharp_miter_corners() {
+    let a = vec![square(0, 100_000)]; // 10mm × 10mm square
+    let grown = host::offset_polygons(&a, 1.0, OffsetJoinType::Miter, 0.0);
+    let clamped = host::offset_polygons_with_miter_limit(&a, 1.0, OffsetJoinType::Miter, 0.0, 1.2);
+    assert!(
+        !grown.is_empty(),
+        "default-limit offset must produce output"
+    );
+    assert!(
+        !clamped.is_empty(),
+        "miter-limited offset must produce output"
+    );
+    assert_ne!(
+        grown, clamped,
+        "clamped miter (limit 1.2) must differ from the default-limit (2.0) contour"
+    );
+    let grown_pts = grown[0].contour.points.len();
+    let clamped_pts = clamped[0].contour.points.len();
+    assert!(
+        clamped_pts > grown_pts,
+        "clamping a 1.414 corner ratio above the 1.2 limit must add vertices: {clamped_pts} vs {grown_pts}"
+    );
+}
+
+// KEEP-review (core-cross): distinct inline collinear-drop impl (tolerance reserved for a future DP variant), kept separate from core expolygons_simplify (RDP).
 #[test]
 fn simplify_polygon_drops_collinear_vertices() {
     // Square with an extra collinear vertex on the bottom edge.
@@ -208,6 +239,7 @@ fn simplify_polygon_drops_collinear_vertices() {
     );
 }
 
+// KEEP-review (core-cross): len<3 early-return witness for the distinct inline simplify.
 #[test]
 fn simplify_polygon_short_input_returned_as_is() {
     let poly = Polygon {

@@ -308,8 +308,12 @@ fn gcode_add_line_number_prefixes_every_exported_line() {
         .enumerate()
         .map(|(index, line)| {
             let prefix = format!("N{} ", index + 1);
-            line.strip_prefix(&prefix)
-                .unwrap_or_else(|| panic!("line {} must start with {prefix:?}, got {line:?}", index + 1))
+            line.strip_prefix(&prefix).unwrap_or_else(|| {
+                panic!(
+                    "line {} must start with {prefix:?}, got {line:?}",
+                    index + 1
+                )
+            })
         })
         .collect();
 

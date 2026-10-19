@@ -32,21 +32,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use slicer_ir::SupportPlanDeclineReason;
 use slicer_sdk::prelude::*;
 
-/// Default number of dense interface layers at the top of a support column.
-const DEFAULT_INTERFACE_TOP_LAYERS: i32 = 2;
-/// Default number of dense interface layers at the bottom of a support column.
-/// `-1` means "mirror the top interface count" (OrcaSlicer convention).
-const DEFAULT_INTERFACE_BOTTOM_LAYERS: i32 = -1;
-/// Default XY clearance between support and object, matching OrcaSlicer's
-/// `support_object_xy_distance` default of 0.35 mm.
-const DEFAULT_OBJECT_XY_DISTANCE_MM: f32 = 0.35;
-/// Default extrusion line width in mm, used to expand the canonical bottom
-/// contact area (`support_material_flow.scaled_width()`).
-const DEFAULT_LINE_WIDTH_MM: f32 = 0.4;
-/// Default support base pattern spacing in mm, matching the manifest
-/// `support_base_pattern_spacing` default. Canonical `SupportGridPattern`
-/// derives its grid resolution and oversampling from this spacing.
-const DEFAULT_BASE_PATTERN_SPACING_MM: f32 = 2.5;
 /// Canonical `SupportGridPattern::island_samples` shrinks each expolygon by
 /// `offset(expoly, -20)` orca nm before sampling it. 20 orca nm is 0.2 PnP
 /// units, which truncates to 0; rounded AWAY from zero to one whole unit
@@ -61,10 +46,6 @@ const OFFSET_TO_PROPAGATE: i64 = -1;
 /// support extrusion flow. The `+5` is 0.05 PnP units, rounded UP to `1` (the
 /// conservative direction: the printed area may never under-cover).
 const OFFSET_TO_SLICE_EPSILON: i64 = 1;
-/// Default vertical gap between a support contact and the model above it.
-/// Matches OrcaSlicer's `support_top_z_distance` default of 0.2 mm. This was
-/// `0.0`, so support was printed flush against the overhang with no gap.
-const DEFAULT_TOP_Z_DISTANCE_MM: f32 = 0.2;
 
 /// Which area-propagation path the traditional planner uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,8 +68,10 @@ pub struct SupportPlanner {
     /// Number of dense interface layers at the top of each support column.
     support_interface_top_layers: i32,
     /// Number of dense interface layers at the bottom of each support column.
-    /// `-1` mirrors the top interface count.
+    /// Automatic values are expanded by the host before this guest sees config.
     support_interface_bottom_layers: i32,
+    /// Base fill pattern recorded on every body entry.
+    support_base_pattern: String,
     /// Distance in mm from column tops to add intermediate model layers.
     /// Orca key `support_top_z_distance`.
     support_top_z_distance: f32,
@@ -119,57 +102,39 @@ pub struct SupportPlanner {
 #[slicer_module]
 impl PrepassModule for SupportPlanner {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let enabled = match config.get("enable_support") {
-            Some(ConfigValue::Bool(b)) => *b,
-            _ => false,
-        };
+        // Every key read below is declared in this module's manifest with a
+        // registry default, so an always-resolved view holds all of them; a
+        // missing or wrong-typed value is a config defect, not a fallback.
+        let enabled = config.require_bool("enable_support")?;
         let support_family = canonical_support_family(config);
-        let support_interface_top_layers = match config.get("support_interface_top_layers") {
-            Some(ConfigValue::Int(n)) => *n as i32,
-            Some(ConfigValue::Float(n)) => *n as i32,
-            _ => DEFAULT_INTERFACE_TOP_LAYERS,
-        };
-        let support_interface_bottom_layers = match config.get("support_interface_bottom_layers") {
-            Some(ConfigValue::Int(n)) => *n as i32,
-            Some(ConfigValue::Float(n)) => *n as i32,
-            _ => DEFAULT_INTERFACE_BOTTOM_LAYERS,
-        };
-        let support_top_z_distance = match config.get("support_top_z_distance") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            Some(ConfigValue::Int(v)) => *v as f32,
-            _ => DEFAULT_TOP_Z_DISTANCE_MM,
-        };
-        let support_layer_height_mm = match config.get("support_layer_height_mm") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            Some(ConfigValue::Int(v)) => *v as f32,
-            _ => 0.0,
-        };
+        let support_interface_top_layers =
+            config.require_int("support_interface_top_layers")? as i32;
+        // Automatic values are expanded by the host before this guest sees
+        // config (packet 4), so the delivered value is already concrete.
+        let support_interface_bottom_layers =
+            config.require_int("support_interface_bottom_layers")? as i32;
+        let support_base_pattern = config.require_string("support_base_pattern")?.to_string();
+        let support_top_z_distance = config.require_float("support_top_z_distance")? as f32;
+        // `0.0` is the sentinel for "same as the model layer height" (see the
+        // manifest declaration), so the zero value must flow through.
+        let support_layer_height_mm = config.require_float("support_layer_height_mm")? as f32;
         // Packet 239c: default true, matching the manifest declaration and
         // canonical `PrintConfig.cpp` `init_fff_params` (coBool, default
         // true). When true, `plan_candidate` derives free-floating
         // intermediate support planes; when false the plan is byte-identical
-        // to the pre-239c grid-exact behavior.
-        let independent_support_layer_height = config
-            .get_bool("independent_support_layer_height")
-            .unwrap_or(true);
+        // to the pre-239c grid-exact behavior. Required read (packet 06,
+        // AC-3): the key is declared `bool` in the manifest with a seeded
+        // `true` default, so a bound view always holds it and the previous
+        // `.unwrap_or(true)` fallback becomes a hard requirement.
+        let independent_support_layer_height =
+            config.require_bool("independent_support_layer_height")?;
         // `support_overhang_angle` is no longer read here. Contact detection
         // moved to `PrePass::SupportAnalysis`, which consumes that key from the
         // resolved config and hands this planner finished contacts.
-        let support_object_xy_distance = match config.get("support_object_xy_distance") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            Some(ConfigValue::Int(v)) => *v as f32,
-            _ => DEFAULT_OBJECT_XY_DISTANCE_MM,
-        };
-        let line_width_mm = match config.get("line_width") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            Some(ConfigValue::Int(v)) => *v as f32,
-            _ => DEFAULT_LINE_WIDTH_MM,
-        };
-        let support_base_pattern_spacing_mm = match config.get("support_base_pattern_spacing") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            Some(ConfigValue::Int(v)) => *v as f32,
-            _ => DEFAULT_BASE_PATTERN_SPACING_MM,
-        };
+        let support_object_xy_distance = config.require_float("support_object_xy_distance")? as f32;
+        let line_width_mm = config.require_float("line_width")? as f32;
+        let support_base_pattern_spacing_mm =
+            config.require_float("support_base_pattern_spacing")? as f32;
         // A present-but-unknown string is fatal; a missing or wrong-typed value
         // falls back to `legacy_semantic` (the `SeamPlacer` precedent). `agg` is
         // opt-in: see DEV-166 and the manifest comment on this key.
@@ -193,6 +158,7 @@ impl PrepassModule for SupportPlanner {
             support_family,
             support_interface_top_layers,
             support_interface_bottom_layers,
+            support_base_pattern,
             support_top_z_distance,
             support_layer_height_mm,
             independent_support_layer_height,
@@ -479,11 +445,7 @@ impl SupportPlanner {
         // obstacle, which is what canonical's per-layer `diff` does.
 
         let top_layers = self.support_interface_top_layers.max(0) as u32;
-        let bottom_layers = if self.support_interface_bottom_layers < 0 {
-            top_layers
-        } else {
-            self.support_interface_bottom_layers.max(0) as u32
-        };
+        let bottom_layers = self.support_interface_bottom_layers.max(0) as u32;
         // G-18: widen the traditional top band only for a raw positive bottom count;
         // see design.md §Plan Corrections item 4.
         let top_interface_layers =
@@ -839,7 +801,10 @@ impl SupportPlanner {
                 anchor_z: mm_to_units(z),
                 roles,
                 skeleton: None,
-                capabilities: Vec::new(),
+                capabilities: vec![format!(
+                    "traditional-base-pattern:{}",
+                    self.support_base_pattern
+                )],
                 provenance: vec!["traditional-support-planner".to_string()],
                 decline_reason: None,
             };
@@ -1453,12 +1418,15 @@ fn next_intermediate_plane_index(
 ///
 /// One consequence is deliberate. Host `validate_entry`
 /// (`crates/slicer-wasm-host/src/support_aggregation.rs`) runs per entry BEFORE
-/// its union, so it sees the merged entry: the `in_routing_cell` bound (bbox
-/// span <= `MAX_BODY_EXTENT_UNITS`) and the exact-Z occupancy check apply to
-/// the union of a region's columns rather than to each column. Despite its
-/// name, `in_routing_cell` is a pure maximum-body-extent bound - it assigns no
-/// entry to a cell and partitions nothing - so this widens what each check is
-/// measuring, not which entries are compared against each other.
+/// its union, so it sees the merged entry. Since the ADR-0059 Ruling 3
+/// amendment (DEV-174 repair) `in_routing_cell` (bbox span <=
+/// `MAX_BODY_EXTENT_UNITS` per body cross-section) measures each role region
+/// on its own, so merging columns cannot trip it; the exact-Z occupancy check
+/// still applies to the union of a region's columns rather than to each
+/// column. Despite its name, `in_routing_cell` is a pure maximum-body-extent
+/// bound - it assigns no entry to a cell and partitions nothing - so this
+/// widens what the remaining check measures, not which entries are compared
+/// against each other.
 pub fn merge_region_identity_entries(
     entries: &mut Vec<SupportPlanEntry>,
 ) -> Result<(), ModuleError> {

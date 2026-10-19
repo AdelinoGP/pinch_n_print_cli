@@ -8,6 +8,10 @@ use overhang_classifier_default::OverhangClassifierDefault;
 
 #[test]
 fn binding_surface_matches_manifest() {
+    let expected_export =
+        slicer_schema::qualified_export_for_stage_id("PostPass::LayerFinalization")
+            .expect("finalization stage has a qualified WIT export");
+
     assert_eq!(
         OverhangClassifierDefault::__slicer_tier_id(),
         slicer_schema::TIER_FINALIZATION
@@ -26,10 +30,8 @@ fn binding_surface_matches_manifest() {
     );
     assert_eq!(
         OverhangClassifierDefault::__slicer_module_schema().stage_export,
-        "slicer:finalization-layer-finalization/layer-finalization@1.0.0#run"
+        expected_export
     );
     let exports = OverhangClassifierDefault::__slicer_wit_exports();
-    assert!(
-        exports.contains(&"slicer:finalization-layer-finalization/layer-finalization@1.0.0#run")
-    );
+    assert!(exports.contains(&expected_export.as_str()));
 }

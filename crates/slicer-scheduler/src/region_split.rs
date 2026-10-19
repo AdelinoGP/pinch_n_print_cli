@@ -6,27 +6,18 @@
 //! - [`canonical_variant_chain_order`] — return semantic names in
 //!   `(priority, name)` canonical order.
 //!
+//! The aggregate is exactly the union of the loaded modules' declarations —
+//! no semantics are seeded implicitly. A core semantic such as `material` or
+//! `fuzzy_skin` is present iff a loaded manifest declares it (the core
+//! modules do; see ADR-0071).
+//!
 //! See packet 92, AC-7, AC-8, AC-N2.
 
 use std::collections::BTreeMap;
 
-use slicer_ir::ModuleId;
+use crate::manifest::{DiagnosticLevel, LoadDiagnostic, LoadedModule};
 
-use crate::manifest::{DiagnosticLevel, LoadDiagnostic, LoadedModule, RegionSplitValueType};
-
-/// One aggregated `[[region_split]]` semantic across all loaded modules.
-///
-/// `declaring_modules` is sorted lexicographically by `ModuleId` for
-/// deterministic presentation in error messages.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AggregatedRegionSplitEntry {
-    /// Dispatch priority; lower value = higher priority.
-    pub priority: u32,
-    /// Value-domain this semantic operates on.
-    pub value_type: RegionSplitValueType,
-    /// Sorted list of module IDs that declared this semantic.
-    pub declaring_modules: Vec<ModuleId>,
-}
+pub use slicer_ir::slice_ir::AggregatedRegionSplitEntry;
 
 /// Aggregate `[[region_split]]` declarations across all loaded modules into a
 /// `BTreeMap<semantic_name, AggregatedRegionSplitEntry>`.
@@ -151,4 +142,56 @@ pub fn canonical_variant_chain_order(
         .collect();
     pairs.sort(); // (u32, String) sorts by (priority, name) — deterministic
     pairs.into_iter().map(|(_p, name)| name).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The aggregate contains exactly the semantics declared by the loaded
+    /// modules: no core semantics are seeded implicitly (ADR-0071). With an
+    /// empty module list the aggregate must be empty; a module declaring only
+    /// `material` must produce a map holding `material` and NOT `fuzzy_skin`.
+    #[test]
+    fn aggregate_contains_only_declared_semantics() {
+        // Empty module list → empty aggregate (AC-N2 behaviour, re-pinned
+        // here at the module level).
+        let empty = aggregate_region_splits(&[], &mut Vec::new());
+        assert!(
+            empty.is_empty(),
+            "no declarations means no semantics; core names must not be seeded"
+        );
+        assert!(!empty.contains_key("material"));
+        assert!(!empty.contains_key("fuzzy_skin"));
+
+        // A module that declares `material` only → `material` present,
+        // `fuzzy_skin` absent.
+        let declared_material = crate::manifest::LoadedModuleBuilder::new(
+            "com.example.material-only",
+            slicer_ir::SemVer {
+                major: 0,
+                minor: 1,
+                patch: 0,
+            },
+            "Layer::Perimeters",
+            String::new(),
+            std::path::PathBuf::from("fixtures/material-only.wasm"),
+        )
+        .region_splits(vec![crate::manifest::RegionSplitDeclaration {
+            semantic: "material".to_owned(),
+            priority: 100,
+            value_type: slicer_ir::slice_ir::RegionSplitValueType::ToolIndex,
+        }])
+        .build();
+
+        let aggregated = aggregate_region_splits(&[declared_material], &mut Vec::new());
+        let material = aggregated
+            .get("material")
+            .expect("declared material must be aggregated");
+        assert_eq!(material.priority, 100);
+        assert!(
+            !aggregated.contains_key("fuzzy_skin"),
+            "undeclared core semantics must not be seeded into the aggregate"
+        );
+    }
 }

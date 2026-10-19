@@ -24,12 +24,6 @@ min-host-version  = "0.1.0"
 min-ir-schema     = "1.0.0"
 max-ir-schema     = "5.0.0"
 
-[config.overridable-per-region]
-keys = []
-
-[config.overridable-per-layer]
-keys = []
-
 [hints]
 layer-parallel-safe = true
 

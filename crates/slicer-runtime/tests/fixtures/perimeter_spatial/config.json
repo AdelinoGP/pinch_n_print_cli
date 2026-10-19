@@ -1,0 +1,7 @@
+{
+  "first_layer_height": 0.2,
+  "layer_height": 0.2,
+  "top_shell_layers": 3,
+  "bottom_shell_layers": 3,
+  "only_one_wall_top": true
+}

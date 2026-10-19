@@ -1,0 +1,438 @@
+//! [T25-PROBE] Host-side Arachne-pipeline substage timing for wayfinder
+//! ticket 25 ("Arachne graph-construction attribution").
+//!
+//! Probe-only, temporary. Every call site is tagged `[T25-PROBE]`; removal is a
+//! mechanical pass (delete this file, revert the tagged call sites, grep for
+//! `T25-PROBE`). Nothing here is meant to be committed.
+//!
+//! What it records: per-invocation wall-clock and call counts for the
+//! `generate-arachne-walls` host service and every stage of
+//! `run_arachne_pipeline` — the enclosing interval, the 9 preprocess stages,
+//! graph construction internals, strategy/centrality/bead-count/transition/
+//! propagation stages, toolpath generation and post-process, and the reorder.
+//!
+//! State is thread-local: the pipeline is serial within one service call, but
+//! per-layer service calls from different rayon workers overlap in time, so a
+//! process-global counter could not be reset per invocation. `flush_and_reset`
+//! prints one greppable stderr line (`T25-PROBE ...`) and zeroes the calling
+//! thread's counters; the host service calls it at the end of every invocation.
+//! Each line's `svc=...:N` must carry `N == 1`; any other value means a
+//! previous invocation failed to flush (the reducer checks this).
+//!
+//! On wasm32 every entry point is inert: guests never execute these brackets
+//! (the pipeline lives behind `host-algos`, and the guest forwards to the host
+//! service), and a host-only `Instant` would not link there anyway.
+
+#![allow(missing_docs)]
+
+/// One probe counter. Variants are the bracket sites; the discriminant is the
+/// index into the thread-local counter array.
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(usize)]
+pub enum Counter {
+    /// Whole `generate_arachne_walls` host-service body (WIT in -> WIT out).
+    ServiceTotal,
+    /// `wit_to_ir_expolygons` at the service entry.
+    WitIn,
+    /// Both `to_wit_lines` conversions of the service's results.
+    WitOut,
+    /// `run_arachne_pipeline` whole call.
+    PipelineTotal,
+    /// `preprocess_input_outline` whole call.
+    PreprocessTotal,
+    /// `warn_dropped_features` after the 9 stages.
+    PreprocessWarn,
+    /// Stage 1: net-zero triple offset.
+    PreStage1,
+    /// Stage 1's `offset2_ex` shrink-then-grow call.
+    PreStage1Offset2,
+    /// `offset2_ex` pass 1 (`inflate_paths_64` erode).
+    PreStage1O2Pass1,
+    /// `offset2_ex` pass 2 (`ClipperOffset::execute_tree` dilate).
+    PreStage1O2Pass2,
+    /// `offset2_ex` pass 2's `expolygons_from_tree` walk.
+    PreStage1O2Tree,
+    /// Stage 1's follow-up `offset` call.
+    PreStage1Offset,
+    /// The follow-up `offset`'s paths conversion.
+    PreStage1OffPaths,
+    /// The follow-up `offset`'s `execute_tree`.
+    PreStage1OffExecute,
+    /// The follow-up `offset`'s `expolygons_from_tree` walk.
+    PreStage1OffTree,
+    /// Stage 2: simplify.
+    PreStage2,
+    /// Stage 3: fix self-intersections (union).
+    PreStage3,
+    /// Stage 4: remove degenerate vertices.
+    PreStage4,
+    /// Stage 5: remove colinear edges.
+    PreStage5,
+    /// Stage 6: fix self-intersections (union, repeat).
+    PreStage6,
+    /// Stage 7: remove degenerate vertices (repeat).
+    PreStage7,
+    /// Stage 8: remove small areas.
+    PreStage8,
+    /// Stage 9: final union.
+    PreStage9,
+    /// `SkeletalTrapezoidationGraph::from_polygons` whole call.
+    GraphTotal,
+    /// `flatten_polys` (rings -> segments + provenance).
+    GraphFlatten,
+    /// `voronoi::voronoi_from_segments` (boostvoronoi build).
+    GraphVoronoi,
+    /// The `LazyLine` mapping into boostvoronoi's `BvLine`.
+    GraphVoronoiMap,
+    /// The `Builder::build` sweep-line itself.
+    GraphVoronoiBuild,
+    /// The diagram -> `HalfEdgeGraph` conversion after a successful build.
+    GraphVoronoiConvert,
+    /// The vertex position clamp pass.
+    GraphClamp,
+    /// `Builder::build` (per-cell constructFromPolygons loop).
+    GraphBuilder,
+    /// `separate_pointy_quad_end_nodes` epilogue pass.
+    GraphSepPointy,
+    /// `collapse_small_edges` epilogue pass.
+    GraphCollapse,
+    /// `compact_graph_after_collapse` epilogue pass.
+    GraphCompact,
+    /// The final `edge_radius_bounds` loop.
+    GraphRadius,
+    /// `BeadingStrategyFactory::create_stack`.
+    StrategyCreate,
+    /// `filter_central`.
+    Centrality,
+    /// `assign_bead_counts`.
+    BeadCounts,
+    /// `filter_noncentral_regions`.
+    FilterNoncentral,
+    /// `generate_transition_mids`.
+    TransMidsGen,
+    /// `filter_transition_mids`.
+    TransMidsFilter,
+    /// `generate_all_transition_ends`.
+    AllEnds,
+    /// `apply_transitions`.
+    ApplyTransitions,
+    /// `generate_extra_ribs`.
+    ExtraRibs,
+    /// `populate_beading_propagation`.
+    Populate,
+    /// `propagate_beadings_upward`.
+    Upward,
+    /// `propagate_beadings_downward_with_transition_dist`.
+    Downward,
+    /// `generate_junctions`.
+    Junctions,
+    /// `connect_junctions`.
+    Connect,
+    /// `generate_local_maxima_single_beads`.
+    LocalMaxima,
+    /// `stitch_extrusions` (per bucket).
+    Stitch,
+    /// `remove_small_lines` (per bucket).
+    RemoveSmall,
+    /// `separate_out_inner_contour` (per bucket).
+    Separate,
+    /// `simplify_toolpaths` (per bucket).
+    Simplify,
+    /// `remove_empty_toolpaths` (per bucket).
+    RemoveEmpty,
+    /// `reorder_by_region_order`.
+    Reorder,
+    /// Input polygon count for this invocation (counter count = invocation).
+    MetaPolygons,
+    /// Flattened segment count for this invocation.
+    MetaSegments,
+    /// Emitted toolpath line count for this invocation.
+    MetaLines,
+    /// Emitted inner-contour line count for this invocation.
+    MetaInner,
+    /// `prev_layer_boundary` total point count for this invocation.
+    MetaBoundaryPoints,
+    /// `overhang_bands` polygon count for this invocation.
+    MetaBandPolys,
+    /// `overhang_bands` total point count for this invocation.
+    MetaBandPoints,
+    /// `bridge_areas` polygon count for this invocation.
+    MetaBridgePolys,
+    /// Wall path point count (build_walls input) for this invocation.
+    MetaWallPoints,
+}
+
+impl Counter {
+    /// Counters that carry invocation shape (counts), not wall.
+    pub const META: &'static [Counter] = &[
+        Counter::MetaPolygons,
+        Counter::MetaSegments,
+        Counter::MetaLines,
+        Counter::MetaInner,
+    ];
+
+    /// Every counter, in discriminant order.
+    pub const ALL: &'static [Counter] = &[
+        Counter::ServiceTotal,
+        Counter::WitIn,
+        Counter::WitOut,
+        Counter::PipelineTotal,
+        Counter::PreprocessTotal,
+        Counter::PreprocessWarn,
+        Counter::PreStage1,
+        Counter::PreStage1Offset2,
+        Counter::PreStage1O2Pass1,
+        Counter::PreStage1O2Pass2,
+        Counter::PreStage1O2Tree,
+        Counter::PreStage1Offset,
+        Counter::PreStage1OffPaths,
+        Counter::PreStage1OffExecute,
+        Counter::PreStage1OffTree,
+        Counter::PreStage2,
+        Counter::PreStage3,
+        Counter::PreStage4,
+        Counter::PreStage5,
+        Counter::PreStage6,
+        Counter::PreStage7,
+        Counter::PreStage8,
+        Counter::PreStage9,
+        Counter::GraphTotal,
+        Counter::GraphFlatten,
+        Counter::GraphVoronoi,
+        Counter::GraphVoronoiMap,
+        Counter::GraphVoronoiBuild,
+        Counter::GraphVoronoiConvert,
+        Counter::GraphClamp,
+        Counter::GraphBuilder,
+        Counter::GraphSepPointy,
+        Counter::GraphCollapse,
+        Counter::GraphCompact,
+        Counter::GraphRadius,
+        Counter::StrategyCreate,
+        Counter::Centrality,
+        Counter::BeadCounts,
+        Counter::FilterNoncentral,
+        Counter::TransMidsGen,
+        Counter::TransMidsFilter,
+        Counter::AllEnds,
+        Counter::ApplyTransitions,
+        Counter::ExtraRibs,
+        Counter::Populate,
+        Counter::Upward,
+        Counter::Downward,
+        Counter::Junctions,
+        Counter::Connect,
+        Counter::LocalMaxima,
+        Counter::Stitch,
+        Counter::RemoveSmall,
+        Counter::Separate,
+        Counter::Simplify,
+        Counter::RemoveEmpty,
+        Counter::Reorder,
+        Counter::MetaPolygons,
+        Counter::MetaSegments,
+        Counter::MetaLines,
+        Counter::MetaInner,
+        Counter::MetaBoundaryPoints,
+        Counter::MetaBandPolys,
+        Counter::MetaBandPoints,
+        Counter::MetaBridgePolys,
+        Counter::MetaWallPoints,
+    ];
+
+    /// Number of counters.
+    pub const COUNT: usize = Counter::ALL.len();
+
+    /// Stable short key used in the flush line.
+    pub const fn key(self) -> &'static str {
+        match self {
+            Counter::ServiceTotal => "svc",
+            Counter::WitIn => "in",
+            Counter::WitOut => "out",
+            Counter::PipelineTotal => "pipe",
+            Counter::PreprocessTotal => "pre",
+            Counter::PreprocessWarn => "pre_warn",
+            Counter::PreStage1 => "s1",
+            Counter::PreStage1Offset2 => "s1_o2",
+            Counter::PreStage1O2Pass1 => "s1_o2p1",
+            Counter::PreStage1O2Pass2 => "s1_o2p2",
+            Counter::PreStage1O2Tree => "s1_o2tr",
+            Counter::PreStage1Offset => "s1_off",
+            Counter::PreStage1OffPaths => "s1_ofp",
+            Counter::PreStage1OffExecute => "s1_ofe",
+            Counter::PreStage1OffTree => "s1_oft",
+            Counter::PreStage2 => "s2",
+            Counter::PreStage3 => "s3",
+            Counter::PreStage4 => "s4",
+            Counter::PreStage5 => "s5",
+            Counter::PreStage6 => "s6",
+            Counter::PreStage7 => "s7",
+            Counter::PreStage8 => "s8",
+            Counter::PreStage9 => "s9",
+            Counter::GraphTotal => "g_tot",
+            Counter::GraphFlatten => "g_flat",
+            Counter::GraphVoronoi => "g_vor",
+            Counter::GraphVoronoiMap => "g_vmap",
+            Counter::GraphVoronoiBuild => "g_vbuild",
+            Counter::GraphVoronoiConvert => "g_vconv",
+            Counter::GraphClamp => "g_clamp",
+            Counter::GraphBuilder => "g_build",
+            Counter::GraphSepPointy => "g_sep",
+            Counter::GraphCollapse => "g_coll",
+            Counter::GraphCompact => "g_comp",
+            Counter::GraphRadius => "g_rad",
+            Counter::StrategyCreate => "strat",
+            Counter::Centrality => "cent",
+            Counter::BeadCounts => "beads",
+            Counter::FilterNoncentral => "noncent",
+            Counter::TransMidsGen => "tm_gen",
+            Counter::TransMidsFilter => "tm_filt",
+            Counter::AllEnds => "ends",
+            Counter::ApplyTransitions => "apply_tr",
+            Counter::ExtraRibs => "ribs",
+            Counter::Populate => "pop",
+            Counter::Upward => "up",
+            Counter::Downward => "down",
+            Counter::Junctions => "junc",
+            Counter::Connect => "conn",
+            Counter::LocalMaxima => "maxima",
+            Counter::Stitch => "stitch",
+            Counter::RemoveSmall => "rm_small",
+            Counter::Separate => "sep",
+            Counter::Simplify => "simp",
+            Counter::RemoveEmpty => "rm_empty",
+            Counter::Reorder => "reorder",
+            Counter::MetaPolygons => "m_polys",
+            Counter::MetaSegments => "m_segs",
+            Counter::MetaLines => "m_lines",
+            Counter::MetaInner => "m_inner",
+            Counter::MetaBoundaryPoints => "m_bpts",
+            Counter::MetaBandPolys => "m_bpolys",
+            Counter::MetaBandPoints => "m_bndpts",
+            Counter::MetaBridgePolys => "m_brpolys",
+            Counter::MetaWallPoints => "m_wpts",
+        }
+    }
+}
+
+/// Monotonic invocation ordinal for flush lines.
+#[cfg(not(target_arch = "wasm32"))]
+fn next_seq() -> u64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    SEQ.fetch_add(1, Ordering::Relaxed)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+mod imp {
+    use super::Counter;
+    use std::cell::{Cell, RefCell};
+    use std::time::Instant;
+
+    thread_local! {
+        /// `(calls, wall_ns)` per counter, for the calling thread.
+        static STATE: RefCell<[(u64, u64); Counter::COUNT]> =
+            const { RefCell::new([(0, 0); Counter::COUNT]) };
+        /// `true` only while a `generate_arachne_walls` invocation is running on
+        /// this thread. Without it, host-service geometry calls made by *other*
+        /// modules on the same worker (which reach the same `polygon_ops`
+        /// functions) would be charged to the next flush line.
+        static ARMED: Cell<bool> = const { Cell::new(false) };
+    }
+
+    /// Arms the probe for one service invocation on the calling thread.
+    pub fn arm() {
+        ARMED.with(|armed| armed.set(true));
+    }
+
+    /// RAII wall bracket for one counter.
+    #[must_use = "a Bracket measures nothing if dropped immediately; bind it to a name"]
+    pub struct Bracket {
+        index: usize,
+        start: Instant,
+        active: bool,
+    }
+
+    /// Opens a wall bracket for `counter` (no-op unless armed).
+    pub fn bracket(counter: Counter) -> Bracket {
+        let active = ARMED.with(|armed| armed.get());
+        Bracket {
+            index: counter as usize,
+            start: Instant::now(),
+            active,
+        }
+    }
+
+    impl Drop for Bracket {
+        fn drop(&mut self) {
+            if !self.active {
+                return;
+            }
+            let elapsed = self.start.elapsed().as_nanos() as u64;
+            STATE.with(|state| {
+                let mut cells = state.borrow_mut();
+                let cell = &mut cells[self.index];
+                cell.0 += 1;
+                cell.1 = cell.1.saturating_add(elapsed);
+            });
+        }
+    }
+
+    /// Print this thread's counters as one `T25-PROBE` line, zero them, and
+    /// disarm.
+    pub fn flush_and_reset() -> Option<String> {
+        ARMED.with(|armed| armed.set(false));
+        let (snapshot, seq) = STATE.with(|state| {
+            let mut cells = state.borrow_mut();
+            let snapshot = *cells;
+            for cell in cells.iter_mut() {
+                *cell = (0, 0);
+            }
+            (snapshot, super::next_seq())
+        });
+        let mut line = format!("T25-PROBE seq={seq}");
+        for counter in Counter::ALL {
+            let (calls, wall_ns) = snapshot[*counter as usize];
+            line.push_str(&format!(" {}={wall_ns}:{calls}", counter.key()));
+        }
+        Some(line)
+    }
+
+    /// Adds `count` to `counter`'s count (wall stays 0). Shape metrics only;
+    /// no-op unless armed.
+    pub fn add_count(counter: Counter, count: u64) {
+        if !ARMED.with(|armed| armed.get()) {
+            return;
+        }
+        STATE.with(|state| {
+            state.borrow_mut()[counter as usize].0 += count;
+        });
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+mod imp {
+    use super::Counter;
+
+    /// Inert wasm32 stand-in for the host probe bracket.
+    #[must_use = "a Bracket measures nothing if dropped immediately; bind it to a name"]
+    pub struct Bracket;
+
+    /// Opens an inert wasm32 bracket.
+    pub fn bracket(_counter: Counter) -> Bracket {
+        Bracket
+    }
+
+    /// Inert wasm32 stand-in; nothing is ever recorded on guests.
+    pub fn flush_and_reset() -> Option<String> {
+        None
+    }
+
+    /// Inert wasm32 stand-in; nothing is ever recorded on guests.
+    pub fn add_count(_counter: Counter, _count: u64) {}
+
+    /// Inert wasm32 stand-in; nothing is ever recorded on guests.
+    pub fn arm() {}
+}
+
+pub use imp::{add_count, arm, bracket, flush_and_reset, Bracket};

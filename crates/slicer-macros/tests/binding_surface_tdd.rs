@@ -447,15 +447,17 @@ fn typed_schema_covers_every_world() {
     );
     assert_eq!(
         PrepassLayerPlanningFixture::__slicer_module_schema().stage_export,
-        "slicer:prepass-layer-planning/layer-planning@1.0.0#run"
+        "slicer:prepass-layer-planning/layer-planning@3.0.0#run"
     );
     assert_eq!(
         FinalizationFixture::__slicer_module_schema().tier_id,
         slicer_schema::TIER_FINALIZATION
     );
+    let expected_finalization_export =
+        slicer_schema::qualified_export_for_stage_id("PostPass::LayerFinalization").unwrap();
     assert_eq!(
         FinalizationFixture::__slicer_module_schema().stage_export,
-        "slicer:finalization-layer-finalization/layer-finalization@1.0.0#run"
+        expected_finalization_export.as_str()
     );
     assert_eq!(
         PostpassGcodeFixture::__slicer_module_schema().stage_export,

@@ -118,18 +118,71 @@ fn finalization_executor_rejects_non_monotonic_layers() {
         layer_collection_fixture(1, 0.4),
     ];
 
-    let result = execute_layer_finalization(
-        &plan,
-        &blackboard,
-        &BadRunner,
-        &mut layers,
-        &Default::default(),
+    let before = layers.clone();
+    let recorder = ValidationErrorRecorder::default();
+    let result =
+        slicer_runtime::layer_finalization::execute_layer_finalization_with_instrumentation(
+            &plan,
+            &blackboard,
+            &BadRunner,
+            &mut layers,
+            &recorder,
+            &Default::default(),
+        );
+    assert_eq!(
+        result,
+        Err(FinalizationError::Validation {
+            message: "layer indices must be monotonic, found 1 followed by 0".into(),
+        })
     );
-    assert!(
-        matches!(result, Err(FinalizationError::Validation { .. })),
-        "expected validation error, got {:?}",
-        result
+    assert_eq!(layers, before, "rejected candidate must not commit");
+    assert_eq!(
+        *recorder.0.lock().unwrap(),
+        vec![(
+            "PostPass::LayerFinalization".into(),
+            None,
+            "com.example.bad-finalizer".into(),
+            "finalization validation failed: layer indices must be monotonic, found 1 followed by 0".into(),
+            true,
+        )],
+        "validation failure must emit exactly one fatal module_error"
     );
+}
+
+type RecordedModuleError = (StageId, Option<u32>, slicer_ir::ModuleId, String, bool);
+
+#[derive(Default)]
+struct ValidationErrorRecorder(std::sync::Mutex<Vec<RecordedModuleError>>);
+
+impl slicer_runtime::instrumentation::PipelineInstrumentation for ValidationErrorRecorder {
+    fn on_phase_start(&self, _: slicer_runtime::instrumentation::Phase) {}
+    fn on_phase_end(&self, _: slicer_runtime::instrumentation::Phase) {}
+    fn on_stage_start(&self, _: &StageId, _: Option<u32>) {}
+    fn on_stage_end(&self, _: &StageId, _: Option<u32>) {}
+    fn on_module_start(&self, _: &StageId, _: Option<u32>, _: &slicer_ir::ModuleId) {}
+    fn on_module_end(&self, _: &StageId, _: Option<u32>, _: &slicer_ir::ModuleId, _: u64, _: u64) {}
+    fn on_layer_start(&self, _: u32, _: f32) {}
+    fn on_layer_end(&self, _: u32) {}
+    fn record_edges(
+        &self,
+        _: &StageId,
+        _: slicer_runtime::instrumentation::TierKind,
+        _: &[slicer_runtime::instrumentation::SerialEdge],
+    ) {
+    }
+    fn on_module_error(
+        &self,
+        stage: &StageId,
+        layer: Option<u32>,
+        module: &slicer_ir::ModuleId,
+        message: &str,
+        fatal: bool,
+    ) {
+        self.0
+            .lock()
+            .unwrap()
+            .push((stage.clone(), layer, module.clone(), message.into(), fatal));
+    }
 }
 
 #[test]
@@ -206,6 +259,96 @@ fn finalization_executor_handles_fatal_error() {
             module_id: String::from("com.example.fatal-finalizer"),
             message: String::from("simulated failure"),
         })
+    );
+}
+
+#[test]
+fn finalization_fatal_error_is_instrumented_and_mutating_runner_rolls_back() {
+    struct MutatingFailure;
+    impl FinalizationStageRunner for MutatingFailure {
+        fn run_stage(
+            &self,
+            stage: &StageId,
+            module: &CompiledModuleLive<'_>,
+            _input: FinalizationStageInput<'_>,
+            layers: &mut Vec<LayerCollectionIR>,
+        ) -> Result<FinalizationOutput, FinalizationError> {
+            layers.clear();
+            Err(FinalizationError::FatalModule {
+                stage_id: stage.clone(),
+                module_id: module.module_id.clone(),
+                message: "annotation denied".into(),
+            })
+        }
+    }
+    #[derive(Default)]
+    struct Recorder(std::sync::Mutex<Vec<(String, String, bool)>>);
+    impl slicer_runtime::instrumentation::PipelineInstrumentation for Recorder {
+        fn on_phase_start(&self, _: slicer_runtime::instrumentation::Phase) {}
+        fn on_phase_end(&self, _: slicer_runtime::instrumentation::Phase) {}
+        fn on_stage_start(&self, _: &StageId, _: Option<u32>) {}
+        fn on_stage_end(&self, _: &StageId, _: Option<u32>) {}
+        fn on_module_start(&self, _: &StageId, _: Option<u32>, _: &slicer_ir::ModuleId) {}
+        fn on_module_end(
+            &self,
+            _: &StageId,
+            _: Option<u32>,
+            _: &slicer_ir::ModuleId,
+            _: u64,
+            _: u64,
+        ) {
+        }
+        fn on_layer_start(&self, _: u32, _: f32) {}
+        fn on_layer_end(&self, _: u32) {}
+        fn record_edges(
+            &self,
+            _: &StageId,
+            _: slicer_runtime::instrumentation::TierKind,
+            _: &[slicer_runtime::instrumentation::SerialEdge],
+        ) {
+        }
+        fn on_module_error(
+            &self,
+            stage: &StageId,
+            _layer: Option<u32>,
+            module: &slicer_ir::ModuleId,
+            message: &str,
+            fatal: bool,
+        ) {
+            assert!(message.contains("annotation denied"));
+            self.0
+                .lock()
+                .unwrap()
+                .push((stage.clone(), module.clone(), fatal));
+        }
+    }
+    let plan = execution_plan_fixture(Some(compiled_stage(
+        "PostPass::LayerFinalization",
+        &["failing-annotation"],
+    )));
+    let blackboard = Blackboard::new(Arc::new(mesh_fixture()), 0);
+    let mut layers = vec![layer_collection_fixture(0, 0.2)];
+    let before = layers.clone();
+    let recorder = Recorder::default();
+    let error =
+        slicer_runtime::layer_finalization::execute_layer_finalization_with_instrumentation(
+            &plan,
+            &blackboard,
+            &MutatingFailure,
+            &mut layers,
+            &recorder,
+            &Default::default(),
+        )
+        .expect_err("runner fails after mutation");
+    assert!(matches!(error, FinalizationError::FatalModule { .. }));
+    assert_eq!(layers, before);
+    assert_eq!(
+        *recorder.0.lock().unwrap(),
+        vec![(
+            "PostPass::LayerFinalization".into(),
+            "failing-annotation".into(),
+            true
+        )]
     );
 }
 

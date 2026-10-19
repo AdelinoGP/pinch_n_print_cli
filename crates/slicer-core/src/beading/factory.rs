@@ -44,6 +44,29 @@
 //!
 //! All values are in slicer units (1 unit = 100 nm) — see
 //! `docs/08_coordinate_system.md`.
+//!
+//! ## Middle-threshold denominators are WIDTHS, not spacings
+//!
+//! Canonical `WallToolPaths::generate` converts the bead spacings it received
+//! back to extrusion widths against the layer height before forming the two
+//! middle thresholds:
+//!
+//! ```text
+//! external_perimeter_extrusion_width =
+//!     Flow::rounded_rectangle_extrusion_width_from_spacing(unscale(bead_width_0), layer_height)
+//! perimeter_extrusion_width =
+//!     Flow::rounded_rectangle_extrusion_width_from_spacing(unscale(bead_width_x), layer_height)
+//! wall_split_middle_threshold = clamp(2 * min_bead_width / external_... - 1, 0.01, 0.99)
+//! wall_add_middle_threshold   = clamp(min_bead_width / perimeter_..., 0.01, 0.99)
+//! ```
+//!
+//! The strategy stack's own `preferred_bead_width_outer` / `optimal_width`
+//! fields carry those SPACINGS (`width - layer_height * (1 - PI/4)`), so
+//! [`BeadingStrategyFactory::create_stack`] adds the rounded-rectangle bump
+//! back before dividing. Feeding the spacings to the denominators directly —
+//! the pre-fix behaviour — shifted both thresholds high by the layer-height
+//! term (at 0.2 mm layers and a 0.4 mm bead, a denominator of 0.3571 mm
+//! instead of the canonical 0.4 mm).
 
 use serde::{Deserialize, Serialize};
 
@@ -124,15 +147,32 @@ pub struct BeadingFactoryParams {
     /// Threshold (fraction of `optimal_width`) above which a middle bead may be
     /// split into two beads during bead-count transitions when the current
     /// bead count is odd. Computed by `create_stack` from OrcaSlicer's
-    /// `WallToolPaths.cpp:619-640` clamp formula; `Default` seeds `0.99`.
+    /// `WallToolPaths::generate` clamp formula; `Default` seeds `0.99`.
     #[serde(default)]
     pub wall_split_middle_threshold: f64,
     /// Threshold (fraction of `optimal_width`) below which a middle bead is
     /// added during bead-count transitions when the current bead count is even.
     /// Computed by `create_stack` from OrcaSlicer's
-    /// `WallToolPaths.cpp:619-640` clamp formula; `Default` seeds `0.99`.
+    /// `WallToolPaths::generate` clamp formula; `Default` seeds `0.99`.
     #[serde(default)]
     pub wall_add_middle_threshold: f64,
+    /// Layer height (slicer units) the two middle-threshold denominators are
+    /// derived against. Canonical `WallToolPaths::generate` computes
+    /// `external_perimeter_extrusion_width =
+    /// Flow::rounded_rectangle_extrusion_width_from_spacing(bead_width_0,
+    /// layer_height)` and `perimeter_extrusion_width = ...(bead_width_x,
+    /// layer_height)`, then divides `min_bead_width` by those WIDTHS — not by
+    /// the spacings the strategy stack otherwise consumes. `create_stack`
+    /// performs that inversion here. Defaults to 0.2 mm (2000 units), the
+    /// canonical layer height these fixtures were derived at.
+    #[serde(default = "default_layer_height")]
+    pub layer_height: f64,
+}
+
+/// Serde default for [`BeadingFactoryParams::layer_height`]: 0.2 mm in slicer
+/// units, so pre-field fixtures deserialize to the canonical 0.2 mm layer.
+fn default_layer_height() -> f64 {
+    2000.0
 }
 
 impl Default for BeadingFactoryParams {
@@ -170,6 +210,7 @@ impl Default for BeadingFactoryParams {
             preferred_bead_width_outer: 4000.0,
             wall_split_middle_threshold: 0.99,
             wall_add_middle_threshold: 0.99,
+            layer_height: default_layer_height(),
             wall_transition_angle: 10.0_f64.to_radians(),
             initial_layer_min_bead_width: 3400.0,
         }
@@ -200,13 +241,36 @@ impl BeadingStrategyFactory {
             params.optimal_width
         };
 
-        // OrcaSlicer `WallToolPaths.cpp:619-640` middle-threshold clamp
-        // formulas (canonical `[0.01, 0.99]` bounds — AC-N1 lock, do not alter).
+        // OrcaSlicer `WallToolPaths::generate` middle-threshold formulas
+        // (canonical `[0.01, 0.99]` bounds — AC-N1 lock, do not alter):
+        //
+        //     external_perimeter_extrusion_width =
+        //         Flow::rounded_rectangle_extrusion_width_from_spacing(
+        //             unscale(bead_width_0), layer_height)
+        //     perimeter_extrusion_width =
+        //         Flow::rounded_rectangle_extrusion_width_from_spacing(
+        //             unscale(bead_width_x), layer_height)
+        //     wall_split_middle_threshold =
+        //         clamp(2 * min_bead_width / external_..width - 1, 0.01, 0.99)
+        //     wall_add_middle_threshold =
+        //         clamp(min_bead_width / perimeter_extrusion_width, 0.01, 0.99)
+        //
+        // The stack's width fields carry canonical's bead_width_0/bead_width_x
+        // SPACINGS, so the denominators must be converted back to widths with
+        // `spacing + layer_height * (1 - PI/4)` (the same rounded-rectangle
+        // relation `line_width_to_spacing` inverts). Dividing by the spacings
+        // directly — the previous behaviour — shifted both thresholds high by
+        // the layer-height term (e.g. at 0.2 mm layers and 0.4 mm beads the
+        // denominator was 0.3571 mm instead of 0.4 mm).
+        let rounded_rectangle_bump = params.layer_height * (1.0 - std::f64::consts::FRAC_PI_4);
+        let external_perimeter_extrusion_width =
+            params.preferred_bead_width_outer + rounded_rectangle_bump;
+        let perimeter_extrusion_width = params.optimal_width + rounded_rectangle_bump;
         let wall_split_middle_threshold =
-            (2.0 * params.min_output_width / params.preferred_bead_width_outer - 1.0)
+            (2.0 * params.min_output_width / external_perimeter_extrusion_width - 1.0)
                 .clamp(0.01, 0.99);
         let wall_add_middle_threshold =
-            (params.min_output_width / params.optimal_width).clamp(0.01, 0.99);
+            (params.min_output_width / perimeter_extrusion_width).clamp(0.01, 0.99);
 
         let distributed: Box<dyn BeadingStrategy> = Box::new(DistributedBeadingStrategy::new(
             effective_optimal_width,

@@ -13,10 +13,11 @@
 //! - A1: `infill-generator` retired from rectilinear, gyroid, lightning manifests.
 //! - A2: `module_id_matches_holder` helper accepts both full module IDs and
 //!   short names in `*_fill_holder` config keys.
-//! - A3: top-surface-ironing declares `reads = ["InfillIR"]` to order itself
-//!   after infill modules (eliminates the previously-advisory WriteConflict).
+//! - A3: top-surface-ironing orders itself after infill modules via
+//!   `[compatibility].requires` (ExplicitRequires DAG edges), eliminating the
+//!   previously-advisory WriteConflict.
 //!
-//! See `docs/specs/infill-fill-partition-plan.md` Phase A and DEV-065.
+//! See `docs/specs/infill-fill-partition-plan.md` Phase A.
 
 use slicer_runtime::validation::{
     module_id_matches_holder, resolve_held_claims, FillHolders, FILL_CLAIM_IDS,
@@ -227,7 +228,7 @@ fn ac1_in_tree_infill_manifests_no_longer_declare_legacy_infill_generator() {
             assert!(
                 !trimmed.contains("\"infill-generator\""),
                 "{module}.toml:{} declares the retired `infill-generator` claim — \
-                 see DEV-065 (2026-06-09) and `docs/specs/infill-fill-partition-plan.md` Phase A1. \
+                 see `docs/specs/infill-fill-partition-plan.md` Phase A1 (2026-06-09). \
                  Line: {line:?}",
                 idx + 1,
             );

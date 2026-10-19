@@ -46,54 +46,81 @@ type    = "float"
 default = 25.0
 display = "Bridge Speed"
 group   = "Speed"
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 [config.schema.overhang_1_4_speed]
-type    = "float"
+type    = "float_or_percent"
+base_key = "outer_wall_speed"
 default = 0.0
 display = "Overhang 1/4 Speed"
 group   = "Speed"
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 [config.schema.overhang_2_4_speed]
-type    = "float"
+type    = "float_or_percent"
+base_key = "outer_wall_speed"
 default = 0.0
 display = "Overhang 2/4 Speed"
 group   = "Speed"
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 [config.schema.overhang_3_4_speed]
-type    = "float"
+type    = "float_or_percent"
+base_key = "outer_wall_speed"
 default = 0.0
 display = "Overhang 3/4 Speed"
 group   = "Speed"
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 [config.schema.overhang_4_4_speed]
-type    = "float"
+type    = "float_or_percent"
+base_key = "outer_wall_speed"
 default = 0.0
 display = "Overhang 4/4 Speed"
 group   = "Speed"
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 [config.schema.outer_wall_speed]
 type    = "float"
 default = 60.0
 display = "Outer Wall Speed"
 group   = "Speed"
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 [config.schema.inner_wall_speed]
 type    = "float"
 default = 60.0
 display = "Inner Wall Speed"
 group   = "Speed"
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
 [config.schema.thin_wall_speed]
 type    = "float"
 default = 30.0
 display = "Thin Wall Speed"
 group   = "Speed"
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic", "tool"]
 
-[config.overridable-per-region]
-keys = []
+[config.schema.line_width]
+type    = "float"
+default = 0.4
+min     = 0
+max     = 2.0
+display = "Line Width"
+group   = "Speed"
+# Typed to match the registry's existing declarers (14 manifests declare this
+# key as `float`, e.g. tree-support, traditional-support, classic-perimeters).
 
-[config.overridable-per-layer]
-keys = []
+[config.schema.outer_wall_line_width]
+type        = "float_or_percent"
+base_key    = "nozzle_diameter"
+default     = 0
+min         = 0.0
+max         = 2.0
+unit        = "mm"
+display     = "Outer Wall Line Width"
+description = "OrcaSlicer declares this key coFloatOrPercent in PrintConfig.cpp's PrintConfigDef init_fff_params, with ratio_over = nozzle_diameter and upstream default 0. A non-percent value of 0 is the auto sentinel. Typed to match the classic-perimeters and arachne-perimeters declarations of the same key."
+group       = "Speed"
 
 [hints]
 estimated-ms-per-layer = 10

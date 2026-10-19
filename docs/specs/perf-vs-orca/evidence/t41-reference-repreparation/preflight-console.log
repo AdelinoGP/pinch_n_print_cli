@@ -1,0 +1,741 @@
+CHECK toolchain: rustc -vV
+rustc 1.96.0 (ac68faa20 2026-05-25)
+binary: rustc
+commit-hash: ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96
+commit-date: 2026-05-25
+host: x86_64-pc-windows-msvc
+release: 1.96.0
+LLVM version: 22.1.2
+CHECK ordinary-freshness: cargo xtask build-guests --check
+STALE: arachne-perimeters-guest
+fingerprint mismatch
+STALE: classic-perimeters-guest
+fingerprint mismatch
+STALE: fuzzy-skin-guest
+fingerprint mismatch
+STALE: gyroid-infill-guest
+fingerprint mismatch
+STALE: infill-linker-guest
+fingerprint mismatch
+STALE: layer-planner-default-guest
+fingerprint mismatch
+STALE: lightning-infill-guest
+fingerprint mismatch
+STALE: machine_gcode_emit_guest
+fingerprint mismatch
+STALE: overhang_classifier_default_guest
+fingerprint mismatch
+STALE: part_cooling_guest
+fingerprint mismatch
+STALE: path-optimization-default-guest
+fingerprint mismatch
+STALE: raft-default-guest
+fingerprint mismatch
+STALE: rectilinear-infill-guest
+fingerprint mismatch
+STALE: seam-placer-guest
+fingerprint mismatch
+STALE: seam-planner-default-guest
+fingerprint mismatch
+STALE: skirt-brim-guest
+fingerprint mismatch
+STALE: support-surface-ironing-guest
+fingerprint mismatch
+STALE: top-surface-ironing-guest
+fingerprint mismatch
+STALE: traditional-support-guest
+fingerprint mismatch
+STALE: traditional-support-planner-guest
+fingerprint mismatch
+STALE: tree-support-guest
+fingerprint mismatch
+STALE: tree-support-planner-guest
+fingerprint mismatch
+STALE: wave-overhangs-guest
+fingerprint mismatch
+STALE: wipe-tower-guest
+fingerprint mismatch
+STALE: anchored-events-roundtrip-guest
+fingerprint mismatch
+STALE: dispatch-layer-infill-postprocess-guest
+fingerprint mismatch
+STALE: dispatch-layer-path-optimization-guest
+fingerprint mismatch
+STALE: dispatch-layer-perimeters-guest
+fingerprint mismatch
+STALE: dispatch-layer-perimeters-postprocess-guest
+fingerprint mismatch
+STALE: dispatch-layer-slice-postprocess-guest
+fingerprint mismatch
+STALE: dispatch-layer-support-postprocess-guest
+fingerprint mismatch
+STALE: finalization-guest
+fingerprint mismatch
+STALE: finalization-mutation-roundtrip-guest
+fingerprint mismatch
+STALE: infill-postprocess-echo-guest
+fingerprint mismatch
+STALE: layer-infill-guest
+fingerprint mismatch
+STALE: path-optimization-multi-read
+fingerprint mismatch
+STALE: postpass-guest
+fingerprint mismatch
+STALE: prepass-guest
+fingerprint mismatch
+STALE: prepass-layer-planning-guest
+fingerprint mismatch
+STALE: sdk-finalization-guest
+fingerprint mismatch
+STALE: sdk-host-bridge-guest
+fingerprint mismatch
+STALE: sdk-layer-infill-guest
+fingerprint mismatch
+STALE: sdk-layer-pathopt-guest
+fingerprint mismatch
+STALE: sdk-postpass-text-guest
+fingerprint mismatch
+STALE: sdk-prepass-guest
+fingerprint mismatch
+STALE: sdk-support-diagnostic-guest
+fingerprint mismatch
+STALE: support-anchored-reach-guest
+fingerprint mismatch
+CHECK ordinary-guest-rebuild: cargo xtask build-guests
+STALE: arachne-perimeters-guest
+fingerprint mismatch
+STALE: classic-perimeters-guest
+fingerprint mismatch
+STALE: fuzzy-skin-guest
+fingerprint mismatch
+STALE: gyroid-infill-guest
+fingerprint mismatch
+STALE: infill-linker-guest
+fingerprint mismatch
+STALE: layer-planner-default-guest
+fingerprint mismatch
+STALE: lightning-infill-guest
+fingerprint mismatch
+STALE: machine_gcode_emit_guest
+fingerprint mismatch
+STALE: overhang_classifier_default_guest
+fingerprint mismatch
+STALE: part_cooling_guest
+fingerprint mismatch
+STALE: path-optimization-default-guest
+fingerprint mismatch
+STALE: raft-default-guest
+fingerprint mismatch
+STALE: rectilinear-infill-guest
+fingerprint mismatch
+STALE: seam-placer-guest
+fingerprint mismatch
+STALE: seam-planner-default-guest
+fingerprint mismatch
+STALE: skirt-brim-guest
+fingerprint mismatch
+STALE: support-surface-ironing-guest
+fingerprint mismatch
+STALE: top-surface-ironing-guest
+fingerprint mismatch
+STALE: traditional-support-guest
+fingerprint mismatch
+STALE: traditional-support-planner-guest
+fingerprint mismatch
+STALE: tree-support-guest
+fingerprint mismatch
+STALE: tree-support-planner-guest
+fingerprint mismatch
+STALE: wave-overhangs-guest
+fingerprint mismatch
+STALE: wipe-tower-guest
+fingerprint mismatch
+STALE: anchored-events-roundtrip-guest
+fingerprint mismatch
+STALE: dispatch-layer-infill-postprocess-guest
+fingerprint mismatch
+STALE: dispatch-layer-path-optimization-guest
+fingerprint mismatch
+STALE: dispatch-layer-perimeters-guest
+fingerprint mismatch
+STALE: dispatch-layer-perimeters-postprocess-guest
+fingerprint mismatch
+STALE: dispatch-layer-slice-postprocess-guest
+fingerprint mismatch
+STALE: dispatch-layer-support-postprocess-guest
+fingerprint mismatch
+STALE: finalization-guest
+fingerprint mismatch
+STALE: finalization-mutation-roundtrip-guest
+fingerprint mismatch
+STALE: infill-postprocess-echo-guest
+fingerprint mismatch
+STALE: layer-infill-guest
+fingerprint mismatch
+STALE: path-optimization-multi-read
+fingerprint mismatch
+STALE: postpass-guest
+fingerprint mismatch
+STALE: prepass-guest
+fingerprint mismatch
+STALE: prepass-layer-planning-guest
+fingerprint mismatch
+STALE: sdk-finalization-guest
+fingerprint mismatch
+STALE: sdk-host-bridge-guest
+fingerprint mismatch
+STALE: sdk-layer-infill-guest
+fingerprint mismatch
+STALE: sdk-layer-pathopt-guest
+fingerprint mismatch
+STALE: sdk-postpass-text-guest
+fingerprint mismatch
+STALE: sdk-prepass-guest
+fingerprint mismatch
+STALE: sdk-support-diagnostic-guest
+fingerprint mismatch
+STALE: support-anchored-reach-guest
+fingerprint mismatch
+building: arachne-perimeters-guest
+building: classic-perimeters-guest
+building: fuzzy-skin-guest
+building: gyroid-infill-guest
+building: infill-linker-guest
+building: layer-planner-default-guest
+building: lightning-infill-guest
+building: machine_gcode_emit_guest
+building: overhang_classifier_default_guest
+building: part_cooling_guest
+building: path-optimization-default-guest
+building: raft-default-guest
+building: rectilinear-infill-guest
+building: seam-placer-guest
+building: seam-planner-default-guest
+building: skirt-brim-guest
+building: support-surface-ironing-guest
+building: top-surface-ironing-guest
+building: traditional-support-guest
+building: traditional-support-planner-guest
+building: tree-support-guest
+building: tree-support-planner-guest
+building: wave-overhangs-guest
+building: wipe-tower-guest
+building: anchored-events-roundtrip-guest
+building: dispatch-layer-infill-postprocess-guest
+building: dispatch-layer-path-optimization-guest
+building: dispatch-layer-perimeters-guest
+building: dispatch-layer-perimeters-postprocess-guest
+building: dispatch-layer-slice-postprocess-guest
+building: dispatch-layer-support-postprocess-guest
+building: finalization-guest
+building: finalization-mutation-roundtrip-guest
+building: infill-postprocess-echo-guest
+building: layer-infill-guest
+building: path-optimization-multi-read
+building: postpass-guest
+building: prepass-guest
+building: prepass-layer-planning-guest
+building: sdk-finalization-guest
+building: sdk-host-bridge-guest
+building: sdk-layer-infill-guest
+building: sdk-layer-pathopt-guest
+building: sdk-postpass-text-guest
+building: sdk-prepass-guest
+building: sdk-support-diagnostic-guest
+building: support-anchored-reach-guest
+built 47 guest(s)
+CHECK ordinary-freshness-recheck: cargo xtask build-guests --check
+CHECK support-repair: cargo test -p slicer-wasm-host --test contract -- support_plan_validation --nocapture
+   Compiling quote v1.0.45
+   Compiling proc-macro2 v1.0.106
+   Compiling syn v2.0.117
+   Compiling serde_derive v1.0.228
+   Compiling cfg-if v1.0.4
+   Compiling serde v1.0.228
+   Compiling libm v0.2.16
+   Compiling hashbrown v0.17.0
+   Compiling getrandom v0.3.4
+   Compiling anyhow v1.0.104
+   Compiling windows-sys v0.61.2
+   Compiling indexmap v2.14.0
+   Compiling thiserror-impl v2.0.18
+   Compiling jobserver v0.1.34
+   Compiling cc v1.2.59
+   Compiling smallvec v1.15.1
+   Compiling memchr v2.8.0
+   Compiling bitflags v2.11.1
+   Compiling typenum v1.19.0
+   Compiling generic-array v0.14.7
+   Compiling wasmtime-internal-core v47.0.3
+   Compiling cranelift-bitset v0.134.3
+   Compiling thiserror v2.0.18
+   Compiling stable_deref_trait v1.2.1
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling synstructure v0.13.2
+   Compiling heck v0.5.0
+   Compiling digest v0.10.7
+   Compiling semver v1.0.27
+   Compiling cpufeatures v0.2.17
+   Compiling sha2 v0.10.9
+   Compiling target-lexicon v0.13.5
+   Compiling zerofrom-derive v0.1.7
+   Compiling zerofrom v0.1.8
+   Compiling yoke-derive v0.8.2
+   Compiling pulley-macros v47.0.3
+   Compiling leb128fmt v0.1.0
+   Compiling allocator-api2 v0.2.21
+   Compiling hashbrown v0.16.1
+   Compiling rustc-hash v2.1.2
+   Compiling fnv v1.0.7
+   Compiling gimli v0.33.0
+   Compiling bumpalo v3.20.2
+   Compiling yoke v0.8.3
+   Compiling cranelift-entity v0.134.3
+   Compiling wasmparser v0.252.0
+   Compiling cobs v0.3.0
+   Compiling wasmtime-internal-versioned-export-macros v47.0.3
+   Compiling crc32fast v1.5.0
+   Compiling postcard v1.1.3
+   Compiling cranelift-bforest v0.134.3
+   Compiling pulley-interpreter v47.0.3
+   Compiling zerovec-derive v0.11.3
+   Compiling cranelift-codegen-shared v0.134.3
+   Compiling cranelift-codegen-meta v0.134.3
+   Compiling zerovec v0.11.6
+   Compiling winapi-util v0.1.11
+   Compiling thiserror-impl v1.0.69
+   Compiling displaydoc v0.2.5
+   Compiling zstd-sys v2.0.16+zstd.1.5.7
+   Compiling thiserror v1.0.69
+   Compiling termcolor v1.4.1
+   Compiling cranelift-codegen v0.134.3
+   Compiling object v0.39.1
+   Compiling crossbeam-utils v0.8.21
+   Compiling wasm-encoder v0.252.0
+   Compiling serde_json v1.0.149
+   Compiling wasmtime-internal-component-util v47.0.3
+   Compiling arbitrary v1.4.2
+   Compiling cranelift-control v0.134.3
+   Compiling crossbeam-epoch v0.9.18
+   Compiling cranelift-assembler-x64 v0.134.3
+   Compiling wasmprinter v0.252.0
+   Compiling num-traits v0.2.19
+   Compiling cpp_demangle v0.5.1
+   Compiling regalloc2 v0.15.1
+   Compiling zerocopy v0.8.48
+   Compiling either v1.15.0
+   Compiling rustc-demangle v0.1.27
+   Compiling wasmtime-environ v47.0.3
+   Compiling crossbeam-deque v0.8.6
+   Compiling windows_x86_64_msvc v0.52.6
+   Compiling tinystr v0.8.3
+   Compiling litemap v0.8.2
+   Compiling rand_core v0.10.1
+   Compiling writeable v0.6.3
+   Compiling pin-project-lite v0.2.17
+   Compiling zstd-safe v7.2.4
+   Compiling icu_locale_core v2.2.0
+   Compiling windows-targets v0.52.6
+   Compiling rayon-core v1.13.0
+   Compiling winapi v0.3.9
+   Compiling windows_x86_64_msvc v0.53.1
+   Compiling zerotrie v0.2.4
+   Compiling potential_utf v0.1.5
+   Compiling wasm-encoder v0.256.0
+   Compiling ittapi-sys v0.4.0
+   Compiling winnow v1.0.1
+   Compiling utf8_iter v1.0.4
+   Compiling once_cell v1.21.4
+   Compiling futures-sink v0.3.32
+   Compiling futures-core v0.3.32
+   Compiling unicode-width v0.2.2
+   Compiling wast v256.0.0
+   Compiling futures-channel v0.3.32
+   Compiling icu_collections v2.2.0
+   Compiling toml_parser v1.1.2+spec-1.1.0
+   Compiling wit-parser v0.252.0
+   Compiling icu_provider v2.2.0
+   Compiling windows-targets v0.53.5
+   Compiling dirs-sys-next v0.1.2
+   Compiling ppv-lite86 v0.2.21
+   Compiling rayon v1.11.0
+   Compiling windows-sys v0.59.0
+   Compiling getrandom v0.4.2
+   Compiling wasmtime-internal-jit-debug v47.0.3
+   Compiling wasmtime-internal-fiber v47.0.3
+   Compiling rand_core v0.9.5
+   Compiling serde_spanned v1.1.1
+   Compiling toml_datetime v0.7.5+spec-1.1.0
+   Compiling fixedbitset v0.4.2
+   Compiling toml_writer v1.1.1+spec-1.1.0
+   Compiling futures-task v0.3.32
+   Compiling slab v0.4.12
+   Compiling uuid v1.23.0
+   Compiling libc v0.2.189
+   Compiling futures-io v0.3.32
+   Compiling futures-util v0.3.32
+   Compiling debugid v0.8.0
+   Compiling toml v0.9.12+spec-1.1.0
+   Compiling petgraph v0.6.5
+   Compiling rand_chacha v0.9.0
+   Compiling directories-next v2.0.0
+   Compiling windows-sys v0.60.2
+   Compiling zstd v0.13.3
+   Compiling wasmtime-internal-wit-bindgen v47.0.3
+   Compiling io-lifetimes v3.0.1
+   Compiling icu_normalizer_data v2.2.0
+   Compiling wasmtime-internal-unwinder v47.0.3
+   Compiling io-lifetimes v2.0.4
+   Compiling icu_properties_data v2.2.0
+   Compiling wat v1.256.0
+   Compiling cranelift-frontend v0.134.3
+   Compiling cranelift-native v0.134.3
+   Compiling itertools v0.14.0
+   Compiling wasmtime v47.0.3
+   Compiling toml_datetime v0.6.11
+   Compiling serde_spanned v0.6.9
+   Compiling option-ext v0.2.0
+   Compiling base64 v0.22.1
+   Compiling fastrand v2.3.0
+   Compiling byteorder v1.5.0
+   Compiling hash32 v0.3.1
+   Compiling tempfile v3.27.0
+   Compiling wasmtime-internal-cache v47.0.3
+   Compiling toml_edit v0.22.27
+   Compiling dirs-sys v0.5.0
+   Compiling wasmtime-internal-cranelift v47.0.3
+   Compiling wasm-compose v0.252.0
+   Compiling icu_properties v2.2.0
+   Compiling fs-set-times v0.20.3
+   Compiling icu_normalizer v2.2.0
+   Compiling io-extras v0.19.0
+   Compiling ittapi v0.4.0
+   Compiling wasmtime-internal-component-macro v47.0.3
+   Compiling rand v0.9.4
+   Compiling fxprof-processed-profile v0.8.1
+   Compiling futures v0.3.32
+   Compiling witx v0.9.1
+   Compiling winx v0.36.4
+   Compiling tracing-core v0.1.36
+   Compiling slicer-ir v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-ir)
+   Compiling addr2line v0.26.1
+   Compiling wasmtime-internal-jit-icache-coherence v47.0.3
+   Compiling encoding_rs v0.8.35
+   Compiling async-trait v0.1.89
+   Compiling tracing-attributes v0.1.31
+   Compiling maybe-owned v0.3.4
+   Compiling ipnet v2.12.1
+   Compiling ambient-authority v0.0.2
+   Compiling cap-primitives v4.0.2
+   Compiling tracing v0.1.44
+   Compiling wiggle-generate v47.0.3
+   Compiling cpp_map v0.2.0
+   Compiling idna_adapter v1.2.2
+   Compiling directories v6.0.0
+   Compiling toml v0.8.23
+   Compiling heapless v0.8.0
+   Compiling approx v0.5.1
+   Compiling ordered-float v5.3.0
+   Compiling vob v3.0.6
+   Compiling bytes v1.12.1
+   Compiling cpufeatures v0.3.0
+   Compiling percent-encoding v2.3.2
+   Compiling form_urlencoded v1.2.2
+   Compiling slicer-macros v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-macros)
+   Compiling chacha20 v0.10.1
+   Compiling boostvoronoi v0.12.1
+   Compiling rstar v0.12.2
+   Compiling slicer-scheduler v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-scheduler)
+   Compiling idna v1.1.0
+   Compiling wiggle-macro v47.0.3
+   Compiling cap-std v4.0.2
+   Compiling clipper2-rust v1.1.0
+   Compiling mio v1.2.2
+   Compiling socket2 v0.6.5
+   Compiling errno v0.3.14
+   Compiling rustix v1.1.4
+   Compiling tokio v1.53.1
+   Compiling slicer-core v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-core)
+   Compiling cap-fs-ext v4.0.2
+   Compiling wiggle v47.0.3
+   Compiling url v2.5.8
+   Compiling rand v0.10.2
+   Compiling wasmtime-wasi-io v47.0.3
+   Compiling slicer-wasm-host v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host)
+   Compiling wasmtime-wasi v47.0.3
+   Compiling slicer-sdk v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-sdk)
+   Compiling wasmparser v0.247.0
+   Compiling wit-parser v0.247.0
+   Compiling witness v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host\test-guests\witness)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6m 25s
+     Running tests\contract\main.rs (target\debug\deps\contract-e017127a3b84dfc2.exe)
+
+running 8 tests
+test support_plan_validation::identity_aggregate_spread_across_the_plate_is_measured_per_body ... ok
+test support_plan_validation::same_family_duplicate_identity_unions_without_a_duplicate_diagnostic ... ok
+test support_plan_validation ... ok
+test support_plan_validation::support_body_straddling_absolute_cell_boundary_is_retained ... ok
+test support_plan_validation::support_body_wider_than_the_deleted_routing_cell_is_retained ... ok
+test support_plan_validation::support_plan_aggregation_diagnoses_duplicate_identity ... ok
+test support_plan_validation::support_plan_aggregation_preserves_distinct_families ... ok
+test support_plan_validation::support_plan_validation ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 123 filtered out; finished in 0.00s
+
+CHECK empty-infill-producers: cargo test -p slicer-wasm-host --test contract -- infill_postprocess_empty_commit_tdd --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.51s
+     Running tests\contract\main.rs (target\debug\deps\contract-e017127a3b84dfc2.exe)
+
+running 6 tests
+test infill_postprocess_empty_commit_tdd::native_infill_empty_output_still_commits_nothing ... ok
+test infill_postprocess_empty_commit_tdd::native_infill_postprocess_empty_output_commits_the_empty_replacement ... ok
+test infill_postprocess_empty_commit_tdd::wasm_infill_empty_output_still_commits_nothing ... ok
+test infill_postprocess_empty_commit_tdd::both_legs_agree_on_the_empty_replacement_shape ... ok
+test infill_postprocess_empty_commit_tdd::wasm_infill_postprocess_empty_output_commits_the_empty_replacement ... ok
+test infill_postprocess_empty_commit_tdd::raft_only_output_is_not_the_empty_case_on_either_leg ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 125 filtered out; finished in 0.00s
+
+CHECK empty-infill-runtime: cargo xtask test --summary -p slicer-runtime --test contract -- infill_postprocess_contract_tdd --nocapture
+check-literals: 0 violation(s) in 0 file(s) (watchlist: 147 types)
+crates/slicer-macros/tests/module_test_tdd.rs:73: R1 assert!(true)
+crates/slicer-macros/tests/module_test_tdd.rs:124: R1 assert!(true)
+crates/slicer-model-io/src/loader.rs:3240: R3 silent fixture-skip early return (bare `return` in an if-arm)
+crates/slicer-model-io/src/loader.rs:3274: R3 silent fixture-skip early return (bare `return` in an if-arm)
+crates/slicer-model-io/src/loader.rs:3295: R3 silent fixture-skip early return (bare `return` in an if-arm)
+crates/slicer-runtime/src/progress_instrumentation.rs:492: R8 std::thread::sleep in test code (use a gated/bench target or an explicit join)
+crates/slicer-runtime/tests/contract/guest_fixture_freshness_tdd.rs:158: R3 silent fixture-skip early return (bare `return` in an if-arm)
+crates/slicer-runtime/tests/e2e/slicer_report_html_tdd.rs:392: R8 std::thread::sleep in test code (use a gated/bench target or an explicit join)
+crates/slicer-runtime/tests/e2e/slicer_report_html_tdd.rs:396: R8 std::thread::sleep in test code (use a gated/bench target or an explicit join)
+crates/slicer-runtime/tests/executor/layer_slice_tdd.rs:274: R3 silent fixture-skip early return (bare `return` in an if-arm)
+crates/slicer-runtime/tests/executor/layer_slice_tdd.rs:336: R3 silent fixture-skip early return (bare `return` in an if-arm)
+crates/slicer-wasm-host/src/host.rs:5039: R6 duplicate test-fn name `ir_to_wit_extrusion_role_preserves_reserved_builtin_roles` in one file
+check-test-quality: 12 finding(s) in 7 file(s) [report mode]
+xtask test: pnp_cli is stale or absent; rebuilding...
+   Compiling num-traits v0.2.19
+   Compiling log v0.4.29
+   Compiling byteorder v1.5.0
+   Compiling bytemuck_derive v1.10.2
+   Compiling bytemuck v1.25.0
+   Compiling num-complex v0.4.6
+   Compiling approx v0.5.1
+   Compiling hash32 v0.3.1
+   Compiling scopeguard v1.2.0
+   Compiling lock_api v0.4.14
+   Compiling heapless v0.8.0
+   Compiling syn v1.0.109
+   Compiling vob v3.0.6
+   Compiling ordered-float v5.3.0
+   Compiling boostvoronoi v0.12.1
+   Compiling slicer-scheduler v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-scheduler)
+   Compiling rstar v0.12.2
+   Compiling crc32fast v1.5.0
+   Compiling clipper2-rust v1.1.0
+   Compiling slicer-core v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-core)
+   Compiling slicer-sdk v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-sdk)
+   Compiling hashbrown v0.16.1
+   Compiling indexmap v2.14.0
+   Compiling spin v0.9.8
+   Compiling hash32 v0.2.1
+   Compiling gimli v0.33.0
+   Compiling heapless v0.7.17
+   Compiling postcard v1.1.3
+   Compiling proc-macro-error-attr v1.0.4
+   Compiling libc v0.2.189
+   Compiling pulley-interpreter v47.0.3
+   Compiling raw-cpuid v11.6.0
+   Compiling regex-syntax v0.8.10
+   Compiling cranelift-codegen-meta v0.134.3
+   Compiling proc-macro-error v1.0.4
+   Compiling approx v0.4.0
+   Compiling getrandom v0.2.17
+   Compiling simd-adler32 v0.3.9
+   Compiling pulp-wasm-simd-flag v0.1.1
+   Compiling reborrow v0.5.5
+   Compiling pulp v0.22.3
+   Compiling wasmparser v0.252.0
+   Compiling rand_core v0.6.4
+   Compiling cgmath v0.18.0
+   Compiling cranelift-codegen v0.134.3
+   Compiling object v0.39.1
+   Compiling katexit v0.1.5
+   Compiling dyn-stack v0.13.2
+   Compiling matext4cgmath v0.1.0
+   Compiling rand_chacha v0.3.1
+   Compiling regalloc2 v0.15.1
+   Compiling adler2 v2.0.1
+   Compiling miniz_oxide v0.8.9
+   Compiling wasmtime-environ v47.0.3
+   Compiling rand v0.8.5
+   Compiling truck-base v0.5.0
+   Compiling truck-derivers v0.1.0
+   Compiling aho-corasick v1.1.4
+   Compiling sha1_smol v1.0.1
+   Compiling uuid v1.23.0
+   Compiling gemm-common v0.19.0
+   Compiling regex-automata v0.4.14
+   Compiling truck-geotrait v0.4.0
+   Compiling flate2 v1.1.9
+   Compiling nano-gemm-core v0.2.1
+   Compiling wit-parser v0.252.0
+   Compiling branches v0.3.0
+   Compiling regex v1.12.3
+   Compiling parking_lot_core v0.9.12
+   Compiling lzma-sys v0.1.20
+   Compiling lazy_static v1.5.0
+   Compiling toml_datetime v0.6.11
+   Compiling toml_edit v0.19.15
+   Compiling derive_more v0.99.20
+   Compiling parking_lot v0.12.5
+   Compiling rclite v0.2.8
+   Compiling wasmtime-internal-wit-bindgen v47.0.3
+   Compiling wasmtime-internal-unwinder v47.0.3
+   Compiling debugid v0.8.0
+   Compiling cranelift-frontend v0.134.3
+   Compiling cranelift-native v0.134.3
+   Compiling interpol v0.2.1
+   Compiling itertools v0.13.0
+   Compiling array-macro v2.1.8
+   Compiling private-gemm-x86 v0.1.20
+   Compiling wasmtime-internal-cache v47.0.3
+   Compiling truck-polymesh v0.6.0
+   Compiling wasmtime-internal-cranelift v47.0.3
+   Compiling fxprof-processed-profile v0.8.1
+   Compiling wasm-compose v0.252.0
+   Compiling ittapi v0.4.0
+   Compiling Inflector v0.11.4
+   Compiling wasmtime-internal-component-macro v47.0.3
+   Compiling truck-topology v0.6.0
+   Compiling wasmtime-internal-jit-debug v47.0.3
+   Compiling wasmtime-internal-fiber v47.0.3
+   Compiling witx v0.9.1
+   Compiling proc-macro-crate v1.3.1
+   Compiling truck-geometry v0.5.0
+   Compiling memchr v1.0.2
+   Compiling addr2line v0.26.1
+   Compiling safe_arch v0.7.4
+   Compiling equator-macro v0.2.1
+   Compiling minimal-lexical v0.2.1
+   Compiling utf8parse v0.2.2
+   Compiling anstyle v1.0.14
+   Compiling once_cell_polyfill v1.70.2
+   Compiling anstyle-wincon v3.0.11
+   Compiling anstyle-parse v1.0.0
+   Compiling nom v7.1.3
+   Compiling equator v0.2.2
+   Compiling wasmtime v47.0.3
+   Compiling wide v0.7.33
+   Compiling nom v3.2.1
+   Compiling ruststep-derive v0.4.0
+   Compiling wiggle-generate v47.0.3
+   Compiling xz2 v0.1.7
+   Compiling nano-gemm-c32 v0.2.1
+   Compiling nano-gemm-c64 v0.2.1
+   Compiling nano-gemm-f32 v0.2.1
+   Compiling nano-gemm-f64 v0.2.1
+   Compiling gemm-f64 v0.19.0
+   Compiling gemm-c64 v0.19.0
+   Compiling gemm-f32 v0.19.0
+   Compiling gemm-c32 v0.19.0
+   Compiling qd v0.8.0
+   Compiling derive-new v0.5.9
+   Compiling num-derive v0.3.3
+   Compiling meshopt v0.6.2
+   Compiling itertools v0.10.5
+   Compiling anstyle-query v1.1.5
+   Compiling quick-xml v0.22.0
+   Compiling num-integer v0.1.46
+   Compiling lz4_flex v0.7.5
+   Compiling rawpointer v0.2.1
+   Compiling colorchoice v1.0.5
+   Compiling num_cpus v1.17.0
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling robust v1.2.0
+   Compiling base64 v0.13.1
+   Compiling generativity v1.2.1
+   Compiling faer-traits v0.24.0
+   Compiling equator v0.6.0
+   Compiling vtkio v0.6.3
+   Compiling spade v2.15.1
+   Compiling anstream v1.0.0
+   Compiling matrixmultiply v0.3.10
+   Compiling num-rational v0.4.2
+   Compiling ruststep v0.4.0
+   Compiling gemm v0.19.0
+   Compiling nano-gemm v0.2.2
+   Compiling wiggle-macro v47.0.3
+   Compiling simba v0.8.1
+   Compiling truck-modeling v0.6.0
+   Compiling fdeflate v0.3.7
+   Compiling chrono v0.4.44
+   Compiling float-cmp v0.10.0
+   Compiling nalgebra-macros v0.2.2
+   Compiling pxfm v0.1.30
+   Compiling zune-core v0.5.1
+   Compiling zune-jpeg v0.5.15
+   Compiling moxcms v0.8.1
+   Compiling nalgebra v0.32.6
+   Compiling truck-stepio v0.3.0
+   Compiling png v0.18.1
+   Compiling wiggle v47.0.3
+   Compiling faer v0.24.4
+   Compiling truck-meshalgo v0.4.0
+   Compiling wasmtime-wasi-io v47.0.3
+   Compiling qoi v0.4.1
+   Compiling strsim v0.11.1
+   Compiling byteorder-lite v0.1.0
+   Compiling clap_lex v1.1.0
+   Compiling clap_builder v4.6.0
+   Compiling image v0.25.10
+   Compiling wasmtime-wasi v47.0.3
+   Compiling slicer-helpers v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-helpers)
+   Compiling seam-planner-default v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\seam-planner-default)
+   Compiling ahash v0.8.12
+   Compiling zopfli v0.8.3
+   Compiling clap_derive v4.6.1
+   Compiling part-cooling v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\part-cooling)
+   Compiling gyroid-infill v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\gyroid-infill)
+   Compiling lightning-infill v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\lightning-infill)
+   Compiling tree-support v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\tree-support)
+   Compiling layer-planner-default v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\layer-planner-default)
+   Compiling seam-placer v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\seam-placer)
+   Compiling support-surface-ironing v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\support-surface-ironing)
+   Compiling machine-gcode-emit v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\machine-gcode-emit)
+   Compiling top-surface-ironing v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\top-surface-ironing)
+   Compiling wipe-tower v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\wipe-tower)
+   Compiling skirt-brim v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\skirt-brim)
+   Compiling overhang-classifier-default v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\overhang-classifier-default)
+   Compiling traditional-support v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\traditional-support)
+   Compiling rectilinear-infill v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\rectilinear-infill)
+   Compiling fuzzy-skin v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\fuzzy-skin)
+   Compiling infill-linker v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\infill-linker)
+   Compiling path-optimization-default v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\modules\core-modules\path-optimization-default)
+   Compiling jiff-core v0.1.0
+   Compiling jiff v0.2.34
+   Compiling slicer-integrated-modules v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-integrated-modules)
+   Compiling clap v4.6.1
+   Compiling zip v2.4.2
+   Compiling tobj v4.0.3
+   Compiling slicer-gcode v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-gcode)
+   Compiling slicer-wasm-host v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-wasm-host)
+   Compiling env_filter v2.0.0
+   Compiling quick-xml v0.39.2
+   Compiling stl_io v0.11.0
+   Compiling slicer-model-io v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-model-io)
+   Compiling env_logger v0.11.11
+   Compiling slicer-runtime v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-runtime)
+   Compiling ctrlc v3.5.2
+   Compiling pnp-cli v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\pnp-cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 7m 54s
+warning: the following packages contain code that will be rejected by a future version of Rust: nom v3.2.1, quick-xml v0.22.0
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+xtask test: running `cargo test -p slicer-runtime --test contract --features slicer-core/host-algos -- infill_postprocess_contract_tdd --nocapture --skip arachne_parity_pipeline_concentric_infill_uses_arachne` (summary mode)
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 292 filtered out; finished in 1.39s
+
+VERDICT: PASS
+
+Full output written to: D:/slicerProject/pinch_n_print_cli_2/target/test-output.log
+Inspect with: grep "^test result:" D:/slicerProject/pinch_n_print_cli_2/target/test-output.log   (summaries)
+               grep -n "FAILED|panicked at" D:/slicerProject/pinch_n_print_cli_2/target/test-output.log (failures)
+PASS: t41 ordinary reference preparation prerequisites; no reference generation yet.

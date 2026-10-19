@@ -140,6 +140,19 @@ fn make_f2_target_graph(mid_r_units: f64) -> SkeletalTrapezoidationGraph {
     }
 }
 
+/// Builds the F2 fixture with a genuinely diagonal input edge. The transition
+/// is deliberately not at the midpoint so that a linear interpolation is a
+/// meaningful geometric observation rather than a symmetric midpoint case.
+fn make_f2_diagonal_target_graph(mid_r_units: f64) -> SkeletalTrapezoidationGraph {
+    let mut graph = make_f2_target_graph(mid_r_units);
+    graph.vertices[1].position = Vertex {
+        x: 10.0 * UNITS_PER_MM,
+        y: 5.0 * UNITS_PER_MM,
+    };
+    graph.edges[0].transition_mids[0].pos = 0.25;
+    graph
+}
+
 // ---------------------------------------------------------------------------
 // Test 1 (F2): the F2 invariant — physical split positions on the two
 // sides must agree on the position AND the R distance (when mid_r
@@ -421,6 +434,82 @@ fn apply_transitions_new_vertex_bead_count_matches_lower_bead_count() {
          lower_bead_count.",
         bc
     );
+}
+
+#[test]
+fn apply_transitions_diagonal_source_mid_r_and_foot_sentinels() {
+    let mid_r = 750_000.0;
+    let mut graph = make_f2_diagonal_target_graph(mid_r);
+    let n_verts_before = graph.vertices.len();
+    let interpolation_pos = graph.edges[0].transition_mids[0].pos;
+    let input_start = graph.vertices[graph.edges[0].start_vertex].position;
+    let input_end = graph.vertices[resolve_to_vertex(&graph, 0)].position;
+
+    apply_transitions(&mut graph);
+
+    let new_verts: Vec<usize> = (n_verts_before..graph.vertices.len()).collect();
+    assert_eq!(
+        new_verts.len(),
+        3,
+        "a twin-pair transition must create one shared mid node and two feet"
+    );
+
+    let mid_nodes: Vec<usize> = new_verts
+        .iter()
+        .copied()
+        .filter(|&i| graph.vertices[i].bead_count == Some(2))
+        .collect();
+    assert_eq!(
+        mid_nodes.len(),
+        1,
+        "exactly one new vertex is the shared mid node"
+    );
+    let mid_idx = mid_nodes[0];
+    assert_eq!(
+        graph.vertices[mid_idx].distance_to_boundary, mid_r,
+        "the shared mid node must retain transition_mid.mid_r"
+    );
+
+    let foot_nodes: Vec<usize> = new_verts
+        .iter()
+        .copied()
+        .filter(|&i| {
+            graph.vertices[i].distance_to_boundary == 0.0 && graph.vertices[i].bead_count.is_none()
+        })
+        .collect();
+    assert_eq!(
+        foot_nodes.len(),
+        2,
+        "the two new boundary feet must have zero distance and no bead count"
+    );
+    assert_eq!(
+        graph.vertices[foot_nodes[0]].position, graph.vertices[foot_nodes[1]].position,
+        "the edge and twin feet must coincide exactly"
+    );
+
+    let mid_pos = graph.vertices[mid_idx].position;
+    let expected_x = input_start.x + (input_end.x - input_start.x) * interpolation_pos;
+    let expected_y = input_start.y + (input_end.y - input_start.y) * interpolation_pos;
+    assert_eq!(
+        mid_pos.x, expected_x,
+        "the diagonal mid node must use the interpolated position on the input edge line"
+    );
+    assert_eq!(
+        mid_pos.y, expected_y,
+        "the diagonal mid node must use the interpolated position on the input edge line"
+    );
+
+    // ACKNOWLEDGED DIVERGENCE: `insert_node` in
+    // `crates/slicer-core/src/skeletal_trapezoidation/propagation.rs` does
+    // not retain source-segment provenance, so its feet sit at the
+    // projected-to-line position represented by this input-edge interpolation,
+    // not at the true source-segment foot. This test intentionally never
+    // asserts the unprojected true foot position.
+    //
+    // Canonical OrcaSlicer `SkeletalTrapezoidation.cpp` ::
+    // `generateTransitionMids` obtains this radius through
+    // `BeadingStrategy.cpp`/`BeadingStrategy.hpp` :: `getTransitionThickness`,
+    // using the odd/even wall-split/add middle threshold rule.
 }
 
 // Suppress unused-import warning when no test uses it.

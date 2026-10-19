@@ -1,4 +1,4 @@
-# Implementation Plan: [spec-slug]
+# Implementation Plan: [packet-name]
 
 ## Execution Rules
 

@@ -77,8 +77,15 @@ pub fn prepare_wedge_context_with_overrides(
 
     let module_dirs = vec![core_modules_dir()];
 
-    let ctx = slicer_runtime::run::prepare_prepass_context(mesh, config, &module_dirs, true, false)
-        .expect("prepare_prepass_context must succeed");
+    let ctx = slicer_runtime::run::prepare_prepass_context(
+        mesh,
+        config,
+        Vec::new(),
+        &module_dirs,
+        true,
+        false,
+    )
+    .expect("prepare_prepass_context must succeed");
 
     if support_enabled {
         let plan = ctx

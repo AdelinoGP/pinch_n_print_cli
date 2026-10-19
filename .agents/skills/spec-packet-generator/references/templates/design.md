@@ -1,4 +1,4 @@
-# Design: [spec-slug]
+# Design: [packet-name]
 
 ## Controlling Code Paths
 

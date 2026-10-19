@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "D:\slicerProject\pinch_n_print_cli_2\docs\specs\perf-vs-orca\evidence\t40-reference-preparation\test-preparation.py", line 17, in <module>
+    assert key(model, root) == "supports-off-benchy/model.stl", (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Windows manifest key is not portable

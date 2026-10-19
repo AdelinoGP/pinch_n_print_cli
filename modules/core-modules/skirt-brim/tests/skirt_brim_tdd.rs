@@ -45,7 +45,17 @@ fn make_layer_with_entities(index: u32, z: f32, entities: Vec<PrintEntity>) -> L
 }
 
 fn empty_config() -> ConfigView {
-    ConfigView::from_map(HashMap::new())
+    // Declared keys (skirt-brim.toml) seeded at their manifest defaults,
+    // mirroring the production `seed_registry_defaults` step; the empty-map
+    // probe now behaves like a bound view.
+    ConfigView::from_map(HashMap::from([
+        ("skirt_brim_enabled".to_string(), ConfigValue::Bool(true)),
+        ("skirt_loops".to_string(), ConfigValue::Int(6)),
+        ("skirt_distance".to_string(), ConfigValue::Float(3.0)),
+        ("skirt_height".to_string(), ConfigValue::Int(1)),
+        ("brim_width".to_string(), ConfigValue::Float(8.0)),
+        ("line_width".to_string(), ConfigValue::Float(0.4)),
+    ]))
 }
 
 fn custom_config(

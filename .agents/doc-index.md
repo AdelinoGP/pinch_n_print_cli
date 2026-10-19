@@ -2,7 +2,7 @@
 
 **When to read this:** when you need to find which doc covers a specific topic (architecture, IR schemas, WIT contracts, scheduler, coordinate system, debugging, etc.). Read these docs directly rather than relying on summaries — they are kept current and authoritative.
 
-Keywords: docs, architecture, IR schemas, WIT, scheduler, coordinate system, glossary, deviations, debugging
+Keywords: docs, architecture, IR schemas, WIT, scheduler, coordinate system, glossary, deviations, debugging, test quality
 
 ---
 
@@ -26,4 +26,5 @@ Keywords: docs, architecture, IR schemas, WIT, scheduler, coordinate system, glo
 - `docs/17_agent_debugging.md` — agent-facing guide for `pnp_cli slice --instrument-stderr`, `pnp_cli dag <subcommand>`, and `pnp_cli module diagnose`. Paired skill: `.agents/skills/debug-pipeline/SKILL.md`; subagent: `.agents/agents/debug-pipeline.md`.
 - `docs/19_visual_debug.md` — agent-facing visual-debug bundle guide for stage/layer PNG evidence. Pairs independently with `debug-pipeline`; design: `docs/specs/_OLD/visual-pipeline-debug.md`.
 - `docs/21_data_defaults_and_fixtures.md` — test-code conventions for struct literals: the `check-literals` rule, watchlist derivation, waiver format, fixture policy, `needless_update` guidance.
+- `docs/22_test_quality.md` — test authoring standard: false-green taxonomy, oracle independence, compile witnesses, the `check-test-quality` gate (R1–R8), the earn-their-keep retirement standard (ADR-0064), and the LLM test pre-flight checklist. Program plan: `docs/specs/test-quality-remediation-plan.md`.
 | `docs/20_support_preview.md` | Fork-facing JSON contract for the `support-preview` prepass verb. |

@@ -1530,6 +1530,9 @@ mod tests {
         }
     }
 
+    // test-quality: compile witness for the protected third-party build surface
+    // boostvoronoi::builder::Builder::with_segments; a value assertion here would
+    // only restate the dependency's own tests (ADR-0064, earn-their-keep).
     #[test]
     fn boostvoronoi_supports_line_segment_sites() {
         use boostvoronoi::builder::Builder;
@@ -1646,21 +1649,52 @@ mod tests {
         );
     }
 
-    /// Verify that `twin()` calls in `from_colored_lines` use `?` for error propagation.
-    /// This is a static/structural check — confirmed by reading the implementation.
-    /// We verify it holds at runtime by constructing a valid graph (if `?` were replaced
-    /// by `.unwrap()`, a bad diagram would panic rather than return Err; the existence
-    /// of the Ok result is sufficient evidence).
+    /// Covers the valid-input `Ok` arm of the constructor with a nonempty-diagram
+    /// witness. The companion test below covers the error arm for an out-of-range
+    /// input coordinate, pinning the exact `CoordinateOverflow` payload. Together,
+    /// the pair demonstrates typed-error return rather than panics; the twin-call
+    /// sites are not exercised by either test and are covered by the constructor's
+    /// own error mapping.
     #[test]
     fn from_colored_lines_twin_propagation_is_question_mark() {
         let input = synthetic_square_input();
         let result = MMU_Graph::from_colored_lines(&input);
-        // If twin() were not propagated via `?`, panics would surface here.
+        // This valid-input witness covers the constructor's `Ok` arm; the twin-call
+        // sites are not exercised by this test.
         assert!(
             result.is_ok(),
-            "from_colored_lines must succeed (twin errors propagated via ?): {:?}",
+            "valid square input must build: {:?}",
             result.err()
         );
+        let graph = result.expect("valid square input must build");
+        assert!(
+            !graph.diagram.vertices().is_empty(),
+            "valid square input must produce a nonempty diagram"
+        );
+    }
+
+    #[test]
+    fn from_colored_lines_invalid_input_returns_err_without_panic() {
+        let input = vec![ColoredLine {
+            line: Line {
+                start: Point2 {
+                    x: 2_147_483_648,
+                    y: 0,
+                },
+                end: Point2 { x: 0, y: 0 },
+            },
+            value: None,
+            poly_idx: 0,
+            local_line_idx: 0,
+        }];
+
+        // The `i32::MAX + 1` start coordinate trips the `to_i32` range guard before
+        // any geometry is built; an `unwrap` there would panic instead of returning
+        // the typed error.
+        match MMU_Graph::from_colored_lines(&input) {
+            Err(MmuGraphError::CoordinateOverflow(v)) => assert_eq!(v, 2_147_483_648),
+            other => panic!("expected CoordinateOverflow(2147483648), got {other:?}"),
+        }
     }
 
     // ---- B-4 cell-decomposition regression tests ----

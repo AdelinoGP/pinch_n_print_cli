@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use slicer_ir::{ConfigValue, ConfigView, SemVer};
+use slicer_ir::{ConfigValue, ConfigView, ResolvedConfig, SemVer};
 use slicer_runtime::{
     bind_module_config_view, ConfigFieldEntry, ConfigSchema, LoadedModule, LoadedModuleBuilder,
 };
@@ -107,6 +107,30 @@ fn source() -> HashMap<String, ConfigValue> {
     m
 }
 
+/// Reify a raw source map into the `ResolvedConfig` a production run hands
+/// to binding: `apply_cli_key` takes typed fields, and undeclared keys route
+/// to `extensions` exactly as the host resolver routes the `Ok(false)`
+/// fall-through (crates/slicer-config/src/resolution.rs).
+fn resolved_from(source: HashMap<String, ConfigValue>) -> ResolvedConfig {
+    let mut resolved = ResolvedConfig::default();
+    for (key, value) in source {
+        if !resolved
+            .apply_cli_key(&key, &value)
+            .expect("test config key must type-check against ResolvedConfig")
+        {
+            resolved.extensions.insert(key, value);
+        }
+    }
+    resolved
+}
+
+/// The [`source`] map after resolution: typed fields receive their declared
+/// values, and the undeclared test keys (`density`, `pattern`, `fuzzy`,
+/// `secret`) surface through `extensions` (seeded defaults supply the rest).
+fn resolved_source() -> ResolvedConfig {
+    resolved_from(source())
+}
+
 #[test]
 fn undeclared_independent_support_layer_height_fails_plan_build() {
     // Packet 239c AC-N3: a module binding whose ConfigView carries
@@ -144,7 +168,7 @@ fn undeclared_independent_support_layer_height_fails_plan_build() {
 #[test]
 fn bind_module_config_view_exposes_only_declared_keys() {
     let module = module_with_config_keys("com.example.infill", &["density", "pattern"]);
-    let view = bind_module_config_view(&module, &source());
+    let view = bind_module_config_view(&module, &resolved_source());
 
     let mut keys = view.keys();
     keys.sort();
@@ -156,7 +180,7 @@ fn bind_module_config_view_exposes_only_declared_keys() {
 #[test]
 fn bind_module_config_view_hides_undeclared_keys_entirely() {
     let module = module_with_config_keys("com.example.infill", &["density"]);
-    let view = bind_module_config_view(&module, &source());
+    let view = bind_module_config_view(&module, &resolved_source());
 
     assert!(!view.contains_key("fuzzy"));
     assert!(!view.contains_key("secret"));
@@ -169,7 +193,7 @@ fn bind_module_config_view_hides_undeclared_keys_entirely() {
 #[test]
 fn bind_module_config_view_declared_but_missing_key_returns_none() {
     let module = module_with_config_keys("com.example.infill", &["density", "nonesuch"]);
-    let view = bind_module_config_view(&module, &source());
+    let view = bind_module_config_view(&module, &resolved_source());
 
     assert_eq!(view.get_float("density"), Some(0.25));
     assert!(view.get("nonesuch").is_none());
@@ -216,7 +240,7 @@ fn invalid_numeric_values_do_not_panic_and_remain_stable() {
 #[test]
 fn arc_wrapped_view_cannot_be_mutated_by_consumers() {
     let module = module_with_config_keys("com.example.infill", &["density"]);
-    let view: Arc<ConfigView> = bind_module_config_view(&module, &source());
+    let view: Arc<ConfigView> = bind_module_config_view(&module, &resolved_source());
 
     // A consumer holding an `Arc<ConfigView>` cannot obtain a &mut to the
     // inner view â€” this is the documented read-only guarantee on the live
@@ -238,7 +262,7 @@ fn arc_wrapped_view_cannot_be_mutated_by_consumers() {
 #[test]
 fn repeated_binding_with_identical_inputs_produces_identical_views() {
     let module = module_with_config_keys("com.example.infill", &["density", "pattern"]);
-    let src = source();
+    let src = resolved_source();
     let a = bind_module_config_view(&module, &src);
     let b = bind_module_config_view(&module, &src);
     let c = bind_module_config_view(&module, &src);
@@ -251,7 +275,7 @@ fn repeated_binding_with_identical_inputs_produces_identical_views() {
 #[test]
 fn module_with_empty_config_schema_sees_empty_view() {
     let module = module_with_config_keys("com.example.bare", &[]);
-    let view = bind_module_config_view(&module, &source());
+    let view = bind_module_config_view(&module, &resolved_source());
     assert!(view.is_empty());
     assert_eq!(view.keys(), Vec::<String>::new());
 }
@@ -302,7 +326,7 @@ fn plan_request_for(module: &LoadedModule, config_view: Arc<ConfigView>) -> Exec
 #[test]
 fn build_execution_plan_accepts_bound_configview_from_bind_module_config_view() {
     let module = module_with_config_keys("com.example.infill", &["density", "pattern"]);
-    let view = bind_module_config_view(&module, &source());
+    let view = bind_module_config_view(&module, &resolved_source());
     let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
     let plan = build_execution_plan(
         &plan_request_for(&module, Arc::clone(&view)),
@@ -366,7 +390,7 @@ fn bind_module_config_view_output_passes_plan_build_guardrail() {
     // Property test: any ConfigView produced by `bind_module_config_view`
     // must always satisfy the plan-build guardrail, for any raw source.
     let module = module_with_config_keys("com.example.infill", &["density", "pattern"]);
-    for src in [HashMap::new(), source()] {
+    for src in [ResolvedConfig::default(), resolved_source()] {
         let view = bind_module_config_view(&module, &src);
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
         let plan = build_execution_plan(&plan_request_for(&module, view), &mut diagnostics)
@@ -435,7 +459,7 @@ fn build_live_execution_plan_filters_every_module_config_view_through_bind_helpe
             module_ids: vec![m.id().to_string()],
         }],
         vec![live_binding(&m)],
-        &source(),
+        &resolved_source(),
         Arc::new(Vec::new()),
         Arc::new(std::collections::HashMap::<RegionKey, RegionPlan>::new()),
         &mut diagnostics,
@@ -473,7 +497,7 @@ fn build_live_execution_plan_never_exposes_undeclared_keys_to_compiled_modules()
             },
         ],
         vec![live_binding(&m1), live_binding(&m2)],
-        &source(),
+        &resolved_source(),
         Arc::new(Vec::new()),
         Arc::new(std::collections::HashMap::<RegionKey, RegionPlan>::new()),
         &mut diagnostics,
@@ -551,7 +575,7 @@ fn parse_cli_config_source_output_feeds_bind_module_config_view_cleanly() {
     let json = r#"{"density": 0.42, "undeclared": "leak"}"#;
     let src = parse_cli_config_source(json).unwrap();
     let m = module_with_config_keys("com.example.infill", &["density"]);
-    let view = bind_module_config_view(&m, &src);
+    let view = bind_module_config_view(&m, &resolved_from(src));
     assert_eq!(view.keys(), vec!["density".to_string()]);
     assert_eq!(view.get_float("density"), Some(0.42));
     assert!(view.get("undeclared").is_none());

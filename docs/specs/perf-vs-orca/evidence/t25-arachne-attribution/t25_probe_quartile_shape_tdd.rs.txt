@@ -1,0 +1,73 @@
+//! [T25-PROBE] Temporary probe test (wayfinder ticket 25).
+//!
+//! Question: the `overhang_quartile` per-vertex query is 38% of the Arachne
+//! module's fuel, ~1.64 ms/call ordinary. Is that cost proportional to the
+//! band-polygon vertex count (i.e. plain O(N) winding scans over big polygons),
+//! or is something else going on?
+//!
+//! Method: build the same `PerimeterSpatialContext` shapes the producer emits
+//! on a burst layer and time/measure the query against polygon sizes. This
+//! isolates the shape-to-cost relationship without a full slice.
+//!
+//! Probe-only: delete before any commit.
+//!
+//! Run: cargo test -p slicer-core --features host-algos --test t25_probe_quartile_shape_tdd
+
+#![cfg(feature = "host-algos")]
+
+use slicer_core::perimeter_spatial::PerimeterSpatialContext;
+use slicer_ir::{ExPolygon, Point2, Polygon, QuartileBand};
+
+fn ring(cx: i64, cy: i64, r: i64, n: usize) -> Polygon {
+    let points = (0..n)
+        .map(|i| {
+            let theta = (i as f64) * std::f64::consts::TAU / (n as f64);
+            Point2 {
+                x: cx + (r as f64 * theta.cos()) as i64,
+                y: cy + (r as f64 * theta.sin()) as i64,
+            }
+        })
+        .collect();
+    Polygon { points }
+}
+
+fn expoly(contour: Polygon) -> ExPolygon {
+    ExPolygon {
+        contour,
+        holes: Vec::new(),
+    }
+}
+
+/// Same point, band polygon with increasing vertex counts: the query must be
+/// O(N) in the band polygons' total points if it is a plain winding scan.
+#[test]
+fn quartile_query_scales_with_band_polygon_size() {
+    let mut results = Vec::new();
+    for n in [16usize, 64, 256, 1024, 4096] {
+        let bands = vec![QuartileBand {
+            quartile: 3,
+            polygons: vec![expoly(ring(0, 0, 1_000_000, n))],
+        }];
+        let ctx = PerimeterSpatialContext::new(&[], &bands, &[]);
+        let start = std::time::Instant::now();
+        let reps = 200;
+        let mut inside = 0usize;
+        for _ in 0..reps {
+            if ctx.overhang_quartile(0.0, 0.0).is_some() {
+                inside += 1;
+            }
+        }
+        let per_call_ns = start.elapsed().as_nanos() / reps;
+        results.push((n, per_call_ns, inside));
+    }
+    for (n, ns, inside) in &results {
+        println!("PROBE n={n} per_call_ns={ns} inside_hits={inside}");
+    }
+    // Cost must grow with N (a bigger polygon cannot be cheaper to scan).
+    let first = results.first().expect("non-empty").1 as f64;
+    let last = results.last().expect("non-empty").1 as f64;
+    assert!(
+        last > first,
+        "query cost must grow with band polygon size: first={first} last={last}"
+    );
+}

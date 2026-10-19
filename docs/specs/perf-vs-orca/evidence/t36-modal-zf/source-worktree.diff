@@ -1,0 +1,512 @@
+diff --git a/crates/slicer-gcode/src/serialize.rs b/crates/slicer-gcode/src/serialize.rs
+index ce35d1d2..c7ecb788 100644
+--- a/crates/slicer-gcode/src/serialize.rs
++++ b/crates/slicer-gcode/src/serialize.rs
+@@ -141,6 +141,56 @@ impl Default for DefaultGCodeSerializer {
+     }
+ }
+ 
++/// Modal Z/F emission state for [`DefaultGCodeSerializer::serialize_gcode`].
++///
++/// The printer already holds the last-emitted feedrate and Z position in its
++/// modal state, so a repeated `Z`/`F` word carries no information. This cache
++/// tracks the last *emitted formatted* token per axis; a token is written only
++/// when its formatted value differs from the cached one. Comparing formatted
++/// strings (not raw floats) matches what the printer actually receives.
++///
++/// Both caches are invalidated by any non-comment `Raw` command and by
++/// `ToolChange`: those can change coordinate mode, offsets, or machine state
++/// (firmware macros) in ways this serializer cannot see. Comment-only `Raw`
++/// lines (`;TYPE:` / `;LAYER_CHANGE` / `;Z:` etc.) do not touch machine state
++/// and never invalidate the cache. A move whose operands all match the cached
++/// state still occupies its output line, rendered as a bare `G0`/`G1` no-op.
++#[derive(Default)]
++struct ModalZfState {
++    last_z_token: Option<String>,
++    last_f_token: Option<String>,
++}
++
++impl ModalZfState {
++    /// Forget both caches; the next move re-states Z and F.
++    fn invalidate(&mut self) {
++        self.last_z_token = None;
++        self.last_f_token = None;
++    }
++
++    /// Returns `true` when `formatted` differs from the last emitted Z token,
++    /// updating the cache in that case.
++    fn z_changed(&mut self, formatted: &str) -> bool {
++        if self.last_z_token.as_deref() == Some(formatted) {
++            false
++        } else {
++            self.last_z_token = Some(formatted.to_string());
++            true
++        }
++    }
++
++    /// Returns `true` when `formatted` differs from the last emitted F token,
++    /// updating the cache in that case.
++    fn f_changed(&mut self, formatted: &str) -> bool {
++        if self.last_f_token.as_deref() == Some(formatted) {
++            false
++        } else {
++            self.last_f_token = Some(formatted.to_string());
++            true
++        }
++    }
++}
++
+ /// Produce the HEADER_BLOCK text (OrcaSlicer wire format, packet 55 Step 3).
+ ///
+ /// Format (FACT from OrcaSlicerDocumented/src/libslic3r/GCode.cpp:2644-2704):
+@@ -847,6 +897,9 @@ impl GCodeSerializer for DefaultGCodeSerializer {
+         // compute per-move deltas.
+         let mut e_accumulator: f64 = 0.0;
+ 
++        // Modal Z/F emission cache. See `ModalZfState` for the invalidation rules.
++        let mut modal = ModalZfState::default();
++
+         // ExtrusionMode is now at index 0 of gcode_ir.commands (pushed by the emitter).
+         // The per-command renderer handles it — no special-case prepend needed here.
+         for command in gcode_ir.commands.iter() {
+@@ -863,6 +916,8 @@ impl GCodeSerializer for DefaultGCodeSerializer {
+                     // Emit G0 for travel moves (Custom("Travel") role), G1 for extrusion moves.
+                     let is_travel = matches!(role, ExtrusionRole::Custom(s) if s == "Travel");
+                     let cmd = if is_travel { "G0" } else { "G1" };
++                    // Every IR move keeps its line; a move whose operands all match
++                    // current modal state renders as a bare `G0`/`G1` no-op.
+                     write!(output, "{cmd}").unwrap();
+                     if let Some(x_val) = x {
+                         write!(output, " X{}", format_xyz(*x_val, self.gcode_xy_decimals)).unwrap();
+@@ -871,7 +926,10 @@ impl GCodeSerializer for DefaultGCodeSerializer {
+                         write!(output, " Y{}", format_xyz(*y_val, self.gcode_xy_decimals)).unwrap();
+                     }
+                     if let Some(z_val) = z {
+-                        write!(output, " Z{}", format_xyz(*z_val, self.gcode_xy_decimals)).unwrap();
++                        let formatted = format_xyz(*z_val, self.gcode_xy_decimals);
++                        if modal.z_changed(&formatted) {
++                            write!(output, " Z{formatted}").unwrap();
++                        }
+                     }
+                     if let Some(e_val) = e {
+                         if self.relative {
+@@ -884,7 +942,10 @@ impl GCodeSerializer for DefaultGCodeSerializer {
+                         }
+                     }
+                     if let Some(f_val) = f {
+-                        write!(output, " F{}", format_coord(*f_val)).unwrap();
++                        let formatted = format_coord(*f_val);
++                        if modal.f_changed(&formatted) {
++                            write!(output, " F{formatted}").unwrap();
++                        }
+                     }
+                     writeln!(output).unwrap();
+                 }
+@@ -898,18 +959,17 @@ impl GCodeSerializer for DefaultGCodeSerializer {
+                         // because it represents a physical retraction amount.  In relative mode
+                         // the retract length IS the delta.  In absolute mode we subtract from
+                         // the accumulator and emit the new absolute position.
++                        let formatted_speed = format_coord(*speed);
++                        let f_token = if modal.f_changed(&formatted_speed) {
++                            format!(" F{formatted_speed}")
++                        } else {
++                            String::new()
++                        };
+                         if self.relative {
+-                            writeln!(output, "G1 E-{:.5} F{}", length, format_coord(*speed))
+-                                .unwrap();
++                            writeln!(output, "G1 E-{:.5}{f_token}", length).unwrap();
+                             e_accumulator -= *length as f64;
+                         } else {
+-                            writeln!(
+-                                output,
+-                                "G1 E-{} F{}",
+-                                format_coord(*length),
+-                                format_coord(*speed)
+-                            )
+-                            .unwrap();
++                            writeln!(output, "G1 E-{}{f_token}", format_coord(*length)).unwrap();
+                         }
+                     }
+                     slicer_ir::RetractMode::Firmware => {
+@@ -922,18 +982,17 @@ impl GCodeSerializer for DefaultGCodeSerializer {
+                     mode,
+                 } => match mode {
+                     slicer_ir::RetractMode::Gcode => {
++                        let formatted_speed = format_coord(*speed);
++                        let f_token = if modal.f_changed(&formatted_speed) {
++                            format!(" F{formatted_speed}")
++                        } else {
++                            String::new()
++                        };
+                         if self.relative {
+-                            writeln!(output, "G1 E{:.5} F{}", length, format_coord(*speed))
+-                                .unwrap();
++                            writeln!(output, "G1 E{:.5}{f_token}", length).unwrap();
+                             e_accumulator += *length as f64;
+                         } else {
+-                            writeln!(
+-                                output,
+-                                "G1 E{} F{}",
+-                                format_coord(*length),
+-                                format_coord(*speed)
+-                            )
+-                            .unwrap();
++                            writeln!(output, "G1 E{}{f_token}", format_coord(*length)).unwrap();
+                         }
+                     }
+                     slicer_ir::RetractMode::Firmware => {
+@@ -955,6 +1014,14 @@ impl GCodeSerializer for DefaultGCodeSerializer {
+                             }
+                         }
+                     }
++                    // Any non-comment raw command can change coordinate mode,
++                    // offsets, feedrate, or position (including firmware macros),
++                    // so the modal Z/F guesses are no longer trustworthy.
++                    // Comment-only raws (`;TYPE:` / `;LAYER_CHANGE` / `;Z:` …)
++                    // cannot touch machine state and keep the cache.
++                    if !trimmed.is_empty() && !trimmed.starts_with(';') {
++                        modal.invalidate();
++                    }
+                     writeln!(output, "{}", text).unwrap();
+                 }
+                 GCodeCommand::FanSpeed { value } => {
+@@ -969,6 +1036,8 @@ impl GCodeSerializer for DefaultGCodeSerializer {
+                 }
+                 GCodeCommand::ToolChange { to, .. } => {
+                     writeln!(output, "T{}", to).unwrap();
++                    // A firmware toolchange macro may move axes and set feeds.
++                    modal.invalidate();
+                 }
+                 GCodeCommand::Comment { text } => {
+                     writeln!(output, "; {}", text).unwrap();
+diff --git a/crates/slicer-gcode/tests/gcode_emit_tdd.rs b/crates/slicer-gcode/tests/gcode_emit_tdd.rs
+index 600bec8c..19d4807b 100644
+--- a/crates/slicer-gcode/tests/gcode_emit_tdd.rs
++++ b/crates/slicer-gcode/tests/gcode_emit_tdd.rs
+@@ -1472,8 +1472,10 @@ fn serializes_retract_travel_and_z_hop_in_canonical_order() {
+     // Given a postpass command sequence containing Retract {length: 0.8, speed: 1800.0},
+     // one travel move with no E, one Z-hop up to 0.6, one Z-hop return to 0.4, and
+     // Unretract {length: 0.8, speed: 1800.0}, when the final text is serialized, then
+-    // it contains G1 E-0.8 F1800, hop-up G1 Z0.6, XY travel without E, hop-down G1 Z0.4,
+-    // and G1 E0.8 F1800 in that exact order.
++    // it contains G1 E-0.8 F1800, hop-up G1 Z0.6, XY travel without E, hop-down
++    // G0 Z0.4, and G1 E0.8 in that exact order. Z/F are modal: the travel states no
++    // Z (matching the production emitter, which emits travel moves with `z: None`),
++    // the hop-down re-states the changed Z, and the unretract omits the unchanged F.
+ 
+     let serializer = DefaultGCodeSerializer::new();
+ 
+@@ -1496,7 +1498,7 @@ fn serializes_retract_travel_and_z_hop_in_canonical_order() {
+         GCodeCommand::Move {
+             x: Some(50.0),
+             y: Some(50.0),
+-            z: Some(0.4),
++            z: None,
+             e: None,
+             f: None,
+             role: ExtrusionRole::Custom("Travel".to_string()),
+@@ -1554,6 +1556,31 @@ fn serializes_retract_travel_and_z_hop_in_canonical_order() {
+         hop_down_idx < unretract_idx,
+         "hop-down must come before unretract"
+     );
++
++    // Modal tokens: the travel carries no Z (nothing changed), the hop-down
++    // re-states the changed Z exactly once, and the unretract omits the F it
++    // would merely repeat from the retract.
++    let travel_line = lines[travel_idx];
++    assert!(
++        !travel_line.contains('Z'),
++        "travel after the hop must not restate the unchanged Z: {travel_line:?}"
++    );
++    assert_eq!(
++        lines
++            .iter()
++            .filter(|l| (l.starts_with("G0") || l.starts_with("G1")) && l.contains("Z0.4"))
++            .count(),
++        1,
++        "Z0.4 must be stated exactly once (on the hop-down), got:\n{text}"
++    );
++    assert_eq!(
++        lines
++            .iter()
++            .filter(|l| (l.starts_with("G0") || l.starts_with("G1")) && l.contains("F1800"))
++            .count(),
++        1,
++        "F1800 must be stated exactly once (on the retract; the unretract repeats it), got:\n{text}"
++    );
+ }
+ 
+ #[test]
+diff --git a/crates/slicer-gcode/tests/gcode_modal_zf_tdd.rs b/crates/slicer-gcode/tests/gcode_modal_zf_tdd.rs
+new file mode 100644
+index 00000000..9ed623f5
+--- /dev/null
++++ b/crates/slicer-gcode/tests/gcode_modal_zf_tdd.rs
+@@ -0,0 +1,216 @@
++//! Modal Z/F token emission tests (wayfinder ticket 36).
++//!
++//! The serializer is expected to state a `Z`/`F` word on a move line only when
++//! its formatted value changes. The printer's modal state carries the previous
++//! value otherwise, so omission is physically equivalent to repetition. These
++//! tests pin the exact emission rules, including the safe-invalidation cases:
++//! opaque (non-comment) `Raw` commands and `ToolChange` can change machine state
++//! the serializer cannot see, so they must force the next move to re-state Z/F;
++//! comment-only raws (`;TYPE:` / `;LAYER_CHANGE` / `;Z:` …) must not.
++
++use slicer_gcode::{DefaultGCodeSerializer, GCodeSerializer};
++use slicer_ir::{ExtrusionRole, GCodeCommand, GCodeIR, RetractMode};
++
++fn serialize(commands: Vec<GCodeCommand>) -> String {
++    let ir = GCodeIR {
++        commands,
++        ..GCodeIR::default()
++    };
++    DefaultGCodeSerializer::new()
++        .serialize_gcode(&ir)
++        .expect("modal serialization must succeed")
++}
++
++fn extrusion(x: f32, z: f32, e: f32, f: f32) -> GCodeCommand {
++    GCodeCommand::Move {
++        x: Some(x),
++        y: Some(1.0),
++        z: Some(z),
++        e: Some(e),
++        f: Some(f),
++        role: ExtrusionRole::OuterWall,
++    }
++}
++
++fn travel(x: f32) -> GCodeCommand {
++    GCodeCommand::Move {
++        x: Some(x),
++        y: Some(1.0),
++        z: None,
++        e: None,
++        f: None,
++        role: ExtrusionRole::Custom("Travel".to_string()),
++    }
++}
++
++fn move_lines(text: &str) -> Vec<&str> {
++    text.lines()
++        .filter(|l| l.starts_with("G0") || l.starts_with("G1"))
++        .collect()
++}
++
++#[test]
++fn repeated_z_and_f_are_stated_only_on_change() {
++    // Same Z and F across the first two moves; the third changes F only; the
++    // fourth changes Z only. Absolute E (0.1, 0.2, 0.3, 0.4) is emitted as
++    // relative deltas (0.10000 each after the first).
++    let text = serialize(vec![
++        extrusion(1.0, 0.2, 0.1, 1800.0),
++        extrusion(2.0, 0.2, 0.2, 1800.0),
++        extrusion(3.0, 0.2, 0.3, 3600.0),
++        extrusion(4.0, 0.4, 0.4, 3600.0),
++    ]);
++    let lines = move_lines(&text);
++
++    assert_eq!(
++        lines,
++        vec![
++            "G1 X1 Y1 Z0.2 E0.10000 F1800",
++            "G1 X2 Y1 E0.10000",
++            "G1 X3 Y1 E0.10000 F3600",
++            "G1 X4 Y1 Z0.4 E0.10000",
++        ],
++        "expected modal Z/F emission, got:\n{text}"
++    );
++}
++
++#[test]
++fn comment_only_raw_commands_do_not_reset_modal_state() {
++    // The layer-marker triple is Raw but comment-only; it cannot move the
++    // machine, so the next move must still omit unchanged Z/F.
++    let text = serialize(vec![
++        extrusion(1.0, 0.2, 0.1, 1800.0),
++        GCodeCommand::Raw {
++            text: ";LAYER_CHANGE".to_string(),
++        },
++        GCodeCommand::Raw {
++            text: ";Z:0.200".to_string(),
++        },
++        extrusion(2.0, 0.2, 0.2, 1800.0),
++    ]);
++    let lines = move_lines(&text);
++
++    assert_eq!(lines.len(), 2, "expected two move lines, got:\n{text}");
++    assert!(
++        !lines[1].contains('Z') && !lines[1].contains('F'),
++        "comment-only raws must not reset the modal cache: {lines:?}"
++    );
++}
++
++#[test]
++fn opaque_raw_command_forces_restatement() {
++    // A non-comment Raw command is opaque: it may set feeds or move axes, so
++    // the next move must re-state the values even though they look unchanged.
++    let text = serialize(vec![
++        extrusion(1.0, 0.2, 0.1, 1800.0),
++        GCodeCommand::Raw {
++            text: "M73 P1 R1".to_string(),
++        },
++        extrusion(2.0, 0.2, 0.2, 1800.0),
++    ]);
++    let lines = move_lines(&text);
++
++    assert_eq!(lines.len(), 2, "expected two move lines, got:\n{text}");
++    assert!(
++        lines[1].contains("Z0.2") && lines[1].contains("F1800"),
++        "opaque raw commands must force Z/F restatement: {lines:?}"
++    );
++}
++
++#[test]
++fn tool_change_forces_restatement() {
++    // A firmware toolchange macro may move axes and set feeds.
++    let text = serialize(vec![
++        extrusion(1.0, 0.2, 0.1, 1800.0),
++        GCodeCommand::ToolChange {
++            to: 1,
++            from: 0,
++            after_entity_index: 0,
++        },
++        extrusion(2.0, 0.2, 0.2, 1800.0),
++    ]);
++    let lines = move_lines(&text);
++
++    assert_eq!(lines.len(), 2, "expected two move lines, got:\n{text}");
++    assert!(
++        lines[1].contains("Z0.2") && lines[1].contains("F1800"),
++        "tool changes must force Z/F restatement: {lines:?}"
++    );
++}
++
++#[test]
++fn extrusion_mode_command_alone_does_not_reset_modal_state() {
++    // M82/M83 changes E interpretation only; Z/F modal state is unaffected.
++    let text = serialize(vec![
++        extrusion(1.0, 0.2, 0.1, 1800.0),
++        GCodeCommand::ExtrusionMode { absolute: false },
++        extrusion(2.0, 0.2, 0.2, 1800.0),
++    ]);
++    let lines = move_lines(&text);
++
++    assert_eq!(lines.len(), 2, "expected two move lines, got:\n{text}");
++    assert!(
++        !lines[1].contains('Z') && !lines[1].contains('F'),
++        "extrusion-mode commands must not reset the modal cache: {lines:?}"
++    );
++}
++
++#[test]
++fn retract_and_unretract_state_feed_once_per_change() {
++    // The move establishes F1800. The retract changes feed to 2400 (stated);
++    // the unretract repeats 2400 (omitted).
++    let text = serialize(vec![
++        extrusion(1.0, 0.2, 0.1, 1800.0),
++        GCodeCommand::Retract {
++            length: 0.8,
++            speed: 2400.0,
++            mode: RetractMode::Gcode,
++        },
++        GCodeCommand::Unretract {
++            length: 0.8,
++            speed: 2400.0,
++            mode: RetractMode::Gcode,
++        },
++    ]);
++    let lines = move_lines(&text);
++
++    assert_eq!(
++        lines.iter().filter(|l| l.contains("F2400")).count(),
++        1,
++        "F2400 must be stated exactly once (retract), got:\n{text}"
++    );
++    assert!(
++        lines.iter().any(|l| l.starts_with("G1 E-0.80000 F2400")),
++        "retract must state the changed feed, got:\n{text}"
++    );
++    assert!(
++        lines.iter().any(|l| l.trim_end() == "G1 E0.80000"),
++        "unretract must omit the unchanged feed, got:\n{text}"
++    );
++}
++
++#[test]
++fn neutral_move_renders_as_bare_no_op_line() {
++    // A move with no operands at all changes nothing. It keeps its line
++    // slot as a bare `G0` no-op so one IR move stays one output line, and the
++    // following real move is unaffected.
++    let text = serialize(vec![
++        extrusion(1.0, 0.2, 0.1, 1800.0),
++        GCodeCommand::Move {
++            x: None,
++            y: None,
++            z: Some(0.2),
++            e: None,
++            f: None,
++            role: ExtrusionRole::Custom("Travel".to_string()),
++        },
++        travel(2.0),
++    ]);
++    let lines = move_lines(&text);
++
++    assert_eq!(
++        lines,
++        vec!["G1 X1 Y1 Z0.2 E0.10000 F1800", "G0", "G0 X2 Y1"],
++        "the neutral Z-only move must render as a bare no-op line, got:\n{text}"
++    );
++}
+diff --git a/crates/slicer-gcode/tests/golden_emit_tdd.rs b/crates/slicer-gcode/tests/golden_emit_tdd.rs
+index 515907f1..4a0beca0 100644
+--- a/crates/slicer-gcode/tests/golden_emit_tdd.rs
++++ b/crates/slicer-gcode/tests/golden_emit_tdd.rs
+@@ -131,13 +131,30 @@ fn serialize_gcode_emits_documented_sentinels() {
+ 
+     // --- Move-line emission (G1 for extrusion, G0 for travel) ---
+     // `format_xyz` strips trailing zeros, so 10.0 → "10", 0.2 → "0.2".
++    // Z/F are modal: the first move states them, later moves repeat a token
++    // only when its value changes (the sparse move changes F, not Z; the
++    // travel changes F, not Z).
+     assert!(
+         output.contains("G1 X10 Y10 Z0.2 E0.50000 F1800"),
+         "expected `G1` outer-wall move with stripped-zero XYZ + E + F, got:\n{output}"
+     );
+     assert!(
+-        output.contains("G0 X30 Y30 Z0.2 F9000"),
+-        "expected `G0` travel move (role=Custom(\"Travel\"), no E), got:\n{output}"
++        output.contains("G1 X20 Y20 E1.00000 F3600"),
++        "expected sparse-infill move to omit the unchanged Z token, got:\n{output}"
++    );
++    assert!(
++        output.contains("G0 X30 Y30 F9000"),
++        "expected `G0` travel move (role=Custom(\"Travel\"), no E) with the unchanged Z omitted, got:\n{output}"
++    );
++    assert_eq!(
++        output
++            .lines()
++            .filter(|line| {
++                (line.starts_with("G0") || line.starts_with("G1")) && line.contains("Z0.2")
++            })
++            .count(),
++        1,
++        "Z0.2 must be stated exactly once across move lines (modal Z emission), got:\n{output}"
+     );
+ 
+     // --- Retract serialization (relative-E default → "G1 E-...") ---
+diff --git a/docs/03_wit_and_manifest.md b/docs/03_wit_and_manifest.md
+index 6807a9fb..0306ad81 100644
+--- a/docs/03_wit_and_manifest.md
++++ b/docs/03_wit_and_manifest.md
+@@ -1087,7 +1087,7 @@ group   = "Speed"
+ 
+ Complete key list: the `[speeds]` table in `docs/config/host-keys.toml` (26 keys). Top/bottom solid roles reuse `top_surface_speed` / `bottom_surface_speed` at emit (role dispatch in `crates/slicer-gcode/src/emit.rs`); there are no separate `top_solid_infill_speed` / `bottom_solid_infill_speed` keys and no acceleration keys.
+ 
+-After packet 52, every emitted move carries an F-token (`F<feedrate>`); the emitter does not elide F for unchanged feedrates.
++After packet 52, every emitted move carries an F-token (`F<feedrate>`) in the `GCodeIR`. Since wayfinder ticket 36, the serializer elides an `F` (and `Z`) word from serialized move lines when its formatted value equals the printer's current modal value; see `ModalZfState` in `crates/slicer-gcode/src/serialize.rs`.
+ 
+ #### Packet 54 — relative extrusion
+ 

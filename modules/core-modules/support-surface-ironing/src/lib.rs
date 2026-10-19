@@ -170,41 +170,30 @@ impl SupportSurfaceIroning {
     }
 }
 
+/// Required `percent` read: the raw magnitude, not the fraction.
+fn required_percent_magnitude(config: &ConfigView, key: &str) -> Result<f32, ModuleError> {
+    match config.get(key) {
+        Some(ConfigValue::Percent(magnitude)) => Ok(*magnitude as f32),
+        _ => Err(slicer_ir::slice_ir::ConfigReadError::new(key, "percent").into()),
+    }
+}
+
 #[slicer_module]
 impl LayerModule for SupportSurfaceIroning {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let support_ironing = match config.get("support_ironing") {
-            Some(ConfigValue::Bool(b)) => *b,
-            _ => false,
-        };
-
-        let support_ironing_speed = match config.get("support_ironing_speed") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => 30.0,
-        };
-
-        let support_ironing_flow = match config.get("support_ironing_flow") {
-            Some(ConfigValue::Float(f)) => *f as f32,
-            _ => 0.1,
-        };
-
-        let support_ironing_spacing = match config.get("support_ironing_spacing") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            _ => 0.1,
-        };
-
-        let line_width = match config.get("line_width") {
-            Some(ConfigValue::Float(w)) => *w as f32,
-            _ => 0.4,
-        };
-
+        // Required reads (config-scope-resolution plan): every key below is
+        // declared in `support-surface-ironing.toml`, so the bound view always
+        // holds its registry default. A missing key is a contract violation,
+        // not a fallback — `require_*` failures convert to fatal `ModuleError`s.
         Ok(Self {
-            support_ironing,
-            support_ironing_speed,
-            support_ironing_flow,
-            support_ironing_spacing,
-            line_width,
+            support_ironing: config.require_bool("support_ironing")?,
+            support_ironing_speed: config.require_float("support_ironing_speed")? as f32,
+            // Canonical `coPercent`: the magnitude is divided by 100 at
+            // consumption (`ConfigOptionPercent::get_abs_value`).
+            support_ironing_flow: required_percent_magnitude(config, "support_ironing_flow")?
+                / 100.0,
+            support_ironing_spacing: config.require_float("support_ironing_spacing")? as f32,
+            line_width: config.require_float("line_width")? as f32,
         })
     }
 
@@ -228,14 +217,22 @@ impl LayerModule for SupportSurfaceIroning {
             // (empty object_id / family_id), and the native leg diverges from
             // the wasm leg — which recovers an origin anyway via the host's
             // `touch_slice_region` fallback on the first view accessor call.
-            output.begin_region(region.object_id(), *region.region_id());
+            output.begin_region(
+                region.object_id(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
             let z = region.z();
 
             let polygons = region.polygons();
             if polygons.is_empty() {
                 continue;
             }
-            output.begin_region(region.object_id().as_str(), *region.region_id());
+            output.begin_region(
+                region.object_id().as_str(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
 
             for expoly in polygons {
                 let paths = self.fill_expolygon(expoly, z, speed_factor);
@@ -267,7 +264,29 @@ mod tests {
 
     #[test]
     fn from_config_defaults() {
-        let config = ConfigView::from_map(std::collections::HashMap::new());
+        // Required-read baseline (config-scope-resolution plan): the
+        // classified match-arm fallbacks are now `require_*`, so the view
+        // holds every declared key at its manifest default (a bound view
+        // always does — the registry seeds each declared default).
+        let mut fields = std::collections::HashMap::new();
+        fields.insert(
+            "support_ironing".to_string(),
+            slicer_ir::ConfigValue::Bool(false),
+        );
+        fields.insert(
+            "support_ironing_speed".to_string(),
+            slicer_ir::ConfigValue::Float(30.0),
+        );
+        fields.insert(
+            "support_ironing_flow".to_string(),
+            slicer_ir::ConfigValue::Percent(10.0),
+        );
+        fields.insert(
+            "support_ironing_spacing".to_string(),
+            slicer_ir::ConfigValue::Float(0.1),
+        );
+        fields.insert("line_width".to_string(), slicer_ir::ConfigValue::Float(0.4));
+        let config = ConfigView::from_map(fields);
         let module = SupportSurfaceIroning::from_config(&config).unwrap();
         assert!(!module.support_ironing);
         assert!((module.support_ironing_speed - 30.0).abs() < 0.001);

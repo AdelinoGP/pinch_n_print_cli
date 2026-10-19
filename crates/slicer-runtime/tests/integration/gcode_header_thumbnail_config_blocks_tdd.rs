@@ -16,7 +16,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use slicer_ir::{
-    ConfigKey, ConfigValue, GlobalLayer, LayerCollectionIR, LayerStageCommit, SemVer, StageId,
+    ConfigKey, ConfigValue, GlobalLayer, LayerCollectionIR, LayerStageCommit, ResolvedConfig,
+    SemVer, StageId,
 };
 use slicer_model_io::load_model;
 use slicer_runtime::pipeline::{
@@ -550,6 +551,39 @@ fn config_block_includes_user_passed() {
     );
 }
 
+#[test]
+fn config_block_uses_resolved_wall_loops_and_precision_over_raw_orca_aliases() {
+    let mesh_ir = Arc::new(load_model(&stl_fixture_path()).expect("fixture load"));
+    let config = PipelineConfig {
+        default_resolved_config: Arc::new(ResolvedConfig {
+            wall_loops: 3,
+            gcode_resolution: 0.025,
+            ..ResolvedConfig::default()
+        }),
+        ..common::pipeline_config_base(mesh_ir, empty_plan(), default_runners())
+    };
+    // `resolution` is the appendix's Orca spelling of PnP `gcode_resolution`;
+    // the resolved value must beat the raw alias spelling. `wall_loops` is the
+    // same spelling on both sides after the canonical rename, so it arrives
+    // through the resolved map directly.
+    let raw = HashMap::from([("resolution".into(), ConfigValue::Float(0.5))]);
+
+    let gcode = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)
+        .expect("pipeline should succeed")
+        .gcode_text;
+    let block = region_between(&gcode, "; CONFIG_BLOCK_START", "; CONFIG_BLOCK_END");
+    let wall_lines: Vec<_> = block
+        .lines()
+        .filter(|line| line.starts_with("; wall_loops = "))
+        .collect();
+    let resolution_lines: Vec<_> = block
+        .lines()
+        .filter(|line| line.starts_with("; resolution = "))
+        .collect();
+    assert_eq!(wall_lines, ["; wall_loops = 3"], "{block}");
+    assert_eq!(resolution_lines, ["; resolution = 0.025"], "{block}");
+}
+
 /// AC-9: CONFIG_BLOCK is non-empty and has no duplicate keys.
 #[test]
 fn config_block_covers_effective_config() {
@@ -655,6 +689,59 @@ fn config_block_fork_keys_never_shadowed() {
             .filter(|line| *line == "; printer_model = MyFork Printer")
             .count(),
         1
+    );
+}
+
+/// AC-9: a multi-line `machine_start_gcode` value containing `M190`, a
+/// backslash, and a double quote is emitted on exactly ONE line inside
+/// CONFIG_BLOCK_START..CONFIG_BLOCK_END, escaped per `escape_string_cstyle`
+/// (`\n`, `\\`, `\"`), so no line in the block begins with `M190`.
+#[test]
+fn config_block_escapes_multiline_strings_cstyle() {
+    let mesh_ir = Arc::new(load_model(&stl_fixture_path()).expect("fixture load"));
+    let mut raw: HashMap<ConfigKey, ConfigValue> = HashMap::new();
+    raw.insert(
+        "machine_start_gcode".to_string(),
+        ConfigValue::String("G28 ; home\nM190 S60 ; heat \"bed\"\nG1 Z5 \\ F600".to_string()),
+    );
+    let config = PipelineConfig {
+        ..common::pipeline_config_base(mesh_ir, empty_plan(), default_runners())
+    };
+    let output = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)
+        .expect("pipeline should succeed");
+    let config_region = region_between(
+        &output.gcode_text,
+        "; CONFIG_BLOCK_START",
+        "; CONFIG_BLOCK_END",
+    );
+
+    let value_lines: Vec<&str> = config_region
+        .lines()
+        .filter(|line| line.starts_with("; machine_start_gcode = "))
+        .collect();
+    assert_eq!(
+        value_lines.len(),
+        1,
+        "escaped value must occupy exactly one line: {value_lines:?}"
+    );
+    assert!(
+        value_lines[0].contains("\\nM190 S60"),
+        "newline must be `\\n`-escaped: {:?}",
+        value_lines[0]
+    );
+    assert!(
+        value_lines[0].contains("\\\"bed\\\""),
+        "double quote must be `\\\"`-escaped: {:?}",
+        value_lines[0]
+    );
+    assert!(
+        value_lines[0].contains("\\\\"),
+        "backslash must be `\\\\`-escaped: {:?}",
+        value_lines[0]
+    );
+    assert!(
+        !config_region.lines().any(|line| line.starts_with("M190")),
+        "no line inside CONFIG_BLOCK may begin with M190"
     );
 }
 

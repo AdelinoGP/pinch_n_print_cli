@@ -131,12 +131,23 @@ fn region_with_walls(walls: Vec<WallLoop>) -> PerimeterRegionView {
 
 /// Helper: default config (no overrides).
 fn default_config() -> ConfigView {
-    ConfigViewBuilder::new().build()
+    // Declared keys (fuzzy-skin.toml) seeded at their manifest defaults,
+    // mirroring the production `seed_registry_defaults` step; a bound view
+    // always carries them, so per-test setters remain the only overrides.
+    ConfigViewBuilder::new()
+        .float("fuzzy_skin_thickness", 0.2)
+        .float("fuzzy_skin_point_distance", 0.3)
+        .bool("apply_to_all", false)
+        .build()
 }
 
 /// Helper: config with apply-to-all = true.
 fn apply_to_all_config() -> ConfigView {
-    ConfigViewBuilder::new().bool("apply_to_all", true).build()
+    ConfigViewBuilder::new()
+        .float("fuzzy_skin_thickness", 0.2)
+        .float("fuzzy_skin_point_distance", 0.3)
+        .bool("apply_to_all", true)
+        .build()
 }
 
 // ============================================================================
@@ -309,6 +320,7 @@ fn empty_config_uses_canonical_fuzzy_skin_defaults() {
     let canonical = ConfigViewBuilder::new()
         .float("fuzzy_skin_thickness", 0.2)
         .float("fuzzy_skin_point_distance", 0.3)
+        .bool("apply_to_all", false)
         .build();
 
     let mut default_output = PerimeterOutputBuilder::new();

@@ -323,9 +323,26 @@ fn serialize_width_comments(
 /// Convert a `ResolvedConfig` to a flat `HashMap<String, ConfigValue>`.
 ///
 /// Used to populate the CONFIG_BLOCK with the effective slicer settings.
-/// `Option`-typed fields that are `None` are omitted; all others are included.
+/// `Option`-typed fields that are `None` are omitted. The host's wall-path
+/// precision is added here rather than to `ResolvedConfig::to_config_map`,
+/// which also feeds module ConfigViews and must not change for disclosure alone.
 pub fn resolved_config_to_map(cfg: &ResolvedConfig) -> HashMap<String, ConfigValue> {
-    cfg.to_config_map()
+    let mut map = cfg.to_config_map();
+    // Render from the f32 field so the appendix does not display the expanded
+    // f64 representation of an otherwise short decimal such as 0.025.
+    map.insert(
+        "gcode_resolution".into(),
+        ConfigValue::String(cfg.gcode_resolution.to_string()),
+    );
+    // `sparse_infill_density` is Orca's `coPercent` key. The module-facing
+    // map carries the raw percent magnitude as a float (fail-closed module
+    // reads require a numeric `Float`), but Orca's appendix reader
+    // (`ConfigOptionPercent::deserialize`) expects the `20%` spelling.
+    map.insert(
+        "sparse_infill_density".into(),
+        ConfigValue::Percent(f64::from(cfg.sparse_infill_density)),
+    );
+    map
 }
 
 /// Produce the CONFIG_BLOCK text (packet 55 Step 5 / AC-8, AC-9).
@@ -360,14 +377,45 @@ fn serialize_config_block(
     // count toward OrcaSlicer's minimum-keys gate.
     let mut emitted: BTreeSet<String> = BTreeSet::new();
 
+    // OrcaSlicer's `escape_string_cstyle` (`Config.cpp`, reached via
+    // `ConfigOptionString::serialize`) escapes these four characters so string
+    // values survive the `; key = value` footer round-trip through
+    // `ConfigBase::load_from_gcode_file`.
+    let escape_cstyle = |s: &str| -> String {
+        let mut escaped = String::with_capacity(s.len());
+        for c in s.chars() {
+            match c {
+                '\n' => escaped.push_str("\\n"),
+                '\r' => escaped.push_str("\\r"),
+                '\\' => escaped.push_str("\\\\"),
+                '"' => escaped.push_str("\\\""),
+                other => escaped.push(other),
+            }
+        }
+        escaped
+    };
+
     // OrcaSlicer's viewer (ConfigBase::load_from_gcode_file + GCodeProcessor::
     // apply_config) reads ONLY this block. It infers the filament COUNT from the
     // `filament_diameter` array length (ConfigOptionFloats, comma-separated) and
     // applies per-tool colours from `filament_colour` (ConfigOptionStrings,
-    // semicolon-separated) only when its length matches. Emit all three sized to
-    // the tools in use unless the user already supplied them (dumped below).
-    if !raw_config.contains_key("filament_diameter") {
-        let diam = vec!["1.75"; filament_count].join(",");
+    // semicolon-separated) only when its length matches. `filament_diameter` is
+    // therefore always rendered once per tool in use, from the map's effective
+    // value (the schema default `1.75` only when absent) instead of a
+    // hard-coded constant; a per-filament `List` from the map is already
+    // one-entry-per-tool and reaches the block via the passthrough below
+    // (`emitted` dedups it).
+    if !matches!(
+        raw_config.get("filament_diameter"),
+        Some(ConfigValue::List(_))
+    ) {
+        let effective = match raw_config.get("filament_diameter") {
+            Some(ConfigValue::Float(f)) => format_config_float(*f),
+            Some(ConfigValue::Int(i)) => format!("{i}"),
+            Some(ConfigValue::String(s)) => escape_cstyle(s),
+            _ => "1.75".to_string(),
+        };
+        let diam = vec![effective.as_str(); filament_count].join(",");
         emit_config_kv(&mut out, &mut emitted, "filament_diameter", &diam);
     }
     if !raw_config.contains_key("filament_colour") {
@@ -406,6 +454,21 @@ fn serialize_config_block(
         .unwrap_or_else(|| flavor.config_str());
     emit_config_kv(&mut out, &mut emitted, "gcode_flavor", flavor_value);
 
+    // Derive OrcaSlicer-named appendix keys whose PnP resolved-config name
+    // differs (see ORCA_CONFIG_ALIAS_KEYS). Emitted before the raw passthrough
+    // so a raw key in OrcaSlicer's spelling cannot disclose a value the slice
+    // did not apply — PnP honours none of the alias names as inputs. The
+    // padding loop below supplies the fallback when the source key is absent
+    // (e.g. a serializer constructed without a resolved config).
+    for (appendix_key, pnp_key) in ORCA_CONFIG_ALIAS_KEYS {
+        if let Some(rendered) = raw_config
+            .get(*pnp_key)
+            .and_then(render_appendix_alias_value)
+        {
+            emit_config_kv(&mut out, &mut emitted, appendix_key, &rendered);
+        }
+    }
+
     // Resolved configurations supply these values through raw_config; retain
     // canonical defaults for serializers constructed without resolved config.
     for (key, value) in SUPPORT_CONFIG_DEFAULTS {
@@ -422,17 +485,14 @@ fn serialize_config_block(
             let value_str = match value {
                 ConfigValue::Bool(b) => b.to_string(),
                 ConfigValue::Int(i) => i.to_string(),
-                ConfigValue::Float(f) => {
-                    // Strip trailing zeros like "22.0" → "22" not wanted by test, keep "22.0"
-                    format!("{f}")
-                }
-                ConfigValue::String(s) => s.clone(),
+                ConfigValue::Float(f) => format_config_float(*f),
+                ConfigValue::String(s) => escape_cstyle(s),
                 ConfigValue::Percent(p) => format!("{p}%"),
                 ConfigValue::FloatOrPercent { value, is_percent } => {
                     if *is_percent {
                         format!("{value}%")
                     } else {
-                        format!("{value}")
+                        format_config_float(*value)
                     }
                 }
                 ConfigValue::List(items) => {
@@ -451,8 +511,8 @@ fn serialize_config_block(
                     let parts: Vec<String> = items
                         .iter()
                         .map(|v| match v {
-                            ConfigValue::String(s) => s.clone(),
-                            ConfigValue::Float(f) => format!("{f}"),
+                            ConfigValue::String(s) => escape_cstyle(s),
+                            ConfigValue::Float(f) => format_config_float(*f),
                             ConfigValue::Int(i) => format!("{i}"),
                             ConfigValue::Bool(b) => i64::from(*b).to_string(),
                             other => format!("{other:?}"),
@@ -478,6 +538,21 @@ fn serialize_config_block(
 
     writeln!(out, "; CONFIG_BLOCK_END").unwrap();
     out
+}
+
+/// Render a config float at its own precision. Some typed `ResolvedConfig`
+/// scalars are `f32` and widen to `f64` at `to_config_map`, so printing the
+/// `f64` directly leaks binary noise (`0.44999998807907104` for `0.45`).
+/// Values that round-trip through `f32` print with `f32`'s shortest form —
+/// the `format!("{}", v)` convention the header width block already uses —
+/// and genuine `f64` values keep `f64` shortest form.
+fn format_config_float(value: f64) -> String {
+    let narrow = f64::from(value as f32);
+    if narrow == value {
+        format!("{}", value as f32)
+    } else {
+        format!("{value}")
+    }
 }
 
 /// Emit one `; key = value` config line, skipping keys already written so padding
@@ -510,7 +585,7 @@ const ORCA_CONFIG_PADDING: &[(&str, &str)] = &[
     ("brim_width", "0"),
     ("skirt_loops", "1"),
     ("skirt_distance", "2"),
-    ("sparse_infill_density", "15%"),
+    ("sparse_infill_density", "20%"),
     ("sparse_infill_pattern", "grid"),
     ("top_surface_pattern", "monotonic"),
     ("bottom_surface_pattern", "monotonic"),
@@ -574,6 +649,57 @@ const SUPPORT_CONFIG_DEFAULTS: &[(&str, &str)] = &[
     ("support_top_z_distance", "0.2"),
     ("support_bottom_z_distance", "0.2"),
 ];
+
+/// Appendix keys PnP carries under a different config name, as
+/// `(appendix_key, pnp_key)`.
+///
+/// [`ResolvedConfig::to_config_map`] and the module manifests export the PnP
+/// spelling — `wall_count` for the wall loop count, `infill_angle` for the
+/// infill direction, `seam_mode` for the seam position — while OrcaSlicer's
+/// appendix reader (`ConfigBase::load_from_gcode_file` →
+/// `GCodeProcessor::apply_config`) names the same setting `wall_loops` /
+/// `infill_direction` / `seam_position`. Without this derivation the appendix
+/// key misses the source value in the effective config, falls through to
+/// [`ORCA_CONFIG_PADDING`]'s static default, and mis-discloses every
+/// non-default setting (measured 2026-09-22: `wall_count` 1 and 3 both printed
+/// `wall_loops = 2` while the wall output changed accordingly).
+///
+/// Every row is a 1:1 setting. Keys that look related but are not the same
+/// setting are deliberately absent: `sparse_infill_density` is a distinct
+/// perimeter-module percentage (module default `20`, percent unit) while the
+/// resolved `infill_density` is a fraction (default `0.2`);
+/// `raft_layers` is split across `support_raft_layers`, `base_raft_layers`, and
+/// `interface_raft_layers`; `ironing_type` is a narrowed bool upstream
+/// (`ironing_enabled`), not a rename. Padding-only values remain Orca defaults,
+/// not evidence of PnP's effective settings.
+const ORCA_CONFIG_ALIAS_KEYS: &[(&str, &str)] = &[
+    // Host precision key. Orca has one global `resolution`; the adjudicated
+    // PnP counterpart is `gcode_resolution` (03-asset-scoped-gap.md), whose
+    // resolved default is `0.0125` (`ResolvedConfig::gcode_resolution`), not
+    // Orca's snapshot default `0.01`.
+    ("resolution", "gcode_resolution"),
+    // Legacy Slic3r spelling of the support toggle; the resolved bool is
+    // `enable_support`.
+    ("support_material", "enable_support"),
+    // slicer-scheduler reads `spiral_vase` (`SPIRAL_VASE_CONFIG_KEY` in
+    // `crates/slicer-scheduler/src/execution_plan.rs`); Orca names the bool
+    // `spiral_mode`.
+    ("spiral_mode", "spiral_vase"),
+];
+
+/// Render an alias source value into the appendix's scalar spelling, or `None`
+/// when the variant has no scalar rendering (the [`ORCA_CONFIG_PADDING`]
+/// default then stands). Bools render as `1`/`0` — the only two literals
+/// OrcaSlicer's `ConfigOptionBool::deserialize` accepts.
+fn render_appendix_alias_value(value: &ConfigValue) -> Option<String> {
+    match value {
+        ConfigValue::Bool(b) => Some(u8::from(*b).to_string()),
+        ConfigValue::Int(i) => Some(i.to_string()),
+        ConfigValue::Float(f) => Some(format!("{f}")),
+        ConfigValue::String(s) => Some(s.clone()),
+        ConfigValue::List(_) | ConfigValue::Percent(_) | ConfigValue::FloatOrPercent { .. } => None,
+    }
+}
 
 /// A `GCodeSerializer` wrapper that injects `THUMBNAIL_BLOCK` and `CONFIG_BLOCK`
 /// from the raw config source, delegating core serialization to the inner serializer.
@@ -920,6 +1046,55 @@ mod tests {
     }
 
     #[test]
+    fn config_block_renders_f32_scalars_at_f32_precision() {
+        // Some typed `ResolvedConfig` scalars are `f32` and widen to `f64` in
+        // `to_config_map`; the block must render them at `f32` precision
+        // (`0.45`, the `format!("{}", f32)` shortest form the header width
+        // block already uses), not the widened `0.44999998807907104` that
+        // broke the AC-4 `; infill_overlap = 0.45` presence check while the
+        // 0.30 run's `0.30000001192092896` still prefix-matched `0.3`.
+        let cfg: HashMap<String, ConfigValue> = HashMap::from([(
+            "infill_overlap".to_string(),
+            ConfigValue::Float(f64::from(0.45_f32)),
+        )]);
+        let block = serialize_config_block(&cfg, &filament_colour_csv(4), GcodeFlavor::Marlin);
+        assert!(
+            block.contains("; infill_overlap = 0.45"),
+            "f32-derived floats must render at f32 precision; got:\n{block}"
+        );
+    }
+
+    #[test]
+    fn config_block_float_precision_is_consistent_across_scalars_and_numeric_lists() {
+        let widened = f64::from(0.45_f32);
+        let precise = 0.451_234_567_890_123_f64;
+        assert_ne!(precise, f64::from(precise as f32));
+        let cfg: HashMap<String, ConfigValue> = HashMap::from([
+            ("infill_overlap".to_string(), ConfigValue::Float(widened)),
+            ("line_width".to_string(), ConfigValue::Float(precise)),
+            ("filament_diameter".to_string(), ConfigValue::Float(widened)),
+            (
+                "filament_density".to_string(),
+                ConfigValue::List(vec![
+                    ConfigValue::Float(widened),
+                    ConfigValue::Float(precise),
+                ]),
+            ),
+        ]);
+        let block = serialize_config_block(&cfg, &filament_colour_csv(2), GcodeFlavor::Marlin);
+        assert!(block.lines().any(|line| line == "; infill_overlap = 0.45"));
+        assert!(block
+            .lines()
+            .any(|line| line == "; line_width = 0.451234567890123"));
+        assert!(block
+            .lines()
+            .any(|line| line == "; filament_diameter = 0.45,0.45"));
+        assert!(block
+            .lines()
+            .any(|line| line == "; filament_density = 0.45,0.451234567890123"));
+    }
+
+    #[test]
     fn config_filament_colour_overrides_hardcoded_palette() {
         // Regression (RC1): when the model's authored palette is present in the
         // config, both the CONFIG_BLOCK and the resolved CSV must use it instead
@@ -1026,5 +1201,63 @@ mod tests {
             !block.contains("Float("),
             "list elements must not be Debug-formatted; got:\n{block}"
         );
+    }
+
+    #[test]
+    fn config_block_discloses_resolved_wall_count_under_orca_name() {
+        // The old padding always claimed two walls even when the perimeter
+        // generators received wall_count = 1 or 3.
+        for wall_count in [1, 3] {
+            let cfg = ResolvedConfig {
+                wall_loops: wall_count,
+                ..ResolvedConfig::default()
+            };
+            let map = resolved_config_to_map(&cfg);
+            let block = serialize_config_block(&map, &filament_colour_csv(1), GcodeFlavor::Marlin);
+            let actual: Vec<_> = block
+                .lines()
+                .filter(|line| line.starts_with("; wall_loops = "))
+                .collect();
+            assert_eq!(actual, [format!("; wall_loops = {wall_count}")], "{block}");
+        }
+    }
+
+    #[test]
+    fn config_block_discloses_distinct_resolved_precision_and_infill_direction() {
+        let cfg = ResolvedConfig {
+            gcode_resolution: 0.025,
+            infill_resolution: 0.08,
+            infill_direction: 30.0,
+            ..ResolvedConfig::default()
+        };
+        let mut map = resolved_config_to_map(&cfg);
+        map.insert("resolution".into(), ConfigValue::Float(0.5));
+        let block = serialize_config_block(&map, &filament_colour_csv(1), GcodeFlavor::Marlin);
+        let resolution: Vec<_> = block
+            .lines()
+            .filter(|line| line.starts_with("; resolution = "))
+            .collect();
+        let direction: Vec<_> = block
+            .lines()
+            .filter(|line| line.starts_with("; infill_direction = "))
+            .collect();
+        assert_eq!(resolution, ["; resolution = 0.025"], "{block}");
+        assert_eq!(direction, ["; infill_direction = 30"], "{block}");
+    }
+
+    #[test]
+    fn config_block_keeps_sparse_infill_density_distinct_from_fractional_infill_density() {
+        // sparse_infill_density belongs to perimeter modules and is measured
+        // in percent; the resolved infill_density is a separate fraction.
+        let block = serialize_config_block(
+            &resolved_config_to_map(&ResolvedConfig::default()),
+            &filament_colour_csv(1),
+            GcodeFlavor::Marlin,
+        );
+        let density: Vec<_> = block
+            .lines()
+            .filter(|line| line.starts_with("; sparse_infill_density = "))
+            .collect();
+        assert_eq!(density, ["; sparse_infill_density = 20%"], "{block}");
     }
 }

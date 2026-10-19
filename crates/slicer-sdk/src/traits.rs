@@ -466,6 +466,14 @@ pub trait LayerModule: Sized {
     /// buckets committed by `Layer::Infill` (ADR-0028 Option 1b). The
     /// output builder stays write-only; the module emits the COMPLETE
     /// replacement `InfillIR`, re-emitting buckets it did not transform.
+    ///
+    /// Because the output is a complete replacement set, emitting **nothing**
+    /// is a verdict, not an absence: the host commits the empty replacement
+    /// (no regions, no raft regions) and the prior `InfillIR` is superseded
+    /// (ADR-0028 §Amendment 2026-09-29). A module that wants to pass a bucket
+    /// through must re-emit it. Only a genuinely absent invocation — no module
+    /// registered for the stage, a region-split skip, or a missing component —
+    /// leaves the prior `InfillIR` in place.
     fn run_infill_postprocess(
         &self,
         _layer_index: u32,
@@ -603,6 +611,25 @@ pub trait LayerModule: Sized {
 /// Per docs/03_wit_and_manifest.md (world-prepass.wit), this maps to:
 /// - `export run-mesh-analysis: func(objects, output, config) -> result<_, module-error>;`
 /// - `export run-layer-planning: func(objects, output, config) -> result<_, module-error>;`
+///
+/// One layer-planning input after host-side object-scope resolution.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayerPlanningObject {
+    /// Stable object identifier.
+    pub object_id: ObjectId,
+    /// Object height in millimeters.
+    pub object_height: f64,
+    /// Effective layer height for this object in millimeters.
+    pub layer_height: f64,
+    /// Effective first-layer height for this object in millimeters.
+    pub first_layer_height: f64,
+    /// Number of support raft layers preceding this object's model layers.
+    pub support_raft_layers: u32,
+    /// Host-derived object-local top Zs; empty preserves the uniform fallback.
+    pub layer_zs: Vec<f64>,
+}
+
+/// Contract for modules that perform print-wide mesh analysis or layer planning.
 pub trait PrepassModule: Sized {
     /// Construct one module value for this stage call.
     ///
@@ -631,12 +658,12 @@ pub trait PrepassModule: Sized {
         Ok(())
     }
 
-    /// Run layer planning for the given objects.
+    /// Run layer planning for the given resolved per-object inputs.
     ///
     /// Per docs/03_wit_and_manifest.md (world-prepass.wit):
     /// ```wit
     /// export run-layer-planning: func(
-    ///     objects: list<object-id>,
+    ///     objects: list<layer-planning-object>,
     ///     output: layer-plan-output,
     ///     config: config-view,
     /// ) -> result<_, module-error>;
@@ -645,7 +672,7 @@ pub trait PrepassModule: Sized {
     /// Default implementation does nothing. Override if your module targets LayerPlanning stage.
     fn run_layer_planning(
         &self,
-        _objects: &[ObjectId],
+        _objects: &[LayerPlanningObject],
         _output: &mut LayerPlanOutput,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
@@ -1877,12 +1904,11 @@ impl FinalizationOutputBuilder {
 
         // Merge guest-emitted annotations into target layers.
         for (layer_index, annotation) in &self.annotations {
-            if let Some(layer) = layers
+            let layer = layers
                 .iter_mut()
                 .find(|l| l.global_layer_index == *layer_index)
-            {
-                layer.annotations.push(annotation.clone());
-            }
+                .ok_or_else(|| format!("annotation references unknown layer {layer_index}"))?;
+            layer.annotations.push(annotation.clone());
         }
 
         // Finalization is an output boundary for invocation-local lock tags.

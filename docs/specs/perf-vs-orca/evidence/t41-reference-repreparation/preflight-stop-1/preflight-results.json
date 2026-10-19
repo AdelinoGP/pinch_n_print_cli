@@ -1,0 +1,28 @@
+{
+  "status": "stopped",
+  "gates": [
+    {
+      "name": "toolchain",
+      "command": [
+        "rustc",
+        "-vV"
+      ],
+      "exit_code": 0,
+      "required_tests": [],
+      "missing_successful_tests": [],
+      "passed_counts": {
+        "summary_lines": 0,
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered_out": 0
+      },
+      "combined_output_sha256": "2efe229f7908c2c19f459ca734101a5b35cb482476b8bee1357f94a18c766078"
+    }
+  ],
+  "checks": {},
+  "started_utc": "2026-09-30T22:51:18.044704+00:00",
+  "stopped_utc": "2026-09-30T22:51:18.395362+00:00",
+  "failure": "controlled-build allowlist mismatch: {'RELEASE': '1.96.0', 'COMMIT_HASH': 'ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96', 'HOST': 'x86_64-pc-windows-msvc', 'LLVM_VERSION': '22.1.2', 'WASM_TARGET': 'wasm32-unknown-unknown'} != {'RELEASE': '1.96.0', 'COMMIT_HASH': 'ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96', 'HOST': 'x86_64-pc-windows-msvc', 'LLVM_VERSION': '22.1.2'}"
+}

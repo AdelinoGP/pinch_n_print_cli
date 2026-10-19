@@ -1,4 +1,4 @@
-package slicer:finalization-layer-finalization@1.0.0;
+package slicer:finalization-layer-finalization@1.1.0;
 
 interface layer-finalization-types {
     use slicer:types/geometry.{extrusion-path3d, extrusion-role, point3-with-width};
@@ -75,7 +75,30 @@ interface layer-finalization-types {
         paths: list<extrusion-path3d>,
     }
 
+    // Ticket 47: the annotation relay. A guest-emitted comment or raw GCode
+    // line anchored to a layer's entity stream, mirrored 1:1 from the
+    // `LayerAnnotation` IR record (docs/02 IR §LayerCollectionIR.annotations;
+    // docs/03 §Accepted gcode-output-builder methods). `kind` carries the
+    // payload; the host appends it to `LayerCollectionIR.annotations` in
+    // guest-emission order.
+    record annotation-view {
+        layer-index: layer-idx,
+        after-entity-index: u32,
+        kind: annotation-kind,
+    }
+
+    variant annotation-kind {
+        comment(string),
+        raw(string),
+    }
+
     resource finalization-output-builder {
+        // Ticket 47: relays the SDK `FinalizationOutputBuilder::push_annotation`
+        // stream across the WASM seam. The native leg already applies it via
+        // `apply_to`; without this method the WASM drain-back silently
+        // dropped every guest annotation (part-cooling's M106/M107 fan
+        // commands never reached the external leg's emitted G-code).
+        push-annotation: func(annotation: annotation-view) -> result<_, string>;
         push-entity-to-layer: func(
             layer-index: layer-idx,
             path: extrusion-path3d,

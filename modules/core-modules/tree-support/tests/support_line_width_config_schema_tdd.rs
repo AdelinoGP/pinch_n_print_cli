@@ -46,7 +46,9 @@ fn support_line_width_is_declared_with_canonical_shape_and_siblings_unchanged() 
         actual_keys,
         vec![
             "enable_support",
+            "layer_height",
             "line_width",
+            "nozzle_diameter",
             "support_base_pattern_spacing",
             "support_bottom_interface_spacing",
             "support_interface_flow",
@@ -67,4 +69,8 @@ fn support_line_width_is_declared_with_canonical_shape_and_siblings_unchanged() 
     assert_eq!(width.get("default").and_then(Value::as_float), Some(0.0));
     assert_eq!(width.get("min").and_then(Value::as_float), Some(0.0));
     assert_eq!(width.get("max").and_then(Value::as_float), Some(1000.0));
+    assert_eq!(
+        width.get("base_key").and_then(Value::as_str),
+        Some("nozzle_diameter")
+    );
 }

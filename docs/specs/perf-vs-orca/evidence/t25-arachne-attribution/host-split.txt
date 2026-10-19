@@ -1,0 +1,80 @@
+probe lines: 240
+lines with svc calls != 1: 0 []
+total service wall: 3691.3 ms over 240 invocations
+total pipeline wall: 3690.0 ms (99.96%)
+
+key           wall_ms    %svc   %pipe   calls  stage
+svc            3691.3 100.00% 100.04%     240  service total (WIT in -> WIT out)
+in                1.1   0.03%   0.03%     240    WIT in (polygons -> IR)
+out               0.1   0.00%   0.00%     240    WIT out (IR -> lines)
+pipe           3690.0  99.96% 100.00%     240  run_arachne_pipeline total
+pre            1597.9  43.29%  43.30%     240    preprocess 9-stage total
+pre_warn          0.9   0.02%   0.02%     240      warn_dropped_features
+s1             1536.3  41.62%  41.63%     240      stage 1 triple offset
+s1_o2          1108.2  30.02%  30.03%     240        offset2_ex (shrink-grow)
+s1_o2p1         530.1  14.36%  14.37%     240          pass 1 inflate_paths_64 (erode)
+s1_o2p2         571.3  15.48%  15.48%     240          pass 2 execute_tree (dilate)
+s1_o2tr           1.4   0.04%   0.04%     240          pass 2 expolygons_from_tree
+s1_off          427.7  11.59%  11.59%     240        offset (shrink)
+s1_ofp            0.6   0.02%   0.02%     240          paths conversion
+s1_ofe          417.2  11.30%  11.31%     240          execute_tree
+s1_oft            6.1   0.16%   0.16%     240          expolygons_from_tree
+s2               24.7   0.67%   0.67%     240      stage 2 simplify
+s3               11.0   0.30%   0.30%     240      stage 3 fix self-intersections
+s4                0.3   0.01%   0.01%     240      stage 4 degenerate verts
+s5                5.8   0.16%   0.16%     240      stage 5 colinear edges
+s6                8.3   0.23%   0.23%     240      stage 6 fix self-intersections (2)
+s7                0.2   0.00%   0.00%     240      stage 7 degenerate verts (2)
+s8                0.2   0.01%   0.01%     240      stage 8 small areas
+s9                9.4   0.25%   0.25%     240      stage 9 final union
+g_tot          1400.9  37.95%  37.97%     240    graph from_polygons total
+g_flat            0.7   0.02%   0.02%     240      flatten_polys
+g_vor          1239.0  33.56%  33.58%     240      voronoi_from_segments
+g_vmap            0.1   0.00%   0.00%     240        lines -> BvLine map
+g_vbuild       1235.7  33.48%  33.49%     240        Builder::build (sweep line)
+g_vconv           2.6   0.07%   0.07%     240        diagram -> HalfEdgeGraph map
+g_clamp           0.5   0.01%   0.01%     240      clamp vertices
+g_build          55.7   1.51%   1.51%     240      Builder::build
+g_sep            21.8   0.59%   0.59%     240      separate_pointy_quad_end_nodes
+g_coll           70.8   1.92%   1.92%     240      collapse_small_edges
+g_comp            8.4   0.23%   0.23%     240      compact_graph_after_collapse
+g_rad             1.2   0.03%   0.03%     240      edge_radius_bounds loop
+strat             0.2   0.01%   0.01%     240    create_stack
+cent              3.0   0.08%   0.08%     240    filter_central
+beads            62.1   1.68%   1.68%     240    assign_bead_counts
+noncent          28.5   0.77%   0.77%     240    filter_noncentral_regions
+tm_gen            3.1   0.08%   0.08%     240    generate_transition_mids
+tm_filt           2.0   0.06%   0.06%     240    filter_transition_mids
+ends              4.2   0.11%   0.11%     240    generate_all_transition_ends
+apply_tr          0.8   0.02%   0.02%     240    apply_transitions
+ribs              3.6   0.10%   0.10%     240    generate_extra_ribs
+pop              15.0   0.41%   0.41%     240    populate_beading_propagation
+up               16.9   0.46%   0.46%     240    propagate_beadings_upward
+down             57.2   1.55%   1.55%     240    propagate_beadings_downward
+junc             67.6   1.83%   1.83%     240    generate_junctions
+conn            212.9   5.77%   5.77%     240    connect_junctions
+maxima           40.3   1.09%   1.09%     240    local maxima beads
+stitch            9.0   0.24%   0.24%     894    stitch_extrusions
+rm_small          0.2   0.00%   0.00%     894    remove_small_lines
+sep               0.3   0.01%   0.01%     894    separate_out_inner_contour
+simp              7.1   0.19%   0.19%     894    simplify_toolpaths
+rm_empty          0.3   0.01%   0.01%     894    remove_empty_toolpaths
+reorder         110.6   3.00%   3.00%     240    reorder_by_region_order
+m_polys           0.0   0.00%   0.00%     576  [meta] input polygons
+m_segs            0.0   0.00%   0.00%   27828  [meta] flattened segments
+m_lines           0.0   0.00%   0.00%    3314  [meta] emitted lines
+m_inner           0.0   0.00%   0.00%     875  [meta] inner-contour lines
+
+=== slowest invocations ===
+seq=  28 svc=    149.8ms pipe=    149.8ms pre=    98.9ms graph=    28.0ms down=     0.9ms junc=     0.7ms conn=    13.7ms simp=     0.1ms reorder=     2.2ms
+seq= 222 svc=     75.0ms pipe=     75.0ms pre=    28.3ms graph=    36.9ms down=     0.4ms junc=     0.4ms conn=     6.2ms simp=     0.0ms reorder=     0.8ms
+seq= 100 svc=     64.1ms pipe=     64.1ms pre=     9.0ms graph=    48.8ms down=     0.3ms junc=     0.4ms conn=     0.7ms simp=     0.1ms reorder=     0.7ms
+seq= 195 svc=     55.9ms pipe=     55.9ms pre=    24.3ms graph=     8.4ms down=     2.5ms junc=     5.7ms conn=     6.9ms simp=     0.0ms reorder=     1.4ms
+seq= 189 svc=     49.7ms pipe=     49.7ms pre=    20.0ms graph=    20.2ms down=     0.7ms junc=     0.7ms conn=     3.5ms simp=     0.1ms reorder=     1.2ms
+seq= 219 svc=     44.4ms pipe=     44.4ms pre=    12.6ms graph=    24.7ms down=     0.3ms junc=     1.2ms conn=     2.4ms simp=     0.0ms reorder=     1.2ms
+seq= 211 svc=     42.5ms pipe=     42.5ms pre=    18.6ms graph=    14.8ms down=     0.4ms junc=     0.5ms conn=     2.6ms simp=     0.1ms reorder=     1.1ms
+seq=  75 svc=     41.1ms pipe=     41.1ms pre=    20.9ms graph=    15.7ms down=     0.4ms junc=     0.4ms conn=     1.0ms simp=     0.1ms reorder=     0.8ms
+seq= 215 svc=     40.8ms pipe=     40.8ms pre=    10.1ms graph=    20.9ms down=     4.7ms junc=     0.4ms conn=     1.1ms simp=     0.0ms reorder=     0.6ms
+seq= 181 svc=     39.9ms pipe=     39.9ms pre=    19.8ms graph=    13.2ms down=     1.3ms junc=     0.6ms conn=     2.1ms simp=     0.0ms reorder=     0.6ms
+seq= 213 svc=     39.1ms pipe=     39.1ms pre=    27.1ms graph=     7.2ms down=     0.3ms junc=     0.3ms conn=     1.7ms simp=     0.0ms reorder=     0.9ms
+seq= 221 svc=     39.1ms pipe=     39.1ms pre=    10.1ms graph=    22.6ms down=     0.6ms junc=     0.6ms conn=     1.8ms simp=     0.2ms reorder=     1.1ms

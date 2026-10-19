@@ -282,6 +282,16 @@ pub fn infill_ir_to_prior_regions(
         .map(|r| crate::host::PriorInfillRegion {
             object_id: r.object_id.clone(),
             region_id: r.region_id.to_string(),
+            variant_chain: r
+                .variant_chain
+                .iter()
+                .map(|(semantic, value)| {
+                    (
+                        semantic.clone(),
+                        crate::marshal::leaf::ir_to_wit_paint_value(value),
+                    )
+                })
+                .collect(),
             sparse_infill: r
                 .sparse_infill
                 .iter()
@@ -434,6 +444,7 @@ pub fn convert_infill_output(
         slicer_ir::InfillRegion {
             object_id: o.object_id.clone(),
             region_id: o.region_id,
+            variant_chain: o.variant_chain.clone(),
             sparse_infill: Vec::new(),
             solid_infill: Vec::new(),
             ironing: Vec::new(),
@@ -508,6 +519,30 @@ pub fn convert_infill_output(
         regions,
         raft_regions,
     })
+}
+
+/// The `Layer::InfillPostProcess` replacement set for an invocation that ran
+/// and re-emitted nothing: the **empty** set.
+///
+/// The stage's contract is replace-with-complete-re-emit (ADR-0028 §Amendment
+/// Change 3): the module's output *is* the layer's whole infill set, so an
+/// output of zero paths is a verdict — "no infill survives the re-clip" — not
+/// an absence. Collapsing the two (returning `Ok(None)` for an all-empty
+/// invocation) preserved the prior `InfillIR`, which on the affected layers is
+/// the raw, unclipped emitter envelope the infill-linker had just rejected
+/// (wayfinder perf-vs-orca ticket 37: 68.0% of classic Benchy's printed sparse
+/// mm, 88.7% of one revived layer path outside the part cross-section).
+///
+/// The preservation rule for genuinely absent invocations is untouched: a stage
+/// with zero registered modules, a region-split skip, or a missing component
+/// never reaches the commit producer at all.
+pub fn empty_infill_replacement(layer_index: u32) -> slicer_ir::InfillIR {
+    slicer_ir::InfillIR {
+        schema_version: slicer_ir::CURRENT_INFILL_IR_SCHEMA_VERSION,
+        global_layer_index: layer_index,
+        regions: Vec::new(),
+        raft_regions: Vec::new(),
+    }
 }
 
 /// Map a `MarshalError` to a human-readable string, preserving the old
@@ -862,7 +897,7 @@ pub fn convert_perimeter_output(
 
     fn mint_perimeter_region(o: &OriginId) -> slicer_ir::PerimeterRegion {
         slicer_ir::PerimeterRegion {
-            variant_chain: Vec::new(),
+            variant_chain: o.variant_chain.clone(),
             object_id: o.object_id.clone(),
             region_id: o.region_id,
             walls: Vec::new(),

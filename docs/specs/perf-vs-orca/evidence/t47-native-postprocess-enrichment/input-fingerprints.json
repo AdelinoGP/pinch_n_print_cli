@@ -1,0 +1,8 @@
+{
+  "model_benchy_sha256": "6a07f34cc7769b1c852635212c91a1b354532f4222a9a8105c1035a1a7b284f7",
+  "config_classic_off_sha256": "e428f149f3d8ae63957d84a570590447abef42946bce98ee359f9d36a90ec82d",
+  "config_t44_benchy_arachne_sha256": "2b8314edca85538e3725de9b008f6086dff322121cfc6ea47ba3157caeb6111d",
+  "developer_pnp_cli_sha256": "26e694d47dddb63d759bc96c75d01c672b157bf8d65dce696b5b4785545c8ecf",
+  "integrated_pnp_cli_sha256": "d3b2aa30a491a9226e8ee4d50d04ef8daacff41e018d13f15a09dab1959305da",
+  "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)"
+}

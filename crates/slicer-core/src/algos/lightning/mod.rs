@@ -88,7 +88,7 @@ pub fn generate_lightning_trees(
                 false,
                 false,
                 &crate::flow::RoleWidthContext {
-                    line_width: config.line_width,
+                    line_width: config.line_width as f32,
                     nozzle_diameter: DEFAULT_NOZZLE_DIAMETER_MM,
                     ..Default::default()
                 },

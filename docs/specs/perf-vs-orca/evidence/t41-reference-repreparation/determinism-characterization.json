@@ -1,0 +1,128 @@
+{
+  "purpose": "characterize why t41 classic reference hashes differ from t40's recorded hashes; NOT a preparation retry and NOT acceptance evidence",
+  "documented_cause": "resources/perimeter-acceptance/run-acceptance.ps1 header: classic G-code emission has pre-existing nondeterminism (user decision 2026-09-11); exactness gate is structural (lines +/-0.1%, TYPE markers +/-1%, E totals +/-0.5%), arachne byte-deterministic",
+  "probe_inputs": {
+    "exe": "durable t41 snapshot ordinary/pnp_cli.exe",
+    "modules": "durable t41 snapshot ordinary/modules",
+    "model_config": "durable t41 corpus supports-off-benchy classic/arachne",
+    "threads": 12,
+    "isolation": "--no-default-module-paths --no-integrated-modules; no SLICER_MODULE_PATH",
+    "outputs": "target/t41-determinism-probe (scratch, ignored)"
+  },
+  "files": {
+    "frozen_classic": {
+      "path": ".local-artifacts/perimeter-reference-preparation/t41-20260930T232255Z/corpus/supports-off-benchy/reference-classic.gcode",
+      "sha256": "c7cb67e8689a484713d871b36f0eed0fa4e0aca16b081bb4082ce2eea67ada94",
+      "metrics": {
+        "total_lines": 106772,
+        "type_marker_count": 1109,
+        "e_total": 4163.597
+      }
+    },
+    "probe_classic_run1": {
+      "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\determinism-probe\\classic-run1.gcode",
+      "sha256": "56fe1d3ff18dcd3337b755ac499082762bfea436f408ce61f9d16ba60947e648",
+      "metrics": {
+        "total_lines": 106765,
+        "type_marker_count": 1106,
+        "e_total": 4163.438
+      },
+      "durable_sha256": "56fe1d3ff18dcd3337b755ac499082762bfea436f408ce61f9d16ba60947e648"
+    },
+    "probe_classic_run2": {
+      "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\determinism-probe\\classic-run2.gcode",
+      "sha256": "52c61a58ad9ce23de249f69a6584e1322ace6d8b20b19597433b6b0e827951a7",
+      "metrics": {
+        "total_lines": 106759,
+        "type_marker_count": 1106,
+        "e_total": 4163.504
+      },
+      "durable_sha256": "52c61a58ad9ce23de249f69a6584e1322ace6d8b20b19597433b6b0e827951a7"
+    },
+    "frozen_arachne": {
+      "path": ".local-artifacts/perimeter-reference-preparation/t41-20260930T232255Z/corpus/supports-off-benchy/reference-arachne.gcode",
+      "sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+      "metrics": {
+        "total_lines": 95942,
+        "type_marker_count": 1669,
+        "e_total": 4129.841
+      }
+    },
+    "probe_arachne_run1": {
+      "path": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\determinism-probe\\arachne-run1.gcode",
+      "sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+      "metrics": {
+        "total_lines": 95942,
+        "type_marker_count": 1669,
+        "e_total": 4129.841
+      },
+      "durable_sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161"
+    }
+  },
+  "measured_within_gate_tolerances": {
+    "classic_run1_vs_frozen": {
+      "line_delta_fraction": 6.556025924399655e-05,
+      "type_delta_fraction": 0.002705139765554554,
+      "e_delta_fraction": 3.818813396196864e-05,
+      "within": true
+    },
+    "classic_run2_vs_frozen": {
+      "line_delta_fraction": 0.00012175476716742217,
+      "type_delta_fraction": 0.002705139765554554,
+      "e_delta_fraction": 2.2336455713616665e-05,
+      "within": true
+    },
+    "classic_run1_vs_run2_same_exe": {
+      "line_delta_fraction": 5.6201350705795296e-05,
+      "type_delta_fraction": 0.0,
+      "e_delta_fraction": 1.5852032326570013e-05,
+      "within": true
+    },
+    "arachne_probe_vs_frozen": {
+      "line_delta_fraction": 0.0,
+      "type_delta_fraction": 0.0,
+      "e_delta_fraction": 0.0,
+      "within": true
+    }
+  },
+  "byte_identity_vs_t40_recorded": {
+    "supports-off-benchy/arachne": {
+      "gcode_sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+      "t40_recorded_sha256": "7049a06d68ee8ab012adc8f26c831bd8cc1a59d0d10d737d1257f58a8719c161",
+      "matches_t40_recorded": true
+    },
+    "supports-off-benchy/classic": {
+      "gcode_sha256": "c7cb67e8689a484713d871b36f0eed0fa4e0aca16b081bb4082ce2eea67ada94",
+      "t40_recorded_sha256": "c54e30da891965fd95767a08375a56adfee07c248a13513021646d6ab191d6f4",
+      "matches_t40_recorded": false
+    },
+    "tree-support-base/arachne": {
+      "gcode_sha256": "7e66dfad22e6274d5cefcd3d94bfa100823c62cf1489da9c683741118ad87bd4",
+      "t40_recorded_sha256": "7e66dfad22e6274d5cefcd3d94bfa100823c62cf1489da9c683741118ad87bd4",
+      "matches_t40_recorded": true
+    },
+    "tree-support-base/classic": {
+      "gcode_sha256": "db71d77cf10c96562fbbc2ddb7648d53a38fcabda1d9bdcc0e1eaa36092a55dc",
+      "t40_recorded_sha256": "b629d233e67a5e218de89b2f2860d0f9cce208210bcdcaec09cf16f79fd60161",
+      "matches_t40_recorded": false
+    },
+    "tree-support-benchy/arachne": {
+      "gcode_sha256": "8717bb5a14850674cb08290599a1c7af10cb82dbf59f0a6d0126a38f7ef7bfa6",
+      "t40_recorded_sha256": "8717bb5a14850674cb08290599a1c7af10cb82dbf59f0a6d0126a38f7ef7bfa6",
+      "matches_t40_recorded": true
+    },
+    "tree-support-benchy/classic": {
+      "gcode_sha256": "9a1cb4f2a151d0794fa69f190f5fbc2e0ff450ab14363bfe9db2932199abaf3b",
+      "t40_recorded_sha256": "53e7548ea03c70d6c90db329ef99c112eba878c25e1d1f7e63a1dc847008dde4",
+      "matches_t40_recorded": false
+    }
+  },
+  "conclusions": [
+    "t41 classic .gcode hashes differ from t40's recorded values because classic emission is not byte-reproducible run-to-run on the same frozen binary and inputs; the differences are small and well within the documented acceptance tolerances",
+    "classic probe_run1 vs probe_run2 differ from each other (same exe), confirming pre-existing nondeterminism rather than a preparation defect",
+    "t41 arachne .gcode is byte-identical to t40's recorded hashes and byte-reproducible",
+    "t41 .jsonl sidecars differ because they embed absolute module paths and timestamps and are not byte-stable by construction",
+    "the frozen manifest records actual hashes of actual frozen files; no re-freeze and no gate weakening occurred"
+  ],
+  "probe_outputs_moved_to_durable_root": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\determinism-probe"
+}

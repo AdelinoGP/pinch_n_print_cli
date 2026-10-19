@@ -1,0 +1,907 @@
+{
+  "status": "frozen",
+  "kind": "t38-campaign-snapshots",
+  "created_utc": "2026-10-01T03:10:54.332418+00:00",
+  "purpose": "complete ordinary + accelerated developer production campaign snapshots (builds and read-only module diagnosis only; no slices, tests or timing)",
+  "durable_namespace": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation",
+  "durable_root": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z",
+  "evidence_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t38-adoption-resumed\\snapshots",
+  "helper": {
+    "path": "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t38-adoption-resumed\\snapshots\\prepare-snapshots.py",
+    "sha256": "405b4afcf83adc2689b791a0932b3a5ce2bf0cc78f52bd998c64a5592069eb2c"
+  },
+  "t41_reference": {
+    "attempt": "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t41-reference-repreparation\\attempt-1",
+    "manifest_sha256": "7b533240b7e602731eb6d11320c134c830fa00ec12b3d301b970dac935c334a3",
+    "manifest_sidecar": "7b533240b7e602731eb6d11320c134c830fa00ec12b3d301b970dac935c334a3",
+    "corpus_root": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus",
+    "snapshot_root": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\ordinary",
+    "discovery_source": "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t38-adoption-resumed\\runner\\ordinary-runner-discovery.stdout.log",
+    "discovery_module_ids": [
+      "com.core.arachne-perimeters",
+      "com.core.classic-perimeters",
+      "com.core.fuzzy-skin",
+      "com.core.gyroid-infill",
+      "com.core.infill-linker",
+      "com.core.layer-planner-default",
+      "com.core.lightning-infill",
+      "com.core.machine-gcode-emit",
+      "com.core.overhang-classifier-default",
+      "com.core.part-cooling",
+      "com.core.path-optimization-default",
+      "com.core.raft-default",
+      "com.core.rectilinear-infill",
+      "com.core.seam-placer",
+      "com.core.seam-planner-default",
+      "com.core.skirt-brim",
+      "com.core.support-surface-ironing",
+      "com.core.top-surface-ironing",
+      "com.core.traditional-support",
+      "com.core.traditional-support-planner",
+      "com.core.tree-support",
+      "com.core.tree-support-planner",
+      "com.core.wave-overhangs",
+      "com.core.wipe-tower"
+    ]
+  },
+  "compiler_identity": "rustc 1.96.0 (ac68faa20 2026-05-25)\nbinary: rustc\ncommit-hash: ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96\ncommit-date: 2026-05-25\nhost: x86_64-pc-windows-msvc\nrelease: 1.96.0\nLLVM version: 22.1.2\n",
+  "cargo_version": "cargo 1.96.0 (30a34c682 2026-05-25)",
+  "wasm_tools_version": "wasm-tools 1.250.0",
+  "policy": {
+    "source_path": "xtask/src/rustc_driver.rs",
+    "source_sha256": "c1d1a8ab21212a2715cf8eb1024e089f64cf370c4525d20fe26803052ea94a28",
+    "doc_path": "docs/23_controlled_perimeter_builds.md",
+    "doc_sha256": "0a99277d882c28c19a88ea7dcd45a016fc2c5d9ce21467f90ec218fdcd786789",
+    "constants": {
+      "ALLOWED_RELEASE": "1.96.0",
+      "ALLOWED_COMMIT_HASH": "ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96",
+      "ALLOWED_HOST": "x86_64-pc-windows-msvc",
+      "ALLOWED_LLVM_VERSION": "22.1.2",
+      "ALLOWED_WASM_TARGET": "wasm32-unknown-unknown",
+      "RESERVED_CFG": "pnp_perimeter_spatial_accelerated"
+    }
+  },
+  "campaign_inputs": {
+    "resources/perimeter-acceptance/run_bench.ps1": "b4e67d12e3bd04a5c865cbe99f5a1286b2c14af51d5098441a5dfbaea0e52962",
+    "resources/perimeter-acceptance/run-acceptance.ps1": "525f2ae408728dc4caa288dfc522e7ba603f730f17625a494f77c90ca995c76f",
+    "resources/perimeter-acceptance/validate_measurement.ps1": "a8641f1fa6d5ab9aaa4c60a9bdd8ab984dabab25a5976af66af79ef04c37b96d",
+    "resources/perimeter-acceptance/test-status-roundtrip.ps1": "b587f123499a75b2ebb7187d02b2dcf31cf2cb9b2bf17b616cd15c84018fdf57",
+    "xtask/src/rustc_driver.rs": "c1d1a8ab21212a2715cf8eb1024e089f64cf370c4525d20fe26803052ea94a28",
+    "docs/23_controlled_perimeter_builds.md": "0a99277d882c28c19a88ea7dcd45a016fc2c5d9ce21467f90ec218fdcd786789"
+  },
+  "edition": {
+    "name": "developer",
+    "debug": false,
+    "plan_ordinary": "edition\tdeveloper\nout_dir\t\\\\?\\D:\\slicerProject\\pinch_n_print_cli_2\\target\\dist\\developer\nfeatures\t\nexternal\tarachne-perimeters\nexternal\tclassic-perimeters\nexternal\tfuzzy-skin\nexternal\tgyroid-infill\nexternal\tinfill-linker\nexternal\tlayer-planner-default\nexternal\tlightning-infill\nexternal\tmachine-gcode-emit\nexternal\toverhang-classifier-default\nexternal\tpart-cooling\nexternal\tpath-optimization-default\nexternal\traft-default\nexternal\trectilinear-infill\nexternal\tseam-placer\nexternal\tseam-planner-default\nexternal\tskirt-brim\nexternal\tsupport-surface-ironing\nexternal\ttop-surface-ironing\nexternal\ttraditional-support\nexternal\ttraditional-support-planner\nexternal\ttree-support\nexternal\ttree-support-planner\nexternal\twave-overhangs\nexternal\twipe-tower\n",
+    "plan_accelerated": "edition\tdeveloper\nout_dir\t\\\\?\\D:\\slicerProject\\pinch_n_print_cli_2\\target\\dist-accelerated\\developer\nfeatures\t\nexternal\tarachne-perimeters\nexternal\tclassic-perimeters\nexternal\tfuzzy-skin\nexternal\tgyroid-infill\nexternal\tinfill-linker\nexternal\tlayer-planner-default\nexternal\tlightning-infill\nexternal\tmachine-gcode-emit\nexternal\toverhang-classifier-default\nexternal\tpart-cooling\nexternal\tpath-optimization-default\nexternal\traft-default\nexternal\trectilinear-infill\nexternal\tseam-placer\nexternal\tseam-planner-default\nexternal\tskirt-brim\nexternal\tsupport-surface-ironing\nexternal\ttop-surface-ironing\nexternal\ttraditional-support\nexternal\ttraditional-support-planner\nexternal\ttree-support\nexternal\ttree-support-planner\nexternal\twave-overhangs\nexternal\twipe-tower\n"
+  },
+  "commands": [
+    {
+      "name": "t41-freeze-verification-before",
+      "argv": [
+        "C:\\Users\\agpen\\.vfox\\sdks\\python\\python.exe",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t41-reference-repreparation\\verify-freeze.py",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t41-reference-repreparation\\attempt-1"
+      ],
+      "exit_code": 0,
+      "stdout_log": "logs/t41-freeze-verification-before.stdout.log",
+      "stderr_log": "logs/t41-freeze-verification-before.stderr.log"
+    },
+    {
+      "name": "rustc-vV",
+      "argv": [
+        "rustc",
+        "-vV"
+      ],
+      "exit_code": 0,
+      "stdout_log": "logs/rustc-vV.stdout.log",
+      "stderr_log": "logs/rustc-vV.stderr.log"
+    },
+    {
+      "name": "cargo-version",
+      "argv": [
+        "cargo",
+        "--version"
+      ],
+      "exit_code": 0,
+      "stdout_log": "logs/cargo-version.stdout.log",
+      "stderr_log": "logs/cargo-version.stderr.log"
+    },
+    {
+      "name": "wasm-tools-version",
+      "argv": [
+        "wasm-tools",
+        "--version"
+      ],
+      "exit_code": 0,
+      "stdout_log": "logs/wasm-tools-version.stdout.log",
+      "stderr_log": "logs/wasm-tools-version.stderr.log"
+    },
+    {
+      "name": "git-rev-parse",
+      "argv": [
+        "git",
+        "rev-parse",
+        "HEAD"
+      ],
+      "exit_code": 0,
+      "stdout_log": "logs/git-rev-parse.stdout.log",
+      "stderr_log": "logs/git-rev-parse.stderr.log"
+    },
+    {
+      "name": "git-status",
+      "argv": [
+        "git",
+        "status",
+        "--short"
+      ],
+      "exit_code": 0,
+      "stdout_log": "logs/git-status.stdout.log",
+      "stderr_log": "logs/git-status.stderr.log"
+    },
+    {
+      "name": "git-diff",
+      "argv": [
+        "git",
+        "--no-pager",
+        "diff",
+        "--binary",
+        "HEAD"
+      ],
+      "exit_code": 0,
+      "stdout_log": "logs/git-diff.stdout.log",
+      "stderr_log": "logs/git-diff.stderr.log"
+    },
+    {
+      "name": "dist-plan-ordinary",
+      "argv": [
+        "cargo",
+        "xtask",
+        "dist",
+        "--plan",
+        "--edition",
+        "developer"
+      ],
+      "exit_code": 0,
+      "stdout_log": "logs/dist-plan-ordinary.stdout.log",
+      "stderr_log": "logs/dist-plan-ordinary.stderr.log"
+    },
+    {
+      "name": "dist-plan-accelerated",
+      "argv": [
+        "cargo",
+        "xtask",
+        "dist",
+        "--accelerated",
+        "--plan",
+        "--edition",
+        "developer"
+      ],
+      "exit_code": 0,
+      "stdout_log": "logs/dist-plan-accelerated.stdout.log",
+      "stderr_log": "logs/dist-plan-accelerated.stderr.log"
+    },
+    {
+      "name": "dist-ordinary-build",
+      "argv": [
+        "cargo",
+        "xtask",
+        "dist",
+        "--edition",
+        "developer"
+      ],
+      "exit_code": 0,
+      "stdout_log": "logs/dist-ordinary-build.stdout.log",
+      "stderr_log": "logs/dist-ordinary-build.stderr.log"
+    },
+    {
+      "name": "build-guests-ordinary-check",
+      "argv": [
+        "cargo",
+        "xtask",
+        "build-guests",
+        "--check"
+      ],
+      "exit_code": 0,
+      "stdout_log": "logs/build-guests-ordinary-check.stdout.log",
+      "stderr_log": "logs/build-guests-ordinary-check.stderr.log"
+    },
+    {
+      "name": "dist-accelerated-build",
+      "argv": [
+        "cargo",
+        "xtask",
+        "dist",
+        "--accelerated",
+        "--edition",
+        "developer"
+      ],
+      "exit_code": 0,
+      "stdout_log": "logs/dist-accelerated-build.stdout.log",
+      "stderr_log": "logs/dist-accelerated-build.stderr.log"
+    },
+    {
+      "name": "build-guests-accelerated-check",
+      "argv": [
+        "cargo",
+        "xtask",
+        "build-guests",
+        "--accelerated",
+        "--check"
+      ],
+      "exit_code": 0,
+      "stdout_log": "logs/build-guests-accelerated-check.stdout.log",
+      "stderr_log": "logs/build-guests-accelerated-check.stderr.log"
+    },
+    {
+      "name": "build-guests-ordinary-after-accelerated-check",
+      "argv": [
+        "cargo",
+        "xtask",
+        "build-guests",
+        "--check"
+      ],
+      "exit_code": 0,
+      "stdout_log": "logs/build-guests-ordinary-after-accelerated-check.stdout.log",
+      "stderr_log": "logs/build-guests-ordinary-after-accelerated-check.stderr.log"
+    },
+    {
+      "name": "diagnose-ordinary-runner-defaults",
+      "argv": [
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\ordinary\\pnp_cli.exe",
+        "module",
+        "diagnose",
+        "--module-dir",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\ordinary\\modules"
+      ],
+      "exit_code": 0,
+      "stdout_log": "logs/diagnose-ordinary-runner-defaults.stdout.log",
+      "stderr_log": "logs/diagnose-ordinary-runner-defaults.stderr.log"
+    },
+    {
+      "name": "diagnose-ordinary-isolated",
+      "argv": [
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\ordinary\\pnp_cli.exe",
+        "module",
+        "diagnose",
+        "--module-dir",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\ordinary\\modules",
+        "--no-default-module-paths",
+        "--no-integrated-modules"
+      ],
+      "exit_code": 0,
+      "stdout_log": "logs/diagnose-ordinary-isolated.stdout.log",
+      "stderr_log": "logs/diagnose-ordinary-isolated.stderr.log"
+    },
+    {
+      "name": "diagnose-accelerated-runner-defaults",
+      "argv": [
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\accelerated\\pnp_cli.exe",
+        "module",
+        "diagnose",
+        "--module-dir",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\accelerated\\modules"
+      ],
+      "exit_code": 0,
+      "stdout_log": "logs/diagnose-accelerated-runner-defaults.stdout.log",
+      "stderr_log": "logs/diagnose-accelerated-runner-defaults.stderr.log"
+    },
+    {
+      "name": "diagnose-accelerated-isolated",
+      "argv": [
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\accelerated\\pnp_cli.exe",
+        "module",
+        "diagnose",
+        "--module-dir",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\accelerated\\modules",
+        "--no-default-module-paths",
+        "--no-integrated-modules"
+      ],
+      "exit_code": 0,
+      "stdout_log": "logs/diagnose-accelerated-isolated.stdout.log",
+      "stderr_log": "logs/diagnose-accelerated-isolated.stderr.log"
+    },
+    {
+      "name": "t41-freeze-verification-after",
+      "argv": [
+        "C:\\Users\\agpen\\.vfox\\sdks\\python\\python.exe",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t41-reference-repreparation\\verify-freeze.py",
+        "D:\\slicerProject\\pinch_n_print_cli_2\\docs\\specs\\perf-vs-orca\\evidence\\t41-reference-repreparation\\attempt-1"
+      ],
+      "exit_code": 0,
+      "stdout_log": "logs/t41-freeze-verification-after.stdout.log",
+      "stderr_log": "logs/t41-freeze-verification-after.stderr.log"
+    }
+  ],
+  "source_identity": {
+    "inputs_count": 1158,
+    "inputs_canonical_sha256": "3358b003e0d3e083cb6b56c82c7aa1bfd01898885e3b864e3245bb74303517cd",
+    "matches_t41_source_inputs": true,
+    "revision": "2ebc372a4cc3e96d1a03bba94569c049d18ad5e1",
+    "revision_matches_t41": true,
+    "status_sha256": "834adc972f25ccd70e21e9d8487a56e1edb3349021151071085ca10fd67ae6e2",
+    "diff_sha256": "a77239c9831a5d5e3568a95c653820807e9c2e072c91e36a7877febf52fde830"
+  },
+  "ordinary_snapshot": {
+    "root": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\ordinary",
+    "exe": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\ordinary\\pnp_cli.exe",
+    "modules_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\ordinary\\modules",
+    "inventory_sha256": {
+      "modules/arachne-perimeters/arachne-perimeters.toml": "b201a3b95892ef9650565a37b491ce9b517944333af6151b91f97f6abce5fc80",
+      "modules/arachne-perimeters/arachne-perimeters.wasm": "29a88175ee75808b09d425d6accdc3cfa04c16445020e0d9c68fc3c6921bb3b8",
+      "modules/classic-perimeters/classic-perimeters.toml": "b53a25536a375fb8ac8ebeee674c5c6ca2a035173f6c0f2aa61529c1090a0868",
+      "modules/classic-perimeters/classic-perimeters.wasm": "c9591ae8e9e6a4563ad0b7a1d3c7c46d8f5ef71b87a0b00a633a903976c8fa89",
+      "modules/fuzzy-skin/fuzzy-skin.toml": "7dc448c037eb911e1f5b02063a0242ec270478a0c0052fc45b80bfdf3d0268da",
+      "modules/fuzzy-skin/fuzzy-skin.wasm": "684403b1048ecd05d80c8dbcca095c5477c7da3c4ac0efff212bba53db81f9c4",
+      "modules/gyroid-infill/gyroid-infill.toml": "3d4c0828bde1aa6cfb9a1eebbc1fdd4393f587a32f52fe92615cc55e5e5802c5",
+      "modules/gyroid-infill/gyroid-infill.wasm": "e3f6c6269b382ed825bc1a427364abdea183f9f007fb3e46f75cc090c5eb59d9",
+      "modules/infill-linker/infill-linker.toml": "b6d5d7784031173e5c71d30f869a69fc9993ba86fcb90fc8373cb03d23b0fb3b",
+      "modules/infill-linker/infill-linker.wasm": "b65b5f0053464d172ed0d4689d7c46fbb55787479c92112c0e3ca24ad7cab53e",
+      "modules/layer-planner-default/layer-planner-default.toml": "2e0c62f9baf2f3b5a0d37c30761adbbcf74bd4962a769082dad1d2cb982f372e",
+      "modules/layer-planner-default/layer-planner-default.wasm": "8ede989df0c1ba02a9f49884b5b454d344a988153f37aa8911b511e25f9c60ea",
+      "modules/lightning-infill/lightning-infill.toml": "550a5af2cb1d56ae1c92bf295aad08a438792c38df440d3273b55beaba2f51ef",
+      "modules/lightning-infill/lightning-infill.wasm": "fe16ad3c829f5abee774a83ed9a1e101f8f222933355ab6ce0680178d402a626",
+      "modules/machine-gcode-emit/machine-gcode-emit.toml": "5620241c4598c889e8e72a1d5674f300ef0ba8ceadb6d1bcbbfac01eaf2e93cb",
+      "modules/machine-gcode-emit/machine-gcode-emit.wasm": "bffadad6ad828ded949623acecf4ef5c74fabd110013b94dd3391ef8bcbbe529",
+      "modules/overhang-classifier-default/overhang-classifier-default.toml": "d39ca55514e85cbc34d865779634afcb4ac9d248700ceeb876a5e63b54867bde",
+      "modules/overhang-classifier-default/overhang-classifier-default.wasm": "7db6b9b772337fff6ad8f6c551e2c46dcfc5f7dfd138eb5f870a2b5b70d0a62d",
+      "modules/part-cooling/part-cooling.toml": "07540470d42b1943dc8ff1b61d80b8362d0840f6d52d34f589f79d1bf64bf446",
+      "modules/part-cooling/part-cooling.wasm": "3f972144f6a14cd50e55a842ad58b081f600cb0e46fd7135602b3ddbc6e8c2a7",
+      "modules/path-optimization-default/path-optimization-default.toml": "7f0a8cc423c7ac50667fa0a50e5eafb805114f23ed7aa722b44c0f753e30b251",
+      "modules/path-optimization-default/path-optimization-default.wasm": "61e247e1932ff67b175640ab6f9cab49f06c232d0ef1fdb2da039a485122ac99",
+      "modules/raft-default/raft-default.toml": "741323ac61137900de1513e79afca3456825960a5c71f2cef1ece982b394b58d",
+      "modules/raft-default/raft-default.wasm": "774b86abf671785a75ea1d2ac3b36cb199408cf09a255b3a5ad6c92986f30092",
+      "modules/rectilinear-infill/rectilinear-infill.toml": "a43a822b8fcc9ba0c08407fded382dbe0b945dd11c7f7d8b96adbca62ccd07ed",
+      "modules/rectilinear-infill/rectilinear-infill.wasm": "671ca147e8a43a83986d2db02be1f07887a02b27076c07627f88955ec655b315",
+      "modules/seam-placer/seam-placer.toml": "83ccb68f05fe6bb109c5d3c6908697c93a31b9b3ef0899907ee184279a77bf02",
+      "modules/seam-placer/seam-placer.wasm": "c12bb9fbb6d4f9bcbf2a53f86bcab14dee4134d325658bbd3b607435b6174c7f",
+      "modules/seam-planner-default/seam-planner-default.toml": "6331b3f4308c786d7d21b89b6412daf3904b2149428ceaae4cb68140b33d53d6",
+      "modules/seam-planner-default/seam-planner-default.wasm": "431d9d9433b9ef4a7453f735f55a87b8ef3c810c02f1856941138ca036daec15",
+      "modules/skirt-brim/skirt-brim.toml": "6378a85864afd9572f2c5a1f9d0cc39268fa23de8b72b13043f2a9dc4bc94998",
+      "modules/skirt-brim/skirt-brim.wasm": "fa43d6474bd2419228e90e153b7b3d308646722ee3d3d54e6c155021beae8f06",
+      "modules/support-surface-ironing/support-surface-ironing.toml": "b36416c465e8514ef361a116676c356f23479c34bb745b90bd7534cf664ba0b2",
+      "modules/support-surface-ironing/support-surface-ironing.wasm": "bd6bd2c9ff9801db42b8af3ef0d0db785eeb416e2c8a66c16898ab586ad8fd1f",
+      "modules/top-surface-ironing/top-surface-ironing.toml": "63a7725553511a94a5914a4e7af68376aaea9b07d0d492b74e0c4719e501f017",
+      "modules/top-surface-ironing/top-surface-ironing.wasm": "c75e9b70b7cc93abb457be6277e9fea435e2284f689716d55d489d66619c024f",
+      "modules/traditional-support/traditional-support.toml": "dbddf163cba2d0b68156f4b365ea43e7e6914a0b7c9165c77e08390052374442",
+      "modules/traditional-support/traditional-support.wasm": "94974ce1ccb0984093a8b9020da7a742fa3fc7480e519796b38cbcc92dbb2283",
+      "modules/traditional-support-planner/traditional-support-planner.toml": "5997320ba87be26d95cf7bdd8e5e0c82d9d67a78e2ffe615c6ed4fd64dca218d",
+      "modules/traditional-support-planner/traditional-support-planner.wasm": "504ab7916f7a6a815db7957574b8166c4e1f387d8e5b7a9fd251b114e0c41206",
+      "modules/tree-support/tree-support.toml": "2a123df8097210f42e454561eb4b873f702de570ac796f941c757b37bc64baf0",
+      "modules/tree-support/tree-support.wasm": "80fdf52615d60c24e2bdaf42a818cfe4245e47d02ca879722f5eb19cf90d6f7e",
+      "modules/tree-support-planner/tree-support-planner.toml": "0f6d20ed83628ea07c2a623748437a11638a451bc88263686ec9090348286e60",
+      "modules/tree-support-planner/tree-support-planner.wasm": "4d212e82c7a472d11b498f925ce7442d00f6555d0cea47f60c5d2a6f62dffa8e",
+      "modules/wave-overhangs/wave-overhangs.toml": "371dc966a90911981ab535910be93522b811e78fda6a1036136ec527b40d0df1",
+      "modules/wave-overhangs/wave-overhangs.wasm": "514739173d1b6e4817778365863129e1d2f22b46e0d4df4fe5c8079f7e67a01a",
+      "modules/wipe-tower/wipe-tower.toml": "41838ec4e766b94982bd11b88844c11be67a35aa136af2634b7daf231aa5695f",
+      "modules/wipe-tower/wipe-tower.wasm": "f02b4d1dd9525300acdc2f7a6236d81aa6b00f36bb004c04c8a3ecaf8c682729",
+      "pnp_cli.exe": "67c4b04001dd2ab7b0885457fcba3b414286966d429316a720c975c1510c7099"
+    },
+    "matches_t41_frozen_snapshot": true
+  },
+  "accelerated_snapshot": {
+    "root": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\accelerated",
+    "exe": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\accelerated\\pnp_cli.exe",
+    "modules_dir": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\accelerated\\modules",
+    "inventory_sha256": {
+      "build-metadata.toml": "d86ebe554813615fd407d1c6cc460b397d4cf26cb7153f1c705f74686006456b",
+      "modules/arachne-perimeters/arachne-perimeters.toml": "b201a3b95892ef9650565a37b491ce9b517944333af6151b91f97f6abce5fc80",
+      "modules/arachne-perimeters/arachne-perimeters.wasm": "76def1905af99e4e57b18d1de0577da0bdc154f28e2c7477d778ddc1f4fa243d",
+      "modules/classic-perimeters/classic-perimeters.toml": "b53a25536a375fb8ac8ebeee674c5c6ca2a035173f6c0f2aa61529c1090a0868",
+      "modules/classic-perimeters/classic-perimeters.wasm": "2ac6d07838dfb5ae7e6cf4d5544d570a19babbf05bf1139cdc260df97df0c369",
+      "modules/fuzzy-skin/fuzzy-skin.toml": "7dc448c037eb911e1f5b02063a0242ec270478a0c0052fc45b80bfdf3d0268da",
+      "modules/fuzzy-skin/fuzzy-skin.wasm": "64ae2f4de66845ecf3adc997e1487be017caa8f367b1336cabcbcfc040ad846d",
+      "modules/gyroid-infill/gyroid-infill.toml": "3d4c0828bde1aa6cfb9a1eebbc1fdd4393f587a32f52fe92615cc55e5e5802c5",
+      "modules/gyroid-infill/gyroid-infill.wasm": "570374739dbe16b6f82a29afcd99e2aaafc3e56a34dac0ede8f9301cb8140255",
+      "modules/infill-linker/infill-linker.toml": "b6d5d7784031173e5c71d30f869a69fc9993ba86fcb90fc8373cb03d23b0fb3b",
+      "modules/infill-linker/infill-linker.wasm": "7a8a5c017847294af88832f213fb821ae6ed71b7159a6e2f5d6ec21dd0b2b26a",
+      "modules/layer-planner-default/layer-planner-default.toml": "2e0c62f9baf2f3b5a0d37c30761adbbcf74bd4962a769082dad1d2cb982f372e",
+      "modules/layer-planner-default/layer-planner-default.wasm": "d10c77ac79b7da73b6f23fe864e433632be7d950ae908ec65371d76aec7a8c94",
+      "modules/lightning-infill/lightning-infill.toml": "550a5af2cb1d56ae1c92bf295aad08a438792c38df440d3273b55beaba2f51ef",
+      "modules/lightning-infill/lightning-infill.wasm": "0ee306f6b2af023eab7e5452c08dc84f391ad53cc91ee7868fc08c2c5a78a8bd",
+      "modules/machine-gcode-emit/machine-gcode-emit.toml": "5620241c4598c889e8e72a1d5674f300ef0ba8ceadb6d1bcbbfac01eaf2e93cb",
+      "modules/machine-gcode-emit/machine-gcode-emit.wasm": "3b9293eaf543e2d07920b437b9dfb7a282db98e53d9d49a1dd8520b84e5399c9",
+      "modules/overhang-classifier-default/overhang-classifier-default.toml": "d39ca55514e85cbc34d865779634afcb4ac9d248700ceeb876a5e63b54867bde",
+      "modules/overhang-classifier-default/overhang-classifier-default.wasm": "22a7d65c39af6d112e332a7792a7d0e01bf48af80b8de5de366caaaf4ff864db",
+      "modules/part-cooling/part-cooling.toml": "07540470d42b1943dc8ff1b61d80b8362d0840f6d52d34f589f79d1bf64bf446",
+      "modules/part-cooling/part-cooling.wasm": "40f91ed2e693008f89a65688ace2db2f307d820be2c9f674b2456a148a8d37ca",
+      "modules/path-optimization-default/path-optimization-default.toml": "7f0a8cc423c7ac50667fa0a50e5eafb805114f23ed7aa722b44c0f753e30b251",
+      "modules/path-optimization-default/path-optimization-default.wasm": "328aade2ad1494195e912d070d25cf193cdfd7704c67c127c7b4412fee24202a",
+      "modules/raft-default/raft-default.toml": "741323ac61137900de1513e79afca3456825960a5c71f2cef1ece982b394b58d",
+      "modules/raft-default/raft-default.wasm": "c29d5298e59052e58819a6c166ddffdadce1c6267c3393723ee95e9722f590ff",
+      "modules/rectilinear-infill/rectilinear-infill.toml": "a43a822b8fcc9ba0c08407fded382dbe0b945dd11c7f7d8b96adbca62ccd07ed",
+      "modules/rectilinear-infill/rectilinear-infill.wasm": "df26a6cebb688628d9c6855c6a03dcc81522021b0b67841e4ee89bf4ac4a8275",
+      "modules/seam-placer/seam-placer.toml": "83ccb68f05fe6bb109c5d3c6908697c93a31b9b3ef0899907ee184279a77bf02",
+      "modules/seam-placer/seam-placer.wasm": "cee24e78915ecad960a57e1c5278381efc2561da08c7fc934c023f5a420339bf",
+      "modules/seam-planner-default/seam-planner-default.toml": "6331b3f4308c786d7d21b89b6412daf3904b2149428ceaae4cb68140b33d53d6",
+      "modules/seam-planner-default/seam-planner-default.wasm": "431d9d9433b9ef4a7453f735f55a87b8ef3c810c02f1856941138ca036daec15",
+      "modules/skirt-brim/skirt-brim.toml": "6378a85864afd9572f2c5a1f9d0cc39268fa23de8b72b13043f2a9dc4bc94998",
+      "modules/skirt-brim/skirt-brim.wasm": "9579bfa3ac6aa4e35327d2908d82460378b76433a9f783a7722bda582e45d6b4",
+      "modules/support-surface-ironing/support-surface-ironing.toml": "b36416c465e8514ef361a116676c356f23479c34bb745b90bd7534cf664ba0b2",
+      "modules/support-surface-ironing/support-surface-ironing.wasm": "06df98320e4235ccf9ae77f924ec72a412ba8aff8de50eaad14eec8dfda0574d",
+      "modules/top-surface-ironing/top-surface-ironing.toml": "63a7725553511a94a5914a4e7af68376aaea9b07d0d492b74e0c4719e501f017",
+      "modules/top-surface-ironing/top-surface-ironing.wasm": "390ae85b7fed39e0a83e9a31149fac9cac03b736b4cfe6625ea0de1b860aed0b",
+      "modules/traditional-support/traditional-support.toml": "dbddf163cba2d0b68156f4b365ea43e7e6914a0b7c9165c77e08390052374442",
+      "modules/traditional-support/traditional-support.wasm": "c19e5e1214c4dbdca80cc2610b10621609b765aacec1274fbae7d44395655aba",
+      "modules/traditional-support-planner/traditional-support-planner.toml": "5997320ba87be26d95cf7bdd8e5e0c82d9d67a78e2ffe615c6ed4fd64dca218d",
+      "modules/traditional-support-planner/traditional-support-planner.wasm": "c2750e2dce96550490063ef0df7afff7fc803cf868702fc546eed4aa3c77e4c3",
+      "modules/tree-support/tree-support.toml": "2a123df8097210f42e454561eb4b873f702de570ac796f941c757b37bc64baf0",
+      "modules/tree-support/tree-support.wasm": "d86fa5359182ebb85906235657561668a592d50a9748a444476aa4ba2ae0fc88",
+      "modules/tree-support-planner/tree-support-planner.toml": "0f6d20ed83628ea07c2a623748437a11638a451bc88263686ec9090348286e60",
+      "modules/tree-support-planner/tree-support-planner.wasm": "0efafa7799294a2853db7b258569cc62fb82f9ec899b437a93aeb44097e1839f",
+      "modules/wave-overhangs/wave-overhangs.toml": "371dc966a90911981ab535910be93522b811e78fda6a1036136ec527b40d0df1",
+      "modules/wave-overhangs/wave-overhangs.wasm": "de6744686d3652a59ae6eca92c2e5e40c53d79349bd27b274a1ea8822a70fc61",
+      "modules/wipe-tower/wipe-tower.toml": "41838ec4e766b94982bd11b88844c11be67a35aa136af2634b7daf231aa5695f",
+      "modules/wipe-tower/wipe-tower.wasm": "746d0bd0d5412b82c920c32a1fd61c537152644934ef6da8312d145b4117e6ac",
+      "pnp_cli.exe": "cce87bf863dbc6c680f2a583b80e76c9abe03a1af8b3df066ca885c11c70c7b1"
+    },
+    "build_metadata": {
+      "mode": "\"accelerated\"",
+      "edition": "\"developer\"",
+      "profile": "\"release\"",
+      "perimeter_spatial_test_support": "false"
+    },
+    "module_manifest_matches_t41": 24
+  },
+  "copy_identity": {
+    "ordinary_matches_staged_dist": true,
+    "accelerated_matches_staged_dist": true
+  },
+  "previous_dist": {
+    "ordinary": {
+      "present": true,
+      "copied_to": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\preserved-previous-dist\\ordinary",
+      "inventory_sha256": {
+        "modules/arachne-perimeters/arachne-perimeters.toml": "b201a3b95892ef9650565a37b491ce9b517944333af6151b91f97f6abce5fc80",
+        "modules/arachne-perimeters/arachne-perimeters.wasm": "29a88175ee75808b09d425d6accdc3cfa04c16445020e0d9c68fc3c6921bb3b8",
+        "modules/classic-perimeters/classic-perimeters.toml": "b53a25536a375fb8ac8ebeee674c5c6ca2a035173f6c0f2aa61529c1090a0868",
+        "modules/classic-perimeters/classic-perimeters.wasm": "c9591ae8e9e6a4563ad0b7a1d3c7c46d8f5ef71b87a0b00a633a903976c8fa89",
+        "modules/fuzzy-skin/fuzzy-skin.toml": "7dc448c037eb911e1f5b02063a0242ec270478a0c0052fc45b80bfdf3d0268da",
+        "modules/fuzzy-skin/fuzzy-skin.wasm": "684403b1048ecd05d80c8dbcca095c5477c7da3c4ac0efff212bba53db81f9c4",
+        "modules/gyroid-infill/gyroid-infill.toml": "3d4c0828bde1aa6cfb9a1eebbc1fdd4393f587a32f52fe92615cc55e5e5802c5",
+        "modules/gyroid-infill/gyroid-infill.wasm": "e3f6c6269b382ed825bc1a427364abdea183f9f007fb3e46f75cc090c5eb59d9",
+        "modules/infill-linker/infill-linker.toml": "b6d5d7784031173e5c71d30f869a69fc9993ba86fcb90fc8373cb03d23b0fb3b",
+        "modules/infill-linker/infill-linker.wasm": "b65b5f0053464d172ed0d4689d7c46fbb55787479c92112c0e3ca24ad7cab53e",
+        "modules/layer-planner-default/layer-planner-default.toml": "2e0c62f9baf2f3b5a0d37c30761adbbcf74bd4962a769082dad1d2cb982f372e",
+        "modules/layer-planner-default/layer-planner-default.wasm": "8ede989df0c1ba02a9f49884b5b454d344a988153f37aa8911b511e25f9c60ea",
+        "modules/lightning-infill/lightning-infill.toml": "550a5af2cb1d56ae1c92bf295aad08a438792c38df440d3273b55beaba2f51ef",
+        "modules/lightning-infill/lightning-infill.wasm": "fe16ad3c829f5abee774a83ed9a1e101f8f222933355ab6ce0680178d402a626",
+        "modules/machine-gcode-emit/machine-gcode-emit.toml": "5620241c4598c889e8e72a1d5674f300ef0ba8ceadb6d1bcbbfac01eaf2e93cb",
+        "modules/machine-gcode-emit/machine-gcode-emit.wasm": "bffadad6ad828ded949623acecf4ef5c74fabd110013b94dd3391ef8bcbbe529",
+        "modules/overhang-classifier-default/overhang-classifier-default.toml": "d39ca55514e85cbc34d865779634afcb4ac9d248700ceeb876a5e63b54867bde",
+        "modules/overhang-classifier-default/overhang-classifier-default.wasm": "7db6b9b772337fff6ad8f6c551e2c46dcfc5f7dfd138eb5f870a2b5b70d0a62d",
+        "modules/part-cooling/part-cooling.toml": "07540470d42b1943dc8ff1b61d80b8362d0840f6d52d34f589f79d1bf64bf446",
+        "modules/part-cooling/part-cooling.wasm": "3f972144f6a14cd50e55a842ad58b081f600cb0e46fd7135602b3ddbc6e8c2a7",
+        "modules/path-optimization-default/path-optimization-default.toml": "7f0a8cc423c7ac50667fa0a50e5eafb805114f23ed7aa722b44c0f753e30b251",
+        "modules/path-optimization-default/path-optimization-default.wasm": "61e247e1932ff67b175640ab6f9cab49f06c232d0ef1fdb2da039a485122ac99",
+        "modules/raft-default/raft-default.toml": "741323ac61137900de1513e79afca3456825960a5c71f2cef1ece982b394b58d",
+        "modules/raft-default/raft-default.wasm": "774b86abf671785a75ea1d2ac3b36cb199408cf09a255b3a5ad6c92986f30092",
+        "modules/rectilinear-infill/rectilinear-infill.toml": "a43a822b8fcc9ba0c08407fded382dbe0b945dd11c7f7d8b96adbca62ccd07ed",
+        "modules/rectilinear-infill/rectilinear-infill.wasm": "671ca147e8a43a83986d2db02be1f07887a02b27076c07627f88955ec655b315",
+        "modules/seam-placer/seam-placer.toml": "83ccb68f05fe6bb109c5d3c6908697c93a31b9b3ef0899907ee184279a77bf02",
+        "modules/seam-placer/seam-placer.wasm": "c12bb9fbb6d4f9bcbf2a53f86bcab14dee4134d325658bbd3b607435b6174c7f",
+        "modules/seam-planner-default/seam-planner-default.toml": "6331b3f4308c786d7d21b89b6412daf3904b2149428ceaae4cb68140b33d53d6",
+        "modules/seam-planner-default/seam-planner-default.wasm": "431d9d9433b9ef4a7453f735f55a87b8ef3c810c02f1856941138ca036daec15",
+        "modules/skirt-brim/skirt-brim.toml": "6378a85864afd9572f2c5a1f9d0cc39268fa23de8b72b13043f2a9dc4bc94998",
+        "modules/skirt-brim/skirt-brim.wasm": "fa43d6474bd2419228e90e153b7b3d308646722ee3d3d54e6c155021beae8f06",
+        "modules/support-surface-ironing/support-surface-ironing.toml": "b36416c465e8514ef361a116676c356f23479c34bb745b90bd7534cf664ba0b2",
+        "modules/support-surface-ironing/support-surface-ironing.wasm": "bd6bd2c9ff9801db42b8af3ef0d0db785eeb416e2c8a66c16898ab586ad8fd1f",
+        "modules/top-surface-ironing/top-surface-ironing.toml": "63a7725553511a94a5914a4e7af68376aaea9b07d0d492b74e0c4719e501f017",
+        "modules/top-surface-ironing/top-surface-ironing.wasm": "c75e9b70b7cc93abb457be6277e9fea435e2284f689716d55d489d66619c024f",
+        "modules/traditional-support/traditional-support.toml": "dbddf163cba2d0b68156f4b365ea43e7e6914a0b7c9165c77e08390052374442",
+        "modules/traditional-support/traditional-support.wasm": "94974ce1ccb0984093a8b9020da7a742fa3fc7480e519796b38cbcc92dbb2283",
+        "modules/traditional-support-planner/traditional-support-planner.toml": "5997320ba87be26d95cf7bdd8e5e0c82d9d67a78e2ffe615c6ed4fd64dca218d",
+        "modules/traditional-support-planner/traditional-support-planner.wasm": "504ab7916f7a6a815db7957574b8166c4e1f387d8e5b7a9fd251b114e0c41206",
+        "modules/tree-support/tree-support.toml": "2a123df8097210f42e454561eb4b873f702de570ac796f941c757b37bc64baf0",
+        "modules/tree-support/tree-support.wasm": "80fdf52615d60c24e2bdaf42a818cfe4245e47d02ca879722f5eb19cf90d6f7e",
+        "modules/tree-support-planner/tree-support-planner.toml": "0f6d20ed83628ea07c2a623748437a11638a451bc88263686ec9090348286e60",
+        "modules/tree-support-planner/tree-support-planner.wasm": "4d212e82c7a472d11b498f925ce7442d00f6555d0cea47f60c5d2a6f62dffa8e",
+        "modules/wave-overhangs/wave-overhangs.toml": "371dc966a90911981ab535910be93522b811e78fda6a1036136ec527b40d0df1",
+        "modules/wave-overhangs/wave-overhangs.wasm": "514739173d1b6e4817778365863129e1d2f22b46e0d4df4fe5c8079f7e67a01a",
+        "modules/wipe-tower/wipe-tower.toml": "41838ec4e766b94982bd11b88844c11be67a35aa136af2634b7daf231aa5695f",
+        "modules/wipe-tower/wipe-tower.wasm": "f02b4d1dd9525300acdc2f7a6236d81aa6b00f36bb004c04c8a3ecaf8c682729",
+        "pnp_cli.exe": "67c4b04001dd2ab7b0885457fcba3b414286966d429316a720c975c1510c7099"
+      },
+      "equals_t41_frozen_snapshot": true
+    },
+    "accelerated": {
+      "present": false
+    }
+  },
+  "guest_identity": {
+    "stems": {
+      "arachne-perimeters": {
+        "crate": "arachne-perimeters-guest",
+        "ordinary_fingerprint_sha256": "ce1e7b22f79e20a4316eea0a081a702a42df634afa20caed786efbd8a9376479",
+        "accelerated_fingerprint_sha256": "ce1e7b22f79e20a4316eea0a081a702a42df634afa20caed786efbd8a9376479",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "classic-perimeters": {
+        "crate": "classic-perimeters-guest",
+        "ordinary_fingerprint_sha256": "b9513408a1e285b201fed6f0b27c032deca5901d4d25bd4acfd56140730f99a8",
+        "accelerated_fingerprint_sha256": "b9513408a1e285b201fed6f0b27c032deca5901d4d25bd4acfd56140730f99a8",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "fuzzy-skin": {
+        "crate": "fuzzy-skin-guest",
+        "ordinary_fingerprint_sha256": "5300795edf4f7d6843a57abaf3891b4bdc63dd37d6717e5da492367d439b1cfd",
+        "accelerated_fingerprint_sha256": "5300795edf4f7d6843a57abaf3891b4bdc63dd37d6717e5da492367d439b1cfd",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "gyroid-infill": {
+        "crate": "gyroid-infill-guest",
+        "ordinary_fingerprint_sha256": "401a96816798a3743c5f48449b2a6440482d1af78940968787abacf40a85f9cd",
+        "accelerated_fingerprint_sha256": "401a96816798a3743c5f48449b2a6440482d1af78940968787abacf40a85f9cd",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "infill-linker": {
+        "crate": "infill-linker-guest",
+        "ordinary_fingerprint_sha256": "ffd6461f67c9ad0cede2c0ca93317377c801f08b00a974632b42aedfabb59db7",
+        "accelerated_fingerprint_sha256": "ffd6461f67c9ad0cede2c0ca93317377c801f08b00a974632b42aedfabb59db7",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "layer-planner-default": {
+        "crate": "layer-planner-default-guest",
+        "ordinary_fingerprint_sha256": "398c91d2d0a32afb4b50d35cd156a10369908e2ed7fe9343efa76f4ed8ff0897",
+        "accelerated_fingerprint_sha256": "398c91d2d0a32afb4b50d35cd156a10369908e2ed7fe9343efa76f4ed8ff0897",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "lightning-infill": {
+        "crate": "lightning-infill-guest",
+        "ordinary_fingerprint_sha256": "6a1203849fa745283ecb7778063bb1449313963375114c9ee067ec6dc71df479",
+        "accelerated_fingerprint_sha256": "6a1203849fa745283ecb7778063bb1449313963375114c9ee067ec6dc71df479",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "machine-gcode-emit": {
+        "crate": "machine_gcode_emit_guest",
+        "ordinary_fingerprint_sha256": "ef3c2fff3277abcea9cd980fc1e4a2b025cd64f249fe9e3bda074c23c092f3ff",
+        "accelerated_fingerprint_sha256": "ef3c2fff3277abcea9cd980fc1e4a2b025cd64f249fe9e3bda074c23c092f3ff",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "overhang-classifier-default": {
+        "crate": "overhang_classifier_default_guest",
+        "ordinary_fingerprint_sha256": "0474a58e91f792c097110797ef91a7c54cb6215281f408bc5d4c9b6f25ae9d65",
+        "accelerated_fingerprint_sha256": "0474a58e91f792c097110797ef91a7c54cb6215281f408bc5d4c9b6f25ae9d65",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "part-cooling": {
+        "crate": "part_cooling_guest",
+        "ordinary_fingerprint_sha256": "c4b93fdd1e451624c727924d485d6b09d31cac13e83b7ad0e3a714c05197ff13",
+        "accelerated_fingerprint_sha256": "c4b93fdd1e451624c727924d485d6b09d31cac13e83b7ad0e3a714c05197ff13",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "path-optimization-default": {
+        "crate": "path-optimization-default-guest",
+        "ordinary_fingerprint_sha256": "6566e9ab387f051af21e2a18f3db5dfadfaaa221c240ff39896f63cb6590c14b",
+        "accelerated_fingerprint_sha256": "6566e9ab387f051af21e2a18f3db5dfadfaaa221c240ff39896f63cb6590c14b",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "raft-default": {
+        "crate": "raft-default-guest",
+        "ordinary_fingerprint_sha256": "228791a5ad3100f95f00de9b04331d8a1693bdc70b92826abf19f327201fdf77",
+        "accelerated_fingerprint_sha256": "228791a5ad3100f95f00de9b04331d8a1693bdc70b92826abf19f327201fdf77",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "rectilinear-infill": {
+        "crate": "rectilinear-infill-guest",
+        "ordinary_fingerprint_sha256": "10dec6e1b44935df0ecaf3a79210da82441c9832f6190170776d68e0ab8a83f3",
+        "accelerated_fingerprint_sha256": "10dec6e1b44935df0ecaf3a79210da82441c9832f6190170776d68e0ab8a83f3",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "seam-placer": {
+        "crate": "seam-placer-guest",
+        "ordinary_fingerprint_sha256": "939c090aee8d29da98bc11e2772754729180f434423d5b3a75d802b4b81aa571",
+        "accelerated_fingerprint_sha256": "939c090aee8d29da98bc11e2772754729180f434423d5b3a75d802b4b81aa571",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "seam-planner-default": {
+        "crate": "seam-planner-default-guest",
+        "ordinary_fingerprint_sha256": "c0b4d8bbde3e27a498aa5718aae5149703838649babbe66e5889dfdda0c23969",
+        "accelerated_fingerprint_sha256": "c0b4d8bbde3e27a498aa5718aae5149703838649babbe66e5889dfdda0c23969",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "skirt-brim": {
+        "crate": "skirt-brim-guest",
+        "ordinary_fingerprint_sha256": "b41de24b196eb1a42f09f5706eb6241215f6066be4f18dca853429e86047e33d",
+        "accelerated_fingerprint_sha256": "b41de24b196eb1a42f09f5706eb6241215f6066be4f18dca853429e86047e33d",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "support-surface-ironing": {
+        "crate": "support-surface-ironing-guest",
+        "ordinary_fingerprint_sha256": "6dea9f8436b9663a172b2dc7fd805a350730fcaf37224a3f61e83bac4652580e",
+        "accelerated_fingerprint_sha256": "6dea9f8436b9663a172b2dc7fd805a350730fcaf37224a3f61e83bac4652580e",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "top-surface-ironing": {
+        "crate": "top-surface-ironing-guest",
+        "ordinary_fingerprint_sha256": "1340ca0082db6f32203fe97d620faa2737f6d3d3b93041d7f35428c5e30981f7",
+        "accelerated_fingerprint_sha256": "1340ca0082db6f32203fe97d620faa2737f6d3d3b93041d7f35428c5e30981f7",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "traditional-support": {
+        "crate": "traditional-support-guest",
+        "ordinary_fingerprint_sha256": "7ce69f22ef47d3ef5fcb34db3b1b56fa3d0df952f6cb1ddb8927aa0c57aa46db",
+        "accelerated_fingerprint_sha256": "7ce69f22ef47d3ef5fcb34db3b1b56fa3d0df952f6cb1ddb8927aa0c57aa46db",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "traditional-support-planner": {
+        "crate": "traditional-support-planner-guest",
+        "ordinary_fingerprint_sha256": "6b3a5d5806aa8a4e3baf3814e267562da1cd41a6d815e7c79c2caf9537b68a86",
+        "accelerated_fingerprint_sha256": "6b3a5d5806aa8a4e3baf3814e267562da1cd41a6d815e7c79c2caf9537b68a86",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "tree-support": {
+        "crate": "tree-support-guest",
+        "ordinary_fingerprint_sha256": "1885ad79564888af7df31f3954a5b4cc978019eaa2508cad0fbe10f48ab02ac9",
+        "accelerated_fingerprint_sha256": "1885ad79564888af7df31f3954a5b4cc978019eaa2508cad0fbe10f48ab02ac9",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "tree-support-planner": {
+        "crate": "tree-support-planner-guest",
+        "ordinary_fingerprint_sha256": "66d8df071a6f0363467152a6980e17d5938f1d775fc135b36b07c2b75e5ba8ae",
+        "accelerated_fingerprint_sha256": "66d8df071a6f0363467152a6980e17d5938f1d775fc135b36b07c2b75e5ba8ae",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "wave-overhangs": {
+        "crate": "wave-overhangs-guest",
+        "ordinary_fingerprint_sha256": "f696467093ebf8a3f251aa632292d0434425d526635495103267a0225f66f215",
+        "accelerated_fingerprint_sha256": "f696467093ebf8a3f251aa632292d0434425d526635495103267a0225f66f215",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      },
+      "wipe-tower": {
+        "crate": "wipe-tower-guest",
+        "ordinary_fingerprint_sha256": "a9bc50c8d008458a13680d0b979ef0810612c1583651830052ef09600c8851db",
+        "accelerated_fingerprint_sha256": "a9bc50c8d008458a13680d0b979ef0810612c1583651830052ef09600c8851db",
+        "accelerated_metadata_sha256": "1235d8240094dcdf7dfd1e27bb7655e8b6647f38f165ad8dc5053d81ffea1357"
+      }
+    },
+    "wasm_differ_from_ordinary": [
+      "arachne-perimeters",
+      "classic-perimeters",
+      "fuzzy-skin",
+      "gyroid-infill",
+      "infill-linker",
+      "layer-planner-default",
+      "lightning-infill",
+      "machine-gcode-emit",
+      "overhang-classifier-default",
+      "part-cooling",
+      "path-optimization-default",
+      "raft-default",
+      "rectilinear-infill",
+      "seam-placer",
+      "skirt-brim",
+      "support-surface-ironing",
+      "top-surface-ironing",
+      "traditional-support",
+      "traditional-support-planner",
+      "tree-support",
+      "tree-support-planner",
+      "wave-overhangs",
+      "wipe-tower"
+    ],
+    "wasm_identical_to_ordinary": [
+      "seam-planner-default"
+    ],
+    "embedded_rustc_and_policy_verified": true
+  },
+  "test_support_evidence": {
+    "dist_plan_features": {
+      "ordinary": [
+        ""
+      ],
+      "accelerated": [
+        ""
+      ]
+    },
+    "accelerated_build_metadata": {
+      "mode": "\"accelerated\"",
+      "edition": "\"developer\"",
+      "profile": "\"release\"",
+      "perimeter_spatial_test_support": "false"
+    },
+    "guest_metadata_test_support_marker_absent": true,
+    "developer_edition_cargo_features_empty": true,
+    "supplementary_artifact_scan_hits": [],
+    "source_fact": "xtask/src/dist.rs preflight_edition_for_mode rejects the TEST_SUPPORT_FEATURE in dist cargo features"
+  },
+  "freshness_gates": {
+    "ordinary": {
+      "check_exit": 0,
+      "rebuild_performed": false
+    },
+    "accelerated": {
+      "check_exit": 0,
+      "rebuild_performed": false
+    },
+    "ordinary-after-accelerated": {
+      "check_exit": 0,
+      "rebuild_performed": false
+    }
+  },
+  "diagnose": {
+    "ordinary": {
+      "runner_default_flags": {
+        "exit_code": 0,
+        "modules_loaded": 24,
+        "stages": 12,
+        "diagnostics": 18,
+        "module_ids": [
+          "com.core.arachne-perimeters",
+          "com.core.classic-perimeters",
+          "com.core.fuzzy-skin",
+          "com.core.gyroid-infill",
+          "com.core.infill-linker",
+          "com.core.layer-planner-default",
+          "com.core.lightning-infill",
+          "com.core.machine-gcode-emit",
+          "com.core.overhang-classifier-default",
+          "com.core.part-cooling",
+          "com.core.path-optimization-default",
+          "com.core.raft-default",
+          "com.core.rectilinear-infill",
+          "com.core.seam-placer",
+          "com.core.seam-planner-default",
+          "com.core.skirt-brim",
+          "com.core.support-surface-ironing",
+          "com.core.top-surface-ironing",
+          "com.core.traditional-support",
+          "com.core.traditional-support-planner",
+          "com.core.tree-support",
+          "com.core.tree-support-planner",
+          "com.core.wave-overhangs",
+          "com.core.wipe-tower"
+        ],
+        "search_roots": [
+          "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\ordinary\\modules"
+        ],
+        "stdout_log": "logs/diagnose-ordinary-runner-defaults.stdout.log",
+        "stderr_log": "logs/diagnose-ordinary-runner-defaults.stderr.log"
+      },
+      "isolated_flags": {
+        "exit_code": 0,
+        "modules_loaded": 24,
+        "stages": 12,
+        "diagnostics": 0,
+        "module_ids": [
+          "com.core.arachne-perimeters",
+          "com.core.classic-perimeters",
+          "com.core.fuzzy-skin",
+          "com.core.gyroid-infill",
+          "com.core.infill-linker",
+          "com.core.layer-planner-default",
+          "com.core.lightning-infill",
+          "com.core.machine-gcode-emit",
+          "com.core.overhang-classifier-default",
+          "com.core.part-cooling",
+          "com.core.path-optimization-default",
+          "com.core.raft-default",
+          "com.core.rectilinear-infill",
+          "com.core.seam-placer",
+          "com.core.seam-planner-default",
+          "com.core.skirt-brim",
+          "com.core.support-surface-ironing",
+          "com.core.top-surface-ironing",
+          "com.core.traditional-support",
+          "com.core.traditional-support-planner",
+          "com.core.tree-support",
+          "com.core.tree-support-planner",
+          "com.core.wave-overhangs",
+          "com.core.wipe-tower"
+        ],
+        "search_roots": [
+          "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\ordinary\\modules"
+        ],
+        "stdout_log": "logs/diagnose-ordinary-isolated.stdout.log",
+        "stderr_log": "logs/diagnose-ordinary-isolated.stderr.log"
+      }
+    },
+    "accelerated": {
+      "runner_default_flags": {
+        "exit_code": 0,
+        "modules_loaded": 24,
+        "stages": 12,
+        "diagnostics": 18,
+        "module_ids": [
+          "com.core.arachne-perimeters",
+          "com.core.classic-perimeters",
+          "com.core.fuzzy-skin",
+          "com.core.gyroid-infill",
+          "com.core.infill-linker",
+          "com.core.layer-planner-default",
+          "com.core.lightning-infill",
+          "com.core.machine-gcode-emit",
+          "com.core.overhang-classifier-default",
+          "com.core.part-cooling",
+          "com.core.path-optimization-default",
+          "com.core.raft-default",
+          "com.core.rectilinear-infill",
+          "com.core.seam-placer",
+          "com.core.seam-planner-default",
+          "com.core.skirt-brim",
+          "com.core.support-surface-ironing",
+          "com.core.top-surface-ironing",
+          "com.core.traditional-support",
+          "com.core.traditional-support-planner",
+          "com.core.tree-support",
+          "com.core.tree-support-planner",
+          "com.core.wave-overhangs",
+          "com.core.wipe-tower"
+        ],
+        "search_roots": [
+          "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\accelerated\\modules"
+        ],
+        "stdout_log": "logs/diagnose-accelerated-runner-defaults.stdout.log",
+        "stderr_log": "logs/diagnose-accelerated-runner-defaults.stderr.log"
+      },
+      "isolated_flags": {
+        "exit_code": 0,
+        "modules_loaded": 24,
+        "stages": 12,
+        "diagnostics": 0,
+        "module_ids": [
+          "com.core.arachne-perimeters",
+          "com.core.classic-perimeters",
+          "com.core.fuzzy-skin",
+          "com.core.gyroid-infill",
+          "com.core.infill-linker",
+          "com.core.layer-planner-default",
+          "com.core.lightning-infill",
+          "com.core.machine-gcode-emit",
+          "com.core.overhang-classifier-default",
+          "com.core.part-cooling",
+          "com.core.path-optimization-default",
+          "com.core.raft-default",
+          "com.core.rectilinear-infill",
+          "com.core.seam-placer",
+          "com.core.seam-planner-default",
+          "com.core.skirt-brim",
+          "com.core.support-surface-ironing",
+          "com.core.top-surface-ironing",
+          "com.core.traditional-support",
+          "com.core.traditional-support-planner",
+          "com.core.tree-support",
+          "com.core.tree-support-planner",
+          "com.core.wave-overhangs",
+          "com.core.wipe-tower"
+        ],
+        "search_roots": [
+          "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t38-campaign-20261001T024827Z\\accelerated\\modules"
+        ],
+        "stdout_log": "logs/diagnose-accelerated-isolated.stdout.log",
+        "stderr_log": "logs/diagnose-accelerated-isolated.stderr.log"
+      }
+    }
+  },
+  "t41_gate": {
+    "before": {
+      "exit_code": 0,
+      "summary_sha256": "8eead16404437621b95fa65c88d50a16f1912c2b19d15e661fc3613cb32ebcee"
+    },
+    "after": {
+      "exit_code": 0,
+      "summary_sha256": "98730f0363ec1eb23fd67d74c9ad83ec1684fb4a897999e4f7f883feb9f02bce"
+    }
+  },
+  "target_side_effects": {
+    "dist_developer_recreated": true,
+    "dist_developer_matches_t41_frozen_snapshot": true,
+    "dist_accelerated_created": true,
+    "dist_host_accelerated_created": true,
+    "release_pnp_cli_sha256_after": "67c4b04001dd2ab7b0885457fcba3b414286966d429316a720c975c1510c7099",
+    "release_pnp_cli_matches_t41_snapshot_exe": true,
+    "ordinary_guest_rebuild_performed": false,
+    "accelerated_guest_rebuild_performed": false,
+    "driver_latch_absent": true,
+    "saved_real_rustc": "C:\\Users\\agpen\\.cargo\\bin\\rustc.exe"
+  },
+  "mode_note": "mode identity is read from the actual dist metadata and guest identity files, never inferred from a directory or binary name",
+  "no_timing_or_tests": true,
+  "environment_info": {
+    "RUSTUP_TOOLCHAIN": null,
+    "CARGO_HOME": null,
+    "RUSTUP_HOME": null,
+    "PYTHONUTF8": null
+  },
+  "gaps": []
+}

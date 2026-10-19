@@ -2,20 +2,25 @@
 
 use slicer_core::algos::bridge_over_infill::{
     construct_anchored_polygon, depth_window_start, determine_bridging_angle, filled_window_start,
-    gather_areas_w_depth, remove_filled_polygons_on_lower_layers, BridgeCandidateLayer,
-    BridgeDepthLayer,
+    gather_areas_w_depth, internal_bridge_angles, presort_bridge_candidates,
+    remove_filled_polygons_on_lower_layers, BridgeCandidateLayer, BridgeDepthLayer,
+    InternalBridgeAngleInputs,
 };
 use slicer_core::flow::canonical_bridging_flow;
 use slicer_ir::{ExPolygon, Point2, Polygon};
 
 fn square(width: f32, height: f32) -> ExPolygon {
+    rect(0.0, 0.0, width, height)
+}
+
+fn rect(x0: f32, y0: f32, x1: f32, y1: f32) -> ExPolygon {
     ExPolygon {
         contour: Polygon {
             points: vec![
-                Point2::from_mm(0.0, 0.0),
-                Point2::from_mm(width, 0.0),
-                Point2::from_mm(width, height),
-                Point2::from_mm(0.0, height),
+                Point2::from_mm(x0, y0),
+                Point2::from_mm(x1, y0),
+                Point2::from_mm(x1, y1),
+                Point2::from_mm(x0, y1),
             ],
         },
         holes: Vec::new(),
@@ -62,9 +67,12 @@ fn bridging_angle_histogram_wraps_modulo_180_seam() {
 fn bridging_angle_is_deterministic() {
     let anchors = vec![vec![Point2::from_mm(0.0, 0.0), Point2::from_mm(10.0, 0.0)]];
     let area = vec![vec![Point2::from_mm(0.0, 0.0), Point2::from_mm(4.0, 0.0)]];
-    assert_eq!(
-        determine_bridging_angle(&anchors, &area, 0.0),
-        determine_bridging_angle(&anchors, &area, 0.0)
+    let angle = determine_bridging_angle(&anchors, &area, 0.0);
+    assert_eq!(angle, determine_bridging_angle(&anchors, &area, 0.0));
+    assert!(angle.is_finite());
+    assert!(
+        (angle - 90.0).abs() <= 1e-6,
+        "expected perpendicular bridge angle near 90.0°, got {angle}"
     );
 }
 
@@ -182,4 +190,99 @@ fn filled_window_preserves_removal_at_inclusive_cutoff_and_empty_windows() {
             "non-vacuous removal: {zs:?}"
         );
     }
+}
+
+/// Canonical `PrintObject::bridge_over_infill` builds
+/// `area_to_be_bridge = expand(candidate, spacing) ∩ deep_infill`, constructs
+/// the anchored bridging area from it, then detects collisions with
+/// `expand(bridging_area, 3 × spacing)`. Two neighbours therefore share one
+/// direction when their *area-class* regions come within `3 × spacing` — not
+/// when their raw candidate polygons do.
+///
+/// Fixture: A (40 × 10 mm, long along x) and B (10 × 40 mm, long along y)
+/// whose raw footprints are 4.5 mm apart edge-to-edge, with spacing 1.0 mm.
+/// Each candidate's area-class region grows 1 mm outward, so the area gap is
+/// 2.5 mm < 3 mm: **canonical reuses A's direction for B**. Growing the raw
+/// polygon instead (the previous behaviour) gives a gap of 4.5 mm > 3 mm, so
+/// B keeps its own geometry-derived direction. The two angles differ (~90°
+/// vs ~0°), which is what makes the operand observable.
+#[test]
+fn bridge_angle_collision_uses_the_area_class_region_not_the_raw_candidate() {
+    // A: 40 x 10 at the origin, long along x -> lines run across at ~90 deg.
+    let a = rect(0.0, 0.0, 40.0, 10.0);
+    // B: 10 x 40, long along y, raw edge 4.5 mm to the right of A.
+    let b = rect(44.5, 0.0, 54.5, 40.0);
+
+    let spacing = 1.0_f32;
+    let mut candidates = vec![a.clone(), b.clone()];
+    presort_bridge_candidates(&mut candidates);
+
+    // The deep-infill clip must contain each candidate grown by one spacing
+    // for `area_to_be_bridge` to survive, but stay out of the other
+    // candidate's way so neither's area reaches the other's raw footprint.
+    let deep_clip = vec![rect(-1.0, -1.0, 41.0, 11.0), rect(43.5, -1.0, 55.5, 41.0)];
+    // `internal_unsupported_area` is the `area_to_be_bridge` filter: the area
+    // must reach it, so it spans both candidates' grown footprints.
+    let unsupported = vec![rect(-1.0, -1.0, 55.5, 41.0)];
+    // `expansion_area` seeds `limiting_area`; keep it away from both
+    // candidates so the anchors come from the fill boundary, not from a
+    // shared expansion region.
+    let expansion: Vec<ExPolygon> = Vec::new();
+    // `total_fill_area` produces the boundary anchors: two rectangles whose
+    // long sides run along the respective candidate's long axis, so each
+    // candidate's own geometry picks a different direction.
+    let fill = vec![rect(-2.0, 0.0, 42.0, 10.0), rect(44.5, 0.0, 56.5, 40.0)];
+
+    // exhaustive: InternalBridgeAngleInputs has no Default impl; every field is intentional here
+    let inputs = InternalBridgeAngleInputs {
+        deep_infill_clip_area: &deep_clip,
+        internal_unsupported_area: &unsupported,
+        expansion_area: &expansion,
+        total_fill_area: &fill,
+        spacing_mm: spacing,
+        override_deg: 0.0,
+    };
+    let angles = internal_bridge_angles(&candidates, &inputs);
+
+    assert_eq!(angles.len(), 2);
+    // Which of the two sorted candidates is A is the presort's business; get
+    // each candidate's angle by its geometry.
+    let angle_over = |target: &ExPolygon| {
+        let index = candidates
+            .iter()
+            .position(|c| std::ptr::eq(c, target))
+            .or_else(|| {
+                candidates
+                    .iter()
+                    .position(|c| c.contour.points == target.contour.points)
+            })
+            .expect("both candidates survive the presort");
+        angles[index]
+    };
+    let line_diff = |angle: f32, expected: f32| {
+        let diff = (angle - expected).rem_euclid(180.0);
+        diff.min(180.0 - diff)
+    };
+    let angle_a = angle_over(&a);
+    let angle_b = angle_over(&b);
+
+    // A picks its own geometry's direction (long sides are x-parallel, so
+    // the bridge lines run in y: ~90 deg).
+    assert!(
+        line_diff(angle_a, 90.0) <= 10.0,
+        "A must run across its long axis (~90 deg), got {angle_a}"
+    );
+    // B inherits A's direction through the 3 x spacing collision at the
+    // AREA-class radius (2.5 mm gap). Without the operand fix B's raw gap is
+    // 4.5 mm > 3 mm, so B picked ~0 deg and this assertion fails.
+    assert!(
+        line_diff(angle_b, angle_a) <= 1.0,
+        "B is within 3 x spacing of A's area-class region, so it must reuse \
+         A's direction; A={angle_a}, B={angle_b}"
+    );
+    assert!(
+        line_diff(angle_b, 0.0) > 10.0,
+        "B must NOT keep its own ~0 deg direction (it is inside the collision \
+         radius), got {angle_b}"
+    );
 }

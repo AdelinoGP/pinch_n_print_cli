@@ -1,0 +1,14 @@
+   Compiling slicer-core v0.1.0 (D:\slicerProject\pinch_n_print_cli_2\crates\slicer-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.91s
+     Running tests\t25_probe_quartile_shape_tdd.rs (target\debug\deps\t25_probe_quartile_shape_tdd-f6e8f6dc97815dde.exe)
+
+running 1 test
+PROBE n=16 per_call_ns=682 inside_hits=200
+PROBE n=64 per_call_ns=2460 inside_hits=200
+PROBE n=256 per_call_ns=9588 inside_hits=200
+PROBE n=1024 per_call_ns=39222 inside_hits=200
+PROBE n=4096 per_call_ns=155977 inside_hits=200
+test quartile_query_scales_with_band_polygon_size ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+

@@ -19,10 +19,10 @@ fn binding_surface_matches_finalization_stage() {
     assert_eq!(PartCooling::__slicer_stage_export_name(), "run");
     assert_eq!(
         PartCooling::__slicer_module_schema().stage_export,
-        "slicer:finalization-layer-finalization/layer-finalization@1.0.0#run"
+        "slicer:finalization-layer-finalization/layer-finalization@1.1.0#run"
     );
     let exports = PartCooling::__slicer_wit_exports();
     assert!(
-        exports.contains(&"slicer:finalization-layer-finalization/layer-finalization@1.0.0#run")
+        exports.contains(&"slicer:finalization-layer-finalization/layer-finalization@1.1.0#run")
     );
 }

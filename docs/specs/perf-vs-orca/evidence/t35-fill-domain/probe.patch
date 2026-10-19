@@ -1,0 +1,218 @@
+diff --git a/modules/core-modules/infill-linker/src/lib.rs b/modules/core-modules/infill-linker/src/lib.rs
+index 93b04a2a..0c15a4dc 100644
+--- a/modules/core-modules/infill-linker/src/lib.rs
++++ b/modules/core-modules/infill-linker/src/lib.rs
+@@ -69,6 +69,60 @@ impl LayerModule for InfillLinker {
+         output: &mut InfillOutputBuilder,
+         config: &ConfigView,
+     ) -> Result<(), ModuleError> {
++        // [T35-PROBE] Temporary probe (wayfinder ticket 35): what boundary does
++        // the linker actually see per region? Removed before any commit.
++        crate::orchestrate::t35_set_layer(_layer_index);
++        for region in prior_infill {
++            match regions.iter().find(|view| {
++                view.object_id() == &region.object_id && view.region_id() == &region.region_id
++            }) {
++                Some(view) => {
++                    let measure = |exs: &[slicer_ir::ExPolygon]| -> (f64, i64, i64, i64, i64) {
++                        let mut area = 0.0f64;
++                        let mut min_x = i64::MAX;
++                        let mut max_x = i64::MIN;
++                        let mut min_y = i64::MAX;
++                        let mut max_y = i64::MIN;
++                        for ex in exs {
++                            let pts = &ex.contour.points;
++                            let mut twice = 0.0f64;
++                            for i in 0..pts.len() {
++                                let a = pts[i];
++                                let b = pts[(i + 1) % pts.len()];
++                                twice += (a.x as f64) * (b.y as f64) - (b.x as f64) * (a.y as f64);
++                                min_x = min_x.min(a.x);
++                                max_x = max_x.max(a.x);
++                                min_y = min_y.min(a.y);
++                                max_y = max_y.max(a.y);
++                            }
++                            area += (twice / 2.0).abs();
++                        }
++                        if min_x > max_x {
++                            return (0.0, 0, 0, 0, 0);
++                        }
++                        (area / 1.0e8, min_x, max_x, min_y, max_y)
++                    };
++                    let (sa, sx0, sx1, sy0, sy1) = measure(view.sparse_infill_area());
++                    let (ua, ux0, ux1, uy0, uy1) = measure(view.infill_areas());
++                    slicer_sdk::host::log_warn(&format!(
++                        "T35-PROBE layer={} rid={} sparse_n={} sparse_mm2={:.1} sparse_bbox=({},{},{},{}) union_n={} union_mm2={:.1} union_bbox=({},{},{},{}) prior={}",
++                        _layer_index,
++                        region.region_id,
++                        view.sparse_infill_area().len(),
++                        sa, sx0, sx1, sy0, sy1,
++                        view.infill_areas().len(),
++                        ua, ux0, ux1, uy0, uy1,
++                        region.sparse_infill.len(),
++                    ));
++                }
++                None => slicer_sdk::host::log_warn(&format!(
++                    "T35-PROBE layer={} rid={} found=0 prior={}",
++                    _layer_index,
++                    region.region_id,
++                    region.sparse_infill.len(),
++                )),
++            }
++        }
+         let spacing_mm = match config.get("line_width") {
+             Some(ConfigValue::Float(value)) if value.is_finite() && *value > 0.0 => *value as f32,
+             Some(ConfigValue::Int(value)) if *value > 0 => *value as f32,
+diff --git a/modules/core-modules/infill-linker/src/orchestrate.rs b/modules/core-modules/infill-linker/src/orchestrate.rs
+index 40c4bbe4..490a05e9 100644
+--- a/modules/core-modules/infill-linker/src/orchestrate.rs
++++ b/modules/core-modules/infill-linker/src/orchestrate.rs
+@@ -23,6 +23,22 @@ use crate::offset::{clip_to_offset_boundary, remove_short_polylines, ExPolygonWi
+ 
+ const WIDTH_EPSILON_MM: f32 = 0.000001;
+ 
++// [T35-PROBE] Temporary: current layer for probe log correlation.
++thread_local! {
++    static T35_LAYER: std::cell::Cell<u32> = const { std::cell::Cell::new(u32::MAX) };
++    static T35_BUCKET: std::cell::Cell<u8> = const { std::cell::Cell::new(255) };
++}
++
++/// [T35-PROBE]
++pub fn t35_set_layer(layer: u32) {
++    T35_LAYER.with(|cell| cell.set(layer));
++}
++
++/// [T35-PROBE]
++pub fn t35_set_bucket(sparse: bool) {
++    T35_BUCKET.with(|cell| cell.set(if sparse { 0 } else { 1 }));
++}
++
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+ enum PathBucket {
+     Sparse,
+@@ -220,6 +236,7 @@ pub fn orchestrate_infill(
+     }
+ 
+     process_bucket(&records, PathBucket::Sparse, infill_overlap, &mut buckets);
++    t35_set_bucket(false);
+     process_bucket(&records, PathBucket::Solid, infill_overlap, &mut buckets);
+ 
+     for (index, region) in prior_infill.iter().enumerate() {
+@@ -253,6 +270,8 @@ fn process_bucket_role(
+     infill_overlap: f32,
+     buckets: &mut [BucketPaths],
+ ) {
++    // [T35-PROBE]
++    t35_set_bucket(bucket == PathBucket::Sparse);
+     for record in records {
+         let locked = selected_paths(record, bucket, role)
+             .into_iter()
+@@ -751,7 +770,13 @@ fn link_paths(
+     anchor: AnchorParams,
+ ) -> (Vec<ExtrusionPath3D>, Vec<SourceSegment>) {
+     let offset = ExPolygonWithOffset::for_infill_overlap(boundary, infill_overlap, spacing_mm);
+-    link_paths_against(tagged, offset.polygons_outer(), boundary, spacing_mm, anchor)
++    link_paths_against(
++        tagged,
++        offset.polygons_outer(),
++        boundary,
++        spacing_mm,
++        anchor,
++    )
+ }
+ 
+ /// Clips and links `tagged` against the overlap-offset `boundary`, falling
+@@ -792,13 +817,55 @@ fn link_paths_without_offset(
+ ) -> (Vec<ExtrusionPath3D>, Vec<SourceSegment>) {
+     let mut clipped = Vec::new();
+     let mut source_segments = Vec::new();
++    // [T35-PROBE] Temporary: what the clip does with this boundary.
++    let mut t35_in_mm = 0.0f64;
++    let mut t35_clip_mm = 0.0f64;
++    let mut t35_kept_n = 0usize;
++    let mut t35_kept_mm = 0.0f64;
++    let t35_in_paths = tagged.len();
+     for (owner, path) in tagged {
+         let polyline = path
+             .points
+             .iter()
+             .map(|point| Point2::from_mm(point.x, point.y))
+             .collect::<Vec<_>>();
++        t35_in_mm += polyline
++            .windows(2)
++            .map(|w| {
++                let dx = (w[1].x - w[0].x) as f64;
++                let dy = (w[1].y - w[0].y) as f64;
++                dx.hypot(dy)
++            })
++            .sum::<f64>();
+         let clipped_polylines = clip_to_offset_boundary(&[polyline], boundary);
++        for points in &clipped_polylines {
++            t35_clip_mm += points
++                .windows(2)
++                .map(|w| {
++                    let dx = (w[1].x - w[0].x) as f64;
++                    let dy = (w[1].y - w[0].y) as f64;
++                    dx.hypot(dy)
++                })
++                .sum::<f64>();
++        }
++        {
++            // [T35-PROBE] Post-canonical-filter survival.
++            let kept = remove_short_polylines(&clipped_polylines, spacing_mm);
++            t35_kept_n += kept.len();
++            t35_kept_mm += kept
++                .iter()
++                .map(|points| {
++                    points
++                        .windows(2)
++                        .map(|w| {
++                            let dx = (w[1].x - w[0].x) as f64;
++                            let dy = (w[1].y - w[0].y) as f64;
++                            dx.hypot(dy)
++                        })
++                        .sum::<f64>()
++                })
++                .sum::<f64>();
++        }
+         for points in remove_short_polylines(&clipped_polylines, spacing_mm) {
+             source_segments.extend(points.windows(2).filter_map(|segment| {
+                 let length = ((segment[1].x - segment[0].x) as f64)
+@@ -819,11 +886,32 @@ fn link_paths_without_offset(
+         }
+     }
+     (
+-        chain_or_connect_infill(
+-            clipped,
+-            &crate::graph::BoundaryInfillGraph::new(boundary),
+-            anchor,
+-        ),
++        {
++            // [T35-PROBE]
++            let chained = chain_or_connect_infill(
++                clipped,
++                &crate::graph::BoundaryInfillGraph::new(boundary),
++                anchor,
++            );
++            let out_mm: f64 = chained
++                .iter()
++                .flat_map(|p| p.points.windows(2))
++                .map(|w| {
++                    let dx = (w[1].x - w[0].x) as f64;
++                    let dy = (w[1].y - w[0].y) as f64;
++                    dx.hypot(dy)
++                })
++                .sum();
++            if t35_in_paths >= 1 {
++                slicer_sdk::host::log_warn(&format!(
++                    "T35-PROBE link_paths layer={} bucket={} pathsn={} in_units={:.0} clip_units={:.0} kept_n={} kept_units={:.0} out_n={} out_units={:.0}",
++                    T35_LAYER.with(|cell| cell.get()),
++                    T35_BUCKET.with(|cell| cell.get()),
++                    t35_in_paths, t35_in_mm, t35_clip_mm, t35_kept_n, t35_kept_mm, chained.len(), out_mm,
++                ));
++            }
++            chained
++        },
+         source_segments,
+     )
+ }

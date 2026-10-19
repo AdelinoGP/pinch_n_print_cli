@@ -2,10 +2,15 @@
 
 #![allow(missing_docs)]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
-use slicer_ir::{ConfigView, ExPolygon, Point2, Polygon, SliceIR, SlicedRegion, SupportPlanIR};
+use slicer_ir::{
+    ActiveRegion, ConfigValue, ConfigView, ExPolygon, GlobalLayer, ObjectSurfaceData,
+    OverhangRegion, PerimeterIR, PerimeterRegion, Point2, Polygon, QuartileBand, RegionKey,
+    RegionMapIR, RegionPlan, ResolvedConfig, SliceIR, SlicedRegion, SupportPlanIR,
+    SurfaceClassificationIR,
+};
 use slicer_sdk::traits::PaintRegionLayerView;
 use slicer_sdk::views::{PerimeterRegionView, SliceRegionView};
 use slicer_wasm_host::{binding::LayerStageInput, CompiledModuleLive, WasmInstancePool};
@@ -214,6 +219,224 @@ fn native_and_wasm_layer_views_are_field_identical() {
     assert_eq!(native.prior_infill, None, "prior_infill");
     assert_eq!(native.config, *module.config_view, "config");
     assert_eq!(native.stage_export, "Layer::Infill", "stage_export");
+}
+
+#[test]
+fn native_projection_filters_and_resolves_configured_regions() {
+    // This exercises native construction and the WASM region-data converter,
+    // not a running guest or HostExecutionContext's config accessor. Full
+    // native/WASM output equivalence needs a separate end-to-end check.
+    let polygon = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(0.0, 0.0),
+                Point2::from_mm(1.0, 0.0),
+                Point2::from_mm(1.0, 1.0),
+                Point2::from_mm(0.0, 1.0),
+            ],
+        },
+        holes: Vec::new(),
+    };
+    let selected = SlicedRegion {
+        object_id: "selected".into(),
+        region_id: 4,
+        polygons: vec![polygon.clone()],
+        ..Default::default()
+    };
+    let excluded = SlicedRegion {
+        object_id: "excluded".into(),
+        region_id: 5,
+        polygons: vec![polygon.clone()],
+        ..Default::default()
+    };
+    let slice = SliceIR {
+        global_layer_index: 3,
+        z: 0.4,
+        regions: vec![selected.clone(), excluded],
+        ..Default::default()
+    };
+    let perimeter = PerimeterIR {
+        global_layer_index: 3,
+        regions: vec![
+            PerimeterRegion {
+                object_id: "selected".into(),
+                region_id: 4,
+                ..Default::default()
+            },
+            PerimeterRegion {
+                object_id: "perimeter-only".into(),
+                region_id: 6,
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+    let layer = GlobalLayer {
+        index: 3,
+        active_regions: vec![ActiveRegion {
+            object_id: "selected".into(),
+            region_id: 4,
+            resolved_config: ResolvedConfig {
+                extensions: BTreeMap::from([(
+                    "support_family".to_owned(),
+                    ConfigValue::String("tree".to_owned()),
+                )]),
+                ..Default::default()
+            },
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let mut map = RegionMapIR::default();
+    let override_config = ResolvedConfig {
+        extensions: BTreeMap::from([("infill_density".to_owned(), ConfigValue::Float(0.7))]),
+        ..Default::default()
+    };
+    let config_id = map.intern_config(override_config);
+    map.entries.insert(
+        RegionKey {
+            global_layer_index: 3,
+            object_id: "selected".into(),
+            region_id: 4,
+            variant_chain: Vec::new(),
+        },
+        RegionPlan {
+            config: config_id,
+            ..Default::default()
+        },
+    );
+    map.entries.insert(
+        RegionKey {
+            global_layer_index: 3,
+            object_id: "perimeter-only".into(),
+            region_id: 6,
+            variant_chain: Vec::new(),
+        },
+        RegionPlan {
+            config: config_id,
+            ..Default::default()
+        },
+    );
+    let classification = SurfaceClassificationIR {
+        per_object: HashMap::from([(
+            "selected".to_owned(),
+            ObjectSurfaceData {
+                overhang_regions: vec![OverhangRegion {
+                    xy_footprint: vec![polygon.clone()],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+        )]),
+        overhang_quartile_polygons: HashMap::from([(
+            "selected".to_owned(),
+            HashMap::from([(
+                3,
+                vec![QuartileBand {
+                    quartile: 1,
+                    polygons: vec![polygon.clone()],
+                }],
+            )]),
+        )]),
+        prev_layer_boundaries: HashMap::from([(
+            "selected".to_owned(),
+            HashMap::from([(3, vec![polygon])]),
+        )]),
+        ..Default::default()
+    };
+    let claims = vec!["support-family:tree".to_owned()];
+    let module_id = "view-identity".to_owned();
+    let module = CompiledModuleLive::new(
+        &module_id,
+        WasmInstancePool::placeholder(),
+        None,
+        &claims,
+        Arc::new(ConfigView::from_map(HashMap::from([(
+            "infill_density".to_owned(),
+            ConfigValue::Float(0.2),
+        )]))),
+    );
+    let held = vec!["support-family:tree".to_owned()];
+    let claims_map = HashMap::from([(("selected".to_owned(), "4".to_owned()), held.clone())]);
+    // exhaustive: the seam test supplies the complete stage input
+    let input = LayerStageInput {
+        mesh: Arc::new(slicer_ir::MeshIR::default()),
+        paint_regions: None,
+        seam_plan: None,
+        support_plan: None,
+        lightning_tree_ir: None,
+        region_map: Some(Arc::new(map)),
+        slice: Some(&slice),
+        perimeter: Some(&perimeter),
+        layer_collection: None,
+        surface_classification: Some(&classification),
+        prepared_regions: None,
+        prepared_perimeter_source_regions: None,
+        infill: None,
+    };
+    let native = slicer_wasm_host::marshal::native::build_native_layer_request_for_layer(
+        "Layer::Infill",
+        &layer,
+        &input,
+        &module,
+        &claims_map,
+    );
+    let wasm = slicer_wasm_host::host::sliced_region_to_data(
+        &selected,
+        slice.z,
+        held.clone(),
+        Some(&classification),
+        slice.global_layer_index,
+    );
+
+    assert_eq!(
+        native.regions.len(),
+        1,
+        "excluded region must not reach native"
+    );
+    let region = &native.regions[0];
+    assert_eq!(region.object_id(), &wasm.object_id);
+    assert_eq!(region.region_id().to_string(), wasm.region_id);
+    assert_eq!(region.held_claims(), held.as_slice());
+    assert_eq!(region.held_claims(), wasm.held_claims);
+    assert!(region.needs_support(), "classification must be nonempty");
+    assert_eq!(region.needs_support(), wasm.needs_support);
+    assert!(
+        !wasm.overhang_areas.is_empty(),
+        "WASM classification must be exercised"
+    );
+    assert!(
+        !region.overhang_areas().is_empty(),
+        "native classification must be exercised"
+    );
+    assert_eq!(region.overhang_areas().len(), wasm.overhang_areas.len());
+    assert!(!wasm.prev_layer_boundary.is_empty());
+    assert!(!region.prev_layer_boundary().is_empty());
+    assert_eq!(
+        region.prev_layer_boundary().len(),
+        wasm.prev_layer_boundary.len()
+    );
+    assert_eq!(
+        region
+            .config()
+            .and_then(|cfg| cfg.get_float("infill_density")),
+        Some(0.7)
+    );
+    assert_ne!(region.config(), Some(module.config_view.as_ref()));
+    let perimeter_region = &native.perimeter_regions.as_ref().unwrap()[0];
+    assert_eq!(
+        perimeter_region
+            .config()
+            .and_then(|cfg| cfg.get_float("infill_density")),
+        Some(0.7)
+    );
+    assert_eq!(
+        native.perimeter_regions.as_ref().unwrap()[1]
+            .config()
+            .and_then(|cfg| cfg.get_float("infill_density")),
+        Some(0.2),
+        "WASM has no SliceIR-derived override for a perimeter-only identity"
+    );
 }
 
 #[test]

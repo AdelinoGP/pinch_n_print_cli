@@ -18,8 +18,8 @@
 #![warn(unused_imports)]
 
 use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point3WithWidth,
-    PrintEntity, RegionKey,
+    ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point3WithWidth, PrintEntity,
+    RegionKey,
 };
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::slicer_module;
@@ -39,37 +39,24 @@ pub struct SkirtBrim {
 }
 
 impl SkirtBrim {
-    /// Construct from a config view, reading skirt/brim settings with defaults.
+    /// Construct from a config view, reading skirt/brim settings.
+    ///
+    /// Required reads (packet 06 fail-closed semantics; mirrors
+    /// arachne-perimeters): every key is declared in skirt-brim.toml with a
+    /// registry default, and the registry seeds those defaults into a bound
+    /// view — absence is a contract violation, not a configurable fallback.
     pub fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let enabled = match config.get("skirt_brim_enabled") {
-            Some(ConfigValue::Bool(b)) => *b,
-            _ => true,
-        };
+        let enabled = config.require_bool("skirt_brim_enabled")?;
 
-        let skirt_loops = match config.get("skirt_loops") {
-            Some(ConfigValue::Int(v)) => *v as u32,
-            _ => 6,
-        };
+        let skirt_loops = config.require_int("skirt_loops")? as u32;
 
-        let skirt_distance = match config.get("skirt_distance") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 3.0,
-        };
+        let skirt_distance = config.require_float("skirt_distance")? as f32;
 
-        let skirt_height = match config.get("skirt_height") {
-            Some(ConfigValue::Int(v)) => *v as u32,
-            _ => 1,
-        };
+        let skirt_height = config.require_int("skirt_height")? as u32;
 
-        let brim_width = match config.get("brim_width") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 8.0,
-        };
+        let brim_width = config.require_float("brim_width")? as f32;
 
-        let line_width = match config.get("line_width") {
-            Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 0.4,
-        };
+        let line_width = config.require_float("line_width")? as f32;
 
         Ok(Self {
             skirt_loops,

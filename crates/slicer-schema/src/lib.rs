@@ -203,7 +203,7 @@ pub const STAGES: &[StageSpec] = &[
         tier_id: TIER_PREPASS,
         trait_name: "PrepassModule",
         wit_dir: "prepass-layer-planning",
-        wit_package: "slicer:prepass-layer-planning@1.0.0",
+        wit_package: "slicer:prepass-layer-planning@3.0.0",
         wit_interface: "layer-planning",
         wit_world: "layer-planning-module",
     },
@@ -249,7 +249,7 @@ pub const STAGES: &[StageSpec] = &[
         tier_id: TIER_FINALIZATION,
         trait_name: "FinalizationModule",
         wit_dir: "finalization-layer-finalization",
-        wit_package: "slicer:finalization-layer-finalization@1.0.0",
+        wit_package: "slicer:finalization-layer-finalization@1.1.0",
         wit_interface: "layer-finalization",
         wit_world: "layer-finalization-module",
     },
@@ -530,7 +530,7 @@ pub const VALID_CONFIG_TYPES: &[&str] = &[
 /// See docs/01 §claim system.
 pub const RECOGNIZED_CLAIMS: &[&str] = &[
     "perimeter-generator",
-    // `infill-generator` retired 2026-06-09 (DEV-065) in favour of packet 37's
+    // `infill-generator` retired 2026-06-09 in favour of packet 37's
     // four granular fill-role claims (`claim:{top,bottom,bridge,sparse}-fill`);
     // those live alongside `claim:ironing` and are not in this allow-list
     // because the `claim:` prefix is reserved for namespaced per-role claims.
@@ -542,9 +542,6 @@ pub const RECOGNIZED_CLAIMS: &[&str] = &[
     "gcode-postprocessor",
     "text-postprocessor",
 ];
-
-/// Recognized severity values for `[[config.cross-validate]]` rules.
-pub const VALID_SEVERITIES: &[&str] = &["error", "warning"];
 
 #[cfg(test)]
 mod tests {
@@ -658,7 +655,7 @@ mod tests {
         let finalization = "PostPass::LayerFinalization";
         assert_eq!(
             package_for_stage_id(finalization),
-            Some("slicer:finalization-layer-finalization@1.0.0")
+            Some("slicer:finalization-layer-finalization@1.1.0")
         );
         assert_eq!(
             interface_for_stage_id(finalization),
@@ -675,7 +672,7 @@ mod tests {
         assert_eq!(export_for_stage_id(finalization), Some("run"));
         assert_eq!(
             qualified_export_for_stage_id(finalization).as_deref(),
-            Some("slicer:finalization-layer-finalization/layer-finalization@1.0.0#run"),
+            Some("slicer:finalization-layer-finalization/layer-finalization@1.1.0#run"),
         );
 
         let perimeters = "Layer::Perimeters";

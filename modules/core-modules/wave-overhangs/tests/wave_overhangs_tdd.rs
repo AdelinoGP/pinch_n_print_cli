@@ -66,16 +66,39 @@ fn frame_mm(o0: f32, o1: f32, i0: f32, i1: f32) -> ExPolygon {
 /// inset anchors (and therefore seeds) on this fixture.
 fn wave_config(anchor_depth_mm: f32) -> slicer_ir::ConfigView {
     ConfigViewBuilder::new()
+        // Required-read baseline (config-scope-resolution plan): every
+        // classified read in `from_config` is now `require_*`, so the view
+        // holds every key those paths read, at manifest-default values.
+        .string("wave_overhang_pattern", "smart")
         .float("nozzle_diameter", f64::from(NOZZLE_MM))
+        // Packet 06 (AC-3): `bridge_line_width` is a `require_abs_value` read
+        // declared `float_or_percent` over `base_key = "nozzle_diameter"` in
+        // the manifest, so seed it at its manifest-default resolved value
+        // (the nozzle base, 0.4 mm).
+        .float("bridge_line_width", f64::from(NOZZLE_MM))
         .float("layer_height", f64::from(LAYER_HEIGHT_MM))
         .float("bridge_speed", f64::from(BRIDGE_SPEED))
+        .float("bridge_flow", 1.0)
+        .float("bridge_density", 1.0)
+        .bool("thick_bridges", false)
         .float("wave_overhang_print_speed", f64::from(WAVE_SPEED))
         .float(
             "wave_overhang_flow_mm3_per_mm",
             f64::from(WAVE_FLOW_MM3_PER_MM),
         )
+        .float("wave_overhang_line_spacing", 0.35)
+        .float("wave_overhang_perimeter_overlap", 0.1)
+        .float("wave_overhang_minimum_width", 0.7)
+        .float("wave_overhang_min_new_area", 0.01)
+        .float("wave_overhang_min_length", 0.0)
+        .int("wave_overhang_max_iterations", 0)
         .float("wave_overhang_anchor_depth_mm", f64::from(anchor_depth_mm))
         .int("wall_loops", 3)
+        // Internal-bridge keys (wave-overhangs.toml): required reads since the
+        // fail-closed migration.
+        .float("internal_bridge_density", 1.0)
+        .float("internal_bridge_flow", 1.0)
+        .bool("thick_internal_bridges", true)
         .build()
 }
 
@@ -123,19 +146,46 @@ fn run(module: &WaveOverhangs, regions: &[SliceRegionView]) -> InfillOutputBuild
     output
 }
 
-/// Same as [`wave_config`] but omits `wave_overhang_anchor_depth_mm` entirely,
-/// so the module resolves the automatic anchor depth.
+/// Same as [`wave_config`] but with `wave_overhang_anchor_depth_mm` at its
+/// manifest default `0.0`, so the module resolves the automatic anchor depth.
+///
+/// The required read (config-scope-resolution plan) means "key absent" is no
+/// longer expressible in a bound view; the manifest default `0.0` is the
+/// migrated form of the old absent path (packet 06 item 11 precedent).
 fn wave_config_auto_anchor() -> slicer_ir::ConfigView {
     ConfigViewBuilder::new()
+        // Required-read baseline (config-scope-resolution plan): the
+        // classified reads are now `require_*`; every key is seeded at its
+        // manifest default, with the anchor depth at `0.0` to select the
+        // automatic depth.
+        .string("wave_overhang_pattern", "smart")
         .float("nozzle_diameter", f64::from(NOZZLE_MM))
+        // Packet 06 (AC-3): `bridge_line_width` is a `require_abs_value` read
+        // declared `float_or_percent` over `base_key = "nozzle_diameter"` in
+        // the manifest, so seed it at its manifest-default resolved value
+        // (the nozzle base, 0.4 mm).
+        .float("bridge_line_width", f64::from(NOZZLE_MM))
         .float("layer_height", f64::from(LAYER_HEIGHT_MM))
         .float("bridge_speed", f64::from(BRIDGE_SPEED))
+        .float("bridge_flow", 1.0)
+        .float("bridge_density", 1.0)
+        .bool("thick_bridges", false)
         .float("wave_overhang_print_speed", f64::from(WAVE_SPEED))
         .float(
             "wave_overhang_flow_mm3_per_mm",
             f64::from(WAVE_FLOW_MM3_PER_MM),
         )
+        .float("wave_overhang_line_spacing", 0.35)
+        .float("wave_overhang_perimeter_overlap", 0.1)
+        .float("wave_overhang_minimum_width", 0.7)
+        .float("wave_overhang_min_new_area", 0.01)
+        .float("wave_overhang_min_length", 0.0)
+        .int("wave_overhang_max_iterations", 0)
+        .float("wave_overhang_anchor_depth_mm", 0.0)
         .int("wall_loops", 3)
+        .float("internal_bridge_density", 1.0)
+        .float("internal_bridge_flow", 1.0)
+        .bool("thick_internal_bridges", true)
         .build()
 }
 
@@ -215,12 +265,7 @@ fn segment_enters_rect_mm(
         return point_in_rect_mm(ax, ay, x0, y0, x1, y1);
     }
     let (mut t0, mut t1) = (0.0_f32, 1.0_f32);
-    for (p, q) in [
-        (-dx, ax - x0),
-        (dx, x1 - ax),
-        (-dy, ay - y0),
-        (dy, y1 - ay),
-    ] {
+    for (p, q) in [(-dx, ax - x0), (dx, x1 - ax), (-dy, ay - y0), (dy, y1 - ay)] {
         if p == 0.0 {
             if q < 0.0 {
                 return false;
@@ -248,13 +293,7 @@ fn segment_enters_rect_mm(
 }
 
 /// Does any segment of `path` enter the open rectangle?
-fn path_enters_rect_mm(
-    path: &ExtrusionPath3D,
-    x0: f32,
-    y0: f32,
-    x1: f32,
-    y1: f32,
-) -> bool {
+fn path_enters_rect_mm(path: &ExtrusionPath3D, x0: f32, y0: f32, x1: f32, y1: f32) -> bool {
     path.points
         .windows(2)
         .any(|w| segment_enters_rect_mm(w[0].x, w[0].y, w[1].x, w[1].y, x0, y0, x1, y1))
@@ -268,16 +307,37 @@ fn path_enters_rect_mm(
 /// clamp from both sides.
 fn speed_config(wave_speed: f32) -> slicer_ir::ConfigView {
     ConfigViewBuilder::new()
+        // Required-read baseline (config-scope-resolution plan): the
+        // classified reads are now `require_*`; every key the path reads is
+        // seeded at its manifest-default value except the wave print speed.
+        .string("wave_overhang_pattern", "smart")
         .float("nozzle_diameter", f64::from(NOZZLE_MM))
+        // Packet 06 (AC-3): `bridge_line_width` is a `require_abs_value` read
+        // declared `float_or_percent` over `base_key = "nozzle_diameter"` in
+        // the manifest, so seed it at its manifest-default resolved value
+        // (the nozzle base, 0.4 mm).
+        .float("bridge_line_width", f64::from(NOZZLE_MM))
         .float("layer_height", f64::from(LAYER_HEIGHT_MM))
         .float("bridge_speed", f64::from(BRIDGE_SPEED))
+        .float("bridge_flow", 1.0)
+        .float("bridge_density", 1.0)
+        .bool("thick_bridges", false)
         .float("wave_overhang_print_speed", f64::from(wave_speed))
         .float(
             "wave_overhang_flow_mm3_per_mm",
             f64::from(WAVE_FLOW_MM3_PER_MM),
         )
+        .float("wave_overhang_line_spacing", 0.35)
+        .float("wave_overhang_perimeter_overlap", 0.1)
+        .float("wave_overhang_minimum_width", 0.7)
+        .float("wave_overhang_min_new_area", 0.01)
+        .float("wave_overhang_min_length", 0.0)
+        .int("wave_overhang_max_iterations", 0)
         .float("wave_overhang_anchor_depth_mm", 3.0)
         .int("wall_loops", 3)
+        .float("internal_bridge_density", 1.0)
+        .float("internal_bridge_flow", 1.0)
+        .bool("thick_internal_bridges", true)
         .build()
 }
 
@@ -322,7 +382,36 @@ fn point_on_or_in_rect_mm(x: f32, y: f32, x0: f32, y0: f32, x1: f32, y1: f32) ->
 
 #[test]
 fn from_config_resolves_manifest_defaults() {
-    let config = ConfigViewBuilder::new().build();
+    // Required-read baseline (config-scope-resolution plan): every classified
+    // read in `from_config` is now `require_*`, so the view must hold every
+    // key the path reads. Packet 06 (AC-3): `bridge_line_width` is a
+    // required read (`require_abs_value`), seeded at its manifest-default
+    // resolved value (float_or_percent over `base_key = "nozzle_diameter"`
+    // → 0.4 mm). All other keys are seeded at their manifest defaults too,
+    // so the resolved defaults asserted here are the registry's.
+    let config = ConfigViewBuilder::new()
+        .string("wave_overhang_pattern", "smart")
+        .float("nozzle_diameter", f64::from(NOZZLE_MM))
+        .float("bridge_line_width", f64::from(NOZZLE_MM))
+        .float("layer_height", f64::from(LAYER_HEIGHT_MM))
+        .float("bridge_speed", f64::from(BRIDGE_SPEED))
+        .float("bridge_flow", 1.0)
+        .float("bridge_density", 1.0)
+        .bool("thick_bridges", false)
+        .float("wave_overhang_print_speed", 2.0)
+        .float("wave_overhang_flow_mm3_per_mm", 0.15)
+        .float("wave_overhang_line_spacing", 0.35)
+        .float("wave_overhang_perimeter_overlap", 0.1)
+        .float("wave_overhang_minimum_width", 0.7)
+        .float("wave_overhang_min_new_area", 0.01)
+        .float("wave_overhang_min_length", 0.0)
+        .int("wave_overhang_max_iterations", 0)
+        .float("wave_overhang_anchor_depth_mm", 0.0)
+        .int("wall_loops", 3)
+        .float("internal_bridge_density", 1.0)
+        .float("internal_bridge_flow", 1.0)
+        .bool("thick_internal_bridges", true)
+        .build();
     let module = WaveOverhangs::from_config(&config).expect("defaults must resolve");
 
     assert_eq!(module.pattern(), WavePattern::Smart);
@@ -333,10 +422,31 @@ fn from_config_resolves_manifest_defaults() {
 
 #[test]
 fn from_config_reads_explicit_overrides() {
+    // Required-read baseline (config-scope-resolution plan): the classified
+    // reads are now `require_*`, so the view holds every key those paths
+    // read, at manifest-default values, with the overrides applied on top.
     let config = ConfigViewBuilder::new()
+        .float("nozzle_diameter", f64::from(NOZZLE_MM))
+        .float("bridge_line_width", f64::from(NOZZLE_MM))
+        .float("layer_height", f64::from(LAYER_HEIGHT_MM))
+        .float("bridge_speed", f64::from(BRIDGE_SPEED))
+        .float("bridge_flow", 1.0)
+        .float("bridge_density", 1.0)
+        .bool("thick_bridges", false)
+        .float("wave_overhang_print_speed", 2.0)
+        .float("wave_overhang_flow_mm3_per_mm", 0.15)
+        .float("wave_overhang_perimeter_overlap", 0.1)
+        .float("wave_overhang_minimum_width", 0.7)
+        .float("wave_overhang_min_new_area", 0.01)
+        .float("wave_overhang_min_length", 0.0)
+        .float("wave_overhang_anchor_depth_mm", 0.0)
+        .int("wall_loops", 3)
         .string("wave_overhang_pattern", "zigzag")
         .float("wave_overhang_line_spacing", 0.5)
         .int("wave_overhang_max_iterations", 12)
+        .float("internal_bridge_density", 1.0)
+        .float("internal_bridge_flow", 1.0)
+        .bool("thick_internal_bridges", true)
         .build();
     let module = WaveOverhangs::from_config(&config).expect("overrides must resolve");
 
@@ -455,7 +565,10 @@ fn internal_bridge_areas_excluded_from_waves() {
         "internal bridge area must receive unlocked rectilinear fallback"
     );
     for path in internal_fallback {
-        assert!(path.order_lock.is_none(), "internal fallback must be unlocked");
+        assert!(
+            path.order_lock.is_none(),
+            "internal fallback must be unlocked"
+        );
     }
 }
 
@@ -476,7 +589,10 @@ fn fallback_rectilinear_no_silent_drop() {
     let output = run(&module, std::slice::from_ref(&region));
     let paths = output.solid_paths();
 
-    assert!(!paths.is_empty(), "fallback must emit conventional bridge fill");
+    assert!(
+        !paths.is_empty(),
+        "fallback must emit conventional bridge fill"
+    );
     assert!(
         locked(paths).is_empty(),
         "fallback bridge fill must not be order-locked"
@@ -505,7 +621,10 @@ fn fallback_rectilinear_no_silent_drop() {
     );
     for path in paths {
         assert_eq!(path.role, ExtrusionRole::BridgeInfill);
-        assert!((path.speed_factor - 1.0).abs() < 1e-6, "fallback speed factor is 1.0");
+        assert!(
+            (path.speed_factor - 1.0).abs() < 1e-6,
+            "fallback speed factor is 1.0"
+        );
     }
 }
 
@@ -757,7 +876,10 @@ fn deterministic_double_run() {
     let first = run(&module, std::slice::from_ref(&region));
     let second = run(&module, std::slice::from_ref(&region));
 
-    assert!(!first.solid_paths().is_empty(), "expected output to compare");
+    assert!(
+        !first.solid_paths().is_empty(),
+        "expected output to compare"
+    );
     assert_eq!(
         first.solid_paths(),
         second.solid_paths(),
@@ -779,7 +901,13 @@ fn waves_engage_with_default_anchor_depth() {
 
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill(1, std::slice::from_ref(&region), &paint_view(), &mut output, &config)
+        .run_infill(
+            1,
+            std::slice::from_ref(&region),
+            &paint_view(),
+            &mut output,
+            &config,
+        )
         .expect("run_infill must succeed");
 
     let paths = output.solid_paths();
@@ -799,7 +927,6 @@ fn waves_engage_with_default_anchor_depth() {
         );
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // Regression: front-merge seam gap.
@@ -1021,7 +1148,6 @@ fn waves_cover_domain_without_seam_gap() {
     );
 }
 
-
 // ---------------------------------------------------------------------------
 // Deposited-bead containment (packet 246 follow-up)
 //
@@ -1049,8 +1175,9 @@ const MAX_BEAD_OVERFLOW_MM2: f64 = 0.01;
 
 #[test]
 fn wave_bead_footprint_stays_inside_trim_boundary() {
-    use slicer_core::polygon_ops::{difference, intersection, offset, union, union_ex,
-        OffsetJoinType};
+    use slicer_core::polygon_ops::{
+        difference, intersection, offset, union, union_ex, OffsetJoinType,
+    };
 
     let module = WaveOverhangs::from_config(&wave_config(3.0)).expect("config");
     let region = seam_fixture();
@@ -1129,11 +1256,27 @@ fn density_config(bridge_density: f64, internal_bridge_density: f64) -> slicer_i
         .float("layer_height", f64::from(LAYER_HEIGHT_MM))
         .float("bridge_speed", f64::from(BRIDGE_SPEED))
         .float("bridge_line_width", f64::from(NOZZLE_MM))
+        .float("bridge_flow", 1.0)
         .float("bridge_density", bridge_density)
+        .float("internal_bridge_flow", 1.0)
         .float("internal_bridge_density", internal_bridge_density)
         .bool("thick_bridges", false)
         .bool("thick_internal_bridges", false)
         .int("wall_loops", 3)
+        // Remaining required reads at their manifest defaults.
+        .string("wave_overhang_pattern", "smart")
+        .float("wave_overhang_print_speed", f64::from(WAVE_SPEED))
+        .float(
+            "wave_overhang_flow_mm3_per_mm",
+            f64::from(WAVE_FLOW_MM3_PER_MM),
+        )
+        .float("wave_overhang_line_spacing", 0.35)
+        .float("wave_overhang_perimeter_overlap", 0.1)
+        .float("wave_overhang_minimum_width", 0.7)
+        .float("wave_overhang_min_new_area", 0.01)
+        .float("wave_overhang_min_length", 0.0)
+        .int("wave_overhang_max_iterations", 0)
+        .float("wave_overhang_anchor_depth_mm", 0.0)
         .build()
 }
 
@@ -1175,7 +1318,10 @@ fn internal_bridge_density_drives_internal_bridge_fallback_spacing() {
     let half_internal = fallback_path_count(&density_config(1.0, 0.5), true);
     let half_external = fallback_path_count(&density_config(0.5, 1.0), true);
 
-    assert!(full > 4, "100% density must fill the bridge, got {full} paths");
+    assert!(
+        full > 4,
+        "100% density must fill the bridge, got {full} paths"
+    );
     let ratio = half_internal as f32 / full as f32;
     assert!(
         (0.4..=0.65).contains(&ratio),
@@ -1196,7 +1342,10 @@ fn bridge_density_drives_external_bridge_fallback_spacing() {
     let half_external = fallback_path_count(&density_config(0.5, 1.0), false);
     let half_internal = fallback_path_count(&density_config(1.0, 0.5), false);
 
-    assert!(full > 4, "100% density must fill the bridge, got {full} paths");
+    assert!(
+        full > 4,
+        "100% density must fill the bridge, got {full} paths"
+    );
     let ratio = half_external as f32 / full as f32;
     assert!(
         (0.4..=0.65).contains(&ratio),
@@ -1220,11 +1369,27 @@ fn thick_internal_bridges_drives_internal_bridge_fallback_spacing() {
             .float("layer_height", f64::from(LAYER_HEIGHT_MM))
             .float("bridge_speed", f64::from(BRIDGE_SPEED))
             .float("bridge_line_width", f64::from(NOZZLE_MM))
+            .float("bridge_flow", 1.0)
             .float("bridge_density", 1.0)
+            .float("internal_bridge_flow", 1.0)
             .float("internal_bridge_density", 1.0)
             .bool("thick_bridges", thick_external)
             .bool("thick_internal_bridges", thick_internal)
             .int("wall_loops", 3)
+            // Remaining required reads at their manifest defaults.
+            .string("wave_overhang_pattern", "smart")
+            .float("wave_overhang_print_speed", f64::from(WAVE_SPEED))
+            .float(
+                "wave_overhang_flow_mm3_per_mm",
+                f64::from(WAVE_FLOW_MM3_PER_MM),
+            )
+            .float("wave_overhang_line_spacing", 0.35)
+            .float("wave_overhang_perimeter_overlap", 0.1)
+            .float("wave_overhang_minimum_width", 0.7)
+            .float("wave_overhang_min_new_area", 0.01)
+            .float("wave_overhang_min_length", 0.0)
+            .int("wave_overhang_max_iterations", 0)
+            .float("wave_overhang_anchor_depth_mm", 0.0)
             .build()
     };
 

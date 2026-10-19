@@ -1,0 +1,12 @@
+[
+  {
+    "control": "changed-manifest",
+    "exit_code": 1,
+    "rejection_verified": true
+  },
+  {
+    "control": "disabled-assertions",
+    "exit_code": 1,
+    "rejection_verified": true
+  }
+]

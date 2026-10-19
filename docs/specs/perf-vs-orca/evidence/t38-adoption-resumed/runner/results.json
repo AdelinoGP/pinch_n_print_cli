@@ -1,0 +1,72 @@
+[
+  {
+    "name": "benchmark-copy",
+    "byte_identical": true
+  },
+  {
+    "name": "status-roundtrip",
+    "argv": [
+      "pwsh",
+      "-NoProfile",
+      "-File",
+      "resources/perimeter-acceptance/test-status-roundtrip.ps1"
+    ],
+    "exit_code": 0
+  },
+  {
+    "name": "dry-run",
+    "argv": [
+      "pwsh",
+      "-NoProfile",
+      "-File",
+      "resources/perimeter-acceptance/run-acceptance.ps1",
+      "-DryRun"
+    ],
+    "exit_code": 0
+  },
+  {
+    "name": "missing-corpus",
+    "argv": [
+      "pwsh",
+      "-NoProfile",
+      "-File",
+      "resources/perimeter-acceptance/run-acceptance.ps1",
+      "-Workload",
+      "supports-off-benchy",
+      "-ExpectedGenerator",
+      "classic",
+      "-CorpusRoot",
+      "D:\\slicerProject\\pinch_n_print_cli_2\\target\\perimeter-acceptance\\t38-resumed-absent-corpus"
+    ],
+    "exit_code": 1
+  },
+  {
+    "name": "ordinary-runner-discovery",
+    "argv": [
+      "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\ordinary\\pnp_cli.exe",
+      "module",
+      "diagnose",
+      "--module-dir",
+      "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\ordinary\\modules"
+    ],
+    "exit_code": 0
+  },
+  {
+    "name": "ordinary-isolated-discovery",
+    "argv": [
+      "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\ordinary\\pnp_cli.exe",
+      "module",
+      "diagnose",
+      "--module-dir",
+      "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\ordinary\\modules",
+      "--no-default-module-paths",
+      "--no-integrated-modules"
+    ],
+    "exit_code": 0
+  },
+  {
+    "name": "ordinary-discovery-equivalence",
+    "passed": true,
+    "modules_loaded": 24
+  }
+]

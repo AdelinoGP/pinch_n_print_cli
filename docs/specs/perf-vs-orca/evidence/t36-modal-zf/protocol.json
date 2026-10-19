@@ -1,0 +1,22 @@
+{
+  "purpose": "modal Z/F serializer keep/drop experiment for wayfinder ticket 36; not accelerated-adoption acceptance and not an Orca scoreboard",
+  "job": "matched-pair supports-off Benchy cells (classic and arachne) on the standard matched job: shared per-generator config from docs/specs/perf-vs-orca/evidence/matched-pair/configs/; base is out of this batch and is a disclosed follow-up only if the benchy signal warrants it",
+  "cells": ["classic-off", "arachne-off"],
+  "fixtures": ["benchy"],
+  "modes": ["ordinary", "accelerated"],
+  "threads": 12,
+  "measured_pairs_per_mode": 6,
+  "excluded_warmups_per_arm": 1,
+  "order": "one warmup per arm, then AB then BA alternating by pair; per (fixture, cell) the ordinary batch then the accelerated batch",
+  "exactness": "the independent oracle must declare baseline and candidate physically equivalent per batch; byte identity is impossible by construction (the candidate removes repeated tokens)",
+  "only_arm_difference": "the pnp_cli host binary (serialize.rs ModalZfState); every guest WASM, manifest, config and fixture is identical across arms",
+  "starvation": {
+    "cutoff_fraction_of_best_cpu_wall_ratio": 0.75,
+    "reference_group": "fixture, cell and arm separately; serial-work removal changes the ratio between arms",
+    "discard": "the whole pair if either member is below its arm cutoff; retain all excluded rows; no automatic resampling",
+    "minimum_retained_pairs_per_mode": 5
+  },
+  "keep": "in every protocol batch: lower candidate median wall with lower candidate median process CPU; paired median deltas must agree; otherwise return DROP/inconclusive to the human",
+  "disclosure": "SHA-256, bytes, generator, status, degraded/fatal/non-fatal counts, every sample cpu/wall ratio, plus oracle semantic-stream identity",
+  "automatic_commit": false
+}

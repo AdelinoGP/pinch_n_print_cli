@@ -1,6 +1,6 @@
 ---
 status: implemented
-packet: [spec-slug]
+packet: [packet-dir]
 task_ids:
   - TASK-000
 backlog_source: docs/07_implementation_status.md
@@ -8,7 +8,7 @@ context_cost_estimate: S | M
 copy_note: Template only; emitted copies use draft or explicitly approved active status.
 ---
 
-# Packet Contract: [spec-slug]
+# Packet Contract: [packet-name]
 
 This template is `implemented` so preflight ignores it in place. Replace all placeholders in emitted copies.
 

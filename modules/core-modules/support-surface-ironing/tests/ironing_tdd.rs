@@ -20,10 +20,31 @@ use support_surface_ironing::SupportSurfaceIroning;
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Build a ConfigView with the given key-value pairs.
-fn config_with(entries: Vec<(&str, ConfigValue)>) -> ConfigView {
-    let mut fields = HashMap::new();
-    for (k, v) in entries {
+/// Build a ConfigView with the manifest defaults for every key `from_config`
+/// reads, overridden by the given key-value pairs.
+///
+/// Required-read baseline (config-scope-resolution plan): the classified
+/// match-arm fallbacks in `from_config` are now `require_*`, so the view must
+/// hold every key those paths read. A bound view always does (the registry
+/// seeds each declared default); these fixtures seed the same values.
+fn config_with(overrides: Vec<(&str, ConfigValue)>) -> ConfigView {
+    let mut fields: HashMap<String, ConfigValue> = HashMap::from([
+        ("support_ironing".to_string(), ConfigValue::Bool(false)),
+        (
+            "support_ironing_speed".to_string(),
+            ConfigValue::Float(30.0),
+        ),
+        (
+            "support_ironing_flow".to_string(),
+            ConfigValue::Percent(10.0),
+        ),
+        (
+            "support_ironing_spacing".to_string(),
+            ConfigValue::Float(0.1),
+        ),
+        ("line_width".to_string(), ConfigValue::Float(0.4)),
+    ]);
+    for (k, v) in overrides {
         fields.insert(k.to_string(), v);
     }
     ConfigView::from_map(fields)
@@ -50,12 +71,17 @@ fn region_with_square_at_z(z: f32) -> SliceRegionView {
 
 #[test]
 fn from_config_defaults() {
-    let config = ConfigView::from_map(HashMap::new());
+    // Required-read baseline (config-scope-resolution plan): the classified
+    // reads are now `require_*`, so the view carries every declared key at
+    // its manifest default. The seeded defaults are the canonical
+    // `support_ironing*` values (speed 30.0, flow 0.1, spacing 0.1).
+    let config = config_with(vec![]);
     let module = SupportSurfaceIroning::from_config(&config).unwrap();
     assert!(!module.support_ironing());
     assert!((module.support_ironing_speed() - 30.0).abs() < 0.001);
     assert!((module.support_ironing_flow() - 0.1).abs() < 0.001);
     assert!((module.support_ironing_spacing() - 0.1).abs() < 0.001);
+    assert!((module.line_width() - 0.4).abs() < 0.001);
 }
 
 #[test]
@@ -63,7 +89,7 @@ fn from_config_custom() {
     let config = config_with(vec![
         ("support_ironing", ConfigValue::Bool(true)),
         ("support_ironing_speed", ConfigValue::Float(20.0)),
-        ("support_ironing_flow", ConfigValue::Float(0.2)),
+        ("support_ironing_flow", ConfigValue::Percent(20.0)),
         ("support_ironing_spacing", ConfigValue::Float(0.15)),
         ("line_width", ConfigValue::Float(0.5)),
     ]);
@@ -84,7 +110,7 @@ fn legacy_ironing_speed_is_ignored() {
 
 #[test]
 fn disabled_no_paths() {
-    let config = ConfigView::from_map(HashMap::new());
+    let config = config_with(vec![]);
     let module = SupportSurfaceIroning::from_config(&config).unwrap();
     let region = region_with_square_at_z(1.0);
     let mut output = SupportOutputBuilder::new();
@@ -184,7 +210,7 @@ fn paths_at_correct_z() {
 fn flow_rate_applied() {
     let config = config_with(vec![
         ("support_ironing", ConfigValue::Bool(true)),
-        ("support_ironing_flow", ConfigValue::Float(0.15)),
+        ("support_ironing_flow", ConfigValue::Percent(15.0)),
     ]);
     let module = SupportSurfaceIroning::from_config(&config).unwrap();
     let region = region_with_square_at_z(1.0);

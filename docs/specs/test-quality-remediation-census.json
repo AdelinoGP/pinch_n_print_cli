@@ -1,0 +1,1471 @@
+{
+  "pnp-cli": [
+    {
+      "target": "cli_tdd",
+      "required": []
+    },
+    {
+      "target": "e2e_integration_tdd",
+      "required": []
+    },
+    {
+      "target": "helpers_cli",
+      "required": []
+    },
+    {
+      "target": "integrated_provenance_tdd",
+      "required": [
+        "integrated-classic-perimeters"
+      ]
+    },
+    {
+      "target": "m73_progress_tdd",
+      "required": []
+    },
+    {
+      "target": "module_new_tdd",
+      "required": []
+    },
+    {
+      "target": "module_search_path_tdd",
+      "required": []
+    },
+    {
+      "target": "slice_cancel_tdd",
+      "required": []
+    },
+    {
+      "target": "slice_instrumentation_fork_tdd",
+      "required": []
+    },
+    {
+      "target": "slice_progress_events_default_tdd",
+      "required": []
+    },
+    {
+      "target": "support_preview_tdd",
+      "required": []
+    },
+    {
+      "target": "visual_debug_agent_determinism_tdd",
+      "required": []
+    },
+    {
+      "target": "visual_debug_gcode_emit_silhouette_tdd",
+      "required": []
+    },
+    {
+      "target": "visual_debug_gcode_renderer_tdd",
+      "required": []
+    },
+    {
+      "target": "visual_debug_gcode_silhouette_tdd",
+      "required": []
+    },
+    {
+      "target": "visual_debug_intermediate_renderer_tdd",
+      "required": []
+    },
+    {
+      "target": "visual_debug_overlays_tdd",
+      "required": []
+    },
+    {
+      "target": "visual_debug_postpass_silhouette_tdd",
+      "required": []
+    },
+    {
+      "target": "visual_debug_request_bundle_tdd",
+      "required": []
+    },
+    {
+      "target": "visual_debug_seam_overlay_tdd",
+      "required": []
+    },
+    {
+      "target": "visual_debug_silhouette_bundle_tdd",
+      "required": []
+    },
+    {
+      "target": "visual_debug_typed_tap_capture_tdd",
+      "required": []
+    },
+    {
+      "target": "visual_debug_validation_tdd",
+      "required": []
+    }
+  ],
+  "slicer-helpers": [
+    {
+      "target": "decimate_tdd",
+      "required": []
+    },
+    {
+      "target": "import_step_tdd",
+      "required": []
+    },
+    {
+      "target": "repair_tdd",
+      "required": []
+    },
+    {
+      "target": "split_tdd",
+      "required": []
+    }
+  ],
+  "slicer-ir": [
+    {
+      "target": "config_view_encapsulation_tdd",
+      "required": []
+    },
+    {
+      "target": "entity_id_invariants_tdd",
+      "required": []
+    },
+    {
+      "target": "extrusion_line_roundtrip",
+      "required": []
+    },
+    {
+      "target": "extrusion_role_priority_tdd",
+      "required": []
+    },
+    {
+      "target": "feedrate_default_tdd",
+      "required": []
+    },
+    {
+      "target": "feedrate_from_raw_config_tdd",
+      "required": []
+    },
+    {
+      "target": "fill_holder_cli_binding_tdd",
+      "required": []
+    },
+    {
+      "target": "infill_overlap_cli_binding_tdd",
+      "required": []
+    },
+    {
+      "target": "ir_tests",
+      "required": []
+    },
+    {
+      "target": "ir_validation_tdd",
+      "required": []
+    },
+    {
+      "target": "material_boundary_widening_tdd",
+      "required": []
+    },
+    {
+      "target": "paint_value_hash_tdd",
+      "required": []
+    },
+    {
+      "target": "point3_overhang_distance_roundtrip",
+      "required": []
+    },
+    {
+      "target": "point3_overhang_quartile_roundtrip",
+      "required": []
+    },
+    {
+      "target": "raft_band_ir_tdd",
+      "required": []
+    },
+    {
+      "target": "region_split_registry_tdd",
+      "required": []
+    },
+    {
+      "target": "resolved_config_defaults_tdd",
+      "required": []
+    },
+    {
+      "target": "sliced_region_raft_fill_tdd",
+      "required": []
+    },
+    {
+      "target": "support_geometry_ir_shape_tdd",
+      "required": []
+    },
+    {
+      "target": "thick_polyline_variable_width_tdd",
+      "required": []
+    }
+  ],
+  "arachne-perimeters": [
+    {
+      "target": "alternate_extra_wall_tdd",
+      "required": []
+    },
+    {
+      "target": "arachne_parity_is_bridge_flag_tdd",
+      "required": []
+    },
+    {
+      "target": "arachne_parity_is_thin_wall_flag_tdd",
+      "required": []
+    },
+    {
+      "target": "arachne_parity_outer_wall_boundary_type_tdd",
+      "required": []
+    },
+    {
+      "target": "arachne_parity_overhang_quartile_tdd",
+      "required": []
+    },
+    {
+      "target": "arachne_parity_precise_outer_wall_manifest_tdd",
+      "required": []
+    },
+    {
+      "target": "arachne_parity_seam_candidate_tdd",
+      "required": []
+    },
+    {
+      "target": "arachne_parity_thin_wall_loop_type_tdd",
+      "required": []
+    },
+    {
+      "target": "boundary_paint_tdd",
+      "required": []
+    },
+    {
+      "target": "bridge_flow_factor_tdd",
+      "required": []
+    },
+    {
+      "target": "only_one_wall_top_tdd",
+      "required": []
+    },
+    {
+      "target": "overhang_distance_tdd",
+      "required": []
+    },
+    {
+      "target": "precise_outer_wall_tdd",
+      "required": []
+    },
+    {
+      "target": "slicer_module_binding_tdd",
+      "required": []
+    },
+    {
+      "target": "wall_sequence_commit_tdd",
+      "required": []
+    },
+    {
+      "target": "wall_width_emission_tdd",
+      "required": []
+    }
+  ],
+  "slicer-core": [
+    {
+      "target": "aabb_tree_tdd",
+      "required": []
+    },
+    {
+      "target": "algo_lightning_tdd",
+      "required": [
+        "host-algos"
+      ]
+    },
+    {
+      "target": "algo_mesh_analysis_tdd",
+      "required": [
+        "host-algos"
+      ]
+    },
+    {
+      "target": "algo_prepass_slice_tdd",
+      "required": [
+        "host-algos"
+      ]
+    },
+    {
+      "target": "algo_region_mapping_tdd",
+      "required": [
+        "host-algos"
+      ]
+    },
+    {
+      "target": "algo_support_geometry_tdd",
+      "required": [
+        "host-algos"
+      ]
+    },
+    {
+      "target": "arachne_annulus_split",
+      "required": []
+    },
+    {
+      "target": "arachne_beading_is_odd_semantics",
+      "required": []
+    },
+    {
+      "target": "arachne_beading_junction_radius_bands",
+      "required": []
+    },
+    {
+      "target": "arachne_beading_propagation_delta_bound",
+      "required": []
+    },
+    {
+      "target": "arachne_beding_propagation_side_table",
+      "required": []
+    },
+    {
+      "target": "arachne_construction_apply_transitions_mirror_fix",
+      "required": []
+    },
+    {
+      "target": "arachne_construction_epilogue",
+      "required": []
+    },
+    {
+      "target": "arachne_construction_insert_node_rib_split",
+      "required": []
+    },
+    {
+      "target": "arachne_construction_node_distance_perp_foot",
+      "required": []
+    },
+    {
+      "target": "arachne_construction_transition_ends_splits",
+      "required": []
+    },
+    {
+      "target": "arachne_d5_taper_coverage",
+      "required": []
+    },
+    {
+      "target": "arachne_filter_noncentral_regions",
+      "required": []
+    },
+    {
+      "target": "arachne_generate_junctions_canonical_regression",
+      "required": []
+    },
+    {
+      "target": "arachne_invariants",
+      "required": []
+    },
+    {
+      "target": "arachne_junction_upward_half_edge_only",
+      "required": []
+    },
+    {
+      "target": "arachne_local_maxima_single_beads",
+      "required": []
+    },
+    {
+      "target": "arachne_pipeline",
+      "required": []
+    },
+    {
+      "target": "arachne_postprocess_order",
+      "required": []
+    },
+    {
+      "target": "arachne_remove_small_per_line_min_width",
+      "required": []
+    },
+    {
+      "target": "arachne_simplify_distance_gates",
+      "required": []
+    },
+    {
+      "target": "arachne_simplify_intersection_distance_gate_tdd",
+      "required": []
+    },
+    {
+      "target": "arachne_stitch_can_reverse",
+      "required": []
+    },
+    {
+      "target": "arachne_stitch_chain_junctions_t_to_fix",
+      "required": []
+    },
+    {
+      "target": "arachne_stitch_perimeter_index_bead_index",
+      "required": []
+    },
+    {
+      "target": "arachne_stitch_tiny_polygon",
+      "required": []
+    },
+    {
+      "target": "bead_count",
+      "required": []
+    },
+    {
+      "target": "beading_distributed",
+      "required": []
+    },
+    {
+      "target": "beading_factory",
+      "required": []
+    },
+    {
+      "target": "beading_limited",
+      "required": []
+    },
+    {
+      "target": "beading_outer_wall_inset",
+      "required": []
+    },
+    {
+      "target": "beading_redistribute",
+      "required": []
+    },
+    {
+      "target": "beading_widening",
+      "required": []
+    },
+    {
+      "target": "bridge_false_site_gating_tdd",
+      "required": [
+        "host-algos"
+      ]
+    },
+    {
+      "target": "bridge_orientation_tdd",
+      "required": [
+        "host-algos"
+      ]
+    },
+    {
+      "target": "bridge_over_infill_tdd",
+      "required": []
+    },
+    {
+      "target": "bridge_support_gating_tdd",
+      "required": [
+        "host-algos"
+      ]
+    },
+    {
+      "target": "centrality",
+      "required": []
+    },
+    {
+      "target": "flow_tdd",
+      "required": []
+    },
+    {
+      "target": "generate_toolpaths",
+      "required": []
+    },
+    {
+      "target": "geometry_helpers_tdd",
+      "required": []
+    },
+    {
+      "target": "inner_wall_concave_reprojection_tdd",
+      "required": []
+    },
+    {
+      "target": "inner_wall_material_boundary_tdd",
+      "required": []
+    },
+    {
+      "target": "keep_largest_contour_only_tdd",
+      "required": []
+    },
+    {
+      "target": "medial_axis_degenerate_input_tdd",
+      "required": [
+        "host-algos"
+      ]
+    },
+    {
+      "target": "medial_axis_determinism_tdd",
+      "required": [
+        "host-algos"
+      ]
+    },
+    {
+      "target": "medial_axis_golden_tdd",
+      "required": [
+        "host-algos"
+      ]
+    },
+    {
+      "target": "offset2_ex_collapse_tdd",
+      "required": []
+    },
+    {
+      "target": "offset2_ex_tdd",
+      "required": []
+    },
+    {
+      "target": "overhang_annotation_no_overhang_case",
+      "required": [
+        "host-algos"
+      ]
+    },
+    {
+      "target": "overhang_annotation_ramp_tdd",
+      "required": [
+        "host-algos"
+      ]
+    },
+    {
+      "target": "overhang_distance_carrier_tdd",
+      "required": []
+    },
+    {
+      "target": "paint_policy",
+      "required": []
+    },
+    {
+      "target": "paint_segmentation_base_fallback_tdd",
+      "required": []
+    },
+    {
+      "target": "paint_segmentation_mmu_partition_tdd",
+      "required": []
+    },
+    {
+      "target": "paint_segmentation_multi_object_isolation_tdd",
+      "required": []
+    },
+    {
+      "target": "paint_segmentation_per_region_shell_config_tdd",
+      "required": []
+    },
+    {
+      "target": "parabolic_discretize",
+      "required": []
+    },
+    {
+      "target": "perimeter_utils_three_tool_boundary_tdd",
+      "required": []
+    },
+    {
+      "target": "polygon_ops_tdd",
+      "required": []
+    },
+    {
+      "target": "polygon_tree_tdd",
+      "required": []
+    },
+    {
+      "target": "preprocess_golden",
+      "required": []
+    },
+    {
+      "target": "propagation",
+      "required": []
+    },
+    {
+      "target": "region_order_tdd",
+      "required": []
+    },
+    {
+      "target": "remove_small",
+      "required": []
+    },
+    {
+      "target": "sharp_corner_seam_threshold_tdd",
+      "required": []
+    },
+    {
+      "target": "simplify",
+      "required": []
+    },
+    {
+      "target": "skeletal_trapezoidation",
+      "required": []
+    },
+    {
+      "target": "skt_graph_golden",
+      "required": []
+    },
+    {
+      "target": "sparse_point_grid_tdd",
+      "required": []
+    },
+    {
+      "target": "split_top_surfaces_golden_tdd",
+      "required": []
+    },
+    {
+      "target": "stitch",
+      "required": []
+    },
+    {
+      "target": "support_flow_semantics_tdd",
+      "required": [
+        "host-algos"
+      ]
+    },
+    {
+      "target": "support_geometry_config_surface_tdd",
+      "required": [
+        "host-algos"
+      ]
+    },
+    {
+      "target": "support_interface_regularize_tdd",
+      "required": [
+        "host-algos"
+      ]
+    },
+    {
+      "target": "support_overhang_detection_tdd",
+      "required": [
+        "host-algos"
+      ]
+    },
+    {
+      "target": "triangle_mesh_slicer_tdd",
+      "required": []
+    },
+    {
+      "target": "voronoi",
+      "required": []
+    },
+    {
+      "target": "voronoi_panic_regression",
+      "required": [
+        "host-algos",
+        "voronoi-panic-regression"
+      ]
+    },
+    {
+      "target": "voronoi_stress",
+      "required": [
+        "host-algos"
+      ]
+    },
+    {
+      "target": "wall_sequence_reorder_tdd",
+      "required": []
+    }
+  ],
+  "slicer-scheduler": [
+    {
+      "target": "raft_claim_conflict_tdd",
+      "required": []
+    },
+    {
+      "target": "region_split_aggregation_tdd",
+      "required": []
+    },
+    {
+      "target": "region_split_manifest_tdd",
+      "required": []
+    },
+    {
+      "target": "scheduler_contract",
+      "required": []
+    },
+    {
+      "target": "scheduler_integration",
+      "required": []
+    },
+    {
+      "target": "scheduler_unit",
+      "required": []
+    },
+    {
+      "target": "stage_order_tdd",
+      "required": []
+    }
+  ],
+  "slicer-schema": [
+    {
+      "target": "export_for_stage_id_tdd",
+      "required": []
+    }
+  ],
+  "slicer-model-io": [
+    {
+      "target": "bed_placement_tdd",
+      "required": []
+    },
+    {
+      "target": "mod_cilindrical_modifier_infill_density_tdd",
+      "required": []
+    },
+    {
+      "target": "model_loader_tdd",
+      "required": []
+    },
+    {
+      "target": "model_writer_roundtrip_tdd",
+      "required": []
+    },
+    {
+      "target": "nonuniform_scale_bake_tdd",
+      "required": []
+    },
+    {
+      "target": "obj_roundtrip_tdd",
+      "required": []
+    },
+    {
+      "target": "paint_studio_output_tdd",
+      "required": []
+    },
+    {
+      "target": "selector_output_decodes",
+      "required": []
+    },
+    {
+      "target": "stl_roundtrip_tdd",
+      "required": []
+    },
+    {
+      "target": "threemf_project_settings_extraction_tdd",
+      "required": []
+    },
+    {
+      "target": "threemf_sidecar_classification_tdd",
+      "required": []
+    },
+    {
+      "target": "threemf_writer_roundtrip_tdd",
+      "required": []
+    },
+    {
+      "target": "world_z_canonical_surface_tdd",
+      "required": []
+    }
+  ],
+  "slicer-sdk": [
+    {
+      "target": "finalization_builder_tdd",
+      "required": [
+        "test"
+      ]
+    },
+    {
+      "target": "finalization_module_tdd",
+      "required": []
+    },
+    {
+      "target": "host_wrappers_tdd",
+      "required": [
+        "test"
+      ]
+    },
+    {
+      "target": "layer_module_tdd",
+      "required": [
+        "test"
+      ]
+    },
+    {
+      "target": "paint_region_transport_widening_tdd",
+      "required": []
+    },
+    {
+      "target": "postpass_module_tdd",
+      "required": []
+    },
+    {
+      "target": "prepass_module_tdd",
+      "required": []
+    },
+    {
+      "target": "profile_guest_sink_disabled_tdd",
+      "required": []
+    },
+    {
+      "target": "profile_guest_sink_enabled_tdd",
+      "required": []
+    },
+    {
+      "target": "should_emit_raft_fill_claim_tdd",
+      "required": []
+    },
+    {
+      "target": "smoke",
+      "required": [
+        "test"
+      ]
+    },
+    {
+      "target": "test_support_assert_paths_tdd",
+      "required": [
+        "test"
+      ]
+    },
+    {
+      "target": "test_support_config_view_builder_tdd",
+      "required": [
+        "test"
+      ]
+    },
+    {
+      "target": "test_support_fixture_bases_tdd",
+      "required": [
+        "test"
+      ]
+    },
+    {
+      "target": "test_support_layer_collection_fixture_builder_tdd",
+      "required": [
+        "test"
+      ]
+    },
+    {
+      "target": "test_support_log_capture_round_trip_tdd",
+      "required": [
+        "test"
+      ]
+    },
+    {
+      "target": "test_support_mock_host_adapter_tdd",
+      "required": [
+        "test"
+      ]
+    },
+    {
+      "target": "test_support_mock_host_isolation_tdd",
+      "required": [
+        "test"
+      ]
+    },
+    {
+      "target": "test_support_output_capture_tdd",
+      "required": [
+        "test"
+      ]
+    },
+    {
+      "target": "test_support_panic_handler_drains_logs_tdd",
+      "required": [
+        "test"
+      ]
+    },
+    {
+      "target": "test_support_perimeter_region_view_builder_tdd",
+      "required": [
+        "test"
+      ]
+    },
+    {
+      "target": "test_support_print_entity_tdd",
+      "required": [
+        "test"
+      ]
+    },
+    {
+      "target": "test_support_rect_polygon_tdd",
+      "required": [
+        "test"
+      ]
+    },
+    {
+      "target": "test_support_seam_candidate_tdd",
+      "required": [
+        "test"
+      ]
+    },
+    {
+      "target": "test_support_slice_region_view_builder_setters_tdd",
+      "required": [
+        "test"
+      ]
+    },
+    {
+      "target": "test_support_slice_region_view_builder_tdd",
+      "required": [
+        "test"
+      ]
+    },
+    {
+      "target": "test_support_tool_change_tdd",
+      "required": [
+        "test"
+      ]
+    },
+    {
+      "target": "test_support_wall_loop_with_flags_tdd",
+      "required": [
+        "test"
+      ]
+    }
+  ],
+  "slicer-macros": [
+    {
+      "target": "all_worlds_glue_tdd",
+      "required": []
+    },
+    {
+      "target": "binding_surface_tdd",
+      "required": []
+    },
+    {
+      "target": "module_test_tdd",
+      "required": []
+    },
+    {
+      "target": "postpass_text_glue_tdd",
+      "required": []
+    },
+    {
+      "target": "slicer_module_tdd",
+      "required": []
+    },
+    {
+      "target": "smoke",
+      "required": []
+    },
+    {
+      "target": "variant_chain_boundary_tdd",
+      "required": []
+    }
+  ],
+  "classic-perimeters": [
+    {
+      "target": "boundary_paint_tdd",
+      "required": []
+    },
+    {
+      "target": "classic_perimeters_concave_tdd",
+      "required": []
+    },
+    {
+      "target": "classic_perimeters_tdd",
+      "required": []
+    },
+    {
+      "target": "slicer_module_binding_tdd",
+      "required": []
+    },
+    {
+      "target": "wall_closure_tdd",
+      "required": []
+    }
+  ],
+  "fuzzy-skin": [
+    {
+      "target": "closed_loop_tdd",
+      "required": []
+    },
+    {
+      "target": "fuzzy_skin_tdd",
+      "required": []
+    },
+    {
+      "target": "slicer_module_binding_tdd",
+      "required": []
+    }
+  ],
+  "gyroid-infill": [
+    {
+      "target": "gyroid_infill_tdd",
+      "required": []
+    },
+    {
+      "target": "slicer_module_binding_tdd",
+      "required": []
+    }
+  ],
+  "infill-linker": [
+    {
+      "target": "anchor_length_tdd",
+      "required": []
+    },
+    {
+      "target": "connect_tdd",
+      "required": []
+    },
+    {
+      "target": "graph_tdd",
+      "required": []
+    },
+    {
+      "target": "infill_linker_tdd",
+      "required": []
+    },
+    {
+      "target": "ironing_passthrough_tdd",
+      "required": []
+    },
+    {
+      "target": "orchestrate_tdd",
+      "required": []
+    },
+    {
+      "target": "slicer_module_binding_tdd",
+      "required": []
+    }
+  ],
+  "layer-planner-default": [
+    {
+      "target": "layer_planning_tdd",
+      "required": []
+    },
+    {
+      "target": "slicer_module_binding_tdd",
+      "required": []
+    }
+  ],
+  "lightning-infill": [
+    {
+      "target": "lightning_infill_tdd",
+      "required": []
+    },
+    {
+      "target": "slicer_module_binding_tdd",
+      "required": []
+    }
+  ],
+  "machine-gcode-emit": [
+    {
+      "target": "machine_gcode_emit_tdd",
+      "required": []
+    },
+    {
+      "target": "slicer_module_binding_tdd",
+      "required": []
+    }
+  ],
+  "overhang-classifier-default": [
+    {
+      "target": "basic_tdd",
+      "required": []
+    },
+    {
+      "target": "slicer_module_binding_tdd",
+      "required": []
+    }
+  ],
+  "part-cooling": [
+    {
+      "target": "cooling_config_schema_tdd",
+      "required": []
+    },
+    {
+      "target": "part_cooling_tdd",
+      "required": []
+    },
+    {
+      "target": "slicer_module_binding_tdd",
+      "required": []
+    }
+  ],
+  "path-optimization-default": [
+    {
+      "target": "retract_mode_propagation_tdd",
+      "required": []
+    },
+    {
+      "target": "seam_consumption_tdd",
+      "required": []
+    },
+    {
+      "target": "slicer_module_binding_tdd",
+      "required": []
+    },
+    {
+      "target": "travel_policy_tdd",
+      "required": []
+    }
+  ],
+  "rectilinear-infill": [
+    {
+      "target": "bridge_infill_emission_tdd",
+      "required": []
+    },
+    {
+      "target": "rectilinear_infill_edge_cases_tdd",
+      "required": []
+    },
+    {
+      "target": "rectilinear_infill_tdd",
+      "required": []
+    },
+    {
+      "target": "rectilinear_raw_emit_tdd",
+      "required": []
+    },
+    {
+      "target": "slicer_module_binding_tdd",
+      "required": []
+    },
+    {
+      "target": "top_bottom_fill_tdd",
+      "required": []
+    }
+  ],
+  "seam-placer": [
+    {
+      "target": "seam_aligned_mode_tdd",
+      "required": []
+    },
+    {
+      "target": "seam_continuous_projection_tdd",
+      "required": []
+    },
+    {
+      "target": "seam_degraded_fallback_tdd",
+      "required": []
+    },
+    {
+      "target": "seam_placer_dispatch_tdd",
+      "required": []
+    },
+    {
+      "target": "seam_placer_sharp_corner_tdd",
+      "required": []
+    },
+    {
+      "target": "seam_placer_tdd",
+      "required": []
+    },
+    {
+      "target": "seam_sibling_walls_tdd",
+      "required": []
+    },
+    {
+      "target": "slicer_module_binding_tdd",
+      "required": []
+    }
+  ],
+  "seam-planner-default": [
+    {
+      "target": "seam_aligned_planning_tdd",
+      "required": []
+    },
+    {
+      "target": "seam_canonical_alignment_tdd",
+      "required": []
+    },
+    {
+      "target": "seam_canonical_comparator_tdd",
+      "required": []
+    },
+    {
+      "target": "seam_canonical_spline_tdd",
+      "required": []
+    },
+    {
+      "target": "seam_canonical_visibility_tdd",
+      "required": []
+    },
+    {
+      "target": "seam_paint_semantic_exactness_tdd",
+      "required": []
+    },
+    {
+      "target": "seam_planner_tdd",
+      "required": []
+    },
+    {
+      "target": "seam_region_aware_planning_tdd",
+      "required": []
+    },
+    {
+      "target": "slicer_module_binding_tdd",
+      "required": []
+    }
+  ],
+  "skirt-brim": [
+    {
+      "target": "finalization_live_tdd",
+      "required": []
+    },
+    {
+      "target": "skirt_brim_tdd",
+      "required": []
+    },
+    {
+      "target": "slicer_module_binding_tdd",
+      "required": []
+    }
+  ],
+  "support-surface-ironing": [
+    {
+      "target": "ironing_scanline_parity_tdd",
+      "required": []
+    },
+    {
+      "target": "ironing_tdd",
+      "required": []
+    },
+    {
+      "target": "slicer_module_binding_tdd",
+      "required": []
+    }
+  ],
+  "top-surface-ironing": [
+    {
+      "target": "slicer_module_binding_tdd",
+      "required": []
+    },
+    {
+      "target": "top_surface_ironing_emission_tdd",
+      "required": []
+    }
+  ],
+  "traditional-support": [
+    {
+      "target": "enforcer_blocker_tdd",
+      "required": []
+    },
+    {
+      "target": "slicer_module_binding_tdd",
+      "required": []
+    },
+    {
+      "target": "support_fill_geometry_tdd",
+      "required": []
+    },
+    {
+      "target": "traditional_family_tdd",
+      "required": []
+    },
+    {
+      "target": "traditional_support_tdd",
+      "required": []
+    }
+  ],
+  "slicer-wasm-host": [
+    {
+      "target": "contract",
+      "required": []
+    },
+    {
+      "target": "integration",
+      "required": []
+    },
+    {
+      "target": "module_log_human_channel_dedup_tdd",
+      "required": []
+    },
+    {
+      "target": "raft_plan_read_accessor_tdd",
+      "required": []
+    },
+    {
+      "target": "unit",
+      "required": []
+    }
+  ],
+  "traditional-support-planner": [
+    {
+      "target": "agg_rasterizer_tdd",
+      "required": []
+    },
+    {
+      "target": "traditional_family_tdd",
+      "required": []
+    }
+  ],
+  "tree-support": [
+    {
+      "target": "enforcer_blocker_tdd",
+      "required": []
+    },
+    {
+      "target": "slicer_module_binding_tdd",
+      "required": []
+    },
+    {
+      "target": "tree_family_tdd",
+      "required": []
+    },
+    {
+      "target": "tree_support_tdd",
+      "required": []
+    }
+  ],
+  "tree-support-planner": [
+    {
+      "target": "diagnostics_tdd",
+      "required": []
+    },
+    {
+      "target": "multi_neighbour_mst_tdd",
+      "required": []
+    },
+    {
+      "target": "orca_parity_tdd",
+      "required": []
+    },
+    {
+      "target": "slicer_module_binding_tdd",
+      "required": []
+    },
+    {
+      "target": "smooth_nodes_tdd",
+      "required": []
+    },
+    {
+      "target": "to_buildplate_tdd",
+      "required": []
+    },
+    {
+      "target": "tree_family_tdd",
+      "required": []
+    },
+    {
+      "target": "tree_style_styles_tdd",
+      "required": []
+    },
+    {
+      "target": "wall_clearance_tdd",
+      "required": []
+    }
+  ],
+  "wave-overhangs": [
+    {
+      "target": "wave_overhangs_tdd",
+      "required": []
+    }
+  ],
+  "wipe-tower": [
+    {
+      "target": "bed_bounds_tdd",
+      "required": []
+    },
+    {
+      "target": "finalization_live_tdd",
+      "required": []
+    },
+    {
+      "target": "slicer_module_binding_tdd",
+      "required": []
+    },
+    {
+      "target": "wipe_tower_tdd",
+      "required": []
+    }
+  ],
+  "slicer-runtime": [
+    {
+      "target": "arachne_parity",
+      "required": []
+    },
+    {
+      "target": "arachne_parity_gaps",
+      "required": []
+    },
+    {
+      "target": "arachne_parity_round2",
+      "required": []
+    },
+    {
+      "target": "arachne_structural_invariants",
+      "required": []
+    },
+    {
+      "target": "arachne_wall_sequence_e2e_tdd",
+      "required": []
+    },
+    {
+      "target": "contract",
+      "required": []
+    },
+    {
+      "target": "e2e",
+      "required": []
+    },
+    {
+      "target": "executor",
+      "required": []
+    },
+    {
+      "target": "integration",
+      "required": []
+    },
+    {
+      "target": "support_family_routing",
+      "required": []
+    },
+    {
+      "target": "unit",
+      "required": []
+    },
+    {
+      "target": "visual_debug_agent_overhead_tdd",
+      "required": []
+    },
+    {
+      "target": "visual_debug_blackboard_tap_tdd",
+      "required": []
+    },
+    {
+      "target": "visual_debug_postpass_tap_tdd",
+      "required": []
+    },
+    {
+      "target": "visual_debug_render_tap_tdd",
+      "required": []
+    },
+    {
+      "target": "visual_debug_silhouette_tdd",
+      "required": []
+    },
+    {
+      "target": "visual_debug_viewport_framing_tdd",
+      "required": []
+    }
+  ],
+  "slicer-gcode": [
+    {
+      "target": "emit_tool_guard_tdd",
+      "required": []
+    },
+    {
+      "target": "estimator",
+      "required": []
+    },
+    {
+      "target": "finalization_aware_travel_tdd",
+      "required": []
+    },
+    {
+      "target": "gcode_emit_format_tdd",
+      "required": []
+    },
+    {
+      "target": "gcode_emit_per_role_tolerance_tdd",
+      "required": []
+    },
+    {
+      "target": "gcode_emit_tdd",
+      "required": []
+    },
+    {
+      "target": "gcode_emit_travel_anchor_tdd",
+      "required": []
+    },
+    {
+      "target": "gcode_feedrate_emission_tdd",
+      "required": []
+    },
+    {
+      "target": "gcode_flavor_dialect_tdd",
+      "required": []
+    },
+    {
+      "target": "gcode_relative_extrusion_tdd",
+      "required": []
+    },
+    {
+      "target": "gcode_toolchange_wrapping",
+      "required": []
+    },
+    {
+      "target": "golden_emit_tdd",
+      "required": []
+    },
+    {
+      "target": "m73",
+      "required": []
+    },
+    {
+      "target": "thumbnail_formats_tdd",
+      "required": []
+    }
+  ]
+}

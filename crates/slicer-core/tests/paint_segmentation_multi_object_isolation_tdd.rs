@@ -17,9 +17,9 @@ use std::sync::Arc;
 
 use slicer_core::algos::paint_segmentation::execute_paint_segmentation;
 use slicer_ir::{
-    ConfigDelta, ConfigValue, ExPolygon, IndexedTriangleSet, MeshIR, ModifierScope, ModifierVolume,
-    ObjectMesh, Point2, Point3, Polygon, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig,
-    SliceIR, SlicedRegion, Transform3d, CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
+    ConfigDelta, ExPolygon, IndexedTriangleSet, MeshIR, ModifierVolume, ObjectMesh, Point2, Point3,
+    Polygon, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SliceIR, SlicedRegion,
+    Transform3d, CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
 };
 
 const IDENTITY: [f64; 16] = [
@@ -85,19 +85,15 @@ fn square(x0: f32, x1: f32, y0: f32, y1: f32) -> ExPolygon {
 /// (`mesh_has_any_paint`) and to drive the BASE `segment_annotations` branch —
 /// the same shape as `resources/bridge_support_enforcers.3mf`.
 fn support_enforcer_volume() -> ModifierVolume {
-    let mut fields: HashMap<String, ConfigValue> = HashMap::new();
-    fields.insert(
-        "subtype".to_owned(),
-        ConfigValue::String("support_enforcer".to_owned()),
-    );
-    // exhaustive: `ModifierVolume` has no `Default` impl
-    ModifierVolume {
-        id: "mv_a".to_owned(),
-        mesh: box_mesh(2.0, 8.0, A_Y0 + 2.0, A_Y1 - 2.0, 0.0, 2.0),
-        config_delta: ConfigDelta { fields },
-        priority: 0,
-        applies_to: ModifierScope::Support,
-    }
+    ModifierVolume::new(
+        "mv_a".to_owned(),
+        box_mesh(2.0, 8.0, A_Y0 + 2.0, A_Y1 - 2.0, 0.0, 2.0),
+        ConfigDelta {
+            fields: HashMap::new(),
+        },
+        0,
+        slicer_ir::ModifierKind::SupportEnforcer,
+    )
 }
 
 fn build_mesh() -> Arc<MeshIR> {

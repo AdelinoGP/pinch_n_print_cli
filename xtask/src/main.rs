@@ -1,13 +1,19 @@
 mod build_guests;
 mod check_deviations;
 mod check_literals;
+mod check_test_quality;
 mod compact_specs;
 mod dist;
 mod editions;
 mod gen_config_docs;
+mod guest_namespaces;
+mod rustc_driver;
 mod sync_agents;
 mod test;
 mod wit_verify;
+
+#[cfg(test)]
+mod rustc_driver_tests;
 
 use std::env;
 use std::process::ExitCode;
@@ -23,6 +29,11 @@ SUBCOMMANDS:
                           components the freshness check reports stale.
     build-guests --force  Unconditionally rebuild every discovered guest, ignoring freshness.
     build-guests --check  Exit 1 if any guest artifact is stale or guest lockfiles diverge.
+    build-guests --accelerated
+                          Build guests with the controlled accelerated compiler policy in an
+                          isolated artifact/cache namespace.
+    build-guests --accelerated --check
+                          Check freshness of accelerated artifacts only.
     build-guests --sync-locks
                           Remove and regenerate every guest Cargo.lock in one pass so all
                           guests resolve a single version per crate.
@@ -32,10 +43,16 @@ SUBCOMMANDS:
     check-literals          Enforce exhaustive watched-type literal policy.
     check-literals --report Report watched-type literal violations without failing.
     check-literals [PATHS...]  Restrict literal checking to workspace-relative paths.
+    check-test-quality      False-green gate over test code (R1–R8, docs/22).
+                            Report mode until the remediation program's final
+                            wave flips enforce mode (ADR-0065); `--report`
+                            forces exit 0 regardless. [PATHS...] restrict scope.
     gen-config-docs           Regenerate the generated tables in docs/15 from manifests + host-keys.toml.
     gen-config-docs --check   Exit 1 if doc 15's generated tables are stale.
     dist                  Build pnp_cli + core-module WASMs and stage them under
                           target/dist/<edition>/ (default edition: developer).
+    dist --accelerated    Build with the controlled compiler policy and stage under
+                          target/dist-accelerated/<edition>/.
     dist --edition <NAME> Stage the named edition from dist/editions.toml.
     dist --plan           Print the resolved plan (TSV) without building.
     dist --debug          Same as `dist`, but stages the debug-profile binary.
@@ -52,6 +69,7 @@ SUBCOMMANDS:
                           target/test-output.log. Use for whole-suite /
                           regression-diagnosis runs. Narrow single-test runs
                           should still use plain `cargo test` directly.
+    test --accelerated    Use the controlled compiler policy and debug profile for the test run.
     test --summary [ARGS]  Same as `test`, but prints a compact LLM-friendly
                           digest (summary lines + failure detail + verdict)
                           instead of streaming every per-test `ok` line.
@@ -92,6 +110,18 @@ fn main() -> ExitCode {
                     let ws = build_guests::workspace_root();
                     std::process::exit(build_guests::build_command(&ws, true));
                 }
+                build_guests::BuildGuestsFlag::Accelerated => {
+                    let ws = build_guests::workspace_root();
+                    std::process::exit(build_guests::accelerated_build_command(&ws, false));
+                }
+                build_guests::BuildGuestsFlag::AcceleratedForce => {
+                    let ws = build_guests::workspace_root();
+                    std::process::exit(build_guests::accelerated_build_command(&ws, true));
+                }
+                build_guests::BuildGuestsFlag::AcceleratedCheck => {
+                    let ws = build_guests::workspace_root();
+                    std::process::exit(build_guests::accelerated_check_command(&ws).code);
+                }
                 build_guests::BuildGuestsFlag::Check => {
                     let ws = build_guests::workspace_root();
                     std::process::exit(build_guests::check_command(&ws).code);
@@ -101,7 +131,9 @@ fn main() -> ExitCode {
                     std::process::exit(build_guests::sync_locks_command(&ws));
                 }
                 build_guests::BuildGuestsFlag::Unknown(other) => {
-                    eprintln!("xtask: unknown flag '{other}' for build-guests\n");
+                    eprintln!(
+                        "xtask: unknown flag or invalid combination '{other}' for build-guests\n"
+                    );
                     eprintln!("{USAGE}");
                     let code = build_guests::build_guests_flag_exit_code(&flag).unwrap_or(2);
                     ExitCode::from(code as u8)
@@ -141,6 +173,23 @@ fn main() -> ExitCode {
             }
             let ws = build_guests::workspace_root();
             ExitCode::from(check_literals::run(&ws, report, &filters) as u8)
+        }
+        Some("check-test-quality") => {
+            let mut report = false;
+            let mut filters = Vec::new();
+            for arg in &args[1..] {
+                if arg == "--report" {
+                    report = true;
+                } else if arg.starts_with("--") {
+                    eprintln!("xtask: unknown flag '{arg}' for check-test-quality\n");
+                    eprintln!("{USAGE}");
+                    return ExitCode::from(2);
+                } else {
+                    filters.push(arg.clone());
+                }
+            }
+            let ws = build_guests::workspace_root();
+            ExitCode::from(check_test_quality::run(&ws, report, &filters) as u8)
         }
         Some("dist") => match dist::parse_dist_args(&args[1..]) {
             Ok(parsed) => {
@@ -202,6 +251,7 @@ fn main() -> ExitCode {
             let passthrough: Vec<String> = args[1..].to_vec();
             ExitCode::from(test::test_command(&ws, &passthrough) as u8)
         }
+        Some("rustc-shim") => ExitCode::from(rustc_driver::run_shim_mode(&args[1..]) as u8),
         Some(other) => {
             eprintln!("xtask: unknown subcommand '{other}'\n");
             eprintln!("{USAGE}");

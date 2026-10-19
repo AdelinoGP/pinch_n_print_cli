@@ -1,0 +1,180 @@
+{
+  "verified_utc": "2026-10-01T00:10:12.473961+00:00",
+  "status": "PASS",
+  "evidence_sha256": {
+    "frozen-manifest.json": "7b533240b7e602731eb6d11320c134c830fa00ec12b3d301b970dac935c334a3",
+    "source-inputs.json": "832ed3416454dd4f861ae1dd150487a1a14695df0398ccd67f2fe550b9951dd2",
+    "historical-corpus-hashes.json": "4600b571146327739e46b686b92a558d3a84eb05f852047fb5592b9ec45787ab",
+    "source-worktree.diff": "443e876ff76d367bee9baf71bc8c9537735b9b7f9f646e08ef5b1983c30429ae",
+    "source-worktree-status.txt": "f86679aa273c61f079ee931604a919a77e8d425bcfafe04ff35f3213a7dd9387",
+    "ordinary-dist-build.log": "436841d91f4cbe003a18255530fb68cb371c3338a5a21fc392cfcb03026d1cf3",
+    "snapshot-ordinary-freshness.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "snapshot-toolchain.log": "2efe229f7908c2c19f459ca734101a5b35cb482476b8bee1357f94a18c766078",
+    "../preflight-results.json": "859478a16745c71cf80524190dfe7fc4e7be883a5ce3e39a5b88a8b15a730169"
+  },
+  "tools_sha256": {
+    "prepare.py": "8baad242e7325cafda8c9136d4cc508b19b8aaf90a6f453d4639cfae9d7f5abd",
+    "preflight.py": "99d1ab6c638fd40a448b049c14f9bb01800577bcd38ad007ed47dc67c320dbe2",
+    "verify-freeze.py": "27a4b74cb0967fd553d1329ed036072ccd05623afc362283bf3ca8ca5ee6c0c3",
+    "validate-reference.ps1": "bd4c6a5ed930dede53d18a930cd8deef27d8e3b10da0cee3dbcfa83548d3b4c5",
+    "test-preparation.py": "152e3abe9742e6bbf657e64e66b2886275670c8763fa74bcd72165f2c5794e22",
+    "test-freeze.py": "26851714dd9d7c50bde3426ca9c7faf2959ef17169eac91df5e05ab564bf092a",
+    "test-retention.py": "2316946cf4555ea86416444c9fa2a3feedd2e18a3ed7269d9671e44640f479f8"
+  },
+  "durable_namespace": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation",
+  "corpus_root": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\corpus",
+  "ordinary_snapshot_root": "D:\\slicerProject\\pinch_n_print_cli_2\\.local-artifacts\\perimeter-reference-preparation\\t41-20260930T232255Z\\ordinary",
+  "claims": "identity and targeted preparation checks only; no adoption acceptance or full geometry oracle",
+  "cells": [
+    {
+      "workload": "supports-off-benchy",
+      "generator": "classic",
+      "completion": {
+        "ValidatedGenerator": "classic",
+        "CompletionStatus": "ok",
+        "FatalErrorCount": 0,
+        "NonFatalErrorCount": 0,
+        "Degraded": false
+      },
+      "sparse_segments": 2886,
+      "worst_out_of_deposited_wall_bbox_mm": 0.0,
+      "effective_job": {
+        "layer_height": "0.2",
+        "first_layer_height": "0.2",
+        "nozzle_diameter": "0.5",
+        "line_width": "0.4",
+        "wall_loops": "3",
+        "infill_density": "0.20000000298023224",
+        "sparse_fill_holder": "rectilinear-infill",
+        "sparse_infill_density": "25",
+        "enable_support": "false",
+        "support_type": "normal(auto)"
+      }
+    },
+    {
+      "workload": "supports-off-benchy",
+      "generator": "arachne",
+      "completion": {
+        "ValidatedGenerator": "arachne",
+        "CompletionStatus": "ok",
+        "FatalErrorCount": 0,
+        "NonFatalErrorCount": 0,
+        "Degraded": false
+      },
+      "sparse_segments": 3069,
+      "worst_out_of_deposited_wall_bbox_mm": 0.0,
+      "effective_job": {
+        "layer_height": "0.2",
+        "first_layer_height": "0.2",
+        "nozzle_diameter": "0.5",
+        "line_width": "0.4",
+        "wall_loops": "3",
+        "infill_density": "0.20000000298023224",
+        "sparse_fill_holder": "rectilinear-infill",
+        "sparse_infill_density": "25",
+        "enable_support": "false",
+        "support_type": "normal(auto)"
+      }
+    },
+    {
+      "workload": "tree-support-benchy",
+      "generator": "classic",
+      "completion": {
+        "ValidatedGenerator": "classic",
+        "CompletionStatus": "ok",
+        "FatalErrorCount": 0,
+        "NonFatalErrorCount": 0,
+        "Degraded": false
+      },
+      "sparse_segments": 2886,
+      "worst_out_of_deposited_wall_bbox_mm": 0.0,
+      "effective_job": {
+        "layer_height": "0.2",
+        "first_layer_height": "0.2",
+        "nozzle_diameter": "0.5",
+        "line_width": "0.4",
+        "wall_loops": "3",
+        "infill_density": "0.20000000298023224",
+        "sparse_fill_holder": "rectilinear-infill",
+        "sparse_infill_density": "25",
+        "enable_support": "true",
+        "support_type": "tree(auto)"
+      }
+    },
+    {
+      "workload": "tree-support-benchy",
+      "generator": "arachne",
+      "completion": {
+        "ValidatedGenerator": "arachne",
+        "CompletionStatus": "ok",
+        "FatalErrorCount": 0,
+        "NonFatalErrorCount": 0,
+        "Degraded": false
+      },
+      "sparse_segments": 3069,
+      "worst_out_of_deposited_wall_bbox_mm": 0.0,
+      "effective_job": {
+        "layer_height": "0.2",
+        "first_layer_height": "0.2",
+        "nozzle_diameter": "0.5",
+        "line_width": "0.4",
+        "wall_loops": "3",
+        "infill_density": "0.20000000298023224",
+        "sparse_fill_holder": "rectilinear-infill",
+        "sparse_infill_density": "25",
+        "enable_support": "true",
+        "support_type": "tree(auto)"
+      }
+    },
+    {
+      "workload": "tree-support-base",
+      "generator": "classic",
+      "completion": {
+        "ValidatedGenerator": "classic",
+        "CompletionStatus": "ok",
+        "FatalErrorCount": 0,
+        "NonFatalErrorCount": 0,
+        "Degraded": false
+      },
+      "sparse_segments": 25719,
+      "worst_out_of_deposited_wall_bbox_mm": 0.0,
+      "effective_job": {
+        "layer_height": "0.2",
+        "first_layer_height": "0.2",
+        "nozzle_diameter": "0.5",
+        "line_width": "0.4",
+        "wall_loops": "3",
+        "infill_density": "0.20000000298023224",
+        "sparse_fill_holder": "rectilinear-infill",
+        "sparse_infill_density": "25",
+        "enable_support": "true",
+        "support_type": "tree(auto)"
+      }
+    },
+    {
+      "workload": "tree-support-base",
+      "generator": "arachne",
+      "completion": {
+        "ValidatedGenerator": "arachne",
+        "CompletionStatus": "ok",
+        "FatalErrorCount": 0,
+        "NonFatalErrorCount": 0,
+        "Degraded": false
+      },
+      "sparse_segments": 25899,
+      "worst_out_of_deposited_wall_bbox_mm": 0.0,
+      "effective_job": {
+        "layer_height": "0.2",
+        "first_layer_height": "0.2",
+        "nozzle_diameter": "0.5",
+        "line_width": "0.4",
+        "wall_loops": "3",
+        "infill_density": "0.20000000298023224",
+        "sparse_fill_holder": "rectilinear-infill",
+        "sparse_infill_density": "25",
+        "enable_support": "true",
+        "support_type": "tree(auto)"
+      }
+    }
+  ]
+}

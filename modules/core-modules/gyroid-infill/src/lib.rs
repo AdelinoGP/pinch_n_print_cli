@@ -105,16 +105,14 @@ impl LayerModule for GyroidInfill {
         // Canonical `sparse_infill_density` is coPercent (default 20 = 20%);
         // resolve the literal percent against base 100 and divide by 100 to
         // recover the density fraction. (Wayfinder ticket 107 standardised
-        // the key to Orca's name and percent representation.)
-        let density = config
-            .get_abs_value("sparse_infill_density", 100.0)
-            .map(|d| d as f32 / 100.0)
-            .unwrap_or(0.2);
+        // the key to Orca's name and percent representation.) The registry
+        // seeds every declared key's default into a bound view, so an absent
+        // key is a contract violation, not a configurable fallback (packet 06
+        // fail-closed semantics; mirrors arachne-perimeters).
+        let density = config.require_abs_value("sparse_infill_density", 100.0)? as f32 / 100.0;
 
-        let base_angle = match config.get("infill_direction") {
-            Some(ConfigValue::Float(a)) => *a as f32,
-            _ => 0.0,
-        };
+        // Canonical `infill_direction` (Orca `coFloat`, default 45).
+        let base_angle = config.require_float("infill_direction")? as f32;
 
         let width = |key: &str, fallback: f32| match config.get(key) {
             Some(ConfigValue::Float(w)) => *w as f32,
@@ -131,8 +129,14 @@ impl LayerModule for GyroidInfill {
                 // auto-0 sentinel (1.125 × nozzle), not the legacy 0.4 mm.
                 line_width: width("line_width", 0.0),
                 nozzle_diameter: 0.4,
-                bridge_line_width: width("bridge_line_width", 0.0),
-                initial_layer_line_width: width("initial_layer_line_width", 0.0),
+                // Packet 06 (AC-3): both keys are declared
+                // `float_or_percent` with `base_key = "nozzle_diameter"`
+                // (0.4) in the manifest, so a bound view always holds them;
+                // a missing value is a contract violation, not a fallback.
+                bridge_line_width: config.require_abs_value("bridge_line_width", 0.4)? as f32,
+                initial_layer_line_width: config
+                    .require_abs_value("initial_layer_line_width", 0.4)?
+                    as f32,
                 sparse_infill_line_width: width("sparse_infill_line_width", 0.0),
                 internal_solid_infill_line_width: width("internal_solid_infill_line_width", 0.0),
                 top_surface_line_width: width("top_surface_line_width", 0.0),
@@ -179,7 +183,11 @@ impl LayerModule for GyroidInfill {
         // `fill_expolygon` call below.
         // See `crates/slicer-runtime/src/region_partition.rs`.
         for region in regions {
-            output.begin_region(region.object_id(), *region.region_id());
+            output.begin_region(
+                region.object_id(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
             let z = region.z();
 
             // Per-region config resolution (packet 131 / TASK-256):
@@ -713,12 +721,31 @@ mod tests {
 
     #[test]
     fn from_config_defaults() {
-        let config = ConfigView::from_map(std::collections::HashMap::new());
+        // Packet 06 (AC-3): `bridge_line_width` / `initial_layer_line_width`
+        // are contract-required reads (`require_abs_value`); a bound view
+        // always holds them at their manifest defaults (0.0, the auto
+        // sentinel that the host seeds for `float_or_percent`). Seed them so
+        // the empty-view default probe behaves like a bound view.
+        let mut values = std::collections::HashMap::<String, ConfigValue>::new();
+        values.insert("bridge_line_width".into(), ConfigValue::Float(0.0));
+        values.insert("initial_layer_line_width".into(), ConfigValue::Float(0.0));
+        // Packet 04 (TASK-565): the host expands the line_width auto-0
+        // sentinel (1.125 × nozzle_diameter) before guests see the view, so
+        // a bound view already holds the expanded width (0.45 at the
+        // module's fixed 0.4 mm nozzle). Seed the bound value; the
+        // production auto-expansion lives host-side now.
+        values.insert("line_width".into(), ConfigValue::Float(0.45));
+        // Declared keys (gyroid-infill.toml) seeded at their manifest
+        // defaults, mirroring the production `seed_registry_defaults` step.
+        // `sparse_infill_density` is the canonical percent key (20 = 20%).
+        values.insert("sparse_infill_density".into(), ConfigValue::Float(20.0));
+        values.insert("infill_direction".into(), ConfigValue::Float(45.0));
+        let config = ConfigView::from_map(values);
         let module = GyroidInfill::from_config(&config).unwrap();
         assert!((module.density - 0.2).abs() < 0.001);
-        // Packet 185 (AC-5): absent line_width resolves to the canonical
-        // auto width 1.125 × nozzle_diameter (0.45 at the module's fixed
-        // 0.4 mm nozzle), not the legacy 0.4 mm default.
+        // Packet 185 (AC-5): a bound view's line_width resolves to the
+        // canonical auto width 1.125 × nozzle_diameter (0.45 at the
+        // module's fixed 0.4 mm nozzle), not the legacy 0.4 mm default.
         assert!((module.line_width - 0.45).abs() < 0.001);
     }
 

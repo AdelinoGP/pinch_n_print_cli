@@ -130,8 +130,9 @@ fn seam_placer_selects_lowest_effective_score_candidate() {
 fn seam_rotation_preserves_non_target_walls() {
     let config = empty_seam_config();
     let module = SeamPlacer::from_config(&config).expect("module init must succeed");
-    let outer_wall = ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0)]);
-    let inner_wall = ir_wall(0.2, &[(0.0, 1.0), (1.0, 1.0), (2.0, 1.0)]);
+    // Closed loops (explicit closing repeat): only loops are seam-rotated.
+    let outer_wall = ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0), (0.0, 0.0)]);
+    let inner_wall = ir_wall(0.2, &[(0.0, 1.0), (1.0, 1.0), (2.0, 1.0), (0.0, 1.0)]);
     let regions = vec![sdk_region(
         "obj-a",
         0,
@@ -213,7 +214,7 @@ fn seam_contract_is_deterministic_across_repeated_dispatch() {
 
 #[test]
 fn seam_candidate_missing_from_any_wall_is_non_fatal_and_preserves_walls() {
-    // Contract post-HIGH-2 / DEV-065 (closed): when the resolved seam's coordinates
+    // Contract post-multi-module dispatch review (HIGH-2, 2026-06-09): when the resolved seam's coordinates
     // don't match any wall-loop vertex within tolerance (`seam-planner-default`
     // emits mesh-corner coords while walls live on the inset boundary — a
     // pre-existing coord-space gap), the module MUST NOT fail the layer and

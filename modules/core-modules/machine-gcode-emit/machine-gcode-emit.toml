@@ -122,6 +122,7 @@ unit        = "mm"
 display     = "Nozzle diameter"
 description = "OrcaSlicer coFloat key nozzle_diameter; exposed here so machine_start_gcode / machine_end_gcode templates can reference [nozzle_diameter] and have it substituted with the effective nozzle diameter. Bounds mirror the classic-perimeters declaration of the same key."
 group       = "Machine G-code"
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic"]
 
 # P35 (ticket 42): static pressure-advance gate. Canonical `enable_pressure_advance`
 # (`coBools` false) + `pressure_advance` (`coFloats` 0.02, max 2) are per-extruder

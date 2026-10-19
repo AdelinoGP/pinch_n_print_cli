@@ -57,6 +57,9 @@ pub struct SliceRegionView {
     /// Per-layer internal (over-sparse-infill) bridge polygons.
     /// Empty when this region has no internal bridge areas.
     internal_bridge_areas: Vec<ExPolygon>,
+    /// Bridge line direction (degrees) per `internal_bridge_areas` polygon,
+    /// index-aligned. Empty = fall back to `bridge_orientation_deg`.
+    internal_bridge_angles_deg: Vec<f32>,
     /// Best bridge direction across all valid bridge regions (degrees).
     bridge_orientation_deg: f32,
     /// Sparse-only infill polygon after host-side fill partition.
@@ -120,6 +123,7 @@ impl Default for SliceRegionView {
             is_internal_bridge: false,
             bridge_areas: Vec::new(),
             internal_bridge_areas: Vec::new(),
+            internal_bridge_angles_deg: Vec::new(),
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
             raft_fill: Vec::new(),
@@ -155,6 +159,7 @@ impl SliceRegionView {
             is_bridge: region.is_bridge,
             bridge_areas: region.bridge_areas.clone(),
             internal_bridge_areas: region.internal_bridge_areas.clone(),
+            internal_bridge_angles_deg: region.internal_bridge_angles_deg.clone(),
             bridge_orientation_deg: region.bridge_orientation_deg,
             sparse_infill_area: region.sparse_infill_area.clone(),
             raft_fill: region.raft_fill.clone(),
@@ -289,6 +294,12 @@ impl SliceRegionView {
     #[doc(hidden)]
     pub fn set_internal_bridge_areas(&mut self, internal_bridge_areas: Vec<ExPolygon>) {
         self.internal_bridge_areas = internal_bridge_areas;
+    }
+
+    /// Override the per-polygon internal bridge angles (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_internal_bridge_angles_deg(&mut self, internal_bridge_angles_deg: Vec<f32>) {
+        self.internal_bridge_angles_deg = internal_bridge_angles_deg;
     }
 
     /// Sets the internal solid fill polygons (the covered part of the shell
@@ -522,6 +533,22 @@ impl SliceRegionView {
         &self.internal_bridge_areas
     }
 
+    /// Returns the bridge line directions (degrees), one per
+    /// [`Self::internal_bridge_areas`] polygon. Empty when the host authored
+    /// no per-polygon angles; see [`Self::internal_bridge_angle_deg`].
+    pub fn internal_bridge_angles_deg(&self) -> &[f32] {
+        &self.internal_bridge_angles_deg
+    }
+
+    /// Bridge line direction (degrees) for internal-bridge polygon `index`:
+    /// its per-polygon angle when present, else [`Self::bridge_orientation_deg`].
+    pub fn internal_bridge_angle_deg(&self, index: usize) -> f32 {
+        self.internal_bridge_angles_deg
+            .get(index)
+            .copied()
+            .unwrap_or(self.bridge_orientation_deg)
+    }
+
     /// Returns the best bridge direction across all valid bridge regions (degrees).
     pub fn bridge_orientation_deg(&self) -> f32 {
         self.bridge_orientation_deg
@@ -714,6 +741,10 @@ pub struct PerimeterRegionView {
     /// `None` = this region owns its walls; `Some(base)` = this region shares
     /// the base region's walls (ADR-0028 §Amendment 2026-07-01).
     wall_source_region_id: Option<RegionId>,
+    /// Ordered `(paint-semantic-name, value)` pairs identifying this region's
+    /// paint variant, mirrored from the corresponding `SliceRegionView`
+    /// (full region identity for `begin_region` / `set-current-origin`).
+    variant_chain: Vec<(String, PaintValue)>,
     /// Per-region config view (packet 131). Host-populated at dispatch time
     /// (Step 3); `None` when no per-region config was derived.
     config: Option<ConfigView>,
@@ -729,6 +760,7 @@ impl PerimeterRegionView {
             infill_areas: region.infill_areas.clone(),
             seam_candidates: region.seam_candidates.clone(),
             resolved_seam: region.resolved_seam.clone(),
+            variant_chain: region.variant_chain.clone(),
             ..Self::default()
         }
     }
@@ -890,6 +922,19 @@ impl PerimeterRegionView {
     /// walls; `Some(base)` = this region shares the base region's walls.
     pub fn wall_source_region_id(&self) -> Option<&RegionId> {
         self.wall_source_region_id.as_ref()
+    }
+
+    /// Returns this region's ordered `(paint_semantic_name, value)` variant
+    /// chain — the full region identity used when re-tagging output via
+    /// `begin_region`. Empty for the legacy single-variant flow.
+    pub fn variant_chain(&self) -> &[(String, PaintValue)] {
+        &self.variant_chain
+    }
+
+    /// Override the variant chain (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_variant_chain(&mut self, variant_chain: Vec<(String, PaintValue)>) {
+        self.variant_chain = variant_chain;
     }
 
     /// Returns the per-region config view for this region, if the host

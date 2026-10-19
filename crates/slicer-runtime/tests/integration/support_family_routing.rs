@@ -478,7 +478,7 @@ fn same_family_union() {
             "tree-demand",
             "object",
             0,
-            Some(polygon(100, 100, 1_100_000, 200)),
+            Some(polygon(100, 100, (1 << 22) + 101, 200)),
         )]),
         plan(vec![entry(
             "traditional",
@@ -812,13 +812,15 @@ fn mismatched_family_fatal() {
 
 #[test]
 fn invalid_body_degraded() {
+    // Oversized: spans one unit more than MAX_BODY_EXTENT_UNITS (1 << 22)
+    // while straddling x = 0, pinning that the bound is size-only.
     let (output, diagnostics) = aggregate(vec![plan(vec![entry(
         "tree",
         "invalid-body",
         "unmet-demand",
         "object",
         0,
-        Some(polygon(-600_000, 0, 600_000, 10)),
+        Some(polygon(-((1 << 21) + 1), 0, 1 << 21, 10)),
     )])]);
     assert!(output.entries.is_empty());
     assert!(diagnostics
@@ -832,7 +834,7 @@ fn invalid_body_degraded() {
     // fixture solid and yields a 10 x 10 mm occupancy square (0..100_000
     // units). The body sits at 1..2 mm, wholly inside that square, so it
     // collides. Its extent is 10_000 units, far under MAX_BODY_EXTENT_UNITS
-    // (1 << 20), so max-body-extent rejection cannot be what drops it.
+    // (1 << 22), so max-body-extent rejection cannot be what drops it.
     let mut occupied = entry(
         "tree",
         "occupied-body",

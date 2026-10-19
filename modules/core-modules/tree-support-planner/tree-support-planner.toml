@@ -41,6 +41,7 @@ group   = "Support"
 
 [config.schema.support_line_width]
 type    = "float_or_percent"
+base_key = "nozzle_diameter"
 default = 0.0
 min     = 0.0
 # Percent semantics: Orca's `support_line_width` (PrintConfig.cpp, coFloatOrPercent)
@@ -58,6 +59,8 @@ default = 0.4
 min     = 0.0
 display = "Nozzle Diameter"
 group   = "Support"
+# ADR-0069: tool-capable — statable at tool scope, denied at every narrower scope.
+denied_scopes = ["object", "layer_range", "modifier", "paint_semantic"]
 
 [config.schema.line_width]
 type    = "float"
@@ -94,10 +97,22 @@ group   = "Support"
 [config.schema.tree_support_wall_count]
 type    = "int"
 default = 1
-min     = 1
+min     = 0
 max     = 10
 display = "Tree Support Wall Count"
 group   = "Support"
+# `min = 0` is required, not a relaxation: canonical OrcaSlicer declares
+# `def->min = 0` for `tree_support_wall_count` (`PrintConfig.cpp`) with the
+# tooltip "range of [0,2]. 0 means auto", and clamps at the consumption site
+# with `std::max(1, config.tree_support_wall_count.value)`
+# (`TreeSupportCommon.hpp`, `TreeSupport.cpp::generate_toolpaths`). Orca
+# serialises `0` into real profiles, so a `min = 1` bound rejects valid data.
+# `max = 10` and `default = 1` are deliberate divergences from canonical
+# (`max = 2`, `default = 0`): the renderer handles any wall count and
+# `tree-support/tests/tree_support_tdd.rs::tree_support_wall_count` pins
+# `render(3) == 3`, so tightening the maximum would make a supported value
+# unreachable. See packet 03 `design.md` for the measured evidence.
+description = "Wall loops for tree support, consumed as a movement multiplier via `max(1, wall_count)`; `0` is canonical OrcaSlicer's \"auto\" sentinel."
 
 [config.schema.support_raft_layers]
 type    = "int"
@@ -108,13 +123,20 @@ display = "Support Raft Layers"
 description = "Number of raft layers; consumed by push_raft_plan to emit the raft plan band."
 group   = "Support"
 
+# Canonical `raft_first_layer_density` is coPercent with min 10, max 100,
+# default 90 (`PrintConfigDef::init_fff_params`,
+# `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp`): authored `"90%"` or
+# `90` is percent magnitude, and the ÷100 happens at consumption
+# (`TreeSupport::generate_toolpaths`,
+# `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp`). The RaftPlan
+# IR field keeps the 0..1 fraction semantic.
 [config.schema.raft_first_layer_density]
 type    = "float"
-default = 0.4
-min     = 0.0
-max     = 1.0
+default = 90.0
+min     = 10.0
+max     = 100.0
 display = "Raft First Layer Density"
-description = "Raft first-layer density; consumed by push_raft_plan as RaftPlan."
+description = "Raft first-layer density as percent magnitude (90 = 90%); consumed by push_raft_plan as the RaftPlan fraction."
 group   = "Support"
 
 [config.schema.base_raft_layers]
@@ -244,12 +266,6 @@ default = "default"
 values  = ["default", "grid", "snug", "organic", "tree_slim", "tree_strong", "tree_hybrid"]
 display = "Support Style"
 group   = "Support"
-
-[config.overridable-per-region]
-keys = []
-
-[config.overridable-per-layer]
-keys = []
 
 [hints]
 estimated-ms-per-layer = 5

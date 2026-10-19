@@ -326,11 +326,12 @@ fn arachne_pipeline_thin_wall_widening() {
 
     // The rescued bead's width is now clamped up toward min_bead_width (see
     // this test's doc comment): the strip's raw ~0.15mm feature thickness is
-    // below `ArachneParams::default()`'s `min_bead_width` (0.4mm), so
-    // `WideningBeadingStrategy::compute`'s `thickness.max(min_output_width)`
-    // clamp forces the emitted bead's width up to 0.4mm, not the raw 0.15mm
+    // below `ArachneParams::default()`'s `min_bead_width` (0.34mm, canonical
+    // 85% of the nozzle), so `WideningBeadingStrategy::compute`'s
+    // `thickness.max(min_output_width)` clamp forces the emitted bead's width
+    // up to 0.34mm, not the raw 0.15mm
     // feature width. This is also this packet's units sanity check: if the
-    // width comes out as ~4000 or ~0.00004 instead of ~0.4mm, the
+    // width comes out as ~3400 or ~0.000034 instead of ~0.34mm, the
     // units->mm conversion in `generate_toolpaths` is wrong.
     let widths: Vec<f32> = on_lines
         .iter()
@@ -343,8 +344,8 @@ fn arachne_pipeline_thin_wall_widening() {
     );
     for &w in &widths {
         assert!(
-            (w - 0.4).abs() < 0.01,
-            "expected the rescued bead's width to be clamped up to min_bead_width (~0.4mm), \
+            (w - 0.34).abs() < 0.01,
+            "expected the rescued bead's width to be clamped up to min_bead_width (~0.34mm), \
              got {w}mm"
         );
     }
@@ -469,4 +470,34 @@ fn arachne_params_defaults_when_keys_absent() {
     // config anyway.
     assert_eq!(default_params.min_central_distance, 0.0);
     assert_eq!(default_params.min_width, 0.4);
+}
+
+/// AC-8: the per-key module-fallback contract, mirrored locally. Every wired
+/// arachne config key falls back to exactly the [`ArachneParams::default()`]
+/// value when absent from the config. The guest module's
+/// `arachne_params_from_config` (the real wiring) is unreachable from a
+/// `slicer-core` integration test, so this test pins the crate-local defaults
+/// that the module's per-key `unwrap_or(defaults.*)` reads must match.
+#[test]
+fn arachne_params_absent_keys_fall_back_to_defaults_per_key() {
+    let empty_config = ConfigView::new();
+    let default_params = ArachneParams::default();
+
+    assert_eq!(empty_config.get_float("min_central_distance"), None);
+    assert_eq!(default_params.min_central_distance, 0.0);
+    assert_eq!(empty_config.get_float("min_width"), None);
+    assert_eq!(default_params.min_width, 0.4);
+    assert_eq!(empty_config.get_float("min_bead_width"), None);
+    // Canonical `PrintConfig` default: 85% of the 0.4 mm nozzle.
+    assert_eq!(default_params.min_bead_width, 0.34);
+    assert_eq!(empty_config.get_float("wall_transition_length"), None);
+    assert_eq!(default_params.wall_transition_length, 0.4);
+    assert_eq!(empty_config.get_float("wall_transition_angle"), None);
+    assert_eq!(default_params.wall_transition_angle, 10.0_f64.to_radians());
+    assert_eq!(empty_config.get_float("initial_layer_min_bead_width"), None);
+    assert_eq!(default_params.initial_layer_min_bead_width, 0.34);
+    assert_eq!(empty_config.get_float("outer_wall_offset"), None);
+    assert_eq!(default_params.outer_wall_offset, 0.0);
+    assert_eq!(empty_config.get_bool("detect_thin_wall"), None);
+    assert!(!default_params.print_thin_walls);
 }

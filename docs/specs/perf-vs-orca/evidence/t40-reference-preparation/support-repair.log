@@ -1,0 +1,15 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.94s
+     Running tests\contract\main.rs (target\debug\deps\contract-e017127a3b84dfc2.exe)
+
+running 8 tests
+test support_plan_validation::identity_aggregate_spread_across_the_plate_is_measured_per_body ... ok
+test support_plan_validation::same_family_duplicate_identity_unions_without_a_duplicate_diagnostic ... ok
+test support_plan_validation ... ok
+test support_plan_validation::support_body_straddling_absolute_cell_boundary_is_retained ... ok
+test support_plan_validation::support_body_wider_than_the_deleted_routing_cell_is_retained ... ok
+test support_plan_validation::support_plan_aggregation_diagnoses_duplicate_identity ... ok
+test support_plan_validation::support_plan_aggregation_preserves_distinct_families ... ok
+test support_plan_validation::support_plan_validation ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 123 filtered out; finished in 0.00s
+

@@ -755,8 +755,17 @@ fn bundle_with_component(
         )
         .unwrap(),
     );
+    // Declared key (path-optimization-default.toml) seeded at its manifest
+    // default, mirroring the production `seed_registry_defaults` step: the
+    // guest's config-literal fallback migrated to a fail-closed
+    // `require_bool` read, so a bound view always carries it.
     let module = CompiledModuleBuilder::new(id)
-        .config_view(Arc::new(slicer_ir::ConfigView::from_map(HashMap::new())))
+        .config_view(Arc::new(slicer_ir::ConfigView::from_map(HashMap::from([
+            (
+                "path_optimization_emit_layer_markers".to_string(),
+                slicer_ir::ConfigValue::Bool(true),
+            ),
+        ]))))
         .build();
     TestModuleBundle {
         module,

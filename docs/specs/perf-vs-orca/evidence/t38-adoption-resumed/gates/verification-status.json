@@ -1,0 +1,158 @@
+{
+  "status": "BLOCKED",
+  "lane": "packet254 focused verification only",
+  "stop_rule": "first required gate failure; no correction or rerun without main-session authorization",
+  "identity_gate": {
+    "command": "python docs/specs/perf-vs-orca/evidence/t41-reference-repreparation/verify-freeze.py docs/specs/perf-vs-orca/evidence/t41-reference-repreparation/attempt-1",
+    "exit_code": 0,
+    "status": "PASS",
+    "record": "t41-freeze-verification.json"
+  },
+  "gates": [
+    {
+      "command": "rustc -vV",
+      "exit_code": 0,
+      "status": "PASS",
+      "identity": {
+        "release": "1.96.0",
+        "commit": "ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96",
+        "host": "x86_64-pc-windows-msvc",
+        "llvm": "22.1.2"
+      },
+      "log": "rustc-vv.log"
+    },
+    {
+      "command": "cargo check --workspace --all-targets",
+      "exit_code": 0,
+      "status": "PASS",
+      "log": "cargo-check-workspace-all-targets.log"
+    },
+    {
+      "command": "cargo clippy --workspace --all-targets -- -D warnings",
+      "exit_code": 0,
+      "status": "PASS",
+      "log": "cargo-clippy-workspace-all-targets.log"
+    },
+    {
+      "command": "cargo xtask check-literals",
+      "exit_code": 0,
+      "status": "PASS",
+      "violations": 0,
+      "files": 0,
+      "watchlist_types": 147,
+      "log": "check-literals.log"
+    },
+    {
+      "command": "cargo xtask check-test-quality --report",
+      "exit_code": 0,
+      "status": "PASS_REPORT_ONLY",
+      "findings": 12,
+      "files": 7,
+      "log": "check-test-quality-report.log"
+    },
+    {
+      "command": "cargo xtask build-guests --check",
+      "exit_code": 0,
+      "status": "PASS_FRESH",
+      "phase": "before accelerated rebuild",
+      "log": "build-guests-ordinary-check.log"
+    },
+    {
+      "command": "cargo xtask build-guests --accelerated --check",
+      "exit_code": 1,
+      "status": "STALE_ARTIFACTS_ONLY",
+      "finding": "accelerated artifacts missing; no lock-convergence finding",
+      "log": "build-guests-accelerated-check.log"
+    },
+    {
+      "command": "cargo xtask build-guests --accelerated",
+      "exit_code": 0,
+      "status": "PASS_REBUILT_REQUESTED_MODE_ONLY",
+      "built_guest_count": 47,
+      "log": "build-guests-accelerated-rebuild.log"
+    },
+    {
+      "command": "cargo xtask build-guests --accelerated --check",
+      "exit_code": 0,
+      "status": "PASS_FRESH",
+      "phase": "after accelerated rebuild",
+      "log": "build-guests-accelerated-recheck.log"
+    },
+    {
+      "command": "cargo xtask build-guests --check",
+      "exit_code": 0,
+      "status": "PASS_FRESH",
+      "phase": "rechecked after accelerated rebuild",
+      "log": "build-guests-ordinary-recheck-after-accelerated.log"
+    },
+    {
+      "command": "cargo test -p xtask --bin xtask -- accelerated_ --nocapture",
+      "exit_code": 0,
+      "status": "PASS",
+      "passed": 28,
+      "failed": 0,
+      "ignored": 0,
+      "filtered_out": 147,
+      "test_names": [
+        "build_guests::tests::accelerated_post_build_latch_gate_rejects_latched_session",
+        "build_guests::tests::accelerated_mode_freshness_rejects_absent_opposite_mode_artifact",
+        "dist::tests::accelerated_entry_points_flag_parses",
+        "build_guests::tests::accelerated_mode_freshness_accepts_matching_artifact_and_metadata",
+        "dist::tests::accelerated_entry_points_ordinary_mode_unchanged",
+        "rustc_driver_tests::accelerated_anyhow_build_script_probe_is_accepted_without_latch_or_cfg",
+        "rustc_driver_tests::accelerated_guest_release_accepts_own_workspace_debuginfo_strip",
+        "rustc_driver_tests::accelerated_guest_release_accepts_workspace_strip_profile",
+        "rustc_driver_tests::accelerated_guest_release_rejects_missing_strip",
+        "rustc_driver_tests::accelerated_guest_release_rejects_none_strip",
+        "rustc_driver_tests::accelerated_heapless_build_script_probe_is_accepted_without_latch_or_cfg",
+        "rustc_driver_tests::accelerated_host_release_accepts_optimized_canonical_core",
+        "rustc_driver_tests::accelerated_host_release_accepts_proc_macro_build_script_without_opt_level",
+        "rustc_driver_tests::accelerated_policy_rejection_latch_accepts_audited_identity_and_targets",
+        "rustc_driver_tests::accelerated_policy_rejection_latch_accepts_repeated_discovery_and_link_flags",
+        "rustc_driver_tests::accelerated_policy_rejection_latch_injects_cfg_only_for_canonical_core",
+        "rustc_driver_tests::accelerated_policy_rejection_latch_keeps_ordinary_mode_linear_without_cfg",
+        "rustc_driver_tests::accelerated_policy_rejection_latch_persists_after_a_swallowed_child_failure",
+        "rustc_driver_tests::accelerated_policy_rejection_latch_rejects_duplicate_keyed_controls",
+        "rustc_driver_tests::accelerated_policy_rejection_latch_rejects_response_llvm_and_sysroot_controls",
+        "rustc_driver_tests::accelerated_policy_rejection_latch_rejects_unoptimized_canonical_core",
+        "rustc_driver_tests::accelerated_structurally_invalid_probe_rejects_and_latches",
+        "test::tests::accelerated_entry_points_apply_controlled_debug_profile",
+        "test::tests::accelerated_entry_points_flag_parses",
+        "test::tests::accelerated_entry_points_ordinary_mode_unchanged",
+        "test::tests::accelerated_entry_points_reject_doctest_combinations",
+        "dist::tests::accelerated_entry_points_dist_never_enables_test_support",
+        "dist::tests::accelerated_entry_points_use_mode_distinct_staging_path"
+      ],
+      "log": "test-xtask-accelerated.log"
+    },
+    {
+      "command": "cargo test -p slicer-core --features host-algos,perimeter-spatial-test-support --test perimeter_spatial_tdd --nocapture",
+      "exit_code": 1,
+      "status": "BLOCKED_COMMAND_SYNTAX",
+      "tests_started": false,
+      "failure": "Cargo rejected --nocapture because the test-argument separator `--` was omitted.",
+      "log": "test-slicer-core-perimeter-spatial-tdd-command-error.log",
+      "rerun_performed": false,
+      "remaining_focused_tests_not_run": [
+        "cargo xtask test --summary -p slicer-runtime --features perimeter-spatial-test-support --test integration -- perimeter_spatial_capture_and_nonvacuity --nocapture",
+        "cargo xtask test --summary -p slicer-runtime --features perimeter-spatial-test-support --test integration -- perimeter_spatial_self_baseline --nocapture",
+        "cargo xtask test --summary -p slicer-runtime --test integration -- overlap_is_inconclusive_and_never_keep --nocapture"
+      ]
+    }
+  ],
+  "changes_and_scope": {
+    "created_evidence_only_under": "docs/specs/perf-vs-orca/evidence/t38-adoption-resumed/gates/",
+    "generated_artifacts": "accelerated guests rebuilt in requested mode (47); ordinary and accelerated freshness both rechecked exit 0",
+    "source_build_inputs_unchanged_since_previous_check": "provided by the main session; not independently recomputed in this resumed lane",
+    "production_or_lockfile_edits_by_this_subagent": false,
+    "campaign_or_dist_build_run": false,
+    "workspace_test_run": false,
+    "timing_claims": false
+  },
+  "gaps": [
+    "AC-1, AC-3N, and AC-N2 core spatial test suite did not run because Cargo rejected the command syntax.",
+    "AC-2 capture, AC-5 self-baseline, and AC-N3 overlap tests were not run after the stop condition.",
+    "No featureless guard negative run was requested or performed."
+  ],
+  "resume_requires_main_authorization": true
+}

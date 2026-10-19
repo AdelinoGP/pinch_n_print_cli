@@ -43,6 +43,7 @@ integrated-traditional-support = ["slicer-integrated-modules/traditional-support
 integrated-tree-support = ["slicer-integrated-modules/tree-support"]
 integrated-wipe-tower = ["slicer-integrated-modules/wipe-tower"]
 integrated-wave-overhangs = ["slicer-integrated-modules/wave-overhangs"]
+integrated-raft-default = ["slicer-integrated-modules/raft-default"]
 
 [dependencies]
 ctrlc = "3"
@@ -51,6 +52,7 @@ slicer-integrated-modules = { path = "../slicer-integrated-modules" }
 slicer-scheduler = { path = "../slicer-scheduler" }
 slicer-schema = { path = "../slicer-schema" }
 slicer-model-io = { path = "../slicer-model-io" }
+slicer-config = { path = "../slicer-config" }
 slicer-helpers = { path = "../slicer-helpers" }
 slicer-ir = { path = "../slicer-ir" }
 slicer-sdk = { path = "../slicer-sdk", features = ["test"] }

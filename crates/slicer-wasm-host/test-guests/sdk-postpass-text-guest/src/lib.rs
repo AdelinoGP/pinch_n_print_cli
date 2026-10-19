@@ -9,10 +9,10 @@
 //! input through `PostpassModule::run_text_postprocess` with a real
 //! typed `ConfigView` on the live path.
 
+use slicer_ir::ConfigView;
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::slicer_module;
 use slicer_sdk::traits::PostpassModule;
-use slicer_ir::ConfigView;
 
 pub struct SdkPostpassTextModule;
 

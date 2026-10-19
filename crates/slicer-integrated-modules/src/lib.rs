@@ -40,6 +40,9 @@ use wave_overhangs::WaveOverhangs;
 #[cfg(feature = "wipe-tower")]
 use wipe_tower::WipeTower;
 
+#[cfg(feature = "raft-default")]
+use raft_default::RaftDefault;
+
 #[cfg(feature = "arachne-perimeters")]
 use arachne_perimeters::ArachnePerimeters;
 #[cfg(feature = "classic-perimeters")]
@@ -162,6 +165,11 @@ manifest_const!(
     WAVE_OVERHANGS_MANIFEST,
     "wave-overhangs",
     "../../../modules/core-modules/wave-overhangs/wave-overhangs.toml"
+);
+manifest_const!(
+    RAFT_DEFAULT_MANIFEST,
+    "raft-default",
+    "../../../modules/core-modules/raft-default/raft-default.toml"
 );
 
 macro_rules! integrated_registry {
@@ -431,6 +439,14 @@ integrated_registry!(
         "com.core.machine-gcode-emit",
         "integrated://machine-gcode-emit",
         Postpass
+    ),
+    (
+        "raft-default",
+        RAFT_DEFAULT_MANIFEST,
+        RaftDefault,
+        "com.core.raft-default",
+        "integrated://raft-default",
+        Layer
     ),
 );
 

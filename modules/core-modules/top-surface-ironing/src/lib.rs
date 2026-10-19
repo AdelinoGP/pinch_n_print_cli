@@ -26,8 +26,7 @@
 #![warn(unused_imports)]
 
 use slicer_ir::{
-    units_to_mm, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole,
-    Point3WithWidth, Polygon,
+    units_to_mm, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point3WithWidth, Polygon,
 };
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -239,25 +238,21 @@ fn generate_zigzag_strokes_for_polygon(
 #[slicer_module]
 impl LayerModule for TopSurfaceIroning {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let enabled = match config.get("ironing_enabled") {
-            Some(ConfigValue::Bool(b)) => *b,
-            // Default OFF to match OrcaSlicer (`ironing_type = no ironing`).
-            // Ironing at 0.1 mm spacing over every top surface roughly doubles
-            // top-surface emission; users opt in explicitly.
-            _ => false,
-        };
+        // Required reads (config-scope-resolution plan): every key below is
+        // declared in `top-surface-ironing.toml`, so the bound view always
+        // holds its registry default. A missing key is a contract violation,
+        // not a fallback — `require_*` failures convert to fatal `ModuleError`s.
+        //
+        // `ironing_enabled` defaults OFF to match OrcaSlicer
+        // (`ironing_type = no ironing`); users opt in explicitly.
+        let enabled = config.require_bool("ironing_enabled")?;
 
-        let ironing_speed = match config.get("ironing_speed") {
-            Some(ConfigValue::Float(s)) => *s,
-            Some(ConfigValue::Int(s)) => *s as f64,
-            _ => 20.0,
-        };
+        let ironing_speed = config.require_float("ironing_speed")?;
 
-        let ironing_flow = match config.get("ironing_flow") {
-            Some(ConfigValue::Float(f)) => *f,
-            Some(ConfigValue::Int(f)) => *f as f64,
-            _ => 0.10,
-        };
+        // Canonical default: coPercent 10 (10 = 10%) —
+        // `PrintConfigDef::init_fff_params`
+        // (`OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp`).
+        let ironing_flow = config.require_float("ironing_flow")?;
 
         if ironing_flow <= 0.0 {
             return Err(ModuleError::fatal(
@@ -266,28 +261,23 @@ impl LayerModule for TopSurfaceIroning {
             ));
         }
 
-        let ironing_spacing = match config.get("ironing_spacing") {
-            Some(ConfigValue::Float(s)) => *s,
-            Some(ConfigValue::Int(s)) => *s as f64,
-            _ => 0.1,
-        };
+        // Required read (config-scope-resolution plan): `ironing_spacing` is
+        // declared in the manifest, so the bound view always holds its
+        // registry default.
+        let ironing_spacing = config.require_float("ironing_spacing")?;
 
-        let ironing_pattern = match config.get("ironing_pattern") {
-            Some(ConfigValue::String(p)) => {
-                if p != "rectilinear" {
-                    return Err(ModuleError::fatal(
-                        2,
-                        format!(
-                            "unsupported ironing_pattern '{}'; only 'rectilinear' is supported \
-                             (key: ironing_pattern)",
-                            p
-                        ),
-                    ));
-                }
-                p.clone()
-            }
-            _ => "rectilinear".to_string(),
-        };
+        let ironing_pattern = config.require_string("ironing_pattern")?;
+        if ironing_pattern != "rectilinear" {
+            return Err(ModuleError::fatal(
+                2,
+                format!(
+                    "unsupported ironing_pattern '{}'; only 'rectilinear' is supported \
+                     (key: ironing_pattern)",
+                    ironing_pattern
+                ),
+            ));
+        }
+        let ironing_pattern = ironing_pattern.to_string();
 
         Ok(Self {
             enabled,
@@ -300,12 +290,13 @@ impl LayerModule for TopSurfaceIroning {
 
     /// Emits ironing strokes over polygon-precise top solid fill areas.
     ///
-    /// **Note on IR access:** the manifest declares `reads = ["SliceIR", "InfillIR"]`
-    /// for **DAG-ordering purposes only** (so the validator orders this module
-    /// after gyroid/rectilinear/lightning at `Layer::Infill`, resolving what was
-    /// previously an advisory `WriteConflict { orderable: false }`). This impl
-    /// never reads from `InfillIR` at runtime — the ironing polygon comes from
-    /// `SliceRegionView::top_solid_fill()`. See DEV-065 (closed, 2026-06-09).
+    /// **Note on IR access:** the manifest declares `reads = ["SliceIR"]` (it
+    /// writes `InfillIR`) and orders this module after gyroid/rectilinear/
+    /// lightning at `Layer::Infill` via `[compatibility].requires`
+    /// (ExplicitRequires DAG edges), resolving what was previously an advisory
+    /// `WriteConflict { orderable: false }`. This impl never reads from
+    /// `InfillIR` at runtime — the ironing polygon comes from
+    /// `SliceRegionView::top_solid_fill()`.
     fn run_infill(
         &self,
         _layer_index: u32,
@@ -319,10 +310,18 @@ impl LayerModule for TopSurfaceIroning {
         }
 
         let speed_factor = (self.ironing_speed / BASE_SPEED) as f32;
-        let flow_factor = self.ironing_flow as f32;
+        // `ironing_flow` is percent magnitude (coPercent 0..100); the ÷100
+        // happens at consumption, exactly canonical
+        // `ConfigOptionPercent::get_abs_value`
+        // (`OrcaSlicerDocumented/src/libslic3r/Config.hpp`).
+        let flow_factor = self.ironing_flow as f32 / 100.0;
 
         for region in regions {
-            output.begin_region(region.object_id(), *region.region_id());
+            output.begin_region(
+                region.object_id(),
+                *region.region_id(),
+                region.variant_chain(),
+            );
             // Self-gate per region: only the topmost exposed surface gets
             // ironed (depth 0). Deeper top-shell layers and the bottom-shell
             // zone are skipped.

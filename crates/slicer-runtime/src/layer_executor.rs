@@ -931,11 +931,11 @@ fn execute_single_layer_inner(
         instrumentation.on_stage_start(&stage.stage_id, Some(layer.index));
         // Execute modules in topological order within each stage
         for module in &stage.modules {
-            // Per-layer host filter (packet 92): skip this module on this layer
-            // if it declares [[region_split]] semantics and no region's
-            // variant_chain matches any of them. The `continue` is placed
-            // BEFORE on_module_start so the skipped module is truly absent
-            // from the instrumentation and audit log.
+            // Per-layer host filter (packet 92; ADR-0071): skip this module on
+            // this layer only when its manifest opted into `paint_only = true`
+            // and no region's variant_chain matches a declared semantic. The
+            // `continue` is placed BEFORE on_module_start so the skipped module
+            // is truly absent from the instrumentation and audit log.
             if !module_invocation_allowed_on_layer(module.region_split_semantics(), arena.slice()) {
                 continue;
             }
@@ -1119,6 +1119,8 @@ fn execute_single_layer_inner(
             }
         }
 
+        ensure_infill_slot_committed(&mut arena, &stage.stage_id);
+
         // Host-built-in paint-annotation runs at the `Layer::PaintRegionAnnotation`
         // stage (docs/04 §Full Lifecycle and docs/10 §Paint Region Resolution).
         // If a WASM module is registered for this stage, it handles the annotation
@@ -1296,11 +1298,14 @@ fn stage_modifier_footprints(slice: &mut SliceIR, blackboard: &Blackboard, layer
         for modifier_index in modifier_indices {
             let mv = &object.modifier_volumes[modifier_index];
             // Skip support_* modifiers: those go through the existing support path.
-            if let Some(ConfigValue::String(s)) = mv.config_delta.fields.get("subtype") {
-                match s.as_str() {
-                    "support_enforcer" | "support_blocker" => continue,
-                    _ => {}
-                }
+            let is_support_modifier = match mv.kind() {
+                slicer_ir::ModifierKind::ParameterModifier => false,
+                slicer_ir::ModifierKind::NegativePart => false,
+                slicer_ir::ModifierKind::SupportEnforcer => true,
+                slicer_ir::ModifierKind::SupportBlocker => true,
+            };
+            if is_support_modifier {
+                continue;
             }
             if mv.mesh.vertices.is_empty() || mv.mesh.indices.is_empty() {
                 continue;
@@ -1683,6 +1688,24 @@ fn capture_ir_for_stage(stage_id: &str, arena: &LayerArena) -> Option<CapturedIr
     }
 }
 
+/// Commit an empty `InfillIR` when the `Layer::InfillPostProcess` stage ran
+/// without any module committing the arena slot.
+///
+/// Modules legitimately return no commit when a layer carries no infill work
+/// (walls-only tip layers, empty plans). `Layer::InfillPostProcess` is still
+/// the documented boundary for the final [`slicer_ir::InfillIR`], so the slot
+/// is committed empty-but-present here — the same always-commit discipline as
+/// [`prestage_layer_collection_if_path_optimization`] — and its typed tap
+/// captures the empty IR instead of failing. Slots of other stages and
+/// already-committed slots are untouched.
+fn ensure_infill_slot_committed(arena: &mut LayerArena, stage_id: &str) {
+    if stage_id != "Layer::InfillPostProcess" || arena.infill().is_some() {
+        return;
+    }
+    // Unoccupied (checked above) and write-once: cannot collide.
+    let _ = arena.set_infill(slicer_ir::InfillIR::default());
+}
+
 /// Request-gated, typed post-stage capture at the executor boundary
 /// (packet 158), using the compatibility default tool selection (support and
 /// interface tool 0).
@@ -1706,10 +1729,13 @@ fn capture_ir_for_stage(stage_id: &str, arena: &LayerArena) -> Option<CapturedIr
 ///
 /// A capture is taken immediately after [`apply`] returns `Ok` for a
 /// requested (tap, layer) pair — a post-commit, renderer-owned clone, never
-/// a borrow into `LayerArena` (ADR-0037). If a requested tap's arena slot is
-/// still empty once its stage has run (no module committed it), the whole
-/// call fails with [`CaptureExecutionError::TapSourceUnavailable`] rather
-/// than returning a partial bundle.
+/// a borrow into `LayerArena` (ADR-0037). `Layer::InfillPostProcess`'s slot
+/// is always committed at its stage boundary (an empty `InfillIR` when no
+/// module contributed — see [`ensure_infill_slot_committed`]), so its tap
+/// captures empty-but-present IR on work-free layers. For a tap whose slot is
+/// genuinely never committed (e.g. `Layer::Support` with support disabled)
+/// the whole call fails with [`CaptureExecutionError::TapSourceUnavailable`]
+/// rather than returning a partial bundle.
 pub fn execute_captured_stages(
     plan: &ExecutionPlan,
     blackboard: &Blackboard,
@@ -1901,6 +1927,8 @@ pub fn execute_captured_stages_with_support_tools(
                     })?;
                 }
             }
+
+            ensure_infill_slot_committed(&mut arena, &stage.stage_id);
 
             if requested.contains(stage.stage_id.as_str()) {
                 match capture_ir_for_stage(&stage.stage_id, &arena) {
@@ -3291,10 +3319,15 @@ pub struct StageApplyContext<'a> {
     pub layer_index: u32,
     /// Seam plan consulted by the perimeter arms to back-fill `resolved_seam`.
     pub seam_plan: Option<&'a slicer_ir::SeamPlanIR>,
-    /// The module's already-resolved config view. Host bridge post-processing
-    /// reads rectilinear bridge settings from this same channel as the guest.
+    /// The module's already-resolved config view. No commit arm reads it since
+    /// the `Layer::InfillPostProcess` internal-bridge constructor was removed
+    /// (internal bridges are authored by the ShellClassification prepass);
+    /// retained as a borrow slot so a future commit arm can read resolved
+    /// module config without re-threading the dispatch context. Callers still
+    /// populate it (see `layer_executor`'s `StageApplyContext` construction).
     pub config_view: Option<&'a slicer_ir::ConfigView>,
     /// Whole-print SliceIR committed by prepass; read-only cross-layer input.
+    /// Unread since the same removal; kept as the extensible borrow slot.
     pub committed_slices: Option<&'a [SliceIR]>,
 }
 
@@ -3315,13 +3348,23 @@ fn backfill_resolved_seam(
         if region.resolved_seam.is_some() {
             continue;
         }
-        if let Some(entry) = seam_plan.entries.iter().find(|e| {
-            e.region_key.global_layer_index == layer_index
-                && e.region_key.object_id == region.object_id
-                && e.region_key.region_id == region.region_id
-                && e.region_key.variant_chain == region.variant_chain
-        }) {
-            region.resolved_seam = Some(entry.chosen_candidate.clone());
+        // Exact identity lookup only (mirrors `resolve_seam_for_perimeter_region`):
+        // seam planning runs in the LATE prepass phase, after paint segmentation
+        // has committed the paint-split SliceIR, so its entries carry the full
+        // variant chain. A painted variant without its own entry gets no seam
+        // (degraded path) rather than its unpainted sibling's seam.
+        let chosen = seam_plan
+            .entries
+            .iter()
+            .find(|e| {
+                e.region_key.global_layer_index == layer_index
+                    && e.region_key.object_id == region.object_id
+                    && e.region_key.region_id == region.region_id
+                    && e.region_key.variant_chain == region.variant_chain
+            })
+            .map(|entry| entry.chosen_candidate.clone());
+        if let Some(entry) = chosen {
+            region.resolved_seam = Some(entry);
         }
     }
 }
@@ -3558,197 +3601,10 @@ pub(crate) fn apply(
             }
             let next = arena.infill().map(next_global_infill_tag).unwrap_or(0);
             remap_infill_order_locks_from(&mut ir, next)?;
-            if let Some(mut slice) = arena.take_slice() {
-                for region in &mut ir.regions {
-                    let Some(slice_region) = slice.regions.iter_mut().find(|candidate| {
-                        candidate.object_id == region.object_id
-                            && candidate.region_id == region.region_id
-                    }) else {
-                        continue;
-                    };
-                    // Packet 234a: construct qualified internal-bridge areas
-                    // only after committed walls and sparse anchors exist.
-                    if slice_region.internal_bridge_areas.is_empty() {
-                        continue;
-                    }
-                    let mut anchors: Vec<Vec<Point2>> = Vec::new();
-                    if let Some(perimeter_region) = arena.perimeter().and_then(|perimeter| {
-                        perimeter.regions.iter().find(|candidate| {
-                            candidate.object_id == region.object_id
-                                && candidate.region_id == region.region_id
-                        })
-                    }) {
-                        for wall in &perimeter_region.walls {
-                            let points: Vec<Point2> = wall
-                                .path
-                                .points
-                                .iter()
-                                .map(|point| Point2::from_mm(point.x, point.y))
-                                .collect();
-                            if points.len() >= 2 {
-                                anchors.push(points);
-                            }
-                        }
-                    }
-                    for path in &region.sparse_infill {
-                        let points: Vec<Point2> = path
-                            .points
-                            .iter()
-                            .map(|point| Point2::from_mm(point.x, point.y))
-                            .collect();
-                        if points.len() >= 2 {
-                            anchors.push(points);
-                        }
-                    }
-                    if anchors.is_empty() {
-                        continue;
-                    }
-                    let config = ctx.config_view;
-                    let value = |key: &str, default: f32| {
-                        config
-                            .and_then(|view| view.get_float(key))
-                            .map(|value| value as f32)
-                            .unwrap_or(default)
-                    };
-                    let nofilter = config
-                        .and_then(|view| view.get_bool("dont_filter_internal_bridges"))
-                        .unwrap_or(false);
-                    let flow = slicer_core::flow::canonical_bridging_flow(
-                        value("bridge_line_width", 0.0),
-                        value("internal_bridge_flow", 1.0),
-                        value("nozzle_diameter", 0.4),
-                    );
-                    // Cross-layer harvesting is sourced only from the committed
-                    // SliceIR blackboard slot; per-layer arenas remain isolated.
-                    // Match first, clone second. `gather_areas_w_depth` reads at
-                    // most a one-flow-height suffix, and building a
-                    // `BridgeDepthLayer` clones five polygon sets, so
-                    // materialising every committed layer below made this
-                    // quadratic in layer count for a fixed-size read.
-                    let matched: Vec<(f32, &slicer_ir::SlicedRegion)> = ctx
-                        .committed_slices
-                        .unwrap_or(&[])
-                        .iter()
-                        .filter_map(|committed| {
-                            committed
-                                .regions
-                                .iter()
-                                .find(|candidate| {
-                                    candidate.object_id == region.object_id
-                                        && candidate.region_id == region.region_id
-                                })
-                                .map(|candidate| (committed.z, candidate))
-                        })
-                        .collect();
-                    let layer_height = value("layer_height", 0.2);
-                    let matched_zs: Vec<f32> = matched.iter().map(|(z, _)| *z).collect();
-                    let depth_index = matched.len().saturating_sub(1);
-                    let depth_start = slicer_core::algos::bridge_over_infill::depth_window_start(
-                        &matched_zs,
-                        depth_index,
-                        layer_height,
-                        slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
-                    );
-                    let depth_layers: Vec<
-                        slicer_core::algos::bridge_over_infill::BridgeDepthLayer,
-                    > = matched[depth_start.min(matched.len())..]
-                        .iter()
-                        .map(|(print_z, candidate)| {
-                            let mut not_sparse = candidate.top_solid_fill.clone();
-                            not_sparse.extend(candidate.bottom_solid_fill.iter().cloned());
-                            not_sparse.extend(candidate.internal_solid_fill.iter().cloned());
-                            not_sparse.extend(candidate.bridge_areas.iter().cloned());
-                            slicer_core::algos::bridge_over_infill::BridgeDepthLayer {
-                                print_z: *print_z,
-                                sparse_infill: candidate.infill_areas.clone(),
-                                not_sparse_infill: not_sparse,
-                            }
-                        })
-                        .collect();
-                    let harvested = slicer_core::algos::bridge_over_infill::gather_areas_w_depth(
-                        &depth_layers,
-                        depth_layers.len().saturating_sub(1),
-                        layer_height,
-                        slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
-                    );
-                    let angle_override = value("internal_bridge_angle", 0.0);
-                    for area in &slice_region.internal_bridge_areas {
-                        let deep_area = if harvested.is_empty() {
-                            &slice_region.sparse_infill_area
-                        } else {
-                            &harvested
-                        };
-                        let expanded =
-                            slicer_core::algos::bridge_over_infill::expand_candidate_area(
-                                std::slice::from_ref(area),
-                                deep_area,
-                                deep_area,
-                                &slice_region.internal_bridge_areas,
-                                flow.spacing_mm,
-                            );
-                        for area in expanded {
-                            let edges = vec![area.contour.points.clone()];
-                            let angle =
-                                slicer_core::algos::bridge_over_infill::determine_bridging_angle(
-                                    &anchors,
-                                    &edges,
-                                    angle_override,
-                                );
-                            let (bridge_polys, bridge_lines) =
-                                slicer_core::algos::bridge_over_infill::construct_anchored_polygon(
-                                    &anchors,
-                                    std::slice::from_ref(&area),
-                                    angle,
-                                    flow.spacing_mm,
-                                    flow.thread_diameter_mm,
-                                );
-                            if bridge_polys.is_empty() || bridge_lines.is_empty() {
-                                continue;
-                            }
-                            if !nofilter
-                                && bridge_lines.iter().any(|line| {
-                                    line.windows(2)
-                                        .map(|pair| {
-                                            let dx = pair[1].x - pair[0].x;
-                                            let dy = pair[1].y - pair[0].y;
-                                            ((dx * dx + dy * dy) as f32).sqrt()
-                                        })
-                                        .sum::<f32>()
-                                        < flow.thread_diameter_mm
-                                })
-                            {
-                                continue;
-                            }
-                            region
-                                .internal_bridge_infill
-                                .extend(bridge_lines.into_iter().map(|line| {
-                                    ExtrusionPath3D {
-                                        points: line
-                                            .into_iter()
-                                            .map(|point| Point3WithWidth {
-                                                x: point.x as f32 / 10_000.0,
-                                                y: point.y as f32 / 10_000.0,
-                                                z: slice.z,
-                                                width: flow.thread_diameter_mm,
-                                                flow_factor: 1.0,
-                                                overhang_quartile: None,
-                                                dist_to_top_mm: 0.0,
-                                                overhang_distance_mm: None,
-                                            })
-                                            .collect(),
-                                        role: ExtrusionRole::InternalBridgeInfill,
-                                        speed_factor: 1.0,
-                                        tool_index: None,
-                                        order_lock: None,
-                                    }
-                                }));
-                        }
-                    }
-                }
-                arena
-                    .set_slice(slice)
-                    .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
-            }
+            // Internal bridges have a single producer: the ShellClassification
+            // prepass authors `internal_bridge_areas` + per-polygon angles and
+            // the fill module holding the bridge claim emits them. This arm
+            // only commits the module's InfillIR.
             let _ = arena.take_infill();
             arena
                 .set_infill(ir)
@@ -4021,10 +3877,15 @@ fn merge_infill_ir(existing: &mut InfillIR, incoming: InfillIR) {
     existing.raft_regions.extend(incoming.raft_regions);
 }
 
-/// Per-layer host dispatch filter (packet 92).
+/// Per-layer host dispatch filter (packet 92; dispatch semantics redefined by
+/// ADR-0071).
 ///
-/// Returns `true` iff the module either:
-/// - declares NO `[[region_split]]` semantics (paint-transparent default), OR
+/// `declared` is the compiled `paint_only` semantic set, non-empty only for
+/// modules whose manifest opts into `paint_only = true`. Returns `true` iff
+/// the module either:
+/// - carries NO paint-only semantics (paint-transparent default — this covers
+///   every module that merely *declares* `[[region_split]]` for aggregation,
+///   including the core perimeter and fuzzy-skin modules), OR
 /// - at least one region on the layer has a `variant_chain` entry whose
 ///   semantic name is in `declared`.
 ///
@@ -4035,7 +3896,7 @@ pub fn module_invocation_allowed_on_layer(
     declared: &std::collections::HashSet<String>,
     slice: Option<&SliceIR>,
 ) -> bool {
-    // Paint-transparent: no region-split declarations → always invoke.
+    // Paint-transparent: no paint-only semantics → always invoke.
     if declared.is_empty() {
         return true;
     }
@@ -4053,6 +3914,25 @@ pub fn module_invocation_allowed_on_layer(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn ensure_infill_slot_committed_fills_an_unoccupied_infill_slot() {
+        // Regression (wave_overhang_bridge_fill_e2e): work-free layers left
+        // the Layer::InfillPostProcess slot unoccupied, so its typed tap failed
+        // with TapSourceUnavailable mid-model instead of capturing the
+        // empty-but-present IR the stage boundary guarantees.
+        let mut arena = super::LayerArena::new();
+        assert!(arena.infill().is_none());
+        super::ensure_infill_slot_committed(&mut arena, "Layer::InfillPostProcess");
+        assert!(
+            arena.infill().is_some(),
+            "the InfillPostProcess boundary must commit even when no module did"
+        );
+
+        let mut other = super::LayerArena::new();
+        super::ensure_infill_slot_committed(&mut other, "Layer::Support");
+        assert!(other.infill().is_none(), "other stages keep skip-on-empty");
+    }
+
     fn anchored_entity(width: f32, flow_factor: f32) -> slicer_ir::AnchoredEntity {
         // Pins every AnchoredEntity field so a future transport widening
         // fails here instead of silently defaulting (E=0 class).
@@ -4552,6 +4432,7 @@ mod tests {
             regions: vec![InfillRegion {
                 object_id: "obj".to_string(),
                 region_id: 0,
+                variant_chain: Vec::new(),
                 sparse_infill: vec![
                     path(ExtrusionRole::SparseInfill),
                     path(ExtrusionRole::BridgeInfill),

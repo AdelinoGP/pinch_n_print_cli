@@ -131,6 +131,7 @@ fn empty_mesh_reports_no_bounds_hits_or_closest_point() {
     );
 }
 
+// KEEP-review (core-cross): core AabbTree::bounds counterpart oracle; catches bounds-extrema regressions.
 #[test]
 fn bounds_match_unit_cube_vertex_extrema() {
     let tree = AabbTree::new(unit_cube_mesh());
@@ -139,6 +140,7 @@ fn bounds_match_unit_cube_vertex_extrema() {
     assert_bounds(bounds, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
 }
 
+// KEEP-review (core-cross): core AabbTree::raycast_first_hit counterpart, distinct from the SDK MeshSource raycast path.
 #[test]
 fn positive_z_raycast_from_below_hits_cube_bottom_face_first() {
     let tree = AabbTree::new(unit_cube_mesh());
@@ -163,6 +165,7 @@ fn positive_z_raycast_from_below_hits_cube_bottom_face_first() {
     assert_point3(hit.point, 0.5, 0.5, 0.0);
 }
 
+// KEEP-review (core-cross): core AabbTree::raycast_all_hits sorted entry/exit contract.
 #[test]
 fn raycast_all_hits_returns_sorted_entry_and_exit_intersections() {
     let tree = AabbTree::new(unit_cube_mesh());

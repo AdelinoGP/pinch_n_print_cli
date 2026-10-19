@@ -234,6 +234,57 @@ fn run_real_arachne_guest(layer_index: u32, wall_sequence: &str) {
         "wall_sequence".to_string(),
         ConfigValue::String(wall_sequence.to_string()),
     );
+    // Required-read baseline (packet 06 5c): classified reads in
+    // run_perimeters/arachne_params_from_config are now require_*; the view
+    // holds every key the path reads at manifest-default values. line_width
+    // holds its post-expansion default (1.125 x nozzle_diameter = 0.45): the
+    // raw 0 is the auto sentinel expanded at Phase B and cannot survive the
+    // D-162 spacing gate.
+    config.insert("layer_height".to_string(), ConfigValue::Float(0.2));
+    config.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.4));
+    config.insert("line_width".to_string(), ConfigValue::Float(0.45));
+    config.insert("bridge_line_width".to_string(), ConfigValue::Float(0.0));
+    config.insert(
+        "initial_layer_line_width".to_string(),
+        ConfigValue::Float(0.0),
+    );
+    config.insert("inner_wall_line_width".to_string(), ConfigValue::Float(0.0));
+    config.insert("outer_wall_line_width".to_string(), ConfigValue::Float(0.0));
+    config.insert("wall_loops".to_string(), ConfigValue::Int(3));
+    config.insert("extra_perimeters".to_string(), ConfigValue::Int(0));
+    config.insert("precise_outer_wall".to_string(), ConfigValue::Bool(false));
+    config.insert("support_raft_layers".to_string(), ConfigValue::Int(0));
+    config.insert("only_one_wall_top".to_string(), ConfigValue::Bool(false));
+    config.insert(
+        "wall_direction".to_string(),
+        ConfigValue::String("counter_clockwise".to_string()),
+    );
+    config.insert("alternate_extra_wall".to_string(), ConfigValue::Bool(false));
+    config.insert("spiral_vase".to_string(), ConfigValue::Bool(false));
+    config.insert(
+        "sparse_infill_density".to_string(),
+        ConfigValue::Float(20.0),
+    );
+    config.insert(
+        "only_one_wall_first_layer".to_string(),
+        ConfigValue::Bool(false),
+    );
+    config.insert("detect_overhang_wall".to_string(), ConfigValue::Bool(true));
+    config.insert("overhang_reverse".to_string(), ConfigValue::Bool(false));
+    config.insert(
+        "overhang_reverse_internal_only".to_string(),
+        ConfigValue::Bool(false),
+    );
+    config.insert(
+        "overhang_reverse_threshold".to_string(),
+        ConfigValue::Float(0.0),
+    );
+    config.insert("bridge_flow".to_string(), ConfigValue::Float(1.0));
+    config.insert("thick_bridges".to_string(), ConfigValue::Bool(false));
+    config.insert(
+        "seam_candidate_angle_threshold_deg".to_string(),
+        ConfigValue::Float(30.0),
+    );
     let bundle = crate::common::TestModuleBundle {
         module: CompiledModuleBuilder::new(loaded.id().to_string())
             .config_view(Arc::new(slicer_ir::ConfigView::from_map(config)))
@@ -294,15 +345,33 @@ fn run_real_arachne_guest(layer_index: u32, wall_sequence: &str) {
 /// observable on the `Limited` top of a fully-decorated stack built by
 /// `BeadingStrategyFactory::create_stack`.
 ///
-/// OrcaSlicer ref: `BeadingStrategy.hpp:97`
-/// (`getSplitMiddleThreshold(lower_bead_count)`); `BeadingStrategy.cpp:54-57`
-/// (consumed by `RedistributeBeadingStrategy` to pick the optimal bead count).
+/// OrcaSlicer ref: `BeadingStrategy.hpp` (`getSplitMiddleThreshold` /
+/// `getAddMiddleThreshold`); consumed by `RedistributeBeadingStrategy` to pick
+/// the optimal bead count.
+///
+/// The expected values are the canonical WIDTH-denominator forms from
+/// `WallToolPaths::generate`:
+///
+/// ```text
+/// bump  = layer_height * (1 - PI/4)                    = 2000 * (1 - PI/4) units
+/// split = clamp(2 * min_bead_width / (outer_width + bump) - 1, 0.01, 0.99)
+///       = 2 * 4000 / (4000 + 429.20367...) - 1         = 0.80619375...
+/// add   = clamp(min_bead_width / (inner_width + bump), 0.01, 0.99)
+///       = 4000 / (4000 + 429.20367...)                 = 0.90309687...
+/// ```
+///
+/// with `BeadingFactoryParams::default()` (`min_output_width` = `optimal_width`
+/// = `preferred_bead_width_outer` = 4000 units, `layer_height` = 2000 units =
+/// 0.2 mm). This test previously pinned `0.99` for both, which was the
+/// pre-H2 spacing-denominator result (the `[0.01, 0.99]` clamp saturating);
+/// the canonical denominators now produce the values above. Re-derived
+/// against `WallToolPaths.cpp`'s formulas, cross-checked by
+/// `crates/slicer-core/tests/beading/factory.rs`'s
+/// `beading_factory_divides_by_extrusion_widths_not_spacings`.
 #[test]
 fn arachne_parity_beading_split_middle_threshold_exposed() {
     // AC-2: G15. The factory-computed thresholds must be observable on the
-    // `Limited` top of a fully-decorated stack. The previous `assert!(false)`
-    // body is replaced per the test's own doc note at lines 120-132 of this
-    // file.
+    // `Limited` top of a fully-decorated stack.
     let params = BeadingFactoryParams {
         print_thin_walls: true,
         outer_wall_offset: 1.0,
@@ -310,15 +379,22 @@ fn arachne_parity_beading_split_middle_threshold_exposed() {
     };
     let stack = BeadingStrategyFactory::create_stack(&params);
 
+    let bump = params.layer_height * (1.0 - std::f64::consts::FRAC_PI_4);
+    let expected_split =
+        2.0 * params.min_output_width / (params.preferred_bead_width_outer + bump) - 1.0;
+    let expected_add = params.min_output_width / (params.optimal_width + bump);
+
     let split = stack.get_split_middle_threshold();
     let add = stack.get_add_middle_threshold();
-    assert_eq!(
-        split, 0.99,
-        "AC-2 G15: get_split_middle_threshold on Limited top must equal factory-computed 0.99"
+    assert!(
+        (split - expected_split).abs() < 1e-12,
+        "AC-2 G15: get_split_middle_threshold on Limited top must equal the \
+         canonical width-denominator value {expected_split}; got {split}"
     );
-    assert_eq!(
-        add, 0.99,
-        "AC-2 G15: get_add_middle_threshold on Limited top must equal factory-computed 0.99"
+    assert!(
+        (add - expected_add).abs() < 1e-12,
+        "AC-2 G15: get_add_middle_threshold on Limited top must equal the \
+         canonical width-denominator value {expected_add}; got {add}"
     );
 }
 

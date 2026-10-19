@@ -32,7 +32,10 @@
 
 #![cfg(feature = "host-algos")]
 
-use slicer_core::skeletal_trapezoidation::SkeletalTrapezoidationGraph;
+use std::collections::BTreeMap;
+
+use slicer_core::skeletal_trapezoidation::{EdgeType, SkeletalTrapezoidationGraph};
+use slicer_core::voronoi::NO_INDEX;
 use slicer_ir::{ExPolygon, Point2, Polygon, UNITS_PER_MM};
 
 fn p(x: i64, y: i64) -> Point2 {
@@ -61,6 +64,30 @@ fn l_shape() -> ExPolygon {
         p(mm(10.0), mm(20.0)),
         p(0, mm(20.0)),
     ])
+}
+
+fn point_to_segment_distance(px: f64, py: f64, a: Point2, b: Point2) -> f64 {
+    let ax = a.x as f64;
+    let ay = a.y as f64;
+    let bx = b.x as f64;
+    let by = b.y as f64;
+    let dx = bx - ax;
+    let dy = by - ay;
+    let length_squared = dx * dx + dy * dy;
+    let t = if length_squared == 0.0 {
+        0.0
+    } else {
+        (((px - ax) * dx + (py - ay) * dy) / length_squared).clamp(0.0, 1.0)
+    };
+    let cx = ax + t * dx;
+    let cy = ay + t * dy;
+    ((px - cx).powi(2) + (py - cy).powi(2)).sqrt()
+}
+
+fn distance_to_polygon_boundary(px: f64, py: f64, polygon: &[Point2]) -> f64 {
+    (0..polygon.len())
+        .map(|i| point_to_segment_distance(px, py, polygon[i], polygon[(i + 1) % polygon.len()]))
+        .fold(f64::INFINITY, f64::min)
 }
 
 // ---------------------------------------------------------------------------
@@ -201,4 +228,155 @@ fn f5_invariant_unribbed_node_distance_within_input_bbox() {
             diag
         );
     }
+}
+
+#[test]
+fn f5_invariant_node_distances_match_rib_geometry_and_boundary() {
+    let l = l_shape();
+    let graph = SkeletalTrapezoidationGraph::from_polygons(std::slice::from_ref(&l))
+        .expect("L-shape should build a graph");
+    // Canonical OrcaSlicer `SkeletalTrapezoidationGraph.cpp` :: `makeRib`
+    // sets the rib foot to zero and the spine to the perpendicular distance;
+    // its `makeNode` path leaves an un-ribbed node at the joint sentinel.
+    // This Rust port uses NAN for that uncomputed sentinel, but every vertex
+    // in this public L-shape graph must have been resolved by construction.
+    let mut zero_vertices = 0usize;
+    for (vertex_idx, vertex) in graph.vertices.iter().enumerate() {
+        assert!(
+            vertex.distance_to_boundary.is_finite(),
+            "vertex {vertex_idx} must not retain the uncomputed NAN sentinel"
+        );
+        assert!(
+            vertex.distance_to_boundary >= 0.0,
+            "vertex {vertex_idx} distance_to_boundary must be non-negative, got {}",
+            vertex.distance_to_boundary
+        );
+        if vertex.distance_to_boundary == 0.0 {
+            zero_vertices += 1;
+            let boundary_distance = distance_to_polygon_boundary(
+                vertex.position.x,
+                vertex.position.y,
+                &l.contour.points,
+            );
+            assert!(
+                boundary_distance <= 1.0,
+                "zero-distance vertex {vertex_idx} must be a boundary/rib-foot node on an L-shape segment; independent distance was {boundary_distance}"
+            );
+        }
+    }
+    assert!(
+        zero_vertices > 0,
+        "the L-shape must contain at least one boundary/rib-foot vertex"
+    );
+
+    let mut total_rib_pair_count = 0usize;
+    let mut rib_pair_count = 0usize;
+    let mut rib_endpoint_violations = Vec::new();
+    let mut rib_pairs_by_spine: BTreeMap<usize, Vec<(usize, f64)>> = BTreeMap::new();
+    for (edge_idx, edge) in graph.edges.iter().enumerate() {
+        if edge.edge_type != EdgeType::EXTRA_VD {
+            continue;
+        }
+        let twin_idx = edge.twin;
+        assert_ne!(
+            twin_idx, NO_INDEX,
+            "every EXTRA_VD half-edge must have its rib twin"
+        );
+        assert!(
+            twin_idx < graph.edges.len(),
+            "EXTRA_VD edge {edge_idx} has out-of-range twin {twin_idx}"
+        );
+        assert_eq!(
+            graph.edges[twin_idx].twin, edge_idx,
+            "EXTRA_VD edge {edge_idx} must have a reciprocal twin link"
+        );
+        // Pair each lower-index EXTRA_VD half-edge with its recorded twin
+        // exactly once.
+        if edge_idx > twin_idx {
+            continue;
+        }
+        total_rib_pair_count += 1;
+
+        // `start_vertex` is the endpoint exposed by each half-edge. A real
+        // rib has one zero-distance foot and one nonzero-distance spine;
+        // choose the latter independently of forth/back edge ordering.
+        let first_vertex = edge.start_vertex;
+        let second_vertex = graph.edges[twin_idx].start_vertex;
+        if first_vertex == NO_INDEX
+            || second_vertex == NO_INDEX
+            || first_vertex >= graph.vertices.len()
+            || second_vertex >= graph.vertices.len()
+        {
+            let reason = if first_vertex == NO_INDEX {
+                "forth half-edge has NO_INDEX start_vertex (dangling rib stub)"
+            } else if second_vertex == NO_INDEX {
+                "twin half-edge has NO_INDEX start_vertex (dangling rib stub)"
+            } else {
+                "half-edge start_vertex is out of range"
+            };
+            rib_endpoint_violations.push((edge_idx, twin_idx, first_vertex, second_vertex, reason));
+            continue;
+        }
+        let first_distance = graph.vertices[first_vertex].distance_to_boundary;
+        let second_distance = graph.vertices[second_vertex].distance_to_boundary;
+        let (spine_idx, foot_idx) = match (first_distance == 0.0, second_distance == 0.0) {
+            (false, true) => (first_vertex, second_vertex),
+            (true, false) => (second_vertex, first_vertex),
+            _ => panic!(
+                "EXTRA_VD rib pair {edge_idx}<->{twin_idx} must have exactly one zero-distance foot; endpoint distances are {first_distance} and {second_distance}"
+            ),
+        };
+        assert_eq!(
+            graph.vertices[foot_idx].distance_to_boundary, 0.0,
+            "rib foot must carry the zero-distance boundary sentinel"
+        );
+
+        let spine = graph.vertices[spine_idx].position;
+        let foot = graph.vertices[foot_idx].position;
+        // `make_rib` stores this same f64 expression when the pair is created.
+        // A spine can be shared by multiple pairs, in which case canonical
+        // `makeRib` and this port both leave the last-created pair's value in
+        // the shared vertex (last-writer state).
+        let rib_length_oracle = ((spine.x - foot.x).powi(2) + (spine.y - foot.y).powi(2)).sqrt();
+        rib_pairs_by_spine
+            .entry(spine_idx)
+            .or_default()
+            .push((edge_idx.max(twin_idx), rib_length_oracle));
+        rib_pair_count += 1;
+    }
+    // Measured with:
+    // cargo test -p slicer-core --features host-algos --test arachne_construction_node_distance_perp_foot -- f5_invariant_node_distances_match_rib_geometry_and_boundary --nocapture
+    assert_eq!(
+        total_rib_pair_count, 93,
+        "F5 measured total: every lower-index/twin EXTRA_VD relation is counted once"
+    );
+    assert_eq!(
+        rib_pair_count, 93,
+        "F5 measured total: all 93 EXTRA_VD relations have two valid vertex endpoints"
+    );
+    assert!(
+        rib_endpoint_violations.is_empty(),
+        "canonical collapseSmallEdges physically erases collapsed edges, so every surviving rib pair must have valid endpoints: {rib_endpoint_violations:?}"
+    );
+
+    let mut multiply_ribbed_spine_nodes = 0usize;
+    for (spine_idx, pairs) in rib_pairs_by_spine {
+        if pairs.len() <= 1 {
+            continue;
+        }
+        multiply_ribbed_spine_nodes += 1;
+        let (_, last_created_length) = pairs
+            .iter()
+            .max_by_key(|(highest_edge_idx, _)| highest_edge_idx)
+            .expect("multiply-ribbed spine must have at least two rib pairs");
+        assert_eq!(
+            graph.vertices[spine_idx].distance_to_boundary,
+            *last_created_length,
+            "multiply-ribbed spine vertex {spine_idx} must retain the last-created rib pair's Euclidean length"
+        );
+    }
+    assert_eq!(
+        multiply_ribbed_spine_nodes, 45,
+        "F5 measured total: 45 spine nodes are shared by multiple EXTRA_VD rib pairs"
+    );
 }

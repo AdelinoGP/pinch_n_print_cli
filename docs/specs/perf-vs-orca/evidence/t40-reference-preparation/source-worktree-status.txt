@@ -1,0 +1,12 @@
+ M CONTEXT.md
+ M docs/23_controlled_perimeter_builds.md
+ M docs/specs/perf-vs-orca/issues/13-accelerated-adoption-decision.md
+ M docs/specs/perf-vs-orca/map.md
+ M resources/perimeter-acceptance/run-acceptance.ps1
+?? docs/specs/perf-vs-orca/evidence/t38-adoption-preflight/
+?? docs/specs/perf-vs-orca/evidence/t39-status-roundtrip/
+?? docs/specs/perf-vs-orca/evidence/t40-reference-preparation/
+?? docs/specs/perf-vs-orca/issues/38-accelerated-adoption-acceptance-campaign.md
+?? docs/specs/perf-vs-orca/issues/39-acceptance-runner-status-roundtrip.md
+?? docs/specs/perf-vs-orca/issues/40-acceptance-reference-refresh-policy.md
+?? resources/perimeter-acceptance/test-status-roundtrip.ps1

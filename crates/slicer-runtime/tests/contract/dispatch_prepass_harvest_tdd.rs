@@ -5,9 +5,35 @@ use slicer_ir::{
 use slicer_runtime::{
     Blackboard, CompiledModuleBuilder, CompiledStage, ExecutionPlan, PrepassStageRunner,
 };
+use slicer_sdk::traits::LayerPlanningObject;
 use slicer_wasm_host::WasmRuntimeDispatcher;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+/// Positional layer-planning records for the dispatcher, mirroring production
+/// `layer_planning_objects` (crates/slicer-runtime/src/run.rs): `PrePass::LayerPlanning`
+/// dispatch validates one positional config per mesh object
+/// (`validate_layer_planning_object_configs`); a dispatcher built without them
+/// fails dispatch with a count mismatch even when the module ConfigView carries
+/// the same `object_height:<id>` values.
+fn layer_planning_objects_for(configs: &[(&str, f64, f64, f64)]) -> Vec<LayerPlanningObject> {
+    configs
+        .iter()
+        .map(
+            |(object_id, object_height, layer_height, first_layer_height)| {
+                // exhaustive: the harness must forward every typed layer-planning field.
+                LayerPlanningObject {
+                    object_id: object_id.to_string(),
+                    object_height: *object_height,
+                    layer_height: *layer_height,
+                    first_layer_height: *first_layer_height,
+                    support_raft_layers: 0,
+                    layer_zs: Vec::new(),
+                }
+            },
+        )
+        .collect()
+}
 
 // Helper to load the layer-planning stage guest.
 fn load_layer_planning_guest() -> Arc<slicer_runtime::WasmComponent> {
@@ -413,7 +439,8 @@ fn layer_planner_default_macro_path_emits_real_proposals() {
             return;
         }
     };
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&wasm_cache::shared_engine()));
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&wasm_cache::shared_engine()))
+        .with_layer_planning_objects(layer_planning_objects_for(&[("obj-1", 2.0, 0.2, 0.2)]));
     let config = layer_planner_config(0.2, 0.2, &[("obj-1", 2.0)]);
     let module = CompiledModuleBuilder::new("com.core.layer-planner-default")
         .config_view(Arc::new(config))
@@ -496,7 +523,8 @@ fn layer_planner_default_macro_path_is_deterministic() {
             return;
         }
     };
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&wasm_cache::shared_engine()));
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&wasm_cache::shared_engine()))
+        .with_layer_planning_objects(layer_planning_objects_for(&[("obj-1", 2.0, 0.2, 0.2)]));
 
     let run_once = || {
         let config = layer_planner_config(0.2, 0.2, &[("obj-1", 2.0)]);
@@ -779,6 +807,54 @@ fn seam_plan_injection_matches_variant_chain() {
         .collect();
 
     assert_eq!(resolved_x, vec![Some(10.0), Some(20.0)]);
+}
+
+#[test]
+fn seam_plan_injection_missing_exact_chain_degrades_without_base_fallback() {
+    // Exact-identity lookup only: seam planning runs in the LATE prepass phase,
+    // AFTER PaintSegmentation has committed the paint-split SliceIR, so its
+    // entries are keyed on the region identity actually present (including the
+    // paint variant chain). A painted variant with no exact entry must NOT
+    // receive the chain-less base entry's seam — that would hand a variant the
+    // seam chosen for a different region — so the lookup returns `None` and the
+    // seam placer's degraded local-candidate fallback takes over. The
+    // same-chain case still resolves exactly (see
+    // `seam_plan_injection_matches_variant_chain`).
+    let plan = slicer_ir::SeamPlanIR {
+        entries: vec![slicer_ir::SeamPlanEntry {
+            // exhaustive: boundary fixture preserves explicit test data
+            region_key: slicer_ir::RegionKey {
+                global_layer_index: 3,
+                object_id: "obj-A".to_string(),
+                region_id: 7,
+                variant_chain: Vec::new(),
+            },
+            chosen_candidate: slicer_ir::SeamPosition {
+                point: slicer_ir::Point3WithWidth {
+                    // exhaustive: boundary fixture preserves explicit test data
+                    x: 10.0,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let region = slicer_ir::PerimeterRegion {
+        object_id: "obj-A".to_string(),
+        region_id: 7,
+        variant_chain: vec![("material".to_string(), slicer_ir::PaintValue::ToolIndex(2))],
+        ..Default::default()
+    };
+
+    let seam = slicer_wasm_host::dispatch::resolve_seam_for_perimeter_region(&region, &plan, 3);
+    assert_eq!(
+        seam.map(|s| s.point.x),
+        None,
+        "a painted variant without its own entry must degrade, never borrow \
+         the chain-less base seam"
+    );
 }
 
 #[test]

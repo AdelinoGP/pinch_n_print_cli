@@ -293,3 +293,33 @@ That clause is retired in the quoted form and replaced with the exhaustive
   `insert_synthetic_layer_after`, `push_annotation` and `push_fan_speed` also
   exist on `FinalizationOutputBuilder`) and would have rotted again with the
   next added method; the enum is exhaustive by construction.
+
+## Amendment — 2026-09-30 (packet config-scope-resolution_10_remaining-automatic-values)
+
+### Narrow mechanism supersession; factor contract retained
+
+The previous conformance-only clarification is withdrawn: the unchanged-body,
+exact single-function placement and direct-production-call requirements in
+§Decision 1 are genuinely amended by
+[ADR-0072](./0072-context-aware-feedrate-resolution-preserves-factor-contract.md).
+That separate accepted decision quotes the contested clauses and records the
+user's Q8 "Amend ADR" authorization in the current conversation (2026-09-30).
+`D-CSR10-ADR-0052-AMENDED` in `docs/DEVIATION_LOG.md` registers the departure.
+
+The public role/factor signature and factor-valued carrier contract remain;
+private move-context base selection shares one host-side clamp/conversion
+policy. All other Decision/Consequences constraints, including replacement,
+entity-factor fallback, profile length and mutation/application rules, remain
+authoritative. Direct-call references are interpreted through ADR-0072's
+mechanism only. No absolute point-speed interface, WIT or IR layout change is
+authorized. The original Decision, Consequences, reconciliation and 2026-08-05
+amendment above remain unchanged.
+
+Architectural acceptance of ADR-0072 is independent of packet closure. The
+subsequent cold review reopened Packet 10; do not infer implementation or test
+success from this amendment. Re-derive current packet status, TASK-571 and
+closure evidence from `docs/spec_packets/config-scope-resolution_10_remaining-automatic-values/packet.spec.md`,
+`docs/07_implementation_status.md` and the packet's
+[review remediation](../spec_packets/config-scope-resolution_10_remaining-automatic-values/review-remediation.md)
+rather than freezing their mutable status here. No commit is authorized by
+this amendment.

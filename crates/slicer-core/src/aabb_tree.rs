@@ -111,7 +111,9 @@ struct Triangle {
 
 fn build_triangles(mesh: &IndexedTriangleSet) -> Vec<Triangle> {
     mesh.indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .filter_map(|indices| {
             let a = mesh.vertices.get(indices[0] as usize).copied()?;
             let b = mesh.vertices.get(indices[1] as usize).copied()?;
