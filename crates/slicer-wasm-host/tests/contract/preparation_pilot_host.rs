@@ -593,6 +593,22 @@ impl cap::HostPrintPreparationInput for PilotHostContext {
     }
 }
 impl cap::HostPreparedPlanOutput for PilotHostContext {
+    fn projection(
+        &mut self,
+        r: Resource<PreparationOutputData>,
+    ) -> wasmtime::Result<
+        Result<Option<Resource<cap::PreparationProjectionOutput>>, cap::PreparationProjectionError>,
+    > {
+        let Ok(data) = self.table.get(&r) else {
+            return Ok(Err(cap::PreparationProjectionError::AccessDenied));
+        };
+        if self.authorized(&data.owner).is_err() {
+            return Ok(Err(cap::PreparationProjectionError::AccessDenied));
+        }
+        // The pilot never requests diagnostic projections or creates a sink.
+        Ok(Ok(None))
+    }
+
     fn put(
         &mut self,
         r: Resource<PreparationOutputData>,
@@ -628,6 +644,31 @@ impl cap::HostPreparedPlanOutput for PilotHostContext {
         Ok(())
     }
 }
+impl cap::HostPreparationProjectionOutput for PilotHostContext {
+    fn requested_views(
+        &mut self,
+        r: Resource<cap::PreparationProjectionOutput>,
+    ) -> wasmtime::Result<Result<Vec<String>, cap::PreparationProjectionError>> {
+        let _ = r;
+        Ok(Err(cap::PreparationProjectionError::NotRequested))
+    }
+
+    fn publish(
+        &mut self,
+        r: Resource<cap::PreparationProjectionOutput>,
+        scene: cap::PreparationProjectionScene,
+    ) -> wasmtime::Result<Result<(), cap::PreparationProjectionError>> {
+        let _ = (r, scene);
+        self.poisoned = true;
+        Ok(Err(cap::PreparationProjectionError::NotRequested))
+    }
+
+    fn drop(&mut self, r: Resource<cap::PreparationProjectionOutput>) -> wasmtime::Result<()> {
+        self.table.delete(r)?;
+        Ok(())
+    }
+}
+
 impl plan_access::Host for PilotHostContext {
     fn current(
         &mut self,

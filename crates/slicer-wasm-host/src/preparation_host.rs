@@ -12,7 +12,8 @@ use super::{PreparationTransaction, PreparedPieceHandle, PreparedPlanHandle};
 use crate::host::layer_perimeters::slicer::{common::host_services as hs, types::geometry as geo};
 use crate::host::HostExecutionContext;
 use slicer_sdk::preparation::{
-    PreparationMeshQuery, PreparationMeshQueryResult, PrintPreparationRead,
+    PreparationMeshQuery, PreparationMeshQueryResult, PreparationProjectionWrite,
+    PrintPreparationRead,
 };
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
@@ -27,6 +28,12 @@ thread_local! {
 /// Call-local authority for writing unpublished preparation pieces.
 pub struct PreparationOutputData {
     transaction: PreparationTransaction,
+    owner: PreparationOwner,
+}
+
+/// Call-local weak forwarding authority on the existing component resource table.
+pub struct PreparationProjectionOutputData {
+    writer: Arc<crate::preparation_store::ProjectionWriter>,
     owner: PreparationOwner,
 }
 
@@ -358,6 +365,7 @@ impl super::FrozenPreparationBinding {
         &self,
         owner: &PreparationOwner,
         input: PreparationInputData,
+        request: Option<super::PreparationProjectionRequest>,
         validate: impl FnOnce(&super::StagedPreparation) -> Result<(), PreparationFailure>,
     ) -> Result<(), PreparationFailure> {
         #[cfg(feature = "preparation-test-fixtures")]
@@ -371,7 +379,15 @@ impl super::FrozenPreparationBinding {
                 super::PreparationDeclarationError::MissingExport(self.module_id().clone()),
             ));
         }
-        let transaction = authority.begin(owner)?;
+        let mut transaction = authority.begin(owner)?;
+        if let Some(request) = request {
+            let schedule = if request.views().is_empty() {
+                Default::default()
+            } else {
+                input.projection_schedule(owner)?
+            };
+            transaction.request_projections(request, schedule)?;
+        }
         let ordinary =
             crate::host::HostExecutionContextBuilder::new(self.module_id().as_str(), 0.0, 0.0)
                 .build();
@@ -759,6 +775,31 @@ impl cap::HostPrintPreparationInput for PreparedHostState {
     }
 }
 impl cap::HostPreparedPlanOutput for PreparedHostState {
+    fn projection(
+        &mut self,
+        resource: Resource<PreparationOutputData>,
+    ) -> wasmtime::Result<
+        Result<Option<Resource<PreparationProjectionOutputData>>, cap::PreparationProjectionError>,
+    > {
+        let Ok(data) = self.ordinary.table.get(&resource) else {
+            return Ok(Err(cap::PreparationProjectionError::AccessDenied));
+        };
+        if self.authorized(&data.owner).is_err() {
+            return Ok(Err(cap::PreparationProjectionError::AccessDenied));
+        }
+        let owner = data.owner.clone();
+        let writer = match data.transaction.projection_writer() {
+            Ok(Some(writer)) => writer,
+            Ok(None) => return Ok(Ok(None)),
+            Err(error) => return Ok(Err(error.into())),
+        };
+        Ok(self
+            .ordinary
+            .table
+            .push(PreparationProjectionOutputData { writer, owner })
+            .map(|resource| Some(resource))
+            .map_err(|_| cap::PreparationProjectionError::ArithmeticOverflow))
+    }
     fn put(
         &mut self,
         resource: Resource<PreparationOutputData>,
@@ -781,6 +822,49 @@ impl cap::HostPreparedPlanOutput for PreparedHostState {
     }
     fn drop(&mut self, resource: Resource<PreparationOutputData>) -> wasmtime::Result<()> {
         self.dropped_output = Some(self.ordinary.table.delete(resource)?);
+        Ok(())
+    }
+}
+impl cap::HostPreparationProjectionOutput for PreparedHostState {
+    fn requested_views(
+        &mut self,
+        resource: Resource<PreparationProjectionOutputData>,
+    ) -> wasmtime::Result<Result<Vec<String>, cap::PreparationProjectionError>> {
+        let Ok(data) = self.ordinary.table.get(&resource) else {
+            return Ok(Err(cap::PreparationProjectionError::AccessDenied));
+        };
+        if self.authorized(&data.owner).is_err() {
+            return Ok(Err(cap::PreparationProjectionError::AccessDenied));
+        }
+        Ok(data.writer.requested_views().map_err(Into::into))
+    }
+
+    fn publish(
+        &mut self,
+        resource: Resource<PreparationProjectionOutputData>,
+        scene: cap::PreparationProjectionScene,
+    ) -> wasmtime::Result<Result<(), cap::PreparationProjectionError>> {
+        let Ok(data) = self.ordinary.table.get(&resource) else {
+            return Ok(Err(cap::PreparationProjectionError::AccessDenied));
+        };
+        if self.authorized(&data.owner).is_err() {
+            return Ok(Err(cap::PreparationProjectionError::AccessDenied));
+        }
+        Ok(data
+            .writer
+            .publish(&super::preparation_wasm::projection_scene(scene))
+            .map_err(Into::into))
+    }
+
+    fn drop(
+        &mut self,
+        resource: Resource<PreparationProjectionOutputData>,
+    ) -> wasmtime::Result<()> {
+        let data = self.ordinary.table.get(&resource)?;
+        if self.authorized(&data.owner).is_err() {
+            wasmtime::bail!("preparation projection: AccessDenied");
+        }
+        self.ordinary.table.delete(resource)?;
         Ok(())
     }
 }

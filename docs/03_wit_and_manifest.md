@@ -434,6 +434,145 @@ before existence/range lookup. Granted optional absence is `None`; present-empty
 is `Some(empty)`, never flattened. No method exposes `PerimeterIR`, `InfillIR`,
 `SupportIR`, `LayerCollectionIR`, or provider plan ids.
 
+### Preparation diagnostic projection transport (Normative)
+
+The `slicer:layer-preparation@1.0.0` package gains typed diagnostic projection
+transport only through growth of its imported `preparation-types` interface.
+The canonical source is
+`crates/slicer-schema/wit/deps/layer-preparation/layer-preparation.wit`:
+
+```wit
+record preparation-projection-polygon {
+    polygon: ex-polygon,
+    filled: bool,
+}
+
+variant preparation-projection-geometry {
+    point(point2),
+    polyline(list<point2>),
+    polygon(preparation-projection-polygon),
+}
+
+record preparation-projection-primitive {
+    id: string,
+    global-layer-index: u32,
+    class: string,
+    label: option<string>,
+    geometry: preparation-projection-geometry,
+}
+
+record preparation-projection-scene {
+    scene-id: string,
+    view: string,
+    classes: list<string>,
+    primitives: list<preparation-projection-primitive>,
+}
+
+resource preparation-projection-output {
+    requested-views: func() -> result<list<string>, preparation-projection-error>;
+    publish: func(scene: preparation-projection-scene) -> result<_, preparation-projection-error>;
+}
+
+resource prepared-plan-output {
+    /// Publish one complete, unique named piece into staging.
+    put: func(name: string, bytes: list<u8>) -> result<_, preparation-error>;
+    projection: func() -> result<option<preparation-projection-output>, preparation-projection-error>;
+}
+```
+
+`point2` is the canonical `slicer:types/geometry.point2`; `ex-polygon` is the
+single `slicer:ir-handles/ir-handles@1.0.0` re-export already in scope in
+`preparation-types`. All projection coordinates are exact integer units
+(1 unit = 100 nm); no float millimetre value crosses this boundary.
+
+`preparation-projection-error` is the diagnostic error domain and has variants
+`access-denied`, `not-requested`, `undeclared-view`, `duplicate-scene`,
+`missing-scene`, `invalid-reference`, `invalid-shape`, `invalid-coordinate`,
+`arithmetic-overflow`, and `poisoned-output`. It maps one-to-one to
+`PreparationProjectionError` (`crates/slicer-schema/src/preparation.rs`) through
+`wit_variant`. Opaque-plan failures continue to use `preparation-error`;
+diagnostic failures never use that domain.
+
+`prepared-plan-output.projection()` acquires the optional, host-provided
+`preparation-projection-output` for the active preparation invocation. The
+resource is imported, never exported: the guest has no resource declaration for
+it, and the SDK retains no raw resource index. `requested-views()` returns the
+exact declared view names requested for this invocation; `publish(scene)` stages
+one complete scene for a requested view.
+
+**Package version.** The package declaration stays
+`package slicer:layer-preparation@1.0.0;`. Only the imported `preparation-types`
+interface grows: new records, one geometry variant, one imported resource, and
+one method on the existing host-provided `prepared-plan-output`. The exported
+`prepare` interface, `plan-access`, and the
+`prepare-print(input: print-preparation-input, output: prepared-plan-output) ->
+result<_, slicer:common/module-errors.module-error>` signature are unchanged.
+Every committed guest manifest keeps
+`[preparation] interface = "slicer:layer-preparation/prepare@1.0.0"` valid;
+there is no new `[preparation]` key, and the exact-version rule in
+"Preparation declaration and frozen capability validation" plus the existing
+`views` declaration are unchanged. The composed gate is the proof: every
+`prepared-<ordinary-world>` world resolves through
+`wasm-tools component wit crates/slicer-schema/wit`, and `compare_worlds`
+(`xtask/src/wit_verify.rs`) pins the exported preparation surface in both
+directions while existing guests link against a superset of host-provided
+imports. A hypothetical `slicer:layer-preparation@1.1.0` package with a
+manifest compatibility rule is a rejected out-of-scope alternative, never
+current behavior; it would be required only if that composed gate failed.
+
+**Metadata-only opaque-plan boundary.** The host never parses, decodes, or
+infers geometry from `prepared-plan-output.put` payloads, and the projection
+path reads only typed metadata supplied by the module. A projection is a typed
+diagnostic sidecar, not a view of private plan state: it grants no read or write
+access to another module's plan, and a whole-print scene may legitimately
+reference context layers where its owner is not selected. Accepted scenes are
+validated into immutable `CommittedPreparationProjection` values
+(`crates/slicer-wasm-host/src/preparation_projection.rs`: typed scene DTO, owner
+module id, logical diagnostic bytes, host-attached committed schedule Z) and
+staged in the same preparation transaction as the opaque pieces. At finish, one
+atomic commit publishes pieces, metadata, and diagnostics together; a typed
+diagnostic rejection or a missing scene rejects the whole publication.
+
+**Validation and identity.** One scene is allowed per requested declared view
+per owner. An empty or duplicate scene id, class id, or primitive id, a class
+not listed in `classes`, or a `global-layer-index` absent from the committed
+schedule is `invalid-reference`; publishing a second scene for the same view is
+`duplicate-scene` regardless of scene id. The host attaches finite, nonnegative
+schedule Z and never accepts module-authored Z. Geometry is validated without
+repair or normalization: a polyline is open with at least two distinct
+consecutive vertices; a polygon has a simple CCW contour and simple, strictly
+contained, non-intersecting CW holes, each with at least three distinct vertices
+and nonzero signed area; touching, crossing, self-crossing, and degenerate rings
+are `invalid-shape`. Checked `i128` predicates report `invalid-coordinate` on
+overflow; diagnostic byte/count overflow is `arithmetic-overflow`. No arbitrary
+coordinate or scene-size quota exists, and an explicitly completed scene with an
+empty `primitives` list is valid. A requested view with no scene is
+`missing-scene` at finish, including when `projection()` was never called. An
+original module error or trap wins over a diagnosed sink poison.
+
+The projection resource is bound to the same host-table `PreparationOwner` as
+its `prepared-plan-output` and to the active call's identity. `projection()`
+rechecks owner, liveness, and active call identity; `requested-views()` and
+`publish()` additionally require the staging phase. A foreign owner, a disposed
+store, a sink used outside its invocation, or any access after finish/abort
+returns the WIT `access-denied` (`PreparationProjectionError::AccessDenied`)
+without mutating or poisoning the foreign owner's transaction. A rejected
+`requested-views()` or `publish()` call is sticky: the transaction records the
+first `preparation-projection-error`, later calls on that sink return
+`poisoned-output`, and the transaction cannot reach Ready even if the module
+catches the error.
+
+Diagnostic accounting is a separate sidecar,
+`PreparationDiagnosticAccounting { staged_bytes, retained_bytes,
+published_scenes }` (`crates/slicer-wasm-host/src/preparation_projection.rs`).
+It counts logical diagnostic bytes only: UTF-8 scene/view/class/id/label bytes,
+16 bytes per `point2`, 4 bytes per `global-layer-index`, and 1 byte per geometry
+tag or `filled` flag, each counted once per stored occurrence. It excludes
+`Vec`/`Arc`/allocator overhead, prepared-piece payload bytes, prepared-piece
+names, and ordinary transferred-byte totals. Success moves staged bytes to
+retained bytes; abort or disposal clears staged and retained bytes, while
+`published_scenes` remains the cumulative count of accepted publications.
+
 ## `deps/types.wit`
 
 **Source of truth:** `crates/slicer-schema/wit/deps/types.wit` (package

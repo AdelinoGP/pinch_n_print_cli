@@ -526,6 +526,201 @@ byte-identical manifests with no `scheduled_layer_zs` key.
 `legend_version` for a `1.3.0` bundle is still `"1.1.0"`: the schedule readout
 adds no glyphs.
 
+## Prepared plan XY views (schema 1.4.0)
+
+`schema_version: "1.4.0"` (layer-module-preparation packet 06) adds a fourth,
+non-scheduler tap class: a **post-Ready committed preparation snapshot**. A
+layer-preparation owner publishes the snapshot after its plan reaches `Ready`;
+it is not a stage id, not a Blackboard slot, and not `LayerArena` data, so it is
+requested through its own selector and rendered by its own visualization kind.
+Everything a `1.3.0` request accepts stays accepted; a preparation selector or
+`preparation_geometry` under any earlier declared version is rejected naming
+`1.4.0` (`PreparationRequiresSchema14`), never silently ignored.
+
+A mixed request names the preparation tap and an ordinary scheduler-stage tap,
+each with the visualization kind that applies to it:
+
+```json
+{"schema_version": "1.4.0",
+ "source": {
+   "kind": "model",
+   "model": "resources/regression_wedge.stl",
+   "config": "config.json",
+   "module_dirs": ["modules/core-modules"]
+ },
+ "layers": [0],
+ "taps": [
+   {"preparation": {"module_id": "test.preparation-visual", "view": "probe_xy"}},
+   {"id": "Layer::PathOptimization"}
+ ],
+ "visualizations": [
+   {"type": "preparation_geometry"},
+   {"type": "filament_lines"}
+ ],
+ "resolution_scale": 1,
+ "frame": "model"}
+```
+
+A preparation tap is exactly `{"preparation": {"module_id": ..., "view": ...}}`.
+`module_id` and `view` are exact, nonempty strings — the selected owner's module
+id and one of that owner's declared projection views — matched verbatim, never
+normalized. Extra keys, a missing field, an object mixing `id` with
+`preparation`, and a non-object payload are hard errors: there is no untagged
+fallback that could reinterpret a preparation selection as a legacy `Detail`
+stage and drop it.
+
+`preparation_geometry` accepts only the top-down plane: an omitted `options`,
+or `{"view": "xy"}`. `"front"`, `"side"`, and 3D projections are rejected as
+`PreparationUnsupportedDimension`; `base`, `color_by`, `tool_color_source`,
+`overlays`, and `composited_overlays` do not apply to a committed snapshot and
+are rejected as `InvalidPreparationSelector`; an unknown key is rejected by the
+strict options parse as `InvalidVisualizationOptions`.
+
+The tap/visualization pairing is one-to-one, never the Cartesian product: a
+preparation tap without `preparation_geometry`, and `preparation_geometry`
+without a preparation tap, are both `InvalidPreparationSelector`. Stage taps
+keep a stage visualization and stage visualizations keep a stage tap. A
+preparation tap on a standalone G-code source is
+`PreparationUnsupportedSource`: that source carries only the final toolpath and
+has no preparation lifecycle.
+
+A preparation tap combined with a postpass tap (`PostPass::LayerFinalization` or
+`PostPass::GCodeEmit`) is rejected with a named capture error instead of running
+the whole-print postpass closure. The preparation visual path disposes the print
+scope after preparation, so a truncated postpass capture would fabricate
+whole-print execution evidence; postpass closure remains an ordinary
+stage-tap-only feature.
+
+### Bundle Shape
+
+A bundle that names at least one preparation tap is serialized by the
+preparation companion. Its common manifest fields are unchanged; two top-level
+axes are added:
+
+- `executed_preparation` — actual owner execution evidence, documented in
+  `docs/17_agent_debugging.md`. It is not filtered to the rendered layers.
+- `rendered_layer_indices` — the global layer indices selected for rendering.
+  It is not execution evidence.
+
+Only a preparation bundle carries those two keys. A stage-only request under
+`1.4.0` keeps the legacy manifest, and `1.0.0`–`1.3.0` manifests are
+byte-unchanged (no preparation keys, no preparation entry fields, no repinned
+legend string).
+
+A preparation entry adds the committed snapshot's identity and projection:
+
+```json
+{"visualization": "preparation_geometry",
+ "tap": "Preparation::test.preparation-visual::probe_xy",
+ "capture_phase": "preparation",
+ "module_id": "test.preparation-visual",
+ "module_version": "0.1.0",
+ "artifact_identity": "<owner artifact identity>",
+ "consumer_stage": "Layer::PathOptimization",
+ "view": "probe_xy",
+ "projection_schema": "1.0.0",
+ "layer_index": 0,
+ "layer_z": 1.0,
+ "empty": false,
+ "png_path": "images/preparation_746573742e7072657061726174696f6e2d76697375616c_70726f62655f7879_layer_0.png",
+ "class_legend": [
+   {"class": "anchors", "rgb": [31, 119, 180], "point_glyph": "circle", "stroke_px": 2},
+   {"class": "domains", "rgb": [255, 127, 14], "point_glyph": "circle", "stroke_px": 2},
+   {"class": "paths", "rgb": [44, 160, 44], "point_glyph": "circle", "stroke_px": 2},
+   {"class": "remote", "rgb": [214, 39, 40], "point_glyph": "circle", "stroke_px": 2}
+ ],
+ "typed_capture": {
+   "kind": "PreparationProjection",
+   "value": {
+     "scene_id": "final",
+     "view": "probe_xy",
+     "classes": ["anchors", "domains", "paths", "remote"],
+     "primitives": [
+       {"id": "anchor_a", "global_layer_index": 0, "class": "anchors",
+        "label": "anchor", "geometry": {"Point": {"x": 10000, "y": 20000}}}
+     ]
+   }
+ }}
+```
+
+- `capture_phase` is the exact lowercase phase string `"preparation"` — a
+  lifecycle phase, not a `Layer::`/`PrePass::`/`PostPass::` stage id.
+- `module_id`, `module_version`, and `artifact_identity` identify the entered
+  owner; `consumer_stage` is the scheduler stage that consumes its Ready plan;
+  `view` is the owner-declared projection view.
+- `projection_schema` is the projection DTO contract (`"1.0.0"`), pinned
+  independently of the bundle's request `schema_version` (`"1.4.0"`).
+- `layer_index` and `layer_z` are the real selected global layer and its real
+  committed schedule top-Z, not an inferred index or a module-supplied Z.
+- `empty` is per entry: `true` means this image mirrors zero primitives for its
+  layer. See "Empty Is Not Missing" below.
+- `class_legend` is derived from the **whole scene's** sorted class list, so a
+  subset render keeps the same colors and glyphs as an all-layer render. `rgb`
+  is a diagnostic class rank in `TOOL_PALETTE`, never a tool assignment;
+  `point_glyph` is `"circle"`; `stroke_px` is a screen-pixel style scaled by
+  `resolution_scale`, never a physical deposition width.
+- `typed_capture` has exactly `kind`/`value`, with `kind`
+  `"PreparationProjection"` and `value` exactly `scene_id`, `view`, `classes`,
+  `primitives`. Only `primitives` is filtered to the entry's layer; `scene_id`,
+  `view`, and `classes` stay the whole-scene values, so the same snapshot
+  mirrored across layers is comparable. No private plan, store, piece, codec,
+  payload, or handle field is present, and no primitive is an extrusion claim
+  (no width, tool, volume, or `InfillIR` label).
+
+The entry also keeps the common `viewport`, `legend_version`, and
+`world_bounds_mm` fields. In a mixed bundle `world_bounds_mm` is byte-identical
+to the ordinary stage entry's, because both were projected through the one
+bundle-wide frame.
+
+Filenames are reversible lowercase hex of both identities:
+`images/preparation_{module_hex}_{view_hex}_layer_{index}.png`. Every UTF-8 byte
+is encoded, so two owners or views that sanitize to the same `_` string can
+never collide. A bundle's legacy entries keep their original paths and entry
+shape; preparation entries follow them, sorted by
+`(module_id, view, layer_index)`.
+
+### Framing And Paint Order
+
+The bundle-wide viewport is shared by every entry in a mixed bundle. `frame:
+"model"` (the default) unions the **full model** with the **full requested
+scene** — every selected owner/view snapshot, not only the rendered layer — and
+adds the fixed 2 mm margin. Selecting a layer subset therefore changes neither
+`world_bounds_mm` nor `class_legend`: a layer-0 image from a subset bundle and
+the layer-0 image from an all-layer bundle are directly comparable.
+`frame: "plate"` frames the bed polygon exactly, with no geometry union, so a
+small part renders small; the preparation snapshot makes no bed claim beyond
+the resolved `bed_shape`.
+
+Preparation shapes paint back to front in a fixed order: filled polygons,
+unfilled polygon outlines (contour and hole rings), polylines, points, then
+labels. Within each kind, primitives are sorted by `(class, id)`, so a fill can
+never erase a point glyph and two runs over one scene paint identically. Points
+are diagnostic circles (4 screen pixels in radius at `resolution_scale: 1`) and
+polylines/outlines are 2-pixel strokes, scaled with `resolution_scale`; the
+manifest's `point_glyph` and `stroke_px` mirror those presentation values, not
+physical bead widths. A filled polygon retains its holes; an unfilled polygon
+paints the contour and each hole as an outline.
+
+### Execution And Rendering
+
+`executed_preparation` answers "which owners actually ran and reached Ready";
+`rendered_layer_indices` answers "which layers this bundle drew". They are
+separate axes: owner execution is whole-print evidence and does not change when
+the rendered layer subset changes, and a preparation-only bundle renders layers
+with no executed Layer stage at all. The manifest's `executed_stage_ids` and
+`executed_layer_indices` remain the scheduler-stage axes; a preparation-only
+capture leaves them empty because it never enters the Layer stages.
+
+### Empty Is Not Missing
+
+An **explicitly completed empty scene** is a valid success: the owner published
+a scene with zero primitives, the entry records `"empty": true`, its
+`typed_capture.value.primitives` is `[]`, and the bundle still writes a real PNG
+(background only). A **missing** completion is not empty: it fails the request
+with `PreparationProjectionRejected` carrying the typed
+`PreparationProjectionError::MissingScene` reason, and no successful bundle is
+written. A missing scene never becomes `empty: true`.
+
 ## Framing
 
 Every render is **aspect-preserving**: one uniform scale is applied to both

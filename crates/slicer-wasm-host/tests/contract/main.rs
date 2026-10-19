@@ -25,6 +25,10 @@ mod order_lock_marshal_round_trip_tdd;
 mod perimeter_infill_per_origin_route_tdd;
 mod preparation_capability_pilot_tdd;
 mod preparation_pilot_host;
+#[cfg(feature = "preparation-test-fixtures")]
+mod preparation_projection_driver;
+#[cfg(feature = "preparation-test-fixtures")]
+mod preparation_projection_tdd;
 mod preparation_transport_driver;
 mod preparation_transport_tdd;
 mod prepass_layer_planning_v2_tdd;

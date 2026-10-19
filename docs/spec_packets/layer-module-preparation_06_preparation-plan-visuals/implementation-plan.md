@@ -2,7 +2,7 @@
 
 ## Execution Rules
 
-Draft only. Do not execute until independent preflight passes and the orchestrator activates the packet; prerequisites #03/#04/#05 are `implemented` and were reconciled against the tree on 2026-10-17. Work in the listed order; each step maps to TASK-575. Use tests first where a production-driver home exists, then the narrowest falsifying check. Intermediate WIT/binding tranche steps may compile only their owned crate; do not claim workspace readiness until the composed adapter gate passes. Do not commit an incomplete tranche. Every test command below uses combined-output tee, pipefail and a nonzero-test assertion; read the saved log rather than rerunning for output.
+Implemented. The packet's activation gate preceded execution; prerequisites #03/#04/#05 are `implemented` and were reconciled against the tree on 2026-10-17. Work proceeded in the listed order; each step maps to TASK-575. Use tests first where a production-driver home exists, then the narrowest falsifying check. Intermediate WIT/binding tranche steps may compile only their owned crate; do not claim workspace readiness until the composed adapter gate passes. Do not commit an incomplete tranche. Every test command below uses combined-output tee, pipefail and a nonzero-test assertion; read the saved log rather than rerunning for output.
 
 ## Steps
 
@@ -226,4 +226,4 @@ Aggregate M working set, largest step M; bounded sequential tranches avoid retai
 
 ## Packet Completion Gate and Acceptance Ceremony
 
-Both internal gates pass, all AC exact commands run nonzero tests, docs match actual APIs, guest freshness is exit0, cargo build --tests/check/clippy and literal/test-quality matrix complete. Re-dispatch every AC/gate with FACT pass/fail and bounded failures; review the full saved result summaries for multi-target runs. Record gaps/unintended effects and stop if any remains unresolved. No workspace test command is authorized here. No backlog/queue/status edit occurs in this authoring session; orchestrator owns subsequent generation state and activation/closure authority.
+Both internal gates pass, all AC exact commands run nonzero tests, docs match actual APIs, guest freshness is exit0, cargo build --tests/check/clippy and literal/test-quality matrix complete. Re-dispatch every AC/gate with FACT pass/fail and bounded failures; review the full saved result summaries for multi-target runs. Record gaps/unintended effects and stop if any remains unresolved. No workspace test command is authorized here. This authoring session made no backlog/queue/status edit; closure updated only the TASK-575 backlog row and this packet's status/deviations.

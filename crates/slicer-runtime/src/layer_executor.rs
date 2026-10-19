@@ -18,6 +18,7 @@ use slicer_ir::{
     StageId, SupportGeometryIR, SupportIR, SupportPlanIR, SurfaceClassificationIR,
     WallFeatureFlags,
 };
+use slicer_wasm_host::preparation::CommittedPreparationProjection;
 use slicer_wasm_host::{
     CompiledModuleLive, LayerStageInput, LayerStageRunner, WasmComponent, WasmInstancePool,
 };
@@ -1604,12 +1605,24 @@ pub const BLACKBOARD_TAP_STAGE_IDS: &[&str] = &[
 /// pretending it only ran the requested layers.
 pub const POSTPASS_TAP_STAGE_IDS: &[&str] = &["PostPass::LayerFinalization", "PostPass::GCodeEmit"];
 
+/// The pinned IR schema string for `CapturedIr::PreparationProjection`.
+///
+/// Packet 06 owns the projection DTO contract (`1.0.0`); the bundle request
+/// schema (`1.4.0`) is a separate axis. `pnp-cli` reuses this constant so the
+/// runtime variant and the bundle writer cannot drift apart.
+pub const PREPARATION_PROJECTION_SCHEMA_VERSION: &str = "1.0.0";
+
 /// A renderer-owned, post-commit IR snapshot. Always an owned clone taken
 /// immediately after [`apply`] returns `Ok` — never a borrow into
 /// `LayerArena` (ADR-0037).
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(tag = "kind", content = "value")]
 pub enum CapturedIr {
+    /// Shared, post-Ready whole-print diagnostics, independent of private plans.
+    PreparationProjection(
+        #[serde(serialize_with = "serialize_preparation_projection")]
+        Arc<CommittedPreparationProjection>,
+    ),
     /// `Layer::Perimeters` / `Layer::PerimetersPostProcess` commit.
     Perimeter(PerimeterIR),
     /// `Layer::Infill` / `Layer::InfillPostProcess` commit.
@@ -1669,6 +1682,16 @@ pub enum CapturedIr {
     GCodeEmit(GCodeIR),
 }
 
+fn serialize_preparation_projection<S>(
+    projection: &Arc<CommittedPreparationProjection>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serde::Serialize::serialize(projection.scene(), serializer)
+}
+
 impl CapturedIr {
     /// The captured IR type's own `schema_version`, formatted `MAJOR.MINOR.PATCH`.
     ///
@@ -1683,6 +1706,9 @@ impl CapturedIr {
     /// `LayerCollectionIR`'s schema version is not print-wide state.
     pub fn schema_version_string(&self) -> String {
         let v = match self {
+            Self::PreparationProjection(_) => {
+                return PREPARATION_PROJECTION_SCHEMA_VERSION.into();
+            }
             Self::Perimeter(ir) => ir.schema_version,
             Self::Infill(ir) => ir.schema_version,
             Self::Support(ir) => ir.schema_version,

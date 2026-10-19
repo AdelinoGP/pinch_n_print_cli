@@ -22,6 +22,7 @@ mod modifier_support_territory_e2e_tdd;
 mod modifier_support_type_family_e2e_tdd;
 mod painted_fixture_parity_tdd;
 mod preparation_runtime_lifecycle_tdd;
+mod preparation_visual_capture_tdd;
 mod resolved_config_view_no_drop_tdd;
 mod run_slice_api_tdd;
 mod scenario_traces_tdd;

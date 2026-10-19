@@ -923,38 +923,46 @@ impl OwnerPreparationInput {
 
     pub(crate) fn layers(&self, offset: u64, max_items: u64) -> InputResult<Vec<PreparationLayer>> {
         let range = batch_range(self.inputs.layers.global_layers.len(), offset, max_items)?;
-        self.transfer(range.len(), || {
-            let result = self.inputs.layers.global_layers[range]
-                .iter()
-                .map(|layer| PreparationLayer {
-                    index: layer.index,
-                    z: layer.z,
-                    has_nonplanar: layer.has_nonplanar,
-                    is_sync_layer: layer.is_sync_layer,
-                    is_raft: layer.is_raft,
-                    active_regions: layer
-                        .active_regions
-                        .iter()
-                        .map(|active| PreparationActiveRegion {
-                            object_id: active.object_id.clone(),
-                            region_id: active.region_id,
-                            config: self.config(&active.resolved_config),
-                            effective_layer_height: active.effective_layer_height,
-                            nonplanar_shell: active.nonplanar_shell.map(|shell| {
-                                PreparationNonplanarShell {
-                                    surface_group_id: shell.surface_group_id,
-                                    shell_index: shell.shell_index,
-                                }
-                            }),
-                            is_catchup_layer: active.is_catchup_layer,
-                            catchup_z_bottom: active.catchup_z_bottom,
-                            tool_index: active.tool_index,
-                        })
-                        .collect(),
-                })
-                .collect::<Vec<_>>();
-            Ok(result)
-        })
+        self.transfer(range.len(), || Ok(self.project_layers(range)))
+    }
+
+    /// Read-only committed schedule snapshot for host-side visual capture.
+    /// Does not count as a consumer read.
+    #[allow(dead_code)]
+    pub fn schedule_snapshot(&self) -> InputResult<Vec<PreparationLayer>> {
+        Ok(self.project_layers(0..self.inputs.layers.global_layers.len()))
+    }
+
+    fn project_layers(&self, range: Range<usize>) -> Vec<PreparationLayer> {
+        self.inputs.layers.global_layers[range]
+            .iter()
+            .map(|layer| PreparationLayer {
+                index: layer.index,
+                z: layer.z,
+                has_nonplanar: layer.has_nonplanar,
+                is_sync_layer: layer.is_sync_layer,
+                is_raft: layer.is_raft,
+                active_regions: layer
+                    .active_regions
+                    .iter()
+                    .map(|active| PreparationActiveRegion {
+                        object_id: active.object_id.clone(),
+                        region_id: active.region_id,
+                        config: self.config(&active.resolved_config),
+                        effective_layer_height: active.effective_layer_height,
+                        nonplanar_shell: active.nonplanar_shell.map(|shell| {
+                            PreparationNonplanarShell {
+                                surface_group_id: shell.surface_group_id,
+                                shell_index: shell.shell_index,
+                            }
+                        }),
+                        is_catchup_layer: active.is_catchup_layer,
+                        catchup_z_bottom: active.catchup_z_bottom,
+                        tool_index: active.tool_index,
+                    })
+                    .collect(),
+            })
+            .collect()
     }
 
     fn config(&self, config: &slicer_ir::ResolvedConfig) -> ConfigView {

@@ -1103,6 +1103,142 @@ or parity claim is made. Allocator/process overhead and process peak memory
 are **UNMEASURED**; observed durations are evidence, not a bound, and no
 latency acceptance threshold is claimed.
 
+### Optional preparation projection sink (Normative)
+
+`PreparedPlanOutput::projection()` is the only acquisition point for the
+optional diagnostic sink:
+
+```rust
+pub fn projection(
+    &self,
+) -> Result<Option<PreparationProjectionOutput>, PreparationProjectionError>
+```
+
+Sink presence is ordinary data returned by the existing host-provided
+`prepared-plan-output` resource, never an optional WIT export: no guest exports
+a projection interface, no manifest key enables one, and the `prepare` export
+signature is unchanged. When the invocation requested no diagnostic views, the
+method returns `Ok(None)`; it allocates no diagnostic collections, creates no
+staging, and leaves `PreparationDiagnosticAccounting` at zero. A module may call
+`projection()` unconditionally and still publish only opaque pieces.
+
+The SDK types live in `crates/slicer-sdk/src/preparation_visual.rs` and are
+re-exported from `slicer_sdk::preparation`:
+
+- `PreparationProjectionScene { scene_id: String, view: String, classes:
+  Vec<String>, primitives: Vec<PreparationProjectionPrimitive> }` is one
+  completed whole-print diagnostic view.
+- `PreparationProjectionPrimitive { id: String, global_layer_index: u32,
+  class: String, label: Option<String>, geometry:
+  PreparationProjectionGeometry }` is one labeled primitive on a committed
+  global schedule layer.
+- `PreparationProjectionGeometry::{Point(Point2), Polyline(Vec<Point2>),
+  Polygon { polygon: ExPolygon, filled: bool }}` is typed XY geometry in exact
+  integer units (1 unit = 100 nm); `Point2`/`ExPolygon` are `slicer_ir`
+  geometry, never private algorithm plan types.
+- `PreparationProjectionWrite: Send + Sync` is the host-owned writer trait:
+  `requested_views(&self) -> Result<Vec<String>, PreparationProjectionError>`
+  and `publish(&self, scene: &PreparationProjectionScene) ->
+  Result<(), PreparationProjectionError>`.
+- `PreparationProjectionOutput` is the private-field, call-local facade with the
+  same two methods. Native hosts adapt a writer through
+  `PreparationProjectionOutput::from_host_writer(Arc<dyn
+  PreparationProjectionWrite + Send + Sync>)`; the WASM path uses
+  `from_callbacks`, which retains no raw resource index.
+- `PreparationProjectionError` is re-exported from `slicer_sdk::preparation`; it
+  is defined in `crates/slicer-schema/src/preparation.rs` with variants
+  `AccessDenied`, `NotRequested`, `UndeclaredView`, `DuplicateScene`,
+  `MissingScene`, `InvalidReference`, `InvalidShape`, `InvalidCoordinate`,
+  `ArithmeticOverflow`, and `PoisonedOutput`.
+
+`requested_views()` returns the exact requested view names, preserving UTF-8
+identities and order; it never substitutes an empty-success fallback. It returns
+`NotRequested` when no projection was requested for the invocation,
+`AccessDenied` when the sink is foreign, disposed, or used outside its owning
+call, and `PoisonedOutput` after an earlier rejection. `publish()` returns
+`UndeclaredView` for a view not declared by the owner, `NotRequested` for a
+declared view not requested this run, `DuplicateScene` for a second scene for
+the same view, `InvalidReference` for empty/duplicate identities or unknown
+class/layer references, `InvalidShape`/`InvalidCoordinate` for invalid geometry,
+and `ArithmeticOverflow` for checked staging overflow. `MissingScene` is raised
+by the host at transaction finish, not by `publish()`: a requested view with no
+scene still fails publication, including when the module never called
+`projection()`. None of these errors use the opaque-plan `PreparationError`
+transport domain.
+
+A rejected `publish()` or `requested_views()` is sticky. The host records the
+first `PreparationProjectionError` in the preparation transaction and poisons
+the output; catching the typed error cannot clear it. Later calls through the
+same sink return `PoisonedOutput`, and `finish` rejects the invocation even if
+the module later publishes a valid scene. `AccessDenied` for a foreign owner is
+checked before the transaction is touched and does not poison that owner's
+output. An original module `ModuleError` or trap remains the reported failure
+when it occurs alongside a caught sink poison.
+
+The host validates and commits the typed DTO. It never decodes the private plan
+payload: `PreparedPlanOutput::put` transports opaque module-owned bytes, and
+`requested_views()`/`publish()` carry only diagnostic identity and geometry.
+Module-owned payload codecs remain module-owned; see "Prepared plan lifetime".
+
+A minimal authoring shape:
+
+```rust
+use slicer_ir::{ExPolygon, Point2, Polygon};
+use slicer_sdk::error::ModuleError;
+use slicer_sdk::preparation::{
+    LayerPreparation, PreparationProjectionError, PreparationProjectionGeometry,
+    PreparationProjectionPrimitive, PreparationProjectionScene, PreparedPlanOutput,
+    PrintPreparationInput,
+};
+
+fn projection_error(error: PreparationProjectionError) -> ModuleError {
+    ModuleError::fatal(57504, format!("preparation projection: {error:?}"))
+}
+
+impl LayerPreparation for MyModule {
+    fn prepare_print(
+        _input: &PrintPreparationInput,
+        output: &mut PreparedPlanOutput,
+    ) -> Result<(), ModuleError> {
+        output.put("plan", b"module-owned-plan-bytes")?;
+
+        if let Some(sink) = output.projection().map_err(projection_error)? {
+            let requested = sink.requested_views().map_err(projection_error)?;
+            if requested.iter().any(|view| view == "xy") {
+                let scene = PreparationProjectionScene {
+                    scene_id: "final".into(),
+                    view: "xy".into(),
+                    classes: vec!["domains".into()],
+                    primitives: vec![PreparationProjectionPrimitive {
+                        id: "domain_a".into(),
+                        // Must name an index in the committed layer schedule.
+                        global_layer_index: 0,
+                        class: "domains".into(),
+                        label: Some("domain".into()),
+                        geometry: PreparationProjectionGeometry::Polygon {
+                            polygon: ExPolygon {
+                                contour: Polygon {
+                                    points: vec![
+                                        Point2 { x: 0, y: 0 },
+                                        Point2 { x: 40_000, y: 0 },
+                                        Point2 { x: 40_000, y: 40_000 },
+                                        Point2 { x: 0, y: 40_000 },
+                                    ],
+                                },
+                                holes: vec![],
+                            },
+                            filled: true,
+                        },
+                    }],
+                };
+                sink.publish(&scene).map_err(projection_error)?;
+            }
+        }
+        Ok(())
+    }
+}
+```
+
 ### Stable Entity IDs (packet 39)
 
 Each `PrintEntity` and `TravelMove` carries a `u64 entity_id` populated at construction by a per-layer `LayerEntityIdGen`. Module producers (perimeter, infill, support modules) receive the generator via the per-layer context and call `id_gen.next()` once per entity. Finalization receives fresh IDs from the host at insert time. Travel anchors reference entities by `entity_id`, not positional index, so finalization mutations cannot invalidate them. See `docs/02_ir_schemas.md` IR 10 "Stable entity IDs" for the full contract.

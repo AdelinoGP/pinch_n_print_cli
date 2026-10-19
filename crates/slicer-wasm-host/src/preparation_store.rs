@@ -1,12 +1,34 @@
 //! Print-scoped opaque storage. Handles never retain payload copies.
 
+use crate::preparation::preparation_projection::{checked_add, validate_scene, ProjectionFault};
+use crate::preparation::{
+    CommittedPreparationProjection, PreparationDiagnosticAccounting,
+    PreparationProjectionError as ProjectionError, PreparationProjectionRequest,
+};
 use crate::preparation::{FrozenPreparationBinding, PreparationFailure};
 use slicer_schema::preparation::PreparationTransportError as Transport;
+use slicer_sdk::preparation::{PreparationProjectionScene, PreparationProjectionWrite};
 use std::{
+    cell::RefCell,
     collections::BTreeMap,
     fmt,
+    marker::PhantomData,
+    rc::Rc,
     sync::{Arc, Mutex, MutexGuard, TryLockError, Weak},
 };
+
+#[derive(Clone)]
+struct ActivePreparationInvocation {
+    owner: PreparationOwner,
+    call_identity: Arc<()>,
+}
+
+thread_local! {
+    // Native callbacks have no component Store from which to obtain the active
+    // owner. Bind the existing owner token and transaction identity through the
+    // same whole-call guard that already protects invocation/finalization.
+    static ACTIVE_PREPARATION_INVOCATION: RefCell<Option<ActivePreparationInvocation>> = const { RefCell::new(None) };
+}
 
 /// Redacted accounting snapshot; pieces contain names and lengths only.
 #[derive(Clone, Debug)]
@@ -92,6 +114,21 @@ struct OwnerState {
     metadata: Arc<Mutex<PreparedPlanMetadata>>,
     writer_fault: Option<Transport>,
     active_reads: u64,
+    call_identity: Option<Arc<()>>,
+    projection: Option<ProjectionStaging>,
+    projection_failure: Option<ProjectionFault>,
+    diagnostics: Arc<Mutex<PreparationDiagnosticAccounting>>,
+}
+struct ProjectionStaging {
+    views: Vec<String>,
+    layers: BTreeMap<u32, f32>,
+    scenes: BTreeMap<String, Arc<CommittedPreparationProjection>>,
+}
+
+/// Weak invocation-bound forwarding authority, retaining no geometry.
+pub(crate) struct ProjectionWriter {
+    owner: PreparationOwner,
+    call_identity: Arc<()>,
 }
 struct StoreState {
     disposed: bool,
@@ -114,6 +151,7 @@ pub struct PreparationOwner {
     declared_views: Vec<String>,
     input_reads: Vec<String>,
     metadata: Arc<Mutex<PreparedPlanMetadata>>,
+    diagnostics: Arc<Mutex<PreparationDiagnosticAccounting>>,
 }
 impl PreparationOwner {
     /// Count an actual adapter invocation, including calls returning failure.
@@ -138,7 +176,33 @@ impl PreparationOwner {
     pub(crate) fn active_guard(&self) -> Result<ReadGuard, PreparationFailure> {
         let store = self.originating_store()?;
         check_owner(&mut lock(&store.state), self)?;
-        ReadGuard::acquire(self).map_err(transport)
+        let mut guard = ReadGuard::acquire(self).map_err(transport)?;
+        guard.bind_invocation();
+        Ok(guard)
+    }
+
+    fn current_call_identity(&self) -> Option<Arc<()>> {
+        ACTIVE_PREPARATION_INVOCATION.with(|slot| {
+            slot.borrow()
+                .as_ref()
+                .filter(|active| self.same_owner(&active.owner))
+                .map(|active| Arc::clone(&active.call_identity))
+        })
+    }
+
+    /// Check the active caller before a native callback accesses its backing.
+    pub(crate) fn check_current_invocation(
+        &self,
+        call_identity: &Arc<()>,
+    ) -> Result<(), ProjectionError> {
+        if self
+            .current_call_identity()
+            .is_some_and(|active| Arc::ptr_eq(&active, call_identity))
+        {
+            Ok(())
+        } else {
+            Err(ProjectionError::AccessDenied)
+        }
     }
 
     /// Snapshot only names and lengths while publication is still pending.
@@ -162,6 +226,10 @@ impl PreparationOwner {
     /// Return a redacted accounting snapshot.
     pub fn metadata(&self) -> PreparedPlanMetadata {
         lock(&self.metadata).clone()
+    }
+    /// Return separate diagnostic accounting, including after disposal.
+    pub fn diagnostic_accounting(&self) -> PreparationDiagnosticAccounting {
+        *lock(&self.diagnostics)
     }
     /// Return the owner's stage identity.
     pub fn stage_id(&self) -> &str {
@@ -327,6 +395,7 @@ impl PreparedOwnerStore {
             returned_read_bytes: 0,
             prepare_invocations: 0,
         }));
+        let diagnostics = Arc::new(Mutex::new(PreparationDiagnosticAccounting::default()));
         let owner = PreparationOwner {
             store: Arc::downgrade(&self.state),
             id,
@@ -340,6 +409,7 @@ impl PreparedOwnerStore {
                 .declaration()
                 .map_or_else(Vec::new, |d| d.input_reads().to_vec()),
             metadata: Arc::clone(&metadata),
+            diagnostics: Arc::clone(&diagnostics),
         };
         state.owners.insert(
             id,
@@ -349,6 +419,10 @@ impl PreparedOwnerStore {
                 metadata,
                 writer_fault: None,
                 active_reads: 0,
+                call_identity: None,
+                projection: None,
+                projection_failure: None,
+                diagnostics,
             },
         );
         state.next_owner = next;
@@ -368,10 +442,38 @@ impl PreparedOwnerStore {
         }
         metadata.phase = "staging";
         entry.writer_fault = None;
+        entry.projection_failure = None;
+        entry.call_identity = Some(
+            owner
+                .current_call_identity()
+                .unwrap_or_else(|| Arc::new(())),
+        );
         Ok(PreparationTransaction {
             owner: owner.clone(),
             completed: false,
         })
+    }
+    /// Obtain the currently published plan authority.
+    /// Snapshot the first typed rejection without geometry or payloads.
+    pub fn projection_failure(
+        &self,
+        owner: &PreparationOwner,
+    ) -> Result<Option<(String, ProjectionError)>, PreparationFailure> {
+        self.verify(owner)?;
+        let mut state = lock(&self.state);
+        let entry = check_owner(&mut state, owner)?;
+        Ok(entry
+            .projection_failure
+            .as_ref()
+            .map(|fault| (fault.view.clone(), fault.error)))
+    }
+    /// Read the diagnostic sidecar independently of piece metadata.
+    pub fn diagnostic_accounting(
+        &self,
+        owner: &PreparationOwner,
+    ) -> Result<PreparationDiagnosticAccounting, PreparationFailure> {
+        self.verify(owner)?;
+        Ok(owner.diagnostic_accounting())
     }
     /// Obtain the currently published plan authority.
     pub fn current(
@@ -442,6 +544,14 @@ impl PreparedOwnerStore {
 }
 fn clear(entry: &mut OwnerState, phase: &'static str) {
     entry.pieces.clear();
+    entry.projection = None;
+    entry.call_identity = None;
+    if phase == "disposed" {
+        entry.projection_failure = None;
+    }
+    let mut diagnostics = lock(&entry.diagnostics);
+    diagnostics.staged_bytes = 0;
+    diagnostics.retained_bytes = 0;
     let mut m = lock(&entry.metadata);
     m.phase = phase;
     m.ready = false;
@@ -452,7 +562,177 @@ fn clear(entry: &mut OwnerState, phase: &'static str) {
     m.staged_name_bytes = 0;
 }
 
+fn projection_rejection(owner: &PreparationOwner, fault: &ProjectionFault) -> PreparationFailure {
+    PreparationFailure::PublicationRejected {
+        detail: format!(
+            "preparation projection: {:?}: owner={} view={} {}",
+            fault.error,
+            owner.metadata().module_id(),
+            fault.view,
+            fault.field,
+        ),
+    }
+}
+
+impl ProjectionWriter {
+    /// A live backing does not by itself authorize a different active caller.
+    pub(crate) fn check_current_invocation(&self) -> Result<(), ProjectionError> {
+        self.owner.check_current_invocation(&self.call_identity)
+    }
+
+    fn with_entry<T>(
+        &self,
+        operation: impl FnOnce(&mut OwnerState) -> Result<T, ProjectionFault>,
+    ) -> Result<T, ProjectionError> {
+        let store = self
+            .owner
+            .store
+            .upgrade()
+            .ok_or(ProjectionError::AccessDenied)?;
+        let mut state = lock(&store);
+        let entry =
+            check_owner(&mut state, &self.owner).map_err(|_| ProjectionError::AccessDenied)?;
+        if !entry
+            .call_identity
+            .as_ref()
+            .is_some_and(|id| Arc::ptr_eq(id, &self.call_identity))
+            || lock(&entry.metadata).phase != "staging"
+        {
+            return Err(ProjectionError::AccessDenied);
+        }
+        if entry.projection_failure.is_some() || entry.writer_fault.is_some() {
+            return Err(ProjectionError::PoisonedOutput);
+        }
+        match operation(entry) {
+            Ok(value) => Ok(value),
+            Err(fault) => {
+                let error = fault.error;
+                entry.projection_failure = Some(fault);
+                Err(error)
+            }
+        }
+    }
+}
+
+impl PreparationProjectionWrite for ProjectionWriter {
+    fn requested_views(&self) -> Result<Vec<String>, ProjectionError> {
+        self.with_entry(|entry| {
+            entry
+                .projection
+                .as_ref()
+                .map(|p| p.views.clone())
+                .ok_or_else(|| ProjectionFault {
+                    view: String::new(),
+                    error: ProjectionError::NotRequested,
+                    field: "requested_views".into(),
+                })
+        })
+    }
+
+    fn publish(&self, scene: &PreparationProjectionScene) -> Result<(), ProjectionError> {
+        self.with_entry(|entry| {
+            let fault = |error, field: &str| ProjectionFault {
+                view: scene.view.clone(),
+                error,
+                field: format!("scene={} {field}", scene.scene_id),
+            };
+            let projection = entry
+                .projection
+                .as_mut()
+                .ok_or_else(|| fault(ProjectionError::NotRequested, "view"))?;
+            if scene.view.is_empty() {
+                return Err(fault(ProjectionError::InvalidReference, "view"));
+            }
+            if !self.owner.declared_views().contains(&scene.view) {
+                return Err(fault(ProjectionError::UndeclaredView, "view"));
+            }
+            if !projection.views.contains(&scene.view) {
+                return Err(fault(ProjectionError::NotRequested, "view"));
+            }
+            if projection.scenes.contains_key(&scene.view) {
+                return Err(fault(ProjectionError::DuplicateScene, "view"));
+            }
+            if projection
+                .scenes
+                .values()
+                .any(|p| p.scene().scene_id == scene.scene_id)
+            {
+                return Err(fault(ProjectionError::InvalidReference, "scene_id"));
+            }
+            let committed =
+                validate_scene(scene, self.owner.metadata().module_id(), &projection.layers)?;
+            let mut accounting = lock(&entry.diagnostics);
+            let staged = checked_add(accounting.staged_bytes, committed.diagnostic_bytes())
+                .map_err(|e| fault(e, "staged_bytes"))?;
+            let count = checked_add(accounting.published_scenes, 1)
+                .map_err(|e| fault(e, "published_scenes"))?;
+            projection
+                .scenes
+                .insert(scene.view.clone(), Arc::new(committed));
+            accounting.staged_bytes = staged;
+            accounting.published_scenes = count;
+            Ok(())
+        })
+    }
+}
+
 impl PreparationTransaction {
+    /// Attach requested diagnostic staging to this transaction.
+    pub(crate) fn request_projections(
+        &mut self,
+        request: PreparationProjectionRequest,
+        layers: BTreeMap<u32, f32>,
+    ) -> Result<(), PreparationFailure> {
+        let store = self.owner.originating_store()?;
+        let mut state = lock(&store.state);
+        let entry = check_owner(&mut state, &self.owner)?;
+        if request.views().is_empty() {
+            return Ok(());
+        }
+        entry.projection = Some(ProjectionStaging {
+            views: request.views().to_vec(),
+            layers,
+            scenes: BTreeMap::new(),
+        });
+        for view in request.views() {
+            if !self.owner.declared_views().contains(view) {
+                entry.projection_failure = Some(ProjectionFault {
+                    view: view.clone(),
+                    error: ProjectionError::UndeclaredView,
+                    field: "requested view".into(),
+                });
+                return Err(projection_rejection(
+                    &self.owner,
+                    entry.projection_failure.as_ref().expect("fault"),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Acquire only forwarding authority, not a second collector.
+    pub(crate) fn projection_writer(
+        &self,
+    ) -> Result<Option<Arc<ProjectionWriter>>, ProjectionError> {
+        let store = self
+            .owner
+            .store
+            .upgrade()
+            .ok_or(ProjectionError::AccessDenied)?;
+        let mut state = lock(&store);
+        let entry =
+            check_owner(&mut state, &self.owner).map_err(|_| ProjectionError::AccessDenied)?;
+        let identity = entry
+            .call_identity
+            .as_ref()
+            .ok_or(ProjectionError::AccessDenied)?;
+        Ok(entry.projection.as_ref().map(|_| {
+            Arc::new(ProjectionWriter {
+                owner: self.owner.clone(),
+                call_identity: Arc::clone(identity),
+            })
+        }))
+    }
     /// Preserve SDK-local rejections that did not reach the store's put operation.
     pub(crate) fn record_writer_fault(&mut self, error: Transport) {
         if let Some(store) = self.owner.store.upgrade() {
@@ -468,7 +748,7 @@ impl PreparationTransaction {
         let store = self.owner.store.upgrade().ok_or(Transport::AccessDenied)?;
         let mut state = lock(&store);
         let entry = check_owner(&mut state, &self.owner).map_err(|_| Transport::AccessDenied)?;
-        if entry.writer_fault.is_some() {
+        if entry.writer_fault.is_some() || entry.projection_failure.is_some() {
             return Err(Transport::PoisonedOutput);
         }
         let result = (|| {
@@ -530,6 +810,39 @@ impl PreparationTransaction {
             if entry.writer_fault.is_some() {
                 return Err(transport(Transport::PoisonedOutput));
             }
+            if entry.projection_failure.is_none() {
+                let diagnostics = lock(&entry.diagnostics);
+                if checked_add(diagnostics.retained_bytes, diagnostics.staged_bytes).is_err() {
+                    entry.projection_failure = Some(ProjectionFault {
+                        view: entry
+                            .projection
+                            .as_ref()
+                            .and_then(|p| p.views.first())
+                            .cloned()
+                            .unwrap_or_default(),
+                        error: ProjectionError::ArithmeticOverflow,
+                        field: "retained_bytes".into(),
+                    });
+                }
+            }
+            if entry.projection_failure.is_none() {
+                if let Some(projection) = &entry.projection {
+                    if let Some(view) = projection
+                        .views
+                        .iter()
+                        .find(|view| !projection.scenes.contains_key(*view))
+                    {
+                        entry.projection_failure = Some(ProjectionFault {
+                            view: view.clone(),
+                            error: ProjectionError::MissingScene,
+                            field: "scene".into(),
+                        });
+                    }
+                }
+            }
+            if let Some(fault) = &entry.projection_failure {
+                return Err(projection_rejection(&self.owner, fault));
+            }
             StagedPreparation {
                 owner: self.owner.clone(),
                 pieces: entry
@@ -544,7 +857,38 @@ impl PreparationTransaction {
         validate(&staged)?;
         let mut state = lock(&store);
         let entry = check_owner(&mut state, &self.owner)?;
+        // A retained call-local sink may run in the validator. Recheck poison.
+        if entry.writer_fault.is_some() {
+            return Err(transport(Transport::PoisonedOutput));
+        }
+        if let Some(fault) = &entry.projection_failure {
+            return Err(projection_rejection(&self.owner, fault));
+        }
+        let mut diagnostics = lock(&entry.diagnostics);
+        let retained = match checked_add(diagnostics.retained_bytes, diagnostics.staged_bytes) {
+            Ok(retained) => retained,
+            Err(error) => {
+                drop(diagnostics);
+                entry.projection_failure = Some(ProjectionFault {
+                    view: entry
+                        .projection
+                        .as_ref()
+                        .and_then(|p| p.views.first())
+                        .cloned()
+                        .unwrap_or_default(),
+                    error,
+                    field: "retained_bytes".into(),
+                });
+                return Err(projection_rejection(
+                    &self.owner,
+                    entry.projection_failure.as_ref().expect("fault"),
+                ));
+            }
+        };
         let mut m = lock(&entry.metadata);
+        diagnostics.retained_bytes = retained;
+        diagnostics.staged_bytes = 0;
+        entry.call_identity = None;
         m.pieces = staged.pieces;
         m.retained_payload_bytes = m.staged_payload_bytes;
         m.retained_name_bytes = m.staged_name_bytes;
@@ -572,6 +916,27 @@ impl Drop for PreparationTransaction {
 }
 
 impl PreparedPlanHandle {
+    /// Share validated typed diagnostics under the original owner authority.
+    pub fn projection(
+        &self,
+        view: &str,
+    ) -> Result<Option<Arc<CommittedPreparationProjection>>, ProjectionError> {
+        let store = self
+            .owner
+            .store
+            .upgrade()
+            .ok_or(ProjectionError::AccessDenied)?;
+        let mut state = lock(&store);
+        let entry =
+            check_owner(&mut state, &self.owner).map_err(|_| ProjectionError::AccessDenied)?;
+        if !lock(&entry.metadata).ready {
+            return Err(ProjectionError::AccessDenied);
+        }
+        Ok(entry
+            .projection
+            .as_ref()
+            .and_then(|p| p.scenes.get(view).cloned()))
+    }
     /// Return a redacted plan accounting snapshot.
     pub fn metadata(&self) -> PreparedPlanMetadata {
         self.owner.metadata()
@@ -597,8 +962,32 @@ impl PreparedPlanHandle {
 
 pub(crate) struct ReadGuard {
     owner: PreparationOwner,
+    invocation: Option<ActivePreparationInvocation>,
+    previous_invocation: Option<ActivePreparationInvocation>,
+    // Invocation scope restoration must run on the thread that entered it.
+    _thread_bound: PhantomData<Rc<()>>,
 }
 impl ReadGuard {
+    fn bind_invocation(&mut self) {
+        let invocation = ActivePreparationInvocation {
+            owner: self.owner.clone(),
+            call_identity: Arc::new(()),
+        };
+        self.previous_invocation =
+            ACTIVE_PREPARATION_INVOCATION.with(|slot| slot.replace(Some(invocation.clone())));
+        self.invocation = Some(invocation);
+    }
+
+    pub(crate) fn call_identity(&self) -> Arc<()> {
+        Arc::clone(
+            &self
+                .invocation
+                .as_ref()
+                .expect("whole-call invocation guard")
+                .call_identity,
+        )
+    }
+
     fn acquire(owner: &PreparationOwner) -> Result<Self, Transport> {
         let store = owner.store.upgrade().ok_or(Transport::AccessDenied)?;
         let mut state = lock(&store);
@@ -606,11 +995,19 @@ impl ReadGuard {
         entry.active_reads = add(entry.active_reads, 1)?;
         Ok(Self {
             owner: owner.clone(),
+            invocation: None,
+            previous_invocation: None,
+            _thread_bound: PhantomData,
         })
     }
 }
 impl Drop for ReadGuard {
     fn drop(&mut self) {
+        if self.invocation.is_some() {
+            ACTIVE_PREPARATION_INVOCATION.with(|slot| {
+                slot.replace(self.previous_invocation.take());
+            });
+        }
         if let Some(store) = self.owner.store.upgrade() {
             let mut state = lock(&store);
             if let Some(entry) = state.owners.get_mut(&self.owner.id) {
@@ -671,6 +1068,295 @@ impl PreparedPieceHandle {
         m.requested_read_bytes = requested;
         m.returned_read_bytes = returned;
         Ok(bytes)
+    }
+}
+
+#[cfg(test)]
+mod preparation_projection_tests {
+    use super::*;
+    use crate::preparation::test_binding;
+
+    fn scene() -> PreparationProjectionScene {
+        PreparationProjectionScene {
+            scene_id: "final".into(),
+            view: "view".into(),
+            classes: vec!["π".into()],
+            primitives: vec![],
+        }
+    }
+    fn begin(store: &PreparedOwnerStore, owner: &PreparationOwner) -> PreparationTransaction {
+        let mut tx = store.begin(owner).unwrap();
+        tx.request_projections(
+            PreparationProjectionRequest::new(vec!["view".into()]).unwrap(),
+            BTreeMap::from([(0, 0.2), (1, 0.4)]),
+        )
+        .unwrap();
+        tx.put("probe", &[3, 5, 11, 17]).unwrap();
+        tx
+    }
+    fn rejected(result: Result<PreparedPlanHandle, PreparationFailure>, variant: &str) {
+        match result {
+            Err(PreparationFailure::PublicationRejected { detail }) => assert!(
+                detail.starts_with(&format!(
+                    "preparation projection: {variant}: owner=test.module view=view"
+                )),
+                "{detail}"
+            ),
+            other => panic!("wrong projection finalization: {other:?}"),
+        }
+    }
+    fn unready(store: &PreparedOwnerStore, owner: &PreparationOwner) {
+        assert!(matches!(
+            store.current(owner),
+            Err(PreparationFailure::Transport(Transport::NotReady))
+        ));
+        assert_eq!(owner.metadata().retained_payload_bytes(), 0);
+        assert_eq!(owner.metadata().staged_payload_bytes(), 0);
+        assert_eq!(owner.diagnostic_accounting().staged_bytes, 0);
+        assert_eq!(owner.diagnostic_accounting().retained_bytes, 0);
+    }
+
+    #[test]
+    fn explicit_empty_and_missing_scene_have_different_atomic_results() {
+        let store = PreparedOwnerStore::new();
+        let owner = store.create_owner(&test_binding()).unwrap();
+        let tx = begin(&store, &owner);
+        rejected(
+            tx.finish(Ok(()), |_| {
+                panic!("missing precedes cancellation validator")
+            }),
+            "MissingScene",
+        );
+        unready(&store, &owner);
+        assert_eq!(
+            store.projection_failure(&owner).unwrap(),
+            Some(("view".into(), ProjectionError::MissingScene))
+        );
+        let tx = begin(&store, &owner);
+        let sink = tx.projection_writer().unwrap().unwrap();
+        assert_eq!(sink.requested_views(), Ok(vec!["view".into()]));
+        assert_eq!(sink.publish(&scene()), Ok(()));
+        assert_eq!(owner.diagnostic_accounting().staged_bytes, 11); // final(5)+view(4)+π(2)
+        let plan = tx
+            .finish(Ok(()), |staged| {
+                assert!(!staged.owner().metadata().ready());
+                Ok(())
+            })
+            .unwrap();
+        let a = plan.projection("view").unwrap().unwrap();
+        let b = plan.projection("view").unwrap().unwrap();
+        assert!(Arc::ptr_eq(&a, &b));
+        assert_eq!(a.scene(), &scene());
+        assert_eq!(
+            plan.open("probe").unwrap().unwrap().read(0, 4),
+            Ok(vec![3, 5, 11, 17])
+        );
+        assert_eq!(owner.diagnostic_accounting().retained_bytes, 11);
+        assert_eq!(owner.diagnostic_accounting().staged_bytes, 0);
+        assert_eq!(owner.diagnostic_accounting().published_scenes, 1);
+        assert_eq!(sink.publish(&scene()), Err(ProjectionError::AccessDenied));
+        store.dispose_owner(&owner).unwrap();
+        assert_eq!(plan.projection("view"), Err(ProjectionError::AccessDenied));
+        assert_eq!(owner.diagnostic_accounting().retained_bytes, 0);
+        assert_eq!(
+            a.scene(),
+            &scene(),
+            "snapshot survives private-store cleanup"
+        );
+    }
+
+    #[test]
+    fn caught_duplicate_undeclared_and_unrequested_writes_never_publish() {
+        for expected in [
+            ProjectionError::DuplicateScene,
+            ProjectionError::UndeclaredView,
+            ProjectionError::NotRequested,
+        ] {
+            let store = PreparedOwnerStore::new();
+            let owner = store.create_owner(&test_binding()).unwrap();
+            let mut tx = if expected == ProjectionError::NotRequested {
+                store.begin(&owner).unwrap()
+            } else {
+                begin(&store, &owner)
+            };
+            let sink = if expected == ProjectionError::NotRequested {
+                assert!(tx.projection_writer().unwrap().is_none());
+                let state = lock(&store.state);
+                let entry = &state.owners[&owner.id];
+                Arc::new(ProjectionWriter {
+                    owner: owner.clone(),
+                    call_identity: entry.call_identity.clone().unwrap(),
+                })
+            } else {
+                tx.projection_writer().unwrap().unwrap()
+            };
+            let mut value = scene();
+            if expected == ProjectionError::DuplicateScene {
+                sink.publish(&value).unwrap();
+                value.scene_id = "different".into();
+            }
+            if expected == ProjectionError::UndeclaredView {
+                value.view = "View".into();
+            }
+            assert_eq!(sink.publish(&value), Err(expected));
+            assert_eq!(sink.publish(&scene()), Err(ProjectionError::PoisonedOutput));
+            assert_eq!(tx.put("later", &[1]), Err(Transport::PoisonedOutput));
+            match tx.finish(Ok(()), |_| {
+                panic!("caught diagnostic failure cannot clear poison")
+            }) {
+                Err(PreparationFailure::PublicationRejected { detail }) => {
+                    assert!(detail.starts_with(&format!("preparation projection: {expected:?}:")))
+                }
+                other => panic!("{other:?}"),
+            }
+            assert_eq!(
+                store.projection_failure(&owner).unwrap(),
+                Some((value.view, expected))
+            );
+            unready(&store, &owner);
+        }
+    }
+
+    #[test]
+    fn foreign_print_artifact_and_stale_call_cannot_mutate_owner() {
+        let a = PreparedOwnerStore::new();
+        let b = PreparedOwnerStore::new();
+        let binding = test_binding();
+        let owner = a.create_owner(&binding).unwrap();
+        let foreign = b.create_owner(&binding).unwrap();
+        let tx = begin(&a, &owner);
+        let old_sink = tx.projection_writer().unwrap().unwrap();
+        drop(tx);
+        let tx = begin(&a, &owner);
+        assert_eq!(
+            old_sink.publish(&scene()),
+            Err(ProjectionError::AccessDenied)
+        );
+        assert_eq!(a.projection_failure(&owner).unwrap(), None);
+        assert!(matches!(
+            b.projection_failure(&owner),
+            Err(PreparationFailure::InvalidOwner)
+        ));
+        tx.projection_writer()
+            .unwrap()
+            .unwrap()
+            .publish(&scene())
+            .unwrap();
+        let plan = tx.finish(Ok(()), |_| Ok(())).unwrap();
+        let mut forged = owner.clone();
+        forged.artifact_identity = Arc::new(());
+        assert_eq!(
+            (PreparedPlanHandle { owner: forged }).projection("view"),
+            Err(ProjectionError::AccessDenied)
+        );
+        let foreign_tx = begin(&b, &foreign);
+        foreign_tx
+            .projection_writer()
+            .unwrap()
+            .unwrap()
+            .publish(&scene())
+            .unwrap();
+        let foreign_plan = foreign_tx.finish(Ok(()), |_| Ok(())).unwrap();
+        assert!(!Arc::ptr_eq(
+            &plan.projection("view").unwrap().unwrap(),
+            &foreign_plan.projection("view").unwrap().unwrap()
+        ));
+        b.dispose().unwrap();
+        assert!(plan.projection("view").unwrap().is_some());
+        assert_eq!(
+            foreign_plan.projection("view"),
+            Err(ProjectionError::AccessDenied)
+        );
+    }
+
+    #[test]
+    fn diagnostic_counter_overflow_is_typed_atomic_and_does_not_wrap() {
+        for field in ["staged_bytes", "published_scenes", "retained_bytes"] {
+            let store = PreparedOwnerStore::new();
+            let owner = store.create_owner(&test_binding()).unwrap();
+            let tx = begin(&store, &owner);
+            let sink = tx.projection_writer().unwrap().unwrap();
+            {
+                let mut d = lock(&owner.diagnostics);
+                match field {
+                    "staged_bytes" => d.staged_bytes = u64::MAX,
+                    "retained_bytes" => d.retained_bytes = u64::MAX,
+                    _ => d.published_scenes = u64::MAX,
+                }
+            }
+            if field == "retained_bytes" {
+                sink.publish(&scene()).unwrap();
+            } else {
+                assert_eq!(
+                    sink.publish(&scene()),
+                    Err(ProjectionError::ArithmeticOverflow)
+                );
+            }
+            rejected(
+                tx.finish(Ok(()), |_| panic!("overflow precedes validator")),
+                "ArithmeticOverflow",
+            );
+            assert_eq!(
+                store.projection_failure(&owner).unwrap(),
+                Some(("view".into(), ProjectionError::ArithmeticOverflow))
+            );
+            unready(&store, &owner);
+            assert_eq!(
+                owner.diagnostic_accounting().published_scenes,
+                if field == "published_scenes" {
+                    u64::MAX
+                } else if field == "retained_bytes" {
+                    1
+                } else {
+                    0
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn original_module_trap_and_cancellation_roll_back_both_attachments() {
+        for mode in [0, 1, 2] {
+            let store = PreparedOwnerStore::new();
+            let owner = store.create_owner(&test_binding()).unwrap();
+            let tx = begin(&store, &owner);
+            let sink = tx.projection_writer().unwrap().unwrap();
+            sink.publish(&scene()).unwrap();
+            if mode < 2 {
+                assert_eq!(sink.publish(&scene()), Err(ProjectionError::DuplicateScene));
+            }
+            let result = tx.finish(
+                match mode {
+                    0 => Err(PreparationFailure::Module(
+                        slicer_sdk::error::ModuleError::non_fatal(42, "original"),
+                    )),
+                    1 => Err(PreparationFailure::Trap {
+                        detail: "original trap".into(),
+                    }),
+                    _ => Ok(()),
+                },
+                |_| {
+                    Err(PreparationFailure::PublicationRejected {
+                        detail: "cancelled".into(),
+                    })
+                },
+            );
+            match (mode, result) {
+                (0, Err(PreparationFailure::Module(e))) => {
+                    assert_eq!(e.code, 42);
+                    assert_eq!(e.message, "original");
+                    assert!(!e.fatal);
+                }
+                (1, Err(PreparationFailure::Trap { detail })) => {
+                    assert_eq!(detail, "original trap")
+                }
+                (2, Err(PreparationFailure::PublicationRejected { detail })) => {
+                    assert_eq!(detail, "cancelled")
+                }
+                (_, other) => panic!("{other:?}"),
+            }
+            unready(&store, &owner);
+        }
     }
 }
 

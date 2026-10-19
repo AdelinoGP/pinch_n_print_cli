@@ -28,6 +28,7 @@ slicer-sdk = { path = "../slicer-sdk" }
 preparation-pilot-infill = { path = "test-guests/preparation-pilot-infill" }
 preparation-pilot-path = { path = "test-guests/preparation-pilot-path" }
 preparation-transport-path = { path = "test-guests/preparation-transport-path" }
+preparation-visual-guest = { path = "test-guests/preparation-visual-guest" }
 whole-print-input-path = { path = "test-guests/whole-print-input-path" }
 whole-print-input-perimeters = { path = "test-guests/whole-print-input-perimeters" }
 whole-print-input-infill = { path = "test-guests/whole-print-input-infill" }

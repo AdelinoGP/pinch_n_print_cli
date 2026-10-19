@@ -1474,6 +1474,67 @@ fn preparation_input_glue() -> TokenStream2 {
 }
 
 /// Add preparation and lazy call-local plan access to the same component that
+/// Convert only the optional public diagnostic DTO into canonical imported types.
+fn preparation_projection_glue() -> TokenStream2 {
+    quote! {
+        mod __slicer_preparation_projection {
+            use super::slicer::layer_preparation::preparation_types as wit;
+            use super::slicer::types::geometry as geo;
+            use ::slicer_sdk::preparation as sdk;
+
+            pub(super) fn error(error: wit::PreparationProjectionError) -> sdk::PreparationProjectionError {
+                use wit::PreparationProjectionError as W;
+                use sdk::PreparationProjectionError as S;
+                match error {
+                    W::AccessDenied => S::AccessDenied,
+                    W::NotRequested => S::NotRequested,
+                    W::UndeclaredView => S::UndeclaredView,
+                    W::DuplicateScene => S::DuplicateScene,
+                    W::MissingScene => S::MissingScene,
+                    W::InvalidReference => S::InvalidReference,
+                    W::InvalidShape => S::InvalidShape,
+                    W::InvalidCoordinate => S::InvalidCoordinate,
+                    W::ArithmeticOverflow => S::ArithmeticOverflow,
+                    W::PoisonedOutput => S::PoisonedOutput,
+                }
+            }
+
+            fn point(p: &::slicer_ir::Point2) -> geo::Point2 { geo::Point2 { x: p.x, y: p.y } }
+            fn polygon(p: &::slicer_ir::Polygon) -> geo::Polygon {
+                geo::Polygon { points: p.points.iter().map(point).collect() }
+            }
+            pub(super) fn scene(scene: &sdk::PreparationProjectionScene) -> wit::PreparationProjectionScene {
+                use sdk::PreparationProjectionGeometry as S;
+                use wit::PreparationProjectionGeometry as W;
+                wit::PreparationProjectionScene {
+                    scene_id: scene.scene_id.clone(), view: scene.view.clone(), classes: scene.classes.clone(),
+                    primitives: scene.primitives.iter().map(|p| wit::PreparationProjectionPrimitive {
+                        id: p.id.clone(), global_layer_index: p.global_layer_index, class: p.class.clone(), label: p.label.clone(),
+                        geometry: match &p.geometry {
+                            S::Point(p) => W::Point(point(p)),
+                            S::Polyline(p) => W::Polyline(p.iter().map(point).collect()),
+                            S::Polygon { polygon: p, filled } => W::Polygon(wit::PreparationProjectionPolygon {
+                                polygon: geo::ExPolygon { contour: polygon(&p.contour), holes: p.holes.iter().map(polygon).collect() },
+                                filled: *filled,
+                            }),
+                        },
+                    }).collect(),
+                }
+            }
+
+            pub(super) fn output(sink: wit::PreparationProjectionOutput) -> sdk::PreparationProjectionOutput {
+                let sink = ::std::rc::Rc::new(sink);
+                let views = sink.clone();
+                sdk::PreparationProjectionOutput::from_callbacks(
+                    move || views.requested_views().map_err(error),
+                    move |value| sink.publish(&scene(value)).map_err(error),
+                )
+            }
+        }
+    }
+}
+
+/// Add preparation and lazy call-local plan access to the same component that
 /// implements the unchanged ordinary stage interface.
 fn build_preparation_glue(self_ty: &syn::Type, component: &str, preparation: bool) -> TokenStream2 {
     if !preparation {
@@ -1482,8 +1543,10 @@ fn build_preparation_glue(self_ty: &syn::Type, component: &str, preparation: boo
     let component = syn::Ident::new(component, proc_macro2::Span::call_site());
     let profile_install = profile_install_stmt();
     let input_glue = preparation_input_glue();
+    let projection_glue = preparation_projection_glue();
     quote! {
         #input_glue
+        #projection_glue
 
         static __SLICER_PREPARATION_CONFIGURED: ::std::sync::OnceLock<
             Result<(), ::slicer_sdk::error::ModuleError>,
@@ -1560,8 +1623,13 @@ fn build_preparation_glue(self_ty: &syn::Type, component: &str, preparation: boo
                     move |offset, max_bytes| fixture_reader.0.read_fixture(offset, max_bytes)
                         .map_err(__slicer_preparation_error),
                 );
-                let mut output = ::slicer_sdk::preparation::PreparedPlanOutput::from_callback(
+                let output = ::std::rc::Rc::new(output);
+                let projection = output.clone();
+                let mut output = ::slicer_sdk::preparation::PreparedPlanOutput::from_callbacks(
                     move |name, bytes| output.put(name, bytes).map_err(__slicer_preparation_error),
+                    move || projection.projection()
+                        .map(|sink| sink.map(__slicer_preparation_projection::output))
+                        .map_err(__slicer_preparation_projection::error),
                 );
                 let result = <#self_ty as ::slicer_sdk::preparation::LayerPreparation>::prepare_print(
                     &input, &mut output,

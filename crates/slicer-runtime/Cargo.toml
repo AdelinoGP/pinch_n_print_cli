@@ -65,6 +65,7 @@ serde_json = "1.0"
 base64 = "0.22"
 slicer_sdk = { package = "slicer-sdk", path = "../slicer-sdk", features = ["test"] }
 preparation-lifecycle-guest = { path = "../slicer-wasm-host/test-guests/preparation-lifecycle-guest" }
+preparation-visual-guest = { path = "../slicer-wasm-host/test-guests/preparation-visual-guest" }
 preparation-lifecycle-anchored-guest = { path = "../slicer-wasm-host/test-guests/preparation-lifecycle-anchored-guest" }
 whole-print-input-path = { path = "../slicer-wasm-host/test-guests/whole-print-input-path" }
 whole-print-input-perimeters = { path = "../slicer-wasm-host/test-guests/whole-print-input-perimeters" }

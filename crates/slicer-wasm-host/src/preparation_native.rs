@@ -35,6 +35,35 @@ pub struct PreparationInputData {
 }
 
 impl PreparationInputData {
+    /// Host-only committed schedule identity; never consult opaque piece bytes
+    /// or require the module's optional layer-plan read grant for validation.
+    pub(super) fn projection_schedule(
+        &self,
+        owner: &PreparationOwner,
+    ) -> Result<std::collections::BTreeMap<u32, f32>, PreparationFailure> {
+        let backing = self.committed.as_deref().ok_or(PreparationFailure::Input(
+            PreparationInputError::AccessDenied,
+        ))?;
+        if !owner.same_owner(&backing.owner) {
+            return Err(PreparationFailure::InvalidOwner);
+        }
+        let layers = backing
+            .layers(0, u64::MAX)
+            .map_err(PreparationFailure::Input)?;
+        Ok(layers
+            .into_iter()
+            .map(|layer| (layer.index, layer.z))
+            .collect())
+    }
+    /// Read-only committed schedule snapshot for host-side visual capture.
+    /// Does not count as a consumer read.
+    pub fn schedule_snapshot(&self) -> Result<Vec<PreparationLayer>, PreparationInputError> {
+        let backing = self
+            .committed
+            .as_deref()
+            .ok_or(PreparationInputError::AccessDenied)?;
+        backing.schedule_snapshot()
+    }
     /// Host-only selection metadata projection, independent of module read grants.
     /// Uses the same committed projection as the authorized typed reader.
     pub fn host_selected_targets(
@@ -441,6 +470,23 @@ impl PreparedPieceRead for PreparedPieceHandle {
     }
 }
 
+struct NativeProjectionWriter(Arc<crate::preparation_store::ProjectionWriter>);
+
+impl slicer_sdk::preparation::PreparationProjectionWrite for NativeProjectionWriter {
+    fn requested_views(&self) -> Result<Vec<String>, PreparationProjectionError> {
+        self.0.check_current_invocation()?;
+        slicer_sdk::preparation::PreparationProjectionWrite::requested_views(&*self.0)
+    }
+
+    fn publish(
+        &self,
+        scene: &slicer_sdk::preparation::PreparationProjectionScene,
+    ) -> Result<(), PreparationProjectionError> {
+        self.0.check_current_invocation()?;
+        slicer_sdk::preparation::PreparationProjectionWrite::publish(&*self.0, scene)
+    }
+}
+
 impl FrozenPreparationBinding {
     /// Prepare and atomically publish without an additional validation hook.
     pub fn prepare(
@@ -458,8 +504,29 @@ impl FrozenPreparationBinding {
         input: PreparationInputData,
         validate: impl FnOnce(&StagedPreparation) -> Result<(), PreparationFailure>,
     ) -> Result<(), PreparationFailure> {
+        self.prepare_requested(owner, input, None, validate)
+    }
+
+    /// Prepare opaque pieces and requested typed diagnostics in one transaction.
+    pub fn prepare_with_diagnostics(
+        &self,
+        owner: &PreparationOwner,
+        input: PreparationInputData,
+        request: PreparationProjectionRequest,
+        validate: impl FnOnce(&StagedPreparation) -> Result<(), PreparationFailure>,
+    ) -> Result<(), PreparationFailure> {
+        self.prepare_requested(owner, input, Some(request), validate)
+    }
+
+    fn prepare_requested(
+        &self,
+        owner: &PreparationOwner,
+        input: PreparationInputData,
+        request: Option<PreparationProjectionRequest>,
+        validate: impl FnOnce(&StagedPreparation) -> Result<(), PreparationFailure>,
+    ) -> Result<(), PreparationFailure> {
         if self.wasm.is_some() {
-            return self.prepare_wasm(owner, input, validate);
+            return self.prepare_wasm(owner, input, request, validate);
         }
         let store = owner.originating_store()?;
         store.validate_owner(owner, self)?;
@@ -469,7 +536,16 @@ impl FrozenPreparationBinding {
                 self.module_id.clone(),
             ))
         })?;
-        let transaction = Arc::new(Mutex::new(store.begin(owner)?));
+        let mut transaction = store.begin(owner)?;
+        if let Some(request) = request {
+            let schedule = if request.views().is_empty() {
+                Default::default()
+            } else {
+                input.projection_schedule(owner)?
+            };
+            transaction.request_projections(request, schedule)?;
+        }
+        let transaction = Arc::new(Mutex::new(transaction));
         let result = {
             let reader = Arc::new(PreparationInputReader::new(owner, &input, self));
             let input = if input.fixture.is_some() {
@@ -488,12 +564,23 @@ impl FrozenPreparationBinding {
                 PrintPreparationInput::from_host_input(reader.clone())
             };
             let writer = Arc::clone(&transaction);
-            let mut output = PreparedPlanOutput::from_host_writer(Arc::new(move |name, bytes| {
-                writer
-                    .lock()
-                    .unwrap_or_else(|error| error.into_inner())
-                    .put(name, bytes)
-            }));
+            let projection = Arc::clone(&transaction);
+            let projection_owner = owner.clone();
+            let projection_invocation = _guard.call_identity();
+            let mut output = PreparedPlanOutput::from_callbacks(
+                move |name, bytes| {
+                    writer
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner())
+                        .put(name, bytes)
+                        .map_err(Into::into)
+                },
+                move || {
+                    projection_owner.check_current_invocation(&projection_invocation)?;
+                    projection.lock().unwrap_or_else(|e| e.into_inner()).projection_writer()
+                    .map(|writer| writer.map(|writer| slicer_sdk::preparation::PreparationProjectionOutput::from_host_writer(Arc::new(NativeProjectionWriter(writer)))))
+                },
+            );
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 owner.record_prepare_invocation()?;
                 let result = (entry.prepare)(&input, &mut output);

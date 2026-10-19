@@ -12,6 +12,12 @@ use std::sync::Arc;
 #[path = "visual_debug_gcode.rs"]
 pub mod visual_debug_gcode;
 
+// Schema 1.4.0 preparation bundle serializer (packet 06, Step 15): private
+// companions that serialize the common legacy manifest plus typed preparation
+// entries, without widening `Manifest`/`ImageEntry`.
+#[path = "visual_debug_preparation.rs"]
+pub(crate) mod visual_debug_preparation;
+
 const VERSION: &str = "1.0.0";
 /// Schema 1.1.0: adds `color_by`/`tool_color_source` on geometry
 /// visualizations, and `overlays` (isolated per-event-class images +
@@ -34,8 +40,21 @@ const VERSION_1_2: &str = "1.2.0";
 /// `1.2.0` manifests stay byte-unchanged (the key is skipped entirely).
 const VERSION_1_3: &str = "1.3.0";
 
+/// Schema 1.4.0 (layer-module-preparation packet 06): adds the
+/// [`TapSelector::Preparation`] selector class — a post-Ready committed
+/// preparation snapshot, deliberately not a scheduler stage — and the
+/// `preparation_geometry` visualization kind that renders it. Everything
+/// 1.3.0 accepts stays accepted; both new surfaces are rejected under any
+/// earlier declared version (fail-closed, never silently ignored).
+pub const VERSION_1_4: &str = "1.4.0";
+
 /// The schema 1.2.0 side-view visualization kind.
 const SILHOUETTE_KIND: &str = "silhouette";
+
+/// The schema 1.4.0 preparation-projection visualization kind. It applies
+/// only to [`TapSelector::Preparation`] taps; scheduler-stage taps never
+/// accept it, and preparation taps never accept a stage kind.
+const PREPARATION_GEOMETRY_KIND: &str = "preparation_geometry";
 
 /// The taps a `silhouette` visualization may be requested for (packet 247):
 /// the four `CapturedIr::Slice` taps plus the support-plan tap - the
@@ -60,9 +79,12 @@ const SILHOUETTE_TAP_STAGE_IDS: &[&str] = &[
 
 /// Whether a declared schema version gets the strict typed `options` parse
 /// (`deny_unknown_fields`, typed option validation). True for 1.1.0, 1.2.0,
-/// and 1.3.0; a 1.0.0 request keeps the legacy loose read.
+/// 1.3.0, and 1.4.0; a 1.0.0 request keeps the legacy loose read.
 fn strict_options(schema_version: &str) -> bool {
-    schema_version == VERSION_1_1 || schema_version == VERSION_1_2 || schema_version == VERSION_1_3
+    schema_version == VERSION_1_1
+        || schema_version == VERSION_1_2
+        || schema_version == VERSION_1_3
+        || schema_version == VERSION_1_4
 }
 
 /// The resolved silhouette projection plane name for a visualization's
@@ -103,7 +125,7 @@ fn silhouette_tap_rejection_reason(tap: &str) -> String {
 }
 
 fn schema_supported(v: &str) -> bool {
-    v == VERSION || v == VERSION_1_1 || v == VERSION_1_2 || v == VERSION_1_3
+    v == VERSION || v == VERSION_1_1 || v == VERSION_1_2 || v == VERSION_1_3 || v == VERSION_1_4
 }
 
 /// The legend version recorded for a bundle: a 1.0.0 request renders only
@@ -112,11 +134,14 @@ fn schema_supported(v: &str) -> bool {
 /// A 1.2.0 request records the same legend as 1.1.0: silhouettes add fill
 /// classes, not glyphs, so `LEGEND_VERSION` is deliberately not bumped.
 /// A 1.3.0 request records the same legend again: `scheduled_layer_zs` adds
-/// a schedule readout, not glyphs.
+/// a schedule readout, not glyphs. A 1.4.0 request records it once more:
+/// preparation entries carry their own `class_legend` (the projection DTO's
+/// classes), so the ordinary glyph legend is deliberately not bumped either.
 fn legend_version_for(schema_version: &str) -> &str {
     if schema_version == VERSION_1_1
         || schema_version == VERSION_1_2
         || schema_version == VERSION_1_3
+        || schema_version == VERSION_1_4
     {
         slicer_runtime::LEGEND_VERSION
     } else {
@@ -219,6 +244,51 @@ fn effective_visualization_options(
         base,
         ..VisualizationOptions::default()
     }
+}
+
+/// Whether a tap is a schema 1.4.0 preparation (post-Ready snapshot) tap
+/// rather than a scheduler-stage tap. The two selector classes are
+/// disjoint by construction; validation partitions visualizations across
+/// them rather than applying the Cartesian product.
+fn is_preparation_tap(tap: &TapSelector) -> bool {
+    matches!(tap, TapSelector::Preparation { .. })
+}
+
+/// Validate one `preparation_geometry` visualization's options (schema
+/// 1.4.0). The projection DTO is a top-down XY scene: only an omitted
+/// `view` or `view: "xy"` is representable. Every legacy geometry/overlay
+/// option (`base`, `color_by`, `tool_color_source`, `overlays`,
+/// `composited_overlays`) is meaningless for a committed preparation
+/// snapshot, so a populated one fails closed instead of being ignored.
+/// Unknown keys already fail in [`visualization_options`] via the typed
+/// `deny_unknown_fields` parse (`InvalidVisualizationOptions`).
+fn validate_preparation_geometry_options(viz: &VisualizationSpec) -> Result<(), ValidationError> {
+    let opts = visualization_options(viz)?;
+    match opts.view.as_deref() {
+        None | Some("xy") => {}
+        Some(view) => {
+            return Err(ValidationError::PreparationUnsupportedDimension {
+                view: view.to_string(),
+            })
+        }
+    }
+    let populated = [
+        ("base", opts.base.is_some()),
+        ("color_by", opts.color_by.is_some()),
+        ("tool_color_source", opts.tool_color_source.is_some()),
+        ("overlays", opts.overlays.is_some()),
+        ("composited_overlays", opts.composited_overlays.is_some()),
+    ];
+    if let Some((option, _)) = populated.iter().find(|(_, set)| *set) {
+        return Err(ValidationError::InvalidPreparationSelector {
+            message: format!(
+                "option '{option}' does not apply to '{PREPARATION_GEOMETRY_KIND}': a committed \
+                 preparation projection is a top-down XY diagnostic with its own class legend; \
+                 it takes no base geometry, coloring, or overlay options"
+            ),
+        });
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -375,11 +445,148 @@ impl<'de> Deserialize<'de> for LayerSelector {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A preparation tap's payload: the owner module whose committed
+/// post-Ready preparation snapshot is captured, and one of that owner's
+/// declared projection views. Private with accessors so the only public
+/// construction path is [`PreparationTapSelector::new`], and JSON parsing
+/// must go through [`TapSelector`]'s strict manual `Deserialize` (which
+/// rejects extra keys and empty values).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PreparationTapSelector {
+    module_id: String,
+    view: String,
+}
+
+impl PreparationTapSelector {
+    /// Build a preparation selector without JSON. Empty values are rejected
+    /// by [`validate_request`] (`InvalidPreparationSelector`), matching the
+    /// strict deserializer.
+    pub fn new(module_id: impl Into<String>, view: impl Into<String>) -> Self {
+        Self {
+            module_id: module_id.into(),
+            view: view.into(),
+        }
+    }
+
+    /// The owning module id this tap captures.
+    #[must_use]
+    pub fn module_id(&self) -> &str {
+        &self.module_id
+    }
+
+    /// The owner-declared projection view this tap captures.
+    #[must_use]
+    pub fn view(&self) -> &str {
+        &self.view
+    }
+}
+
+/// A tap to capture.
+///
+/// `Name` and `Detail` are the legacy scheduler-stage selector forms and
+/// keep their original accepted shapes byte-for-byte. `Preparation` is the
+/// schema 1.4.0 post-Ready preparation-snapshot class: it names an owner
+/// module and one of that owner's declared projection views, and is never a
+/// scheduler stage.
+///
+/// Serialization is derived (untagged): a preparation tap round-trips as
+/// `{"preparation": {"module_id": ..., "view": ...}}`.
+#[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 pub enum TapSelector {
     Name(String),
     Detail { id: String },
+    Preparation { preparation: PreparationTapSelector },
+}
+
+/// Manual `Deserialize` for [`TapSelector`], extending the ADR-0041 strict
+/// precedent set by [`LayerSelector`]'s impl. The former `#[serde(untagged)]`
+/// derive had no per-variant field-set enforcement, so a preparation object
+/// (`{"preparation": {...}}`) fell through to `Detail` with its preparation
+/// fields dropped, and an object containing both `id` and `preparation`
+/// silently became a `Detail` — exactly the disappearing-selection failure
+/// this packet forbids.
+///
+/// Accepted shapes, exactly:
+/// - a JSON string => `Name`;
+/// - `{"id": "<stage id>"}` (unknown sibling keys tolerated exactly as the
+///   legacy untagged derive tolerated them) => `Detail`;
+/// - `{"preparation": {"module_id": "<nonempty>", "view": "<nonempty>"}}`
+///   with no other key in either object => `Preparation`.
+///
+/// Everything else is a hard deserialization error: no preparation
+/// selection may ever be reinterpreted as a stage, and an object with
+/// neither selector form names the accepted shapes.
+impl<'de> Deserialize<'de> for TapSelector {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error as _;
+        let value = serde_json::Value::deserialize(deserializer)?;
+        match value {
+            serde_json::Value::String(name) => Ok(TapSelector::Name(name)),
+            serde_json::Value::Object(map) => {
+                if let Some(preparation) = map.get("preparation") {
+                    if map.len() != 1 {
+                        return Err(D::Error::custom(format!(
+                            "a preparation tap selector object must contain only 'preparation'; \
+                             got fields {:?} (mixing 'id' and 'preparation', or any extra key, is \
+                             rejected rather than resolving to one of them)",
+                            map.keys().collect::<Vec<_>>()
+                        )));
+                    }
+                    let serde_json::Value::Object(preparation) = preparation else {
+                        return Err(D::Error::custom(
+                            "tap selector 'preparation' must be an object with exactly \
+                             'module_id' and 'view'",
+                        ));
+                    };
+                    let keys: std::collections::BTreeSet<&str> =
+                        preparation.keys().map(String::as_str).collect();
+                    let expected: std::collections::BTreeSet<&str> =
+                        ["module_id", "view"].into_iter().collect();
+                    if keys != expected {
+                        return Err(D::Error::custom(format!(
+                            "a preparation tap selector must contain exactly 'module_id' and \
+                             'view' with nonempty string values; got fields {:?}",
+                            preparation.keys().collect::<Vec<_>>()
+                        )));
+                    }
+                    let nonempty = |field: &str| -> Result<String, D::Error> {
+                        match preparation.get(field) {
+                            Some(serde_json::Value::String(value)) if !value.is_empty() => {
+                                Ok(value.clone())
+                            }
+                            _ => Err(D::Error::custom(format!(
+                                "preparation tap selector '{field}' must be a nonempty string"
+                            ))),
+                        }
+                    };
+                    Ok(TapSelector::Preparation {
+                        preparation: PreparationTapSelector::new(
+                            nonempty("module_id")?,
+                            nonempty("view")?,
+                        ),
+                    })
+                } else if let Some(id) = map.get("id") {
+                    let Some(id) = id.as_str() else {
+                        return Err(D::Error::custom(
+                            "tap selector 'id' must be a string naming a scheduler stage",
+                        ));
+                    };
+                    Ok(TapSelector::Detail { id: id.to_string() })
+                } else {
+                    Err(D::Error::custom(
+                        "unrecognized tap selector object; expected a tap name string, \
+                         {\"id\": \"<stage id>\"}, or {\"preparation\": {\"module_id\": \
+                         \"<module id>\", \"view\": \"<view>\"}}",
+                    ))
+                }
+            }
+            other => Err(D::Error::custom(format!("invalid tap selector: {other}"))),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -505,6 +712,29 @@ pub enum ValidationError {
         tap: String,
         reason: String,
     },
+    /// Schema 1.4.0 (layer-module-preparation packet 06): a preparation
+    /// selector is empty, or preparation taps and visualizations are
+    /// mismatched (a selector without a `preparation_geometry`
+    /// visualization, a `preparation_geometry` visualization without a
+    /// preparation selector, or a stage/legacy pairing that would silently
+    /// render nothing). Carries the specific defect.
+    InvalidPreparationSelector {
+        message: String,
+    },
+    /// A preparation selector or `preparation_geometry` visualization
+    /// appeared under a schema below 1.4.0. Named separately so the message
+    /// states the fix (declare 1.4.0), like `SilhouetteRequiresSchema12`.
+    PreparationRequiresSchema14,
+    /// A preparation tap was requested against a standalone final-G-code
+    /// source, which has no preparation lifecycle or committed snapshot.
+    PreparationUnsupportedSource,
+    /// A `preparation_geometry` visualization requested a non-XY
+    /// (`front`/`side`/3D) dimension. The preparation projection DTO is a
+    /// top-down XY scene; other planes are not representable.
+    PreparationUnsupportedDimension {
+        /// The rejected `view` value, verbatim.
+        view: String,
+    },
 }
 
 impl fmt::Display for ValidationError {
@@ -569,6 +799,24 @@ impl fmt::Display for ValidationError {
             Self::SilhouetteUnsupportedForTap { tap, reason } => write!(
                 f,
                 "silhouette is not supported for tap '{tap}': {reason}"
+            ),
+            Self::InvalidPreparationSelector { message } => {
+                write!(f, "invalid preparation selector request: {message}")
+            }
+            Self::PreparationRequiresSchema14 => write!(
+                f,
+                "preparation selectors and the '{PREPARATION_GEOMETRY_KIND}' visualization require \
+                 schema_version \"{VERSION_1_4}\""
+            ),
+            Self::PreparationUnsupportedSource => write!(
+                f,
+                "preparation selectors are not supported on a standalone gcode source: that \
+                 source carries only the final toolpath and no post-Ready preparation snapshot"
+            ),
+            Self::PreparationUnsupportedDimension { view } => write!(
+                f,
+                "'{PREPARATION_GEOMETRY_KIND}' supports only the top-down XY view (omit 'view' or \
+                 set view: \"xy\"); the requested view '{view}' is not supported"
             ),
         }
     }
@@ -640,6 +888,38 @@ pub enum VisualDebugError {
     /// own detail, which names the missing datum and the remedy — see
     /// `visual_debug_gcode::GcodeRenderError::SilhouetteWidthUnderivable`.
     SilhouetteWidthUnderivable(String),
+    /// Schema 1.4.0 (layer-module-preparation packet 06): the preparation
+    /// selector names an owner module that is not declared by the loaded
+    /// module set.
+    // The preparation capture errors are constructed by the run-wiring
+    // slice; this slice owns request/validation only, so the bin cannot
+    // observe a construction site yet.
+    UnknownPreparationOwner {
+        module_id: String,
+    },
+    /// The named owner is declared, but not with this projection view.
+    UnknownPreparationView {
+        module_id: String,
+        view: String,
+    },
+    /// The named owner is declared but is not a layer-preparation module
+    /// (it cannot publish committed preparation snapshots).
+    PreparationUnsupportedOwner {
+        module_id: String,
+    },
+    /// The named owner is declared and supported, but did not become active
+    /// in this slice's real selection, so it never produced a snapshot.
+    InactivePreparationOwner {
+        module_id: String,
+    },
+    /// The runtime's typed projection gate rejected a scene for this
+    /// owner/view. Carries the projection enum name and identity; mapped by
+    /// enum match, never by parsing `SliceRunError` text.
+    PreparationProjectionRejected {
+        module_id: String,
+        view: String,
+        reason: slicer_schema::preparation::PreparationProjectionError,
+    },
 }
 
 impl fmt::Display for VisualDebugError {
@@ -663,6 +943,32 @@ impl fmt::Display for VisualDebugError {
             Self::SilhouetteWidthUnderivable(e) => {
                 write!(f, "gcode silhouette render failed: {e}")
             }
+            Self::UnknownPreparationOwner { module_id } => {
+                write!(f, "unknown preparation owner '{module_id}'")
+            }
+            Self::UnknownPreparationView { module_id, view } => write!(
+                f,
+                "preparation owner '{module_id}' declares no projection view '{view}'"
+            ),
+            Self::PreparationUnsupportedOwner { module_id } => write!(
+                f,
+                "module '{module_id}' is not a layer-preparation owner: it cannot publish \
+                 committed preparation snapshots"
+            ),
+            Self::InactivePreparationOwner { module_id } => write!(
+                f,
+                "preparation owner '{module_id}' is declared but did not become active for this \
+                 slice, so it produced no snapshot to capture"
+            ),
+
+            Self::PreparationProjectionRejected {
+                module_id,
+                view,
+                reason,
+            } => write!(
+                f,
+                "preparation projection rejected for owner '{module_id}', view '{view}': {reason}"
+            ),
         }
     }
 }
@@ -676,10 +982,14 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
         return Err(ValidationError::SchemaVersion);
     }
     let strict = strict_options(&req.schema_version);
-    // Schema 1.2.0 introduced `silhouette`; 1.3.0 is a strict superset of
-    // 1.2.0 (it adds only the additive `scheduled_layer_zs` manifest
-    // readout), so every 1.2.0-gated surface stays accepted there.
-    let is_v1_2_plus = req.schema_version == VERSION_1_2 || req.schema_version == VERSION_1_3;
+    // Schema 1.2.0 introduced `silhouette`; 1.3.0 and 1.4.0 are strict
+    // supersets of 1.2.0 (additive manifest readout and preparation
+    // selectors respectively), so every 1.2.0-gated surface stays accepted
+    // there.
+    let is_v1_2_plus = req.schema_version == VERSION_1_2
+        || req.schema_version == VERSION_1_3
+        || req.schema_version == VERSION_1_4;
+    let is_v1_4 = req.schema_version == VERSION_1_4;
     if !(1..=3).contains(&req.resolution_scale) {
         return Err(ValidationError::ResolutionScale);
     }
@@ -691,6 +1001,16 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
     // are now named, fail-closed rejections.
     for viz in &req.visualizations {
         let kind = viz.kind();
+        if kind == PREPARATION_GEOMETRY_KIND {
+            // Schema 1.4.0: the preparation kind is version gated. Its
+            // options are validated in the preparation block below (the
+            // legacy option gates must not run against it), so skip the
+            // stage-kind dispatch here.
+            if !is_v1_4 {
+                return Err(ValidationError::PreparationRequiresSchema14);
+            }
+            continue;
+        }
         if kind == SILHOUETTE_KIND {
             // Schema 1.2.0 (packet 247): the silhouette kind is version
             // gated, so a pre-1.2 request gets a named requires-1.2.0
@@ -914,6 +1234,90 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
             }
         }
     }
+    // Schema 1.4.0 (layer-module-preparation packet 06): preparation
+    // selector validation. This block is entered only when the new surface
+    // is present, so every 1.0.0-1.3.0 request without it keeps exactly the
+    // legacy path and errors. Fail-closed ordering: schema, source, then
+    // selector contents, then option/dimension, then the tap/visualization
+    // partition pairing.
+    let preparation_vizs: Vec<&VisualizationSpec> = req
+        .visualizations
+        .iter()
+        .filter(|viz| viz.kind() == PREPARATION_GEOMETRY_KIND)
+        .collect();
+    let has_preparation_tap = req.taps.iter().any(is_preparation_tap);
+    if has_preparation_tap || !preparation_vizs.is_empty() {
+        if !is_v1_4 {
+            return Err(ValidationError::PreparationRequiresSchema14);
+        }
+        if has_preparation_tap && matches!(req.source, VisualDebugSource::Gcode { .. }) {
+            return Err(ValidationError::PreparationUnsupportedSource);
+        }
+        // Programmatic construction bypasses the strict deserializer, so
+        // the empty-value rule is enforced here too. The deserializer is
+        // still the primary gate for JSON requests.
+        for tap in &req.taps {
+            let TapSelector::Preparation { preparation } = tap else {
+                continue;
+            };
+            if preparation.module_id().is_empty() || preparation.view().is_empty() {
+                return Err(ValidationError::InvalidPreparationSelector {
+                    message: format!(
+                        "preparation tap '{}' requires a nonempty module_id and view",
+                        tap_name(tap)
+                    ),
+                });
+            }
+        }
+        for viz in &preparation_vizs {
+            validate_preparation_geometry_options(viz)?;
+        }
+        let stage_vizs: Vec<&VisualizationSpec> = req
+            .visualizations
+            .iter()
+            .filter(|viz| viz.kind() != PREPARATION_GEOMETRY_KIND)
+            .collect();
+        let stage_taps: Vec<&TapSelector> = req
+            .taps
+            .iter()
+            .filter(|tap| !is_preparation_tap(tap))
+            .collect();
+        if has_preparation_tap && preparation_vizs.is_empty() {
+            return Err(ValidationError::InvalidPreparationSelector {
+                message: format!(
+                    "preparation taps require a '{PREPARATION_GEOMETRY_KIND}' visualization; this \
+                     request names none (a preparation tap is rejected rather than silently \
+                     rendering nothing)"
+                ),
+            });
+        }
+        if !has_preparation_tap && !preparation_vizs.is_empty() {
+            return Err(ValidationError::InvalidPreparationSelector {
+                message: format!(
+                    "visualization kind '{PREPARATION_GEOMETRY_KIND}' applies only to preparation \
+                     taps; this request names none"
+                ),
+            });
+        }
+        if !stage_taps.is_empty() && stage_vizs.is_empty() {
+            return Err(ValidationError::InvalidPreparationSelector {
+                message: format!(
+                    "stage tap '{}' has no stage visualization: '{PREPARATION_GEOMETRY_KIND}' \
+                     applies only to preparation taps, never to scheduler stages",
+                    tap_name(stage_taps[0])
+                ),
+            });
+        }
+        if stage_taps.is_empty() && !stage_vizs.is_empty() {
+            return Err(ValidationError::InvalidPreparationSelector {
+                message: format!(
+                    "stage visualization kind '{}' applies only to scheduler-stage taps; this \
+                     request names none",
+                    stage_vizs[0].kind()
+                ),
+            });
+        }
+    }
     // Schema 1.2.0 (packet 247): bundle-wide silhouette rules. Ordered so
     // the most specific misuse is named first: mixing, then the bundle
     // plane, then frame / source / tap support.
@@ -1002,6 +1406,23 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
             let id = match tap {
                 TapSelector::Name(name) => name.as_str(),
                 TapSelector::Detail { id } => id.as_str(),
+                // Schema 1.4.0: a preparation tap is not a scheduler stage
+                // and carries no Z-attributable stage capture. The
+                // preparation block above already rejects a preparation tap
+                // without `preparation_geometry` and any mixing of
+                // `preparation_geometry` with a silhouette, so reaching
+                // here is a named rejection rather than an empty stage id.
+                TapSelector::Preparation { preparation } => {
+                    return Err(ValidationError::SilhouetteUnsupportedForTap {
+                        tap: tap_name(tap),
+                        reason: format!(
+                            "preparation tap 'Preparation::{}::{}' captures a post-Ready \
+                             committed snapshot, not a Z-attributable scheduler stage",
+                            preparation.module_id(),
+                            preparation.view()
+                        ),
+                    });
+                }
             };
             if gcode_source {
                 return Err(ValidationError::SilhouetteUnsupportedForTap {
@@ -1356,10 +1777,23 @@ fn sanitize_path_component(s: &str) -> String {
     s.chars().map(|c| if c == ':' { '_' } else { c }).collect()
 }
 
+/// Stable display/capture name for a tap selector.
+///
+/// `Name`/`Detail` yield the scheduler-stage id verbatim. A preparation tap
+/// is not a stage and has no stage id: it yields the documented diagnostic
+/// identity `Preparation::<module_id>::<view>` — a stable, reversible-shaped
+/// name used for error messages and manifest keys, never substituted for a
+/// stage id (`Preparation::` cannot collide with the `PrePass::` /
+/// `PostPass::` / `Layer::` stage namespaces).
 fn tap_name(tap: &TapSelector) -> String {
     match tap {
         TapSelector::Name(s) => s.clone(),
         TapSelector::Detail { id } => id.clone(),
+        TapSelector::Preparation { preparation } => format!(
+            "Preparation::{}::{}",
+            preparation.module_id(),
+            preparation.view()
+        ),
     }
 }
 /// One real, scheduled layer against which `LayerSelector::Index` / `Range`
@@ -2023,6 +2457,204 @@ fn capture_ir_to_json(ir: &slicer_runtime::CapturedIr) -> Option<serde_json::Val
     tagged.insert("kind".into(), serde_json::Value::String("Slice".into()));
     tagged.insert("value".into(), serde_json::Value::Object(slice_obj));
     Some(serde_json::Value::Object(tagged))
+}
+
+/// Render the ordinary scheduler-stage entries of one bundle from captures
+/// that have already been taken by a real pipeline run.
+///
+/// Shared by [`run_model_source`]'s non-silhouette path and the schema-1.4.0
+/// preparation path ([`run_preparation_visual_debug`]), which mixes ordinary
+/// stage taps with preparation taps without ever re-running the slice (AC-5).
+/// Preparation projection captures are skipped here: they are rendered and
+/// written as typed preparation entries by the preparation path, never as an
+/// ordinary stage image.
+///
+/// `layer_plan` is the prepass-committed `LayerPlanIR` when the caller still
+/// holds one (the legacy `PrepassContext`). The preparation facade returns
+/// typed captures only, so a mixed preparation bundle passes `None` and its
+/// `diagnostic_overlay` images carry no layer-plan flags marker; every other
+/// entry field and every filename matches the legacy loop exactly.
+#[allow(clippy::type_complexity)]
+fn render_stage_entries(
+    captures: &[slicer_runtime::StageCapture],
+    req: &VisualDebugRequest,
+    viewport: &Viewport,
+    viewport_bounds: slicer_runtime::ViewportBoundsMm,
+    config_source_raw: &HashMap<String, slicer_ir::ConfigValue>,
+    layer_plan: Option<&slicer_ir::LayerPlanIR>,
+) -> Result<
+    (
+        Vec<ImageEntry>,
+        Vec<(String, Vec<u8>)>,
+        Option<Vec<ToolPaletteEntry>>,
+    ),
+    VisualDebugError,
+> {
+    let legend = legend_version_for(&req.schema_version).to_string();
+    let mut images: Vec<ImageEntry> = Vec::new();
+    let mut rendered_files: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut tool_palette: Option<Vec<ToolPaletteEntry>> = None;
+    for capture in captures {
+        if matches!(
+            capture.ir,
+            slicer_runtime::CapturedIr::PreparationProjection(_)
+        ) {
+            continue;
+        }
+        for viz in req
+            .visualizations
+            .iter()
+            .filter(|viz| viz.kind() != PREPARATION_GEOMETRY_KIND)
+        {
+            let opts = effective_visualization_options(&req.schema_version, viz);
+            let render_view = render_view_for_visualization(viz, &opts);
+            // Schema 1.1.0 style: color_by / tool_color_source.
+            let color_by = opts.color_by();
+            let use_filament = opts.tool_color_source.as_deref() == Some("filament");
+            let tool_colors = if use_filament {
+                filament_tool_colors(config_source_raw)
+            } else {
+                slicer_runtime::ToolColors::default()
+            };
+            if color_by == slicer_runtime::ColorBy::Tool && tool_palette.is_none() {
+                tool_palette = Some(tool_palette_entries(&tool_colors));
+            }
+            let render_style = slicer_runtime::RenderStyle {
+                color_by,
+                tool_colors,
+            };
+            // Schema 1.1.0 isolated overlays: one image per enabled
+            // overlay kind, faint base + that kind's glyphs, with the
+            // events mirrored onto the manifest entry.
+            let overlay_kinds = opts.overlay_kinds();
+            if !overlay_kinds.is_empty() {
+                let base_view = match render_view {
+                    slicer_runtime::RenderView::DiagnosticOverlay(g) => g,
+                    _ => unreachable!("overlays validate only on diagnostic_overlay"),
+                };
+                for kind in overlay_kinds {
+                    let view = slicer_runtime::RenderView::OverlayIsolated(base_view, kind);
+                    let (rendered, events) = slicer_runtime::render_stage_capture_styled(
+                        capture,
+                        view,
+                        req.resolution_scale,
+                        viewport_bounds,
+                        None,
+                        &slicer_runtime::RenderStyle::default(),
+                    )
+                    .map_err(|e| VisualDebugError::RenderFailed(e.to_string()))?;
+                    let file_name = format!(
+                        "{}_overlay_{}_l{}.png",
+                        sanitize_path_component(&capture.stage_id),
+                        kind.name(),
+                        capture.layer_index
+                    );
+                    let relative_path = format!("images/{file_name}");
+                    rendered_files.push((relative_path.clone(), rendered.png_bytes));
+                    images.push(ImageEntry {
+                        source: "model".into(),
+                        tap: capture.stage_id.clone(),
+                        layer_index: Some(capture.layer_index as i64),
+                        layer_z: Some(Some(capture.layer_z as f64)),
+                        visualization: viz.kind().to_string(),
+                        png_path: relative_path,
+                        viewport: viewport.clone(),
+                        legend_version: legend.clone(),
+                        ir_schema_version: Some(capture.ir.schema_version_string()),
+                        gcode_parser_version: None,
+                        warnings: Vec::new(),
+                        typed_capture: capture_ir_to_json(&capture.ir),
+                        world_bounds_mm: Some(viewport_bounds),
+                        overlay: Some(kind.name().to_string()),
+                        overlay_events: Some(events),
+                        color_by: None,
+                        tool_color_source: None,
+                        view: None,
+                        layers_rendered: None,
+                        composited_overlays: None,
+                    });
+                }
+                continue;
+            }
+            // `LayerPlanIR` diagnostic overlay (packet 161, Step 7):
+            // `LayerPlanning` has no standalone tap/`CapturedIr`
+            // variant, so its sync/non-planar/active-region flags only
+            // ever reach a rendered image here, threaded from the
+            // Model-source `PrepassContext::blackboard` opt-in — never
+            // drawn for a plain `RenderView::Geometry` request (see
+            // `render_stage_capture`'s doc comment), and never available
+            // for a preparation-only facade (which returns no blackboard).
+            let layer_plan_layer = if matches!(
+                render_view,
+                slicer_runtime::RenderView::DiagnosticOverlay(_)
+            ) {
+                layer_plan.and_then(|lp| {
+                    lp.global_layers
+                        .iter()
+                        .find(|gl| gl.index == capture.layer_index)
+                })
+            } else {
+                None
+            };
+            let (rendered, _events) = slicer_runtime::render_stage_capture_styled(
+                capture,
+                render_view,
+                req.resolution_scale,
+                viewport_bounds,
+                layer_plan_layer,
+                &render_style,
+            )
+            .map_err(|e| VisualDebugError::RenderFailed(e.to_string()))?;
+            // `viz.kind()` alone collides for two `diagnostic_overlay`
+            // visualizations with different `options.base` (both kind
+            // "diagnostic_overlay") — append the resolved base geometry
+            // view so two different bases never share a filename/manifest
+            // row (Finding 1). Non-overlay kinds have no such ambiguity:
+            // `viz.kind()` already names the geometry view directly.
+            let base_suffix = diagnostic_overlay_base_suffix(render_view);
+            let file_name = match base_suffix {
+                Some(base) => format!(
+                    "{}_{}_{}_l{}.png",
+                    sanitize_path_component(&capture.stage_id),
+                    viz.kind(),
+                    base,
+                    capture.layer_index
+                ),
+                None => format!(
+                    "{}_{}_l{}.png",
+                    sanitize_path_component(&capture.stage_id),
+                    viz.kind(),
+                    capture.layer_index
+                ),
+            };
+            let relative_path = format!("images/{file_name}");
+            rendered_files.push((relative_path.clone(), rendered.png_bytes));
+            images.push(ImageEntry {
+                source: "model".into(),
+                tap: capture.stage_id.clone(),
+                layer_index: Some(capture.layer_index as i64),
+                layer_z: Some(Some(capture.layer_z as f64)),
+                visualization: viz.kind().to_string(),
+                png_path: relative_path,
+                viewport: viewport.clone(),
+                legend_version: legend.clone(),
+                ir_schema_version: Some(capture.ir.schema_version_string()),
+                gcode_parser_version: None,
+                warnings: Vec::new(),
+                typed_capture: capture_ir_to_json(&capture.ir),
+                world_bounds_mm: Some(viewport_bounds),
+                overlay: None,
+                overlay_events: None,
+                color_by: (color_by == slicer_runtime::ColorBy::Tool).then(|| "tool".to_string()),
+                tool_color_source: (color_by == slicer_runtime::ColorBy::Tool)
+                    .then(|| if use_filament { "filament" } else { "palette" }.to_string()),
+                view: None,
+                layers_rendered: None,
+                composited_overlays: None,
+            });
+        }
+    }
+    Ok((images, rendered_files, tool_palette))
 }
 
 /// The `Model`-source body of [`run_visual_debug`] (packet 158): validates
@@ -2763,159 +3395,17 @@ fn run_model_source(
                 model_bounds.map_or(captured, |m| m.union(captured))
             }
         };
-        let legend = legend_version_for(&req.schema_version).to_string();
-        for capture in &output.captures {
-            for viz in &req.visualizations {
-                let opts = effective_visualization_options(&req.schema_version, viz);
-                let render_view = render_view_for_visualization(viz, &opts);
-                // Schema 1.1.0 style: color_by / tool_color_source.
-                let color_by = opts.color_by();
-                let use_filament = opts.tool_color_source.as_deref() == Some("filament");
-                let tool_colors = if use_filament {
-                    filament_tool_colors(&config_source_raw)
-                } else {
-                    slicer_runtime::ToolColors::default()
-                };
-                if color_by == slicer_runtime::ColorBy::Tool && tool_palette.is_none() {
-                    tool_palette = Some(tool_palette_entries(&tool_colors));
-                }
-                let render_style = slicer_runtime::RenderStyle {
-                    color_by,
-                    tool_colors,
-                };
-                // Schema 1.1.0 isolated overlays: one image per enabled
-                // overlay kind, faint base + that kind's glyphs, with the
-                // events mirrored onto the manifest entry.
-                let overlay_kinds = opts.overlay_kinds();
-                if !overlay_kinds.is_empty() {
-                    let base_view = match render_view {
-                        slicer_runtime::RenderView::DiagnosticOverlay(g) => g,
-                        _ => unreachable!("overlays validate only on diagnostic_overlay"),
-                    };
-                    for kind in overlay_kinds {
-                        let view = slicer_runtime::RenderView::OverlayIsolated(base_view, kind);
-                        let (rendered, events) = slicer_runtime::render_stage_capture_styled(
-                            capture,
-                            view,
-                            req.resolution_scale,
-                            viewport_bounds,
-                            None,
-                            &slicer_runtime::RenderStyle::default(),
-                        )
-                        .map_err(|e| VisualDebugError::RenderFailed(e.to_string()))?;
-                        let file_name = format!(
-                            "{}_overlay_{}_l{}.png",
-                            sanitize_path_component(&capture.stage_id),
-                            kind.name(),
-                            capture.layer_index
-                        );
-                        let relative_path = format!("images/{file_name}");
-                        rendered_files.push((relative_path.clone(), rendered.png_bytes));
-                        images.push(ImageEntry {
-                            source: "model".into(),
-                            tap: capture.stage_id.clone(),
-                            layer_index: Some(capture.layer_index as i64),
-                            layer_z: Some(Some(capture.layer_z as f64)),
-                            visualization: viz.kind().to_string(),
-                            png_path: relative_path,
-                            viewport: viewport.clone(),
-                            legend_version: legend.clone(),
-                            ir_schema_version: Some(capture.ir.schema_version_string()),
-                            gcode_parser_version: None,
-                            warnings: Vec::new(),
-                            typed_capture: capture_ir_to_json(&capture.ir),
-                            world_bounds_mm: Some(viewport_bounds),
-                            overlay: Some(kind.name().to_string()),
-                            overlay_events: Some(events),
-                            color_by: None,
-                            tool_color_source: None,
-                            view: None,
-                            layers_rendered: None,
-                            composited_overlays: None,
-                        });
-                    }
-                    continue;
-                }
-                // `LayerPlanIR` diagnostic overlay (packet 161, Step 7):
-                // `LayerPlanning` has no standalone tap/`CapturedIr`
-                // variant, so its sync/non-planar/active-region flags only
-                // ever reach a rendered image here, threaded from the
-                // Model-source `PrepassContext::blackboard` opt-in — never
-                // drawn for a plain `RenderView::Geometry` request (see
-                // `render_stage_capture`'s doc comment), and never available
-                // at all for the standalone G-code source (no
-                // `PrepassContext`/blackboard exists on that path).
-                let layer_plan_layer = if matches!(
-                    render_view,
-                    slicer_runtime::RenderView::DiagnosticOverlay(_)
-                ) {
-                    ctx.blackboard.layer_plan().and_then(|lp| {
-                        lp.global_layers
-                            .iter()
-                            .find(|gl| gl.index == capture.layer_index)
-                    })
-                } else {
-                    None
-                };
-                let (rendered, _events) = slicer_runtime::render_stage_capture_styled(
-                    capture,
-                    render_view,
-                    req.resolution_scale,
-                    viewport_bounds,
-                    layer_plan_layer,
-                    &render_style,
-                )
-                .map_err(|e| VisualDebugError::RenderFailed(e.to_string()))?;
-                // `viz.kind()` alone collides for two `diagnostic_overlay`
-                // visualizations with different `options.base` (both kind
-                // "diagnostic_overlay") — append the resolved base geometry
-                // view so two different bases never share a filename/manifest
-                // row (Finding 1). Non-overlay kinds have no such ambiguity:
-                // `viz.kind()` already names the geometry view directly.
-                let base_suffix = diagnostic_overlay_base_suffix(render_view);
-                let file_name = match base_suffix {
-                    Some(base) => format!(
-                        "{}_{}_{}_l{}.png",
-                        sanitize_path_component(&capture.stage_id),
-                        viz.kind(),
-                        base,
-                        capture.layer_index
-                    ),
-                    None => format!(
-                        "{}_{}_l{}.png",
-                        sanitize_path_component(&capture.stage_id),
-                        viz.kind(),
-                        capture.layer_index
-                    ),
-                };
-                let relative_path = format!("images/{file_name}");
-                rendered_files.push((relative_path.clone(), rendered.png_bytes));
-                images.push(ImageEntry {
-                    source: "model".into(),
-                    tap: capture.stage_id.clone(),
-                    layer_index: Some(capture.layer_index as i64),
-                    layer_z: Some(Some(capture.layer_z as f64)),
-                    visualization: viz.kind().to_string(),
-                    png_path: relative_path,
-                    viewport: viewport.clone(),
-                    legend_version: legend.clone(),
-                    ir_schema_version: Some(capture.ir.schema_version_string()),
-                    gcode_parser_version: None,
-                    warnings: Vec::new(),
-                    typed_capture: capture_ir_to_json(&capture.ir),
-                    world_bounds_mm: Some(viewport_bounds),
-                    overlay: None,
-                    overlay_events: None,
-                    color_by: (color_by == slicer_runtime::ColorBy::Tool)
-                        .then(|| "tool".to_string()),
-                    tool_color_source: (color_by == slicer_runtime::ColorBy::Tool)
-                        .then(|| if use_filament { "filament" } else { "palette" }.to_string()),
-                    view: None,
-                    layers_rendered: None,
-                    composited_overlays: None,
-                });
-            }
-        }
+        let (stage_images, stage_files, stage_palette) = render_stage_entries(
+            &output.captures,
+            req,
+            viewport,
+            viewport_bounds,
+            &config_source_raw,
+            ctx.blackboard.layer_plan().map(Arc::as_ref),
+        )?;
+        images.extend(stage_images);
+        rendered_files.extend(stage_files);
+        tool_palette = stage_palette;
     }
     let layer_expansions: Vec<LayerExpansionEntry> = output
         .expansions
@@ -2945,6 +3435,405 @@ fn run_model_source(
     ))
 }
 
+/// Resolve a preparation bundle's layer selectors to concrete global layer
+/// indices.
+///
+/// Preparation layer resolution is index-based on purpose: the runtime facade
+/// validates the indices against the committed schedule it actually ran, so a
+/// z-only selector would have to be resolved against a pre-run schedule the
+/// shared preparation prefix owns (and that does not exist yet at this point).
+/// A z-only `LayerSelector::Detail` is therefore a named pre-invocation
+/// rejection rather than a late guess. `LayerSelector::Name` is already
+/// rejected by `validate_request` for a model source; it is still matched here
+/// explicitly so this resolver never has an `unreachable!` arm of its own.
+fn resolve_preparation_layer_indices(
+    layers: &[LayerSelector],
+) -> Result<Vec<u32>, VisualDebugError> {
+    if layers.is_empty() {
+        return Err(VisualDebugError::NoApplicableLayer);
+    }
+    let mut resolved = std::collections::BTreeSet::new();
+    for selector in layers {
+        let (start, end) = match selector {
+            LayerSelector::Index(index) => (*index, *index),
+            LayerSelector::Range { start, end } => (*start, *end),
+            // `Detail { index: Some(i) }` is index-based exactly like `Index`;
+            // a concurrent `z` is ignored, matching
+            // `resolve_layers_against_schedule`'s legacy resolution.
+            LayerSelector::Detail {
+                index: Some(index), ..
+            } => (*index, *index),
+            LayerSelector::Detail { index: None, .. } => {
+                return Err(VisualDebugError::Validation(
+                    ValidationError::InvalidPreparationSelector {
+                        message: format!(
+                            "preparation layer resolution is index-based; selector {selector:?} \
+                             carries no index and a Z-only resolution needs the pre-run schedule \
+                             the shared preparation prefix owns"
+                        ),
+                    },
+                ));
+            }
+            LayerSelector::Name(name) => {
+                return Err(VisualDebugError::Validation(
+                    ValidationError::InvalidPreparationSelector {
+                        message: format!(
+                            "preparation layer resolution is index-based; anonymous layer name \
+                             '{name}' has no resolution target"
+                        ),
+                    },
+                ));
+            }
+        };
+        let (Ok(start), Ok(end)) = (u32::try_from(start), u32::try_from(end)) else {
+            return Err(VisualDebugError::Validation(
+                ValidationError::InvalidPreparationSelector {
+                    message: format!(
+                        "preparation layer selector {selector:?} is not a non-negative global \
+                         layer index"
+                    ),
+                },
+            ));
+        };
+        if start > end {
+            return Err(VisualDebugError::Validation(
+                ValidationError::InvalidPreparationSelector {
+                    message: format!(
+                        "preparation layer range {start}..={end} is empty (start must not exceed \
+                         end)"
+                    ),
+                },
+            ));
+        }
+        resolved.extend(start..=end);
+    }
+    if resolved.is_empty() {
+        return Err(VisualDebugError::NoApplicableLayer);
+    }
+    Ok(resolved.into_iter().collect())
+}
+
+/// The plate-framed viewport for a preparation bundle.
+///
+/// The preparation facade returns typed captures but no `PrepassContext`, so
+/// the resolved config is not reachable. `bed_shape` is a host `cli` key whose
+/// only inputs are the raw config source and the built-in default, so the
+/// existing [`plate_xy_bounds`] helper is reused with exactly that pair — the
+/// same value `pnp_cli slice` reads for bed placement (`main.rs`'s
+/// `read_bed_shape`). Plate framing stays exactly the bed: no captured
+/// geometry is unioned in, matching the legacy model path.
+fn preparation_plate_xy_bounds(
+    config_source: &HashMap<String, slicer_ir::ConfigValue>,
+) -> Result<slicer_runtime::ViewportBoundsMm, VisualDebugError> {
+    let bed_shape = match config_source.get("bed_shape") {
+        None => slicer_ir::ResolvedConfig::default().bed_shape,
+        Some(value) => slicer_ir::resolved_config::extract_float_list("bed_shape", value)
+            .map_err(|error| VisualDebugError::InvalidBedShape(format!("bed_shape: {error}")))?,
+    };
+    plate_xy_bounds(&slicer_ir::ResolvedConfig {
+        bed_shape,
+        ..slicer_ir::ResolvedConfig::default()
+    })
+}
+
+/// Map the runtime's separate typed visual-capture error onto the CLI surface.
+///
+/// Deliberately a variant match: `SliceRunError` stays an opaque `pub String`,
+/// so no owner/view/layer identity is ever recovered by parsing its message.
+/// `UnknownLayer` carries only the offending index; the CLI attributes it to
+/// the request's first preparation module (or `""` when the request somehow
+/// named none), which is the identity its own error surface reports.
+fn map_preparation_visual_error(
+    error: slicer_runtime::PreparationVisualCaptureError,
+) -> VisualDebugError {
+    use slicer_runtime::PreparationVisualCaptureError as CaptureError;
+
+    match error {
+        CaptureError::InvalidRequest { detail } => {
+            VisualDebugError::Validation(ValidationError::InvalidPreparationSelector {
+                message: detail,
+            })
+        }
+        CaptureError::UnknownOwner { module_id } => {
+            VisualDebugError::UnknownPreparationOwner { module_id }
+        }
+        CaptureError::UnknownView { module_id, view } => {
+            VisualDebugError::UnknownPreparationView { module_id, view }
+        }
+        CaptureError::UnsupportedOwner { module_id } => {
+            VisualDebugError::PreparationUnsupportedOwner { module_id }
+        }
+        CaptureError::InactiveOwner { module_id } => {
+            VisualDebugError::InactivePreparationOwner { module_id }
+        }
+        CaptureError::UnknownLayer {
+            // The runtime's offending index is consumed here and never
+            // re-derived from a message string; AC-N2 names this CLI surface
+            // `NoApplicableLayer`.
+            global_layer_index: _,
+        } => VisualDebugError::NoApplicableLayer,
+        CaptureError::ProjectionRejected {
+            module_id,
+            view,
+            reason,
+        } => VisualDebugError::PreparationProjectionRejected {
+            module_id,
+            view,
+            reason,
+        },
+        CaptureError::Slice(error) => VisualDebugError::CaptureFailed(error.to_string()),
+    }
+}
+
+/// Run a schema-1.4.0 visual-debug request that names at least one
+/// [`TapSelector::Preparation`] tap.
+///
+/// One real prepared print runs through
+/// [`slicer_runtime::run_slice_preparation_visual_capture`]: preparation runs
+/// exactly once, the committed Ready plans are consumed by the ordinary stage
+/// taps when the request also names one (AC-5), and the preparation snapshots
+/// are rendered from the returned captures. No second slice is ever started to
+/// "compare" output.
+///
+/// Everything that can be rejected before module invocation — selector class,
+/// layer shape, tap membership, model/config load — fails closed here, before
+/// the output directory is touched. The bundle writer repeats the
+/// non-destructive guard as a last line of defence.
+fn run_preparation_visual_debug(
+    req: &VisualDebugRequest,
+    output_dir: &Path,
+    overwrite: bool,
+) -> Result<PathBuf, VisualDebugError> {
+    let VisualDebugSource::Model {
+        model,
+        config,
+        module_dirs,
+        ..
+    } = &req.source
+    else {
+        return Err(VisualDebugError::Validation(
+            ValidationError::PreparationUnsupportedSource,
+        ));
+    };
+
+    // Partition the tap classes: preparation taps become owner-scoped view
+    // requests, scheduler-stage taps become their real stage ids (never
+    // `Preparation::...`). Duplicates collapse in first-occurrence order:
+    // the runtime rejects a duplicate view request, and two identical taps
+    // describe one image, exactly like duplicate silhouette specs.
+    let mut preparation_views: Vec<slicer_runtime::PreparationViewRequest> = Vec::new();
+    let mut seen_views = std::collections::BTreeSet::<(String, String)>::new();
+    let mut stage_taps: Vec<String> = Vec::new();
+    let mut seen_taps = std::collections::BTreeSet::<String>::new();
+    for tap in &req.taps {
+        match tap {
+            TapSelector::Preparation { preparation } => {
+                if seen_views.insert((
+                    preparation.module_id().to_string(),
+                    preparation.view().to_string(),
+                )) {
+                    preparation_views.push(slicer_runtime::PreparationViewRequest {
+                        module_id: preparation.module_id().to_string(),
+                        view: preparation.view().to_string(),
+                    });
+                }
+            }
+            TapSelector::Name(_) | TapSelector::Detail { .. } => {
+                let id = tap_name(tap);
+                if !slicer_runtime::SUPPORTED_TAP_STAGE_IDS.contains(&id.as_str())
+                    && !slicer_runtime::layer_executor::BLACKBOARD_TAP_STAGE_IDS
+                        .contains(&id.as_str())
+                    && !slicer_runtime::layer_executor::POSTPASS_TAP_STAGE_IDS
+                        .contains(&id.as_str())
+                {
+                    return Err(VisualDebugError::UnsupportedTap(id));
+                }
+                if seen_taps.insert(id.clone()) {
+                    stage_taps.push(id);
+                }
+            }
+        }
+    }
+
+    let layer_indices = resolve_preparation_layer_indices(&req.layers)?;
+
+    let model_path = model
+        .clone()
+        .expect("validate_request: model source requires `model`");
+    let mesh = slicer_model_io::load_model(&model_path).map_err(|e| {
+        VisualDebugError::CaptureFailed(format!(
+            "failed to load model {}: {e}",
+            model_path.display()
+        ))
+    })?;
+    let config_source = load_visual_debug_config(config.as_deref())?;
+    // Model-authored layer ranges live only in a 3MF project's
+    // `Metadata/layer_config_ranges.xml` member; bare meshes (STL/OBJ) cannot
+    // carry them and are not probed. Same parse/mapping as `run_model_source`,
+    // so both paths seed the shared prefix identically.
+    let layer_ranges: Vec<slicer_config::LayerRangeInput> = if matches!(
+        slicer_model_io::detect_format(&model_path),
+        Ok(slicer_model_io::ModelFormat::ThreeMf)
+    ) {
+        let raw = slicer_model_io::read_3mf_layer_config_ranges(&model_path).map_err(|e| {
+            VisualDebugError::CaptureFailed(format!(
+                "failed to read layer ranges from {}: {e}",
+                model_path.display()
+            ))
+        })?;
+        let object_ids: Vec<slicer_ir::ObjectId> = mesh
+            .objects
+            .iter()
+            .map(|object| object.id.clone())
+            .collect();
+        slicer_model_io::map_layer_config_ranges(&raw, &object_ids)
+            .map_err(|e| {
+                VisualDebugError::CaptureFailed(format!(
+                    "failed to map layer ranges from {}: {e}",
+                    model_path.display()
+                ))
+            })?
+            .into_iter()
+            .map(|range| slicer_config::LayerRangeInput {
+                object_id: range.object_id,
+                source_index: range.source_index,
+                min_z: range.min_z,
+                max_z: range.max_z,
+                values: range.values,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let model_bounds = mesh_xy_bounds(&mesh);
+
+    let viewport = Viewport {
+        width: 1024 * req.resolution_scale,
+        height: 1024 * req.resolution_scale,
+    };
+    let opts = slicer_runtime::SliceRunOptions {
+        mesh: Arc::new(mesh),
+        model_label: model_path.display().to_string(),
+        config_path: config.clone(),
+        output_path: None,
+        module_dirs: module_dirs.to_vec(),
+        no_default_module_paths: false,
+        // Match the model-source visual-debug path (`prepare_prepass_context`
+        // with `no_integrated_modules = true`): the request's `module_dirs` are
+        // the explicit capture root, so the in-process integrated tier must not
+        // preempt a staged external component's claim.
+        no_integrated_modules: true,
+        thumbnail: None,
+        report: None,
+        report_verbose: false,
+        instrument_stderr: false,
+        profile: false,
+        profile_verbose: false,
+        progress_events: false,
+        cancel_flag: None,
+        config_overrides: std::collections::HashMap::new(),
+        layer_ranges,
+    };
+    let extensions =
+        slicer_runtime::SliceRuntimeExtensions::default().with_preparation_views(preparation_views);
+    let capture = slicer_runtime::run_slice_preparation_visual_capture(
+        opts,
+        extensions,
+        layer_indices,
+        stage_taps,
+    )
+    .map_err(map_preparation_visual_error)?;
+
+    // One bundle-wide viewport (AC-5: every mixed entry shares it). Model
+    // framing is the full requested scene unioned with the full model, so a
+    // subset render frames identically to an all-layer render; plate framing
+    // is exactly the bed.
+    let viewport_bounds = match req.frame {
+        FrameMode::Plate => preparation_plate_xy_bounds(&config_source)?,
+        FrameMode::Model => {
+            let captured = slicer_runtime::compute_viewport_bounds(capture.captures());
+            model_bounds.map_or(captured, |m| m.union(captured))
+        }
+    };
+
+    // Render every captured preparation projection. The renderer's
+    // preparation arm ignores the ordinary geometry view (it dispatches on
+    // `CapturedIr` before interpreting `GeometryView`), so a benign
+    // `FilledAreas` view and the default style are the exact request it
+    // expects; passing a diagnostic/tool style is rejected by the renderer.
+    let mut rendered: Vec<visual_debug_preparation::PreparationRenderedImage> = Vec::new();
+    for (capture_index, stage_capture) in capture.captures().iter().enumerate() {
+        let slicer_runtime::CapturedIr::PreparationProjection(projection) = &stage_capture.ir
+        else {
+            continue;
+        };
+        let (image, _events) = slicer_runtime::render_stage_capture_styled(
+            stage_capture,
+            slicer_runtime::RenderView::Geometry(slicer_runtime::GeometryView::FilledAreas),
+            req.resolution_scale,
+            viewport_bounds,
+            None,
+            &slicer_runtime::RenderStyle::default(),
+        )
+        .map_err(|e| VisualDebugError::RenderFailed(e.to_string()))?;
+        rendered.push(visual_debug_preparation::PreparationRenderedImage {
+            capture_index,
+            png_path: visual_debug_preparation::preparation_image_path(
+                projection.owner_module_id(),
+                projection.view(),
+                i64::from(stage_capture.layer_index),
+            ),
+            png_bytes: image.png_bytes,
+            world_bounds_mm: viewport_bounds,
+        });
+    }
+    if rendered.is_empty() {
+        return Err(VisualDebugError::CaptureFailed(
+            "the preparation visual capture returned no typed preparation projection captures, \
+             so the request cannot produce a successful bundle"
+                .into(),
+        ));
+    }
+
+    // Ordinary stage entries of a mixed request come from the same captures:
+    // the slice is never re-run to render them. `None` is the facade's missing
+    // blackboard (see `render_stage_entries`); everything else is the legacy
+    // non-silhouette loop unchanged.
+    let (legacy_images, legacy_files, tool_palette) = render_stage_entries(
+        capture.captures(),
+        req,
+        &viewport,
+        viewport_bounds,
+        &config_source,
+        None,
+    )?;
+
+    let metadata = visual_debug_preparation::PreparationBundleMetadata {
+        source: ManifestSource {
+            kind: "model".into(),
+            model: model.clone(),
+            path: None,
+        },
+        resolution_scale: req.resolution_scale,
+        viewport,
+        frame: req.frame.name().to_string(),
+        legend_version: legend_version_for(&req.schema_version).to_string(),
+        ir_schema_version: None,
+        gcode_parser_version: None,
+        warnings: Vec::new(),
+        layer_expansions: Vec::new(),
+        tool_palette,
+    };
+    let (manifest, mut files) = visual_debug_preparation::build_preparation_bundle(
+        &capture,
+        metadata,
+        legacy_images,
+        rendered,
+    )?;
+    files.extend(legacy_files);
+    visual_debug_preparation::write_preparation_bundle(output_dir, overwrite, &manifest, &files)
+}
+
 pub fn run_visual_debug(
     req: VisualDebugRequest,
     output_dir: &Path,
@@ -2962,6 +3851,14 @@ pub fn run_visual_debug(
         if entries.next().is_some() && !overwrite {
             return Err(VisualDebugError::NonEmptyOutputRequiresOverwrite);
         }
+    }
+
+    // Schema 1.4.0 (layer-module-preparation packet 06, Step 15): a request
+    // naming any preparation tap runs one real prepared print through the
+    // runtime facade and writes the typed preparation bundle. Every stage-only
+    // request keeps the legacy tuple/manifest/writer path below byte-identically.
+    if req.taps.iter().any(is_preparation_tap) {
+        return run_preparation_visual_debug(&req, output_dir, overwrite);
     }
 
     let scale = req.resolution_scale;
@@ -3938,5 +4835,74 @@ mod framing_tests {
             ]),
             "tool 0 must emit F6000, tool 1 F9000, and unconfigured tool 2 must fall back to global F15000"
         );
+    }
+}
+
+#[cfg(test)]
+mod preparation_visual_error_tests {
+    use super::*;
+
+    /// Every runtime visual-capture variant maps to the exact named CLI
+    /// surface, including the owner-state variants that the fixture-driven
+    /// end-to-end matrix can only reach on one leg.
+    #[test]
+    fn preparation_visual_error_mapping_is_exact_for_every_variant() {
+        use slicer_runtime::PreparationVisualCaptureError as CaptureError;
+        use slicer_schema::preparation::PreparationProjectionError;
+
+        let module_id = "test.preparation-visual".to_string();
+        let view = "probe_xy".to_string();
+
+        assert!(matches!(
+            map_preparation_visual_error(CaptureError::InvalidRequest {
+                detail: "bad request".into()
+            }),
+            VisualDebugError::Validation(ValidationError::InvalidPreparationSelector { .. })
+        ));
+        assert!(matches!(
+            map_preparation_visual_error(CaptureError::UnknownOwner {
+                module_id: module_id.clone()
+            }),
+            VisualDebugError::UnknownPreparationOwner { .. }
+        ));
+        assert!(matches!(
+            map_preparation_visual_error(CaptureError::UnknownView {
+                module_id: module_id.clone(),
+                view: view.clone()
+            }),
+            VisualDebugError::UnknownPreparationView { .. }
+        ));
+        assert!(matches!(
+            map_preparation_visual_error(CaptureError::UnsupportedOwner {
+                module_id: module_id.clone()
+            }),
+            VisualDebugError::PreparationUnsupportedOwner { .. }
+        ));
+        assert!(matches!(
+            map_preparation_visual_error(CaptureError::InactiveOwner {
+                module_id: module_id.clone()
+            }),
+            VisualDebugError::InactivePreparationOwner { .. }
+        ));
+        assert!(matches!(
+            map_preparation_visual_error(CaptureError::UnknownLayer {
+                global_layer_index: 99
+            }),
+            VisualDebugError::NoApplicableLayer
+        ));
+        assert!(matches!(
+            map_preparation_visual_error(CaptureError::ProjectionRejected {
+                module_id: module_id.clone(),
+                view: view.clone(),
+                reason: PreparationProjectionError::MissingScene,
+            }),
+            VisualDebugError::PreparationProjectionRejected { .. }
+        ));
+        assert!(matches!(
+            map_preparation_visual_error(CaptureError::Slice(slicer_runtime::SliceRunError(
+                "slice failed".into()
+            ))),
+            VisualDebugError::CaptureFailed(_)
+        ));
     }
 }

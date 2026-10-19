@@ -1,7 +1,7 @@
 package slicer:layer-preparation@1.0.0;
 
 interface preparation-types {
-    use slicer:types/geometry.{point3, point3-with-width, bounding-box3};
+    use slicer:types/geometry.{point2, point3, point3-with-width, bounding-box3};
     use slicer:config/config-types.{config-view};
     use slicer:ir-handles/ir-handles@1.0.0.{ex-polygon, paint-semantic, surface-group-id, surface-group, quartile-band, seam-position};
 
@@ -13,6 +13,46 @@ interface preparation-types {
         range-error,
         arithmetic-overflow,
         access-denied,
+    }
+
+    /// Diagnostic failures never use the opaque plan transport error domain.
+    enum preparation-projection-error {
+        access-denied,
+        not-requested,
+        undeclared-view,
+        duplicate-scene,
+        missing-scene,
+        invalid-reference,
+        invalid-shape,
+        invalid-coordinate,
+        arithmetic-overflow,
+        poisoned-output,
+    }
+
+    record preparation-projection-polygon {
+        polygon: ex-polygon,
+        filled: bool,
+    }
+
+    variant preparation-projection-geometry {
+        point(point2),
+        polyline(list<point2>),
+        polygon(preparation-projection-polygon),
+    }
+
+    record preparation-projection-primitive {
+        id: string,
+        global-layer-index: u32,
+        class: string,
+        label: option<string>,
+        geometry: preparation-projection-geometry,
+    }
+
+    record preparation-projection-scene {
+        scene-id: string,
+        view: string,
+        classes: list<string>,
+        primitives: list<preparation-projection-primitive>,
     }
 
     /// Typed input failures never use the plan transport error domain.
@@ -429,9 +469,15 @@ interface preparation-types {
         selected-targets: func(layer-index: u32, offset: u64, max-items: u64) -> result<list<preparation-selected-target>, preparation-input-error>;
     }
 
+    resource preparation-projection-output {
+        requested-views: func() -> result<list<string>, preparation-projection-error>;
+        publish: func(scene: preparation-projection-scene) -> result<_, preparation-projection-error>;
+    }
+
     resource prepared-plan-output {
         /// Publish one complete, unique named piece into staging.
         put: func(name: string, bytes: list<u8>) -> result<_, preparation-error>;
+        projection: func() -> result<option<preparation-projection-output>, preparation-projection-error>;
     }
 
     resource prepared-plan-view {

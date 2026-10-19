@@ -7,7 +7,9 @@ use slicer_ir::{ObjectSurfaceData, OverhangRegion, SurfaceClassificationIR};
 use slicer_schema::preparation::PreparationTransportError;
 use slicer_sdk::prelude::*;
 use slicer_sdk::preparation::{
-    with_prepared_plan, LayerPreparation, PreparationError, PreparedPieceCallbacks,
+    with_prepared_plan, LayerPreparation, PreparationError, PreparationProjectionError,
+    PreparationProjectionGeometry, PreparationProjectionOutput, PreparationProjectionPrimitive,
+    PreparationProjectionScene, PreparationProjectionWrite, PreparedPieceCallbacks,
     PreparedPlanCallbacks, PreparedPlanOutput, PreparedPlanView, PrintPreparationInput,
 };
 use slicer_sdk::preparation::{with_prepared_plan_view, PreparedPieceRead, PreparedPlanRead};
@@ -17,6 +19,234 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
+
+#[derive(Default)]
+struct ProjectionWriter {
+    scenes: Mutex<Vec<PreparationProjectionScene>>,
+    views_error: Option<PreparationProjectionError>,
+    publish_error: Option<PreparationProjectionError>,
+}
+
+impl PreparationProjectionWrite for ProjectionWriter {
+    fn requested_views(&self) -> Result<Vec<String>, PreparationProjectionError> {
+        match self.views_error {
+            Some(error) => Err(error),
+            None => Ok(vec!["probe_xy".to_owned()]),
+        }
+    }
+
+    fn publish(
+        &self,
+        scene: &PreparationProjectionScene,
+    ) -> Result<(), PreparationProjectionError> {
+        if let Some(error) = self.publish_error {
+            return Err(error);
+        }
+        self.scenes.lock().unwrap().push(scene.clone());
+        Ok(())
+    }
+}
+
+#[test]
+fn preparation_projection_no_request_is_none_and_publishes_nothing() {
+    let writer = Arc::new(ProjectionWriter::default());
+    let requested = false;
+    let callback_writer = Arc::clone(&writer);
+    let output = PreparedPlanOutput::from_callbacks(
+        |_, _| Ok(()),
+        move || {
+            Ok(requested
+                .then(|| PreparationProjectionOutput::from_host_writer(callback_writer.clone())))
+        },
+    );
+    assert!(output.projection().unwrap().is_none());
+    assert!(output.projection().unwrap().is_none());
+    assert_eq!(writer.scenes.lock().unwrap().len(), 0);
+
+    let callback_output = PreparedPlanOutput::from_callback(|_, _| Ok(()));
+    assert!(callback_output.projection().unwrap().is_none());
+    let native_output = PreparedPlanOutput::from_host_writer(Arc::new(|_, _| Ok(())));
+    assert!(native_output.projection().unwrap().is_none());
+}
+
+#[test]
+fn preparation_projection_callback_preserves_geometry_labels_and_ids() {
+    let writer = Arc::new(ProjectionWriter::default());
+    let callback_writer = Arc::clone(&writer);
+    let output = PreparedPlanOutput::from_callbacks(
+        |_, _| Ok(()),
+        move || {
+            Ok(Some(PreparationProjectionOutput::from_host_writer(
+                callback_writer.clone(),
+            )))
+        },
+    );
+    let sink = output.projection().unwrap().expect("requested sink");
+    assert_eq!(sink.requested_views().unwrap(), ["probe_xy"]);
+    let scene = PreparationProjectionScene {
+        scene_id: "final".to_owned(),
+        view: "probe_xy".to_owned(),
+        classes: vec![
+            "anchors".to_owned(),
+            "domains".to_owned(),
+            "paths".to_owned(),
+        ],
+        primitives: vec![
+            // exhaustive: callback contract pins every primitive identity and geometry field
+            PreparationProjectionPrimitive {
+                id: "anchor_a".to_owned(),
+                global_layer_index: 0,
+                class: "anchors".to_owned(),
+                label: Some("anchor 輪郭".to_owned()),
+                geometry: PreparationProjectionGeometry::Point(Point2 { x: 10000, y: 20000 }),
+            },
+            // exhaustive: callback contract pins every primitive identity and geometry field
+            PreparationProjectionPrimitive {
+                id: "path_a".to_owned(),
+                global_layer_index: 1,
+                class: "paths".to_owned(),
+                label: Some("route".to_owned()),
+                geometry: PreparationProjectionGeometry::Polyline(vec![
+                    Point2 { x: 0, y: 0 },
+                    Point2 { x: 20000, y: 0 },
+                ]),
+            },
+            // exhaustive: callback contract pins every primitive identity and geometry field
+            PreparationProjectionPrimitive {
+                id: "domain_a".to_owned(),
+                global_layer_index: 0,
+                class: "domains".to_owned(),
+                label: None,
+                geometry: PreparationProjectionGeometry::Polygon {
+                    polygon: ExPolygon {
+                        contour: Polygon {
+                            points: vec![
+                                Point2 { x: 0, y: 0 },
+                                Point2 { x: 40000, y: 0 },
+                                Point2 { x: 40000, y: 40000 },
+                                Point2 { x: 0, y: 40000 },
+                            ],
+                        },
+                        holes: vec![Polygon {
+                            points: vec![
+                                Point2 { x: 10000, y: 10000 },
+                                Point2 { x: 10000, y: 30000 },
+                                Point2 { x: 30000, y: 30000 },
+                                Point2 { x: 30000, y: 10000 },
+                            ],
+                        }],
+                    },
+                    filled: true,
+                },
+            },
+        ],
+    };
+    sink.publish(&scene).unwrap();
+
+    let scenes = writer.scenes.lock().unwrap();
+    assert_eq!(scenes.len(), 1);
+    let received = &scenes[0];
+    assert_eq!(received.scene_id, "final");
+    assert_eq!(received.view, "probe_xy");
+    assert_eq!(received.classes, ["anchors", "domains", "paths"]);
+    assert_eq!(received.primitives.len(), 3);
+    let identities: Vec<_> = received
+        .primitives
+        .iter()
+        .map(|primitive| {
+            (
+                primitive.id.as_str(),
+                primitive.global_layer_index,
+                primitive.class.as_str(),
+                primitive.label.as_deref(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        identities,
+        [
+            ("anchor_a", 0, "anchors", Some("anchor 輪郭")),
+            ("path_a", 1, "paths", Some("route")),
+            ("domain_a", 0, "domains", None),
+        ]
+    );
+    assert_eq!(
+        received.primitives[0].geometry,
+        PreparationProjectionGeometry::Point(Point2 { x: 10000, y: 20000 })
+    );
+    assert_eq!(
+        received.primitives[1].geometry,
+        PreparationProjectionGeometry::Polyline(vec![
+            Point2 { x: 0, y: 0 },
+            Point2 { x: 20000, y: 0 },
+        ])
+    );
+    let PreparationProjectionGeometry::Polygon { polygon, filled } =
+        &received.primitives[2].geometry
+    else {
+        panic!("domain_a must remain a polygon");
+    };
+    assert!(*filled);
+    let coordinates =
+        |points: &[Point2]| -> Vec<_> { points.iter().map(|point| (point.x, point.y)).collect() };
+    assert_eq!(
+        coordinates(&polygon.contour.points),
+        [(0, 0), (40000, 0), (40000, 40000), (0, 40000)]
+    );
+    assert_eq!(polygon.holes.len(), 1);
+    assert_eq!(
+        coordinates(&polygon.holes[0].points),
+        [
+            (10000, 10000),
+            (10000, 30000),
+            (30000, 30000),
+            (30000, 10000)
+        ]
+    );
+}
+
+#[test]
+fn preparation_projection_callbacks_preserve_exact_typed_errors() {
+    let denied = PreparedPlanOutput::from_callbacks(
+        |_, _| Ok(()),
+        || Err(PreparationProjectionError::AccessDenied),
+    );
+    assert_eq!(
+        denied.projection().err(),
+        Some(PreparationProjectionError::AccessDenied)
+    );
+
+    let writer = Arc::new(ProjectionWriter {
+        views_error: Some(PreparationProjectionError::UndeclaredView),
+        publish_error: Some(PreparationProjectionError::InvalidCoordinate),
+        ..Default::default()
+    });
+    let callback_writer = Arc::clone(&writer);
+    let output = PreparedPlanOutput::from_callbacks(
+        |_, _| Ok(()),
+        move || {
+            Ok(Some(PreparationProjectionOutput::from_host_writer(
+                callback_writer.clone(),
+            )))
+        },
+    );
+    let sink = output.projection().unwrap().expect("requested sink");
+    assert_eq!(
+        sink.requested_views(),
+        Err(PreparationProjectionError::UndeclaredView)
+    );
+    let scene = PreparationProjectionScene {
+        scene_id: "final".to_owned(),
+        view: "probe_xy".to_owned(),
+        classes: vec!["anchors".to_owned()],
+        primitives: Vec::new(),
+    };
+    assert_eq!(
+        sink.publish(&scene),
+        Err(PreparationProjectionError::InvalidCoordinate)
+    );
+    assert_eq!(writer.scenes.lock().unwrap().len(), 0);
+}
 
 struct TransportPiece(&'static [u8]);
 

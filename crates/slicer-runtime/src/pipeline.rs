@@ -8,7 +8,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::sync::Arc;
 
-use slicer_ir::{ConfigKey, ConfigValue, LayerCollectionIR, MeshIR, ModuleId, ResolvedConfig};
+use slicer_ir::{
+    ConfigKey, ConfigValue, LayerCollectionIR, MeshIR, ModuleId, ResolvedConfig, StageId,
+};
 use slicer_sdk::native::NativeStageEntry;
 use slicer_wasm_host::{WasmComponent, WasmInstancePool};
 
@@ -25,9 +27,10 @@ use slicer_gcode::{
 };
 
 use crate::layer_executor::{
-    build_and_commit_layer_selection_index,
+    build_and_commit_layer_selection_index, execute_blackboard_taps,
+    execute_captured_stages_with_support_tools,
     execute_per_layer_with_committed_anchored_events_instrumented, promote_global_layers,
-    SupportToolSelection,
+    CaptureExecutionError, CaptureRequest, StageCapture, SupportToolSelection,
 };
 use crate::{
     compute_serial_edges_from_compiled, execute_layer_finalization_with_instrumentation,
@@ -346,8 +349,166 @@ fn run_pipeline_core(
         lifecycle,
         wrap_serializer,
         false,
+        None,
     )
     .map(|output| output.expect("full pipeline completes consumers"))
+}
+
+/// Private tap-completion state for one preparation visual run.
+///
+/// The public facade is `run_slice_preparation_visual_capture` in
+/// `crate::run`, which also validates the request shape. This carrier exists
+/// so the shared pipeline can report typed layer/owner resolution and real
+/// truncated selected-layer capture evidence without widening the public
+/// `PipelineError` (which stays a string-preserving ordinary surface).
+pub(crate) struct PreparationVisualCompletion {
+    /// Requested global layer indices, already deduplicated by the facade.
+    pub(crate) layers: Vec<u32>,
+    /// Requested stage taps, already classified by the facade.
+    pub(crate) stage_taps: Vec<StageId>,
+    /// Real captures and execution evidence, filled after preparation.
+    pub(crate) parts: Option<PreparationVisualParts>,
+    /// Typed visual failure; the pipeline returns a sentinel error so the
+    /// facade can prefer this typed value over formatted text.
+    pub(crate) error: Option<crate::preparation_lifecycle::PreparationVisualCaptureError>,
+}
+
+/// Captures and executed-closure evidence produced by the visual completion.
+#[derive(Default)]
+pub(crate) struct PreparationVisualParts {
+    /// Ordinary stage captures, sorted by the executors' own tap/layer order.
+    pub(crate) captures: Vec<StageCapture>,
+    /// Per-layer stage ids the truncated closure actually ran.
+    pub(crate) executed_stage_ids: Vec<StageId>,
+    /// Global layer indices actually executed (never the rendered subset when
+    /// the closure and the request differ).
+    pub(crate) executed_layer_indices: Vec<u32>,
+}
+
+/// Resolve requested layers and eligible owner participation after the
+/// committed selection and before any preparation invocation.
+///
+/// Layer membership is read from the promoted committed schedule; owner
+/// participation uses exactly the same selection predicate as
+/// `capture_committed_selection` (a layer whose selection both invokes the
+/// owner and carries targets). An owner that never participates has no Ready
+/// plan to publish a requested view, so the request fails closed as inactive.
+fn resolve_preparation_visual_request(
+    plan: &ExecutionPlan,
+    blackboard: &Blackboard,
+    lifecycle: &crate::preparation_lifecycle::PrintPreparationScope,
+    completion: &PreparationVisualCompletion,
+) -> Result<(), crate::preparation_lifecycle::PreparationVisualCaptureError> {
+    use crate::preparation_lifecycle::PreparationVisualCaptureError as VisualError;
+
+    let schedule_layers: std::collections::HashSet<u32> =
+        plan.global_layers.iter().map(|layer| layer.index).collect();
+    for &global_layer_index in &completion.layers {
+        if !schedule_layers.contains(&global_layer_index) {
+            return Err(VisualError::UnknownLayer { global_layer_index });
+        }
+    }
+
+    let selection = blackboard.layer_selection_index().ok_or_else(|| {
+        VisualError::Slice(crate::run::SliceRunError(
+            "preparation visual request: committed layer selection index missing".into(),
+        ))
+    })?;
+    for request in lifecycle.preparation_views() {
+        let participates = plan.global_layers.iter().any(|layer| {
+            selection
+                .selection_for(layer.index, &request.module_id)
+                .is_some_and(|selected| selected.invoke && !selected.targets.is_empty())
+        });
+        if !participates {
+            return Err(VisualError::InactiveOwner {
+                module_id: request.module_id.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Run the real truncated selected-layer capture executor for per-layer taps
+/// and the committed-slot reader for prepass taps.
+///
+/// The lifecycle-aware `PreparedLayerStageRunner` is passed unchanged, so
+/// consumer calls consume the same Ready plans preparation just published.
+///
+/// Requested taps are partitioned into ADR-0040's three classes. Per-layer
+/// taps run the truncated selected-layer closure and blackboard taps read
+/// already-committed slots. A whole-print postpass tap is refused before any
+/// capture runs: ADR-0040's furthest-stage rule makes that tap a full
+/// prepass -> all per-layer stages over all layers -> layer finalization ->
+/// postpass closure, while this visual path disposes the print scope right
+/// after preparation (`run_pipeline_until_preparation` returns `Ok(None)`
+/// below). Executing only the truncated closure and presenting the result as
+/// a postpass capture would fabricate execution evidence, so the path fails
+/// closed with a named error instead of `UnknownTap` or a silent success.
+fn execute_preparation_visual_taps(
+    plan: &ExecutionPlan,
+    blackboard: &Blackboard,
+    runner: &(dyn LayerStageRunner + Sync),
+    wasm_handles: &HashMap<
+        ModuleId,
+        (
+            Arc<WasmInstancePool>,
+            Option<Arc<WasmComponent>>,
+            Option<NativeStageEntry>,
+        ),
+    >,
+    support_tools: SupportToolSelection,
+    completion: &PreparationVisualCompletion,
+) -> Result<PreparationVisualParts, crate::preparation_lifecycle::PreparationVisualCaptureError> {
+    use crate::preparation_lifecycle::preparation_visual_capture::{
+        classify_preparation_visual_taps, postpass_tap_closure_not_forwarded,
+    };
+    use crate::preparation_lifecycle::PreparationVisualCaptureError as VisualError;
+
+    let capture_failure = |error: CaptureExecutionError| {
+        VisualError::Slice(crate::run::SliceRunError(error.to_string()))
+    };
+
+    let classes =
+        classify_preparation_visual_taps(&completion.stage_taps).map_err(capture_failure)?;
+    if let Some(error) = postpass_tap_closure_not_forwarded(&classes.postpass) {
+        return Err(error);
+    }
+
+    let mut parts = PreparationVisualParts::default();
+    if !classes.per_layer.is_empty() {
+        let output = execute_captured_stages_with_support_tools(
+            plan,
+            blackboard,
+            runner,
+            wasm_handles,
+            support_tools,
+            &CaptureRequest {
+                stage_ids: classes.per_layer,
+                layer_indices: completion.layers.clone(),
+            },
+        )
+        .map_err(capture_failure)?;
+        parts.captures.extend(output.captures);
+        parts.executed_stage_ids.extend(output.closure_stage_ids);
+        parts
+            .executed_layer_indices
+            .extend(output.executed_layer_indices);
+    }
+    if !classes.blackboard.is_empty() {
+        // Prepass taps read already-committed slots; they execute no layer and
+        // therefore add nothing to either execution axis.
+        let output = execute_blackboard_taps(
+            blackboard,
+            &CaptureRequest {
+                stage_ids: classes.blackboard,
+                layer_indices: completion.layers.clone(),
+            },
+        )
+        .map_err(capture_failure)?;
+        parts.captures.extend(output.captures);
+    }
+    Ok(parts)
 }
 
 /// Both full slicing and metadata capture enter this body; capture exits only
@@ -362,6 +523,7 @@ pub(crate) fn run_pipeline_until_preparation(
     lifecycle: Option<&crate::preparation_lifecycle::PrintPreparationScope>,
     wrap_serializer: bool,
     preparation_only: bool,
+    mut visual: Option<&mut PreparationVisualCompletion>,
 ) -> Result<Option<PipelineOutput>, PipelineError> {
     let PipelineConfig {
         mesh_ir,
@@ -458,12 +620,54 @@ pub(crate) fn run_pipeline_until_preparation(
                     module_id: "host".into(),
                     message,
                 })?;
+            if let Some(completion) = visual.as_deref() {
+                let resolution =
+                    resolve_preparation_visual_request(&plan, &blackboard, lifecycle, completion);
+                if let Err(error) = resolution {
+                    // The typed value is the authoritative failure; the
+                    // pipeline error only carries the run out of the shared
+                    // body. The facade prefers `completion.error`.
+                    if let Some(completion) = visual.as_deref_mut() {
+                        completion.error = Some(error);
+                    }
+                    return Err(PipelineError::ModelLoad(
+                        "preparation visual request rejected before preparation".into(),
+                    ));
+                }
+            }
             lifecycle.prepare_committed(cancel_flag.clone())?;
         }
         Ok(())
     })();
     instrumentation.on_phase_end(Phase::PrePass);
     preparation_result?;
+
+    if let Some(completion) = visual {
+        let taps = execute_preparation_visual_taps(
+            &plan,
+            &blackboard,
+            runners.layer.as_ref(),
+            &wasm_handles,
+            support_tools,
+            completion,
+        );
+        match taps {
+            Ok(parts) => completion.parts = Some(parts),
+            Err(error) => {
+                // The typed value is the authoritative failure (including the
+                // named postpass-closure rejection); the pipeline error only
+                // carries the run out of the shared body, and the facade
+                // prefers `completion.error`.
+                completion.error = Some(error);
+                return Err(PipelineError::ModelLoad(
+                    "preparation visual tap capture failed".into(),
+                ));
+            }
+        }
+        // Visual completion never enters the per-layer, finalization or
+        // postpass closure; callers dispose the print scope immediately.
+        return Ok(None);
+    }
 
     if preparation_only {
         return Ok(None);

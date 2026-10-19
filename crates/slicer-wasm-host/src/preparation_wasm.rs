@@ -7,6 +7,60 @@ use super::PreparedHostState;
 use crate::host::HostExecutionContext;
 use wasmtime::component::{HasSelf, Linker};
 
+impl From<super::PreparationProjectionError> for preparation_types::PreparationProjectionError {
+    fn from(error: super::PreparationProjectionError) -> Self {
+        use super::PreparationProjectionError as E;
+        match error {
+            E::AccessDenied => Self::AccessDenied,
+            E::NotRequested => Self::NotRequested,
+            E::UndeclaredView => Self::UndeclaredView,
+            E::DuplicateScene => Self::DuplicateScene,
+            E::MissingScene => Self::MissingScene,
+            E::InvalidReference => Self::InvalidReference,
+            E::InvalidShape => Self::InvalidShape,
+            E::InvalidCoordinate => Self::InvalidCoordinate,
+            E::ArithmeticOverflow => Self::ArithmeticOverflow,
+            E::PoisonedOutput => Self::PoisonedOutput,
+        }
+    }
+}
+
+/// Exact s64/u32 DTO mapping; no float conversion or narrowing casts.
+pub(super) fn projection_scene(
+    scene: preparation_types::PreparationProjectionScene,
+) -> slicer_sdk::preparation::PreparationProjectionScene {
+    use preparation_types::PreparationProjectionGeometry as G;
+    use slicer_sdk::preparation as dto;
+    let point = |p: crate::host::layer_perimeters::slicer::types::geometry::Point2| {
+        slicer_ir::Point2 { x: p.x, y: p.y }
+    };
+    dto::PreparationProjectionScene {
+        scene_id: scene.scene_id,
+        view: scene.view,
+        classes: scene.classes,
+        primitives: scene
+            .primitives
+            .into_iter()
+            .map(|p| dto::PreparationProjectionPrimitive {
+                id: p.id,
+                global_layer_index: p.global_layer_index,
+                class: p.class,
+                label: p.label,
+                geometry: match p.geometry {
+                    G::Point(p) => dto::PreparationProjectionGeometry::Point(point(p)),
+                    G::Polyline(points) => dto::PreparationProjectionGeometry::Polyline(
+                        points.into_iter().map(point).collect(),
+                    ),
+                    G::Polygon(p) => dto::PreparationProjectionGeometry::Polygon {
+                        polygon: crate::marshal::wit_to_ir_expolygon(&p.polygon),
+                        filled: p.filled,
+                    },
+                },
+            })
+            .collect(),
+    }
+}
+
 pub(super) struct FrozenWasmArtifact {
     pub(super) engine: wasmtime::Engine,
     pub(super) component: wasmtime::component::Component,
@@ -144,6 +198,8 @@ pub(super) fn linker(
         "path-optimization-module" => ordinary!(layer_path_optimization, PathOptimizationModule),
         _ => wasmtime::bail!("unsupported preparation stage: {stage_id}"),
     }
+    // This single canonical interface registration includes the projection
+    // resource and records for every composed world, on the ordinary table.
     preparation_types::add_to_linker::<_, HasSelf<PreparedHostState>>(&mut linker, |state| state)?;
     plan_access::add_to_linker::<_, HasSelf<PreparedHostState>>(&mut linker, |state| state)?;
     Ok(linker)

@@ -2,9 +2,17 @@
 
 pub use crate::run::{run_slice_preparation_capture, run_slice_with_runtime_extensions};
 
+#[path = "preparation_visual_capture.rs"]
+pub(crate) mod preparation_visual_capture;
+
+pub use preparation_visual_capture::{
+    PreparationViewRequest, PreparationVisualCapture, PreparationVisualCaptureError,
+};
+
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use crate::layer_executor::StageCapture;
 use slicer_ir::{GlobalLayer, LayerStageCommit, LayerStageError, ModuleId, StageId};
 use slicer_scheduler::IntegratedModuleRegistration;
 use slicer_sdk::native::NativePreparedStageEntry;
@@ -24,6 +32,7 @@ pub struct SliceRuntimeExtensions {
     anchored_entities: Vec<slicer_ir::AnchoredEntity>,
     observer: Option<Arc<dyn PreparationLifecycleObserver>>,
     scope_outlet: Option<Arc<dyn Fn(&Arc<PrintPreparationScope>) + Send + Sync>>,
+    preparation_views: Vec<PreparationViewRequest>,
 }
 
 impl SliceRuntimeExtensions {
@@ -44,6 +53,7 @@ impl SliceRuntimeExtensions {
             anchored_entities,
             observer,
             scope_outlet: None,
+            preparation_views: Vec::new(),
         }
     }
 
@@ -53,6 +63,16 @@ impl SliceRuntimeExtensions {
         outlet: Option<Arc<dyn Fn(&Arc<PrintPreparationScope>) + Send + Sync>>,
     ) -> Self {
         self.scope_outlet = outlet;
+        self
+    }
+
+    /// Request owner-scoped typed preparation views for this print (opt-in).
+    ///
+    /// Without this call the extension stays semantically default: no view is
+    /// requested, no diagnostic collection is allocated beyond the empty
+    /// `Vec`, and preparation runs the plain publication path unchanged.
+    pub fn with_preparation_views(mut self, views: Vec<PreparationViewRequest>) -> Self {
+        self.preparation_views = views;
         self
     }
 
@@ -71,6 +91,7 @@ impl SliceRuntimeExtensions {
             anchored_entities,
             observer,
             scope_outlet,
+            preparation_views,
         } = self;
         let scope = Arc::new(PrintPreparationScope {
             prepared_native,
@@ -83,6 +104,8 @@ impl SliceRuntimeExtensions {
             records: Mutex::new(Vec::new()),
             cancel_flag: Mutex::new(None),
             store: slicer_wasm_host::preparation::PreparedOwnerStore::new(),
+            preparation_views,
+            first_projection_failure: Mutex::new(None),
         });
         if let Some(outlet) = scope_outlet {
             outlet(&scope);
@@ -247,6 +270,18 @@ pub struct PrintPreparationScope {
     records: Mutex<Vec<PreparationLifecycleRecord>>,
     cancel_flag: Mutex<Option<Arc<std::sync::atomic::AtomicBool>>>,
     store: slicer_wasm_host::preparation::PreparedOwnerStore,
+    preparation_views: Vec<PreparationViewRequest>,
+    /// First typed projection validation failure observed during publication.
+    /// Populated only when the producer's publication rejection is the host's
+    /// own projection validator (`PublicationRejected` with the projection
+    /// detail prefix), so an original module error/trap keeps precedence.
+    first_projection_failure: Mutex<
+        Option<(
+            ModuleId,
+            String,
+            slicer_schema::preparation::PreparationProjectionError,
+        )>,
+    >,
 }
 
 // Kept private to the print, never added to loader or pipeline envelopes.
@@ -272,6 +307,27 @@ struct CommittedPreparationSelection {
 impl PrintPreparationScope {
     pub(crate) fn observer(&self) -> Option<&dyn PreparationLifecycleObserver> {
         self._observer.as_deref()
+    }
+
+    /// Owner-scoped typed views requested for this print; empty by default.
+    pub(crate) fn preparation_views(&self) -> &[PreparationViewRequest] {
+        &self.preparation_views
+    }
+
+    /// Take the first typed projection validation failure, when the producer's
+    /// publication was rejected by the host projection validator. A module
+    /// error/trap/cancellation never populates this sidecar.
+    pub(crate) fn take_first_projection_failure(
+        &self,
+    ) -> Option<(
+        ModuleId,
+        String,
+        slicer_schema::preparation::PreparationProjectionError,
+    )> {
+        self.first_projection_failure
+            .lock()
+            .expect("print projection failure poisoned")
+            .take()
     }
 
     pub(crate) fn set_selected(&self, mut selected: Vec<SelectedPreparationBinding>) {
@@ -465,7 +521,9 @@ impl PrintPreparationScope {
         &self,
         cancel_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
     ) -> Result<(), crate::pipeline::PipelineError> {
-        use slicer_wasm_host::preparation::{PreparationFailure, PreparationInputData};
+        use slicer_wasm_host::preparation::{
+            PreparationFailure, PreparationInputData, PreparationProjectionRequest,
+        };
         *self
             .cancel_flag
             .lock()
@@ -542,16 +600,47 @@ impl PrintPreparationScope {
                     if self.capture_requested {
                         committed.readers.push((position, input.clone()));
                     }
-                    frozen.binding.prepare_with_publication(&owner, input, |_| {
-                        if self.is_cancelled() {
-                            cancelled_at_publication = true;
-                            Err(PreparationFailure::PublicationRejected {
-                                detail: "cooperative cancellation before publication".into(),
+                    let views: Vec<String> = self
+                        .preparation_views()
+                        .iter()
+                        .filter(|request| request.module_id == frozen.module_id)
+                        .map(|request| request.view.clone())
+                        .collect();
+                    if views.is_empty() {
+                        frozen.binding.prepare_with_publication(&owner, input, |_| {
+                            if self.is_cancelled() {
+                                cancelled_at_publication = true;
+                                Err(PreparationFailure::PublicationRejected {
+                                    detail: "cooperative cancellation before publication".into(),
+                                })
+                            } else {
+                                Ok(())
+                            }
+                        })
+                    } else {
+                        let request =
+                            PreparationProjectionRequest::new(views).map_err(|error| {
+                                PreparationFailure::PublicationRejected {
+                                    detail: format!(
+                                        "preparation projection: {error:?}: owner={}",
+                                        frozen.module_id
+                                    ),
+                                }
+                            })?;
+                        frozen
+                            .binding
+                            .prepare_with_diagnostics(&owner, input, request, |_| {
+                                if self.is_cancelled() {
+                                    cancelled_at_publication = true;
+                                    Err(PreparationFailure::PublicationRejected {
+                                        detail: "cooperative cancellation before publication"
+                                            .into(),
+                                    })
+                                } else {
+                                    Ok(())
+                                }
                             })
-                        } else {
-                            Ok(())
-                        }
-                    })
+                    }
                 })
                 .and_then(|()| self.store.current(&owner).map(|_| ()));
             let elapsed = started.map(|started| started.elapsed());
@@ -567,6 +656,23 @@ impl PrintPreparationScope {
                 return Err(Self::cancelled_error());
             }
             if let Err(failure) = result {
+                // Preserve the typed projection reason only when the host's
+                // own publication validator rejected the producer's scene. A
+                // module error/trap/cancellation is a different variant and
+                // keeps its precedence.
+                if matches!(
+                    &failure,
+                    PreparationFailure::PublicationRejected { detail }
+                        if detail.starts_with("preparation projection:")
+                ) {
+                    if let Ok(Some((view, reason))) = self.store.projection_failure(&owner) {
+                        *self
+                            .first_projection_failure
+                            .lock()
+                            .expect("print projection failure poisoned") =
+                            Some((frozen.module_id.clone(), view, reason));
+                    }
+                }
                 let failure = Arc::new(failure);
                 self.observe_owner(
                     frozen,
@@ -695,6 +801,141 @@ impl PrintPreparationScope {
         }
         capture.lifecycle = self.records.lock().expect("print records poisoned").clone();
         Ok(capture)
+    }
+
+    /// Capture requested typed preparation views and the #05 metadata, then
+    /// dispose every owner before returning.
+    ///
+    /// The committed guard is scoped so no plan authority outlives the reads;
+    /// projection scenes are shared immutable snapshots, so the returned
+    /// companion stays valid after disposal.
+    pub(crate) fn capture_visual_and_dispose(
+        &self,
+        rendered_layers: &[u32],
+        executed_stage_ids: Vec<StageId>,
+        executed_layer_indices: Vec<u32>,
+        tap_captures: Vec<StageCapture>,
+    ) -> Result<PreparationVisualCapture, PreparationVisualCaptureError> {
+        use crate::layer_executor::CapturedIr;
+        use crate::run::SliceRunError;
+        use slicer_sdk::preparation::PreparationProjectionError;
+
+        let selected = self
+            .selected
+            .lock()
+            .expect("print selection poisoned")
+            .clone();
+        let owners = self.owners.lock().expect("print owners poisoned").clone();
+        let mut schedule = Vec::new();
+        let mut projection_captures = Vec::new();
+        let mut diagnostic_accounting = Vec::new();
+        {
+            let committed = self.committed.lock().expect("print inputs poisoned");
+            let committed = committed.as_ref().ok_or_else(|| {
+                PreparationVisualCaptureError::InvalidRequest {
+                    detail: "preparation visual capture: committed selection missing".into(),
+                }
+            })?;
+            for (position, owner) in &owners {
+                let frozen = &selected[*position];
+                let reader = committed
+                    .readers
+                    .iter()
+                    .find(|(index, _)| index == position)
+                    .map(|(_, reader)| reader)
+                    .ok_or_else(|| {
+                        PreparationVisualCaptureError::Slice(SliceRunError(format!(
+                            "preparation visual capture: committed reader missing for owner '{}'",
+                            frozen.module_id
+                        )))
+                    })?;
+                if schedule.is_empty() {
+                    schedule = reader.schedule_snapshot().map_err(|error| {
+                        PreparationVisualCaptureError::Slice(SliceRunError(error.to_string()))
+                    })?;
+                }
+                let handle = self.store.current(owner).map_err(|failure| {
+                    PreparationVisualCaptureError::Slice(SliceRunError(failure.to_string()))
+                })?;
+                if let Some((view, reason)) =
+                    self.store.projection_failure(owner).map_err(|failure| {
+                        PreparationVisualCaptureError::Slice(SliceRunError(failure.to_string()))
+                    })?
+                {
+                    return Err(PreparationVisualCaptureError::ProjectionRejected {
+                        module_id: frozen.module_id.clone(),
+                        view,
+                        reason,
+                    });
+                }
+                for request in self
+                    .preparation_views()
+                    .iter()
+                    .filter(|request| request.module_id == frozen.module_id)
+                {
+                    let scene = handle
+                        .projection(&request.view)
+                        .map_err(|reason| PreparationVisualCaptureError::ProjectionRejected {
+                            module_id: frozen.module_id.clone(),
+                            view: request.view.clone(),
+                            reason,
+                        })?
+                        .ok_or_else(|| PreparationVisualCaptureError::ProjectionRejected {
+                            module_id: frozen.module_id.clone(),
+                            view: request.view.clone(),
+                            reason: PreparationProjectionError::MissingScene,
+                        })?;
+                    for &layer in rendered_layers {
+                        let layer_z = scene.layer_z(layer).ok_or_else(|| {
+                            PreparationVisualCaptureError::ProjectionRejected {
+                                module_id: frozen.module_id.clone(),
+                                view: request.view.clone(),
+                                reason: PreparationProjectionError::InvalidReference,
+                            }
+                        })?;
+                        projection_captures.push(StageCapture {
+                            stage_id: frozen.consumer_stage.clone(),
+                            layer_index: layer,
+                            layer_z,
+                            ir: CapturedIr::PreparationProjection(Arc::clone(&scene)),
+                        });
+                    }
+                    // One accounting entry per owner/view, never per layer.
+                    diagnostic_accounting
+                        .push((frozen.module_id.clone(), scene.diagnostic_bytes()));
+                }
+            }
+        }
+        let metadata = self.snapshot_and_dispose().map_err(|failure| {
+            PreparationVisualCaptureError::Slice(SliceRunError(failure.to_string()))
+        })?;
+        diagnostic_accounting.sort_by(|left, right| left.0.cmp(&right.0));
+        projection_captures.sort_by(|left, right| {
+            let left_key = match &left.ir {
+                CapturedIr::PreparationProjection(scene) => {
+                    (scene.owner_module_id(), scene.view(), left.layer_index)
+                }
+                _ => ("", "", left.layer_index),
+            };
+            let right_key = match &right.ir {
+                CapturedIr::PreparationProjection(scene) => {
+                    (scene.owner_module_id(), scene.view(), right.layer_index)
+                }
+                _ => ("", "", right.layer_index),
+            };
+            left_key.cmp(&right_key)
+        });
+        let mut captures = tap_captures;
+        captures.extend(projection_captures);
+        Ok(PreparationVisualCapture::from_parts(
+            metadata,
+            captures,
+            diagnostic_accounting,
+            executed_stage_ids,
+            executed_layer_indices,
+            rendered_layers.to_vec(),
+            schedule,
+        ))
     }
 
     /// Release print-owned state after the pipeline has joined all work, even

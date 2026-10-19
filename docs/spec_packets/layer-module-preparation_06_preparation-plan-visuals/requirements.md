@@ -2,7 +2,7 @@
 
 ## Packet Metadata
 
-Status draft; aggregate context M. This file owns scope and the verification matrix; task-map owns the TASK-575 backlog crosswalk. `#03`/`#04`/`#05` were `status: implemented` when re-verified on 2026-10-17, so this packet consumes shipped interfaces rather than forward-declaring them. Creation is authorized by approved queue row06; no implementation is authorized by generation.
+Status implemented; aggregate context M. This file owns scope and the verification matrix; task-map owns the TASK-575 backlog crosswalk. `#03`/`#04`/`#05` were `status: implemented` when re-verified on 2026-10-17, so this packet consumes shipped interfaces rather than forward-declaring them. Creation was authorized by approved queue row06; implementation and acceptance are recorded in `packet.spec.md`.
 
 ## Problem Statement
 

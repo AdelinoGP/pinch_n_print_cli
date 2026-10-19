@@ -136,6 +136,58 @@ impl fmt::Display for PreparationTransportError {
 
 impl std::error::Error for PreparationTransportError {}
 
+/// Diagnostic projection failures, independent of opaque plan transport errors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreparationProjectionError {
+    /// The sink does not belong to the active preparation owner or call.
+    AccessDenied,
+    /// No diagnostic projection was requested.
+    NotRequested,
+    /// The scene names a view not declared by its owner.
+    UndeclaredView,
+    /// A scene has already been published for this view.
+    DuplicateScene,
+    /// A requested view has no completed scene.
+    MissingScene,
+    /// A scene, class, primitive, or layer reference is invalid.
+    InvalidReference,
+    /// Diagnostic geometry violates the required shape constraints.
+    InvalidShape,
+    /// A coordinate or checked geometry predicate is not representable.
+    InvalidCoordinate,
+    /// Diagnostic retention or count arithmetic overflowed.
+    ArithmeticOverflow,
+    /// An earlier projection failure poisoned the output transaction.
+    PoisonedOutput,
+}
+
+impl PreparationProjectionError {
+    /// Return the one-to-one canonical preparation-projection-error WIT name.
+    #[must_use]
+    pub fn wit_variant(&self) -> &'static str {
+        match self {
+            Self::AccessDenied => "access-denied",
+            Self::NotRequested => "not-requested",
+            Self::UndeclaredView => "undeclared-view",
+            Self::DuplicateScene => "duplicate-scene",
+            Self::MissingScene => "missing-scene",
+            Self::InvalidReference => "invalid-reference",
+            Self::InvalidShape => "invalid-shape",
+            Self::InvalidCoordinate => "invalid-coordinate",
+            Self::ArithmeticOverflow => "arithmetic-overflow",
+            Self::PoisonedOutput => "poisoned-output",
+        }
+    }
+}
+
+impl fmt::Display for PreparationProjectionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.wit_variant())
+    }
+}
+
+impl std::error::Error for PreparationProjectionError {}
+
 /// Typed input-read failures, separate from declaration and plan transport errors.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PreparationInputError {

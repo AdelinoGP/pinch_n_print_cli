@@ -2738,6 +2738,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "preparation-visual-guest"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.60.0",
+]
+
+[[package]]
 name = "prettyplease"
 version = "0.2.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3628,6 +3638,7 @@ dependencies = [
  "predicates",
  "preparation-lifecycle-anchored-guest",
  "preparation-lifecycle-guest",
+ "preparation-visual-guest",
  "raft-default",
  "rayon",
  "rectilinear-infill",
@@ -3716,6 +3727,7 @@ dependencies = [
  "preparation-pilot-infill",
  "preparation-pilot-path",
  "preparation-transport-path",
+ "preparation-visual-guest",
  "rayon",
  "sdk-finalization-guest",
  "sdk-infill-postprocess-view-guest",

@@ -514,9 +514,50 @@ mod prepared_binding_fixture {
             output: &mut PreparedPlanOutput,
         ) -> Result<(), slicer_sdk::error::ModuleError> {
             typed_read_surface(input);
+            typed_projection_surface(output);
             // Retain the producer's fixture delegate on the very same facade.
             output.put("fixture", &input.read_fixture(2, 3)?)?;
             Ok(())
+        }
+    }
+
+    // test-quality: compile witness — all fifteen SDK reads must retain their
+    // exact optional/result shape, alongside the generated WIT reader impl.
+    // test-quality: compile witness for exact diagnostic DTO/sink identity in
+    // the same authored fixture compiled natively and as a generated component.
+    fn typed_projection_surface(output: &PreparedPlanOutput) {
+        let sink: Result<Option<PreparationProjectionOutput>, PreparationProjectionError> =
+            output.projection();
+        if let Ok(Some(sink)) = sink {
+            let _: Result<Vec<String>, PreparationProjectionError> = sink.requested_views();
+            let scene = PreparationProjectionScene {
+                scene_id: "final".into(),
+                view: "xy".into(),
+                classes: vec!["class".into()],
+                // exhaustive: the compile witness pins every diagnostic primitive field.
+                primitives: vec![PreparationProjectionPrimitive {
+                    id: "p".into(),
+                    global_layer_index: 0,
+                    class: "class".into(),
+                    label: Some("π".into()),
+                    geometry: PreparationProjectionGeometry::Point(slicer_ir::Point2 {
+                        x: 10000,
+                        y: 20000,
+                    }),
+                }],
+            };
+            let _: Result<(), PreparationProjectionError> = sink.publish(&scene);
+            let _: PreparationProjectionGeometry = PreparationProjectionGeometry::Polyline(vec![
+                slicer_ir::Point2 { x: 0, y: 0 },
+                slicer_ir::Point2 { x: 20000, y: 0 },
+            ]);
+            let _: PreparationProjectionGeometry = PreparationProjectionGeometry::Polygon {
+                polygon: slicer_ir::ExPolygon {
+                    contour: slicer_ir::Polygon { points: vec![] },
+                    holes: vec![],
+                },
+                filled: true,
+            };
         }
     }
 
@@ -834,6 +875,17 @@ fn prepared_binding_guest_typed_reads_sources_chains_and_errors_compile() {
     assert!(wit.contains("export slicer:layer-preparation/prepare@1.0.0;"));
     assert!(wit.contains("read-fixture: func("));
     assert!(wit.contains("selected-targets: func("));
+}
+
+// test-quality: compile witness for the real macro-generated imported resource,
+// canonical geometry and complete diagnostic record/variant marshalling.
+#[test]
+fn preparation_projection_guest_dto_and_sink_resource_compile() {
+    let wit = &preparation_binding_components()[0];
+    assert!(wit.contains("resource preparation-projection-output"));
+    assert!(wit.contains("record preparation-projection-scene"));
+    assert!(wit.contains("variant preparation-projection-geometry"));
+    assert!(wit.contains("projection: func() -> result<option<preparation-projection-output>, preparation-projection-error>"));
 }
 
 #[test]

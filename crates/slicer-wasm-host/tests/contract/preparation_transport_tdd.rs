@@ -1637,12 +1637,19 @@ fn plain_artifact_and_stage_bindings() {
     // Recorded-hash comparison, not a re-hash: the host's directly reachable
     // dependencies expose no hashing crate. This pins the ADR-0066 provenance
     // sidecar and measured archive length, but cannot detect same-length tampering.
+    let recorded = std::fs::read_to_string(driver::required_artifact(
+        "target/preparation-pilot/plain-before.sha256",
+    ))
+    .expect("archive provenance sidecar");
+    // Accept the standard `sha256sum` (`<hash>  <filename>`) sidecar format; the
+    // sibling pilot test parses the same sidecar this way. The compared hash
+    // remains exact.
+    let recorded_hash = recorded
+        .split_whitespace()
+        .next()
+        .expect("provenance sidecar contains a hash");
     assert_eq!(
-        std::fs::read_to_string(driver::required_artifact(
-            "target/preparation-pilot/plain-before.sha256",
-        ))
-        .expect("archive provenance sidecar")
-        .trim(),
+        recorded_hash,
         "6499a7d809a1812bc581adab2bc394ca660f209b0f38b9ce459e9c47c43e5c5c"
     );
     assert_eq!(

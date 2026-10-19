@@ -164,7 +164,7 @@ pub use layer_executor::{
 // the executor boundary, consumed by `pnp-cli`'s visual-debug command.
 pub use layer_executor::{
     execute_captured_stages, CaptureExecutionError, CaptureOutput, CaptureRequest, CapturedIr,
-    LayerExpansion, StageCapture, SUPPORTED_TAP_STAGE_IDS,
+    LayerExpansion, StageCapture, PREPARATION_PROJECTION_SCHEMA_VERSION, SUPPORTED_TAP_STAGE_IDS,
 };
 pub use layer_finalization::{
     execute_layer_finalization, execute_layer_finalization_with_instrumentation,
@@ -190,7 +190,8 @@ pub use preparation_lifecycle::{
     AnchoredHostClosureStatus, LayerArenaLifecycleStatus, PreparationAccountingSnapshot,
     PreparationCapture, PreparationLifecycleObserver, PreparationLifecyclePhase,
     PreparationLifecycleRecord, PreparationLifecycleStatus, PreparationOwnerCapture,
-    PreparationPieceMetadata, SliceRuntimeExtensions,
+    PreparationPieceMetadata, PreparationViewRequest, PreparationVisualCapture,
+    PreparationVisualCaptureError, SliceRuntimeExtensions,
 };
 pub use profiling_report::{
     format_profile_summary, ProfileAggregator, ProfileCallDetail, ProfileModuleRow,
@@ -199,8 +200,8 @@ pub use profiling_report::{
 pub use progress_instrumentation::ProgressPipelineInstrumentation;
 pub use run::{
     prepare_prepass_context, run_slice, run_slice_preparation_capture,
-    run_slice_with_runtime_extensions, PrepassContext, SliceOutcome, SliceRunError,
-    SliceRunOptions,
+    run_slice_preparation_visual_capture, run_slice_with_runtime_extensions, PrepassContext,
+    SliceOutcome, SliceRunError, SliceRunOptions,
 };
 pub use slice_postprocess::{
     execute_slice_postprocess_paint_annotation, paint_annotation_warning_to_progress_event,

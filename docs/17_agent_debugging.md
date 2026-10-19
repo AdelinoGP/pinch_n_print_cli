@@ -93,6 +93,64 @@ These are runtime trace/observer records (including typed capture records),
 instrumented stage/module brackets remain separate; do not read lifecycle
 records as additional events in the stderr JSONL stream described above.
 
+### Preparation visual execution evidence (Normative)
+
+A `visual-debug` bundle produced from a preparation tap carries two evidence
+axes that must not be read as each other. Read `executed_preparation` when the
+question is "did this owner actually run"; read `rendered_layer_indices` when
+the question is "what did this bundle draw".
+
+- **One record per actually entered successful owner.** Each record is
+  `{module_id, module_version, artifact_identity, consumer_stage,
+  lifecycle_phase: "preparation", status: "ready", selected_target_count,
+  pieces: [{name, length}], elapsed_ms?}`. Records are sorted by the frozen
+  identity `(module_id, module_version, consumer_stage, artifact_identity)`.
+- **Declared is not executed.** An owner that was declared but never became
+  active (`NoWork`), failed, or was cancelled never gets an executed record,
+  and disposal records are not executions. A `Ready` observation with no
+  matching owner metadata fails the bundle instead of being attributed to a
+  guess.
+- **`elapsed_ms` is present only when measured.** It exists exactly when the
+  lifecycle record carried a measured duration (the existing instrumented
+  opt-in); otherwise the key is omitted. There is no synthetic zero and no
+  invented high-water mark.
+- **`pieces` are names and lengths only** — redacted prepared-piece metadata,
+  never bytes, a plan, a store handle, or a codec.
+- **`rendered_layer_indices` is not execution evidence.** It is the global
+  layer selection the bundle rendered, and `executed_preparation` is never
+  filtered to it. A preparation-only capture reports no executed stage ids and
+  no executed layer indices at all, because it never enters the Layer stages.
+
+Accounting in the same bundle is logical, not allocator-level:
+
+- **Diagnostic logical bytes** are checked sums of the committed scene's stored
+  UTF-8 bytes (scene/view/class/id/label) plus fixed per-item geometry costs:
+  8 bytes per `Point2` component (16 per coordinate pair), 4 per
+  `global_layer_index`, and 1 per geometry tag/filled flag where applicable.
+  They exclude allocator, `Vec`, `Arc`, and piece-storage overhead, are counted
+  once per owner/view — never once per rendered layer — and are not a memory
+  high-water mark.
+- **`transferred_bytes` remains ordinary prepared-piece read bytes only.**
+  Requesting a diagnostic view neither adds to that total nor reinterprets it
+  as payload.
+- **Post-disposal retained bytes are zero.** The owner metadata snapshot
+  describes what the private store held before cleanup; after disposal the
+  retained gauges are `0`. The typed snapshot `Arc`s the bundle keeps are
+  shared immutable scene geometry, not retained plan authority.
+
+`run_slice_preparation_visual_capture` runs the shared validated startup and
+committed preparation prefix exactly once — the same prefix the metadata-only
+capture uses — and never starts a second slice to compare output, nor reports
+metadata as payload. With no stage taps it disposes without creating a
+`LayerArena`, entering an ordinary consumer, or running the anchored host
+closure. A mixed request's stage taps run through the real selected-layer
+truncated closure over the same committed Ready plans; the preparation tap adds
+no stage and does not alter that closure.
+
+These are bundle/runtime evidence records, not `ProgressEvent` JSONL fields,
+and no canonical-parity or measurement claim follows from them without its own
+evidence.
+
 ## Fuel profiling — `--profile`
 
 `--instrument-stderr` ranks *modules*. `--profile` says what inside a module

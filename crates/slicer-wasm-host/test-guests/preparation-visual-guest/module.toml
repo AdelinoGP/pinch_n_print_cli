@@ -1,0 +1,42 @@
+[module]
+id = "test.preparation-visual"
+version = "0.1.0"
+display-name = "Prepared XY diagnostic test fixture"
+description = "Test-only same-source native/component probe codec and typed projection faults; not a community module"
+author = "Pinch 'n Print Team"
+license = "MIT"
+
+[stage]
+id = "Layer::PathOptimization"
+
+[ir-access]
+reads = []
+writes = []
+
+[claims]
+holds = ["path-optimizer"]
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires = []
+min-host-version = "0.1.0"
+min-ir-schema = "1.0.0"
+max-ir-schema = "5.0.0"
+
+[preparation]
+interface = "slicer:layer-preparation/prepare@1.0.0"
+input_reads = ["layer_plan", "selected_targets"]
+views = ["probe_xy"]
+
+[config.schema.preparation_visual_mode]
+type = "enum"
+values = ["valid", "empty", "missing", "duplicate", "undeclared_view", "undeclared_class", "unknown_layer", "invalid_line", "invalid_ring", "invalid_hole", "invalid_coordinate", "caught_error", "module_error", "trap"]
+default = "valid"
+
+[config.schema.preparation_visual_token]
+type = "string"
+default = "PRB1"
+
+[hints]
+layer-parallel-safe = true

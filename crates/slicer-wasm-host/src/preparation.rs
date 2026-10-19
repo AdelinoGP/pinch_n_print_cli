@@ -3,6 +3,7 @@
 use crate::host::HostExecutionContext;
 use slicer_ir::{ModuleId, StageId};
 pub use slicer_schema::preparation::PreparationInputError;
+pub use slicer_schema::preparation::PreparationProjectionError;
 use slicer_schema::preparation::{
     PreparationDeclaration, PreparationDeclarationError, PreparationTransportError,
 };
@@ -22,6 +23,11 @@ mod preparation_host;
 mod preparation_input;
 #[path = "preparation_native.rs"]
 mod preparation_native;
+#[path = "preparation_projection.rs"]
+pub(crate) mod preparation_projection;
+pub use preparation_projection::{
+    CommittedPreparationProjection, PreparationDiagnosticAccounting, PreparationProjectionRequest,
+};
 #[path = "preparation_wasm.rs"]
 mod preparation_wasm;
 /// Real WIT plan lookup handler, exposed only for transport contract fixtures.

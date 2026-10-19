@@ -9,13 +9,21 @@ use std::collections::BTreeSet;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
-pub use slicer_schema::preparation::PreparationInputError;
 use slicer_schema::preparation::PreparationTransportError;
+pub use slicer_schema::preparation::{PreparationInputError, PreparationProjectionError};
 
 use crate::error::ModuleError;
 
 #[path = "preparation_input.rs"]
 mod preparation_input;
+
+#[path = "preparation_visual.rs"]
+mod preparation_visual;
+
+pub use preparation_visual::{
+    PreparationProjectionGeometry, PreparationProjectionOutput, PreparationProjectionPrimitive,
+    PreparationProjectionScene, PreparationProjectionWrite,
+};
 
 pub use preparation_input::{
     PreparationActiveRegion, PreparationBridgeRegion, PreparationFacetClass, PreparationInputPhase,
@@ -147,6 +155,8 @@ impl From<PreparationError> for ModuleError {
 
 type ReadCallback = dyn Fn(u64, u64) -> Result<Vec<u8>, PreparationError>;
 type PutCallback = dyn FnMut(&str, &[u8]) -> Result<(), PreparationError>;
+type ProjectionCallback =
+    dyn Fn() -> Result<Option<PreparationProjectionOutput>, PreparationProjectionError>;
 type OpenCallback = dyn Fn(&str) -> Result<Option<PreparedPieceCallbacks>, PreparationError>;
 type CurrentCallback = dyn Fn() -> Result<PreparedPlanCallbacks, PreparationError>;
 
@@ -413,6 +423,7 @@ impl PrintPreparationInput {
 /// Write-only staging of unique, complete named pieces.
 pub struct PreparedPlanOutput {
     put: Box<PutCallback>,
+    projection: Option<Box<ProjectionCallback>>,
     names: BTreeSet<String>,
     poisoned: bool,
     first_error: Option<PreparationError>,
@@ -434,10 +445,35 @@ impl PreparedPlanOutput {
     ) -> Self {
         Self {
             put: Box::new(put),
+            projection: None,
             names: BTreeSet::new(),
             poisoned: false,
             first_error: None,
             synthesized_completion: RefCell::new(None),
+        }
+    }
+
+    /// Adapt piece writes and optional diagnostic access from the same resource.
+    ///
+    /// The projection callback must retain the host's request and owner checks.
+    pub fn from_callbacks(
+        put: impl FnMut(&str, &[u8]) -> Result<(), PreparationError> + 'static,
+        projection: impl Fn() -> Result<Option<PreparationProjectionOutput>, PreparationProjectionError>
+            + 'static,
+    ) -> Self {
+        let mut output = Self::from_callback(put);
+        output.projection = Some(Box::new(projection));
+        output
+    }
+
+    /// Acquire optional diagnostic output; legacy/no-request access allocates
+    /// no diagnostic collections and never creates a sink.
+    pub fn projection(
+        &self,
+    ) -> Result<Option<PreparationProjectionOutput>, PreparationProjectionError> {
+        match &self.projection {
+            Some(projection) => projection(),
+            None => Ok(None),
         }
     }
 

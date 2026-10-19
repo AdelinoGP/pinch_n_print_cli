@@ -15,6 +15,7 @@ pub mod perimeters {
             "slicer:ir-handles/ir-handles@1.0.0": crate::host::layer_perimeters::slicer::ir_handles::ir_handles,
             "slicer:layer-preparation/preparation-types@1.0.0.print-preparation-input": super::super::preparation_host::PreparationInputData,
             "slicer:layer-preparation/preparation-types@1.0.0.prepared-plan-output": super::super::preparation_host::PreparationOutputData,
+            "slicer:layer-preparation/preparation-types@1.0.0.preparation-projection-output": super::super::preparation_host::PreparationProjectionOutputData,
             "slicer:layer-preparation/preparation-types@1.0.0.prepared-plan-view": super::super::preparation_host::PreparedPlanViewData,
             "slicer:layer-preparation/preparation-types@1.0.0.prepared-piece": super::super::preparation_host::PreparedPieceData,
         },
