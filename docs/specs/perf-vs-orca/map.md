@@ -38,7 +38,7 @@ Skills to consult: `diagnosing-bugs` for regressions, `debug-pipeline` and
 `visual-debug` per the repo `AGENTS.md`; the repo test discipline (narrow runs,
 `cargo xtask test`, guest freshness) governs any code change.
 
-**Current selection scope (2026-10-18, on the t73 take):** the frontier was
+**Previous selection scope (2026-10-18, on the t73 take):** the frontier was
 re-derived on resume — the only open child was
 [consume-only-when-read annotations](issues/20-consume-only-when-read-annotations.md),
 parked below-fold — and the human selected a **Base-cell bottleneck refresh**
@@ -69,6 +69,36 @@ share) with the below-fold park **unchanged** — the t72 best cell is still
 [20](issues/20-consume-only-when-read-annotations.md) parked below-fold and the
 three new tickets unclaimed; the take order is the human's. Standing paired
 acceptance and KEEP/DROP rules unchanged.
+
+**Current selection scope (2026-10-18 → 2026-10-19, on the ticket 74 take):**
+the human's "continue" named no ticket, so the session took the first frontier
+ticket in order, [74](issues/74-layerfinalization-supports-on-view-cost.md);
+it is now **resolved (2026-10-19, human-approved KEEP, candidate committed
+`091e6bc9`)**. Attribution: **96.1 % of the 61,555 ms supports-on module sum is
+whole-print copy/free churn** (input snapshot clone 12,112 ms, store drop
+16,653 ms, merge rollback clone 13,446 ms, old-vector drop 16,940 ms; guest call
+1,816 ms = 2.9 %), owned by the full `LayerCollectionIR` clone/free and its
+IR-only `support_entity_identities` side table (23,751 rows supports-on vs 0
+supports-off), not by module reads or the 1.96x output-byte ratio. The candidate
+(Arc-shared input snapshot + no-op/append-only merge fast paths) measured
+**61,555 → 2,775 ms (−95.5 %)** with supports-off unchanged (1,290 → 1,252 ms)
+and outputs byte-identical to the t58 references. **Proof gate 16/16 PASS**
+(baseline and candidate byte-identical, clean, non-vacuous in every cell;
+`qualification.json`), with snapshots built from `67ef742b` and provenance
+recorded. The paired ordinary + accelerated A/B ran on a quiet machine on
+2026-10-19 and **PASSED**: 6/6 pairs in every cell, paired wall deltas −3.13 % /
+−12.71 % / −3.89 % / −14.23 % and corroborating CPU deltas −0.91 % / −2.30 % /
+−0.84 % / −2.97 % (ordinary/accelerated × benchy/base). Base supports-on wall
+falls **46.0 s ordinary** and **47.5 s accelerated**, inside t73's 45.0–48.5 s
+bracket attribution, and every pair's output is byte-identical. Frontier now:
+[75](issues/75-shellclassification-phase-b-commit.md) and
+[76](issues/76-meshanalysis-footprint-union.md) unclaimed;
+[20](issues/20-consume-only-when-read-annotations.md) parked below-fold; the take
+order is the human's. The probe take's machine drift (baseline wall 571.9 s vs
+t73's 408.7 s) is why its brackets are an internal split, not wall evidence.
+Evidence:
+[`evidence/t74-finalization-view/`](evidence/t74-finalization-view/FINDINGS.md)
+(`verify.py` exits 0 checkout-only, three negative controls rejected).
 
 **Previous selection scope (2026-10-18, on the t72 take):** the frontier was
 re-derived on resume — the only open child was
@@ -734,6 +764,8 @@ Standing decisions for this effort (2026-09-22):
 ## Decisions so far
 
 <!-- one line per closed ticket; the ticket holds the detail -->
+
+- [LayerFinalization supports-on whole-print view cost](issues/74-layerfinalization-supports-on-view-cost.md): **resolved (2026-10-19; human-approved KEEP — candidate committed `091e6bc9`)** — the supports-on brackets' **96.1 % copy/free churn** (61,555 ms module sum; input snapshot clone 12,112 ms, store drop 16,653 ms, merge rollback clone 13,446 ms, old-vector drop 16,940 ms; guest call 1,816 ms = 2.9 %) is owned by the whole `LayerCollectionIR` clone/free, dominated by the IR-only `support_entity_identities` side table (23,751 rows supports-on vs 0 supports-off), not by module reads or the 1.96x output-byte ratio. The candidate shares the ordered entity snapshot with the view via `Arc` and skips the merge rollback clone only when the order-lock remap is a no-op and the stream has no fallible op (fallible streams keep the rollback; the malformed-merge rollback contract stays green). Probe: **61,555 → 2,775 ms (−95.5 %)**, supports-off unchanged 1,290 → 1,252 ms, outputs byte-identical to the t58 references; proof gate **16/16 PASS**; standing paired gate **PASS** with 6/6 pairs in every cell: wall −3.13 % ordinary-benchy / −12.71 % ordinary-base / −3.89 % accelerated-benchy / −14.23 % accelerated-base, CPU −0.91 % / −2.30 % / −0.84 % / −2.97 %, all 24 pairs byte-identical. Base supports-on wall falls **46.00 s ordinary / 47.52 s accelerated**, inside t73's 45.0–48.5 s bracket attribution. Pre-commit gates: workspace clippy clean, check-literals 0, check-test-quality 0 findings, 24 executor + 10 contract finalization tests pass, both freshness gates exit 0. Evidence: [`evidence/t74-finalization-view/`](evidence/t74-finalization-view/FINDINGS.md) (`qualification.json`, `ab-reduction.json`, `candidate.patch`, `verify.py`).
 
 - [Base current bottleneck refresh](issues/73-base-current-bottleneck-refresh.md): **resolved (2026-10-18; measurement-only take — eight fresh ordinary base captures at post-t70 HEAD, every output byte-identical to its t58 reference; three tickets graduated, t20 park unchanged)** — base is **prepass-dominated**: instrumented wall 214.5/408.7/130.2/360.2 s (classic-off/classic-on/arachne-off/arachne-on), prepass 115.0/237.6/109.2/259.9 s, per-layer 94.3/98.2/16.1/19.8 s, postpass 2.4/69.1/1.4/76.6 s; the common prepass floor is 104–115 s on every cell, supports-on adds 134–149 s of support stages, and ticket 59's Slice verdict (40.0–44.9 s) stands. New leads in recommendation order: **supports-on LayerFinalization view cost** (four whole-print module brackets 10.1–12.5 s each, 45.0–48.5 s total vs 0.30–1.39 s supports-off, while guest fuel is 5.45 B of 12,964 B = 0.042 %), **ShellClassification phase-B serial commit** (26.0–31.4 s; t27's serial commit still 25–30 s), **MeshAnalysis exact union** (19.4–22.2 s serial over 326,546 facets; bbox replacement unsafe). t20 updated with the base context (classic per-layer 94.3/98.2 s; module 98.8/95.0 % of fuel; t18's 57.9 % base scan share) and the below-fold park re-derived as still binding (best cell 3.30x). No candidate, timing run, production edit or production-source commit. Evidence: [`evidence/perf-refresh-base-2026-10-18/`](evidence/perf-refresh-base-2026-10-18/FINDINGS.md) (`verify.py` exit 0 checkout-only + four negative controls rejected; `analyze.py` reproduces the tables).
 
