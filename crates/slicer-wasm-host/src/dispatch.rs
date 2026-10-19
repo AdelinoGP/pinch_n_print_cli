@@ -4128,6 +4128,24 @@ fn apply_finalization_pushes(
 
     let mut sdk_builder = FinalizationOutputBuilder::new();
     let mut legacy_synthetic_layers: Vec<(f32, Vec<slicer_ir::ExtrusionPath3D>)> = Vec::new();
+    let push_count = pushes.len();
+    // A stream of annotations plus append-only entity pushes has no fallible
+    // merge op: annotations only need every target layer to exist, priority
+    // pushes cannot fail, and the order-lock pass is guarded below. Such a
+    // stream can be applied to the stage-local working copy without the
+    // whole-print rollback clone.
+    let infallible_stream = {
+        let known_layers: std::collections::HashSet<u32> =
+            layers.iter().map(|l| l.global_layer_index).collect();
+        pushes.iter().all(|push| match push {
+            host::FinalizationBuilderPush::Annotation(layer_index, _) => {
+                known_layers.contains(layer_index)
+            }
+            host::FinalizationBuilderPush::EntityToLayer { .. }
+            | host::FinalizationBuilderPush::EntityToLayerWithPriority { .. } => true,
+            _ => false,
+        })
+    };
 
     for push in pushes {
         match push {
@@ -4233,6 +4251,33 @@ fn apply_finalization_pushes(
         }
     }
 
+    // Empty-push fast path: with no recorded pushes the merge mutates nothing
+    // except the final order-lock globalisation pass. When every tag is already
+    // global (and valid), that pass writes nothing either, so `apply_to` would
+    // be a true no-op and the whole-print rollback clone can be skipped.
+    let lock_remap_noop = order_lock_remap_is_noop(layers);
+    if push_count == 0 && lock_remap_noop {
+        return Ok(slicer_ir::FinalizationOutput::Success);
+    }
+
+    // Append-only fast path: `apply_to` can only append annotations/entities and
+    // sort touched layers here (no fallible merge op), and the order-lock pass is
+    // a proven no-op, so applying directly to the stage-local working copy is
+    // infallible and needs no rollback clone. Streams with modify/sort/insert/
+    // synthetic ops keep the clone that
+    // `malformed_finalization_merge_rolls_back_prior_entity_push_on_both_transports`
+    // pins.
+    if infallible_stream && lock_remap_noop {
+        sdk_builder
+            .apply_to(layers)
+            .map_err(|msg| slicer_ir::FinalizationError::FatalModule {
+                stage_id: stage_id.clone(),
+                module_id: module_id.to_string(),
+                message: format!("finalization merge failed: {msg}"),
+            })?;
+        return Ok(slicer_ir::FinalizationOutput::Success);
+    }
+
     let mut candidate = layers.clone();
     sdk_builder.apply_to(&mut candidate).map_err(|msg| {
         slicer_ir::FinalizationError::FatalModule {
@@ -4275,4 +4320,34 @@ fn apply_finalization_pushes(
 
     *layers = candidate;
     Ok(slicer_ir::FinalizationOutput::Success)
+}
+
+/// True when the finalization merge's order-lock pass would write nothing.
+///
+/// Mirrors the tag walk at the end of `FinalizationOutputBuilder::apply_to`:
+/// local tags (`GLOBAL_BIT` clear) are always rewritten, and global tags at or
+/// above the next free global tag are rejected. A stream that passes this check
+/// with no pushes has an empty merge that is a true no-op.
+fn order_lock_remap_is_noop(layers: &[LayerCollectionIR]) -> bool {
+    const GLOBAL_BIT: u64 = 1 << 63;
+    let next_global = layers
+        .iter()
+        .flat_map(|layer| layer.ordered_entities.iter())
+        .filter_map(|entity| entity.path.order_lock)
+        .filter(|tag| tag & GLOBAL_BIT != 0)
+        .map(|tag| tag & !GLOBAL_BIT)
+        .max()
+        .map_or(0, |max| max + 1);
+    for entity in layers
+        .iter()
+        .flat_map(|layer| layer.ordered_entities.iter())
+    {
+        match entity.path.order_lock {
+            None => {}
+            Some(tag) if tag & GLOBAL_BIT == 0 => return false,
+            Some(tag) if tag >= GLOBAL_BIT | next_global => return false,
+            Some(_) => {}
+        }
+    }
+    true
 }
