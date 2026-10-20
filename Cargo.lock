@@ -2043,6 +2043,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "lightning-feasibility-kernel"
+version = "0.1.0"
+dependencies = [
+ "clipper2-rust",
+ "serde",
+ "serde_json",
+ "slicer-ir",
+]
+
+[[package]]
 name = "lightning-infill"
 version = "0.1.0"
 dependencies = [
@@ -3723,6 +3733,7 @@ dependencies = [
 name = "slicer-wasm-host"
 version = "0.1.0"
 dependencies = [
+ "lightning-feasibility-kernel",
  "log",
  "preparation-pilot-infill",
  "preparation-pilot-path",
@@ -3732,6 +3743,8 @@ dependencies = [
  "sdk-finalization-guest",
  "sdk-infill-postprocess-view-guest",
  "sdk-layer-pathopt-guest",
+ "serde_json",
+ "sha2",
  "slicer-config",
  "slicer-core",
  "slicer-ir",

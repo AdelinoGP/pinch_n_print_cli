@@ -46,6 +46,7 @@ members = [
     "crates/slicer-wasm-host/test-guests/sdk-prepass-guest",
     "xtask",
 ]
+exclude = ["modules/core-modules/lightning-infill/feasibility-kernel"]
 resolver = "2"
 
 [workspace.package]

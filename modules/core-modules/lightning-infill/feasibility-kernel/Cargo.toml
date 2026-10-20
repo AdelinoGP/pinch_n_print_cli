@@ -1,0 +1,25 @@
+[package]
+name = "lightning-feasibility-kernel"
+version = "0.1.0"
+edition = "2021"
+authors = ["Pinch 'n Print Team"]
+description = "Isolated owned Lightning geometry feasibility kernel (no WIT, guest, or host-algorithm dependencies)"
+
+[lib]
+crate-type = ["rlib"]
+
+# Deliberately excluded from workspace discovery: the root Cargo.toml lists this
+# directory in `workspace.exclude`, because a `[workspace]` sentinel here would
+# create a second workspace root inside the `lightning-infill` member directory.
+# Guest discovery (xtask build_guests) is non-recursive and requires a
+# `wit-guest/Cargo.toml` child, so this crate is never discovered or built as a
+# guest module. The `slicer-wasm-host` dev-dependency still makes Cargo treat this
+# crate as a root-workspace member, so it resolves against the root lock.
+
+[dependencies]
+slicer-ir = { path = "../../../../crates/slicer-ir" }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0"
+# Exact pin: must match the root workspace's resolved clipper2-rust so the
+# Gate A reconstruction is validated against the same geometry as production.
+clipper2-rust = "=1.1.0"

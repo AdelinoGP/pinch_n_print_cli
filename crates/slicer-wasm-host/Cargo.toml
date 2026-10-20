@@ -43,6 +43,12 @@ wat = "1.0"
 wit-parser = "0.247"
 tempfile = "3"
 toml = "0.8"
+# Host-side Gate A oracle: the Lightning geometry feasibility kernel is outside
+# the root workspace (see the root manifest's exclude), so it is wired in as a
+# dev-dependency of the host test binary rather than a production dependency.
+lightning-feasibility-kernel = { path = "../../modules/core-modules/lightning-infill/feasibility-kernel" }
+serde_json = "1.0"
+sha2 = "0.10"
 
 [[test]]
 name = "contract"
