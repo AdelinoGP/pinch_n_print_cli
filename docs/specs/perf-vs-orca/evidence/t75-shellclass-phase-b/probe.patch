@@ -1,0 +1,328 @@
+diff --git a/crates/slicer-runtime/src/slice_postprocess_prepass.rs b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+index 5d92f036..35eb9656 100644
+--- a/crates/slicer-runtime/src/slice_postprocess_prepass.rs
++++ b/crates/slicer-runtime/src/slice_postprocess_prepass.rs
+@@ -52,8 +52,67 @@
+ use std::collections::{HashMap, HashSet};
+ use std::fmt;
+ use std::sync::Arc;
++use std::time::Instant;
+ 
+ use rayon::prelude::*;
++
++/// Temporary t75 attribution probe. Inert unless `PNP_T75_PROBE` is set.
++#[derive(Default)]
++struct T75Probe {
++    enabled: bool,
++    phase_a_ns: u128,
++    phase_b_ns: u128,
++    extra_ns: u128,
++    depth_build_ns: u128,
++    gather_ns: u128,
++    lower_candidates_ns: u128,
++    remove_ns: u128,
++    clip_offset_ns: u128,
++    per_surface_ns: u128,
++    erosion_offset_ns: u128,
++    retain_ns: u128,
++    presort_ns: u128,
++    expansion_ns: u128,
++    angles_ns: u128,
++    clip_calls: u64,
++    erosion_calls: u64,
++    angles_calls: u64,
++    surface_calls: u64,
++    retain_calls: u64,
++    timelines_seen: u64,
++    preps: u64,
++    lower_candidate_layers: u64,
++    lower_candidate_polys: u64,
++    deep_polys_before: u64,
++    deep_verts_before: u64,
++    deep_polys_after_remove: u64,
++    deep_verts_after_remove: u64,
++    clip_polys: u64,
++    clip_verts: u64,
++    erosion_polys: u64,
++    erosion_verts: u64,
++    qualified_polys: u64,
++    qualified_verts: u64,
++    region_surfaces: u64,
++    region_infill_polys: u64,
++}
++
++fn t75_poly_census(polys: &[ExPolygon]) -> (u64, u64) {
++    (
++        polys.len() as u64,
++        polys
++            .iter()
++            .map(|polygon| {
++                (polygon.contour.points.len()
++                    + polygon
++                        .holes
++                        .iter()
++                        .map(|hole| hole.points.len())
++                        .sum::<usize>()) as u64
++            })
++            .sum(),
++    )
++}
+ use slicer_core::algos::prepass_slice::{
+     gate_bridge_areas_by_unsupported_span, update_external_bridge_orientation,
+ };
+@@ -611,6 +670,11 @@ fn gate_internal_bridge_sites(
+     // timeline entry.
+     // Qualified polygons and their index-aligned bridge angles.
+     type QualifiedSites = (Vec<ExPolygon>, Vec<f32>);
++    let mut t75 = T75Probe {
++        enabled: std::env::var_os("PNP_T75_PROBE").is_some(),
++        ..Default::default()
++    };
++    let t75_gate_start = Instant::now();
+     let mut qualified_by_entry: HashMap<(usize, ObjectId, RegionId), QualifiedSites> =
+         HashMap::new();
+     let density_for = |region: &slicer_ir::SlicedRegion, layer_index: u32| {
+@@ -653,6 +717,7 @@ fn gate_internal_bridge_sites(
+     }
+ 
+     for ((object_id, region_id), timeline) in timelines {
++        t75.timelines_seen += 1;
+         // Resolve this region's flow settings once from its first timeline
+         // entry, mirroring `resolve_opening_radius`'s key construction and
+         // contains_key guard (`config_for` panics on unknown keys).
+@@ -752,6 +817,7 @@ fn gate_internal_bridge_sites(
+         // `unsupported_span_areas` alone is four full-layer clipper ops per
+         // layer and was the stage's largest serial block.
+         let slices_ro: &[SliceIR] = slices;
++        let t75_a_start = Instant::now();
+         let preps: Vec<LayerPrep> = timeline
+             .par_iter()
+             .enumerate()
+@@ -865,9 +931,12 @@ fn gate_internal_bridge_sites(
+             })
+             })
+             .collect();
++        t75.phase_a_ns += t75_a_start.elapsed().as_nanos();
++        t75.preps += preps.len() as u64;
+ 
+         // Phase B — commit. Serial by necessity: `lower_candidates` reads the
+         // `internal_bridge_areas` that earlier layers of this same pass wrote.
++        let t75_b_start = Instant::now();
+         for LayerPrep {
+             timeline_position,
+             slice_idx,
+@@ -888,6 +957,7 @@ fn gate_internal_bridge_sites(
+                 target_flow_height,
+                 slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
+             );
++            let t75_depth_start = Instant::now();
+             let depth_layers: Vec<slicer_core::algos::bridge_over_infill::BridgeDepthLayer> =
+                 timeline[depth_start..=timeline_position]
+                     .iter()
+@@ -917,12 +987,18 @@ fn gate_internal_bridge_sites(
+                         })
+                     })
+                     .collect();
++            t75.depth_build_ns += t75_depth_start.elapsed().as_nanos();
++            let t75_gather_start = Instant::now();
+             let deep_infill_area = slicer_core::algos::bridge_over_infill::gather_areas_w_depth(
+                 &depth_layers,
+                 depth_layers.len().saturating_sub(1),
+                 target_flow_height,
+                 slicer_core::algos::bridge_over_infill::BRIDGE_FLOW_HEIGHT_FACTOR,
+             );
++            t75.gather_ns += t75_gather_start.elapsed().as_nanos();
++            let (t75_deep_polys, t75_deep_verts) = t75_poly_census(&deep_infill_area);
++            t75.deep_polys_before += t75_deep_polys;
++            t75.deep_verts_before += t75_deep_verts;
+             // Same reasoning as `depth_start`: the callee keeps only layers at or
+             // above `print_z - target_flow_height`.
+             let filled_start = slicer_core::algos::bridge_over_infill::filled_window_start(
+@@ -930,6 +1006,7 @@ fn gate_internal_bridge_sites(
+                 print_z,
+                 target_flow_height,
+             );
++            let t75_lower_start = Instant::now();
+             let lower_candidates: Vec<
+                 slicer_core::algos::bridge_over_infill::BridgeCandidateLayer,
+             > = timeline[filled_start..timeline_position]
+@@ -946,6 +1023,18 @@ fn gate_internal_bridge_sites(
+                     )
+                 })
+                 .collect();
++            t75.lower_candidates_ns += t75_lower_start.elapsed().as_nanos();
++            if lower_candidates
++                .iter()
++                .any(|layer| !layer.new_polys.is_empty())
++            {
++                t75.lower_candidate_layers += 1;
++                t75.lower_candidate_polys += lower_candidates
++                    .iter()
++                    .map(|layer| layer.new_polys.len() as u64)
++                    .sum::<u64>();
++            }
++            let t75_remove_start = Instant::now();
+             let deep_infill_area =
+                 slicer_core::algos::bridge_over_infill::remove_filled_polygons_on_lower_layers(
+                     &deep_infill_area,
+@@ -953,12 +1042,22 @@ fn gate_internal_bridge_sites(
+                     print_z,
+                     target_flow_height,
+                 );
++            t75.remove_ns += t75_remove_start.elapsed().as_nanos();
++            let (t75_remove_polys, t75_remove_verts) = t75_poly_census(&deep_infill_area);
++            t75.deep_polys_after_remove += t75_remove_polys;
++            t75.deep_verts_after_remove += t75_remove_verts;
++            let t75_clip_start = Instant::now();
+             let deep_infill_clip_area = offset(
+                 &deep_infill_area,
+                 1.5 * qualify_spacing_mm,
+                 OffsetJoinType::Miter,
+                 0.0,
+             );
++            t75.clip_offset_ns += t75_clip_start.elapsed().as_nanos();
++            t75.clip_calls += 1;
++            let (t75_clip_polys, t75_clip_verts) = t75_poly_census(&deep_infill_clip_area);
++            t75.clip_polys += t75_clip_polys;
++            t75.clip_verts += t75_clip_verts;
+             let Some(region) = find_region_mut(&mut slices[slice_idx], object_id, *region_id)
+             else {
+                 continue;
+@@ -966,7 +1065,10 @@ fn gate_internal_bridge_sites(
+             // Canonical gather arithmetic: closing of lower fills shrunk by
+             // mult*spacing minus grown lower solids (Step 1 port), then the
+             // per-surface gates with the expand(4*spacing) clip.
++            let t75_surface_start = Instant::now();
+             let mut qualified: Vec<ExPolygon> = Vec::new();
++            t75.region_surfaces += region.internal_solid_fill.len() as u64;
++            t75.region_infill_polys += region.infill_areas.len() as u64;
+             for surface in &region.internal_solid_fill {
+                 let expanded_candidate = offset(
+                     std::slice::from_ref(surface),
+@@ -992,9 +1094,13 @@ fn gate_internal_bridge_sites(
+                     qualified.extend(polys);
+                 }
+             }
++            t75.per_surface_ns += t75_surface_start.elapsed().as_nanos();
++            t75.surface_calls += region.internal_solid_fill.len() as u64;
+             // Only the surviving candidates are filtered against this erosion,
+             // so an empty candidate set skips the offset entirely.
+-            let internal_unsupported_area = if qualified.is_empty() || deep_infill_area.is_empty() {
++            let t75_has_erosion = !(qualified.is_empty() || deep_infill_area.is_empty());
++            let t75_erosion_start = Instant::now();
++            let internal_unsupported_area = if !t75_has_erosion {
+                 Vec::new()
+             } else {
+                 offset(
+@@ -1004,9 +1110,21 @@ fn gate_internal_bridge_sites(
+                     0.0,
+                 )
+             };
++            t75.erosion_offset_ns += t75_erosion_start.elapsed().as_nanos();
++            if t75_has_erosion {
++                t75.erosion_calls += 1;
++                let (t75_erosion_polys, t75_erosion_verts) =
++                    t75_poly_census(&internal_unsupported_area);
++                t75.erosion_polys += t75_erosion_polys;
++                t75.erosion_verts += t75_erosion_verts;
++            }
++            let t75_retain_start = Instant::now();
++            let t75_retain_candidates = qualified.len() as u64;
+             qualified.retain(|polygon| {
+                 !intersection(std::slice::from_ref(polygon), &internal_unsupported_area).is_empty()
+             });
++            t75.retain_ns += t75_retain_start.elapsed().as_nanos();
++            t75.retain_calls += t75_retain_candidates;
+             if qualified.is_empty() {
+                 log::debug!(
+                     "internal bridge skip object={} region={} layer={} print_z={} reason=qualified_empty_or_deep_sparse_clip surfaces={}",
+@@ -1022,7 +1140,10 @@ fn gate_internal_bridge_sites(
+             // `bridge_over_infill` direction step). The fill module draws each
+             // polygon at its own angle; the region-wide
+             // `bridge_orientation_deg` stays the external-bridge direction.
++            let t75_presort_start = Instant::now();
+             slicer_core::algos::bridge_over_infill::presort_bridge_candidates(&mut qualified);
++            t75.presort_ns += t75_presort_start.elapsed().as_nanos();
++            let t75_expansion_start = Instant::now();
+             let expansion_area = {
+                 let not_sparse = union(
+                     &union(&region.top_solid_fill, &region.bottom_solid_fill),
+@@ -1033,6 +1154,8 @@ fn gate_internal_bridge_sites(
+                     &region.internal_solid_fill,
+                 )
+             };
++            t75.expansion_ns += t75_expansion_start.elapsed().as_nanos();
++            let t75_angles_start = Instant::now();
+             let angles = slicer_core::algos::bridge_over_infill::internal_bridge_angles(
+                 &qualified,
+                 &slicer_core::algos::bridge_over_infill::InternalBridgeAngleInputs {
+@@ -1044,6 +1167,11 @@ fn gate_internal_bridge_sites(
+                     override_deg: internal_bridge_angle,
+                 },
+             );
++            t75.angles_ns += t75_angles_start.elapsed().as_nanos();
++            t75.angles_calls += 1;
++            let (t75_qualified_polys, t75_qualified_verts) = t75_poly_census(&qualified);
++            t75.qualified_polys += t75_qualified_polys;
++            t75.qualified_verts += t75_qualified_verts;
+             // The qualified polygons are the final bridge geometry: they join
+             // `bridge_areas`, so the Perimeters-commit partition cuts them out
+             // of sparse infill (canonical `cut_from_infill`), and the fill
+@@ -1057,6 +1185,8 @@ fn gate_internal_bridge_sites(
+                 (qualified, angles),
+             );
+         }
++        t75.phase_b_ns += t75_b_start.elapsed().as_nanos();
++        let t75_extra_start = Instant::now();
+ 
+         if extra_bridge_layer {
+             for pair in timeline.windows(2) {
+@@ -1146,6 +1276,48 @@ fn gate_internal_bridge_sites(
+                 }
+             }
+         }
++        t75.extra_ns += t75_extra_start.elapsed().as_nanos();
++    }
++    if t75.enabled {
++        eprintln!(
++            "T75PROBE timelines={} gate_ms={:.3} phase_a_ms={:.3} phase_b_ms={:.3} extra_ms={:.3} depth_ms={:.3} gather_ms={:.3} lower_ms={:.3} remove_ms={:.3} clip_ms={:.3} surface_ms={:.3} erosion_ms={:.3} retain_ms={:.3} presort_ms={:.3} expansion_ms={:.3} angles_ms={:.3} preps={} clip_calls={} erosion_calls={} angles_calls={} surface_calls={} retain_calls={} lower_layers={} lower_polys={} deep_before={}/{} deep_after={}/{} clip={}/{} erosion={}/{} qualified={}/{} region_surfaces={} region_infill={}",
++            t75.timelines_seen,
++            t75_gate_start.elapsed().as_nanos() as f64 / 1e6,
++            t75.phase_a_ns as f64 / 1e6,
++            t75.phase_b_ns as f64 / 1e6,
++            t75.extra_ns as f64 / 1e6,
++            t75.depth_build_ns as f64 / 1e6,
++            t75.gather_ns as f64 / 1e6,
++            t75.lower_candidates_ns as f64 / 1e6,
++            t75.remove_ns as f64 / 1e6,
++            t75.clip_offset_ns as f64 / 1e6,
++            t75.per_surface_ns as f64 / 1e6,
++            t75.erosion_offset_ns as f64 / 1e6,
++            t75.retain_ns as f64 / 1e6,
++            t75.presort_ns as f64 / 1e6,
++            t75.expansion_ns as f64 / 1e6,
++            t75.angles_ns as f64 / 1e6,
++            t75.preps,
++            t75.clip_calls,
++            t75.erosion_calls,
++            t75.angles_calls,
++            t75.surface_calls,
++            t75.retain_calls,
++            t75.lower_candidate_layers,
++            t75.lower_candidate_polys,
++            t75.deep_polys_before,
++            t75.deep_verts_before,
++            t75.deep_polys_after_remove,
++            t75.deep_verts_after_remove,
++            t75.clip_polys,
++            t75.clip_verts,
++            t75.erosion_polys,
++            t75.erosion_verts,
++            t75.qualified_polys,
++            t75.qualified_verts,
++            t75.region_surfaces,
++            t75.region_infill_polys,
++        );
+     }
+ }
+ 

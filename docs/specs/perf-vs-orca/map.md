@@ -70,7 +70,7 @@ share) with the below-fold park **unchanged** — the t72 best cell is still
 three new tickets unclaimed; the take order is the human's. Standing paired
 acceptance and KEEP/DROP rules unchanged.
 
-**Current selection scope (2026-10-18 → 2026-10-19, on the ticket 74 take):**
+**Previous selection scope (2026-10-18 → 2026-10-19, on the ticket 74 take):**
 the human's "continue" named no ticket, so the session took the first frontier
 ticket in order, [74](issues/74-layerfinalization-supports-on-view-cost.md);
 it is now **resolved (2026-10-19, human-approved KEEP, candidate committed
@@ -99,6 +99,35 @@ t73's 408.7 s) is why its brackets are an internal split, not wall evidence.
 Evidence:
 [`evidence/t74-finalization-view/`](evidence/t74-finalization-view/FINDINGS.md)
 (`verify.py` exits 0 checkout-only, three negative controls rejected).
+
+**Current selection scope (2026-10-19, on the ticket 75 take):** the human's
+"continue" named no ticket, so the session took the first frontier ticket in
+order, [75](issues/75-shellclassification-phase-b-commit.md); it is now
+**resolved (2026-10-19, human-approved KEEP, candidate committed `07b97cad`)**.
+Attribution: the serial phase-B commit was **78–81 % two full-layer Miter
+offsets** on base (65 % on Benchy) and only 8–18 % the `internal_bridge_angles`
+input step, refuting t27's iteration-1 candidate shape; only 9 of 121 base
+entries (13 of 43 Benchy entries) carry a non-empty lower-candidate bridge set.
+The candidate precomputes each layer's exact commit result in the parallel
+qualification phase and recomputes only those affected layers, so no geometry
+function changed. Candidate stage walls: **40.8 → 12.6 s** (base classic-off),
+**28.1 → 12.8 s** (base classic-on), **30.1 → 13.6 s** (base arachne-on),
+**5.75 → 1.77 s** (Benchy classic-on); **proof gate 16/16 PASS**; standing gate
+**24/24 pairs retained**, every pair byte-identical, wall **−3.08 % / −3.48 % /
+−3.06 % / −4.11 %** and CPU **+0.42 % / +1.08 % / +0.86 % / +0.51 %**
+(ordinary/accelerated × benchy/base). The ordinary-base **+1.08 %** is a
+0.08 pp miss of the pre-declared +1.0 % work-preserving ceiling; the human
+accepted it on the ticket-27 serialization precedent. The first timing campaign
+was evicted by the harness after 4/6 ordinary-base pairs; the partial set is
+preserved as `measure-interrupted-20261019` and not used, and the cell was
+re-run whole in a detached replacement campaign. Evidence:
+[`evidence/t75-shellclass-phase-b/`](evidence/t75-shellclass-phase-b/FINDINGS.md)
+(`qualification.json`, `ab-reduction.json`, `split.json`, `verify.py` exit 0
+with four negative controls). Frontier now:
+[76](issues/76-meshanalysis-footprint-union.md) unclaimed;
+[20](issues/20-consume-only-when-read-annotations.md) parked below-fold; the
+take order is the human's. Standing paired acceptance and KEEP/DROP rules
+unchanged.
 
 **Previous selection scope (2026-10-18, on the t72 take):** the frontier was
 re-derived on resume — the only open child was
@@ -765,6 +794,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [ShellClassification phase-B serial commit](issues/75-shellclassification-phase-b-commit.md): **resolved (2026-10-19; human-approved KEEP — candidate committed `07b97cad`)** — the serial phase-B commit is **78.1 % / 81.0 % / 79.5 % two full-layer Miter offsets** on the three base cells (65.1 % on Benchy), not the `internal_bridge_angles` input step (2.4/1.4/1.8/0.48 s; 8–18 %); the t27 sibling-region memo remains refuted. Only **9 of 121** base entries (13 of 43 Benchy) carry a non-empty lower-candidate bridge set, the sole order-dependent input. The candidate precomputes each layer's exact commit result in the parallel qualification phase and recomputes only those affected layers; no geometry function changed. Candidate stage walls **40.8 → 12.6 s / 28.1 → 12.8 s / 30.1 → 13.6 s / 5.75 → 1.77 s**; proof gate **16/16 PASS** against the t58 references; standing gate **24/24 pairs retained**, every pair byte-identical, wall **−3.08 % / −3.48 % / −3.06 % / −4.11 %** and CPU **+0.42 % / +1.08 % / +0.86 % / +0.51 %** (ordinary/accelerated × benchy/base). Ordinary base's **+1.08 %** is a 0.08 pp miss of the pre-declared +1.0 % work-preserving CPU ceiling; the human accepted it on the ticket-27 serialization precedent. The first timing campaign was evicted after 4/6 ordinary-base pairs; the partial set is preserved as `measure-interrupted-20261019` and not used, and the cell was re-run whole detached. Evidence: [`evidence/t75-shellclass-phase-b/`](evidence/t75-shellclass-phase-b/FINDINGS.md) (`split.json`, `qualification.json`, `ab-reduction.json`, `candidate.patch`, `probe.patch`, `verify.py` exit 0 with four negative controls).
+
 - [LayerFinalization supports-on whole-print view cost](issues/74-layerfinalization-supports-on-view-cost.md): **resolved (2026-10-19; human-approved KEEP — candidate committed `091e6bc9`)** — the supports-on brackets' **96.1 % copy/free churn** (61,555 ms module sum; input snapshot clone 12,112 ms, store drop 16,653 ms, merge rollback clone 13,446 ms, old-vector drop 16,940 ms; guest call 1,816 ms = 2.9 %) is owned by the whole `LayerCollectionIR` clone/free, dominated by the IR-only `support_entity_identities` side table (23,751 rows supports-on vs 0 supports-off), not by module reads or the 1.96x output-byte ratio. The candidate shares the ordered entity snapshot with the view via `Arc` and skips the merge rollback clone only when the order-lock remap is a no-op and the stream has no fallible op (fallible streams keep the rollback; the malformed-merge rollback contract stays green). Probe: **61,555 → 2,775 ms (−95.5 %)**, supports-off unchanged 1,290 → 1,252 ms, outputs byte-identical to the t58 references; proof gate **16/16 PASS**; standing paired gate **PASS** with 6/6 pairs in every cell: wall −3.13 % ordinary-benchy / −12.71 % ordinary-base / −3.89 % accelerated-benchy / −14.23 % accelerated-base, CPU −0.91 % / −2.30 % / −0.84 % / −2.97 %, all 24 pairs byte-identical. Base supports-on wall falls **46.00 s ordinary / 47.52 s accelerated**, inside t73's 45.0–48.5 s bracket attribution. Pre-commit gates: workspace clippy clean, check-literals 0, check-test-quality 0 findings, 24 executor + 10 contract finalization tests pass, both freshness gates exit 0. Evidence: [`evidence/t74-finalization-view/`](evidence/t74-finalization-view/FINDINGS.md) (`qualification.json`, `ab-reduction.json`, `candidate.patch`, `verify.py`).
 
 - [Base current bottleneck refresh](issues/73-base-current-bottleneck-refresh.md): **resolved (2026-10-18; measurement-only take — eight fresh ordinary base captures at post-t70 HEAD, every output byte-identical to its t58 reference; three tickets graduated, t20 park unchanged)** — base is **prepass-dominated**: instrumented wall 214.5/408.7/130.2/360.2 s (classic-off/classic-on/arachne-off/arachne-on), prepass 115.0/237.6/109.2/259.9 s, per-layer 94.3/98.2/16.1/19.8 s, postpass 2.4/69.1/1.4/76.6 s; the common prepass floor is 104–115 s on every cell, supports-on adds 134–149 s of support stages, and ticket 59's Slice verdict (40.0–44.9 s) stands. New leads in recommendation order: **supports-on LayerFinalization view cost** (four whole-print module brackets 10.1–12.5 s each, 45.0–48.5 s total vs 0.30–1.39 s supports-off, while guest fuel is 5.45 B of 12,964 B = 0.042 %), **ShellClassification phase-B serial commit** (26.0–31.4 s; t27's serial commit still 25–30 s), **MeshAnalysis exact union** (19.4–22.2 s serial over 326,546 facets; bbox replacement unsafe). t20 updated with the base context (classic per-layer 94.3/98.2 s; module 98.8/95.0 % of fuel; t18's 57.9 % base scan share) and the below-fold park re-derived as still binding (best cell 3.30x). No candidate, timing run, production edit or production-source commit. Evidence: [`evidence/perf-refresh-base-2026-10-18/`](evidence/perf-refresh-base-2026-10-18/FINDINGS.md) (`verify.py` exit 0 checkout-only + four negative controls rejected; `analyze.py` reproduces the tables).
@@ -995,17 +1026,23 @@ Standing decisions for this effort (2026-09-22):
   [scoreboard refresh](issues/72-scoreboard-refresh.md): the best cell is
   3.30x (benchy arachne-off) — the park is still binding.**
   **Base refresh (2026-10-18):** the fresh base split graduated three
-  unclaimed tickets — [supports-on finalization view
-  cost](issues/74-layerfinalization-supports-on-view-cost.md),
-  [ShellClassification phase-B commit](issues/75-shellclassification-phase-b-commit.md)
-  and [MeshAnalysis exact union](issues/76-meshanalysis-footprint-union.md) —
-  and the remaining un-graduated base leads stay in the fog: the tree-support
-  planner's 97–120 s serial native union/carve has no new exact shape at HEAD
-  (t70 already took the clipper hot loop; re-enter only with a batch/parallel
-  host contract), while the smaller `PrePass::OverhangAnnotation` (9.3–10.9 s
-  wall, heavily parallel) and `SeamPlanning` (8.6–10.9 s serial) stages lack a
-  measured reduction. The rest of the base common floor is ticket 59's closed
-  Slice verdict plus the two now-ticketed stages.
+  tickets — [supports-on finalization view
+  cost](issues/74-layerfinalization-supports-on-view-cost.md) (**resolved
+  2026-10-19, KEEP `091e6bc9`**), [ShellClassification phase-B
+  commit](issues/75-shellclassification-phase-b-commit.md) (**resolved
+  2026-10-19, KEEP `07b97cad`**) and [MeshAnalysis exact union](issues/76-meshanalysis-footprint-union.md)
+  (**unclaimed**) — and the remaining un-graduated base leads stay in the fog:
+  the tree-support planner's 97–120 s serial native union/carve has no new
+  exact shape at HEAD (t70 already took the clipper hot loop; re-enter only
+  with a batch/parallel host contract), while the smaller
+  `PrePass::OverhangAnnotation` (9.3–10.9 s wall, heavily parallel) and
+  `SeamPlanning` (8.6–10.9 s serial) stages lack a measured reduction. The rest
+  of the base common floor is ticket 59's closed Slice verdict plus the two
+  now-ticketed stages. After t75 the residual phase-B serial work is the
+  depth gather, the angles step and the 9/121 affected-layer recompute; the
+  stage's Pass 1 `apply_opening` round-join arc-tolerance-0 anomaly (t27
+  candidate (a)) remains the largest measured, un-ticketed term in the stage
+  and stays in the fog pending its own representation/parity check.
 - **Named leads from the t60 host:native attribution (2026-10-14).**
   [host:native attribution](issues/60-host-native-attribution.md)
   names two reducible shapes beyond the now-resolved (KEEP 2026-10-16)
