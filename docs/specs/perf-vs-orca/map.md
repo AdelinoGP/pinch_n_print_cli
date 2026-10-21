@@ -100,7 +100,31 @@ Evidence:
 [`evidence/t74-finalization-view/`](evidence/t74-finalization-view/FINDINGS.md)
 (`verify.py` exits 0 checkout-only, three negative controls rejected).
 
-**Current selection scope (2026-10-19, on the ticket 75 take):** the human's
+**Current selection scope (2026-10-21, on the ticket 76 take):** the human's
+"continue" resumed the already-claimed
+[76](issues/76-meshanalysis-footprint-union.md); it is now **resolved
+(2026-10-21, human-approved KEEP, candidate committed `465f2fd3`)**. The base
+overhang union was 326,546 facets costing 15.0-15.9 s of a 19.5-20.0 s stage;
+exact input reductions were refuted (0 duplicates and 0 zero-area facets; the
+containment drop of 5.9 % saves ~1.5 s; any input reorder changes the serialized
+footprint), so the candidate is a work-preserving partition: above 100,000
+facets, Morton-ordered centroids are split into a fixed 48 chunks, unioned in
+parallel, and merged by one final union. Production stage **19.5-20.0 s ->
+4.8-5.9 s**; the region differs only by sub-resolution slivers (4.2e-8
+relative) and polygon ordering. **Proof 16/16 PASS**; standing gate **6/6 pairs
+in every cell, every pair byte-identical**, wall **-4.46 % / -5.21 %** and CPU
+**-0.14 % / -0.93 %** (ordinary/accelerated base classic-on), controls
++2.11 % / +0.71 % wall inside overlapping min-max ranges with flat CPU. Three
+campaigns were lost to host stalls and a requested pause; their partial trees
+are preserved and unused, and a detached fourth campaign produced the
+measurements. Evidence:
+[`evidence/t76-footprint-union/`](evidence/t76-footprint-union/FINDINGS.md)
+(`verify.py` exits 0 checkout-only with four negative controls rejected).
+Frontier now: only [20](issues/20-consume-only-when-read-annotations.md),
+parked below-fold; no unclaimed child remains. Standing paired acceptance and
+KEEP/DROP rules unchanged.
+
+**Previous selection scope (2026-10-19 to 2026-10-21, on the ticket 75 take):** the human's
 "continue" named no ticket, so the session took the first frontier ticket in
 order, [75](issues/75-shellclassification-phase-b-commit.md); it is now
 **resolved (2026-10-19, human-approved KEEP, candidate committed `07b97cad`)**.
