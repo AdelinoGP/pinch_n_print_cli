@@ -154,3 +154,35 @@ generation remains the host-side `PrePass::LightningTreeGen` producer over the
 committed `SliceIR` and is not moved into a per-layer stage, `LightningTreeIR`
 remains the whole-print prepass commit, the module remains a per-layer sampler,
 and the Decision, Future-Reviewer Notes and Amendment above stand as written.
+
+## Amendment — 2026-10-20 (packet `layer-module-preparation_08_lightning-migration`)
+
+**Superseded text.** The paragraph immediately above ("Producer placement
+unchanged") is superseded in the part that fixes tree generation as a host-side
+PrePass producer, together with the Decision's "A future packet may modularize
+it; the IR contract is the stable seam."
+
+**Replacement.** Tree generation moves into **module-owned whole-print
+preparation** (`slicer_sdk::preparation::LayerPreparation::prepare_print` inside
+`com.core.lightning-infill`), not into a per-layer stage. The Future-Reviewer
+Note above stands unchanged and is the reason for that shape: a per-layer
+approximation remains exactly the stub this ADR retires, and the relocated kernel
+still iterates every layer twice before any `Layer::Infill` call. What changes is
+the *owner* of the whole-print computation and its *publication surface*: the
+consuming artifact plans and publishes trees privately instead of reading a
+public prepass IR through the `lightning-tree-segments` specialist query.
+
+**Precondition and evidence.** The move is authorized by a recorded baseline of
+the live producer's plan and final segments, captured and committed before
+removal, and reproduced exactly by native and fresh-WASM preparations: full key
+identity including ordered variant chains, edge multiplicity, and per-caller
+segment multisets. This is behavioural equivalence for a relocation, not a claim
+that the plan is canonical — it preserves whatever the current producer does,
+including any existing deviation. The recorded Gate A `fail` and the unexecuted
+Gate B are untouched by this amendment, and any later change of *strategy* is
+still governed by ADR-0066's gates.
+
+**Identity contract unchanged.** Nothing here relaxes ADR-0073: the specialist
+query package disappears because the query itself disappears, and full-source
+variant-chain identity continues to travel in the prepared plan entries and into
+`InfillRegion.variant_chain`.

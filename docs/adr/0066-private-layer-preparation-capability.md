@@ -144,3 +144,54 @@ or parity claim is made.
   before per-layer sampling. Until then its implementation remains present.
 - **ADR-0037 / ADR-0040:** extend post-commit, dependency-closure-aware visual
   captures with generic module-provided diagnostic projections.
+
+## Amendment — 2026-10-20 (packet `layer-module-preparation_08_lightning-migration`)
+
+**Superseded text.** The Consequences bullet read:
+
+> - Lightning migration requires a demonstrated canonical-correct PrePass input
+>   strategy and portable module-owned preparation. When that gate and migration
+>   acceptance pass, remove the old host producer, `LightningTreeIR` path, and
+>   `lightning-tree-segments` accessor directly, with affected contract/binding
+>   changes. There is no deprecation shim or approximate-geometry fallback.
+
+and the ADR-0029 relationship bullet read:
+
+> - **ADR-0029:** replace its host-owned lightning production decision when the
+>   gated migration lands; retain the requirement for whole-print computation
+>   before per-layer sampling. Until then its implementation remains present.
+
+**Why they are replaced.** Both bundled two different obligations behind one
+gate. Relocating an existing planner into the consuming artifact does not require
+a *new* canonical strategy; it requires that the relocation not degrade what the
+planner already produces. Read as written, the gate can never be satisfied by any
+amount of migration work: Gate A records `fail` because a restricted
+earlier-source reconstruction does not reproduce canonical domains, and Gate B
+never had a planner to execute. The result is a permanent freeze of the host
+producer — the opposite of what this ADR argues for, and not the harm the clause
+was written to prevent.
+
+**Replacement — two obligations, separated.**
+
+1. **Ownership move.** Relocate the existing planner into the selected artifact's
+   whole-print preparation, consume it through private pieces, publish the typed
+   projection, and delete the host producer, the public tree IR, the stage and the
+   accessor. Preconditions: portable module-owned preparation exists (settled by
+   queue rows 01–06) and the move is proven non-degrading by **recorded
+   behavioural equivalence** — a baseline of the live producer's plan and final
+   segments captured and committed before removal, reproduced exactly by native
+   and fresh-WASM preparations, with full key identity including ordered variant
+   chains, edge multiplicity, and per-caller segment multisets. The "no
+   deprecation shim, no approximate-geometry fallback" sentence stands unchanged
+   and now applies to the private plan format as well.
+2. **Strategy change.** Replacing the planner with one that is canonical-correct
+   by construction still requires a demonstrated canonical-correct PrePass input
+   strategy. The gate continues to govern that question, now inside the module
+   rather than across a host/module boundary.
+
+**Equivalence is not parity.** A green equivalence run states that ownership
+changed and output did not. It preserves any existing deviation from canonical and
+must never be reported as a parity result. This amendment leaves the recorded
+Gate A `fail` and the unexecuted Gate B untouched, does not amend ADR-0073's
+identity contract, and does not authorize moving tree generation into a per-layer
+stage (ADR-0029's Future-Reviewer Note stands: preparation is whole-print).

@@ -65,10 +65,13 @@ stages beyond infill and by external as well as integrated modules.
   pieces on failure. Module authors partition large data into additional pieces
   rather than relying on an append/open/close writer lifecycle.
 - **Independent framework completion (Q13):** the generic framework may complete
-  on its own contract acceptance. Lightning migration and host-path retirement
-  remain blocked until a canonical-correct late-PrePass input strategy is
-  demonstrated and migration acceptance passes. A failed geometry proof returns
-  the migration for a design decision; approximate geometry is not a fallback.
+  on its own contract acceptance. A lightning *strategy* change and the host-path
+  retirement that would carry it remain blocked until a canonical-correct
+  late-PrePass input strategy is demonstrated. By the 2026-10-20 ADR-0066/0029
+  amendments, an *ownership move* — relocating the existing planner unchanged —
+  is authorized instead by recorded behavioural equivalence to the live producer.
+  A failed geometry proof returns a strategy migration for a design decision;
+  approximate geometry is not a fallback.
 - **Separate routing prerequisite (Q14):** the full-identity routing/configuration
   repair is separate blocking work. Preparation integration cannot complete until
   that prerequisite is implemented and verified; its defects must not be copied
@@ -733,7 +736,23 @@ of the Q23 approval:
 | 05 | preparation-runtime-lifecycle | Integrate eligibility, late-PrePass execution before Layer calls, failure/cancellation handling, storage release, and truthful runtime lifecycle diagnostics. | TASK-574 | #3, #4 | implemented | docs/spec_packets/layer-module-preparation_05_preparation-runtime-lifecycle/ |
 | 06 | preparation-plan-visuals | Publish validated optional XY diagnostic projections atomically with prepared plans, then capture and render them through the existing visual-debug request and bundle path with truthful execution metadata. | TASK-575 | #5 | generated | docs/spec_packets/layer-module-preparation_06_preparation-plan-visuals/ |
 | 07 | lightning-geometry-portability-gate | Establish the reproducible canonical planning-domain/input oracle and verify the module-owned kernel through native and WASM adapters; record both outcomes in this source plan. | TASK-576 | - | generated | docs/spec_packets/layer-module-preparation_07_lightning-geometry-portability-gate/ (Gate A); docs/spec_packets/layer-module-preparation_09_lightning-kernel-portability/ (Gate B) |
-| 08 | lightning-migration | Migrate lightning to module-owned preparation and directly retire the host producer, `LightningTreeIR`, and `lightning-tree-segments` accessor. | TASK-577 | #5, #6, #7; complete generic framework acceptance and both verified outcomes recorded in this plan | generated | docs/spec_packets/layer-module-preparation_08_lightning-migration/ |
+| 08 | lightning-migration | Migrate lightning to module-owned preparation and directly retire the host producer, `LightningTreeIR`, and `lightning-tree-segments` accessor. | TASK-577 | #5, #6 | draft (re-scoped 2026-10-20) | docs/spec_packets/layer-module-preparation_08_lightning-migration/ |
+
+**Row 08 re-scope (2026-10-20).** Row 08 previously required "complete generic
+framework acceptance and both verified outcomes recorded in this plan" before any
+production edit. That conjunction is withdrawn because it was unsatisfiable and
+because it tested a property row 08 does not claim: rows 07 and 09 decide whether
+a *reconstructed* planning domain reproduces canonical geometry, while row 08
+moves existing planning ownership into the consuming artifact without changing
+what it computes. Row 08's correctness criterion is therefore **recorded
+behavioural equivalence**: a baseline of the live host producer's plan and final
+segments is captured and committed before deletion, and native plus fresh-WASM
+preparations must reproduce it exactly (full key identity including ordered
+`variant_chain`, edge multiplicity, per-caller segment multisets). Deletion of the
+legacy contract is gated on that comparison passing. Equivalence preserves current
+behaviour — including any existing deviation from canonical — so it is not a
+parity result and does not change the recorded Gate A `fail` or the unexecuted
+Gate B. Prerequisite rows 05 and 06 are `implemented` in this plan.
 
 The merged rows retain their internal acceptance sub-gates: row 01 covers both
 variant-chain delivery and the shared projection, retaining the routing witnesses
@@ -748,17 +767,18 @@ rows does not waive these sub-gates. Generic framework acceptance is realized
 through rows 01–06 and may complete independently of lightning migration. Row 07
 is the feasibility gate. By explicit authoring approval, row 08 may be authored
 now as a blocked draft so the full packet set exists before implementation starts.
-This exception does not make it implementation-ready: activation and implementation
-remain blocked until complete generic framework acceptance and both verified gate
-outcomes, including the concrete migration design evidence required above, are
-recorded in this source plan. Failed or inconclusive evidence returns migration
-for a design decision; approximate geometry is not a fallback. The queue above
-records generation status; a blocked authored draft may list its directory, but
-only PREFLIGHT PASS permits `generated`. Generated packets remain drafts, and
-their preflight passes are not evidence of implemented acceptance or feasibility.
-Row 08's generated status covers blocked-draft authoring only: its B1–B5 design
-holds and the framework/feasibility evidence gates still prohibit activation and
-every production migration edit.
+This exception does not make an authored draft implementation-ready on its own.
+Row 08 was first authored as a blocked draft and was re-scoped on 2026-10-20 as a
+behaviour-preserving ownership move: its B1–B5 blockers are resolved as D1–D5 and
+its correctness criterion is recorded behavioural equivalence to the live producer,
+captured before removal — not both gate outcomes. Activation now requires
+independent PREFLIGHT PASS, the baseline recorded and deterministic, and AC-2/AC-3
+green before any deletion; framework rows 01–06 are implemented. Failed
+equivalence returns the migration for a design decision; approximate geometry is
+not a fallback, and equivalence is not a parity claim. The queue above records
+generation status; an authored draft may list its directory, but only PREFLIGHT
+PASS permits `generated`. Generated packets remain drafts, and their preflight
+passes are not evidence of implemented acceptance.
 No implementation is underway.
 
 ## Lightning geometry/portability gate outcomes
@@ -886,8 +906,12 @@ Migration remains blocked: `migration_eligible` is `false`, and the A record nam
 `layer-module-preparation_09_lightning-kernel-portability`), and
 `MIGRATION_BLOCKED_FRAMEWORK` (ADR-0066: no layer-preparation migration before the
 canonical strategy and portability proof complete). Gate A alone never permits
-migration. TASK-577 stays blocked until both gates pass and the framework
-acceptance completes.
+a strategy migration, so `migration_eligible` remains `false` for that question.
+The 2026-10-20 ADR-0066/0029 amendments separate it from an ownership move:
+relocating the existing planner unchanged is authorized by recorded behavioural
+equivalence to the live producer, which is what row 08 now does. The gate outcomes
+above are unchanged by that amendment and are neither re-run nor re-interpreted
+here.
 
 ### Evidence durability and gate coverage
 
