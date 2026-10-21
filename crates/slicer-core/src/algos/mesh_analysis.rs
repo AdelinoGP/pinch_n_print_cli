@@ -16,6 +16,8 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
 
+use rayon::prelude::*;
+
 use slicer_ir::{
     BridgeRegion, ExPolygon, FacetClass, IndexedTriangleSet, MeshIR, ObjectId, ObjectSurfaceData,
     OverhangRegion, Point2, Point3, Polygon, SurfaceClassificationIR, SurfaceGroup, Transform3d,
@@ -546,13 +548,19 @@ fn compute_anchor_width_mm(runs: &[AnchorRun], bridge_direction_deg: f32) -> f32
 /// loop) turns an O(n) sweep into O(n) full sweeps over a growing accumulator,
 /// which is what made `MeshAnalysis` take minutes on meshes with tens of
 /// thousands of overhang/bridge facets (e.g. a curved hull like 3D Benchy).
+///
+/// Above [`PARALLEL_UNION_MIN_FACETS`] the sweep is split into a deterministic
+/// spatial partition: projected centroids are Morton-ordered, contiguous bands
+/// of that order are unioned in parallel, and the partial results are merged
+/// with one final union. Set union is associative, so the filled region is the
+/// union of the whole input; the partition only changes which worker performs
+/// the sweep, not the geometry. Small inputs (3D Benchy: 22,137 overhang
+/// facets) stay on the one-shot sweep, which is already cheap.
 fn compute_xy_footprint(
     mesh: &IndexedTriangleSet,
     transform: &Transform3d,
     facet_indices: &[u32],
 ) -> Vec<ExPolygon> {
-    use crate::polygon_ops::union_ex;
-
     let tris: Vec<ExPolygon> = facet_indices
         .iter()
         .map(|&t| {
@@ -578,7 +586,108 @@ fn compute_xy_footprint(
         })
         .collect();
 
-    union_ex(&tris)
+    union_footprint(&tris)
+}
+
+/// Facet count above which [`compute_xy_footprint`] partitions the union.
+///
+/// The one-shot sweep is superlinear in the number of overlapping projected
+/// facets: `tmp/base.stl`'s 326,546 overhang facets cost ~15 s in one sweep and
+/// ~0.5 s as a partition, while 3D Benchy's 22,137 facets cost ~0.08 s
+/// one-shot. The threshold keeps every measured small input on the unchanged
+/// path.
+const PARALLEL_UNION_MIN_FACETS: usize = 100_000;
+
+/// Partition count for the parallel union. Fixed rather than derived from the
+/// thread count so the resulting footprint is machine-independent.
+const PARALLEL_UNION_CHUNKS: usize = 48;
+
+/// Exact union of `tris`, partitioned and parallelized above the size
+/// threshold. See [`compute_xy_footprint`].
+fn union_footprint(tris: &[ExPolygon]) -> Vec<ExPolygon> {
+    union_footprint_partitioned(tris, PARALLEL_UNION_MIN_FACETS)
+}
+
+/// [`union_footprint`] with an injectable threshold, so the partition path can
+/// be exercised by a small deterministic test.
+fn union_footprint_partitioned(tris: &[ExPolygon], min_facets: usize) -> Vec<ExPolygon> {
+    use crate::polygon_ops::union_ex;
+
+    if tris.len() < min_facets {
+        return union_ex(tris);
+    }
+
+    // Morton-order each projected centroid so each contiguous chunk is a
+    // compact 2-D neighbourhood, then split into a fixed number of chunks.
+    // Key ties are broken by facet index, keeping the partition deterministic
+    // and machine-independent.
+    let centroids: Vec<(i64, i64)> = tris
+        .iter()
+        .map(|tri| {
+            let n = tri.contour.points.len() as i128;
+            let sx: i128 = tri.contour.points.iter().map(|p| i128::from(p.x)).sum();
+            let sy: i128 = tri.contour.points.iter().map(|p| i128::from(p.y)).sum();
+            ((sx / n) as i64, (sy / n) as i64)
+        })
+        .collect();
+    let min_x = centroids.iter().map(|c| c.0).min().unwrap_or(0);
+    let min_y = centroids.iter().map(|c| c.1).min().unwrap_or(0);
+    let span = centroids
+        .iter()
+        .map(|&(cx, cy)| (cx - min_x).max(cy - min_y) as u64)
+        .max()
+        .unwrap_or(0);
+    // 24 Morton bits cover 16.7 M units (1677 mm); larger inputs shift down.
+    let shift = if span >= (1u64 << 24) {
+        (64 - span.leading_zeros()) - 24
+    } else {
+        0
+    };
+
+    let morton2 = |x: u64, y: u64| -> u64 {
+        fn spread(mut v: u64) -> u64 {
+            v &= 0x00ff_ffff;
+            v = (v | (v << 16)) & 0x0000_ffff_0000_ffff;
+            v = (v | (v << 8)) & 0x00ff_00ff_00ff_00ff;
+            v = (v | (v << 4)) & 0x0f0f_0f0f_0f0f_0f0f;
+            v = (v | (v << 2)) & 0x3333_3333_3333_3333;
+            v = (v | (v << 1)) & 0x5555_5555_5555_5555;
+            v
+        }
+        spread(x) | (spread(y) << 1)
+    };
+
+    let mut order: Vec<(u64, u32)> = centroids
+        .iter()
+        .enumerate()
+        .map(|(i, &(cx, cy))| {
+            (
+                morton2(
+                    ((cx - min_x) as u64) >> shift,
+                    ((cy - min_y) as u64) >> shift,
+                ),
+                i as u32,
+            )
+        })
+        .collect();
+    order.sort_unstable();
+
+    let chunk_len = order.len().div_ceil(PARALLEL_UNION_CHUNKS);
+    let partials: Vec<Vec<ExPolygon>> = order
+        .chunks(chunk_len)
+        .collect::<Vec<_>>()
+        .into_par_iter()
+        .map(|chunk| {
+            let input: Vec<ExPolygon> = chunk
+                .iter()
+                .map(|&(_, i)| tris[i as usize].clone())
+                .collect();
+            union_ex(&input)
+        })
+        .collect();
+
+    let merged: Vec<ExPolygon> = partials.into_iter().flatten().collect();
+    union_ex(&merged)
 }
 
 /// Axis-aligned bounds of an `ExPolygon`, in workspace units.
@@ -976,5 +1085,65 @@ mod tests {
              batched union), which is what made PrePass::MeshAnalysis take \
              118s+ on 3D Benchy"
         );
+    }
+
+    /// A rectangle covered by a lattice of unit-square triangle pairs, with an
+    /// optional hole made by skipping the centre cells. Every triangle is a
+    /// quarter of a cell, so adjacent pieces share exact integer edges and the
+    /// union has a known shape.
+    fn lattice_triangle_set(cells_x: usize, cells_y: usize, hole: bool) -> Vec<ExPolygon> {
+        const STEP: i64 = 1_000;
+        let mut tris = Vec::with_capacity(cells_x * cells_y * 2);
+        for gy in 0..cells_y {
+            for gx in 0..cells_x {
+                let hole_band_x = gx >= cells_x / 4 && gx < cells_x / 2;
+                let hole_band_y = gy >= cells_y / 4 && gy < cells_y / 2;
+                if hole && hole_band_x && hole_band_y {
+                    continue;
+                }
+                let x0 = gx as i64 * STEP;
+                let y0 = gy as i64 * STEP;
+                let x1 = x0 + STEP;
+                let y1 = y0 + STEP;
+                let p = |x, y| Point2 { x, y };
+                tris.push(ExPolygon {
+                    contour: Polygon {
+                        points: vec![p(x0, y0), p(x1, y0), p(x1, y1)],
+                    },
+                    holes: vec![],
+                });
+                tris.push(ExPolygon {
+                    contour: Polygon {
+                        points: vec![p(x0, y0), p(x1, y1), p(x0, y1)],
+                    },
+                    holes: vec![],
+                });
+            }
+        }
+        tris
+    }
+
+    /// The partition+merge path must cover exactly the same region as the
+    /// one-shot sweep, and must be deterministic. A low injected threshold
+    /// exercises the 48-chunk path with a small lattice instead of needing a
+    /// 100,000-facet fixture.
+    #[test]
+    fn partitioned_union_matches_one_shot_union_geometrically() {
+        use crate::polygon_ops::xor;
+
+        for hole in [false, true] {
+            let tris = lattice_triangle_set(20, 10, hole);
+            let one_shot = crate::polygon_ops::union_ex(&tris);
+            let partitioned = union_footprint_partitioned(&tris, 1);
+            assert!(
+                xor(&one_shot, &partitioned).is_empty(),
+                "partitioned union (hole={hole}) must cover the same region as the one-shot union"
+            );
+            assert_eq!(
+                serde_json::to_string(&partitioned).unwrap(),
+                serde_json::to_string(&union_footprint_partitioned(&tris, 1)).unwrap(),
+                "the spatial partition must be deterministic"
+            );
+        }
     }
 }
