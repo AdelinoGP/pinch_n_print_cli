@@ -100,7 +100,33 @@ Evidence:
 [`evidence/t74-finalization-view/`](evidence/t74-finalization-view/FINDINGS.md)
 (`verify.py` exits 0 checkout-only, three negative controls rejected).
 
-**Current selection scope (2026-10-21 → 2026-10-22, on the ticket 20 take):**
+**Current selection scope (2026-10-22, on the ticket 77 take):** the frontier
+re-derivation found **no open child** (all 76 children resolved), so the route
+returned to the human, who selected the **tree-support planner union/carve**
+option. [77](issues/77-tree-support-planner-batch-parallel-contract.md) was
+graduated, claimed and **resolved as a measured attribution + contract take** —
+no production edit, no timing campaign, no commit beyond its records. Measured
+at HEAD on base classic supports-on with a reverted host/guest probe whose
+output is byte-identical to the t58 reference `f60e5e9b…`: the planner module is
+**126.674 s** of the 147.040 s `PrePass::SupportGeometry` stage, and its
+**79.659 s** `clip_polygons` core is **99.03 % inside `build_roles`** — 472 role
+unions (52.4 %, median 79.2 ms, mean 312 input polygons) and 69,161 per-region
+carves (44.9 %, median 0.474 ms). The three shapes the fog pointed at are
+refuted by measurement: the `layer_outlines_below` prefix chain is **0.13 %**,
+t76's intra-call partition has no target (max call 436 ms) and its sliver
+tolerance cannot carry printed geometry, and the ladder unions are 0.7 %. The
+surviving contract is **cross-call batching** through the existing
+`clip_polygons_batch` — exact per call, input-ordered, fanned out on estimated
+work — needing guest-side buffering, not host capability. Idealized ceiling
+(arithmetic, unmeasured): **≈ 72.3 s off a 147.0 s stage**. One candidate
+graduated: [emit-pass batched carve and role union](issues/78-tree-support-planner-emit-batching.md)
+(open, unclaimed). Frontier now: **ticket 78 only**; the take order is the
+human's. Standing paired acceptance and KEEP/DROP rules unchanged. Evidence:
+[`evidence/t77-planner-contract/`](evidence/t77-planner-contract/FINDINGS.md)
+(`verify.py` exits 0 checkout-only with 8/8 negative controls rejected; raw
+capture under `target/t77-probe2/`, reproducible from `probe.patch`).
+
+**Previous selection scope (2026-10-21 → 2026-10-22, on the ticket 20 take):**
 the human lifted the below-fold park and selected
 [20](issues/20-consume-only-when-read-annotations.md) explicitly ("Lift the
 park; take ticket 20"). It is now **resolved (2026-10-22, human-approved KEEP,
@@ -838,6 +864,8 @@ Standing decisions for this effort (2026-09-22):
 
 <!-- one line per closed ticket; the ticket holds the detail -->
 
+- [Tree-support planner native union/carve batch-or-parallel host contract](issues/77-tree-support-planner-batch-parallel-contract.md): **resolved (2026-10-22; measured attribution + contract — no production edit, no timing campaign; one candidate graduated)** — the planner's `clip_polygons` core is **79.659 s of a 126.674 s module stage** (stage `PrePass::SupportGeometry` 147.040 s), and **99.03 % of that core (78.885 s) sits inside `build_roles`**: **472 role unions** (52.4 %; median 79.2 ms, p95 301.6 ms, mean 312 input polygons, max 1,023) plus **69,161 per-region carves** (44.9 %; median 0.474 ms, 1.96 clip polygons). The shapes the fog pointed at are **refuted by measurement**: the `layer_outlines_below` running-union prefix chain is **494 calls / 0.102 s / 0.13 %** (each layer contributes ~1 polygon; the accumulator stays ~1k vertices), t76's intra-call partition has **no target** (no union above 436 ms) and its sliver tolerance does not transfer because the union output *is* printed support geometry, and the 20,275 `ladder_union` calls are 0.662 s. The surviving contract is **cross-call batching** through the existing `clip_polygons_batch` (`crate::batch::map_batch`, fan-out at 4,096 primitives, input-order results): each batch item is the same single operation with the same arguments, so exactness is **per-call identical** (t65 precedent), unlike a partition. Idealized ceiling **72.3 s off a 147.0 s stage** (arithmetic, unmeasured; excludes marshalling 69k requests, buffering memory, imperfect scaling and the 47.0 s of non-clip module time). Probe (`probe.patch`) output byte-identical to the t58 reference `f60e5e9b…`, reverted; both freshness gates exit 0. Evidence: [`evidence/t77-planner-contract/`](evidence/t77-planner-contract/FINDINGS.md) (`verify.py` exits 0 checkout-only, 8/8 negative controls rejected). Graduated: [emit-pass batched carve and role union](issues/78-tree-support-planner-emit-batching.md).
+
 - [Consume-only-when-read annotations](issues/20-consume-only-when-read-annotations.md): **resolved (2026-10-22; human-approved KEEP — candidate committed `053904aa`)** — the only semantic reader of `overhang_quartile` / `overhang_distance_mm` is `OverhangClassifierDefault::run_finalization`, which returns before reading a stamp when `enable_overhang_speed` is false or all four `overhang_{1..4}_4_speed` bands are zero; none of the matched configs authors those keys, so the stamps were unread work. The candidate shares that exact predicate through `slicer_sdk::config_predicates::overhang_annotations_consumed` (the classifier calls the same helper), declares the five keys on both perimeter manifests, and selects `PathAnnotationMode::Unconsumed` when the predicate is false, skipping both per-vertex exact scans. Dynamic premise check: `consumed=false` on 495 base classic-off layers. **Proof 16/16 PASS** against the t58 references; standing gate **PASS in all four pre-declared classic supports-off cells**, 6/6 pairs, every pair byte-identical: wall **−25.93 % / −34.47 % / −14.38 % / −18.10 %** and CPU **−37.67 % / −39.61 % / −24.47 % / −21.58 %** (ordinary/accelerated × benchy/base). `is_bridge` was deliberately untouched (no consumer liveness predicate; t18's hot split is the two scan families). Evidence: [`evidence/t20-consume-only/`](evidence/t20-consume-only/FINDINGS.md) (`verify.py` exits 0 checkout-only with four negative controls rejected).
 
 - [MeshAnalysis exact footprint union](issues/76-meshanalysis-footprint-union.md): **resolved (2026-10-21; human-approved KEEP — candidate committed `465f2fd3`)** — the base overhang union (326,546 facets, 15.0–15.9 s of a 19.5–20.0 s stage) could not be reduced exactly at its inputs (0 duplicate / 0 zero-area facets; the 5.9 % containment drop saves ~1.5 s; any reorder changes the serialized footprint), so the candidate is a work-preserving partition: above 100,000 facets, Morton-ordered centroids split into 48 chunks, unioned in parallel, merged by one final union. Stage **19.5–20.0 → 4.8–5.9 s**; the region differs only by sub-resolution slivers (4.2e-8 relative) and polygon ordering. Proof **16/16 PASS**; standing gate **6/6 pairs in every cell, every pair byte-identical**, wall **−4.46 % ordinary / −5.21 % accelerated** base classic-on, CPU **−0.14 % / −0.93 %**. Evidence: [`evidence/t76-footprint-union/`](evidence/t76-footprint-union/FINDINGS.md) (`verify.py` exits 0 checkout-only with four negative controls rejected).
@@ -1089,11 +1117,17 @@ Standing decisions for this effort (2026-09-22):
   commit](issues/75-shellclassification-phase-b-commit.md) (**resolved
   2026-10-19, KEEP `07b97cad`**) and [MeshAnalysis exact union](issues/76-meshanalysis-footprint-union.md)
   (**resolved 2026-10-21, KEEP `465f2fd3`**) - and the remaining un-graduated base leads stay in the fog:
-  the tree-support planner's 97–120 s serial native union/carve has no new
-  exact shape at HEAD (t70 already took the clipper hot loop; re-enter only
-  with a batch/parallel host contract), while the smaller
-  `PrePass::OverhangAnnotation` (9.3–10.9 s wall, heavily parallel) and
-  `SeamPlanning` (8.6–10.9 s serial) stages lack a measured reduction. The rest
+  the tree-support planner's 97-120 s serial native union/carve now has its
+  measured batch/parallel contract ([ticket 77](issues/77-tree-support-planner-batch-parallel-contract.md),
+  2026-10-22): **99.03 % of its 79.659 s clip core is inside `build_roles`**
+  (472 big role unions + 69,161 tiny per-region carves, both independent per
+  item), so the shape is **cross-call batching** through the existing
+  `clip_polygons_batch` — exact per call — and the graduated candidate is
+  [emit-pass batched carve and role union](issues/78-tree-support-planner-emit-batching.md).
+  The prefix chain, t76's intra-call partition and the ladder unions are
+  measured dead (0.13 %, no target above 436 ms, 0.7 %). Still fog: the
+  `PrePass::OverhangAnnotation` (9.3-10.9 s wall, heavily parallel) and
+  `SeamPlanning` (8.6-10.9 s serial) stages lack a measured reduction. The rest
   of the base common floor is ticket 59's closed Slice verdict plus the two
   now-ticketed stages. After t75 the residual phase-B serial work is the
   depth gather, the angles step and the 9/121 affected-layer recompute; the
