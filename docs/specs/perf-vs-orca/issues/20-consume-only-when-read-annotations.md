@@ -1,10 +1,15 @@
 # Consume-only-when-read annotations
 
 Type: task
-Status: open
-Assignee: unassigned — routing claim 2026-10-08 resolved into the read-only
-premise audit below; awaiting the human's route decision (the below-fold park in
-[Gap budget per cell](12-gap-budget-per-cell.md) remains in force)
+Status: resolved (2026-10-22; human-approved KEEP - candidate committed
+`053904aa`; proof 16/16 byte-identical to the t58 references; standing paired
+gate PASS in all four pre-declared classic supports-off cells, 6/6 pairs each:
+wall -25.93/-34.47/-14.38/-18.10 per cent and CPU -37.67/-39.61/-24.47/-21.58
+per cent, ordinary/accelerated x benchy/base)
+Assignee: 2026-10-21 OpenCode wayfinder session — the human lifted the
+below-fold park for this take and selected this ticket explicitly ("Lift the
+park; take ticket 20"). The park lift is candidate-scoped to this ticket and
+does not redraw the map's destination or ticket 12's ~1.5x condition.
 Blocked by: 12, 18, 19
 
 ## Question
@@ -135,3 +140,138 @@ parked term for the human's route decision — the 57.9 % is an attribution
 share, not a wall prediction. No duplicate ticket, annotation candidate or
 park lift follows. Evidence:
 [findings](../evidence/perf-refresh-base-2026-10-18/FINDINGS.md).
+
+### Take claimed — 2026-10-21 (pre-declaration, before any measured build)
+
+The human lifted the below-fold park for this ticket and selected it as the
+session's route. The take implements the audit's conditional-stamp shape:
+
+- A shared predicate, `overhang_annotations_consumed` in
+  `crates/slicer-sdk/src/config_predicates.rs`, mirrors the classifier's own
+  liveness gate exactly (`enable_overhang_speed` && any of the four
+  `overhang_{1..4}_4_speed` bands != 0). The classifier now calls the same
+  helper, so producer and consumer cannot disagree by construction.
+- `classic-perimeters` and `arachne-perimeters` declare the five predicate
+  keys in their manifests (same types/defaults/denied_scopes as
+  `overhang-classifier-default.toml`) and read the predicate once per
+  `run_perimeters`. When inactive, the planar wall path uses the new
+  `PathAnnotationMode::Unconsumed` (both `overhang_quartile` and
+  `overhang_distance_mm` stay `None`), and arachne skips both stamp loops.
+  When live, the exact pre-take modes/queries run unchanged.
+- `is_bridge` is deliberately not touched: the t18 split localizes the hot
+  cost in the two exact scan families, and `is_bridge` has no consumer
+  liveness predicate (its flow-factor consumer is unconditional). Classic's
+  missing `bridge_areas.is_empty()` parity guard remains a separate
+  observation, not this candidate.
+
+**Dynamic premise check (done before the campaign):** one ordinary base
+classic-supports-off slice at `RAYON_NUM_THREADS=12` with a temporary
+`T20-PROBE` in the classifier logged `consumed=false layers=495`; the probe
+was then removed (grep-guarded before the snapshot builds). Output hash
+`20e7204c...` equals the preserved t58 base-classic-off reference.
+
+**Pre-declared acceptance (before any measured build):**
+
+- Proof: all 16 cells ({benchy, base} x {classic, arachne} x supports
+  off/on x ordinary/accelerated) baseline and candidate byte-identical,
+  clean, non-vacuous, and equal to the preserved t58 references.
+- Standing paired gate: the four classic supports-off cells
+  (ordinary/accelerated x benchy/base), 6 alternating pairs per cell plus 2
+  warmups per arm, `RAYON_NUM_THREADS=12`, external `GetProcessTimes`.
+  Wall must fall (paired-median delta < 0) and process CPU must corroborate
+  (paired-median delta <= +1.0 %) in all four cells; fewer than 6 retained
+  pairs makes a cell inconclusive.
+- No candidate source is committed before the human rules.
+
+Evidence root (gitignored raw captures):
+`.local-artifacts/perimeter-reference-preparation/t20-consume-only/`; the
+committed reduced set lands under `docs/specs/perf-vs-orca/evidence/t20-consume-only/`.
+
+## Answer
+
+**Resolved 2026-10-22 — human-approved KEEP; candidate committed `053904aa`.**
+
+### Premise re-verified
+
+The 2026-10-08 consumer audit was re-checked at HEAD: no production site
+makes a decision on `overhang_quartile` / `overhang_distance_mm` except
+`OverhangClassifierDefault::run_finalization`, and that module returns before
+reading a stamp when its liveness predicate is false. The predicate is
+`enable_overhang_speed` && any of the four `overhang_{1..4}_4_speed` bands != 0.
+None of the matched configs authors those keys; the manifest defaults are
+`true` / `0.0`, so the predicate is false on every matched cell.
+
+**Dynamic check (before any measured build):** a temporary `T20-PROBE` in the
+classifier printed `T20-PROBE classifier consumed=false layers=495` on one
+ordinary base classic-supports-off slice at `RAYON_NUM_THREADS=12`. The probe
+was removed and `build-snapshots.ps1` grep-guards it; that cell's output hash
+`20e7204c...` equals the preserved t58 reference.
+
+### Candidate
+
+- `crates/slicer-sdk/src/config_predicates.rs` adds
+  `overhang_annotations_consumed` (required-read predicate) and a
+  producer-side variant that reports inactive on a missing key. The classifier
+  calls the required-read variant, so producer and consumer share one
+  definition.
+- `classic-perimeters` and `arachne-perimeters` declare the five predicate keys
+  in their manifests (same types/defaults/denied scopes as
+  `overhang-classifier-default.toml`) and read the predicate once per
+  `run_perimeters`.
+- `PathAnnotationMode::Unconsumed` (`crates/slicer-core/src/perimeter_spatial.rs`)
+  emits neither annotation and runs neither query. Classic's planar wall path
+  uses `Planar` when live and `Unconsumed` when dead; its non-planar shell path
+  uses `NonPlanarNoQuartile` when live and `Unconsumed` when dead. Arachne
+  skips both stamp loops when dead and keeps the pre-take stamps when live.
+- `is_bridge` is deliberately untouched: the t18 split localizes the hot cost
+  in the two exact scan families, and `is_bridge` has no consumer liveness
+  predicate (its flow-factor consumer is unconditional). Classic's missing
+  `bridge_areas.is_empty()` parity guard remains a separate observation.
+
+When the predicate is live, the exact pre-take queries and modes run, so the
+change is value-identical wherever the stamps are read.
+
+### Acceptance
+
+- **Proof 16/16 PASS.** All 16 cells ({benchy, base} x {classic, arachne} x
+  supports off/on x ordinary/accelerated) baseline and candidate byte-identical,
+  clean, non-vacuous, and equal to the preserved t58 references
+  (`qualification.json`).
+- **Standing paired gate PASS in all four pre-declared classic supports-off
+  cells**, 6 alternating pairs each plus 2 warmups per arm, zero starvation
+  exclusions, every pair byte-identical:
+
+| cell | baseline median wall | candidate median wall | paired wall delta | paired CPU delta |
+| --- | ---: | ---: | ---: | ---: |
+| ordinary benchy classic-off | 12.367 s | 9.282 s | -25.93 % | -37.67 % |
+| ordinary base classic-off | 157.775 s | 103.396 s | -34.47 % | -39.61 % |
+| accelerated benchy classic-off | 10.192 s | 8.733 s | -14.38 % | -24.47 % |
+| accelerated base classic-off | 120.004 s | 98.399 s | -18.10 % | -21.58 % |
+
+The larger CPU reduction corroborates work removal rather than a scheduling
+shift. The mechanism matches the premise: the two exact scan families were
+57.9 % of the accelerated base classic module fuel (t18) and 69.8 % of classic
+guest fuel (t08).
+
+### Evidence
+
+- [`evidence/t20-consume-only/`](../evidence/t20-consume-only/FINDINGS.md):
+  `FINDINGS.md`, `qualification.json`, `ab-reduction.json`, `candidate.patch`,
+  the four drivers/checkers, and `verify.py`, which exits 0 from the committed
+  set alone with four negative controls rejected.
+- Raw snapshot/capture root (gitignored):
+  `.local-artifacts/perimeter-reference-preparation/t20-consume-only/`.
+- Pre-commit gates: workspace check and clippy `-D warnings` clean,
+  `check-literals` green, `check-test-quality --report` 0 findings,
+  `gen-config-docs --check` current, ordinary and accelerated guest freshness
+  exit 0.
+
+### Caveats
+
+- The gate cells are classic supports-off; arachne and supports-on output
+  identity is proven in all 16 cells, but their wall effect was not timed in
+  this take.
+- The proof warmup walls are single runs, not the paired gate.
+- The candidate does not touch `is_bridge`; classic's missing
+  `bridge_areas.is_empty()` parity guard remains a separate observation.
+
