@@ -65,3 +65,53 @@ fn run_slice_against_wedge_returns_nonempty_gcode() {
         "run.rs must not contain _stale_build_plan"
     );
 }
+
+/// Regression: an integrated module that declares `[preparation]` must be
+/// freezable from the ordinary entry point, with no caller-supplied pairs.
+///
+/// The lightning module declares `slicer:layer-preparation/prepare@1.0.0`. When
+/// its only candidate is the integrated (native) registration, `run_slice` used
+/// to freeze `NativePreparationArtifact::Plain` and fail with
+/// `missing preparation export: com.core.lightning-infill`, because the
+/// prepared pair was only ever supplied by the acceptance harness. The failure
+/// is invisible to that harness by construction, so this test deliberately
+/// calls `run_slice` with no extensions and no on-disk module manifests.
+#[test]
+fn run_slice_freezes_integrated_prepared_module_without_caller_injection() {
+    let root = workspace_root();
+    let model = root.join("resources").join("regression_wedge.stl");
+    assert!(
+        model.exists(),
+        "regression_wedge.stl must exist at {}",
+        model.display()
+    );
+
+    let mesh =
+        std::sync::Arc::new(slicer_model_io::load_model(&model).expect("model load must succeed"));
+
+    let mut config_overrides = std::collections::HashMap::new();
+    config_overrides.insert(
+        "sparse_fill_holder".to_owned(),
+        slicer_ir::ConfigValue::String("lightning-infill".to_owned()),
+    );
+
+    let opts = SliceRunOptions {
+        mesh,
+        model_label: "integrated-lightning".to_owned(),
+        // No on-disk manifests: the integrated tier is the only candidate for
+        // every module, which is exactly the `--edition integrated` shape.
+        module_dirs: Vec::new(),
+        no_default_module_paths: true,
+        config_overrides,
+        ..Default::default()
+    };
+
+    let outcome = run_slice(opts).expect(
+        "ordinary run_slice must freeze the integrated lightning module without caller-supplied pairs",
+    );
+
+    assert!(
+        !outcome.gcode_text.is_empty(),
+        "integrated lightning slice must emit gcode"
+    );
+}

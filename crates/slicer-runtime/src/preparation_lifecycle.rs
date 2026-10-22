@@ -76,6 +76,27 @@ impl SliceRuntimeExtensions {
         self
     }
 
+    /// Supply the generated prepared pairs for integrated modules that declare
+    /// `[preparation]`.
+    ///
+    /// The pairs are looked up by module id when a selected module's provenance
+    /// is `Integrated`. An integrated module that declares preparation but has
+    /// no pair here is rejected at freeze time (`MissingExport`), because a
+    /// plain artifact cannot satisfy a declared preparation export — so any
+    /// entry point that may select such a module has to install the registry's
+    /// `prepared_native_entries()`.
+    pub fn with_prepared_native(
+        mut self,
+        prepared_native: Vec<(
+            ModuleId,
+            NativePreparedStageEntry,
+            slicer_schema::PreparationExportSchema,
+        )>,
+    ) -> Self {
+        self.prepared_native = prepared_native;
+        self
+    }
+
     pub(crate) fn into_run_parts(
         self,
         instrumented: bool,

@@ -1371,15 +1371,26 @@ pub fn emit_end_of_slice_events(
     ));
 }
 
+/// Extensions for the ordinary entry points.
+///
+/// An integrated module that declares `[preparation]` cannot be frozen from a
+/// plain artifact: `freeze_native` rejects it with `MissingExport`. The
+/// generated prepared pairs therefore have to travel with every run that may
+/// select such a module, not only with runs that explicitly ask for views. The
+/// registry accessor returns an empty vector when the integrated
+/// `lightning-infill` feature is off, so this stays inert in builds without
+/// prepared integrated modules.
+fn default_runtime_extensions() -> crate::preparation_lifecycle::SliceRuntimeExtensions {
+    crate::preparation_lifecycle::SliceRuntimeExtensions::default()
+        .with_prepared_native(slicer_integrated_modules::prepared_native_entries())
+}
+
 /// One-shot slice. Drives the pipeline end-to-end and returns the produced G-code.
 ///
 /// Composes the 4-way instrumentation fork (report, progress, both, none)
 /// internally based on `opts.report` and `opts.instrument_stderr`.
 pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
-    run_slice_with_runtime_extensions(
-        opts,
-        crate::preparation_lifecycle::SliceRuntimeExtensions::default(),
-    )
+    run_slice_with_runtime_extensions(opts, default_runtime_extensions())
 }
 
 /// Run the ordinary slice with print-private artifact registrations and hooks.
@@ -1534,7 +1545,7 @@ pub fn run_slice_with_collector(
     match run_slice_shared(
         opts,
         collector,
-        crate::preparation_lifecycle::SliceRuntimeExtensions::default(),
+        default_runtime_extensions(),
         SliceCompletion::FullSlice,
     )
     .map_err(into_slice_run_error)?
