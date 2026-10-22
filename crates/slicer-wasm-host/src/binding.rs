@@ -13,9 +13,9 @@
 use std::sync::Arc;
 
 use slicer_ir::{
-    ConfigView, InfillIR, LayerCollectionIR, LayerPlanIR, LightningTreeIR, MeshIR, ModuleId,
-    PerimeterIR, PreparedRegionData, RegionMapIR, SeamPlanIR, SliceIR, SupportAnalysisIR,
-    SupportGeometryIR, SupportPlanIR, SurfaceClassificationIR,
+    ConfigView, InfillIR, LayerCollectionIR, LayerPlanIR, MeshIR, ModuleId, PerimeterIR,
+    PreparedRegionData, RegionMapIR, SeamPlanIR, SliceIR, SupportAnalysisIR, SupportGeometryIR,
+    SupportPlanIR, SurfaceClassificationIR,
 };
 
 use crate::instance::WasmComponent;
@@ -97,9 +97,6 @@ pub struct LayerStageInput<'a> {
     pub seam_plan: Option<Arc<SeamPlanIR>>,
     /// From `blackboard.support_plan()`.
     pub support_plan: Option<Arc<SupportPlanIR>>,
-    /// Packet 137: from `blackboard.lightning_tree_ir()`. `None` when the
-    /// prepass producer was skipped (no lightning holder).
-    pub lightning_tree_ir: Option<Arc<LightningTreeIR>>,
     /// From `blackboard.region_map()`.
     pub region_map: Option<Arc<RegionMapIR>>,
     /// Pre-call read from `arena.slice()`.

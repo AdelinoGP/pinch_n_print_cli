@@ -1,16 +1,16 @@
-//! Error type for the lightning tree generator.
+//! Error type for the module-private lightning kernel.
 
 use std::fmt;
 
-/// Errors produced by [`crate::algos::lightning::generate_lightning_trees`].
+/// Errors produced by [`super::generate_lightning_trees`].
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LightningTreeError {
+pub(crate) enum KernelError {
     /// 139 wiring point: replace this variant with the real error set the
     /// distance-field / tree-node generator can produce.
     Unimplemented,
 }
 
-impl fmt::Display for LightningTreeError {
+impl fmt::Display for KernelError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Unimplemented => f.write_str(
@@ -20,4 +20,4 @@ impl fmt::Display for LightningTreeError {
     }
 }
 
-impl std::error::Error for LightningTreeError {}
+impl std::error::Error for KernelError {}

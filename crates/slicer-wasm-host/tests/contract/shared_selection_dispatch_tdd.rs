@@ -203,7 +203,6 @@ fn run(
         paint_regions: None,
         seam_plan: None,
         support_plan: plan.cloned().map(Arc::new),
-        lightning_tree_ir: None,
         region_map: map.cloned().map(Arc::new),
         slice,
         perimeter: None,
@@ -626,7 +625,7 @@ fn merged_sources_and_multiple_roles() {
         let records = records.borrow();
         let base = records
             .iter()
-            .find(|r| r.region == 7 && r.chain == chain(1))
+            .find(|r| r.region == raw_ids[0] && r.chain == chain(1))
             .unwrap();
         assert_eq!(
             base.claims, fill_claims,
@@ -636,7 +635,7 @@ fn merged_sources_and_multiple_roles() {
     let base = ir
         .regions
         .iter()
-        .find(|r| r.region_id == 7 && r.variant_chain == chain(1))
+        .find(|r| r.region_id == raw_ids[0] && r.variant_chain == chain(1))
         .unwrap();
     assert!(!base.solid_infill.is_empty());
     assert!(!base.sparse_infill.is_empty());

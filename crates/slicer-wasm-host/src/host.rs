@@ -359,21 +359,6 @@ pub struct SupportQueryViewData {
     pub raft_plan: Option<slicer_ir::RaftPlan>,
 }
 
-/// Backing data for a `lightning-query-view` resource handle
-/// (`slicer:lightning-queries/lightning-queries@1.0.0`).
-#[derive(Default)]
-pub struct LightningQueryViewData {
-    /// Pre-planned lightning tree-edge segments keyed by the FULL origin
-    /// `(object_id, region_id, variant_chain)`, projected from
-    /// `LightningTreeIR.entries`. Empty when no `LightningTreeIR` is
-    /// committed on the blackboard (skip-when-no-lightning-holder per
-    /// ADR-0029).
-    pub lightning_tree_segments: HashMap<
-        (String, String, Vec<(String, slicer_ir::PaintValue)>),
-        Vec<Vec<layer_perimeters::slicer::types::geometry::Point3WithWidth>>,
-    >,
-}
-
 // ── Bindgen: Per-stage worlds ──────────────────────────────────────────
 
 #[allow(missing_docs)]
@@ -475,8 +460,6 @@ pub mod layer_infill {
             // shared (packet layer-module-preparation_01, W7a).
             "slicer:support-queries/support-queries@1.0.0.support-query-view":
                 super::SupportQueryViewData,
-            "slicer:lightning-queries/lightning-queries@1.0.0.lightning-query-view":
-                super::LightningQueryViewData,
         },
     });
     pub use self::InfillModule as LayerModule;
@@ -2006,14 +1989,6 @@ impl HostExecutionContext {
         &mut self,
         data: SupportQueryViewData,
     ) -> wasmtime::Result<Resource<SupportQueryViewData>> {
-        Ok(self.table.push(data)?)
-    }
-
-    /// Push a lightning-query-view resource and return its handle.
-    pub fn push_lightning_query_view(
-        &mut self,
-        data: LightningQueryViewData,
-    ) -> wasmtime::Result<Resource<LightningQueryViewData>> {
         Ok(self.table.push(data)?)
     }
 
@@ -4452,18 +4427,15 @@ impl ir::Host for HostExecutionContext {}
 // ── Specialist query-view host impls (packet
 // layer-module-preparation_01, W7a) ───────────────────────────────────────
 //
-// The structural support / lightning reads relocated from
-// `paint-region-layer-view` into the per-world specialist interfaces
-// (`slicer:support-queries/support-queries@1.0.0` and
-// `slicer:lightning-queries/lightning-queries@1.0.0`). Each importing world
+// The structural support reads relocated from
+// `paint-region-layer-view` into the per-world specialist interface
+// (`slicer:support-queries/support-queries@1.0.0`). Each importing world
 // generates its own copy of the interface module, so the `Host` /
-// `HostSupportQueryView` / `HostLightningQueryView` traits exist once per
-// world; all worlds share the same backing structs
-// (`SupportQueryViewData` / `LightningQueryViewData`) via the bindgen
-// `with:` resource keys.
+// `HostSupportQueryView` traits exist once per world; all worlds share the
+// same backing struct (`SupportQueryViewData`) via the bindgen `with:`
+// resource key.
 
 impl layer_infill::slicer::support_queries::support_queries::Host for HostExecutionContext {}
-impl layer_infill::slicer::lightning_queries::lightning_queries::Host for HostExecutionContext {}
 impl layer_support::slicer::support_queries::support_queries::Host for HostExecutionContext {}
 
 /// Convert an incoming WIT full-origin query into the IR-keyed form used by
@@ -4641,33 +4613,6 @@ impl layer_infill::slicer::support_queries::support_queries::HostSupportQueryVie
             )))
     }
     fn drop(&mut self, rep: Resource<SupportQueryViewData>) -> wasmtime::Result<()> {
-        self.table.delete(rep)?;
-        Ok(())
-    }
-}
-
-impl layer_infill::slicer::lightning_queries::lightning_queries::HostLightningQueryView
-    for HostExecutionContext
-{
-    fn lightning_tree_segments(
-        &mut self,
-        self_: Resource<LightningQueryViewData>,
-        object_id: String,
-        region_id: String,
-        variant_chain: Vec<(String, ir::PaintValue)>,
-    ) -> wasmtime::Result<Vec<Vec<layer_perimeters::slicer::types::geometry::Point3WithWidth>>>
-    {
-        self.runtime_reads.push(String::from("LightningTreeIR"));
-        let key = wit_chain_to_ir_key(object_id, region_id, variant_chain);
-        Ok(self
-            .table
-            .get(&self_)?
-            .lightning_tree_segments
-            .get(&key)
-            .cloned()
-            .unwrap_or_default())
-    }
-    fn drop(&mut self, rep: Resource<LightningQueryViewData>) -> wasmtime::Result<()> {
         self.table.delete(rep)?;
         Ok(())
     }

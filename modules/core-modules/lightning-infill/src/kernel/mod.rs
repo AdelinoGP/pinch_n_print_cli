@@ -1,53 +1,49 @@
-//! Lightning sparse-infill tree generator.
+//! Module-private lightning planning kernel.
 //!
-//! Contract landed in packet 137; the per-layer 2-point integer-unit
-//! `tree_edge_segments` storage and per-object/per-layer `LightningTreeEntry`
-//! shape are stable. The actual generator algorithm (distance field +
-//! `TreeNode` + cross-layer `Generator`) is ported in packets 138
-//! (data structures) and 139 (wiring into this seam).
+//! The planning algorithm and its two plan types are relocated here from the
+//! host `crates/slicer-core/src/algos/lightning/` directory so the consuming
+//! artifact owns the plan. Planning numeric logic is frozen: the permitted
+//! deltas are file location, the plan-type import, `crate::` helper paths
+//! becoming `slicer_core::`, the error type's name/path, the additive
+//! `planning_input` adapter, and doc comments that named the old public types.
 
 use std::sync::Arc;
 
-use slicer_ir::{
-    mm_to_units, ExPolygon, LightningTreeEntry, LightningTreeIR, PaintValue, Point2,
-    ResolvedConfig, SliceIR,
-};
+use slicer_core::polygon_ops::clip_polylines;
+use slicer_ir::{mm_to_units, ExPolygon, PaintValue, Point2, ResolvedConfig, SliceIR};
 
-use crate::algos::lightning::error::LightningTreeError;
-use crate::algos::lightning::generator::Generator;
-use crate::polygon_ops::clip_polylines;
+use self::generator::Generator;
+
+mod distance_field;
+mod error;
+mod generator;
+mod layer;
+mod plan;
+mod tree_node;
+
+#[cfg(test)]
+mod tests;
+
+pub(crate) use error::KernelError;
+pub(crate) use plan::{KernelPlan, PlanEntry};
 
 const DEFAULT_NOZZLE_DIAMETER_MM: f32 = 0.4;
 
-/// Discrete support-distance field used by the Lightning tree generator.
-pub mod distance_field;
-pub mod error;
-/// Cross-layer initial overhang generation for Lightning sparse infill.
-pub mod generator;
-/// Per-layer tree seeding and line conversion for Lightning sparse infill.
-pub mod layer;
-/// Parent/child graph primitive used by the Lightning tree generator.
-pub mod tree_node;
-
-pub use distance_field::DistanceField;
-pub use generator::generate_initial_internal_overhangs;
-pub use layer::Layer;
-
-/// Generate the per-object, per-region, per-layer `LightningTreeIR` for one print.
+/// Generate the per-object, per-region, per-layer plan for one print.
 ///
 /// The caller supplies the print-wide resolved config. Each `(object_id,
 /// region_id)` present in `slice_ir` gets independent generators for its
 /// `ExPolygon` islands, so regions on the same layer cannot share tree
-/// segments. Per-region holder selection is still represented by the single
-/// resolved-config input at this seam; the producer only calls this driver
-/// after the prepass lightning predicate passes.
+/// segments. Per-region holder selection is represented by the single
+/// resolved-config input at this seam; preparation only reaches this driver
+/// after the shared selection predicate passes.
 #[allow(clippy::missing_errors_doc)]
-pub fn generate_lightning_trees(
+pub(crate) fn generate_lightning_trees(
     slice_ir: &[SliceIR],
     config: &ResolvedConfig,
-) -> Result<Arc<LightningTreeIR>, LightningTreeError> {
+) -> Result<Arc<KernelPlan>, KernelError> {
     if config.sparse_fill_holder != "lightning-infill" {
-        return Ok(Arc::new(LightningTreeIR::default()));
+        return Ok(Arc::new(KernelPlan::default()));
     }
 
     let layer_indices: Vec<u32> = slice_ir
@@ -95,11 +91,11 @@ pub fn generate_lightning_trees(
                         .map_or_else(Vec::new, |polygon| polygon.contour.points.clone())
                 })
                 .collect();
-            let line_width_mm = crate::flow::resolve_role_width(
+            let line_width_mm = slicer_core::flow::resolve_role_width(
                 slicer_ir::ExtrusionRole::SparseInfill,
                 false,
                 false,
-                &crate::flow::RoleWidthContext {
+                &slicer_core::flow::RoleWidthContext {
                     line_width: config.line_width as f32,
                     nozzle_diameter: DEFAULT_NOZZLE_DIAMETER_MM,
                     ..Default::default()
@@ -144,7 +140,7 @@ pub fn generate_lightning_trees(
         .into_iter()
         .map(
             |((object_id, global_layer_index, region_id, variant_chain), tree_edge_segments)| {
-                LightningTreeEntry {
+                PlanEntry {
                     object_id,
                     global_layer_index,
                     region_id,
@@ -155,8 +151,5 @@ pub fn generate_lightning_trees(
         )
         .collect();
 
-    Ok(Arc::new(LightningTreeIR {
-        entries,
-        ..LightningTreeIR::default()
-    }))
+    Ok(Arc::new(KernelPlan { entries }))
 }

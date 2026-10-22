@@ -84,12 +84,11 @@ the authoritative normalized form).
 
 #### PrePass Stage Order
 
-Eleven `PrePass::*` stages are declared in the following scheduler order. The retired
+Ten `PrePass::*` stages are declared in the following scheduler order. The retired
 `PrePass::MeshSegmentation` is not among them: `split_triangle_strokes` in
 `crates/slicer-model-io/src/loader.rs` already normalizes sub-facet paint
 strokes at load time. `SeamPlanning` and `SupportGeometry`'s guest half run only when a
-corresponding module is loaded; `LightningTreeGen` additionally commits only
-for the lightning sparse-fill holder (see below); the rest always run.
+corresponding module is loaded; the rest always run.
 
 ```text
 1. PrePass::MeshAnalysis
@@ -102,7 +101,6 @@ for the lightning sparse-fill holder (see below); the rest always run.
 8. PrePass::ShellClassification  (host-built-in; annotates the committed SliceIR)
 9. PrePass::SupportAnalysis      (host-built-in; shared host-owned support analysis)
 10. PrePass::SupportGeometry      (host-built-in always runs; guest optional)
-11. PrePass::LightningTreeGen     (host-built-in; commits only for lightning sparse fill)
 ```
 
 **Operational order:** `STAGE_ORDER` is the scheduler's validation and
@@ -110,9 +108,8 @@ plan-grouping order. The runtime splits prepass execution around host-built-in
 prerequisites: it runs stages that do not require `RegionMapIR`, commits region
 mapping, slices the whole print, runs the dependent host built-ins, and then
 dispatches late stages such as seam planning. This is why the declared list is
-not a literal call trace. `PrePass::LightningTreeGen` runs after
-`SupportGeometry` and is skipped without a commit unless the resolved
-`sparse_fill_holder` is `lightning-infill`.
+not a literal call trace. Lightning planning is selected module preparation,
+not a host PrePass stage.
 
 **Note (packet 178):** `PrePass::SeamPlanning` requires `SliceIR` and
 `RegionMap` as prerequisites; the scheduler still routes it before `Layer::*`
@@ -288,12 +285,6 @@ PrePass::SupportGeometry  [host built-in always runs; guest optional]
             support-planner module is installed only Phase 1 runs and
              no fallback filler is synthesized.
 
-PrePass::LightningTreeGen  [host built-in; conditional]
-  Input:  SliceIR + LayerPlanIR + RegionMapIR + SurfaceClassificationIR
-  Output: LightningTreeIR (only when sparse_fill_holder = "lightning-infill")
-  Purpose: Build the print-wide lightning tree consumed by the lightning infill
-           module. When the resolved sparse-fill holder is not lightning, the
-           stage is skipped and the Blackboard slot remains empty.
 ```
 
 #### Variant-Chain Region Splitting
@@ -883,6 +874,22 @@ Retained payload/name bytes and returned-read transfer bytes are logical
 production gauges, not allocator overhead, process memory or peak-memory
 measurements. Post-disposal retained bytes are zero; this does not assert a
 process-memory peak (see `docs/16_slicer_report.md`).
+
+### Lightning private preparation migration
+
+The legacy path is retired.
+Lightning planning runs inside the selected `com.core.lightning-infill` artifact during `prepare_print`,
+from typed committed preparation inputs: regions, region configs, and layer plan.
+It publishes one module-private `lightning-layer-{global_layer_index}` piece per schedule layer;
+ordinary `Layer::Infill` consumers require and decode their own layer's piece with the module's decoder.
+Deleted surfaces are the host `commit_lightning_tree_ir_builtin` producer, `PrePass::LightningTreeGen`
+and its `STAGE_ORDER` entry, `BlackboardPrepassSlot::LightningTreeIR`, and `BlackboardError::LightningTreeGeneration`;
+the public `LightningTreeIR`/`LightningTreeEntry`/`CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION` types;
+the `lightning-tree-segments` WIT method and whole `slicer:lightning-queries` package;
+and SDK `lightning_tree_segments_for`/`with_lightning_tree_ir` accessors.
+Plan types live only as module-private `KernelPlan`/`PlanEntry`, never public IR.
+This is recorded behavioural equivalence to the pre-migration producer: ownership moves with no intended output change,
+not a canonical-parity claim; the recorded Gate A/B outcomes remain unchanged.
 
 ## Memory Model
 

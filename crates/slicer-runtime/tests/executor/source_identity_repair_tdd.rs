@@ -37,10 +37,10 @@ use slicer_core::algos::paint_segmentation::{
 use slicer_ir::slice_ir::{SupportCandidate, SupportCandidateSource, SupportSourceKey};
 use slicer_ir::{
     ActiveRegion, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, GlobalLayer,
-    InfillIR, InfillRegion, LayerStageCommit, LightningTreeEntry, LightningTreeIR, MeshIR,
-    PaintValue, PerimeterIR, PerimeterRegion, Point2, Point3WithWidth, Polygon, RegionKey,
-    RegionMapIR, RegionPlan, ResolvedConfig, SemVer, SliceIR, SlicedRegion, SupportPlanEntry,
-    SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion, CURRENT_INFILL_IR_SCHEMA_VERSION,
+    InfillIR, InfillRegion, LayerStageCommit, MeshIR, PaintValue, PerimeterIR, PerimeterRegion,
+    Point2, Point3WithWidth, Polygon, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SemVer,
+    SliceIR, SlicedRegion, SupportPlanEntry, SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion,
+    CURRENT_INFILL_IR_SCHEMA_VERSION,
 };
 use slicer_ir::{
     IndexedTriangleSet, LayerPlanIR, ObjectLayerRef, ObjectMesh, Point3, SupportAnalysisIR,
@@ -2881,80 +2881,8 @@ fn leg_r9_absent_chain_raft_not_attached() -> Result<(), String> {
     }
 }
 
-/// AC-R9 SDK query legs: `LightningTreeEntry` full-source lookup keeps exact
-/// ordered chains and rejects chainless / permuted sibling queries.
-fn leg_r9_lightning_sdk_queries() -> Result<(), String> {
-    let chain_a = chain_material(1);
-    let chain_b = chain_material(2);
-    let seg_a = [
-        Point2 { x: 1_000, y: 5_000 },
-        Point2 {
-            x: 30_000,
-            y: 5_000,
-        },
-    ];
-    let seg_b = [
-        Point2 { x: 1_000, y: 6_000 },
-        Point2 {
-            x: 59_000,
-            y: 6_000,
-        },
-    ];
-    // exhaustive: pins every LightningTreeEntry field for the query fixture.
-    let tree = LightningTreeIR {
-        entries: vec![
-            // exhaustive: pins every LightningTreeEntry field for the full-source query fixture.
-            LightningTreeEntry {
-                object_id: "lightning-object".to_string(),
-                global_layer_index: LAYER as i32,
-                region_id: paint_variant_region_id(7, &chain_a),
-                tree_edge_segments: vec![seg_a],
-                variant_chain: chain_a.clone(),
-            },
-            // exhaustive: pins every LightningTreeEntry field for the full-source query fixture.
-            LightningTreeEntry {
-                object_id: "lightning-object".to_string(),
-                global_layer_index: LAYER as i32,
-                region_id: paint_variant_region_id(7, &chain_b),
-                tree_edge_segments: vec![seg_b],
-                variant_chain: chain_b.clone(),
-            },
-        ],
-        ..Default::default()
-    };
-    let view = PaintRegionLayerView::new(LAYER).with_lightning_tree_ir(Arc::new(tree));
-    let mut problems = Vec::new();
-    let query = |chain: &[(String, PaintValue)]| {
-        view.lightning_tree_segments_for(
-            "lightning-object",
-            paint_variant_region_id(7, chain),
-            chain,
-        )
-    };
-    if query(&chain_a) != vec![seg_a] {
-        problems.push("chain-A lightning query must return its own segments".to_string());
-    }
-    if query(&chain_b) != vec![seg_b] {
-        problems.push("chain-B lightning query must return its own segments".to_string());
-    }
-    if !query(&chain_permuted()).is_empty() {
-        problems.push("permuted-chain lightning query borrowed sibling segments".to_string());
-    }
-    if !view
-        .lightning_tree_segments_for("lightning-object", paint_variant_region_id(7, &[]), &[])
-        .is_empty()
-    {
-        problems.push("chainless lightning query succeeded against a chained entry".to_string());
-    }
-    if problems.is_empty() {
-        Ok(())
-    } else {
-        Err(problems.join("; "))
-    }
-}
-
-/// AC-R9: real host builtin generation followed by production SDK/native and
-/// WIT/WASM infill dispatch. No hand-built tree substitutes for generation.
+/// AC-R9: real module preparation followed by production native/WASM infill
+/// dispatch. No hand-built piece substitutes for generation.
 fn leg_r9_lightning_generator_guest() -> Result<(), String> {
     let chain_a = chain_material(1);
     let chain_b = chain_material(2);
@@ -3017,75 +2945,54 @@ fn leg_r9_lightning_generator_guest() -> Result<(), String> {
     board
         .replace_slice_ir(Arc::new(slices))
         .expect("generation slices");
-    slicer_runtime::commit_lightning_tree_ir_builtin(
-        &mut board,
-        &ResolvedConfig {
-            sparse_fill_holder: "lightning-infill".into(),
-            line_width: 0.4,
-            infill_density: 0.2,
-            layer_height: 0.2,
-            ..Default::default()
-        },
-    )
-    .map_err(|error| format!("AC-R9 production LightningTreeGen builtin failed: {error}"))?;
-    let tree = Arc::clone(
-        board
-            .lightning_tree_ir()
-            .expect("AC-R9 generator must commit LightningTreeIR"),
-    );
-    let own = tree
-        .entries
-        .iter()
-        .filter(|entry| entry.global_layer_index == LAYER as i32)
-        .collect::<Vec<_>>();
-    assert_eq!(
-        own.len(),
-        2,
-        "AC-R9 GENERATOR must keep two same-number source chains distinct"
-    );
-    let view = PaintRegionLayerView::new(LAYER).with_lightning_tree_ir(Arc::clone(&tree));
-    for (paint, min_x, max_x) in [(&chain_a, 0.0, 12.0), (&chain_b, 30.0, 42.0)] {
-        let entry = own
-            .iter()
-            .find(|entry| entry.variant_chain == *paint)
-            .expect("AC-R9 GENERATOR must retain the complete chain");
-        assert_eq!(
-            (&entry.object_id, entry.region_id),
-            (&"lightning-object".to_string(), source_id),
-            "AC-R9 GENERATOR source ID must not become map-space region 7"
-        );
-        assert!(
-            !entry.tree_edge_segments.is_empty(),
-            "AC-R9 GENERATOR must actually generate segments"
-        );
-        assert!(
-            entry
-                .tree_edge_segments
-                .iter()
-                .flatten()
-                .all(|p| (min_x..=max_x).contains(&slicer_ir::units_to_mm(p.x))),
-            "AC-R9 GENERATOR must not mix sibling geometry"
-        );
-        // test-quality: generate_lightning_trees -> SDK query transport roundtrip; geometry containment and source IDs above have independent expectations.
-        assert_eq!(
-            view.lightning_tree_segments_for("lightning-object", source_id, paint),
-            entry.tree_edge_segments,
-            "AC-R9 SDK query must return the generated own-chain segments"
-        );
-    }
-    assert!(
-        view.lightning_tree_segments_for("lightning-object", source_id, &[])
-            .is_empty(),
-        "AC-R9 same source ID WITHOUT the chain must not resolve generated segments"
-    );
-    assert!(
-        view.lightning_tree_segments_for("lightning-object", 7, &chain_a)
-            .is_empty(),
-        "AC-R9 map-space-normalized producer/query identity must not resolve source segments"
-    );
     build_and_commit_layer_selection_index(&plan, &mut board)
         .expect("generated lightning selection index");
     for (leg, native) in [("native", true), ("wasm", false)] {
+        let mut map = region_map_for(&slice, Some("lightning-infill"));
+        let previous = &board.slice_ir().unwrap()[SLICE_INDEX - 1];
+        map.entries
+            .extend(region_map_for(previous, Some("lightning-infill")).entries);
+        // The fixture carries 0.3 mm heights; preparation and its committed
+        // config must agree, just as they do in a real print.
+        let resolved = ResolvedConfig {
+            sparse_fill_holder: "lightning-infill".into(),
+            line_width: 0.4,
+            infill_density: 0.2,
+            layer_height: 0.3,
+            extensions: BTreeMap::from([(
+                "prepared_plan_diagnostic".into(),
+                ConfigValue::String("none".into()),
+            )]),
+            ..Default::default()
+        };
+        let config_id = map.intern_config(resolved);
+        for region in map.entries.values_mut() {
+            region.config = config_id;
+        }
+        let mut config_values: HashMap<String, ConfigValue> = bundle
+            .module
+            .config_view()
+            .iter_entries()
+            .map(|(k, v)| (k.to_string(), v.clone()))
+            .collect();
+        config_values.insert("layer_height".into(), ConfigValue::Float(0.3));
+        config_values.insert("infill_angle".into(), ConfigValue::Float(45.0));
+        config_values.insert(
+            "prepared_plan_diagnostic".into(),
+            ConfigValue::String("none".into()),
+        );
+        let (binding, _store, owner) = crate::common::prepare_lightning(
+            board
+                .slice_ir()
+                .unwrap()
+                .iter()
+                .filter(|s| s.global_layer_index >= LAYER - 1)
+                .cloned()
+                .collect(),
+            map,
+            Arc::new(ConfigView::from_map(config_values)),
+            native,
+        );
         let handles = HashMap::from([(
             bundle.module.module_id().clone(),
             (
@@ -3094,7 +3001,34 @@ fn leg_r9_lightning_generator_guest() -> Result<(), String> {
                 native.then(lightning_infill::LightningInfill::__slicer_native_entry),
             ),
         )]);
-        let runner = WasmRuntimeDispatcher::new(wasm_cache::shared_engine());
+        struct PreparedRunner {
+            dispatcher: WasmRuntimeDispatcher,
+            binding: slicer_wasm_host::preparation::FrozenPreparationBinding,
+            owner: slicer_wasm_host::preparation::PreparationOwner,
+        }
+        impl LayerStageRunner for PreparedRunner {
+            fn run_stage(
+                &self,
+                stage: &String,
+                layer: &GlobalLayer,
+                module: &CompiledModuleLive<'_>,
+                input: LayerStageInput<'_>,
+            ) -> Result<Option<LayerStageCommit>, LayerStageError> {
+                self.dispatcher.run_prepared_stage(
+                    stage,
+                    layer,
+                    module,
+                    input,
+                    &self.binding,
+                    &self.owner,
+                )
+            }
+        }
+        let runner = PreparedRunner {
+            dispatcher: WasmRuntimeDispatcher::new(wasm_cache::shared_engine()),
+            binding,
+            owner,
+        };
         let captures = execute_captured_stages_with_support_tools(
             &plan,
             &board,
@@ -3284,7 +3218,6 @@ fn lightning_and_raft_full_source_roundtrip() {
                 "r9_absent_chain_raft_not_attached",
                 leg_r9_absent_chain_raft_not_attached(),
             ),
-            ("r9_lightning_sdk_queries", leg_r9_lightning_sdk_queries()),
             (
                 "r9_lightning_generator_guest",
                 leg_r9_lightning_generator_guest(),

@@ -74,7 +74,6 @@ pub mod infill {
             "slicer:common/module-errors": crate::host::layer_perimeters::slicer::common::module_errors,
             "slicer:ir-handles/ir-handles@1.0.0": crate::host::layer_perimeters::slicer::ir_handles::ir_handles,
             "slicer:support-queries/support-queries@1.0.0": crate::host::layer_infill::slicer::support_queries::support_queries,
-            "slicer:lightning-queries/lightning-queries@1.0.0": crate::host::layer_infill::slicer::lightning_queries::lightning_queries,
             "slicer:layer-preparation/preparation-types@1.0.0": super::perimeters::slicer::layer_preparation::preparation_types,
             "slicer:layer-preparation/plan-access@1.0.0": super::perimeters::slicer::layer_preparation::plan_access,
         },

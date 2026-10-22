@@ -239,7 +239,6 @@ pub const STAGE_ORDER: &[&str] = &[
     "PrePass::ShellClassification",  // host-built-in; annotates the committed SliceIR
     "PrePass::SupportAnalysis",      // host-built-in; derives support candidates from the colour-resolved SliceIR
     "PrePass::SupportGeometry",      // host built-in always runs; guest optional
-    "PrePass::LightningTreeGen",     // host-built-in; commits only for lightning sparse fill
     "Layer::PaintRegionAnnotation",  // host-built-in; a module claiming this stage runs instead of the host
     "Layer::SlicePostProcess",
     "Layer::Perimeters",
@@ -270,20 +269,12 @@ Two caveats a reader must know:
 - **Declared vs. executed order.** The list above is the declared order the
   scheduler validates against. The prepass host built-ins actually *execute* in
   a different sequence (`Slice` → `OverhangAnnotation` → `ShellClassification` →
-  `PaintSegmentation` → `SupportAnalysis` → `SupportGeometry` →
-  `LightningTreeGen`) — see
+  `PaintSegmentation` → `SupportAnalysis` → `SupportGeometry`) — see
   `01_system_architecture.md` §"PrePass Stage Order", which documents the
   executed chain and the known divergence between the two. `PrePass::SupportAnalysis`
   runs strictly after the Slice/paint stages (it derives support candidates from
   the committed, colour-resolved `SliceIR`) and before `PrePass::SupportGeometry`
   (which consumes that analysis), matching its declared `STAGE_ORDER` position.
-
-  `PrePass::LightningTreeGen` (packet 137, ADR-0029) executes **after** the
-  stages producing sparse-infill outlines and **before** `Layer::Infill`
-  dispatch. It consumes the committed sparse-infill outlines (via the committed
-  `SliceIR`) and is **skipped** (no commit — the blackboard `LightningTreeIR`
-  slot stays `None`) when no region's `sparse_fill_holder` resolves to
-  `lightning-infill`: the zero-cost promise from ADR-0029.
 
 `PrePass::OverhangAnnotation` — populates `SurfaceClassificationIR.overhang_quartile_polygons` by diffing consecutive-layer footprints, mirroring OrcaSlicer's `detect_overhangs_for_lift` (`PrintObject.cpp`) which diffs consecutive `lslices`. It runs **strictly after `PrePass::Slice`** and reads the committed `SliceIR` (each object's final per-layer region polygons) rather than re-slicing the mesh — the object meshes are sliced exactly once, in `PrePass::Slice`. Host built-in (`host:overhang_annotation`). Since packet 193 the same host built-in additionally writes
 `SurfaceClassificationIR.prev_layer_boundaries` — a
@@ -374,6 +365,23 @@ dispatch decision; the `region_split_semantics` HashSet keeps the
 inner check at O(1).
 
 ---
+
+### Lightning selection-driven preparation
+
+The legacy path is retired.
+The committed selection index decides participation via `selection.invoke && !selection.targets.is_empty()`;
+the old `sparse_fill_holder` string gate is no longer the scheduler's predicate.
+The selected `com.core.lightning-infill` artifact plans during `prepare_print` from typed committed
+regions, region configs, and layer plan, publishing one private `lightning-layer-{global_layer_index}` piece per schedule layer.
+Ordinary `Layer::Infill` consumers require and decode their own layer's piece through the module's decoder.
+Deleted surfaces are `commit_lightning_tree_ir_builtin`, `PrePass::LightningTreeGen` and its `STAGE_ORDER` entry,
+`BlackboardPrepassSlot::LightningTreeIR`, `BlackboardError::LightningTreeGeneration`,
+public `LightningTreeIR`/`LightningTreeEntry`/`CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION`,
+the `lightning-tree-segments` WIT method and whole `slicer:lightning-queries` package,
+and SDK `lightning_tree_segments_for`/`with_lightning_tree_ir` accessors.
+Only module-private `KernelPlan`/`PlanEntry` remain, never public IR.
+This records behavioural equivalence to the pre-migration producer, moving ownership with no intended output change;
+it is not a canonical-parity claim, and the recorded Gate A/B outcomes remain unchanged.
 
 ## Phase 3 — DAG Validation
 
@@ -1362,7 +1370,7 @@ pub struct LayerStageInput<'a> {
     pub perimeter:                Option<&'a PerimeterIR>,
     pub surface_classification:   Option<&'a SurfaceClassificationIR>,
     // … further per-stage optional borrows (infill, layer_collection,
-    //     prepared regions, lightning tree); see `binding.rs`.
+    //     prepared regions); see `binding.rs`.
 }
 ```
 
@@ -1517,7 +1525,6 @@ must not run their own ad-hoc presence checks for these slots.
 | `PrePass::RegionMapping`           | `LayerPlan`                                                               |
 | `PrePass::SupportAnalysis`         | `SliceIR`                                                                 |
 | `PrePass::SupportGeometry`         | `SurfaceClassification`, `LayerPlan`, `RegionMap`, `SliceIR`, `SupportGeometry` (the last committed by the host built-in within this stage before the guest runs) |
-| `PrePass::LightningTreeGen`        | `SurfaceClassification`, `LayerPlan`, `RegionMap`, `SliceIR`              |
 
 A stage scheduled before its prerequisites are committed produces
 `PrepassExecutionError::MissingRequiredPrepass { stage_id, slot }` and aborts
@@ -2107,7 +2114,6 @@ pub struct Blackboard {
     slice_ir:               Option<Arc<Vec<SliceIR>>>,
     support_geometry:       Option<Arc<SupportGeometryIR>>,
     support_analysis:       Option<Arc<SupportAnalysisIR>>,
-    lightning_tree_ir:      Option<Arc<LightningTreeIR>>,
 
     // Written by per-layer (one slot per layer, written once, read after join)
     layer_outputs: Option<Vec<Option<LayerCollectionIR>>>,
@@ -2147,7 +2153,6 @@ slice command
     │    ├─ PrePassPaintSegmentation     → SliceIR (per-variant regions)       → Blackboard
     │    ├─ PrePassSupportAnalysis       → SupportAnalysisIR                   → Blackboard
     │    ├─ PrePassSupportGeometry       → SupportGeometryIR+SupportPlanIR      → Blackboard  (guest optional)
-  │    └─ PrePassLightningTreeGen      → LightningTreeIR                      → Blackboard  (only when sparse_fill_holder = lightning-infill)
   ├─ execute_per_layer()  [rayon::par_iter]
   │    └─ per layer (parallel):
   │         ├─ LayerPaintRegionAnnotation  (host-built-in; WASM override)

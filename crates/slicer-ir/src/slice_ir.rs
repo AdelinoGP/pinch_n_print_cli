@@ -352,19 +352,6 @@ pub const CURRENT_SUPPORT_ANALYSIS_IR_SCHEMA_VERSION: SemVer = SemVer {
     patch: 0,
 };
 
-/// Schema version for `LightningTreeIR`. Initial 1.0.0 — packet 137 lands
-/// the contract; algorithm ships in 138/139.
-///
-/// Minor bump to 1.1.0 (packet layer-module-preparation_01, Step I1) adds the
-/// additive `#[serde(default)]` ordered `LightningTreeEntry.variant_chain`
-/// carrier, so source grouping keeps full origin. IR Versioning Contract:
-/// "New optional field added | Minor (1.0 → 1.1) | Yes — old modules ignore it".
-pub const CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION: SemVer = SemVer {
-    major: 1,
-    minor: 1,
-    patch: 0,
-};
-
 /// Schema version for `RegionMapIR`. Bumped to 2.0.0 by packet 91 — breaking
 /// field changes: `RegionPlan.config` is now a `ConfigId` (interner index),
 /// `configs` Vec added to `RegionMapIR`, `RegionKey.variant_chain` added.
@@ -1955,56 +1942,6 @@ impl Default for SupportAnalysisIR {
 }
 
 // ============================================================================
-// Lightning Tree IR Types
-// ============================================================================
-
-/// One 2-point tree-edge segment for a lightning sparse-infill tree on a
-/// single (object, region, layer). Compact 2-point integer-unit storage per ADR-0029
-/// (no full topology; the per-layer `Layer::Infill` module reads these as
-/// straight segments and does not need branch structure).
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct LightningTreeEntry {
-    /// Object this entry belongs to.
-    pub object_id: ObjectId,
-    /// Global model layer index this entry applies to.
-    pub global_layer_index: i32,
-    /// Region inside the object this entry belongs to.
-    pub region_id: RegionId,
-    /// 2-point tree-edge segments in integer units. The consumer (packet
-    /// 140's lightning-infill module) renders each pair as a straight
-    /// segment. 139 is responsible for emitting the actual content; the
-    /// 137 producer skeleton commits an empty `entries` Vec.
-    pub tree_edge_segments: Vec<[Point2; 2]>,
-    /// Ordered `(paint_semantic_name, value)` chain of the source region.
-    /// Empty is an exact identity for a genuinely chain-less source, never a
-    /// wildcard; serialized explicitly (no `skip_serializing_if`).
-    #[serde(default)]
-    pub variant_chain: Vec<(String, PaintValue)>,
-}
-
-/// Lightning tree IR — per-object, per-region, per-layer tree-edge segments produced by
-/// the `PrePass::LightningTreeGen` stage. Consumed by the per-layer
-/// `Layer::Infill` module via the `lightning-tree-segments` WIT view.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct LightningTreeIR {
-    /// Schema version of this IR.
-    pub schema_version: SemVer,
-    /// One entry per active `(object, region, layer)` triple that received
-    /// lightning tree-edge segments. Multiple entries may share an
-    /// `(object_id, global_layer_index)` when an object has multiple regions.
-    pub entries: Vec<LightningTreeEntry>,
-}
-
-impl Default for LightningTreeIR {
-    fn default() -> Self {
-        Self {
-            schema_version: CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION,
-            entries: Vec::new(),
-        }
-    }
-}
-
-// ============================================================================
 // Region Map IR Types
 // ============================================================================
 
@@ -3548,18 +3485,6 @@ impl Default for GCodeIR {
             commands: Vec::new(),
             metadata: PrintMetadata::default(),
         }
-    }
-}
-
-#[cfg(test)]
-mod lightning_tree_ir_tests {
-    use super::{LightningTreeIR, CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION};
-
-    #[test]
-    fn default_uses_current_schema_version() {
-        let ir = LightningTreeIR::default();
-        assert_eq!(ir.schema_version, CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION);
-        assert!(ir.entries.is_empty());
     }
 }
 

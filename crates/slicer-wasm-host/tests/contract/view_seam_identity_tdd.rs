@@ -54,7 +54,6 @@ fn native_and_wasm_layer_views_are_field_identical() {
         paint_regions: None,
         seam_plan: None,
         support_plan: None,
-        lightning_tree_ir: None,
         region_map: None,
         slice: Some(&slice),
         perimeter: None,
@@ -209,14 +208,6 @@ fn native_and_wasm_layer_views_are_field_identical() {
         wasm_paint.support_plan(),
         "paint.support_plan"
     );
-    assert_eq!(
-        native
-            .paint
-            .as_ref()
-            .and_then(PaintRegionLayerView::lightning_tree_ir),
-        wasm_paint.lightning_tree_ir(),
-        "paint.lightning_tree_ir"
-    );
     assert_eq!(native.prior_infill, None, "prior_infill");
     assert_eq!(native.config, *module.config_view, "config");
     assert_eq!(native.stage_export, "Layer::Infill", "stage_export");
@@ -365,7 +356,6 @@ fn native_projection_filters_and_resolves_configured_regions() {
         paint_regions: None,
         seam_plan: None,
         support_plan: None,
-        lightning_tree_ir: None,
         region_map: Some(Arc::new(map)),
         slice: Some(&slice),
         perimeter: Some(&perimeter),

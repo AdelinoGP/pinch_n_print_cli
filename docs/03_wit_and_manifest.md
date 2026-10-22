@@ -33,9 +33,8 @@ to describe what a module imports and exports.
 The canonical source lives under `crates/slicer-schema/wit/` in an umbrella layout where
 `root.wit` is the anchor package and `deps/` holds the shared dependency packages plus one
 directory for each versioned stage package. The delivered surface has 16 versioned stage
-packages: 9 layer, 4 prepass, 2 postpass, and 1 finalization — plus two versioned
-**specialist query packages**, `slicer:support-queries@1.0.0` and
-`slicer:lightning-queries@1.0.0` (see
+packages: 9 layer, 4 prepass, 2 postpass, and 1 finalization — plus the versioned
+**specialist query package** `slicer:support-queries@1.0.0` (see
 `### Shared core and specialist query ownership` below). `PrePass::PaintSegmentation`
 is host-built-in and has no WIT package. The shared prepass view records live in the flat,
 unversioned `slicer:prepass-types` dependency:
@@ -50,7 +49,6 @@ crates/slicer-schema/wit/
     common.wit         # package slicer:common      — interfaces module-errors, host-services, profiling
     prepass-types.wit                     # package slicer:prepass-types (unversioned)
     support-queries/support-queries.wit                      # package slicer:support-queries@1.0.0 (specialist)
-    lightning-queries/lightning-queries.wit                  # package slicer:lightning-queries@1.0.0 (specialist)
     layer-slice-postprocess/layer-slice-postprocess.wit                    # package slicer:layer-slice-postprocess@1.0.0
     layer-perimeters/layer-perimeters.wit                                  # package slicer:layer-perimeters@1.0.0
     layer-perimeters-postprocess/layer-perimeters-postprocess.wit           # package slicer:layer-perimeters-postprocess@1.0.0
@@ -104,8 +102,8 @@ Three rules govern all WIT design decisions:
 
 ### Shared core and specialist query ownership
 
-As landed by packet `layer-module-preparation_01` (ADR-0073), the handle
-surface splits three ways:
+Following the lightning retirement, the handle surface splits between core
+and the support specialist (building on ADR-0073):
 
 - **Core** — versioned `slicer:ir-handles@1.0.0`
   (`crates/slicer-schema/wit/deps/ir-types.wit`). The core package RETAINS the
@@ -117,10 +115,10 @@ surface splits three ways:
   `layer-collection-builder`), the core paint/identity aliases (`object-id`,
   `region-id`, `paint-value`, `layer-idx`), the wall and Arachne types, and
   `paint-region-layer-view` with ONLY its core accessors (`get-regions`,
-  `get-custom-regions`, `layer-index`, `is-raft`). The specialist accessors
+  `get-custom-regions`, `layer-index`, `is-raft`). The support accessors
   that previously hung off `paint-region-layer-view` (`support-plan-segments`,
-  `lightning-tree-segments`, `raft-plan`) and the support view records were
-  REMOVED to the specialists. Core MUST NOT import any specialist.
+  `raft-plan`) and the support view records moved to the support specialist;
+  `lightning-tree-segments` is deleted. Core MUST NOT import any specialist.
 - **Support specialist** — versioned `slicer:support-queries@1.0.0`, interface
   `support-queries` (`crates/slicer-schema/wit/deps/support-queries/support-queries.wit`).
   The `support-query-view` resource owns every support plan read:
@@ -138,33 +136,23 @@ surface splits three ways:
   than imported back from the prepass package, because the prepass package
   already imports the core — importing back would risk a world-satisfaction
   cycle — so the specialist mirrors those record shapes instead.
-- **Lightning specialist** — versioned `slicer:lightning-queries@1.0.0`,
-  interface `lightning-queries`
-  (`crates/slicer-schema/wit/deps/lightning-queries/lightning-queries.wit`).
-  The `lightning-query-view` resource owns the
-  `lightning-tree-segments(object-id, region-id, variant-chain)`
-  three-key read of the committed `LightningTreeIR`.
-
-Import discipline is one-way. The specialists import version-qualified core
+Import discipline is one-way. The support specialist imports version-qualified core
 identity types (`use slicer:ir-handles/ir-handles@1.0.0.{object-id, region-id,
 paint-value}`) plus the unversioned `slicer:types/geometry` shapes; consuming
-stage worlds import the specialists behind their core import —
+stage worlds import the specialist behind their core import —
 `slicer:layer-support@2.0.0` imports `support-queries`, and
-`slicer:layer-infill@2.0.0` imports both `support-queries` and
-`lightning-queries` — and no other stage consumes them. On consuming stages
-the specialists appear exactly as `own<support-query-view>` /
-`own<lightning-query-view>` parameters of the exported `run` function, after
+`slicer:layer-infill@2.0.0` imports `support-queries` — and no other stage consumes it. On consuming stages
+the specialist appears exactly as an `own<support-query-view>` parameter of the exported `run` function, after
 the paint view and before the output builder; SDK stage method parameter lists
 (`crates/slicer-sdk/src/traits.rs`) are unchanged — the query handles ride on
 the existing paint-view trait surface, and exact three-key source identity is
 carried in the accessor arguments.
 
 Nominal resource identity is pinned end to end: the host `bindgen!` selectors
-name the same versioned resources
-(`slicer:support-queries/support-queries@1.0.0.support-query-view` /
-`slicer:lightning-queries/lightning-queries@1.0.0.lightning-query-view` in
+name the same versioned resource
+(`slicer:support-queries/support-queries@1.0.0.support-query-view` in
 `crates/slicer-wasm-host/src/host.rs`) that every importing world imports, so
-`support-query-view` / `lightning-query-view` are one resource each across
+`support-query-view` is one resource across
 host, guest macro and SDK — never two type-compatible copies.
 
 The WIT dialect requires a reference to a versioned package to be
@@ -173,12 +161,12 @@ version-qualified: `use slicer:ir-handles.{...}` against the now-versioned
 every shared-package reference — each stage world import, the specialists'
 `use` lines, and `slicer:common`'s `use` of `ir-handles` — spells the full
 `@1.0.0`. Host projections allocate the query resources per layer keyed by
-full origin: the `SupportQueryViewData` / `LightningQueryViewData` maps
+full origin: the `SupportQueryViewData` maps
 (`crates/slicer-wasm-host/src/host.rs`) are keyed
 `(object_id, region_id, ordered variant_chain)` with chains taken from the IR
 entries' own `variant_chain` fields, never guessed or derived — see
 `build_paint_layer_data_with_plan` (`crates/slicer-wasm-host/src/dispatch.rs`),
-which returns the paint data plus both query-view datasets. The unversioned
+which returns the paint data plus the support query-view dataset. The unversioned
 `slicer:common`, `slicer:config`, `slicer:types` and `slicer:prepass-types`
 packages keep no versions of their own.
 
@@ -253,7 +241,7 @@ Startup checks:
 `[compatibility]` `min-ir-schema` / `max-ir-schema` range is checked against
 the ONE global host `SliceIR` schema version, never against an individual
 sub-IR version (`InfillIR`, `SupportIR`, `SupportPlanIR`,
-`SupportGeometryIR`, `SupportAnalysisIR`, `LightningTreeIR`, …). A sub-IR
+`SupportGeometryIR`, `SupportAnalysisIR`, …). A sub-IR
 owner bumping its own schema therefore requires no manifest-bound edits while
 the global `SliceIR` is unchanged, and no per-subIR compatibility enforcement
 exists or is implied by those bumps — the only IR gate at load is the
@@ -826,14 +814,12 @@ at typed instantiation with no runtime adapter).
 
 Read the on-disk package for each stage's exact parameter list and return type. The
 `layer-infill@2.0.0` `run` signature is
-`run(layer-index, regions: list<slice-region-view>, paint: paint-region-layer-view, support-queries: own<support-query-view>, lightning-queries: own<lightning-query-view>, output: infill-output-builder, config: config-view) -> result<_, module-error>`
-(`deps/layer-infill/layer-infill.wit`): the core paint view plus the two
-specialist own-handles from `slicer:support-queries@1.0.0` and
-`slicer:lightning-queries@1.0.0`, which deliver the committed support-plan and
-lightning tree reads keyed by full source origin; the two handles sit between
-the paint view and the `infill-output-builder` (`support-queries` first, then
-`lightning-queries`). `slicer:layer-support@2.0.0` takes
-`own<support-query-view>` only — no lightning handle — and the handle sits
+`run(layer-index, regions: list<slice-region-view>, paint: paint-region-layer-view, support-queries: own<support-query-view>, output: infill-output-builder, config: config-view) -> result<_, module-error>`
+(`deps/layer-infill/layer-infill.wit`): the core paint view plus the
+specialist own-handle from `slicer:support-queries@1.0.0`, which delivers
+committed support-plan reads keyed by full source origin. The handle sits between
+the paint view and the `infill-output-builder`. `slicer:layer-support@2.0.0` also takes
+`own<support-query-view>` and the handle sits
 between its paint view and the `support-output-builder`.
 Only these two stage packages import specialist
 packages; all other stages import the core `slicer:ir-handles@1.0.0` alone.
@@ -882,50 +868,21 @@ proposal rejects the dispatch without committing the first; no proposal yields
 no commit and leaves the arena unchanged. The wasm and native dispatch legs
 must produce equal `LayerStageCommit::AnchoredEvents` values.
 
-### `lightning-tree-segments` read-view (packet 137, moved to the lightning specialist)
+### Lightning accessor retirement
 
-Available to `Layer::Infill` modules through the specialist
-`slicer:lightning-queries@1.0.0` `lightning-query-view` resource: the
-`slicer:layer-infill@2.0.0` `run` receives it as
-`lightning-queries: own<lightning-query-view>`. The read mirrors the
-`support-plan-segments` read-view shape (same
-`list<list<point3-with-width>>` return type) so a `Layer::Infill` module
-reaches the committed `LightningTreeIR` for the dispatching
-`(object, region, layer, chain)` full origin via the same idiom it would use
-for the support reads in `Layer::Support`.
-
-**Full-origin dispatch keying:** The host allocates each layer's query views
-from `LightningQueryViewData`
-(`crates/slicer-wasm-host/src/host.rs`): `lightning_tree_segments` maps the
-FULL origin `(object_id, region_id, ordered variant_chain)` — chains copied
-from the committed `LightningTreeIR.entries`' own `variant_chain` fields — to
-the projected segments. This extends the per-region keying precedent of the
-support reads; a chain-differing source is a distinct key, never collapsed.
-
-**Source of truth:** `crates/slicer-schema/wit/deps/lightning-queries/lightning-queries.wit`
-(the `lightning-query-view` resource and the `slicer:lightning-queries@1.0.0`
-package) and
-`crates/slicer-schema/wit/deps/layer-infill/layer-infill.wit` (package
-`slicer:layer-infill@2.0.0`, whose `run` carries the `own<lightning-query-view>`
-parameter). Read the WIT source for the exact signature;
-any change to the signature in 138/139 is a WIT version bump, not a
-silent change.
-
-**Skip promise (ADR-0029):** The host commits a `LightningTreeIR` only when
-the print's `sparse_fill_holder` is `lightning-infill`. Otherwise the slot
-stays `None` and the method returns an empty `Vec<list<point3-with-width>>`
-— the per-layer `Layer::Infill` module (packet 140) emits no paths for that
-layer; there is no stub fallback (matches `docs/02_ir_schemas.md`, and the
-packet-140 deletion of the old single-layer stub). Non-lightning prints
-therefore see a zero-cost, no-op view; the wedge structural canary
-(`wedge_per_region_config_delivery_structural_canary`) pins the default-config
-slice through the new stage.
-
-**SDK accessor:** `PaintRegionLayerView::lightning_tree_segments_for(object_id,
-region_id, variant_chain)` in `crates/slicer-sdk/src/traits.rs` is the exact
-full-source lookup and returns the same
-`Vec<[slicer_ir::Point2; 2]>` shape as the IR's `tree_edge_segments` field
-(2-point integer-unit compact storage per ADR-0029's memory note).
+The legacy path is retired.
+The selected `com.core.lightning-infill` artifact plans during `prepare_print` from typed committed
+regions, region configs, and layer plan, publishing one private `lightning-layer-{global_layer_index}` piece per schedule layer.
+Ordinary `Layer::Infill` consumers require and decode their own layer's piece through the module's decoder.
+Deleted surfaces are `commit_lightning_tree_ir_builtin`, `PrePass::LightningTreeGen` and its `STAGE_ORDER` entry,
+`BlackboardPrepassSlot::LightningTreeIR`, `BlackboardError::LightningTreeGeneration`,
+public `LightningTreeIR`/`LightningTreeEntry`/`CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION`,
+the `lightning-tree-segments` WIT method and whole `slicer:lightning-queries` package,
+and SDK `lightning_tree_segments_for`/`with_lightning_tree_ir` accessors.
+Plan types live only as module-private `KernelPlan`/`PlanEntry`, never public IR.
+`docs/feasibility-probes/` is a stale historical mirror outside the live contract and is not regenerated.
+This records behavioural equivalence to the pre-migration producer: ownership moves with no intended output change,
+not a canonical-parity claim; the recorded Gate A/B outcomes remain unchanged.
 
 ---
 

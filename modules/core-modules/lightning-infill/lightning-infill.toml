@@ -20,6 +20,18 @@ writes = ["InfillIR"]
 holds    = ["claim:sparse-fill"]
 requires = []
 
+# Whole-print preparation (D2). `layer_plan` enumerates the committed schedule
+# so one piece exists per layer the consumer runs on; `slices` feeds
+# `regions()`, `region_map` feeds `region_configs()`. `selected_targets` is
+# deliberately absent: selection is read by `PrintPreparationScope` to decide
+# whether this module participates at all, and the module never re-reads it, so
+# declaring it would grant a read nothing consumes. `planning_geometry` is
+# published by the projection step.
+[preparation]
+interface   = "slicer:layer-preparation/prepare@1.0.0"
+input_reads = ["layer_plan", "slices", "region_map"]
+views       = ["planning_geometry"]
+
 [compatibility]
 incompatible-with = []
 requires          = []
@@ -34,6 +46,24 @@ default = 0.2
 min     = 0.0
 max     = 1.0
 display = "Infill Density"
+group   = "Infill"
+
+[config.schema.layer_height]
+type        = "float"
+default     = 0.2
+min         = 0.01
+max         = 2.0
+unit        = "mm"
+display     = "Layer height"
+description = "Layer height the relocated lightning planner multiplies; declared so ConfigView surfaces the print-wide scalar."
+group       = "Quality"
+
+[config.schema.infill_angle]
+type    = "float"
+default = 45.0
+min     = 0.0
+max     = 360.0
+display = "Infill Angle"
 group   = "Infill"
 
 [config.schema.infill_speed]
@@ -78,6 +108,23 @@ min     = 0.0
 max     = 2.0
 display = "Sparse Infill Line Width"
 group   = "Infill"
+
+# Module-owned diagnostic publication mode (design D6). The key is read once by
+# preparation from the first committed region config and applied only after
+# planning: it never reaches the kernel, never changes a planning scalar, and is
+# inert at its `none` default. `missing_piece`/`malformed_piece`/
+# `unsupported_version` make the module's own 57401/57410/57411 failure paths
+# reachable through the deployed artifact; `empty_plan` publishes one empty plan
+# piece per layer plus an empty `lightning-plan` scene, which is the
+# Ready/no-work case.
+[config.schema.prepared_plan_diagnostic]
+type        = "enum"
+values      = ["none", "missing_piece", "malformed_piece", "unsupported_version", "empty_plan"]
+default     = "none"
+display     = "Prepared plan diagnostic"
+description = "Diagnostic publication mode for whole-print preparation. `none` publishes the normal pieces; the other values stage one named diagnostic output after planning so the module's own decoder and empty-plan paths are reachable without a host injector."
+group       = "Diagnostics"
+advanced    = true
 
 [hints]
 estimated-ms-per-layer = 10

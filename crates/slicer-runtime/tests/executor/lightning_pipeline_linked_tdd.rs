@@ -5,9 +5,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_ir::{
-    ConfigValue, ExPolygon, ExtrusionRole, LightningTreeEntry, LightningTreeIR, MeshIR,
-    PerimeterIR, PerimeterRegion, Point2, Polygon, RegionKey, RegionMapIR, RegionPlan,
-    ResolvedConfig, SemVer, SliceIR, SlicedRegion,
+    ConfigValue, ExPolygon, ExtrusionRole, MeshIR, PerimeterIR, PerimeterRegion, Point2, Polygon,
+    RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SemVer, SliceIR, SlicedRegion,
 };
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::manifest::LoadedModuleBuilder;
@@ -40,7 +39,7 @@ fn square() -> ExPolygon {
 fn slice_ir() -> SliceIR {
     SliceIR {
         schema_version: semver(4, 1, 0),
-        global_layer_index: 0,
+        global_layer_index: 1,
         z: 0.2,
         regions: vec![{
             // exhaustive: SlicedRegion lightning fixture specifies the complete region.
@@ -72,7 +71,7 @@ fn slice_ir() -> SliceIR {
 
 fn perimeter_ir() -> PerimeterIR {
     PerimeterIR {
-        global_layer_index: 0,
+        global_layer_index: 1,
         regions: vec![PerimeterRegion {
             object_id: "lightning-object".to_string(),
             region_id: 7,
@@ -83,55 +82,45 @@ fn perimeter_ir() -> PerimeterIR {
     }
 }
 
-fn lightning_tree_ir() -> LightningTreeIR {
-    let point = |x| Point2 { x, y: 5_000 };
-    LightningTreeIR {
-        entries: vec![
-            // exhaustive: the linked-pipeline fixture pins the full exact source identity of a genuinely chain-empty region.
-            LightningTreeEntry {
-                object_id: "lightning-object".to_string(),
-                global_layer_index: 0,
-                region_id: 7,
-                tree_edge_segments: vec![
-                    [point(1_000), point(30_000)],
-                    [point(30_000), point(59_000)],
-                    [point(59_000), point(88_000)],
-                ],
-                // Genuinely chain-empty source: slice_ir() region 7 declares no paint variant.
-                variant_chain: Vec::new(),
-            },
-        ],
-        ..LightningTreeIR::default()
-    }
-}
-
 fn lightning_region_map() -> RegionMapIR {
     let mut region_map = RegionMapIR::default();
     let config = region_map.intern_config(ResolvedConfig {
         sparse_fill_holder: "lightning-infill".to_string(),
+        line_width: 0.4,
+        infill_density: 0.5,
+        infill_angle: 45.0,
+        layer_height: 0.2,
         // This fixture builds the resolved pool directly, bypassing the live
         // resolver's registry-default seeding for extension-backed linker keys.
-        extensions: std::collections::BTreeMap::from([(
-            "infill_anchor_max".to_string(),
-            ConfigValue::FloatOrPercent {
-                value: 20.0,
-                is_percent: false,
-            },
-        )]),
+        extensions: std::collections::BTreeMap::from([
+            (
+                "infill_anchor_max".to_string(),
+                ConfigValue::FloatOrPercent {
+                    value: 20.0,
+                    is_percent: false,
+                },
+            ),
+            (
+                "prepared_plan_diagnostic".into(),
+                ConfigValue::String("none".into()),
+            ),
+        ]),
         ..ResolvedConfig::default()
     });
-    region_map.entries.insert(
-        RegionKey {
-            global_layer_index: 0,
-            object_id: "lightning-object".to_string(),
-            region_id: 7,
-            variant_chain: Vec::new(),
-        },
-        RegionPlan {
-            config,
-            ..RegionPlan::default()
-        },
-    );
+    for global_layer_index in [0, 1] {
+        region_map.entries.insert(
+            RegionKey {
+                global_layer_index,
+                object_id: "lightning-object".to_string(),
+                region_id: 7,
+                variant_chain: Vec::new(),
+            },
+            RegionPlan {
+                config,
+                ..RegionPlan::default()
+            },
+        );
+    }
     region_map
 }
 
@@ -196,9 +185,14 @@ fn module_bundle(module_id: &str, stage: &str, wasm_name: &str) -> TestModuleBun
             },
         ),
         ("infill_density".to_string(), ConfigValue::Float(0.2)),
+        ("infill_angle".to_string(), ConfigValue::Float(45.0)),
         ("infill_overlap".to_string(), ConfigValue::Float(0.45)),
         ("infill_speed".to_string(), ConfigValue::Float(50.0)),
         ("line_width".to_string(), ConfigValue::Float(0.4)),
+        (
+            "prepared_plan_diagnostic".into(),
+            ConfigValue::String("none".into()),
+        ),
         // Contract-required reads (packet 06): lightning-infill `require_abs_value`s
         // the bound-view widths pair at manifest defaults (0.0), matching
         // `integrated_parity_gyroid_infill_tdd`'s bound-view fixture.
@@ -225,17 +219,33 @@ fn lightning_pipeline_linked() {
     let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let layer = slicer_ir::GlobalLayer {
-        index: 0,
+        index: 1,
         z: 0.2,
         ..slicer_ir::GlobalLayer::default()
     };
-    let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 1);
+    let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 2);
     blackboard
         .commit_region_map(Arc::new(lightning_region_map()))
         .expect("RegionMapIR must stage");
-    blackboard
-        .commit_lightning_tree_ir(Arc::new(lightning_tree_ir()))
-        .expect("LightningTreeIR must stage");
+    let lightning = module_bundle(
+        "com.core.lightning-infill",
+        "Layer::Infill",
+        "lightning-infill",
+    );
+    // A widening cross-section produces real overhang branches to chain.
+    let mut previous = slice_ir();
+    previous.global_layer_index = 0;
+    previous.z = 0.0;
+    for point in &mut previous.regions[0].polygons[0].contour.points {
+        point.x = point.x / 5 + Point2::from_mm(4.0, 0.0).x;
+        point.y = point.y / 5 + Point2::from_mm(0.0, 4.0).y;
+    }
+    let (binding, _store, owner) = crate::common::prepare_lightning(
+        vec![previous, slice_ir()],
+        lightning_region_map(),
+        Arc::clone(lightning.module.config_view()),
+        true,
+    );
 
     let mut arena = LayerArena::new();
     arena.set_slice(slice_ir()).expect("SliceIR must stage");
@@ -243,21 +253,48 @@ fn lightning_pipeline_linked() {
         .set_perimeter(perimeter_ir())
         .expect("PerimeterIR must stage");
 
-    let lightning = module_bundle(
-        "com.core.lightning-infill",
-        "Layer::Infill",
-        "lightning-infill",
-    );
     assert_eq!(lightning.module.claims(), &["claim:sparse-fill"]);
-    crate::common::run_layer_and_commit_with_bundle(
-        &dispatcher,
+    let index = crate::common::selection_for_module(
         "Layer::Infill",
         &layer,
-        &lightning,
+        &lightning.module,
         &blackboard,
-        &mut arena,
+        arena.slice(),
+        arena.perimeter(),
     )
-    .expect("Layer::Infill dispatch+commit must succeed");
+    .expect("lightning selection");
+    let selection = index
+        .selection_for(layer.index, lightning.module.module_id())
+        .expect("selected lightning region");
+    let commit = binding
+        .with_native_plan(&owner, |entry| {
+            let mut live = lightning.as_live();
+            live.native_entry = Some(entry);
+            slicer_wasm_host::LayerStageRunner::run_stage(
+                &dispatcher,
+                &"Layer::Infill".into(),
+                &layer,
+                &live,
+                crate::common::layer_input(&blackboard, &arena, selection),
+            )
+            .map_err(|error| slicer_sdk::error::ModuleError::fatal(1, format!("{error:?}")))
+        })
+        .expect("Layer::Infill dispatch must succeed")
+        .expect("lightning must emit a commit");
+    slicer_runtime::apply_for_test(
+        &mut arena,
+        commit,
+        // exhaustive: pin the lightning dispatch-to-arena commit context, including absent cross-stage inputs; StageApplyContext has no Default.
+        &slicer_runtime::StageApplyContext {
+            stage_id: "Layer::Infill",
+            module_id: lightning.module.module_id(),
+            layer_index: layer.index,
+            seam_plan: None,
+            config_view: Some(lightning.module.config_view().as_ref()),
+            committed_slices: None,
+        },
+    )
+    .expect("Layer::Infill commit must succeed");
     assert!(
         arena.infill().is_some(),
         "lightning Layer::Infill must commit raw sparse output"

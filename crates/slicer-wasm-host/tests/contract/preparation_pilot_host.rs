@@ -37,7 +37,6 @@ pub mod infill {
             "slicer:common/module-errors": host::layer_perimeters::slicer::common::module_errors,
             "slicer:ir-handles/ir-handles@1.0.0": host::layer_perimeters::slicer::ir_handles::ir_handles,
             "slicer:support-queries/support-queries@1.0.0": host::layer_infill::slicer::support_queries::support_queries,
-            "slicer:lightning-queries/lightning-queries@1.0.0": host::layer_infill::slicer::lightning_queries::lightning_queries,
             "slicer:layer-preparation/preparation-types@1.0.0.print-preparation-input": super::PreparationInputData,
             "slicer:layer-preparation/preparation-types@1.0.0.prepared-plan-output": super::PreparationOutputData,
             "slicer:layer-preparation/preparation-types@1.0.0.prepared-plan-view": super::PreparedPlanViewData,
@@ -770,10 +769,6 @@ pub fn pilot_linker(
             _,
             HasSelf<HostExecutionContext>,
         >(&mut linker, |c: &mut PilotHostContext| &mut c.ordinary)?;
-        host::layer_infill::slicer::lightning_queries::lightning_queries::add_to_linker::<
-            _,
-            HasSelf<HostExecutionContext>,
-        >(&mut linker, |c: &mut PilotHostContext| &mut c.ordinary)?;
     }
     cap::add_to_linker::<_, HasSelf<PilotHostContext>>(&mut linker, |c| c)?;
     plan_access::add_to_linker::<_, HasSelf<PilotHostContext>>(&mut linker, |c| c)?;
@@ -1009,10 +1004,6 @@ pub fn consume_in_print(
                 .data_mut()
                 .ordinary
                 .push_support_query_view(host::SupportQueryViewData::default())?;
-            let lightning = store
-                .data_mut()
-                .ordinary
-                .push_lightning_query_view(host::LightningQueryViewData::default())?;
             let output = store.data_mut().ordinary.push_infill_output_builder()?;
             infill::PreparedInfillModule::instantiate(&mut store, component, &linker)?
                 .slicer_layer_infill_infill()
@@ -1022,7 +1013,6 @@ pub fn consume_in_print(
                     &[],
                     paint,
                     support,
-                    lightning,
                     output,
                     config,
                 )?

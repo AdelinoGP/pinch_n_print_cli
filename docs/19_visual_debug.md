@@ -721,6 +721,21 @@ with `PreparationProjectionRejected` carrying the typed
 `PreparationProjectionError::MissingScene` reason, and no successful bundle is
 written. A missing scene never becomes `empty: true`.
 
+### Lightning private preparation migration
+
+The legacy path is retired.
+The selected `com.core.lightning-infill` artifact plans during `prepare_print` from typed committed
+regions, region configs, and layer plan, publishing one private `lightning-layer-{global_layer_index}` piece per schedule layer.
+Ordinary `Layer::Infill` consumers require and decode their own layer's piece through the module's own decoder.
+The `planning_geometry` view publishes scene `lightning-plan` from the same in-memory plan as those pieces,
+committed in the same transaction. Its classes are `planning_domain` (Polygon, holes preserved),
+`tree_branch` (open Polyline), and `tree_root` and `grounding` (Point).
+Capture-off allocates nothing for the projection. An explicitly requested empty plan publishes
+`primitives: []` with its classes declared; empty is not missing.
+The scene is a typed diagnostic projection, not a public IR or a decoder for private pieces.
+This records behavioural equivalence to the pre-migration producer, moving ownership with no intended output change;
+it is not a canonical-parity claim, and the recorded Gate A/B outcomes remain unchanged.
+
 ## Framing
 
 Every render is **aspect-preserving**: one uniform scale is applied to both

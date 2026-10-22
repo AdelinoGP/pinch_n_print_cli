@@ -1,4 +1,4 @@
-//! End-to-end contract coverage for the infill paint view.
+//! Guest export/import linkage through selected, prepared region queries.
 
 #![allow(missing_docs)]
 
@@ -6,8 +6,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
-    ConfigValue, ConfigView, GlobalLayer, LightningTreeEntry, LightningTreeIR, Point2, RegionKey,
-    RegionMapIR, RegionPlan, ResolvedConfig, SemVer, SliceIR, SlicedRegion,
+    ConfigValue, ConfigView, ExPolygon, GlobalLayer, Point2, Polygon, RegionKey, RegionMapIR,
+    RegionPlan, ResolvedConfig, SemVer, SliceIR, SlicedRegion,
 };
 use slicer_wasm_host::selection::{
     build_layer_selection_index, LayerSelectionIndexInput, LayerSelectionModuleInput, STAGES,
@@ -17,7 +17,7 @@ use slicer_wasm_host::{
 };
 
 #[test]
-fn lightning_infill_guest_calls_lightning_tree_segments() {
+fn lightning_infill_guest_calls_prepared_region_queries() {
     let engine = crate::common::wasm_cache::shared_engine();
     let dispatcher = slicer_wasm_host::WasmRuntimeDispatcher::new(engine);
 
@@ -53,28 +53,18 @@ fn lightning_infill_guest_calls_lightning_tree_segments() {
             object_id: object_id.to_string(),
             region_id,
             effective_layer_height: 0.2,
+            polygons: vec![ExPolygon {
+                contour: Polygon {
+                    points: vec![
+                        Point2::from_mm(0.0, 0.0),
+                        Point2::from_mm(1.0, 0.0),
+                        Point2::from_mm(0.0, 1.0),
+                    ],
+                },
+                holes: Vec::new(),
+            }],
             ..SlicedRegion::default()
         }],
-    };
-    let lightning_tree_ir = LightningTreeIR {
-        // exhaustive: guest query identity fixture pins every lightning entry field.
-        entries: vec![LightningTreeEntry {
-            object_id: object_id.to_string(),
-            global_layer_index: 0,
-            region_id,
-            tree_edge_segments: vec![
-                [Point2 { x: 0, y: 0 }, Point2 { x: 10, y: 10 }],
-                [Point2 { x: 20, y: 20 }, Point2 { x: 30, y: 30 }],
-            ],
-            // Genuinely chain-empty source: `region_id` 7 is a plain base id (not
-            // a painted-variant or modifier-encoded id), the slice region and the
-            // region-map key both carry the exact empty chain, and this fixture
-            // feeds no paint annotations. The typed literal still carries that
-            // exact empty chain explicitly (no serde-default reliance) so the
-            // guest's chain-aware query matches this source and never a wildcard.
-            variant_chain: Vec::new(),
-        }],
-        ..LightningTreeIR::default()
     };
 
     let module_id = "lightning-infill".to_string();
@@ -122,7 +112,6 @@ fn lightning_infill_guest_calls_lightning_tree_segments() {
         paint_regions: None,
         seam_plan: None,
         support_plan: None,
-        lightning_tree_ir: Some(Arc::new(lightning_tree_ir)),
         region_map: Some(Arc::new(region_map)),
         slice: Some(&slice_ir),
         perimeter: None,
@@ -149,16 +138,25 @@ fn lightning_infill_guest_calls_lightning_tree_segments() {
     .expect("guest must emit infill output");
 
     let sparse_paths = match commit {
-        slicer_ir::LayerStageCommit::Infill(ir) => ir
-            .regions
-            .into_iter()
-            .flat_map(|region| region.sparse_infill)
-            .collect::<Vec<_>>(),
+        slicer_ir::LayerStageCommit::Infill(ir) => {
+            assert_eq!(ir.regions[0].object_id, object_id);
+            assert_eq!(ir.regions[0].region_id, region_id);
+            assert!(ir.regions[0].variant_chain.is_empty());
+            ir.regions
+                .into_iter()
+                .flat_map(|region| region.sparse_infill)
+                .collect::<Vec<_>>()
+        }
         other => panic!("expected Layer::Infill commit, got {other:?}"),
     };
-    let witness = sparse_paths
-        .iter()
-        .find(|path| path.points.len() == 1 && (path.points[0].width - 137.0).abs() < f32::EPSILON)
-        .expect("guest must emit a lightning-tree witness path");
-    assert_eq!(witness.points[0].x, 2.0);
+    // The retired transport's segment witness no longer exists. The surviving
+    // guest reads region polygons/Z and config via host imports, then commits
+    // this payload through the infill output import: linkage must still work.
+    assert_eq!(sparse_paths.len(), 1);
+    let witness = &sparse_paths[0];
+    assert_eq!(witness.points.len(), 2);
+    assert_eq!(witness.points[0].width, 1.0);
+    assert_eq!(witness.points[0].flow_factor, 1.0);
+    assert_eq!(witness.points[0].z, 0.2);
+    assert_eq!(witness.points[1].x, 20.0);
 }

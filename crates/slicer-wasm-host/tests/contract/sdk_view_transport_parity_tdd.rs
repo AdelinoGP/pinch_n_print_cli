@@ -396,7 +396,6 @@ fn observation_with_alias_owner(
         paint_regions: None,
         seam_plan: None,
         support_plan: None,
-        lightning_tree_ir: None,
         region_map: with_map.then_some(map),
         slice: Some(&slice),
         perimeter: Some(&perimeter),

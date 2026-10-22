@@ -155,10 +155,13 @@ is the authoritative catalog of their defaults and ranges.
 | `layer_height` | float | `0.2` | [0.01, 1.0] | — | `layer-planner-default` |
 | `support_raft_layers` | int | `0` | [0.0, 100.0] | — | `layer-planner-default` |
 | `bridge_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `lightning-infill` |
+| `infill_angle` | float | `45.0` | [0.0, 360.0] | — | `lightning-infill` |
 | `infill_density` | float | `0.2` | [0.0, 1.0] | — | `lightning-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | — | `lightning-infill` |
 | `initial_layer_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `lightning-infill` |
+| `layer_height` | float | `0.2` | [0.01, 2.0] | — | `lightning-infill` |
 | `line_width` | float | `0` | [0.0, 2.0] | — | `lightning-infill` |
+| `prepared_plan_diagnostic` | enum | `"none"` | — (values: none|missing_piece|malformed_piece|unsupported_version|empty_plan) | — | `lightning-infill` |
 | `sparse_infill_line_width` | float_or_percent | `0.0` | [0.0, 2.0] | base `nozzle_diameter` | `lightning-infill` |
 | `bed_temperature_initial_layer_single` | int | `60` | [0.0, 120.0] | — | `machine-gcode-emit` |
 | `before_layer_change_gcode` | string | `""` | — | — | `machine-gcode-emit` |

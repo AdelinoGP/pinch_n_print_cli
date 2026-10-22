@@ -67,12 +67,6 @@ pub use slicer_ir::{
 /// These producers represent built-in (non-WASM) pipeline steps that are
 /// always present regardless of which WASM modules are loaded. They are used
 /// by the DAG validator, `dag_cli`, and the startup validation request.
-///
-/// Note: `LIGHTNING_TREE_PRODUCER`
-/// (`crates/slicer-runtime/src/builtins/lightning_tree_producer.rs`) is
-/// defined but not registered here; the `PrePass::LightningTreeGen` stage
-/// runs via direct wiring in `crates/slicer-runtime/src/prepass.rs`, which
-/// calls `commit_lightning_tree_ir_builtin` without going through this list.
 pub fn runtime_builtins() -> Vec<&'static dyn Producer> {
     use crate::builtins::gcode_emit_producer::GCODE_EMIT_PRODUCER;
     use crate::builtins::mesh_analysis_producer::{MESH_ANALYSIS_PRODUCER, MESH_PRODUCER};
@@ -114,7 +108,6 @@ pub use slicer_wasm_host::pool as instance_pool;
 // HostExecutionContext and HostExecutionContextBuilder are internal to slicer-wasm-host
 // (not part of the public API surface); they are NOT re-exported here.
 
-pub use builtins::lightning_tree_producer::commit_lightning_tree_ir_builtin;
 pub use builtins::overhang_annotation_producer::{
     commit_overhang_annotation_builtin, OverhangAnnotationBuiltinError,
 };

@@ -9,10 +9,10 @@ use std::sync::Arc;
 use slicer_ir::slice_ir::SupportAnalysisIR;
 use slicer_ir::{
     ActiveRegion, BlackboardError, BlackboardPrepassSlot, ExPolygon, InfillIR, LayerAnnotation,
-    LayerArenaError, LayerArenaSlot, LayerCollectionIR, LayerPlanIR, LightningTreeIR, MeshIR,
-    ObjectMesh, PerimeterIR, Point2, Point3, Polygon, PreparedRegionData, RegionKey, RegionMapIR,
-    RegionPlan, RetractMode, SeamPlanIR, SliceIR, SlicedRegion, SupportGeometryIR,
-    SupportGeometryKey, SupportIR, SupportPlanIR, SurfaceClassificationIR, ToolChange, ZHop,
+    LayerArenaError, LayerArenaSlot, LayerCollectionIR, LayerPlanIR, MeshIR, ObjectMesh,
+    PerimeterIR, Point2, Point3, Polygon, PreparedRegionData, RegionKey, RegionMapIR, RegionPlan,
+    RetractMode, SeamPlanIR, SliceIR, SlicedRegion, SupportGeometryIR, SupportGeometryKey,
+    SupportIR, SupportPlanIR, SurfaceClassificationIR, ToolChange, ZHop,
 };
 
 /// Structured diagnostic emitted when a cross-family support body is dropped
@@ -93,7 +93,6 @@ pub struct Blackboard {
     layer_selection_index: Option<Arc<LayerSelectionIndex>>,
     support_geometry: Option<Arc<SupportGeometryIR>>,
     support_analysis: Option<Arc<SupportAnalysisIR>>,
-    lightning_tree_ir: Option<Arc<LightningTreeIR>>,
     layer_outputs: Option<Vec<Option<LayerCollectionIR>>>,
 }
 
@@ -112,7 +111,6 @@ impl Blackboard {
             layer_selection_index: None,
             support_geometry: None,
             support_analysis: None,
-            lightning_tree_ir: None,
             layer_outputs: Some((0..layer_count).map(|_| None).collect()),
         }
     }
@@ -157,9 +155,6 @@ impl Blackboard {
         }
         if let Some(arc) = self.support_analysis.as_ref() {
             total = total.saturating_add(std::mem::size_of_val(arc.as_ref()) as u64);
-        }
-        if let Some(arc) = self.lightning_tree_ir.as_ref() {
-            total = total.saturating_add(estimated_lightning_tree_ir_bytes(arc));
         }
         total
     }
@@ -416,28 +411,6 @@ impl Blackboard {
         self.support_analysis.as_ref()
     }
 
-    /// Commit `LightningTreeIR` exactly once.
-    ///
-    /// Skipped (no commit) when the print's `sparse_fill_holder` is not
-    /// `lightning-infill` — see `PrePass::LightningTreeGen` wiring in
-    /// `prepass.rs` and ADR-0029.
-    pub fn commit_lightning_tree_ir(
-        &mut self,
-        ir: Arc<LightningTreeIR>,
-    ) -> Result<(), BlackboardError> {
-        commit_prepass(
-            &mut self.lightning_tree_ir,
-            ir,
-            BlackboardPrepassSlot::LightningTreeIR,
-        )
-    }
-
-    /// Return the committed lightning tree IR, if available.
-    #[must_use]
-    pub fn lightning_tree_ir(&self) -> Option<&Arc<LightningTreeIR>> {
-        self.lightning_tree_ir.as_ref()
-    }
-
     /// Commit one `LayerCollectionIR` into its write-once layer slot.
     pub fn commit_layer_output(
         &mut self,
@@ -578,15 +551,6 @@ fn estimated_support_geometry_bytes(ir: &SupportGeometryIR) -> u64 {
         for p in polys {
             total += estimated_expolygon_bytes(p);
         }
-    }
-    total
-}
-
-fn estimated_lightning_tree_ir_bytes(ir: &LightningTreeIR) -> u64 {
-    let mut total = std::mem::size_of::<LightningTreeIR>() as u64;
-    for entry in &ir.entries {
-        total += std::mem::size_of::<slicer_ir::LightningTreeEntry>() as u64;
-        total += std::mem::size_of::<[Point2; 2]>() as u64 * entry.tree_edge_segments.len() as u64;
     }
     total
 }

@@ -16,8 +16,8 @@ use std::rc::Rc;
 
 use slicer_ir::{slice_ir::BoundingBox2, ExPolygon, Point2, Polygon};
 
-use crate::geometry::closest_point_on_segment;
-use crate::polygon_ops::clip_polylines;
+use slicer_core::geometry::closest_point_on_segment;
+use slicer_core::polygon_ops::clip_polylines;
 
 use super::distance_field::DistanceField;
 use super::tree_node::{to_grid_point, Node, NodeRef};

@@ -423,7 +423,6 @@ fn variant_grants_cover_native_and_wasm_boundaries() {
                     paint_regions: None,
                     seam_plan: None,
                     support_plan: None,
-                    lightning_tree_ir: None,
                     region_map: Some(Arc::new(map.clone())),
                     slice: Some(&slice),
                     perimeter: None,

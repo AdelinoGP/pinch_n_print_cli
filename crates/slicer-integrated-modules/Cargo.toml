@@ -8,6 +8,9 @@ authors.workspace = true
 [dependencies]
 slicer-scheduler = { path = "../slicer-scheduler" }
 slicer-sdk = { path = "../slicer-sdk" }
+# `prepared_native_entries` returns the generated `PreparationExportSchema`
+# beside the native pair; the schema type lives in `slicer-schema`.
+slicer-schema = { path = "../slicer-schema" }
 classic-perimeters = { path = "../../modules/core-modules/classic-perimeters", optional = true }
 arachne-perimeters = { path = "../../modules/core-modules/arachne-perimeters", optional = true }
 tree-support-planner = { path = "../../modules/core-modules/tree-support-planner", optional = true }

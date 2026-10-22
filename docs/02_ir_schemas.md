@@ -1729,72 +1729,21 @@ a contract error, never a best-effort drop.
 
 ---
 
-## IR 9d — LightningTreeIR
+### Lightning legacy IR retirement
 
-**Stage:** Output of `PrePass::LightningTreeGen` (optional; only committed when
-the print's `sparse_fill_holder` resolves to `lightning-infill` per ADR-0029).
-Positioned after `PrePass::SupportGeometry`, before `Layer::PaintRegionAnnotation`.
-
-**Current schema_version: 1.1.0** (authoritative source:
-`CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`).
-Minor bump 1.1.0 by packet `layer-module-preparation_01` adds the additive
-`#[serde(default)]` ordered `LightningTreeEntry.variant_chain` carrier, so
-source grouping keeps full origin: generation (`commit_lightning_tree_ir_builtin`,
-`crates/slicer-runtime/src/builtins/lightning_tree_producer.rs`) retains the
-entries' SOURCE region ids and ordered chains rather than normalizing them to
-map-space producer ids, and lookup is exact over the full source identity.
-The chain serializes explicitly (`[]` round-trips; an empty chain is the exact
-identity of a genuinely chain-less source, never a wildcard). The producer
-remains whole-print prepass. Packet 137 lands the contract; packets 138/139
-fill the producer skeleton with the real cross-layer distance-field + tree-node
-generator.
-
-**Producer:** A host built-in committed via
-`crates/slicer-runtime/src/builtins/lightning_tree_producer.rs`. The producer is
-**skipped** (no commit, slot stays `None`) when no region's
-`sparse_fill_holder` is `lightning-infill` — the zero-cost skip promise from
-ADR-0029. When committed, the IR carries per-object, per-region, per-layer 2-point
-tree-edge segments in integer coordinate units (compact storage per ADR-0029's
-memory note; no full topology).
-
-**Consumers:** `Layer::Infill` modules that declare `LightningTreeIR` as a read
-in their manifest. The packet 140 `lightning-infill` module consumes this view
-and emits one raw path per committed tree segment.
-
-`LightningTreeIR` and `LightningTreeEntry` are defined in
-`crates/slicer-ir/src/slice_ir.rs`. Entries are scoped by object, ordered
-source `variant_chain`, region, and signed layer index and carry two-point
-integer-coordinate tree edges. The
-`(object_id, region_id, ordered variant_chain, layer_index)` full source
-identity is authoritative — the entry carries `region_id` and `variant_chain`
-exactly as `SupportPlanEntry` and `SeamPlanEntry` do, and the view lookup
-below is exact over that identity, never object-scoped and never a
-chain-ignored pair lookup.
-
-**Consumption pattern — read-view via the specialist `lightning-query-view`:**
-
-The host exposes the IR to a `Layer::Infill` guest through the specialist
-`slicer:lightning-queries@1.0.0` package
-(`crates/slicer-schema/wit/deps/lightning-queries/lightning-queries.wit`):
-the guest exports the `slicer:layer-infill@2.0.0` package's `infill`
-interface, whose `run` function receives the
-`lightning-queries: own<lightning-query-view>` handle (next to the
-`support-queries: own<support-query-view>` handle and the core
-`paint: paint-region-layer-view` argument). The
-`lightning-query-view.lightning-tree-segments(object-id, region-id,
-variant-chain)` read keys the exact full source identity
-`(object_id, region_id, ordered variant_chain)` for that view's layer; the SDK
-mirror on the native leg is
-`PaintRegionLayerView::lightning_tree_segments_for(object_id, region_id,
-variant_chain)` (`crates/slicer-sdk/src/traits.rs`). When no `LightningTreeIR`
-is committed (skip-when-no-lightning-holder), the accessor returns an empty
-`Vec` and the module emits no paths for that layer; there is no non-lightning
-fallback.
-
-**Determinism:** Identical PrePass inputs must produce byte-identical
-`LightningTreeIR`. The `entries` Vec order is producer-defined and must be
-stable (no hash containers); per-layer segment ordering is the producer's
-responsibility. 138/139 inherit this contract.
+The legacy path is retired.
+Lightning planning runs inside the selected `com.core.lightning-infill` artifact during `prepare_print`,
+from typed committed regions, region configs, and layer plan.
+One module-private `lightning-layer-{global_layer_index}` piece is published per schedule layer;
+ordinary `Layer::Infill` consumers require and decode their own layer's piece with the module's decoder.
+The host `commit_lightning_tree_ir_builtin` producer, `PrePass::LightningTreeGen` and its `STAGE_ORDER` entry,
+`BlackboardPrepassSlot::LightningTreeIR`, and `BlackboardError::LightningTreeGeneration` are deleted.
+So are public `LightningTreeIR`/`LightningTreeEntry`/`CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION`,
+the `lightning-tree-segments` WIT method and whole `slicer:lightning-queries` package,
+and SDK `lightning_tree_segments_for`/`with_lightning_tree_ir` accessors.
+Plan types live only as module-private `KernelPlan`/`PlanEntry`, never public IR; IR 9d is retired.
+This records behavioural equivalence to the pre-migration producer: ownership moves with no intended output change,
+not a canonical-parity claim; the recorded Gate A/B outcomes remain unchanged.
 
 ---
 
@@ -2303,8 +2252,8 @@ The existing `extensions: BTreeMap<String, ConfigValue>` field on `ResolvedConfi
 ordered chain carriers take MINOR — "New optional field added", old modules
 ignore it: `InfillIR` 1.1.0 → 1.2.0 (`InfillRaftRegion.variant_chain`),
 `SupportIR` 2.0.0 → 2.1.0 (`SupportEntry.variant_chain`), `SupportPlanIR`
-2.2.0 → 2.3.0 (`SupportPlanEntry.variant_chain`), `LightningTreeIR` 1.0.0 →
-1.1.0 (`LightningTreeEntry.variant_chain`). Source-selection identity/key
+2.2.0 → 2.3.0 (`SupportPlanEntry.variant_chain`). Historically, the now-deleted
+`LightningTreeIR` also moved 1.0.0 → 1.1.0 (`LightningTreeEntry.variant_chain`). Source-selection identity/key
 widening takes MAJOR — "Field type changed", even where the nominal map field
 spelling is unchanged: `SupportGeometryIR` 1.0.0 → 2.0.0
 (`SupportGeometryKey` gains the ordered chain, retaining its layered fields

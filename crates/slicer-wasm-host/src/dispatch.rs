@@ -524,9 +524,6 @@ impl WasmRuntimeDispatcher {
         layer_collection: Option<&slicer_ir::LayerCollectionIR>,
         surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
         infill_ir: Option<&slicer_ir::InfillIR>,
-        // Packet 137: `PrePass::LightningTreeGen` IR for the live dispatch path.
-        // `None` when no region's `sparse_fill_holder` is `lightning-infill`.
-        #[allow(dead_code)] lightning_tree_ir: Option<&slicer_ir::LightningTreeIR>,
         transport: &crate::marshal::transport::LayerTransport<'_>,
         preparation_failure: &mut Option<Arc<crate::preparation::PreparationFailure>>,
     ) -> Result<HostExecutionContext, DispatchError> {
@@ -628,11 +625,10 @@ impl WasmRuntimeDispatcher {
                     .data_mut()
                     .push_config_view(host::config_view_to_data(&effective_config_view))
                     .map_err(mk_ctx_err)?;
-                let (paint_data, support_data, lightning_data) = build_paint_layer_data_with_plan(
+                let (paint_data, support_data) = build_paint_layer_data_with_plan(
                     None,
                     layer_index,
                     support_plan_ir,
-                    lightning_tree_ir,
                     transport.non_model_targets.iter().any(|target| {
                         matches!(
                             target.source,
@@ -648,10 +644,6 @@ impl WasmRuntimeDispatcher {
                     .data_mut()
                     .push_support_query_view(support_data)
                     .map_err(mk_ctx_err)?;
-                let lightning_query = store
-                    .data_mut()
-                    .push_lightning_query_view(lightning_data)
-                    .map_err(mk_ctx_err)?;
                 let output = store
                     .data_mut()
                     .push_infill_output_builder()
@@ -664,7 +656,6 @@ impl WasmRuntimeDispatcher {
                         &region_handles,
                         own(paint),
                         own(support_query),
-                        own(lightning_query),
                         own(output),
                         own(config_handle),
                     )
@@ -1000,11 +991,10 @@ impl WasmRuntimeDispatcher {
                     stage_id == "Layer::Infill",
                 )
                 .map_err(mk_ctx_err)?;
-                let (paint_data, support_data, _lightning_data) = build_paint_layer_data_with_plan(
+                let (paint_data, support_data) = build_paint_layer_data_with_plan(
                     None,
                     layer_index,
                     support_plan_ir,
-                    lightning_tree_ir,
                     layer.is_raft,
                 );
                 let paint = store
@@ -2153,29 +2143,24 @@ fn build_paint_layer_data(
     layer_index: u32,
     is_raft: bool,
 ) -> PaintRegionLayerData {
-    build_paint_layer_data_with_plan(_paint_ir, layer_index, None, None, is_raft).0
+    build_paint_layer_data_with_plan(_paint_ir, layer_index, None, is_raft).0
 }
 
 /// Variant of [`build_paint_layer_data`] that also indexes a committed
-/// `SupportPlanIR` and `LightningTreeIR` for this layer. Returns the paint
-/// view plus the two specialist query views relocated out of
-/// `paint-region-layer-view` (packet layer-module-preparation_01, W7a):
-/// `(paint, support-query, lightning-query)`. The maps in the query views
-/// are keyed by the FULL origin `(object_id, region_id, variant_chain)` with
-/// the chain taken from the IR entries' own `variant_chain` fields — never
-/// guessed or derived. Infill specialist queries use the delivered source
-/// identity verbatim, so no config-address alias is needed.
+/// `SupportPlanIR` for this layer. Returns the paint view plus the specialist
+/// support-query view relocated out of `paint-region-layer-view` (packet
+/// layer-module-preparation_01, W7a): `(paint, support-query)`. The maps in the
+/// query view are keyed by the FULL origin `(object_id, region_id,
+/// variant_chain)` with the chain taken from the IR entries' own
+/// `variant_chain` fields — never guessed or derived. Infill specialist queries
+/// use the delivered source identity verbatim, so no config-address alias is
+/// needed.
 fn build_paint_layer_data_with_plan(
     _paint_ir: Option<&()>,
     layer_index: u32,
     support_plan_ir: Option<&slicer_ir::SupportPlanIR>,
-    lightning_tree_ir: Option<&slicer_ir::LightningTreeIR>,
     is_raft: bool,
-) -> (
-    PaintRegionLayerData,
-    host::SupportQueryViewData,
-    host::LightningQueryViewData,
-) {
+) -> (PaintRegionLayerData, host::SupportQueryViewData) {
     let mut data = PaintRegionLayerData {
         layer_index,
         ..Default::default()
@@ -2208,44 +2193,7 @@ fn build_paint_layer_data_with_plan(
             entries.sort_by_key(|entry| (entry.anchor_z, entry.global_layer_index));
         }
     }
-    let mut lightning_data = host::LightningQueryViewData::default();
-    if let Some(ir) = lightning_tree_ir {
-        for entry in &ir.entries {
-            if entry.global_layer_index != layer_index as i32 {
-                continue;
-            }
-            let segments: Vec<Vec<host::layer::slicer::types::geometry::Point3WithWidth>> = entry
-                .tree_edge_segments
-                .iter()
-                .map(|segment| {
-                    segment
-                        .iter()
-                        .map(|p| host::layer::slicer::types::geometry::Point3WithWidth {
-                            x: slicer_ir::units_to_mm(p.x),
-                            y: slicer_ir::units_to_mm(p.y),
-                            z: 0.0,
-                            width: 0.0,
-                            flow_factor: 1.0,
-                            overhang_quartile: None,
-                            dist_to_top_mm: 0.0,
-                            overhang_distance_mm: None,
-                        })
-                        .collect()
-                })
-                .collect();
-            let source_key = (
-                entry.object_id.clone(),
-                entry.region_id.to_string(),
-                entry.variant_chain.clone(),
-            );
-            lightning_data
-                .lightning_tree_segments
-                .entry(source_key)
-                .or_default()
-                .extend(segments);
-        }
-    }
-    (data, support_data, lightning_data)
+    (data, support_data)
 }
 
 /// Push `SliceRegionData` resources into the store from the shared call-local
@@ -3401,7 +3349,6 @@ impl WasmRuntimeDispatcher {
                     input.layer_collection,
                     input.surface_classification,
                     input.infill,
-                    input.lightning_tree_ir.as_deref(),
                     &transport,
                     preparation_failure,
                 )
@@ -4043,23 +3990,13 @@ pub fn last_profile_marks_for_test() -> Vec<crate::profiling::ProfileMark> {
     LAST_PROFILE_MARKS.with(|c| c.borrow_mut().drain(..).collect())
 }
 
-/// Build paint-layer data for dispatch contract tests without exposing the
-/// private production builder or changing its dispatch signature.
-#[doc(hidden)]
-pub fn build_paint_layer_data_for_test(
-    layer_index: u32,
-    lightning_tree_ir: &slicer_ir::LightningTreeIR,
-) -> PaintRegionLayerData {
-    build_paint_layer_data_with_plan(None, layer_index, None, Some(lightning_tree_ir), false).0
-}
-
 /// Build support-plan paint-layer data for dispatch contract tests.
 #[doc(hidden)]
 pub fn build_support_plan_layer_data_for_test(
     layer_index: u32,
     support_plan_ir: &slicer_ir::SupportPlanIR,
 ) -> PaintRegionLayerData {
-    build_paint_layer_data_with_plan(None, layer_index, Some(support_plan_ir), None, false).0
+    build_paint_layer_data_with_plan(None, layer_index, Some(support_plan_ir), false).0
 }
 
 /// Deconstruct a `HostExecutionContext` returned from `dispatch_layer_call` into

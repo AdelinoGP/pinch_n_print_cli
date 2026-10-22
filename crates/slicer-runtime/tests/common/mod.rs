@@ -577,6 +577,102 @@ pub fn commit_hec_for_test(
 }
 
 // ── Stage input helpers ───────────────────────────────────────────────────────
+/// Prepare lightning's real paired artifact from committed geometry, never from
+/// a pre-encoded answer. Keep the store alive for the owner's ordinary calls.
+pub fn prepare_lightning(
+    slices: Vec<slicer_ir::SliceIR>,
+    region_map: slicer_ir::RegionMapIR,
+    config: Arc<slicer_ir::ConfigView>,
+    native: bool,
+) -> (
+    slicer_wasm_host::preparation::FrozenPreparationBinding,
+    slicer_wasm_host::preparation::PreparedOwnerStore,
+    slicer_wasm_host::preparation::PreparationOwner,
+) {
+    use slicer_wasm_host::preparation::{
+        freeze_native, freeze_wasm, CommittedPreparationInputs, NativePreparationArtifact,
+        PreparationInputData, PreparationProjectionRequest, PreparationSelectionContext,
+        PreparedOwnerStore,
+    };
+    let module_id = "com.core.lightning-infill";
+    let declaration = Some(slicer_schema::preparation::PreparationDeclaration::new(
+        "slicer:layer-preparation/prepare@1.0.0",
+        vec!["layer_plan".into(), "slices".into(), "region_map".into()],
+        vec!["planning_geometry".into()],
+    ));
+    let binding = if native {
+        freeze_native(
+            module_id.into(),
+            declaration,
+            NativePreparationArtifact::Prepared {
+                entry: lightning_infill::LightningInfill::__slicer_prepared_native_entry(),
+                schema: lightning_infill::LightningInfill::__SLICER_PREPARATION_SCHEMA,
+            },
+        )
+    } else {
+        let engine = wasm_cache::shared_engine().wasmtime_engine().clone();
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../modules/core-modules/lightning-infill/lightning-infill.wasm");
+        integrated_parity_harness::assert_guest_freshness(&path);
+        let component = wasmtime::component::Component::from_file(&engine, path)
+            .expect("load real lightning component");
+        freeze_wasm(
+            module_id.into(),
+            declaration,
+            engine,
+            component,
+            "Layer::Infill".into(),
+        )
+    }
+    .expect("freeze real lightning pair");
+    let store = PreparedOwnerStore::new();
+    let owner = store.create_owner(&binding).expect("lightning owner");
+    let layers = slices
+        .iter()
+        .map(|slice| slicer_ir::GlobalLayer {
+            index: slice.global_layer_index,
+            z: slice.z,
+            ..Default::default()
+        })
+        .collect();
+    let committed = CommittedPreparationInputs::new(
+        Arc::new(slicer_ir::MeshIR::default()),
+        Arc::new(slicer_ir::LayerPlanIR {
+            global_layers: layers,
+            ..Default::default()
+        }),
+        Arc::new(slices),
+        Arc::new(region_map),
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .expect("commit lightning planning inputs");
+    let input = PreparationInputData::from_committed(
+        &owner,
+        Arc::new(committed),
+        PreparationSelectionContext::new(
+            "Layer::Infill".into(),
+            module_id.into(),
+            vec!["claim:sparse-fill".into()],
+            Default::default(),
+            config,
+        ),
+    )
+    .expect("bind lightning planning inputs");
+    binding
+        .prepare_with_diagnostics(
+            &owner,
+            input,
+            PreparationProjectionRequest::new(Vec::new()).unwrap(),
+            |_| Ok(()),
+        )
+        .expect("module prepare_print must publish Ready pieces");
+    (binding, store, owner)
+}
+
 // Construct *StageInput borrow structs from the legacy Blackboard/LayerArena
 // so existing test call sites can use the new trait boundary with minimal churn.
 
@@ -592,7 +688,6 @@ pub fn layer_input<'a>(
         paint_regions: None,
         seam_plan: blackboard.seam_plan().cloned(),
         support_plan: blackboard.support_plan().cloned(),
-        lightning_tree_ir: blackboard.lightning_tree_ir().cloned(),
         region_map: blackboard.region_map().cloned(),
         slice: arena.slice(),
         perimeter: arena.perimeter(),

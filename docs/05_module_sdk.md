@@ -1245,6 +1245,22 @@ Each `PrintEntity` and `TravelMove` carries a `u64 entity_id` populated at const
 
 ---
 
+### Lightning prepared module consumption
+
+The legacy path is retired.
+The selected `com.core.lightning-infill` artifact plans during `prepare_print` from typed committed
+regions, region configs, and layer plan, publishing one module-private `lightning-layer-{global_layer_index}` piece per schedule layer.
+Ordinary `Layer::Infill` consumers require and decode their own layer's piece through the module's own decoder;
+they no longer use the deleted `lightning_tree_segments_for`/`with_lightning_tree_ir` SDK accessors.
+`slicer_integrated_modules::prepared_native_entries()` returns the module's generated
+`NativePreparedStageEntry`/`PreparationExportSchema` pair for AC-2's native arm.
+The advanced, default-`none` `prepared_plan_diagnostic` key accepts `none`, `missing_piece`,
+`malformed_piece`, `unsupported_version`, and `empty_plan`.
+It is a diagnostic publication mode applied only after planning and never reaches the kernel.
+The plan remains module-private `KernelPlan`/`PlanEntry`, never public IR.
+This records behavioural equivalence to the pre-migration producer: ownership moves with no intended output change,
+not a canonical-parity claim; the recorded Gate A/B outcomes remain unchanged.
+
 ## Preparation read context and selected sources
 
 `slicer_sdk::preparation::PreparationTargetSource` preserves these source tags:

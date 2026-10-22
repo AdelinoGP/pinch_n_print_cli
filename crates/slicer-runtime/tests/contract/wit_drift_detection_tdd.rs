@@ -620,7 +620,7 @@ fn canonical_infill_postprocess_takes_prior_infill() {
 
 /// Verifies that the infill package receives the same paint view shape as the
 /// other paint-aware layer stages, and that its run signature carries the
-/// versioned specialist query handles (`support-queries`, `lightning-queries`).
+/// versioned specialist query handle (`support-queries`).
 #[test]
 fn canonical_infill_takes_paint_view() {
     let path = workspace_root().join("crates/slicer-schema/wit/deps/layer-infill/layer-infill.wit");
@@ -635,15 +635,10 @@ fn canonical_infill_takes_paint_view() {
     );
     assert!(
         content
-            .contains("use slicer:lightning-queries/lightning-queries@1.0.0.{lightning-query-view};"),
-        "layer-infill must import lightning-query-view from the versioned lightning-queries specialist"
-    );
-    assert!(
-        content
             .split_whitespace()
             .collect::<String>()
-            .contains("run:func(layer-index:layer-idx,regions:list<slice-region-view>,paint:paint-region-layer-view,support-queries:own<support-query-view>,lightning-queries:own<lightning-query-view>,output:infill-output-builder,config:config-view)->result<_,module-error>;"),
-        "run-infill must take the canonical paint-region-layer-view parameter plus the specialist query handles"
+            .contains("run:func(layer-index:layer-idx,regions:list<slice-region-view>,paint:paint-region-layer-view,support-queries:own<support-query-view>,output:infill-output-builder,config:config-view)->result<_,module-error>;"),
+        "run-infill must take the canonical paint-region-layer-view parameter plus the specialist query handle"
     );
 }
 
@@ -833,65 +828,6 @@ fn macro_lib_rs_content() -> String {
 fn host_wit_host_rs_content() -> String {
     let path = workspace_root().join("crates/slicer-wasm-host/src/host.rs");
     fs::read_to_string(&path).expect("read host host.rs for inline WIT verification")
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Packet layer-module-preparation W10: `lightning-tree-segments` moved from
-// the core paint view to the lightning-queries specialist
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Verifies the canonical `lightning-queries.wit` exposes the
-/// `lightning-tree-segments` method on the `lightning-query-view` resource
-/// (packet 137, AC-N2, relocated by layer-module-preparation W10) with the
-/// full-origin 3-arity signature (object-id, region-id, variant-chain).
-/// The host specialist impl in `slicer-wasm-host` would fail to compile if
-/// this drifted. Negative control: the core `paint-region-layer-view`
-/// resource in `ir-types.wit` must no longer carry the method — the query
-/// lives in `slicer:lightning-queries@1.0.0`, not on the core view.
-#[test]
-fn lightning_query_view_owns_lightning_tree_segments_method() {
-    let root = workspace_root();
-    let lightning = fs::read_to_string(
-        root.join("crates/slicer-schema/wit/deps/lightning-queries/lightning-queries.wit"),
-    )
-    .expect("read canonical lightning-queries.wit");
-    assert!(
-        lightning.contains("package slicer:lightning-queries@1.0.0;"),
-        "lightning-queries specialist must remain at package version 1.0.0"
-    );
-    let view_block = lightning
-        .split("resource lightning-query-view")
-        .nth(1)
-        .expect("lightning-queries.wit declares resource lightning-query-view")
-        .split('}')
-        .next()
-        .expect("lightning-query-view resource block is closed");
-    assert!(
-        view_block.contains(
-            "lightning-tree-segments: func(object-id: object-id, region-id: region-id, variant-chain: list<tuple<string, paint-value>>)"
-        ),
-        "lightning-query-view must own 'lightning-tree-segments' with the full-origin 3-arity (object-id, region-id, variant-chain)"
-    );
-    assert!(
-        view_block.contains("-> list<list<point3-with-width>>"),
-        "lightning-tree-segments must return list<list<point3-with-width>> (mirrors support-plan-segments)"
-    );
-
-    // Negative control: the core paint view must NOT carry the method.
-    let ir_types = fs::read_to_string(root.join("crates/slicer-schema/wit/deps/ir-types.wit"))
-        .expect("read canonical ir-types.wit");
-    let paint_block = ir_types
-        .split("resource paint-region-layer-view")
-        .nth(1)
-        .expect("ir-types.wit declares resource paint-region-layer-view")
-        .split('}')
-        .next()
-        .expect("paint-region-layer-view resource block is closed");
-    assert!(
-        !paint_block.contains("lightning-tree-segments"),
-        "the core paint-region-layer-view must no longer expose 'lightning-tree-segments' — \
-         the query belongs to slicer:lightning-queries@1.0.0, not the core view"
-    );
 }
 
 /// Verifies the layer-infill stage package retains the load-bearing major

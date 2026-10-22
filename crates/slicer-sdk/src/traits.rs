@@ -26,8 +26,8 @@ use crate::prepass_types::{
 use crate::views::{PerimeterRegionView, SliceRegionView};
 use slicer_ir::{
     ConfigView, EntitySpeedProfile, ExPolygon, ExtrusionPath3D, InfillRegion, LayerAnnotation,
-    LayerAnnotationKind, LayerCollectionIR, LightningTreeIR, PaintSemantic, PaintValue,
-    Point3WithWidth, PrintEntity, RegionKey, SliceIR, SupportPlanIR,
+    LayerAnnotationKind, LayerCollectionIR, PaintSemantic, PaintValue, Point3WithWidth,
+    PrintEntity, RegionKey, SliceIR, SupportPlanIR,
 };
 
 /// Support-paint policy for a per-region eligibility decision.
@@ -53,7 +53,6 @@ pub struct PaintRegionLayerView {
     layer_index: u32,
     support_plan: Option<Arc<SupportPlanIR>>,
     slice_ir: Option<Arc<SliceIR>>,
-    lightning_tree_ir: Option<Arc<LightningTreeIR>>,
     is_raft: bool,
 }
 
@@ -65,7 +64,6 @@ impl PaintRegionLayerView {
             layer_index,
             support_plan: None,
             slice_ir: None,
-            lightning_tree_ir: None,
             is_raft: false,
         }
     }
@@ -78,7 +76,6 @@ impl PaintRegionLayerView {
             layer_index,
             support_plan: None,
             slice_ir: None,
-            lightning_tree_ir: None,
             is_raft: false,
         }
     }
@@ -104,17 +101,6 @@ impl PaintRegionLayerView {
     #[doc(hidden)]
     pub fn with_slice_ir(mut self, slice_ir: Arc<SliceIR>) -> Self {
         self.slice_ir = Some(slice_ir);
-        self
-    }
-
-    /// Attach a committed `LightningTreeIR` to this layer view (host-only).
-    ///
-    /// The 137 contract returns `None` from `lightning_tree_ir_segments_for`
-    /// when the host did not commit a tree IR (skip-when-no-lightning-holder
-    /// per ADR-0029).
-    #[doc(hidden)]
-    pub fn with_lightning_tree_ir(mut self, ir: Arc<LightningTreeIR>) -> Self {
-        self.lightning_tree_ir = Some(ir);
         self
     }
 
@@ -214,46 +200,6 @@ impl PaintRegionLayerView {
         _variant_chain: &[(String, PaintValue)],
     ) -> Vec<&ExtrusionPath3D> {
         Vec::new()
-    }
-
-    /// Returns the attached `LightningTreeIR`, if any.
-    ///
-    /// Per ADR-0029, the host commits this only when the print's
-    /// `sparse_fill_holder` is `lightning-infill`; otherwise the slot stays
-    /// `None` (skip promise) and the per-layer `Layer::Infill` module
-    /// (packet 140) falls back to its non-lightning path.
-    pub fn lightning_tree_ir(&self) -> Option<&Arc<LightningTreeIR>> {
-        self.lightning_tree_ir.as_ref()
-    }
-
-    /// Returns the 2-point tree-edge segments for the exact
-    /// `(layer, object_id, region_id, ordered variant_chain)` source matching
-    /// this view's `layer_index`. Returns an empty vector if no tree IR is
-    /// committed (skip-when-no-lightning) or no entry matches. A pair-only
-    /// lookup is never a fallback.
-    ///
-    /// The 137 contract returns empty segments for the empty-but-valid IR
-    /// committed by the skeleton producer; the real algorithm (138/139)
-    /// populates `tree_edge_segments` per layer.
-    pub fn lightning_tree_segments_for(
-        &self,
-        object_id: &str,
-        region_id: u64,
-        variant_chain: &[(String, PaintValue)],
-    ) -> Vec<[slicer_ir::Point2; 2]> {
-        let Some(ir) = self.lightning_tree_ir.as_ref() else {
-            return Vec::new();
-        };
-        ir.entries
-            .iter()
-            .filter(|entry| {
-                entry.global_layer_index == self.layer_index as i32
-                    && entry.object_id == object_id
-                    && entry.region_id == region_id
-                    && entry.variant_chain.as_slice() == variant_chain
-            })
-            .flat_map(|entry| entry.tree_edge_segments.iter().copied())
-            .collect()
     }
 
     /// Compute the support paint policy for `expoly` at this layer.

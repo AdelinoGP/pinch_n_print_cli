@@ -11,8 +11,7 @@ use std::collections::HashMap;
 
 use slicer_wasm_host::host::{
     layer_infill, ConfigValueStorage, ConfigViewData, HostExecutionContext,
-    HostExecutionContextBuilder, LightningQueryViewData, PaintRegionLayerData, SliceRegionData,
-    SupportQueryViewData,
+    HostExecutionContextBuilder, PaintRegionLayerData, SliceRegionData, SupportQueryViewData,
 };
 use witness::{RawInfillWitness, RawInfillWitnessPoint1};
 
@@ -107,9 +106,6 @@ fn guest_reads_config_value_and_uses_it_in_output() {
     let support_query_handle = ctx
         .push_support_query_view(SupportQueryViewData::default())
         .unwrap();
-    let lightning_query_handle = ctx
-        .push_lightning_query_view(LightningQueryViewData::default())
-        .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
     let bindings = layer_infill::LayerModule::instantiate(&mut store, &component, &linker)
@@ -122,7 +118,6 @@ fn guest_reads_config_value_and_uses_it_in_output() {
         &[resource_to_own(region_handle)],
         resource_to_own(paint_handle),
         resource_to_own(support_query_handle),
-        resource_to_own(lightning_query_handle),
         resource_to_own(output_handle),
         resource_to_own(config_handle),
     );
@@ -232,9 +227,6 @@ fn guest_reads_region_z_from_ir_view() {
     let support_query_handle = ctx
         .push_support_query_view(SupportQueryViewData::default())
         .unwrap();
-    let lightning_query_handle = ctx
-        .push_lightning_query_view(LightningQueryViewData::default())
-        .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
     let bindings = layer_infill::LayerModule::instantiate(&mut store, &component, &linker).unwrap();
@@ -247,7 +239,6 @@ fn guest_reads_region_z_from_ir_view() {
             &[resource_to_own(region_handle)],
             resource_to_own(paint_handle),
             resource_to_own(support_query_handle),
-            resource_to_own(lightning_query_handle),
             resource_to_own(output_handle),
             resource_to_own(config_handle),
         )
@@ -335,9 +326,6 @@ fn guest_emits_output_via_infill_builder() {
     let support_query_handle = ctx
         .push_support_query_view(SupportQueryViewData::default())
         .unwrap();
-    let lightning_query_handle = ctx
-        .push_lightning_query_view(LightningQueryViewData::default())
-        .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
     let bindings = layer_infill::LayerModule::instantiate(&mut store, &component, &linker).unwrap();
@@ -350,7 +338,6 @@ fn guest_emits_output_via_infill_builder() {
             &[resource_to_own(region_handle)],
             resource_to_own(paint_handle),
             resource_to_own(support_query_handle),
-            resource_to_own(lightning_query_handle),
             resource_to_own(output_handle),
             resource_to_own(config_handle),
         )
@@ -446,9 +433,6 @@ fn guest_logs_via_host_services() {
     let support_query_handle = ctx
         .push_support_query_view(SupportQueryViewData::default())
         .unwrap();
-    let lightning_query_handle = ctx
-        .push_lightning_query_view(LightningQueryViewData::default())
-        .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
     let bindings = layer_infill::LayerModule::instantiate(&mut store, &component, &linker).unwrap();
@@ -461,7 +445,6 @@ fn guest_logs_via_host_services() {
             &[resource_to_own(region_handle)],
             resource_to_own(paint_handle),
             resource_to_own(support_query_handle),
-            resource_to_own(lightning_query_handle),
             resource_to_own(output_handle),
             resource_to_own(config_handle),
         )
@@ -554,9 +537,6 @@ fn repeated_calls_produce_independent_outputs() {
         let support_query_handle = ctx
             .push_support_query_view(SupportQueryViewData::default())
             .unwrap();
-        let lightning_query_handle = ctx
-            .push_lightning_query_view(LightningQueryViewData::default())
-            .unwrap();
 
         let mut store = wasmtime::Store::new(&engine, ctx);
         let bindings =
@@ -570,7 +550,6 @@ fn repeated_calls_produce_independent_outputs() {
                 &[resource_to_own(region_handle)],
                 resource_to_own(paint_handle),
                 resource_to_own(support_query_handle),
-                resource_to_own(lightning_query_handle),
                 resource_to_own(output_handle),
                 resource_to_own(config_handle),
             )
@@ -637,9 +616,6 @@ fn empty_region_list_handled_gracefully() {
     let support_query_handle = ctx
         .push_support_query_view(SupportQueryViewData::default())
         .unwrap();
-    let lightning_query_handle = ctx
-        .push_lightning_query_view(LightningQueryViewData::default())
-        .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
     let bindings = layer_infill::LayerModule::instantiate(&mut store, &component, &linker).unwrap();
@@ -653,7 +629,6 @@ fn empty_region_list_handled_gracefully() {
             &[], // no regions
             resource_to_own(paint_handle),
             resource_to_own(support_query_handle),
-            resource_to_own(lightning_query_handle),
             resource_to_own(output_handle),
             resource_to_own(config_handle),
         )

@@ -30,7 +30,6 @@ pub const STAGE_ORDER: &[&str] = &[
     "PrePass::ShellClassification",
     "PrePass::SupportAnalysis",
     "PrePass::SupportGeometry",
-    "PrePass::LightningTreeGen",
     "Layer::PaintRegionAnnotation",
     "Layer::SlicePostProcess",
     "Layer::Perimeters",

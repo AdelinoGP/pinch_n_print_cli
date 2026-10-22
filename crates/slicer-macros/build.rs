@@ -16,7 +16,6 @@ fn main() {
         "../slicer-schema/wit/deps/layer-slice-postprocess/layer-slice-postprocess.wit",
         "../slicer-schema/wit/deps/layer-support-postprocess/layer-support-postprocess.wit",
         "../slicer-schema/wit/deps/layer-support/layer-support.wit",
-        "../slicer-schema/wit/deps/lightning-queries/lightning-queries.wit",
         "../slicer-schema/wit/deps/postpass-gcode-postprocess/postpass-gcode-postprocess.wit",
         "../slicer-schema/wit/deps/postpass-text-postprocess/postpass-text-postprocess.wit",
         "../slicer-schema/wit/deps/prepass-layer-planning/prepass-layer-planning.wit",

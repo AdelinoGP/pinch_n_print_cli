@@ -27,8 +27,8 @@
 //! ```text
 //! cp crates/slicer-schema/wit/deps/{types,config,common,ir-types}.wit \
 //!    modules/community-modules/dragon-curve/wit/deps/<pkg>/<pkg>.wit
-//! cp crates/slicer-schema/wit/deps/{support-queries,lightning-queries}/<pkg>.wit \
-//!    modules/community-modules/dragon-curve/wit/deps/<pkg>/<pkg>.wit
+//! cp crates/slicer-schema/wit/deps/support-queries/support-queries.wit \
+//!    modules/community-modules/dragon-curve/wit/deps/support-queries/support-queries.wit
 //! cd modules/community-modules/dragon-curve && make
 //! ```
 //!
@@ -61,10 +61,6 @@ const PACKAGES: &[(&str, &str)] = &[
     (
         "support-queries/support-queries.wit",
         "support-queries/support-queries.wit",
-    ),
-    (
-        "lightning-queries/lightning-queries.wit",
-        "lightning-queries/lightning-queries.wit",
     ),
 ];
 

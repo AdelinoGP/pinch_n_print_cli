@@ -2,11 +2,11 @@
 
 use std::{collections::BTreeSet, rc::Rc};
 
-use slicer_core::algos::lightning::distance_field::DistanceField;
-use slicer_core::algos::lightning::generate_initial_internal_overhangs;
-use slicer_core::algos::lightning::generator::Generator;
-use slicer_core::algos::lightning::layer::Layer;
-use slicer_core::algos::lightning::tree_node::Node;
+use super::distance_field::DistanceField;
+use super::generator::generate_initial_internal_overhangs;
+use super::generator::Generator;
+use super::layer::Layer;
+use super::tree_node::Node;
 use slicer_core::{difference, offset, OffsetJoinType};
 use slicer_ir::{
     mm_to_units, slice_ir::BoundingBox2, units_to_mm, ExPolygon, PaintValue, Point2, Polygon,
@@ -603,7 +603,7 @@ fn lightning_generator(outlines: Vec<Vec<Point2>>) -> Generator {
 }
 
 fn tree_endpoints(
-    root: &Rc<std::cell::RefCell<slicer_core::algos::lightning::tree_node::Node>>,
+    root: &Rc<std::cell::RefCell<super::tree_node::Node>>,
 ) -> Vec<Point2> {
     let (location, is_root, children) = {
         let node = root.borrow();
@@ -620,7 +620,7 @@ fn tree_endpoints(
 }
 
 fn tree_nodes(
-    root: &Rc<std::cell::RefCell<slicer_core::algos::lightning::tree_node::Node>>,
+    root: &Rc<std::cell::RefCell<super::tree_node::Node>>,
 ) -> Vec<Point2> {
     let mut nodes = Vec::new();
     root.borrow()
@@ -783,13 +783,17 @@ fn lightning_generator_deterministic() {
         line_width: 0.45,
         ..ResolvedConfig::default()
     };
-    let first_ir = slicer_core::algos::lightning::generate_lightning_trees(&slices, &config)
+    let first_ir = super::generate_lightning_trees(&slices, &config)
         .expect("first lightning IR must generate");
-    let second_ir = slicer_core::algos::lightning::generate_lightning_trees(&slices, &config)
+    let second_ir = super::generate_lightning_trees(&slices, &config)
         .expect("second lightning IR must generate");
-    let first_bytes = serde_json::to_vec(&*first_ir).expect("first lightning IR must serialize");
-    let second_bytes = serde_json::to_vec(&*second_ir).expect("second lightning IR must serialize");
-    assert_eq!(first_bytes, second_bytes);
+    // The private plan has no `serde` implementation by design (D3); compare
+    // its structured entries instead of serialized bytes. This is the same
+    // two-run determinism contract over the same data.
+    assert_eq!(
+        first_ir.entries, second_ir.entries,
+        "two runs over identical inputs must produce identical plans"
+    );
 
     let region_ids = first_ir
         .entries
@@ -798,7 +802,7 @@ fn lightning_generator_deterministic() {
         .collect::<BTreeSet<_>>();
     assert_eq!(region_ids, BTreeSet::from([1, 2]));
 
-    let segments_for_region = |ir: &slicer_ir::LightningTreeIR, region_id| {
+    let segments_for_region = |ir: &super::KernelPlan, region_id| {
         ir.entries
             .iter()
             .filter(|entry| entry.region_id == region_id)
@@ -846,12 +850,12 @@ fn lightning_generator_no_overhang_no_trees() {
         sparse_fill_holder: String::from("lightning-infill"),
         ..ResolvedConfig::default()
     };
-    let ir = slicer_core::algos::lightning::generate_lightning_trees(&slices, &config)
+    let ir = super::generate_lightning_trees(&slices, &config)
         .expect("uniform prism lightning IR must generate");
-    assert_eq!(
-        ir.schema_version,
-        slicer_ir::CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION
-    );
+    // Retargeted with the public IR: the private plan has no `schema_version`
+    // field, so there is nothing to assert. Compiling this test against
+    // `KernelPlan` is the version contract; the retired assertion was about a
+    // public schema that no longer exists (D3).
     assert!(
         ir.entries.is_empty(),
         "uniform prism with no internal overhangs must not produce spurious trees"
@@ -926,19 +930,19 @@ fn source_ordered_chains_remain_distinct_in_generated_lightning() {
     };
 
     let combined =
-        slicer_core::algos::lightning::generate_lightning_trees(&make_slices(true, true), &config)
+        super::generate_lightning_trees(&make_slices(true, true), &config)
             .expect("combined sibling-source lightning IR must generate");
     let forward_only =
-        slicer_core::algos::lightning::generate_lightning_trees(&make_slices(true, false), &config)
+        super::generate_lightning_trees(&make_slices(true, false), &config)
             .expect("forward-chain-only lightning IR must generate");
     let reversed_only =
-        slicer_core::algos::lightning::generate_lightning_trees(&make_slices(false, true), &config)
+        super::generate_lightning_trees(&make_slices(false, true), &config)
             .expect("reversed-chain-only lightning IR must generate");
 
     fn entries_for<'a>(
-        ir: &'a slicer_ir::LightningTreeIR,
+        ir: &'a super::KernelPlan,
         chain: &[(String, PaintValue)],
-    ) -> Vec<&'a slicer_ir::LightningTreeEntry> {
+    ) -> Vec<&'a super::PlanEntry> {
         ir.entries
             .iter()
             .filter(|entry| entry.variant_chain == chain)
@@ -965,7 +969,7 @@ fn source_ordered_chains_remain_distinct_in_generated_lightning() {
     // Membership/cardinality: the sibling sources cover the same layers, each
     // (layer, source) pair yields exactly one entry, and adding the sibling
     // changes neither source's layer membership.
-    let layers = |entries: &[&slicer_ir::LightningTreeEntry]| -> BTreeSet<i32> {
+    let layers = |entries: &[&super::PlanEntry]| -> BTreeSet<i32> {
         entries
             .iter()
             .map(|entry| entry.global_layer_index)
@@ -995,7 +999,7 @@ fn source_ordered_chains_remain_distinct_in_generated_lightning() {
     // Distinguishable payloads: the forward source's trees live at x < 20mm
     // and the reversed source's at x > 20mm, and each combined payload equals
     // the payload the source produces alone.
-    let segments = |entries: &[&slicer_ir::LightningTreeEntry]| -> Vec<[Point2; 2]> {
+    let segments = |entries: &[&super::PlanEntry]| -> Vec<[Point2; 2]> {
         entries
             .iter()
             .flat_map(|entry| entry.tree_edge_segments.iter().copied())

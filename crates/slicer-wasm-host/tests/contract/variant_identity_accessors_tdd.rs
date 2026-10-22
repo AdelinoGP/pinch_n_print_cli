@@ -194,7 +194,6 @@ fn run_native(fx: &Fixture) -> Vec<(OriginId, ConfigView)> {
         paint_regions: None,
         seam_plan: None,
         support_plan: None,
-        lightning_tree_ir: None,
         region_map: Some(Arc::new(fx.map.clone())),
         slice: Some(&fx.slice),
         perimeter: Some(&fx.perimeter),

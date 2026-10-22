@@ -20,9 +20,29 @@
 use slicer_ir::{ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, Point3WithWidth};
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::error::ModuleError;
+use slicer_sdk::preparation::PreparedPlanView;
 use slicer_sdk::slicer_module;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
+
+use crate::kernel::KernelPlan;
+use crate::private_plan::{decode_layer_piece, piece_name};
+
+// The relocated bodies keep the host copy's surface verbatim — planning logic is
+// frozen — including members the entry point does not call: the two
+// written-only `Generator` fields, `Generator::{get_trees_for_layer,
+// take_committed_segments}`, `DistanceField::unsupported_count`, `Layer::new`
+// and `KernelError::Unimplemented`. In `crates/slicer-core/src/algos/lightning/`
+// those were `pub` items of a public crate, so they were never dead; inside this
+// private module the same items are unreachable. Deleting them would be a change
+// to the moved code that this migration step may not make, so the allowance is
+// scoped here and the residue is recorded in the packet ledger.
+#[allow(dead_code)]
+mod kernel;
+mod planning_input;
+mod preparation;
+mod private_plan;
+mod projection;
 
 /// Default base speed used for normalizing speed factors (mm/s).
 const BASE_SPEED: f32 = 50.0;
@@ -49,7 +69,7 @@ impl LightningInfill {
     }
 }
 
-#[slicer_module]
+#[slicer_module(preparation)]
 impl LayerModule for LightningInfill {
     fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         // Required reads: the registry seeds every declared key's default into
@@ -101,13 +121,18 @@ impl LayerModule for LightningInfill {
 
     fn run_infill(
         &self,
-        _layer_index: u32,
+        layer_index: u32,
         regions: &[SliceRegionView],
         _paint: &PaintRegionLayerView,
         output: &mut InfillOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         let speed_factor = self.infill_speed / BASE_SPEED;
+        // The plan arrives as this layer's private piece (D3). No paint-view
+        // segment read remains: the piece is the only plan source, so a print
+        // without a bound plan fails loudly instead of degrading to an empty
+        // layer through a host fallback.
+        let plan = read_layer_plan(layer_index)?;
 
         for region in regions {
             output.begin_region(
@@ -121,16 +146,23 @@ impl LayerModule for LightningInfill {
 
             let z = region.z();
             // Exact source query: the full `(object_id, region_id, ordered
-            // variant_chain)` must match the committed tree entry. A pair-only
-            // lookup is never a fallback (SDK `lightning_tree_segments_for`
-            // contract; AC-R9).
-            for segment in _paint.lightning_tree_segments_for(
-                region.object_id(),
-                *region.region_id(),
-                region.variant_chain(),
-            ) {
+            // variant_chain)` must match the committed plan entry. A pair-only
+            // lookup is never a fallback; an empty chain is the exact identity
+            // for a genuinely chain-less source, never a wildcard.
+            let segments = plan
+                .entries
+                .iter()
+                .filter(|entry| {
+                    entry.global_layer_index == layer_index as i32
+                        && entry.object_id == *region.object_id()
+                        && entry.region_id == *region.region_id()
+                        && entry.variant_chain.as_slice() == region.variant_chain()
+                })
+                .flat_map(|entry| entry.tree_edge_segments.iter());
+
+            for segment in segments {
                 let points = segment
-                    .into_iter()
+                    .iter()
                     .map(|point| Point3WithWidth {
                         x: slicer_ir::units_to_mm(point.x),
                         y: slicer_ir::units_to_mm(point.y),
@@ -155,6 +187,21 @@ impl LayerModule for LightningInfill {
 
         Ok(())
     }
+}
+
+/// Read and decode the prepared piece for one layer.
+///
+/// `PreparedPlanView::current()` is the call-local view the ordinary stage runs
+/// under; the piece name is the module's own `lightning-layer-{index}` spelling,
+/// and the decoder is this module's, so neither the host nor the SDK interprets
+/// the bytes.
+fn read_layer_plan(layer_index: u32) -> Result<KernelPlan, ModuleError> {
+    let name = piece_name(layer_index as i32);
+    let view = PreparedPlanView::current().map_err(ModuleError::from)?;
+    let piece = view.require(&name)?;
+    let len = piece.len().map_err(ModuleError::from)?;
+    let bytes = piece.read(0, len).map_err(ModuleError::from)?;
+    decode_layer_piece(&name, &bytes)
 }
 
 #[cfg(test)]

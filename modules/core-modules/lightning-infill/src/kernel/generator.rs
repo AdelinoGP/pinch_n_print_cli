@@ -11,7 +11,7 @@
 
 use slicer_ir::{units_to_mm, ExPolygon, Point2, Polygon};
 
-use crate::{difference, offset, OffsetJoinType};
+use slicer_core::{difference, offset, OffsetJoinType};
 
 use super::layer::Layer;
 

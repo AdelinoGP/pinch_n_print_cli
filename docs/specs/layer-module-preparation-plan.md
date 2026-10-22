@@ -752,7 +752,14 @@ preparations must reproduce it exactly (full key identity including ordered
 legacy contract is gated on that comparison passing. Equivalence preserves current
 behaviour — including any existing deviation from canonical — so it is not a
 parity result and does not change the recorded Gate A `fail` or the unexecuted
-Gate B. Prerequisite rows 05 and 06 are `implemented` in this plan.
+Gate B. Prerequisite rows 01–06 are `implemented` in the tree: each packet's own
+`packet.spec.md` carries `status: implemented`, which is the authority for an
+implementation status; the queue's `status` column above records *generation*
+status (row 05 carries a mixed value) and is not the implementation ledger. The
+governing decision record is
+[ADR-0074](../adr/0074-lightning-migration-on-recorded-equivalence.md), whose
+registered deviations are `D-LMP08-ADR-0066-RETIREMENT-PRECONDITION` and
+`D-LMP08-ADR-0029-HOST-OWNERSHIP`; re-derive both at use.
 
 The merged rows retain their internal acceptance sub-gates: row 01 covers both
 variant-chain delivery and the shared projection, retaining the routing witnesses
@@ -764,22 +771,20 @@ separately verifies canonical input fidelity and native/WASM portability. By exp
 approval, row 07 is split into packet 07 (canonical input fidelity, Gate A) and packet
 09 (native/WASM portability, Gate B); the split does not waive either sub-gate. Merging
 rows does not waive these sub-gates. Generic framework acceptance is realized
-through rows 01–06 and may complete independently of lightning migration. Row 07
-is the feasibility gate. By explicit authoring approval, row 08 may be authored
-now as a blocked draft so the full packet set exists before implementation starts.
-This exception does not make an authored draft implementation-ready on its own.
-Row 08 was first authored as a blocked draft and was re-scoped on 2026-10-20 as a
-behaviour-preserving ownership move: its B1–B5 blockers are resolved as D1–D5 and
-its correctness criterion is recorded behavioural equivalence to the live producer,
-captured before removal — not both gate outcomes. Activation now requires
-independent PREFLIGHT PASS, the baseline recorded and deterministic, and AC-2/AC-3
-green before any deletion; framework rows 01–06 are implemented. Failed
-equivalence returns the migration for a design decision; approximate geometry is
-not a fallback, and equivalence is not a parity claim. The queue above records
-generation status; an authored draft may list its directory, but only PREFLIGHT
-PASS permits `generated`. Generated packets remain drafts, and their preflight
-passes are not evidence of implemented acceptance.
-No implementation is underway.
+through rows 01–06 and may complete independently of lightning migration.
+
+Row 08 is therefore **not** held behind those sub-gates. Its own criterion is
+recorded behavioural equivalence to the live producer, captured before removal;
+the feasibility gates are row 07's and row 09's outcomes, they remain recorded
+exactly as they stand (Gate A `fail`, Gate B unexecuted), and they neither gate
+nor are improved by row 08. The delivered ownership move reproduces the recorded
+pre-migration producer through native and fresh-WASM preparation; AC-2/AC-3 passed
+before deletion, and the nine migration acceptance criteria are green. This is
+recorded equivalence, not canonical parity or resolution of Gate A/B. Failed
+equivalence still returns the migration for a design decision; approximate
+geometry is not a fallback. The queue above records generation status, not
+implementation acceptance. The row-08 packet remains `draft` pending explicit
+finalization approval.
 
 ## Lightning geometry/portability gate outcomes
 

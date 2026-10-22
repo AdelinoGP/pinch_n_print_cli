@@ -581,7 +581,6 @@ pub(crate) fn build_native_layer_request_from_selection(
         paint_regions: input.paint_regions,
         seam_plan: input.seam_plan.clone(),
         support_plan,
-        lightning_tree_ir: input.lightning_tree_ir.clone(),
         region_map: input.region_map.clone(),
         slice: current_slice.map(|_| &selected_slice),
         perimeter: input.perimeter,
@@ -1055,9 +1054,6 @@ fn finish_native_layer_request(
         .map(|_| PaintRegionLayerView::with_paint_regions(layer_index, std::sync::Arc::new(())))
         .unwrap_or_else(|| PaintRegionLayerView::new(layer_index));
     paint = paint.with_is_raft(is_raft);
-    if let Some(ir) = input.lightning_tree_ir.as_ref() {
-        paint = paint.with_lightning_tree_ir(std::sync::Arc::clone(ir));
-    }
     // Mirror the wasm leg's paint-view construction. `dispatch_layer_call`
     // indexes the committed `SupportPlanIR` into `PaintRegionLayerData` via
     // `build_paint_layer_data_with_plan` for exactly two stages (`Layer::Infill`

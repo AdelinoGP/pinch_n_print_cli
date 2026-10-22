@@ -9,10 +9,10 @@ use std::sync::Arc;
 
 use slicer_ir::{
     ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, GlobalLayer,
-    LayerStageCommit, LightningTreeEntry, LightningTreeIR, LoopType, PaintValue, PerimeterIR,
-    PerimeterRegion, Point2, Point3WithWidth, Polygon, PreparedRegionData, RegionKey, RegionMapIR,
-    RegionPlan, ResolvedConfig, SliceIR, SlicedRegion, SupportPlanEntry, SupportPlanIR,
-    SupportPlanRole, SupportPlanRoleRegion, WallBoundaryType, WallLoop, WidthProfile,
+    LayerStageCommit, LoopType, PaintValue, PerimeterIR, PerimeterRegion, Point2, Point3WithWidth,
+    Polygon, PreparedRegionData, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SliceIR,
+    SlicedRegion, SupportPlanEntry, SupportPlanIR, SupportPlanRole, SupportPlanRoleRegion,
+    WallBoundaryType, WallLoop, WidthProfile,
 };
 use slicer_sdk::builders::{InfillOutputBuilder, PerimeterOutputBuilder};
 use slicer_sdk::native::{NativeLayerRequest, NativeLayerResponse, NativeStageEntry};
@@ -315,7 +315,6 @@ fn run_result(
         paint_regions: None,
         seam_plan: None,
         support_plan: plan.cloned().map(Arc::new),
-        lightning_tree_ir: None,
         region_map: map.cloned().map(Arc::new),
         slice,
         perimeter,
@@ -1353,7 +1352,6 @@ fn versioned_query_resources_load_and_old_components_reject() {
         paint_regions: None,
         seam_plan: None,
         support_plan: None,
-        lightning_tree_ir: None,
         region_map: Some(Arc::new(map)),
         slice: Some(&current),
         perimeter: None,
@@ -1427,15 +1425,11 @@ fn support_query_plan_entry(n: usize) -> SupportPlanEntry {
 }
 
 #[test]
-fn versioned_query_resources_new_guest_runs_support_and_lightning_queries() {
+fn versioned_query_resources_new_guest_runs_support_queries() {
     // W11 positive counterpart to the OLD-rejection witness above: the REBUILT
     // NEW-contract `layer-infill-guest` must typed-instantiate and run through
-    // the production dispatch with the W7a `support-query-view` and
-    // `lightning-query-view` resources sharing the one invocation's store and
-    // config identity. The on-disk test-guest artifact still embeds the OLD
-    // pre-split world, so this executes fully only after `cargo xtask
-    // build-guests` rebuilds it (W14); the authored body below is the W14
-    // assertion set — it is gated, not silently absent.
+    // the production dispatch with the W7a `support-query-view` resource
+    // sharing the invocation's store and config identity.
     let id = "lightning-infill".to_string();
     let claims = vec!["claim:sparse-fill".into()];
     let config = Arc::new(ConfigView::from_map(std::collections::HashMap::from([(
@@ -1460,34 +1454,17 @@ fn versioned_query_resources_new_guest_runs_support_and_lightning_queries() {
         entries: vec![support_query_plan_entry(0), support_query_plan_entry(1)],
         ..SupportPlanIR::default()
     };
-    let lightning = LightningTreeIR {
-        entries: vec![
-            // exhaustive: lightning fixture pins every field; chain-empty origin matches the one source.
-            LightningTreeEntry {
-                object_id: "repair-model".into(),
-                global_layer_index: 7,
-                region_id: 7,
-                tree_edge_segments: vec![
-                    [Point2::from_mm(0.0, 0.0), Point2::from_mm(1.0, 0.0)],
-                    [Point2::from_mm(2.0, 0.0), Point2::from_mm(3.0, 0.0)],
-                ],
-                variant_chain: vec![],
-            },
-        ],
-        ..LightningTreeIR::default()
-    };
     let selection_index = index("Layer::Infill", &module, Some(&current), Some(&map), None);
     let selection = selection_index.selection_for(7, &id).unwrap();
     let dispatcher = WasmRuntimeDispatcher::new(crate::common::wasm_cache::shared_engine());
     LayerStageRunner::last_wasm_mem_sample(&dispatcher);
-    // exhaustive: W14 invocation travels the typed stage with plan+lightning on one call.
+    // exhaustive: W14 invocation delivers the support plan through the typed stage.
     let input = LayerStageInput {
         selection: Some(selection),
         mesh: Arc::new(slicer_ir::MeshIR::default()),
         paint_regions: None,
         seam_plan: None,
         support_plan: Some(Arc::new(plan)),
-        lightning_tree_ir: Some(Arc::new(lightning)),
         region_map: Some(Arc::new(map)),
         slice: Some(&current),
         perimeter: None,
@@ -1511,22 +1488,9 @@ fn versioned_query_resources_new_guest_runs_support_and_lightning_queries() {
         initial > 0,
         "W14: guest must really invoke through the NEW typed interface"
     );
-    let slicer_ir::LayerStageCommit::Infill(ir) = commit else {
+    let slicer_ir::LayerStageCommit::Infill(_) = commit else {
         panic!("W14: Layer::Infill commit required")
     };
-    // The lightning query call succeeded through the NEW resource: the guest
-    // emits a single witness point whose x is the segment count it read.
-    let witness = ir
-        .regions
-        .iter()
-        .flat_map(|r| &r.sparse_infill)
-        .flat_map(|p| &p.points)
-        .find(|p| (p.width - 137.0).abs() < 1e-6)
-        .expect("W14: guest must emit the lightning-tree witness point");
-    assert_eq!(
-        witness.x, 2.0,
-        "W14: both committed tree edges must reach the guest"
-    );
     // The support query call succeeded through the NEW resource: the guest's
     // own log carries the per-region support-plan entry count it read.
     let logs = slicer_wasm_host::dispatch::last_log_messages_for_test();

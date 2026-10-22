@@ -233,18 +233,17 @@ pub fn resolve_stage_from_world(
     }
 }
 
-pub const SHARED_PACKAGES: [&str; 7] = [
+pub const SHARED_PACKAGES: [&str; 6] = [
     "slicer:types",
     "slicer:config",
     "slicer:ir-handles",
     "slicer:common",
     "slicer:prepass-types",
-    // Specialist query packages (layer-module-preparation packet): the
-    // layer-infill@2.0.0 world imports both, layer-support@2.0.0 imports
-    // support-queries. They are shared imports of stage worlds — never a
-    // stage candidate — so they classify exactly like the core packages.
+    // Specialist query package (layer-module-preparation packet): the
+    // layer-infill@2.0.0 and layer-support@2.0.0 worlds import it. It is a
+    // shared import of stage worlds — never a stage candidate — so it
+    // classifies exactly like the core packages.
     "slicer:support-queries",
-    "slicer:lightning-queries",
 ];
 pub const ROOT_COMPONENT_PACKAGE: &str = "root:component";
 const PREPARATION_PACKAGE: &str = "slicer:layer-preparation";
@@ -1245,7 +1244,6 @@ mod tests {
             "deps/common.wit",
             "deps/prepass-types.wit",
             "deps/support-queries/support-queries.wit",
-            "deps/lightning-queries/lightning-queries.wit",
             "deps/layer-preparation/layer-preparation.wit",
         ]
         .into_iter()
@@ -1505,18 +1503,11 @@ mod tests {
             !expected.contains(&PathBuf::from("crates/slicer-schema/wit/root.wit")),
             "root.wit must not be in the macro include_str! set"
         );
-        // The two specialist query packages the layer-infill@2.0.0 /
+        // The specialist query package the layer-infill@2.0.0 /
         // layer-support@2.0.0 worlds import must be in the macro closure.
         assert!(
             expected.contains(&PathBuf::from("deps/support-queries/support-queries.wit")),
             "support-queries.wit must be in the macro include_str! set; got {:?}",
-            expected
-        );
-        assert!(
-            expected.contains(&PathBuf::from(
-                "deps/lightning-queries/lightning-queries.wit"
-            )),
-            "lightning-queries.wit must be in the macro include_str! set; got {:?}",
             expected
         );
 
@@ -1625,18 +1616,11 @@ mod tests {
             "prepass-types.wit must be watched; got {:?}",
             actual
         );
-        // The specialist query packages embedded by the macro for the
+        // The specialist query package embedded by the macro for the
         // infill/support worlds must be watched so reruns fire on changes.
         assert!(
             actual.contains(&PathBuf::from("deps/support-queries/support-queries.wit")),
             "support-queries.wit must be watched; got {:?}",
-            actual
-        );
-        assert!(
-            actual.contains(&PathBuf::from(
-                "deps/lightning-queries/lightning-queries.wit"
-            )),
-            "lightning-queries.wit must be watched; got {:?}",
             actual
         );
         // All per-stage deps/<dir>/<dir>.wit files must be present.
@@ -1655,7 +1639,6 @@ mod tests {
                         "deps/common.wit",
                         "deps/prepass-types.wit",
                         "deps/support-queries/support-queries.wit",
-                        "deps/lightning-queries/lightning-queries.wit",
                         "deps/layer-preparation/layer-preparation.wit",
                     ]
                     .into_iter()
@@ -2257,10 +2240,10 @@ package root:component { world root {} }
         );
     }
 
-    /// Packet-required positive case: the two specialist query packages are
+    /// Packet-required positive case: the specialist query package is
     /// classified as shared inside `compare_worlds`, not `UnexpectedPackage`.
     /// The embedded world mirrors the migrated canonical shape — a
-    /// layer-infill stage importing both specialists — with the shared
+    /// layer-infill stage importing its specialist — with the shared
     /// subset direction intact: omitting a specialist resource method is NOT
     /// drift, while an EXTRA method IS drift (falsifiable control: the test
     /// can see the specialist interface content).
@@ -2280,7 +2263,6 @@ package slicer:ir-handles@1.0.0 {
 package slicer:layer-infill@1.0.0 {
     interface infill {
         use slicer:support-queries/support-queries@1.0.0.{support-query-view};
-        use slicer:lightning-queries/lightning-queries@1.0.0.{lightning-query-view};
         run: func(a: u32) -> string;
     }
     world w { export infill; }
@@ -2301,45 +2283,24 @@ package slicer:support-queries@1.0.0 {{
 "#
             )
         };
-        let lightning_pkg = |body: &str| {
-            format!(
-                r#"
-package slicer:lightning-queries@1.0.0 {{
-    interface lightning-queries {{
-        use slicer:ir-handles/ir-handles@1.0.0.{{object-id, region-id, paint-value}};
-        resource lightning-query-view {{
-            {body}
-        }}
-    }}
-}}
-"#
-            )
-        };
         let support_entries = "support-plan-entries: func(object-id: object-id, region-id: region-id, variant-chain: list<tuple<string, paint-value>>) -> list<u32>;";
         let raft = "raft-plan: func() -> option<u32>;";
-        let lightning_segments = "lightning-tree-segments: func(object-id: object-id, region-id: region-id, variant-chain: list<tuple<string, paint-value>>) -> list<list<u32>>;";
         let bogus = "bogus: func() -> u32;";
 
         let canon_text = format!(
-            "{ir_handles_pkg}{}{}{infill_pkg}",
+            "{ir_handles_pkg}{}{infill_pkg}",
             support_pkg(&format!("{support_entries}\n            {raft}")),
-            lightning_pkg(lightning_segments),
         );
         // Embedded mirrors canonical except `support-query-view` omits the
         // `raft-plan` method: shared subset direction must not flag it.
-        let emb_text = format!(
-            "{ir_handles_pkg}{}{}{infill_pkg}",
-            support_pkg(support_entries),
-            lightning_pkg(lightning_segments),
-        );
+        let emb_text = format!("{ir_handles_pkg}{}{infill_pkg}", support_pkg(support_entries));
         // Falsifiability control: an EXTRA method on the shared specialist
         // resource IS drift (subset direction tolerates omissions, not
         // extras) — same shape as the slice-region-view control in
         // `aliases_resources_and_uses_are_modelled`.
         let emb_extra_text = format!(
-            "{ir_handles_pkg}{}{}{infill_pkg}",
-            support_pkg(support_entries),
-            lightning_pkg(&format!("{lightning_segments}\n            {bogus}")),
+            "{ir_handles_pkg}{}{infill_pkg}",
+            support_pkg(&format!("{support_entries}\n            {bogus}")),
         );
 
         let canon = world_model_from_text(&canon_text, "canon").unwrap();
@@ -2366,9 +2327,9 @@ package slicer:lightning-queries@1.0.0 {{
         let drifts2 = compare_worlds(&emb2, &canon, Some(&expect));
         assert!(
             drifts2.iter().any(|d| d.kind == DriftKind::DeclarationBody
-                && d.name == "lightning-query-view"
-                && strip_version(&d.package) == "slicer:lightning-queries"),
-            "extra specialist method must be DeclarationBody on lightning-query-view, got {:?}",
+                && d.name == "support-query-view"
+                && strip_version(&d.package) == "slicer:support-queries"),
+            "extra specialist method must be DeclarationBody on support-query-view, got {:?}",
             drifts2
         );
     }
@@ -2528,18 +2489,17 @@ package root:component { world root {} }
         let root = ws_root();
         // Live shape of the migrated layer-infill world (layer-module-
         // preparation packet): the stage package plus the nominal core and
-        // both specialist query imports. Versions are derived from the
+        // the specialist query import. Versions are derived from the
         // canonical WIT on disk AT USE — never a frozen numeric destination.
         let infill_pkg = canonical_package_decl(&root, "deps/layer-infill/layer-infill.wit");
         let support_pkg = canonical_package_decl(&root, "deps/support-queries/support-queries.wit");
-        let lightning_pkg =
-            canonical_package_decl(&root, "deps/lightning-queries/lightning-queries.wit");
+        let config_pkg = canonical_package_decl(&root, "deps/config.wit");
         let world = world_with_packages(&[
             "root:component",
             "slicer:types",
             "slicer:ir-handles@1.0.0",
             &support_pkg,
-            &lightning_pkg,
+            &config_pkg,
             &infill_pkg,
         ]);
         let expect = resolve_stage_from_world(&world).expect("should resolve");
@@ -2763,7 +2723,6 @@ package root:component { world root {} }
                 "slicer:common",
                 "slicer:prepass-types",
                 "slicer:support-queries",
-                "slicer:lightning-queries",
             ]
             .into_iter()
             .collect()
@@ -2778,7 +2737,7 @@ package root:component { world root {} }
 
     /// Packet-required positive case: nominal-core recognition — the
     /// version-qualified `slicer:ir-handles@1.0.0` declaration classifies as
-    /// a shared package, and so do the two specialist query packages. None of
+    /// a shared package, and so does the specialist query package. None of
     /// them is ever a stage candidate: a world of only shared packages (plus
     /// the root component) has no stage package at all.
     #[test]
@@ -2787,7 +2746,6 @@ package root:component { world root {} }
             "root:component",
             "slicer:ir-handles@1.0.0",
             "slicer:support-queries@1.0.0",
-            "slicer:lightning-queries@1.0.0",
         ]);
         match resolve_stage_from_world(&world) {
             Err(StageResolutionError::NoStagePackage) => {}
@@ -2799,23 +2757,20 @@ package root:component { world root {} }
     }
 
     /// Packet-required positive case: the migrated canonical layer-infill
-    /// world shape — stage package plus BOTH specialist query imports — must
-    /// resolve unambiguously to its stage. Before the specialists were
-    /// classified shared, this exact world was `Ambiguous(3)` and the closure
-    /// verification could not recognize a well-formed infill guest.
+    /// world shape — stage package plus its specialist query import — must
+    /// resolve unambiguously to its stage. Before the specialist was
+    /// classified shared, this world's shape resolved as `Ambiguous` and the
+    /// closure verification could not recognize a well-formed infill guest.
     /// Versions derived from the canonical WIT on disk at use.
     #[test]
     fn specialist_imports_do_not_ambiguate_stage_resolution() {
         let root = ws_root();
         let infill_pkg = canonical_package_decl(&root, "deps/layer-infill/layer-infill.wit");
         let support_pkg = canonical_package_decl(&root, "deps/support-queries/support-queries.wit");
-        let lightning_pkg =
-            canonical_package_decl(&root, "deps/lightning-queries/lightning-queries.wit");
         let world = world_with_packages(&[
             "root:component",
             "slicer:ir-handles@1.0.0",
             &support_pkg,
-            &lightning_pkg,
             &infill_pkg,
         ]);
         let expect =

@@ -147,7 +147,6 @@ fn support_layer_dispatch_joins_plan_identity() {
         paint_regions: None,
         seam_plan: None,
         support_plan: Some(Arc::new(support_plan)),
-        lightning_tree_ir: None,
         region_map: Some(Arc::new(region_map)),
         slice: Some(&slice),
         perimeter: None,
